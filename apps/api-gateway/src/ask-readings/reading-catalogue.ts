@@ -6,8 +6,8 @@ import { AskDisposition, QuestionClass, ReadingDescriptor, ReadingId } from "./r
  * Founder, batch 4, 2026-09-19, his words: "do not give money or sensitive
  * incentives like sales etc to the staff, maybe we should exclude staff from
  * this equation" -> price, vendor, open-order and sales readings are owner
- * and manager only -- six readings below name `OWNER_MANAGER_ONLY`; the
- * other nine name `ALL_ROLES`, unchanged from today's behaviour.
+ * and manager only -- seven readings below name `OWNER_MANAGER_ONLY`; the
+ * other eight name `ALL_ROLES`, unchanged from today's behaviour.
  *
  * [CORRECTED 2026-09-21, KL round 5: this was "five"/"ten" until
  * `orders.late_deliveries` was added below -- it reads the identical `open`
@@ -15,6 +15,17 @@ import { AskDisposition, QuestionClass, ReadingDescriptor, ReadingId } from "./r
  * `ALL_ROLES` let a role-refused caller reach the same rows through a wider
  * date window. See `CLAIMS.jsonl`'s
  * `ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SIX-READINGS`.]
+ *
+ * [ANSWERED 2026-09-21, founder round 5 -- recorded answer, not a
+ * quotation: on `/ask` the posted-targets reading (`goals.targets`) is
+ * owner/manager only too, a money measure the same as the other six. Seven
+ * restricted now, not six; eight open, not nine. Recorded in ADR 0145's
+ * "Amendment, 2026-09-21 -- goals.targets joins the restricted set". See
+ * `CLAIMS.jsonl`'s
+ * `ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SEVEN-READINGS` (renamed from
+ * `...-EXACTLY-SIX-READINGS`). This does NOT touch who may open `/ask`
+ * itself -- that question stays open with the founder (see this record's
+ * "Still open" section below).]
  */
 export const ALL_ROLES: readonly Role[] = ["owner", "manager", "staff"];
 export const OWNER_MANAGER_ONLY: readonly Role[] = ["owner", "manager"];
@@ -47,7 +58,9 @@ export const READING_CATALOGUE: readonly ReadingDescriptor[] = [
   // reading (see the module doc above -- not the founder's own word).
   { id: "vendors.active", version: 1, title: "The attached vendors", question: "Which vendors are attached and active?", subject: "none", window: false, shelves: ["providers", "restaurant_providers"], meaning: "Owned vendors plus active authorized links; explicit revocation wins, and unlinked shared providers stay private.", allowedRoles: OWNER_MANAGER_ONLY },
   { id: "documents.waiting", version: 1, title: "Documents awaiting review", question: "Which documents are waiting for review?", subject: "none", window: false, shelves: ["procurement_documents"], meaning: "Received, extracting and needs-review remain different states; documents are not all invoices.", allowedRoles: ALL_ROLES },
-  { id: "goals.targets", version: 1, title: "The posted targets", question: "What goals and targets are posted?", subject: "none", window: false, shelves: ["analytics_goals"], meaning: "Active targets and deadlines, not progress inferred from a default zero.", allowedRoles: ALL_ROLES },
+  // Goals: a money measure (founder, round 5, 2026-09-21) -- same category
+  // as price, vendor, open-order and sales above, so the same gate.
+  { id: "goals.targets", version: 1, title: "The posted targets", question: "What goals and targets are posted?", subject: "none", window: false, shelves: ["analytics_goals"], meaning: "Active targets and deadlines, not progress inferred from a default zero.", allowedRoles: OWNER_MANAGER_ONLY },
 ] as const;
 
 /**

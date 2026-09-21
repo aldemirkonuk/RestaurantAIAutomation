@@ -85,15 +85,42 @@
  * for the exact defect above.]
  *
  * Visual polish beyond reusing `PublicShell`'s own tokens and structural
- * classes (`.mdv-pub__*`, from `public-shell.css`) is deliberately NOT
- * invented here: there is no founder-reviewed sketch for a signed-in
- * treatment of this ceremony, and the ask was the architecture (the shell
- * choice, driven by the flag and the switch), not new unreviewed chrome --
- * the same "delegate the shape, keep the mechanism honest" split ADR 0144
- * §2 drew for `/help`. The identity line added by this correction is the
- * same discipline applied to itself: a bare, unstyled line built from
- * `.mdv-pub__mast`'s existing rhythm, carrying its own marker class
- * (`mdv-auth-shell__identity`) and no new CSS rule.
+ * classes (`.mdv-pub__*`, from `public-shell.css`) was deliberately NOT
+ * invented by the 2026-09-21 correction above: there was no founder-reviewed
+ * sketch for a signed-in treatment of this ceremony, and that fix's ask was
+ * the architecture (the shell choice, driven by the flag and the switch),
+ * not new unreviewed chrome -- the same "delegate the shape, keep the
+ * mechanism honest" split ADR 0144 §2 drew for `/help`.
+ *
+ * [STYLED 2026-09-21, same round, later in the session -- the founder was
+ * then asked directly, since a bare unstyled line is itself a visual
+ * choice and CLAUDE.md §0.1 forbids treating one as a non-decision. His
+ * words: "style it I trust you, do not show me. Just say done, keep it
+ * simple, use anthropic's or other tech co's approach". Recorded direction
+ * (a paraphrase, not his words): a clean consent screen in the house tokens
+ * like Anthropic's/Google's/GitHub's OAuth consent (app name, what it can
+ * do, who is granting for which house, one primary act, a quiet cancel), no
+ * new sketch. His sentence is recorded verbatim in ADR 0144's review trail.
+ * This is scoped to the identity line only -- the app
+ * name (`title`), what it can do (the scopes section,
+ * `next/AuthorizeIntegrationNext.tsx`) and the primary act / quiet cancel
+ * (`HoldToApprove` and the Cancel `.mdv-btn`) already exist and are
+ * untouched here.
+ *
+ * Built as `authorize-shell.css`, imported below, holding the SAME
+ * discipline `public-shell.css`'s own header states: tokens only, no hex
+ * literal, no `prefers-color-scheme`/`[data-theme]` block, no
+ * `box-shadow` colour. The line reads the way an OAuth consent chip reads
+ * -- on its own line under the wordmark, a one-letter mark on the seal
+ * colour (`--seal`; decorative, `aria-hidden`, never a substitute for the
+ * name), the person's name in `--ink-1`, the house beside it in `--ink-2`,
+ * on a `--paper-1` pill against the page's `--paper-0` ground, the same
+ * hairline-and-ground-change separation `.mdv-pub__plate` uses at page scale
+ * rather than a shadow. Markup and class names (`mdv-auth-shell__identity`,
+ * `mdv-auth-shell__person`, `mdv-auth-shell__house`) are unchanged from the
+ * 2026-09-21 correction above -- this adds a wrapper span and the avatar
+ * mark, and a stylesheet; no existing test's class or text assertion needed
+ * to change, and one new case in `AuthorizeShell.test.tsx` covers the mark.
  */
 
 import { useContext, useId, type ReactNode } from 'react';
@@ -102,6 +129,7 @@ import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign';
 import { usePublicDesign } from '../../lib/mudavym/publicDesign';
 import { PublicShell, type PublicShellProps } from '../../components/mudavym/PublicShell';
 import { Wordmark } from '../../components/mudavym/Wordmark';
+import './authorize-shell.css';
 
 /**
  * `true` when this ceremony should wear the Mudavym redesign. Exported so its
@@ -181,13 +209,23 @@ export function AuthorizeShell({ title, eyebrow, voice, footer, measure, homeHre
   );
 
   // Who is granting, and for which house -- no navigation, only a fact.
+  // The mark is the person's own initial, decorative and aria-hidden: the
+  // name text beside it is the actual information, never the mark alone.
+  // `Array.from`, not `charAt(0)`: a name opening on an astral character (a
+  // surrogate pair) must give the whole character, never half of one.
+  const initial = person ? (Array.from(person.trim())[0] ?? '').toUpperCase() || null : null;
   const identity = person || house ? (
     <p className="mdv-auth-shell__identity">
-      {person ? <span className="mdv-auth-shell__person">{person}</span> : null}
-      {person && house ? (
-        <span aria-hidden="true"> · </span>
+      {initial ? (
+        <span className="mdv-auth-shell__avatar" aria-hidden="true">{initial}</span>
       ) : null}
-      {house ? <span className="mdv-auth-shell__house">{house.name}</span> : null}
+      <span className="mdv-auth-shell__identity-text">
+        {person ? <span className="mdv-auth-shell__person">{person}</span> : null}
+        {person && house ? (
+          <span className="mdv-auth-shell__identity-sep" aria-hidden="true"> · </span>
+        ) : null}
+        {house ? <span className="mdv-auth-shell__house">{house.name}</span> : null}
+      </span>
     </p>
   ) : null;
 

@@ -1,6 +1,6 @@
 # 0145 — Mudavym answers out of a reading, and only the query that ran may mint one
 
-- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]**
+- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]**
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Date:** 2026-09-12
 - **Keywords:** ask, /ask, Mudavym, assistant, reading, finding, provenance, hollow build, refusal shapes, seal, ask-ai, sommelier
@@ -395,6 +395,7 @@ sales-shaped and this rule does not touch them:
   `orders.open`; see `reading-catalogue.spec.ts`'s matrix and
   `CLAIMS.jsonl`'s `ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SIX-READINGS`
   (renamed from `...-EXACTLY-FIVE-READINGS`).]**
+  **[Seven restricted and eight open since later the same day: `goals.targets` joined the restricted set — see "Amendment, 2026-09-21 — goals.targets joins the restricted set" below.]**
 - `isReadingAllowedForRole(id, role)` mirrors `RolesGuard`'s own
   admin-equivalence rule (`auth/guards/roles.guard.ts`) rather than
   reimplementing role logic a second time: owner/manager/admin pass a
@@ -402,7 +403,7 @@ sales-shaped and this rule does not touch them:
   passes an open reading, exactly as before this change (a null role is
   NOT newly blocked from the open readings — only the restricted
   ones are newly gated; nine and six respectively as of 2026-09-21, see
-  the corrected bullet above).
+  the corrected bullet above). **[Eight and seven since later the same day: `goals.targets` joined the restricted set — see "Amendment, 2026-09-21 — goals.targets joins the restricted set" below.]**
 - `BoundAskService.submit` checks this AFTER the question is classified to a
   reading (by the page's own choice or the Haiku pick call) but BEFORE
   `ReadingRunner` is ever constructed — zero DB reads, zero compose-model
@@ -488,7 +489,8 @@ allocated, rather than leaving them findable only by reading this ADR.
   as something to confirm with the `/ask` page sketch, not a standing
   decision. Nothing in this session narrows `/ask` access by role beyond
   those six readings; a staff caller can still reach `/ask` itself and every
-  one of the nine open readings today.
+  one of the nine open readings today. **[Seven restricted and eight open since later the same day: `goals.targets` joined the restricted set — see "Amendment, 2026-09-21 — goals.targets joins the restricted set" below.]**
+  Who may open `/ask` itself is unchanged by that amendment and still open.
 - **`/ask`'s date handling.** The recorded answer, not a quotation:
   `/ask`'s dates are to be decided with the
   `/ask` sketch. `ReadingArgs.from`/`to` (`reading.types.ts`) exist and
@@ -514,3 +516,65 @@ is not yet reachable by anyone (`ASK_LAUNCHED` unset, no page, no route) so
 (a) vs (b) has no live effect until the page ships — the sketch session
 should decide it with the page in front of the founder, not this one
 pre-empting it from a text amendment.
+
+---
+
+## Amendment, 2026-09-21 — goals.targets joins the restricted set (KL round 5, founder answer)
+
+Asked directly, in the same round-5 session as the `orders.late_deliveries`
+bypass fix above: does the posted-targets reading belong in the
+owner/manager-only set alongside price, vendor, open-order and sales?
+
+**Founder's answer, recorded 2026-09-21 — the recorded answer, not a
+quotation (no verbatim sentence was given for this one, unlike the
+`/authorize` styling answer recorded in ADR 0144's review trail the same
+round): on `/ask`, the posted-targets reading (`goals.targets`) is
+owner/manager only (money measures).**
+
+This session's reading of why, not his words: a posted goal or target is a
+money measure, the same kind of figure his 2026-09-19 "sales etc" answer
+named. His four 2026-09-19 categories (price, vendor, open-order, sales) did
+not name goals, so `goals.targets` stayed on `ALL_ROLES` until he was asked.
+It is the only reading in the catalogue whose shelf is `analytics_goals`
+(`reading-catalogue.ts`; the only `analytics_goals` read in
+`ask-readings/` is `reading-sources.ts:123`), so no other reading
+reaches the same target rows — the bypass shape `orders.late_deliveries`
+had against `orders.open` does not recur here.
+
+**Built:** `reading-catalogue.ts`'s `goals.targets` entry now carries
+`allowedRoles: OWNER_MANAGER_ONLY`, mirroring the same six readings above
+it. Seven readings now restricted (`orders.open`, `orders.late_deliveries`,
+`receipts.verified_line`, `sales.check_activity`, `sales.consumption`,
+`vendors.active`, `goals.targets`), eight open (six and nine before this
+addition). `isReadingAllowedForRole` is untouched — the
+mechanism already generalises over any `OWNER_MANAGER_ONLY` entry, so no
+code beyond the catalogue declaration changed.
+
+**Tests, failing before / passing after:**
+`reading-catalogue.spec.ts`'s `RESTRICTED`/`OPEN` matrix now includes
+`goals.targets` in `RESTRICTED` (26 cases total in the file, all green);
+mutation-tested 2026-09-21 by widening `goals.targets` back to `ALL_ROLES`
+and confirming `CLAIMS.jsonl`'s
+`ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SEVEN-READINGS` verify flips PASS
+→ FAIL, then restoring the file byte-identically (md5
+`6990c16d8ab6456423bcd5457d4238ae`, unchanged before and after). The last
+call re-ran that mutation and also ran the spec under it: 3 of 26 cases
+failed (the exact-set case and both `goals.targets` role cases), and the
+claim's verify failed; restored byte-identically, verify passing again. A
+comment-only edit to `reading-catalogue.ts` followed (a "recorded verbatim"
+that contradicted "not a quotation"), so the file's md5 is no longer the one
+above; the mutation was re-run on the final file (md5
+`696fbb1c70d51bc205865af878e7c7f3` before and after): verify PASS → FAIL →
+PASS, spec 26/26 → 3 failed → 26/26. Full
+`verify_index.sh` run green: `gw_tsc`, `gw_tsc_spec`,
+`reading-catalogue.spec.ts` (26/26), `bound-ask.service.spec.ts` (role-gate
+describe block unaffected — its own fixtures use `orders.open`,
+`vendors.active` and `sales.check_activity`, none of which changed), and
+`scripts/check_decision_claims.sh` (399/399 holding).
+
+**Explicitly does NOT touch:** who may open `/ask` at all. That question is
+still open with the founder — see "Still open, deliberately not decided
+here: staff reach, and dates" above; its question is unchanged by this
+amendment (a dated count bracket was added there, nothing else). A staff
+caller can still reach `/ask` and every one of the now-eight open readings;
+only the seventh money-shaped reading was added to the refusal set.

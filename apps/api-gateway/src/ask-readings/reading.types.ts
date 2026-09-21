@@ -89,6 +89,13 @@ export interface ReadingDescriptor {
    * OPEN question (his leaning is to exclude them; to be confirmed with the
    * `/ask` sketch) -- this field narrows individual readings and does not
    * answer that.
+   *
+   * [ANSWERED 2026-09-21, founder round 5 -- recorded answer, not a
+   * quotation: the posted-targets reading (`goals.targets`) is owner/manager
+   * only too, a money measure. Seven readings now carry
+   * `OWNER_MANAGER_ONLY`, not six. Recorded in ADR 0145's 2026-09-21
+   * goals.targets amendment. The "whether staff reach `/ask` at all" question above is
+   * UNCHANGED by this answer and stays open.]
    */
   allowedRoles: readonly Role[];
 }

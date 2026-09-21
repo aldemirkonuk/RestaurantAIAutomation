@@ -215,6 +215,38 @@ describe('AuthorizeShell, a house is known: the identity frame both /authorize/:
     expect(container.querySelector('.mdv-auth-shell__person')).toBeNull();
   });
 
+  it('marks the line with the person’s own initial -- decorative (aria-hidden), trimmed, a whole character, and absent when no name is known', () => {
+    mudavymDesign.mockReturnValue(true);
+    const { container, rerender } = render(
+      <AuthContext.Provider value={withIdentity('house-1', '  jordan Rivera', 'The Anchor')}>
+        <AuthorizeShell title="Connect Gmail"><p>content</p></AuthorizeShell>
+      </AuthContext.Provider>,
+    );
+    const mark = container.querySelector('.mdv-auth-shell__avatar');
+    expect(mark?.textContent).toBe('J');
+    expect(mark).toHaveAttribute('aria-hidden', 'true');
+    // The name, not the mark, is the information: it sits in the text span.
+    expect(container.querySelector('.mdv-auth-shell__identity-text .mdv-auth-shell__person')).toHaveTextContent('jordan Rivera');
+
+    // A name opening on an astral character yields that whole character,
+    // never a lone surrogate half.
+    rerender(
+      <AuthContext.Provider value={withIdentity('house-1', '\u{1D4A5}ordan', 'The Anchor')}>
+        <AuthorizeShell title="Connect Gmail"><p>content</p></AuthorizeShell>
+      </AuthContext.Provider>,
+    );
+    expect(container.querySelector('.mdv-auth-shell__avatar')?.textContent).toBe('\u{1D4A5}');
+
+    // House only: nothing to take an initial from, so no mark at all.
+    rerender(
+      <AuthContext.Provider value={withIdentity('house-1', null, 'The Anchor')}>
+        <AuthorizeShell title="Connect Gmail"><p>content</p></AuthorizeShell>
+      </AuthContext.Provider>,
+    );
+    expect(container.querySelector('.mdv-auth-shell__avatar')).toBeNull();
+    expect(container.querySelector('.mdv-auth-shell__identity')).toHaveTextContent('The Anchor');
+  });
+
   it('still renders the page’s own eyebrow, title, voice and footer', () => {
     mudavymDesign.mockReturnValue(true);
     render(

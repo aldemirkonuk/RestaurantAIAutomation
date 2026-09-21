@@ -1,6 +1,6 @@
 # 0144 — The book opens on evidence, and three pages are given a job
 
-- **Status:** Locked on four founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 11, 13 and 16: the arrival's threshold, `/onboarding` redirect and tutorial action boxes; a correction to section 3's count of locked records; and the `/authorize` residue. Answered, not built. Each is a bracket at the sentence it touches.]** **[2026-09-19, founder batch 4, KL lane — three of the four residue items below answered and two built; see the Review trail and the bracket at each.]** **[2026-09-21, KL lane round 5 — the `/authorize` frame built 2026-09-19 was a regression (no masthead at all on `/authorize/:integrationId` with the flag on); corrected, one frame for both routes, plus three attribution relabels. See the Review trail and the bracket at each.]**
+- **Status:** Locked on four founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 11, 13 and 16: the arrival's threshold, `/onboarding` redirect and tutorial action boxes; a correction to section 3's count of locked records; and the `/authorize` residue. Answered, not built. Each is a bracket at the sentence it touches.]** **[2026-09-19, founder batch 4, KL lane — three of the four residue items below answered and two built; see the Review trail and the bracket at each.]** **[2026-09-21, KL lane round 5 — the `/authorize` frame built 2026-09-19 was a regression (no masthead at all on `/authorize/:integrationId` with the flag on); corrected, one frame for both routes, plus three attribution relabels. See the Review trail and the bracket at each.]** **[2026-09-21, same round, later — the founder then styled the identity line that correction built: a clean OAuth-consent-style pill in the house tokens, his words quoted verbatim at the Review trail row and the bracket it points at.]**
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** mudavym, onboarding, folio zero, first evidence, help, vendor-prices, price register, promotions, offers, landed cost, design wave
@@ -327,6 +327,53 @@ the first fix round's judge, unchanged this round):**
   and design ON with a house renders `.mdv-auth-shell.mdv-auth-shell--identity`
   with the identity text present and exactly two links (the skip link and
   the `/profile` exit) — no navigation. `apps/web` `tsc --noEmit` clean.]**
+  **[STYLED 2026-09-21, same round, later — the identity line the correction
+  above built was deliberately left bare, with `AuthorizeShell.tsx`'s own
+  header at the time saying so explicitly: "there is no founder-reviewed
+  sketch for a signed-in treatment of this ceremony". A bare, unstyled
+  line is itself a visual choice, so per CLAUDE.md §0.1 that choice was
+  asked rather than left standing. Founder's answer, verbatim: "style it I
+  trust you, do not show me. Just say done, keep it simple, use anthropic's
+  or other tech co's approach" — recorded direction (this session's
+  paraphrase of what that meant, not a further quotation): a clean consent
+  screen in the house tokens like Anthropic's, Google's or GitHub's OAuth
+  consent — app name, what it can do, who is granting for which house, one
+  primary act, a quiet cancel — and no new sketch to review first. Built as
+  `apps/web/src/pages/authorize-integration/authorize-shell.css`
+  (new file, tokens only — no hex literal, no `prefers-color-scheme` or
+  `[data-theme]` block, no `box-shadow` colour, the same discipline
+  `public-shell.css`'s own header states), imported by `AuthorizeShell.tsx`:
+  the identity line is now a pill (`--paper-1` on `--paper-0`, a hairline
+  `--paper-2` border — the shell's existing plate-and-ground separation, no
+  new shadow) carrying a one-letter, `aria-hidden` avatar mark on the house
+  seal colour (`--seal`), the person's name in `--ink-1`, the house beside
+  it in `--ink-2`. Scoped to the identity line only: the app name (`title`),
+  what the permission allows (`next/AuthorizeIntegrationNext.tsx`'s scopes
+  section) and the primary act / quiet cancel (`HoldToApprove` and the
+  Cancel `.mdv-btn`) already existed and are unchanged. `who may open /ask`
+  is a different record ([[0145-mudavym-answers-out-of-a-reading]]) and is
+  untouched by this answer. Markup and class names
+  (`mdv-auth-shell__identity`, `mdv-auth-shell__person`,
+  `mdv-auth-shell__house`) are unchanged from the round-5 correction above,
+  so no existing test's class or text assertion needed to change; two new
+  elements were added (the avatar mark and a text-wrapping span) with their
+  own new classes. Tests: `AuthorizeShell.test.tsx`'s existing 14 cases pass
+  unmodified (re-run, not re-written); `consent-flow.test.tsx`'s 10 cases
+  likewise. `verify_index.sh` this round: `web_tsc` clean,
+  `AuthorizeShell.test.tsx` 14/14, `consent-flow.test.tsx` 10/10.
+  **Last call, same day:** the pill was first built `inline-flex`, which
+  shares a line box with the inline wordmark before it (`.mdv-pub__mast` is
+  a plain block), so it rendered glued to the wordmark's right side instead
+  of under it. It is now block-level and shrink-wrapped (`display: flex;
+  width: fit-content`), on its own line under the wordmark and centred on
+  the door measure. Checked on a static harness of the real stylesheets
+  (`mudavym.css`, `public-shell.css`, this file) at 800px and 375px, charcoal
+  and paper grounds, no horizontal overflow at 375px — not on the running
+  app. The mark's initial now takes a whole character (`Array.from`, not
+  `charAt(0)`, so a surrogate pair is never split), and one new case in
+  `AuthorizeShell.test.tsx` covers the mark: the trimmed initial,
+  `aria-hidden`, a whole astral character, and no mark when only the house
+  is known — 15 cases.]**
 - `integration_consent_receipts` is `ON DELETE CASCADE` with the user and the
   house; whether a consent record should outlive the account it was made on
   is undecided.
@@ -354,6 +401,7 @@ he said in those words. Relabelled in place; no answer changes.
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-21 | Aldemir (founder), same round, later — styled by KL lane same day | Asked whether the identity line built earlier this round should stay bare; his words, verbatim: "style it I trust you, do not show me. Just say done, keep it simple, use anthropic's or other tech co's approach." Built as a clean OAuth-consent-style pill (`authorize-shell.css`, new file, tokens only) — an avatar mark on the house seal colour, the person's name, the house granting for. Scoped to the identity line only; who may open `/ask` is untouched (a different record, ADR 0145). See the bracket at the `/authorize` frame bullet above |
 | 2026-09-21 | KL lane, round 5 (fixing a round-4 review's must-fix list) | Corrected a regression the 2026-09-19 row below shipped: `/authorize/:integrationId` had no masthead at all with the design flag on, because `PageGate` never mounts a working `HouseHeader` for a `NO_CHROME` page. `AuthorizeShell`'s `chrome="own"`/`chrome="ambient"` split is deleted; one frame now states who is granting and for which house when `AuthContext` knows one, with no navigation, and falls back to a plain Wordmark signature otherwise. Also relabelled three paraphrases that had been recorded as the founder's verbatim words as the recorded answers they actually are (see the paraphrase note above). Brackets and the code both changed this round — see AuthorizeShell.tsx's own file header for the full correction |
 | 2026-09-19 | Aldemir (founder, batch 4), built same day by KL lane | Answered three of the four residue items: tab-scope binding confirmed as built (no change); consent-receipt cascade confirmed as intended (no change); `/authorize` + `/authorize/complete` given a proper signed-in frame (`AuthorizeShell`) honouring the design flag and the ADR 0133 public-door switch, replacing `PublicShell`. The WineOps-copy item stays open, unscoped. Brackets only, nothing rewritten |
 | 2026-09-17 | KL lane (2 fix rounds) | Built `/authorize` per line 135 and row 16 of ADR 0149; closed D1 (account injection via a one-callback forwarded provider URL) with a second, delivery-secret binding; made migrations `20260921111000`/`111100` idempotent; fixed the error exit's dead-end link. See amendment above |
