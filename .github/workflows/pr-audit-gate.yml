@@ -113,17 +113,25 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install anthropic
+        # gate-r3 ci-unpinned-pip-install-anthropic (2026-09-19): was
+        # unpinned, no version/hash/lockfile, imported (pr_audit_gate.py's
+        # `import anthropic`) into the SAME process that then holds
+        # ANTHROPIC_API_KEY and a contents/pull-requests/actions-write
+        # GH_TOKEN. Pinned to 0.87.0, the version this repo's own tooling
+        # runs against today (matches the thinking.type.adaptive /
+        # output_config.effort API shape this file's own MODEL/EFFORT
+        # comment documents).
+        run: pip install "anthropic==0.87.0"
 
       - name: Self-test the verdict/push-pattern/state-classifier logic
-        run: python3 scripts/pr_audit_gate.py --self-test
+        run: python3 -I scripts/pr_audit_gate.py --self-test
 
       - name: Wait for the existing required checks
         id: upstream
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: python3 scripts/pr_audit_gate.py --wait-upstream
+        run: python3 -I scripts/pr_audit_gate.py --wait-upstream
 
       - name: Explain a skip
         if: steps.upstream.outputs.status == 'upstream_red'
@@ -136,7 +144,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: python3 scripts/pr_audit_gate.py --audit
+        run: python3 -I scripts/pr_audit_gate.py --audit
 
       - name: Explain a failure
         if: failure()

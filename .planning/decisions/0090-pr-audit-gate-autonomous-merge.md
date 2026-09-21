@@ -25,6 +25,1024 @@
 
 ## Context
 
+### Amendment — 2026-09-18: ownership follows what a PR does to the gate's rules, not which file it touches
+
+Founder, 2026-09-18: *"do the better approach for longevity, change the ADR if needed."*
+
+**The problem.** `.planning/decisions/README.md` was owned outright, standing in
+for "a PR that changes what future audits treat as the rules." That stand-in was
+too broad and too narrow at once:
+- **Too broad.** Every PR that added an ADR also appended its row, so every such
+  PR escalated. Measured on the final code (see *Measured* below): 53 of the 125
+  old-rule escalations among 317 first-parent `main` commits were owned by the
+  index alone.
+- **Too narrow, three ways:**
+  - A new ADR file claiming to amend this one was not owned at all if it skipped
+    its row. PR #391 adds ADR 0160 with no row.
+  - A rename away from an owned path escaped, because `gh pr diff --name-only`
+    lists only the destination.
+  - Case-variant paths matched nothing, although a macOS checkout writes them
+    over the owned files.
+
+**The rule.** One function, `gate_ownership()` in `scripts/pr_audit_gate.py`, decides.
+- CI runs it (`pr_ownership()`) before any model call and before the API-key check,
+  so an owned PR escalates even with no key or no credit.
+- Skill step 4 runs `origin/main`'s copy through `python3 -I … --ownership`.
+- `scripts/hooks/require_pr_audit.py` runs `origin/main`'s copy again before it
+  allows `gh pr merge`, blocks an owned PR even when it carries a PASS marker, and
+  requires `--match-head-commit <full 40-hex sha>` equal to the PR's head, given
+  once as its own argument. It finds every `pr merge` in a command and refuses a
+  command that holds more than one (one check can take 380 s by its own timeouts;
+  the hook is given 600 s); it needs a literal PR number or URL (no `$n`, `$(...)`
+  or bare `gh pr merge`); it refuses `--admin` and `--auto`, which the skill
+  forbids; and it blocks a `pr merge` it cannot read as a command of its own
+  (`bash -c "…"`, `eval`, a comment). It also refuses a `pr` subcommand written
+  with quoting or expansion (`$'merge'`, `mer$()ge` and `{merge,}`, which bash runs
+  as `merge`, and `mer[g]e`, which it runs as `merge` beside a file of that name),
+  a word after a literal `gh` written that way (`gh p$()r merge`), a `pr` after a
+  word the shell expands (`$G pr merge`), and `gh alias set` or `gh alias import`.
+  MCP tools that merge a PR or arm auto-merge are blocked outright;
+  `.claude/settings.json` routes them to the hook.
+- The skill keeps no path list that anything reads; the two lists had drifted
+  twice. Step 4 states the rule in words, and `scripts/test_pr_audit_gate.py`
+  fails when those words stop naming every owned prefix and name.
+
+The check reads `git diff --raw -z --no-renames` between the PR's merge-base with
+`main` and its exact head SHA, plus blobs; there is no text diff to parse. A PR is
+owned (founder's word required; no model review can clear it) when any of these holds:
+
+1. **Owned paths.** Paths are compared after NFC and case folding, and both sides
+   of every change are checked:
+   - `scripts/pr_audit_gate.py` and all of `scripts/hooks/`;
+   - the gate's tests, `scripts/test_pr_audit_gate.py` and
+     `scripts/test_require_pr_audit.py`, and `scripts/check_test_scripts_are_real.py`;
+   - what `deploy.yml`'s verification delegates to: `scripts/check_deployed_sha.py`,
+     `scripts/resolve_watched_commit.py` and `scripts/check_deploy_audit_ran.sh`;
+   - all of `.github/workflows/` (so `pr-audit-gate.yml`, `ci.yml`, `deploy.yml`
+     and any new workflow) and `.github/actions/`;
+   - anything inside a `.claude` directory, and any `.mcp.json`, at any depth (a
+     nested `.claude/skills/` loads when Claude works in that directory, so
+     `apps/web/.claude/skills/pr-audit-gate/SKILL.md` could stand in for the audit);
+   - `.planning/decisions/0050-*` and `0090-*`;
+   - any `CLAUDE.md`, `CLAUDE.local.md` or `AGENTS.md`, at any depth;
+   - a path with a control character, and any path that collides with another
+     under case folding.
+2. **The index.** It is owned unless every change is an appended ADR row
+   `| [NNNN](NNNN-slug.md) | … |` that meets all of these:
+   - it sits inside the Locked or Proposed table;
+   - it links the one ADR file this PR adds under that number;
+   - its number has never been used on `main` (file or row);
+   - it appears once, and its text passes the decision-text scan.
+
+   Editing, moving or deleting a row, or changing any other line, stays owned.
+3. **Decision text.** Every file under `.planning/decisions/` is read whole, before
+   and after the change. It is owned if it names the gate: ADR 0050 or 0090, the
+   gate's script, hook, skill or agents, gate-owned paths, hardness scores, or
+   self-merging (15 identity tokens). For the index, `OPEN-DECISIONS.md`,
+   `CLAIMS.jsonl`, `PROJECT.md` and `FUTURES.md`, only changed lines are judged;
+   `CLAIMS.jsonl` lines must parse as JSON and are judged with escapes decoded.
+   - Text is normalized before matching: entities, URL escapes, NFKC, invisible
+     characters, inline tags and markdown inside words; Greek and Latin-extension
+     lookalikes are mapped.
+   - Owned outright: tag or bidi-control characters, line separators other than
+     `\n`, NUL, invalid UTF-8, letters or digits outside Latin and Greek, and a
+     symlink, submodule or executable on this surface.
+4. **Anything the check cannot read** is owned (`CANNOT CHECK`, exit 4): the head
+   moved, the base is not `main`, a fetch or git call failed, the change list is
+   empty, a change type other than A, D, M or T appeared, a register's changed
+   region (after its common head and tail) is over 1,000 lines, or the CI check
+   ran past 600 seconds. When every reason is of this kind, CI posts COULD NOT RUN
+   (`ownership-incomplete`), not a claim that the PR is gate-owned.
+
+**Where the gate's rules live.** They are this ADR, ADR 0050 and the owned files,
+whatever their index rows or tables say.
+- Text anywhere else that claims to supersede, amend, narrow or reinterpret them
+  has no effect until this ADR or 0050 is edited to point at it. That edit is
+  itself owned.
+- Reviewers read decisions with `git show origin/main:<path>`, and treat such a
+  claim in a PR as a BLOCK finding. The three agent definitions and the CI
+  compliance angle now say so.
+
+**What this gives up, deliberately (founder answer 1).** Until now the index row
+was the only mechanical route by which an ordinary ADR reached the founder at merge.
+- From now on, a new ADR that does not name the gate merges on the ordinary audit
+  when it arrives as a new file plus an appended row. That includes one born
+  Locked, and one that supersedes a non-gate ADR.
+- Marking an existing ADR superseded still means editing its row, and that still
+  escalates.
+- Locking stays the founder's act, taken in chat and recorded in the ADR's own
+  review trail. The gate escalates because of its own conflict of interest, not
+  as the lock.
+
+**Witness-citation convention (founder answer 4, no carve-out).** A new decision
+file that names the gate escalates, including one that only cites an audit as a
+witness. Cite audits as `audit of PR #M, round N`, with the report path under
+`.planning/07-reference/pr-audits/` (now in `TEMPLATE.md`). Never reword a line
+that states a rule about the gate, or says what it does, to get past the check.
+
+**Widened after the adversarial round (same day); accepted by the founder, 2026-09-18.**
+The judged spec owned three named workflows and `deploy.yml`, and the audit of the
+built change showed each was defeated one file sideways. Each of these was RELEASED,
+measured through `ownership_between()`:
+- a new `.github/workflows/zzz-automerge.yml` (`pull_request_target`,
+  `contents: write`, `gh pr merge` on a label): a merge path the audit never sees;
+- `scripts/check_deployed_sha.py` rewritten to `return 0`: the check `deploy.yml`
+  was owned for, loosened in the script it calls;
+- `scripts/test_pr_audit_gate.py` gutted to `assert True`: the gate's regression net.
+
+So the owned set now names the callees and the whole workflow directory. Cost over
+the replay below: 9 commits owned only by a workflow outside the three the spec
+named; the added scripts added 0 (each commit touching one also touched an owned
+path).
+
+Founder, 2026-09-18, in chat, after the confirm round: he **accepted** the widened
+owned set — the whole `.github/workflows/` folder, `.github/actions/`, the
+deploy-check scripts, the gate's own tests, and `.claude/` at any depth. That is
+his word on the widening, recorded here; it was not one of answers 1–7. Two
+owned entries beyond answers 1–7 were not named in his acceptance as it was relayed:
+`scripts/check_test_scripts_are_real.py` (the test-integrity guard) and `.mcp.json`
+at any depth. They ride on this PR, which escalates to him regardless, and his
+word on its merge covers them or strikes them.
+
+**Founder answers, 2026-09-18** (all were the recommended option):
+
+| # | Question | Answer (verbatim option label) |
+|---|---|---|
+| 1 | Scope: a new ADR that does not name the gate, arriving as a new file plus an appended index row, merges on the ordinary audit; the lock is his act in chat, recorded in the ADR's review trail | "Accept" |
+| 2 | Make the index append-only (rows carry number, link, title, date; status lives in each ADR) | "Open it as its own decision" |
+| 3 | Hook: `gh pr merge` must carry `--match-head-commit <full sha>`; an owned PR is blocked even with a PASS marker; the founder's route is his word in chat, then a SHA-pinned merge call | "Yes, hard block" |
+| 4 | Gate names in new ADRs: the witness-citation convention with no carve-out, plus one PR re-citing the nine ADRs that name the gate | "Convention + one cleanup PR" |
+| 5 | Own all of `.claude/` | "Own all of .claude/" |
+| 6 | Narrow `ci.yml` ownership | "Yes, as a follow-up" |
+| 7 | Install the hook in the founder's user-level `~/.claude/settings.json` | "Yes, install it" |
+
+**Follow-ups, each its own change (not this one):**
+- The index append-only decision (answer 2): its own ADR, numbered by
+  `next_free()` in `scripts/check_adr_numbers_unique.py` when it is written, never
+  copied from here (its answer moved from 0161 to 0164 during 2026-09-18 alone).
+- One cleanup PR re-citing the nine ADRs that name the gate as a witness — 0097,
+  0106, 0131, 0136, 0137, 0139, 0140, 0146 and 0158 (answer 4). Until it merges,
+  any edit to one of them escalates under the whole-file rule.
+- Narrowing `ci.yml` ownership to the `on:` triggers and the `workflow_dispatch`
+  path the CI merge step depends on (answer 6). `ci.yml` stays fully owned here;
+  it is the largest escalation source (58 of the 104 owned commits below). The
+  directory is now owned whole, so that decision covers the other workflows too.
+- Installing `require_pr_audit.py` in the founder's user-level
+  `~/.claude/settings.json`, pointing at `origin/main`'s copy (answer 7), done by
+  the orchestrating session after this merges. No repo file changes for it.
+
+**Accepted costs.**
+- A new ADR that cites the gate by name escalates (convention above).
+- Edits to existing index rows escalate: 12 of the 87 first-parent `main` commits
+  since 2026-09-03 (measured 2026-09-18). PR #391 at `6a270a0d` is owned for one
+  reason only: it rewrites ADR 0121's existing row. Its appended 0159 row and its
+  row-less ADR 0160 are released. [Re-measured 2026-09-18, same day, PR #391 having
+  grown to `804a1bdb5`: the built gate (`scripts/pr_audit_gate.py --ownership`,
+  run against `origin/main`) now classifies it OWNED for three reasons —
+  `.github/workflows/ci.yml` and `.github/workflows/schema-parity.yml` (both
+  owned outright under the widened `.github/workflows/` rule) and its
+  `.planning/decisions/README.md` edit no longer qualifying as a pure append.
+  PR #391 was still open, unmerged, at this measurement.]
+- A legitimate case-only rename, or a case-colliding product path, escalates.
+- The hook refuses some commands that merge nothing, by design of the confirm
+  round's rules (each measured: exit 2): a `pr` after a word the shell expands
+  (`$GH pr view 1`, and `A=1 pr x`, since `=` is zsh's `=cmd`), a quoted or
+  expanded word after a bare `gh` argument (`grep gh "$f"`), and, in a string or a
+  heredoc body, `gh pr` or `pr` after a `$` variable followed by an expansion-led
+  word (`echo "$N pr ${X}"`, a heredoc that mentions `gh pr {a,b}`). `gh pr view 1`,
+  `gh pr checks 1`, `gh pr view "$N"` and a `gh pr create --body "$(cat <<'EOF' …)"`
+  still pass (tests H15c).
+
+**Residual risks, stated plainly.**
+- **Paraphrase is not caught.** A new ADR plus its appended row that steers the
+  gate without any of the 15 identity tokens is released, for example
+  "Documentation-only pull requests need no founder sign-off before merging", and
+  so is a rule written inside a token-free row. The fixer round's audit added a
+  second: "PRs that change only configuration files may be merged automatically by
+  the bot with no reviewer approval required" (a new ADR file plus its row) is released. The only
+  defence is the reader rule above; policy-verb tokens were not added because they
+  would over-block. (Before this change, skipping the row already bypassed the old
+  rule.)
+- **Text outside the decision surface is not scanned:** `STATE.md`, `ROADMAP.md`,
+  `07-reference/`, code comments, PR bodies, memory outside the repo. A `ROADMAP.md`
+  line naming the gate is released. Only the reader rule and CLAUDE.md §0.1 cover it.
+- The convention can breed token-free aliases for the gate; approve a PR that
+  coins one only after adding it to `GATE_TEXT_ALTERNATIVES`.
+- Unicode: a Greek letter outside the lookalike map, or a same-script lookalike
+  NFKC misses, could still evade a token.
+- Instruction files other agents load by name are not owned: `GEMINI.md`,
+  `.cursorrules`, `.cursor/rules/`, `.github/copilot-instructions.md` (each
+  measured RELEASED). `AGENTS.md`, `CLAUDE.md` and `CLAUDE.local.md` are.
+- The hook recognises an MCP merge tool by the words of its name, split at a
+  lower-to-upper change, so `mcp__x__MergePR`, which `.claude/settings.json`
+  routes to the hook, is not refused (`merge_pr` and `mergePullRequest` are), and
+  a name spelling `MERGE` in capitals is not routed to the hook at all.
+- Trust still rests on the session's checkout: `.claude/settings.json` is read
+  from it, so a branch that edits it can switch the hook off (answer 7 closes
+  this outside the repo). `gh api …/pulls/N/merge` stays ungated on purpose; it is
+  the founder's route. The CI job is still not a required context and has had no
+  credit since 2026-09-12, so its escalation posts but cannot block a merge.
+- **The hook is a lexical check, not a shell.** "Hard block" means a merge a
+  session writes as a command in one of the *checked* or *refused* forms below.
+  It does not mean every merge a session writes, nor every merge it could cause:
+  the *not seen* forms are written as commands too.
+  - **Checked** (the pin, the PASS marker and `origin/main`'s classifier all run):
+    a `gh pr merge` written plainly as a command of its own, one per command. `gh`
+    may be quoted, escaped or a path ending in `/gh`, behind a wrapper (`sudo`,
+    `env`, `time`), and the command may sit inside `$(...)`, backticks, `<(...)`,
+    a subshell, a `{ …; }` group, an `if`, a function body, or a heredoc fed to a
+    shell.
+  - **Refused** (exit 2, nothing runs): the same merge inside a double-quoted
+    substitution, `bash -c "…"`, `eval '…'` or after a comment; a second merge in
+    the command; `--admin`, `--auto`, an unknown flag, `-R`/`--repo` naming another
+    repository (or any before `pr`), `GH_REPO`/`GH_HOST` in the command, or a PR
+    that is not a literal number or URL; `gh alias set`
+    and `gh alias import`. In the command's words, including inside substitutions:
+    a `pr` subcommand word holding quoting or expansion (the six spellings the
+    confirm round found, `$'merge'`, `$"merge"`, `mer$()ge`, `mer${ZZ}ge`,
+    `{merge,}`, `mer[g]e`, among them); a word after a literal `gh` holding quoting
+    or an expansion character (`gh p$()r merge`); a `pr` after a word holding `$`,
+    a backtick, `*`, `?`, `[`, `{`, `~`, `=` or `!` (`$G pr merge`). In the text
+    with quotes and backslashes removed, which reaches strings another shell runs
+    and heredoc bodies: `gh pr`, or `pr` after a `$` variable or a closing
+    substitution, followed by a word in which `$`, a brace, a bracket, `*`, `?` or
+    `!` leads into more of the word (`bash -c "gh pr \$'merge'"`).
+  - **Not seen** (each example measured: exit 0 through the real hook against an
+    owned PR, 2026-09-18, and pinned at exit 0 by
+    `scripts/test_require_pr_audit.py`): words the shell splits apart
+    (`gh${IFS}pr${IFS}merge${IFS}2`, `{gh,pr,merge} 2`); arguments `xargs` appends
+    (`echo merge 2 | xargs gh pr`); a shell alias for `gh`
+    (`alias g=gh; g pr merge 2`); a `gh` and a `pr` both built by expansion
+    (`G=gh; $G p$()r merge 2`); inside a string another shell runs, a `gh` or `pr`
+    built by expansion (`bash -c 'gh p$()r merge 2'`), or a subcommand ending in a
+    glob character or built by backticks (`bash -c 'gh pr merg? 2'`,
+    ``bash -c 'gh pr `echo merge` 2'``).
+    Nor is a merge built or named at run time: a `gh` alias or shell function
+    defined in an earlier command, `eval` of a constructed string, a script file
+    that runs `gh pr merge`, `GH_REPO` exported in an earlier command. Quoting this
+    reader parses differently from the shell (a `case` pattern inside `$(...)`,
+    quotes nested in `${...}` inside double quotes) may be misread either way.
+    Merge routes outside Bash and the matched MCP tools (the GitHub web UI,
+    another client) never reach the hook.
+
+  Until the confirm round this bullet said "every merge a session writes as a
+  command" and that `gh alias set` in the same command was caught; neither was
+  true (the six spellings above and `gh alias set m 'pr merge' && gh m 2` each
+  exited 0). The six spellings and the alias are now refused; the *not seen* list
+  is what remains.
+- Not verified: that `refs/pull/N/head` never lags `headRefOid` just after a push
+  (if it does, the check says CANNOT CHECK and a rerun clears it); the hook
+  `timeout` unit (seconds is assumed); that Claude Code applies the matcher
+  `Bash|mcp__.*[Mm]erge.*` as a regex to MCP tool names (documented behaviour; the
+  test checks the pattern with Python's `re`, not the harness).
+
+**Measured on the final code, 2026-09-18** (`scripts/pr_audit_gate.py` on
+`feat/gate-owned-by-diff`; replay window: the 317 first-parent `main` commits
+from `09190ee5` back to 2026-08-24T00:00 local, each commit against its first
+parent; the old rule is the pre-amendment `_GATE_OWNED_PATHS` prefix match):
+- Owned commits: 125 under the old rule, 104 under this one. 31 released, 10 newly
+  owned: `008fbf0f` (`.claude/launch.json`, and ADR 0136 names the gate),
+  `0f1c4f0d` (an edit to ADR 0097, which names the gate on both sides),
+  `b1532c50` (an empty commit: CANNOT CHECK), and 7 that change a workflow outside
+  the three the spec named (`schema-parity.yml` 5, `e2e-prod.yml` 1,
+  `agent-cards-weekly.yml` 1). 9 commits in all are owned only by such a workflow.
+- Index-only escalations: 53 under the old rule; 22 of those 53 are still owned,
+  13 of them by an index reason alone (row edits, or rows naming the gate).
+- No commit in the window hit the 1,000-line register-diff bound (1 CANNOT CHECK,
+  the empty commit). The largest register today is `CLAIMS.jsonl`, 351 lines.
+- The judged spec's figures (294 commits, 120 → 90) came from a `--since` without
+  a time of day and were not reproducible; the numbers above are the re-measurement.
+- Owning `.claude` and `.mcp.json` at any depth (confirm round) changed no
+  commit's outcome over the window: re-run on the final code, every figure above
+  is the same, and no commit in the window touched a nested one.
+- `scripts/test_pr_audit_gate.py`: 91 PR shapes built through real git (72 ported
+  from the judged harness, 3 added by the implementation, 9 by the fixer round:
+  a new workflow, a local action, the three deploy scripts, the two gate tests, the
+  test-integrity guard, and a register change past the diff bound; 7 by the
+  confirm round: a nested `.claude` skill, settings file and agent, a nested
+  `.mcp.json`, a register whose first changed run is clean and a later one names
+  the gate, and a row reusing a number `main` has only as a file, or only as a
+  row) classify as expected, plus an append to and an edit of this checkout's real
+  index. The 9 fixer cases were each RELEASED by the code before the fixer round,
+  and the 4 nested-path cases by the code before the confirm round.
+- 80 mutations (53 rule switches, each of the 12 owned prefixes, each of the 15
+  tokens) each turn at least one case, self-test invariant or call-site probe red:
+  0 survivors. The implementation's own mutation run found 3 switches the judged
+  harness could not kill (control characters in paths, a case-variant register
+  with no canonical file, an inline tag splitting a token); each now has a case.
+  The fixer round added 6 switches that had no test: `pr_ownership`'s head-moved,
+  base-is-`main` and refs/pull-lag guards, the diff bound, the CI deadline, and the
+  COULD NOT RUN wording (each was deleted in a scratch copy with every suite green).
+  The confirm round added 8: `.claude` at any depth, `.claude` only at the root,
+  `.mcp.json` as a name at any depth, a register scan that stops at its first
+  changed run, and each half of the number-reuse rule, removed from the check and
+  from what is read of `main`. Five of those survived every case before the
+  confirm round's cases existed (the scan and the four number-reuse switches).
+- `--self-test`: 98 invariants. `scripts/test_require_pr_audit.py`: the hook run
+  for real against a local bare origin and a `gh` shim, 105 tests: H1–H4, a
+  mismatched pin and a checkout copy that releases everything; H5–H10 for the
+  chained, non-literal, respelled, double-pinned, hidden and MCP merges (19 of
+  those tests failed on the hook before the fixer round); H11–H12 for refs/pull lag
+  and a head that moves between the hook's read and the gate's (exit 4, blocked as
+  CANNOT CHECK); H13–H19 from the confirm round: no PASS marker at the head (none,
+  stale, BLOCK, an untrusted author, not at the comment's start), a direct push to
+  `main` through the entry point, the quoting and expansion spellings with
+  ordinary `gh pr` commands as controls, a crash inside the word reader (injected;
+  it exited 1, which Claude Code treats as a non-blocking error, and now blocks as
+  CANNOT CHECK), `--admin` and `--auto`, two merges in one command,
+  `gh alias set`/`import` and a line continuation inside a word, plus H6b (a `$n`
+  or branch-name PR refused by its own reason, since the lookup after it fails
+  either way); the eight *not seen* examples above, pinned at exit 0 so this ADR
+  cannot keep naming a gap that has closed; and 23 hook mutations, each killed,
+  against a control test that every mutation scenario gives its expected exit on
+  the real hook. Run on the hook before the confirm round, every H15–H19 command
+  exited 0 except two in H15b that were blocked for other reasons (`gh $'pr' merge`
+  as CANNOT CHECK, `$(which gh) pr merge 2` for its missing pin). H13 and H14 pass
+  on that hook and fail with the marker check or the push block deleted, which the
+  older tests did not notice.
+- PR #393 at `d9fd8f1c`: released (it touches ADR 0147's body and `CLAIMS.jsonl`,
+  neither naming the gate, and no owned path). [Re-measured 2026-09-18: #393 grew
+  further and merged as `cb756083e` (confirmed: this is `origin/main`'s current
+  tip) from its final audited head `8e6f3de85`. At that head the built gate
+  classifies it OWNED — the new `.planning/decisions/0162-managers-grant-manager-
+  or-staff-on-both-doors.md` it added names the audit gate. #393 merged before
+  this diff-ownership rule existed, so no escalation ever fired; under the rule
+  this ADR now states, it would have needed the founder's word — the first real
+  merged instance of the accepted cost above, "a new ADR that cites the gate by
+  name escalates."]
+
+**gate-r3 adversarial round — 2026-09-19.** A dedicated adversarial pass over
+`ffc15a9ef` (this branch's tip after the confirm round and the minors-fixer
+pass above), 20 independently reproduced bypasses across four angles (shell,
+paths, marker, ownership). Every CRITICAL and HIGH is closed by a code change
+with a regression test that fails before it and passes after
+(`scripts/test_require_pr_audit.py`'s `test_r3_*`/`h20_bare_push` entries and
+`scripts/test_pr_audit_gate.py`'s `G1`–`G7` cases and static CI checks); two
+items are closed only in part, with the unclosed part named here rather than
+claimed shut, per this ADR's own convention.
+
+- **Closed, critical.** `path-http-api-clients` / `path-graphql-merge-mutations`
+  / `path-merges-endpoint-no-pr`: a curl/wget/Python/Node PUT to
+  `.../pulls/<n>/merge`, a `gh api graphql` mutation naming
+  `mergePullRequest`/`enablePullRequestAutoMerge` (no bounded `pr` word for the
+  old probe to find), or a POST to the base repo's own `/merges` endpoint (no
+  PR at all) each merged through GitHub's API directly, in any client, with
+  none of it shaped like `gh pr merge`. `_github_api_merge_reason()` blocks
+  all three outright. [**CORRECTED 2026-09-19 (gate-r4, r4-gate.json):** this
+  was itself wrong for the FIRST of the three. Blocking a literal-PR-number
+  `gh api .../pulls/<n>/merge` outright silently reversed the founder's own
+  locked, previously-working owned-PR route (:173, :242 below, this repo's
+  `require_pr_audit.py` docstring point 7, SKILL.md step 4) with no test and
+  no mention here — BLOCKER, CLAUDE.md §0.1. See the gate-r4 section for the
+  restore; `gh api` with a literal PR number on this one endpoint is the only
+  one of the three that stays ungated, unchanged from before this round.] `path-push-bare-and-broad`: `git push`, `git push
+  origin` (no refspec) and `--mirror`/`--all` carried none of
+  DIRECT_PUSH_PATTERN's required literal "main"; the real destination depends
+  on local config (push.default, branch tracking, remote.pushDefault) this
+  hook never reads. `sha-prefix-collision`: the marker's sha was accepted as a
+  PREFIX match — SKILL.md's own documented 7-character format — so a marker
+  minted for one commit validated any OTHER commit sharing that prefix,
+  demonstrated with two genuine git commits mined 7 hex chars apart, one
+  benign and one carrying a backdoor. Now requires the full 40-hex sha by
+  `==`; SKILL.md and `pr_audit_gate.py`'s own marker-posting code (`sha_full`,
+  not `sha7`) are updated together so a real PASS still matches.
+- **Closed, high.** `shell-renamed-gh-alias-plant`, `path-merges-endpoint-no-pr`
+  (bundled above), `path-push-token-between-git-and-push` (DIRECT_PUSH_PATTERN
+  tolerated exactly one hardcoded `-C <path>` between "git" and "push";
+  `--no-pager`, `-c x=y`, `git subtree push` were missed —
+  `_direct_push_problem()` tokenizes and walks any number of recognized
+  global flags instead), `path-git-level-alias` (a `git config alias.<name>`
+  collapsing a push into one word — resolved via `git config --get`, bounded
+  to names outside a short common-subcommand allowlist so ordinary git usage
+  never pays for the extra call), `path-exec-surface-outside-matcher` (a
+  generic exec-capable tool — a terminal runner, a sandbox, a batched
+  computer-use call — is not named "merge" and carried a complete `gh pr
+  merge` in its own input, six real tool names CONFIRMED exit 0; the matcher
+  is widened and `main()`'s non-Bash branch now scans `tool_input`'s own text
+  the same way a Bash command's is), `verdict-any-match-wins` (a trusted
+  BLOCK and a trusted PASS for the identical pr+sha coexisted; the first
+  matching PASS won regardless of order — a BLOCK now vetoes outright,
+  order-independent), `own-r3-pytest-config-neuters-regression-net` (a root
+  pytest.ini/conftest.py — or a nested conftest.py, pyproject.toml, setup.cfg,
+  tox.ini, any depth — silently dropped the gate's own 192 tests to 0
+  collected with `ci.yml`'s step still exiting 0; `OWNED_BASENAMES` now names
+  all five and `ci.yml`'s pytest invocation runs `-c /dev/null
+  --confcutdir=scripts`), `T-SEP-GAP-4CHAR` (`GATE_TEXT_ALTERNATIVES`' `_S`
+  separator bound of 0–3 characters was an escape hatch for a 4+-character run
+  — `merge----gate`, an empty markdown table cell — `skeleton()` now collapses
+  any run of non-alnum, non-Greek characters to its own first character before
+  matching, so separator length stops being adversarially controllable
+  without disturbing the one place a specific character mattered — see the
+  in-code note on why "first character of the run", not a fixed space,
+  measured after a first attempt broke `0.0050`'s own exclusion), and
+  `ci-deploy-stage3-checkout-not-pinned` (every other job in `deploy.yml`'s
+  workflow_run chain pins `ref:`; Stage 3 alone did not, so it could build a
+  different commit than `deploy-audit.json` then records its result against).
+- **Closed, medium.** `path-mcp-lowercase-collapse` (`_mcp_merge_tool()`'s
+  word-splitter needed a case transition; `mergepr`/`automergepr` were one
+  token — now also checked as a lowercased substring).
+- **Closed only in part — the unclosed part is named, not claimed shut.**
+  `shell-renamed-gh-direct-merge` / `shell-renamed-git-direct-push`: an
+  identity fallback (`_is_program()`, PATH lookup + `realpath`) closes a
+  symlink or PATH-relative rename of `gh`/`git`. It does **not** close an
+  independently built or copied binary with the same behaviour but a
+  different inode (demonstrated with a `shutil.copy2` clone) — a lexical hook
+  cannot execute a candidate to compare behaviour against the real one; pinned
+  by `test_r3_an_independently_copied_gh_binary_is_still_not_recognized_residual`
+  and its git equivalent, so this is never silently claimed closed by a later
+  change. `self-forged-pass-marker`: `_current_gh_user()` is unconditionally
+  trusted, so a session authenticated as the founder's own `gh` identity can
+  post its own PASS comment and merge with the pr-audit-gate skill's actual
+  multi-angle audit never invoked. This is a trust-model question, not a
+  parsing bug — the two candidate fixes (stop trusting a local run at all and
+  route every merge through CI's bot marker, or bind the marker to proof a
+  real run produced it via a channel the acting session cannot itself write)
+  both change the autonomous-merge model this ADR's whole review trail
+  negotiated, so it is filed as **[OD-128](OPEN-DECISIONS.md)** (renumbered
+  2026-09-19 — its original number collided with two other in-flight lanes'
+  filings; see that row for the history) rather than
+  picked unilaterally, and pinned as a residual by
+  `test_r3_a_self_posted_marker_from_the_current_gh_user_still_merges_residual`.
+- **Named, not attempted (medium).** `path-mcp-bare-merge-word`: "merge" alone,
+  with no companion word, still is not enough to flag an MCP tool name
+  (`merge_now`) — treating it as enough would also block
+  `mcp__c96b062f__merge_branch`, a real, unrelated Supabase DB-branch-merge
+  tool, and no allowlist of "known safe" merge-shaped names can stay complete
+  as new tools appear. Pinned by
+  `test_r3_a_bare_merge_word_mcp_tool_is_still_not_caught_residual`.
+- **CI-side, static findings, not live-exploited (medium/high, per the
+  original submission's own framing).** `ci-unpinned-pip-install-anthropic`:
+  `pip install anthropic` in `pr-audit-gate.yml` carried no version, hash or
+  lockfile, imported into the same process that then holds
+  `ANTHROPIC_API_KEY` and a write-scoped `GH_TOKEN` — pinned to 0.87.0 (this
+  checkout's own working version), with `test_pr_audit_gates_own_pip_install_pins_a_version`
+  guarding the regression. `ci-unpinned-actions-supply-chain`: of ~73 `uses:`
+  lines across the workflows, none are SHA-pinned; `aquasecurity/trivy-action@master`
+  was the acute case — a mutable BRANCH with no release gate at all, fixed to
+  its v0.36.0 release commit. `test_no_workflow_action_is_pinned_to_a_mutable_branch`
+  guards against a regression to a bare branch name specifically; SHA-pinning
+  the remaining, already-tagged ~72 actions is not attempted in this round
+  (a materially lower risk than an unreleased branch, and correctly pinning
+  73 SHAs by hand risks a wrong one breaking CI, a worse outcome than a named,
+  bounded gap) — tracked as follow-up, not closed here.
+
+Not verified this round (stated per §5b, not silently assumed): that GitHub
+branch protection on `main` actually requires "a pull request before
+merging" today, which several of the closed API-surface findings' original
+write-ups note as a second, GitHub-side layer this hook's own fixes do not
+depend on but would be strengthened by; no live `gh api`/network call against
+this repo's real settings was made to confirm it (out of scope for a
+worktree pass that must not touch the real repo's state). `path-mcp-bare-merge-word`
+and the exec-surface matcher widening's own residual (a wholly novel,
+unlisted tool name) both restate the ADR's pre-existing "Merge routes outside
+Bash and the matched MCP tools... never reach the hook" line — sharper, not
+new in kind.
+
+**gate-r4 last-call round — 2026-09-19.** The gate-r3 round above was itself
+put through a dedicated adversarial "last call" (r4-gate.json, an Opus pass
+over gate-r3's own diff) before it ever merged. Two of its findings were
+BLOCKERs — a locked decision silently reversed, and a reused OD number — the
+rest were fresh bypasses in gate-r3's own fixes or a widening that shipped
+without the founder's word. Every CRITICAL/HIGH finding is closed with a
+regression test that fails before and passes after; two more were found and
+closed self-adversarially, in this same round, before ever shipping.
+
+- **BLOCKER, closed.** `_github_api_merge_reason()` (gate-r3, point 22 above)
+  blocked a literal-PR `gh api .../pulls/<n>/merge` outright — the founder's
+  own documented, previously-working owned-PR route (:173, :242 above, this
+  hook's own docstring point 7, SKILL.md step 4, used for real at PRs #261,
+  #297, #299) — with no test pinning the exemption and no mention in the
+  section above, silently reversing a locked decision (CLAUDE.md §0.1). The
+  correction is bracketed in place above. Restored, narrowly: `gh api` (not
+  curl/wget/a script/graphql/the base Merges endpoint — those three stay
+  blocked, unchanged) with a LITERAL decimal PR number stays ungated, exactly
+  as before gate-r3. `test_r4_owned_pr_gh_api_with_a_literal_pr_number_stays_ungated`
+  pins it (`scripts/test_require_pr_audit.py`); a mutation reintroducing the
+  BLOCKER is killed. Measured before/after (direct call, no gh/git needed —
+  this path is deliberately never matched): BEFORE blocked, AFTER allowed.
+  [NAMED 2026-09-20, r5-gate.json must-fix 6: "those three stay blocked,
+  unchanged" overclaims — `_github_api_merge_reason()` reads `gh_api =
+  _gh_api_reading(text)` and the merge-endpoint match over the WHOLE command
+  `text`, not the one segment that actually calls the endpoint, so a `gh api`
+  invocation ANYWHERE in the same command exempts a merge call made by a
+  DIFFERENT program elsewhere in it. CONFIRMED: `gh api user >/dev/null; curl
+  -X PUT https://api.github.com/repos/.../pulls/2/merge` exits 0 — curl did
+  not, in fact, stay blocked. Residual, not a BLOCKER: a literal-PR-number
+  `gh api .../pulls/<n>/merge` is already this section's own sanctioned,
+  ungated route with no sha/pin check either way (:173, :242), so this grants
+  no capability curl (or the caller's own `gh api` call) did not already have
+  by calling that route directly — confirmed both give exit 0 with equal, not
+  additional, ungating. Not closed here: binding the exemption to the one
+  segment that carries the endpoint is the fix, if this is ever worth the
+  added parsing surface.]
+- **Fresh HIGH bypass in the same fix, closed.** The literal-PR-number
+  requirement that made the block (and now the exemption) possible had its
+  own hole: `_PR_MERGE_ENDPOINT_RE` required `\d+`, so a shell-variable PR
+  number (`N=2; gh api -X PUT .../pulls/$N/merge`, and the curl equivalent)
+  matched NEITHER the block nor the exemption and ran completely unaudited —
+  CONFIRMED exit 0 for both, before this fix. `gh pr merge` itself refuses a
+  non-literal PR (bug 9 above); the API path now does too, for every client,
+  decided before the gh-api exemption so a non-literal number is refused
+  even when `gh api` is the caller.
+  `test_r4_a_shell_variable_pr_number_on_the_api_path_is_refused` pins both
+  clients. Measured before/after: BEFORE allowed (both), AFTER blocked (both).
+- **BLOCKER, closed.** The self-forged-pass-marker fork's original number
+  (this section's residual, above) was already claimed by two other
+  in-flight lanes (`wt-fin-C`, `wt-pg-receiving`) before this round's fixes
+  reached `main` — `origin/main` itself stops at OD-123, so the refs-only
+  reuse guard passed, but a collision was still coming. Renamed to
+  **[OD-128](OPEN-DECISIONS.md)** (CLAUDE.md §5b: moved the id with fewer
+  citations — 2 in this tree, vs. two other lanes' unrelated filings — kept
+  a gap over a collision; see that row for exactly which number it replaces);
+  both citations in this tree (this section and `require_pr_audit.py`'s
+  docstring) updated together.
+- **HIGH, fresh bypass, closed.** T-SEP-GAP-4CHAR's own fix (collapse any
+  separator run to its first character) manufactured false matches out of
+  runs it shrank: `"...escalation. 0090 no longer applies"` had its `". "`
+  collapsed to `"."` alone, removing the space the bare-token lookbehind
+  needs to see to NOT look glued to a decimal — CONFIRMED released (real
+  commit `e4b2312988` flipped OWNED to RELEASED across the replay window).
+  `"Our guest -- merge gate is relaxed"` (an em dash) had its `" -- "` run
+  collapsed to `" "` alone, reproducing the *exact* `"guest "` the
+  `merge{_S}gate` exclusion carves out for the product's own guest-identity
+  merges — released even though this text names the audit gate, not that
+  feature. Fixed by collapsing a run of two-or-more characters to a fixed
+  sentinel (`"~"`, already unconditionally stripped from real text two lines
+  earlier in `skeleton()`, so it can never collide with anything an author
+  wrote) instead of the run's own first character — which the guest case
+  shows can itself be one of the three characters (`"-"`, `" "`, `"."`) this
+  file's negative lookbehinds key on. A run of exactly one character is still
+  left untouched (needed for `"0.0050"` and a real `"guest-merge-gate"` to
+  stay excluded). T-SEP-GAP-4CHAR itself stays closed — any run still
+  collapses to one character, always within `_S`'s bound.
+- **HIGH, fresh bypass, closed (same class, not previously closed at all).**
+  The 40-char bound on the inline-HTML strip (`<[^<>]{0,40}>`) let anything
+  longer survive completely unstripped: an HTML comment
+  (`"The audit <!-- reviewers: nothing to see here, this is formatting only
+  --> gate opt-out applies..."`, 74 characters) is invisible when rendered
+  regardless of length and was RELEASED end to end; a `<span>` whose own
+  attribute ran past 40 characters was released by `_scan_text` directly; a
+  markdown footnote (`"audit[^1] gate"`) was released for an unrelated
+  reason — its digit is alnum, so no amount of separator collapsing lets
+  `_S` (non-alnum only) bridge it. Fixed: an HTML comment is stripped with no
+  length bound (unambiguous — it can only end at its own `"-->"`, never
+  confusable with two unrelated angle brackets); a real tag's own grammar
+  (name, then attributes, `"/>"`/`">"`) is matched next, also unbounded, but
+  still cannot span two unrelated brackets the way `"<[^<>]*>"` would; a
+  numeric footnote reference is dropped outright. The original 40-char probe
+  is retired, not kept — re-measured against the full case suite once the
+  two above run first, it now kills zero mutations and changes zero
+  outcomes, and unlike them it was never tag-shape-constrained, so it was
+  also the one place in `skeleton()` that could strip unrelated prose
+  sharing a stray `"<"`/`">"` (`"a < b, c > d"`) instead of real markup.
+  [CORRECTED 2026-09-20, r5-gate.json must-fix 1: "changes zero outcomes"
+  held only against THIS suite as it stood that round, not against the
+  shape the retired probe actually matched — a processing instruction
+  (`<?x?>`) and a CDATA section (`<![CDATA[x]]>`) both matched the old
+  `<[^<>]{0,40}>` but match neither the comment nor the tag-grammar strip
+  above, so retiring it silently released both (CONFIRMED with `_scan_text`
+  on HEAD vs. the fix, both spaced and unspaced). Closed the same way the
+  comment was: `_HTML_PI_RE`/`_HTML_CDATA_RE`, no length bound, each on its
+  own unambiguous closing delimiter. Cases I1–I3, counted by
+  `test_the_gate_r5_last_call_added_3_cases`; a mutation per strip.]
+  `scripts/test_pr_audit_gate.py` cases H1–H5, counted by
+  `test_the_gate_r4_round_added_7_cases`. Measured before/after
+  (`_scan_text`, direct call): all five RELEASED before, OWNED after; two
+  controls (`"0.0050"`, a real `"guest-merge-gate"`) stayed released both
+  times — the fix does not overreach into either exclusion.
+- **SELF-ADVERSARIAL, found and fixed before shipping.** A first version of
+  the footnote strip matched ANY `[^label]`, identifier included — which
+  deletes the label's own TEXT, not just its `"[^"`/`"]"` punctuation.
+  CONFIRMED that regresses a case gate-r3's code already caught correctly:
+  `"pr[^audit]-gate"` was OWNED before any footnote fix (skeleton() never
+  touched `"[^audit]"`, so `"audit"` stayed close enough to `"pr"`/`"gate"`
+  for `\bpr{_S}audit{_S}gate` to match through the bracket/caret separators)
+  and would have been RELEASED by a label-agnostic strip. Bounded to DIGITS
+  ONLY instead — the shape the real finding demonstrates and the shape real
+  footnotes actually are; case H7 pins the regression control, and a
+  mutation widening the digit restriction back to any label is killed.
+- **HIGH, fresh bypass, closed.** Three shapes let a push reach `main` with
+  no literal `"main"` anywhere in the command text, all CONFIRMED exit 0 and
+  confirmed live against a local bare origin: a bare `HEAD`/`@` refspec
+  (`git push origin HEAD`, `git push origin @` — the real destination is the
+  CURRENT LOCAL BRANCH, which this hook has never read); a wildcard
+  (`git push origin 'refs/heads/*:refs/heads/*'`); and a same-command shell
+  variable (`B=main; git push origin HEAD:$B` — this hook already reasons
+  about one command at a time, point 21 above, and a plain assignment
+  earlier in that SAME command is exactly the case that principle covers).
+  `_push_reason()` now reads each refspec's own destination: bare `HEAD`/`@`
+  blocks outright; a wildcard on either side blocks; a same-command
+  `NAME=value` substitutes into a `$NAME`/`${NAME}` destination before the
+  main-target and wildcard checks run; a `HEAD`/`@`-sourced destination
+  still an expansion after that (no matching assignment) blocks as
+  unresolvable. A non-`HEAD`/`@` source with an unresolved variable
+  (`git push origin feature:$UNRELATED`) is left alone — not the
+  demonstrated shape, and blocking it would refuse ordinary scripted pushes
+  to named branches unrelated to main. `scripts/test_require_pr_audit.py`'s
+  `test_r4_push_*` pin all four plus both negative controls (a same-command
+  variable resolving to a non-main branch stays allowed; the unrelated-source
+  case stays allowed). Measured before/after: all three bypasses allowed
+  before, blocked after; both controls allowed both times.
+  [CORRECTED 2026-09-20, r5-gate.json must-fix 6: naming the residual's
+  example `$UNRELATED` undersells it — `_collect_assignments()` only
+  recognizes a bare `NAME=value` token leading a statement, so
+  `export B=main; git push origin feat:$B` collects NOTHING (`export` itself
+  is not `NAME=value`-shaped, so it ends assignment-collection for that
+  statement the same way any other command word would), leaving `$B`
+  unresolved even though the shell's real value of `$B` is `main` by the
+  exact same same-command-assignment mechanism the bare `B=main` case two
+  paragraphs up was itself confirmed live against a bare origin for. CONFIRMED
+  against this hook directly (no push executed): exit 0, not blocked, the
+  same as the genuinely-unrelated `$UNRELATED` case right above it — NOT
+  independently re-confirmed with a real push here, unlike the bare-`B=main`
+  case, since deliberately running any `git push` is outside what this
+  correction pass does. This residual is not merely "ordinary scripted
+  pushes to named branches unrelated to main" — it also covers a
+  same-command assignment prefixed by `export` (or any other shape
+  `_collect_assignments()` does not parse), which resolves to main the same
+  way the already-fixed bare `B=main` case does.]
+- **SELF-ADVERSARIAL, found and fixed before shipping.** A first version of
+  the same-command variable reader took `NAME=value` per already-tokenized
+  segment and trusted the value outright. `_SHELL_PUNCTUATION` includes `(`
+  and a backtick, so the tokenizer itself splits `B=$(echo main)` into
+  `"B=$"`, `"("`, `"echo"`, `"main"`, `");"`, ... and `` B=`echo main`; ``
+  into `"B="`, `` "`" ``, `"echo"`, `"main"`, `` "`;" ``, ... — CONFIRMED the
+  first version read the truncated fragment (`"$"`, or `""`) as `B`'s whole
+  value, concluded it plainly was not `main`, and let `HEAD:$B` through even
+  though the shell's real value of `$B` is `main`. Fixed by reading the FULL
+  flat token stream instead of pre-split segments: whenever the token right
+  after a `NAME=value` assignment is itself punctuation and is not a
+  statement separator (`;`/`&&`/`||`/newline), the name maps to an explicit
+  UNRESOLVED marker, never to the fragment — so a downstream lookup treats it
+  exactly like an unresolved expansion (the safe, blocking direction), never
+  like a literal value that happens not to be main.
+  `test_r4_a_command_substitution_disguised_as_a_simple_assignment_is_not_trusted`
+  pins both forms; a mutation reverting to trusting the fragment is killed.
+- **Closed.** `path-exec-surface-outside-matcher` (gate-r3, point 23 above)
+  widened the matcher for six tool families; the built-in `Monitor` tool runs
+  a shell command in the same shell environment as Bash and was not among
+  them — CONFIRMED with `re.search`, the widened pattern did not match
+  `"Monitor"`. `.claude/settings.json`'s matcher now includes it explicitly;
+  `test_r4_monitor_is_routed_to_the_hook` pins it.
+- **Corrected, not a security finding.** `ci.yml` pinned
+  `aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8` and
+  called it "the v0.36.0 release commit" — that sha is the TAG OBJECT
+  (`git ls-remote --tags` returns an annotated tag's own object, not what it
+  points to). Verified independently: `git ls-remote
+  https://github.com/aquasecurity/trivy-action refs/tags/v0.36.0
+  refs/tags/v0.36.0^{}` returns `a9c7b0f0...ab8` for the tag ref and
+  `ed142fd0...c25` (the `^{}`-peeled commit) for what it actually names.
+  Re-pinned to the commit; `test_trivy_action_is_pinned_to_the_v0_36_0_commit_not_its_tag_object`
+  pins both shas as constants (no network call in the suite itself, per its
+  own no-network rule).
+- **Widening narrowed to the founder's actual word.** `OWNED_BASENAMES`
+  (gate-r3) owned `pytest.ini`/`conftest.py`/`pyproject.toml`/`setup.cfg`/
+  `tox.ini` at any depth, shipped without asking — in this repo that meant
+  `services/agent-orchestrator/pytest.ini`, `tests/conftest.py` and
+  `tests/e2e/conftest.py` newly owned, wider than the finding it answers.
+  **Founder's delegated answer** (lane batch 4, 2026-09-19: *"do what the
+  best approach for long term, quality, sota, scalability"*): **own exactly
+  what can influence the gate's own test run: `conftest.py` at or under
+  `scripts/`, and the `ci.yml` flags `-c /dev/null --confcutdir=scripts`
+  pinned by a test; not every depth.** Verified directly against this
+  checkout's own pytest 7.4.4 before narrowing (scratch repro, both
+  directions, not taken on faith): with `-c /dev/null --confcutdir=scripts`
+  already in `ci.yml`, a root `pytest.ini`'s `addopts` is not read at all —
+  `-c /dev/null` REPLACES normal ini discovery, it does not add to it — and
+  neither is a root `conftest.py`'s collection hook; a `conftest.py` under
+  `scripts/` still is. So `TEST_CONFIG_BASENAMES` is now `{"conftest.py"}`,
+  owned only under `scripts/`; the other four basenames are no longer owned
+  anywhere, and the flags are already pinned by
+  `test_ci_pytest_step_is_config_isolated_from_pytest_ini_and_conftest`
+  (gate-r3), re-verified still green. Cases G5 and G7 are corrected in place
+  (dated, not silently rewritten) from owned to not-owned; G6
+  (`scripts/conftest.py`) is unaffected; H6 pins the specific concern named
+  in the finding (`services/agent-orchestrator/conftest.py`, not owned).
+- **Re-measured, both figures held, for the right reason this time.** The
+  replay window is unchanged (317 first-parent `main` commits, `09190ee5`
+  back to 2026-08-24T00:00 local, each against its first parent). **104
+  owned of 317, both before and after this round's fixes** — but before, that
+  number held only because `e4b2312988` (T-SEP-GAP regression, above) and
+  `58113e2616` (pytest-config over-widening, above) happened to cancel out,
+  one lost and one gained; after, both are corrected to their proper
+  classification (`e4b2312988` OWNED, `58113e2616` released) and the total
+  is unchanged. No other commit in the window flips. `scripts/test_pr_audit_gate.py`:
+  99 tests collected (91 PR shapes plus this round's 7 new cases, H1–H7,
+  and their supporting checks), 85 mutations (0 survivors — includes 2 for
+  fixes found and closed self-adversarially before shipping).
+  `scripts/test_require_pr_audit.py`: 150 tests, 29 hook mutations (0
+  survivors). `--self-test`: 98 invariants, unchanged (this round's fixes
+  are additive to the identity-token/owned-prefix machinery it covers, not a
+  change to it).
+- **Assessed, not chased further.** The founder-quote bracket at the end of
+  this ADR's 2026-09-18 review-trail entry (*"Accept the widening
+  (Recommended)"*) already carries its own honesty caveat ("relayed by the
+  orchestrating session") and a dated re-measurement bracket for PR #391's
+  SHA at the time; PR #391 has since moved and merged again under this ADR's
+  own accepted-cost bullet above. The existing bracket is dated, not wrong —
+  re-verifying every historical PR-number cross-reference to its
+  ever-current SHA is a different, open-ended maintenance task, out of this
+  round's scope, and not requested by any of this round's findings.
+- **Verified as previously reported, undisturbed by this round.** The
+  surviving-mutant check, the SHIM `otherpr` kind, the `anthropic==0.87.0`
+  pin, `deploy.yml` Stage 3's ref pin, and a clean `merge-tree` against
+  current `origin/main` were all confirmed correct by the round that
+  produced r4-gate.json; nothing in this round's diff touches any of them,
+  and the full suite above re-confirms green.
+- **Found in this round's own adversarial self-check; [CLOSED 2026-09-19,
+  gate-r4 residual pass].** `_GH_API_RE` (`\bgh\s+api\b`) required the
+  literal substring "gh api", so a quoted, IFS-split, brace-split, expanded
+  or symlinked/renamed gh running `api` (`gh${IFS}api ...`, `"gh" api ...`,
+  `{gh,api} ...`, `octocli api ...`) was never recognised as gh at all:
+  `talks_to_github` stayed False and the non-literal-PR, GraphQL-merge-
+  mutation and base-`/merges` checks were skipped, each CONFIRMED exit 0
+  before the fix. (Corrections to this bullet's original framing: a
+  *literal*-PR `gh api .../pulls/<n>/merge` was never blocked, plain or
+  respelled — it is the ungated owned-PR route above — so a respelling
+  escaped only those three surfaces; and `unplain_gh_word()` never defended
+  `gh pr merge` against IFS-splitting either, which is still on the not-seen
+  list.) Closed by `_gh_api_reading()` in `scripts/hooks/require_pr_audit.py`,
+  three readings: the plain regex; the same words on the quote-stripped text
+  with `${IFS}`, `$IFS`, any `${...}` or `{gh,api}` accepted as the
+  separator; and a word-by-word read (`_lex`) using the `_is_program()` /
+  `_cached_realpath()` identity fallback (a symlinked or renamed gh), a word
+  the shell expands (`$G api`, `$(command -v gh) api`), and quoted strings
+  another shell runs (`bash -c '...'`). A recognised gh api gets the plain
+  spelling's answer (literal PR ungated, the other surfaces refused); an
+  expanded word, or a command `_lex` cannot read, is only "maybe" gh — the
+  surfaces are refused and the exemption is not extended. Only a command
+  that names a merge surface is read at all. Measured 2026-09-19:
+  `test_require_pr_audit.py` 150 → 228 tests (78 new: 72 behaviour tests
+  and 6 mutation entries, plus the exemption mutation retargeted), the
+  `test_require_pr_audit.py` + `test_pr_audit_gate.py` suites 249 → 327
+  passed, `pr_audit_gate.py --self-test` 98 invariants held; 55 of the 72
+  new behaviour tests fail against the pre-fix hook (the other 17 pin
+  unchanged behaviour on purpose) and every new mutation is killed.
+  Residuals, named and pinned by tests, not closed: a gh and an api both
+  built by expansion (`G=gh; A=api; $G $A ...`); an independently copied gh
+  binary (same as gate-r3's); `gh${IFS}pr${IFS}merge` (a different surface,
+  still on the not-seen list). **Found while closing this, not closed, and
+  outside this bullet's surface:** the endpoint text is read only as
+  written, so a plain `gh api` with a quoted endpoint (`.../pu"lls"/$N/merge`,
+  `.../mer"ge"`) still exits 0 — CONFIRMED by execution against the fixed
+  hook.
+
+Not done, stated plainly: no branch-protection or live-repo verification was
+attempted (this round is a worktree pass that must not touch the real
+repo's state, same restriction as gate-r3's own "not verified this round"
+above); a NAMED (non-numeric) markdown footnote label between two identity
+words is not stripped and is governed by `_S`'s ordinary bound like any
+other separator, same residual shape as before this round, now stated
+explicitly rather than only implied.
+
+**gate-r5 last-call round — 2026-09-20.** The gate-r4 round above was itself
+put through its own dedicated last-call audit (r5-gate.json, an Opus pass
+over gate-r4's own diff) before it ever merged, the same discipline gate-r4
+applied to gate-r3. Verdict: NOT READY. Most of gate-r4 held up on
+re-measurement, but that round introduced one ownership regression, one
+fresh bypass of that same round's own push fix, and one exponential regex —
+none of the three named in this ADR. All six findings are closed or named
+below.
+
+- **HIGH, fresh regression, closed.** Retiring the 40-char inline-HTML probe
+  (gate-r4, bullet above) also retired the only thing in `skeleton()` that
+  stripped a processing instruction (`<?x?>`) or a CDATA section
+  (`<![CDATA[x]]>`) — bracketed correction in place on that bullet, above,
+  with the fix and the measurement.
+- **HIGH, fresh defect, closed.** `_HTML_TAG_RE` (the same gate-r4 fix)
+  backtracks exponentially on an unclosed tag: its attribute-name and
+  unquoted-value character classes both admitted a quote character, so a
+  quoted attribute with an embedded space and no closing `">"` had two ways
+  to parse the same run — CONFIRMED doubling time, 0.10s/0.41s/1.66s at
+  N=18/20/22 repeats of `' a="b c"'`, extrapolating to minutes by N=30 and
+  days by N=40. It fails closed (the ownership deadlines report CANNOT
+  CHECK), but a PR carrying this shape could not be classified at all.
+  Fixed by excluding both quote characters from the name and unquoted-value
+  classes (`[^\s=/>"']+` / `[^\s>"']+`), so a quoted value has exactly one
+  parse — CONFIRMED fixed: N=20000 now runs in 0.005s.
+  `test_html_tag_re_does_not_catastrophically_backtrack_on_an_unclosed_tag`
+  (`scripts/test_pr_audit_gate.py`) asserts a wall-clock bound, not merely a
+  changed pattern string.
+- **HIGH, fresh bypass, closed.** `_push_reason()` (gate-r4's own push fix,
+  above) compared a refspec's `src` to `("HEAD", "@")` before stripping a
+  leading `"+"` — git's own force-push marker — so `"+HEAD"`/`"+@"` matched
+  neither that check nor anything else in the function and fell through to
+  allowed. CONFIRMED exit 0 before this fix (function call and the full
+  hook, stdin JSON, both), exit 2 after; confirmed live against a local
+  bare origin that `git push origin +HEAD` from a checkout of `main` really
+  does move the remote's `main`. Fixed by stripping one leading `"+"` from
+  each `spec` before the `":"` split, which fixes both places in the
+  function that compare `src`. `+HEAD` and `+@` added to
+  `test_r4_push_head_or_at_with_no_explicit_destination_is_blocked`
+  (`scripts/test_require_pr_audit.py`); a mutation reintroducing the
+  unstripped comparison is killed.
+- **Records corrected, no behaviour change.** ci.yml's PR-shape count (was
+  84, hardcoded and never updated as cases were added — re-measure via
+  `len(CASES)`, don't copy forward, now 108), a "Belt-and-suspenders with
+  OWNED_BASENAMES" line false since gate-r4 narrowed that rule to
+  `conftest.py` under `scripts/` only, a trivy comment's "the sha above"
+  that lost its referent when the line it pointed to was consolidated away,
+  and this file's own citation of a test name that never existed
+  (`test_ci_pytest_flags_pin_the_gates_own_isolation`, corrected to
+  `test_ci_pytest_step_is_config_isolated_from_pytest_ini_and_conftest`) —
+  each corrected in place with a dated bracket at its own location (ci.yml
+  or `pr_audit_gate.py`, not repeated here).
+- **Residual closed, per the founder's own delegated pytest-config-ownership
+  principle** ("own exactly what can influence the gate's own test run").
+  Neither `-c /dev/null` nor `--confcutdir=scripts` (gate-r3, above)
+  isolates MODULE resolution: an unowned root-level `pytest.py`, `pytest/`,
+  `_pytest/` or `sitecustomize.py` can still shadow the real `pytest`
+  package, because `python3 -m pytest` prepends the current directory to
+  `sys.path` before the import resolves. CONFIRMED in a scratch repo: a
+  two-line root `pytest.py` (`print("527 passed"); sys.exit(0)`) made a run
+  over one FAILING test print "527 passed" and exit 0 — a fake pass over a
+  real failure, with nothing in `OWNED_BASENAMES` or `TEST_CONFIG_BASENAMES`
+  to catch the file that did it. Fixed with `-P` (Python 3.11+, this job's
+  own pinned `PYTHON_VERSION`), the interpreter's own answer to exactly this
+  class of bug (`PYTHONSAFEPATH`) — CONFIRMED fixed in the same scratch
+  repo. `test_ci_pytest_step_is_config_isolated_from_pytest_ini_and_conftest`
+  is extended to pin it, mutation-tested by hand (removing `-P` from ci.yml
+  turns that test red; restored from a snapshot, confirmed clean by diff).
+- **Named, not code-changed — no marginal risk either way.** Two bullets
+  above overclaim precision they don't have: the gh-api exemption bullet's
+  "those three stay blocked, unchanged" (a `gh api` invocation ANYWHERE in
+  a command exempts a merge call made by a DIFFERENT program elsewhere in
+  the same command — grants nothing new, since the direct sanctioned route
+  already gives the same ungating), and the push-residual bullet's
+  `$UNRELATED` example (undersells a same-command `export NAME=main`
+  assignment, which `_collect_assignments()` does not parse and which can
+  resolve to main exactly as directly as the already-fixed bare `NAME=main`
+  case). Both bracketed in place at their own bullets, above.
+  [CLOSED 2026-09-21, gate-r6, founder review-trail round: both
+  code-changed on the founder's own word -- "Bind it to the segment" and
+  "Teach it export" (verbatim, see this ADR's Review trail). The literal-PR
+  `gh api` exemption in `_github_api_merge_reason()` is now granted only
+  when `_merge_call_outside_gh_api()` finds no command segment -- top-level,
+  inside a `$(...)` or backtick substitution, or inside a quoted string
+  another shell runs, three levels deep -- that names the REST merge
+  endpoint without itself being the recognised `gh api` call; a `gh api`
+  inside another program's quoted argument or a substitution no longer
+  counts as that segment being gh api. `gh api user >/dev/null; curl -X PUT
+  .../pulls/2/merge` exited 0 before (the hook's own verdict, measured in
+  the test harness -- nothing there reaches GitHub) and exits 2 after, as
+  does the same command inside `bash -c '...'`, `$(...)` or backticks.
+  `_collect_assignments()` reads `export NAME=value`, `export -n` and
+  `export --` as the assignment each is, so `export B=main; git push origin
+  feat:$B` exits 2 -- proven with a real push against a local bare origin,
+  which moved that origin's `main` on the pre-fix hook's allow.
+  Last-call corrections to the first cut of both, each CONFIRMED by the
+  hook's exit code on three builds (HEAD, the first cut, the fix): the
+  first cut read EVERY merge surface per top-level segment rebuilt from
+  `_lex`, which skips a heredoc body, so a base-repo Merges API POST, a
+  GraphQL `enablePullRequestAutoMerge`, a non-literal-PR merge or a curl
+  merge inside `bash <<'EOF'` exited 0 where HEAD refused all four -- the
+  refusals now read the whole text again, over every merge-endpoint
+  reference rather than only the first, and before the exemption, so a
+  literal-PR `gh api` merge earlier in the command no longer returns past
+  them; and its `export` reading fed a last-value-wins collector, so
+  `export B=main; git push origin HEAD:$B; export B=develop` and `git push
+  origin HEAD:$B; export B=develop` exited 0 where HEAD refused both --
+  `_env_before()` now reads a name as main if ANY of its assignments is
+  main, and as unresolved if it holds more than one value or is first
+  assigned at or after the push. Named, not closed, each pinned at exit 0
+  by `test_r6_the_named_residuals_are_still_not_seen`: a merge-endpoint
+  reference in text the reader drops (a heredoc body, a comment) keeps
+  HEAD's whole-command reading, so `gh api user; bash <<'EOF'` around a
+  curl merge still exits 0 (it grants nothing the ungated literal-PR route
+  does not); `gh` and `api` written as plain unquoted arguments of another
+  program (`curl -X PUT <url> gh api`); a value set any way but a plain or
+  exported `NAME=value` (`declare`, `typeset`, `readonly`, `local`, `read`,
+  `eval`, `NAME+=`, or after a punctuation run the tokenizer fuses, `);
+  B=main`) -- reading `export` as the bare form reads it brings export to
+  the same gaps, so `export B=develop; eval B=main; git push origin HEAD:$B`,
+  refused at HEAD only because an exported name was never read, now exits
+  0 as its bare twin already did; and, older than this round and found by
+  its last call, a push behind an env prefix or a wrapper (`X=1 git push
+  origin HEAD`, `nohup git push origin HEAD`), which `_direct_push_problem()`
+  skips because the segment's first word is not git. Tests and mutations:
+  the `test_r6_*` functions and `r6_*` HOOK_MUTATIONS entries in
+  `scripts/test_require_pr_audit.py`; `r4_gh_ordinary`, retired by the first
+  cut, is restored and killed again.]
+
+Re-measured on this round's own tree, not copied from gate-r4: the full
+`ci.yml` scripts/ step (8 files, `-P` added) is 534 passed (527 at gate-r4's
+own baseline, +7 new here); `test_pr_audit_gate.py` alone 103 (was 99 at
+this round's own HEAD, measured in an isolated local clone);
+`test_require_pr_audit.py` alone 231 (was 228, same method); `--self-test`
+98 invariants held, unchanged; claims 359/359; citation pairing 178/120,
+unchanged. Not done, stated plainly: no branch-protection or live-repo
+verification was attempted, same restriction as the two rounds above; the
+GitHub-markdown-renders-PI/CDATA-as-invisible claim is carried from
+r5-gate.json's own finding, not independently re-run against the live API
+in this round.
+
+**gate-r7 — 2026-09-21.** The one residual gate-r6's own last call could only
+NAME, not close (bracket above, "Named, not code-changed"'s sibling
+paragraph): *"a push behind an env prefix or a wrapper (`X=1 git push origin
+HEAD`, `nohup git push origin HEAD`), which `_direct_push_problem()` skips
+because the segment's first word is not git."* Founder answer, as relayed by
+the orchestrating session in the same review-trail round (see this ADR's
+Review trail): close it, fail closed — a push behind leading assignments or
+a wrapper (`nohup`, `env`, `command`, `time`, `exec`, `sudo`, `xargs`, a
+shell `-c` with a literal string) run from a main checkout is read like a
+bare push; an unrecognised wrapper shape is refused.
+
+- **CONFIRMED by execution, live against a local bare origin**, both example
+  commands: `_direct_push_problem()`'s segment loop required `seg[0]` itself
+  to be `git` (`_is_program(seg[0], "git")`); a segment opening with an
+  assignment token (`X=1`) or a wrapper's own program name (`nohup`) was
+  skipped WHOLESALE, so the real `git push` sitting right after it never
+  reached `_push_reason()` at all. `test_r7_env_prefix_push_is_confirmed_live_against_a_local_bare_origin`
+  (`scripts/test_require_pr_audit.py`) runs both example commands for real,
+  from a checkout of local `main`, against a throwaway bare origin, and
+  confirms the origin's own `refs/heads/main` really moves before the fix,
+  and that the fixed hook refuses both.
+- **Fixed, one reading per part of the answer** (`scripts/hooks/require_pr_audit.py`,
+  the gate-r7 comment block above `_direct_push_problem()`):
+  - *Recognised, read like a bare push.* `_wrapper_stripped_push_reason()`
+    peels any run of `NAME=value` assignments (the shape
+    `_collect_assignments()` already reads) and any chain of the seven named
+    wrapper programs, matched by basename so `/usr/bin/env` counts; a `git`
+    reached that way goes to `_push_reason()` over the same `_env_before()`
+    an un-wrapped push gets. So `sudo git push origin feature` stays allowed
+    and `sudo git push origin HEAD` is refused, exactly as without `sudo`.
+  - *A shell running a string.* `_shell_string_push_reason()`: a shell
+    (`sh`, `bash`, `zsh`, `dash`, `ksh`, `fish`) whose options carry `c`
+    anywhere (`-c`, `-lc`, `-ec`, `--norc -c`, `-o pipefail -c`) runs a
+    command string, and every later non-option word is re-checked by
+    `_direct_push_problem()` itself, recursively, bounded by
+    `_MAX_PUSH_WRAP_DEPTH = 3` the way `_gh_api_reading()` (point 25) bounds
+    its own nested-quote reading. A word built from `$`/backtick, or nesting
+    past the bound, is REFUSED: this hook cannot resolve either without
+    running a shell. A shell with no `c` option runs a script file or stdin
+    (`bash deploy.sh`), point 23's residual, unchanged.
+  - *Unrecognised, refused.* `_unrecognised_wrapper_push_reason()`: once the
+    chain stops at anything else — a recognised wrapper's own flag (`sudo -u
+    root`, `env -i`, `env -C dir`, `xargs -I{}`, `time -p`, `nohup --`), a
+    program not on the list (`timeout`, `nice`, `find -exec`), a shell
+    keyword (`then`, `do`, `{`, `!`), `eval` — a later `git` that runs
+    `push` to ANY destination is refused, not read; so is a shell string
+    holding the word `push` behind such a shape, and any later multi-word
+    argument holding it when what runs it is a recognised wrapper's own flag
+    (`env -S '...'`) or a program known to run a string it is handed
+    (`_STRING_RUNNING_PROGRAMS`: `eval`, `watch`, `su`, `flock`, `script`,
+    `ssh`, `parallel`, `python`, `node`, `perl`, `ruby`, `osascript`). A
+    command with no git running push in it is untouched: `sudo docker push
+    myimage:latest`, `sudo apt-get update`, `env FOO=bar npm run build`,
+    `sudo -u root git status`, `timeout 10 git fetch origin` all stay exit 0.
+- **Last call, same day: the first cut built only half the answer.** It read
+  a BARE named wrapper and an exact `shell -c <arg>`, and let every other
+  wrapper shape through as "not a push" — and pinned four of them open
+  (`sudo -u root git push origin HEAD`, `env -i ...`, `xargs -I{} ...`,
+  `bash --norc -c '...'`, each exit 0) as residuals "per the founder's own
+  words", which the founder had not said: his answer refuses an
+  unrecognised shape. Corrected to the three readings above.
+  `test_r7_unrecognised_wrapper_shapes_are_refused_live_against_a_local_bare_origin`
+  proves five of the shapes with a real push, gated by the hook the way a
+  Bash call is, from a checkout of `main`: under the first cut each is
+  allowed and the bare origin's `main` moves; under the fix each is refused
+  and `main` does not move (`env -u X`, `nice -n 5`, `if true; then ...;
+  fi`, `eval '...'`, `sh -ec '...'`).
+- **Cost, stated plainly.** Refusing an unrecognised shape cannot tell a
+  wrapper from prose: a heredoc body line that names `git push` after some
+  other word (`We checked that git push origin HEAD is refused`) is now
+  refused where the first cut let it through, and so is `echo git push
+  origin HEAD`. Write such text to a file and pass it with `-F`.
+- **Named residuals.** A value set any way `_collect_assignments()` does not
+  already read (`declare`, `typeset`, `readonly`, `local`, `read`, `eval`,
+  `NAME+=`) — the founder's answer is to **KEEP TRUSTING them**: that gap
+  (point 21's residual, and gate-r6's own "Named residuals" bullet, above)
+  stays as is, and an `eval` string built from an expansion (`eval
+  "$(ssh-agent -s)"`) is not refused. Heredoc bodies and comment text
+  **keep the current reading** — the founder's answer: this push check
+  reads a heredoc body's lines as commands and drops comment text, both as
+  before, and gate-r6's "the refusals now read the whole text again"
+  reading is unchanged. A quoted string handed to a program on neither list
+  is not read, since the hook cannot tell it from a quoted argument such as
+  `gh pr create --body '...'`. Found by the last call and left for the
+  founder, not changed here: a word the tokenizer cannot close — bash's
+  `$'...'` quoting, e.g. `git push origin HEAD; echo $'\''` — makes
+  `_tokens()` raise and the whole push check return "not a push" (exit 0),
+  as it did before this round; refusing instead would also refuse every
+  heredoc whose body holds an odd number of apostrophes. Also found by the
+  last call and left for the founder: a git whose own NAME comes from an
+  expansion (`G=git; $G push origin HEAD`, `$(echo git) push origin HEAD`)
+  is not seen, as before this round — the push-side twin of the `G=gh; $G
+  ...` merge shape in the "Not seen" list.
+
+Re-measured on this round's own tree: `test_require_pr_audit.py` alone 366
+passed (286 at gate-r6's HEAD, 321 at the first cut); 59
+`test_hook_mutations_are_killed` cases, every mutant killed, 13 of them
+gate-r7's (the first cut's 6, 2 of those re-pinned to a non-main push since
+the unrecognised reading now refuses a main push on its own, plus 7 from the
+last call); the full `ci.yml` scripts/ step 697 passed (617 at gate-r6, 652
+at the first cut); `test_pr_audit_gate.py` 103, unchanged. Not done, stated
+plainly: no branch-protection or live-repo verification, same restriction
+as every prior round; the `-c` depth bound is exercised by mutation and by
+a synthetic non-main push nested past it, not by a real push at that depth;
+`sudo`-prefixed shapes are proven by the hook's verdict only, since the
+harness cannot run `sudo`.
+
 ### Amendment — 2026-09-17, founder pipeline redesign
 
 **Founder decision, verbatim, in the main session:** *"change ADR 90 to be a
@@ -72,7 +1090,8 @@ before any model call runs (`SKILL.md` step 2 — this audit is a semantic
 layer on top of green CI, never a replacement for it). A diff touching the
 gate's own owned paths (`_GATE_OWNED_PATHS`, mirrored in
 `.claude/skills/pr-audit-gate/SKILL.md` step 4, now also naming
-`.planning/decisions/0050-*.md`) still force-escalates to BLOCK and the
+`.planning/decisions/0050-*.md`) [2026-09-18: replaced by `gate_ownership()` —
+see the amendment above] still force-escalates to BLOCK and the
 founder regardless of what any reviewer or the planner concludes — the gate
 still cannot self-clear a PR that modifies itself. The marker contract is
 unchanged: a PR comment carrying the exact
@@ -890,3 +1909,7 @@ un-anchored and 0 when restored.
 | 2026-09-12 | Live symptom across every open PR, not an audit round | `PR Audit Gate` red on every PR from a `NEUTRAL` `CodeQL` — a check that has never been required and cannot block a merge, reached only because branch protection is unreadable and the fallback waits for everything. Fixed by narrowing the FALLBACK wait list, never the state allow-list; `_fallback_names()` extracted so the self-test exercises the real selection; `--self-test` grown 35 → 39 and proven to fail on the pre-fix tuple. Touches `scripts/pr_audit_gate.py` and this ADR, so it escalates to the founder — same shape as PRs #297 and #299. |
 | 2026-09-12 | pr-merge-adversary (Opus subagent), second pass on `e59bf901` | **HOLDS** -- nothing changes a merge decision. Notes acted on the same day: "and never raises" was false (struck, bracketed); a timed-out `gh pr comment` classified by the report text in its argv (the reason now names the command, never its arguments); "Nothing was audited" was false when a merge or dispatch call timed out after a PASS (reworded); stderr noise from the stubbed invariant (silenced); `empty-diff` and the no-bare-word rule unpinned (pinned). `--self-test` 47 -> 50 |
 | 2026-09-17 | Aldemir (chat, main session, direct authorization) | Pipeline redesign, verbatim: *"change ADR 90 to be a better pipeline, 1 opus starts -> stops -> 2 sonnet handles opus's plan-> opus takes final say."* Replaces the 3-Opus-angle-plus-adversary fan-out with one Opus planner (stops after planning) -> two independent parallel Sonnet reviewers (correctness/regression/decision-compliance; security/adversarial) -> the same Opus planner resumed for final HOLDS/OVERTURNED judgment. `.claude/agents/pr-merge-auditor.md` and `pr-merge-adversary.md` re-scoped to `model: sonnet`; new `.claude/agents/pr-merge-planner.md` added (`model: opus`); `.claude/skills/pr-audit-gate/SKILL.md` steps 4-7 and 10 updated to match, `.planning/decisions/0050-*.md` added to the owned-paths list. Scope held to those files only — `CLAUDE.md`, `.github/workflows/`, and `scripts/pr_audit_gate.py` were explicitly left unchanged; the CI-side path still runs the old composition and has had no `ANTHROPIC_API_KEY` credit since 2026-09-12, unchanged by this amendment. See the "Amendment — 2026-09-17" subsection under Context above and ADR 0050's matching dated bracket |
+| 2026-09-18 | Aldemir (chat) | "do the better approach for longevity, change the ADR if needed." Seven questions answered, all with the recommended option (table in the 2026-09-18 amendment). Ownership decided by `gate_ownership()` on git-native input at a pinned head: index owned unless a pure append for ADRs the PR adds; decision text naming the gate owned; owned paths case-folded and widened to `scripts/hooks/`, `.claude` and `.mcp.json` at any depth, nested `CLAUDE.md`/`AGENTS.md`; renames seen from both sides; escalation before any model call; the hook re-checks with origin/main's copy and requires `--match-head-commit`. Fixer round after the adversarial audit: `.github/workflows/` and `.github/actions/` owned whole, plus the deploy scripts `deploy.yml` calls and the gate's own tests; the hook checks every merge in a command, needs a literal PR number and one pin, and blocks MCP merge tools; a 1,000-line register-diff bound and a 600s CI deadline. Confirm round after a NOT READY: `.claude` and `.mcp.json` owned at any depth; the hook refuses a `pr` subcommand or `gh` word written with quoting or expansion, `gh alias set`/`import`, `--admin`, `--auto` and a second merge in one command, blocks rather than fails open if its word reader raises, and its marker and direct-push checks are pinned by tests; the "hard block" residual narrowed to what is checked, refused and not seen, each not-seen example pinned. Replay 125 → 104 owned of 317 (re-measured after the confirm round, unchanged commit by commit); 80 mutations, 0 survivors (`scripts/test_pr_audit_gate.py`), 23 hook mutations killed. This change edits owned paths, so it escalates by design and merges only on the founder's word through the SHA-pinned route. |
+| 2026-09-18 | Aldemir (via `AskUserQuestion`, relayed by the orchestrating session) | Chose the option labelled exactly *"Accept the widening (Recommended)"* on the question about widening the owned set: the whole `.github/workflows/` folder, `.github/actions/`, the deploy-check scripts, the gate's own tests, and `.claude/` at any depth. Recorded in the amendment's widening paragraph, which no longer asks for his word on it. `scripts/check_test_scripts_are_real.py` and `.mcp.json` at any depth were not named in the acceptance as relayed; they ride on this PR's own escalation. |
+| 2026-09-21 | Aldemir (chat, gate lane review-trail round, gate-r6) | Closed the two residuals gate-r5 had only named (bullet above, "Named, not code-changed"), verbatim: **(1)** *"Bind it to the segment"* -- the literal-PR `gh api` exemption in `_github_api_merge_reason()` was granted on a gh-api reading of the WHOLE command, so `gh api user >/dev/null; curl -X PUT .../pulls/2/merge` was exempted by an unrelated `gh api` call; it is now granted only when `_merge_call_outside_gh_api()` finds no segment (top-level, in a substitution, or in a quoted string another shell runs) that names the endpoint without itself being the recognised `gh api` call. **(2)** *"Teach it export"* -- `_collect_assignments()` read a leading `export` as the command starting and skipped the `NAME=value` after it, so `export B=main; git push origin feat:$B` reached main; `export`, `export -n` and `export --` now assign as the bare form does. The last call found the first cut of each opened what HEAD refused -- surfaces in a heredoc body (a base Merges POST, a GraphQL auto-merge mutation, a non-literal-PR merge, a curl merge) and two `export` shapes resolved to a value the push never sees -- and corrected both (bracket on the gate-r5 bullet, above, with the residuals still named). Re-measured on this branch, not copied forward: `test_require_pr_audit.py` 286 passed; the full `ci.yml` scripts/ step (9 files, `scripts/jev/prompt_gate_test.py` folded in by this branch's merge with `origin/main`) 617 passed; `test_pr_audit_gate.py` 103, unchanged; `--self-test` 98 invariants held, unchanged; every `r6_*` HOOK_MUTATIONS mutant exits 0 on its scenario where the fix exits 2. Not done, stated plainly: no branch-protection or live-repo verification, same restriction as every prior round; the `gh api` finding is the hook's own verdict in the test harness, and only the export fix was also shown with a real push, against a local bare origin. |
+| 2026-09-21 | Aldemir (chat, relayed by the orchestrating session, gate lane review-trail round, gate-r7) | Closed the residual gate-r6 could only name (this ADR's own text, not his words: *"a push behind an env prefix or a wrapper (`X=1 git push origin HEAD`, `nohup git push origin HEAD`), which `_direct_push_problem()` skips because the segment's first word is not git."*). His answer, as relayed: *"CLOSE the env-prefix / wrapper push hole, fail closed - a push behind leading assignments or a wrapper (nohup, env, command, time, exec, sudo, xargs, a shell -c with a literal string) run from a main checkout is read like a bare push; an unrecognised wrapper shape is refused."* Disposition of the two shapes named with it, as relayed: other assignment forms (`declare`, `typeset`, `readonly`, `local`, `read`, `eval`, `NAME+=`) -- **keep trusting them** (named residual, not widened); heredoc/comment text -- **keep the current reading**. Built as three readings (recognised: read like a bare push; a shell running a string: re-read, expansion refused; unrecognised: refused whatever the destination) in the gate-r7 bracket above. The last call found the first cut had read only a bare named wrapper and an exact `shell -c`, and had recorded four open shapes (`sudo -u root`, `env -i`, `xargs -I{}`, `bash --norc -c`) as residuals he had not named; corrected, and five shapes proven with a real push against a local bare origin, first cut allowed and moved main, fix refused and main stayed. `test_require_pr_audit.py` 366 passed (286 at gate-r6); the full `ci.yml` scripts/ step 697 passed (617 at gate-r6); `test_pr_audit_gate.py` 103, unchanged. |

@@ -1191,8 +1191,57 @@ jobs:
       # scripts/test_docgen.py is NOT here: measured in a clean venv it errors at
       # collection (it imports cv2/PIL/jinja2 through scripts/docgen). It stays
       # unguarded and is named here so that is a known gap, not a forgotten one.
-      - name: scripts/ unit tests (simulator, operating hours, FK targets, price-history units, jev prompt gate)
-        run: python3 -m pytest scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py scripts/test_price_history_reads_group_by_unit.py scripts/jev/prompt_gate_test.py -q -p no:cacheprovider
+      # scripts/test_pr_audit_gate.py and scripts/test_require_pr_audit.py (ADR 0090,
+      # 2026-09-18 amendment): the gate-ownership classifier's 108 PR shapes through
+      # real git [CORRECTED 2026-09-20, r5-gate.json must-fix 4: said 84 here,
+      # r4 finding 10, never corrected; re-measured via
+      # `len(CASES)` in scripts/test_pr_audit_gate.py -- re-measure again
+      # rather than copy this number forward, since it grows every round that
+      # adds cases], its switch mutations (each must turn something red), and the
+      # merge hook run for real against a local bare origin and a gh shim.
+      # `-c /dev/null --confcutdir=scripts` (gate-r3 own-r3-pytest-config-neuters-
+      # regression-net, 2026-09-19): CONFIRMED a repo-root pytest.ini/conftest.py
+      # naming either file (`--deselect`, or a `pytest_collection_modifyitems`
+      # skip hook) silently drops the gate's own 192 tests to 0 collected while
+      # this step still exits 0. `-c /dev/null` refuses any pytest.ini/
+      # pyproject.toml/setup.cfg/tox.ini above; `--confcutdir=scripts` stops
+      # conftest.py collection above scripts/ (none of these tests need one --
+      # none exists in the repo today).
+      # [CORRECTED 2026-09-20, r5-gate.json must-fix 4: this used to end
+      # "Belt-and-suspenders with OWNED_BASENAMES now also owning those
+      # basenames (scripts/pr_audit_gate.py)", which has been false since
+      # gate-r4 narrowed the rule (see pr_audit_gate.py's own NARROWED
+      # 2026-09-19 comment on TEST_CONFIG_BASENAMES) -- OWNED_BASENAMES
+      # never held pytest.ini/conftest.py/pyproject.toml/setup.cfg/tox.ini at
+      # all, and the separate rule that does own one of them
+      # (TEST_CONFIG_BASENAMES) now covers only conftest.py at or under
+      # scripts/, not "those basenames" at every depth. These two flags are
+      # this step's ONLY defence for the other three basenames and for a
+      # conftest.py outside scripts/; there is no belt to this suspender.]
+      # `-P` (r5-gate.json must-fix 5, 2026-09-20; the founder's delegated
+      # principle from gate-r4 -- "own exactly what can influence the gate's
+      # own test run" -- applied to one more surface): a root-level
+      # `pytest.py`, `pytest/`, `_pytest/` or `sitecustomize.py` is none of
+      # `-c`/`--confcutdir`'s business (they isolate CONFIG discovery, not
+      # module resolution) and is not in OWNED_BASENAMES or
+      # TEST_CONFIG_BASENAMES either -- CONFIRMED in a scratch repo: a
+      # two-line root `pytest.py` (`print("527 passed"); sys.exit(0)`) made
+      # `python3 -m pytest` on a file with one failing test print "527
+      # passed" and exit 0, because `python3 -m pytest` prepends the CURRENT
+      # DIRECTORY to `sys.path` before `import pytest` resolves, and a repo-
+      # root shadow file wins that resolution over the real installed
+      # package. `-P` (Python 3.11+, matches this job's pinned
+      # PYTHON_VERSION) is the interpreter's own fix for exactly this class
+      # of bug (PYTHONSAFEPATH) -- it stops that prepend, so the real,
+      # installed `pytest` resolves regardless of what sits at the repo
+      # root. CONFIRMED fixed in the same scratch repo: `python3 -P -m
+      # pytest` on the same shadowed directory actually runs the real
+      # suite and reports the real failure. `test_ci_pytest_step_is_config_
+      # isolated_from_pytest_ini_and_conftest` (scripts/test_pr_audit_gate.py)
+      # is extended to pin this flag the same way it already pins the two
+      # above, so a silent drift here is caught the same way.
+      - name: scripts/ unit tests (simulator, operating hours, FK targets, price-history units, audit gate, jev prompt gate)
+        run: python3 -P -m pytest -c /dev/null --confcutdir=scripts scripts/test_simulate.py scripts/test_simulate_hours.py scripts/test_simulate_scenarios.py scripts/test_synth_identity.py scripts/test_fk_targets_exist.py scripts/test_price_history_reads_group_by_unit.py scripts/test_pr_audit_gate.py scripts/test_require_pr_audit.py scripts/jev/prompt_gate_test.py -q -p no:cacheprovider
 
   # Lint Python code
   lint-python:
@@ -1403,7 +1452,23 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        # gate-r3 ci-unpinned-actions-supply-chain (2026-09-19): was @master, a
+        # mutable BRANCH with no release gate at all -- tracks whatever that
+        # org pushes to master next.
+        # CORRECTED 2026-09-19 (gate-r4, r4-gate.json): the sha this step was
+        # pinned to was actually the v0.36.0 TAG OBJECT (`git ls-remote --tags`
+        # returns the tag ref's own sha for an annotated tag, not what it
+        # points to), not a commit -- confirmed independently: `git ls-remote
+        # https://github.com/aquasecurity/trivy-action refs/tags/v0.36.0
+        # refs/tags/v0.36.0^{}` returns a9c7b0f0... for the tag and
+        # ed142fd0... (the peeled commit) for `^{}`. Re-pinned to the commit.
+        # [CORRECTED 2026-09-20, r5-gate.json must-fix 4: the line above used
+        # to say "the sha above", pointing at a since-removed line that once
+        # carried the wrong (tag-object) sha next to this same step -- once
+        # this step was consolidated to the single, correct `uses:` line
+        # below, "above" no longer had a referent. Reworded, not moved:
+        # the corrected sha is the one immediately BELOW this comment.]
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."

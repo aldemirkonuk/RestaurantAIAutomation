@@ -18,15 +18,24 @@ judgment-class agent in the repo; see ADR 0090 §"Options considered" note on
   `gh pr merge <n>` or a direct `git push` to `main` unless a PASS **comment
   marker** already exists for that exact PR number and head SHA — so attempting
   to merge without having run this skill fails with a message telling you to
-  run it first. (`gh pr merge` with no number resolves via the current branch;
-  always pass `<n>` explicitly so the hook checks the PR you mean, not
-  whichever one your branch happens to be on.)
+  run it first. Every merge in a command is checked, so chaining a clean
+  merge in front of another does not carry the second through. The PR must be
+  a literal `<n>` (or its URL): a bare `gh pr merge`, a branch name, `$n` or
+  `$(...)` blocks. One merge per command: a second `gh pr merge` in the same
+  command blocks, as do `--admin`, `--auto`, `gh alias set`, and a `pr`
+  subcommand written with quoting or expansion (`$'merge'`, `{merge,}`); write
+  the merge plainly. MCP tools that merge or arm auto-merge are blocked outright.
 
 ## Doneability
 
 A PR comment carrying the exact marker
-`<!-- pr-audit-gate: pr=<n> sha=<sha7> verdict=PASS -->` (or `verdict=BLOCK`),
-for the PR's *current* head SHA specifically — a marker for a stale SHA does not
+`<!-- pr-audit-gate: pr=<n> sha=<full-40-hex-sha> verdict=PASS -->` (or
+`verdict=BLOCK`), for the PR's *current* head SHA specifically, in FULL — a
+7-character sha is no longer accepted (gate-r3 sha-prefix-collision,
+2026-09-19: two genuine git commits mined 7 hex chars apart, one benign one
+carrying a backdoor, showed a marker minted for one validated the OTHER
+outright; `require_pr_audit.py` now requires an exact 40-hex match). A marker
+for a stale SHA does not
 satisfy the hook, by design (a force-push or new commit must be re-audited). On
 PASS, `main`'s HEAD after this skill runs traces back through a merge commit
 whose PR carries that comment. On BLOCK, the PR is untouched and the founder has
@@ -60,30 +69,76 @@ individually while what they don't cover reaches production — this gate exists
    - Any coverage/SARIF artifacts reachable via `gh run view` / `gh api` for the
      head SHA's workflow runs, if you can fetch them cheaply. Don't block on a slow
      artifact fetch — note what you couldn't get and let the auditors know.
-4. **Check whether this diff touches the gate's own files** — anything under
-   `scripts/pr_audit_gate.py`, `scripts/hooks/require_pr_audit.py`,
-   `.github/workflows/pr-audit-gate.yml`, `.claude/agents/pr-merge-*.md`,
-   `.claude/skills/pr-audit-gate/`, `.claude/settings.json`, `CLAUDE.md`,
-   `.planning/decisions/0050-*.md`/`.planning/decisions/0090-*.md`/`.planning/decisions/README.md`,
-   `.github/workflows/ci.yml` (carries the `workflow_dispatch:` trigger the
-   CI-side merge step depends on — added fifth audit, correctness angle), or
-   `.github/workflows/deploy.yml` (the post-merge production-deploy-
-   verification workflow ADR 0097 built — a PR that weakens what it checks
-   would otherwise be evaluated as ordinary and could self-merge; found by
-   PR #291's security audit, 2026-09-03, see ADR 0090's eighth Correction).
-   Keep this list in sync with `_GATE_OWNED_PATHS` in `scripts/pr_audit_gate.py` — a
-   third real audit (2026-09-03, compliance angle) found the CI side had
-   `CLAUDE.md` in its owned-paths list and this step didn't, so a
-   `CLAUDE.md`-only PR could steer the compliance angle's own reading of
-   what's compliant without ever triggering escalation. If so, this PR
-   changes what future audits do — carry that forward to step 9 regardless of
-   what the angles conclude (see step 9). Unlike the CI path, a Claude Code
-   session auditing its OWN checkout has no `pull_request_target`-style
-   isolation from a modified script — say so plainly rather than treating a
-   self-audited PASS on these files as equivalent to an ordinary one.
-   **Stop before model calls** if any owned path changed, the file inventory cannot
-   be verified, or the diff cannot be reviewed completely. Record BLOCK and request
-   human review. Do not pay for an approval that cannot authorize a merge.
+4. **Decide gate ownership with `origin/main`'s classifier, before any model call.**
+   From the checkout, run:
+   ```
+   REPO="$(git rev-parse --show-toplevel)"; GATE="$(mktemp -d)"
+   git -C "$REPO" fetch --no-tags -q origin +refs/heads/main:refs/remotes/origin/main &&
+   git -C "$REPO" show refs/remotes/origin/main:scripts/pr_audit_gate.py > "$GATE/pr_audit_gate.py" &&
+   PR_NUMBER=<n> PR_EXPECTED_HEAD=<audited full sha> PR_AUDIT_REPO_DIR="$REPO" python3 -I "$GATE/pr_audit_gate.py" --ownership
+   ```
+   - **Exit 0.** Continue to step 5.
+   - **Exit 3.** The PR changes what the gate owns (ADR 0090, 2026-09-18 amendment).
+     - Stop before any model call.
+     - Post a comment that starts `<!-- pr-audit-gate: pr=<n> sha=<full-40-hex-sha> verdict=BLOCK -->`,
+       is headed ESCALATED, and carries the printed reasons verbatim.
+     - Tell the founder in chat.
+     - Only the founder's word merges it, through the SHA-pinned
+       `gh api …/pulls/<n>/merge` that ADR 0090's review trail records for #261,
+       #297 and #299. `require_pr_audit.py` blocks `gh pr merge` on an owned PR
+       even with a PASS marker.
+   - **Exit 4, any other exit, or no output.** CANNOT CHECK. Stop the same way and say
+     what failed. Never continue on a guess.
+
+   The rule, in words (the code is `gate_ownership()` in `scripts/pr_audit_gate.py`;
+   change both together). It reads `git diff --raw --no-renames` between the PR's
+   merge-base with `main` and its exact head SHA, so a rename is seen from both sides.
+   A PR is owned when any of these holds:
+   - **Owned paths**, compared case-folded: `scripts/pr_audit_gate.py`,
+     `scripts/hooks/`, the gate's tests `scripts/test_pr_audit_gate.py` and
+     `scripts/test_require_pr_audit.py`, `scripts/check_test_scripts_are_real.py`,
+     the deploy verification `scripts/check_deployed_sha.py`,
+     `scripts/resolve_watched_commit.py` and `scripts/check_deploy_audit_ran.sh`,
+     all of `.github/workflows/` and `.github/actions/`,
+     `.planning/decisions/0050-*`, `.planning/decisions/0090-*`, anything inside a
+     `.claude` directory and any `.mcp.json`, `CLAUDE.md`, `CLAUDE.local.md` or
+     `AGENTS.md`, each at any depth (a nested `.claude/skills/` loads when Claude
+     works in that directory), a path with a control character, and any path
+     that collides with another under case folding.
+   - **The index** (`.planning/decisions/README.md`), unless every change is an
+     appended ADR row `| [NNNN](NNNN-slug.md) | … |` inside the Locked or Proposed
+     table, linking the one ADR file this PR adds under that number, with a number
+     never used on `main`. Editing, moving or deleting any line stays owned.
+   - **Decision text.** Every file under `.planning/decisions/` is read whole, before
+     and after, and is owned if it names the gate (ADR 0050 or 0090, the gate's
+     script, hook, skill or agents, gate-owned paths, hardness scores, self-merging).
+     For the index, `OPEN-DECISIONS.md`, `CLAIMS.jsonl`, `PROJECT.md` and
+     `FUTURES.md`, only changed lines are judged. Tag or bidi characters, line
+     separators other than `\n`, NUL, invalid UTF-8, letters or digits outside Latin
+     and Greek, and a symlink, submodule or executable on this surface are owned
+     outright.
+   - **Anything the check cannot read** (the head moved, a fetch failed, a register diff past its line bound, an
+     unexpected change type): CANNOT CHECK, never released.
+
+   This step keeps no path list of its own; the classifier is the only list. The two
+   copies drifted twice: first over `CLAUDE.md`, then over `0050` and
+   `pr-merge-planner`. Never run the checkout's copy: on a PR branch, it is the code
+   under review.
+
+   If the only reasons are lines in a NEW decision file that cite the gate as a
+   witness (for example "pr-audit-gate round 2 found X"), the author may re-cite them
+   as `audit of PR #M, round N (report path)` and re-run. Never reword a line that
+   states a rule about the gate, or says what the gate does, to get past this step.
+
+   Gate rules live only in ADR 0090, ADR 0050 and the owned files, whatever their
+   index rows say. Unlike the CI path, a session auditing its own checkout has no
+   `pull_request_target`-style isolation. Running `origin/main`'s classifier covers
+   the ownership decision only; the reviewers must still read decisions with
+   `git show origin/main:<path>`.
+
+   **Stop before model calls** also when the diff cannot be reviewed completely.
+   Record BLOCK and request human review. Do not pay for an approval that cannot
+   authorize a merge.
 5. **Plan once with Opus.** Spawn `pr-merge-planner` with the original SHA-pinned
    bundle. A missing, incomplete or non-READY plan blocks. Keep the agent ID.
 6. **Run two Sonnet reviews in parallel.** Spawn `pr-merge-auditor` for correctness,
@@ -102,8 +157,10 @@ individually while what they don't cover reaches production — this gate exists
    (report this as a limitation, never silently omit it — see
    [[absence-reported-as-health]]).
 9. **Post the FULL report to the PR as a comment**, starting with the exact
-   marker line `<!-- pr-audit-gate: pr=<n> sha=<full-or-7-char-sha> verdict=PASS -->`
-   (or `verdict=BLOCK`) — `gh pr comment <n> --body "..."`. This marker, not a
+   marker line `<!-- pr-audit-gate: pr=<n> sha=<full-40-hex-sha> verdict=PASS -->`
+   (or `verdict=BLOCK`) — the FULL sha, never a 7-character abbreviation (gate-r3
+   sha-prefix-collision, 2026-09-19 — see "Doneability" above) —
+   `gh pr comment <n> --body "..."`. This marker, not a
    committed file, is what `require_pr_audit.py` checks. **Do not commit the
    local report file before merging** — a v1 version of this skill did, which
    changes the head SHA the very check you're about to satisfy is keyed to,
@@ -121,9 +178,8 @@ individually while what they don't cover reaches production — this gate exists
       the Claude-Code path stays on `gh pr merge` for hook-pattern
       compatibility, but drops `--auto` so the merge is immediate; `--match-head-commit` binds it to
       the exact audited SHA, not whatever head appears before the command).
-      Always the explicit `<n>`, never a bare `gh pr merge` (the hook
-      resolves that against your current branch, not necessarily the PR you
-      just audited). Never `--admin` — if the merge doesn't go through
+      Always the explicit `<n>`, with `--match-head-commit` given once as its
+      own argument (the hook blocks anything else). Never `--admin` — if the merge doesn't go through
       because a required check isn't actually green, that is GitHub
       correctly refusing, not something to force past.
 
@@ -157,6 +213,8 @@ individually while what they don't cover reaches production — this gate exists
   context and the account behind its `ANTHROPIC_API_KEY` has had no credit
   since 2026-09-12, so treat it as non-functional backstop, not a live second
   gate, until both are addressed (see ADR 0090's 2026-09-17 amendment).
+- The CI path now escalates an owned PR before any model call, even with no key
+  or credit (ADR 0090, 2026-09-18 amendment).
 - **v1 → v2, same day (2026-09-03):** this gate's own first real audit (PR
   #261, run 33695630472) found and this session fixed: the livelock in step 9
   above; the hook resolving the wrong PR's report when the current branch
@@ -180,7 +238,9 @@ individually while what they don't cover reaches production — this gate exists
   and not falsely marked filed. Same audit also fixed: `CLAUDE.md`,
   `.planning/decisions/0090-*.md`, and `.planning/decisions/README.md` added
   to both owned-path lists (step 4 above and `_GATE_OWNED_PATHS` — they had
-  drifted, CI had `CLAUDE.md` and this file didn't); the stale
+  drifted, CI had `CLAUDE.md` and this file didn't) [2026-09-18: both lists
+  replaced by gate_ownership(); the index is owned only when its diff is not a
+  pure append — ADR 0090 amendment]; the stale
   `ANTHROPIC_API_KEY`-not-yet-added claim in `decisions/README.md` (the
   secret has been live since 2026-09-02; that row said otherwise until
   2026-09-03); and `_verdict_of()` now has a `--self-test` (see the script)
