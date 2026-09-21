@@ -14,6 +14,11 @@ updated: 2026-08-26
 > The four deleted dossiers are superseded by **[[RETIRED]]** — what came down, what
 > replaced it, what was ported, and why the two real pages redirect rather than 404.
 
+**Go-live tracking (2026-09-17, [ADR 0149](../decisions/0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once.md)
+row 36):** **[[LIVE-CHECKLIST]]** ticks all 61 `App.tsx` routes — a larger, different
+unit than this file's 47 documented pages, see that file's header — against what is
+actually live for every house today, founder-requested per CLAUDE.md §4's exception.
+
 **Surface graph (2026-08-25, ADR 0018):** every note now opens with a `## Surface`
 section — the page's buttons, one line each, wikilinked to where they go. **115
 distinct page→page edges** across the notes; the Obsidian graph over this folder is
