@@ -101,7 +101,7 @@ export function lowStockDigestTemplate(data: LowStockDigestData): string {
   `;
 
   return baseTemplate({
-    title: `${heading} — WineOps`,
+    title: `${heading} — Mudavym`,
     preheader: `${critical.length} critical, ${low.length} low`,
     content,
     ctaButton: {

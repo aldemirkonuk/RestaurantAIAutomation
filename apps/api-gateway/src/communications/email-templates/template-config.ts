@@ -1,7 +1,7 @@
 /**
  * Email Template Configuration
  * Shared constants for all email templates
- * Supports hybrid branding: global WineOps defaults + per-restaurant overrides
+ * Supports hybrid branding: global Mudavym defaults + per-restaurant overrides
  */
 
 export const EMAIL_CONFIG = {
@@ -30,18 +30,18 @@ export const EMAIL_CONFIG = {
 
   // Brand Info
   brand: {
-    name: "WineOps AI",
+    name: "Mudavym",
     logo: "", // Add logo URL when available
-    website: "https://wineops.ai",
-    supportEmail: "support@wineops.ai",
+    website: "https://mudavym.com",
+    supportEmail: "support@mudavym.com",
   },
 
   // Footer Text
   footer: {
-    automated: "This is an automated message from WineOps AI.",
+    automated: "This is an automated message from Mudavym.",
     unsubscribe:
       "To manage your notification preferences, visit your account settings.",
-    copyright: `© ${new Date().getFullYear()} WineOps AI. All rights reserved.`,
+    copyright: `© ${new Date().getFullYear()} Mudavym. All rights reserved.`,
   },
 
   // Email Styles
@@ -110,7 +110,7 @@ export interface RestaurantBranding {
 
 /**
  * Get restaurant-specific branding from database.
- * Falls back to global WineOps branding if no override exists.
+ * Falls back to global Mudavym branding if no override exists.
  */
 export async function getRestaurantBranding(
   restaurantId: string,

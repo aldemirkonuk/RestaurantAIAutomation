@@ -259,7 +259,7 @@ class Settings:
             os.getenv("DRAFT_INPUT_TOKEN_HARD_CAP", "8000")
         )
         self.wineops_disclaimer: str = (
-            "—\nThis message was drafted by WineOps AI on behalf of {restaurant_name}."
+            "—\nThis message was drafted by Mudavym on behalf of {restaurant_name}."
         )
         # Phase 21: Notification backends (E2E-v2-03)
         self.plivo_auth_id: Optional[str] = os.getenv("PLIVO_AUTH_ID")

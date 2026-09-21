@@ -131,6 +131,21 @@ MIRRORS: tuple[Mirror, ...] = (
         ),
     ),
     Mirror(
+        label="web ReportExport",
+        client_file="apps/web/src/services/api/reports.ts",
+        client_type="ReportExport",
+        dto_file="apps/api-gateway/src/reports/dto/report-exports.dto.ts",
+        dto_class="ReportExportResponseDto",
+        why=(
+            "OD-81 (2026-09-17): the report export the /reports page lists, "
+            "polls and downloads. Every /reports/exports route returns "
+            "ReportExportResponseDto. A phantom key here would not crash: a "
+            "`failureReason` the gateway never sends reads as 'no reason', and "
+            "a `status` spelled differently would leave a written export "
+            "looking queued forever -- the exact lie the export exists to end."
+        ),
+    ),
+    Mirror(
         label="mobile ProcurementOrder",
         client_file="apps/mobile/src/api/types.ts",
         client_type="ProcurementOrder",

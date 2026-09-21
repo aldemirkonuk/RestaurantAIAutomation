@@ -167,12 +167,12 @@ describe('the Drive consent screen discloses the mail archive', () => {
     scopes: [
       {
         scope: 'https://www.googleapis.com/auth/drive.file',
-        label: 'Create and manage files WineOps puts in your Drive',
+        label: 'Create and manage files Mudavym puts in your Drive',
         reason:
           'Lets us write inventory exports and scanned menus to Drive, and — if this restaurant turns it on — its own archived copy of the vendor mail it receives.',
       },
     ],
-    notRequested: ['Reading files you did not create with WineOps'],
+    notRequested: ['Reading files you did not create with Mudavym'],
     dataHandling: {
       reads: 'Only files this app itself created in your Drive.',
       doesNotRead:

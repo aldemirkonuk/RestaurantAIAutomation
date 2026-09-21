@@ -56,7 +56,7 @@ export function describeAuthFailure(
   fallback?: string | null,
 ): string {
   if (status === null) {
-    return "Couldn't reach WineOps. Check your connection and try again.";
+    return "Couldn't reach Mudavym. Check your connection and try again.";
   }
   switch (status) {
     case 401:

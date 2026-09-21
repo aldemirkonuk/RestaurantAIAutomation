@@ -992,7 +992,7 @@ export class AuthService {
       // Always call sendEmail() — it handles lazy-init and falls back to mock if OAuth unconfigured
       const result = await this.gmailService.sendEmail({
         to: [email],
-        subject: "Verify your WineOps AI account",
+        subject: "Verify your Mudavym account",
         html: this.buildVerificationEmailHtml(verifyUrl),
       });
 
@@ -1013,16 +1013,16 @@ export class AuthService {
   private buildVerificationEmailHtml(verifyUrl: string): string {
     return `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Verify your WineOps AI account</title></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Verify your Mudavym account</title></head>
 <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f3f4f6;">
   <div style="max-width:560px;margin:40px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1);">
     <div style="background:#7c2d12;padding:28px 32px;text-align:center;">
-      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">WineOps AI</h1>
+      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">Mudavym</h1>
       <p style="margin:6px 0 0;color:rgba(255,255,255,.8);font-size:14px;">Verify your email address</p>
     </div>
     <div style="padding:32px;">
       <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
-        You're almost there! Click the button below to verify your email address and activate your WineOps account.
+        You're almost there! Click the button below to verify your email address and activate your Mudavym account.
       </p>
       <div style="text-align:center;margin:28px 0;">
         <a href="${verifyUrl}" style="display:inline-block;padding:14px 36px;background:#7c2d12;color:#fff;text-decoration:none;font-weight:600;border-radius:8px;font-size:16px;">
@@ -1030,7 +1030,7 @@ export class AuthService {
         </a>
       </div>
       <p style="margin:20px 0 0;color:#6b7280;font-size:13px;line-height:1.6;">
-        This link expires in <strong>24 hours</strong>. If you didn't create a WineOps account, you can safely ignore this email.
+        This link expires in <strong>24 hours</strong>. If you didn't create a Mudavym account, you can safely ignore this email.
       </p>
       <hr style="margin:24px 0;border:none;border-top:1px solid #e5e7eb;" />
       <p style="margin:0;color:#9ca3af;font-size:12px;">
@@ -1039,7 +1039,7 @@ export class AuthService {
       </p>
     </div>
     <div style="padding:16px 32px;background:#f9fafb;border-top:1px solid #e5e7eb;text-align:center;">
-      <p style="margin:0;color:#9ca3af;font-size:11px;">© ${new Date().getFullYear()} WineOps AI. Automated message — please do not reply.</p>
+      <p style="margin:0;color:#9ca3af;font-size:11px;">© ${new Date().getFullYear()} Mudavym. Automated message — please do not reply.</p>
     </div>
   </div>
 </body>
@@ -2163,7 +2163,7 @@ export class AuthService {
         await import("../communications/email-templates");
       const result = await this.gmailService.sendEmail({
         to: [normalizedEmail],
-        subject: "Reset your WineOps AI password",
+        subject: "Reset your Mudavym password",
         html: passwordResetEmailTemplate({ name: user.name, resetUrl }),
       });
       if (!result.success) {
@@ -2401,7 +2401,7 @@ export class AuthService {
       me.email.toLowerCase() !== String(email).toLowerCase()
     ) {
       throw new BadRequestException(
-        "OAuth account email must match your WineOps email",
+        "OAuth account email must match your Mudavym email",
       );
     }
 
