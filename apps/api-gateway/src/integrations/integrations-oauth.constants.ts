@@ -95,9 +95,9 @@ export const INTEGRATION_DEFINITIONS: Record<
     scopes: [
       {
         scope: "https://www.googleapis.com/auth/drive.file",
-        label: "Create and manage files WineOps puts in your Drive",
+        label: "Create and manage files Mudavym puts in your Drive",
         reason:
-          "Lets us write inventory exports and scanned menus to Drive, and — if this restaurant turns it on — its own archived copy of the vendor mail it receives. Limited to files WineOps creates: your existing documents stay invisible to us, and so does everything this app did not write.",
+          "Lets us write inventory exports and scanned menus to Drive, and — if this restaurant turns it on — its own archived copy of the vendor mail it receives. Limited to files Mudavym creates: your existing documents stay invisible to us, and so does everything this app did not write.",
       },
       {
         scope: "openid",
@@ -112,7 +112,7 @@ export const INTEGRATION_DEFINITIONS: Record<
       },
     ],
     notRequested: [
-      "Reading files you did not create with WineOps",
+      "Reading files you did not create with Mudavym",
       "Your Gmail messages",
       "Deleting your Drive folders",
     ],

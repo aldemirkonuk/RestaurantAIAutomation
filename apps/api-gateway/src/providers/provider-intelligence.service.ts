@@ -371,13 +371,26 @@ export class ProviderIntelligenceService {
   // SENTIMENT
   // =========================================================================
 
-  async getSentimentTrend(providerId: string, limit: number = 30) {
+  /**
+   * `provider_sentiment_history` carries its own `restaurant_id` (NOT NULL,
+   * baseline `:4837`) — providers can be shared across houses via the
+   * nullable `providers.restaurant_id`, so a provider-only filter here would
+   * hand back another house's sentiment history for a shared provider
+   * (2026-09-17 finding). `restaurantId` scopes the read the same way every
+   * other provider route in this gateway scopes `providers` itself.
+   */
+  async getSentimentTrend(
+    providerId: string,
+    restaurantId: string,
+    limit: number = 30,
+  ) {
     const { data, error } = await this.databaseService.supabase
       .from("provider_sentiment_history")
       .select(
         "sentiment, sentiment_score, detected_emotions, trigger_context, created_at",
       )
       .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -412,12 +425,34 @@ export class ProviderIntelligenceService {
   // CROSS-VENDOR INTELLIGENCE
   // =========================================================================
 
-  async compareProviders(providerIds?: string[]) {
+  /**
+   * Was unscoped: every active provider in every restaurant, with its
+   * reliability score, tier and (via the per-provider queries below)
+   * sentiment and knowledge counts (2026-09-17 finding — no restaurant
+   * filter existed at all). `restaurantId` scopes the provider list the same
+   * way `ProvidersService` scopes it everywhere else in this gateway; the
+   * per-provider `provider_sentiment_history` read is scoped too, since that
+   * table carries its own `restaurant_id` independent of the provider row
+   * (a provider can be shared across houses via the nullable
+   * `providers.restaurant_id`).
+   *
+   * The provider list itself uses the repo's shared-row idiom
+   * (`restaurant_id.is.null,restaurant_id.eq.<house>` — see
+   * `price-register/visibility.ts:305`,
+   * `vendor-intel/identity.service.ts:729`) rather than a plain `.eq`, so a
+   * provider deliberately shared across houses (`restaurant_id IS NULL`) is
+   * not dropped from every house's comparison. This is strictly a superset
+   * of the plain `.eq` this method shipped with on 2026-09-17 — if
+   * production holds zero shared-provider rows today, behaviour is
+   * unchanged; that count was NOT measured in this session (CLAUDE.md 0.5).
+   */
+  async compareProviders(restaurantId: string, providerIds?: string[]) {
     let query = this.databaseService.supabase
       .from("providers")
       .select(
         "id, name, reliability_score, tier, minimum_order, lead_time_days",
       )
+      .or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
       .eq("is_active", true)
       .is("deleted_at", null);
 
@@ -443,6 +478,7 @@ export class ProviderIntelligenceService {
           .from("provider_sentiment_history")
           .select("sentiment_score")
           .eq("provider_id", provider.id)
+          .eq("restaurant_id", restaurantId)
           .order("created_at", { ascending: false })
           .limit(5),
         this.databaseService.supabase

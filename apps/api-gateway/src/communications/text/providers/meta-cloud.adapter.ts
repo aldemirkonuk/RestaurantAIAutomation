@@ -184,7 +184,7 @@ export class MetaCloudAdapter implements TextTransport {
       providerStatus: null,
       errorCode: null,
       detail:
-        "WhatsApp accepted it and returned a message id. That is the provider holding it, not a handset showing it; a delivery status arrives later on a webhook this build does not have.",
+        "WhatsApp accepted it and returned a message id. That is the provider holding it, not a handset showing it; whether it was delivered, read or failed arrives later on the WhatsApp webhook and is written onto this message's row when it does.",
       cost: COST_NOT_REPORTED_YET,
       // Free by RULE, and the rule is quotable: this adapter only ever builds a
       // non-template message inside an open window, and "All non-template
