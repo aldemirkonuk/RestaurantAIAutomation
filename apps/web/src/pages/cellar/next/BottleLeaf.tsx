@@ -389,7 +389,7 @@ export default function BottleLeaf({
                   house's own `menu_price_glass` — a real column a manager
                   sets — never the wine library's reference price.
 
-                  CLOSED 2026-09-19 (cellar lane, migration 20260919160000,
+                  CLOSED 2026-09-19 (cellar lane, migration 20260921112300,
                   founder: "we're going to add a per house bottle price").
                   `restaurant_inventory.menu_price_bottle` now exists — same
                   shape as `menu_price_glass` — and "Bottle price" below reads

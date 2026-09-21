@@ -42,7 +42,7 @@ function renderModal(onAddWine = vi.fn()) {
 }
 
 /**
- * Cellar lane, 2026-09-19 — migration 20260919160000. The founder: "we're
+ * Cellar lane, 2026-09-19 — migration 20260921112300. The founder: "we're
  * going to add a per house bottle price." `menuPriceBottle` is collected here
  * the same way `menuPriceGlass` already is: mirrors its gating (shown only
  * when the sale type actually includes that unit) and its field shape.

@@ -147,7 +147,7 @@ describe("CellarRegistersService.read", () => {
     expect(out.carried).toContain("spirits");
   });
 
-  it("excludes a discarded menu_items row from the register inference read (migration 20260918010000)", async () => {
+  it("excludes a discarded menu_items row from the register inference read (migration 20260921112200)", async () => {
     // The `chain()` fake does not itself filter by the predicates the service
     // applies — it always answers with the table's configured `data`
     // regardless — so the thing this test can actually prove is that the

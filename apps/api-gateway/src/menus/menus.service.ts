@@ -186,7 +186,7 @@ export class MenusService {
 
   /**
    * Discards one line from the active menu (ADR 0160 sec110 item 7). A soft
-   * remove — `status = 'discarded'` (migration 20260917153000) — never a
+   * remove — `status = 'discarded'` (migration 20260921112100) — never a
    * DELETE: what it cost and who added it stays in the record, `getMenu`
    * just stops serving it as live. Tenant-scoped by `restaurantId`, taken
    * from the URL path (the controller's `:restaurantId`, matched against the
@@ -334,7 +334,7 @@ export class MenusService {
         "id, name, producer, category, vintage, region, country, grape_variety, by_glass_price, bottle_price, wine_library_id, inventory_item_id, source, status, created_at",
       )
       .eq("menu_id", menu.id)
-      // A discarded line (migration 20260917153000, ADR 0160 sec110 item 7)
+      // A discarded line (migration 20260921112100, ADR 0160 sec110 item 7)
       // is a soft remove: the row stays for the record, but this read path —
       // "the interactive menu's read path", per this route's own summary —
       // must not keep serving it as live.

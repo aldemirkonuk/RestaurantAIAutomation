@@ -146,7 +146,7 @@ export async function getMenu(restaurantId: string): Promise<ActiveMenu> {
 }
 
 /**
- * Soft-removes one line (status -> 'discarded'; migration 20260917153000).
+ * Soft-removes one line (status -> 'discarded'; migration 20260921112100).
  * Never a DELETE — the row and what it cost stays in the record.
  */
 export async function discardMenuItem(

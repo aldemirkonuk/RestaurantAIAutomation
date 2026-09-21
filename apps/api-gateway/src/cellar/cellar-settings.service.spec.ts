@@ -5,7 +5,7 @@ import { DEFAULT_GAZETTEER_MEASURES } from "./dto/hold-ceremony";
 
 /**
  * ADR 0160 sec110 items 2 and 6 — the order-hold ceremony and the gazetteer
- * measures, both on `restaurant_cellar_settings` (migration 20260917150000).
+ * measures, both on `restaurant_cellar_settings` (migration 20260921112000).
  *
  * The failure this file guards against is the same one
  * `cellar-registers.service.spec.ts` names: a table that does not exist yet

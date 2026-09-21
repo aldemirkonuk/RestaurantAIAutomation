@@ -196,7 +196,7 @@ describe("InventoryService", () => {
     });
   });
 
-  // Cellar lane, 2026-09-19 — migration 20260919160000. The founder: "we're
+  // Cellar lane, 2026-09-19 — migration 20260921112300. The founder: "we're
   // going to add a per house bottle price." menu_price_bottle mirrors its
   // sibling menu_price_glass exactly: read via mapInventoryItem, written on
   // create (both the single and bulk paths) and on update.

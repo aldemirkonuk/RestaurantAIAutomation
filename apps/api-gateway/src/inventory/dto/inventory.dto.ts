@@ -106,7 +106,7 @@ export class CreateInventoryItemDto {
   @Min(0)
   menuPriceGlass?: number;
 
-  // This house's own price for a whole bottle (migration 20260919160000),
+  // This house's own price for a whole bottle (migration 20260921112300),
   // never the wine library's reference price. Manager-typed, same shape as
   // its sibling `menuPriceGlass` above: optional, nullable-by-omission, no
   // floor beyond zero. Founder, 2026-09-19: "we're going to add a per house
@@ -221,7 +221,7 @@ export class UpdateInventoryItemDto {
   @Min(0)
   menuPriceGlass?: number;
 
-  // This house's own price for a whole bottle (migration 20260919160000),
+  // This house's own price for a whole bottle (migration 20260921112300),
   // never the wine library's reference price. Manager-typed, same shape as
   // its sibling `menuPriceGlass` above: optional, nullable-by-omission, no
   // floor beyond zero. Founder, 2026-09-19: "we're going to add a per house
@@ -391,7 +391,7 @@ export class BulkInventoryLineDto {
   @Min(0)
   menuPriceGlass?: number;
 
-  // This house's own price for a whole bottle (migration 20260919160000),
+  // This house's own price for a whole bottle (migration 20260921112300),
   // never the wine library's reference price. Manager-typed, same shape as
   // its sibling `menuPriceGlass` above: optional, nullable-by-omission, no
   // floor beyond zero. Founder, 2026-09-19: "we're going to add a per house

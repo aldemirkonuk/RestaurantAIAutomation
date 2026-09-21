@@ -125,7 +125,7 @@ export class InventoryService {
       // "any edit at all" (which is what row.updated_at would give it).
       lastCountedAt: row.last_counted_at ?? null,
       menuPriceGlass: row.menu_price_glass ?? undefined,
-      // This house's own bottle price (migration 20260919160000) — never the
+      // This house's own bottle price (migration 20260921112300) — never the
       // wine library's reference price. Same undefined-not-null idiom as
       // menuPriceGlass above.
       menuPriceBottle: row.menu_price_bottle ?? undefined,

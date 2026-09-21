@@ -155,7 +155,7 @@ export interface CellarRow {
   glassesPerBottle: number | null;
   /** This house's own by-the-glass price — a real column a manager sets, never the library's reference price. */
   menuPriceGlass: number | null;
-  /** This house's own whole-bottle price (migration 20260919160000) — a real column a manager sets, never the library's reference price. Same shape as `menuPriceGlass`. */
+  /** This house's own whole-bottle price (migration 20260921112300) — a real column a manager sets, never the library's reference price. Same shape as `menuPriceGlass`. */
   menuPriceBottle: number | null;
   /** Null = unmeasured (the analytics join has nothing for this row yet), told apart from a failed read via `analyticsReadable`. */
   velocityPerDay: number | null;
@@ -1084,7 +1084,7 @@ export function useCellarRegisters() {
  * The two per-house choices `GET/PUT /cellar/:restaurantId/settings` reads
  * and writes — the order-hold ceremony (ADR 0160 sec110 item 6) and which
  * "in the building tonight" tiles show (item 2). Both live on
- * `restaurant_cellar_settings` (migration 20260917150000). Mirrors
+ * `restaurant_cellar_settings` (migration 20260921112000). Mirrors
  * `CellarSettingsService`'s own `CellarSettingsReadout` shape and its
  * unread-default fallback on the gateway side (`cellar-settings.service.ts`)
  * exactly, so a read that has not resolved yet and a read that failed both

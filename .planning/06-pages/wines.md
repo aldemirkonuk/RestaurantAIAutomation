@@ -231,7 +231,7 @@ until the founder approves its deletion separately (ADR 0149).**
   future register materially larger than the read cap should revisit this with
   real numbers rather than by assumption.
 - **Item 2, built.** `restaurant_cellar_settings.gazetteer_measures`
-  (migration `20260917150000`) — a per-house, ordered, additive list of tiles
+  (migration `20260921112000`) — a per-house, ordered, additive list of tiles
   for "In the building tonight," configured in Settings › Cellar
   (`CellarSection.tsx`) and read by `Registers.tsx`. Two new measures beyond
   the original four, both computed from data already on the page (no new
@@ -308,10 +308,10 @@ until the founder approves its deletion separately (ADR 0149).**
   currency (`check_money_states_its_currency.py`) rather than a hardcoded
   `$`. Discarding a line now also drops it from `house_beverage_ledger`,
   `cellar-registers.service.ts`'s register inference and
-  `beverages.service.ts`'s row record (migration `20260918010000`) — the
+  `beverages.service.ts`'s row record (migration `20260921112200`) — the
   first pass's discard only ever reached `getMenu` itself. Add
   (`POST /menus/items`, existing route) and discard
-  (`PATCH /menus/:restaurantId/items/:id/discard`, migration `20260917153000`,
+  (`PATCH /menus/:restaurantId/items/:id/discard`, migration `20260921112100`,
   soft-remove via `status = 'discarded'`) are both real writes. Building this
   surfaced and closed a real tenant-isolation gap in `addMenuItem`
   (`menus.service.ts`): it trusted `dto.menuId` alone with no comparison
@@ -1241,7 +1241,7 @@ draws (index-plus-record, side by side); that is Owed #11's still-open
   design it shipped alongside contradicted the OTHER half of the SAME
   correction. The three-value vocabulary this pass built and gated —
   `hold`/`confirm`/`auto` (`dto/hold-ceremony.ts`, migration
-  20260917150000) — was transcribed from the founder's PRE-correction
+  20260921112000) — was transcribed from the founder's PRE-correction
   dictation; item 6's own text says so ("the original line gave three modes
   ... his words give two"). None of the three shipped ceremonies matched
   either of his real two modes, and the shipped `auto` sent a real
@@ -1325,7 +1325,7 @@ draws (index-plus-record, side by side); that is Owed #11's still-open
   `restaurant_inventory` gain a per-house bottle price column, or is the
   library's reference price acceptable as "List price (bottle)"? This pass
   reuses the library's reference price, unchanged from before.
-  **[BUILT 2026-09-19 — Seventh pass, below. Migration 20260919160000 adds
+  **[BUILT 2026-09-19 — Seventh pass, below. Migration 20260921112300 adds
   `restaurant_inventory.menu_price_bottle`, same shape as `menu_price_glass`;
   set via `AddWineToInventoryModal.tsx` (mirroring the glass-price field,
   gated on sale type including "bottle"), read in `BottleLeaf.tsx` as
@@ -1376,7 +1376,7 @@ verifier did not flag.
   established, now covering the extra question too). The old `confirm`
   ceremony (a click, "are you sure?", no hold at all) is deleted outright: it
   had no counterpart in the founder's corrected two modes. Migration
-  `20260917150000` had not merged past this lane, so its CHECK constraint and
+  `20260921112000` had not merged past this lane, so its CHECK constraint and
   comments are corrected in place rather than superseded by a second
   migration (`check_migration_versions_unique.py` confirms no collision).
   Copy that asserted the wrong thing is fixed alongside: `BottleLeaf.tsx`'s
@@ -1527,7 +1527,7 @@ house bottle price. That's a huge thing ... gotta be dynamic."*
   on, per CLAUDE.md §5b: the record says what is actually true of the tree
   now, not a round-trip through a state that was never separately committed.
 - **`restaurant_inventory.menu_price_bottle`, added (founder-requested).**
-  Migration `20260919160000_a_house_sets_its_own_bottle_price.sql`: additive,
+  Migration `20260921112300_a_house_sets_its_own_bottle_price.sql`: additive,
   nullable `numeric(10,2)`, no default, no backfill, no author/timestamp
   columns — the exact shape `menu_price_glass` already has, mirrored rather
   than upgraded (a half-parity column recording who/when for one sibling and
@@ -1663,7 +1663,7 @@ house bottle price. That's a huge thing ... gotta be dynamic."*
   own comment block carry the same correction, dated the same day. The
   migration header's parallel claim ("the one column that has always been
   a market-wide figure") is corrected the same way in
-  `20260919160000_a_house_sets_its_own_bottle_price.sql`.]**
+  `20260921112300_a_house_sets_its_own_bottle_price.sql`.]**
 - **`CellarSection.tsx:127`'s Note, corrected (must_fix #2).** "Only an
   owner or a manager of this house can change this" is now "Only an owner, a
   manager, or an admin" — the round-2 report had claimed this fix and it was
@@ -1688,11 +1688,11 @@ ran and reported OK, but did not see this pass's own new migration file** —
 it lists migrations via `git ls-files`, which is blind to an untracked file,
 and this lane stages nothing (the orchestrator commits through a verified
 index). Its "OK" is real for every migration already tracked on this branch;
-it is not evidence about `20260919160000` specifically. That file's own
+it is not evidence about `20260921112300` specifically. That file's own
 version was instead checked by hand: swept `origin/main` (max
 `20260919120000`) and every sibling `wt-*` worktree's
 `supabase/migrations/` (max observed `20260919150000`, `wt-pg-receiving`) —
-`20260919160000` sits past both. Re-run the guard once this pass's files are
+`20260921112300` sits past both. Re-run the guard once this pass's files are
 committed and visible to `git ls-files`.
 **[UPDATED 2026-09-21 — round 5. The round-4 work landed as a single
 snapshot commit (`e7afb2ce7`, "NOT READY, do not merge") on `r5/cellar`
@@ -1703,7 +1703,7 @@ must_fix items: `apps/web` `tsc --noEmit` clean; `vitest run` on the same
 four targets plus `src/pages/menu/next/` — 16 files, 326/326 (up from 324;
 `AddWineToInventoryModal.bottlePrice.test.tsx` alone is now 7/7, up from 5,
 two cases added by must_fix #1). `check_migration_versions_unique.py`:
-"OK — introduced by this branch: ...20260919160000..., checked against
+"OK — introduced by this branch: ...20260921112300..., checked against
 origin/main + 36 other open PR(s)" — it now sees and names the file
 directly, no hand-sweep needed. `check_migration_probe_safety.py`: PASS,
 re-run after must_fix #3 dropped the write-probe. `check_decision_claims.sh`

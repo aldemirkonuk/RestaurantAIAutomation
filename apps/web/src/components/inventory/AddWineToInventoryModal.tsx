@@ -41,7 +41,7 @@ interface VolumeFields {
   saleType: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
-  /** This house's own whole-bottle price (migration 20260919160000) — never the wine library's reference price. Collected whenever saleType includes "bottle". Omitted (not sent as 0) when the field was left blank — see costPerBottle's null handling below, which this mirrors. */
+  /** This house's own whole-bottle price (migration 20260921112300) — never the wine library's reference price. Collected whenever saleType includes "bottle". Omitted (not sent as 0) when the field was left blank — see costPerBottle's null handling below, which this mirrors. */
   menuPriceBottle?: number;
   costPerBottle?: number;
   /**
@@ -121,7 +121,7 @@ export function AddWineToInventoryModal({
     : null;
   const showGlassFields = saleType === "glass" || saleType === "both";
   // Mirrors showGlassFields exactly: a menu bottle price is only collected
-  // when this wine is actually sold by the bottle (migration 20260919160000,
+  // when this wine is actually sold by the bottle (migration 20260921112300,
   // founder: "we're going to add a per house bottle price").
   const showBottleFields = saleType === "bottle" || saleType === "both";
   const glassesPerBottle = showGlassFields
@@ -915,7 +915,7 @@ export function AddWineToInventoryModal({
                     )}
 
                     {/* Bottle Menu Price (conditional) — this house's own
-                        price, migration 20260919160000. Gated on
+                        price, migration 20260921112300. Gated on
                         showBottleFields instead of showGlassFields, same as
                         Glass Menu Price below, but a blank field stays
                         null/omitted here instead of coercing to 0 (round-4

@@ -47,7 +47,7 @@ export interface InventoryItem {
   pourSizeMl?: number;
   pourSizeOz?: number;
   menuPriceGlass?: number;
-  /** This house's own bottle price (migration 20260919160000) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
+  /** This house's own bottle price (migration 20260921112300) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
   menuPriceBottle?: number;
   glassesPerBottle?: number;
   glassesPerBottleOverride?: number;
@@ -115,7 +115,7 @@ export interface UpdateInventoryItemRequest {
   saleType?: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
-  /** This house's own bottle price (migration 20260919160000) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
+  /** This house's own bottle price (migration 20260921112300) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
   menuPriceBottle?: number;
   glassesPerBottleOverride?: number;
 }
@@ -135,7 +135,7 @@ export interface CreateInventoryItemRequest {
   saleType?: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
-  /** This house's own bottle price (migration 20260919160000) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
+  /** This house's own bottle price (migration 20260921112300) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
   menuPriceBottle?: number;
   glassesPerBottleOverride?: number;
 }
@@ -174,7 +174,7 @@ export interface BulkInventoryLine {
   saleType?: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
-  /** This house's own bottle price (migration 20260919160000) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
+  /** This house's own bottle price (migration 20260921112300) — never the wine library's reference price. Manager-typed, same shape as menuPriceGlass. */
   menuPriceBottle?: number;
 }
 
