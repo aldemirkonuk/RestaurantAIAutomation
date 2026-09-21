@@ -33,7 +33,7 @@ seven separate treatments. One thing to get right, one thing to review, and a
 stranger meets the same house at every door. The component does not exist yet;
 building it is the first task of that group. [2026-09-16, ADR 0149 row 7: the treatment Codex drew for these doors is ratified — see the founder answers of that date below and ADR 0133's amendment. "Both grounds" is read under 0149 row 6: charcoal, and paper only where a surface declares it.]
 
-[2026-09-17, ADR 0149 row 35: **`/login` and `/register` take the flyleaf look of sketch 104 direction C** (same fields and flow; nothing moves), reopening this record's improve-in-place-only reading for those two pages. A sketch (118) goes to the founder before the build; the flyleaf itself still lives on `/get-started`.]
+[2026-09-17, ADR 0149 row 35: **`/login` and `/register` take the flyleaf look of sketch 104 direction C** (same fields and flow; nothing moves), reopening this record's improve-in-place-only reading for those two pages. A sketch (118) goes to the founder before the build; the flyleaf itself still lives on `/get-started`.] [2026-09-19: sketch 118 = **B, the endpaper** (the founder's answer, over the README's recommended A). It is built as `EndpaperShell` on `/login` and `/register`, with Google sign-in also on `/login`'s first page (ADR 0149 row 35).]
 
 `login` and `register` are NOT in this set. The founder rejected their redrawn
 versions (*"It looks too modern... This just looks like an AI web page"*) and
@@ -332,4 +332,5 @@ also into ADR 0144.
 | 2026-09-12 | — | Renumbered 0140 to 0143 after a peer claimed 0140 on a pushed ref |
 | 2026-09-12 | Aldemir | Three more: on-device speech keeping only the rows (closes 0113 Q6/Q7); only what Mudavym proposed waits for the seal; the auth emails renamed, OD-27 partly lifted |
 | 2026-09-17 | Aldemir | Via ADR 0149 rows 32 and 35: Studio kept as an internal tool; `/login` and `/register` take the flyleaf look (sketch 118 first) |
+| 2026-09-19 | Aldemir | Via ADR 0149 row 35: sketch 118 is **B, the endpaper**, and Google sign-in also goes on `/login`'s first page |
 | 2026-09-16 | Aldemir | Five more, via ADR 0149 (rows 4, 7, 8, 10, 11): SimPOS kept as-is and Studio waiting on the Codex-conversation check; the public doors' treatment ratified; `support@mudavym.com` everywhere; the desk's defaults kept; the threshold on folio 2, `/onboarding` redirecting permanently to `/get-started`, and the tutorial action boxes redrawn for review |
