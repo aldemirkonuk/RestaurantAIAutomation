@@ -873,6 +873,56 @@ below.
   assignment, which `_collect_assignments()` does not parse and which can
   resolve to main exactly as directly as the already-fixed bare `NAME=main`
   case). Both bracketed in place at their own bullets, above.
+  [CLOSED 2026-09-21, gate-r6, founder review-trail round: both
+  code-changed on the founder's own word -- "Bind it to the segment" and
+  "Teach it export" (verbatim, see this ADR's Review trail). The literal-PR
+  `gh api` exemption in `_github_api_merge_reason()` is now granted only
+  when `_merge_call_outside_gh_api()` finds no command segment -- top-level,
+  inside a `$(...)` or backtick substitution, or inside a quoted string
+  another shell runs, three levels deep -- that names the REST merge
+  endpoint without itself being the recognised `gh api` call; a `gh api`
+  inside another program's quoted argument or a substitution no longer
+  counts as that segment being gh api. `gh api user >/dev/null; curl -X PUT
+  .../pulls/2/merge` exited 0 before (the hook's own verdict, measured in
+  the test harness -- nothing there reaches GitHub) and exits 2 after, as
+  does the same command inside `bash -c '...'`, `$(...)` or backticks.
+  `_collect_assignments()` reads `export NAME=value`, `export -n` and
+  `export --` as the assignment each is, so `export B=main; git push origin
+  feat:$B` exits 2 -- proven with a real push against a local bare origin,
+  which moved that origin's `main` on the pre-fix hook's allow.
+  Last-call corrections to the first cut of both, each CONFIRMED by the
+  hook's exit code on three builds (HEAD, the first cut, the fix): the
+  first cut read EVERY merge surface per top-level segment rebuilt from
+  `_lex`, which skips a heredoc body, so a base-repo Merges API POST, a
+  GraphQL `enablePullRequestAutoMerge`, a non-literal-PR merge or a curl
+  merge inside `bash <<'EOF'` exited 0 where HEAD refused all four -- the
+  refusals now read the whole text again, over every merge-endpoint
+  reference rather than only the first, and before the exemption, so a
+  literal-PR `gh api` merge earlier in the command no longer returns past
+  them; and its `export` reading fed a last-value-wins collector, so
+  `export B=main; git push origin HEAD:$B; export B=develop` and `git push
+  origin HEAD:$B; export B=develop` exited 0 where HEAD refused both --
+  `_env_before()` now reads a name as main if ANY of its assignments is
+  main, and as unresolved if it holds more than one value or is first
+  assigned at or after the push. Named, not closed, each pinned at exit 0
+  by `test_r6_the_named_residuals_are_still_not_seen`: a merge-endpoint
+  reference in text the reader drops (a heredoc body, a comment) keeps
+  HEAD's whole-command reading, so `gh api user; bash <<'EOF'` around a
+  curl merge still exits 0 (it grants nothing the ungated literal-PR route
+  does not); `gh` and `api` written as plain unquoted arguments of another
+  program (`curl -X PUT <url> gh api`); a value set any way but a plain or
+  exported `NAME=value` (`declare`, `typeset`, `readonly`, `local`, `read`,
+  `eval`, `NAME+=`, or after a punctuation run the tokenizer fuses, `);
+  B=main`) -- reading `export` as the bare form reads it brings export to
+  the same gaps, so `export B=develop; eval B=main; git push origin HEAD:$B`,
+  refused at HEAD only because an exported name was never read, now exits
+  0 as its bare twin already did; and, older than this round and found by
+  its last call, a push behind an env prefix or a wrapper (`X=1 git push
+  origin HEAD`, `nohup git push origin HEAD`), which `_direct_push_problem()`
+  skips because the segment's first word is not git. Tests and mutations:
+  the `test_r6_*` functions and `r6_*` HOOK_MUTATIONS entries in
+  `scripts/test_require_pr_audit.py`; `r4_gh_ordinary`, retired by the first
+  cut, is restored and killed again.]
 
 Re-measured on this round's own tree, not copied from gate-r4: the full
 `ci.yml` scripts/ step (8 files, `-P` added) is 534 passed (527 at gate-r4's
@@ -1754,3 +1804,4 @@ un-anchored and 0 when restored.
 | 2026-09-17 | Aldemir (chat, main session, direct authorization) | Pipeline redesign, verbatim: *"change ADR 90 to be a better pipeline, 1 opus starts -> stops -> 2 sonnet handles opus's plan-> opus takes final say."* Replaces the 3-Opus-angle-plus-adversary fan-out with one Opus planner (stops after planning) -> two independent parallel Sonnet reviewers (correctness/regression/decision-compliance; security/adversarial) -> the same Opus planner resumed for final HOLDS/OVERTURNED judgment. `.claude/agents/pr-merge-auditor.md` and `pr-merge-adversary.md` re-scoped to `model: sonnet`; new `.claude/agents/pr-merge-planner.md` added (`model: opus`); `.claude/skills/pr-audit-gate/SKILL.md` steps 4-7 and 10 updated to match, `.planning/decisions/0050-*.md` added to the owned-paths list. Scope held to those files only — `CLAUDE.md`, `.github/workflows/`, and `scripts/pr_audit_gate.py` were explicitly left unchanged; the CI-side path still runs the old composition and has had no `ANTHROPIC_API_KEY` credit since 2026-09-12, unchanged by this amendment. See the "Amendment — 2026-09-17" subsection under Context above and ADR 0050's matching dated bracket |
 | 2026-09-18 | Aldemir (chat) | "do the better approach for longevity, change the ADR if needed." Seven questions answered, all with the recommended option (table in the 2026-09-18 amendment). Ownership decided by `gate_ownership()` on git-native input at a pinned head: index owned unless a pure append for ADRs the PR adds; decision text naming the gate owned; owned paths case-folded and widened to `scripts/hooks/`, `.claude` and `.mcp.json` at any depth, nested `CLAUDE.md`/`AGENTS.md`; renames seen from both sides; escalation before any model call; the hook re-checks with origin/main's copy and requires `--match-head-commit`. Fixer round after the adversarial audit: `.github/workflows/` and `.github/actions/` owned whole, plus the deploy scripts `deploy.yml` calls and the gate's own tests; the hook checks every merge in a command, needs a literal PR number and one pin, and blocks MCP merge tools; a 1,000-line register-diff bound and a 600s CI deadline. Confirm round after a NOT READY: `.claude` and `.mcp.json` owned at any depth; the hook refuses a `pr` subcommand or `gh` word written with quoting or expansion, `gh alias set`/`import`, `--admin`, `--auto` and a second merge in one command, blocks rather than fails open if its word reader raises, and its marker and direct-push checks are pinned by tests; the "hard block" residual narrowed to what is checked, refused and not seen, each not-seen example pinned. Replay 125 → 104 owned of 317 (re-measured after the confirm round, unchanged commit by commit); 80 mutations, 0 survivors (`scripts/test_pr_audit_gate.py`), 23 hook mutations killed. This change edits owned paths, so it escalates by design and merges only on the founder's word through the SHA-pinned route. |
 | 2026-09-18 | Aldemir (via `AskUserQuestion`, relayed by the orchestrating session) | Chose the option labelled exactly *"Accept the widening (Recommended)"* on the question about widening the owned set: the whole `.github/workflows/` folder, `.github/actions/`, the deploy-check scripts, the gate's own tests, and `.claude/` at any depth. Recorded in the amendment's widening paragraph, which no longer asks for his word on it. `scripts/check_test_scripts_are_real.py` and `.mcp.json` at any depth were not named in the acceptance as relayed; they ride on this PR's own escalation. |
+| 2026-09-21 | Aldemir (chat, gate lane review-trail round, gate-r6) | Closed the two residuals gate-r5 had only named (bullet above, "Named, not code-changed"), verbatim: **(1)** *"Bind it to the segment"* -- the literal-PR `gh api` exemption in `_github_api_merge_reason()` was granted on a gh-api reading of the WHOLE command, so `gh api user >/dev/null; curl -X PUT .../pulls/2/merge` was exempted by an unrelated `gh api` call; it is now granted only when `_merge_call_outside_gh_api()` finds no segment (top-level, in a substitution, or in a quoted string another shell runs) that names the endpoint without itself being the recognised `gh api` call. **(2)** *"Teach it export"* -- `_collect_assignments()` read a leading `export` as the command starting and skipped the `NAME=value` after it, so `export B=main; git push origin feat:$B` reached main; `export`, `export -n` and `export --` now assign as the bare form does. The last call found the first cut of each opened what HEAD refused -- surfaces in a heredoc body (a base Merges POST, a GraphQL auto-merge mutation, a non-literal-PR merge, a curl merge) and two `export` shapes resolved to a value the push never sees -- and corrected both (bracket on the gate-r5 bullet, above, with the residuals still named). Re-measured on this branch, not copied forward: `test_require_pr_audit.py` 286 passed; the full `ci.yml` scripts/ step (9 files, `scripts/jev/prompt_gate_test.py` folded in by this branch's merge with `origin/main`) 617 passed; `test_pr_audit_gate.py` 103, unchanged; `--self-test` 98 invariants held, unchanged; every `r6_*` HOOK_MUTATIONS mutant exits 0 on its scenario where the fix exits 2. Not done, stated plainly: no branch-protection or live-repo verification, same restriction as every prior round; the `gh api` finding is the hook's own verdict in the test harness, and only the export fix was also shown with a real push, against a local bare origin. |

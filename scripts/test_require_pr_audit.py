@@ -62,6 +62,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1217,6 +1218,247 @@ def test_r4_monitor_is_routed_to_the_hook():
 
 
 # --------------------------------------------------------------------------- #
+# gate-r6 (2026-09-21): the founder's own two review-trail answers, named as
+# residuals (not yet code) in ADR 0090's gate-r5 section. Both are proven
+# failing-then-passing below: run against a hook source with the fix's own
+# line reverted (build()'s hook_source= override, the same mechanism
+# HOOK_MUTATIONS uses), the scenario gives the PRE-FIX (wrong) exit; against
+# the real, unmodified hook file it gives the FIXED exit. HOOK_MUTATIONS below
+# pins the same pair permanently (r6_gh_api_segment_binding, r6_export_assignment).
+# --------------------------------------------------------------------------- #
+
+def test_r6_gh_api_exemption_is_bound_to_the_segment_that_calls_the_merge_endpoint(two, tmp_path):
+    """Founder, verbatim: "Bind it to the segment." ADR 0090's gate-r5 section
+    named this as a residual, not code: the gh-api reading that grants the
+    literal-PR exemption was computed over the WHOLE command, so a `gh api`
+    call anywhere exempted a merge call made by a DIFFERENT program elsewhere
+    in the SAME command. CONFIRMED failing on a build with the binding check
+    removed (the pre-fix exemption): the hook's own verdict on `gh api user
+    >/dev/null; curl -X PUT https://api.github.com/repos/<repo>/pulls/2/merge`
+    is exit 0. (Nothing in this harness reaches GitHub, so nothing is merged:
+    the exit code IS the finding.) Fixed: the exemption is granted only when
+    no command segment names the endpoint without itself being the
+    recognised `gh api` call (_merge_call_outside_gh_api)."""
+    clone, h, env = two
+    command = (f"gh api user >/dev/null; curl -X PUT "
+               f"https://api.github.com/repos/{REPO}/pulls/2/merge -d '{{}}'")
+    reverted = HOOK.read_text().replace(
+        '        if gh_api == "gh-api" and not _merge_call_outside_gh_api(text):\n',
+        '        if gh_api == "gh-api":\n', 1)
+    assert reverted != HOOK.read_text()  # the target line really is there once
+    pre_fix_clone, _pre_fix_h, pre_fix_env = build(tmp_path, {"1": CLEAN, "2": OWNED}, hook_source=reverted)
+    pre_fix_out = run_hook(pre_fix_clone, pre_fix_env, command)
+    assert pre_fix_out.returncode == 0, (  # FAILING: the bug exempts this
+        "reverted-line build unexpectedly still blocks -- the scenario no "
+        "longer isolates this fix", pre_fix_out.stderr)
+    out = run_hook(clone, env, command)  # PASSING: the real, fixed hook
+    assert out.returncode == 2, out.stderr
+    assert "calls GitHub's REST merge endpoint" in out.stderr, out.stderr
+    # Order-independence: the unrelated gh api call after the real merge call
+    # must not retroactively exempt it either.
+    reordered = (f"curl -X PUT https://api.github.com/repos/{REPO}/pulls/2/merge -d '{{}}'; "
+                 f"gh api user >/dev/null")
+    out2 = run_hook(clone, env, reordered)
+    assert out2.returncode == 2, out2.stderr
+    # Control: the founder's own documented owned-PR route, alone in its own
+    # segment with nothing else in the command, stays ungated exactly as before.
+    solo = run_hook(clone, env, f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={'d' * 40}")
+    assert solo.returncode == 0, solo.stderr
+
+
+def test_r6_export_prefixed_assignment_resolves_a_push_destination(two, tmp_path):
+    """Founder, verbatim: "Teach it export." ADR 0090's gate-r5 section named
+    this as a residual, not code: `export B=main; git push origin feat:$B`
+    reached main with no literal "main" anywhere `_push_reason()` could see,
+    because a leading `export` token matched neither `_SIMPLE_ASSIGNMENT_RE`
+    (no `=`) nor a statement separator, so `_collect_assignments` took the
+    "the command itself starts here" branch and the `B=main` token right
+    after `export` was skipped outright. CONFIRMED failing on the reverted
+    line, live against a local bare origin: the push landed on remote main."""
+    clone, _h, env = two
+    command = "export B=main; git push origin feat:$B"
+    reverted = HOOK.read_text().replace(
+        '        if at_start and tok == "export":\n', "        if False:\n", 1)
+    assert reverted != HOOK.read_text()
+    pre_fix_clone, _pre_fix_h, pre_fix_env = build(tmp_path, {"1": CLEAN, "2": OWNED}, hook_source=reverted)
+    pre_fix_out = run_hook(pre_fix_clone, pre_fix_env, command)
+    assert pre_fix_out.returncode == 0, (  # FAILING: the bug lets this through
+        "reverted-line build unexpectedly still blocks -- the scenario no "
+        "longer isolates this fix", pre_fix_out.stderr)
+    # Not only a function-level claim: run the exact vulnerable command for
+    # real (bypassing the hook entirely, the way a shell would once the hook
+    # -- wrongly, pre-fix -- said ALLOW) against the same clone/origin the
+    # pre-fix hook just approved it for, and confirm the LOCAL BARE ORIGIN's
+    # own main ref really moves, not merely that some exit code was 0.
+    before_main = git(pre_fix_clone, "ls-remote", "origin", "refs/heads/main")
+    # build()'s clone has no local branch checked out (the bare origin's own
+    # HEAD symref never pointed at "main", only refs/heads/main exists) --
+    # every other test here only inspects the repo, never actually checks
+    # anything out, so this is the first to need a real local main.
+    git(pre_fix_clone, "checkout", "-q", "-B", "main", "origin/main")
+    git(pre_fix_clone, "checkout", "-q", "-b", "feat")
+    (pre_fix_clone / "proof.txt").write_text("export-prefixed push proof\n")
+    git(pre_fix_clone, "add", "-A")
+    git(pre_fix_clone, "commit", "-qm", "feat commit")
+    feat_sha = git(pre_fix_clone, "rev-parse", "feat")
+    push = subprocess.run(["bash", "-c", command], cwd=pre_fix_clone, env=pre_fix_env,
+                          capture_output=True, text=True, timeout=60)
+    assert push.returncode == 0, push.stderr  # the real push itself succeeded
+    after_main = git(pre_fix_clone, "ls-remote", "origin", "refs/heads/main")
+    assert after_main != before_main and feat_sha in after_main, (
+        "the real push did not move the local bare origin's main ref -- the "
+        "scenario no longer demonstrates a real exploit", before_main, after_main)
+    out = run_hook(clone, env, command)  # PASSING: the real, fixed hook
+    assert out.returncode == 2, out.stderr
+    assert "main" in out.stderr, out.stderr
+    # A non-main destination through the same export-prefixed shape stays
+    # allowed, the same way the bare (non-exported) case already does
+    # (r4_push_var_develop) -- exporting must not itself be treated as guilty.
+    ok = run_hook(clone, env, "export B=develop; git push origin HEAD:$B")
+    assert ok.returncode == 0, ok.stderr
+
+
+# --------------------------------------------------------------------------- #
+# gate-r6 LAST CALL (2026-09-21). Each case below was measured on three builds
+# of the hook: HEAD before gate-r6, the first cut of the two fixes, and the
+# fixed hook. The first cut read every merge surface per top-level segment
+# rebuilt from _lex's words, and _lex skips a heredoc body -- so the four
+# always-refused surfaces written in one exited 0 where HEAD refused them; and
+# its `export` reading fed a last-value-wins collector, so two push shapes
+# HEAD refused passed. Pinned here, with the founder's two answers carried one
+# level down (a substitution, a quoted string another shell runs).
+# --------------------------------------------------------------------------- #
+
+_MERGE_URL = f"https://api.github.com/repos/{REPO}/pulls/2/merge"
+_SHA = "d" * 40
+
+
+def _nested(command: str, levels: int) -> str:
+    for _ in range(levels):
+        command = "bash -c " + shlex.quote(command)
+    return command
+
+
+@pytest.mark.parametrize("command", [
+    # HEAD refused each; the first cut of "Bind it to the segment" let each through.
+    f"bash <<'EOF'\ncurl -X PUT {_MERGE_URL}\nEOF",
+    f"bash <<'EOF'\ngh api -X POST repos/{REPO}/merges -f base=main -f head=feat\nEOF",
+    "bash <<'EOF'\ngh api graphql -f query='mutation { enablePullRequestAutoMerge(input: "
+    "{pullRequestId: \"x\"}) { clientMutationId } }'\nEOF",
+    f"bash <<'EOF'\ngh api -X PUT repos/{REPO}/pulls/$N/merge\nEOF",
+    f"python3 - <<'EOF'\nimport urllib.request as u\nu.urlopen(u.Request('{_MERGE_URL}', method='PUT'))\nEOF",
+    # HEAD and the first cut both returned early at a literal-PR gh api merge,
+    # before the base Merges check and before any later merge-endpoint reference.
+    f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={_SHA}; "
+    f"gh api -X POST repos/{REPO}/merges -f base=main -f head=x",
+    f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={_SHA}; gh api -X PUT repos/{REPO}/pulls/$N/merge",
+])
+def test_r6_a_merge_surface_in_a_heredoc_or_after_an_exempt_call_is_still_refused(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 2, (command, out.stderr)
+
+
+def test_r6_a_non_bash_tools_input_holding_a_heredoc_operator_still_refuses(two):
+    """`_tool_input_text` hands the reader code, not a shell command: `1 << 2`
+    read as a heredoc swallowed the rest of the input in the first cut."""
+    clone, _h, env = two
+    code = (f"x = 1 << 2\nrequests.post('https://api.github.com/repos/{REPO}/merges', "
+            "json={'base': 'main', 'head': 'feat'})")
+    out = run_hook(clone, env, code, tool="mcp__f2d8890f__sandbox_exec")
+    assert out.returncode == 2 and "Merges API" in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # "Bind it to the segment", one level down: the founder's own scenario inside
+    # a string another shell runs, or a substitution. Exit 0 at HEAD and in the first cut.
+    f"bash -c 'gh api user >/dev/null; curl -X PUT {_MERGE_URL}'",
+    f"bash -c $'gh api user >/dev/null; curl -X PUT {_MERGE_URL}'",
+    f"echo $(gh api user >/dev/null; curl -X PUT {_MERGE_URL})",
+    f"echo `gh api user >/dev/null; curl -X PUT {_MERGE_URL}`",
+    _nested(f"gh api user >/dev/null; curl -X PUT {_MERGE_URL}", 3),
+    # `gh api` inside another program's quoted argument or a substitution is not
+    # that program BEING gh api.
+    f"curl -H 'X-Note: gh api' -X PUT {_MERGE_URL}",
+    f"curl -X PUT {_MERGE_URL} -H \"$(echo gh api)\"",
+    # An endpoint built around a substitution is still the calling segment's own.
+    f"gh api user >/dev/null; curl -X PUT \"$(printf 'https://api.github.com')/repos/{REPO}/pulls/2/merge\"",
+    f"gh api user >/dev/null; curl -X PUT \"{_MERGE_URL}?x=$(true)\"",
+    # Past the depth bound nothing is bound, so nothing is exempted -- even the route itself.
+    _nested(f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={_SHA}", 4),
+])
+def test_r6_the_exemption_is_bound_inside_substitutions_and_nested_shells_too(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 2, (command, out.stderr)
+    assert "REST merge endpoint" in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # The founder's owned-PR route keeps its exemption wherever its own segment
+    # makes the call.
+    f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={_SHA}",
+    f"cd /tmp && gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={_SHA}",
+    f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha=$(git rev-parse HEAD)",
+    f"R=$(gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={_SHA})",
+    f"bash -c 'gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={_SHA}'",
+    _nested(f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={_SHA}", 2),
+    f"gh api --input - -X PUT repos/{REPO}/pulls/2/merge <<'EOF'\n{{\"sha\": \"{_SHA}\"}}\nEOF",
+    f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={_SHA} # merging 2",
+    # Prose about the route, as HEAD read it.
+    f"git commit -m 'merged via gh api -X PUT repos/{REPO}/pulls/297/merge'",
+])
+def test_r6_the_owned_pr_route_stays_ungated_where_its_own_segment_makes_the_call(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    # "Teach it export": the builtin's own flags assign exactly as the bare form.
+    "export -n B=main; git push origin feat:$B",
+    "export -- B=main; git push origin feat:$B",
+    # HEAD refused these (an exported name was never collected, so HEAD:$B stayed
+    # unresolved); the first cut resolved $B to a value the push never sees.
+    "export B=main; git push origin HEAD:$B; export B=develop",
+    "git push origin HEAD:$B; export B=develop",
+    # Same reading, bare assignments: any main among a name's values is main.
+    "export B=main; git push origin feat:$B; export B=develop",
+    "B=main; false && B=develop; git push origin feat:$B",
+    "git push origin HEAD:$B; B=develop",
+])
+def test_r6_an_assignment_the_push_may_see_is_read_in_the_safe_direction(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 2, (command, out.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    # Dropped text has no segment to bind to: the whole-command reading HEAD had.
+    f"gh api user >/dev/null; bash <<'EOF'\ncurl -X PUT {_MERGE_URL}\nEOF",
+    # gh and api as another program's plain arguments still read as gh api.
+    f"curl -X PUT {_MERGE_URL} gh api",
+    # A value set any way but a plain or exported NAME=value is not read --
+    # and reading export like the bare form brings export to the same gaps.
+    "declare -x B=main; git push origin feat:$B",
+    "readonly B=main; git push origin feat:$B",
+    "B=ma; B+=in; git push origin feat:$B",
+    "export B=develop; eval B=main; git push origin HEAD:$B",
+    # An assignment after a punctuation run the tokenizer fuses (`);`) is not collected.
+    "f() ( git push origin feat:$B ); B=main; f",
+    # A git push behind an env prefix or a wrapper is skipped by _direct_push_problem.
+    "X=1 git push origin HEAD",
+    "nohup git push origin HEAD",
+])
+def test_r6_the_named_residuals_are_still_not_seen(two, command):
+    """Pins what ADR 0090's gate-r6 section names as not closed, so none is
+    silently claimed closed by a later change, or silently dropped."""
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+# --------------------------------------------------------------------------- #
 # Mutations of the hook: each must turn at least one scenario above red.
 # (name, text that must occur exactly once, replacement, scenario)
 # --------------------------------------------------------------------------- #
@@ -1276,7 +1518,8 @@ HOOK_MUTATIONS = [
      '    return re.sub(r"\\\\\\n", "", command)\n', "h19e"),
     # gate-r4 last-call round (2026-09-19, r4-gate.json)
     ("owned-PR gh-api exemption removed (re-introduces the BLOCKER)",
-     '        if gh_api == "gh-api":\n', "        if False:\n", "r4_api_literal"),
+     '        if gh_api == "gh-api" and not _merge_call_outside_gh_api(text):\n', "        if False:\n",
+     "r4_api_literal"),
     ("non-literal PR number on the API path no longer refused",
      "        if not pr_token.isdigit():\n", "        if False:\n", "r4_api_nonliteral"),
     ("push HEAD/@-with-no-destination check removed",
@@ -1303,14 +1546,61 @@ HOOK_MUTATIONS = [
      "    if _GH_API_RESPELLED_RE.search(stripped):\n", "    if False:\n", "r4_gh_ifs"),
     ("word-by-word gh api reading removed", "        api_words, api_subs, _tail = _lex(command, 0, None, 0)\n",
      "        api_words, api_subs = [], []\n", "r4_gh_expanded"),
-    ("an expanded gh is exempted like a recognised one", '        if gh_api == "gh-api":\n',
-     "        if gh_api:\n", "r4_gh_expanded_literal"),
+    # gate-r6 last call: with the exemption also bound per segment, a
+    # "maybe" in the command's own words is refused twice over, so this
+    # whole-command reading is load-bearing only where no segment can be read
+    # -- its scenario moved from r4_gh_expanded_literal to that shape, and the
+    # per-segment reading got its own entry (r6_bound_maybe_segment, below).
+    ("an expanded gh is exempted like a recognised one",
+     '        if gh_api == "gh-api" and not _merge_call_outside_gh_api(text):\n',
+     "        if gh_api and not _merge_call_outside_gh_api(text):\n", "r6_expanded_gh_dropped_text"),
     ("a quoted string another shell runs is not read",
      "                    if (_depth < _MAX_API_READ_DEPTH and raw[:1] in (\"'\", '\"')\n",
      "                    if (False and raw[:1] in (\"'\", '\"')\n", "r4_gh_bash_c"),
     ("an unreadable command read as not-gh-api", '        return "maybe"\n', "        return None\n", "r4_gh_unreadable"),
     ("merge-surface gate before the reading removed",
-     "    if not (m or base_merges or graphql_merge):\n", "    if False:\n", "r4_gh_ordinary"),
+     "    if not (merge_calls or base_merges or graphql_merge):\n", "    if False:\n", "r4_gh_ordinary"),
+    # --------------------------------------------------------------------- #
+    # 2026-09-21, founder's two review-trail answers (ADR 0090's gate-r5
+    # section named both as residuals, not yet code; verbatim quotes recorded
+    # in that ADR's Review trail), and the gate-r6 last call's corrections to
+    # their first cut. r4_gh_ordinary above was retired by that first cut
+    # (its per-segment rewrite made the whole-text gate unkillable) and is
+    # restored here: the refusals read the whole text again, so removing the
+    # gate falls through to the GraphQL refusal for `gh api user` -- killed.
+    # --------------------------------------------------------------------- #
+    ("Bind it to the segment: the exemption granted on the whole command's "
+     "gh-api reading alone (re-introduces the cross-segment exemption)",
+     '        if gh_api == "gh-api" and not _merge_call_outside_gh_api(text):\n',
+     '        if gh_api == "gh-api":\n', "r6_gh_api_segment_binding"),
+    ("Bind it to the segment, one level down: a quoted string or substitution "
+     "read as the segment's own words",
+     "                    if any(c.isspace() for c in blanked):\n",
+     "                    if False:\n", "r6_bound_nested"),
+    ("Bind it to the segment: a word's substitutions not blanked, so an endpoint "
+     "built around one is read as another command's text",
+     "                    blanked = _blank_substitutions(raw)\n", "                    blanked = raw\n",
+     "r6_bound_built_url"),
+    ("Bind it to the segment: a segment that is only maybe gh api counted as gh api",
+     '                if _PR_MERGE_ENDPOINT_RE.search(own_text) and _gh_api_reading(own_text) != "gh-api":\n',
+     "                if _PR_MERGE_ENDPOINT_RE.search(own_text) and _gh_api_reading(own_text) is None:\n",
+     "r6_bound_maybe_segment"),
+    ("Bind it to the segment: a command the reader cannot read counted as bound",
+     "    except Exception:  # noqa: BLE001 -- a reader that fails must not read as \"bound to gh api\"\n        return True\n",
+     "    except Exception:  # noqa: BLE001\n        return False\n", "r6_bound_unreadable"),
+    ("Bind it to the segment: the nesting bound no longer refuses to bind",
+     "                            if _depth >= _MAX_API_READ_DEPTH or _merge_call_outside_gh_api(cooked, _depth + 1):\n",
+     "                            if _merge_call_outside_gh_api(cooked, _depth + 1):\n", "r6_bound_depth"),
+    ("Teach it export: a leading `export` no longer treated as a no-op "
+     "continuation (re-introduces the unparsed export-prefixed assignment)",
+     '        if at_start and tok == "export":\n', "        if False:\n", "r6_export_assignment"),
+    ("Teach it export: `export -n`/`export --` flags read as the command starting",
+     '            while i < n and toks[i].startswith("-"):\n', "            while False:\n", "r6_export_flags"),
+    ("last call: a later non-main value outweighs an earlier main one",
+     "        if main is not None:\n", "        if False:\n", "r6_env_any_main"),
+    ("last call: a name first assigned after the push trusted as that value",
+     "            values.append(_UNRESOLVED)  # read before this command first assigns it\n",
+     "            pass\n", "r6_env_read_before_assigned"),
 ]
 
 # (command, exit the unmutated hook gives, tool, extra environment)
@@ -1377,6 +1667,45 @@ SCENARIOS = {
     # A command that names no merge surface and is not gh api at all: the gate is
     # only a cost/behaviour guard, so this pins that the reading is skipped for it.
     "r4_gh_ordinary": lambda h: ("gh api user", 0, None, {}),
+    # 2026-09-21 founder answer, "Bind it to the segment": an unrelated `gh api`
+    # call earlier in the command must not exempt a DIFFERENT program's call to
+    # the merge endpoint later in it.
+    "r6_gh_api_segment_binding": lambda h: (
+        f"gh api user >/dev/null; curl -X PUT https://api.github.com/repos/{REPO}/pulls/2/merge -d '{{}}'",
+        2, None, {}),
+    # 2026-09-21 founder answer, "Teach it export": `export NAME=value` reaches
+    # main exactly as directly as the already-fixed bare `NAME=value` case does.
+    "r6_export_assignment": lambda h: ("export B=main; git push origin feat:$B", 2, None, {}),
+    # gate-r6 last call: the founder's scenario inside a string another shell runs.
+    "r6_bound_nested": lambda h: (
+        f"bash -c 'gh api user >/dev/null; curl -X PUT https://api.github.com/repos/{REPO}/pulls/2/merge'",
+        2, None, {}),
+    # The founder's scenario with the endpoint built around a substitution.
+    "r6_bound_built_url": lambda h: (
+        "gh api user >/dev/null; curl -X PUT "
+        f"\"$(printf 'https://api.github.com')/repos/{REPO}/pulls/2/merge\"", 2, None, {}),
+    # A literal-PR gh api merge beside a curl merge nested past _lex's limit:
+    # the whole-text reading sees gh api, the binding reader raises. Through an
+    # exec tool's input, so unplain_gh_word()'s own unreadable-command refusal
+    # (Bash only) cannot mask this reader's.
+    "r6_bound_unreadable": lambda h: (
+        f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={'d' * 40}; "
+        + "$(" * 22 + f"curl -X PUT https://api.github.com/repos/{REPO}/pulls/3/merge" + ")" * 22,
+        2, "mcp__terminal__run_in_terminal", {}),
+    # The owned-PR route four shells deep: past the bound, refused rather than read.
+    "r6_bound_depth": lambda h: (
+        _nested(f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={'d' * 40}", 4), 2, None, {}),
+    # Only "maybe" gh in the segment that makes the call; plain gh api elsewhere.
+    "r6_bound_maybe_segment": lambda h: (
+        f"gh api user >/dev/null; G=gh; $G api -X PUT repos/{REPO}/pulls/2/merge -f sha={'d' * 40}",
+        2, None, {}),
+    # The call only in a heredoc body (no segment to bind), gh only "maybe" elsewhere.
+    "r6_expanded_gh_dropped_text": lambda h: (
+        f"G=gh; $G api user; bash <<'EOF'\ncurl -X PUT https://api.github.com/repos/{REPO}/pulls/2/merge\nEOF",
+        2, None, {}),
+    "r6_export_flags": lambda h: ("export -n B=main; git push origin feat:$B", 2, None, {}),
+    "r6_env_any_main": lambda h: ("export B=main; git push origin feat:$B; export B=develop", 2, None, {}),
+    "r6_env_read_before_assigned": lambda h: ("git push origin HEAD:$B; export B=develop", 2, None, {}),
 }
 
 

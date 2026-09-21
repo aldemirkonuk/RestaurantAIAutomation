@@ -444,9 +444,9 @@ _STATEMENT_SEP_TOKENS = frozenset({";", "&&", "||", "\n"})
 _UNRESOLVED = object()
 
 
-def _collect_assignments(toks: list[str]) -> dict[str, object]:
-    """NAME -> value (or _UNRESOLVED) for every plain `NAME=value` token
-    leading a statement (`B=main; ...`, or an env-prefix `B=main C=x git
+def _collect_assignments(toks: list[str]) -> dict[str, list[tuple[int, object]]]:
+    """NAME -> [(token index, value or _UNRESOLVED), ...] for every plain
+    `NAME=value` token leading a statement (`B=main; ...`, or an env-prefix `B=main C=x git
     ...`), read from the FULL flat token stream `_tokens()` produced for the
     whole command -- not the already-segmented list -- so this can see what
     comes immediately after each assignment.
@@ -466,8 +466,40 @@ def _collect_assignments(toks: list[str]) -> dict[str, object]:
     would end an ordinary standalone assignment), NAME maps to `_UNRESOLVED`
     -- never to the fragment left behind -- so a downstream lookup treats it
     exactly like an unresolved expansion, the safe direction, rather than
-    like a literal value that happens not to be main."""
-    env: dict[str, object] = {}
+    like a literal value that happens not to be main.
+
+    Founder decision, verbatim, 2026-09-21 review-trail round: "Teach it
+    export." Named as a residual, not yet code, in ADR 0090's gate-r5
+    section ("the push-residual bullet's `$UNRELATED` example ... undersells
+    a same-command `export NAME=main` assignment, which `_collect_assignments()`
+    does not parse"): `export B=main; git push origin feat:$B` reaches main
+    with no literal "main" anywhere `_push_reason()` can see, because a
+    leading `export` token matches neither `_SIMPLE_ASSIGNMENT_RE` (it has no
+    `=`) nor a statement separator, so the ORIGINAL code took the branch that
+    treats it as "the command itself starts here", set `at_start = False`,
+    and the `B=main` token right after it was then skipped outright (`if not
+    at_start: i += 1; continue`) -- CONFIRMED exit 0 before this fix, live
+    against a local bare origin. A leading `export` (literal, lowercase, the
+    real bash builtin's own spelling -- this hook does not attempt `\\export`
+    or other obfuscated spellings of the builtin itself, the same restraint
+    it applies to git aliases and gh respellings elsewhere) is now consumed
+    as a no-op that leaves `at_start` True, so every `NAME=value` after it is
+    read exactly as an unprefixed env-prefix assignment already is.
+    `export -n NAME=value` and `export -- NAME=value` assign exactly as the
+    bare form does (`-n` only drops the export attribute), so a flag right
+    after `export` is skipped the same way, still at the statement's start.
+
+    gate-r6 LAST-CALL CORRECTION (2026-09-21): parsing `export` fed it into a
+    reader that kept only the LAST value of each name, taken from anywhere in
+    the command -- and before this, an exported name was never collected at
+    all, so `HEAD:$B` stayed unresolved and was refused. Two shapes that were
+    refused therefore passed: `export B=main; git push origin HEAD:$B;
+    export B=develop` (resolved to the later `develop`; the push itself sees
+    `main`) and `git push origin HEAD:$B; export B=develop` (resolved to a
+    value assigned only AFTER the push, which sees the caller's own `$B`).
+    This now returns every assignment of each name with its token index, and
+    _env_before() decides what a push starting at a given token may trust."""
+    assigned: dict[str, list[tuple[int, object]]] = {}
     at_start = True
     i, n = 0, len(toks)
     while i < n:
@@ -475,6 +507,17 @@ def _collect_assignments(toks: list[str]) -> dict[str, object]:
         if tok in _STATEMENT_SEP_TOKENS:
             at_start = True
             i += 1
+            continue
+        if at_start and tok == "export":
+            # `export` on its own is not an assignment (`_SIMPLE_ASSIGNMENT_RE`
+            # requires a `=`) and must not be read as one -- it is a no-op
+            # continuation of "still at the start of this statement", so the
+            # `NAME=value` token(s) that follow it are read the same way a
+            # bare env-prefix already is, rather than being skipped as the
+            # export builtin's own (nonexistent) command arguments.
+            i += 1
+            while i < n and toks[i].startswith("-"):
+                i += 1  # `export -n` / `export --`: still the builtin, still assigning
             continue
         if not at_start:
             i += 1
@@ -486,16 +529,48 @@ def _collect_assignments(toks: list[str]) -> dict[str, object]:
             continue
         nxt = toks[i + 1] if i + 1 < n else None
         if nxt is not None and nxt not in _STATEMENT_SEP_TOKENS and _is_punctuation(nxt):
-            env[m.group(1)] = _UNRESOLVED
+            value: object = _UNRESOLVED
         else:
-            env[m.group(1)] = m.group(2)
+            value = m.group(2)
+        assigned.setdefault(m.group(1), []).append((i, value))
         i += 1
+    return assigned
+
+
+def _env_before(assigned: dict[str, list[tuple[int, object]]], start: int) -> dict[str, object]:
+    """NAME -> the value a command starting at token `start` may be trusted to
+    see, from every same-command assignment `_collect_assignments` found,
+    read in the safe direction because this hook follows no control flow
+    (`&&`, a loop, a later reassignment): main if ANY assignment of the name
+    is main; otherwise _UNRESOLVED if the name is assigned more than one
+    value, holds a value this hook does not evaluate, or is first assigned
+    at or after `start` (so the command may see the caller's own, unknown
+    value); otherwise the one value it is ever given. Residual, named rather
+    than claimed closed (ADR 0090, gate-r6): a value set any way but a plain
+    or exported `NAME=value` the collector sees -- `declare`, `typeset`,
+    `readonly`, `local`, `read`, `eval`, `NAME+=`, or an assignment after a
+    punctuation run the tokenizer fuses (`); B=main`) -- cannot be weighed
+    here at all. Reading `export` as the bare form reads it brings export to
+    the same gaps: `export B=develop; eval B=main; git push origin HEAD:$B`
+    was refused before gate-r6 only because an exported name was never read."""
+    env: dict[str, object] = {}
+    for name, entries in assigned.items():
+        values = [value for _index, value in entries]
+        if entries[0][0] >= start:
+            values.append(_UNRESOLVED)  # read before this command first assigns it
+        main = next((v for v in values if isinstance(v, str) and _MAIN_TARGET_RE.search(f" {v} ")), None)
+        if main is not None:
+            env[name] = main
+        elif any(v is _UNRESOLVED for v in values) or len(set(values)) > 1:
+            env[name] = _UNRESOLVED
+        else:
+            env[name] = values[0]
     return env
 
 
 def _resolve_simple_var(value: str, env: dict[str, object]) -> str:
-    """Substitute a bare $NAME/${NAME} using a same-command assignment `env`
-    collected above; anything else ($(...), backticks, an unset name, or a
+    """Substitute a bare $NAME/${NAME} using `env` (_env_before() over the
+    same-command assignments collected above); anything else ($(...), backticks, an unset name, or a
     name collected but marked _UNRESOLVED above) is left exactly as written
     -- the caller treats "still looks like an expansion after this" as
     unresolved, never as proof it is safe."""
@@ -509,7 +584,7 @@ def _resolve_simple_var(value: str, env: dict[str, object]) -> str:
 def _push_reason(seg: list[str], env: dict[str, str] | None = None) -> str | None:
     """Why this segment (its head already confirmed to be git) is a push this
     hook must block or treat as CANNOT CHECK, or None if it plainly is not.
-    `env`: same-command NAME=value assignments (see _collect_assignments)."""
+    `env`: what same-command NAME=value assignments give (see _env_before)."""
     env = env or {}
     j = _skip_git_global_flags(seg, 1)
     if j >= len(seg):
@@ -596,24 +671,26 @@ def _direct_push_problem(command: str) -> str | None:
     except ValueError:
         return None  # merge_invocations()/unplain_gh_word() already surface this
     segments: list[list[str]] = [[]]
+    starts = [0]  # the token index each segment starts at, for _env_before()
     target = False
-    for tok in toks:
+    for index, tok in enumerate(toks):
         if _is_punctuation(tok) and ("<" in tok or ">" in tok) and set(tok) <= set("<>&"):
             if segments[-1] and segments[-1][-1].isdigit():
                 segments[-1].pop()
             target = True
         elif _is_punctuation(tok):
             segments.append([])
+            starts.append(index + 1)
             target = False
         elif target:
             target = False
         else:
             segments[-1].append(tok)
-    env = _collect_assignments(toks)
-    for seg in segments:
+    assigned = _collect_assignments(toks)
+    for seg, start in zip(segments, starts):
         if not seg or not _is_program(seg[0], "git"):
             continue
-        reason = _push_reason(seg, env)
+        reason = _push_reason(seg, _env_before(assigned, start))
         if reason:
             return reason
     return None
@@ -759,6 +836,97 @@ def _gh_api_reading(command: str, _depth: int = 0) -> str | None:
         return "maybe"
 
 
+def _blank_substitutions(word: str) -> str:
+    """`word`, as written, with each `$(...)`, backtick, `<(...)` and `>(...)`
+    span replaced by `$_` -- each span's end found by _lex's own reading, so
+    quotes and parentheses inside it are read the way the shell reads them.
+    What is left is the text that is the word's own, not the text of a
+    command the shell runs to build it: `R=$(gh api ...)` leaves `R=$_`,
+    while `"$(printf x)/pulls/2/merge"` keeps its `/pulls/2/merge`. Single-
+    quoted and backslash-escaped text is literal and is kept as written."""
+    out: list[str] = []
+    i, n = 0, len(word)
+    in_double = False
+    while i < n:
+        ch = word[i]
+        if ch == "\\":
+            out.append(word[i:i + 2])
+            i += 2
+        elif ch == "'" and not in_double:
+            j = word.find("'", i + 1)
+            j = n - 1 if j < 0 else j
+            out.append(word[i:j + 1])
+            i = j + 1
+        elif ch == '"':
+            in_double = not in_double
+            out.append(ch)
+            i += 1
+        elif word.startswith("$(", i) or (not in_double and word.startswith(("<(", ">("), i)):
+            _words, _subs, j = _lex(word, i + 2, ")", 1)
+            out.append("$_")
+            i = j + 1
+        elif ch == "`":
+            _words, _subs, j = _lex(word, i + 1, "`", 1)
+            out.append("$_")
+            i = j + 1
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def _merge_call_outside_gh_api(text: str, _depth: int = 0) -> bool:
+    """True if some command segment of `text` this reader can see names
+    GitHub's REST merge endpoint (`.../pulls/<n>/merge`) without itself being
+    the recognised `gh api` call -- the founder's 2026-09-21 answer, verbatim,
+    "Bind it to the segment" (see _github_api_merge_reason below).
+
+    Every simple command is read on its own: each top-level segment, each
+    segment inside a `$(...)`, backtick or `<(...)` substitution (`_lex`'s
+    substitutions), and -- one level per call, bounded by _MAX_API_READ_DEPTH
+    -- each quoted string another shell may run (`bash -c '...'`, `$'...'`,
+    `a\\ b`) that itself names the endpoint. A segment is read as its own
+    words: each substitution span inside a word is replaced by an expanding
+    placeholder (_blank_substitutions), and a word still holding whitespace
+    after that -- whitespace only quoting could keep, a string another shell
+    runs -- is replaced whole. So a `gh api` INSIDE another program's quoted
+    argument (`curl -H 'X: gh api' ...`) or inside a substitution (`$(echo gh
+    api)`) is not read as that segment BEING gh api, a placeholder in the
+    program's own place reads as "maybe", never as gh, and an endpoint built
+    around a substitution (`"$(printf ...)/pulls/2/merge"`) is still this
+    segment's own. A reader that raises, or a string nested past the depth
+    bound, is True: nothing can be bound there, so nothing is exempted.
+
+    Named, not closed (ADR 0090, gate-r6): text the reader drops -- a heredoc
+    body, a comment -- has no segment to bind to, so a merge-endpoint
+    reference there keeps the whole-command reading it had before this
+    (exempt only when a recognised `gh api` appears somewhere in the command,
+    refused otherwise); and `gh` and `api` written as plain unquoted
+    ARGUMENTS of another program in the same segment (`curl -X PUT <url> gh
+    api`) still read as gh api -- this reader recognises gh api by its words,
+    not by which word is the program."""
+    try:
+        words, subs, _tail = _lex(text, 0, None, 0)
+        for word_group in (words, *subs):
+            for seg in _command_segments(word_group):
+                own: list[str] = []
+                for cooked, raw in seg:
+                    blanked = _blank_substitutions(raw)
+                    if any(c.isspace() for c in blanked):
+                        own.append("$_")  # a string another shell may run: its own segments decide
+                        if cooked != text and _PR_MERGE_ENDPOINT_RE.search(cooked):
+                            if _depth >= _MAX_API_READ_DEPTH or _merge_call_outside_gh_api(cooked, _depth + 1):
+                                return True
+                    else:
+                        own.append(blanked)
+                own_text = " ".join(own)
+                if _PR_MERGE_ENDPOINT_RE.search(own_text) and _gh_api_reading(own_text) != "gh-api":
+                    return True
+        return False
+    except Exception:  # noqa: BLE001 -- a reader that fails must not read as "bound to gh api"
+        return True
+
+
 def _github_api_merge_reason(text: str) -> str | None:
     """Why `text` (a Bash command, or any string an MCP tool's input carries)
     reaches GitHub's merge surface directly, bypassing every gh-pr-merge-
@@ -785,11 +953,39 @@ def _github_api_merge_reason(text: str) -> str | None:
     .../pulls/$N/merge` and the curl equivalent both exited 0). `gh pr merge`
     itself refuses a non-literal PR (bug 9 above); this now does too, for
     every client, literal-PR-or-not being decided BEFORE the gh-api exemption
-    so a non-literal number is refused even when `gh api` is the caller."""
-    m = _PR_MERGE_ENDPOINT_RE.search(text)
+    so a non-literal number is refused even when `gh api` is the caller.
+
+    Founder decision, verbatim, 2026-09-21 review-trail round: "Bind it to
+    the segment." Named as a residual, not yet code, in ADR 0090's gate-r5
+    section ("a `gh api` invocation ANYWHERE in a command exempts a merge
+    call made by a DIFFERENT program elsewhere in the same command"):
+    `gh api user >/dev/null; curl -X PUT .../pulls/2/merge` exited 0 before
+    this fix (the hook's own exit code on that command, measured through
+    scripts/test_require_pr_audit.py's harness), because the gh-api reading
+    that grants the literal-PR exemption was taken over the WHOLE command.
+    The exemption is now granted only when _merge_call_outside_gh_api() finds
+    no command segment -- top-level, inside a substitution, or inside a
+    quoted string another shell runs -- that names the endpoint without
+    itself being the recognised `gh api` call.
+
+    gate-r6 LAST-CALL CORRECTION (2026-09-21): the first cut of this fix ran
+    EVERY check per top-level segment, reconstructed from `_lex`'s words --
+    and `_lex` skips a heredoc body and a comment, so every surface written
+    there vanished: `bash <<'EOF'` around a base-repo Merges API POST, a
+    GraphQL `enablePullRequestAutoMerge`, a non-literal-PR merge or a plain
+    curl to the merge endpoint each exited 0, where the whole-command reading
+    before it refused all four (and a non-Bash tool whose input held a `<<`
+    lost everything after it the same way). The refusals are therefore read
+    over the whole text again, exactly as before the fix and now over EVERY
+    merge-endpoint reference rather than only the first; only the literal-PR
+    exemption is narrowed, so this can refuse more than before, never less.
+    A base Merges or GraphQL merge surface is refused before the exemption is
+    considered at all, so a literal-PR `gh api` merge in the same command no
+    longer returns early past it."""
+    merge_calls = list(_PR_MERGE_ENDPOINT_RE.finditer(text))
     base_merges = _BASE_MERGES_ENDPOINT_RE.search(text)
     graphql_merge = re.search(r"(?i)\bgraphql\b", text) and _GRAPHQL_MERGE_MUTATION_RE.search(text)
-    if not (m or base_merges or graphql_merge):
+    if not (merge_calls or base_merges or graphql_merge):
         return None  # names no merge surface at all: nothing below can matter
     # gate-r4 closure (2026-09-19): the gh reading is _gh_api_reading(), not the
     # bare literal-substring regex, so a respelled `gh api` reaches the checks
@@ -800,18 +996,20 @@ def _github_api_merge_reason(text: str) -> str | None:
         return None
     unsure = ("" if gh_api != "maybe" else
               " (through a `gh api` this hook cannot confirm is gh: an expanded or unreadable word)")
-    if m:
+    for m in merge_calls:
         pr_token = m.group(1)
         if not pr_token.isdigit():
             return (f"calls GitHub's REST merge endpoint with a non-literal PR number "
                     f"({pr_token!r}) -- gh pr merge refuses a non-literal PR the same way{unsure}")
-        if gh_api == "gh-api":
-            return None  # ADR 0090: gh api with a literal PR number is the
-            # founder's SHA-pinned owned-PR merge route, ungated on purpose.
-        return f"calls GitHub's REST merge endpoint for a pull request directly{unsure}"
     if base_merges:
         return ("calls GitHub's base-repo Merges API directly -- no PR is involved, so there "
                 f"is nothing to pin a marker or an ownership check to{unsure}")
+    if merge_calls and not graphql_merge:
+        if gh_api == "gh-api" and not _merge_call_outside_gh_api(text):
+            return None  # ADR 0090: gh api with a literal PR number is the founder's
+            # SHA-pinned owned-PR merge route, ungated on purpose -- bound, since
+            # 2026-09-21, to the segment that makes the call ("Bind it to the segment").
+        return f"calls GitHub's REST merge endpoint for a pull request directly{unsure}"
     return f"runs a GraphQL mutation that merges a PR or arms auto-merge{unsure}"
 
 

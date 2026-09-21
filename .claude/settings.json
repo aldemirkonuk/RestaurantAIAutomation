@@ -14,6 +14,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/jev/prompt_gate.py\" --for=claude || exit 0'",
+            "timeout": 8
+          }
+        ]
+      }
     ]
   }
 }
