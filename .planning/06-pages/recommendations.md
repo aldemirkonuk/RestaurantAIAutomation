@@ -864,7 +864,7 @@ bundled (the account door's real scope, the act verb — *Mark as briefed* vs.
 *Open Reports →* — and how far refusal copy should trim). **[2026-09-19: Q6,
 the digest builder's five choices, is no longer one of these — the founder
 answered all five (a)–(e) at about 11:20Z
-(`founder-sketch-decisions-106-115.md:170-175`), and `origin/train/finish-2`
+(`founder-sketch-decisions-106-115.md:170-176`), and `origin/train/finish-2`
 @`311968205` already brackets them into this file's §9. What is still open
 about the post is its place/shape and the mail preview, named above — decided
 neither.]** This lane decided none of them: it took the cheaper default only
