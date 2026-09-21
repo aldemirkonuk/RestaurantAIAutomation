@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "WineOps",
+    "name": "Mudavym",
     "slug": "wineops-ai",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "ai.wineops.mobile",
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Unlock WineOps with Face ID instead of typing your password.",
+        "NSFaceIDUsageDescription": "Unlock Mudavym with Face ID instead of typing your password.",
         "NSCameraUsageDescription": "The camera scans bottle barcodes and labels while receiving deliveries."
       }
     },

@@ -175,7 +175,7 @@ describe("the house's sending identity", () => {
     expect(identity.ceremony).toBe("none");
     expect(identity.words).toContain("has not connected a mailbox of its own");
     // The deployment mailbox is NAMED as refused, not merely absent.
-    expect(identity.deployment.address).toBe("notifications@wineops.ai");
+    expect(identity.deployment.address).toBe("notifications@mudavym.com");
     expect(identity.deployment.refusedBecause).toContain(
       "belongs to the deployment",
     );
@@ -543,7 +543,11 @@ describe("sending through the house's own grant", () => {
     const decoded = Buffer.from(raw, "base64url").toString("utf8");
     expect(decoded).toContain("From: siparis@lokantamudavim.com");
     expect(decoded).toContain("To: fikri@fikritarim.com");
-    expect(decoded).toContain("Merhaba,");
+    // The body is base64 under its UTF-8 charset since ADR 0172.
+    expect(decoded).toContain("Content-Transfer-Encoding: base64");
+    expect(
+      Buffer.from(decoded.split("\r\n\r\n")[1], "base64").toString("utf8"),
+    ).toBe("Merhaba,");
   });
 
   it("names the missing scope on a 403 rather than widening it", async () => {
@@ -674,10 +678,13 @@ describe("the gmail_send grant, end to end", () => {
     expect(decoded).toContain("To: fikri@fikritarim.com");
     expect(decoded).toContain("Subject: Standing order");
     expect(decoded).toContain('Content-Type: text/plain; charset="UTF-8"');
-    expect(decoded).toContain("Merhaba, teslimatı konuşabilir miyiz?");
+    // The body is base64 under its UTF-8 charset since ADR 0172.
+    expect(
+      Buffer.from(decoded.split("\r\n\r\n")[1], "base64").toString("utf8"),
+    ).toBe("Merhaba, teslimatı konuşabilir miyiz?");
     // Headers end, body begins: a bare CRLFCRLF, once.
     expect(decoded.split("\r\n\r\n").length).toBe(2);
-    expect(decoded).not.toContain("notifications@wineops.ai");
+    expect(decoded).not.toContain("notifications@mudavym.com");
 
     // The id Google returned is written onto the letter's own row, so the book
     // can be reconciled against the mailbox rather than trusted.
