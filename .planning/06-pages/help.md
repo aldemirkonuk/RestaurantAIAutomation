@@ -42,7 +42,11 @@ links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[sommelier]]", "[[services]]", "[[
 > - §5/§10's dead-ended `trackGuidance` telemetry: not carried into the rebuild — the new
 >   page does not import `guidance/analytics.ts` (grepped, zero hits). A fresh telemetry
 >   read for the new page has not been done and is not claimed here.
-> **[added 2026-09-19 — pg-help lane, closing ADR 0160 §111's two must-haves]** ADR 0160
+> **[added 2026-09-19 — pg-help lane, landing ADR 0160 §111's two grafts; corrected
+> 2026-09-21 after PR #413's audit gate caught the label]** These two are the ADR's
+> **grafts**, not its must-haves. §111:385-386 names the must-haves as *the guide
+> collection and promoting the one-tap acts* — carried by `hp-guide.ts`, `hp-nextup.ts`
+> and `hp-readiness.ts`, not by the two below. ADR 0160
 > §111's Decision, verbatim: *"B's What-to-do-next rail and write-to-support modal are
 > grafted in regardless of which base is picked."* Both landed this pass, so "six pure
 > modules" above is now seven, plus one component file:

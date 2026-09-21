@@ -130,6 +130,7 @@ the current restaurants or users, or tables, dbs or such"*. So:
 | 48 | ADR 0133's byte-identical off path (2026-09-18) | option chosen: "Waive it in 0133" — byte-identical ended with row 37; the off path is QA-only until the cutover deletes it | ADR 0133 |
 | 49 | Invite unavailable copy (2026-09-18) | option chosen: "Say which" — the gateway preview returns used, expired or not found and the page names which | ADR 0143 |
 | 50 | Self-registration naming a house (2026-09-18, measured, not asked) | closed rather than decided: no web or mobile surface called `POST /auth/register`, so it answers 410 and the writer is deleted (PR #392); joining an existing house is by invitation, opening one is `/auth/register/restaurant` | ADR 0147 addendum |
+| 51 | /help renders for every house with no flag (2026-09-21) | option chosen: "Always-on, record it" — `/help` joins row 36 as the **seventeenth** always-on page. Raised by PR #413's audit gate, which blocked the PR because the code introduced `ALWAYS_ON_PAGES` (`useMudavymDesign.ts:88`) while row 36 named only sixteen pages and this record listed "111 help" as a gated stop. The gate was right that no decision existed; this row is that decision. No `mudavym_design_help` column, no registry entry, no migration. **Accepted knowingly:** all fourteen houses change `/help` the moment #413 merges, there is no per-house kill switch, and the only rollback is a revert plus a redeploy — the founder was shown that cost and the alternative (an ordinary per-restaurant flag) and chose this | this record row 36; ADR 0160 §111; PR #413 |
 
 ## Consequences
 
@@ -143,7 +144,9 @@ the current restaurants or users, or tables, dbs or such"*. So:
 - **Gated stops inside this record:** (a) every sketch the founder asked to review
   (116 motion, 107 receiving, 108 recommendations, 109 settings, 110 cellar, 111
   help, 112 vendor prices, 113 promotions, 115 arrival action boxes, and the shell
-  if it is not already designed); (b) the deletion manifest, file group by file group.
+  if it is not already designed); [2026-09-21, row 51: "111 help" is
+  released — ADR 0160 §111 supplied the review and row 51 clears it to ship always-on;
+  the other gated sketches stand]; (b) the deletion manifest, file group by file group.
 - **Revisit when:** a cutover revert is needed in production, or a house asks for the
   old design (the signal that a per-house switch was load-bearing after all).
 
@@ -154,3 +157,4 @@ the current restaurants or users, or tables, dbs or such"*. So:
 | 2026-09-16 | Aldemir (founder), in session | Locked — goal plus six rounds of answers |
 | 2026-09-17 | Aldemir (founder), in session | Rows 27-34 added — two further rounds; the motion sketch renumbered 105 to 116 (105 was the rejected login redraw) |
 | 2026-09-17 | Aldemir (founder), in session | Rows 35-38 added — go-live of 16 locked pages, the public switch on, the flyleaf login, the sketch style |
+| 2026-09-21 | Aldemir (founder), in session | Row 51 added — `/help` is the seventeenth always-on page, answering the fork PR #413's audit gate blocked on |

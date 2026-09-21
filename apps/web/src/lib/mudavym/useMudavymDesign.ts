@@ -8,8 +8,11 @@
  *    forces the new design, `"0" | "false" | "off"` forces legacy. Anything
  *    else (or absence) falls through.
  * 2. `ALWAYS_ON_PAGES` — a page that resolves on for every house in code, with
- *    no flag, no registry entry and no migration (ADR 0149 row 36's mechanism;
- *    `/help` is the first to use it, per ADR 0160 §111's build instructions).
+ *    no flag, no registry entry and no migration. Row 36 of ADR 0149 established
+ *    this for its own sixteen named pages; `/help` is NOT one of those sixteen, and
+ *    joins them only by ADR 0149 **row 51** (2026-09-21), which the founder ruled
+ *    after PR #413's audit gate blocked this PR for deciding it in code. Adding a
+ *    page here needs its own row — row 36 is not a blanket authorisation.
  *    Checked before any network read, so an always-on page never spends a
  *    `checkFeatureFlag` request finding out what it already knows.
  * 3. The per-restaurant feature flag `mudavym_design_<page>` via the existing
