@@ -84,6 +84,16 @@ describe('mudavym.com security headers (ADR 0185)', () => {
     for (const [key, values] of seen) expect([...values], `${path} ${key}`).toHaveLength(1);
   });
 
+  it('the second Vercel project (repo-root vercel.json) also keeps no-referrer on token routes (ADR 0158)', () => {
+    const root: { headers: HeaderRule[] } = JSON.parse(readFileSync(join(WEB, '..', '..', 'vercel.json'), 'utf8'));
+    for (const path of TOKEN_SAMPLES) {
+      const values = root.headers
+        .filter((rule) => !rule.has?.length && new RegExp(`^${rule.source}$`).test(path))
+        .flatMap((rule) => rule.headers.filter((h) => h.key.toLowerCase() === 'referrer-policy').map((h) => h.value));
+      expect(values, path).toEqual(['no-referrer']);
+    }
+  });
+
   it('HSTS is not preloaded: preload is effectively irreversible and binds every future subdomain', () => {
     for (const rule of config.headers) {
       for (const h of rule.headers) {
