@@ -231,9 +231,27 @@ also feeds. The five recommendation entries (Order it/`stockout_imminent`, Price
 vendor/`vendor_concentration`, Brief the floor/`sales_below_weekday_baseline`, Schedule it/`weekday_gap`)
 are round 4's own, rewritten brief. Two goals are new, invented for this round from real rows in the
 rule→metric table (`06-pages/recommendations.md:457-469`): purchase spend ≤ $9,500 this month (from
-`spend_acceleration`, on pace) and bottles sold ≥ 340 this month (from `puzzle_activation`/`dead_stock_capital`'s
-metric, behind pace — this is also what feeds the one "Goals slipping" entry, so the two views agree with
-each other rather than each inventing its own number).
+`spend_acceleration`) and bottles sold ≥ 340 this month (from `puzzle_activation`/`dead_stock_capital`'s
+metric).
+
+**The calendar, spelled out so the next reader checks it in one subtraction instead of re-deriving it:**
+September has 30 days; the read date (Wed 16 Sep) is day 16, so this house is **16 days elapsed, 14
+remaining** — not 9, which round 6 found had been propagated from the bottles chip onto the spend chip
+without either being checked against the month itself (round 5 fixed the wrong "22 days left" to a still-wrong
+"9 days left" in six sites, none of them the month's actual arithmetic). Both goal chips now read "14 days
+left." At day 16/30, a straight line wants 340 × 16/30 ≈ 181 bottles and $9,500 × 16/30 ≈ $5,067 spent:
+
+- **Bottles (210 of 340) is *ahead* of that line, not behind** — 210 > 181, and the daily rate needed to
+  finish (130 remaining ÷ 14 days, rounded up so a floor goal is never quietly missed ≈ 10/day) is already
+  below the stated current pace of 13/day (210 ÷ 16 elapsed). It now reads **On pace**.
+- **Spend ($6,180 of $9,500) is *behind* that line** — $6,180 is 22% over the $5,067 straight-line allowance,
+  and holding the cap needs the remaining budget spread thin (($9,500 − $6,180) ÷ 14 days, rounded down so a
+  cap is never quietly busted ≈ $237/day) against a current pace of $386/day ($6,180 ÷ 16 elapsed). It now
+  reads **Behind**, and is the goal that feeds the one "Goals slipping" entry and the mail's third line — the
+  two views still agree with each other, only now against the goal the honest calendar actually puts behind.
+
+Both totals (210 of 340, $6,180 of $9,500) are unchanged from round 4 — this fix moves no invented number,
+only which chip is honestly the behind one once the calendar itself is honest.
 
 ## How to view
 
@@ -251,17 +269,19 @@ own convention, not a live prototype.
 
 ## Screenshots
 
-`shots/direction-a-1440.png` (1440×4895), `shots/direction-a-390.png` (390×7034), `shots/direction-b-1440.png`
-(1440×4937), `shots/direction-b-390.png` (390×6926) — re-rendered in round 5 after the must-fix pass changed
-the goals chart, the "behind" bar, the die labels and the mail sheet. `p4-scratch/render-sketch.mjs` is not
-present in this worktree, so round 5 used an equivalent script (system Chrome via Playwright, the same
-cached build) doing the same three checks: `errors: []`, `horizontalOverflow: false`, and now also a
-`.entry` count (6, matching the corrected "6 stand" in the masthead) on all four renders. Heights grew from
-round 4's own numbers (4714/6592/4805/6533) because the goals chart is now a labelled, baselined chart
-instead of a 30px sliver, and the die rows carry an honesty badge and a longer, order-mode-aware label.
-Additionally spot-checked (not shipped as a file): the goals module rendered with `data-ground="charcoal"`
-at 1440, to confirm the new warm "behind"/"below baseline" color and the die's honesty badge hold contrast
-and legibility in dark mode too; they do.
+`shots/direction-a-1440.png` (1440×4895), `shots/direction-a-390.png` (390×7052), `shots/direction-b-1440.png`
+(1440×4937), `shots/direction-b-390.png` (390×6944) — re-rendered in round 6 after the calendar fix changed
+the goal chips, the goals-slipping entry, the mail's third line and the chart's worst bar. `p4-scratch/
+render-sketch.mjs` is still not present in this worktree, so round 6 used the same equivalent script round 5
+did (system Chrome via Playwright, the same cached `chromium-1217` build), doing the same checks — `errors:
+[]`, `horizontalOverflow: false`, `.entry` count 6, `.mentry` count 3 — on all four renders, plus a fifth,
+geometric check this round added: `.spark .baseline` and `.spark i.worst`'s rendered position, confirming the
+gap between them (see "Round 6" below). Only the two 390-width heights moved (7034→7052, 6926→6944, +18px
+each) — the spend-goal sentence in "Goals slipping" ("needs to hold under $237 a day from here, not the
+current $386") is a few characters longer than the bottles sentence it replaced, wrapping one extra line at
+that width; the two 1440 heights are unchanged (4895, 4937) since nothing there re-wrapped. Round 5's other
+findings (goals chart, die honesty badge, `data-ground="charcoal"` contrast) were not re-tested here — round
+6 touched none of that markup or CSS, only the goal-chip/entry/mail text and one `style="height"` attribute.
 
 One real bug was caught and fixed during this pass, not just a cosmetic one: an early draft hid the ENTIRE
 main page frame at the 390 viewport (a stray `desk-only` class copied from round 4's CSS, whose matching
@@ -269,6 +289,25 @@ mobile markup this round doesn't build) — the first 390 renders showed only th
 of the actual page. Caught by rendering before finalizing, not assumed correct; removing the class restored
 the page at 390 (scroll height went from ~3,600px, which was wrong, to the true ~6,500-6,600px), and both
 files were re-rendered and re-checked after the fix.
+
+**Round 6.** Round 5's own last call found its "9 days left" fix (replacing round 4's impossible "22 days
+left") was itself still impossible — 16 elapsed + 9 remaining is 25 days, no month — and that everything built
+on the wrong 9 needed re-deriving together, not swapped digit-by-digit. Fixed by recomputing from the read
+date (Wed 16 Sep, day 16 of a 30-day September → 16 elapsed, 14 remaining; see "The example house" above for
+the full derivation) rather than picking a new number: both goal chips now say "14 days left"; the honest
+pace math puts **bottles** ahead of its straight line (210 vs. a 181-bottle linear target) and **spend**
+behind its own (`$6,180` vs. a `$5,067` linear allowance, 22% over) — the reverse of what was drawn — so the
+`behind`/`gpace behind` class and the "Goals slipping" entry moved from the bottles chip to the spend chip,
+using the same 210/340 and `$6,180`/`$9,500` totals already in the file, not new ones. The chart's `−38%`
+callout (correct, sourced from entry 04's own `$1,940` vs. `$3,120`) sat on a bar drawn 58% below its own
+baseline, not 38% — `direction-a.html`'s `.goal-chip.suggest .spark i.worst` height moved from `22%` to `32%`
+of its 46px-tall container (`bottom:52%` baseline unchanged), which is `(52−32)÷52 = 38.46%` below baseline,
+confirmed both algebraically and by measuring the rendered bar's height in a live Chromium page (14.72px
+measured against a computed 14.72px for `32% × 46px`). Every one of these six figures was re-derived from the
+read date and the two goals' own totals with `python3`, not eyeballed; the six-line calculation and its output
+are recorded in this lane's session but not shipped as a file here, since the numbers themselves are now in
+the markup and in this section. A repo-wide sweep for the old "9 days"/"22 days" strings and for any remaining
+"Bottles goal is behind" text returned zero hits in both HTML files after the fix.
 
 ## What I could not verify
 
