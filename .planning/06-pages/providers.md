@@ -61,6 +61,16 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
   malformed one, or an identity with no seller name creates **nothing** — name similarity is
   not a rule here and does not become one.
 - **Discover** tab: the U.S. distributor catalogue on a map with facet filters and one-tap add
+- **The operational vendor scorecard** (redesign only, ADR 0207, sketch 117 A + B + C as
+  the founder picked it 2026-09-21): *What they did* in the TwinSheet — on time, lines as
+  ordered, price as agreed, reply time, credits recovered, each a count over its
+  denominator with the prior window's own count and a link to its rows; one fact on each
+  card (*Did · 90 d*); a *Book · Scorecard* switch (`?view=scorecard`) whose Scorecard is
+  the Roll Call; and the Docket, a stacked sheet of the dated rows behind every figure.
+  Too few, not collected and could-not-read are sentences with their counts, never a zero.
+  Tone is a minor line in no figure. **No alert is built** — a labelled set and a shadow
+  run come first. Files: `pages/providers/next/scorecard/*`,
+  `apps/api-gateway/src/providers/scorecard/*`
 - Export; contextual insights rail
 - 🚧 No link to `/vendor-prices` price comparison — that page is unreachable from here (§9)
 - **Vendor terms on the vendor's row** (redesign only, TwinSheet §Terms): the five terms
@@ -297,6 +307,10 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
   (`apps/api-gateway/src/vendor-terms/vendor-terms.controller.ts:44,71`) via
   `pages/providers/next/useProviderTerms.ts`. The GET is house-wide — there is no
   per-provider read route (§9)
+- Scorecard (redesign only, ADR 0207): `GET /vendor-scorecard?window=30|90|365` (the
+  Roll Call and each card's fact), `GET /vendor-scorecard/:id` (the ledger card),
+  `GET /vendor-scorecard/:id/docket?measure=` (the rows) — house from the token, a
+  foreign vendor is 404 (`apps/api-gateway/src/providers/scorecard/vendor-scorecard.controller.ts`)
 - Intelligence panel: `GET /providers/:id/promotions`, `/providers/promotions/active`,
   `/expiring`, `/savings` + knowledge/conversation-memory
   (`services/api/provider-intelligence.ts`; ENDPOINTS.md:450-459)

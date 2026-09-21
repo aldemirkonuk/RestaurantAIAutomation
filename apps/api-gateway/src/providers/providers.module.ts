@@ -3,6 +3,8 @@ import { ProvidersController } from "./providers.controller";
 import { ProvidersService } from "./providers.service";
 import { ProviderIntelligenceController } from "./provider-intelligence.controller";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
+import { VendorScorecardController } from "./scorecard/vendor-scorecard.controller";
+import { VendorScorecardService } from "./scorecard/vendor-scorecard.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { EventsModule } from "../events/events.module";
@@ -39,8 +41,17 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     ProcurementModule,
     OrganizationsModule,
   ],
-  controllers: [ProvidersController, ProviderIntelligenceController],
-  providers: [ProvidersService, ProviderIntelligenceService],
+  controllers: [
+    ProvidersController,
+    ProviderIntelligenceController,
+    // ADR 0207 — the operational vendor scorecard, on its own prefix.
+    VendorScorecardController,
+  ],
+  providers: [
+    ProvidersService,
+    ProviderIntelligenceService,
+    VendorScorecardService,
+  ],
   exports: [ProvidersService, ProviderIntelligenceService],
 })
 export class ProvidersModule {}

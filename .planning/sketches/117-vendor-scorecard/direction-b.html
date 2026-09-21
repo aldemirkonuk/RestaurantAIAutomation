@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 117 · Direction B — The Roll Call</title>
+<!-- The product self-hosts its faces; the sketch loads them from Google Fonts only so it renders from file://. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Sketch chrome — NOT the product. */
+html, body { margin: 0; background: #d9d4cb; color: #2a2620; font-family: 'DM Sans', system-ui, sans-serif; }
+.sk-wrap { max-width: 1440px; margin: 0 auto; padding: 24px 20px 80px; }
+.sk-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; margin-bottom: 18px; }
+.sk-head h1 { margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 500; font-size: 22px; letter-spacing: -0.01em; }
+.sk-head p { margin: 0; font-size: 13px; color: #5a5348; max-width: 980px; line-height: 1.5; }
+.sk-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #6b6356; margin: 34px 0 10px; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.sk-label small { letter-spacing: 0; text-transform: none; font-size: 12px; color: #7a7266; }
+.sk-note { font-size: 12.5px; color: #5a5348; max-width: 980px; margin: 0 0 12px; line-height: 1.5; }
+.sk-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.sk-frame { border: 1px solid rgba(0,0,0,.18); box-shadow: 0 1px 0 rgba(255,255,255,.5) inset; }
+.sk-phone { width: 390px; box-sizing: border-box; border-radius: 28px; border: 6px solid #2a2620; overflow: hidden; background: #15130F; flex: none; }
+.sk-cap { font-size: 11.5px; color: #6b6356; margin: 6px 0 0; max-width: 460px; line-height: 1.45; }
+@media (max-width: 600px) {
+  .sk-wrap { padding: 12px 8px 40px; }
+  .sk-phone, .st-frame { width: 100% !important; max-width: 100%; }
+  .sk-row > .sk-frame { width: 100% !important; }
+}
+
+/* Mudavym tokens — verbatim from apps/web/src/styles/mudavym.css (ADR 0042, ADR 0138). */
+.mudavym, .mudavym[data-ground="charcoal"] {
+  --seal: #5FB0BC; --seal-deep: #7DC3CD;
+  --seal-tint: rgba(95,176,188,.14); --seal-ring: rgba(95,176,188,.38);
+  --paper-0: #15130F; --paper-1: #1D1813; --paper-2: #262019;
+  --ink-1: #EFE7D9; --ink-2: #C0B6A5; --ink-3: #8E8576; --ink-4: #ABA294;
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --settle: 320ms cubic-bezier(0.16,1,0.3,1);
+  --ink-t: 160ms cubic-bezier(0.16,1,0.3,1);
+  --turn: 420ms cubic-bezier(0.32,0.72,0,1);
+  --tuck: 300ms cubic-bezier(0.2,0.9,0.3,1);
+  color-scheme: dark;
+}
+.mudavym[data-ground="paper"] {
+  --seal: #1a5e6b; --seal-deep: #14515c;
+  --seal-tint: rgba(26,94,107,.1); --seal-ring: rgba(26,94,107,.32);
+  --paper-0: #fffdf8; --paper-1: #f3efe6; --paper-2: #eae4d8;
+  --ink-1: #211c16; --ink-2: #4f473c; --ink-3: #7c7365; --ink-4: #665d50;
+  color-scheme: light;
+}
+@media (prefers-reduced-motion: reduce) { .mudavym * { transition-duration: 0ms !important; animation: none !important; } }
+
+/* The page. Prefix rc- (roll call). */
+.rc-page { background: var(--paper-0); color: var(--ink-1); font-family: var(--sans); font-size: 13px; line-height: 1.45; container-type: inline-size; container-name: page; position: relative; overflow: hidden; }
+.rc-in { max-width: 1200px; margin: 0 auto; padding: 22px 16px 40px; }
+.rc-chrome { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 24px; border-bottom: 1px solid var(--paper-2); font-size: 12.5px; color: var(--ink-2); background: var(--paper-0); }
+.rc-chrome .mark { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--seal); box-sizing: border-box; position: relative; }
+.rc-chrome .mark::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--seal); }
+.rc-chrome .rule { width: 1px; height: 18px; background: var(--paper-2); }
+.rc-chrome .page { font-family: var(--serif); font-weight: 600; font-size: 15px; color: var(--ink-1); }
+.rc-chrome .search { margin: 0 auto; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px 6px 11px; border: 1px solid var(--paper-2); border-radius: 9px; background: var(--paper-1); color: var(--ink-3); min-width: 260px; }
+.rc-chrome .kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--paper-2); border-radius: 4px; padding: 1px 5px; color: var(--ink-3); margin-left: auto; }
+.rc-chrome .house { color: var(--ink-1); font-weight: 500; }
+.rc-chrome .bell { width: 8px; height: 8px; border-radius: 50%; background: var(--seal); display: inline-block; }
+
+.rc-wordmark { font-family: var(--serif); font-weight: 600; letter-spacing: -0.02em; font-size: 13px; line-height: 1; color: var(--ink-1); }
+.rc-wordmark b { color: var(--seal); font-weight: 600; }
+.rc-h1 { margin: 4px 0 0; font-family: var(--serif); font-size: 30px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1; }
+.rc-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; }
+.rc-seg { display: inline-flex; border: 1px solid var(--paper-2); border-radius: 8px; overflow: hidden; }
+.rc-seg span { padding: 6px 14px; font-size: 12.5px; color: var(--ink-3); cursor: pointer; transition: color var(--ink-t), background-color var(--ink-t); }
+.rc-seg span[data-on="true"] { color: var(--ink-1); background: var(--paper-1); }
+.rc-standing { margin: 14px 0 0; font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--ink-2); max-width: 900px; line-height: 1.5; }
+.rc-standing b { font-style: normal; color: var(--ink-1); font-weight: 500; }
+.rc-standing .src { font-style: normal; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-left: 6px; }
+.rc-tools { display: flex; align-items: center; gap: 10px; margin: 16px 0 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); }
+.rc-chip { font-family: var(--mono); font-size: 10.5px; padding: 3px 8px; border: 1px solid var(--paper-2); border-radius: 6px; color: var(--ink-2); cursor: pointer; transition: border-color var(--ink-t); }
+.rc-chip[data-on="true"] { border-color: var(--ink-3); color: var(--ink-1); }
+.rc-tools .sort { margin-left: auto; }
+.rc-tools .sort b { color: var(--ink-2); font-weight: 500; }
+
+/* the roll call — one table, every cell a fraction with its denominator */
+.rc-scroll { overflow-x: auto; }
+.rc-table { width: 100%; border-collapse: collapse; min-width: 980px; }
+.rc-table th { text-align: left; vertical-align: bottom; padding: 8px 10px 10px; border-bottom: 1px solid var(--ink-1); font-weight: 500; }
+.rc-table th .t { font-family: var(--serif); font-size: 14.5px; color: var(--ink-1); display: block; letter-spacing: -0.005em; }
+.rc-table th .r { font-family: var(--mono); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); display: block; margin-top: 3px; font-weight: 400; }
+.rc-table th[data-sort="true"] .t::after { content: " ↓"; color: var(--seal); }
+.rc-table th.q { cursor: pointer; }
+.rc-table th.q:hover .t { color: var(--seal-deep); }
+.rc-table td { padding: 10px 10px; border-bottom: 1px solid var(--paper-2); vertical-align: top; }
+.rc-table tr:hover td { background: var(--paper-1); }
+.rc-table td.v .name { font-family: var(--serif); font-size: 15px; font-weight: 600; color: var(--ink-1); letter-spacing: -0.01em; display: block; line-height: 1.2; }
+.rc-table td.v .type { font-family: var(--mono); font-size: 8.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--seal-deep); }
+.rc-table td.v .n { font-size: 11px; color: var(--ink-3); margin-top: 3px; display: block; }
+.rc-cell { display: block; background: none; border: 0; padding: 0; margin: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%; }
+.rc-cell .f { font-family: var(--mono); font-size: 17px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink-1); white-space: nowrap; letter-spacing: -0.01em; }
+.rc-cell .f small { font-size: 10.5px; color: var(--ink-3); font-weight: 400; margin-left: 4px; letter-spacing: 0; }
+.rc-cell .p { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.rc-cell .p b { color: var(--ink-2); font-weight: 500; }
+.rc-cell .rows { display: block; font-size: 11px; color: var(--seal); margin-top: 3px; opacity: 0; transition: opacity var(--ink-t); }
+.rc-table tr:hover .rc-cell .rows { opacity: 1; }
+.rc-cell.refuse { cursor: default; }
+.rc-cell.refuse .f { font-family: var(--serif); font-style: italic; font-size: 13px; font-weight: 400; color: var(--ink-2); white-space: normal; }
+.rc-cell.refuse .p { font-family: var(--sans); }
+.rc-cell.refuse .rows { opacity: 1; }
+.rc-foot { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-3); margin: 10px 0 0; line-height: 1.5; }
+.rc-foot b { color: var(--ink-2); font-weight: 500; }
+
+/* the shadow band — what would have alerted, nothing ships */
+.rc-shadow { margin-top: 26px; border: 1px dashed var(--ink-3); border-radius: 10px; padding: 14px 16px 12px; }
+.rc-shadow header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.rc-shadow header h3 { margin: 0; font-family: var(--serif); font-size: 17px; font-weight: 500; }
+.rc-shadow header .m { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+.rc-shadow header .gate { margin-left: auto; font-size: 11.5px; color: var(--ink-3); max-width: 460px; text-align: right; }
+.rc-shadow header .gate b { color: var(--ink-2); font-weight: 500; }
+.rc-cands { list-style: none; margin: 12px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.rc-cand { border: 1px solid var(--paper-2); border-radius: 8px; background: var(--paper-1); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.rc-cand .who { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); display: flex; justify-content: space-between; }
+.rc-cand .what { font-family: var(--serif); font-size: 14px; line-height: 1.3; color: var(--ink-1); }
+.rc-cand .ev { font-family: var(--mono); font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.rc-cand .lab { display: flex; gap: 6px; align-items: center; margin-top: 2px; font-size: 11px; color: var(--ink-3); flex-wrap: wrap; }
+.rc-btn { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: 1px solid var(--paper-2); border-radius: 6px; background: var(--paper-0); color: var(--ink-2); font: inherit; font-size: 11.5px; cursor: pointer; transition: border-color var(--ink-t), color var(--ink-t); }
+.rc-btn:hover { border-color: var(--seal-ring); color: var(--ink-1); }
+.rc-btn[data-on="true"] { border-color: var(--ink-3); color: var(--ink-1); }
+.rc-btn.primary { background: var(--seal); border-color: var(--seal); color: var(--paper-0); font-weight: 500; }
+.rc-cand .done { font-size: 11px; color: var(--ink-3); }
+.rc-cand .done b { color: var(--ink-2); font-weight: 500; }
+
+/* skeleton */
+.rc-skel { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--paper-1), var(--paper-2), var(--paper-1)); background-size: 200% 100%; animation: rc-sh 1.6s linear infinite; display: block; }
+@keyframes rc-sh { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+.rc-note { background: var(--paper-1); border: 1px solid var(--paper-2); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; max-width: 720px; }
+.rc-note b { color: var(--ink-1); font-weight: 500; }
+.rc-note .src { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.rc-note .act { margin-top: 8px; display: flex; gap: 6px; }
+
+/* overlays — ADR 0112 shapes at the product's numbers (sheet.css) */
+.ov-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.22); }
+.ov-sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; max-width: 440px; background: var(--paper-0); border-left: 1px solid var(--paper-2); box-shadow: -18px 0 40px rgba(0,0,0,.35); display: flex; flex-direction: column; }
+.ov-sheet.standalone { position: relative; max-width: none; box-shadow: none; border-left: 0; }
+.ov-hd { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--paper-2); }
+.ov-hd .eyebrow { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--seal-deep); }
+.ov-hd .title { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; margin-top: 2px; }
+.ov-hd .esc { margin-left: auto; font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--paper-2); border-radius: 4px; padding: 2px 6px; color: var(--ink-3); }
+.ov-spine { display: flex; gap: 6px; font-family: var(--mono); font-size: 10px; color: var(--ink-3); padding: 8px 18px 0; }
+.ov-spine b { color: var(--ink-2); font-weight: 500; }
+.ov-body { padding: 12px 18px 22px; }
+.ov-body table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ov-body th { text-align: left; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; padding: 6px 0; border-bottom: 1px solid var(--paper-2); }
+.ov-body td { padding: 7px 0; border-bottom: 1px solid var(--paper-2); vertical-align: top; color: var(--ink-2); }
+.ov-body td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink-1); }
+.ov-body td a { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); }
+.ov-body tr.struck td { color: var(--ink-3); }
+.ov-body .sum { margin-top: 10px; font-size: 11.5px; color: var(--ink-2); line-height: 1.5; }
+.ov-body .sum b { color: var(--ink-1); font-weight: 500; }
+/* the popover — anchored, width 320, radius 14 */
+.ov-pop { width: 320px; border: 1px solid var(--paper-2); border-radius: 14px; background: var(--paper-1); box-shadow: 0 12px 30px rgba(0,0,0,.35); padding: 12px 14px; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.ov-pop h4 { margin: 0 0 6px; font-family: var(--serif); font-size: 15px; font-weight: 500; color: var(--ink-1); }
+.ov-pop p { margin: 0 0 6px; }
+.ov-pop b { color: var(--ink-1); font-weight: 500; }
+.ov-pop .src { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.ov-pop .act { display: flex; gap: 6px; margin-top: 8px; }
+/* the centred panel — a question: top 10vh, min(620, 100% − 32), radius 14 */
+.ov-panel { width: min(620px, 100% - 32px); margin: 0 auto; border: 1px solid var(--paper-2); border-radius: 14px; background: var(--paper-0); box-shadow: 0 24px 60px rgba(0,0,0,.45); color: var(--ink-1); font-family: var(--sans); }
+.ov-panel .pb .ev .w, .ov-panel .pb .ev .f { display: block; }
+.ov-panel .ph { padding: 18px 22px 12px; border-bottom: 1px solid var(--paper-2); }
+.ov-panel .ph .contract { font-family: var(--serif); font-size: 19px; font-weight: 500; line-height: 1.25; letter-spacing: -0.01em; }
+.ov-panel .ph .contract b { color: var(--seal); font-weight: 500; }
+.ov-panel .ph .sub { margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+.ov-panel .pb { padding: 14px 22px 18px; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+.ov-panel .pb .ev { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 12px; }
+.ov-panel .pb .ev div { border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; background: var(--paper-1); }
+.ov-panel .pb .ev .w { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.ov-panel .pb .ev .f { font-family: var(--mono); font-size: 20px; font-weight: 500; color: var(--ink-1); margin-top: 2px; }
+.ov-panel .pb .ev .f small { font-size: 11px; color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+.ov-panel .pf { display: flex; gap: 8px; align-items: center; padding: 12px 22px 18px; border-top: 1px solid var(--paper-2); font-size: 11.5px; color: var(--ink-3); flex-wrap: wrap; }
+.ov-panel .pf .sp { flex: 1; }
+
+/* states */
+.st-frame { width: 460px; flex: none; background: var(--paper-0); border: 1px solid var(--paper-2); color: var(--ink-1); font-family: var(--sans); font-size: 13px; line-height: 1.45; padding: 16px 18px; box-sizing: border-box; }
+
+/* phone — the table becomes a stack of vendor blocks, five lines each */
+@container page (max-width: 480px) {
+  .rc-in { padding: 16px 14px 28px; }
+  .rc-chrome { padding: 0 14px; } .rc-chrome .search { display: none; }
+  .rc-standing { font-size: 14px; }
+  .rc-tools .sort { margin-left: 0; width: 100%; }
+  .rc-table { min-width: 0; }
+  .rc-table thead { display: none; }
+  .rc-table, .rc-table tbody, .rc-table tr, .rc-table td { display: block; }
+  .rc-table tr { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 10px 14px; margin-bottom: 10px; }
+  .rc-table td { padding: 6px 0; border-bottom: 1px dashed var(--paper-2); display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: baseline; }
+  .rc-table td:last-child { border-bottom: 0; }
+  .rc-table td.v { display: block; border-bottom: 1px solid var(--paper-2); padding-bottom: 8px; margin-bottom: 2px; }
+  .rc-table td.m::before { content: attr(data-label); font-family: var(--serif); font-size: 13.5px; color: var(--ink-1); }
+  .rc-cell { width: auto; text-align: right; }
+  .rc-cell .f { font-size: 15px; }
+  .rc-cell .rows { opacity: 1; }
+  .rc-cell.refuse .f { font-size: 12px; }
+  .rc-cands { grid-template-columns: 1fr; }
+  .rc-shadow header .gate { text-align: left; margin-left: 0; }
+  .ov-sheet { top: auto; left: 0; right: 0; bottom: 0; max-width: none; height: 86%; border-left: 0; border-top: 1px solid var(--paper-2); border-radius: 18px 18px 0 0; box-shadow: 0 -18px 40px rgba(0,0,0,.4); }
+  .ov-sheet::before { content: ""; display: block; width: 36px; height: 4px; border-radius: 2px; background: var(--ink-3); margin: 8px auto 0; opacity: .7; }
+}
+</style>
+</head>
+<body>
+<div class="sk-wrap">
+  <div class="sk-head">
+    <h1>Sketch 117 · Direction B — The Roll Call</h1>
+    <p>The scorecard is a <b>second view of /providers</b> — Book · Scorecard — that puts the house's vendors <b>side by side on five measures</b>. Every cell is a count over a count with the prior window beneath it; a vendor that has not earned a figure gets a sentence in the cell, in italic, never a dash that could be read as zero and never a blank that could be read as clean. Rows are ordered by deliveries in the window (a scanning order), and sorting by a measure sends the unscorable rows to the bottom — never among the scored. Under the table, the <b>shadow run</b>: what would have alerted, labelled by a person, nothing shipped.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">1 · Desktop, 1200 · Harbor &amp; Vine, Brooklyn (USD) <small>/providers?view=scorecard · 90 days against the 90 before</small></div>
+  <div class="mudavym sk-frame" data-ground="charcoal">
+  <div class="rc-page">
+    <div class="rc-chrome"><span class="mark"></span><span class="rule"></span><span class="page">Providers</span><span class="search">Search the house… <span class="kbd">⌘K</span></span><span class="house">Harbor &amp; Vine</span><span class="bell"></span></div>
+    <div class="rc-in">
+      <div class="rc-head">
+        <div><div class="rc-wordmark">Muda<b>vym</b></div><h1 class="rc-h1">Providers</h1></div>
+        <div class="rc-seg"><span>Book</span><span data-on="true">Scorecard</span></div>
+      </div>
+      <p class="rc-standing"><b>6 vendors, 4 with enough deliveries to score this window.</b> Each figure is a count of records over a count of records from this house's own registers — never a grade, never a rank. The score needs <b>5 deliveries</b> in the window; a measure with fewer prints its count and no figure. Every figure opens to its rows. <span class="src">orders · receiving · invoice match · mail · credits · read 09:41</span></p>
+      <div class="rc-tools">
+        <span>Window</span><span class="rc-chip">30 d</span><span class="rc-chip" data-on="true">90 d</span><span class="rc-chip">365 d</span>
+        <span>19 Jun – 17 Sep · prior 21 Mar – 18 Jun</span>
+        <span class="sort">Order: <b>by deliveries in the window</b> — click a measure to sort by it; rows that cannot be scored go last, never among the scored.</span>
+      </div>
+
+      <div class="rc-scroll">
+      <table class="rc-table">
+        <thead><tr>
+          <th><span class="t">Vendor</span><span class="r">deliveries · 90 d</span></th>
+          <th class="q"><span class="t">On time</span><span class="r">by the expected date</span></th>
+          <th class="q"><span class="t">Lines as ordered</span><span class="r">no short · refused · damaged</span></th>
+          <th class="q"><span class="t">Price as agreed</span><span class="r">invoiced at the agreed price</span></th>
+          <th class="q"><span class="t">Reply time</span><span class="r">median · same thread</span></th>
+          <th class="q"><span class="t">Credits recovered</span><span class="r">credited of promised</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="v"><span class="type">Produce</span><span class="name">Greenmarket Provisions</span><span class="n">34 deliveries · daily</span></td>
+            <td class="m" data-label="On time"><button class="rc-cell"><span class="f">31<small>of 34</small></span><span class="p">prior <b>29 of 33</b></span><span class="rows">34 deliveries ›</span></button></td>
+            <td class="m" data-label="Lines as ordered"><button class="rc-cell"><span class="f">402<small>of 418</small></span><span class="p">prior <b>396 of 398</b></span><span class="rows">16 verdicts ›</span></button></td>
+            <td class="m" data-label="Price as agreed"><button class="rc-cell refuse"><span class="f">no agreed price</span><span class="p">market lines — 418 of 418 not comparable</span><span class="rows">why ›</span></button></td>
+            <td class="m" data-label="Reply time"><button class="rc-cell"><span class="f">1 h 05<small>median · 22</small></span><span class="p">prior <b>1 h 20 · 19</b></span><span class="rows">22 replies ›</span></button></td>
+            <td class="m" data-label="Credits recovered"><button class="rc-cell"><span class="f">$96.00<small>of $96.00</small></span><span class="p">prior <b>$40.00 of $58.00</b></span><span class="rows">2 claims ›</span></button></td>
+          </tr>
+          <tr>
+            <td class="v"><span class="type">Wine &amp; spirits</span><span class="name">Skurnik Wines &amp; Spirits</span><span class="n">14 deliveries · Tue, Thu</span></td>
+            <td class="m" data-label="On time"><button class="rc-cell"><span class="f">12<small>of 14</small></span><span class="p">prior <b>9 of 13</b></span><span class="rows">14 deliveries ›</span></button></td>
+            <td class="m" data-label="Lines as ordered"><button class="rc-cell"><span class="f">209<small>of 212</small></span><span class="p">prior <b>171 of 174</b></span><span class="rows">3 verdicts ›</span></button></td>
+            <td class="m" data-label="Price as agreed"><button class="rc-cell"><span class="f">183<small>of 187</small></span><span class="p">prior <b>158 of 160</b> · 25 not comparable</span><span class="rows">4 lines ›</span></button></td>
+            <td class="m" data-label="Reply time"><button class="rc-cell"><span class="f">5 h 40<small>median · 9</small></span><span class="p">prior <b>7 h 10 · 7</b></span><span class="rows">9 replies ›</span></button></td>
+            <td class="m" data-label="Credits recovered"><button class="rc-cell"><span class="f">$286.00<small>of $412.50</small></span><span class="p">1 promised · 39 d · <b>not recovered</b></span><span class="rows">3 claims ›</span></button></td>
+          </tr>
+          <tr>
+            <td class="v"><span class="type">Wine &amp; spirits</span><span class="name">Empire Merchants</span><span class="n">11 deliveries · Wed</span></td>
+            <td class="m" data-label="On time"><button class="rc-cell"><span class="f">11<small>of 11</small></span><span class="p">prior <b>10 of 10</b></span><span class="rows">11 deliveries ›</span></button></td>
+            <td class="m" data-label="Lines as ordered"><button class="rc-cell"><span class="f">140<small>of 140</small></span><span class="p">prior <b>122 of 123</b></span><span class="rows">0 verdicts ›</span></button></td>
+            <td class="m" data-label="Price as agreed"><button class="rc-cell"><span class="f">112<small>of 121</small></span><span class="p">prior <b>118 of 119</b> · mean +4.8%</span><span class="rows">9 lines ›</span></button></td>
+            <td class="m" data-label="Reply time"><button class="rc-cell refuse"><span class="f">not collected</span><span class="p">no mailbox linked for this vendor</span><span class="rows">connect ›</span></button></td>
+            <td class="m" data-label="Credits recovered"><button class="rc-cell"><span class="f">$0.00<small>of $0.00</small></span><span class="p">no claims opened</span><span class="rows">0 claims ›</span></button></td>
+          </tr>
+          <tr>
+            <td class="v"><span class="type">Wine importer</span><span class="name">Winebow</span><span class="n">6 deliveries · Thu</span></td>
+            <td class="m" data-label="On time"><button class="rc-cell"><span class="f">4<small>of 6</small></span><span class="p">prior <b>3 deliveries</b> — under 5, no comparison</span><span class="rows">6 deliveries ›</span></button></td>
+            <td class="m" data-label="Lines as ordered"><button class="rc-cell"><span class="f">58<small>of 61</small></span><span class="p">prior <b>3 deliveries</b> — no comparison</span><span class="rows">3 verdicts ›</span></button></td>
+            <td class="m" data-label="Price as agreed"><button class="rc-cell"><span class="f">37<small>of 41</small></span><span class="p">prior <b>38 of 38</b> · mean +3.6%</span><span class="rows">4 lines ›</span></button></td>
+            <td class="m" data-label="Reply time"><button class="rc-cell"><span class="f">26 h<small>median · 5</small></span><span class="p">prior <b>2 replies</b> — no comparison</span><span class="rows">5 replies ›</span></button></td>
+            <td class="m" data-label="Credits recovered"><button class="rc-cell"><span class="f">$0.00<small>of $74.00</small></span><span class="p">1 requested · 6 d · <b>not recovered</b></span><span class="rows">1 claim ›</span></button></td>
+          </tr>
+          <tr>
+            <td class="v"><span class="type">Wine &amp; spirits</span><span class="name">Southern Glazer's</span><span class="n">2 deliveries</span></td>
+            <td class="m" data-label="On time"><span class="rc-cell refuse"><span class="f">too few — 2 of 5</span><span class="p">both by the expected date; listed, not scored</span><span class="rows">2 deliveries ›</span></span></td>
+            <td class="m" data-label="Lines as ordered"><span class="rc-cell refuse"><span class="f">too few</span><span class="p">29 lines on those 2</span></span></td>
+            <td class="m" data-label="Price as agreed"><span class="rc-cell refuse"><span class="f">too few</span></span></td>
+            <td class="m" data-label="Reply time"><button class="rc-cell"><span class="f">14 h 05<small>median · 5</small></span><span class="p">replies are their own count</span><span class="rows">5 replies ›</span></button></td>
+            <td class="m" data-label="Credits recovered"><span class="rc-cell refuse"><span class="f">no claims</span></span></td>
+          </tr>
+          <tr>
+            <td class="v"><span class="type">Ice &amp; dry goods</span><span class="name">Brooklyn Ice &amp; Provisions</span><span class="n">no orders in 365 d</span></td>
+            <td class="m" data-label="On time"><span class="rc-cell refuse"><span class="f">nothing to score</span><span class="p">in the book, no orders, no paper, no mail</span><span class="rows">place an order ›</span></span></td>
+            <td class="m" data-label="Lines as ordered"><span class="rc-cell refuse"><span class="f">—</span></span></td>
+            <td class="m" data-label="Price as agreed"><span class="rc-cell refuse"><span class="f">—</span></span></td>
+            <td class="m" data-label="Reply time"><span class="rc-cell refuse"><span class="f">—</span></span></td>
+            <td class="m" data-label="Credits recovered"><span class="rc-cell refuse"><span class="f">—</span></span></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="rc-foot">
+        <span><b>Not comparable</b> is not a miss: a market-price line has no agreed price to be held to, so it is outside the denominator, and the cell says how many.</span>
+        <span><b>Tone</b> is not a column. A model's reading of reply tone is a minor input the house has not labelled; it is on the vendor's sheet, marked <i>not scored</i>.</span>
+      </div>
+
+      <div class="rc-shadow">
+        <header><h3>Shadow run</h3><span class="m">since 3 Sep · 11 candidates · 3 labelled · 0 shipped</span>
+          <span class="gate">Nothing ships until a <b>labelled set</b> exists and the shadow run agrees with it. How many labels, and how much agreement, is a decision this sketch does not take — the band counts toward whatever is decided.</span></header>
+        <ul class="rc-cands">
+          <li class="rc-cand"><span class="who"><span>Winebow · price</span><span>12 Sep</span></span>
+            <span class="what">Price as agreed fell: 4 lines above it this window, none in the prior.</span>
+            <span class="ev">37 of 41 · prior 38 of 38 · mean +3.6%</span>
+            <span class="lab"><span class="rc-btn">Worth an alert</span><span class="rc-btn">Not worth it</span><span class="rc-btn">Unsure</span></span></li>
+          <li class="rc-cand"><span class="who"><span>Skurnik · reply</span><span>4 Sep</span></span>
+            <span class="what">Reply time doubled against the 30 days before.</span>
+            <span class="ev">5 h 40 · 9 replies · prior 30 d 2 h 50 · 6</span>
+            <span class="done">Labelled <b>Not worth it</b> — Deniz A., 6 Sep: "August, the rep was on leave."</span></li>
+          <li class="rc-cand"><span class="who"><span>Greenmarket · lines</span><span>15 Sep</span></span>
+            <span class="what">Short lines rose: 16 this window, 2 in the prior.</span>
+            <span class="ev">402 of 418 · prior 396 of 398</span>
+            <span class="lab"><span class="rc-btn">Worth an alert</span><span class="rc-btn">Not worth it</span><span class="rc-btn">Unsure</span></span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  </div>
+  <p class="sk-cap">Six rows, four scored. A cell that cannot score is a sentence in italic serif — <i>too few</i>, <i>not collected</i>, <i>no agreed price</i>, <i>nothing to score</i> — with the count that explains it. The shadow band is the labelled evaluation in the page: a candidate alert is a card, a person's label is a record with a name.</p>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">2 · Overlays, drawn open <small>popover on a column head (the rule) · sheet from a cell (the rows) · centred panel for a label (a question)</small></div>
+  <div class="sk-row">
+    <div class="mudavym sk-frame" data-ground="charcoal" style="width:400px; flex:none; padding:26px 30px 30px; box-sizing:border-box; background:var(--paper-0);">
+      <div style="font-family:var(--serif); font-size:14.5px; color:var(--ink-1); padding:0 10px 10px; border-bottom:1px solid var(--ink-1)">Price as agreed <span style="color:var(--seal)">↓</span><br><span style="font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3)">invoiced at the agreed price</span></div>
+      <div class="ov-pop" style="margin-top:8px">
+        <h4>How this column is counted</h4>
+        <p><b>Numerator:</b> invoiced lines whose unit price equals the agreed price for that line, in the agreement's currency. <b>Denominator:</b> invoiced lines that have an agreed price. Lines with none — market lines, first orders, lines the paper could not be read for — are <b>not comparable</b> and counted beside the figure, not inside it.</p>
+        <p><b>Agreed</b> means the order's confirmed price (the built behaviour of ADR 0103/0104); <i>landed vs agreed</i> from ADR 0054 is Proposed and not used here.</p>
+        <p>Sorting by this column puts <b>too few</b> and <b>not comparable</b> rows last, in their own group.</p>
+        <span class="src">invoice-match.ts · check "price" · agreed-price.ts</span>
+        <div class="act"><span class="rc-btn primary">Sort by this</span><span class="rc-btn">Close</span></div>
+      </div>
+    </div>
+
+    <div class="mudavym sk-frame" data-ground="charcoal" style="width:440px; flex:none;">
+      <div class="rc-page">
+        <aside class="ov-sheet standalone">
+          <div class="ov-spine"><b>Scorecard</b><span>›</span><span>Winebow</span><span>›</span><span>Price as agreed</span></div>
+          <div class="ov-hd"><div><div class="eyebrow">90 d · 19 Jun – 17 Sep</div><div class="title">41 lines with an agreed price, 37 at it</div></div><span class="esc">Esc</span></div>
+          <div class="ov-body">
+            <table>
+              <thead><tr><th>Invoice · line</th><th>Bottle</th><th style="text-align:right">Agreed</th><th style="text-align:right">Invoiced</th></tr></thead>
+              <tbody>
+                <tr><td><a href="#">INV-9031 · 3</a><br><span style="color:var(--ink-3)">11 Sep</span></td><td>Ch. Musar 2017</td><td class="n" style="text-align:right">$30.20</td><td class="n" style="text-align:right">$31.40<br><span style="color:var(--ink-3); font-size:10.5px">+4.0%</span></td></tr>
+                <tr><td><a href="#">INV-9031 · 7</a><br><span style="color:var(--ink-3)">11 Sep</span></td><td>Domaine Tempier Bandol</td><td class="n" style="text-align:right">$42.00</td><td class="n" style="text-align:right">$43.50<br><span style="color:var(--ink-3); font-size:10.5px">+3.6%</span></td></tr>
+                <tr><td><a href="#">INV-8994 · 2</a><br><span style="color:var(--ink-3)">28 Aug</span></td><td>Ch. Musar 2017</td><td class="n" style="text-align:right">$30.20</td><td class="n" style="text-align:right">$31.40<br><span style="color:var(--ink-3); font-size:10.5px">+4.0%</span></td></tr>
+                <tr><td><a href="#">INV-8994 · 9</a><br><span style="color:var(--ink-3)">28 Aug</span></td><td>Vietti Barbera</td><td class="n" style="text-align:right">$18.50</td><td class="n" style="text-align:right">$19.00<br><span style="color:var(--ink-3); font-size:10.5px">+2.7%</span></td></tr>
+                <tr class="struck"><td>INV-9031 · 12<br><span>11 Sep</span></td><td>Ridge Three Valleys</td><td class="n" style="text-align:right; color:var(--ink-3)"><i>none</i></td><td class="n" style="text-align:right; color:var(--ink-3)">$26.00</td></tr>
+              </tbody>
+            </table>
+            <p class="sum">4 lines above the agreed price, <b>mean +3.6%</b>; 37 at it (folded — <a href="#" style="color:var(--seal)">show all 41</a>). The struck row had no agreed price and is one of the <b>6 not comparable</b> this window. Ch. Musar has been $31.40 on two invoices running — the agreed price on the order still says $30.20; <b>a new agreement is a record, not an inference</b>, and this sheet opens the order to make one.</p>
+            <div style="display:flex; gap:6px; margin-top:10px"><span class="rc-btn primary">Open a claim for the 4 ›</span><span class="rc-btn">Open the order</span></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="mudavym sk-frame" data-ground="charcoal" style="width:700px; flex:none; padding:28px 20px 34px; box-sizing:border-box; background:rgba(0,0,0,.35)">
+      <div class="ov-panel">
+        <div class="ph"><div class="contract">Would this have been <b>worth an alert</b>? Your answer is a labelled record; it changes no figure and sends nothing.</div><div class="sub">Shadow candidate 7 of 11 · Winebow · price as agreed · would have fired 12 Sep 07:00</div></div>
+        <div class="pb">
+          <div class="ev">
+            <div><span class="w">This window · 19 Jun – 17 Sep</span><span class="f">37<small>of 41</small></span><span style="font-size:11px; color:var(--ink-3)">4 above agreed · mean +3.6%</span></div>
+            <div><span class="w">Prior · 21 Mar – 18 Jun</span><span class="f">38<small>of 38</small></span><span style="font-size:11px; color:var(--ink-3)">none above agreed</span></div>
+          </div>
+          <p style="margin:0 0 8px">The rule that fired: <b>the window's rate fell by more than 5 points against the prior window, with at least 30 comparable lines in each.</b> Two of the four lines are the same bottle on two invoices running — Ch. Musar 2017 at $31.40 against $30.20 agreed.</p>
+          <p style="margin:0">Read the 4 lines before answering: <a href="#" style="color:var(--seal)">open the rows ›</a></p>
+        </div>
+        <div class="pf"><span class="rc-btn">Worth an alert</span><span class="rc-btn">Not worth it</span><span class="rc-btn">Unsure</span><span class="sp"></span><span>Recorded as <b style="color:var(--ink-2)">Deniz A. · 17 Sep 09:44</b> · Esc leaves it unlabelled</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="sk-cap">The panel's first sentence is its contract (sketch 103 1e): what it asks, what it writes, what leaving costs. A label is appended, never overwritten; the person's name is on it.</p>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">3 · Meyhane Kalamış, Kadıköy (TRY, tr-TR) <small>a fish vendor with market lines, a wine vendor on e-İrsaliye, a vendor reached by phone</small></div>
+  <div class="mudavym sk-frame" data-ground="charcoal">
+  <div class="rc-page">
+    <div class="rc-chrome"><span class="mark"></span><span class="rule"></span><span class="page">Tedarikçiler</span><span class="search">Evi ara… <span class="kbd">⌘K</span></span><span class="house">Meyhane Kalamış</span><span class="bell"></span></div>
+    <div class="rc-in">
+      <div class="rc-head"><div><div class="rc-wordmark">Muda<b>vym</b></div><h1 class="rc-h1">Tedarikçiler</h1></div><div class="rc-seg"><span>Defter</span><span data-on="true">Karne</span></div></div>
+      <p class="rc-standing"><b>5 tedarikçi, bu pencerede 4'ü puanlanabiliyor.</b> Her rakam evin kendi kayıtlarından bir sayının bir sayıya oranı — not değil, sıra değil. Puan için 5 teslimat gerekir. Her rakam satırlarına açılır. <span class="src">siparişler · teslim alma · fatura eşleme · posta · alacaklar · 09:41</span></p>
+      <div class="rc-tools"><span>Pencere</span><span class="rc-chip">30 g</span><span class="rc-chip" data-on="true">90 g</span><span class="rc-chip">365 g</span><span>19.06 – 17.09 · önceki 21.03 – 18.06</span></div>
+      <div class="rc-scroll">
+      <table class="rc-table">
+        <thead><tr>
+          <th><span class="t">Tedarikçi</span><span class="r">teslimat · 90 g</span></th>
+          <th class="q"><span class="t">Zamanında</span><span class="r">beklenen tarihte</span></th>
+          <th class="q"><span class="t">Sipariş gibi</span><span class="r">eksik · red · hasar yok</span></th>
+          <th class="q"><span class="t">Anlaşılan fiyat</span><span class="r">faturada anlaşılan fiyat</span></th>
+          <th class="q"><span class="t">Yanıt süresi</span><span class="r">medyan · aynı zincir</span></th>
+          <th class="q"><span class="t">Alacak tahsili</span><span class="r">söz verilenin tahsil edileni</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="v"><span class="type">Balık</span><span class="name">Kalamış Balık Hali</span><span class="n">26 teslimat · her gün</span></td>
+            <td class="m" data-label="Zamanında"><button class="rc-cell"><span class="f">21<small>/ 26</small></span><span class="p">önceki <b>24 / 27</b></span><span class="rows">26 teslimat ›</span></button></td>
+            <td class="m" data-label="Sipariş gibi"><button class="rc-cell"><span class="f">135<small>/ 143</small></span><span class="p">önceki <b>150 / 151</b> · 8 eksik</span><span class="rows">8 kayıt ›</span></button></td>
+            <td class="m" data-label="Anlaşılan fiyat"><button class="rc-cell refuse"><span class="f">anlaşılan fiyat yok</span><span class="p">hal fiyatı — 143 / 143 kıyaslanamaz</span><span class="rows">neden ›</span></button></td>
+            <td class="m" data-label="Yanıt süresi"><button class="rc-cell refuse"><span class="f">kayıt yok</span><span class="p">telefonla çalışılıyor; arama kayda geçmez</span></button></td>
+            <td class="m" data-label="Alacak tahsili"><button class="rc-cell"><span class="f">₺0,00<small>/ ₺2.150,00</small></span><span class="p">3 talep · 1 söz verildi 19 g · <b>tahsil edilmedi</b></span><span class="rows">3 talep ›</span></button></td>
+          </tr>
+          <tr>
+            <td class="v"><span class="type">Bira</span><span class="name">Efes Dağıtım</span><span class="n">12 teslimat · Sal, Cum</span></td>
+            <td class="m" data-label="Zamanında"><button class="rc-cell"><span class="f">12<small>/ 12</small></span><span class="p">önceki <b>13 / 13</b></span><span class="rows">12 teslimat ›</span></button></td>
+            <td class="m" data-label="Sipariş gibi"><button class="rc-cell"><span class="f">71<small>/ 72</small></span><span class="p">önceki <b>78 / 78</b> · 1 hasar</span><span class="rows">1 kayıt ›</span></button></td>
+            <td class="m" data-label="Anlaşılan fiyat"><button class="rc-cell"><span class="f">72<small>/ 72</small></span><span class="p">önceki <b>78 / 78</b></span><span class="rows">0 satır ›</span></button></td>
+            <td class="m" data-label="Yanıt süresi"><button class="rc-cell"><span class="f">3 sa 10<small>medyan · 8</small></span><span class="p">önceki <b>2 sa 45 · 9</b></span><span class="rows">8 yanıt ›</span></button></td>
+            <td class="m" data-label="Alacak tahsili"><button class="rc-cell"><span class="f">₺480,00<small>/ ₺480,00</small></span><span class="p">1 talep · 4 günde kredi dekontu</span><span class="rows">1 talep ›</span></button></td>
+          </tr>
+          <tr>
+            <td class="v"><span class="type">Şarap dağıtım</span><span class="name">Kavaklıdere Dağıtım</span><span class="n">9 teslimat · Pzt, Per</span></td>
+            <td class="m" data-label="Zamanında"><button class="rc-cell"><span class="f">7<small>/ 9</small></span><span class="p">önceki <b>8 / 9</b> · 2 e-İrsaliye penceresi sessizlikle kapandı</span><span class="rows">9 teslimat ›</span></button></td>
+            <td class="m" data-label="Sipariş gibi"><button class="rc-cell"><span class="f">94<small>/ 96</small></span><span class="p">önceki <b>88 / 88</b></span><span class="rows">2 kayıt ›</span></button></td>
+            <td class="m" data-label="Anlaşılan fiyat"><button class="rc-cell"><span class="f">91<small>/ 96</small></span><span class="p">önceki <b>86 / 88</b> · ort. +%6,2</span><span class="rows">5 satır ›</span></button></td>
+            <td class="m" data-label="Yanıt süresi"><button class="rc-cell"><span class="f">22 sa<small>medyan · 6</small></span><span class="p">önceki <b>4 yanıt</b> — 5'in altı, kıyas yok</span><span class="rows">6 yanıt ›</span></button></td>
+            <td class="m" data-label="Alacak tahsili"><button class="rc-cell"><span class="f">₺1.200,00<small>/ ₺3.840,00</small></span><span class="p">1 söz verildi 21.08 · 27 g · <b>tahsil edilmedi</b></span><span class="rows">2 talep ›</span></button></td>
+          </tr>
+          <tr>
+            <td class="v"><span class="type">Rakı</span><span class="name">Anadolu Rakı Dağıtım</span><span class="n">3 teslimat</span></td>
+            <td class="m" data-label="Zamanında"><span class="rc-cell refuse"><span class="f">çok az — 3 / 5</span><span class="p">3'ü de zamanında; listelendi, puanlanmadı</span><span class="rows">3 teslimat ›</span></span></td>
+            <td class="m" data-label="Sipariş gibi"><span class="rc-cell refuse"><span class="f">çok az</span></span></td>
+            <td class="m" data-label="Anlaşılan fiyat"><span class="rc-cell refuse"><span class="f">çok az</span></span></td>
+            <td class="m" data-label="Yanıt süresi"><span class="rc-cell refuse"><span class="f">çok az — 2 yanıt</span></span></td>
+            <td class="m" data-label="Alacak tahsili"><span class="rc-cell refuse"><span class="f">talep yok</span></span></td>
+          </tr>
+          <tr>
+            <td class="v"><span class="type">Meze</span><span class="name">Boğaziçi Zeytinyağı</span><span class="n">365 g içinde sipariş yok</span></td>
+            <td class="m" data-label="Zamanında"><span class="rc-cell refuse"><span class="f">puanlanacak bir şey yok</span><span class="p">defterde, sipariş yok</span></span></td>
+            <td class="m" data-label="Sipariş gibi"><span class="rc-cell refuse"><span class="f">—</span></span></td>
+            <td class="m" data-label="Anlaşılan fiyat"><span class="rc-cell refuse"><span class="f">—</span></span></td>
+            <td class="m" data-label="Yanıt süresi"><span class="rc-cell refuse"><span class="f">—</span></span></td>
+            <td class="m" data-label="Alacak tahsili"><span class="rc-cell refuse"><span class="f">—</span></span></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="rc-foot"><span><b>Sessizlikle kapanan pencere</b> zamanında sayılır ama sayısıyla yazılır: yasa neyi varsayıyorsa o kaydedilir, evin kabul ettiği değil (ADR 0103 D3).</span><span><b>Hal fiyatı</b> kıyaslanamaz; balıkta anlaşılan fiyat olmaz, sütun bunu söyler, sıfır demez.</span></div>
+    </div>
+  </div>
+  </div>
+  <p class="sk-cap">The Turkish house is where the table earns its refusals: a fish vendor has no agreed prices at all, a vendor on the phone has no reply record, and two e-İrsaliye response windows that closed by silence are printed as what the law deems, in the cell's second line.</p>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">4 · States <small>empty book · loading · refused · the scorecard read failed · partial (one register down)</small></div>
+  <div class="sk-row">
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal">
+      <div class="rc-seg" style="margin-bottom:12px"><span>Book</span><span data-on="true">Scorecard</span></div>
+      <div class="rc-note"><b>The book is empty.</b> No vendors yet, so there is no one to score. The scorecard reads the same book the cards do. <span class="src">GET /providers → 0 rows</span><div class="act"><span class="rc-btn primary">Add a vendor</span><span class="rc-btn">Import from a supplier list</span></div></div>
+      <p class="sk-cap" style="color:var(--ink-3)"><b style="color:var(--ink-2)">Empty.</b> No table is drawn; a table with no rows would still imply a measurement.</p>
+      <div style="height:14px"></div>
+      <div class="rc-note" style="background:transparent">
+        <div style="display:grid; grid-template-columns: 1.3fr repeat(3, 1fr); gap:10px; align-items:end">
+          <span class="rc-skel" style="width:70%"></span><span class="rc-skel" style="width:60%"></span><span class="rc-skel" style="width:60%"></span><span class="rc-skel" style="width:60%"></span>
+          <span style="font-family:var(--serif); font-size:14px; color:var(--ink-1)">Skurnik Wines &amp; Spirits</span><span class="rc-skel" style="width:52px; height:18px"></span><span class="rc-skel" style="width:52px; height:18px"></span><span class="rc-skel" style="width:52px; height:18px"></span>
+          <span style="font-family:var(--serif); font-size:14px; color:var(--ink-1)">Empire Merchants</span><span class="rc-skel" style="width:52px; height:18px"></span><span class="rc-skel" style="width:52px; height:18px"></span><span class="rc-skel" style="width:52px; height:18px"></span>
+        </div>
+        <p style="margin:10px 0 0; font-size:11.5px; color:var(--ink-3)">The book answered — 6 names. The five registers have not; the cells are shapes until they do. No figure counts up from zero.</p>
+      </div>
+      <p class="sk-cap" style="color:var(--ink-3)"><b style="color:var(--ink-2)">Loading.</b> Names are certain, figures are not.</p>
+    </div>
+
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal">
+      <div class="rc-seg" style="margin-bottom:12px"><span>Book</span><span data-on="true">Scorecard</span></div>
+      <div class="rc-note"><b>Withheld for your role.</b> The scorecard reads the invoice and credits registers, which this house keeps to owners and managers. The Book view is yours; this one is not. <span class="src">403 · GET /providers/scorecard · role: staff</span><div class="act"><span class="rc-btn">Back to the book</span><span class="rc-btn">Ask Deniz A. to open it</span></div></div>
+      <p class="sk-cap" style="color:var(--ink-3)"><b style="color:var(--ink-2)">Refused.</b> The segmented control still shows the view exists.</p>
+      <div style="height:14px"></div>
+      <div class="rc-note"><b>The scorecard read did not answer.</b> The book lists 6 vendors; the five registers behind the table could not be read (gateway 502 at 09:41), so no table is drawn — a table of dashes would read as six clean vendors. <span class="src">GET /providers/scorecard?window=90 → 502</span><div class="act"><span class="rc-btn primary">Try again</span><span class="rc-btn">Open the book</span></div></div>
+      <p class="sk-cap" style="color:var(--ink-3)"><b style="color:var(--ink-2)">Error.</b> Said in words, with the count that is known (6 names) and the count that is not.</p>
+    </div>
+
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal" style="width:480px">
+      <div class="rc-seg" style="margin-bottom:12px"><span>Book</span><span data-on="true">Scorecard</span></div>
+      <p style="margin:0 0 10px; font-size:12px; color:var(--ink-2); line-height:1.5"><b style="color:var(--ink-1)">Four registers answered, one did not.</b> The credits register returned 502 at 09:41 — that column is unknown for every vendor, and says so in every cell rather than once in a banner someone will scroll past.</p>
+      <table class="rc-table" style="min-width:0">
+        <thead><tr><th><span class="t">Vendor</span></th><th><span class="t">On time</span></th><th><span class="t">Credits</span><span class="r">did not answer</span></th></tr></thead>
+        <tbody>
+          <tr><td class="v"><span class="name">Skurnik</span></td><td><span class="rc-cell"><span class="f">12<small>of 14</small></span></span></td><td><span class="rc-cell refuse"><span class="f">did not answer</span><span class="p">502 · 09:41</span></span></td></tr>
+          <tr><td class="v"><span class="name">Empire</span></td><td><span class="rc-cell"><span class="f">11<small>of 11</small></span></span></td><td><span class="rc-cell refuse"><span class="f">did not answer</span></span></td></tr>
+          <tr><td class="v"><span class="name">Winebow</span></td><td><span class="rc-cell"><span class="f">4<small>of 6</small></span></span></td><td><span class="rc-cell refuse"><span class="f">did not answer</span></span></td></tr>
+        </tbody>
+      </table>
+      <div style="display:flex; gap:6px; margin-top:10px"><span class="rc-btn">Try the credits register again</span></div>
+      <p class="sk-cap" style="color:var(--ink-3)"><b style="color:var(--ink-2)">Partial.</b> Unknown is written in the cell, not inferred from an empty one.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">5 · Phone, 390 <small>the table becomes one block per vendor, five labelled lines; the shadow band stacks; a cell opens a bottom sheet</small></div>
+  <div class="sk-row">
+    <div class="sk-phone">
+      <div class="mudavym" data-ground="charcoal">
+      <div class="rc-page">
+        <div class="rc-chrome"><span class="mark"></span><span class="rule"></span><span class="page">Providers</span><span class="house" style="margin-left:auto">Harbor &amp; Vine</span><span class="bell"></span></div>
+        <div class="rc-in">
+          <div class="rc-head"><div><div class="rc-wordmark">Muda<b>vym</b></div><h1 class="rc-h1">Providers</h1></div><div class="rc-seg"><span>Book</span><span data-on="true">Scorecard</span></div></div>
+          <p class="rc-standing"><b>6 vendors, 4 score this window.</b> Counts over counts; the score needs 5 deliveries.</p>
+          <div class="rc-tools"><span class="rc-chip">30 d</span><span class="rc-chip" data-on="true">90 d</span><span class="rc-chip">365 d</span><span>vs the 90 before</span></div>
+          <table class="rc-table">
+            <tbody>
+              <tr>
+                <td class="v"><span class="type">Wine &amp; spirits</span><span class="name">Skurnik Wines &amp; Spirits</span><span class="n">14 deliveries · Tue, Thu</span></td>
+                <td class="m" data-label="On time"><button class="rc-cell"><span class="f">12<small>of 14</small></span><span class="p">prior 9 of 13</span></button></td>
+                <td class="m" data-label="Lines as ordered"><button class="rc-cell"><span class="f">209<small>of 212</small></span><span class="p">prior 171 of 174</span></button></td>
+                <td class="m" data-label="Price as agreed"><button class="rc-cell"><span class="f">183<small>of 187</small></span><span class="p">prior 158 of 160</span></button></td>
+                <td class="m" data-label="Reply time"><button class="rc-cell"><span class="f">5 h 40<small>· 9</small></span><span class="p">prior 7 h 10 · 7</span></button></td>
+                <td class="m" data-label="Credits"><button class="rc-cell"><span class="f">$286.00<small>of $412.50</small></span><span class="p">1 promised · not recovered</span></button></td>
+              </tr>
+              <tr>
+                <td class="v"><span class="type">Wine &amp; spirits</span><span class="name">Empire Merchants</span><span class="n">11 deliveries · Wed</span></td>
+                <td class="m" data-label="On time"><button class="rc-cell"><span class="f">11<small>of 11</small></span><span class="p">prior 10 of 10</span></button></td>
+                <td class="m" data-label="Lines as ordered"><button class="rc-cell"><span class="f">140<small>of 140</small></span><span class="p">prior 122 of 123</span></button></td>
+                <td class="m" data-label="Price as agreed"><button class="rc-cell"><span class="f">112<small>of 121</small></span><span class="p">mean +4.8%</span></button></td>
+                <td class="m" data-label="Reply time"><span class="rc-cell refuse"><span class="f">not collected</span><span class="p">no mailbox linked</span></span></td>
+                <td class="m" data-label="Credits"><button class="rc-cell"><span class="f">$0.00<small>of $0.00</small></span><span class="p">no claims opened</span></button></td>
+              </tr>
+              <tr>
+                <td class="v"><span class="type">Wine &amp; spirits</span><span class="name">Southern Glazer's</span><span class="n">2 deliveries</span></td>
+                <td class="m" data-label="On time"><span class="rc-cell refuse"><span class="f">too few — 2 of 5</span></span></td>
+                <td class="m" data-label="Lines as ordered"><span class="rc-cell refuse"><span class="f">too few</span></span></td>
+                <td class="m" data-label="Price as agreed"><span class="rc-cell refuse"><span class="f">too few</span></span></td>
+                <td class="m" data-label="Reply time"><button class="rc-cell"><span class="f">14 h 05<small>· 5</small></span></button></td>
+                <td class="m" data-label="Credits"><span class="rc-cell refuse"><span class="f">no claims</span></span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="rc-shadow" style="margin-top:16px">
+            <header><h3>Shadow run</h3><span class="m">11 candidates · 3 labelled · 0 shipped</span></header>
+            <ul class="rc-cands">
+              <li class="rc-cand"><span class="who"><span>Winebow · price</span><span>12 Sep</span></span><span class="what">Price as agreed fell: 4 lines above it this window, none in the prior.</span><span class="ev">37 of 41 · prior 38 of 38</span><span class="lab"><span class="rc-btn">Worth an alert</span><span class="rc-btn">Not worth it</span><span class="rc-btn">Unsure</span></span></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <div class="sk-phone">
+      <div class="mudavym" data-ground="charcoal">
+      <div class="rc-page" style="min-height: 720px;">
+        <div class="rc-chrome"><span class="mark"></span><span class="rule"></span><span class="page">Providers</span><span class="house" style="margin-left:auto">Harbor &amp; Vine</span><span class="bell"></span></div>
+        <div class="rc-in">
+          <div class="rc-head"><div><div class="rc-wordmark">Muda<b>vym</b></div><h1 class="rc-h1">Providers</h1></div><div class="rc-seg"><span>Book</span><span data-on="true">Scorecard</span></div></div>
+          <p class="rc-standing"><b>6 vendors, 4 score this window.</b> Counts over counts; the score needs 5 deliveries.</p>
+        </div>
+        <div class="ov-scrim"></div>
+        <aside class="ov-sheet">
+          <div class="ov-spine"><b>Skurnik</b><span>›</span><span>On time</span></div>
+          <div class="ov-hd"><div><div class="eyebrow">90 d</div><div class="title">14 deliveries, 12 by the expected date</div></div><span class="esc">Esc</span></div>
+          <div class="ov-body">
+            <table>
+              <thead><tr><th>Order</th><th>Expected</th><th>Landed</th><th style="text-align:right">Late</th></tr></thead>
+              <tbody>
+                <tr><td><a href="#">PO-2291</a></td><td class="n">16 Sep</td><td class="n">16 Sep</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2284</a></td><td class="n">12 Sep</td><td class="n">15 Sep</td><td class="n" style="text-align:right">+3 d</td></tr>
+                <tr><td><a href="#">PO-2277</a></td><td class="n">9 Sep</td><td class="n">9 Sep</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2270</a></td><td class="n">5 Sep</td><td class="n">5 Sep</td><td class="n" style="text-align:right">—</td></tr>
+                <tr><td><a href="#">PO-2251</a></td><td class="n">26 Aug</td><td class="n">27 Aug</td><td class="n" style="text-align:right">+1 d</td></tr>
+                <tr class="struck"><td>PO-2183</td><td class="n"><i>none</i></td><td class="n">24 Jun</td><td class="n" style="text-align:right">not counted</td></tr>
+              </tbody>
+            </table>
+            <p class="sum">Showing the 2 late, 3 on time and the 1 not counted; <a href="#" style="color:var(--seal)">all 15 ›</a></p>
+          </div>
+        </aside>
+      </div>
+      </div>
+    </div>
+    <p class="sk-note" style="max-width:480px">At 390 the six columns cannot be a table. Each vendor becomes a block with the five measures as labelled lines — the same cells, the same refusals — and the column-head popover becomes a line under each label when tapped. The shadow band's cards stack below the vendors (left). A cell opens its rows as a bottom sheet at the upper detent (right).</p>
+  </div>
+</div>
+</body>
+</html>

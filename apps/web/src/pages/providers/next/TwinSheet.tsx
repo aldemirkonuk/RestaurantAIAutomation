@@ -29,6 +29,7 @@ import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
 import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
 import { ContactsSection } from './ContactsSection';
+import { LedgerCard } from './scorecard/LedgerCard';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -117,6 +118,15 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
           lets a manager answer the question nobody has answered. */}
       <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
         <ContactsSection providerId={provider.id} providerName={provider.name} />
+      </div>
+
+      {/* what they DID — the operational vendor scorecard (ADR 0207, sketch
+          117 A). Five measured lines from this house's own records, each
+          opening to its rows. Placed above the legacy panel, which is left
+          exactly as it was: whether it retires with its sentiment tab is the
+          founder's call, not this section's. */}
+      <div className="px-4 pb-4" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        <LedgerCard providerId={provider.id} providerName={provider.name} />
       </div>
 
       {/* the twin — fetched on open, never on the grid */}
