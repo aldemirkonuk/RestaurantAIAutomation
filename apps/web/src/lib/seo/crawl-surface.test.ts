@@ -68,27 +68,51 @@ const CANONICAL_HOST = 'mudavym.com';
 // The canonical host, the retired alias, and any other host a deployment answers on.
 const HOSTS = [CANONICAL_HOST, 'restaurant-ai-automation-web.vercel.app', 'preview-abc.vercel.app'];
 
-/** Does one `has`/`missing` entry hold for a request to `host`? Only host equality is modelled. */
+/**
+ * Does one `has`/`missing` entry hold for a request to `host`? Only host equality is modelled, and
+ * only for the hosts in HOSTS: a rule gated on any other host would be skipped for every host this
+ * test evaluates, so it throws instead (add the host to HOSTS to have the rule evaluated).
+ */
 function conditionHolds(cond: { type: string; value: unknown }, host: string): boolean {
   const eq = (cond.value as { eq?: unknown } | null)?.eq;
   if (cond.type !== 'host' || typeof eq !== 'string') {
     throw new Error(`crawl-surface: cannot evaluate header condition ${JSON.stringify(cond)}; extend conditionHolds()`);
   }
+  if (!HOSTS.includes(eq)) {
+    throw new Error(`crawl-surface: header condition names host ${eq}, which is not in HOSTS; add it so the rule is evaluated`);
+  }
   return eq === host;
 }
 
 /**
+ * `{` and `}` outside a `(...)` group are path-to-regexp's own group delimiters: Vercel compiles
+ * `/{(.*)}` to `^/(.*)$`, while a plain RegExp reads the braces as literal characters.
+ */
+function hasPathToRegexpBraces(source: string): boolean {
+  let depth = 0;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '\\') i += 1;
+    else if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    else if ((ch === '{' || ch === '}') && depth === 0) return true;
+  }
+  return false;
+}
+
+/**
  * Every value that a `headers` rule of `config` sets for `key` on a request to `pathname` on
- * `host`, in file order. A condition or parameter this does not model (a cookie or query
- * condition, a `:name` source) throws rather than pass unexamined. It does not model
- * path-to-regexp-only syntax, which it reads as a JavaScript regular expression, and it skips a
- * rule gated on a host outside HOSTS (ADR 0158, Known limits).
+ * `host`, in file order. A condition or source this does not model throws rather than pass
+ * unexamined: a cookie or query condition, a host outside HOSTS, a `:name` parameter, a `{...}`
+ * group. Sources are read as JavaScript regular expressions, anchored and case-sensitive, which is
+ * what Vercel compiles them to for the syntax the repo uses (`strict` and `sensitive` path-to-regexp
+ * options, ADR 0158 Known limits); a literal `.` is a literal dot to Vercel and any character here.
  */
 function headerValuesFor(config: VercelConfig, key: string, pathname: string, host: string): string[] {
   const values: string[] = [];
   for (const rule of config.headers) {
     // `:name` is path-to-regexp's named parameter; `(?:` is a plain regex group and is fine.
-    if (/(^|[^?]):[A-Za-z_]/.test(rule.source)) {
+    if (/(^|[^?]):[A-Za-z_]/.test(rule.source) || hasPathToRegexpBraces(rule.source)) {
       throw new Error(`crawl-surface: cannot evaluate header source ${rule.source}; extend headerValuesFor()`);
     }
     if (!new RegExp(`^${rule.source}$`).test(pathname)) continue;
@@ -173,10 +197,13 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
     // set the same key, so this does not lean on order: a rule that matches a token route and
     // sets one of these keys differently fails, before or after the token rule. Give a site-wide
     // Referrer-Policy a source that leaves the token routes out.
-    // Limits (ADR 0158, Known limits): three hosts, sources read as JS regular expressions, and
-    // slashless paths only; /reset-password/ is not probed here, in the census, or matched by the
-    // token rule (open claim ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH).
-    const tokenPaths = TOKEN_PREFIXES.map((p) => (p.endsWith('/') ? `${p}abc123` : p));
+    // Limits (ADR 0158, Known limits): three hosts (a rule gated on another host throws), sources
+    // read as JS regular expressions, and only the paths built below: slashless, with a trailing
+    // slash (Vercel matches strictly, so /reset-password/ is a different path) and, for the two
+    // exact routes, nested.
+    const tokenPaths = TOKEN_PREFIXES.flatMap((p) =>
+      p.endsWith('/') ? [`${p}abc123`, `${p}abc123/`] : [p, `${p}/`, `${p}/abc123`],
+    );
     for (const host of HOSTS) {
       for (const path of tokenPaths) {
         const at = `${host}${path}`;
@@ -195,25 +222,35 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
     }
   });
 
-  it('the header evaluator refuses a cookie condition or a :name source, rather than pass it unexamined', () => {
+  it('the header evaluator refuses a cookie condition, a host outside HOSTS, a :name source or a {...} group', () => {
     const rule = (extra: Partial<Rule>): VercelConfig => ({
       rewrites: [],
       headers: [{ source: '/(.*)', headers: [{ key: 'Referrer-Policy', value: 'origin' }], ...extra }],
     });
-    expect(() => headerValuesFor(rule({ has: [{ type: 'cookie', value: 'x' }] }), 'Referrer-Policy', '/a', CANONICAL_HOST)).toThrow(/cannot evaluate/);
-    expect(() => headerValuesFor(rule({ source: '/:path*' }), 'Referrer-Policy', '/a', CANONICAL_HOST)).toThrow(/cannot evaluate/);
-    // A non-capturing group is ordinary regex, not a named parameter.
-    expect(headerValuesFor(rule({ source: '/((?:a|b)x)' }), 'Referrer-Policy', '/ax', CANONICAL_HOST)).toEqual(['origin']);
+    const values = (extra: Partial<Rule>, path = '/a') => headerValuesFor(rule(extra), 'Referrer-Policy', path, CANONICAL_HOST);
+    expect(() => values({ has: [{ type: 'cookie', value: 'x' }] })).toThrow(/cannot evaluate header condition/);
+    expect(() => values({ has: [{ type: 'host', value: { eq: 'www.mudavym.com' } }] })).toThrow(/not in HOSTS/);
+    expect(() => values({ missing: [{ type: 'host', value: { eq: 'www.mudavym.com' } }] })).toThrow(/not in HOSTS/);
+    expect(() => values({ source: '/:path*' })).toThrow(/cannot evaluate header source/);
+    expect(() => values({ source: '/{(.*)}' })).toThrow(/cannot evaluate header source/);
+    // A non-capturing group is ordinary regex, not a named parameter; a brace or a quantifier
+    // inside a (...) group is ordinary regex too; a host in HOSTS is evaluated, not refused.
+    expect(values({ source: '/((?:a|b)x)' }, '/ax')).toEqual(['origin']);
+    expect(values({ source: '/(a{2})' }, '/aa')).toEqual(['origin']);
+    expect(values({ has: [{ type: 'host', value: { eq: CANONICAL_HOST } }] })).toEqual(['origin']);
   });
 
-  it('the live census probes every token prefix', () => {
+  it('the live census probes the same token paths as this guard, with and without a trailing slash', () => {
     const census = readFileSync(join(REPO, 'scripts', 'crawl_surface_census.py'), 'utf8');
     const list = /^TOKEN_SAMPLES\s*=\s*\[([^\]]*)\]/m.exec(census)?.[1];
     if (!list) throw new Error('crawl-surface: no TOKEN_SAMPLES list in scripts/crawl_surface_census.py');
-    const samples = [...list.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-    for (const prefix of TOKEN_PREFIXES) {
-      expect(samples.some((s) => s === prefix || s.startsWith(prefix)), `the census does not probe ${prefix}`).toBe(true);
-    }
+    // The made-up token differs (abc123 here, zz-census there); the shape of each path must not.
+    const shape = (p: string) => p.replace(/abc123|zz-census/, 'TOKEN');
+    const censusShapes = [...list.matchAll(/"([^"]+)"/g)].map((m) => shape(m[1])).sort();
+    const guardShapes = TOKEN_PREFIXES.flatMap((p) =>
+      p.endsWith('/') ? [`${p}TOKEN`, `${p}TOKEN/`] : [p, `${p}/`, `${p}/TOKEN`],
+    ).sort();
+    expect(censusShapes).toEqual(guardShapes);
   });
 
   it('the token list still names real routes', () => {

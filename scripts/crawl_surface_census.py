@@ -21,10 +21,11 @@ WHAT IT CHECKS (each line of output is one check)
               self canonical in the HTML (JavaScript off)
   closed      a signed-in route serves `noindex` in the HTML
   soft-404    three paths that exist nowhere answer 404
-  token-route one slashless sample of each link that carries a secret
-              (/reset-password, /verify-email, /invite/*, /studio/invite/*) is
-              noindex+nofollow and no-referrer; the trailing-slash forms are
-              not probed yet (ADR 0158, Known limits)
+  token-route each link that carries a secret (/reset-password, /verify-email,
+              /invite/*, /studio/invite/*), with and without a trailing slash,
+              answers 200 with noindex and nofollow (exactly those two on
+              mudavym.com) and exactly Referrer-Policy: no-referrer. It probes
+              the base host only, not --duplicate-host (ADR 0158, Known limits)
   vendor      the first published catalogue (if any) serves its title, one
               parseable JSON-LD block and a listing row; a bad slug is 404
   old-host    (--old-host) pages 308 to mudavym.com keeping path and query,
@@ -46,6 +47,11 @@ EXIT CODES
   2  the deployment could not be reached, so NOTHING was measured. A census
      that cannot see the site must not print green.
 
+  python3 scripts/crawl_surface_census.py --self-test drives the token-route
+  check through a local server (no base, offline): 0 all verdicts right, 1 a
+  wrong verdict, 2 no local port. CLAIMS row ADR-0158-TOKEN-ROUTES-ARE-CHECKED-LIVE
+  runs it.
+
 Usage:
   python3 scripts/crawl_surface_census.py https://mudavym.com \
       --old-host https://restaurant-ai-automation-web.vercel.app \
@@ -59,6 +65,7 @@ import json
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -71,9 +78,19 @@ PUBLIC_PAGES = ["/", "/login", "/register", "/privacy"]
 CLOSED_SAMPLE = "/inventory"
 NOWHERE = ["/zz-census-nowhere-1", "/inventory-zz-census", "/zz/census/nowhere"]
 BAD_SLUG = "/v/zz-census-not-a-vendor"
-# One sample per TOKEN_PREFIXES entry in apps/web/src/lib/seo/routes.ts (a prefix ending in "/"
-# gets a made-up token); crawl-surface.test.ts fails when one is missing here.
-TOKEN_SAMPLES = ["/reset-password", "/verify-email", "/invite/zz-census", "/studio/invite/zz-census"]
+# The token paths of TOKEN_PREFIXES in apps/web/src/lib/seo/routes.ts, each with and without a
+# trailing slash (Vercel matches strictly, so /reset-password/ is a different path from
+# /reset-password and answers 200 too), and a nested path under the two exact routes. A prefix
+# ending in "/" gets a made-up token. crawl-surface.test.ts fails when this list and its own
+# token paths differ in shape.
+TOKEN_SAMPLES = [
+    "/reset-password", "/reset-password/", "/reset-password/zz-census",
+    "/verify-email", "/verify-email/", "/verify-email/zz-census",
+    "/invite/zz-census", "/invite/zz-census/",
+    "/studio/invite/zz-census", "/studio/invite/zz-census/",
+]
+CANONICAL_HOST = "mudavym.com"
+TOKEN_ROBOTS = {"noindex", "nofollow"}
 MAX_CHILD_SITEMAPS = 5
 MAX_LOCS_PER_SITEMAP = 25
 
@@ -332,23 +349,98 @@ def check_old_host(c: Census, old: str) -> None:
     c.check("old-host", r.status != 308, f"/api/v1/health/live: {r.status} (must not redirect)")
 
 
-def check_token_routes(c: Census) -> None:
+def check_token_routes(c: Census, exact_robots: bool = False) -> None:
     """A link that carries a secret is not indexed and does not leak in a Referer.
 
     The static guard in apps/web/src/lib/seo/crawl-surface.test.ts reads vercel.json, not what
     Vercel sends; this reads what it sends, whichever of several matching header rules won.
-    It probes one slashless sample per prefix; /reset-password/ and /verify-email/ are a known
-    gap (ADR 0158, Known limits).
+    Referrer-Policy must be exactly no-referrer. X-Robots-Tag must carry noindex and nofollow,
+    and with exact_robots (used on mudavym.com, where one rule applies) nothing else: a live
+    "noindex, nofollow, all" passes on any other host, where a second rule adds its own noindex.
     """
     for path in TOKEN_SAMPLES:
         r = fetch(c.url(path))
         robots = r.headers.get("x-robots-tag", "")
-        directives = {d.strip().lower() for d in robots.split(",")}
-        policies = {p.strip().lower() for p in r.headers.get("referrer-policy", "").split(",")}
-        ok = (r.status == 200 and {"noindex", "nofollow"} <= directives and policies == {"no-referrer"})
+        directives = {d.strip().lower() for d in robots.split(",") if d.strip()}
+        policies = {p.strip().lower() for p in r.headers.get("referrer-policy", "").split(",") if p.strip()}
+        robots_ok = directives == TOKEN_ROBOTS if exact_robots else TOKEN_ROBOTS <= directives
+        ok = r.status == 200 and robots_ok and policies == {"no-referrer"}
         c.check("token-route", ok,
                 f"{path}: {r.status} x-robots-tag={robots!r} "
                 f"referrer-policy={r.headers.get('referrer-policy', '')!r}")
+
+
+# What a token route can answer, wrong and right: (status, headers, passes as superset, passes exact).
+_TOKEN_CASES = {
+    "good": (200, [("X-Robots-Tag", "noindex, nofollow"), ("Referrer-Policy", "no-referrer")], True, True),
+    "weak-referrer": (200, [("X-Robots-Tag", "noindex, nofollow"),
+                            ("Referrer-Policy", "strict-origin-when-cross-origin")], False, False),
+    "two-referrer-fields": (200, [("X-Robots-Tag", "noindex, nofollow"), ("Referrer-Policy", "no-referrer"),
+                                  ("Referrer-Policy", "strict-origin-when-cross-origin")], False, False),
+    "two-referrer-fields-reversed": (200, [("X-Robots-Tag", "noindex, nofollow"),
+                                           ("Referrer-Policy", "strict-origin-when-cross-origin"),
+                                           ("Referrer-Policy", "no-referrer")], False, False),
+    "no-referrer-header": (200, [("X-Robots-Tag", "noindex, nofollow")], False, False),
+    "noindex-without-nofollow": (200, [("X-Robots-Tag", "noindex"), ("Referrer-Policy", "no-referrer")],
+                                 False, False),
+    "two-robots-fields": (200, [("X-Robots-Tag", "noindex"), ("X-Robots-Tag", "noindex, nofollow"),
+                                ("Referrer-Policy", "no-referrer")], True, True),
+    "robots-with-extra-directive": (200, [("X-Robots-Tag", "noindex, nofollow, all"),
+                                          ("Referrer-Policy", "no-referrer")], True, False),
+    "indexable": (200, [("X-Robots-Tag", "all"), ("Referrer-Policy", "no-referrer")], False, False),
+    "no-robots-header": (200, [("Referrer-Policy", "no-referrer")], False, False),
+    "404-with-right-headers": (404, [("X-Robots-Tag", "noindex, nofollow"),
+                                     ("Referrer-Policy", "no-referrer")], False, False),
+    "redirect": (308, [("Location", "https://example.invalid/"), ("X-Robots-Tag", "noindex, nofollow"),
+                       ("Referrer-Policy", "no-referrer")], False, False),
+}
+
+
+def self_test() -> int:
+    """Drive check_token_routes and header_map through a local server that answers every way in
+    _TOKEN_CASES. Offline; the CLAIMS row for this check runs it, so a gutted predicate, a
+    last-wins header dict or a lost probe loop fails the build. Exit 2 when it cannot run."""
+    import http.server
+    import threading
+
+    current = {"case": "good"}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            status, headers, _, _ = _TOKEN_CASES[current["case"]]
+            self.send_response(status)
+            for key, value in headers:
+                self.send_header(key, value)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *args):
+            pass
+
+    try:
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    except OSError as err:
+        print(f"CANNOT CHECK: no local port for the self-test: {err}", file=sys.stderr)
+        return 2
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    wrong = 0
+    for name, (_, _, want_superset, want_exact) in _TOKEN_CASES.items():
+        current["case"] = name
+        for exact, want in ((False, want_superset), (True, want_exact)):
+            c = Census(base)
+            check_token_routes(c, exact_robots=exact)
+            got = len(c.results) == len(TOKEN_SAMPLES) and all(ok for _, ok, _ in c.results)
+            if got != want:
+                wrong += 1
+                print(f"WRONG  {name} ({'exact' if exact else 'superset'}): passed={got}, want {want}")
+    server.shutdown()
+    if wrong:
+        print(f"self-test FAILED: {wrong} wrong verdicts")
+        return 1
+    print(f"self-test ok: {len(_TOKEN_CASES)} cases x 2 modes x {len(TOKEN_SAMPLES)} paths")
+    return 0
 
 
 def check_duplicate(c: Census, dup: str) -> None:
@@ -360,11 +452,17 @@ def check_duplicate(c: Census, dup: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="What a crawler receives from a mudavym.com deployment.")
-    ap.add_argument("base", help="deployment origin, e.g. https://mudavym.com")
+    ap.add_argument("base", nargs="?", help="deployment origin, e.g. https://mudavym.com")
     ap.add_argument("--old-host", help="the retired production alias that must 308")
     ap.add_argument("--duplicate-host", help="a non-canonical host that must answer noindex")
     ap.add_argument("--json", action="store_true", help="print the result as JSON too")
+    ap.add_argument("--self-test", action="store_true",
+                    help="check the token-route check itself against a local server; offline, needs no base")
     args = ap.parse_args()
+    if args.self_test:
+        return self_test()
+    if not args.base:
+        ap.error("base is required unless --self-test is given")
 
     c = Census(args.base)
     try:
@@ -379,7 +477,7 @@ def main() -> int:
         check_text_file(c, "llms", "/llms.txt", "# Mudavym")
         check_heads(c)
         check_soft_404(c)
-        check_token_routes(c)
+        check_token_routes(c, exact_robots=urllib.parse.urlparse(args.base).hostname == CANONICAL_HOST)
         vendors = check_sitemaps(c)
         check_vendor(c, vendors)
         if args.old_host:

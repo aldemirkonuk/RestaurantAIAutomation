@@ -198,10 +198,14 @@ by default.**
    `apps/web/vercel.json`; `crawl-surface.test.ts` names the segment.
 5. When `/privacy` or `/login` copy changes, change its registry entry in `routes.ts`.
 6. Security headers for mudavym.com go in `apps/web/vercel.json`, not the repo root. A site-wide
-   `Referrer-Policy` or `X-Robots-Tag` rule must not match the token routes: give its `source` a
-   `(?!reset-password|verify-email|invite/|studio/invite/)` lookahead, or leave those two keys out
-   of it. `crawl-surface.test.ts` checks the slashless token paths on three hosts against every
-   rule, wherever the rule sits; what it does not see is listed under "Known limits",
+   `Referrer-Policy` rule must not match the token routes: give its `source` the UNNAMED lookahead
+   form `/((?!reset-password|verify-email|invite/|studio/invite/).*)` (the named form
+   `/:path((?!...).*)` is valid on Vercel, but the guard cannot read a `:name` parameter and throws),
+   or leave that key out of it. A site-wide `X-Robots-Tag` rule may reach the token routes only
+   off `mudavym.com`, as the existing missing-host `noindex` rule does; on `mudavym.com` the token
+   rule's value is the only one allowed. `crawl-surface.test.ts` checks ten token paths (each with
+   and without a trailing slash, plus a nested path under the two exact routes) against every
+   header rule of `apps/web/vercel.json` on three hosts, wherever the rule sits; what it does not see is listed under "Known limits",
    overlapping header rules.
 
 ## Known limits, found by two adversarial passes and left as stated
@@ -365,32 +369,54 @@ fixed; the rest are named here rather than silently accepted.
   A typical `strict-origin-when-cross-origin` is far milder than `no-referrer` (it sends only the
   origin across sites); the rule is `no-referrer` because this ADR chose it, not because the
   common alternative leaks a token.
-  What the guard does not see (named by the gate's two reviewers on #417, 2026-09-21):
-    - **Hosts.** It evaluates `mudavym.com`, the retired alias and one preview-shaped host. A
-      rule gated on any other host is skipped, not flagged.
-    - **Sources.** Rules are read as JavaScript regular expressions, not as Vercel's
-      path-to-regexp. A `:name` parameter and a cookie, query, regular-expression or
-      string-valued host condition throw; other syntax that only path-to-regexp reads (a bare
-      `*`) may be mis-evaluated silently.
-    - **Trailing slash.** `/reset-password/`, `/reset-password/?token=x` and `/verify-email/`
-      answer 200 on production with neither `Referrer-Policy` nor `X-Robots-Tag` (measured
-      2026-09-21; the HTML `noindex, nofollow` meta is present, and the app's emails link the
-      slashless form, `auth.service.ts:980` and `:2145`). The token rule's source, from #385,
-      has no optional trailing slash, and neither the guard nor the census probes that form.
-      Tracked by the open CLAIMS row `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH`, which fails
-      the build the day some no-referrer rule matches both forms, however the fix is shaped,
-      until it is flipped; like the guard it reads sources as Python regular expressions, and an
-      unreadable one reads as still open. The fix is one regex in `apps/web/vercel.json` plus
-      the probes, in a follow-up.
+  What the guard and the census read, and do not (named by the gate's reviewers on #417, then
+  closed or narrowed by the follow-up, 2026-09-21):
+    - **Hosts.** The guard evaluates `mudavym.com`, the retired alias and one preview-shaped host.
+      A rule gated on any other host throws ("not in HOSTS") instead of being skipped; add the
+      host to `HOSTS` to have the rule evaluated.
+    - **Sources.** Rules are read as JavaScript regular expressions, anchored and case-sensitive.
+      `@vercel/routing-utils@6.6.0` compiles a source with
+      `pathToRegexp(source, keys, { strict: true, sensitive: true, delimiter: "/" })`
+      (`dist/superstatic.js:266-271`; `path-to-regexp@6.1.0` produces the result, `6.3.0` is
+      compiled alongside it and only logged when it differs), so those two options make the reading faithful for the plain group syntax this repo uses:
+      matching is case-sensitive (measured: `/Reset-Password` answers 404 without the token
+      headers) and strict (no optional trailing delimiter). A `:name` parameter, a `{...}` group
+      (`/{(.*)}` compiles to `^/(.*)$`, while a plain RegExp reads the braces literally), a
+      cookie, query, regular-expression or string-valued host condition, and a host outside
+      `HOSTS` all throw. A bare `*` and a trailing `/?` after a literal are not valid
+      path-to-regexp (`Unexpected MODIFIER`), so they cannot be deployed. One difference remains
+      and errs stricter: a literal `.` outside a group is a literal dot to Vercel and any
+      character to the guard.
+    - **Trailing slash (fixed in the source).** `/reset-password/`, `/reset-password/?token=x`
+      and `/verify-email/` answered 200 on production with neither `Referrer-Policy` nor
+      `X-Robots-Tag` (measured 2026-09-21; the HTML `noindex, nofollow` meta was present and the
+      app's emails link the slashless form, `auth.service.ts:980` and `:2145`). The token rule's
+      source, from #385, had no optional trailing slash and Vercel matches strictly. The optional
+      slash now sits inside the capture group; the guard and the census probe each token path
+      with and without a trailing slash, and the resolved CLAIMS row
+      `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH` checks the source. Before the change the census
+      failed on exactly the four unmatched samples (measured), so the deployed answer is read by
+      its `token-route` lines. Not checked: whether the gateway's access logs record the `Referer`
+      header, which would show whether a token link that gained a trailing slash was ever logged;
+      the browser default `strict-origin-when-cross-origin` sends the full URL on same-origin
+      requests, and on this host `/api/*` is one.
     - **`X-Robots-Tag` off the canonical host.** On the retired alias and the preview-shaped
       host the guard requires `noindex` in every value and `nofollow` in at least one; only
       `mudavym.com` is held to exactly `noindex, nofollow`. A rule adding `noindex, follow`
       on another host passes, which is low risk because those hosts are already `noindex`.
-    - **What the census reads.** The base host only, not `--duplicate-host`; slashless samples
-      only; and `X-Robots-Tag` as a superset (`noindex` and `nofollow` present), so a live
-      `noindex, nofollow, all` passes there while the static guard pins `mudavym.com` to exactly
-      `noindex, nofollow` (reported by the finish session, 2026-09-21). Pinning it is in the
-      follow-up.
+    - **What the census reads.** The base host only, not `--duplicate-host`. `X-Robots-Tag` is
+      exact (`noindex` and `nofollow`, nothing else) when the base is `mudavym.com` and a
+      superset elsewhere, where a second rule adds its own `noindex`. `--self-test` drives the
+      check through a local server over 12 answers in both modes, and the resolved CLAIMS row
+      `ADR-0158-TOKEN-ROUTES-ARE-CHECKED-LIVE` runs it, so a gutted predicate or a last-wins
+      header dict fails the build. Nothing in CI probes production: the claims job runs only the
+      offline `--self-test`.
+    - **The second Vercel project.** The repo-root `vercel.json` (the api-gateway duplicate,
+      `restaurant-ai-automation-api-gatewa.vercel.app`) answers the token routes with the
+      site-wide `X-Robots-Tag: noindex` only and no `Referrer-Policy` (measured 2026-09-21),
+      which item 10's unconditional wording does not reflect. Another session's PR #418
+      (ADR 0185) adds a token rule to that file; until it lands and is read here, neither the
+      guard (it evaluates `apps/web/vercel.json` only) nor the census (base host only) covers it.
 - **The ADR number.** `scripts/check_adr_numbers_unique.py` reports the next free number as
   0150, not 0158, because it sweeps git refs and cannot see an uncommitted file in another
   worktree: ADR 0149 is unpushed in `/Users/aldemirkonuk/Projects/wt-finish` (the main finish
