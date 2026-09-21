@@ -6,26 +6,20 @@ import {
   HttpStatus,
   Param,
   Post,
-  Query,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { Type } from "class-transformer";
 import {
   IsIn,
-
   IsBoolean,
   IsInt,
   IsISO8601,
   IsNotEmpty,
   IsNumber,
-  IsObject,
   IsOptional,
   IsString,
   IsUUID,
-  Matches,
-  Max,
   MaxLength,
   Min,
 } from "class-validator";
@@ -34,14 +28,11 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   DOOR_OUTCOMES,
   DOOR_REFUSAL_REASONS,
-  LINE_VERDICT_WORDS,
   ReceivingService,
   type DoorOutcome,
   type DoorRefusalReason,
-  type LineVerdictWord,
 } from "./receiving.service";
 import { ORDER_UNIT_TYPES } from "./order-units";
-import { VERDICT_CURSOR_RE } from "./receiving-verdict-ledger";
 
 type AuthedUser = { userId: string; restaurantId: string };
 
@@ -218,101 +209,6 @@ export class DoorReceiptDto {
   suggestionAccepted?: boolean;
 }
 
-export class AppendLineVerdictDto {
-  @ApiProperty({
-    description: "One verdict word — never abbreviated, never blended with another (ADR 0149 row 23).",
-    enum: LINE_VERDICT_WORDS as unknown as string[],
-  })
-  @IsIn(LINE_VERDICT_WORDS as unknown as string[])
-  verdict!: LineVerdictWord;
-
-  @ApiProperty({
-    description: "What was counted, in the unit named by `uom`. Never re-multiplied here or on the client.",
-  })
-  @IsInt()
-  @Min(1)
-  qty!: number;
-
-  @ApiProperty({
-    description: "The unit this portion was counted in — bottle | case | keg | pack | split_case | each | liter.",
-    enum: ORDER_UNIT_TYPES as unknown as string[],
-  })
-  @IsString()
-  @IsNotEmpty()
-  uom!: string;
-
-  @ApiPropertyOptional({
-    description:
-      "The person's statement that this portion arrived beyond what was ordered (over-delivery). Never derived.",
-  })
-  @IsOptional()
-  @IsBoolean()
-  beyondOrder?: boolean;
-
-  @ApiProperty({
-    description: "Why, in the person's own words. Required — a verdict with no reason is indistinguishable from a click.",
-  })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(1000)
-  reason!: string;
-
-  @ApiPropertyOptional({ description: "References, not blobs — a photo path, a document id." })
-  @IsOptional()
-  @IsObject()
-  evidence?: Record<string, unknown>;
-
-  @ApiPropertyOptional({
-    description:
-      "The row this portion is taken from, on the same order and line. The named row is never edited — it is drawn struck through and kept.",
-  })
-  @IsOptional()
-  @IsUUID()
-  supersedes?: string;
-
-  @ApiPropertyOptional({
-    description:
-      "How much of the named row this takes, IN BOTTLES (the row's own comparison unit) — omit to take all of it.",
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  supersedesQtyBottles?: number;
-
-  @ApiPropertyOptional({ description: "When the entry was actually made, if it synced later." })
-  @IsOptional()
-  @IsISO8601()
-  clientCapturedAt?: string;
-
-  @ApiPropertyOptional({
-    description: "Client-generated key, stable across retries — the same append must never write twice.",
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  idempotencyKey?: string;
-}
-
-export class LineVerdictsQueryDto {
-  @ApiPropertyOptional({ description: "Rows per page, 1-50 (default 10)." })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(50)
-  limit?: number;
-
-  @ApiPropertyOptional({
-    description:
-      "An earlier page's `earliestCursor` — opaque, `<recorded_at>|<id>` (a bare ISO-8601 `recorded_at` from an older client is still accepted) — fetches the page before it.",
-  })
-  @IsOptional()
-  @Matches(VERDICT_CURSOR_RE, {
-    message: "before must be an earliestCursor returned by this ledger",
-  })
-  before?: string;
-}
-
 /**
  * The door stage of receiving.
  *
@@ -473,64 +369,4 @@ export class ReceivingController {
     }
   }
 
-  @Get("orders/:id/verdicts")
-  @ApiOperation({
-    summary: "The append-only verdict ledger for one order (ADR 0149 row 23)",
-    description:
-      "Oldest first, at most 50 rows per page. `before` (the previous page's `earliestCursor`, opaque) fetches the page before it — an interim engineering bound so a long ledger pages rather than growing without end; it is not sketch 107's own too-many-operations answer, which the founder has not given (06-pages/receiving.md §1a, \"Two more forks for the founder\" — not §14e, which is this page's separate pipeline review). `current` is the DERIVATION, not the latest row: per verdict word, the sum of what stands after later rows have taken their share.",
-  })
-  async lineVerdicts(
-    @Param("id") orderId: string,
-    @CurrentUser() user: AuthedUser,
-    @Query() query: LineVerdictsQueryDto,
-  ) {
-    try {
-      return await this.receiving.listLineVerdicts(user.restaurantId, orderId, {
-        limit: query.limit,
-        before: query.before ?? null,
-      });
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        error.message || "Failed to load the verdict ledger",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
-
-  @Post("orders/:id/verdicts")
-  @ApiOperation({
-    summary: "Append one verdict to the ledger — never edits or replaces (ADR 0149 row 23)",
-    description:
-      "The database enforces append-only (a trigger refuses UPDATE/DELETE on every role, RLS included) and the over-take guard (a `supersedes` row can never be taken from beyond its own quantity, serialised against concurrent appends). This method's own checks exist only to turn that into a sentence a manager can act on.",
-  })
-  async appendLineVerdict(
-    @Param("id") orderId: string,
-    @Body() body: AppendLineVerdictDto,
-    @CurrentUser() user: AuthedUser,
-  ) {
-    try {
-      return await this.receiving.appendLineVerdict({
-        restaurantId: user.restaurantId,
-        orderId,
-        userId: user.userId,
-        verdict: body.verdict,
-        qty: body.qty,
-        uom: body.uom,
-        beyondOrder: body.beyondOrder,
-        reason: body.reason,
-        evidence: body.evidence,
-        supersedes: body.supersedes ?? null,
-        supersedesQtyBottles: body.supersedesQtyBottles ?? null,
-        clientCapturedAt: body.clientCapturedAt ?? null,
-        idempotencyKey: body.idempotencyKey ?? null,
-      });
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new HttpException(
-        error.message || "Failed to append the verdict",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
-  }
 }

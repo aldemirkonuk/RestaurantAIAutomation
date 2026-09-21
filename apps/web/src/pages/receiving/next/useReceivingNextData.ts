@@ -14,12 +14,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { creditsApi, type ProcurementCredit, type CreditStats } from '@/services/api/credits';
-import {
-  receivingApi,
-  type AppendLineVerdictRequest,
-  type LineVerdictLedger,
-  type UnverifiedDelivery,
-} from '@/services/api/receiving';
+import { type UnverifiedDelivery } from '@/services/api/receiving';
 import {
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
@@ -469,51 +464,6 @@ export function useManagerQueue(): ManagerQueueData {
       refetch: () => void q.refetch(),
     };
   }, [q.data, q.isLoading, q.isError, q.error, q.refetch]);
-}
-
-/* ──────────────────────── manager: the append-only verdict ledger (line sheet) ── */
-
-/**
- * One line's append-only verdict ledger (ADR 0149 row 23; sketch 107 — "The
- * derivation rule"). `before` pages further back; the queue's own row is
- * unaffected by this — appending here does not change `dollarsAtRisk` or the
- * lane a delivery sits in today, which is this ledger's own open question:
- * OD-126 (whether it supersedes, derives from, or reconciles alongside
- * `procurement_receipt_events.outcome`).
- */
-export function useLineVerdicts(
-  orderId: string | null,
-  opts: { before?: string | null } = {},
-) {
-  const q = useQuery({
-    queryKey: ['receiving-next-verdicts', orderId, opts.before ?? null],
-    queryFn: () => receivingApi.listLineVerdicts(orderId as string, { before: opts.before }),
-    enabled: !!orderId,
-  });
-  return {
-    ledger: (q.data ?? null) as LineVerdictLedger | null,
-    hasData: !!q.data,
-    isLoading: q.isLoading,
-    isError: q.isError,
-    failure: failureOf(q.isError, q.error),
-    refetch: () => void q.refetch(),
-  };
-}
-
-/**
- * Append one verdict. Never edits or replaces — the database itself refuses
- * UPDATE/DELETE on this table, from any role (the migration's trigger).
- * Idempotent on the caller's key so a retried hold cannot write twice.
- */
-export function useAppendLineVerdict(orderId: string | null) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: AppendLineVerdictRequest) =>
-      receivingApi.appendLineVerdict(orderId as string, body),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['receiving-next-verdicts', orderId] });
-    },
-  });
 }
 
 /* ─────────────────────────── manager: drafted-unsent credit requests (calm) ── */

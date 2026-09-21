@@ -23,9 +23,15 @@
  * vendor" per row. The founder's scale question ("what happens when one
  * delivery carries far more operations than the drawing shows") is answered
  * per box: more than VENDOR_BOX_CAP rows collapse behind "Show N more"
- * rather than growing the box without end. Each row also opens the
- * append-only verdict ledger (`RcVerdictLedger`) — the line sheet the
- * founder approved as drawn.
+ * rather than growing the box without end.
+ *
+ * The append-only verdict ledger this queue used to open per row
+ * (`RcVerdictLedger`) is removed — the founder's condition for shipping it
+ * was "if it's bulletproof", and it was not: the "every ordered bottle
+ * either stands in a current bucket or is named not-yet-counted" invariant
+ * was stated in three places and enforced in none, and its own detector
+ * (`notCountedBottles`) was clamped to never read negative, which hid the
+ * exact violation it existed to catch.
  */
 
 import { useMemo, useState } from 'react';
@@ -33,7 +39,6 @@ import { useNavigate } from 'react-router-dom';
 import { ink, settle } from '@/lib/mudavym/motion';
 import type { UnverifiedDelivery } from '@/services/api/receiving';
 import { RcTally } from './RcTally';
-import { RcVerdictLedger } from './RcVerdictLedger';
 import {
   EM,
   GE,
@@ -290,12 +295,10 @@ function QueueRow({
   item,
   expanded,
   onToggle,
-  onOpenLedger,
 }: {
   item: QueueItemVM;
   expanded: boolean;
   onToggle: () => void;
-  onOpenLedger: () => void;
 }) {
   const navigate = useNavigate();
   const linkStyle = {
@@ -516,16 +519,6 @@ function QueueRow({
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {/* The append-only verdict ledger (ADR 0149 row 23; sketch 107's
-                  "line sheet") — the overlay the founder approved as drawn. */}
-              <button
-                type="button"
-                style={{ ...linkStyle, fontWeight: 700 }}
-                data-ux-key="receiving-next:queue-open-ledger"
-                onClick={onOpenLedger}
-              >
-                Open the verdict ledger
-              </button>
               <button
                 type="button"
                 style={linkStyle}
@@ -566,7 +559,6 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
   const [lane, setLane] = useState<OutcomeLane | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedVendors, setExpandedVendors] = useState<Set<string>>(new Set());
-  const [ledgerFor, setLedgerFor] = useState<QueueItemVM | null>(null);
 
   const visible = useMemo(
     () => (lane === null ? data.items : data.items.filter((i) => i.lane === lane)),
@@ -746,7 +738,6 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
               item={item}
               expanded={expandedId === item.orderId}
               onToggle={() => setExpandedId((cur) => (cur === item.orderId ? null : item.orderId))}
-              onOpenLedger={() => setLedgerFor(item)}
             />
           ))}
         </div>
@@ -852,7 +843,6 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
                       onToggle={() =>
                         setExpandedId((cur) => (cur === item.orderId ? null : item.orderId))
                       }
-                      onOpenLedger={() => setLedgerFor(item)}
                     />
                   ))}
                 </div>
@@ -899,15 +889,6 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
         </div>
       )}
 
-      {ledgerFor && (
-        <RcVerdictLedger
-          open
-          onClose={() => setLedgerFor(null)}
-          orderId={ledgerFor.orderId}
-          orderLabel={ledgerFor.orderNumber || ledgerFor.orderId.slice(0, 8)}
-          vendorName={ledgerFor.providerName}
-        />
-      )}
     </section>
   );
 }

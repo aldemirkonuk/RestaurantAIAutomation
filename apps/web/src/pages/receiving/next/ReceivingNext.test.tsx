@@ -640,31 +640,18 @@ describe('Sketch 107 — vendor boxes group the queue, worst money first', () =>
     await waitFor(() => expect(header).toHaveTextContent('$100 + €40'))
   })
 
-  it('opens the append-only verdict ledger from a row without disturbing the existing hand-offs', async () => {
-    get.mockImplementation(async (url: string) =>
-      url.includes('/verdicts')
-        ? {
-            data: {
-              entries: [],
-              current: [],
-              packSize: 1,
-              orderedUnitType: null,
-              orderedQty: null,
-              orderedBottles: null,
-              hasEarlier: false,
-              earliestCursor: null,
-              totalEntries: 0,
-            },
-          }
-        : queuePayload({ items: [queueItem()], totalAtRisk: 120 }),
-    )
+  // The verdict-ledger feature was stripped (founder's condition was "if
+  // it's bulletproof"; a 16-agent research pass found its own invariant
+  // unenforced and its detector clamped to zero). This row no longer opens
+  // a ledger, and the row's other two hand-offs are untouched by the strip.
+  it('has no verdict-ledger entry point, and the row\'s existing hand-offs are unmoved', async () => {
+    get.mockResolvedValue(queuePayload({ items: [queueItem()], totalAtRisk: 120 }))
     harness(ManagerBody)
 
-    const open = await screen.findByRole('button', { name: /Open the verdict ledger/ })
-    fireEvent.click(open)
-    expect(await screen.findByText('Receiving verdict ledger · append-only')).toBeInTheDocument()
-    // The two pre-existing hand-offs are still there, unmoved.
+    await screen.findByText('PO-1')
+    expect(screen.queryByRole('button', { name: /Open the verdict ledger/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Open the order/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Edit line items at the desk/ })).toBeInTheDocument()
   })
 })
 
