@@ -520,6 +520,21 @@ closed self-adversarially, in this same round, before ever shipping.
   pins it (`scripts/test_require_pr_audit.py`); a mutation reintroducing the
   BLOCKER is killed. Measured before/after (direct call, no gh/git needed —
   this path is deliberately never matched): BEFORE blocked, AFTER allowed.
+  [NAMED 2026-09-20, r5-gate.json must-fix 6: "those three stay blocked,
+  unchanged" overclaims — `_github_api_merge_reason()` reads `gh_api =
+  _gh_api_reading(text)` and the merge-endpoint match over the WHOLE command
+  `text`, not the one segment that actually calls the endpoint, so a `gh api`
+  invocation ANYWHERE in the same command exempts a merge call made by a
+  DIFFERENT program elsewhere in it. CONFIRMED: `gh api user >/dev/null; curl
+  -X PUT https://api.github.com/repos/.../pulls/2/merge` exits 0 — curl did
+  not, in fact, stay blocked. Residual, not a BLOCKER: a literal-PR-number
+  `gh api .../pulls/<n>/merge` is already this section's own sanctioned,
+  ungated route with no sha/pin check either way (:173, :242), so this grants
+  no capability curl (or the caller's own `gh api` call) did not already have
+  by calling that route directly — confirmed both give exit 0 with equal, not
+  additional, ungating. Not closed here: binding the exemption to the one
+  segment that carries the endpoint is the fix, if this is ever worth the
+  added parsing surface.]
 - **Fresh HIGH bypass in the same fix, closed.** The literal-PR-number
   requirement that made the block (and now the exemption) possible had its
   own hole: `_PR_MERGE_ENDPOINT_RE` required `\d+`, so a shell-variable PR
@@ -618,6 +633,24 @@ closed self-adversarially, in this same round, before ever shipping.
   variable resolving to a non-main branch stays allowed; the unrelated-source
   case stays allowed). Measured before/after: all three bypasses allowed
   before, blocked after; both controls allowed both times.
+  [CORRECTED 2026-09-20, r5-gate.json must-fix 6: naming the residual's
+  example `$UNRELATED` undersells it — `_collect_assignments()` only
+  recognizes a bare `NAME=value` token leading a statement, so
+  `export B=main; git push origin feat:$B` collects NOTHING (`export` itself
+  is not `NAME=value`-shaped, so it ends assignment-collection for that
+  statement the same way any other command word would), leaving `$B`
+  unresolved even though the shell's real value of `$B` is `main` by the
+  exact same same-command-assignment mechanism the bare `B=main` case two
+  paragraphs up was itself confirmed live against a bare origin for. CONFIRMED
+  against this hook directly (no push executed): exit 0, not blocked, the
+  same as the genuinely-unrelated `$UNRELATED` case right above it — NOT
+  independently re-confirmed with a real push here, unlike the bare-`B=main`
+  case, since deliberately running any `git push` is outside what this
+  correction pass does. This residual is not merely "ordinary scripted
+  pushes to named branches unrelated to main" — it also covers a
+  same-command assignment prefixed by `export` (or any other shape
+  `_collect_assignments()` does not parse), which resolves to main the same
+  way the already-fixed bare `B=main` case does.]
 - **SELF-ADVERSARIAL, found and fixed before shipping.** A first version of
   the same-command variable reader took `NAME=value` per already-tokenized
   segment and trusted the value outright. `_SHELL_PUNCTUATION` includes `(`

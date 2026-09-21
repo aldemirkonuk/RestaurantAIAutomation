@@ -1113,13 +1113,26 @@ def test_r4_an_independently_copied_gh_binary_running_api_is_still_not_recognize
     assert out.returncode == 0, out.stderr  # residual: a copy is not caught
 
 
-@pytest.mark.parametrize("command", ["git push origin HEAD", "git push origin @"])
+@pytest.mark.parametrize("command", [
+    "git push origin HEAD", "git push origin @",
+    # r5-gate.json must-fix 3 (2026-09-20): "+" is git's own force-push
+    # marker on a refspec -- `_push_reason` compared `src` to ("HEAD", "@")
+    # BEFORE stripping it, so "+HEAD"/"+@" matched neither that check nor
+    # anything else in the function and fell through to allowed. CONFIRMED
+    # exit 0 before this fix, and confirmed live against a local bare origin
+    # that `git push origin +HEAD` from a checkout of `main` really does
+    # move the remote's `main` (this round's own fresh bypass of the fix
+    # right above it, not named when that fix shipped).
+    "git push origin +HEAD", "git push origin +@",
+])
 def test_r4_push_head_or_at_with_no_explicit_destination_is_blocked(two, command):
     """path-push-refspec-ambiguous: a bare `HEAD`/`@` refspec names the
     remote branch after the CURRENT LOCAL BRANCH, which this hook has never
     read -- CONFIRMED exit 0 before this fix, and confirmed live against a
     local bare origin that a checkout of `main` running either command really
-    does move the remote's `main`."""
+    does move the remote's `main`. The force-push ("+") variants are the same
+    shape with the same real consequence; see the parametrize list above for
+    why they needed their own, separate fix."""
     clone, _h, env = two
     out = run_hook(clone, env, command)
     assert out.returncode == 2, (command, out.stderr)
@@ -1272,6 +1285,13 @@ HOOK_MUTATIONS = [
      '        if "*" in src or (dst is not None and "*" in dst):\n', "        if False:\n", "r4_push_wildcard"),
     ("same-command variable resolution removed from push destinations",
      "        resolved = _resolve_simple_var(target, env)\n", "        resolved = target\n", "r4_push_var_develop"),
+    # r5-gate.json must-fix 3 (2026-09-20): re-opens this round's own
+    # fresh bypass of the fix right above it -- "+HEAD"/"+@" matched
+    # neither the HEAD/@ check nor anything else, so this scenario alone
+    # isolates it (r4_push_head above pins the un-prefixed form, still
+    # caught the same way either version of this code handles it).
+    ("force-push marker not stripped before the HEAD/@ comparison",
+     '        if spec.startswith("+"):\n            spec = spec[1:]\n', "", "r5_push_plus_head"),
     ("command-substitution assignment fragment trusted as a literal (self-adversarial fix)",
      "        if nxt is not None and nxt not in _STATEMENT_SEP_TOKENS and _is_punctuation(nxt):\n",
      "        if False:\n", "r4_push_var_cmdsub"),
@@ -1338,6 +1358,7 @@ SCENARIOS = {
     "r4_api_literal": lambda h: (f"gh api -X PUT repos/{REPO}/pulls/2/merge -f sha={'d' * 40}", 0, None, {}),
     "r4_api_nonliteral": lambda h: (f"N=2; gh api -X PUT repos/{REPO}/pulls/$N/merge -f sha={'d' * 40}", 2, None, {}),
     "r4_push_head": lambda h: ("git push origin HEAD", 2, None, {}),
+    "r5_push_plus_head": lambda h: ("git push origin +HEAD", 2, None, {}),
     "r4_push_wildcard": lambda h: ("git push origin 'refs/heads/*:refs/heads/*'", 2, None, {}),
     "r4_push_var_develop": lambda h: ("B=develop; git push origin HEAD:$B", 0, None, {}),
     "r4_push_var_cmdsub": lambda h: ("B=$(echo main); git push origin HEAD:$B", 2, None, {}),

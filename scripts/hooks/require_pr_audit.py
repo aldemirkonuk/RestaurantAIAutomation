@@ -544,6 +544,18 @@ def _push_reason(seg: list[str], env: dict[str, str] | None = None) -> str | Non
     # (`HEAD:$B`), resolved against a same-command assignment when one
     # exists and treated as unresolved, not safe, when it does not.
     for spec in positional[1:]:
+        # r5-gate.json must-fix 3 (2026-09-20): a leading "+" is git's own
+        # force-push marker on the refspec ("+HEAD", "+@", "+src:dst") -- it
+        # was never stripped before comparing `src` to ("HEAD", "@") below,
+        # so "+HEAD"/"+@" matched NEITHER that equality check NOR anything
+        # else in this loop and fell through to `return None` (not blocked).
+        # CONFIRMED with real git against a local bare origin: `git push
+        # origin +HEAD` from a main checkout moved remote main. The marker
+        # only ever prefixes the SRC side of a refspec, never the dst, so
+        # stripping it here (before the ":" split) fixes both places that
+        # compare `src` -- this one and the shell-expansion check below.
+        if spec.startswith("+"):
+            spec = spec[1:]
         if ":" in spec:
             src, dst = spec.split(":", 1)
         else:

@@ -37,6 +37,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import types
 
 import pytest
@@ -551,6 +552,20 @@ def _(s): s.write(ADR161, CLEAN_ADR + "The pr[^audit]-gate is retired.\n")
 # strip that deleted "audit" along with its brackets -- narrowed to digits
 # only (the shape H2 demonstrates and the shape real footnotes actually are).
 
+# ---------------- added by the gate-r5 last-call round (2026-09-20) ----------------
+# r5-gate.json must-fix 1: retiring the 40-char probe (H1-H3's own fix) also
+# retired the only thing in skeleton() that stripped a processing instruction
+# or a CDATA section -- neither is comment-shaped ("<!--...") nor tag-shaped
+# (a name right after "<"/"</"), so neither _HTML_COMMENT_RE nor _HTML_TAG_RE
+# ever matched them, and both render invisible in GitHub's own markdown the
+# same as a comment.
+@case("I1 a processing instruction, spaced, hides the words in prose", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "The audit <?x?> gate opt-out applies to docs-only changes.\n")
+@case("I2 a processing instruction, unspaced, hides the words in prose", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "The audit<?x?>gate opt-out applies to docs-only changes.\n")
+@case("I3 a CDATA section hides the words in prose", True)
+def _(s): s.write(ADR161, CLEAN_ADR + "The audit <![CDATA[x]]> gate opt-out applies to docs-only changes.\n")
+
 
 def pairs(s: Scratch) -> list[tuple[str, bool, str, str]]:
     """(name, expect_owned, base sha, head sha) for every case."""
@@ -635,6 +650,49 @@ def test_the_gate_r4_round_added_7_cases(scratch):
     named footnote label carrying a real word must not be stripped whole."""
     names = [p[0] for p in scratch[1]]
     assert len([n for n in names if n[0] == "H"]) == 7
+
+
+def test_the_gate_r5_last_call_added_3_cases(scratch):
+    """gate-r5 last-call round (2026-09-20, r5-gate.json must-fix 1): a
+    processing instruction ("<?x?>", spaced and unspaced) and a CDATA
+    section ("<![CDATA[x]]>") each render invisible in GitHub's markdown the
+    same as an HTML comment, but neither is comment-shaped nor tag-shaped, so
+    retiring the old 40-char probe (`<[^<>]{0,40}>`, which caught them by
+    accident regardless of shape) released all three. `_HTML_PI_RE` and
+    `_HTML_CDATA_RE` close them the same way the comment strip already
+    works: no length bound, anchored on each shape's own unambiguous closing
+    delimiter."""
+    names = [p[0] for p in scratch[1]]
+    assert len([n for n in names if n[0] == "I"]) == 3
+
+
+def test_html_tag_re_does_not_catastrophically_backtrack_on_an_unclosed_tag():
+    """r5-gate.json must-fix 2: `_HTML_TAG_RE`'s attribute-name class
+    (`[^\\s=/>]+`) and unquoted-value class (`[^\\s>]+`) both used to allow a
+    quote character, so `<x a="b c"` (a quoted attribute with an embedded
+    space, no closing ">") had TWO ways to parse the same run: the name
+    class could swallow the `="b` chunk as one bare "name" while the
+    alternation's own quoted-value branch could also match `"b c"` as a
+    value -- ambiguity a catastrophic backtracker resolves by trying every
+    split. CONFIRMED against the actual module-level `_HTML_TAG_RE`: doubling
+    time at N=18/20/22 repeats of `' a="b c"'` (0.10s/0.41s/1.66s here,
+    matching r5-gate.json's own measurement almost exactly), which the must-
+    fix note says reaches minutes by N=30 and days by N=40 -- a PR body or
+    diff context containing this shape could not be classified at all within
+    the gate's own 240s/600s ownership deadlines. Fixed by excluding both
+    quote characters from the name and unquoted-value classes
+    (`[^\\s=/>"']+` / `[^\\s>"']+`), so a quoted value has exactly one
+    parse. This asserts a wall-clock bound, not just a changed pattern
+    string, so a future edit that reopens the ambiguity a different way
+    still fails this test."""
+    gate = load()
+    N = 5000  # far past where the pre-fix regex was already minutes (N=30)
+    s = "<x" + ' a="b c"' * N
+    t0 = time.time()
+    m = gate._HTML_TAG_RE.search(s)
+    dt = time.time() - t0
+    assert dt < 5.0, f"_HTML_TAG_RE took {dt:.2f}s on an unclosed tag (N={N}) -- catastrophic backtracking"
+    assert m is None  # no closing ">" anywhere in the input, so no match -- not a false accept either
 
 
 def test_every_case_classifies_as_expected(scratch):
@@ -856,6 +914,9 @@ MUTATIONS: list[tuple[str, str, str, bool]] = [
     ("conftest.py ownership no longer scoped to scripts/",
      'if parts[-1] in TEST_CONFIG_BASENAMES and n.startswith(TEST_CONFIG_OWNED_PREFIX):',
      "if parts[-1] in TEST_CONFIG_BASENAMES:", False),
+    # gate-r5 last-call round (2026-09-20, r5-gate.json must-fix 1)
+    ("processing-instruction strip removed", 's = _HTML_PI_RE.sub("", s)', "s = s", False),
+    ("CDATA-section strip removed", 's = _HTML_CDATA_RE.sub("", s)', "s = s", False),
 ] + [
     (f"owned prefix {p!r} deleted", f'\n    "{p}",', "\n", False) for p in _PREFIXES
 ] + [
@@ -982,10 +1043,22 @@ def test_ci_pytest_step_is_config_isolated_from_pytest_ini_and_conftest():
     pyproject.toml/setup.cfg/tox.ini and `--confcutdir=scripts` stops
     conftest.py collection above scripts/, so a PR adding either (even if it
     somehow got past OWNED_BASENAMES) can no longer silently drop the gate's
-    own regression tests from collection."""
+    own regression tests from collection.
+
+    r5-gate.json must-fix 5 (2026-09-20): neither flag isolates MODULE
+    resolution -- a root-level pytest.py/pytest//_pytest//sitecustomize.py
+    (none of them owned by OWNED_BASENAMES or TEST_CONFIG_BASENAMES) can
+    still shadow the real `pytest` package, since `python3 -m pytest`
+    prepends the current directory to `sys.path` before resolving the
+    import. CONFIRMED in a scratch repo: a two-line root `pytest.py`
+    (`print("527 passed"); sys.exit(0)`) made a run over a single FAILING
+    test print "527 passed" and exit 0. `-P` (Python 3.11+, this job's own
+    pinned PYTHON_VERSION) stops that prepend (PYTHONSAFEPATH) -- CONFIRMED
+    fixed in the same scratch repo. Pinned here the same way the two flags
+    above already are, so a silent drift is caught the same way."""
     text = (WORKFLOWS_DIR / "ci.yml").read_text()
-    m = re.search(r"run:\s*python3 -m pytest[^\n]*test_pr_audit_gate\.py[^\n]*", text)
-    assert m, "the scripts/ unit-test step (audit gate suite) was not found"
+    m = re.search(r"run:\s*python3 -P -m pytest[^\n]*test_pr_audit_gate\.py[^\n]*", text)
+    assert m, "the scripts/ unit-test step (audit gate suite) was not found, or is missing -P"
     assert "-c /dev/null" in m.group(0) and "--confcutdir=scripts" in m.group(0), m.group(0)
 
 

@@ -536,7 +536,11 @@ OWNED_BASENAMES = frozenset({"claude.md", "claude.local.md", "agents.md", ".mcp.
 # So a `conftest.py` at or under `scripts/` is the only file this basename
 # check can still matter for, and `pytest.ini`/`pyproject.toml`/`setup.cfg`/
 # `tox.ini` cannot influence this step's test run anywhere, PROVIDED ci.yml
-# keeps both flags -- which test_ci_pytest_flags_pin_the_gates_own_isolation
+# keeps both flags -- which test_ci_pytest_step_is_config_isolated_from_pytest_ini_and_conftest
+# [CORRECTED 2026-09-20, r5-gate.json must-fix 4: this named
+# test_ci_pytest_flags_pin_the_gates_own_isolation, which does not exist and
+# never has; the test that actually pins the two flags below has always been
+# this one]
 # (scripts/test_pr_audit_gate.py) pins, per his answer's second half, so a
 # silent drift there is caught even though `.github/workflows/` already being
 # owned whole means removing the flags outright would itself have escalated.
@@ -617,7 +621,19 @@ _ZERO_SHA = "0" * 40
 # why each of these has no length bound, unlike the short-inline-HTML probe
 # it sits beside.
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-_HTML_TAG_RE = re.compile(r"</?[a-zA-Z][a-zA-Z0-9-]*(?:\s+[^\s=/>]+(?:=(?:\"[^\"]*\"|'[^']*'|[^\s>]+))?)*\s*/?>")
+_HTML_TAG_RE = re.compile(r"</?[a-zA-Z][a-zA-Z0-9-]*(?:\s+[^\s=/>\"']+(?:=(?:\"[^\"]*\"|'[^']*'|[^\s>\"']+))?)*\s*/?>")
+# gate-r5 last-call round (2026-09-20, r5-gate.json must-fix 1): neither a
+# processing instruction (`<?...?>`) nor a CDATA section (`<![CDATA[...]]>`)
+# has a tag NAME right after its "<"/"</", so _HTML_TAG_RE never matches
+# either shape, and neither opens with "<!--", so _HTML_COMMENT_RE doesn't
+# either -- both survived, completely unstripped, once the old 40-char probe
+# that used to catch them by accident (any "<...>" up to 40 chars, regardless
+# of shape) was retired below. Both are invisible in GitHub's own markdown
+# renderer at any length, the same as an HTML comment, so both get the same
+# no-length-bound treatment: unambiguous own closing delimiter ("?>", "]]>"),
+# can never span two unrelated angle brackets the way the retired probe could.
+_HTML_PI_RE = re.compile(r"<\?.*?\?>", re.DOTALL)
+_HTML_CDATA_RE = re.compile(r"<!\[CDATA\[.*?\]\]>", re.DOTALL)
 # SELF-ADVERSARIAL finding, fixed before this round ever shipped: a first
 # version matched ANY `[^label]`, identifier included -- which strips the
 # label's own TEXT, not just its "[^"/"]" punctuation. CONFIRMED that
@@ -678,11 +694,33 @@ def skeleton(s: str) -> tuple[str, list[str]]:
     # comparison like "a < b, c > d" within 40 characters) instead of real
     # markup. A dead, provably-non-load-bearing check is worse than no check
     # -- it reads as coverage that is not there -- so it is removed, not kept
-    # for its own sake. A markdown footnote reference ("audit[^1] gate") is
-    # RELEASED for an unrelated reason -- its digit is alnum, so no amount of
-    # separator collapsing lets `_S` (non-alnum only) bridge it -- and is
-    # dropped outright, the same as the emphasis/code markers below.
+    # for its own sake.
+    #
+    # CORRECTED 2026-09-20 (gate-r5 last-call round, r5-gate.json must-fix 1):
+    # "changed zero cases' outcome" above held only against THIS file's own
+    # suite as it stood that round -- it did not hold against the shape of
+    # text the retired probe actually matched. A processing instruction
+    # ("<?x?>") and a CDATA section ("<![CDATA[x]]>") both matched the old
+    # `<[^<>]{0,40}>` (any characters between one "<" and the next ">") but
+    # match neither _HTML_COMMENT_RE (no leading "<!--") nor _HTML_TAG_RE (no
+    # tag name right after "<"/"</"), so retiring the probe silently RELEASED
+    # both -- CONFIRMED with `_scan_text` on HEAD vs. this fix, both spaced
+    # ("The audit <?x?> gate...") and unspaced ("The audit<?x?>gate...").
+    # GitHub's own markdown renderer (`gh api -X POST /markdown`) shows both
+    # forms as invisible, the same as a comment. Fixed the same way the
+    # comment was: `_HTML_PI_RE`/`_HTML_CDATA_RE`, no length bound, each
+    # anchored on its own unambiguous closing delimiter ("?>", "]]>") so
+    # neither can span two unrelated angle brackets either. Cases I1-I3
+    # (`test_the_gate_r5_last_call_added_3_cases`); a mutation removing each
+    # strip is killed.
+    #
+    # A markdown footnote reference ("audit[^1] gate") is RELEASED for an
+    # unrelated reason -- its digit is alnum, so no amount of separator
+    # collapsing lets `_S` (non-alnum only) bridge it -- and is dropped
+    # outright, the same as the emphasis/code markers below.
     s = _HTML_COMMENT_RE.sub("", s)  # HTML comment, any length
+    s = _HTML_PI_RE.sub("", s)  # processing instruction ("<?...?>"), any length
+    s = _HTML_CDATA_RE.sub("", s)  # CDATA section ("<![CDATA[...]]>"), any length
     s = _HTML_TAG_RE.sub("", s)  # a real tag's own grammar, any length
     s = _FOOTNOTE_REF_RE.sub("", s)  # markdown footnote reference
     s = re.sub(r"[*`~_\\]", "", s)  # markdown emphasis, code and escapes inside a word
