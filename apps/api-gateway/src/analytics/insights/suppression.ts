@@ -146,7 +146,11 @@ export function parseSuppressionKey(key: string): ParsedSuppressionKey {
 }
 
 export function scopeOf(subject: string, grain: string): SuppressionScope {
-  if (subject === ANY) return "rule";
+  // Rule scope is BOTH wildcards. A period with no subject (`rule#*#p7:…`) is
+  // one finding — this period of a rule that names nothing — and calling it
+  // "the whole rule" put a wider claim on screen than the key stores, and
+  // would have gated a one-finding dismiss as rule-wide (ADR 0191).
+  if (subject === ANY && grain === ANY) return "rule";
   return grain === ANY ? "subject" : "insight";
 }
 

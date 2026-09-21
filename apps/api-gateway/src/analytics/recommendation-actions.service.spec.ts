@@ -121,13 +121,20 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
   it("turning a type off writes the bare rule-scope key AND files an audit row naming the actor", async () => {
     const { db, calls } = recordingDb();
     const svc = new RecommendationActionsService(db);
-    const out = await svc.setTypeEnabled("r-1", TYPE, false, "u-actor");
+    const out = await svc.setTypeEnabled(
+      "r-1",
+      TYPE,
+      false,
+      "u-actor",
+      "not_relevant",
+    );
 
     const write = calls.find((c) => c.table === "recommendation_actions");
     expect(write?.payload).toMatchObject({
       restaurant_id: "r-1",
       rule_key: `insight:${TYPE}`,
       status: "dismissed",
+      reason: "not_relevant",
       created_by: "u-actor",
     });
 
@@ -144,6 +151,7 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
         candidate_key: TYPE,
         rule_key: `insight:${TYPE}`,
         enabled: { to: false },
+        reason: "not_relevant",
       },
     });
     expect(out.audit).toEqual({ recorded: true, reason: null });
@@ -152,7 +160,7 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
   it("turning it back on is its own audit row, so the trail keeps who turned it off", async () => {
     const { db, calls } = recordingDb();
     const svc = new RecommendationActionsService(db);
-    await svc.setTypeEnabled("r-1", TYPE, false, "u-first");
+    await svc.setTypeEnabled("r-1", TYPE, false, "u-first", "disagree");
     await svc.setTypeEnabled("r-1", TYPE, true, "u-second");
     const rows = calls.filter((c) => c.table === "system_audit_log");
     expect(rows.map((r) => [r.payload.action, r.payload.actor_id])).toEqual([
@@ -164,7 +172,13 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
   it("a failed audit row is reported in the receipt, never swallowed as recorded", async () => {
     const { db } = recordingDb({ auditError: "permission denied" });
     const svc = new RecommendationActionsService(db);
-    const out = await svc.setTypeEnabled("r-1", TYPE, false, "u-actor");
+    const out = await svc.setTypeEnabled(
+      "r-1",
+      TYPE,
+      false,
+      "u-actor",
+      "not_now",
+    );
     expect(out.audit).toEqual({ recorded: false, reason: "permission denied" });
   });
 
@@ -174,6 +188,18 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
     await expect(
       svc.setTypeEnabled("r-1", `${TYPE}#tuesday#d:2026-09-16`, false, "u-actor"),
     ).rejects.toThrow(/Unknown catalogue type/);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses to turn a type off without a reason label, and writes nothing", async () => {
+    const { db, calls } = recordingDb();
+    const svc = new RecommendationActionsService(db);
+    await expect(
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor"),
+    ).rejects.toThrow(/needs a reason/);
+    await expect(
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "because I said so"),
+    ).rejects.toThrow(/needs a reason/);
     expect(calls).toEqual([]);
   });
 

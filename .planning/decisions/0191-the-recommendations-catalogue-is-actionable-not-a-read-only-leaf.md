@@ -1,6 +1,6 @@
 # 0191 — The recommendations catalogue is actionable, not a read-only leaf
 
-- **Status:** Locked (founder, 2026-09-21).
+- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below.
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** recommendations, catalogue, insight catalog, candidate type, on/off, toggle, recommendation_actions, insight prefs, rule toggle, suppression, audited, owner/manager, one-tap acts, CatalogView, InsightCatalog, NEW-434, NEW-707, ADR 0149
@@ -204,7 +204,8 @@ Two things had to be found, not assumed, before this could be built:
   `system_audit_log`. Closing that means taking rule-scope dismiss and
   Restore of a bare `insight:` key away from staff, which changes the feed
   the founder already approved — so it is left open here, as the founder's
-  question, not decided by the build.
+  question, not decided by the build. [**CLOSED 2026-09-21 by the founder
+  — see "Round 2", answer 1: owner/manager only and audited on every door.**]
 - **Revisit if:** a house asks to see *who* turned a type off and when
   beyond what `recommendation_actions.updated_at`/`created_by` already
   carries (a real audit trail, not just "audited" in the sense of "the actor
@@ -212,7 +213,192 @@ Two things had to be found, not assumed, before this could be built:
   [**First half CLOSED 2026-09-21, last call:** the catalogue toggle now
   files a `system_audit_log` row per change — see the Decision's amendment.
   The feed's own rule-scope dismiss still does not; see "The gate holds on
-  one door".]
+  one door".] [**Both halves CLOSED 2026-09-21 — "Round 2": every door's
+  rule-wide dismiss and restore is audited, and Snooze and Done are in the
+  panel now that every surface honours them.**]
+
+## Round 2 — the founder's answers, and what was built (2026-09-21)
+
+Both forks above went to the founder and came back the same day. His
+answers, as relayed to this lane (the founder's own words are the quoted
+ones; the verbatim relay is in the review trail):
+
+1. **Rule-wide dismiss and restore** — the feed's "dismiss the whole rule",
+   the Dismissed leaf's Restore, and the catalogue's toggle — are owner/
+   manager only and audited **everywhere**; staff keep dismissing a single
+   finding or subject.
+2. **"Build it right, in order":** the engine gets ONE shared per-item state
+   (dismissed with a reason / snoozed-until / done) that the feed, the
+   catalogue, reports and the rails all read. In order: dismiss-with-reason
+   (the reason is a labelled signal), then snooze (time suppression; the item
+   returns after), then done (completion, no negative signal). Each action
+   shows on the catalogue's live-items panel only once it is honoured on
+   every surface.
+
+### What "rule-wide" is, and where the gate sits
+
+- **Rule-wide** is a key with no subject AND no period — the bare rule key or
+  `rule#*#*` (`insights/item-state.ts` `isRuleWideKey`). Not
+  `parseSuppressionKey().scope === 'rule'`: `scopeOf` called a period-only
+  key (`rule#*#p7:…`, one period of a rule that names nothing) "rule", which
+  would have gated a one-finding dismiss. `scopeOf` is corrected in the same
+  change (rule scope is both wildcards), pinned by `suppression.spec.ts`.
+- **A rule-wide dismiss** is `dismissed` written at such a key; **a rule-wide
+  restore** is any status written over such a key while it is dismissed
+  (`isRuleWideDismissOrRestore`). A snooze or done of a live rule that is
+  not dismissed is neither, and stays open to staff — the answer names
+  dismiss and restore only (see founder questions).
+- **The gate is in the one write path every door uses**:
+  `RecommendationActionsService.setActionAs` / `bulkSetActionAs`, called by
+  `POST /analytics/recommendations/:id/action` and `…/bulk-action` with the
+  actor read from the JWT (`actorOf(@CurrentUser())`; a body `createdBy` is
+  ignored). Owner, manager or admin — `RolesGuard`'s own set — else
+  `RuleWideActForbidden` → **403, before anything is written**. A bulk
+  selection holding any rule-wide item is refused whole. Whether a status
+  write is a restore depends on the row already there, so it is read first; a
+  failed read refuses the write.
+- **Audited**: each rule-wide dismiss or restore files a `system_audit_log`
+  row (`recommendation_rule_dismissed` / `recommendation_rule_restored`,
+  actor = the JWT's `public.users.user_id`, the key, the status from/to and
+  the reason). Same never-throw + receipt contract as the toggle; the feed
+  says "not written to the house log" when the receipt says so. The toggle
+  keeps its own `recommendation_type_turned_on|off` rows.
+- **What each surface stops offering**: the feed's dismissal sheet drops "the
+  whole rule" for staff and says why; a rule that names no subject and no
+  period has only the whole-rule key, so staff are told to snooze it or rule
+  it off instead of being shown a control the gateway would refuse; the bulk
+  bar's "whole rules" is dark for staff; "Return it to the book" on a
+  whole-rule dismissal is dark for staff. The catalogue, the rails and the
+  Reports panel never offer a one-item act on a whole-type key at all.
+
+### One shared per-item state
+
+- **One resolver**: `insights/item-state.ts` `resolveItemState(target,
+  book)` — dismissed, then done, then a snooze whose instant is still ahead,
+  each at every scope its key can carry (`suppressingKeysFor`). A snooze with
+  no instant, or a passed one, is not a snooze: the item is back.
+- **Every reader calls it**: `InsightGeneratorService.generate()` (the feed's
+  sentences, Reports' live reads, the catalogue's live items) and the NEW
+  `readStored()` behind `getStored()` (Reports' register, the rails, the
+  mobile tab, the overview, the goal suggestions, the MCP reader) withhold by
+  it and count what they withheld by state (`withheld`); the feed's own
+  deterministic rules resolve their state with it too
+  (`RecommendationsService`), so a snooze or done written at a finding's key
+  holds there. Before: the generator honoured dismissals only, the feed read
+  snooze and done off the bare rule row only, and the stored read honoured
+  nothing written since its last persist.
+- **The stored read needed the item's identity**: `analytics_insights` now
+  stores `subject` and `period_key` (migration `20260921115500`, additive,
+  no backfill) and `INSIGHT_GENERATOR_VERSION` is 3, so a version-2 row —
+  which cannot be resolved at the scope a state was written — is withheld and
+  recomputed on first read, never served unfiltered. Stored rows go out with
+  their `suppression` keys, like live ones.
+- **The stored cache is state-free** [last call, 2026-09-21]: a rebuild
+  stores what fired (capped per category as if nothing were hidden) together
+  with what is shown, and every stored read applies the state. As first
+  built, the rebuild stored only what was visible at that moment, so a
+  finding snoozed across a rebuild was missing from the cache when its
+  snooze ended and did not "return after" on Reports or the rails until the
+  category's next rebuild — a day for `daily`, a week for `weekly`, never for
+  `manual`; the same held for a dismissal or a done returned to the book.
+  Bounded at twice the per-category cap; pinned by
+  `insight-shared-state.spec.ts` ("snoozed while the cache is rebuilt").
+- **An unreadable state is said on the rails and the Reports panel**
+  [last call]: both now print that what was dismissed, snoozed or done could
+  not be read when the gateway answers `suppressionsReadable: false`. Not
+  done for the headline bar and command palette (`useEngineInsights`) or the
+  `getStored()` callers (overview, goal suggestions, MCP, main's report
+  exports), which still cannot tell that case from a clean list.
+- **The rails and the Reports panel stop filtering by themselves**:
+  `ContextualInsights`, `EngineInsightsPanel` and `useEngineInsights` built
+  `insight:<candidate>:<entity>` keys that nothing server-side ever wrote or
+  matched, filtered on them, and wrote dismissals under them — a rail
+  dismissal held on that rail alone. They now act at the row's gateway-built
+  key (`@/lib/recommendationState` `insightActKey`) and filter nothing.
+- **1 — dismiss with a reason (the labelled signal)**: `DISMISS_REASONS` is
+  a closed set — the four labels the feed and the legacy page already
+  offered (`not_relevant`, `already_handled`, `disagree`, `not_now`). A
+  dismissal without one is a 400 from every door, the catalogue's "Off"
+  included. The rails, Reports and the catalogue used to stamp
+  `not_relevant` and the bulk bar `not_now` without asking; each now asks. A
+  row's `reason` is non-null exactly when it is dismissed: a snooze, a done
+  and a restore write it back to null, so a label is never left on an item
+  that is not dismissed.
+- **2 — snooze (time suppression; the item returns after)**: needs a future
+  `snoozeUntil` (400 otherwise — a snooze with no instant was hidden for
+  ever: `listByStatus('snoozed')` dropped it and nothing woke it). The feed's
+  snooze and bulk snooze now write the finding's own key, so snoozing "this
+  Wednesday" leaves next Wednesday standing.
+- **3 — done (completion, no negative signal)**: carries no reason and is
+  never counted as a dismissal (`withheld.done`, not `suppressed`). The
+  feed's rule-off writes the finding's key.
+- **The catalogue's live-items panel** now offers Snooze (the feed's three
+  instants), Done, and Dismiss-with-a-reason on every item narrower than its
+  type, and says how many of the type the state is holding back and that
+  they are hidden everywhere. All three are shown because all three are now
+  honoured on the feed, the catalogue, Reports (live and stored) and the
+  rails.
+
+### Options considered in round 2
+
+1. **Each surface filters by the state itself** (as the rails and Reports
+   did). Rejected — that is the defect: three readers, three meanings, and a
+   key shape no one else wrote.
+2. **An append-only table of dismissal labels**, so a restore and a
+   re-dismissal do not overwrite the signal. Not built: the answer asks for
+   ONE shared state, and a second table is a second store the founder has
+   not asked for. The label lives on the state row while the item is
+   dismissed; whether a history of labels is wanted is his question.
+3. **A CHECK constraint on `recommendation_actions.reason`.** Rejected for
+   now: legacy rows hold free text (the feed's and the legacy page's snoozes
+   wrote "until tomorrow", "1 week" into `reason`), so a constraint needs a
+   production data rewrite. Enforced at the one write path instead.
+4. **`@Roles` on the POST route, or gating by the key's prefix.** Rejected:
+   staff keep one-finding and one-subject acts on the same route; the gate
+   reads the key's shape and the row's current state, server-side.
+5. **Gate a rule-wide snooze or done too.** Not done: the answer names
+   dismiss and restore. Left to the founder.
+
+### Founder questions round 2 leaves open (not decided by the build)
+
+1. **Whole-rule snooze and done are open to staff** — the answer named
+   dismiss and restore. The gateway takes any future `snoozeUntil`, so a
+   staff snooze of a whole rule to a far date, or a done on it, hides the
+   rule house-wide with no house-log row: in effect the dismissal the answer
+   reserved for owner/manager. Gate them too, cap the snooze, or keep?
+2. **A card whose rule names no subject and no period** (most deterministic
+   feed rules: `plowhorse_repricing`, `vendor_concentration`, …) has only the
+   whole-rule key, so staff can no longer dismiss it at all — only snooze it
+   or mark it done. Is such a card "a single finding" staff keep, or "the
+   whole rule"?
+3. **Done on such a card** hides the rule until someone returns it. Keep, or
+   should done end when the rule next fires?
+4. **Labels are overwritten**: the label lives on the state row, so restore
+   then re-dismiss replaces the earlier one. Is an append-only history of
+   labels wanted for the model?
+5. **"Already handled"** is a dismissal label but means what done means
+   (completion, no negative signal). Keep it as a label, or record done?
+6. **Legacy `/recommendations`** (what a house sees until the page is in
+   `LIVE_PAGES`) dismisses whole rules: staff now get a refusal there. Patch
+   the legacy page, or accept until go-live?
+7. **"Restore all"** in the relay is read as the Dismissed leaf's Restore —
+   no control by that name exists. Confirm, or was a bulk control wanted?
+
+### Consequences of round 2
+
+- Staff cannot dismiss a rule that names no subject and no period — most of
+  the deterministic feed rules. They can snooze it or rule it off.
+- The legacy `/recommendations` page (`Recommendations.tsx`, still what a
+  house sees until `recommendations` is in `LIVE_PAGES`) dismisses on the
+  bare rule key: for staff that is now a 403 and its generic "Couldn't save
+  that" toast, and its optimistic hide is not rolled back until a reload.
+  Not rebuilt here — ADR 0149 governs the legacy page.
+- Existing rows written as `snoozed` with no instant come back on every
+  surface; before, they were invisible everywhere and listed nowhere.
+- After deploy, every stored insight row is version 2 and is recomputed on
+  its first read; until migration `20260921115500` is applied, `persist()`
+  cannot write the new columns and each read computes live.
+- A period-only finding's `suppression.scope` reads `insight`, not `rule`.
 
 ## Review trail
 
@@ -220,3 +406,6 @@ Two things had to be found, not assumed, before this could be built:
 |---|---|---|
 | 2026-09-21 | — | Created; built in lane `recs-catalogue` (`wt-recs-cat`) |
 | 2026-09-21 | last call (Opus) | Amended before merge: (1) "audited" is a `system_audit_log` row per toggle, not the overwritten `created_by`; (2) the toggle refuses keys the catalogue does not list; (3) "open live items" narrows server-side before the five-per-category cap and never persists — the client-side filter called a fired type empty; (4) a failed live Pin/Dismiss is put back and said, as the feed does; unreadable dismissals and an unreadable on/off read are said, not shown as clean; (5) option 4's "trivially bypassed" and option 5's "every live insight" corrected in place; the one-door gate recorded as a founder fork. |
+| 2026-09-21 | founder (relayed to lane `recs-catalogue`) | Answered both forks, verbatim as relayed: "(1) rule-wide dismiss and restore (the feed's 'dismiss the whole rule', Restore all, the catalogue toggle) are owner/manager only and audited EVERYWHERE; staff keep dismissing a single finding or subject; (2) "Build it right, in order": the engine gets ONE shared per-item state (dismissed with a reason / snoozed-until / done) that the feed, the catalogue, reports and the rails all read; build in order dismiss-with-reason (the reason is a labelled signal), then snooze (time suppression; the item returns after), then done (completion, no negative signal); show each action on the catalogue's live-items panel only once it is honoured on every surface." |
+| 2026-09-21 | — | Round 2 built in lane `recs-catalogue` (`wt-recs-cat`): the gate in `setActionAs`/`bulkSetActionAs`, `item-state.ts`, the stored read, migration `20260921115500`, the four web surfaces. "Restore all" in the relay is read as the Dismissed leaf's Restore (no control by that name exists; the question put to him said "the Dismissed tab's Restore"). |
+| 2026-09-21 | last call (Opus), round 2 | Amended before merge: (1) the stored cache is state-free — a rebuild stores what fired as well as what is shown, so a snooze that ends, or a dismissal or done returned to the book, is back on Reports and the rails without waiting for the category's next rebuild (the first build persisted only what was visible, so the founder's "the item returns after" did not hold on the stored surfaces); (2) the rails and the Reports panel say when the state could not be read; (3) two code citations the new lines shifted (`mcp-tool-readers.service.ts`, `house-letters.service.ts`) now name the function instead of a line range; (4) the round's founder questions are written here — the text pointed at a section that did not exist — with the subject-less-card question added. |

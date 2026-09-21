@@ -238,10 +238,10 @@ export interface LiveInsight {
   entityKey: string | null;
   entityLabel: string | null;
   /**
-   * The exact key an instance-scope dismiss/pin writes — computed server-side
-   * by `insight-generator.service.ts`'s `record()`, present only on a LIVE
-   * (`?refresh=true`) read, never on a stored row (`persist()` does not save
-   * it). A row without one is dropped rather than shown with a dead act.
+   * The exact key an instance-scope act writes — computed server-side by
+   * `insight-generator.service.ts`'s `record()` (and, since ADR 0191 round 2,
+   * by `readStored()` for a stored row too). A row without one is dropped
+   * rather than shown with a dead act.
    */
   suppressionKey: string;
 }

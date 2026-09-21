@@ -367,7 +367,12 @@ back as a sentence ("Silenced: this one finding about wednesday on Wed 2 Sep. Th
 reads every other day.") beside **Return it to the book**. The `d` key now *opens* the sheet
 rather than dismissing — a keystroke cannot choose a scope on the manager's behalf. Bulk
 dismiss cannot ask per entry, so it takes the widest scope and says so on the control itself:
-**"Dismiss them — whole rules"**.
+**"Dismiss them — whole rules"**. [**2026-09-21, ADR 0191 round 2 (founder):** the whole-rule
+scope, the bulk bar's "whole rules" and "Return it to the book" on a whole-rule dismissal
+are owner/manager only (403 from the gateway, audited in `system_audit_log`); staff see them
+dark or absent, with why. Every dismissal carries one of four reason labels — the bulk bar
+now asks instead of stamping `not_now`. Snooze and rule-off write the finding's own key, and
+one shared per-item state (`item-state.ts`) decides what every surface hides.]
 
 **Verified, not asserted — and which endpoints.** Against the running local gateway on :4000,
 for `550e8400-…`, **both** readers of this generator were checked, because the first attempt at
@@ -845,7 +850,11 @@ settled:**
   `recommendation_actions` store NEW-434 already keys `insight:<candidate_key>`
   — no new table, no migration. Built in `CatalogView.tsx`/`rec-catalog.ts`
   (lane `recs-catalogue`, `wt-recs-cat`) and `analytics.controller.ts`'s new
-  `PUT insight-catalog/types/:restaurantId/:candidateKey/toggle`.]
+  `PUT insight-catalog/types/:restaurantId/:candidateKey/toggle`.] [**Both
+  follow-up forks CLOSED 2026-09-21** (ADR 0191 "Round 2"): the gate and the
+  audit now hold on every door, and the live-items panel offers Snooze, Done
+  and Dismiss-with-a-reason, because one shared per-item state is now read by
+  the feed, the catalogue, Reports (live and stored) and the rails.]
 
 **The handoff to sketch 122 (lane `recs-sketch`).** The founder's sketch-120
 feedback (`founder-sketch-decisions-106-115.md:146-151`, batch 3

@@ -22,8 +22,10 @@ const api = vi.hoisted(() => ({
   post: vi.fn(),
 }));
 
+const role = vi.hoisted(() => ({ current: null as string | null }));
+
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: auth.rid }),
+  useAuth: () => ({ activeRestaurantId: auth.rid, activeRole: role.current }),
 }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
 vi.mock('@/services/api/team', () => ({ getTeamMembers: vi.fn(async () => []) }));
@@ -49,6 +51,7 @@ const FEED = {
 
 beforeEach(() => {
   auth.rid = 'r1';
+  role.current = null;
   api.get.mockReset();
   api.post.mockReset();
   api.get.mockImplementation(async (url: string) => {
@@ -443,5 +446,97 @@ describe('useRecommendationsNextData — goals', () => {
     auth.rid = 'r2';
     rerender();
     await waitFor(() => expect(result.current.goals).toBeUndefined());
+  });
+});
+
+/*
+ * ADR 0191, the founder's answers of 2026-09-21: one shared per-item state,
+ * and rule-wide acts that are owner/manager only and audited. The hook is
+ * where the page's words about a write come from, so the receipts are here.
+ */
+describe('useRecommendationsNextData — the shared state and the house log', () => {
+  it('writes a snooze at the key it is given, and offers the undo at that key', async () => {
+    api.post.mockResolvedValue({ data: { audit: null } });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    const LATER = new Date(Date.now() + 86_400_000).toISOString();
+    await act(async () => {
+      await result.current.setDisposition(
+        result.current.entries[0],
+        { status: 'snoozed', snoozeUntil: LATER },
+        'Snoozed until tomorrow.',
+        true,
+        'stockout_imminent#chablis-2021#*',
+      );
+    });
+    expect(api.post).toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({ ruleKey: 'stockout_imminent#chablis-2021#*', status: 'snoozed' }),
+    );
+    expect(result.current.undo?.ruleKey).toBe('stockout_imminent#chablis-2021#*');
+  });
+
+  it('says so when a whole-rule write held but its house-log row did not', async () => {
+    api.post.mockResolvedValue({
+      data: { audit: { recorded: false, reason: 'permission denied' } },
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => {
+      await result.current.restore('stockout_imminent');
+    });
+    expect(result.current.note).toMatch(/not written to the house log \(permission denied\)/);
+  });
+
+  it('a bulk write that stored fewer than it was sent says how many, never the full count', async () => {
+    api.post.mockResolvedValue({ data: { updated: 0, audit: { recorded: 0, missed: 0 } } });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => {
+      await result.current.bulk(
+        result.current.entries,
+        { status: 'snoozed', snoozeUntil: new Date(Date.now() + 86_400_000).toISOString() },
+        'Snoozed 1 entries for a week.',
+        true,
+      );
+    });
+    expect(result.current.note).toMatch(/Only 0 of 1 were saved/);
+  });
+
+  it('staff may not act rule-wide; an owner, a manager or an admin may', async () => {
+    const { result, rerender } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.canActRuleWide).toBe(false);
+    role.current = 'staff';
+    rerender();
+    expect(result.current.canActRuleWide).toBe(false);
+    for (const r of ['owner', 'manager', 'admin']) {
+      role.current = r;
+      rerender();
+      expect(result.current.canActRuleWide).toBe(true);
+    }
+  });
+
+  it('reads the gateway\'s own "this row is a whole rule" off an actions row', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      if (url.includes('/actions'))
+        return {
+          data: {
+            items: [
+              { ruleKey: 'stockout_imminent', status: 'dismissed', ruleWide: true },
+              { ruleKey: 'staff_spread#ada#*', status: 'dismissed', ruleWide: false },
+            ],
+          },
+        };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.setLeaf('dismissed'));
+    await waitFor(() => expect(result.current.entries).toHaveLength(2));
+    expect(result.current.entries.map((e) => e.ruleWide)).toEqual([true, false]);
   });
 });

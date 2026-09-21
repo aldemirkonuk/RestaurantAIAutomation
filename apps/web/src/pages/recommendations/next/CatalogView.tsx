@@ -21,6 +21,12 @@
  * reuse the SAME `recommendation_actions` store NEW-434 already keys
  * `insight:<candidate_key>` — see `rec-catalog.ts`'s ADR 0191 section. See
  * `rec-catalog.ts` for why "computable now" is printed as "data present".
+ *
+ * **Round 2 (founder, 2026-09-21, ADR 0191).** Turning a type off is a
+ * whole-type dismissal, so it asks its reason (a labelled signal). The live
+ * items offer Snooze, Done and a reason-labelled Dismiss — shown because the
+ * gateway now resolves ONE shared per-item state on every read the feed,
+ * Reports and the rails use, so each act holds everywhere, not just here.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -28,7 +34,15 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { Wordmark } from '@/components/mudavym';
-import { EM, ensureFraunces, failureOf, failureSentence, type FailureVM } from './rec-format';
+import {
+  DISMISS_REASONS,
+  EM,
+  SNOOZE_CHOICES,
+  ensureFraunces,
+  failureOf,
+  failureSentence,
+  type FailureVM,
+} from './rec-format';
 import {
   PRESENCE_CAVEAT,
   READINESS_LABEL,
@@ -61,7 +75,16 @@ interface LivePanelState {
    * dismissed — the panel says so rather than presenting it as clean.
    */
   suppressionsReadable?: boolean;
+  /**
+   * How many of this type's items the shared per-item state withheld, by
+   * state (the generator's own `withheld`, ADR 0191). Hidden here is hidden
+   * on the feed, Reports and the rails too — the panel says how many.
+   */
+  withheld?: { dismissed: number; snoozed: number; done: number };
 }
+
+/** Which one-item sheet is open on a live item, if any. */
+type LiveMenu = { key: string; kind: 'dismiss' | 'snooze' } | null;
 
 type Phase = 'loading' | 'ready' | 'failed';
 
@@ -87,7 +110,8 @@ export default function CatalogView({ ground }: CatalogViewProps) {
   const rid = activeRestaurantId ?? null;
   const role = activeRole ?? user?.role ?? null;
   // Owner/manager only — a house policy, not a note on one card (ADR 0191).
-  const canManage = role === 'owner' || role === 'manager';
+  // The gateway's set (`RolesGuard`): owner, manager, admin.
+  const canManage = ['owner', 'manager', 'admin'].includes(String(role ?? ''));
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [payload, setPayload] = useState<CatalogPayload | null>(null);
@@ -124,6 +148,11 @@ export default function CatalogView({ ground }: CatalogViewProps) {
   const [liveOpenFor, setLiveOpenFor] = useState<string | null>(null);
   const [liveState, setLiveState] = useState<Record<string, LivePanelState>>({});
   const [pinnedLive, setPinnedLive] = useState<Set<string>>(new Set());
+  const [liveMenu, setLiveMenu] = useState<LiveMenu>(null);
+  // Turning a type OFF is a whole-rule dismissal, so it asks the reason
+  // first — the founder's labelled signal (2026-09-21). Holds the type key
+  // whose reason row is open.
+  const [offReasonFor, setOffReasonFor] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -177,11 +206,14 @@ export default function CatalogView({ ground }: CatalogViewProps) {
   }, [rid, retryCount]);
 
   const toggleType = useCallback(
-    async (c: CatalogCandidate) => {
+    async (c: CatalogCandidate, reason: string | null = null) => {
       if (!rid || !canManage) return;
       const key = typeRuleKey(c.key);
       const wasOn = offKeys ? !offKeys.has(key) : true;
       const nextOn = !wasOn;
+      // Off needs its label; the reason row asks for it before this runs.
+      if (!nextOn && !reason) return;
+      setOffReasonFor(null);
       setTogglingKey(c.key);
       setToggleFailure(null);
       setAuditMiss(null);
@@ -196,6 +228,7 @@ export default function CatalogView({ ground }: CatalogViewProps) {
           audit?: { recorded?: boolean; reason?: string | null };
         }>(`/analytics/insight-catalog/types/${rid}/${encodeURIComponent(c.key)}/toggle`, {
           enabled: nextOn,
+          ...(nextOn ? {} : { reason }),
         });
         // The live list read before this flip no longer holds.
         setLiveState((prev) => {
@@ -238,7 +271,11 @@ export default function CatalogView({ ground }: CatalogViewProps) {
       // five-per-category cap — a category-wide read filtered here would miss
       // any type ranked below its category's top five and call it empty.
       apiClient
-        .get<{ insights?: unknown[]; suppressionsReadable?: boolean }>(
+        .get<{
+          insights?: unknown[];
+          suppressionsReadable?: boolean;
+          withheld?: { dismissed?: number; snoozed?: number; done?: number };
+        }>(
           `/analytics/insights/${rid}?categories=${encodeURIComponent(c.category)}&candidateKey=${encodeURIComponent(c.key)}&refresh=true`,
         )
         .then(({ data }) => {
@@ -250,12 +287,16 @@ export default function CatalogView({ ground }: CatalogViewProps) {
             return;
           }
           const items = liveInsightsForType(data.insights, c.key);
+          const w = data.withheld;
           setLiveState((prev) => ({
             ...prev,
             [c.key]: {
               phase: 'ready',
               items,
               suppressionsReadable: data.suppressionsReadable,
+              withheld: w
+                ? { dismissed: w.dismissed ?? 0, snoozed: w.snoozed ?? 0, done: w.done ?? 0 }
+                : undefined,
             },
           }));
         })
@@ -269,10 +310,22 @@ export default function CatalogView({ ground }: CatalogViewProps) {
     [rid, liveOpenFor, liveState],
   );
 
-  const dismissLive = useCallback(
-    (c: CatalogCandidate, item: LiveInsight) => {
+  /**
+   * One state write on one live item — dismissed (with the reason picked),
+   * snoozed until an instant, or done — at the item's own key, through the
+   * same `POST …/action` the feed, Reports and the rails use. The founder
+   * (2026-09-21, "Build it right, in order"): each act shows here only once
+   * it is honoured on every surface, and all three now are — the generator
+   * resolves the one shared per-item state on its live compute and its
+   * stored read, and the feed resolves the same state for its own rules
+   * (ADR 0191). A write that did not land puts the item back and says so,
+   * as the feed's `setDisposition` does.
+   */
+  const actLive = useCallback(
+    (c: CatalogCandidate, item: LiveInsight, patch: Record<string, unknown>) => {
       if (!rid) return;
       setLiveActFailure(null);
+      setLiveMenu(null);
       setLiveState((prev) => {
         const cur = prev[c.key];
         if (!cur) return prev;
@@ -287,8 +340,7 @@ export default function CatalogView({ ground }: CatalogViewProps) {
       apiClient
         .post(`/analytics/recommendations/${rid}/action`, {
           ruleKey: item.suppressionKey,
-          status: 'dismissed',
-          reason: 'not_relevant',
+          ...patch,
           snapshot: {
             observation: item.sentence,
             recommendation: item.sentence,
@@ -296,9 +348,6 @@ export default function CatalogView({ ground }: CatalogViewProps) {
           },
         })
         .catch((err) => {
-          // The feed's own rule (useRecommendationsNextData.setDisposition):
-          // a write that did not land puts the item back and says so, rather
-          // than let the page imply a dismissal the server never stored.
           setLiveState((prev) => {
             const cur = prev[c.key];
             if (!cur || cur.items.some((i) => i.suppressionKey === item.suppressionKey))
@@ -542,7 +591,11 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                     className="rc-quiet"
                                     aria-pressed={enabled === true}
                                     disabled={enabled === null || togglingKey === c.key}
-                                    onClick={() => toggleType(c)}
+                                    onClick={() =>
+                                      enabled
+                                        ? setOffReasonFor(offReasonFor === c.key ? null : c.key)
+                                        : void toggleType(c)
+                                    }
                                   >
                                     {enabled === null ? 'Reading…' : enabled ? 'On' : 'Off'}
                                   </button>
@@ -552,6 +605,28 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                   </span>
                                 )}
                               </div>
+                              {canManage && enabled === true && offReasonFor === c.key && (
+                                <div
+                                  className="rc-row"
+                                  role="group"
+                                  aria-label="Why turn it off"
+                                  data-testid="rc-type-off-reason"
+                                >
+                                  <span className="rc-micro">
+                                    Turning it off dismisses the whole type for the house {EM} why?
+                                  </span>
+                                  {DISMISS_REASONS.map((r) => (
+                                    <button
+                                      key={r.id}
+                                      type="button"
+                                      className="rc-quiet"
+                                      onClick={() => void toggleType(c, r.id)}
+                                    >
+                                      {r.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                               {enabled === null && offReadFailure && (
                                 <p className="rc-why" role="alert">
                                   Couldn't read whether this type is on for the house (
@@ -605,6 +680,15 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                       be dismissed.
                                     </p>
                                   )}
+                                  {live?.phase === 'ready' &&
+                                    live.withheld &&
+                                    live.withheld.dismissed + live.withheld.snoozed + live.withheld.done > 0 && (
+                                      <p className="rc-said" data-testid="rc-live-withheld">
+                                        Not shown: {live.withheld.dismissed} dismissed ·{' '}
+                                        {live.withheld.snoozed} snoozed · {live.withheld.done} done
+                                        {' '}{EM} hidden on the feed, Reports and the rails as well.
+                                      </p>
+                                    )}
                                   {liveActFailure && liveActFailure.key === c.key && (
                                     <p className="rc-why" role="alert">
                                       Not saved ({liveActFailure.message}) — the item is back
@@ -632,24 +716,114 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                             </button>
                                             {item.suppressionKey === typeRuleKey(c.key) ? (
                                               // An instance with no subject and no period has
-                                              // only the bare key: "Dismiss" here would silence
-                                              // the whole type, house-wide, under a one-item
-                                              // label (suppression.ts: never claim a narrow
-                                              // scope you did not store). Say so instead.
+                                              // only the bare key: a Snooze, Done or Dismiss
+                                              // here would act on the whole type, house-wide,
+                                              // under a one-item label (suppression.ts: never
+                                              // claim a narrow scope you did not store). Say so.
                                               <span className="rc-micro" data-testid="rc-live-whole-type">
-                                                Dismissing this one hides the whole type — that is
+                                                Acting on this one acts on the whole type — that is
                                                 the On/Off above.
                                               </span>
                                             ) : (
-                                              <button
-                                                type="button"
-                                                className="rc-quiet"
-                                                onClick={() => dismissLive(c, item)}
-                                              >
-                                                Dismiss
-                                              </button>
+                                              <>
+                                                <button
+                                                  type="button"
+                                                  className="rc-quiet"
+                                                  aria-expanded={
+                                                    liveMenu?.key === item.suppressionKey &&
+                                                    liveMenu.kind === 'snooze'
+                                                  }
+                                                  onClick={() =>
+                                                    setLiveMenu(
+                                                      liveMenu?.key === item.suppressionKey &&
+                                                        liveMenu.kind === 'snooze'
+                                                        ? null
+                                                        : { key: item.suppressionKey, kind: 'snooze' },
+                                                    )
+                                                  }
+                                                >
+                                                  Snooze
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="rc-quiet"
+                                                  onClick={() => actLive(c, item, { status: 'done' })}
+                                                >
+                                                  Done
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="rc-quiet"
+                                                  aria-expanded={
+                                                    liveMenu?.key === item.suppressionKey &&
+                                                    liveMenu.kind === 'dismiss'
+                                                  }
+                                                  onClick={() =>
+                                                    setLiveMenu(
+                                                      liveMenu?.key === item.suppressionKey &&
+                                                        liveMenu.kind === 'dismiss'
+                                                        ? null
+                                                        : { key: item.suppressionKey, kind: 'dismiss' },
+                                                    )
+                                                  }
+                                                >
+                                                  Dismiss
+                                                </button>
+                                              </>
                                             )}
                                           </div>
+                                          {liveMenu?.key === item.suppressionKey &&
+                                            liveMenu.kind === 'snooze' && (
+                                              <div
+                                                className="rc-row"
+                                                role="group"
+                                                aria-label="Snooze this item"
+                                              >
+                                                <span className="rc-micro">It comes back…</span>
+                                                {SNOOZE_CHOICES.map((o) => (
+                                                  <button
+                                                    key={o.id}
+                                                    type="button"
+                                                    className="rc-quiet"
+                                                    onClick={() =>
+                                                      actLive(c, item, {
+                                                        status: 'snoozed',
+                                                        snoozeUntil: new Date(
+                                                          Date.now() + o.value * 86_400_000,
+                                                        ).toISOString(),
+                                                      })
+                                                    }
+                                                  >
+                                                    {o.label}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            )}
+                                          {liveMenu?.key === item.suppressionKey &&
+                                            liveMenu.kind === 'dismiss' && (
+                                              <div
+                                                className="rc-row"
+                                                role="group"
+                                                aria-label="Why dismiss this item"
+                                              >
+                                                <span className="rc-micro">Why?</span>
+                                                {DISMISS_REASONS.map((r) => (
+                                                  <button
+                                                    key={r.id}
+                                                    type="button"
+                                                    className="rc-quiet"
+                                                    onClick={() =>
+                                                      actLive(c, item, {
+                                                        status: 'dismissed',
+                                                        reason: r.id,
+                                                      })
+                                                    }
+                                                  >
+                                                    {r.label}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            )}
                                         </li>
                                       ))}
                                     </ul>

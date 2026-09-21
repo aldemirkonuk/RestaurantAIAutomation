@@ -13,8 +13,6 @@ import {
   SuppressionScope,
   buildSuppressionKey,
   effectiveScope,
-  isSuppressed,
-  parseSuppressionKey,
   suppressionKeys,
 } from "./insights/suppression";
 import {
@@ -23,6 +21,7 @@ import {
 } from "../pricing/margin-advice.service";
 import type { PriceAdvice } from "../pricing/margin-to-target";
 import { PriceLocksService, type LockReadout } from "../pricing/price-locks.service";
+import { resolveItemState, stateBookFrom } from "./insights/item-state";
 
 export interface Recommendation {
   /** The observed number, restated ("Tuesday sales 12% below average Tuesdays"). */
@@ -615,15 +614,20 @@ export class RecommendationsService {
     // ---- Merge stored manager disposition (dismiss/snooze/done/pin) --------
     const dispositions = await this.actions.readDispositions(restaurantId);
     const stateMap = dispositions.map;
+    // The ONE shared per-item state (ADR 0191, founder 2026-09-21: "Build it
+    // right, in order"): dismissed, done and in-force snoozes at every scope
+    // their keys were written — the same `resolveItemState` the insight
+    // generator applies for Reports, the rails and the catalogue. Before it,
+    // this feed honoured a scoped dismissal but read snooze and done off the
+    // bare rule key alone, so "snooze this Wednesday" either did nothing or
+    // silenced every Wednesday, depending on which key was written.
+    const book = stateBookFrom(stateMap.values());
 
     // Every entry carries its own suppression keys, computed here because this
     // is the only place that knows what each rule is about. Attaching them
     // before the filter matters: the filter below uses the same target the UI
     // will dismiss with, so what the page silences is exactly what the engine
     // then withholds — one definition, both ends.
-    const suppressionKeySet = new Set<string>();
-    for (const [key, row] of stateMap)
-      if (row.status === "dismissed") suppressionKeySet.add(key);
     for (const r of recs) {
       const target = {
         ruleId: r.ruleKey,
@@ -637,61 +641,47 @@ export class RecommendationsService {
       };
     }
 
+    // The keys that decided a firing entry's state, so the count below does
+    // not count the same fact twice.
+    const decidingKeys = new Set<string>();
     for (const r of recs) {
-      const s = stateMap.get(r.ruleKey);
-      if (!s) continue;
-      r.status = s.status;
-      r.pinned = s.pinned;
-      r.acted = !!s.actedAt;
-      r.reason = s.reason;
-      r.snoozeUntil = s.snoozeUntil;
-      r.feedback = s.feedback;
-      r.assignedTo = s.assignedTo;
-      r.assignedName = s.assignedName;
+      // Notes about the card — pin, acted, feedback, assignee — live on the
+      // rule's own row, as before.
+      const own = stateMap.get(r.ruleKey);
+      if (own) {
+        r.pinned = own.pinned;
+        r.acted = !!own.actedAt;
+        r.feedback = own.feedback;
+        r.assignedTo = own.assignedTo;
+        r.assignedName = own.assignedName;
+      }
+      // Its STATE is the shared one, at whatever scope decided it.
+      const st = resolveItemState(
+        {
+          ruleId: r.ruleKey,
+          subject: r.subject ?? null,
+          periodKey: r.periodKey ?? null,
+        },
+        book,
+      );
+      r.status = st.state;
+      r.reason = st.reason;
+      r.snoozeUntil = st.snoozeUntil;
+      if (st.key) decidingKeys.add(st.key);
     }
+
+    const suppressedCount = recs.filter((r) => r.status === "dismissed").length;
 
     // Counts are computed BEFORE filtering so the status tabs stay accurate
-    // even for dismissed/done cards that no longer fire (they live only in the
-    // actions table, so count those too).
-    // A dismissal has to hold at every scope it was written at, not just on
-    // the bare rule key. `status === 'active'` alone missed every scoped key —
-    // "this Wednesday" and "every Wednesday" are stored as their own rows, and
-    // the entry they silence still carries the bare rule key.
-    const suppressedKeys = new Set(
-      recs
-        .filter((r) =>
-          isSuppressed(
-            {
-              ruleId: r.ruleKey,
-              subject: r.subject ?? null,
-              periodKey: r.periodKey ?? null,
-            },
-            suppressionKeySet,
-          ),
-        )
-        .map((r) => r.ruleKey),
-    );
-    const suppressedCount = suppressedKeys.size;
-
+    // even for rows that no longer fire (they live only in the actions table,
+    // so count those too). A firing entry counts once, by its resolved state;
+    // a row counts on its own only when it is not that entry's row and did
+    // not decide a firing entry's state.
     const firingKeys = new Set(recs.map((r) => r.ruleKey));
     const stateCounts = { active: 0, snoozed: 0, dismissed: 0, done: 0 };
-    for (const r of recs) {
-      // An entry silenced by a SCOPED key has no dismissed row under its own
-      // bare key, so its own `status` still reads "active". Counting it there
-      // would print "3 standing" over a list of 2 — the leaf tab and the book
-      // disagreeing about the same fact, which is the shape of bug this whole
-      // change exists to remove.
-      const st = suppressedKeys.has(r.ruleKey)
-        ? "dismissed"
-        : ((r.status ?? "active") as keyof typeof stateCounts);
-      if (st in stateCounts) stateCounts[st]++;
-    }
+    for (const r of recs) stateCounts[r.status ?? "active"]++;
     for (const [key, s] of stateMap) {
-      if (firingKeys.has(key)) continue; // already counted above
-      // A scoped suppression key whose entry IS firing is already counted on
-      // that entry; counting the row again would double it.
-      const parsed = parseSuppressionKey(key);
-      if (s.status === "dismissed" && firingKeys.has(parsed.ruleId)) continue;
+      if (firingKeys.has(key) || decidingKeys.has(key)) continue;
       if (s.status === "dismissed") stateCounts.dismissed++;
       else if (s.status === "done") stateCounts.done++;
       else if (s.status === "snoozed") stateCounts.snoozed++;
@@ -699,18 +689,7 @@ export class RecommendationsService {
 
     const visible = opts.includeHidden
       ? recs
-      : recs.filter(
-          (r) =>
-            (r.status ?? "active") === "active" &&
-            !isSuppressed(
-              {
-                ruleId: r.ruleKey,
-                subject: r.subject ?? null,
-                periodKey: r.periodKey ?? null,
-              },
-              suppressionKeySet,
-            ),
-        );
+      : recs.filter((r) => (r.status ?? "active") === "active");
 
     // Pinned float to the top; then by score.
     visible.sort((a, b) => {

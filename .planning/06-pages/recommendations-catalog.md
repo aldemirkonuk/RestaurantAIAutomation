@@ -27,7 +27,9 @@ links: ["[[PAGE-CONTRACT]]", "[[recommendations]]", "[[settings]]"]
 > [[0191-the-recommendations-catalogue-is-actionable-not-a-read-only-leaf]]
 > and in [[recommendations]] §"Forks built on a DEFAULT". This page note's
 > own rebuild (component, endpoints, gaps below) is still owed — out of scope
-> for that decision's lane.
+> for that decision's lane. Same day, round 2: the live items also offer
+> Snooze, Done and a reason-labelled Dismiss, and turning a type off asks its
+> reason (ADR 0191 "Round 2").
 
 ## Surface — buttons → where they go
 
