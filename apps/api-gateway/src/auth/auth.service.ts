@@ -2965,11 +2965,23 @@ export class AuthService {
     // own owner self-deletes stays subscribed — `evictFromHouse` is never
     // invoked — and any invite the deleted account issued keeps granting
     // exactly what it said until it lapses on its own.
-    const { data: activeHouses } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("restaurant_id")
-      .eq("user_id", userId)
-      .eq("is_active", true);
+    const { data: activeHouses, error: activeHousesError } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("restaurant_id")
+        .eq("user_id", userId)
+        .eq("is_active", true);
+
+    if (activeHousesError) {
+      this.logger.error(
+        `deleteAccount could not read ${userId}'s active houses before deleting ` +
+          `— refusing rather than deleting without knowing what to evict/cancel-invites-from: ` +
+          `${activeHousesError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was deleted; try again.",
+      );
+    }
 
     await this.databaseService.supabase
       .from("user_oauth_accounts")

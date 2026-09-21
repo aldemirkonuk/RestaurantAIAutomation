@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { AuthService } from "./auth.service";
 import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
 
@@ -39,13 +39,17 @@ function makeService(seed: {
   access?: Record<string, any>[];
   invites?: Record<string, any>[];
   users?: Record<string, any>[];
+  errors?: Record<string, { message: string }>;
 }) {
-  const db = makeStubDb({
-    user_restaurant_access: seed.access ?? [],
-    organization_invites: seed.invites ?? [],
-    users: seed.users ?? [{ user_id: USER, email: "leaving@example.com" }],
-    user_oauth_accounts: [],
-  });
+  const db = makeStubDb(
+    {
+      user_restaurant_access: seed.access ?? [],
+      organization_invites: seed.invites ?? [],
+      users: seed.users ?? [{ user_id: USER, email: "leaving@example.com" }],
+      user_oauth_accounts: [],
+    },
+    seed.errors ?? {},
+  );
   const svc = new AuthService(
     { sign: () => "tok", signAsync: async () => "tok" } as any,
     { get: () => undefined } as any,
@@ -108,6 +112,26 @@ describe("deleteAccount — evicts sockets and cancels pending invites for every
     // websocketGateway left undefined, same as every pre-existing spec here.
 
     await expect(svc.deleteAccount(USER)).resolves.toBeUndefined();
+  });
+
+  it("refuses with 503 when the pre-delete houses read errors, and deletes nothing (round 5, 2026-09-21 — ci.yml:527's check_read_errors_not_swallowed.py)", async () => {
+    const { svc, db, gateway } = makeService({
+      access: [
+        { user_id: USER, restaurant_id: HOUSE_A, role: "staff", is_active: true },
+      ],
+      errors: {
+        "user_restaurant_access:select": { message: "connection reset" },
+      },
+    });
+
+    await expect(svc.deleteAccount(USER)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+
+    expect(gateway.evictFromHouse).not.toHaveBeenCalled();
+    expect(db.opsOn("user_oauth_accounts", "delete")).toHaveLength(0);
+    expect(db.opsOn("user_restaurant_access", "delete")).toHaveLength(0);
+    expect(db.opsOn("users", "delete")).toHaveLength(0);
   });
 
   it("still blocks deletion when the account is the sole owner of a house, before anything is evicted", async () => {
