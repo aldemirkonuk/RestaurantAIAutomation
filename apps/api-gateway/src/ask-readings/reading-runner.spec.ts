@@ -55,7 +55,10 @@ const fixture = () => new Books({
     house("move-2", { inventory_id: "item-a", quantity_change: -3, stock_type: "live", transaction_date: "2026-09-12T12:00:00.000Z" }),
     house("move-3", { inventory_id: "item-a", quantity_change: 9, stock_type: "shadow", transaction_date: "2026-09-12T13:00:00.000Z" })],
   procurement_orders: [order("order-a"), order("order-b", { status: "DELIVERED" }), order("order-c", { expected_delivery_date: null }),
-    order("order-future", { expected_delivery_date: "2026-09-20" }), order("foreign-order", { restaurant_id: "house-b" })],
+    order("order-future", { expected_delivery_date: "2026-09-20" }), order("foreign-order", { restaurant_id: "house-b" }),
+    // Round 6: the runner's clock reads 2026-09-13, so these are today's -- one open, one already received.
+    order("order-today", { expected_delivery_date: "2026-09-13", status: "IN_TRANSIT" }), order("order-today-received", { expected_delivery_date: "2026-09-13", status: "DELIVERED" }),
+    order("foreign-today", { restaurant_id: "house-b", expected_delivery_date: "2026-09-13" })],
   procurement_order_items: [house("order-line-1", { order_id: "order-a", inventory_id: "item-a", wine_name: "item-a", quantity: 2, unit_type: "case", bottles_per_unit: 6, total_bottles: 12 }),
     house("order-line-2", { order_id: "order-a", inventory_id: "item-b", wine_name: "item-b", quantity: 3, unit_type: "bottle", bottles_per_unit: 1, total_bottles: 3 })],
   procurement_documents: [doc("receipt-a"), doc("new-unverified", { status: "needs_review", verified_at: null }), doc("pending-doc", { status: "received", verified_at: null })],
@@ -86,7 +89,7 @@ const known: Array<[ReadingId, string, number, string]> = [
   ["inventory.in_transit", "item-a:in_transit_quantity", 12, "restaurant_inventory"],
   ["inventory.locations", "cellar:live:qty", 10, "inventory_lots"],
   ["inventory.movements", "lane:live:net", 9, "inventory_transactions"],
-  ["orders.open", "orders:count", 3, "procurement_orders"],
+  ["orders.open", "orders:count", 4, "procurement_orders"],
   ["orders.lines", "order-line-1:quantity", 2, "procurement_order_items"],
   ["orders.late_deliveries", "orders:count", 1, "procurement_orders"],
   ["receipts.verified_line", "receipt-line:unit_price", 360, "procurement_document_lines"],
@@ -96,11 +99,13 @@ const known: Array<[ReadingId, string, number, string]> = [
   ["vendors.active", "vendors:count", 2, "providers"],
   ["documents.waiting", "documents:count", 2, "procurement_documents"],
   ["goals.targets", "goal-a:target_value", 40, "analytics_goals"],
+  ["orders.due_today", "deliveries:count", 1, "procurement_orders"],
 ];
-describe("ADR 0145 declared fifteen-reading numerical/error floor", () => {
+// [2026-09-21, round 6: sixteen -- `orders.due_today`, today's deliveries, on the founder's answer.]
+describe("ADR 0145 declared sixteen-reading numerical/error floor", () => {
   test("the measured fixture floor exactly covers the catalogue", () => {
     expect(new Set(known.map(k => k[0]))).toEqual(new Set(READING_CATALOGUE.map(r => r.id)));
-    expect(known).toHaveLength(15);
+    expect(known).toHaveLength(16);
     for (const reader of READING_CATALOGUE) expect(QUESTION_DISPOSITIONS[reader.id]).toEqual({ kind: "reading", id: reader.id });
   });
   test.each(known)("%s computes known rows, with actual trace", async (id, key, expected) => {
@@ -111,6 +116,9 @@ describe("ADR 0145 declared fifteen-reading numerical/error floor", () => {
     expect(finding.rowsScanned).toBeGreaterThan(0);
     expect(cells(finding).every(c => c.id && c.sourceRelations.length)).toBe(true);
     expect(JSON.stringify(finding)).not.toContain("foreign-");
+    // Every read is on the Reading's declared shelves, so its trace count has a class (round 6).
+    const shelves = READING_CATALOGUE.find(r => r.id === id)!.shelves;
+    expect(finding.trace.every(t => shelves.includes(t.relation))).toBe(true);
   });
   test.each(known)("%s refuses a forced source error, never empties it", async (id, _key, _expected, table) => {
     const books = fixture(); books.fail.add(table);
@@ -195,6 +203,42 @@ describe("proof, scope, absence and provenance regressions", () => {
     expect(finding.reason).toBe("invalid_window");
     expect(books.calls).toEqual([]);
     expect(JSON.stringify(finding)).not.toContain("order-2099");
+  });
+  // Founder, 2026-09-21, round 6: staff "can ask about ... today's
+  // deliveries" -- the day's open orders, without the order book's size.
+  test("today's deliveries lists only this house's OPEN orders stated for today, from the due_today view", async () => {
+    const finding = await run(fixture(), "orders.due_today");
+    expect(finding.outcome).toBe("read");
+    expect(value(finding, "deliveries:count")).toBe(1);
+    expect(value(finding, "order-today:order_number")).toBe("order-today");
+    expect(value(finding, "order-today:status")).toBe("IN_TRANSIT");
+    const shown = JSON.stringify(finding.rows);
+    for (const other of ["order-today-received", "order-a", "order-c", "order-future", "foreign-today"]) expect(shown).not.toContain(`"${other}`);
+    // Every cell names the view, never the whole order book.
+    expect(cells(finding).every(c => c.sourceRelations.length === 1 && c.sourceRelations[0] === "procurement_orders@due_today")).toBe(true);
+    // The whole book was read (6 house rows); that count lives only in the trace.
+    expect(finding.trace.map(t => t.relation)).toEqual(["procurement_orders"]);
+    expect(finding.rowsScanned).toBe(6);
+  });
+  test("today's deliveries: a book with no order today is a read zero; an empty book is not in your books", async () => {
+    const books = fixture();
+    books.tables.procurement_orders = [order("order-a")];
+    const none = await run(books, "orders.due_today");
+    expect(none.outcome).toBe("read");
+    expect(value(none, "deliveries:count")).toBe(0);
+    books.tables.procurement_orders = [];
+    expect((await run(books, "orders.due_today")).outcome).toBe("not_in_your_books");
+  });
+  test("a view is a relabelled filter: it cannot nest, and its name is a plain word", async () => {
+    const s = new RecordingSession(fixture(), () => new Date("2026-09-13T12:00:00Z"), new Set(["procurement_orders@due_today.*"]));
+    const orders = await s.read(c => c.from("procurement_orders").select("id,restaurant_id,status", { count: "exact" }).eq("restaurant_id", rid), () => true);
+    const today = s.view(orders, "due_today", r => r.id === "order-today");
+    expect(s.count(today, "n", "Today").value).toBe(1);
+    expect(s.scannedRows(today)).toBe(6);
+    expect(() => s.view(today, "again", () => true)).toThrow(ReadingFailure);
+    expect(() => s.view(orders, "due-today", () => true)).toThrow(ReadingFailure);
+    // The whole relation's count is not a view count: minting it needs its own tag.
+    expect(() => s.count(orders, "n", "All orders")).toThrow(ReadingFailure);
   });
   test("late deliveries still reads a window that ended yesterday", async () => {
     const finding = await run(fixture(), "orders.late_deliveries", { from: "2026-09-01", to: "2026-09-12" });

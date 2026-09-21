@@ -37,12 +37,19 @@ import { ReadingId } from "./reading.types";
 // unchanged: the derivation produces exactly the seven / eight split above.
 // FAILING BEFORE THIS CHANGE: `shows`, `classes` and `shownFields` did not
 // exist, so the derivation tests below could not compile.]
+//
+// [ANSWERED 2026-09-21, founder round 6, his pick verbatim: "Yes, own-work
+// only", meaning (approved, verbatim): "Staff can ask about stock, receiving
+// and today's deliveries. Money, supplier prices and people data are refused
+// with a one-line reason." The staff row now sees stock, receiving and
+// today's deliveries: `calendar.upcoming` (people) joins RESTRICTED, and the
+// new `orders.due_today` is open. Eight restricted, eight open.]
 
-const RESTRICTED: ReadingId[] = ["receipts.verified_line", "vendors.active", "orders.open", "orders.late_deliveries", "sales.check_activity", "sales.consumption", "goals.targets"];
+const RESTRICTED: ReadingId[] = ["receipts.verified_line", "vendors.active", "orders.open", "orders.late_deliveries", "sales.check_activity", "sales.consumption", "goals.targets", "calendar.upcoming"];
 const OPEN: ReadingId[] = READING_CATALOGUE.map(r => r.id).filter(id => !RESTRICTED.includes(id));
 
-describe("READING_CATALOGUE: the named restricted set matches the founder's five categories exactly", () => {
-  it("names exactly the seven readings under price, vendor, open-order, sales and goals -- no more, no fewer", () => {
+describe("READING_CATALOGUE: the named restricted set matches the founder's categories exactly (six since round 6: people joined)", () => {
+  it("names exactly the eight readings under price, vendor, open-order, sales, goals and people -- no more, no fewer", () => {
     const actuallyRestricted = READING_CATALOGUE.filter(r => !r.allowedRoles.includes("staff")).map(r => r.id);
     expect(actuallyRestricted.sort()).toEqual([...RESTRICTED].sort());
   });
@@ -67,12 +74,26 @@ describe("READING_CATALOGUE: the named restricted set matches the founder's five
     expect(goals.classes).toEqual(["money"]);
   });
 
+  it("round 6: each open Reading shows only stock, receiving or today's deliveries, and the calendar is people", () => {
+    const classesOf = (id: ReadingId) => READING_CATALOGUE.find(r => r.id === id)!.classes;
+    for (const id of ["inventory.position", "inventory.low_stock", "inventory.in_transit", "inventory.locations", "inventory.movements"] as ReadingId[])
+      expect(classesOf(id)).toEqual(["stock"]);
+    expect(classesOf("orders.lines")).toEqual(["receiving"]);
+    expect(classesOf("documents.waiting")).toEqual(["receiving"]);
+    // The split: today's open deliveries are their own class; the whole order book stays suppliers.
+    expect(classesOf("orders.due_today")).toEqual(["todays_deliveries"]);
+    expect(classesOf("orders.open")).toContain("suppliers");
+    expect(classesOf("calendar.upcoming")).toEqual(["people"]);
+    expect(classesOf("receipts.verified_line")).toContain("money");
+  });
+
   it("the eight open readings are reachable by owner, manager and staff", () => {
     for (const id of OPEN) {
       const descriptor = READING_CATALOGUE.find(r => r.id === id)!;
       expect(descriptor.allowedRoles).toEqual(["owner", "manager", "staff"]);
     }
     expect(OPEN.length).toBe(8);
+    expect(OPEN).toContain("orders.due_today");
   });
 
   it("the gate follows the TABLE: a table in which staff also see money opens goals.targets and receipts to staff, and nothing else changes", () => {
@@ -90,7 +111,7 @@ describe("READING_CATALOGUE: the named restricted set matches the founder's five
   });
 });
 
-describe("isReadingAllowedForRole: the seven restricted readings (price, vendor, open-order, sales, goals)", () => {
+describe("isReadingAllowedForRole: the eight restricted readings (price, vendor, open-order, sales, goals, people)", () => {
   for (const id of RESTRICTED) {
     it(`${id}: owner yes, manager yes, staff no, admin yes (mirrors RolesGuard), unknown/null/empty no`, () => {
       expect(isReadingAllowedForRole(id, "owner")).toBe(true);

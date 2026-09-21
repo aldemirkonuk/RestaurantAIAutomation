@@ -27,6 +27,14 @@ import { AskDisposition, QuestionClass, ReadingDescriptor, ReadingId } from "./r
  * eight open Readings above come out of that derivation unchanged, and
  * `scripts/check_ask_field_classes.py` fails CI when they stop doing so. Who
  * may open `/ask` itself is still open with the founder and is untouched.]
+ *
+ * [ANSWERED 2026-09-21, founder round 6, his pick verbatim: "Yes, own-work
+ * only". Staff reach `/ask` and see stock, receiving and today's deliveries;
+ * money, supplier prices and people data are refused with a one-line reason.
+ * `calendar.upcoming` (people) is now refused to staff, and `orders.due_today`
+ * -- today's open deliveries, read through the order book's `due_today` row
+ * view so no order count, price or value reaches its cells -- is open to
+ * them. Eight restricted, eight open, still derived.]
  */
 
 /**
@@ -40,7 +48,10 @@ export const SUBJECT_LABEL_FIELDS: Readonly<Record<"item" | "order", readonly st
 
 type DeclaredReading = Omit<ReadingDescriptor, "allowedRoles" | "classes">;
 
-/** Declared in the dated source census before implementation. Do not pad this floor. */
+/**
+ * Declared in the dated source census before implementation. Do not pad this floor.
+ * [2026-09-21, round 6: `orders.due_today` added on the founder's answer (staff ask about today's deliveries).]
+ */
 const DECLARED: readonly DeclaredReading[] = [
   { id: "inventory.position", version: 1, title: "The recorded stock", question: "What stock is recorded for this item?", subject: "item", window: false, shelves: ["restaurant_inventory"], meaning: "Live, shadow and in-transit quantities stay in the item's recorded ledger unit.", shows: ["restaurant_inventory.uom", "restaurant_inventory.stock_live", "restaurant_inventory.shadow_stock", "restaurant_inventory.in_transit_quantity"] },
   { id: "inventory.low_stock", version: 1, title: "Below the recorded threshold", question: "Which active items are below their threshold?", subject: "none", window: false, shelves: ["restaurant_inventory", "restaurants"], meaning: "Strictly below par; an unconfigured threshold is an assumption, including when its number looks ordinary.", shows: ["restaurant_inventory.*", "restaurant_inventory.display_name", "restaurant_inventory.wine_name", "restaurant_inventory.uom", "restaurant_inventory.stock_live", "restaurant_inventory.threshold_min"] },
@@ -71,6 +82,13 @@ const DECLARED: readonly DeclaredReading[] = [
   // Goals: a money measure (founder, round 5, 2026-09-21) -- same category
   // as price, vendor, open-order and sales above, so the same gate.
   { id: "goals.targets", version: 1, title: "The posted targets", question: "What goals and targets are posted?", subject: "none", window: false, shelves: ["analytics_goals"], meaning: "Active targets and deadlines, not progress inferred from a default zero.", shows: ["analytics_goals.*", "analytics_goals.name", "analytics_goals.metric_key", "analytics_goals.target_value", "analytics_goals.direction", "analytics_goals.deadline"] },
+  // Today's deliveries (founder, round 6: staff "can ask about ... today's
+  // deliveries"): the open orders whose stated date is today, by number, state
+  // and date. Its cells come only from the order book's `due_today` row view,
+  // so it shows no order count beyond today's, no price and no value; its
+  // source trace still reads the whole book, and that count is withheld from
+  // any role that does not see suppliers (`withholdTraceCounts`).
+  { id: "orders.due_today", version: 1, title: "Today's deliveries", question: "Which open deliveries are expected today?", subject: "none", window: false, shelves: ["procurement_orders"], meaning: "Open orders whose stated delivery date is today (UTC), with their recorded state; a planned date is not a supplier promise.", shows: ["procurement_orders@due_today.*", "procurement_orders@due_today.order_number", "procurement_orders@due_today.status", "procurement_orders@due_today.expected_delivery_date"] },
 ];
 
 /** Every field a Reading can show: what it declares plus the label its subject matches are listed by. */
@@ -126,6 +144,7 @@ export const QUESTION_DISPOSITIONS: Record<QuestionClass, AskDisposition> = {
   "vendors.active": { kind: "reading", id: "vendors.active" },
   "documents.waiting": { kind: "reading", id: "documents.waiting" },
   "goals.targets": { kind: "reading", id: "goals.targets" },
+  "orders.due_today": { kind: "reading", id: "orders.due_today" },
   forecast: { kind: "not_built" }, landed_cost: { kind: "not_built" },
   sales_revenue: { kind: "not_built" }, lot_expiry: { kind: "not_built" },
   general_knowledge: { kind: "model_knowledge" }, unrecognized: { kind: "no_reading_matched" },

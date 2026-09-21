@@ -7,7 +7,7 @@ export type ReadingId =
   | "inventory.locations" | "inventory.movements" | "orders.open"
   | "orders.lines" | "orders.late_deliveries" | "receipts.verified_line"
   | "sales.check_activity" | "sales.consumption" | "calendar.upcoming"
-  | "vendors.active" | "documents.waiting" | "goals.targets";
+  | "vendors.active" | "documents.waiting" | "goals.targets" | "orders.due_today";
 
 export type QuestionClass = ReadingId | "forecast" | "landed_cost" | "sales_revenue"
   | "lot_expiry" | "general_knowledge" | "unrecognized";
@@ -38,6 +38,23 @@ export interface SourceTrace {
   asOf: string;
   failureCode?: string;
 }
+/**
+ * A trace count the asking role may not read (founder, 2026-09-21, round 6,
+ * "Hide by data type"): a table's row count is shown only to a role whose
+ * policy row sees that table's class (`relation.*` in FIELD_CLASS). Withheld
+ * is said, never written as 0 or as null -- null already means a read failed.
+ */
+export const WITHHELD_FOR_YOUR_ROLE = "withheld_for_your_role" as const;
+export type WithheldCount = typeof WITHHELD_FOR_YOUR_ROLE;
+/** A read whose count is withheld. `rows` versus `empty` is a count too, so it goes as well. */
+export interface WithheldSourceTrace {
+  relation: string;
+  operation: "select" | "rpc";
+  outcome: "withheld";
+  rowsScanned: WithheldCount;
+  matchedRows: WithheldCount;
+  asOf: string;
+}
 export interface BoundCell {
   id: string;
   key: string;
@@ -59,8 +76,9 @@ export interface Finding {
   asOf: string;
   sourcesQueried: string[];
   failedSources: string[];
-  rowsScanned: number | null;
-  trace: SourceTrace[];
+  /** Withheld whenever any trace count is withheld: a total would let the hidden one be subtracted out. */
+  rowsScanned: number | null | WithheldCount;
+  trace: Array<SourceTrace | WithheldSourceTrace>;
   rows: FindingRow[];
   choices?: Array<{ id: string; label: string }>;
   /** Stable across reads when the measured cells and their provenance agree. */
@@ -116,6 +134,11 @@ export interface ReadingDescriptor {
    * `classes` and may be given a Reading (`reading-catalogue.ts`
    * `READING_CATALOGUE`). The seven/eight split above is what that derivation
    * produces today, and the CI guard fails if it stops producing it.]
+   *
+   * [ANSWERED 2026-09-21, founder round 6, his pick verbatim: "Yes, own-work
+   * only" -- staff reach `/ask`, and see stock, receiving and today's
+   * deliveries. The calendar (people) left the staff set and today's
+   * deliveries (`orders.due_today`) joined it: eight restricted, eight open.]
    */
   allowedRoles: readonly Role[];
 }

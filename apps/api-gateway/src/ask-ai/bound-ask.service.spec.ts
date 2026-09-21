@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { BoundAskService, catalogueSha, ModelPhaseFailure, parseReadingPick, promptSha } from "./bound-ask.service";
 import { policySha, ROLE_POLICY, RolePolicyTable } from "../ask-readings/reading-data-classes";
 import { ModelSpendCeilingError } from "../common/model-client/model-client.service";
+import { answerKindNotPermittedReply, classRefusalLine } from "../ask-readings/bound-reply";
 import { FolioCapture, ReadingFolio } from "../ask-readings/reading-folio.store";
 import { BoundAskDto } from "./dto/bound-ask.dto";
 
@@ -223,7 +224,7 @@ describe("BoundAskService.submit: the role gate on price/vendor/open-order/sales
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "orders.open" }));
     await service.submit(HOUSE, USER, "staff", dto());
-    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: ["suppliers"] });
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: ["suppliers"], line: classRefusalLine(["suppliers"]) });
     expect(getClient).not.toHaveBeenCalled(); // zero DB cost for a refused reading
     expect(call).toHaveBeenCalledTimes(1); // the pick call only -- no compose call either
   });
@@ -249,7 +250,7 @@ describe("BoundAskService.submit: the role gate on price/vendor/open-order/sales
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "vendors.active" }));
     await service.submit(HOUSE, USER, null, dto());
-    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "vendors.active", classes: ["suppliers"] });
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "vendors.active", classes: ["suppliers"], line: classRefusalLine(["suppliers"]) });
     expect(getClient).not.toHaveBeenCalled();
   });
 
@@ -266,7 +267,7 @@ describe("BoundAskService.submit: the role gate on price/vendor/open-order/sales
     begin.mockResolvedValue({ created: true, folio: pendingFolio({ reading_id: "sales.check_activity" }) });
     await service.submit(HOUSE, USER, "staff", dto({ readingId: "sales.check_activity" }));
     expect(call).not.toHaveBeenCalled(); // no pick call at all for a page-chosen reading
-    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "sales.check_activity", classes: ["sales"] });
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "sales.check_activity", classes: ["sales"], line: classRefusalLine(["sales"]) });
     expect(getClient).not.toHaveBeenCalled();
   });
 
@@ -349,11 +350,15 @@ describe("BoundAskService.submit: answer kinds and budget shares come from the p
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
     await service.submit(HOUSE, USER, "staff", dto());
     expect(call).toHaveBeenCalledTimes(1);
-    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "model_knowledge" });
+    expect(finish.mock.calls[0][1]).toEqual(answerKindNotPermittedReply("model_knowledge"));
     expect(finish.mock.calls[0][3]).toBeUndefined();
   });
 
-  it("the real table still gives staff model knowledge today (unchanged until the founder decides)", async () => {
+  // Founder, 2026-09-21, round 6, the meaning he approved, verbatim:
+  // "General-knowledge answers are allowed but count toward the house's daily
+  // limit." The counting is proven against the real ledger read in
+  // ask-staff-own-work.spec.ts.
+  it("the real table gives staff model knowledge (founder, round 6)", async () => {
     const { service, begin, call, finish } = harness();
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));

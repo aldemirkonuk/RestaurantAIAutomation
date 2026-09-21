@@ -2,11 +2,14 @@ import {
   answerKindNotPermittedReply,
   bindKnowledgeReply,
   bindReadingReply,
+  classRefusalLine,
   findingReply,
   isBoundReply,
+  isRefusalLine,
   modelFailureReply,
   notPermittedReply,
 } from "./bound-reply";
+import { CLASS_LABEL, DATA_CLASSES } from "./reading-data-classes";
 import { Finding } from "./reading.types";
 
 // KL audit J7: zero specs named this file before this file. bindReadingReply
@@ -105,7 +108,23 @@ describe("notPermittedReply: a role refusal never claims the books were read", (
   // WHY -- the data classes the role's row does not see, or the answer kind
   // it is not given -- instead of the one fixed reason owner_manager_only.]
   it("carries the refused reading's id and the classes withheld, with no finding key at all", () => {
-    expect(notPermittedReply("vendors.active", ["suppliers"])).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "vendors.active", classes: ["suppliers"] });
+    expect(notPermittedReply("vendors.active", ["suppliers"])).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "vendors.active", classes: ["suppliers"],
+      line: "Refused for your role: this answer shows the house's supplier orders and vendors." });
+  });
+
+  // Founder, 2026-09-21, round 6, the meaning he approved, verbatim: "Money,
+  // supplier prices and people data are refused with a one-line reason."
+  it("every refusal carries one line naming each class it withholds -- never a bare not_permitted", () => {
+    expect(classRefusalLine(["money"])).toBe("Refused for your role: this answer shows money (prices, supplier prices, costs, values, margins).");
+    expect(classRefusalLine(["people"])).toBe("Refused for your role: this answer shows people data (the calendar, and anything about a person).");
+    expect(classRefusalLine(["suppliers", "receiving", "money"])).toBe(
+      "Refused for your role: this answer shows the house's supplier orders and vendors, receiving and money (prices, supplier prices, costs, values, margins).");
+    for (const cls of DATA_CLASSES) {
+      const { line } = notPermittedReply("orders.open", [cls]) as { line: string };
+      expect(isRefusalLine(line)).toBe(true);
+      expect(line).toContain(CLASS_LABEL[cls]);
+    }
+    for (const kind of ["reading", "model_knowledge"] as const) expect(isRefusalLine((answerKindNotPermittedReply(kind) as { line: string }).line)).toBe(true);
   });
 
   it("a class refusal must name at least one class", () => {
@@ -113,8 +132,10 @@ describe("notPermittedReply: a role refusal never claims the books were read", (
   });
 
   it("an answer-kind refusal names the kind, and names a reading only when one was resolved", () => {
-    expect(answerKindNotPermittedReply("model_knowledge")).toEqual({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "model_knowledge" });
-    expect(answerKindNotPermittedReply("reading", "orders.open")).toEqual({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "reading", readingId: "orders.open" });
+    expect(answerKindNotPermittedReply("model_knowledge")).toEqual({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "model_knowledge",
+      line: "Refused for your role: it is not given general-knowledge answers." });
+    expect(answerKindNotPermittedReply("reading", "orders.open")).toEqual({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "reading", readingId: "orders.open",
+      line: "Refused for your role: it is not given answers from the house's books." });
   });
 });
 
@@ -154,12 +175,24 @@ describe("isBoundReply: a wire boundary that must never call a tampered shape co
     expect(isBoundReply(notPermittedReply("orders.open", ["suppliers"]))).toBe(true);
     expect(isBoundReply(answerKindNotPermittedReply("model_knowledge"))).toBe(true);
     expect(isBoundReply(answerKindNotPermittedReply("reading", "orders.open"))).toBe(true);
-    expect(isBoundReply({ kind: "not_permitted", reason: "not_a_real_reason", readingId: "orders.open" })).toBe(false);
-    expect(isBoundReply({ kind: "not_permitted", reason: "owner_manager_only", readingId: "orders.open" })).toBe(false);
-    expect(isBoundReply({ kind: "not_permitted", reason: "class_not_visible", readingId: "not.a.real.reading", classes: ["money"] })).toBe(false);
-    expect(isBoundReply({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: [] })).toBe(false);
-    expect(isBoundReply({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: ["gossip"] })).toBe(false);
-    expect(isBoundReply({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: ["suppliers"], finding: finding() })).toBe(false);
-    expect(isBoundReply({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "poetry" })).toBe(false);
+    // Each refused shape below carries a valid line, so it is refused for the
+    // fault it names and not merely for lacking one.
+    const line = "Refused for your role: this answer shows money.";
+    expect(isBoundReply({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: ["suppliers"], line })).toBe(true);
+    expect(isBoundReply({ kind: "not_permitted", reason: "not_a_real_reason", readingId: "orders.open", line })).toBe(false);
+    expect(isBoundReply({ kind: "not_permitted", reason: "owner_manager_only", readingId: "orders.open", line })).toBe(false);
+    expect(isBoundReply({ kind: "not_permitted", reason: "class_not_visible", readingId: "not.a.real.reading", classes: ["money"], line })).toBe(false);
+    expect(isBoundReply({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: [], line })).toBe(false);
+    expect(isBoundReply({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: ["gossip"], line })).toBe(false);
+    expect(isBoundReply({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: ["suppliers"], finding: finding(), line })).toBe(false);
+    expect(isBoundReply({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "poetry", line })).toBe(false);
+  });
+
+  it("refuses a saved refusal with no one-line reason, an empty one, or one that runs over a line (round 6)", () => {
+    const refusal = { kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: ["suppliers"] };
+    expect(isBoundReply(refusal)).toBe(false);
+    expect(isBoundReply({ ...refusal, line: "   " })).toBe(false);
+    expect(isBoundReply({ ...refusal, line: "Refused.\nAnd more." })).toBe(false);
+    expect(isBoundReply({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "reading" })).toBe(false);
   });
 });

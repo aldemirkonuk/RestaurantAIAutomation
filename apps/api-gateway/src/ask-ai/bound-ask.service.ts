@@ -22,7 +22,15 @@ import {
   notPermittedReply,
 } from "../ask-readings/bound-reply";
 import { isReadingAllowedForRole, isReadingId, QUESTION_DISPOSITIONS, READING_CATALOGUE } from "../ask-readings/reading-catalogue";
-import { hiddenClasses, policyRoleFor, policySha, ROLE_POLICY, RolePolicy, RolePolicyTable } from "../ask-readings/reading-data-classes";
+import {
+  hiddenClasses,
+  policyRoleFor,
+  policySha,
+  ROLE_POLICY,
+  RolePolicy,
+  RolePolicyTable,
+  withholdTraceCounts,
+} from "../ask-readings/reading-data-classes";
 import { FolioCapture, ReadingFolio, ReadingFolioStore } from "../ask-readings/reading-folio.store";
 import { ReadingRunner } from "../ask-readings/reading-runner";
 import { Finding, QuestionClass, ReadingArgs, ReadingId } from "../ask-readings/reading.types";
@@ -219,7 +227,11 @@ export class BoundAskService {
         answer = this.refusal(disposition.id, policy);
       } else {
         const runner = new ReadingRunner(this.db.getClient());
-        finding = await runner.run(restaurantId, disposition.id, pick.args, input.readingVersion || 1);
+        // The trace hides by data type (founder, 2026-09-21, round 6, "Hide by
+        // data type"): a relation's row count stays only when this row sees its
+        // class. Applied before the Finding goes anywhere -- the composer, the
+        // reply, the saved folio -- so no copy of the whole count survives.
+        finding = withholdTraceCounts(await runner.run(restaurantId, disposition.id, pick.args, input.readingVersion || 1), policy);
         // A Finding that did not read is decided before any compose call.
         answer = finding.outcome === "read" ? await this.compose(turn, finding) : findingReply(finding);
       }

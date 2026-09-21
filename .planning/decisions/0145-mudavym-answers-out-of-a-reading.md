@@ -1,6 +1,6 @@
 # 0145 — Mudavym answers out of a reading, and only the query that ran may mint one
 
-- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]** **[2026-09-21, KL round 5, later again -- the founder chose the option "Rules in code, label rows": permissions and spend never live in the model. Built: a staff refusal is now SAVED (the folio CHECK lacked `not_permitted`, so every refusal was a 503 on a real database); every field a Reading shows carries a data class and one role-policy table decides who sees what, which answer kinds each role gets and each role's share of the house's daily ask allowance -- the seven restricted Readings are now DERIVED from their fields, not hand-set; every ask is captured once (role snapshot, who chose the Reading, the raw pick, model ids, content hashes); a labels table with `POST /ask/folios/:id/feedback`; a redacted export view. No training. Who may open `/ask` itself stays open. See "Amendment, 2026-09-21 -- rules in code, label rows" below.]**
+- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]** **[2026-09-21, KL round 5, later again -- the founder chose the option "Rules in code, label rows": permissions and spend never live in the model. Built: a staff refusal is now SAVED (the folio CHECK lacked `not_permitted`, so every refusal was a 503 on a real database); every field a Reading shows carries a data class and one role-policy table decides who sees what, which answer kinds each role gets and each role's share of the house's daily ask allowance -- the seven restricted Readings are now DERIVED from their fields, not hand-set; every ask is captured once (role snapshot, who chose the Reading, the raw pick, model ids, content hashes); a labels table with `POST /ask/folios/:id/feedback`; a redacted export view. No training. Who may open `/ask` itself stays open. See "Amendment, 2026-09-21 -- rules in code, label rows" below.]** **[2026-09-21, KL round 6 -- two founder answers. Staff on `/ask`: his pick, verbatim, "Yes, own-work only" -- staff reach `/ask`, see stock, receiving and today's deliveries, and are refused money, supplier prices and people data with a one-line reason; general knowledge is allowed and counts toward the house's daily limit. Trace counts: his pick, verbatim, "Hide by data type" -- a Finding's source trace shows a table's row count only to a role that sees that table's class. Built. See "Amendment, 2026-09-21 -- staff own work, and a trace that hides by data type" and the review trail at the end.]**
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Date:** 2026-09-12
 - **Keywords:** ask, /ask, Mudavym, assistant, reading, finding, provenance, hollow build, refusal shapes, seal, ask-ai, sommelier
@@ -481,7 +481,7 @@ decision it belongs to, is the substitute for this round only.** A future
 session should still give each its own OD row when numbers are next
 allocated, rather than leaving them findable only by reading this ADR.
 
-- **Whether staff reach `/ask` at all.** His words: *"do not give money or
+- **Whether staff reach `/ask` at all.** [ANSWERED 2026-09-21, round 6: "Yes, own-work only" -- see the round-6 amendment at the end.] His words: *"do not give money or
   sensitive incentives like sales etc to the staff, maybe we should exclude
   staff from this equation."* His LEANING is to exclude staff from `/ask`
   entirely, not only from the restricted readings (six as of 2026-09-21 —
@@ -555,7 +555,7 @@ code beyond the catalogue declaration changed.
 `goals.targets` in `RESTRICTED` (26 cases total in the file, all green);
 mutation-tested 2026-09-21 by widening `goals.targets` back to `ALL_ROLES`
 and confirming `CLAIMS.jsonl`'s
-`ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SEVEN-READINGS` verify flips PASS
+`ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SEVEN-READINGS` [renamed `...-EXACTLY-EIGHT-READINGS`, round 6] verify flips PASS
 → FAIL, then restoring the file byte-identically (md5
 `6990c16d8ab6456423bcd5457d4238ae`, unchanged before and after). The last
 call re-ran that mutation and also ran the spec under it: 3 of 26 cases
@@ -642,7 +642,7 @@ rows are built to serve an eval set first.
    `scripts/check_ask_field_classes.py` (CI, with a nine-mutation self-test)
    fails on an untagged shown field, an undeclared runner column or unit, a
    stale tag, a malformed policy row, and -- through CLAIMS row
-   `ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SEVEN-READINGS` -- any change to
+   `ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SEVEN-READINGS` [renamed `...-EXACTLY-EIGHT-READINGS`, round 6] -- any change to
    the derived restricted set. `goals.targets` stays owner/manager: every field
    it shows is money. A refusal now names why: `class_not_visible` with the
    withheld classes, or `answer_kind_not_permitted`. A share below 1 is read
@@ -687,29 +687,29 @@ configurations and web `tsc` clean, CLAIMS 421 of 421; eleven on-disk CLAIMS
 mutations and nine jest mutations, every one caught and every file restored
 byte-identically.
 
-### Tags that reproduce the 2026-09-19 split -- open, not decided
+### Tags that reproduce the 2026-09-19 split -- open, not decided [three of four ANSWERED 2026-09-21, round 6 -- see each bullet]
 
 The classes were chosen so that no Reading changes who receives it. Four tags
 are judgement calls that keep a Reading open to staff; each is a founder
 question, listed with the others below:
 
-- an order's number and contents (`orders.lines`) and the document register
+- an order's number and contents (`orders.lines`) and the document register [ANSWERED round 6: they are **receiving**, a class staff see -- the lane's reading of his word "receiving" (the door receives against them), not his words.]
   (`documents.waiting`) are **stock** -- the door receives against them;
-- every calendar field is **people**, and the staff row sees people, so staff
+- every calendar field is **people**, and the staff row sees people, so staff [ANSWERED round 6: people data is refused to staff; the staff row no longer sees people, so `calendar.upcoming` is refused.]
   still see calendar titles, private events included (the judge's section 1.4);
-- stock movements (`inventory.movements`) are **stock**, although a net
+- stock movements (`inventory.movements`) are **stock**, although a net [STILL OPEN after round 6: his answer lets staff ask about stock and does not say whether a movement is sales.]
   movement over a window with no delivery is consumption -- the judge's
   section 1.3 leak, unchanged;
-- an open order's state and date, and the count of orders, are **suppliers**.
+- an open order's state and date, and the count of orders, are **suppliers**. [ANSWERED round 6: split -- today's open deliveries are **todays_deliveries** (the `procurement_orders@due_today` row view, `orders.due_today`); the whole book, its state, dates and count stay suppliers.]
 
 ### Founder questions this amendment does not answer
 
-- Whether staff reach `/ask` at all (unchanged, still open above).
-- Whether staff are given `model_knowledge` (today: yes, the table says so).
-- Each role's `dailyAskBudgetShare` (today: 1 for every row -- no per-role cap
+- Whether staff reach `/ask` at all (unchanged, still open above). [ANSWERED round 6: "Yes, own-work only".]
+- Whether staff are given `model_knowledge` (today: yes, the table says so). [ANSWERED round 6: yes, and it counts toward the house's daily limit.]
+- Each role's `dailyAskBudgetShare` (today: 1 for every row -- no per-role cap [ANSWERED round 6 for staff: no per-role cap, the share stays 1 -- the orchestrating session's gloss of "count toward the house's daily limit". A per-role rate bucket was not asked and is still open.]
   is in force until a number below 1 is chosen) and any per-role rate bucket
   (the rate guard has only `user` and `restaurant` scopes).
-- The four tags above: whether staff see people-class calendar entries,
+- The four tags above: whether staff see people-class calendar entries, [three answered round 6; movements still open.]
   whether order contents and the document register are stock, whether stock
   movement counts as sales.
 - Consent and notice for using asks to improve models, and whether any later
@@ -736,7 +736,7 @@ question, listed with the others below:
 - The PGlite runs have the harness's fidelity limits (superuser, no Supabase
   platform). No production query was made; traffic and role counts are
   unknown.
-- [Added 2026-09-21, last-call review.] The classes govern a Finding's CELLS,
+- [Added 2026-09-21, last-call review.] The classes govern a Finding's CELLS, [FIXED 2026-09-21, round 6, "Hide by data type": the trace now hides a count by its relation's class -- see the round-6 amendment.]
   not its source trace. Every Finding still carries each relation it read with
   that read's row count (`trace[].rowsScanned`, `matchedRows`), so an
   `orders.lines` Finding, open to staff, tells them how many orders the house
@@ -745,3 +745,162 @@ question, listed with the others below:
 - A pick refused by the role share or by the house's first-attempt gate still
   records the pick model and prompt hash it would have been sent;
   `failure_reason` is what says no call was made.
+
+---
+
+## Amendment, 2026-09-21 -- staff own work, and a trace that hides by data type (KL round 6, founder answers)
+
+**The forks.** Two questions the rules-in-code amendment above left open,
+put to the founder by the orchestrating session in round 6: may staff use
+`/ask`, and what may they ask; and should a Finding's source trace show a
+table's row count to a role that may not see that table.
+
+**Founder's answers, 2026-09-21 -- his picks, verbatim, relayed by the
+orchestrating session** (quoted in full in the review trail below):
+
+1. Staff on `/ask`: **"Yes, own-work only"**, with this meaning, which he
+   approved, verbatim: *"Staff can ask about stock, receiving and today's
+   deliveries. Money, supplier prices and people data are refused with a
+   one-line reason. General-knowledge answers are allowed but count toward
+   the house's daily limit."*
+2. Trace row counts: **"Hide by data type"** -- the orchestrating session's
+   statement of it, not his words: a Finding's source trace shows a table's
+   row count only when the asking role may read that table's class, and
+   otherwise says the count is withheld, never 0.
+
+### Built
+
+1. **Two classes and the staff row** (`reading-data-classes.ts`).
+   `DATA_CLASSES` gains `receiving` (what the door receives against: an
+   order's number and contents, the document register, a receipt's printed
+   quantities -- retagged from `stock`) and `todays_deliveries`. The staff
+   `ROLE_POLICY` row sees exactly `stock`, `receiving`, `todays_deliveries`;
+   `people` left it. Staff keep `reading` and `model_knowledge` answers and a
+   `dailyAskBudgetShare` of 1: no per-role cap (the orchestrating session's
+   gloss), and every `/ask` model call already meters the house's daily
+   allowance through ADR 0146's first-attempt gate. Owner and manager see all
+   seven classes. `/ask` stays reachable by staff (no `@Roles` on
+   `BoundAskController`, unchanged).
+2. **Today's deliveries, split from the order book.** A new Reading,
+   `orders.due_today` ("Which open deliveries are expected today?"): the
+   house's open orders whose stated date is today (runner clock, UTC), by
+   number, state and date. The split is a **row view**:
+   `RecordingSession.view(evidence, "due_today", test)` keeps the rows `test`
+   keeps and relabels the relation `procurement_orders@due_today`, so its cells
+   mint only from `procurement_orders@due_today.*` tags (class
+   `todays_deliveries`), never from the whole book's `suppliers` tags. The
+   Reading reads the whole book so an empty book is still "not in your books"
+   (KL audit J4) rather than a quiet zero; that read's count is in the trace,
+   withheld from staff by item 4. It shows no order count beyond today's, no
+   price and no value. `orders.open` and `orders.late_deliveries` stay
+   suppliers.
+3. **A one-line reason on every refusal** (`bound-reply.ts`). A
+   `class_not_visible` refusal carries `line`, built from `CLASS_LABEL`
+   naming every withheld class (for example "Refused for your role: this
+   answer shows money (prices, supplier prices, costs, values, margins)."); an
+   `answer_kind_not_permitted` refusal carries a fixed line per kind.
+   `isBoundReply` refuses a saved `not_permitted` answer without a one-line
+   reason, so a bare refusal is never served as complete. Supplier prices are
+   `money`-tagged fields (`procurement_document_lines.unit_price` and its
+   basis), so they are refused as money; no separate class was added.
+4. **The trace hides by data type.** Every relation a Reading reads (its
+   `shelves`) now carries a `relation.*` count tag (seven were added:
+   `restaurants`, `storage_locations`, `procurement_document_lines`,
+   `procurement_document_links`, `calendar_recurrence_rules`,
+   `calendar_recurrence_exceptions`, `restaurant_providers`).
+   `withholdTraceCounts(finding, policy)` keeps a trace entry's counts only
+   when the row sees that tag's class; otherwise the entry keeps its relation
+   and time and its `outcome`, `rowsScanned` and `matchedRows` become
+   `withheld` / `withheld_for_your_role` (an `empty` outcome is a count of zero,
+   so it goes too); the Finding's `rowsScanned` total is withheld as well,
+   since it would let the hidden count be subtracted out. A failed read has no
+   count and is unchanged; an untagged relation is withheld from every role.
+   `BoundAskService.submit` applies it to the runner's Finding before the
+   compose call, the reply and the saved folio, so no copy of the whole count
+   survives. The named leak is closed: staff asking `orders.lines` no longer
+   see the house's order count; a manager still does. [Last call, 2026-09-21:
+   not closed as first built. A read pages 500 rows at a time and writes one
+   trace entry per page, so staff still saw one withheld entry per page -- a
+   1,041-order book gave three, which dates it to 1,001-1,500 orders
+   (measured). A withheld relation now leaves one entry per relation read; a
+   jest case on a 1,041-order book and a unit case pin it, and turning the
+   rule off fails both.]
+5. **The guard** (`scripts/check_ask_field_classes.py`) reads row-view tags,
+   treats a read relation's `.*` tag as live, fails `UNTAGGED COUNT` on a read
+   relation with no count tag, and its self-test is thirteen mutations (was
+   nine).
+
+**Who reaches what now (derived, measured by the guard):** restricted from
+staff -- `calendar.upcoming` (people), `goals.targets` (money),
+`receipts.verified_line` (money), `orders.open`, `orders.late_deliveries`,
+`vendors.active` (suppliers), `sales.check_activity`, `sales.consumption`
+(sales). Open to staff -- the five `inventory.*` Readings (stock),
+`orders.lines` and `documents.waiting` (receiving), `orders.due_today`
+(today's deliveries).
+
+**Evidence, measured 2026-09-21 in the worktree:** gateway jest over
+`ask-readings` and `ask-ai`, 15 suites, 271 tests, all passing (was 14 / 235) [last call, re-measured with the two paging cases: 15 / 273],
+including `ask-ai/ask-staff-own-work.spec.ts`, which runs the real
+`BoundAskService`, runner, session, policy and withholding on an in-memory
+book (a staff ask per allowed class answers; a staff ask per refused class
+refuses with its line and never reads the books; the order-book count is
+withheld for staff and shown for a manager) and the real `ModelClientService`
+on an in-memory ledger (a staff general-knowledge ask writes $0.018 of NF rows
+to the house's ledger, and the next ask in that house -- an owner's, on a
+second instance -- is refused `spend_ceiling` against a $0.015 limit, while
+another house is not). Eleven jest mutations (the class split undone, the view
+keeping every order, the service not withholding, the rule always showing, the
+total left in place, staff seeing people again, a refusal without its line, the
+knowledge call metered outside the house, an `empty` outcome kept, a saved
+refusal without a line served, a view not mapped to its relation when
+counting) each failed at least one test; every file was restored
+byte-identically. CLAIMS rows `ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-EIGHT-READINGS`
+(renamed from `...-SEVEN-...`), `ADR-0145-ASK-STAFF-ROW-SEES-OWN-WORK-ONLY`,
+`ADR-0145-ASK-TRACE-COUNTS-HIDE-BY-DATA-TYPE` and
+`ADR-0145-ASK-ROLE-REFUSAL-CARRIES-ONE-LINE`: nine on-disk mutations, each
+flipping its verify PASS -> FAIL, each restored byte-identically. No
+migration: `reading_id` has no CHECK list, and the folio stores the Finding and
+answer as JSON.
+
+### Still open after round 6
+
+- Whether a stock movement (`inventory.movements`, tagged stock, open to staff)
+  is sales: a net movement over a window with no delivery is consumption (the
+  judge's section 1.3). His answer allows stock and does not say.
+- `orders.lines` finds its order by number among ALL the house's orders,
+  closed ones included, and a clarifying reply lists up to 30 matching order
+  numbers. Order numbers are `receiving`, so a staff member can still count
+  orders by searching numbers 30 at a time, and can read a closed order's
+  contents. Whether staff's order lookup is limited to open orders is his call;
+  the trace no longer leaks the count directly.
+- A per-role rate bucket (the rate guard has only `user` and `restaurant`
+  scopes) was not asked.
+- [Added 2026-09-21, last call.] One bit of the order book's size still
+  reaches staff, outside the trace: `orders.due_today` reads the whole book so
+  that an empty book is "not in your books" rather than a quiet zero (KL audit
+  J4), so a staff member who asks it learns whether the house has any orders
+  at all. His answer covers the trace; hiding this bit means reporting an
+  empty book as zero deliveries, which J4 forbids. Which rule wins is his
+  call; nothing else open to staff decides "not in your books" on a relation
+  staff cannot count.
+- Unchanged from the amendment above: consent and notice for training, what
+  `reading_version` means, and whether a page follow-up to a different Reading
+  carries `previous_folio_id` (a follow-up versus a correction label).
+
+### Not built, not verified
+
+- "Today" is the runner's clock in UTC, as for `orders.late_deliveries`: for a
+  house at UTC+3, between midnight and 03:00 local, today's deliveries are
+  yesterday's. The house's time zone is not on this path.
+- A typed question still pays one Haiku pick before the role gate; a staff
+  question that picks a refused Reading costs that pick, which counts toward
+  the house's daily limit.
+- No `/ask` page exists and `ASK_LAUNCHED` is unset: nothing here runs in
+  production. No production query was made.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-09-21 | Aldemir (founder), round 6, relayed by the orchestrating session | Staff on `/ask`, his pick verbatim: "Yes, own-work only", with the meaning he approved, verbatim: "Staff can ask about stock, receiving and today's deliveries. Money, supplier prices and people data are refused with a one-line reason. General-knowledge answers are allowed but count toward the house's daily limit." Finding trace row counts, his pick verbatim: "Hide by data type". Built by the KL lane the same day; see the round-6 amendment above. Still open: movements-as-sales, staff order lookup over closed orders, training consent, `reading_version`, follow-up versus correction. |
+| 2026-09-21 | Opus last call, KL round 6 | Built as he chose, with one leak closed and one bit recorded. Closed: a paged read left staff one withheld trace entry per 500 rows, so the entry count still dated the order book (1,041 orders gave three); now one entry per relation read, jest-pinned and mutation-tested. The trace CLAIMS verify also passed with withholding under the owner row; it now requires the asker's `policy`. Recorded, not decided: `orders.due_today` tells staff whether the order book is empty at all (J4 versus "Hide by data type", his call). |

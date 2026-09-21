@@ -141,6 +141,21 @@ export class ReadingRunner {
           row("date-coverage", [s.count(s.filter(open, r => !r.expected_delivery_date), "undated:count", "Open orders without a delivery date", "orders")]);
           break;
         }
+        case "orders.due_today": {
+          // Today's deliveries (founder, 2026-09-21, round 6): open orders whose
+          // stated date is today, read out of the whole order book so an empty
+          // book stays "not in your books" rather than a quiet zero. Cells come
+          // only from the `due_today` view, whose rows are exactly those; the
+          // book's own count is in the trace, withheld from a role that does
+          // not see suppliers. Today is the runner's clock in UTC, as for
+          // orders.late_deliveries; the house's time zone is not on this path.
+          const today = this.clock().toISOString().slice(0, 10);
+          const orders = await sources.orders();
+          resultEvidence = s.view(orders, "due_today", r => typeof r.status === "string" && !ORDER_CLOSED_STATUSES.includes(r.status as any) &&
+            typeof r.expected_delivery_date === "string" && r.expected_delivery_date.slice(0, 10) === today);
+          listing(resultEvidence, [["order_number", "Order"], ["status", "Recorded state"], ["expected_delivery_date", "Stated delivery date"]], "deliveries");
+          break;
+        }
         case "orders.lines": {
           resultEvidence = await sources.orderLines([String(subject!.id)]);
           if (!s.rows(resultEvidence).length) {

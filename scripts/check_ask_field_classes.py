@@ -21,13 +21,25 @@ revenue targets to staff). This guard is what makes the derivation stay true:
                     from a row (`String(doc.currency)`, `hasUnit(...)` = uom) --
                     that the Reading's `shows` does not name; or a count
                     (`s.count`, `listing`) with no `relation.*` in `shows`.
-  3. STALE          a FIELD_CLASS entry no Reading shows.
+  3. STALE          a FIELD_CLASS entry no Reading shows -- except a
+                    `relation.*` tag of a relation some Reading reads (its
+                    `shelves`), which classes that read's count in the trace.
+  3b. UNTAGGED COUNT a relation some Reading reads with no `relation.*` tag.
+                    Every read's row count reaches the Finding's source trace,
+                    and the trace shows it only to a role that sees its class
+                    (founder, 2026-09-21, round 6, "Hide by data type";
+                    `withholdTraceCounts`); an untagged count is withheld from
+                    everyone, so the guard makes the tag a stated decision.
   4. POLICY         a ROLE_POLICY row naming an unknown class or answer kind, a
                     share outside 0..1, or a fallback row that is not the least
                     privileged.
   5. RESTRICTED     with --expect-restricted a,b,c: the derived set of Readings
                     the fallback (staff) row does not receive must equal it.
-                    CLAIMS.jsonl passes the founder's seven.
+                    CLAIMS.jsonl passes the derived set (eight since round 6).
+
+A tag may name a ROW VIEW, `relation@view.column`: rows of one relation whose
+class differs from the whole relation's (`procurement_orders@due_today`, the
+day's open deliveries, versus the whole order book).
 
 The runner also refuses at RUN time to mint a cell from an undeclared field
 (`undeclared_field`, recording-session.ts); this guard is the static half, so a
@@ -104,7 +116,9 @@ def parse_classes(src: str) -> dict:
     answer_kinds = _strings(_block(src, "export const ANSWER_KINDS", "[", "]"))
     field_block = _block(src, "export const FIELD_CLASS", "{", "}")
     field_class = dict(
-        re.findall(r'"([a-z_]+\.(?:[a-z_]+|\*))"\s*:\s*"([a-z_]+)"', field_block)
+        re.findall(
+            r'"([a-z_]+(?:@[a-z_]+)?\.(?:[a-z_]+|\*))"\s*:\s*"([a-z_]+)"', field_block
+        )
     )
     body_lines = [
         ln
@@ -157,19 +171,28 @@ def parse_catalogue(src: str) -> dict[str, dict]:
         if not line.strip().startswith("{ id:"):
             continue
         m = re.match(
-            r'\s*\{ id: "([^"]+)".*?subject: "(\w+)".*?shows: \[([^\]]*)\]', line
+            r'\s*\{ id: "([^"]+)".*?subject: "(\w+)".*?shelves: \[([^\]]*)\].*?shows: \[([^\]]*)\]',
+            line,
         )
         if not m:
             raise CannotCheck(
                 f"a catalogue entry has no parseable subject/shows: {line.strip()[:80]}"
             )
-        rid, subject, shows = m.group(1), m.group(2), _strings(m.group(3))
+        rid, subject, shelves, shows = (
+            m.group(1),
+            m.group(2),
+            _strings(m.group(3)),
+            _strings(m.group(4)),
+        )
         extra = [] if subject == "none" else subject_fields.get(subject)
         if extra is None:
             raise CannotCheck(
                 f"{rid}: subject {subject} has no SUBJECT_LABEL_FIELDS entry"
             )
-        readings[rid] = {"shows": list(dict.fromkeys(shows + extra))}
+        readings[rid] = {
+            "shows": list(dict.fromkeys(shows + extra)),
+            "shelves": shelves,
+        }
     if not readings:
         raise CannotCheck("no catalogue entries parsed")
     return readings
@@ -309,8 +332,15 @@ def check(
                 f"UNDECLARED: the runner's {rid} case shows a row count, and {rid}'s `shows` names no `relation.*`"
             )
     shown_anywhere = {f for r in readings.values() for f in r["shows"]}
-    for f in sorted(set(field_class) - shown_anywhere):
+    read_anywhere = {rel for r in readings.values() for rel in r["shelves"]}
+    counted_reads = {f"{rel}.*" for rel in read_anywhere}
+    for f in sorted(set(field_class) - shown_anywhere - counted_reads):
         failures.append(f"STALE: FIELD_CLASS tags {f}, which no Reading shows")
+    for rel in sorted(read_anywhere):
+        if f"{rel}.*" not in field_class:
+            failures.append(
+                f"UNTAGGED COUNT: a Reading reads {rel}, whose row count reaches the trace, and it has no `{rel}.*` tag"
+            )
 
     policy = cls["policy"]
     fallback = policy.get(cls["fallback"])
@@ -380,7 +410,8 @@ def self_test() -> int:
     except OSError as e:
         print(f"CANNOT CHECK -- {e}")
         return 2
-    seven = [
+    eight = [
+        "calendar.upcoming",
         "goals.targets",
         "orders.late_deliveries",
         "orders.open",
@@ -389,7 +420,7 @@ def self_test() -> int:
         "sales.consumption",
         "vendors.active",
     ]
-    failures, _ = check(*base, seven)
+    failures, _ = check(*base, eight)
     if failures:
         print("SELF-TEST CANNOT RUN -- the real tree does not pass:", failures)
         return 1
@@ -447,8 +478,8 @@ def self_test() -> int:
             "staff widened to see money",
             mut(
                 0,
-                'staff: { sees: ["people", "stock"]',
-                'staff: { sees: ["people", "stock", "money"]',
+                'staff: { sees: ["stock", "receiving", "todays_deliveries"]',
+                'staff: { sees: ["stock", "receiving", "todays_deliveries", "money"]',
             ),
             "RESTRICTED",
         ),
@@ -467,10 +498,42 @@ def self_test() -> int:
             "a fallback row that sees more than owner",
             mut(
                 0,
-                'staff: { sees: ["people", "stock"]',
-                'staff: { sees: ["people", "stock", "gossip"]',
+                'staff: { sees: ["stock", "receiving", "todays_deliveries"]',
+                'staff: { sees: ["stock", "receiving", "todays_deliveries", "gossip"]',
             ),
             "POLICY",
+        ),
+        (
+            "staff given people data again (the calendar would open to them)",
+            mut(
+                0,
+                'staff: { sees: ["stock", "receiving", "todays_deliveries"]',
+                'staff: { sees: ["stock", "receiving", "todays_deliveries", "people"]',
+            ),
+            "RESTRICTED",
+        ),
+        (
+            "the today split undone: the day's deliveries tagged suppliers again",
+            mut(
+                0,
+                '"procurement_orders@due_today.status": "todays_deliveries"',
+                '"procurement_orders@due_today.status": "suppliers"',
+            ),
+            "RESTRICTED",
+        ),
+        (
+            "a read relation whose trace count lost its tag",
+            mut(0, '  "restaurant_providers.*": "suppliers",\n', ""),
+            "UNTAGGED COUNT",
+        ),
+        (
+            "a view column the runner shows that the view does not declare",
+            mut(
+                2,
+                '[["order_number", "Order"], ["status", "Recorded state"], ["expected_delivery_date", "Stated delivery date"]], "deliveries");',
+                '[["order_number", "Order"], ["status", "Recorded state"], ["bottles_total", "Bottles"]], "deliveries");',
+            ),
+            "UNDECLARED",
         ),
         (
             "a share above the whole allowance",
@@ -485,7 +548,7 @@ def self_test() -> int:
     missed = []
     for name, srcs, token in cases:
         try:
-            got, _ = check(*srcs, seven)
+            got, _ = check(*srcs, eight)
         except CannotCheck as e:
             got = [f"CANNOT {e}"]
         hit = any(g.startswith(token) for g in got)

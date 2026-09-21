@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "crypto";
 import { CalendarOccurrenceException, CalendarOccurrenceRow, CalendarOccurrenceRule,
   resolveCalendarOccurrences } from "../calendar/calendar-occurrences";
+import { baseRelation } from "./reading-data-classes";
 import { BoundCell, Finding, FindingRow, Provenance, ReadingArgs, ReadingId,
   ReadingOutcome, ReadingReason, SourceTrace } from "./reading.types";
 
@@ -144,7 +145,8 @@ export class RecordingSession {
    * the books, not an absence of books (ADR 0145 R4/R7; KL audit J4).
    */
   scannedRows(e: Evidence): number | null {
-    const relations = new Set(this.recorded(e).relations);
+    // A row view (`relation@view`) was read from its whole relation.
+    const relations = new Set(this.recorded(e).relations.map(baseRelation));
     let scanned = 0;
     for (const entry of this.trace) {
       if (!relations.has(entry.relation)) continue;
@@ -156,6 +158,20 @@ export class RecordingSession {
   filter(e: Evidence, test: (row: BookRow) => boolean): Evidence {
     const data = this.recorded(e);
     return this.remember(data.rows.filter(test), data.relations);
+  }
+  /**
+   * A named ROW VIEW: the rows `test` keeps, with each relation relabelled
+   * `relation@name`, so the cells minted from it need `relation@name.column`
+   * tags -- the class of these rows, not the whole relation's (founder,
+   * 2026-09-21, round 6: today's open deliveries are a door fact the whole
+   * order book is not). The label is exactly as true as `test`; the tests on
+   * each view pin what it keeps. Views do not nest.
+   */
+  view(e: Evidence, name: string, test: (row: BookRow) => boolean): Evidence {
+    const data = this.recorded(e);
+    if (!/^[a-z_]+$/.test(name) || data.relations.some(r => r.includes("@")))
+      throw new ReadingFailure("unrecorded_figure");
+    return this.remember(data.rows.filter(test), data.relations.map(r => `${r}@${name}`));
   }
   sorted(e: Evidence, compare: (a: BookRow, b: BookRow) => number): Evidence {
     const data = this.recorded(e);

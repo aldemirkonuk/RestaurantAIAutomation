@@ -1,5 +1,5 @@
 import { isReadingId } from "./reading-catalogue";
-import { ANSWER_KINDS, AnswerKind, DATA_CLASSES, DataClass } from "./reading-data-classes";
+import { ANSWER_KINDS, AnswerKind, CLASS_LABEL, DATA_CLASSES, DataClass } from "./reading-data-classes";
 import { Finding, ReadingId, ReadingOutcome, ReadingReason } from "./reading.types";
 
 declare const knowledgeText: unique symbol;
@@ -71,8 +71,8 @@ export type BoundReply =
       text: ModelKnowledgeText;
     }
   | { kind: "could_not_answer"; reason: ModelFailureReason; finding?: Finding }
-  | { kind: "not_permitted"; reason: "class_not_visible"; readingId: ReadingId; classes: DataClass[] }
-  | { kind: "not_permitted"; reason: "answer_kind_not_permitted"; answerKind: AnswerKind; readingId?: ReadingId }
+  | { kind: "not_permitted"; reason: "class_not_visible"; readingId: ReadingId; classes: DataClass[]; line: string }
+  | { kind: "not_permitted"; reason: "answer_kind_not_permitted"; answerKind: AnswerKind; readingId?: ReadingId; line: string }
   | { kind: Exclude<ReadingOutcome, "read">; reason: ReadingReason; finding?: Finding };
 
 const KNOWLEDGE_LABEL = "Not from the house's books";
@@ -148,6 +148,25 @@ export function modelFailureReply(reason: ModelFailureReason, finding?: Finding)
   return { kind: "could_not_answer", reason, ...(finding ? { finding } : {}) };
 }
 
+const joinNames = (names: string[]) =>
+  names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
+/**
+ * The one line a role refusal carries (founder, 2026-09-21, round 6: money,
+ * supplier prices and people data "are refused with a one-line reason"). It
+ * names every class the role does not see -- never a bare `not_permitted`.
+ */
+export function classRefusalLine(classes: readonly DataClass[]): string {
+  return `Refused for your role: this answer shows ${joinNames(classes.map(c => CLASS_LABEL[c]))}.`;
+}
+const ANSWER_KIND_LINE: Readonly<Record<AnswerKind, string>> = {
+  reading: "Refused for your role: it is not given answers from the house's books.",
+  model_knowledge: "Refused for your role: it is not given general-knowledge answers.",
+};
+/** A refusal line is one short line of text, whatever it says. */
+export const isRefusalLine = (line: unknown): line is string =>
+  typeof line === "string" && line.trim() !== "" && line.length <= 300 && !/[\r\n]/.test(line);
+
 /**
  * A reading the caller's role refused. Minted BEFORE the runner is
  * constructed, so this never carries a Finding -- the books were never
@@ -157,12 +176,12 @@ export function modelFailureReply(reason: ModelFailureReason, finding?: Finding)
  */
 export function notPermittedReply(readingId: ReadingId, classes: DataClass[]): BoundReply {
   if (!classes.length) throw new Error("a class refusal names the classes it withholds");
-  return { kind: "not_permitted", reason: "class_not_visible", readingId, classes: [...classes] };
+  return { kind: "not_permitted", reason: "class_not_visible", readingId, classes: [...classes], line: classRefusalLine(classes) };
 }
 
 /** An answer kind the caller's ROLE_POLICY row is not given. Minted before any model call for it. */
 export function answerKindNotPermittedReply(answerKind: AnswerKind, readingId?: ReadingId): BoundReply {
-  return { kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind, ...(readingId ? { readingId } : {}) };
+  return { kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind, ...(readingId ? { readingId } : {}), line: ANSWER_KIND_LINE[answerKind] };
 }
 
 /**
@@ -196,6 +215,8 @@ export function isBoundReply(raw: unknown): raw is BoundReply {
     // Never carries a Finding -- the books were never queried for a refusal
     // decided before the runner exists.
     if (raw.finding !== undefined || !ROLE_RESTRICTED_REASONS.includes(raw.reason as RoleRestrictedReason)) return false;
+    // Never a bare refusal: the saved answer carries its one-line reason (round 6).
+    if (!isRefusalLine(raw.line)) return false;
     if (raw.reason === "class_not_visible") {
       return (
         isReadingId(raw.readingId) &&

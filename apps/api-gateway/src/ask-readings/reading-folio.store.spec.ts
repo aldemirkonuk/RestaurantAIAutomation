@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { ReadingFolioStore } from "./reading-folio.store";
-import { BoundReply } from "./bound-reply";
+import { BoundReply, notPermittedReply } from "./bound-reply";
 
 // KL audit J7: zero specs named this store before this file. The three
 // properties below are the ones ADR 0145 actually depends on -- a paid
@@ -215,11 +215,14 @@ describe("ReadingFolioStore.finish: a compare-and-swap on pending", () => {
     const s = store(f);
     const { folio } = await s.begin({ restaurantId: HOUSE_A, userId: USER, requestId: "req-1", utterance: "who do we buy from", origin: "page", ...SNAP });
     expect(folio.reading_id).toBeNull(); // natural-language ask: unknown until the model picks
-    const reply: BoundReply = { kind: "not_permitted", reason: "class_not_visible", readingId: "vendors.active", classes: ["suppliers"] };
+    const reply: BoundReply = notPermittedReply("vendors.active", ["suppliers"]);
     const finished = await s.finish(folio, reply);
     expect(finished.status).toBe("complete"); // refused correctly, not an error
     expect(finished.reading_id).toBe("vendors.active");
     expect(finished.finding).toBeNull();
+    // Round 6: the saved refusal carries its one-line reason, and reads back.
+    expect((finished.answer as { line: string }).line).toContain("supplier orders");
+    await expect(s.get(HOUSE_A, USER, folio.id)).resolves.toMatchObject({ reply_kind: "not_permitted" });
   });
 });
 

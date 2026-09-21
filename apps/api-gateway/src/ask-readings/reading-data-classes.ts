@@ -1,5 +1,7 @@
 import { createHash } from "crypto";
 import { Role } from "../auth/guards/roles.guard";
+import { WITHHELD_FOR_YOUR_ROLE } from "./reading.types";
+import type { Finding, SourceTrace, WithheldSourceTrace } from "./reading.types";
 
 /**
  * What a person may see on /ask is a RULE, not a model behaviour (founder,
@@ -11,7 +13,11 @@ import { Role } from "../auth/guards/roles.guard";
  *
  * Three things live here and nowhere else:
  *   FIELD_CLASS   `relation.column` -> class; `relation.*` is that relation's
- *                 row count (a count of pos_checks is a sales figure).
+ *                 row count (a count of pos_checks is a sales figure), shown
+ *                 in a cell or in a Finding's source trace alike.
+ *                 `relation@view.column` is a named ROW VIEW of a relation
+ *                 whose rows carry a different class than the whole relation
+ *                 (`recording-session.ts` `view`).
  *   ROLE_POLICY   ONE table, data not branches: per role, the classes it sees,
  *                 the answer kinds it gets, and its share of the house's daily
  *                 ask allowance (ADR 0146).
@@ -23,7 +29,16 @@ import { Role } from "../auth/guards/roles.guard";
  * shows, and a restricted set that differs from CLAIMS.jsonl. Keep each
  * FIELD_CLASS entry and each ROLE_POLICY row on ONE line: the guard reads them.
  */
-export const DATA_CLASSES = ["money", "sales", "suppliers", "people", "stock"] as const;
+/**
+ * [2026-09-21, founder round 6: `receiving` and `todays_deliveries` added. His
+ * approved meaning, verbatim: "Staff can ask about stock, receiving and
+ * today's deliveries. Money, supplier prices and people data are refused with
+ * a one-line reason." `receiving` is what the door receives against (an
+ * order's number and contents, the document register, a receipt's printed
+ * quantities); `todays_deliveries` is the `due_today` row view of the order
+ * book -- today's open orders, their state and date, never the book's size.]
+ */
+export const DATA_CLASSES = ["money", "sales", "suppliers", "people", "stock", "receiving", "todays_deliveries"] as const;
 export type DataClass = (typeof DATA_CLASSES)[number];
 
 /** The answers a role can be given. Refusals, clarifications and "not built" are not answers. */
@@ -41,6 +56,14 @@ export type AnswerKind = (typeof ANSWER_KINDS)[number];
  * document register are `stock` (the door receives against them); calendar
  * entries are `people`; stock movements are `stock` although they net sales
  * depletion in (the judge's section 1.3).
+ * [ANSWERED 2026-09-21, founder round 6 ("Yes, own-work only"): an order's
+ * number and contents and the document register are `receiving`; calendar
+ * entries stay `people`, which staff no longer see. Stock movements stay
+ * `stock` -- whether they are sales is still open (ADR 0145, round 6).]
+ *
+ * Every relation a Reading reads (its `shelves`) carries a `relation.*` tag,
+ * because the source trace reports every read's row count: an untagged count
+ * would be withheld from every role, and the CI guard fails on one.
  */
 export const FIELD_CLASS: Readonly<Record<string, DataClass>> = {
   "restaurant_inventory.*": "stock",
@@ -51,38 +74,46 @@ export const FIELD_CLASS: Readonly<Record<string, DataClass>> = {
   "restaurant_inventory.shadow_stock": "stock",
   "restaurant_inventory.in_transit_quantity": "stock",
   "restaurant_inventory.threshold_min": "stock",
+  "restaurants.*": "stock",
   "inventory_lots.*": "stock",
   "inventory_lots.location_id": "stock",
   "inventory_lots.stock_state": "stock",
   "inventory_lots.qty": "stock",
+  "storage_locations.*": "stock",
   "storage_locations.name": "stock",
   "inventory_transactions.*": "stock",
   "inventory_transactions.stock_type": "stock",
   "inventory_transactions.quantity_change": "stock",
   "procurement_orders.*": "suppliers",
-  "procurement_orders.order_number": "stock",
+  "procurement_orders.order_number": "receiving",
   "procurement_orders.status": "suppliers",
   "procurement_orders.expected_delivery_date": "suppliers",
-  "procurement_orders.quantity": "stock",
-  "procurement_orders.unit_type": "stock",
-  "procurement_order_items.*": "stock",
-  "procurement_order_items.wine_name": "stock",
-  "procurement_order_items.quantity": "stock",
-  "procurement_order_items.unit_type": "stock",
-  "procurement_order_items.bottles_per_unit": "stock",
-  "procurement_documents.*": "stock",
-  "procurement_documents.doc_number": "stock",
-  "procurement_documents.doc_type": "stock",
-  "procurement_documents.status": "stock",
-  "procurement_documents.doc_date": "stock",
-  "procurement_documents.verified_at": "stock",
+  "procurement_orders.quantity": "receiving",
+  "procurement_orders.unit_type": "receiving",
+  "procurement_orders@due_today.*": "todays_deliveries",
+  "procurement_orders@due_today.order_number": "todays_deliveries",
+  "procurement_orders@due_today.status": "todays_deliveries",
+  "procurement_orders@due_today.expected_delivery_date": "todays_deliveries",
+  "procurement_order_items.*": "receiving",
+  "procurement_order_items.wine_name": "receiving",
+  "procurement_order_items.quantity": "receiving",
+  "procurement_order_items.unit_type": "receiving",
+  "procurement_order_items.bottles_per_unit": "receiving",
+  "procurement_documents.*": "receiving",
+  "procurement_documents.doc_number": "receiving",
+  "procurement_documents.doc_type": "receiving",
+  "procurement_documents.status": "receiving",
+  "procurement_documents.doc_date": "receiving",
+  "procurement_documents.verified_at": "receiving",
   "procurement_documents.currency": "money",
-  "procurement_document_lines.qty": "stock",
-  "procurement_document_lines.uom": "stock",
-  "procurement_document_lines.pack_size": "stock",
+  "procurement_document_lines.*": "receiving",
+  "procurement_document_lines.qty": "receiving",
+  "procurement_document_lines.uom": "receiving",
+  "procurement_document_lines.pack_size": "receiving",
   "procurement_document_lines.unit_price": "money",
   "procurement_document_lines.price_base_qty": "money",
   "procurement_document_lines.price_base_uom": "money",
+  "procurement_document_links.*": "receiving",
   "pos_checks.*": "sales",
   "pos_checks.covers": "sales",
   "wine_consumption_log.*": "sales",
@@ -94,8 +125,11 @@ export const FIELD_CLASS: Readonly<Record<string, DataClass>> = {
   "calendar_events.start_date": "people",
   "calendar_events.start_time": "people",
   "calendar_events.status": "people",
+  "calendar_recurrence_rules.*": "people",
+  "calendar_recurrence_exceptions.*": "people",
   "providers.*": "suppliers",
   "providers.name": "suppliers",
+  "restaurant_providers.*": "suppliers",
   "analytics_goals.*": "money",
   "analytics_goals.name": "money",
   "analytics_goals.metric_key": "money",
@@ -126,11 +160,36 @@ export type RolePolicyTable = Readonly<Record<Role, RolePolicy>>;
  * 2026-09-21); every role may receive model knowledge; nobody has a share
  * below the whole house allowance. Changing any value is a founder decision
  * (ADR 0145, 2026-09-21 amendment, "Founder questions").
+ *
+ * [ANSWERED 2026-09-21, founder round 6 -- his pick, verbatim, "Yes, own-work
+ * only", with this meaning he approved: "Staff can ask about stock, receiving
+ * and today's deliveries. Money, supplier prices and people data are refused
+ * with a one-line reason. General-knowledge answers are allowed but count
+ * toward the house's daily limit." So the staff row sees exactly stock,
+ * receiving and today's deliveries (people left it); staff keep
+ * model_knowledge, and every model call already counts against the house's
+ * daily allowance (ADR 0146's first-attempt gate); the share stays 1 -- no
+ * per-role cap, the orchestrating session's gloss of his answer.]
  */
 export const ROLE_POLICY: RolePolicyTable = {
-  owner: { sees: ["money", "sales", "suppliers", "people", "stock"], answers: ["reading", "model_knowledge"], dailyAskBudgetShare: 1 },
-  manager: { sees: ["money", "sales", "suppliers", "people", "stock"], answers: ["reading", "model_knowledge"], dailyAskBudgetShare: 1 },
-  staff: { sees: ["people", "stock"], answers: ["reading", "model_knowledge"], dailyAskBudgetShare: 1 },
+  owner: { sees: ["money", "sales", "suppliers", "people", "stock", "receiving", "todays_deliveries"], answers: ["reading", "model_knowledge"], dailyAskBudgetShare: 1 },
+  manager: { sees: ["money", "sales", "suppliers", "people", "stock", "receiving", "todays_deliveries"], answers: ["reading", "model_knowledge"], dailyAskBudgetShare: 1 },
+  staff: { sees: ["stock", "receiving", "todays_deliveries"], answers: ["reading", "model_knowledge"], dailyAskBudgetShare: 1 },
+};
+
+/**
+ * What each class is called in a refusal's one line (founder, round 6:
+ * refused "with a one-line reason"). The line itself is built in
+ * `bound-reply.ts` from these names and the classes the role does not see.
+ */
+export const CLASS_LABEL: Readonly<Record<DataClass, string>> = {
+  money: "money (prices, supplier prices, costs, values, margins)",
+  sales: "sales figures",
+  suppliers: "the house's supplier orders and vendors",
+  people: "people data (the calendar, and anything about a person)",
+  stock: "stock",
+  receiving: "receiving",
+  todays_deliveries: "today's deliveries",
 };
 
 /** `admin` passes every owner/manager gate in RolesGuard, so it reads the owner row. */
@@ -171,6 +230,55 @@ export function rolesSeeing(classes: readonly DataClass[], table: RolePolicyTabl
   return (Object.keys(table) as Role[]).filter(
     role => table[role].answers.includes("reading") && hiddenClasses(classes, table[role]).length === 0,
   );
+}
+
+/** The relation a trace entry or evidence names, without its row view (`relation@view` -> `relation`). */
+export function baseRelation(relation: string): string {
+  const at = relation.indexOf("@");
+  return at < 0 ? relation : relation.slice(0, at);
+}
+
+/** The class of a relation's row count: its `relation.*` tag, or null when it has none. */
+export function countClassOf(relation: string): DataClass | null {
+  return FIELD_CLASS[`${relation}.*`] ?? null;
+}
+
+/**
+ * A Finding as this policy row may see it (founder, 2026-09-21, round 6, his
+ * pick verbatim: "Hide by data type"). The CELLS were already gated by the
+ * Reading's classes; the source TRACE reports every read's row count, and a
+ * Reading open to a role can still read a relation that role does not see --
+ * `orders.lines` finds its order in the whole order book, so its trace
+ * carried the house's order count, a suppliers figure, to staff. A count is
+ * kept only when the row sees its relation's class; otherwise the read stays
+ * listed (which relation, when) and its count, its rows/empty outcome and the
+ * Finding's total are `withheld_for_your_role`. A failed read carries no count
+ * and stays as it is. An untagged relation is withheld from every role.
+ *
+ * [2026-09-21, round 6 last call] A withheld relation leaves ONE entry, however
+ * many times it was read: `RecordingSession.read` pages 500 rows at a time and
+ * writes a trace entry per page, so the number of entries would itself say how
+ * many hundreds of rows the relation has.
+ */
+export function withholdTraceCounts(finding: Finding, policy: RolePolicy): Finding {
+  let withheld = false;
+  const listed = new Set<string>();
+  const trace = finding.trace.map((entry): SourceTrace | WithheldSourceTrace => {
+    if (entry.outcome === "failed" || entry.outcome === "withheld") return entry;
+    const cls = countClassOf(entry.relation);
+    if (cls && policy.sees.includes(cls)) return entry;
+    withheld = true;
+    return { relation: entry.relation, operation: entry.operation, outcome: "withheld",
+      rowsScanned: WITHHELD_FOR_YOUR_ROLE, matchedRows: WITHHELD_FOR_YOUR_ROLE, asOf: entry.asOf };
+  }).filter(entry => {
+    if (entry.outcome !== "withheld") return true;
+    const read = `${entry.operation}:${entry.relation}`;
+    if (listed.has(read)) return false; // one withheld entry per relation read
+    listed.add(read);
+    return true;
+  });
+  if (!withheld) return finding;
+  return { ...finding, trace, rowsScanned: finding.rowsScanned === null ? null : WITHHELD_FOR_YOUR_ROLE };
 }
 
 const sha256 = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
