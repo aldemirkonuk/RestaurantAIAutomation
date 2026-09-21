@@ -165,7 +165,26 @@ def _load_env_var(*var_names: str) -> str | None:
         if value:
             return value
     here = Path(__file__).resolve()
-    for parent in [here.parent, *here.parents]:
+    found = _walk_up_for_env(here.parent, var_names)
+    if found is not None:
+        return found
+    # An EXTERNAL linked worktree -- `git worktree add ~/somewhere/lane`, which
+    # is what Cursor's agent worktrees are -- holds no .env and has no main
+    # checkout above it, so the walk above ran to `/` and found nothing (or, on
+    # a machine that keeps a .env in a home directory, found the WRONG one).
+    # Measured 2026-09-21: 112 of this machine's 148 worktrees, including every
+    # ~/.cursor/worktrees/* checkout, got "[JEV] not configured" -- i.e. the
+    # surface this was built for was the one surface it did not serve
+    # (PR #408 correctness N2). The `.git` FILE names the main repo; follow it.
+    main_root = _linked_worktree_main_root(here.parent)
+    if main_root is not None:
+        return _walk_up_for_env(main_root, var_names)
+    return None
+
+
+def _walk_up_for_env(start: Path, var_names: tuple[str, ...]) -> str | None:
+    """The three rules above, from `start` upward. None means 'kept looking'."""
+    for parent in [start, *start.parents]:
         try:
             world_writable = bool(parent.stat().st_mode & 0o002)
         except OSError:
@@ -178,9 +197,57 @@ def _load_env_var(*var_names: str) -> str | None:
     return None
 
 
+def _linked_worktree_main_root(start: Path) -> Path | None:
+    """The main checkout a linked worktree belongs to, or None.
+
+    A linked worktree's `.git` is a FILE reading
+    `gitdir: /main/.git/worktrees/<name>`. The main root is the parent of that
+    `.git` directory. Read, never executed -- no `git` subprocess, so this also
+    works when git is absent or refuses the directory as dubiously owned (the
+    same refusal that used to make the Codex config exit 2).
+    """
+    for parent in [start, *start.parents]:
+        dot_git = parent / ".git"
+        if dot_git.is_dir():
+            return None  # a real repo root; the walk already covered it
+        if not dot_git.is_file():
+            continue
+        try:
+            line = dot_git.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            return None
+        if not line.startswith("gitdir:"):
+            return None
+        gitdir = Path(line[len("gitdir:"):].strip())
+        if not gitdir.is_absolute():
+            gitdir = (parent / gitdir).resolve()
+        for anc in gitdir.parents:
+            if anc.name == ".git":
+                return anc.parent
+        return None
+    return None
+
+
 def _load_api_key() -> str | None:
     """JEV_API_KEY (or TYPESAFE_API_KEY). Never prints the value."""
     return _load_env_var(*_KEY_VAR_NAMES)
+
+
+class _RefuseRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a Location. See the call site for why."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
+        return None
+
+
+def _build_opener() -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(
+        _RefuseRedirect,
+        urllib.request.HTTPSHandler(context=_SSL_CONTEXT),
+    )
+
+
+_NO_REDIRECTS = _build_opener()
 
 
 def _ask_jev(prompt_text: str, api_key: str) -> dict:
@@ -197,8 +264,15 @@ def _ask_jev(prompt_text: str, api_key: str) -> dict:
             "questions": QUESTIONS,
         }
     ).encode("utf-8")
+    # JEV_ENDPOINT_OVERRIDE exists so a guard can drive the FAILURE path without
+    # touching the network: scripts/check_jev_never_blocks.py points it at a
+    # closed port and asserts the process still exits 0. Whoever sets it already
+    # controls the key and the machine, so it grants nothing new — and the
+    # response is allow-listed field by field either way, so a hostile endpoint
+    # still cannot put a byte of its own into the model's context.
+    endpoint = os.environ.get("JEV_ENDPOINT_OVERRIDE") or TYPESAFE_ENDPOINT
     req = urllib.request.Request(
-        TYPESAFE_ENDPOINT,
+        endpoint,
         data=body,
         method="POST",
         headers={
@@ -206,8 +280,17 @@ def _ask_jev(prompt_text: str, api_key: str) -> dict:
             "Content-Type": "application/json",
         },
     )
-    with urllib.request.urlopen(
-        req, timeout=TIMEOUT_SECONDS, context=_SSL_CONTEXT
+    # No redirects. urllib's DEFAULT opener follows them, and CPython's
+    # redirect_request strips only content-length and content-type -- the
+    # Authorization header is forwarded to whatever host the Location names, and
+    # http_error_302 permits an https -> http downgrade for up to 10 hops. A
+    # compromised response path, or any TLS-intercepting middlebox, answers the
+    # POST with `302 Location: http://attacker/` and receives the bearer in
+    # plaintext (reproduced live, PR #408 security audit F1). The prompt body is
+    # not exfiltrable the same way -- 301/302/303 convert POST to GET and drop
+    # `data` -- but the key alone is enough.
+    with _NO_REDIRECTS.open(
+        req, timeout=TIMEOUT_SECONDS
     ) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
@@ -278,11 +361,23 @@ def _declared_for(argv: list[str]) -> str | None:
     return None
 
 
-def _is_cursor_payload(payload: dict[str, Any]) -> bool:
+def _is_cursor_payload(payload: Any) -> bool:
+    # `payload` is whatever the harness put on stdin. A list, a string or null
+    # is valid JSON and used to reach `.get` here, raising AttributeError before
+    # main()'s try block -- exit 1 with a traceback instead of an annotation
+    # (PR #408 correctness N4). Anything that is not an object is simply not a
+    # Cursor payload.
+    if not isinstance(payload, dict):
+        return False
     event = payload.get("hook_event_name") or payload.get("hookEventName") or ""
-    return event == "beforeSubmitPrompt" or any(
-        key in payload for key in ("conversation_id", "cursor_version", "workspace_roots")
-    )
+    # Keyed on the EVENT NAME ALONE. It used to also return True on the mere
+    # presence of conversation_id / cursor_version / workspace_roots, which was
+    # unnecessary (Cursor always sends its event name) and dangerous in the
+    # other direction: one such field appearing in a future Claude Code payload
+    # would route a real prompt to cursor-replay, which calls nothing, annotates
+    # nothing, writes no stderr and exits 0 -- indistinguishable from a working
+    # gate (PR #408 security F4). Absence reported as health, in the gate itself.
+    return event == "beforeSubmitPrompt"
 
 
 def resolve_platform(payload: dict[str, Any], argv: list[str] | None = None) -> str:

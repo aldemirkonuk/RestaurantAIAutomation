@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/jev/prompt_gate.py\" --for=codex",
+            "command": "sh -c 'r=$(git rev-parse --show-toplevel 2>/dev/null || echo .); python3 \"$r/scripts/jev/prompt_gate.py\" --for=codex || exit 0'",
             "timeout": 8,
             "statusMessage": "Checking with Jev"
           }

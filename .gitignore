@@ -90,6 +90,17 @@ supabase/.temp/
 # stays ignored.
 !.cursor/hooks.json
 
+# Same shape for Codex, and for the same reason. This is not symmetry for its
+# own sake: the Codex CLI writes credentials to .codex/auth.json and every
+# prompt it has ever been given to .codex/history.jsonl, and ADR 0182 records
+# moving to it in this repo as the next step. Before this rule, `git
+# check-ignore` said auth.json and history.jsonl were NOT ignored, and this PR
+# is what creates .codex/ in the first place (PR #408 audit, D7). Nothing was
+# exposed when it was found — only hooks.json existed on disk — which is the
+# cheapest moment to close it.
+.codex/*
+!.codex/hooks.json
+
 # Large third-party or scraped dataset trees (keep scripts + small samples only)
 External_Wine_Datasets/
 datasets/annotation_images/

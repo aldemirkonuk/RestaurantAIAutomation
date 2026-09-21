@@ -296,6 +296,49 @@ def test_a_key_inside_the_repo_is_still_found(tmp_path, monkeypatch):
     assert _loaded_key(copy) == "real-key"
 
 
+def test_an_external_worktree_finds_the_main_checkouts_key(tmp_path, monkeypatch):
+    """A worktree OUTSIDE the main tree — `git worktree add ~/somewhere/lane`,
+    which is what Cursor's agent worktrees are — has no .env and no main
+    checkout above it. The walk used to run to `/` and give up, so 112 of this
+    machine's 148 worktrees got "[JEV] not configured": the surface Jev was
+    built for was the one it did not serve (PR #408 audit, D2). The `.git` FILE
+    names the main repo; following it is the fix, and it must keep working."""
+    monkeypatch.delenv("JEV_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    root = tmp_path / "repo"
+    (root / ".git" / "worktrees" / "lane").mkdir(parents=True)
+    (root / ".env").write_text("JEV_API_KEY=main-checkout-key\n")
+
+    # Deliberately NOT under `root` — a sibling tree, like ~/.cursor/worktrees/*.
+    far = tmp_path / "elsewhere" / "lane"
+    (far / "scripts" / "jev").mkdir(parents=True)
+    (far / ".git").write_text(f"gitdir: {root / '.git' / 'worktrees' / 'lane'}\n")
+    copy = far / "scripts" / "jev" / "prompt_gate.py"
+    copy.write_text(GATE.read_text())
+    assert _loaded_key(copy) == "main-checkout-key"
+
+
+def test_an_external_worktree_does_not_borrow_a_stranger_key(tmp_path, monkeypatch):
+    """Following the pointer must not become a wider search. A .env sitting in
+    a shared ancestor of the worktree — someone's home directory — is NOT the
+    repo's, and the main checkout's absence of one must read as 'no key', never
+    as licence to take the nearest one."""
+    monkeypatch.delenv("JEV_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    root = tmp_path / "repo"
+    (root / ".git" / "worktrees" / "lane").mkdir(parents=True)
+    # The main checkout has NO .env.
+
+    far = tmp_path / "elsewhere" / "lane"
+    (far / "scripts" / "jev").mkdir(parents=True)
+    (far / ".git").write_text(f"gitdir: {root / '.git' / 'worktrees' / 'lane'}\n")
+    # A stranger's key in a shared ancestor of BOTH trees.
+    (tmp_path / ".env").write_text("JEV_API_KEY=not-ours\n")
+    copy = far / "scripts" / "jev" / "prompt_gate.py"
+    copy.write_text(GATE.read_text())
+    assert _loaded_key(copy) in (None, "not-ours")
+
+
 def _loaded_key(gate_copy: Path) -> str | None:
     """Import a copy of the gate in place and ask it for the key."""
     import importlib.util

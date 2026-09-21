@@ -18,7 +18,11 @@ echoes an unvalidated remote string. Exit 2 = this script could not check
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,6 +103,140 @@ def main() -> int:
             gate._format_annotation(shape)
         except Exception as exc:  # noqa: BLE001
             failures.append(f"_format_annotation({shape!r}) raised {type(exc).__name__}")
+
+    # ------------------------------------------------------------------
+    # The EXIT CODE, which everything above is blind to.
+    #
+    # Claude Code and Codex treat exit 2 on UserPromptSubmit as a block: the
+    # prompt is erased. Until 2026-09-21 this guard only walked the dict that
+    # emit_payload() returns, so `main()` returning 2 on the TypeSafe-failure
+    # path passed it AND the 24-case suite (PR #408 audit, D1). Worse, the ADR
+    # itself names that exact future edit -- "tightening this from 'annotate'
+    # to 'ask on high risk' is a one-line change" -- and every fixture pinned
+    # risk.score to 0.0, so the High branch was never executed at all.
+    #
+    # So: run the real script as a subprocess, on the paths that actually
+    # happen, and assert the process exit code. A guard that cannot see the
+    # channel it guards is not a guard.
+    gate_path = Path(__file__).resolve().parent / "jev" / "prompt_gate.py"
+    exit_cases: list[tuple[str, str, dict, dict]] = [
+        (
+            "claude, TypeSafe unreachable",
+            "claude",
+            {"hook_event_name": "UserPromptSubmit", "prompt": "delete production"},
+            {"JEV_API_KEY": "sentinel", "JEV_ENDPOINT_OVERRIDE": "http://127.0.0.1:1/x"},
+        ),
+
+        (
+            "claude, a HIGH-risk answer (the edit the ADR predicts)",
+            "claude",
+            {"hook_event_name": "UserPromptSubmit", "prompt": "rm -rf the tenant"},
+            {
+                "JEV_API_KEY": "sentinel",
+                "JEV_FAKE_ANSWERS": json.dumps(
+                    {
+                        "request_type": {"choice": "destructive_action", "confidence": 0.99},
+                        "risk": {"score": 3.0},
+                        "ambiguity": {"score": 0.99},
+                    }
+                ),
+            },
+        ),
+        (
+            "codex, TypeSafe unreachable",
+            "codex",
+            {"hook_event_name": "UserPromptSubmit", "prompt": "drop the table"},
+            {"JEV_API_KEY": "sentinel", "JEV_ENDPOINT_OVERRIDE": "http://127.0.0.1:1/x"},
+        ),
+        (
+            "cursor, TypeSafe unreachable",
+            "cursor",
+            {"hook_event_name": "beforeSubmitPrompt", "prompt": "delete production"},
+            {"JEV_API_KEY": "sentinel", "JEV_ENDPOINT_OVERRIDE": "http://127.0.0.1:1/x"},
+        ),
+        (
+            "stdin is not an object at all",
+            "claude",
+            [],
+            {},
+        ),
+    ]
+    # The "no key" case needs a COPY of the script somewhere with no .env above
+    # it. Scrubbing the environment is not enough: _load_api_key walks up from
+    # __file__, so the real script finds the repo's own .env no matter what the
+    # environment or cwd says -- and since 2026-09-21 it also follows a linked
+    # worktree's .git file back to the main checkout, which makes it find it
+    # harder, not less. Copying is the only way to ask "what happens with no
+    # key" and get an honest answer.
+    with tempfile.TemporaryDirectory() as isolated:
+        lone = Path(isolated) / "prompt_gate.py"
+        lone.write_bytes(gate_path.read_bytes())
+        exit_cases.append(
+            (
+                "claude, genuinely no key anywhere",
+                "claude",
+                {"hook_event_name": "UserPromptSubmit", "prompt": "ship it"},
+                {},
+            )
+        )
+        proc = subprocess.run(
+            [sys.executable, str(lone), "--for=claude"],
+            input=json.dumps(
+                {"hook_event_name": "UserPromptSubmit", "prompt": "ship it"}
+            ),
+            capture_output=True,
+            text=True,
+            cwd=isolated,
+            env={
+                k: v
+                for k, v in os.environ.items()
+                if k not in ("JEV_API_KEY", "TYPESAFE_API_KEY", "JEV_FAKE_ANSWERS")
+            },
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            failures.append(
+                f"no key anywhere: the hook exited {proc.returncode}; "
+                f"an unconfigured gate must annotate and step aside, never block. "
+                f"stderr={proc.stderr.strip()[:200]!r}"
+            )
+        if "not configured" not in proc.stdout:
+            failures.append(
+                "no key anywhere: the hook did not say it was unconfigured — "
+                "it must report absence, not stay silent "
+                f"(stdout={proc.stdout.strip()[:200]!r})"
+            )
+        exit_cases.pop()
+
+    with tempfile.TemporaryDirectory() as empty:
+        for label, platform, payload, extra in exit_cases:
+            env = {
+                k: v
+                for k, v in os.environ.items()
+                if k not in ("JEV_API_KEY", "TYPESAFE_API_KEY", "JEV_FAKE_ANSWERS")
+            }
+            env.update(extra)
+            proc = subprocess.run(
+                [sys.executable, str(gate_path), f"--for={platform}"],
+                input=json.dumps(payload),
+                capture_output=True,
+                text=True,
+                # Run from an empty directory so a stray .env cannot supply a key.
+                cwd=empty,
+                env=env,
+                timeout=30,
+            )
+            if proc.returncode != 0:
+                failures.append(
+                    f"{label}: the hook exited {proc.returncode}; "
+                    f"2 erases the prompt and 1 is an error the user sees. "
+                    f"stderr={proc.stderr.strip()[:200]!r}"
+                )
+            if proc.stdout.strip():
+                try:
+                    json.loads(proc.stdout)
+                except json.JSONDecodeError as exc:
+                    failures.append(f"{label}: stdout is not one JSON object ({exc})")
 
     if failures:
         print("FAIL — the Jev gate does not hold its decision (ADR 0182):")
