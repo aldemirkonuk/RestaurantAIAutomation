@@ -1,4 +1,5 @@
-import { ALL_ROLES, isReadingAllowedForRole, OWNER_MANAGER_ONLY, READING_CATALOGUE } from "./reading-catalogue";
+import { isReadingAllowedForRole, READING_CATALOGUE, shownFields } from "./reading-catalogue";
+import { FIELD_CLASS, ROLE_POLICY, RolePolicyTable } from "./reading-data-classes";
 import { ReadingId } from "./reading.types";
 
 // Founder, batch 4, 2026-09-19, his words: "do not give money or sensitive
@@ -28,29 +29,64 @@ import { ReadingId } from "./reading.types";
 // only too, a money measure. Added to RESTRICTED. Seven restricted, not
 // six; eight open, not nine. Recorded in ADR 0145's 2026-09-21 goals.targets
 // amendment.]
+//
+// [REBUILT 2026-09-21, founder's option "Rules in code, label rows": the
+// restricted set is no longer declared per Reading. It is DERIVED -- each
+// Reading's shown fields carry data classes, and a role receives a Reading
+// only when its ROLE_POLICY row sees every class. The matrix below is
+// unchanged: the derivation produces exactly the seven / eight split above.
+// FAILING BEFORE THIS CHANGE: `shows`, `classes` and `shownFields` did not
+// exist, so the derivation tests below could not compile.]
 
 const RESTRICTED: ReadingId[] = ["receipts.verified_line", "vendors.active", "orders.open", "orders.late_deliveries", "sales.check_activity", "sales.consumption", "goals.targets"];
 const OPEN: ReadingId[] = READING_CATALOGUE.map(r => r.id).filter(id => !RESTRICTED.includes(id));
 
 describe("READING_CATALOGUE: the named restricted set matches the founder's five categories exactly", () => {
   it("names exactly the seven readings under price, vendor, open-order, sales and goals -- no more, no fewer", () => {
-    const actuallyRestricted = READING_CATALOGUE.filter(r => r.allowedRoles === OWNER_MANAGER_ONLY || !r.allowedRoles.includes("staff")).map(r => r.id);
+    const actuallyRestricted = READING_CATALOGUE.filter(r => !r.allowedRoles.includes("staff")).map(r => r.id);
     expect(actuallyRestricted.sort()).toEqual([...RESTRICTED].sort());
   });
 
-  it("every catalogue entry declares allowedRoles explicitly -- never omitted, never empty", () => {
+  it("every Reading declares the fields it shows, and every one of them carries a data class", () => {
     for (const r of READING_CATALOGUE) {
-      expect(Array.isArray(r.allowedRoles)).toBe(true);
-      expect(r.allowedRoles.length).toBeGreaterThan(0);
+      expect(r.shows.length).toBeGreaterThan(0);
+      for (const field of shownFields(r)) expect(FIELD_CLASS[field]).toBeDefined();
     }
   });
 
-  it("the eight open readings are untouched: ALL_ROLES, staff included", () => {
+  it("allowedRoles is derived from the classes, never declared: each restricted Reading shows a class staff does not see", () => {
+    for (const id of RESTRICTED) {
+      const r = READING_CATALOGUE.find(x => x.id === id)!;
+      expect(r.classes.some(c => !ROLE_POLICY.staff.sees.includes(c))).toBe(true);
+      expect(r.allowedRoles).toEqual(["owner", "manager"]);
+    }
+  });
+
+  it("goals.targets stays owner/manager because every field it shows is money", () => {
+    const goals = READING_CATALOGUE.find(r => r.id === "goals.targets")!;
+    expect(goals.classes).toEqual(["money"]);
+  });
+
+  it("the eight open readings are reachable by owner, manager and staff", () => {
     for (const id of OPEN) {
       const descriptor = READING_CATALOGUE.find(r => r.id === id)!;
-      expect(descriptor.allowedRoles).toEqual(ALL_ROLES);
+      expect(descriptor.allowedRoles).toEqual(["owner", "manager", "staff"]);
     }
     expect(OPEN.length).toBe(8);
+  });
+
+  it("the gate follows the TABLE: a table in which staff also see money opens goals.targets and receipts to staff, and nothing else changes", () => {
+    const widened: RolePolicyTable = { ...ROLE_POLICY, staff: { ...ROLE_POLICY.staff, sees: [...ROLE_POLICY.staff.sees, "money"] } };
+    expect(isReadingAllowedForRole("goals.targets", "staff", widened)).toBe(true);
+    expect(isReadingAllowedForRole("receipts.verified_line", "staff", widened)).toBe(true);
+    expect(isReadingAllowedForRole("orders.open", "staff", widened)).toBe(false); // suppliers, still unseen
+    expect(isReadingAllowedForRole("goals.targets", "staff")).toBe(false); // the real table is untouched
+  });
+
+  it("a row that is not given Reading answers receives no Reading, whatever it sees", () => {
+    const noReadings: RolePolicyTable = { ...ROLE_POLICY, staff: { ...ROLE_POLICY.staff, answers: ["model_knowledge"] } };
+    expect(isReadingAllowedForRole("inventory.position", "staff", noReadings)).toBe(false);
+    expect(isReadingAllowedForRole("inventory.position", "owner", noReadings)).toBe(true);
   });
 });
 

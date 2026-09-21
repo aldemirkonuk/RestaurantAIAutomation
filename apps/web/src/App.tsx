@@ -376,9 +376,11 @@ function App() {
                   <Route path="/receipts" element={<PageGate page="receipts" legacy={<ReceiptsPage />} next={<ReceiptsNext />} />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
                   {/* ADR 0104 D12 slice 2 — one incoming document as the canonical
-                      Mudavym document. Gated OFF by default (OD-106); the legacy
-                      branch is a redirect to /receipts rather than a second page,
-                      because /receipts already IS this view's other face. */}
+                      Mudavym document. Live in code for every house since ADR
+                      0149 row 36 (2026-09-17, mudavym_design_document no longer
+                      read); the legacy branch is a redirect to /receipts rather
+                      than a second page, because /receipts already IS this
+                      view's other face. */}
                   <Route
                     path="/documents/:id"
                     element={

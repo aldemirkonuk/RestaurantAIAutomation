@@ -5,7 +5,7 @@ import { AuthedRateLimit, AuthedRateLimitGuard } from "../common/rate-limit/auth
 import { isReadingAllowedForRole, READING_CATALOGUE } from "../ask-readings/reading-catalogue";
 import { ReadingFolioStore } from "../ask-readings/reading-folio.store";
 import { BoundAskService } from "./bound-ask.service";
-import { BoundAskDto } from "./dto/bound-ask.dto";
+import { AskFeedbackDto, BoundAskDto } from "./dto/bound-ask.dto";
 
 type AskRequest = { user: { userId: string; restaurantId: string; role: string | null } };
 @Controller("ask")
@@ -37,5 +37,15 @@ export class BoundAskController {
   @Get("folios/:id")
   get(@Req() req: AskRequest, @Param("id", ParseUUIDPipe) id: string) {
     return this.folios.get(req.user.restaurantId, req.user.userId, id);
+  }
+  /**
+   * Label one step of your own ask. Scoped exactly like GET /ask/folios/:id --
+   * the house and the person both come from the token, and a folio that is
+   * not theirs is not found. No model is called; the label is a row.
+   */
+  @Post("folios/:id/feedback")
+  @AuthedRateLimit({ limit: 30, windowSeconds: 60, scope: "user", bucket: "mudavym-ask-feedback" })
+  feedback(@Req() req: AskRequest, @Param("id", ParseUUIDPipe) id: string, @Body() body: AskFeedbackDto) {
+    return this.folios.label(req.user.restaurantId, req.user.userId, req.user.role, id, body);
   }
 }

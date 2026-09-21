@@ -1,8 +1,9 @@
 import { BadRequestException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { BoundAskService, ModelPhaseFailure, parseReadingPick } from "./bound-ask.service";
+import { BoundAskService, catalogueSha, ModelPhaseFailure, parseReadingPick, promptSha } from "./bound-ask.service";
+import { policySha, ROLE_POLICY, RolePolicyTable } from "../ask-readings/reading-data-classes";
 import { ModelSpendCeilingError } from "../common/model-client/model-client.service";
-import { ReadingFolio } from "../ask-readings/reading-folio.store";
+import { FolioCapture, ReadingFolio } from "../ask-readings/reading-folio.store";
 import { BoundAskDto } from "./dto/bound-ask.dto";
 
 // KL audit J5 (the regression) and J7 (zero specs on this layer): a model
@@ -27,7 +28,8 @@ function pendingFolio(overrides: Partial<ReadingFolio> = {}): ReadingFolio {
     status: "pending", reading_id: null, reading_version: null, reading_args: {},
     finding: null, reply_kind: null, answer: null, failure_reason: null,
     proposal_id: null, previous_folio_id: null, created_at: "2026-09-17T00:00:00.000Z",
-    completed_at: null,
+    completed_at: null, asked_as_role: null, reading_chosen_by: "model", pick_class: null, pick_args: null,
+    pick_model: null, pick_prompt_sha: null, compose_model: null, compose_prompt_sha: null, catalogue_sha: null, policy_sha: null,
     ...overrides,
   };
 }
@@ -36,12 +38,13 @@ function modelTextReply(json: unknown) {
   return { content: [{ type: "text", text: JSON.stringify(json) }] };
 }
 
-function harness(configValues: Record<string, string> = { ASK_LAUNCHED: "true" }) {
+function harness(configValues: Record<string, string> = { ASK_LAUNCHED: "true" }, policy?: RolePolicyTable) {
   const call = jest.fn();
-  const modelClient = { call } as any;
+  const dailyShareOfAllowance = jest.fn();
+  const modelClient = { call, dailyShareOfAllowance } as any;
   const nfVerdicts = { record: jest.fn() } as any;
   const begin = jest.fn();
-  const finish = jest.fn(async (folio: ReadingFolio, answer: any, finding?: any, failureReason?: string) => ({
+  const finish = jest.fn(async (folio: ReadingFolio, answer: any, finding?: any, failureReason?: string, _capture?: FolioCapture) => ({
     ...folio, status: failureReason ? "failed" : "complete", answer, finding: finding ?? null, failure_reason: failureReason ?? null,
   }));
   const folios = { begin, finish } as any;
@@ -55,8 +58,8 @@ function harness(configValues: Record<string, string> = { ASK_LAUNCHED: "true" }
   // defaults the launch gate ON; the gate itself is proven OFF-by-default
   // separately, below, with no override.
   const config = new ConfigService(configValues);
-  const service = new BoundAskService(db, config, modelClient, nfVerdicts, folios);
-  return { service, call, begin, finish, getClient };
+  const service = new BoundAskService(db, config, modelClient, nfVerdicts, folios, policy);
+  return { service, call, begin, finish, getClient, dailyShareOfAllowance };
 }
 
 function dto(overrides: Partial<BoundAskDto> = {}): BoundAskDto {
@@ -220,7 +223,7 @@ describe("BoundAskService.submit: the role gate on price/vendor/open-order/sales
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "orders.open" }));
     await service.submit(HOUSE, USER, "staff", dto());
-    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "owner_manager_only", readingId: "orders.open" });
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "orders.open", classes: ["suppliers"] });
     expect(getClient).not.toHaveBeenCalled(); // zero DB cost for a refused reading
     expect(call).toHaveBeenCalledTimes(1); // the pick call only -- no compose call either
   });
@@ -246,7 +249,7 @@ describe("BoundAskService.submit: the role gate on price/vendor/open-order/sales
     begin.mockResolvedValue({ created: true, folio: pendingFolio() });
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "vendors.active" }));
     await service.submit(HOUSE, USER, null, dto());
-    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "owner_manager_only", readingId: "vendors.active" });
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "vendors.active", classes: ["suppliers"] });
     expect(getClient).not.toHaveBeenCalled();
   });
 
@@ -263,7 +266,7 @@ describe("BoundAskService.submit: the role gate on price/vendor/open-order/sales
     begin.mockResolvedValue({ created: true, folio: pendingFolio({ reading_id: "sales.check_activity" }) });
     await service.submit(HOUSE, USER, "staff", dto({ readingId: "sales.check_activity" }));
     expect(call).not.toHaveBeenCalled(); // no pick call at all for a page-chosen reading
-    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "owner_manager_only", readingId: "sales.check_activity" });
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "class_not_visible", readingId: "sales.check_activity", classes: ["sales"] });
     expect(getClient).not.toHaveBeenCalled();
   });
 
@@ -273,6 +276,141 @@ describe("BoundAskService.submit: the role gate on price/vendor/open-order/sales
     call.mockResolvedValueOnce(modelTextReply({ questionClass: "receipts.verified_line" }));
     await service.submit(HOUSE, USER, "staff", dto());
     expect(finish.mock.calls[0][3]).toBeUndefined(); // failureReason
+  });
+});
+
+// ADR 0145, 2026-09-21 amendment -- founder's option "Rules in code, label
+// rows": permissions and spend are read from ONE table, never from the model,
+// and every ask is saved as one complete row. These cases hand the service a
+// DIFFERENT table than the real one to prove it obeys the table rather than a
+// hard-coded role pair.
+// FAILING BEFORE THIS CHANGE: the service took no policy table, wrote no
+// capture, never checked an answer kind, and had no per-role share.
+describe("BoundAskService.submit: the ask is captured once, with the rules it ran under", () => {
+  it("begin receives the token's role, and hashes of the catalogue and policy computed now", async () => {
+    const { service, begin } = harness();
+    begin.mockResolvedValue({ created: false, folio: pendingFolio({ status: "complete" }) });
+    await service.submit(HOUSE, USER, "staff", dto());
+    expect(begin.mock.calls[0][0]).toMatchObject({ askedAsRole: "staff", catalogueSha: catalogueSha(), policySha: policySha() });
+    expect(catalogueSha()).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("a model-picked ask saves the raw pick class and spans, the pick and compose models, and hashes of what each was sent", async () => {
+    const { service, begin, call, finish } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
+    call.mockResolvedValueOnce(modelTextReply({ kind: "model_knowledge", text: "ok" }));
+    await service.submit(HOUSE, USER, OWNER, dto());
+    const capture = finish.mock.calls[0][4];
+    const [pickCall, composeCall] = call.mock.calls.map(c => c[0].body);
+    expect(capture).toEqual({
+      pickClass: "general_knowledge", pickArgs: {},
+      pickModel: pickCall.model, pickPromptSha: promptSha(pickCall.model, pickCall.system),
+      composeModel: composeCall.model, composePromptSha: promptSha(composeCall.model, composeCall.system),
+    });
+  });
+
+  it("a class that collapses into not_built is still saved as the class the model chose", async () => {
+    const { service, begin, call, finish } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio({ utterance: "landed cost of Barolo" }) });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "landed_cost", subjectText: "Barolo" }));
+    await service.submit(HOUSE, USER, OWNER, dto({ utterance: "landed cost of Barolo" }));
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_built", reason: "unimplemented_question" });
+    expect(finish.mock.calls[0][4]).toMatchObject({ pickClass: "landed_cost", pickArgs: { subjectText: "Barolo" } });
+  });
+
+  it("a failed pick still records the model and prompt hash it was sent, and no class", async () => {
+    const { service, begin, call, finish } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "not-a-class" }));
+    await service.submit(HOUSE, USER, OWNER, dto());
+    const capture = finish.mock.calls[0][4]!;
+    expect(capture.pickClass).toBeUndefined();
+    expect(capture.pickPromptSha).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("every model call's ledger context names the policy row the ask ran under", async () => {
+    const { service, begin, call } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
+    call.mockResolvedValueOnce(modelTextReply({ kind: "model_knowledge", text: "ok" }));
+    await service.submit(HOUSE, USER, "ADMIN", dto());
+    for (const [options] of call.mock.calls) expect(options.nf.context.ask_policy_role).toBe("owner");
+  });
+});
+
+describe("BoundAskService.submit: answer kinds and budget shares come from the policy table", () => {
+  const noKnowledgeForStaff: RolePolicyTable = { ...ROLE_POLICY, staff: { ...ROLE_POLICY.staff, answers: ["reading"] } };
+  const halfShareForStaff: RolePolicyTable = { ...ROLE_POLICY, staff: { ...ROLE_POLICY.staff, dailyAskBudgetShare: 0.5 } };
+
+  it("a row not given model knowledge is refused it after the pick, and the knowledge call is never paid", async () => {
+    const { service, begin, call, finish } = harness(undefined, noKnowledgeForStaff);
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
+    await service.submit(HOUSE, USER, "staff", dto());
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "model_knowledge" });
+    expect(finish.mock.calls[0][3]).toBeUndefined();
+  });
+
+  it("the real table still gives staff model knowledge today (unchanged until the founder decides)", async () => {
+    const { service, begin, call, finish } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
+    call.mockResolvedValueOnce(modelTextReply({ kind: "model_knowledge", text: "ok" }));
+    await service.submit(HOUSE, USER, "staff", dto());
+    expect(finish.mock.calls[0][1].kind).toBe("model_knowledge");
+  });
+
+  it("a whole-allowance share costs no extra ledger read", async () => {
+    const { service, begin, call, dailyShareOfAllowance } = harness();
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "forecast" }));
+    await service.submit(HOUSE, USER, "staff", dto());
+    expect(dailyShareOfAllowance).not.toHaveBeenCalled();
+  });
+
+  it("a spent share refuses BEFORE the first model call, as role_share_used", async () => {
+    const { service, begin, call, finish, dailyShareOfAllowance } = harness(undefined, halfShareForStaff);
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    dailyShareOfAllowance.mockResolvedValue("used");
+    await service.submit(HOUSE, USER, "staff", dto());
+    expect(dailyShareOfAllowance).toHaveBeenCalledWith(HOUSE, 0.5, "ask_policy_role", "staff");
+    expect(call).not.toHaveBeenCalled();
+    expect(finish.mock.calls[0][1]).toEqual({ kind: "could_not_answer", reason: "role_share_used" });
+    expect(finish.mock.calls[0][3]).toBe("role_share_used");
+  });
+
+  it("an unreadable ledger refuses as allowance_unreadable -- never read as nothing spent", async () => {
+    for (const failure of [async () => "unreadable", async () => { throw new Error("socket hang up"); }]) {
+      const { service, begin, call, finish, dailyShareOfAllowance } = harness(undefined, halfShareForStaff);
+      begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+      dailyShareOfAllowance.mockImplementation(failure);
+      await service.submit(HOUSE, USER, "staff", dto());
+      expect(call).not.toHaveBeenCalled();
+      expect(finish.mock.calls[0][1]).toEqual({ kind: "could_not_answer", reason: "allowance_unreadable" });
+    }
+  });
+
+  it("an unspent share lets the ask run, and is read once per ask, not once per call", async () => {
+    const { service, begin, call, finish, dailyShareOfAllowance } = harness(undefined, halfShareForStaff);
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    dailyShareOfAllowance.mockResolvedValue("allowed");
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "general_knowledge" }));
+    call.mockResolvedValueOnce(modelTextReply({ kind: "model_knowledge", text: "ok" }));
+    await service.submit(HOUSE, USER, "staff", dto());
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(dailyShareOfAllowance).toHaveBeenCalledTimes(1);
+    expect(finish.mock.calls[0][1].kind).toBe("model_knowledge");
+  });
+
+  it("the owner's row is untouched by a staff share", async () => {
+    const { service, begin, call, dailyShareOfAllowance } = harness(undefined, halfShareForStaff);
+    begin.mockResolvedValue({ created: true, folio: pendingFolio() });
+    call.mockResolvedValueOnce(modelTextReply({ questionClass: "forecast" }));
+    await service.submit(HOUSE, USER, "owner", dto());
+    expect(dailyShareOfAllowance).not.toHaveBeenCalled();
+    expect(call).toHaveBeenCalledTimes(1);
   });
 });
 

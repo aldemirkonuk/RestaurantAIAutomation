@@ -1,4 +1,5 @@
 import { isReadingId } from "./reading-catalogue";
+import { ANSWER_KINDS, AnswerKind, DATA_CLASSES, DataClass } from "./reading-data-classes";
 import { Finding, ReadingId, ReadingOutcome, ReadingReason } from "./reading.types";
 
 declare const knowledgeText: unique symbol;
@@ -20,11 +21,25 @@ export type ModelKnowledgeText = string & { readonly [knowledgeText]: true };
  * first build folded all three into `could_not_read / query_failed` with zero
  * sources queried (KL audit J5, 2026-09-17).
  */
-export type ModelFailureReason = "model_unavailable" | "spend_ceiling" | "invalid_model_reply";
+export type ModelFailureReason =
+  | "model_unavailable"
+  | "spend_ceiling"
+  | "invalid_model_reply"
+  | "role_share_used"
+  | "allowance_unreadable";
+/**
+ * `role_share_used`      the asker's ROLE_POLICY row has spent its share of
+ *                        today's house allowance; nothing was sent.
+ * `allowance_unreadable` a share below the whole allowance could not be
+ *                        checked because the ledger did not answer; refused,
+ *                        never read as "nothing spent" (2026-09-21).
+ */
 export const MODEL_FAILURE_REASONS: readonly ModelFailureReason[] = [
   "model_unavailable",
   "spend_ceiling",
   "invalid_model_reply",
+  "role_share_used",
+  "allowance_unreadable",
 ];
 
 /**
@@ -36,8 +51,15 @@ export const MODEL_FAILURE_REASONS: readonly ModelFailureReason[] = [
  * give money or sensitive incentives like sales etc to the staff"). A role
  * refusal never carries a Finding: the books were never queried.
  */
-export type RoleRestrictedReason = "owner_manager_only";
-export const ROLE_RESTRICTED_REASONS: readonly RoleRestrictedReason[] = ["owner_manager_only"];
+export type RoleRestrictedReason = "class_not_visible" | "answer_kind_not_permitted";
+/**
+ * [REBUILT 2026-09-21, founder's option "Rules in code, label rows": the one
+ * reason `owner_manager_only` became two, because the gate is now a policy
+ * table rather than a fixed role pair. `class_not_visible` names the data
+ * classes the role's row does not see; `answer_kind_not_permitted` names the
+ * answer kind (a Reading, or model knowledge) the row is not given.]
+ */
+export const ROLE_RESTRICTED_REASONS: readonly RoleRestrictedReason[] = ["class_not_visible", "answer_kind_not_permitted"];
 
 type CellId = Finding["rows"][number]["cells"][number]["id"];
 export type BoundReply =
@@ -49,7 +71,8 @@ export type BoundReply =
       text: ModelKnowledgeText;
     }
   | { kind: "could_not_answer"; reason: ModelFailureReason; finding?: Finding }
-  | { kind: "not_permitted"; reason: RoleRestrictedReason; readingId: ReadingId }
+  | { kind: "not_permitted"; reason: "class_not_visible"; readingId: ReadingId; classes: DataClass[] }
+  | { kind: "not_permitted"; reason: "answer_kind_not_permitted"; answerKind: AnswerKind; readingId?: ReadingId }
   | { kind: Exclude<ReadingOutcome, "read">; reason: ReadingReason; finding?: Finding };
 
 const KNOWLEDGE_LABEL = "Not from the house's books";
@@ -132,8 +155,14 @@ export function modelFailureReply(reason: ModelFailureReason, finding?: Finding)
  * would otherwise spend are never paid (same zero-cost-refusal shape as the
  * `ASK_LAUNCHED` gate in `BoundAskService.submit`).
  */
-export function notPermittedReply(readingId: ReadingId): BoundReply {
-  return { kind: "not_permitted", reason: "owner_manager_only", readingId };
+export function notPermittedReply(readingId: ReadingId, classes: DataClass[]): BoundReply {
+  if (!classes.length) throw new Error("a class refusal names the classes it withholds");
+  return { kind: "not_permitted", reason: "class_not_visible", readingId, classes: [...classes] };
+}
+
+/** An answer kind the caller's ROLE_POLICY row is not given. Minted before any model call for it. */
+export function answerKindNotPermittedReply(answerKind: AnswerKind, readingId?: ReadingId): BoundReply {
+  return { kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind, ...(readingId ? { readingId } : {}) };
 }
 
 /**
@@ -166,11 +195,18 @@ export function isBoundReply(raw: unknown): raw is BoundReply {
   if (raw.kind === "not_permitted") {
     // Never carries a Finding -- the books were never queried for a refusal
     // decided before the runner exists.
+    if (raw.finding !== undefined || !ROLE_RESTRICTED_REASONS.includes(raw.reason as RoleRestrictedReason)) return false;
+    if (raw.reason === "class_not_visible") {
+      return (
+        isReadingId(raw.readingId) &&
+        Array.isArray(raw.classes) &&
+        raw.classes.length > 0 &&
+        raw.classes.every(c => DATA_CLASSES.includes(c as DataClass))
+      );
+    }
     return (
-      ROLE_RESTRICTED_REASONS.includes(raw.reason as RoleRestrictedReason) &&
-      typeof raw.readingId === "string" &&
-      isReadingId(raw.readingId) &&
-      raw.finding === undefined
+      ANSWER_KINDS.includes(raw.answerKind as AnswerKind) &&
+      (raw.readingId === undefined || isReadingId(raw.readingId))
     );
   }
   return (

@@ -36,7 +36,15 @@ export class RecordingSession {
   private readonly cells = new WeakSet<BoundCell>();
   private readonly responseTrace = new WeakMap<object, SourceTrace>();
 
-  constructor(client: any, private readonly clock: () => Date = () => new Date()) {
+  /**
+   * `shown` is the running Reading's declared fields (`shownFields` in
+   * reading-catalogue.ts). A cell may be minted only from a field it names --
+   * `relation.column`, or `relation.*` for a count -- because each of those
+   * carries the data class the role gate was decided on. Absent means an empty
+   * set: a session nobody declared fields for mints nothing (fail closed).
+   */
+  constructor(client: any, private readonly clock: () => Date = () => new Date(),
+    private readonly shown: ReadonlySet<string> = new Set()) {
     this.client = new Proxy(client, { get: (target, property) => {
       if (property !== "from" && property !== "rpc")
         throw new ReadingFailure("unrecorded_figure");
@@ -174,10 +182,15 @@ export class RecordingSession {
     if (result.state !== "complete") throw new ReadingFailure(result.state === "unsupported" ? "unsupported_recurrence" : "invalid_source_result");
     return this.remember(result.events.map(row => Object.freeze(row)), [...new Set(groups.flatMap(g => g.relations))]);
   }
-  private mint(e: Evidence, key: string, label: string, value: BoundCell["value"],
+  private mint(e: Evidence, column: string, key: string, label: string, value: BoundCell["value"],
     unit: string | null, provenance: Provenance): BoundCell {
     const data = this.recorded(e);
     if (!data.relations.length || !this.trace.length) throw new ReadingFailure("unrecorded_figure");
+    // The cell's field must be one its Reading declared, on a relation this
+    // evidence actually came from -- otherwise the role gate was decided on
+    // classes that do not describe what is about to be shown.
+    if (!data.relations.some(relation => this.shown.has(`${relation}.${column}`)))
+      throw new ReadingFailure("undeclared_field");
     const cell: BoundCell = Object.freeze({ id: randomUUID(), key, label, value, unit,
       source: "house", provenance: value === null ? "not_recorded" : provenance,
       sourceRelations: [...data.relations] });
@@ -191,16 +204,16 @@ export class RecordingSession {
     const value = asNumber ? numeric(raw) :
       typeof raw === "string" || typeof raw === "boolean" || typeof raw === "number" ? raw : null;
     const derivedDate = row.is_virtual_occurrence === true && ["start_date", "end_date", "occurrence_date"].includes(field);
-    return this.mint(e, `${String(row.id)}:${field}`, label, value, unit, derivedDate ? "derived" : provenance);
+    return this.mint(e, field, `${String(row.id)}:${field}`, label, value, unit, derivedDate ? "derived" : provenance);
   }
   count(e: Evidence, key: string, label: string, unit = "records"): BoundCell {
-    return this.mint(e, key, label, this.rows(e).length, unit, "derived");
+    return this.mint(e, "*", key, label, this.rows(e).length, unit, "derived");
   }
   sum(e: Evidence, field: string, key: string, label: string, unit: string): BoundCell {
     const values = this.rows(e).map(row => numeric(row[field]));
     // Missing is not zero, including one unknown among otherwise known values.
     const value = values.some(v => v === null) ? null : (values as number[]).reduce((a, b) => a + b, 0);
-    return this.mint(e, key, label, value, unit, "derived");
+    return this.mint(e, field, key, label, value, unit, "derived");
   }
   finish(id: ReadingId, args: ReadingArgs, rows: FindingRow[],
     outcome: ReadingOutcome = "read", reason: ReadingReason | null = null,

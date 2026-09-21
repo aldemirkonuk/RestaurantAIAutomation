@@ -1217,7 +1217,7 @@ export class CalendarService {
     if (restError || !restaurant) {
       // Return empty calendar (not 404) to avoid exposing token validity (T-30-09)
       const emptyCal = ical({
-        name: "WineOps Calendar",
+        name: "Mudavym Calendar",
         // No leading dash: ical-generator prepends the "-" that RFC 5545's FPI
         // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
         prodId: "//WineOps//Restaurant Calendar//EN",
@@ -1241,7 +1241,7 @@ export class CalendarService {
 
     if (eventsError || !events) {
       const emptyCal = ical({
-        name: "WineOps Calendar",
+        name: "Mudavym Calendar",
         // No leading dash: ical-generator prepends the "-" that RFC 5545's FPI
         // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
         prodId: "//WineOps//Restaurant Calendar//EN",
@@ -1272,7 +1272,7 @@ export class CalendarService {
     }
 
     const calendar = ical({
-      name: `${restaurant.name || "WineOps"} Calendar`,
+      name: `${restaurant.name || "Mudavym"} Calendar`,
       // No leading dash: ical-generator prepends the "-" that RFC 5545's FPI
       // convention requires, so "-//…" here emitted "PRODID:--//WineOps//…".
       prodId: "//WineOps//Restaurant Calendar//EN",

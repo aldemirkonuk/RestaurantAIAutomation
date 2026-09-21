@@ -283,12 +283,20 @@ export class RecommendationActionsService {
   // ---- Digest preferences (NEW-303) ---------------------------------------
 
   async getDigestPref(restaurantId: string) {
-    const { data } = await this.dbService
+    // A failed read throws. Until 2026-09-16 it returned the defaults below —
+    // "digest off, 07:00" — for a preference that could not be read, which was
+    // harmless while nothing sent the digest and is not now that the sender
+    // reads this row (analytics/digest/recommendation-digest.service.ts).
+    const { data, error } = await this.dbService
       .getClient()
       .from("recommendation_digest_prefs")
       .select("*")
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    if (error)
+      throw new Error(
+        `recommendation_digest_prefs could not be read: ${error.message}`,
+      );
     return {
       digestEnabled: !!data?.digest_enabled,
       digestHour: data?.digest_hour ?? 7,

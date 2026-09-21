@@ -1,4 +1,5 @@
 import { Role } from "../auth/guards/roles.guard";
+import type { DataClass } from "./reading-data-classes";
 
 /** Wire values are proof, not model-authored prose (ADR 0145). */
 export type ReadingId =
@@ -19,7 +20,8 @@ export type ReadingReason = "empty_register" | "missing_subject" | "ambiguous_su
   | "missing_verified_link" | "missing_currency_provenance" | "missing_pack"
   | "query_failed" | "invalid_source_result" | "scope_mismatch" | "source_changed"
   | "source_limit" | "unrecorded_figure" | "unknown_reading_version"
-  | "unsupported_recurrence" | "unimplemented_question" | "no_matching_question";
+  | "unsupported_recurrence" | "unimplemented_question" | "no_matching_question"
+  | "undeclared_field";
 export type Provenance = "stated" | "defaulted" | "derived" | "not_recorded";
 export interface ReadingArgs {
   subjectId?: string;
@@ -74,6 +76,18 @@ export interface ReadingDescriptor {
   shelves: string[];
   meaning: string;
   /**
+   * Every `relation.column` this Reading can put in a cell (`relation.*` is a
+   * row count of that relation), plus -- added by `shownFields` -- the label
+   * its subject matches are listed by. Each carries a data class
+   * (`reading-data-classes.ts`); the runner refuses to mint a cell from a
+   * field that is not declared here (`undeclared_field`), and
+   * `scripts/check_ask_field_classes.py` fails CI on a field the runner shows
+   * that this list does not name.
+   */
+  shows: readonly string[];
+  /** DERIVED from `shows`: the data classes this Reading's answer carries. */
+  classes: readonly DataClass[];
+  /**
    * Who may receive this reading's ANSWER (not just see it named in the
    * catalogue). Required, never defaulted -- an omitted field silently
    * meaning "open to everyone" is exactly the kind of unstated assumption
@@ -96,6 +110,12 @@ export interface ReadingDescriptor {
    * `OWNER_MANAGER_ONLY`, not six. Recorded in ADR 0145's 2026-09-21
    * goals.targets amendment. The "whether staff reach `/ask` at all" question above is
    * UNCHANGED by this answer and stays open.]
+   *
+   * [DERIVED since 2026-09-21, founder's option "Rules in code, label rows":
+   * never hand-set. It is the ROLE_POLICY rows that see every class in
+   * `classes` and may be given a Reading (`reading-catalogue.ts`
+   * `READING_CATALOGUE`). The seven/eight split above is what that derivation
+   * produces today, and the CI guard fails if it stops producing it.]
    */
   allowedRoles: readonly Role[];
 }

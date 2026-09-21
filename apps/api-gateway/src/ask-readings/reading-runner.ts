@@ -1,7 +1,7 @@
 import { isBelowPar } from "../common/stock-status";
 import { isIso4217 } from "../common/iso-4217";
 import { ORDER_CLOSED_STATUSES } from "../procurement/order-status";
-import { READING_CATALOGUE } from "./reading-catalogue";
+import { READING_CATALOGUE, shownFields } from "./reading-catalogue";
 import { BookRow, Evidence, recordedNumber, RecordingSession, ReadingFailure } from "./recording-session";
 import { ReadingSources } from "./reading-sources";
 import { BoundCell, Finding, FindingRow, ReadingArgs, ReadingId } from "./reading.types";
@@ -27,10 +27,12 @@ export function readingWindow(args: ReadingArgs): { from: string; to: string } {
 export class ReadingRunner {
   constructor(private readonly client: any, private readonly clock: () => Date = () => new Date()) {}
   async run(restaurantId: string, id: ReadingId, args: ReadingArgs, version = 1): Promise<Finding> {
-    const s = new RecordingSession(this.client, this.clock);
+    const descriptor = READING_CATALOGUE.find(r => r.id === id);
+    // Cells may come only from the fields this Reading declares: those are
+    // the fields whose data classes decided who may receive it.
+    const s = new RecordingSession(this.client, this.clock, new Set(descriptor ? shownFields(descriptor) : []));
     const sources = new ReadingSources(s, restaurantId);
     if (version !== 1) return s.finish(id, args, [], "not_built", "unknown_reading_version");
-    const descriptor = READING_CATALOGUE.find(r => r.id === id);
     if (!descriptor) return s.finish(id, args, [], "not_built", "unknown_reading_version");
     try {
       const window = descriptor.window ? readingWindow(args) : null;

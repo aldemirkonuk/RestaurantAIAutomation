@@ -1,6 +1,6 @@
 # 0145 — Mudavym answers out of a reading, and only the query that ran may mint one
 
-- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]**
+- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]** **[2026-09-21, KL round 5, later again -- the founder chose the option "Rules in code, label rows": permissions and spend never live in the model. Built: a staff refusal is now SAVED (the folio CHECK lacked `not_permitted`, so every refusal was a 503 on a real database); every field a Reading shows carries a data class and one role-policy table decides who sees what, which answer kinds each role gets and each role's share of the house's daily ask allowance -- the seven restricted Readings are now DERIVED from their fields, not hand-set; every ask is captured once (role snapshot, who chose the Reading, the raw pick, model ids, content hashes); a labels table with `POST /ask/folios/:id/feedback`; a redacted export view. No training. Who may open `/ask` itself stays open. See "Amendment, 2026-09-21 -- rules in code, label rows" below.]**
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Date:** 2026-09-12
 - **Keywords:** ask, /ask, Mudavym, assistant, reading, finding, provenance, hollow build, refusal shapes, seal, ask-ai, sommelier
@@ -578,3 +578,170 @@ here: staff reach, and dates" above; its question is unchanged by this
 amendment (a dated count bracket was added there, nothing else). A staff
 caller can still reach `/ask` and every one of the now-eight open readings;
 only the seventh money-shaped reading was added to the refusal set.
+
+---
+
+## Amendment, 2026-09-21 -- rules in code, label rows (KL round 5, founder answer)
+
+**The fork.** How should `/ask` hold roles, guardrails and a possible future
+fine-tune? A research pass (three documents: a state-of-the-art survey, a code
+audit, and a judge's verdict with an adversarial kill pass; the judge's report
+is `ask-judge.md` in the orchestrating session's scratchpad, not in the repo)
+put three options to the founder:
+
+1. **Rules outside the model, labels on every row, train later** (recommended).
+2. Minimal columns now: a role, a hand-bumped prompt version, a model id, one
+   feedback value on the folio, mirrored into `nf_verdict`.
+3. A separate assistant per role (catalogue, prompt and tuned model per role).
+
+**Founder's answer, 2026-09-21 -- recorded answer, relayed by the
+orchestrating session; the only verbatim words available are the option's
+own label, which he chose: "Rules in code, label rows".** The orchestrating
+session's gloss of it, not his words: permissions and spend never live in the
+model; staff reach to `/ask` as a whole stays as built and is decided later.
+
+**Why option 1, and what killed the others (from the judge's kill pass).**
+Permission learned by a model can be talked out of it; a table cannot. Option
+2 carries four defects: a hand-bumped prompt version goes stale the day a
+catalogue row's wording changes (2,971 of the pick prompt's 3,493 characters
+are catalogue JSON, measured by the judge); one undifferentiated "wrong"
+poisons a dataset because it cannot say whether the pick, the shown cells or
+the books were wrong; `nf_verdict` has nothing to hang a label on for a
+refusal or a page-chosen Reading (no NF row exists for them); and the gate
+stays hand-set per Reading, the shape that failed twice in three days
+(`orders.late_deliveries`, `goals.targets`). Option 3 splits an empty dataset
+three ways and turns permission into model behaviour. Fine-tuning is not
+assumed: the judge found Claude 3 Haiku is the one Anthropic model on
+Bedrock's fine-tuning list, and neither model `/ask` routes to is on it, so the
+rows are built to serve an eval set first.
+
+### Built
+
+1. **The blocker -- a role refusal is saved.** `20260921111000:19`'s
+   `reply_kind` CHECK listed nine kinds and not `not_permitted`, so on a real
+   database every staff refusal failed the finish update: the folio stayed
+   `pending` and the person got a 503 "saved state is uncertain". Jest missed
+   it because the store specs use a client double. Migration
+   `20260921115300_a_role_refusal_is_saved_on_its_folio.sql` re-adds the
+   constraint with `not_permitted`. **Measured (PGlite, the full 197-migration
+   corpus of this branch, superuser, no Supabase platform):** without the new
+   migrations the update is refused `23514`; with them it is accepted, and an
+   unknown kind is still refused.
+2. **Data classes and one role-policy table**
+   (`apps/api-gateway/src/ask-readings/reading-data-classes.ts`).
+   `FIELD_CLASS` tags every `relation.column` a Reading can show
+   (`relation.*` for a row count) as money, sales, suppliers, people or stock.
+   `ROLE_POLICY` is one row per role: the classes it sees, the answer kinds it
+   is given (`reading`, `model_knowledge`), and `dailyAskBudgetShare`, its
+   share of the house's daily allowance (ADR 0146). `admin` reads the owner
+   row; any other or absent role reads the least-privileged (`staff`) row.
+   Each Reading now declares `shows`; its `classes` and `allowedRoles` are
+   derived (`reading-catalogue.ts`), and `isReadingAllowedForRole` reads the
+   table. The runner refuses at run time to mint a cell from an undeclared
+   field (`undeclared_field`, `recording-session.ts`), and
+   `scripts/check_ask_field_classes.py` (CI, with a nine-mutation self-test)
+   fails on an untagged shown field, an undeclared runner column or unit, a
+   stale tag, a malformed policy row, and -- through CLAIMS row
+   `ADR-0145-ASK-ROLE-GATE-RESTRICTS-EXACTLY-SEVEN-READINGS` -- any change to
+   the derived restricted set. `goals.targets` stays owner/manager: every field
+   it shows is money. A refusal now names why: `class_not_visible` with the
+   withheld classes, or `answer_kind_not_permitted`. A share below 1 is read
+   per ask from the NF ledger by the policy row the ask ran under (`context
+   ask_policy_role`), and an unreadable ledger REFUSES (`allowance_unreadable`)
+   -- unlike the house gate, which fails open by ADR 0146's design.
+3. **Capture on the folio, written once** (`20260921115310`): `asked_as_role`
+   (the token's role at ask time), `reading_chosen_by` (`page`|`model`), the
+   raw `pick_class` and `pick_args` (so `forecast`, `landed_cost`,
+   `sales_revenue` and `lot_expiry` are no longer lost inside `not_built`),
+   `pick_model`, `compose_model`, and sha256 of the pick prompt, the compose
+   prompt, the catalogue and the policy, each computed from content at call
+   time. A trigger refuses any change to the ask-time snapshot, and any change
+   to the model capture once the folio has left `pending`.
+4. **Labels.** `ask_folio_labels` (folio, step `pick|compose|knowledge|books`,
+   label `correct|incorrect`, optional gold class, basis `person|re_ask`,
+   `labeled_by`, `labeled_by_role`, `at`), keyed by the folio -- the
+   interaction -- not by an NF row. `POST /ask/folios/:id/feedback` is scoped
+   exactly like `GET /ask/folios/:id` and refuses a step that did not run. A
+   re-ask that names its Reading (`previous_folio_id` + page-chosen) labels the
+   pick of the model-picked folio it follows: a different Reading is
+   `incorrect` with the named Reading as gold class; the same Reading (a
+   clarification follow-up) is `correct`. It is written by trigger in the
+   re-ask's own insert transaction. A rephrased re-ask derives nothing.
+   [Added 2026-09-21, last-call review: a person's corrected class must agree
+   with the label -- `correct` naming another class, or `incorrect` naming
+   the class the model chose, is refused 400 (`ReadingFolioStore.label`).]
+5. **Export.** `ask_folio_training_export`, a `security_invoker` view keyed by
+   folio id: inner-joined to `public.users` (a deleted person drops out at
+   once; their folios and labels also cascade), no user id, no raw utterance,
+   no answer text, no Finding, no `books` labels, service role only.
+   `ask_redact_utterance` masks e-mail addresses, links and digit runs of seven
+   or more, and keeps ISO dates (the pick's spans). **It does not find
+   names.** Nothing reads the view; no training is built.
+
+**Evidence, measured 2026-09-21:** PGlite probe, 29 of 29 assertions (blocker,
+capture shape, written-once, re-ask derivation in five shapes, label rules,
+export columns and ranking, redaction, erasure, grants, RLS, idempotent
+re-run); on the staged index, gateway jest over `ask-readings`, `ask-ai`,
+`model-client` and `settings` 391 of 391 (28 suites), both gateway `tsc`
+configurations and web `tsc` clean, CLAIMS 421 of 421; eleven on-disk CLAIMS
+mutations and nine jest mutations, every one caught and every file restored
+byte-identically.
+
+### Tags that reproduce the 2026-09-19 split -- open, not decided
+
+The classes were chosen so that no Reading changes who receives it. Four tags
+are judgement calls that keep a Reading open to staff; each is a founder
+question, listed with the others below:
+
+- an order's number and contents (`orders.lines`) and the document register
+  (`documents.waiting`) are **stock** -- the door receives against them;
+- every calendar field is **people**, and the staff row sees people, so staff
+  still see calendar titles, private events included (the judge's section 1.4);
+- stock movements (`inventory.movements`) are **stock**, although a net
+  movement over a window with no delivery is consumption -- the judge's
+  section 1.3 leak, unchanged;
+- an open order's state and date, and the count of orders, are **suppliers**.
+
+### Founder questions this amendment does not answer
+
+- Whether staff reach `/ask` at all (unchanged, still open above).
+- Whether staff are given `model_knowledge` (today: yes, the table says so).
+- Each role's `dailyAskBudgetShare` (today: 1 for every row -- no per-role cap
+  is in force until a number below 1 is chosen) and any per-role rate bucket
+  (the rate guard has only `user` and `restaurant` scopes).
+- The four tags above: whether staff see people-class calendar entries,
+  whether order contents and the document register are stock, whether stock
+  movement counts as sales.
+- Consent and notice for using asks to improve models, and whether any later
+  training is per house or pooled after redaction (KVKK/GDPR, cross-border;
+  unverified, needs legal review). Names are not redacted.
+- What `reading_version` means (open since this record's fork 5).
+- For the `/ask` sketch [added 2026-09-21, last-call review]: whether a
+  follow-up the page offers to a DIFFERENT Reading (for example "where is it
+  held?" after a stock answer) carries `previous_folio_id`. The trigger cannot
+  tell a correction from a follow-up, so such a follow-up would label a right
+  pick `incorrect`. Either the page sends `previous_folio_id` with a page-chosen
+  Reading only when the person corrects or clarifies the pick, or the request
+  must say which it is.
+
+### Not built, not verified
+
+- No `/ask` page or palette caller exists; `ASK_LAUNCHED` is unset, so none of
+  this runs in production until the page ships.
+- A typed question still pays one Haiku pick before the role gate (the
+  judge's section 1.4); refusing earlier needs the role's policy to rule out
+  every Reading, which today it does not.
+- The per-role share is checked once per ask, so an ask under way can finish
+  its second model call past the share by that one call.
+- The PGlite runs have the harness's fidelity limits (superuser, no Supabase
+  platform). No production query was made; traffic and role counts are
+  unknown.
+- [Added 2026-09-21, last-call review.] The classes govern a Finding's CELLS,
+  not its source trace. Every Finding still carries each relation it read with
+  that read's row count (`trace[].rowsScanned`, `matchedRows`), so an
+  `orders.lines` Finding, open to staff, tells them how many orders the house
+  has -- a `procurement_orders.*` count, tagged suppliers above. Neither the
+  guard nor the run-time `undeclared_field` check reads the trace.
+- A pick refused by the role share or by the house's first-attempt gate still
+  records the pick model and prompt hash it would have been sent;
+  `failure_reason` is what says no call was made.

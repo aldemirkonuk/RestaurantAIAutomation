@@ -341,6 +341,23 @@
       ]
     },
     {
+      "slug": "authorize_integration",
+      "flag": "mudavym_design_authorize_integration",
+      "route": "/authorize/{integrationId}",
+      "legacy": "page",
+      "source": "apps/web/src/pages/authorize-integration",
+      "needs": {
+        "param": "integrationId",
+        "list": "/integrations/oauth/catalog",
+        "items_key": "integrations",
+        "id_key": "id"
+      },
+      "failed_read": [
+        "The permission could not be read",
+        "The retention facts are unavailable"
+      ]
+    },
+    {
       "slug": "logs",
       "flag": "mudavym_design_logs",
       "route": "/logs",
