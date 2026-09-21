@@ -5,6 +5,7 @@ import { Button } from '../components/ui'
 import { Mail, Lock, AlertCircle, ArrowRight, KeyRound } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
+import { EndpaperShell } from '../components/brand/EndpaperShell'
 import '../components/brand/auth-house.css'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton, type GoogleSignInHandle } from '../components/auth/GoogleSignInButton'
@@ -46,6 +47,29 @@ const houseFieldClass =
 /** The shared Button merges `className` last (tailwind-merge), so this replaces
  *  its wine fill and its literal-rgba shadow rather than stacking on them. */
 const HOUSE_BUTTON = 'bg-seal text-paper-0 hover:bg-seal-deep shadow-none hover:shadow-none'
+
+/**
+ * What a refused sign-in says on the house path, in the book's voice (sketch
+ * 118 frames 06-07). Keyed on the gateway's status, never on its message
+ * text, and only for a plain refusal: a structured `code` (OAUTH_ONLY,
+ * NO_SIGNIN_METHOD) keeps the gateway's own words. The gateway answers 401
+ * for a wrong password and an unknown address alike (an enumeration guard),
+ * so "did not match" is the honest reading of either.
+ */
+type Refusal = 'mismatch' | 'throttled' | null
+function signInNote(refusal: Refusal, message: string): { pause: boolean; title: string; detail: string } {
+  if (refusal === 'mismatch') {
+    return { pause: false, title: 'That password did not match.', detail: 'Check it and try again, or reset it below.' }
+  }
+  if (refusal === 'throttled') {
+    return {
+      pause: true,
+      title: 'Too many tries — wait a moment.',
+      detail: 'This connection has made too many sign-in attempts. Try again in a few minutes.',
+    }
+  }
+  return { pause: false, title: 'Sign-in didn’t go through.', detail: message }
+}
 
 /**
  * Show every provider the registry declares but has not enabled (today:
@@ -97,10 +121,12 @@ export function Login() {
   const [resolving, setResolving] = useState(false)
   const [identity, setIdentity] = useState<SignInMethodsResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refusal, setRefusal] = useState<Refusal>(null)
 
   const resolve = useCallback(
     async (address: string) => {
       setError(null)
+      setRefusal(null)
       clearError()
       setResolving(true)
       try {
@@ -130,6 +156,7 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setRefusal(null)
     clearError()
     setLoading(true)
 
@@ -156,6 +183,15 @@ export function Login() {
       if (err instanceof LoginError && (err.code === 'OAUTH_ONLY' || err.code === 'NO_SIGNIN_METHOD')) {
         void resolve(email)
       }
+      setRefusal(
+        err instanceof LoginError && !err.code
+          ? err.status === 401
+            ? 'mismatch'
+            : err.status === 429
+              ? 'throttled'
+              : null
+          : null,
+      )
       setError(err.message || 'Login failed')
     } finally {
       setLoading(false)
@@ -185,25 +221,37 @@ export function Login() {
     greyedOut.length === 0
   const setPasswordHref = `/forgot-password?email=${encodeURIComponent(identity?.email ?? email)}`
 
-  return (
-    <AuthShell title="Mudavym" subtitle="Sign in to manage your wine inventory" house={on}>
-      <AuthCard house={on}>
-        {(error || authError) && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
-          >
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
-            <div>
-              <p className={on ? 'text-sm font-medium !text-red-900' : 'text-sm font-medium text-red-900'}>Login Failed</p>
-              <p className={on ? 'text-sm !text-red-700' : 'text-sm text-red-700'}>{error || authError}</p>
-            </div>
-          </motion.div>
-        )}
+  // The fields themselves never change with `on` (ADR 0143 row 35 — sketch
+  // 118 — reopens colour-only for exactly this pair of pages, but "same
+  // fields and flow" still holds): this tree is shared by both the endpaper
+  // shell and today's card, and only the chrome around it branches below.
+  const content = (
+    <>
+      {(error || authError) && on && (() => {
+        const note = signInNote(refusal, (error || authError) as string)
+        return (
+          <div role="alert" className={note.pause ? 'mdv-ep-note border-amber-600' : 'mdv-ep-note border-red-700'}>
+            <p className={note.pause ? 'mdv-ep-note-title !text-amber-800' : 'mdv-ep-note-title !text-red-800'}>{note.title}</p>
+            <p className="mdv-ep-note-detail">{note.detail}</p>
+          </div>
+        )
+      })()}
+      {(error || authError) && !on && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
+        >
+          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" strokeWidth={1.75} />
+          <div>
+            <p className={on ? 'text-sm font-medium !text-red-900' : 'text-sm font-medium text-red-900'}>Login Failed</p>
+            <p className={on ? 'text-sm !text-red-700' : 'text-sm text-red-700'}>{error || authError}</p>
+          </div>
+        </motion.div>
+      )}
 
-        {/* ── Step 1: who are you? ─────────────────────────────────── */}
-        {!atMethodStep && (
+      {/* ── Step 1: who are you? ─────────────────────────────────── */}
+      {!atMethodStep && (
           <form onSubmit={handleContinue} className="space-y-5">
             <div>
               <label htmlFor="email" className={on ? 'block text-sm font-medium text-inkm-2 mb-2' : 'block text-sm font-medium text-gray-700 mb-2'}>
@@ -247,7 +295,7 @@ export function Login() {
         {/* ── Step 2: the methods this identity actually has ───────── */}
         {atMethodStep && (
           <div className="space-y-5">
-            <div className={on ? 'flex items-center justify-between gap-3 rounded-xl border border-paper-2 bg-paper-0 px-4 py-3' : 'flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3'}>
+            <div className={on ? 'flex items-center justify-between gap-3 rounded-[3px] bg-paper-1 px-4 py-3' : 'flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3'}>
               <span className={on ? 'truncate text-sm font-medium text-inkm-1' : 'truncate text-sm font-medium text-gray-800'}>{identity?.email}</span>
               <button
                 type="button"
@@ -255,6 +303,7 @@ export function Login() {
                   setIdentity(null)
                   setPassword('')
                   setError(null)
+                  setRefusal(null)
                   clearError()
                 }}
                 className={on ? 'shrink-0 text-sm font-medium text-seal hover:text-seal-deep' : 'shrink-0 text-sm font-medium text-wine-600 hover:text-wine-700'}
@@ -315,7 +364,7 @@ export function Login() {
                       autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className={on ? houseFieldClass : fieldClass}
+                      className={on ? (refusal === 'mismatch' ? houseFieldClass.replace('border-paper-2', 'border-red-700') : houseFieldClass) : fieldClass}
                       placeholder="••••••••"
                       disabled={loading}
                     />
@@ -411,20 +460,35 @@ export function Login() {
           account after a failed password attempt. Off-screen rather than
           `display: none` so the GSI host stays clickable programmatically.
         */}
+        {/* House path: "Continue with Google" also sits on the first page,
+            under the address (founder, 2026-09-19). A Google account with no
+            Mudavym account is refused by the gateway exactly as before. */}
+        {on && !atMethodStep && (
+          <div className="mt-5 flex items-center gap-3" aria-hidden>
+            <span className="h-px flex-1 bg-paper-2" />
+            <span className="text-xs font-medium uppercase tracking-wide text-inkm-3">or</span>
+            <span className="h-px flex-1 bg-paper-2" />
+          </div>
+        )}
         <div
           className={
-            atMethodStep && showGoogle
+            (atMethodStep ? showGoogle : on)
               ? 'mt-5'
               : 'pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0'
           }
-          aria-hidden={!(atMethodStep && showGoogle)}
+          aria-hidden={!(atMethodStep ? showGoogle : on)}
         >
           <GoogleSignInButton
             ref={googleRef}
             enableOneTap
             disabled={loading}
             onSuccess={() => navigate(from, { replace: true })}
-            onError={setError}
+            onError={(message) => {
+              // A Google refusal is its own message: never let a password
+              // mismatch from earlier on this step dress it as one.
+              setRefusal(null)
+              setError(message)
+            }}
           />
         </div>
 
@@ -443,7 +507,27 @@ export function Login() {
             </Link>
           </p>
         </div>
-      </AuthCard>
+    </>
+  )
+
+  // sketch 118 · Direction B (the endpaper), the founder's 2026-09-19 pick —
+  // ADR 0149 row 35.
+  return on ? (
+    <EndpaperShell
+      kicker="The house"
+      houseLine="Kept, page by page."
+      tag="Every house's book looks the same on the inside — this is where yours opens."
+      folio="Sign in"
+      pageKey={atMethodStep ? 'methods' : 'address'}
+      frontMatter
+    >
+      <h2 className="mdv-ep-leaf-title">Welcome back.</h2>
+      <p className="mdv-ep-leaf-lede">Your house keeps its book here.</p>
+      {content}
+    </EndpaperShell>
+  ) : (
+    <AuthShell title="Mudavym" subtitle="Sign in to manage your wine inventory">
+      <AuthCard>{content}</AuthCard>
     </AuthShell>
   )
 }

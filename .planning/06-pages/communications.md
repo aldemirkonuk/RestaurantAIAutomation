@@ -809,6 +809,11 @@ door) wrote `Subject:` straight into the MIME header block with no line-break
 guard, unlike `GmailService`'s DTO-guarded subject — a subject carrying a line
 break could add a header (`Bcc:`) no recipient check ever saw. Fixed with a
 `sanitizeHeaderValue` applied to every header line the function writes.]
+[CORRECTED 2026-09-21, merging `origin/main`: `sanitizeHeaderValue` is gone.
+Main's ADR 0172 encoder (`mime-headers.ts`) now writes every header
+`sendThroughGrant` builds, this door's Cc/Bcc/Reply-To/In-Reply-To/References
+included. A line break in the subject still folds to a space; one inside an
+address is now refused before any fetch rather than folded and sent.]
 [SUPERSEDED 2026-09-17, later the same day — the founder closed one more fork
 the paragraph above left open: `GET /communications/letters/sender` already
 promises this mailbox a server-side 2-minute undo window (ADR 0118 D2), and
@@ -829,7 +834,7 @@ than trusting the grant captured at queue time, and sends through the same
 still-`HOUSE_QUEUED` row back before its window closes; a row already claimed,
 sent, failed or another house's is refused (409/404), never silently
 no-opped. New table `relay_email_queue`
-(`20260917210000_a_persons_mail_queues_like_the_houses_own.sql`) — a
+(`20260921110000_a_persons_mail_queues_like_the_houses_own.sql`) — a
 door-agnostic sibling of this page's own `HOUSE_QUEUED` rows on
 `procurement_conversations`, not the same table, because that table's
 `provider_id` is `NOT NULL` and the person door also reaches this house's own

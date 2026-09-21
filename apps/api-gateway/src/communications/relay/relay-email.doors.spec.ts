@@ -1036,8 +1036,15 @@ describe("the person's door", () => {
     expect(decoded).toContain("From: owner@housea.gmail.example");
     expect(decoded).toContain("To: orders@vendor-one.example");
     expect(decoded).toContain("Subject: Delivery window");
-    expect(decoded).toContain("Could Thursday work?");
-    expect(decoded).toContain("— Owner A");
+    // The body is base64 under its UTF-8 charset since ADR 0172 (origin/main,
+    // merged 2026-09-21), so the letter is read from the decoded part.
+    expect(decoded).toContain("Content-Transfer-Encoding: base64");
+    const letterText = Buffer.from(
+      decoded.split("\r\n\r\n")[1],
+      "base64",
+    ).toString("utf8");
+    expect(letterText).toContain("Could Thursday work?");
+    expect(letterText).toContain("— Owner A");
 
     const row = tables.relay_email_queue[0];
     expect(row.status).toBe("SENT");
@@ -1437,7 +1444,10 @@ describe("the person's door", () => {
       "base64url",
     ).toString("utf8");
     expect(decoded).toContain("From: manager@housea.gmail.example");
-    expect(decoded).toContain("— Owner A");
+    // Base64 body since ADR 0172: the author line is read from the decoded part.
+    expect(
+      Buffer.from(decoded.split("\r\n\r\n")[1], "base64").toString("utf8"),
+    ).toContain("— Owner A");
   });
 
   it("is 403, not a mailbox refusal, when this house has cut itself off from the grant (ADR 0114)", async () => {

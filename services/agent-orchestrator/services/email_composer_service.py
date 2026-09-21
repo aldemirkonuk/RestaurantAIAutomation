@@ -770,22 +770,26 @@ class EmailComposerService:
     def _wrap_html(self, body_text: str, tags: Dict[str, Any]) -> str:
         """Wrap plain-text body into minimal, professional HTML.
 
-        The body is TEXT — an AI draft a manager approved, or edited — and the
-        order reference is database text, so every paragraph and the reference
-        are HTML-escaped before any markup is added (2026-09-17, ADR 0149 #19
-        review). Unescaped, a ``<`` in an approved message became markup in the
-        vendor's mail client.
+        ADR 0170: a vendor email body is text, never markup. Each paragraph is
+        escaped BEFORE the <br/> is written, so the only tags in the output are
+        the ones this method writes. The body is LLM-drafted and goes to the
+        vendor under the restaurant's name, so a draft saying "<a href=...>"
+        must arrive as visible text, not as a live link. The order reference is
+        database text and is escaped the same way. (The relay lane found and
+        closed the same hole on 2026-09-17, ADR 0149 #19 review, with
+        ``quote=False``; main's ``quote=True`` is kept as the stricter of the
+        two when the lanes met on 2026-09-21.)
         """
-        paragraphs = body_text.split("\n\n")
+        paragraphs = (body_text or "").split("\n\n")
         html_paras = "".join(
-            f'<p style="margin: 0 0 12px; line-height: 1.6;">{_escape_html(p, quote=False).replace(chr(10), "<br/>")}</p>'
+            f'<p style="margin: 0 0 12px; line-height: 1.6;">{_escape_html(p, quote=True).replace(chr(10), "<br/>")}</p>'
             for p in paragraphs
             if p.strip()
         )
 
         order_ref = tags.get("order_number") or tags.get("order_id", "")
         ref_line = (
-            f'<p style="margin: 20px 0 0; color: #9ca3af; font-size: 11px;">Ref: {_escape_html(str(order_ref), quote=False)}</p>'
+            f'<p style="margin: 20px 0 0; color: #9ca3af; font-size: 11px;">Ref: {_escape_html(str(order_ref), quote=True)}</p>'
             if order_ref
             else ""
         )

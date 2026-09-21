@@ -741,7 +741,11 @@ describe("sending through the house's own grant", () => {
     const decoded = Buffer.from(raw, "base64url").toString("utf8");
     expect(decoded).toContain("From: siparis@lokantamudavim.com");
     expect(decoded).toContain("To: fikri@fikritarim.com");
-    expect(decoded).toContain("Merhaba,");
+    // The body is base64 under its UTF-8 charset since ADR 0172.
+    expect(decoded).toContain("Content-Transfer-Encoding: base64");
+    expect(
+      Buffer.from(decoded.split("\r\n\r\n")[1], "base64").toString("utf8"),
+    ).toBe("Merhaba,");
   });
 
   it("names the missing scope on a 403 rather than widening it", async () => {
@@ -846,6 +850,51 @@ describe("sending through the house's own grant", () => {
     expect(decoded).toContain("In-Reply-To: <msg-1@mail.gmail.com>");
     expect(decoded).toContain("References: <msg-0@mail.gmail.com>");
   });
+
+  // 2026-09-21, when origin/main's ADR 0172 encoder met the relay lane's
+  // person-door parameters: the lane's own stripper folded a line break in an
+  // ADDRESS into a space and sent anyway; mime-headers.ts refuses it, because
+  // repairing a corrupt address sends mail somewhere nobody chose. The refusal
+  // is thrown before any fetch, so the relay's dispatch() records a failed
+  // outcome for a mail that provably never left.
+  const corruptAddresses: Array<
+    [string, Partial<Parameters<typeof sendThroughGrant>[0]>]
+  > = [
+    ["Cc", { cc: ["cc@b.example\r\nBcc: attacker@evil.example"] }],
+    ["Bcc", { bcc: ["bcc@b.example\nX-Injected: 1"] }],
+    [
+      "Reply-To",
+      { replyTo: "owner@house-a.example\r\nBcc: attacker@evil.example" },
+    ],
+    [
+      "To",
+      { to: ["a@b.example", "c@d.example\r\nBcc: attacker@evil.example"] },
+    ],
+  ];
+  it.each(corruptAddresses)(
+    "refuses a line break inside a %s address before anything is sent",
+    async (headerName, extra) => {
+      const fetchImpl = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "gmail-4" }),
+        text: async () => "",
+      })) as unknown as typeof fetch;
+
+      await expect(
+        sendThroughGrant({
+          token: "ya29.token",
+          from: "owner@house-a.example",
+          to: "a@b.example",
+          subject: "Rota",
+          text: "See you at six.",
+          fetchImpl,
+          ...extra,
+        }),
+      ).rejects.toThrow(`Refusing to write the ${headerName} header`);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    },
+  );
 });
 
 // ===========================================================================
@@ -955,7 +1004,10 @@ describe("the gmail_send grant, end to end", () => {
     expect(decoded).toContain("To: fikri@fikritarim.com");
     expect(decoded).toContain("Subject: Standing order");
     expect(decoded).toContain('Content-Type: text/plain; charset="UTF-8"');
-    expect(decoded).toContain("Merhaba, teslimatı konuşabilir miyiz?");
+    // The body is base64 under its UTF-8 charset since ADR 0172.
+    expect(
+      Buffer.from(decoded.split("\r\n\r\n")[1], "base64").toString("utf8"),
+    ).toBe("Merhaba, teslimatı konuşabilir miyiz?");
     // Headers end, body begins: a bare CRLFCRLF, once.
     expect(decoded.split("\r\n\r\n").length).toBe(2);
     expect(decoded).not.toContain("notifications@wineops.ai");

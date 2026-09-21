@@ -65,6 +65,12 @@ import { COMMITMENT_PATTERN_SOURCES } from "../../common/orchestrator/commitment
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import type { IntegrationId } from "../../integrations/integrations-oauth.constants";
 import { HouseSenderService } from "./house-sender.service";
+import {
+  addressListHeader,
+  base64Body,
+  threadingHeader,
+  unstructuredHeader,
+} from "../mime-headers";
 import type {
   InsertedInsightDto,
   QueueLetterDto,
@@ -933,26 +939,6 @@ export function mergeFieldsIn(
 }
 
 /**
- * Strip CR/LF from a value bound for one MIME header line.
- *
- * `GmailService.createMimeMessage` has a DTO in front of it
- * (`SINGLE_HEADER_LINE`, communication.dto.ts) that refuses a multi-line value
- * before it is ever built into a header. This function has no DTO in front of
- * it — `sendThroughGrant`'s `subject` came from `email_headers.subject` on a
- * queued row (`house-letters.dto.ts`'s subject has no such guard) with no
- * single-line check anywhere on the way — so a subject of
- * `"hi\r\nBcc: someone@elsewhere"` was written straight into the header block
- * and added a header nothing here ever checked (found 2026-09-17, adversarial
- * review of the relay lane, out of that lane's own diff). Applied to every
- * value this function writes into a header line, not only `subject`, because
- * `to`/`cc`/`bcc`/`replyTo`/`inReplyTo`/`references` reach here from callers
- * this function does not control either.
- */
-function sanitizeHeaderValue(value: string): string {
-  return value.replace(/[\r\n]+/g, " ");
-}
-
-/**
  * Send one letter through the granting account's own Gmail mailbox.
  *
  * Deliberately NOT `GmailService`: that service is built on the deployment's
@@ -965,6 +951,20 @@ function sanitizeHeaderValue(value: string): string {
  * above); `cc`/`bcc`/`replyTo`/`threadId`/`inReplyTo`/`references` are new
  * (ADR 0149 #19's person door, relay-email.service.ts) and all optional, so
  * the composer's call is unchanged.
+ *
+ * NO HEADER VALUE CAN START A NEW HEADER. This function has no DTO in front
+ * of it the way `GmailService.createMimeMessage` has (`SINGLE_HEADER_LINE`,
+ * communication.dto.ts): a letter's `subject` comes from
+ * `email_headers.subject` on a queued row, and `to`/`cc`/`bcc`/`replyTo`/
+ * `inReplyTo`/`references` reach it from the relay's person door. A subject
+ * of `"hi\r\nBcc: someone@elsewhere"` once added a header nothing here checked
+ * (found 2026-09-17, adversarial review of the relay lane). Every header now
+ * goes through mime-headers.ts (ADR 0172), the same encoder GmailService
+ * uses: free text collapses CR/LF and is RFC 2047 encoded, an address with a
+ * control character inside it is REFUSED (throws `MimeHeaderError` before any
+ * fetch, so nothing is sent), and the threading values are rebuilt from their
+ * `<msg-id>` tokens. The relay lane's own CR/LF stripper was retired for it
+ * when main's encoder landed (2026-09-21), so there is one rule, not two.
  *
  * Exported so the spec can prove the request shape without a network.
  */
@@ -982,28 +982,39 @@ export async function sendThroughGrant(params: {
   references?: string;
   fetchImpl?: typeof fetch;
 }): Promise<string | null> {
-  const addressLine = (v: string | string[]) =>
-    sanitizeHeaderValue(Array.isArray(v) ? v.join(", ") : v);
-
   // `From` is emitted only when we actually know the address. The `gmail_send`
   // grant asks for the send scope and nothing else, so it carries no
   // `openid`/`email` and no address was ever read for it — and `From: ` with
   // nothing after it is a malformed header, which Gmail either rejects or
   // silently repairs. Omitting it lets Gmail stamp the authenticated mailbox,
   // which is the true answer and the one we could not have written ourselves.
+  //
+  // Headers go through mime-headers.ts (ADR 0172): a Turkish subject is RFC
+  // 2047 encoded rather than sent as raw bytes, a line break in the subject
+  // cannot start a new header, and the body is base64 under its UTF-8 charset.
+  // The person door's cc/bcc/reply-to and threading go through the same
+  // encoder (see the doc comment above); a threading value with no usable
+  // <msg-id> writes no header, and the reply is still sent.
+  const from = params.from.trim();
+  const to = Array.isArray(params.to) ? params.to : [params.to];
+  const inReplyTo = threadingHeader("In-Reply-To", params.inReplyTo);
+  const references = threadingHeader("References", params.references);
   const mime = [
-    ...(params.from.trim() ? [`From: ${sanitizeHeaderValue(params.from.trim())}`] : []),
-    `To: ${addressLine(params.to)}`,
-    ...(params.cc?.length ? [`Cc: ${addressLine(params.cc)}`] : []),
-    ...(params.bcc?.length ? [`Bcc: ${addressLine(params.bcc)}`] : []),
-    `Subject: ${sanitizeHeaderValue(params.subject)}`,
-    ...(params.replyTo ? [`Reply-To: ${sanitizeHeaderValue(params.replyTo)}`] : []),
-    ...(params.inReplyTo ? [`In-Reply-To: ${sanitizeHeaderValue(params.inReplyTo)}`] : []),
-    ...(params.references ? [`References: ${sanitizeHeaderValue(params.references)}`] : []),
+    ...(from ? [addressListHeader("From", [from])] : []),
+    addressListHeader("To", to),
+    ...(params.cc?.length ? [addressListHeader("Cc", params.cc)] : []),
+    ...(params.bcc?.length ? [addressListHeader("Bcc", params.bcc)] : []),
+    unstructuredHeader("Subject", params.subject),
+    ...(params.replyTo
+      ? [addressListHeader("Reply-To", [params.replyTo])]
+      : []),
+    ...(inReplyTo ? [inReplyTo] : []),
+    ...(references ? [references] : []),
     "MIME-Version: 1.0",
     'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
     "",
-    params.text,
+    base64Body(params.text),
   ].join("\r\n");
 
   const doFetch = params.fetchImpl ?? fetch;
