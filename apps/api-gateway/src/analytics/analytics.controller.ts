@@ -34,6 +34,8 @@ import { GoalScenarioRequestsService } from "./goal-scenario-requests.service";
 import { ConsultantsService } from "./consultants.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { Public } from "../auth/decorators/public.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -297,6 +299,80 @@ export class AnalyticsController {
     }
   }
 
+  /**
+   * Turn a catalogue type on or off for this house (founder, 2026-09-21 —
+   * ADR 0191: the catalogue is actionable, not a read-only leaf).
+   *
+   * Writes the SAME `recommendation_actions` row the Reports insight panel
+   * already writes for a raw insight (`insight:<candidate_key>`, NEW-434) —
+   * no parallel store. Written at RULE SCOPE (the bare key, no `#subject#grain`
+   * suffix), which `suppression.ts`'s `suppressingKeysFor` already treats as
+   * "this rule, entirely": `InsightGeneratorService.generate()` filters every
+   * live instance of this type against that key, everywhere it is read (this
+   * feed, Reports, the contextual rails) — "off" here holds house-wide, not
+   * just on this page.
+   *
+   * Owner/manager only ON THIS DOOR: this is a standing house policy, so it
+   * is role-gated and the actor is read from the JWT — never the body — per
+   * the `goal-scenarios/requests` precedent in this controller: a
+   * client-supplied actor id is an unverified claim. NOT gated: the feed's
+   * own rule-scope dismiss and the Dismissed tab's restore
+   * (`POST recommendations/:restaurantId/action`, any signed-in member)
+   * write the identical row — ADR 0191 names that as an open fork for the
+   * founder rather than changing staff's existing feed acts here.
+   *
+   * Audited: every toggle files a `system_audit_log` row
+   * (`RecommendationActionsService.setTypeEnabled`), and the receipt comes
+   * back in the response so a lost audit row is visible, not silent.
+   */
+  @Put("insight-catalog/types/:restaurantId/:candidateKey/toggle")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Turn a catalogue type on or off for this house (owner/manager, audited)",
+    description:
+      "Body: { enabled: boolean }. 'Off' suppresses every live instance of this type house-wide (feed, Reports, contextual rails) by writing recommendation_actions at rule scope — the same store and the same `insight:<candidate_key>` key NEW-434 already uses. 'On' restores it. The actor is the authenticated caller, not the body; each toggle files a system_audit_log row and returns its receipt as `audit`.",
+  })
+  async toggleCatalogType(
+    @Param("restaurantId") restaurantId: string,
+    @Param("candidateKey") candidateKey: string,
+    @Body() body: { enabled?: boolean },
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    const actor = typeof user?.userId === "string" ? user.userId : "";
+    if (!actor)
+      // An audited policy change with no one to name is refused BEFORE it is
+      // written, never filed anonymously.
+      throw new HttpException(
+        "A signed-in user is required to change a type for the house",
+        HttpStatus.UNAUTHORIZED,
+      );
+    try {
+      if (typeof body?.enabled !== "boolean")
+        throw new Error("enabled (boolean) is required");
+      if (!candidateKey?.trim()) throw new Error("candidateKey is required");
+      const { row, ruleKey, audit } =
+        await this.recommendationActions.setTypeEnabled(
+          restaurantId,
+          candidateKey,
+          body.enabled,
+          actor,
+        );
+      return {
+        candidateKey,
+        ruleKey,
+        enabled: body.enabled,
+        updatedAt: row.updatedAt,
+        audit,
+      };
+    } catch (error) {
+      throw new HttpException(
+        error.message || "Failed to toggle the catalogue type",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
   @Get("insights/:restaurantId")
   @ApiOperation({
     summary: "Plain-language insight feed",
@@ -307,16 +383,32 @@ export class AnalyticsController {
   @ApiQuery({ name: "refresh", required: false })
   @ApiQuery({ name: "categories", required: false })
   @ApiQuery({ name: "limit", required: false })
+  @ApiQuery({
+    name: "candidateKey",
+    required: false,
+    description:
+      "One catalogue type (ADR 0191's 'open live items'): always computed live, filtered before the per-category cap, uncapped, never persisted.",
+  })
   async getInsights(
     @Param("restaurantId") restaurantId: string,
     @Query("refresh") refresh?: string,
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
+    @Query("candidateKey") candidateKey?: string,
   ) {
     try {
       const categories = categoriesStr
         ? (categoriesStr.split(",").map((c) => c.trim()) as any)
         : undefined;
+      if (candidateKey?.trim()) {
+        // Live, never stored: a stored row carries no suppression key, so an
+        // act on it could not be written at the instance's own scope.
+        return await this.insightGenerator.generate(restaurantId, {
+          categories,
+          candidateKeys: [candidateKey.trim()],
+          persist: false,
+        });
+      }
       if (refresh === "true") {
         return await this.insightGenerator.generate(restaurantId, {
           categories,

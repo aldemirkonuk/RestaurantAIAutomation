@@ -2,23 +2,28 @@
  * CatalogView — `/recommendations/catalog`, as a VIEW of `/recommendations`
  * rather than a page of its own (the relayed 2026-09-12 ruling; DIGEST.md
  * fork F1 (a), sketch 120 item 5: "the catalogue as a leaf — the same
- * rail-and-rows shape, read-only, with the server's own coverage numbers and
+ * rail-and-rows shape … with the server's own coverage numbers and
  * 'data present' relabelled as what it measures").
  *
  * A sibling component, not a sixth `Leaf`: it shares this page's head, its
  * CSS (`rec-next.css`) and its `mudavym_design_recommendations` flag (wired
  * in `App.tsx`), but reads none of the six book endpoints
- * `useRecommendationsNextData` fires — this view's whole network surface is
- * the one read below. The legacy `InsightCatalog.tsx` stays in the tree,
- * untouched, reachable only by a dev override until the founder approves the
- * deletion manifest (ADR 0149).
+ * `useRecommendationsNextData` fires. The legacy `InsightCatalog.tsx` stays
+ * in the tree, untouched, reachable only by a dev override until the founder
+ * approves the deletion manifest (ADR 0149).
  *
- * Read-only by design (the page note's explicit ask) — no write exists here,
- * and none is added. See `rec-catalog.ts` for why "computable now" is
- * printed as "data present" instead.
+ * **ACTIONABLE as of ADR 0191 (founder, 2026-09-21).** The "read-only by
+ * design" leaf this was built as (sketch 120 item 5) is superseded: the
+ * page note's own §"Forks built on a DEFAULT" flagged the read-only-ness as
+ * a standing open fork, not a founder decision, and today's ruling closes
+ * it — "each type can be turned on or off for the house and opened to its
+ * live recommendations, with the same one-tap acts as the feed." Both writes
+ * reuse the SAME `recommendation_actions` store NEW-434 already keys
+ * `insight:<candidate_key>` — see `rec-catalog.ts`'s ADR 0191 section. See
+ * `rec-catalog.ts` for why "computable now" is printed as "data present".
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
@@ -30,13 +35,33 @@ import {
   REQUIREMENT_LABEL,
   countsByDimension,
   headSentence,
+  isTypeEnabled,
+  liveInsightsForType,
   matchesQuery,
   missingRequirements,
+  offTypeKeys,
   readinessOf,
+  typeRuleKey,
   type CatalogCandidate,
   type CatalogPayload,
+  type DispositionRow,
+  type LiveInsight,
+  type Readiness,
 } from './rec-catalog';
 import './rec-next.css';
+
+/** One catalogue type's live-items panel state. */
+interface LivePanelState {
+  phase: 'loading' | 'ready' | 'failed';
+  items: LiveInsight[];
+  message?: string;
+  /**
+   * The generator's own `suppressionsReadable`. `false` means the house's
+   * dismissals could not be read, so this list may hold items already
+   * dismissed — the panel says so rather than presenting it as clean.
+   */
+  suppressionsReadable?: boolean;
+}
 
 type Phase = 'loading' | 'ready' | 'failed';
 
@@ -58,8 +83,11 @@ export default function CatalogView({ ground }: CatalogViewProps) {
     ensureFraunces();
   }, []);
 
-  const { activeRestaurantId } = useAuth();
+  const { activeRestaurantId, user, activeRole } = useAuth();
   const rid = activeRestaurantId ?? null;
+  const role = activeRole ?? user?.role ?? null;
+  // Owner/manager only — a house policy, not a note on one card (ADR 0191).
+  const canManage = role === 'owner' || role === 'manager';
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [payload, setPayload] = useState<CatalogPayload | null>(null);
@@ -72,6 +100,30 @@ export default function CatalogView({ ground }: CatalogViewProps) {
   // on a retry, so the fetch effect needs a deps entry that does — mirrors
   // `useDigestSubscription`'s `seq`/`refresh` pattern in this same lane.
   const [retryCount, setRetryCount] = useState(0);
+
+  // ADR 0191 — which types are off for this house. A SEPARATE read from a
+  // SEPARATE store call (`recommendation_actions`, not the catalogue), and
+  // its failure must not blank the catalogue itself: `null` means "not known
+  // yet", never "everything is on".
+  const [offKeys, setOffKeys] = useState<Set<string> | null>(null);
+  // Why the on/off read failed — rendered, so a failed read never sits on
+  // screen as "Reading…" for ever.
+  const [offReadFailure, setOffReadFailure] = useState<string | null>(null);
+  const [togglingKey, setTogglingKey] = useState<string | null>(null);
+  const [toggleFailure, setToggleFailure] = useState<{ key: string; message: string } | null>(
+    null,
+  );
+  // The toggle landed but its audit row did not (the gateway's receipt).
+  const [auditMiss, setAuditMiss] = useState<{ key: string; message: string } | null>(null);
+  // A Pin/Dismiss on a live item that did not land — put back and said.
+  const [liveActFailure, setLiveActFailure] = useState<{ key: string; message: string } | null>(
+    null,
+  );
+
+  // Live-items panels, one entry per opened type; cached once read.
+  const [liveOpenFor, setLiveOpenFor] = useState<string | null>(null);
+  const [liveState, setLiveState] = useState<Record<string, LivePanelState>>({});
+  const [pinnedLive, setPinnedLive] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +145,212 @@ export default function CatalogView({ ground }: CatalogViewProps) {
       cancelled = true;
     };
   }, [rid, retryCount]);
+
+  useEffect(() => {
+    if (!rid) {
+      setOffKeys(null);
+      return;
+    }
+    let cancelled = false;
+    setOffReadFailure(null);
+    apiClient
+      .get<{ items: DispositionRow[] }>(`/analytics/recommendations/${rid}/actions?status=dismissed`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        // A reply with no `items` list is not "nothing is off" — it is a read
+        // that did not answer, and every type would otherwise print "On".
+        if (!Array.isArray(data?.items)) {
+          setOffKeys(null);
+          setOffReadFailure('the reply carried no list');
+          return;
+        }
+        setOffKeys(offTypeKeys(data.items));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setOffKeys(null);
+        setOffReadFailure(failureOf(err).message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rid, retryCount]);
+
+  const toggleType = useCallback(
+    async (c: CatalogCandidate) => {
+      if (!rid || !canManage) return;
+      const key = typeRuleKey(c.key);
+      const wasOn = offKeys ? !offKeys.has(key) : true;
+      const nextOn = !wasOn;
+      setTogglingKey(c.key);
+      setToggleFailure(null);
+      setAuditMiss(null);
+      setOffKeys((prev) => {
+        const s = new Set(prev ?? []);
+        if (nextOn) s.delete(key);
+        else s.add(key);
+        return s;
+      });
+      try {
+        const { data } = await apiClient.put<{
+          audit?: { recorded?: boolean; reason?: string | null };
+        }>(`/analytics/insight-catalog/types/${rid}/${encodeURIComponent(c.key)}/toggle`, {
+          enabled: nextOn,
+        });
+        // The live list read before this flip no longer holds.
+        setLiveState((prev) => {
+          if (!prev[c.key]) return prev;
+          const next = { ...prev };
+          delete next[c.key];
+          return next;
+        });
+        if (data?.audit && data.audit.recorded === false)
+          setAuditMiss({ key: c.key, message: data.audit.reason ?? 'no reason given' });
+      } catch (err) {
+        // Put it back — the server never got it, so the page must not claim
+        // otherwise.
+        setOffKeys((prev) => {
+          const s = new Set(prev ?? []);
+          if (wasOn) s.delete(key);
+          else s.add(key);
+          return s;
+        });
+        setToggleFailure({ key: c.key, message: failureOf(err).message });
+      } finally {
+        setTogglingKey(null);
+      }
+    },
+    [rid, canManage, offKeys],
+  );
+
+  const openLive = useCallback(
+    (c: CatalogCandidate, readiness: Readiness, enabled: boolean | null) => {
+      if (liveOpenFor === c.key) {
+        setLiveOpenFor(null);
+        return;
+      }
+      setLiveOpenFor(c.key);
+      setLiveActFailure(null);
+      if (!rid || readiness !== 'computable' || enabled === false) return; // the panel says why, nothing to fetch
+      if (liveState[c.key]?.phase === 'ready') return; // cached
+      setLiveState((prev) => ({ ...prev, [c.key]: { phase: 'loading', items: [] } }));
+      // `candidateKey` narrows the read SERVER-side, before the generator's
+      // five-per-category cap — a category-wide read filtered here would miss
+      // any type ranked below its category's top five and call it empty.
+      apiClient
+        .get<{ insights?: unknown[]; suppressionsReadable?: boolean }>(
+          `/analytics/insights/${rid}?categories=${encodeURIComponent(c.category)}&candidateKey=${encodeURIComponent(c.key)}&refresh=true`,
+        )
+        .then(({ data }) => {
+          if (!Array.isArray(data?.insights)) {
+            setLiveState((prev) => ({
+              ...prev,
+              [c.key]: { phase: 'failed', items: [], message: 'the reply carried no list' },
+            }));
+            return;
+          }
+          const items = liveInsightsForType(data.insights, c.key);
+          setLiveState((prev) => ({
+            ...prev,
+            [c.key]: {
+              phase: 'ready',
+              items,
+              suppressionsReadable: data.suppressionsReadable,
+            },
+          }));
+        })
+        .catch((err) => {
+          setLiveState((prev) => ({
+            ...prev,
+            [c.key]: { phase: 'failed', items: [], message: failureOf(err).message },
+          }));
+        });
+    },
+    [rid, liveOpenFor, liveState],
+  );
+
+  const dismissLive = useCallback(
+    (c: CatalogCandidate, item: LiveInsight) => {
+      if (!rid) return;
+      setLiveActFailure(null);
+      setLiveState((prev) => {
+        const cur = prev[c.key];
+        if (!cur) return prev;
+        return {
+          ...prev,
+          [c.key]: {
+            ...cur,
+            items: cur.items.filter((i) => i.suppressionKey !== item.suppressionKey),
+          },
+        };
+      });
+      apiClient
+        .post(`/analytics/recommendations/${rid}/action`, {
+          ruleKey: item.suppressionKey,
+          status: 'dismissed',
+          reason: 'not_relevant',
+          snapshot: {
+            observation: item.sentence,
+            recommendation: item.sentence,
+            category: item.category,
+          },
+        })
+        .catch((err) => {
+          // The feed's own rule (useRecommendationsNextData.setDisposition):
+          // a write that did not land puts the item back and says so, rather
+          // than let the page imply a dismissal the server never stored.
+          setLiveState((prev) => {
+            const cur = prev[c.key];
+            if (!cur || cur.items.some((i) => i.suppressionKey === item.suppressionKey))
+              return prev;
+            return {
+              ...prev,
+              [c.key]: {
+                ...cur,
+                items: [...cur.items, item].sort((a, b) => b.score - a.score),
+              },
+            };
+          });
+          setLiveActFailure({ key: c.key, message: failureOf(err).message });
+        });
+    },
+    [rid],
+  );
+
+  const pinLive = useCallback(
+    (c: CatalogCandidate, item: LiveInsight) => {
+      if (!rid) return;
+      setLiveActFailure(null);
+      const key = item.suppressionKey;
+      const wasPinned = pinnedLive.has(key);
+      setPinnedLive((prev) => {
+        const s = new Set(prev);
+        if (wasPinned) s.delete(key);
+        else s.add(key);
+        return s;
+      });
+      apiClient
+        .post(`/analytics/recommendations/${rid}/action`, {
+          ruleKey: key,
+          pinned: !wasPinned,
+          snapshot: {
+            observation: item.sentence,
+            recommendation: item.sentence,
+            category: item.category,
+          },
+        })
+        .catch((err) => {
+          setPinnedLive((prev) => {
+            const s = new Set(prev);
+            if (wasPinned) s.add(key);
+            else s.delete(key);
+            return s;
+          });
+          setLiveActFailure({ key: c.key, message: failureOf(err).message });
+        });
+    },
+    [rid, pinnedLive],
+  );
 
   const dims = useMemo(
     () => new Map((payload?.dimensions ?? []).map((d) => [d.key, d])),
@@ -146,7 +404,8 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                   : ''}
           </p>
           <p className="rc-micro rc-readat">
-            Every dimension × measure × comparator Mudavym knows · read-only ·{' '}
+            Every dimension × measure × comparator Mudavym knows · owner/manager can turn a
+            type on or off for this house ·{' '}
             <Link to="/recommendations">← Back to Recommendations</Link>
           </p>
           <DoubleRule />
@@ -237,6 +496,9 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                       const readiness = readinessOf(c, payload.available);
                       const missing = missingRequirements(c, payload.available);
                       const expanded = open === c.key;
+                      const enabled = isTypeEnabled(c.key, offKeys);
+                      const live = liveState[c.key];
+                      const liveOpen = liveOpenFor === c.key;
                       return (
                         <li key={c.key} className="rc-catalog-entry" data-testid="rc-catalog-row">
                           <button
@@ -270,6 +532,129 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                   Whether this house has the data is not known — sign in, or
                                   the availability read failed.
                                 </p>
+                              )}
+
+                              <div className="rc-controls" data-testid="rc-type-onoff">
+                                <span className="rc-ctl-label">For this house:</span>
+                                {canManage ? (
+                                  <button
+                                    type="button"
+                                    className="rc-quiet"
+                                    aria-pressed={enabled === true}
+                                    disabled={enabled === null || togglingKey === c.key}
+                                    onClick={() => toggleType(c)}
+                                  >
+                                    {enabled === null ? 'Reading…' : enabled ? 'On' : 'Off'}
+                                  </button>
+                                ) : (
+                                  <span className="rc-micro" data-testid="rc-type-onoff-badge">
+                                    {enabled === null ? 'Unknown' : enabled ? 'On' : 'Off'}
+                                  </span>
+                                )}
+                              </div>
+                              {enabled === null && offReadFailure && (
+                                <p className="rc-why" role="alert">
+                                  Couldn't read whether this type is on for the house (
+                                  {offReadFailure}).
+                                </p>
+                              )}
+                              {toggleFailure && toggleFailure.key === c.key && (
+                                <p className="rc-why" role="alert">
+                                  Not saved ({toggleFailure.message}).
+                                </p>
+                              )}
+                              {auditMiss && auditMiss.key === c.key && (
+                                <p className="rc-why" role="alert">
+                                  Saved, but not written to the house log ({auditMiss.message}).
+                                </p>
+                              )}
+
+                              {readiness === 'computable' && (
+                                <div className="rc-controls">
+                                  {enabled === false ? (
+                                    <p className="rc-why">
+                                      This type is off for this house — turn it on to see its
+                                      live items.
+                                    </p>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="rc-quiet"
+                                      aria-pressed={liveOpen}
+                                      onClick={() => openLive(c, readiness, enabled)}
+                                    >
+                                      {liveOpen ? 'Hide live items' : 'Open live items'}
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {liveOpen && readiness === 'computable' && enabled !== false && (
+                                <div className="rc-live-items" data-testid="rc-live-items">
+                                  {live?.phase === 'loading' && (
+                                    <p className="rc-loading">Reading live items…</p>
+                                  )}
+                                  {live?.phase === 'failed' && (
+                                    <p className="rc-why" role="alert">
+                                      Couldn't read live items ({live.message}).
+                                    </p>
+                                  )}
+                                  {live?.phase === 'ready' && live.suppressionsReadable === false && (
+                                    <p className="rc-why" role="alert">
+                                      Dismissals could not be read — some of these may already
+                                      be dismissed.
+                                    </p>
+                                  )}
+                                  {liveActFailure && liveActFailure.key === c.key && (
+                                    <p className="rc-why" role="alert">
+                                      Not saved ({liveActFailure.message}) — the item is back
+                                      where it was.
+                                    </p>
+                                  )}
+                                  {live?.phase === 'ready' && live.items.length === 0 && (
+                                    <p className="rc-empty-why">
+                                      Nothing live for this type right now.
+                                    </p>
+                                  )}
+                                  {live?.phase === 'ready' && live.items.length > 0 && (
+                                    <ul className="rc-live-list">
+                                      {live.items.map((item) => (
+                                        <li key={item.suppressionKey} className="rc-live-item">
+                                          <p className="rc-plain">{item.sentence}</p>
+                                          <div className="rc-row">
+                                            <button
+                                              type="button"
+                                              className="rc-quiet"
+                                              aria-pressed={pinnedLive.has(item.suppressionKey)}
+                                              onClick={() => pinLive(c, item)}
+                                            >
+                                              {pinnedLive.has(item.suppressionKey) ? 'Pinned' : 'Pin'}
+                                            </button>
+                                            {item.suppressionKey === typeRuleKey(c.key) ? (
+                                              // An instance with no subject and no period has
+                                              // only the bare key: "Dismiss" here would silence
+                                              // the whole type, house-wide, under a one-item
+                                              // label (suppression.ts: never claim a narrow
+                                              // scope you did not store). Say so instead.
+                                              <span className="rc-micro" data-testid="rc-live-whole-type">
+                                                Dismissing this one hides the whole type — that is
+                                                the On/Off above.
+                                              </span>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                className="rc-quiet"
+                                                onClick={() => dismissLive(c, item)}
+                                              >
+                                                Dismiss
+                                              </button>
+                                            )}
+                                          </div>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
                               )}
                             </div>
                           )}

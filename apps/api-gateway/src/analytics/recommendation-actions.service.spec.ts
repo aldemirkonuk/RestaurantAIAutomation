@@ -76,3 +76,113 @@ describe("RecommendationActionsService.getDigestPref", () => {
     expect(pref.digestEnabled).toBe(false);
   });
 });
+
+/**
+ * ADR 0191 — a catalogue type on/off is "owner/manager only, audited" (the
+ * founder, 2026-09-21). The role gate lives on the route; what this unit owns
+ * is the write, the refusal of anything that is not a catalogue type, and the
+ * audit row in `system_audit_log` — the house's trail, which /logs reads.
+ * `recommendation_actions` alone is not an audit: one upserted row per key,
+ * so turning a type back on overwrites who turned it off.
+ */
+describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
+  const TYPE = "overall.revenue.vs_same_weekday";
+
+  function recordingDb(opts: { auditError?: string } = {}) {
+    const calls: Array<{ table: string; op: string; payload: any }> = [];
+    const client = {
+      from: (table: string) => {
+        const builder: any = {};
+        builder.upsert = (payload: any) => {
+          calls.push({ table, op: "upsert", payload });
+          return builder;
+        };
+        builder.select = () => builder;
+        builder.single = async () => ({
+          data: {
+            rule_key: calls[calls.length - 1]?.payload?.rule_key,
+            status: calls[calls.length - 1]?.payload?.status,
+            updated_at: "2026-09-21T12:00:00.000Z",
+          },
+          error: null,
+        });
+        builder.insert = async (payload: any) => {
+          calls.push({ table, op: "insert", payload });
+          return {
+            error: opts.auditError ? { message: opts.auditError } : null,
+          };
+        };
+        return builder;
+      },
+    };
+    return { db: { getClient: () => client } as any, calls };
+  }
+
+  it("turning a type off writes the bare rule-scope key AND files an audit row naming the actor", async () => {
+    const { db, calls } = recordingDb();
+    const svc = new RecommendationActionsService(db);
+    const out = await svc.setTypeEnabled("r-1", TYPE, false, "u-actor");
+
+    const write = calls.find((c) => c.table === "recommendation_actions");
+    expect(write?.payload).toMatchObject({
+      restaurant_id: "r-1",
+      rule_key: `insight:${TYPE}`,
+      status: "dismissed",
+      created_by: "u-actor",
+    });
+
+    const audit = calls.find((c) => c.table === "system_audit_log");
+    expect(audit?.op).toBe("insert");
+    expect(audit?.payload).toMatchObject({
+      actor_type: "user",
+      actor_id: "u-actor",
+      action: "recommendation_type_turned_off",
+      entity_type: "recommendation_type",
+      entity_id: "r-1",
+      restaurant_id: "r-1",
+      changes: {
+        candidate_key: TYPE,
+        rule_key: `insight:${TYPE}`,
+        enabled: { to: false },
+      },
+    });
+    expect(out.audit).toEqual({ recorded: true, reason: null });
+  });
+
+  it("turning it back on is its own audit row, so the trail keeps who turned it off", async () => {
+    const { db, calls } = recordingDb();
+    const svc = new RecommendationActionsService(db);
+    await svc.setTypeEnabled("r-1", TYPE, false, "u-first");
+    await svc.setTypeEnabled("r-1", TYPE, true, "u-second");
+    const rows = calls.filter((c) => c.table === "system_audit_log");
+    expect(rows.map((r) => [r.payload.action, r.payload.actor_id])).toEqual([
+      ["recommendation_type_turned_off", "u-first"],
+      ["recommendation_type_turned_on", "u-second"],
+    ]);
+  });
+
+  it("a failed audit row is reported in the receipt, never swallowed as recorded", async () => {
+    const { db } = recordingDb({ auditError: "permission denied" });
+    const svc = new RecommendationActionsService(db);
+    const out = await svc.setTypeEnabled("r-1", TYPE, false, "u-actor");
+    expect(out.audit).toEqual({ recorded: false, reason: "permission denied" });
+  });
+
+  it("refuses a key the catalogue does not list, and writes nothing", async () => {
+    const { db, calls } = recordingDb();
+    const svc = new RecommendationActionsService(db);
+    await expect(
+      svc.setTypeEnabled("r-1", `${TYPE}#tuesday#d:2026-09-16`, false, "u-actor"),
+    ).rejects.toThrow(/Unknown catalogue type/);
+    expect(calls).toEqual([]);
+  });
+
+  it("refuses without an actor, and writes nothing", async () => {
+    const { db, calls } = recordingDb();
+    const svc = new RecommendationActionsService(db);
+    await expect(svc.setTypeEnabled("r-1", TYPE, false, "")).rejects.toThrow(
+      /actor/,
+    );
+    expect(calls).toEqual([]);
+  });
+});

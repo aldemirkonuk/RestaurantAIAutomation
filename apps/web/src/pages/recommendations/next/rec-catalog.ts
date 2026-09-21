@@ -4,11 +4,19 @@
  * recommendation (a): a sibling component sharing head, styles and the
  * `mudavym_design_recommendations` flag — no new flag, no new route gate).
  *
+ * **ACTIONABLE as of ADR 0191 (founder, 2026-09-21) — no longer read-only.**
+ * Each type can be turned on or off for the house (owner/manager, audited)
+ * and opened to its live recommendations with the feed's own one-tap acts.
+ * This closes the standing fork `.planning/06-pages/recommendations.md:
+ * 829-831` ("The catalogue's read-only-ness is a standing open fork") left
+ * open. `typeRuleKey`/`offTypeKeys`/`isTypeEnabled`/`normalizeLiveInsight`/
+ * `liveInsightsForType` below carry the read-side wiring; the writes reuse the
+ * SAME `recommendation_actions` store NEW-434 already writes to
+ * (`insight:<candidate_key>`, rule scope) — no new table, no migration.
+ *
  * Reads `GET /analytics/insight-catalog/types[?restaurantId]`
  * (`analytics.controller.ts:266`) — the SAME endpoint the legacy
  * `InsightCatalog.tsx` (665 lines, kept untouched in the tree) already uses.
- * Nothing here writes anything; this is a read-only reference, per the page
- * note's explicit ask.
  *
  * The one relabelling this view makes on purpose: the legacy page and the
  * `p4-scratch/ux/recommendations-catalog.md` dossier both name the per-house
@@ -170,4 +178,102 @@ export function headSentence(c: CatalogCoverage, em: string): string {
   const computable = c.computable === null ? em : String(c.computable);
   const blocked = c.blockedOnData === null ? em : String(c.blockedOnData);
   return `${c.catalogued} catalogued · ${c.implemented} built · ${computable} with data present · ${blocked} built but missing data · ${c.notBuilt} not built yet.`;
+}
+
+// ---------------------------------------------------------------------------
+// On/off — ADR 0191. The bare `insight:<candidateKey>` key, written at rule
+// scope, is what `apps/api-gateway/src/analytics/insights/suppression.ts`'s
+// `insightRuleId()` + rule-scope `buildSuppressionKey()` compute server-side;
+// this is the SAME string, kept as one literal so the two sides cannot drift.
+// ---------------------------------------------------------------------------
+
+/** The `recommendation_actions.rule_key` a whole-type toggle reads/writes. */
+export function typeRuleKey(candidateKey: string): string {
+  return `insight:${candidateKey}`;
+}
+
+export interface DispositionRow {
+  ruleKey: string;
+  status: string;
+}
+
+/**
+ * The set of types currently OFF for this house — rows whose `ruleKey` is
+ * exactly a bare `insight:<candidateKey>` (no `#subject#grain` suffix, so an
+ * individual instance dismissed from the feed or a contextual rail never
+ * reads as the whole type being off) and whose status is `dismissed`.
+ */
+export function offTypeKeys(rows: DispositionRow[]): Set<string> {
+  const s = new Set<string>();
+  for (const r of rows) {
+    if (
+      r.status === "dismissed" &&
+      typeof r.ruleKey === "string" &&
+      r.ruleKey.startsWith("insight:") &&
+      !r.ruleKey.includes("#")
+    )
+      s.add(r.ruleKey);
+  }
+  return s;
+}
+
+/** Whether `candidateKey` is on for this house. `null` = not yet known. */
+export function isTypeEnabled(
+  candidateKey: string,
+  off: Set<string> | null,
+): boolean | null {
+  if (off === null) return null;
+  return !off.has(typeRuleKey(candidateKey));
+}
+
+// ---------------------------------------------------------------------------
+// Live items — "opened to its live recommendations" (ADR 0191).
+// ---------------------------------------------------------------------------
+
+export interface LiveInsight {
+  candidateKey: string;
+  category: string;
+  sentence: string;
+  score: number;
+  entityKey: string | null;
+  entityLabel: string | null;
+  /**
+   * The exact key an instance-scope dismiss/pin writes — computed server-side
+   * by `insight-generator.service.ts`'s `record()`, present only on a LIVE
+   * (`?refresh=true`) read, never on a stored row (`persist()` does not save
+   * it). A row without one is dropped rather than shown with a dead act.
+   */
+  suppressionKey: string;
+}
+
+/** One `GET /analytics/insights/:id?refresh=true` row, or null if unusable. */
+export function normalizeLiveInsight(raw: unknown): LiveInsight | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const candidateKey = typeof r.candidateKey === "string" ? r.candidateKey : "";
+  const sentence = typeof r.sentence === "string" ? r.sentence : "";
+  const suppression = r.suppression as { key?: unknown } | undefined;
+  const suppressionKey =
+    suppression && typeof suppression.key === "string" ? suppression.key : "";
+  if (!candidateKey || !sentence || !suppressionKey) return null;
+  return {
+    candidateKey,
+    category: typeof r.category === "string" ? r.category : "",
+    sentence,
+    score: Number(r.score ?? 0),
+    entityKey: typeof r.entityKey === "string" ? r.entityKey : null,
+    entityLabel: typeof r.entityLabel === "string" ? r.entityLabel : null,
+    suppressionKey,
+  };
+}
+
+/** Every live row belonging to one catalogue type, highest score first. */
+export function liveInsightsForType(
+  rows: unknown[],
+  candidateKey: string,
+): LiveInsight[] {
+  return rows
+    .map(normalizeLiveInsight)
+    .filter((i): i is LiveInsight => i !== null && i.candidateKey === candidateKey)
+    .sort((a, b) => b.score - a.score);
 }

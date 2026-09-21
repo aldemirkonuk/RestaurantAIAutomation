@@ -1,9 +1,8 @@
 /**
- * `/recommendations/catalog` as a VIEW — read-only, sharing this page's own
- * endpoint with the legacy `InsightCatalog`. What must hold:
+ * `/recommendations/catalog` as a VIEW, sharing this page's own endpoint
+ * with the legacy `InsightCatalog`. What must hold:
  *
- *  1. It reads `GET /analytics/insight-catalog/types` and nothing else — no
- *     write exists anywhere in this component.
+ *  1. It reads `GET /analytics/insight-catalog/types`, scoped to the tenant.
  *  2. "computable" is relabelled "Data present" everywhere, with the
  *     presence caveat printed once the read lands (the honesty fix this
  *     view exists for — see `rec-catalog.ts`).
@@ -11,6 +10,21 @@
  *     "Built, missing data" — collapsing the two would claim a certainty
  *     the payload does not carry.
  *  4. A failed read says so, with a retry, rather than an empty catalogue.
+ *
+ * ADR 0191 (founder, 2026-09-21) made the page actionable — what must hold
+ * there:
+ *  5. Owner/manager only sees a clickable On/Off; anyone else sees a
+ *     read-only badge, and neither ever renders for a type still `null`
+ *     (unknown) rather than defaulting to "On".
+ *  6. Toggling writes `PUT insight-catalog/types/:rid/:candidateKey/toggle`
+ *     and rolls back on a failed write rather than keeping the optimistic
+ *     flip.
+ *  7. "Open live items" only exists on a computable, currently-on type; an
+ *     off type says why instead of fetching.
+ *  8. Absence is never health: an unreadable on/off read says so (not
+ *     "Reading…" for ever, not "On"); a Pin/Dismiss that did not land puts
+ *     the item back and says so; unreadable dismissals are named on the
+ *     live list; a toggle whose audit row did not write says so.
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -19,13 +33,29 @@ import { MemoryRouter } from 'react-router-dom';
 import CatalogView from './CatalogView';
 import type { CatalogPayload } from './rec-catalog';
 
-const auth = vi.hoisted(() => ({ rid: 'r1' as string | null }));
-const api = vi.hoisted(() => ({ get: vi.fn() }));
+const auth = vi.hoisted(() => ({
+  rid: 'r1' as string | null,
+  role: 'owner' as 'owner' | 'manager' | 'staff' | null,
+}));
+const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: auth.rid }),
+  useAuth: () => ({
+    activeRestaurantId: auth.rid,
+    user: { role: auth.role },
+    activeRole: auth.role,
+  }),
 }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
+
+/** The dispositions call every draw fires alongside the catalogue read. */
+function mockDispositionsEmpty() {
+  api.get.mockImplementation((url: string) =>
+    url.includes('/actions?status=dismissed')
+      ? Promise.resolve({ data: { items: [] } })
+      : Promise.resolve({ data: PAYLOAD }),
+  );
+}
 
 const PAYLOAD: CatalogPayload = {
   total: 3,
@@ -88,19 +118,33 @@ function draw(path = '/recommendations/catalog') {
 
 beforeEach(() => {
   auth.rid = 'r1';
+  auth.role = 'owner';
   api.get.mockReset();
+  api.post.mockReset();
+  api.put.mockReset();
+  api.post.mockResolvedValue({ data: {} });
+  api.put.mockResolvedValue({ data: {} });
 });
 
+async function drawAndExpand(candidateKey: string) {
+  mockDispositionsEmpty();
+  draw();
+  await waitFor(() => expect(screen.getAllByTestId('rc-catalog-row')).toHaveLength(3));
+  fireEvent.click(screen.getByText(candidateKey));
+}
+
 describe('CatalogView', () => {
-  it('reads the same endpoint the legacy page uses, scoped to the active tenant, and nothing else', async () => {
-    api.get.mockResolvedValue({ data: PAYLOAD });
+  it('reads the catalogue and this house\'s type dispositions, both scoped to the tenant', async () => {
+    mockDispositionsEmpty();
     draw();
-    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
-    expect(api.get).toHaveBeenCalledWith('/analytics/insight-catalog/types?restaurantId=r1');
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    const urls = api.get.mock.calls.map((c) => c[0]);
+    expect(urls).toContain('/analytics/insight-catalog/types?restaurantId=r1');
+    expect(urls).toContain('/analytics/recommendations/r1/actions?status=dismissed');
   });
 
   it('relabels "computable" as "Data present" and prints the presence caveat', async () => {
-    api.get.mockResolvedValue({ data: PAYLOAD });
+    mockDispositionsEmpty();
     draw();
     await waitFor(() => expect(screen.getByTestId('rc-presence-caveat')).toBeInTheDocument());
     expect(
@@ -111,7 +155,7 @@ describe('CatalogView', () => {
   });
 
   it('reads a type with `implemented` omitted as Unknown, never Blocked', async () => {
-    api.get.mockResolvedValue({ data: PAYLOAD });
+    mockDispositionsEmpty();
     draw();
     await waitFor(() => expect(screen.getAllByTestId('rc-catalog-row')).toHaveLength(3));
     const rows = screen.getAllByTestId('rc-readiness').map((n) => n.textContent);
@@ -120,7 +164,7 @@ describe('CatalogView', () => {
   });
 
   it('filters by dimension and by search text, and the two are mutually exclusive', async () => {
-    api.get.mockResolvedValue({ data: PAYLOAD });
+    mockDispositionsEmpty();
     draw();
     await waitFor(() => expect(screen.getAllByTestId('rc-catalog-row')).toHaveLength(3));
 
@@ -143,11 +187,243 @@ describe('CatalogView', () => {
   });
 
   it('does not reuse rc-entry, whose 34px/1fr grid (rec-next.css:131, Entry.tsx\'s rc-gutter + rc-body) squeezes the row-head button and overlaps rc-plain', async () => {
-    api.get.mockResolvedValue({ data: PAYLOAD });
+    mockDispositionsEmpty();
     draw();
     const rows = await waitFor(() => screen.getAllByTestId('rc-catalog-row'));
     for (const row of rows) {
       expect(row.className.split(' ')).not.toContain('rc-entry');
     }
+  });
+});
+
+// ADR 0191 — actionable: on/off + live items.
+
+describe('CatalogView — type on/off (ADR 0191)', () => {
+  it('owner/manager sees a clickable On, and turning it off writes the toggle endpoint', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    const toggle = await screen.findByRole('button', { name: 'On' });
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        '/analytics/insight-catalog/types/r1/overall.revenue.vs_same_weekday/toggle',
+        { enabled: false },
+      ),
+    );
+    expect(await screen.findByRole('button', { name: 'Off' })).toBeInTheDocument();
+  });
+
+  it('rolls the optimistic flip back when the write fails', async () => {
+    api.put.mockRejectedValue({ response: { status: 500, data: { message: 'db down' } } });
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    fireEvent.click(await screen.findByRole('button', { name: 'On' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not saved');
+    expect(await screen.findByRole('button', { name: 'On' })).toBeInTheDocument();
+  });
+
+  it('a non-owner/manager sees a read-only badge, never a button', async () => {
+    auth.role = 'staff';
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    expect(await screen.findByTestId('rc-type-onoff-badge')).toHaveTextContent('On');
+    expect(screen.queryByRole('button', { name: 'On' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Off' })).not.toBeInTheDocument();
+  });
+
+  it('a type already dismissed at rule scope reads Off, never defaulting to On', async () => {
+    api.get.mockImplementation((url: string) =>
+      url.includes('/actions?status=dismissed')
+        ? Promise.resolve({
+            data: { items: [{ ruleKey: 'insight:overall.revenue.vs_same_weekday', status: 'dismissed' }] },
+          })
+        : Promise.resolve({ data: PAYLOAD }),
+    );
+    draw();
+    await waitFor(() => expect(screen.getAllByTestId('rc-catalog-row')).toHaveLength(3));
+    fireEvent.click(screen.getByText('overall.revenue.vs_same_weekday'));
+    expect(await screen.findByRole('button', { name: 'Off' })).toBeInTheDocument();
+  });
+});
+
+describe('CatalogView — open live items (ADR 0191)', () => {
+  it('only offers "Open live items" on a computable type', async () => {
+    mockDispositionsEmpty();
+    draw();
+    await waitFor(() => expect(screen.getAllByTestId('rc-catalog-row')).toHaveLength(3));
+    // The rail is an accordion — one row's detail is open at a time.
+    fireEvent.click(screen.getByText('overall.revenue.vs_same_weekday')); // computable
+    expect(await screen.findByRole('button', { name: 'Open live items' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('wine.revenue_per_seat.trend_direction')); // blocked
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Open live items' })).not.toBeInTheDocument(),
+    );
+  });
+
+  it('fetches live-generated items for that type only, and offers Pin/Dismiss on each', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: {
+          insights: [
+            {
+              candidateKey: 'overall.revenue.vs_same_weekday',
+              category: 'sales',
+              sentence: 'Tuesday sales were 12% below average Tuesdays.',
+              score: 1.2,
+              suppression: { key: 'insight:overall.revenue.vs_same_weekday#tuesday#d:2026-09-16' },
+            },
+            {
+              // a different type in the same category — must be filtered out
+              candidateKey: 'overall.revenue.trend_direction',
+              category: 'sales',
+              sentence: 'Not this one.',
+              score: 9,
+              suppression: { key: 'insight:overall.revenue.trend_direction' },
+            },
+          ],
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith(
+        '/analytics/insights/r1?categories=sales&candidateKey=overall.revenue.vs_same_weekday&refresh=true',
+      ),
+    );
+    expect(await screen.findByText('Tuesday sales were 12% below average Tuesdays.')).toBeInTheDocument();
+    expect(screen.queryByText('Not this one.')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pin' }));
+    expect(api.post).toHaveBeenCalledWith('/analytics/recommendations/r1/action', {
+      ruleKey: 'insight:overall.revenue.vs_same_weekday#tuesday#d:2026-09-16',
+      pinned: true,
+      snapshot: expect.objectContaining({ category: 'sales' }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(api.post).toHaveBeenCalledWith('/analytics/recommendations/r1/action', {
+      ruleKey: 'insight:overall.revenue.vs_same_weekday#tuesday#d:2026-09-16',
+      status: 'dismissed',
+      reason: 'not_relevant',
+      snapshot: expect.objectContaining({ category: 'sales' }),
+    });
+    expect(screen.queryByText('Tuesday sales were 12% below average Tuesdays.')).not.toBeInTheDocument();
+  });
+
+  it('an off type says so and never fetches live items', async () => {
+    api.get.mockImplementation((url: string) =>
+      url.includes('/actions?status=dismissed')
+        ? Promise.resolve({
+            data: { items: [{ ruleKey: 'insight:overall.revenue.vs_same_weekday', status: 'dismissed' }] },
+          })
+        : Promise.resolve({ data: PAYLOAD }),
+    );
+    draw();
+    await waitFor(() => expect(screen.getAllByTestId('rc-catalog-row')).toHaveLength(3));
+    fireEvent.click(screen.getByText('overall.revenue.vs_same_weekday'));
+    expect(
+      await screen.findByText('This type is off for this house — turn it on to see its live items.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open live items' })).not.toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining('/analytics/insights/'));
+  });
+});
+
+describe('CatalogView — absence is not health (ADR 0191, last-call fixes)', () => {
+  it('an unreadable on/off read says so — no On, no endless "Reading…"', async () => {
+    api.get.mockImplementation((url: string) =>
+      url.includes('/actions?status=dismissed')
+        ? Promise.reject({ response: { status: 500, data: { message: 'db down' } } })
+        : Promise.resolve({ data: PAYLOAD }),
+    );
+    draw();
+    await waitFor(() => expect(screen.getAllByTestId('rc-catalog-row')).toHaveLength(3));
+    fireEvent.click(screen.getByText('overall.revenue.vs_same_weekday'));
+    expect(
+      await screen.findByText(/Couldn't read whether this type is on for the house \(db down\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'On' })).not.toBeInTheDocument();
+  });
+
+  it('a dispositions reply with no list is not "nothing is off"', async () => {
+    api.get.mockImplementation((url: string) =>
+      url.includes('/actions?status=dismissed')
+        ? Promise.resolve({ data: {} })
+        : Promise.resolve({ data: PAYLOAD }),
+    );
+    draw();
+    await waitFor(() => expect(screen.getAllByTestId('rc-catalog-row')).toHaveLength(3));
+    fireEvent.click(screen.getByText('overall.revenue.vs_same_weekday'));
+    expect(await screen.findByText(/the reply carried no list/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'On' })).not.toBeInTheDocument();
+  });
+
+  it('a toggle whose audit row did not write says so', async () => {
+    api.put.mockResolvedValue({ data: { audit: { recorded: false, reason: 'permission denied' } } });
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    fireEvent.click(await screen.findByRole('button', { name: 'On' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Saved, but not written to the house log (permission denied).',
+    );
+  });
+
+  const LIVE = {
+    candidateKey: 'overall.revenue.vs_same_weekday',
+    category: 'sales',
+    sentence: 'Tuesday sales were 12% below average Tuesdays.',
+    score: 1.2,
+    suppression: { key: 'insight:overall.revenue.vs_same_weekday#tuesday#d:2026-09-16' },
+  };
+
+  it('a Dismiss that did not land puts the item back and says so', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({ data: { insights: [LIVE], suppressionsReadable: true } }),
+    );
+    api.post.mockRejectedValue({ response: { status: 500, data: { message: 'db down' } } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    expect(await screen.findByText(LIVE.sentence)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not saved (db down)');
+    expect(screen.getByText(LIVE.sentence)).toBeInTheDocument();
+  });
+
+  it('a Pin that did not land is un-pinned again and says so', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({ data: { insights: [LIVE], suppressionsReadable: true } }),
+    );
+    api.post.mockRejectedValue({ response: { status: 500, data: { message: 'db down' } } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Pin' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not saved (db down)');
+    expect(screen.getByRole('button', { name: 'Pin' })).toBeInTheDocument();
+  });
+
+  it('never offers a one-item Dismiss that would silence the whole type', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: {
+          insights: [{ ...LIVE, suppression: { key: 'insight:overall.revenue.vs_same_weekday' } }],
+          suppressionsReadable: true,
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    expect(await screen.findByTestId('rc-live-whole-type')).toHaveTextContent(
+      'Dismissing this one hides the whole type',
+    );
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).not.toBeInTheDocument();
+  });
+
+  it('names unreadable dismissals on the live list instead of presenting it as clean', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({ data: { insights: [LIVE], suppressionsReadable: false } }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    expect(
+      await screen.findByText(/Dismissals could not be read — some of these may already be dismissed/),
+    ).toBeInTheDocument();
   });
 });
