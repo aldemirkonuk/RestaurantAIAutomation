@@ -80,6 +80,14 @@ export class QueueLetterDto {
   @ValidateNested({ each: true })
   @Type(() => InsertedInsightDto)
   insights?: InsertedInsightDto[];
+
+  @ApiPropertyOptional({
+    description:
+      "A manager releasing a staff member's waiting letter names its request (founder answer 3, 2026-09-21). The request is taken once; the letter keeps the composer's undo window.",
+  })
+  @IsOptional()
+  @IsUUID()
+  requestId?: string;
 }
 
 export class UpsertLetterTemplateDto {

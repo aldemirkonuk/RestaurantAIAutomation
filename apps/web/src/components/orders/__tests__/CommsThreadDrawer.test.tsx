@@ -39,6 +39,14 @@ vi.mock('../../../hooks/queries/useDraftEmailQueries', () => ({
   requestDraftSend: (...a: unknown[]) => seams.requestDraftSend(...a),
   issueManualReplyChallenge: (...a: unknown[]) => seams.issueManualReplyChallenge(...a),
   issueConfirmDealChallenge: (...a: unknown[]) => seams.issueConfirmDealChallenge(...a),
+  // A deal's standing is read with the deal's money (founder answer 3).
+  useDealRequest: vi.fn(() => ({
+    data: { request: null, standing: seams.standing },
+    isPending: false,
+    isError: false,
+  })),
+  requestConfirmDeal: vi.fn(),
+  dealRequestKeys: { byOrder: (id: string) => ['deal-request', id] },
   draftKeys: { all: ['drafts'] },
   useToggleAiPaused: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useCancelScheduledSend: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
@@ -95,6 +103,23 @@ function renderDrawer(props?: Partial<React.ComponentProps<typeof CommsThreadDra
 describe('CommsThreadDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('a draft the gateway refused before sending reads as closed, with the reason (founder answer 6)', async () => {
+    vi.mocked(useOrderConversations).mockReturnValue({
+      data: [
+        makeConv({
+          status: 'SEND_REFUSED',
+          refusalReason: 'Refusing to write the To header: its value contains a line break.',
+        } as Partial<OrderConversationDto>),
+      ],
+      isLoading: false,
+    } as any)
+    renderDrawer()
+    await waitFor(() => expect(screen.getByText('Refused · not sent')).toBeInTheDocument())
+    expect(screen.getByTestId('send-refused-conv-1')).toHaveTextContent(
+      'Nothing was sent, and this draft is closed: Refusing to write the To header',
+    )
   })
 
   it('shows a sent outbound email in the thread', async () => {

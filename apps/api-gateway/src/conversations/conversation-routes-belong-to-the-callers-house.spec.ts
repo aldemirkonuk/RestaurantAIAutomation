@@ -151,10 +151,17 @@ let tokenRole = "manager";
 const authority = {
   assertMaySend: jest.fn(async () => {
     if (["owner", "manager", "grantee"].includes(tokenRole)) {
-      return { mode: "send", basis: tokenRole === "grantee" ? "grant" : tokenRole, grant: null, role: tokenRole };
+      return {
+        mode: "send",
+        basis: tokenRole === "grantee" ? "grant" : tokenRole,
+        grant: tokenRole === "grantee" ? { id: "grant-1", grantorUserId: "owner-1", expiresAt: null, limitAmount: null, limitCurrency: null } : null,
+        role: tokenRole,
+      };
     }
     throw new ForbiddenException("Nothing was sent. Only an owner, a manager, or someone an owner has named may approve this message to the vendor with one hold. Ask an owner or a manager to do it.");
   }),
+  // A release under a grant is written to the security ledger (founder answer 4).
+  witnessGrantUse: jest.fn(async () => undefined),
 };
 const seal = {
   issue: jest.fn(async (p: any) => ({ challenge: "good", expiresAt: "t", action: p.action })),
@@ -554,6 +561,12 @@ describe("approve is sealed and admits a grantee (ADR 0175 D9/D10, 2026-09-21)",
     const res = await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A, role: "grantee" }, APPROVE_BODY);
     expect(res.status).toBe(201);
     expect(authority.assertMaySend).toHaveBeenCalled();
+    // The release under a grant is on the security ledger, after the seal and
+    // before the row is written (ADR 0112 F12; founder answer 4, 2026-09-21).
+    expect(authority.witnessGrantUse).toHaveBeenCalledWith(
+      "grant-1",
+      expect.objectContaining({ restaurantId: HOUSE_A, act: "approve_conversation", subject: `procurement_conversation:${CONV_A}` }),
+    );
   });
 
   it("the mint answers another house's conversation 404, before WHO is asked", async () => {

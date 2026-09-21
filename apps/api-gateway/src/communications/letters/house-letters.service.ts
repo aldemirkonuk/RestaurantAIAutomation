@@ -67,8 +67,12 @@ import {
   VendorSendAuthorityService,
   type SendOrAsk,
 } from "../../organizations/vendor-send-authority.service";
+import {
+  VendorSendRequestsService,
+  type VendorSendRequestView,
+} from "../../organizations/vendor-send-requests.service";
 import { assertNamedActor } from "./house-letters.actor";
-import { COMMITMENT_PATTERN_SOURCES } from "../../common/orchestrator/commitment-patterns";
+import { composerGuardrails, type GuardrailHit } from "./composer-guardrails";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import type { IntegrationId } from "../../integrations/integrations-oauth.constants";
 import { HouseSenderService } from "./house-sender.service";
@@ -147,12 +151,7 @@ export type LetterCategory = (typeof LETTER_CATEGORIES)[number];
  *  (procurement.service.ts:2697-2703 filters on that last one). */
 export const LETTER_TEMPLATE_TYPE = "letter";
 
-export interface GuardrailHit {
-  rule: string;
-  /** The sentence shown to the writer. Never a code, never silent. */
-  says: string;
-  blocking: boolean;
-}
+export type { GuardrailHit } from "./composer-guardrails";
 
 export interface BookEntry {
   providerId: string;
@@ -162,14 +161,6 @@ export interface BookEntry {
   source: "provider" | "contact";
 }
 
-const COMMITMENT_RE = COMMITMENT_PATTERN_SOURCES.map((s) => new RegExp(s, "i"));
-
-/** An unresolved merge token: `{{ anything }}`. */
-// `[^{}]+` between the literal braces: one quantifier, nothing adjacent for it
-// to share a character with, so the match is linear in the letter's length. The
-// earlier `\s*[^}]+\s*` let a space match either side and backtracked
-// quadratically on a body full of them.
-const UNRESOLVED_TOKEN_RE = /\{\{[^{}]+\}\}/;
 
 @Injectable()
 export class HouseLettersService {
@@ -184,6 +175,9 @@ export class HouseLettersService {
     // and `queue` REFUSES when either is missing.
     @Optional() private readonly authority?: VendorSendAuthorityService,
     @Optional() private readonly seal?: SealChallengeService,
+    // Staff ask a manager to send a letter (founder answer 3, 2026-09-21).
+    // Supplied by VendorSendAuthorityModule; the ask route refuses without it.
+    @Optional() private readonly requests?: VendorSendRequestsService,
   ) {}
 
   private requireGates(): { authority: VendorSendAuthorityService; seal: SealChallengeService } {
@@ -197,8 +191,9 @@ export class HouseLettersService {
 
   /**
    * Whether this person's hold on the composer sends — the readout the sheet
-   * shows BEFORE the hold. The composer has no request path yet (an open fork
-   * in the ADR 0175 amendment), so "ask" says who can send instead.
+   * shows BEFORE the click. Since the founder's answer (3) of 2026-09-21 a
+   * staff member may ASK a manager to send a composer letter, so "ask" says
+   * the letter will be kept and a manager asked (`ask`, below).
    */
   async sendOrAsk(userId: string, restaurantId: string): Promise<SendOrAsk> {
     if (!this.authority) {
@@ -211,7 +206,133 @@ export class HouseLettersService {
         sentence: "Whether your hold sends could not be read (not wired into the composer). Nothing will be sent until it can.",
       };
     }
-    return this.authority.readout(userId, restaurantId, { canAsk: false });
+    return this.authority.readout(userId, restaurantId, { canAsk: true });
+  }
+
+  /**
+   * A staff member asks a manager to send this letter (founder answer 3,
+   * 2026-09-21: *"the same request flow as drafted replies (request state,
+   * exact text/terms saved, manager releases with one hold)"*).
+   *
+   * The letter is checked the way a send would check it — the recipient must
+   * be in the book and no guardrail may block — so a manager is never asked to
+   * release a letter the queue would refuse. Nothing is queued and nothing is
+   * sent: the exact letter is saved (`vendor_send_requests`), the owners and
+   * managers are told on the bell, and the release is the ordinary sealed
+   * queue with this request's id (`queue`, `dto.requestId`), which keeps the
+   * composer's undo window.
+   */
+  async ask(params: {
+    restaurantId: string;
+    userId: string;
+    dto: QueueLetterDto;
+  }): Promise<{ requestId: string; requestedAt: string; told: number; says: string; notices: GuardrailHit[] }> {
+    const { restaurantId, dto } = params;
+    const userId = assertNamedActor(params.userId, "asked and nothing was sent");
+    if (!this.requests) {
+      throw new InternalServerErrorException(
+        "Requests could not be recorded (not wired into the composer), so nothing was asked and nothing was sent.",
+      );
+    }
+    if (dto.requestId) {
+      throw new BadRequestException("A request cannot name another request. Nothing was asked.");
+    }
+    const { match, hits } = await this.checkLetter(restaurantId, dto);
+    const letter = {
+      providerId: dto.providerId,
+      to: match.email,
+      subject: dto.subject,
+      body: dto.body,
+      orderId: dto.orderId ?? null,
+      templateId: dto.templateId ?? null,
+    };
+    const row = await this.requests.ask({
+      userId,
+      restaurantId,
+      kind: "house_letter",
+      orderId: dto.orderId ?? null,
+      providerId: dto.providerId,
+      payload: letter,
+      sealArgs: houseLetterSealArgs({ ...dto, to: match.email }),
+      act: "send this letter",
+    });
+    const told = await this.requests.tellManagers({
+      restaurantId,
+      requesterId: userId,
+      kind: "house_letter",
+      vendorName: match.providerName,
+      requestId: row.id,
+      orderId: dto.orderId ?? null,
+    });
+    return {
+      requestId: row.id,
+      requestedAt: row.requested_at,
+      told,
+      notices: hits.filter((h) => !h.blocking),
+      says:
+        told > 0
+          ? `Asked. Your letter is saved exactly as you wrote it, and ${told} ${told === 1 ? "owner or manager was" : "owners and managers were"} told. Nothing has been sent; you will see who sends it.`
+          : "Asked. Your letter is saved exactly as you wrote it, but no owner or manager could be told; tell one yourself. Nothing has been sent.",
+    };
+  }
+
+  /**
+   * The letters waiting for a manager. An owner or a manager sees every one
+   * waiting in the house (they release them); anyone else sees only their own.
+   */
+  async requestsFor(userId: string, restaurantId: string): Promise<{ requests: VendorSendRequestView[] }> {
+    if (!this.requests || !this.authority) {
+      throw new InternalServerErrorException("The waiting letters could not be read (not wired into the composer).");
+    }
+    const reading = await this.authority.standing(userId, restaurantId);
+    const role = (reading.role ?? "").trim().toLowerCase();
+    const releaser = role === "owner" || role === "manager";
+    return {
+      requests: await this.requests.waiting(restaurantId, "house_letter", releaser ? {} : { requestedBy: userId }),
+    };
+  }
+
+  /**
+   * The two checks a letter must pass before anyone holds on it: its
+   * recipient is in the book for its vendor, and no guardrail blocks it.
+   * Shared by the send and the ask, so the two cannot disagree.
+   */
+  private async checkLetter(
+    restaurantId: string,
+    dto: QueueLetterDto,
+  ): Promise<{ match: BookEntry; hits: GuardrailHit[]; priorOutbound: number | null }> {
+    const book = await this.book(restaurantId).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new BadRequestException(
+        `${message} Nothing was queued and nothing was sent — a recipient cannot be checked against a book that could not be read.`,
+      );
+    });
+    const forProvider = book.filter((e) => e.providerId === dto.providerId);
+    if (forProvider.length === 0) {
+      throw new UnprocessableEntityException(
+        `That vendor has no address in this house's book, so there is nowhere to send. Add the contact to the vendor first (POST /providers/${dto.providerId}/contacts) — an address typed into a letter is not a vendor record, and the guardrails, the round count and the conversation book all key on the record.`,
+      );
+    }
+    const match = forProvider.find((e) => sameAddress(e.email, dto.to));
+    if (!match) {
+      throw new UnprocessableEntityException(
+        `${dto.to} is not in this house's book for that vendor. The addresses on record are: ${forProvider.map((e) => e.email).join(", ")}. Add it to the book first — Mudavym does not write to an address it has no record of.`,
+      );
+    }
+    const priorOutbound = dto.orderId ? await this.countOutboundOnOrder(dto.orderId) : null;
+    const hits = this.guardrails({
+      body: dto.body,
+      subject: dto.subject,
+      priorOutboundOnOrder: priorOutbound,
+    });
+    const blocking = hits.filter((h) => h.blocking);
+    if (blocking.length > 0) {
+      throw new UnprocessableEntityException({
+        message: blocking.map((h) => h.says).join(" "),
+        guardrails: blocking,
+      });
+    }
+    return { match, hits, priorOutbound };
   }
 
   /**
@@ -226,7 +347,7 @@ export class HouseLettersService {
   }): Promise<{ challenge: string; expiresAt: string; act: string }> {
     const userId = assertNamedActor(params.userId, "sealed and nothing was sent");
     const { authority, seal } = this.requireGates();
-    await authority.assertMaySend(userId, params.restaurantId, "send this letter", { canAsk: false });
+    await authority.assertMaySend(userId, params.restaurantId, "send this letter", { canAsk: true });
     const issued = await seal.issue({
       restaurantId: params.restaurantId,
       actorUserId: userId,
@@ -372,40 +493,7 @@ export class HouseLettersService {
     subject: string;
     priorOutboundOnOrder: number | null;
   }): GuardrailHit[] {
-    const hits: GuardrailHit[] = [];
-    const text = `${params.subject}\n${params.body}`;
-
-    const matched = COMMITMENT_RE.filter((p) => p.test(text));
-    if (matched.length > 0) {
-      const phrase = firstMatch(text, matched[0]);
-      hits.push({
-        rule: "commitment_language",
-        says: `This letter contains language that can form a binding purchase commitment${phrase ? ` — "${phrase}"` : ""}. Mudavym will not send a commitment from a free-text letter. Rewrite the sentence, or place the order so the commitment is the order and not the prose.`,
-        blocking: true,
-      });
-    }
-
-    const token = UNRESOLVED_TOKEN_RE.exec(params.body);
-    if (token) {
-      hits.push({
-        rule: "unresolved_merge_field",
-        says: `The letter still contains an unfilled merge field (${token[0]}). Fill it or delete the sentence — a letter that ships a raw placeholder tells the vendor a figure exists when none was found.`,
-        blocking: true,
-      });
-    }
-
-    if (
-      params.priorOutboundOnOrder !== null &&
-      params.priorOutboundOnOrder + 1 >= 3
-    ) {
-      hits.push({
-        rule: "max_rounds",
-        says: `This is message ${params.priorOutboundOnOrder + 1} from the house on this order. The AI reply path stops and asks for approval at three; you are the approval, so this is stated, not blocked.`,
-        blocking: false,
-      });
-    }
-
-    return hits;
+    return composerGuardrails(params);
   }
 
   // ==========================================================================
@@ -438,48 +526,40 @@ export class HouseLettersService {
     // An owner, a manager or a grantee. First, so a person whose hold cannot
     // send is told so before the book, the guardrails or the mailbox are read.
     const gates = this.requireGates();
+    // canAsk: a staff member is told to hold (click) again to ASK a manager
+    // instead (founder answer 3, 2026-09-21; `ask`).
     const standing = await gates.authority.assertMaySend(userId, restaurantId, "send this letter", {
-      canAsk: false,
+      canAsk: true,
     });
 
-    // ── 1. the recipient must be in the book ────────────────────────────────
-    // `book()` states the failure; this caller adds what it means HERE, because
-    // a failed read on the way to a send is a letter that did not go.
-    const book = await this.book(restaurantId).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new BadRequestException(
-        `${message} Nothing was queued and nothing was sent — a recipient cannot be checked against a book that could not be read.`,
-      );
-    });
-    const forProvider = book.filter((e) => e.providerId === dto.providerId);
-    if (forProvider.length === 0) {
-      throw new UnprocessableEntityException(
-        `That vendor has no address in this house's book, so there is nowhere to send. Add the contact to the vendor first (POST /providers/${dto.providerId}/contacts) — an address typed into a letter is not a vendor record, and the guardrails, the round count and the conversation book all key on the record.`,
-      );
-    }
-    const match = forProvider.find((e) => sameAddress(e.email, dto.to));
-    if (!match) {
-      throw new UnprocessableEntityException(
-        `${dto.to} is not in this house's book for that vendor. The addresses on record are: ${forProvider.map((e) => e.email).join(", ")}. Add it to the book first — Mudavym does not write to an address it has no record of.`,
-      );
+    // A release of a staff member's request names it (founder answer 3). The
+    // request must be this house's, waiting, and to the same vendor: a
+    // manager may change the words (a new version under their own seal) but
+    // not write to someone else under the staffer's request.
+    if (dto.requestId) {
+      if (!this.requests) {
+        throw new InternalServerErrorException(
+          "The request could not be checked (not wired into the composer), so nothing was queued and nothing was sent.",
+        );
+      }
+      const request = await this.requests.one(restaurantId, dto.requestId, "house_letter");
+      if (request.state !== "waiting") {
+        throw new ConflictException(
+          request.state === "released"
+            ? "That letter was already released by someone else. Nothing more was sent."
+            : "That request was closed. Nothing was sent.",
+        );
+      }
+      if (request.provider_id !== dto.providerId) {
+        throw new UnprocessableEntityException(
+          "That request is a letter to a different vendor. A release sends the letter that was asked for; write a new letter to write to someone else. Nothing was sent.",
+        );
+      }
     }
 
-    // ── 2. the guardrails, over the human's own draft ───────────────────────
-    const priorOutbound = dto.orderId
-      ? await this.countOutboundOnOrder(dto.orderId)
-      : null;
-    const hits = this.guardrails({
-      body: dto.body,
-      subject: dto.subject,
-      priorOutboundOnOrder: priorOutbound,
-    });
-    const blocking = hits.filter((h) => h.blocking);
-    if (blocking.length > 0) {
-      throw new UnprocessableEntityException({
-        message: blocking.map((h) => h.says).join(" "),
-        guardrails: blocking,
-      });
-    }
+    // ── 1. the recipient must be in the book; 2. the guardrails ─────────────
+    // (`checkLetter`, shared with `ask` so the two cannot disagree.)
+    const { match, hits, priorOutbound } = await this.checkLetter(restaurantId, dto);
 
     // ── 3. the house must have a sending identity ───────────────────────────
     const identity = await this.sender.resolve(restaurantId, userId);
@@ -532,6 +612,28 @@ export class HouseLettersService {
       args: houseLetterSealArgs(dto),
       challenge: params.challenge,
     });
+    // A letter queued under a grant is on the security ledger before the row
+    // exists (ADR 0112 F12; founder answer 4, 2026-09-21).
+    await gates.authority.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
+      userId,
+      restaurantId,
+      act: HOUSE_LETTER_ACT,
+      subject: `house_letter:${dto.providerId}`,
+    });
+
+    // The release takes the request ONCE (two managers releasing together:
+    // the loser sends nothing). After the seal, so a refused seal never takes
+    // a request; given back if the letter then fails to queue.
+    const claimed =
+      dto.requestId && this.requests
+        ? await this.requests.claim({
+            restaurantId,
+            requestId: dto.requestId,
+            kind: "house_letter",
+            releasedBy: userId,
+            releaseSealArgs: houseLetterSealArgs({ ...dto, to: match.email }),
+          })
+        : null;
 
     const now = Date.now();
     const dispatchAt = new Date(now + (identity.undoMs ?? 0)).toISOString();
@@ -568,9 +670,24 @@ export class HouseLettersService {
       .single();
 
     if (error || !data) {
+      if (claimed && dto.requestId && this.requests) {
+        await this.requests.unclaim(restaurantId, dto.requestId, userId);
+      }
       throw new BadRequestException(
         `The letter was NOT queued and NOT sent — the conversation book refused the row (${error?.message ?? "no row returned"}).`,
       );
+    }
+
+    if (claimed && dto.requestId && this.requests) {
+      const conversationId = String((data as Record<string, unknown>).id);
+      await this.requests.linkConversation(restaurantId, dto.requestId, conversationId);
+      await this.requests.tellRequester({
+        restaurantId,
+        row: claimed.row,
+        releasedBy: userId,
+        asWritten: claimed.asWritten,
+        vendorName: match.providerName,
+      });
     }
 
     if (dto.templateId)
@@ -996,10 +1113,7 @@ export function sameAddress(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-function firstMatch(text: string, re: RegExp): string | null {
-  const m = re.exec(text);
-  return m ? m[0] : null;
-}
+
 
 /** The merge fields a template body actually declares, in order of appearance. */
 export function mergeFieldsIn(

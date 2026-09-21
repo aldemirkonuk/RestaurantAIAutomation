@@ -74,6 +74,7 @@ type SendState =
       notices: GuardrailHit[];
     }
   | { kind: 'cancelled'; says: string }
+  | { kind: 'asked'; says: string }
   | { kind: 'refused'; message: string; guardrails: GuardrailHit[] };
 
 export interface ComposeSheetProps {
@@ -115,6 +116,17 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
   // owner, a manager or a grantee may send from it. Said before the hold.
   const standing = sender?.sendOrAsk ?? null;
   const maySend = Boolean(standing?.readable && standing.maySend);
+  // A staff member's letter is KEPT and a manager is asked (founder answer 3,
+  // 2026-09-21). The composer stays a click (answer 7), so the ask is a click
+  // too; the manager's release is one hold.
+  const mayAsk = Boolean(standing?.readable && !standing.maySend && standing.mode === 'ask');
+  const canAsk =
+    mayAsk &&
+    to !== null &&
+    subject.trim().length > 0 &&
+    body.trim().length > 0 &&
+    send.kind !== 'queueing' &&
+    send.kind !== 'asked';
   const canSend =
     !data.senderFailed &&
     Boolean(sender?.sendable) &&
@@ -224,6 +236,22 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
       });
     }
   }, [to, letter, mint, data]);
+
+  /** Ask an owner or a manager to send this exact letter. Nothing is queued. */
+  const ask = useCallback(async () => {
+    if (!letter) return;
+    setSend({ kind: 'queueing' });
+    try {
+      const { data: result } = await apiClient.post<{ says: string; requestId: string }>(
+        '/communications/letters/requests',
+        letter,
+      );
+      setSend({ kind: 'asked', says: result.says });
+      data.refetchRequests?.();
+    } catch (e) {
+      setSend({ kind: 'refused', message: `Nothing was asked: ${errText(e)}`, guardrails: guardrailsFrom(e) });
+    }
+  }, [letter, data]);
 
   const cancel = useCallback(async () => {
     if (send.kind !== 'queued') return;
@@ -495,12 +523,38 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
           </p>
         )}
 
+        {send.kind === 'asked' && (
+          <p role="status" data-testid="letter-asked" style={{ margin: 0, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+            {send.says}
+          </p>
+        )}
+
         {/* ── Send ────────────────────────────────────────────────────────── */}
         <div
           className="flex flex-wrap items-center gap-3 pt-1"
           style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}
         >
-          {ceremony === 'seal' ? (
+          {mayAsk ? (
+            <button
+              type="button"
+              data-testid="letter-ask"
+              onClick={() => void ask()}
+              disabled={!canAsk}
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: '7px 16px',
+                borderRadius: 9,
+                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                background: canAsk ? 'var(--seal, #1A5E6B)' : 'transparent',
+                color: canAsk ? 'var(--paper-0, #FAF7F1)' : 'var(--ink-3, #7C7365)',
+                cursor: canAsk ? 'pointer' : 'not-allowed',
+                opacity: canAsk ? 1 : 0.7,
+              }}
+            >
+              {send.kind === 'queueing' ? 'Asking…' : 'Ask a manager to send it'}
+            </button>
+          ) : ceremony === 'seal' ? (
             <HoldToApprove
               onChallenge={mint}
               onApprove={(challenge) => queue(challenge)}
@@ -538,6 +592,9 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
                   ? `Send is disabled: ${sender.words}`
                   : !standing
                     ? 'Send is disabled: whether you may send letters to vendors has not been answered yet.'
+                    : mayAsk
+                      ? (standing.sentence ??
+                        'Your letter will be kept exactly as you wrote it and a manager asked to send it.')
                     : !maySend
                       ? `Send is disabled: ${standing.sentence ?? 'whether you may send letters to vendors could not be read.'}`
                   : standing.basis === 'grant' && standing.grant

@@ -20,9 +20,10 @@
  */
 
 import { Test, TestingModule } from "@nestjs/testing";
+import { UnprocessableEntityException } from "@nestjs/common";
 import {
   ProcurementService,
-  SendRefusedBeforeSendError,
+  DRAFT_SEND_REFUSED,
 } from "../procurement.service";
 import { DatabaseService } from "../../database/database.service";
 import { EventsService } from "../../events/events.service";
@@ -329,27 +330,38 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     return { send, sendEmail };
   }
 
-  it("releases the draft on a header refusal and blames the header, not GMAIL_REFRESH_TOKEN", async () => {
+  it("CLOSES the draft on a header refusal with a 422 that says why, and blames the header, not GMAIL_REFRESH_TOKEN", async () => {
+    // Founder answer 6 (2026-09-21): both send paths close the draft on a
+    // definite refusal with the reason shown — the in-process twin of the
+    // relay's RELAY_REFUSED. It used to go back to PENDING_APPROVAL, inviting
+    // a tap that would be refused identically.
     const store = makeStore();
     conversationRow(store).providers.contact_email =
       "supplier@bordeaux.com\r\nBcc: attacker@evil.example";
     const { send, sendEmail } = realGmail();
     const service = await buildService(store, sendEmail);
 
-    const err = await service
+    const err: any = await service
       .approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR)
       .catch((e: Error) => e);
 
-    expect(err).toBeInstanceOf(SendRefusedBeforeSendError);
-    expect((err as Error).message).toMatch(
+    expect(err).toBeInstanceOf(UnprocessableEntityException);
+    const body = err.getResponse();
+    expect(body).toMatchObject({ reason: DRAFT_SEND_REFUSED, closed: true });
+    expect(body.message).toMatch(/Nothing was sent, and this draft is closed/);
+    expect(body.message).toMatch(
       /Refusing to write the To header: its value contains a line break/,
     );
-    expect((err as Error).message).toMatch(/Gmail was never called/);
-    expect((err as Error).message).not.toMatch(/GMAIL_REFRESH_TOKEN/);
-    expect((err as Error).message).not.toMatch(/may or may not/);
+    expect(body.message).toMatch(/Gmail was never called/);
+    expect(body.message).not.toMatch(/GMAIL_REFRESH_TOKEN/);
+    expect(body.message).not.toMatch(/may or may not/);
     expect(send).not.toHaveBeenCalled();
-    // Definite refusal: re-approvable once the address is fixed, not parked.
-    expect(conversationRow(store).status).toBe("PENDING_APPROVAL");
+    // Closed, with the gateway's own sentence kept on the row; not re-approvable.
+    expect(conversationRow(store).status).toBe("SEND_REFUSED");
+    expect(conversationRow(store).send_refusal_reason).toMatch(/Refusing to write the To header/);
+    await expect(
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR),
+    ).rejects.toThrow(/No pending draft/);
   });
 
   it("classifies a header refusal by type, never by text a vendor controls", async () => {

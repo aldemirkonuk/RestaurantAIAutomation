@@ -72,7 +72,10 @@ function makeService(opts: { updateError?: { message: string } } = {}) {
   const service = new ConversationsService(
     { supabase: client } as unknown as DatabaseService,
     { redeem: async () => ({ sealId: "seal-1" }) } as any,
-    { assertMaySend: async () => ({ mode: "send", basis: "manager", grant: null, role: "manager" }) } as any,
+    {
+      assertMaySend: async () => ({ mode: "send", basis: "manager", grant: null, role: "manager" }),
+      witnessGrantUse: async () => undefined,
+    } as any,
   );
 
   return { service, updates };

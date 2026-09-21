@@ -123,6 +123,68 @@ export async function requestDraftSend(input: {
   return data;
 }
 
+/**
+ * A staff member's request that an owner or a manager send a letter or
+ * confirm a deal (founder answer 3, 2026-09-21) — `vendor_send_requests`.
+ * `payload` is exactly what was asked for: a deal's terms, or the whole letter.
+ */
+export interface VendorSendRequestDto {
+  id: string;
+  kind: "confirm_deal" | "house_letter";
+  orderId: string | null;
+  providerId: string | null;
+  requestedBy: { userId: string | null; name: string | null };
+  requestedAt: string;
+  payload: Record<string, unknown>;
+  state: "waiting" | "released" | "closed";
+  releasedBy: { userId: string | null; name: string | null } | null;
+  releasedAt: string | null;
+  releasedAsWritten: boolean | null;
+  conversationId: string | null;
+}
+
+/** The deal request waiting on an order, and whether this person's hold confirms or asks. */
+export interface DealRequestReadoutDto {
+  request: VendorSendRequestDto | null;
+  standing: SendOrAskDto;
+}
+
+export const dealRequestKeys = {
+  byOrder: (orderId: string) => ["deal-request", orderId] as const,
+};
+
+/**
+ * Read BEFORE the hold, like the draft's standing: a deal's standing is read
+ * with the deal's own money, so a grantee whose limit does not cover it is told
+ * their hold will ask (ADR 0175 D10; founder answer 3).
+ */
+export function useDealRequest(orderId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: dealRequestKeys.byOrder(orderId ?? ""),
+    queryFn: () =>
+      apiClient
+        .get(`/procurement/orders/${orderId}/deal-request`)
+        .then((r) => r.data as DealRequestReadoutDto),
+    enabled: !!orderId && enabled,
+    staleTime: 10_000,
+  });
+}
+
+/** A staff member asks an owner or a manager to confirm the deal on these terms. Nothing is committed. */
+export async function requestConfirmDeal(input: {
+  orderId: string;
+  finalPrice: number;
+  quantity: number;
+  sendConfirmation?: boolean;
+}): Promise<{ requestId: string; requestedAt: string; told: number; says: string }> {
+  const { data } = await apiClient.post(`/procurement/orders/${input.orderId}/confirm-deal-request`, {
+    finalPrice: input.finalPrice,
+    quantity: input.quantity,
+    sendConfirmation: input.sendConfirmation !== false,
+  });
+  return data;
+}
+
 /** Mint the seal a hand-written reply must carry back (ADR 0175 D9, 2026-09-21). */
 export async function issueManualReplyChallenge(input: {
   orderId: string;
@@ -291,6 +353,11 @@ export interface OrderConversationDto {
   id: string;
   orderId: string;
   status: string;
+  /**
+   * Why the gateway's own send closed this draft before anything left
+   * (status SEND_REFUSED; founder answer 6, 2026-09-21). null otherwise.
+   */
+  refusalReason?: string | null;
   direction: "OUTBOUND" | "INBOUND";
   emailType: string;
   roundCount: number;
@@ -601,6 +668,10 @@ export function useConfirmDeal() {
       queryClient.invalidateQueries({
         queryKey: dealProposalKeys.byOrder(variables.orderId),
       });
+      // A confirmation answers a staff member's waiting request for this deal.
+      queryClient.invalidateQueries({
+        queryKey: dealRequestKeys.byOrder(variables.orderId),
+      });
       queryClient.invalidateQueries({
         queryKey: orderConversationKeys.byOrder(variables.orderId),
       });
@@ -620,11 +691,13 @@ export function useDismissDeal() {
     mutationFn: (orderId: string) =>
       apiClient
         .post(`/procurement/orders/${orderId}/dismiss-deal`)
-        .then((r) => r.data as { dismissed: boolean }),
+        .then((r) => r.data as { dismissed: boolean; requestsClosed: number }),
     onSettled: (_d, _e, orderId) => {
       queryClient.invalidateQueries({
         queryKey: dealProposalKeys.byOrder(orderId),
       });
+      // A dismissal closes a staff member's waiting request on the deal too.
+      queryClient.invalidateQueries({ queryKey: dealRequestKeys.byOrder(orderId) });
       queryClient.invalidateQueries({
         queryKey: orderConversationKeys.byOrder(orderId),
       });

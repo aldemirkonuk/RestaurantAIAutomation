@@ -3,6 +3,7 @@ import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { VendorSendAuthorityModule } from "./vendor-send-authority.module";
+import { SealModule } from "../common/seal/seal.module";
 import { AuthorityGrantsController } from "./authority-grants.controller";
 import { AuthorityGrantsService } from "./authority-grants.service";
 
@@ -18,6 +19,9 @@ import { AuthorityGrantsService } from "./authority-grants.service";
     DatabaseModule,
     AuthModule,
     VendorSendAuthorityModule,
+    // The seal on issue, revoke, re-approve and delete (founder answer 4,
+    // 2026-09-21). SealModule imports DatabaseModule only: no cycle.
+    SealModule,
     forwardRef(() => NotificationsModule),
   ],
   controllers: [AuthorityGrantsController],

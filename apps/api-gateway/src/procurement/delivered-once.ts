@@ -80,6 +80,26 @@ export const DELIVERY_REFUSED_ALREADY_ARRIVED = "order_already_delivered";
 export const DELIVERY_REFUSED_STATE_UNREADABLE = "order_state_unreadable";
 
 /**
+ * The `reason` code when the delivery's stock booking was REFUSED by the
+ * ledger (founder, answer 9, 2026-09-21): the order is put back to the status
+ * it had, so the delivery can be recorded again, and the 422 says whether the
+ * put-back itself landed.
+ */
+export const DELIVERY_REFUSED_STOCK_NOT_BOOKED = "delivery_stock_not_booked";
+
+/** The sentence a refused booking answers with. */
+export function refuseUnbookedDelivery(input: {
+  orderNumber: string | null;
+  why: string;
+  revertedTo: string | null;
+}): string {
+  const which = input.orderNumber ? `Order ${input.orderNumber}` : "This order";
+  return input.revertedTo
+    ? `${which} was not marked delivered: the stock ledger refused the booking (${input.why}). Nothing is on the shelf for it, and the order is back to ${statusInWords(input.revertedTo as ProcurementOrderStatus)} so the delivery can be recorded again once the refusal is fixed.`
+    : `${which} reads as delivered, but the stock ledger refused the booking (${input.why}) and the order could not be put back. Nothing is on the shelf for it; book it at the receiving door and tell a manager.`;
+}
+
+/**
  * When the delivery happened, in words, from a stored timestamp.
  *
  * UTC and explicit about it. A refusal sentence is read in a kitchen and quoted

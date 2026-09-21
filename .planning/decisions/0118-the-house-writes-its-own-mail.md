@@ -172,6 +172,13 @@ cannot tell them apart is being told the second is the first (ADR 0051 clause 3)
   a shared sending domain affects every other house's deliverability there, so
   the commitment is real in a way a single-tenant mailbox's is not.
 
+**[2026-09-21, the founder (ADR 0175 second amendment, answer 7): the composer stays
+a click with the 2-minute server undo, with the seal minted on the click — not a
+hold — now that every vendor send is sealed. That is the house-mailbox arm above,
+unchanged; the subdomain arm (not yet provisioned) keeps its hold. A staff member's
+composer click asks a manager instead (answer 3), and a manager's release of a
+waiting letter is one hold whose letter still waits out this window.]**
+
 **The undo window is a row, not a timer.** The letter is written as
 `status='HOUSE_QUEUED'` with `scheduled_send_at = now + window`, and a
 once-a-minute dispatcher sends it after that. A `setTimeout` in the request's
@@ -1408,6 +1415,15 @@ Validation: procurement gateway 74 suites / 1,423 passing tests (3 skipped), gat
 >     matches current code — only the attribution and the "unchanged" claim
 >     were wrong. See `CLAIMS.jsonl`'s own dated correction on
 >     `ADR-0132-NO-UNSCOPED-TIMELINE-LEG` for the same fix in place.]**
+>     **[2026-09-21, lane E round 2, merging origin/main 34c33a76a: main fixed
+>     the same event_store leak differently in #391 — each row is proven
+>     through its aggregate (`filterEventsOwnedByHouse`), and main names
+>     `payload.restaurant_id` as a value the writer stamped on itself, not
+>     proof. Main's file was taken whole: this lane's
+>     `.contains(payload, {restaurant_id})` filter and its two fixtures are
+>     gone, `ADR-0132-NO-UNSCOPED-TIMELINE-LEG` is main's row again, and
+>     `ADR-0132-EVENT-STORE-RESTAURANT-FILTER` is re-pinned to main's
+>     mechanism with a dated bracket.]**
 >   - 15 static guards relevant to the touched paths: exit 0 each
 >
 > Not run here either: a vite build, browser/visual/simulator checks, the

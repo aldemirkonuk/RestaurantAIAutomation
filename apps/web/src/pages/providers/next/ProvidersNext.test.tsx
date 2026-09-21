@@ -75,6 +75,27 @@ vi.mock('./UsualCurrencyCoveragePanel', () => ({
   ),
 }));
 
+// Same reason as the terms double above, one section down: the sheet also
+// carries the contacts register (ADR 0121 P0 item 2). Its own behaviour is
+// asserted in ContactsSection.test.tsx against a mocked apiClient.
+vi.mock('./useProviderContacts', async () => {
+  const actual = await vi.importActual<typeof import('./useProviderContacts')>(
+    './useProviderContacts',
+  );
+  return {
+    ...actual,
+    useProviderContacts: () => ({
+      contacts: null,
+      loading: true,
+      error: null,
+      saving: null,
+      saveError: null,
+      setPhoneType: vi.fn(),
+      reload: vi.fn(),
+    }),
+  };
+});
+
 import ProvidersNext from './ProvidersNext';
 
 function provider(over: Partial<Provider>): Provider {
@@ -141,6 +162,25 @@ describe('ProvidersNext', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('a card says "Not stated" when nobody stated the vendor\'s type (founder answer 12)', () => {
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({ primaryBusinessType: undefined }), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    expect(screen.getByText('Not stated')).toBeInTheDocument();
+  });
+
+  it('the vendor sheet offers the edit path, type first', async () => {
+    mockData.current = {
+      ...base,
+      cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
+    };
+    render(<ProvidersNext />);
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(await screen.findByTestId('vendor-record-edit')).toBeInTheDocument();
   });
 
   it('shows em dashes, not zeros, while the orders book is unanswered', () => {

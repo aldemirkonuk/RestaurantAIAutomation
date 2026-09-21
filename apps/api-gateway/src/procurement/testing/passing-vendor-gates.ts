@@ -26,6 +26,8 @@ export const PASSING_AUTHORITY = {
   readout: async () => ({ readable: true, maySend: true, mode: "send", basis: "manager", grant: null, sentence: null }),
   ownersAndManagers: async () => ({ owners: [], managers: [] }),
   namesOf: async () => new Map<string, string>(),
+  // A manager sends by role, which is not a grant event: nothing to write.
+  witnessGrantUse: async () => undefined,
 };
 
 /** The eight positional `@Optional()`s after the ledger, then the two gates. */

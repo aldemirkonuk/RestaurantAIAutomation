@@ -24,6 +24,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const wines = vi.hoisted(() => ({ search: vi.fn() }));
 const auctionApi = vi.hoisted(() => ({ createAuctionLotRecord: vi.fn() }));
+const house = vi.hoisted(() => ({ currency: vi.fn() }));
 
 vi.mock('@/services/api/wines', () => ({
   searchWines: (...a: unknown[]) => wines.search(...a),
@@ -33,6 +34,9 @@ vi.mock('@/services/api/client', () => ({
 }));
 vi.mock('@/services/api/inventory', () => ({
   createAuctionLotRecord: (...a: unknown[]) => auctionApi.createAuctionLotRecord(...a),
+}));
+vi.mock('@/services/api/settings', () => ({
+  settingsApi: { houseCurrency: () => house.currency() },
 }));
 
 import { AuctionLotStart, lotCost, lotWords, EMPTY_LOT } from './AuctionLotStart';
@@ -54,7 +58,7 @@ async function fillALot(bottles = '6') {
   fireEvent.change(screen.getByTestId('auction-date'), { target: { value: '2026-09-01' } });
   fireEvent.change(screen.getByTestId('auction-hammer'), { target: { value: '1200' } });
   fireEvent.change(screen.getByTestId('auction-premium'), { target: { value: '300' } });
-  fireEvent.change(screen.getByTestId('auction-currency'), { target: { value: 'USD' } });
+  fireEvent.change(screen.getByTestId('auction-currency'), { target: { value: 'GBP' } });
   fireEvent.change(screen.getByTestId('auction-bottles'), { target: { value: bottles } });
 }
 
@@ -62,6 +66,8 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   wines.search.mockReset().mockResolvedValue([WINE]);
   auctionApi.createAuctionLotRecord.mockReset().mockResolvedValue({ id: 'rec-1' });
+  // A house that keeps its books in the lot's own currency, unless a test says otherwise.
+  house.currency.mockReset().mockResolvedValue({ readable: true, code: 'GBP' });
 });
 
 describe('lotCost — the working, and what it refuses', () => {
@@ -145,14 +151,13 @@ describe('the sheet', () => {
     expect(screen.getByTestId('auction-carry')).toBeDisabled();
   });
 
-  it('will not carry a lot whose record would be refused — house, lot number and sale date are held back like the currency, and named', async () => {
+  it('will not carry a lot whose record would be refused — house and sale date are held back like the currency, and named', async () => {
     const { onCarry } = draw();
     await fillALot('6');
     expect(screen.getByTestId('auction-carry')).not.toBeDisabled();
     expect(screen.queryByTestId('auction-details-missing')).not.toBeInTheDocument();
     for (const [id, words] of [
       ['auction-house', 'the auction house'],
-      ['auction-lot', 'the lot number'],
       ['auction-date', 'the sale date'],
     ] as const) {
       const kept = (screen.getByTestId(id) as HTMLInputElement).value;
@@ -181,12 +186,77 @@ describe('the sheet', () => {
         saleDate: '2026-09-01',
         hammerPrice: 1200,
         buyersPremium: 300,
-        currency: 'USD',
+        currency: 'GBP',
         bottles: 6,
+        exchangeRate: null,
+        houseUnitCost: null,
+        bookedUnitCost: 250,
       }),
     );
     expect(await screen.findByTestId('auction-done')).toHaveTextContent(/were saved/);
     expect(screen.getByTestId('auction-done')).not.toHaveTextContent(/NOT saved/);
+  });
+
+  it('the lot number is optional: a lot without one carries and is recorded as not stated (founder answer 11)', async () => {
+    const { onCarry } = draw();
+    await fillALot('6');
+    fireEvent.change(screen.getByTestId('auction-lot'), { target: { value: '   ' } });
+    expect(screen.getByTestId('auction-carry')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    await waitFor(() => expect(onCarry).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(auctionApi.createAuctionLotRecord).toHaveBeenCalledWith(expect.objectContaining({ lotNumber: null })),
+    );
+  });
+
+  describe('a lot in another currency (founder answer 10)', () => {
+    beforeEach(() => {
+      house.currency.mockResolvedValue({ readable: true, code: 'EUR' });
+    });
+
+    it('is not carried until the person states a rate or types the house cost, and nothing is looked up', async () => {
+      draw();
+      await fillALot('6');
+      await waitFor(() => expect(screen.getByTestId('auction-booked')).toHaveTextContent(/state the exchange rate you used, or type what each bottle cost in EUR/));
+      expect(screen.getByTestId('auction-carry')).toBeDisabled();
+    });
+
+    it('books the per-bottle cost at the STATED rate, and records the rate', async () => {
+      const { onCarry } = draw();
+      await fillALot('6');
+      fireEvent.change(await screen.findByTestId('auction-rate'), { target: { value: '1.17' } });
+      expect(screen.getByTestId('auction-booked')).toHaveTextContent('The book is given 292.5 EUR a bottle: 250 GBP at the rate you stated.');
+      fireEvent.click(screen.getByTestId('auction-carry'));
+      await waitFor(() => expect(onCarry).toHaveBeenCalledWith(expect.objectContaining({ costPerBottle: 292.5 })));
+      await waitFor(() =>
+        expect(auctionApi.createAuctionLotRecord).toHaveBeenCalledWith(
+          expect.objectContaining({ exchangeRate: 1.17, houseUnitCost: null, bookedUnitCost: 292.5 }),
+        ),
+      );
+    });
+
+    it('a typed house cost WINS, and the rate is still recorded beside it', async () => {
+      const { onCarry } = draw();
+      await fillALot('6');
+      fireEvent.change(await screen.findByTestId('auction-rate'), { target: { value: '1.17' } });
+      fireEvent.change(screen.getByTestId('auction-house-cost'), { target: { value: '290' } });
+      expect(screen.getByTestId('auction-booked')).toHaveTextContent(/290 EUR a bottle, as you typed it; the rate you stated is recorded beside it/);
+      fireEvent.click(screen.getByTestId('auction-carry'));
+      await waitFor(() => expect(onCarry).toHaveBeenCalledWith(expect.objectContaining({ costPerBottle: 290 })));
+      await waitFor(() =>
+        expect(auctionApi.createAuctionLotRecord).toHaveBeenCalledWith(
+          expect.objectContaining({ exchangeRate: 1.17, houseUnitCost: 290, bookedUnitCost: 290 }),
+        ),
+      );
+    });
+
+    it('a house currency that could not be read books nothing, and says so', async () => {
+      house.currency.mockRejectedValue(new Error('down'));
+      draw();
+      await fillALot('6');
+      await waitFor(() => expect(screen.getByTestId('auction-booked')).toHaveTextContent(/currency could not be read/));
+      expect(screen.getByTestId('auction-carry')).toBeDisabled();
+    });
   });
 
   it('names the auction record as a SEPARATE fact when the stock carries but the record fails', async () => {

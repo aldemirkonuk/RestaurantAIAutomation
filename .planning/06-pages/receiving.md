@@ -44,7 +44,11 @@ the cost-free staff view on purpose.
 ## 1a. Features
 One event, three renderings by role:
 - **Staff**: pick which delivery you're receiving → the door flow; no prices shown
-- **Manager**: the decision queue, worst money first
+- **Manager**: the decision queue, worst money first. **[2026-09-21, ADR 0192
+  amendment: what is still owed is read from the ledger, in bottles
+  (`backorderBottles`, "N bottles still on backorder"), not from the order's
+  retired backorder column, and a queue that cannot be read is an error, not an
+  empty queue.]**
 - **Owner**: one number — money that actually came back (recovered credits)
 - **Verification settles COST, never quantity (ADR 0103 A1).** The bottles arrived on the shelf at the door; pressing verify posts the agreed price — an accepted proposal beats the invoice line it is about — onto that delivery's lots and flips them from `provisional` to `final`. The response's `costNote` says what could not be costed and why, rather than reporting a silent success.
 - 🚧 Nothing links here yet; the page is reachable by typed URL only (§9)

@@ -439,6 +439,12 @@ would have refilled the column on every save after migration `20260903170000`
 dropped the default. Both now default to `''` with an explicit "Not stated"
 option.
 
+**[2026-09-21, founder answer 12; ADR 0083 second addendum.]** The rebuilt sheet
+has an edit path: `VendorRecordEdit.tsx` at the top of `TwinSheet`, the business
+type first (the three offered, "Not stated", and a type outside the three shown as
+itself), then the name; only what changed is sent. The cards and the sheet's
+eyebrow say "Not stated" when no type was stated.
+
 - TwinSheet's intelligence panel renders in the legacy grey/blue skin inside
   the İznik sheet (`ProviderIntelligencePanel` is a shared legacy component) —
   the founder's "set does not cohere" complaint, reproduced in miniature;
@@ -605,3 +611,23 @@ nobody did.
    `null`: the minimum-order field is labelled "(currency not recorded)" and
    `fmtMoney` prints the number unsymboled. Nothing here can SET the currency;
    today the only place it is asked is the sign-up form ([[register]] §1a).
+
+
+## Execution reconciliation — 2026-09-13, reconciled 2026-09-17
+
+Phone reachability is stated beside provider contacts (`ContactsSection`, on the
+`TwinSheet`). A WhatsApp reply rechecks the current phone book and binds its 24-hour
+window to the current business sender; replacing/removing numbers cannot inherit stale
+conversation permission. Two vendors in one house holding the identical number is now
+refused rather than silently threaded onto whichever row a query returned first
+(fixed 2026-09-17). `ContactsSection` draws with the real Mudavym charcoal-ground tokens
+(`--ink-*`, `--seal*`, `--paper-*`), guarded by a test that reads the shipped token file
+so a future edit cannot reintroduce an undeclared custom property.
+
+**Founder question, not decided by this pass:** "Main line" is offered as a choice in
+the type-of-line picker, but the server always reads `main_line` as `stated: false`
+because it is indistinguishable from the column's own default — so a manager who picks
+it watches the select snap back to "Nobody has said." Should "Main line" ever be
+recordable as a stated answer? See ADR 0121's 2026-09-17 review-trail row.
+
+See ADR 0121 for local safety and migration evidence.

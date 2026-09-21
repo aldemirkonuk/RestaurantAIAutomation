@@ -208,6 +208,8 @@ all — the same vacuity class as the `useQuery<T>({` bug a prior extension foun
 | 2026-09-02 | Aldemir | Locked with the page fix; 0051 extended with a sixth clause covering claims about actions |
 | 2026-09-21 | Aldemir (founder), lane E-limits | Three instances of this ADR's own defect, found while auditing the vendor create path, the calendar meeting-notes path and the auction lot path, closed in one pass. See the addendum below |
 | 2026-09-21 | lane E-limits last-call review | Four gaps the first pass left, closed before merge: the edit dialog could not show or choose "Not stated"; the rebuilt calendar listed meetings already noted as "without a note" after a reload; an auction lot could be carried with a record the table would refuse; and a record said a refusal was a silent strip. See "Last-call review" at the end of the addendum |
+| 2026-09-21 | Aldemir (founder), answers 10, 11 and 12 (relayed in the round-2 lane brief) | A foreign-currency lot records the stated rate AND a per-bottle cost typed in the house's currency; a typed house cost wins, both recorded, nothing inferred. The lot number is optional; the auction house and the sale date stay required. The rebuilt /providers sheet gets an edit path, type first, and cards say "Not stated" |
+| 2026-09-21 | Claude (Opus 5), lane E round 2 | Built all three (second addendum below) |
 
 ## Addendum — 2026-09-21: three more pages that collected an answer and dropped it
 
@@ -362,3 +364,51 @@ mutations, 5 web (vendor sheet, edit dialog, the notes list twice, the matcher),
 auction (both tenant filters, the blank-detail refusal, the sheet's detail gate), 2
 ranged-read (its tenant filter, a reversed range) and the 3 extended `CLAIMS` rows —
 each red, each restored byte-identical.
+
+## Second addendum — 2026-09-21: the founder's answers on the three limits the first addendum left
+
+**Source.** The founder's answers (10), (11) and (12) of 2026-09-21, relayed in the
+lane brief (round 2); the wording is the relay's, not a verbatim quotation.
+
+1. **A lot in a foreign currency states its cost in the house's money** (answer 10):
+   *record the exchange rate the person states AND let them type the per-bottle cost in
+   the house currency (people round); a typed house cost wins, both are recorded,
+   nothing inferred.* This closes the stated limit of the first addendum (the lot's
+   per-bottle cost landed in `inventory_lots.unit_cost`, which every reader takes as the
+   house's own money). Built: one rule on both sides (`AuctionLotStart`'s
+   `auctionLotCost.ts` and the gateway's `inventory/auction-lot-cost.ts`) — a typed house
+   cost is booked; otherwise a lot already in the house's currency books its own
+   per-bottle cost; otherwise a foreign lot books its per-bottle cost times the rate the
+   person stated; otherwise nothing is booked and the sheet says what to state. The
+   sheet asks for the rate and the typed cost only when the lot's currency is not the
+   house's, carries the stock at the booked cost, and the record keeps
+   `house_currency`, `exchange_rate`, `house_unit_cost` and `booked_unit_cost`
+   (`20260921114960`, with a CHECK that a foreign lot states one of the two). The
+   gateway reads the house's currency itself and refuses a record whose booked cost is
+   not the rule's. **A consequence, stated:** a house that has not stated its currency
+   (or whose currency could not be read) cannot book an auction lot until it does — the
+   sheet cannot tell a foreign lot from a home one without it, and nothing is inferred.
+   The item's card shows what was booked and how.
+2. **The lot number is optional; the auction house and the sale date stay required**
+   (answer 11). `20260921114960` drops its NOT NULL (the non-blank CHECK stays, so a blank
+   is refused and NULL is "not stated") and asserts the other two are still required; the
+   gateway records a blank as NULL; the sheet no longer holds the carry for it, and the
+   item's card says "lot number not stated".
+3. **The rebuilt `/providers` vendor sheet has an edit path, the type first, and cards
+   say "Not stated" when unset** (answer 12). `VendorRecordEdit` sits at the top of the
+   sheet: the business type (the three offered, "Not stated", and a type outside the
+   three listed as itself), then the name; only what changed is sent, "Not stated" is
+   sent as `''` so the gateway clears the column. The cards and the sheet's eyebrow say
+   "Not stated" instead of blank. Contacts, terms and the usual currency keep their own
+   sections in the same sheet.
+
+**Evidence.** Gateway `auction-lot-cost.spec.ts` and `auction-lot-records.service.spec.ts`
+(rate, typed cost, refusals, the house read, the optional lot number); web
+`auctionLotCost.test.ts`, `AuctionLot.test.tsx`, `VendorRecordEdit.test.tsx`,
+`ProvidersNext.test.tsx`; the PGlite probe for the migration (a foreign lot with
+neither refused, a zero rate refused, a blank lot number still refused, a missing one
+accepted). CLAIMS rows `ADR-0083-AUCTION-HOUSE-COST`, `ADR-0083-LOT-NUMBER-OPTIONAL`,
+`ADR-0083-VENDOR-SHEET-EDIT`; `ADR-0083-AUCTION-LOT-CURRENCY-KEPT` re-pinned with a
+dated bracket. Also fixed while there: the auction sheet is now mounted only while open,
+because a closed sheet mounted on `/inventory` broke that page's tests once main's #421
+restored every mock between cases.

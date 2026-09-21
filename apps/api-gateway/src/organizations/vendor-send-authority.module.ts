@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
 import { VendorSendAuthorityService } from "./vendor-send-authority.service";
+import { VendorSendRequestsService } from "./vendor-send-requests.service";
 
 /**
  * Who may send to a vendor with one hold (ADR 0112 F12; ADR 0175 D10), as one
@@ -15,7 +16,10 @@ import { VendorSendAuthorityService } from "./vendor-send-authority.service";
  */
 @Module({
   imports: [DatabaseModule],
-  providers: [VendorSendAuthorityService],
-  exports: [VendorSendAuthorityService],
+  // The requests service (founder answer 3, 2026-09-21: staff ask for a deal
+  // or a composer letter) depends on the authority and the database only, so
+  // it sits here, below every vendor-send module, on no cycle.
+  providers: [VendorSendAuthorityService, VendorSendRequestsService],
+  exports: [VendorSendAuthorityService, VendorSendRequestsService],
 })
 export class VendorSendAuthorityModule {}

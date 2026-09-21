@@ -916,6 +916,35 @@ export class ShelfReceivedDto {
       "Bottles accepted at the door that the ledger does not hold (a movement that failed, or no item to book to). null when the stock unit is not a bottle count.",
   })
   countedNotBookedBottles!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Bottles refused at verification, from the latest reconciled receipt event (ADR 0192 amendment). null = never verified, or unreadable.",
+  })
+  rejectedAtDeskBottles!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "What the verified invoice billed, in bottles. null = no invoice verified, or unreadable.",
+  })
+  invoicedBottles!: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "When the latest verification was recorded." })
+  verifiedAt!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "The order's quantity in bottles, exactly; null when its pack size is not known exactly.",
+  })
+  orderedBottles!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "Ordered bottles the ledger does not hold yet (ordered less shelf, never below zero). null when either is not a bottle count. Replaces the order row's retired backorder column (ADR 0192 amendment).",
+  })
+  backorderBottles!: number | null;
 }
 
 export class OrderResponseDto {

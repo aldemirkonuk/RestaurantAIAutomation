@@ -816,7 +816,7 @@ export class ConversationsService {
     const target = await this.getConversation(conversationId, restaurantId);
     if (!target) throw this.notFound();
     const { seal, authority } = this.requireGate();
-    await authority.assertMaySend(actor?.userId ?? "", restaurantId, "approve this message to the vendor", {
+    const standing = await authority.assertMaySend(actor?.userId ?? "", restaurantId, "approve this message to the vendor", {
       canAsk: false,
     });
     const { message, to } = this.approvalTarget(target, options.modifiedMessage);
@@ -828,6 +828,14 @@ export class ConversationsService {
       action: CONVERSATION_APPROVE_ACT,
       args: conversationApproveSealArgs({ conversationId, message, to }),
       challenge: actor.challenge,
+    });
+    // A release under a grant is on the security ledger before anything is
+    // written or sent (ADR 0112 F12; founder answer 4, 2026-09-21).
+    await authority.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
+      userId: actor.userId,
+      restaurantId,
+      act: CONVERSATION_APPROVE_ACT,
+      subject: `procurement_conversation:${conversationId}`,
     });
     try {
       // 1. Update conversation in database

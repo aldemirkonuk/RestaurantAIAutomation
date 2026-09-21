@@ -24,6 +24,7 @@ import { ink } from "../../../lib/mudavym/motion";
 import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from "./pv-format";
 import { TwinSheet } from "./TwinSheet";
 import { NewVendorSheet } from "./NewVendorSheet";
+import { businessTypeLabel } from "./VendorRecordEdit";
 import { UsualCurrencyCoveragePanel } from "./UsualCurrencyCoveragePanel";
 import {
   useProvidersNextData,
@@ -86,7 +87,8 @@ function BucketCard({
             color: "var(--seal-deep, #14515C)",
           }}
         >
-          {p.primaryBusinessType}
+          {/* "Not stated" when nobody stated one (founder answer 12, 2026-09-21) — never blank, never a guessed type. */}
+          {businessTypeLabel(p.primaryBusinessType)}
         </span>
         <span
           style={{
@@ -332,6 +334,10 @@ export default function ProvidersNext() {
         <TwinSheet
           provider={openProvider}
           focusUsualCurrency={openedForCurrency}
+          onProviderSaved={(updated) => {
+            setOpenProvider(updated);
+            data.refetch();
+          }}
           onClose={() => {
             setOpenedForCurrency(false);
             setOpenProvider(null);

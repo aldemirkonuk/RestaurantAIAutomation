@@ -285,3 +285,100 @@ describe("readShelfReceived — batched, tenant-scoped, loud on failure", () => 
     expect(out.get("ord-1")?.readable).toBe(false);
   });
 });
+
+describe("the siblings, from the ledger and the verification's event (ADR 0192 amendment, 2026-09-21)", () => {
+  const verified = (over: Row = {}): Row => ({
+    id: "ev-verify",
+    restaurant_id: REST,
+    order_id: "ord-1",
+    stage: "reconciled",
+    counted_qty_bottles: 58,
+    rejected_qty_bottles: 2,
+    invoice_qty_bottles: 60,
+    occurred_at: "2026-09-21T10:00:00.000Z",
+    ...over,
+  });
+
+  it("states rejected-at-verification and invoiced in bottles, and backorder as ordered less shelf", () => {
+    const out = composeShelfReceived({
+      order: caseOrder(),
+      stockUom: "bottle",
+      ledger: [tx(58, "order-delivered-live:ord-1")] as any[],
+      doorEvents: [verified() as any],
+      lines: [line()],
+    });
+    expect(out).toMatchObject({
+      readable: true,
+      quantityInStockUom: 58,
+      rejectedAtDeskBottles: 2,
+      invoicedBottles: 60,
+      verifiedAt: "2026-09-21T10:00:00.000Z",
+      orderedBottles: 60,
+      backorderBottles: 2,
+      // The verification is not a door count: nothing reads as counted-not-booked.
+      countedNotBookedBottles: 0,
+      rejectedAtDoorBottles: 0,
+    });
+  });
+
+  it("a later truck moves the backorder; a stale column never could", () => {
+    const out = composeShelfReceived({
+      order: caseOrder(),
+      stockUom: "bottle",
+      ledger: [tx(58, "order-delivered-live:ord-1"), tx(2, "door-receipt:ev-9")] as any[],
+      doorEvents: [verified() as any],
+      lines: [line()],
+    });
+    expect(out).toMatchObject({ quantityInStockUom: 60, backorderBottles: 0 });
+  });
+
+  it("the LATEST verification is the one of record; runs are not added up", () => {
+    const out = composeShelfReceived({
+      order: caseOrder(),
+      stockUom: "bottle",
+      ledger: [tx(60, "order-delivered-live:ord-1")] as any[],
+      doorEvents: [
+        verified({ id: "a", occurred_at: "2026-09-21T09:00:00.000Z", rejected_qty_bottles: 5, invoice_qty_bottles: 55 }) as any,
+        verified({ id: "b", occurred_at: "2026-09-21T11:00:00.000Z", rejected_qty_bottles: 1, invoice_qty_bottles: 60 }) as any,
+      ],
+      lines: [line()],
+    });
+    expect(out).toMatchObject({ rejectedAtDeskBottles: 1, invoicedBottles: 60 });
+  });
+
+  it("never verified: the desk's numbers are null, not zero", () => {
+    const out = composeShelfReceived({
+      order: caseOrder(),
+      stockUom: "bottle",
+      ledger: [tx(60, "order-delivered-live:ord-1")] as any[],
+      doorEvents: [],
+      lines: [line()],
+    });
+    expect(out).toMatchObject({ rejectedAtDeskBottles: null, invoicedBottles: null, verifiedAt: null, backorderBottles: 0 });
+  });
+
+  it("an order whose bottles are not known exactly states no backorder rather than a rounded one", () => {
+    const out = composeShelfReceived({
+      order: caseOrder({ quantity: 6, bottles_total: 65 }),
+      stockUom: "bottle",
+      ledger: [tx(60, "order-delivered-live:ord-1")] as any[],
+      doorEvents: [],
+      lines: [],
+    });
+    expect(out).toMatchObject({ orderedBottles: null, backorderBottles: null });
+  });
+
+  it("the reader asks for the door's counts AND the verifications, in this house", async () => {
+    const { db, reads } = fakeDb({
+      inventory_transactions: [tx(58, "order-delivered-live:ord-1")],
+      procurement_receipt_events: [verified(), verified({ id: "other-house", restaurant_id: "rest-2", rejected_qty_bottles: 40 })],
+      restaurant_inventory: [item()],
+      procurement_order_items: [line()],
+    });
+    const out = await readShelfReceived(db, REST, [caseOrder()]);
+    expect(out.get("ord-1")).toMatchObject({ rejectedAtDeskBottles: 2, backorderBottles: 2 });
+    const events = reads.find((r) => r.table === "procurement_receipt_events")!;
+    expect(events.filters).toContain(`restaurant_id=${REST}`);
+    expect(events.filters).toContain("stage in 2");
+  });
+});

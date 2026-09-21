@@ -728,6 +728,21 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 the door and are not on the shelf yet.
               </p>
             )}
+            {/* The earlier verification's own facts (ADR 0192 amendment), in
+                bottles: they used to be order columns in two units. */}
+            {shelf?.readable && (shelf.rejectedAtDeskBottles ?? 0) > 0 && (
+              <p className="mt-1 text-amber-700" data-testid="receiving-shelf-desk-rejected">
+                {shelf.rejectedAtDeskBottles}{' '}
+                {shelf.rejectedAtDeskBottles === 1 ? 'bottle was' : 'bottles were'} rejected at the
+                last verification.
+              </p>
+            )}
+            {shelf?.readable && (shelf.backorderBottles ?? 0) > 0 && (
+              <p className="mt-1" data-testid="receiving-shelf-backorder">
+                {shelf.backorderBottles} {shelf.backorderBottles === 1 ? 'bottle is' : 'bottles are'} still
+                owed on this order.
+              </p>
+            )}
           </div>
 
           {/* four-way header */}

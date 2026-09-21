@@ -313,6 +313,16 @@ export interface ShelfReceived {
   rejectedAtDoorBottles: number | null;
   /** Accepted at the door and not on the shelf yet, in bottles. */
   countedNotBookedBottles: number | null;
+  /**
+   * The four sibling quantities, from the ledger and the latest verification
+   * event, in BOTTLES (ADR 0192 amendment, 2026-09-21). Optional: an older
+   * gateway does not send them, and absent is "not read", never zero.
+   */
+  rejectedAtDeskBottles?: number | null;
+  invoicedBottles?: number | null;
+  verifiedAt?: string | null;
+  orderedBottles?: number | null;
+  backorderBottles?: number | null;
 }
 
 export interface Order {

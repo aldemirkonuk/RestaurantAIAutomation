@@ -33,6 +33,9 @@ function grant(over: Partial<AuthorityGrantRow> = {}): AuthorityGrantRow {
     expires_at: null,
     created_at: "2026-09-20T09:00:00.000Z",
     revoked_at: null,
+    vouched_by_user_id: OWNER,
+    suspended_at: null,
+    deleted_at: null,
     ...over,
   };
 }
@@ -96,16 +99,42 @@ describe("anybody else asks — unless an owner named them", () => {
   it("a grant not yet expired counts", () => {
     expect(decide({ grants: [grant({ expires_at: "2026-09-22T00:00:00.000Z" })] }).mode).toBe("send");
   });
-  it("a grant whose grantor is no longer an owner does not count", () => {
+  it("a grant whose owner is no longer an owner does not count", () => {
     expect(decide({ grants: [grant()], ownerIds: new Set() })).toMatchObject({
       mode: "ask",
       reason: "grant_orphaned",
     });
   });
-  it("a grant whose grantor was deleted does not count", () => {
-    expect(decide({ grants: [grant({ grantor_user_id: null })] })).toMatchObject({
+  it("a grant whose owner was deleted does not count", () => {
+    expect(decide({ grants: [grant({ vouched_by_user_id: null })] })).toMatchObject({
       mode: "ask",
       reason: "grant_orphaned",
+    });
+  });
+  it("a LATCHED grant does not count even when its owner is an owner again — nothing re-activates by itself", () => {
+    // Founder, 2026-09-21: "no owner grant, no activation, or no going back
+    // once grant author gone". The database latched it when the owner went;
+    // the owner being an owner again today does not unlatch it.
+    expect(decide({ grants: [grant({ suspended_at: "2026-09-21T10:00:00.000Z" })] })).toMatchObject({
+      mode: "ask",
+      reason: "grant_orphaned",
+    });
+  });
+  it("a re-approved grant rests on the re-approving owner, and 'granted by' names them", () => {
+    const out = decide({
+      grants: [grant({ grantor_user_id: "former-owner", vouched_by_user_id: OWNER })],
+    });
+    expect(out).toMatchObject({ mode: "send", grant: { grantorUserId: OWNER } });
+  });
+  it("a grant resting on its original grantor does not count once that grantor is not an owner, whoever else is", () => {
+    expect(
+      decide({ grants: [grant({ grantor_user_id: OWNER, vouched_by_user_id: "former-owner" })] }),
+    ).toMatchObject({ mode: "ask", reason: "grant_orphaned" });
+  });
+  it("a deleted grant does not count", () => {
+    expect(decide({ grants: [grant({ deleted_at: "2026-09-21T10:00:00.000Z" })] })).toMatchObject({
+      mode: "ask",
+      reason: "grant_deleted",
     });
   });
   it("a grant for another scope is not a vendor-send grant", () => {

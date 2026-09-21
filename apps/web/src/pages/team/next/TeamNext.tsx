@@ -732,8 +732,9 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
         <hr className="tm-rule" />
 
         {/* Who may send to vendors — the owners' grants (ADR 0112 F12;
-            founder, 2026-09-21). Owners see, name and revoke; anyone else
-            sees only the grants that name them. */}
+            founder, 2026-09-21). Owners see, name and revoke; managers see
+            every grant not marked owner-only; anyone else sees only the
+            grants that name them. */}
         <SendGrantsSection restaurantId={rid} members={data.members} />
 
         <hr className="tm-rule" />

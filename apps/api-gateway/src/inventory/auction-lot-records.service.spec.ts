@@ -21,6 +21,8 @@ const ok = (data: unknown): Answer => ({ data, error: null });
 const failed: Answer = { data: null, error: { message: "connection reset" } };
 
 function makeService(opts: {
+  /** The house row the service reads its currency from; defaults to a USD house. */
+  houseAnswer?: Answer;
   invAnswer?: Answer;
   insertAnswer?: Answer;
   listAnswer?: Answer;
@@ -32,6 +34,21 @@ function makeService(opts: {
   captureListFilters?: (filters: Array<[string, unknown]>) => void;
 }) {
   const from = (table: string) => {
+    if (table === "restaurants") {
+      const filters: Array<[string, unknown]> = [];
+      const builder = {
+        eq: (col: string, val: unknown) => {
+          filters.push([col, val]);
+          return builder;
+        },
+        maybeSingle: async () => {
+          // The house is read by the caller's own id, and nothing else.
+          if (!filters.some(([c, v]) => c === "id" && v === "r-1")) return ok(null);
+          return opts.houseAnswer ?? ok({ id: "r-1", currency: "USD" });
+        },
+      };
+      return { select: () => builder };
+    }
     if (table === "restaurant_inventory") {
       const filters: Array<[string, unknown]> = [];
       const builder = {
@@ -86,6 +103,8 @@ const DTO = {
   buyersPremium: 300,
   currency: "USD",
   bottles: 6,
+  // (1200 + 300) / 6 = 250, in a USD house: the lot's own per-bottle cost.
+  bookedUnitCost: 250,
 };
 
 describe("AuctionLotRecordsService.create", () => {
@@ -116,7 +135,6 @@ describe("AuctionLotRecordsService.create", () => {
 
   it.each<[string, Record<string, unknown>]>([
     ["a blank auction house", { auctionHouse: "   " }],
-    ["a blank lot number", { lotNumber: "" }],
   ])("refuses %s with a 400, before writing anything", async (_l, over) => {
     let inserted = false;
     const svc = makeService({ captureInsert: () => (inserted = true) });
@@ -124,6 +142,76 @@ describe("AuctionLotRecordsService.create", () => {
       svc.create("r-1", "u-1", "Ayşe", { ...DTO, ...over } as never),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(inserted).toBe(false);
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ["no lot number at all", { lotNumber: undefined }],
+    ["a blank lot number", { lotNumber: "   " }],
+    ["a null lot number", { lotNumber: null }],
+  ])("records a lot with %s as not stated (founder answer 11: optional)", async (_l, over) => {
+    let captured: Record<string, unknown> | null = null;
+    const svc = makeService({ captureInsert: (p) => (captured = p) });
+    await svc.create("r-1", "u-1", "Ayşe", { ...DTO, ...over } as never);
+    expect(captured).toMatchObject({ lot_number: null });
+  });
+
+  describe("a lot in another currency books its cost in the house's money (founder answer 10)", () => {
+    const EUR_HOUSE = ok({ id: "r-1", currency: "EUR" });
+
+    it("refuses a foreign lot that states neither a rate nor a house cost, before writing", async () => {
+      let inserted = false;
+      const svc = makeService({ houseAnswer: EUR_HOUSE, captureInsert: () => (inserted = true) });
+      await expect(svc.create("r-1", "u-1", "Ayşe", DTO)).rejects.toThrow(
+        /state the exchange rate you used, or type what each bottle cost in EUR/,
+      );
+      expect(inserted).toBe(false);
+    });
+
+    it("books the lot's per-bottle cost times the STATED rate, and records both", async () => {
+      let captured: Record<string, unknown> | null = null;
+      const svc = makeService({ houseAnswer: EUR_HOUSE, captureInsert: (p) => (captured = p) });
+      await svc.create("r-1", "u-1", "Ayşe", { ...DTO, exchangeRate: 0.9, bookedUnitCost: 225 });
+      expect(captured).toMatchObject({
+        currency: "USD",
+        house_currency: "EUR",
+        exchange_rate: 0.9,
+        house_unit_cost: null,
+        booked_unit_cost: 225,
+      });
+    });
+
+    it("a typed house cost WINS over the rate, and both are recorded", async () => {
+      let captured: Record<string, unknown> | null = null;
+      const svc = makeService({ houseAnswer: EUR_HOUSE, captureInsert: (p) => (captured = p) });
+      await svc.create("r-1", "u-1", "Ayşe", { ...DTO, exchangeRate: 0.9, houseUnitCost: 230, bookedUnitCost: 230 });
+      expect(captured).toMatchObject({ exchange_rate: 0.9, house_unit_cost: 230, booked_unit_cost: 230 });
+    });
+
+    it("refuses a record whose carried cost is not what the stated figures give", async () => {
+      let inserted = false;
+      const svc = makeService({ houseAnswer: EUR_HOUSE, captureInsert: () => (inserted = true) });
+      await expect(
+        svc.create("r-1", "u-1", "Ayşe", { ...DTO, exchangeRate: 0.9, bookedUnitCost: 250 }),
+      ).rejects.toThrow(/give 225 EUR/);
+      expect(inserted).toBe(false);
+    });
+
+    it("refuses when the house has stated no currency: nothing is inferred", async () => {
+      const svc = makeService({ houseAnswer: ok({ id: "r-1", currency: null }) });
+      await expect(svc.create("r-1", "u-1", "Ayşe", DTO)).rejects.toThrow(/has not stated the currency/);
+    });
+
+    it("a failed read of the house's currency is an error, not a guess", async () => {
+      const svc = makeService({ houseAnswer: failed });
+      await expect(svc.create("r-1", "u-1", "Ayşe", DTO)).rejects.toThrow(/currency could not be read/);
+    });
+
+    it("a same-currency lot books its own per-bottle cost and states no rate", async () => {
+      let captured: Record<string, unknown> | null = null;
+      const svc = makeService({ captureInsert: (p) => (captured = p) });
+      await svc.create("r-1", "u-1", "Ayşe", DTO);
+      expect(captured).toMatchObject({ house_currency: "USD", exchange_rate: null, booked_unit_cost: 250 });
+    });
   });
 
   it("refuses an inventory item that does not belong to this restaurant", async () => {

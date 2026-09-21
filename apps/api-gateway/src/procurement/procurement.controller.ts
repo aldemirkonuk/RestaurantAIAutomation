@@ -10,6 +10,7 @@ import {
   HttpException,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -962,6 +963,43 @@ export class ProcurementController {
     });
   }
 
+  /**
+   * A staff member asks a manager to confirm this deal on their terms (founder
+   * answer 3, 2026-09-21). Saves the exact terms; commits and mails nothing.
+   */
+  @Post("orders/:id/confirm-deal-request")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Ask an owner or a manager to confirm this deal on the terms given; nothing is committed" })
+  @ApiResponse({ status: 409, description: "The caller may confirm it themself, or a request is already waiting" })
+  async requestConfirmDeal(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @Body() body: ConfirmDealDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.requestConfirmDeal(user.restaurantId, orderId, user.userId, {
+      finalPrice: body?.finalPrice,
+      quantity: body?.quantity,
+      sendConfirmation: body?.sendConfirmation,
+    });
+  }
+
+  /** The waiting deal request, and whether this person's hold confirms or asks. */
+  @Get("orders/:id/deal-request")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "The deal request waiting on this order, if any, and the caller's standing to confirm it" })
+  async dealRequest(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Query("finalPrice") finalPrice?: string,
+    @Query("quantity") quantity?: string,
+  ) {
+    const num = (v?: string) => (v === undefined || v === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
+    return this.procurementService.dealRequestReadout(user.restaurantId, orderId, user.userId, {
+      finalPrice: num(finalPrice),
+      quantity: num(quantity),
+    });
+  }
+
   @Post("orders/:id/confirm-deal")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
@@ -1011,7 +1049,7 @@ export class ProcurementController {
   async dismissDeal(
     @Param("id") orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<{ dismissed: boolean }> {
+  ): Promise<{ dismissed: boolean; requestsClosed: number }> {
     try {
       return await this.procurementService.dismissDeal(
         user.restaurantId,

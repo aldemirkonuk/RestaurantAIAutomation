@@ -35,10 +35,19 @@
  *   - it is not revoked;
  *   - it has not expired (checked NOW, at the act — F12 "expiry enforced at
  *     check time");
- *   - its grantor still exists AND is still an owner of this house. Authority
- *     cannot outlive its source: an owner who is demoted or removed stops
- *     vouching for anyone. [Lane E reading, recorded as an open fork in the
- *     ADR 0175 amendment rather than decided.]
+ *   - it has not been deleted;
+ *   - it is not WAITING for an owner: the owner it rests on
+ *     (`vouched_by_user_id` — the grantor at issue, the re-approving owner
+ *     after a re-approval) still exists AND is still an owner of this house,
+ *     AND the latch `suspended_at` is not set. Founder, 2026-09-21: a grant
+ *     whose owner is demoted or removed STOPS at once and waits for a current
+ *     owner's re-approval; *"no owner grant, no activation, or no going back
+ *     once grant author gone"*. The latch is set by the database the moment
+ *     the voucher stops being an owner
+ *     (20260921114800_a_grant_waits_for_an_owner_when_its_voucher_goes.sql),
+ *     so a voucher promoted again does not bring the grant back; the role
+ *     read here is the second lock, for a write that ever got past the
+ *     triggers.
  *   - when the act carries money (confirm-deal), the grant names a limit in the
  *     same currency and the amount is within it. A grant with NO limit covers
  *     letters only: an absent limit is not "unlimited" (ADR 0116 — a default
@@ -59,6 +68,11 @@ export interface AuthorityGrantRow {
   expires_at: string | null;
   created_at: string;
   revoked_at: string | null;
+  /** The owner the grant rests on now (20260921114800). NULL once they were deleted. */
+  vouched_by_user_id: string | null;
+  /** The latch: set when the voucher stopped being an owner; cleared only by a re-approval. */
+  suspended_at: string | null;
+  deleted_at: string | null;
 }
 
 /** The grant a send was made under, as the panel shows it ("granted by …"). */
@@ -74,6 +88,7 @@ export type AskReason =
   | "no_role"
   | "not_owner_or_manager"
   | "grant_revoked"
+  | "grant_deleted"
   | "grant_expired"
   | "grant_orphaned"
   | "grant_has_no_limit"
@@ -102,7 +117,7 @@ function numberOf(v: string | number | null): number | null {
 
 /**
  * Decide. `ownerIds` is the set of people who are owners of this house NOW —
- * the service reads it so a grant from a demoted owner reads as void.
+ * the service reads it so a grant resting on a demoted owner reads as waiting.
  */
 export function decideVendorSend(input: {
   role: string | null;
@@ -136,6 +151,10 @@ export function decideVendorSend(input: {
 
   for (const g of newestFirst) {
     if (g.scope !== VENDOR_SEND_SCOPE) continue;
+    if (g.deleted_at) {
+      miss("grant_deleted");
+      continue;
+    }
     if (g.revoked_at) {
       miss("grant_revoked");
       continue;
@@ -144,7 +163,10 @@ export function decideVendorSend(input: {
       miss("grant_expired");
       continue;
     }
-    if (!g.grantor_user_id || !input.ownerIds.has(g.grantor_user_id)) {
+    // Waiting for an owner: latched, resting on nobody, or resting on a person
+    // who is not an owner now. The latch is checked FIRST and on its own —
+    // a voucher who is an owner again does not clear it.
+    if (g.suspended_at || !g.vouched_by_user_id || !input.ownerIds.has(g.vouched_by_user_id)) {
       miss("grant_orphaned");
       continue;
     }
@@ -172,7 +194,10 @@ export function decideVendorSend(input: {
       basis: "grant",
       grant: {
         id: g.id,
-        grantorUserId: g.grantor_user_id,
+        // "granted by" names the owner the grant rests on now: after a
+        // re-approval that is the re-approving owner, not the original
+        // grantor, who is no longer an owner here.
+        grantorUserId: g.vouched_by_user_id,
         expiresAt: g.expires_at,
         limitAmount: limit,
         limitCurrency: g.limit_currency,
@@ -194,10 +219,12 @@ export function whyNotSend(reason: AskReason, act: string): string {
       return `Only an owner, a manager, or someone an owner has named may ${act} with one hold.`;
     case "grant_revoked":
       return "The grant an owner gave you was revoked.";
+    case "grant_deleted":
+      return "The grant an owner gave you was deleted.";
     case "grant_expired":
       return "The grant an owner gave you has expired.";
     case "grant_orphaned":
-      return "The owner who gave you your grant is no longer an owner here, so it no longer counts.";
+      return "The owner who vouched for your grant is no longer an owner here, so it stopped; it waits for a current owner to re-approve it.";
     case "grant_has_no_limit":
       return "Your grant names no money limit, so it covers letters only, not an act that commits money.";
     case "grant_other_currency":
@@ -224,7 +251,9 @@ export function askSentence(reason: AskReason, act: string): string {
 /**
  * The refusal a SEND gets from someone who may not send (a 403's message).
  * `canAsk` says whether this act has a request path the person can use
- * instead; confirm-deal does not (see the ADR 0175 amendment's open forks).
+ * instead. Confirm-deal and the composer have one since the founder's answer
+ * (3) of 2026-09-21; `POST /conversations/:id/approve` does not, and passes
+ * `canAsk: false`.
  */
 export function sendRefusal(
   reason: AskReason,

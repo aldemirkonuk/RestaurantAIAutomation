@@ -140,6 +140,8 @@ interface Calls {
   inventoryUpdates: Row[];
   eventInserts: Row[];
   priceHistoryInserts: Row[];
+  /** `procurement_receipt_events` rows: the verification's own `reconciled` event (ADR 0192 amendment). */
+  receiptEvents: Row[];
 }
 
 /**
@@ -163,6 +165,8 @@ function makeDb(opts: {
   ownedInventoryIds?: string[];
   updatedRow?: Row;
   updateError?: { code: string; message: string } | null;
+  /** The verification's event insert fails with this. */
+  receiptEventError?: { message: string } | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -171,6 +175,7 @@ function makeDb(opts: {
     inventoryUpdates: [],
     eventInserts: [],
     priceHistoryInserts: [],
+    receiptEvents: [],
   };
   const owned = new Set(opts.ownedInventoryIds ?? [OWN_INVENTORY]);
 
@@ -213,6 +218,9 @@ function makeDb(opts: {
 
         if (table === "procurement_order_items")
           return { data: opts.orderLineRow ?? null, error: null };
+
+        if (table === "procurement_receipt_events" && op === "insert" && opts.receiptEventError)
+          return { data: null, error: opts.receiptEventError };
 
         if (table === "restaurant_inventory") {
           // The ownership probe: select("id") filtered by restaurant_id + id.
@@ -260,6 +268,8 @@ function makeDb(opts: {
           if (table === "inventory_events") calls.eventInserts.push(payload);
           if (table === "price_history")
             calls.priceHistoryInserts.push(payload);
+          if (table === "procurement_receipt_events")
+            calls.receiptEvents.push(payload);
           return q;
         },
         update(payload: Row) {
@@ -668,7 +678,17 @@ describe("verifyReceipt — cross-unit quantities are converted, not compared ra
     } as any);
 
     expect(calls.orderUpdates[0].match_status).toBe("matched");
-    expect(calls.orderUpdates[0].backorder_quantity).toBe(0);
+    // ADR 0192 amendment: the verification is a `reconciled` event in BOTTLES,
+    // and the order row no longer carries the four sibling quantities.
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({
+        stage: "reconciled",
+        counted_uom: "bottle",
+        counted_qty_bottles: 24,
+        rejected_qty_bottles: 0,
+        invoice_qty_bottles: 24,
+      }),
+    ]);
     expect(calls.orderUpdates[0].discrepancy_notes).toBeNull();
   });
 
@@ -917,7 +937,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
     } as any);
 
     expect(calls.orderUpdates[0].match_status).toBe("matched");
-    expect(calls.orderUpdates[0].accepted_quantity).toBe(24);
+    expect(calls.receiptEvents[0]).toMatchObject({ counted_qty_bottles: 24, invoice_qty_bottles: 24 });
   });
 
   it("still honours a payload that carries only the old unitless names", async () => {
@@ -933,8 +953,7 @@ describe("verifyReceipt — a deprecated alias may not disagree with its twin", 
       rejectedQuantity: 2,
     } as any);
 
-    expect(calls.orderUpdates[0].accepted_quantity).toBe(22);
-    expect(calls.orderUpdates[0].rejected_quantity).toBe(2);
+    expect(calls.receiptEvents[0]).toMatchObject({ counted_qty_bottles: 22, rejected_qty_bottles: 2 });
     expect(calls.orderUpdates[0].match_status).toBe("rejected");
   });
 });
@@ -1107,6 +1126,74 @@ describe("verifyReceipt — a non-whole derived count is refused before any writ
       invoiceCurrency: "USD",
     } as any);
 
-    expect(calls.orderUpdates[0].accepted_quantity).toBe(5);
+    // 5 cases of 12, stated in bottles on the event.
+    expect(calls.receiptEvents[0]).toMatchObject({ counted_qty_bottles: 60 });
+  });
+});
+
+describe("verifyReceipt — the verification is an event, not four order columns (ADR 0192 amendment)", () => {
+  const SIBLINGS = ["accepted_quantity", "rejected_quantity", "backorder_quantity", "invoice_quantity"];
+  const bottleOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00006",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 24,
+    bottles_total: 24,
+    unit_type: "bottle",
+    final_price: 22,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+
+  it("writes none of the four sibling columns, and records the verification once, in bottles", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUnitPrice: 22,
+      invoiceCurrency: "USD",
+      acceptedQuantity: 22,
+      rejectedQuantity: 2,
+      rejectedReason: "two corked",
+    } as any);
+    for (const update of calls.orderUpdates)
+      for (const col of SIBLINGS) expect(col in update).toBe(false);
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({
+        restaurant_id: REST,
+        order_id: ORDER,
+        stage: "reconciled",
+        counted_qty_bottles: 22,
+        rejected_qty_bottles: 2,
+        invoice_qty_bottles: 24,
+        received_by: USER,
+        notes: "two corked",
+      }),
+    ]);
+  });
+
+  it("a verification with no invoice records no invoice quantity, not zero", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder });
+    await service(db).verifyReceipt(REST, ORDER, USER, { acceptedQuantity: 24 } as any);
+    expect(calls.receiptEvents[0]).toMatchObject({ invoice_qty_bottles: null });
+  });
+
+  it("if the verification's counts cannot be recorded, nothing is changed: no stock moves, no claim, no order write", async () => {
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      receiptEventError: { message: "permission denied" },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 24,
+        invoiceUnitPrice: 22,
+        invoiceCurrency: "USD",
+        acceptedQuantity: 20,
+      } as any),
+    ).rejects.toThrow(/counts could not be recorded .*nothing was changed/);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+    expect(calls.creditInserts).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
   });
 });

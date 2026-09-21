@@ -20,7 +20,7 @@ import {
  * `scripts/check_read_columns_exist.py`.
  */
 const GRANT_COLUMNS =
-  "id, grantor_user_id, grantee_user_id, scope, limit_amount, limit_currency, expires_at, created_at, revoked_at";
+  "id, grantor_user_id, grantee_user_id, scope, limit_amount, limit_currency, expires_at, created_at, revoked_at, vouched_by_user_id, suspended_at, deleted_at";
 
 /** A standing plus the role it was read from, so a readout can name it. */
 export type VendorSendReading = VendorSendStanding & { role: string | null };
@@ -96,11 +96,20 @@ export class VendorSendAuthorityService {
     }
 
     const grants = await this.grantsHeldBy(userId, restaurantId);
+    // The owners the grants REST ON (their vouchers), each read now, strictly.
+    // A latched grant needs no read: it waits whatever its voucher is today.
     const ownerIds = new Set<string>();
-    const grantors = [...new Set(grants.map((g) => g.grantor_user_id).filter((g): g is string => !!g))];
-    for (const grantor of grantors) {
-      const grantorRole = await readRestaurantRole(this.db, grantor, restaurantId, { strict: true });
-      if ((grantorRole ?? "").trim().toLowerCase() === "owner") ownerIds.add(grantor);
+    const vouchers = [
+      ...new Set(
+        grants
+          .filter((g) => !g.suspended_at && !g.deleted_at && !g.revoked_at)
+          .map((g) => g.vouched_by_user_id)
+          .filter((g): g is string => !!g),
+      ),
+    ];
+    for (const voucher of vouchers) {
+      const voucherRole = await readRestaurantRole(this.db, voucher, restaurantId, { strict: true });
+      if ((voucherRole ?? "").trim().toLowerCase() === "owner") ownerIds.add(voucher);
     }
     return {
       ...decideVendorSend({ role, grants, ownerIds, now: opts.now ?? new Date(), amount: opts.amount ?? null }),
@@ -117,7 +126,11 @@ export class VendorSendAuthorityService {
    * drafted reply, a reply from the thread) the sentence says the hold will
    * ask; where it does not (the house composer) it says who can send instead.
    */
-  async readout(userId: string, restaurantId: string, opts: { canAsk: boolean }): Promise<SendOrAsk> {
+  async readout(
+    userId: string,
+    restaurantId: string,
+    opts: { canAsk: boolean; amount?: ActAmount | null; act?: string },
+  ): Promise<SendOrAsk> {
     const unreadable = (why: string): SendOrAsk => ({
       readable: false,
       maySend: false,
@@ -128,10 +141,11 @@ export class VendorSendAuthorityService {
     });
     let reading: VendorSendReading;
     try {
-      reading = await this.standing(userId, restaurantId);
+      reading = await this.standing(userId, restaurantId, { amount: opts.amount ?? null });
     } catch (e: any) {
       return unreadable(e?.message ?? "no reason given");
     }
+    const act = opts.act ?? "send it";
     if (reading.mode === "ask") {
       return {
         readable: true,
@@ -140,8 +154,8 @@ export class VendorSendAuthorityService {
         basis: null,
         grant: null,
         sentence: opts.canAsk
-          ? askSentence(reading.reason, "send it")
-          : sendRefusal(reading.reason, "send it", { canAsk: false }).replace(/^Nothing was sent\. /, ""),
+          ? askSentence(reading.reason, act)
+          : sendRefusal(reading.reason, act, { canAsk: false }).replace(/^Nothing was sent\. /, ""),
       };
     }
     if (reading.basis !== "grant") {
@@ -186,6 +200,34 @@ export class VendorSendAuthorityService {
       throw new ForbiddenException(sendRefusal(reading.reason, act, { canAsk: opts.canAsk }));
     }
     return reading;
+  }
+
+  /**
+   * A send made under a grant is a grant event (ADR 0112 F12: "grant checks
+   * write to one tamper-evident security_events chain"; founder, 2026-09-21:
+   * every grant event is written there). Called at the ACT, after the seal is
+   * spent and BEFORE anything leaves: if the ledger cannot be written the send
+   * is refused, because a send under a grant the ledger does not show is the
+   * one record F12 exists to keep. An owner or a manager sends by role, which
+   * is not a grant event, and nothing is written for them.
+   */
+  async witnessGrantUse(
+    grantId: string | null | undefined,
+    input: { userId: string; restaurantId: string; act: string; subject: string },
+  ): Promise<void> {
+    if (!grantId) return;
+    const { error } = await this.db.rpc("authority_grant_relied_on", {
+      p_house: input.restaurantId,
+      p_actor: input.userId,
+      p_grant: grantId,
+      p_act: input.act,
+      p_subject: input.subject,
+    });
+    if (error) {
+      throw new InternalServerErrorException(
+        `Your grant could not be written to the house's security ledger (${error.message}), so nothing was sent. A send under a grant is always recorded there.`,
+      );
+    }
   }
 
   /** This person's grants in this house, live or not (the decision sorts them). */

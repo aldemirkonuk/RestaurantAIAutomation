@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsBoolean,
   IsIn,
   IsISO8601,
   IsNumber,
@@ -54,4 +55,26 @@ export class IssueAuthorityGrantDto {
   @IsOptional()
   @IsISO8601()
   expiresAt?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Owner-only: managers do not see this grant in the register (founder, 2026-09-21). Absent or false = managers see it, which is the default he chose.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  ownerOnly?: boolean;
+}
+
+/** The act a seal is minted for on an existing grant. */
+export class GrantActSealDto {
+  @ApiProperty({ enum: ["revoke", "reapprove", "delete"] })
+  @IsIn(["revoke", "reapprove", "delete"])
+  act!: "revoke" | "reapprove" | "delete";
+}
+
+/** An owner marks a grant owner-only, or not. */
+export class SetGrantOwnerOnlyDto {
+  @ApiProperty({ description: "true = hidden from managers; false = managers see it." })
+  @IsBoolean()
+  ownerOnly!: boolean;
 }

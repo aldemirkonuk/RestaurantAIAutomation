@@ -9,7 +9,7 @@ import { DatabaseService } from "../database/database.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { readBookedOrderBottles } from "./booked-order-quantity";
-import { packsAndLoose, readOneShelfReceived } from "./shelf-received";
+import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
 import { ORDER_UNIT_TYPES } from "./order-units";
 
 /**
@@ -769,31 +769,44 @@ export class ReceivingService {
    * vendor's own paperwork and are the ones worth starting with.
    */
   async managerQueue(restaurantId: string) {
-    const [{ data: orders }, { data: credits }, unverified] = await Promise.all(
-      [
-        this.db
-          .getClient()
-          .from("procurement_orders")
-          .select(
-            "id, order_number, match_status, discrepancy_notes, backorder_quantity, invoice_quantity, quantity, match_verified_at, provider_id",
-          )
-          .eq("restaurant_id", restaurantId)
-          .not("match_status", "is", null)
-          .neq("match_status", "matched")
-          .order("match_verified_at", { ascending: false })
-          .limit(100),
-        this.db
-          .getClient()
-          .from("procurement_credits")
-          .select(
-            "id, order_id, reason, summary, claimed_amount, state, self_evidenced, opened_at",
-          )
-          .eq("restaurant_id", restaurantId)
-          .in("state", ["open", "requested", "promised"])
-          .limit(200),
-        this.listUnverified(restaurantId),
-      ],
-    );
+    const [
+      { data: orders, error: ordersError },
+      { data: credits, error: creditsError },
+      unverified,
+    ] = await Promise.all([
+      this.db
+        .getClient()
+        .from("procurement_orders")
+        .select(
+          "id, order_number, match_status, discrepancy_notes, quantity, unit_type, bottles_total, inventory_id, match_verified_at, provider_id",
+        )
+        .eq("restaurant_id", restaurantId)
+        .not("match_status", "is", null)
+        .neq("match_status", "matched")
+        .order("match_verified_at", { ascending: false })
+        .limit(100),
+      this.db
+        .getClient()
+        .from("procurement_credits")
+        .select(
+          "id, order_id, reason, summary, claimed_amount, state, self_evidenced, opened_at",
+        )
+        .eq("restaurant_id", restaurantId)
+        .in("state", ["open", "requested", "promised"])
+        .limit(200),
+      this.listUnverified(restaurantId),
+    ]);
+    // A failed read is an error, never an empty queue: "nothing to decide"
+    // and "the queue could not be read" are opposite facts to a manager.
+    if (ordersError) throw new Error(`The deliveries to decide could not be read (${ordersError.message}).`);
+    if (creditsError) throw new Error(`The open vendor claims could not be read (${creditsError.message}).`);
+
+    // What is still owed, from the ledger (ADR 0192 amendment, 2026-09-21):
+    // the order's bottles less what the shelf holds, in bottles. It used to be
+    // `procurement_orders.backorder_quantity`, written once per verification
+    // and never moved by a later truck. A failed ledger read reads as
+    // unknown on each row it covered, never as zero owed.
+    const shelf = await readShelfReceived(this.db.getClient(), restaurantId, (orders ?? []) as any[]);
 
     const creditsByOrder = new Map<string, any[]>();
     for (const c of credits ?? []) {
@@ -815,7 +828,18 @@ export class ReceivingService {
         orderNumber: o.order_number,
         verdict: o.match_status,
         summary: o.discrepancy_notes,
-        backorderQty: o.backorder_quantity ?? 0,
+        backorderBottles: (() => {
+          const r = shelf.get(o.id);
+          return r && r.readable ? r.backorderBottles : null;
+        })(),
+        backorderWhy: (() => {
+          const r = shelf.get(o.id);
+          if (!r) return "What is still owed on this order was not read.";
+          if (!r.readable) return r.why;
+          return r.backorderBottles === null
+            ? "This order's bottles are not known exactly, so what is still owed is not stated."
+            : null;
+        })(),
         verifiedAt: o.match_verified_at,
         dollarsAtRisk: Math.round(atRisk * 100) / 100,
         selfEvidenced: linked.some((c) => c.self_evidenced),

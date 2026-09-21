@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, InternalServerErrorException, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { currencyCode, notACurrencyBecause } from "../common/iso-4217";
+import { lotBookedCost } from "./auction-lot-cost";
 import {
   AuctionLotRecordResponseDto,
   CreateAuctionLotRecordDto,
@@ -22,18 +23,25 @@ interface AuctionLotRecordRow {
   id: string;
   inventory_id: string;
   auction_house: string;
-  lot_number: string;
+  lot_number: string | null;
   sale_date: string;
   hammer_price: number;
   buyers_premium: number;
   currency: string;
   bottles: number;
+  house_currency: string | null;
+  exchange_rate: number | string | null;
+  house_unit_cost: number | string | null;
+  booked_unit_cost: number | string | null;
   recorded_by_name: string;
   created_at: string;
 }
 
 const SELECT_COLUMNS =
-  "id, inventory_id, auction_house, lot_number, sale_date, hammer_price, buyers_premium, currency, bottles, recorded_by_name, created_at";
+  "id, inventory_id, auction_house, lot_number, sale_date, hammer_price, buyers_premium, currency, bottles, house_currency, exchange_rate, house_unit_cost, booked_unit_cost, recorded_by_name, created_at";
+
+const numOrNull = (v: number | string | null | undefined): number | null =>
+  v === null || v === undefined || v === "" ? null : Number(v);
 
 @Injectable()
 export class AuctionLotRecordsService {
@@ -46,12 +54,16 @@ export class AuctionLotRecordsService {
       id: row.id,
       inventoryId: row.inventory_id,
       auctionHouse: row.auction_house,
-      lotNumber: row.lot_number,
+      lotNumber: row.lot_number ?? null,
       saleDate: row.sale_date,
       hammerPrice: Number(row.hammer_price),
       buyersPremium: Number(row.buyers_premium),
       currency: row.currency,
       bottles: row.bottles,
+      houseCurrency: row.house_currency ?? null,
+      exchangeRate: numOrNull(row.exchange_rate),
+      houseUnitCost: numOrNull(row.house_unit_cost),
+      bookedUnitCost: numOrNull(row.booked_unit_cost),
       recordedByName: row.recorded_by_name,
       createdAt: row.created_at,
     };
@@ -81,13 +93,51 @@ export class AuctionLotRecordsService {
       );
     }
 
-    // The record holds both NOT NULL with a non-blank CHECK; a blank one is
-    // the caller's mistake and gets a 400 that names it, not a constraint 500.
+    // The auction house is NOT NULL with a non-blank CHECK; a blank one is the
+    // caller's mistake and gets a 400 that names it, not a constraint 500.
+    // The lot number is OPTIONAL since 2026-09-21 (founder answer 11): a blank
+    // one is recorded as not stated (NULL), never as an empty string.
     const auctionHouse = (dto.auctionHouse ?? "").trim();
-    const lotNumber = (dto.lotNumber ?? "").trim();
-    if (!auctionHouse || !lotNumber) {
+    const lotNumber = (dto.lotNumber ?? "").trim() || null;
+    if (!auctionHouse) {
       throw new BadRequestException(
-        "An auction lot's record needs its auction house and its lot number. Nothing was recorded.",
+        "An auction lot's record needs its auction house. Nothing was recorded.",
+      );
+    }
+
+    // WHAT THE BOOK WAS GIVEN, IN THE HOUSE'S MONEY (founder answer 10,
+    // 2026-09-21): a typed house cost wins, else a stated rate, else the lot's
+    // own per-bottle cost when it is in the house's currency — never a
+    // looked-up rate. The house's currency is READ here, strictly; the
+    // bottles were carried at `bookedUnitCost`, and a record is refused unless
+    // that is the figure the stated numbers give, so the record never
+    // disagrees with the lot it describes.
+    const { data: house, error: houseError } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("id, currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (houseError) {
+      throw new InternalServerErrorException(
+        `The house's currency could not be read (${houseError.message}), so the lot's cost cannot be checked. Nothing was recorded.`,
+      );
+    }
+    const houseCurrency = currencyCode((house as { currency?: string | null } | null)?.currency ?? null);
+    const cost = lotBookedCost({
+      hammer: dto.hammerPrice,
+      premium: dto.buyersPremium,
+      bottles: dto.bottles,
+      currency: code,
+      houseCurrency,
+      exchangeRate: dto.exchangeRate ?? null,
+      houseUnitCost: dto.houseUnitCost ?? null,
+    });
+    if (!cost.ok) {
+      throw new BadRequestException(`${cost.why} Nothing was recorded.`);
+    }
+    if (Math.abs(cost.booked - dto.bookedUnitCost) > 0.004) {
+      throw new BadRequestException(
+        `The bottles were carried in at ${dto.bookedUnitCost} ${houseCurrency} each, but the figures stated for this lot give ${cost.booked} ${houseCurrency}. Nothing was recorded; correct the lot on the item so the two agree.`,
       );
     }
 
@@ -127,6 +177,10 @@ export class AuctionLotRecordsService {
         buyers_premium: dto.buyersPremium,
         currency: code,
         bottles: dto.bottles,
+        house_currency: houseCurrency,
+        exchange_rate: dto.exchangeRate ?? null,
+        house_unit_cost: dto.houseUnitCost ?? null,
+        booked_unit_cost: cost.booked,
         recorded_by: userId,
         recorded_by_name: trimmedRecordedByName,
       })

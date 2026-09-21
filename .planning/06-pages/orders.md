@@ -36,7 +36,16 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 
 ## Send or ask — 2026-09-21 (ADR 0175 amendment, "Staff ask, manager sends")
 
-Every hold on a vendor letter on this page says before the hold whether it sends or asks: the DraftRail card and detail, the legacy DraftEmailApprovalPanel, and the thread drawer's reply box read `sendOrAsk` beside the draft (`GET orders/:id/draft`). An owner, a manager or a grantee ("granted by …" shown) holds to send under a seal that is now always required; anybody else holds to ask, and their exact words wait for a manager, named on the card ("asked by …, waiting for a manager"). The thread shows who sent each letter and who asked for it. The drawer's reply and the deal confirmation are sealed holds (they were plain clicks); a deal has no request path, so a staff member is told who can confirm it. Proved by `DraftRail.test.tsx`, `DraftEmailApprovalPanel.test.tsx` and `CommsThreadDrawer.test.tsx`.
+**[2026-09-21, ADR 0175 second amendment.]** A deal can now be asked for too
+(answer 3): the thread drawer reads `GET orders/:id/deal-request` (the waiting
+request, and this person's standing read with the deal's own money), a staff
+member's hold in the deal modal asks a manager (`POST orders/:id/confirm-deal-request`,
+the terms kept exactly), and a manager opens the waiting request on the asked-for
+terms, so one sealed hold confirms exactly them; dismissing the deal closes the waiting request (last call). A draft the gateway refused to
+build (ADR 0172 header refusal) is closed as `SEND_REFUSED` and the thread shows
+"Refused · not sent" with the reason (answer 6); approve-draft answers 422.
+
+Every hold on a vendor letter on this page says before the hold whether it sends or asks: the DraftRail card and detail, the legacy DraftEmailApprovalPanel, and the thread drawer's reply box read `sendOrAsk` beside the draft (`GET orders/:id/draft`). An owner, a manager or a grantee ("granted by …" shown) holds to send under a seal that is now always required; anybody else holds to ask, and their exact words wait for a manager, named on the card ("asked by …, waiting for a manager"). The thread shows who sent each letter and who asked for it. The drawer's reply and the deal confirmation are sealed holds (they were plain clicks); a deal has no request path, so a staff member is told who can confirm it **[superseded 2026-09-21 by answer 3, bracket above: a staff member now asks for a deal too]**. Proved by `DraftRail.test.tsx`, `DraftEmailApprovalPanel.test.tsx` and `CommsThreadDrawer.test.tsx`.
 
 ## 1. Purpose
 

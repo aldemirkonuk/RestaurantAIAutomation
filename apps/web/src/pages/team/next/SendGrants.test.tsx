@@ -24,7 +24,12 @@ vi.mock('../../../services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
 
-import { SendGrantsSection, grantSentence, type AuthorityGrantView } from './SendGrantsSection';
+import {
+  SendGrantsSection,
+  emptyRegisterSentence,
+  grantSentence,
+  type AuthorityGrantView,
+} from './SendGrantsSection';
 import type { TeamMember } from '../../../services/api/team';
 
 const LIVE: AuthorityGrantView = {
@@ -32,14 +37,39 @@ const LIVE: AuthorityGrantView = {
   scope: 'vendor_send',
   grantee: { userId: 'u-gul', name: 'Gül' },
   grantedBy: { userId: 'u-olcay', name: 'Olcay' },
+  vouchedBy: { userId: 'u-olcay', name: 'Olcay' },
   limitAmount: null,
   limitCurrency: null,
   expiresAt: null,
   createdAt: '2026-09-20T09:00:00.000Z',
   revokedAt: null,
   revokedBy: null,
+  awaitingSince: null,
+  awaitingReason: null,
+  ownerOnly: false,
   state: 'live',
 };
+
+const WAITING: AuthorityGrantView = {
+  ...LIVE,
+  id: 'g-2',
+  state: 'awaiting_reapproval',
+  awaitingSince: '2026-09-21T09:00:00.000Z',
+  awaitingReason: 'voucher_no_longer_owner',
+};
+
+/** The hold, on the keyboard: the first Enter arms it (and mints the seal), the second approves. */
+function hold(die: HTMLElement) {
+  fireEvent.keyDown(die, { key: 'Enter' });
+  fireEvent.keyDown(die, { key: 'Enter' });
+}
+
+/** A gateway that mints a seal on every `seal-challenge` and answers the act. */
+function sealsThen(answer: unknown) {
+  api.post.mockImplementation(async (path: string) =>
+    String(path).endsWith('seal-challenge') ? { data: { challenge: 'seal-1' } } : { data: answer },
+  );
+}
 
 function member(over: Partial<TeamMember>): TeamMember {
   return {
@@ -95,37 +125,98 @@ describe('who may send to vendors', () => {
     );
   });
 
-  it('an owner revokes any grant', async () => {
-    draw({ viewerIsOwner: true, grants: [LIVE] });
-    api.post.mockResolvedValue({ data: { says: 'Revoked. Gül can no longer send with one hold.' } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/authority/grants/g-1/revoke'));
+  it('an owner revokes any grant with a hold that carries a server seal', async () => {
+    draw({ viewerIsOwner: true, viewer: 'owner', grants: [LIVE] });
+    sealsThen({ says: 'Revoked. Gül can no longer send with one hold.' });
+    hold(await screen.findByRole('button', { name: /Hold to revoke/ }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/authority/grants/g-1/revoke', undefined, {
+        headers: { 'x-seal-challenge': 'seal-1' },
+      }),
+    );
+    expect(api.post).toHaveBeenCalledWith('/authority/grants/g-1/seal-challenge', { act: 'revoke' });
     await waitFor(() => expect(screen.getByTestId('send-grants-says')).toHaveTextContent(/Revoked/));
   });
 
   it('a grantee sees their own grant and is offered nothing it would be refused', async () => {
-    // What the gateway sends a non-owner: only the grants that name them.
-    draw({ viewerIsOwner: false, grants: [LIVE] });
+    // What the gateway sends staff: only the grants that name them.
+    draw({ viewerIsOwner: false, viewer: 'other', grants: [LIVE] });
     await waitFor(() => expect(screen.getByTestId('send-grants-live')).toBeInTheDocument());
-    expect(screen.queryByRole('button', { name: 'Revoke' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Hold to revoke/ })).toBeNull();
     expect(screen.queryByTestId('send-grants-form')).toBeNull();
   });
 
-  it('a manager is never told "nobody has been named" off a list filtered to their own grants', async () => {
-    // A manager holds no grant, so the gateway sends them an empty list even
-    // when staff have been named (AuthorityGrantsService.list).
-    draw({ viewerIsOwner: false, grants: [] });
+  it('a manager reads the register (founder answer 2) and is offered no owner act', async () => {
+    draw({ viewerIsOwner: false, viewer: 'manager', grants: [LIVE, WAITING] });
+    await waitFor(() => expect(screen.getByTestId('send-grants-live')).toBeInTheDocument());
+    expect(screen.getByTestId('send-grants-waiting')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Hold to/ })).toBeNull();
+    expect(screen.queryByTestId('send-grants-form')).toBeNull();
+  });
+
+  it('an empty register is worded for who reads it — never "nobody" to someone who cannot see everything', async () => {
+    expect(emptyRegisterSentence('owner')).toMatch(/^Nobody has been named\./);
+    expect(emptyRegisterSentence('manager')).toMatch(/that managers can see\. An owner may keep a grant owner-only/);
+    expect(emptyRegisterSentence('other')).toMatch(/^No grant names you\./);
+    draw({ viewerIsOwner: false, viewer: 'manager', grants: [] });
     await waitFor(() =>
-      expect(screen.getByTestId('send-grants-none')).toHaveTextContent(
-        'No grant names you. Only owners see who else has been named.',
+      expect(screen.getByTestId('send-grants-none')).toHaveTextContent(/that managers can see/),
+    );
+    expect(screen.queryByTestId('send-grants-form')).toBeNull();
+  });
+
+  it('a grant whose owner went waits, says so, and an owner re-approves it under a seal', async () => {
+    draw({ viewerIsOwner: true, viewer: 'owner', grants: [WAITING] });
+    await waitFor(() =>
+      expect(screen.getByTestId('send-grants-waiting')).toHaveTextContent(
+        /Gül can no longer send \(letters only\): Olcay, who named them, is no longer an owner here, so it stopped/,
       ),
     );
-    expect(screen.getByTestId('send-grants')).not.toHaveTextContent(/Nobody has been named/);
-    expect(screen.queryByTestId('send-grants-form')).toBeNull();
+    expect(screen.getByTestId('send-grants-waiting')).toHaveTextContent(/waits for an owner to re-approve it, or to delete it/);
+    sealsThen({ says: 'Re-approved.' });
+    hold(screen.getByRole('button', { name: /Hold to re-approve/ }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/authority/grants/g-2/reapprove', undefined, {
+        headers: { 'x-seal-challenge': 'seal-1' },
+      }),
+    );
+  });
+
+  it('an owner deletes a waiting grant under a seal', async () => {
+    draw({ viewerIsOwner: true, viewer: 'owner', grants: [WAITING] });
+    sealsThen({ says: 'Deleted.' });
+    hold(await screen.findByRole('button', { name: /Hold to delete/ }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/authority/grants/g-2/seal-challenge', { act: 'delete' }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/authority/grants/g-2/delete', undefined, {
+        headers: { 'x-seal-challenge': 'seal-1' },
+      }),
+    );
+  });
+
+  it('a hold whose seal could not be issued does nothing and says so', async () => {
+    draw({ viewerIsOwner: true, viewer: 'owner', grants: [LIVE] });
+    api.post.mockRejectedValue(new Error('not an owner'));
+    hold(await screen.findByRole('button', { name: /Hold to revoke/ }));
+    await waitFor(() => expect(screen.getByTestId('send-grants-problem')).toHaveTextContent(/seal could not be issued/));
+    expect(api.post.mock.calls.some((c: unknown[]) => String(c[0]).endsWith('/revoke'))).toBe(false);
+  });
+
+  it('an owner marks a grant owner-only', async () => {
+    draw({ viewerIsOwner: true, viewer: 'owner', grants: [LIVE] });
+    api.post.mockResolvedValue({ data: { says: 'Owner-only.' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it owner-only' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/authority/grants/g-1/owner-only', { ownerOnly: true }));
+  });
+
+  it('a re-approved grant names who it rests on now', () => {
+    expect(grantSentence({ ...LIVE, vouchedBy: { userId: 'u-cem', name: 'Cem' } })).toMatch(
+      /named by Olcay, re-approved by Cem, until an owner revokes it/,
+    );
   });
 
   it('an owner with no grants live is told nobody has been named', async () => {
-    draw({ viewerIsOwner: true, grants: [] });
+    draw({ viewerIsOwner: true, viewer: 'owner', grants: [] });
     await waitFor(() =>
       expect(screen.getByTestId('send-grants-none')).toHaveTextContent(/^Nobody has been named\./),
     );
@@ -140,21 +231,33 @@ describe('who may send to vendors', () => {
     expect(names).not.toContain('No account');
   });
 
-  it('names someone with every answer stated — letters only, until revoked — never a missing key', async () => {
-    draw({ viewerIsOwner: true, grants: [] });
-    api.post.mockResolvedValue({ data: { says: 'Ayşe may now send to vendors with one hold.' } });
+  it('names someone with every answer stated — letters only, until revoked — under a seal minted over exactly that', async () => {
+    draw({ viewerIsOwner: true, viewer: 'owner', grants: [] });
+    sealsThen({ says: 'Ayşe may now send to vendors with one hold.' });
     fireEvent.change(await screen.findByLabelText('Name someone'), { target: { value: 'u-ayse' } });
-    const die = screen.getByRole('button', { name: /Hold to name them/ });
-    fireEvent.keyDown(die, { key: 'Enter' });
-    fireEvent.keyDown(die, { key: 'Enter' });
-    await waitFor(() => expect(api.post).toHaveBeenCalledOnce());
-    expect(api.post).toHaveBeenCalledWith('/authority/grants', {
+    hold(screen.getByRole('button', { name: /Hold to name them/ }));
+    const body = {
       granteeUserId: 'u-ayse',
       scope: 'vendor_send',
       limitAmount: null,
       limitCurrency: null,
       expiresAt: null,
-    });
+      ownerOnly: false,
+    };
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+    expect(api.post).toHaveBeenNthCalledWith(1, '/authority/grants/seal-challenge', body);
+    expect(api.post).toHaveBeenNthCalledWith(2, '/authority/grants', body, { headers: { 'x-seal-challenge': 'seal-1' } });
+  });
+
+  it('an owner can name someone owner-only from the start', async () => {
+    draw({ viewerIsOwner: true, viewer: 'owner', grants: [] });
+    sealsThen({ says: 'Named.' });
+    fireEvent.change(await screen.findByLabelText('Name someone'), { target: { value: 'u-ayse' } });
+    fireEvent.click(screen.getByLabelText(/owner-only \(managers will not see it\)/));
+    hold(screen.getByRole('button', { name: /Hold to name them/ }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/authority/grants/seal-challenge', expect.objectContaining({ ownerOnly: true })),
+    );
   });
 
   it('a deal limit needs both an amount and a currency before the hold is offered', async () => {

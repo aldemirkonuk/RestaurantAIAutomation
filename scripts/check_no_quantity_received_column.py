@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""No app code reads or writes `procurement_orders.quantity_received` — ADR 0192.
+"""No app code reads or writes `procurement_orders.quantity_received` or its four siblings — ADR 0192.
 
 WHY THIS GUARD EXISTS
 ---------------------
@@ -18,9 +18,23 @@ column stays in the schema (dropping it is a later ADR); this guard is what keep
 it dark, because the next screen that "just reads the received count" reopens
 exactly that defect.
 
+THE SIBLINGS (ADR 0192 amendment, founder answer 8, 2026-09-21): *"ADR 0192
+applies to the sibling columns: accepted, rejected, backorder and invoice
+quantities are answered from the ledger / receipt event rows in one stated
+unit, and the app stops reading/writing those columns (extend the guard)."*
+`accepted_quantity`, `rejected_quantity`, `backorder_quantity` and
+`invoice_quantity` were written by `verifyReceipt` alone, accepted and rejected
+in the counted unit and backorder in bottles, and read by the receiving queue
+as if one unit. They are now a `reconciled` receipt event and the ledger, in
+bottles (`shelf-received.ts`), and rule 1 covers all five names.
+(`prefilled_invoice_quantity` — what the extraction proposed, ADR 0059 — is a
+different column and not covered: `\b` does not split it.)
+
 WHAT IT CHECKS
 --------------
-  1. The COLUMN. The identifier `quantity_received` must not appear in code —
+  1. The COLUMNS. The identifiers `quantity_received`, `accepted_quantity`,
+     `rejected_quantity`, `backorder_quantity` and `invoice_quantity` must not
+     appear in code —
      comments stripped, strings KEPT, because a `.select("…, quantity_received")`
      is a read and `{ quantity_received: n }` is a write — anywhere under
      `apps/*/src`, `apps/mobile/app`, `services/` or `packages/`.
@@ -88,7 +102,9 @@ EXTENSIONS = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py"}
 SKIP_DIRS = {"node_modules", "dist", "build", ".expo", ".next", "__pycache__", ".turbo", "coverage"}
 
 PATTERNS = {
-    COLUMN: re.compile(r"\bquantity_received\b"),
+    COLUMN: re.compile(
+        r"\b(?:quantity_received|accepted_quantity|rejected_quantity|backorder_quantity|invoice_quantity)\b"
+    ),
     WIRE: re.compile(r"\bquantityReceived(?:Uom)?\b"),
 }
 
@@ -243,7 +259,7 @@ def run(root: Path) -> tuple[int, list[str], int]:
                 findings.append(
                     f"{rel}:{line} names `{m.group(0)}` "
                     + (
-                        "(the retired column)"
+                        "(a retired received-quantity column)"
                         if rule == COLUMN
                         else "(a retired wire field that carried the column)"
                     )
@@ -266,19 +282,21 @@ def main_for(root: Path) -> int:
         return 2
     if findings:
         print(
-            f"FAIL -- {len(findings)} place(s) read or write procurement_orders.quantity_received "
-            "or a retired wire field (ADR 0192):"
+            f"FAIL -- {len(findings)} place(s) read or write procurement_orders.quantity_received, "
+            "one of its four siblings, or a retired wire field (ADR 0192):"
         )
         for f in findings:
             print(f"  - {f}")
         print(
-            "What an order received is the stock ledger's count: read the gateway's `received` "
-            "block (apps/api-gateway/src/procurement/shelf-received.ts), never the column."
+            "What an order received, accepted, rejected, was invoiced for or still has on backorder "
+            "is the stock ledger and the receipt events, in bottles: read the gateway's `received` "
+            "block (apps/api-gateway/src/procurement/shelf-received.ts), never the columns."
         )
         return 1
     print(
-        f"PASS -- {scanned} app source files; none names procurement_orders.quantity_received, "
-        "and no client names quantityReceived / quantityReceivedUom. (Scope: apps, services, "
+        f"PASS -- {scanned} app source files; none names procurement_orders.quantity_received "
+        "or its siblings (accepted/rejected/backorder/invoice_quantity), and no client names "
+        "quantityReceived / quantityReceivedUom. (Scope: apps, services, "
         "packages, tests excluded; a select(\"*\") is not visible to this guard — see its header.)"
     )
     return 0
@@ -353,6 +371,23 @@ def self_test() -> int:
         1,
     )
     expect("a python comment does not fire", {"services/agent/demo.py": "# quantity_received\nx = 1\n"}, 0)
+    for sibling in ("accepted_quantity", "rejected_quantity", "backorder_quantity", "invoice_quantity"):
+        expect(
+            f"a write of the sibling {sibling} fires",
+            {gw: f"Object.assign(update, {{ {sibling}: n }});\n"},
+            1,
+        )
+        expect(
+            f"a select naming the sibling {sibling} fires",
+            {gw: f'db.from("procurement_orders").select("id, {sibling}");\n'},
+            1,
+        )
+        expect(f"a comment naming {sibling} does not fire", {gw: f"// the old {sibling} column\n"}, 0)
+    expect(
+        "the extraction's prefilled twin is a different column",
+        {gw: "update({ prefilled_invoice_quantity: n });\n"},
+        0,
+    )
     expect(
         "a web client reading the retired wire unit fires",
         {"apps/web/src/pages/x.tsx": "const u = order.quantityReceivedUom;\n"},

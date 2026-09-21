@@ -28,6 +28,8 @@ import { Sheet } from '../../../components/mudavym/Sheet';
 import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
 import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
+import { ContactsSection } from './ContactsSection';
+import { VendorRecordEdit, businessTypeLabel } from './VendorRecordEdit';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -46,6 +48,11 @@ interface Props {
    * fifth section holds it is a link that only looks like it worked.
    */
   focusUsualCurrency?: boolean;
+  /**
+   * The record was edited here (founder answer 12, 2026-09-21: the rebuilt
+   * sheet gets an edit path, type first). The page refreshes its cards.
+   */
+  onProviderSaved?: (updated: Provider) => void;
 }
 
 function FactRow({ label, value }: { label: string; value: string }) {
@@ -70,7 +77,7 @@ function FactRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
+export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSaved }: Props) {
   const regions = provider.regionsCovered ?? provider.statesOrRegionsServed ?? [];
 
   return (
@@ -78,11 +85,13 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
       open
       onClose={onClose}
       label={`${provider.name} — details`}
-      eyebrow={provider.primaryBusinessType}
+      eyebrow={businessTypeLabel(provider.primaryBusinessType)}
       title={provider.name}
     >
       <div className="px-4 py-4" style={{ fontFamily: SANS }}>
-        {/* the vendor's own record — plain facts, EM for absences */}
+        {/* the vendor's own record — the type first, editable here */}
+        <VendorRecordEdit provider={provider} onSaved={(p) => onProviderSaved?.(p)} />
+        {/* plain facts, EM for absences */}
         <FactRow label="Contact" value={provider.email || EM} />
         <FactRow label="Phone" value={provider.phone || EM} />
         <FactRow label="Lead time" value={fmtDays(provider.leadTimeDays)} />
@@ -109,6 +118,13 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
           /settings, read on open, one row of it */}
       <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
         <TermsSection providerId={provider.id} providerName={provider.name} />
+      </div>
+
+      {/* the numbers, and whether a text can reach any of them — ADR 0121 P0
+          item 2. The verdict is the gateway's; this section only shows it and
+          lets a manager answer the question nobody has answered. */}
+      <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        <ContactsSection providerId={provider.id} providerName={provider.name} />
       </div>
 
       {/* the twin — fetched on open, never on the grid */}

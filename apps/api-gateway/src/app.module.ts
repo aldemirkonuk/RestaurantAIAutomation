@@ -14,6 +14,7 @@ import { WebsocketModule } from "./websocket/websocket.module";
 import { DatabaseModule } from "./database/database.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
+import { RecommendationDigestModule } from "./analytics/digest/recommendation-digest.module";
 import { VendorPortalModule } from "./vendor-portal/vendor-portal.module";
 import { SeoModule } from "./seo/seo.module";
 import { VendorIntelModule } from "./vendor-intel/vendor-intel.module";
@@ -96,6 +97,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     // Feature modules
     DashboardModule, // Aggregated dashboard endpoint (API Bus pattern)
     AnalyticsModule, // Quantitative analytics engine (finance/stats/risk/forecast)
+    RecommendationDigestModule, // The recommendations digest sender: opted-in members, house clock, one send per period (ADR 0149 row 26)
     VendorPortalModule, // Public vendor catalogue pages (subdomain-resolved)
     SeoModule, // Sitemaps and the /v/:slug served head (ADR 0158)
     VendorIntelModule, // Vendor price scraping + multi-source comparison

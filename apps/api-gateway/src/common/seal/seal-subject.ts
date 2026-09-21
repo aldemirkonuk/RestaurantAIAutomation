@@ -141,6 +141,12 @@ export const SEAL_SUBJECT_KINDS = [
   // house composer's letter, keyed on the vendor it is written to.
   "procurement_conversation",
   "house_letter",
+  // ADR 0175 amendment, founder answer (4), 2026-09-21 (admitted by
+  // 20260921114800): issuing, revoking, re-approving and deleting a send
+  // grant are sealed on the server. Keyed on the grant; an issue, which has
+  // no grant row yet, is keyed on the house (the `payment_method` create
+  // shape).
+  "authority_grant",
 ] as const;
 
 export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
@@ -201,6 +207,11 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // thing sealed is the letter, and "a different vendor" would read as a
       // statement about the book rather than about what was held.
       return "letter";
+    case "authority_grant":
+      // "send grant", not "grant": `mcp_tool_grant` already reads "grant", and
+      // a refusal must not say the same words about an assistant's tool grant
+      // and a person's right to send to vendors.
+      return "send grant";
   }
 }
 

@@ -47,6 +47,8 @@ const PASSING_GATES = [
   {
     assertMaySend: async () => ({ mode: "send", basis: "manager", grant: null, role: "manager" }),
     readout: async () => ({ readable: true, maySend: true, mode: "send", basis: "manager", grant: null, sentence: null }),
+    // A manager sends by role: no grant event is written (the real service returns at once for a null grant).
+    witnessGrantUse: async () => undefined,
   },
   { redeem: async () => ({ sealId: "seal-1" }), issue: async () => ({ challenge: "c", expiresAt: "t", action: "queue_house_letter" }) },
 ] as [any, any];

@@ -37,7 +37,8 @@ interface QueueItem {
   orderNumber: string | null
   verdict: string
   summary: string | null
-  backorderQty: number
+  /** In bottles, from the ledger (ADR 0192 amendment); null when not known. */
+  backorderBottles: number | null
   verifiedAt: string | null
   dollarsAtRisk: number
   selfEvidenced: boolean
@@ -294,8 +295,10 @@ function ManagerView() {
               >
                 {i.dollarsAtRisk > 0 ? money(i.dollarsAtRisk) : '—'}
               </p>
-              {i.backorderQty > 0 && (
-                <p className="text-[10px] text-amber-600">{i.backorderQty} on backorder</p>
+              {i.backorderBottles !== null && i.backorderBottles > 0 && (
+                <p className="text-[10px] text-amber-600">
+                  {i.backorderBottles} {i.backorderBottles === 1 ? 'bottle' : 'bottles'} on backorder
+                </p>
               )}
             </div>
             <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />

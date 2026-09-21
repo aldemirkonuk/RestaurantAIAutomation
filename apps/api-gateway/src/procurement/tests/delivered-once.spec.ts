@@ -27,7 +27,7 @@
  * Run:
  *   cd apps/api-gateway && npx jest --testPathPattern delivered-once --runInBand
  */
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { ConflictException, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
 import { ProcurementService } from "../procurement.service";
 import { DatabaseService } from "../../database/database.service";
 import { EventsService } from "../../events/events.service";
@@ -38,6 +38,7 @@ import {
   earlierDeliveryOf,
   orderInWords,
   refuseSecondDelivery,
+  DELIVERY_REFUSED_STOCK_NOT_BOOKED,
 } from "../delivered-once";
 import { composeShelfReceived } from "../shelf-received";
 
@@ -348,28 +349,77 @@ describe("markDelivered — the first delivery still happens", () => {
     });
   });
 
-  it("a refused stock movement is not reported as stock received", async () => {
-    // The live `apply_stock_movement` result used to go unread: a refusal still
-    // recorded an `order_delivered` event for bottles that never moved. The
-    // order stays DELIVERED — the caller's word that the truck came — but the
-    // ledger holds nothing, so nothing claims it does.
+  it("a refused stock booking puts the order back to the status it had, so it can be delivered again", async () => {
+    // Founder, answer 9 (2026-09-21): when mark-delivered's stock booking is
+    // refused, REVERT the order's status so it can be retried. Before this the
+    // order stayed DELIVERED with nothing on the shelf, and the second tap was
+    // refused as "already delivered".
     const { db, calls, store } = makeDb({
       order: { ...baseOrder },
       liveRpcError: { message: "item belongs to another house" },
     });
 
-    const out = await service(db).markDelivered(REST, ORDER, USER_A);
+    const refusal = await service(db)
+      .markDelivered(REST, ORDER, USER_A)
+      .then(() => null, (e) => e);
 
-    expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(refusal).toBeInstanceOf(UnprocessableEntityException);
+    expect(refusal.getResponse()).toMatchObject({
+      reason: DELIVERY_REFUSED_STOCK_NOT_BOOKED,
+      reverted: true,
+      status: ProcurementOrderStatus.APPROVED,
+    });
+    expect(refusal.getResponse().message).toMatch(/item belongs to another house/);
+    expect(refusal.getResponse().message).toMatch(/back to approved/);
+    // Put back exactly: status, delivered_at and received_by as they were.
+    expect(store.procurement_orders[0]).toMatchObject({
+      status: "APPROVED",
+      delivered_at: null,
+      received_by: null,
+    });
     expect(liveMovements(calls)).toHaveLength(1);
+    // No event claims bottles that never moved, and no verify task was raised.
     expect(
       store.inventory_events.filter((e) => e.event_type === "order_delivered"),
     ).toHaveLength(0);
-    expect(out.received).toMatchObject({
-      readable: true,
-      quantityInStockUom: 0,
-      words: "0 bottles",
+  });
+
+  it("after a refused booking is fixed, the same order can be delivered", async () => {
+    const opts = {
+      order: { ...baseOrder },
+      liveRpcError: { message: "ledger unavailable" } as Record<string, any> | null,
+    };
+    const { db, store } = makeDb(opts);
+    await service(db).markDelivered(REST, ORDER, USER_A).catch(() => undefined);
+    opts.liveRpcError = null;
+    const out = await service(db).markDelivered(REST, ORDER, USER_A);
+    expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(store.procurement_orders[0].status).toBe("DELIVERED");
+    expect(out.received).toMatchObject({ readable: true, quantityInStockUom: 12 });
+  });
+
+  it("the put-back touches only the write this request made (the race guard stays)", async () => {
+    // Another request re-delivered the order between this one's write and its
+    // put-back: the put-back's WHERE (DELIVERED, this delivered_at, this
+    // person) no longer matches, so it leaves the other delivery alone and
+    // says the order could not be put back.
+    const { db, store } = makeDb({
+      order: { ...baseOrder },
+      liveRpcError: { message: "refused" },
     });
+    const originalRpc = (db as any).supabase.rpc;
+    (db as any).supabase.rpc = async (name: string, args: Row) => {
+      const out = await originalRpc(name, args);
+      if (name === "apply_stock_movement" && args.p_stock_state === "live") {
+        Object.assign(store.procurement_orders[0], { received_by: USER_B, delivered_at: "2026-09-21T09:00:00.000Z" });
+      }
+      return out;
+    };
+    const refusal = await service(db)
+      .markDelivered(REST, ORDER, USER_A)
+      .then(() => null, (e) => e);
+    expect(refusal.getResponse()).toMatchObject({ reverted: false, status: ProcurementOrderStatus.DELIVERED });
+    expect(store.procurement_orders[0]).toMatchObject({ status: "DELIVERED", received_by: USER_B });
   });
 
   it("sends the goods-arrived exclusion as part of the UPDATE, not only as a read", async () => {

@@ -480,12 +480,19 @@ export interface AuctionLotRecord {
   id: string;
   inventoryId: string;
   auctionHouse: string;
-  lotNumber: string;
+  /** Optional since 2026-09-21 (founder answer 11): null is "not stated". */
+  lotNumber: string | null;
   saleDate: string;
   hammerPrice: number;
   buyersPremium: number;
   currency: string;
   bottles: number;
+  /** The house's currency when recorded; null on a record from before 2026-09-21. */
+  houseCurrency?: string | null;
+  exchangeRate?: number | null;
+  houseUnitCost?: number | null;
+  /** What the book was given per bottle, in houseCurrency; null on an older record. */
+  bookedUnitCost?: number | null;
   recordedByName: string;
   createdAt: string;
 }
@@ -493,13 +500,20 @@ export interface AuctionLotRecord {
 export interface CreateAuctionLotRecordInput {
   inventoryId: string;
   auctionHouse: string;
-  lotNumber: string;
+  /** null or absent = not stated (optional since 2026-09-21, founder answer 11). */
+  lotNumber?: string | null;
   saleDate: string;
   hammerPrice: number;
   buyersPremium: number;
   /** ISO-4217, never inferred — exactly what the sheet's currency picker held. */
   currency: string;
   bottles: number;
+  /** What the person said one unit of the lot's currency was worth in the house's (founder answer 10). */
+  exchangeRate?: number | null;
+  /** What the person typed as each bottle's cost in the house's currency; wins when present. */
+  houseUnitCost?: number | null;
+  /** The per-bottle cost the bottles were carried in at, in the house's currency. */
+  bookedUnitCost: number;
 }
 
 export async function createAuctionLotRecord(

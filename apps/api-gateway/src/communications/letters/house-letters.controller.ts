@@ -133,6 +133,27 @@ export class HouseLettersController {
     return this.letters.issueQueueSeal({ restaurantId, userId, dto });
   }
 
+  /**
+   * A staff member asks an owner or a manager to send this letter (founder
+   * answer 3, 2026-09-21). The exact letter is saved; nothing is queued.
+   */
+  @Post("requests")
+  @ApiOperation({ summary: "Ask an owner or a manager to send this letter; it is kept exactly and nothing is sent" })
+  @ApiResponse({ status: 409, description: "The caller may send it themself" })
+  async ask(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.ask({ restaurantId, userId, dto });
+  }
+
+  @Get("requests")
+  @ApiOperation({
+    summary: "Letters waiting for a manager: every one for an owner or a manager, the caller's own for anyone else",
+  })
+  async requests(@CurrentUser() user: TokenUser) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.requestsFor(userId, restaurantId);
+  }
+
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({

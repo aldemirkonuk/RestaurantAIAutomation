@@ -1,24 +1,28 @@
 /**
- * "Who may send to vendors" — the owners' register of ADR 0112 F12 grants, on
- * the page where the house's people already are.
+ * "Who may send to vendors" — the register of ADR 0112 F12 grants, on the page
+ * where the house's people already are.
  *
  * The founder, 2026-09-21: *"An owner, a manager, or a person an owner has
  * granted sends with one hold ... only an owner issues, any owner revokes,
  * every grant/revocation told to all owners, 'granted by' shown where used."*
+ * And his answers the same day on the amendment's forks:
  *
- * - Owners see every grant, name a person, and revoke any grant — not only
- *   their own. Everyone else, managers included, is sent only the grants that
- *   name them (`AuthorityGrantsService.list`), so for them an empty list means
- *   "no grant names you", never "nobody has been named" [last-call fix,
- *   2026-09-21: the page said the latter to managers, off a list the gateway
- *   had filtered]. They are offered nothing the gateway would refuse.
+ * - WHO READS IT (answer 2): managers see the register by default — they
+ *   decide staff requests — and an owner can mark a grant owner-only, hidden
+ *   from managers; staff see only the grants naming them. The gateway filters
+ *   (`AuthorityGrantsService.list`) and says who is reading (`viewer`), so an
+ *   empty list is worded for that reader and never as "nobody" to someone who
+ *   cannot see everything.
+ * - A GRANT WHOSE OWNER WENT (answer 1): it stops at once and waits here as
+ *   "awaiting an owner's re-approval"; only a current owner brings it back
+ *   (it then rests on them), or an owner deletes it. *"no owner grant, no
+ *   activation, or no going back once grant author gone"*.
+ * - THE SEAL (answer 4): naming, revoking, re-approving and deleting are each a
+ *   hold that mints a one-time server seal when it begins; every one is on the
+ *   house's security ledger and told to every owner.
  * - Naming someone asks three questions and answers none of them by default:
- *   when it ends ("until an owner revokes it" is an answer the owner picks,
- *   not a blank), and whether it covers deals that commit money (and up to how
+ *   when it ends, and whether it covers deals that commit money (up to how
  *   much, in which currency) or letters only.
- * - Every grant and revocation is told to every owner and to the person named;
- *   the sentence the gateway returns says how many were told, and says so
- *   plainly when nobody could be.
  *
  * People-facing and deliberately plain: one sentence per grant, the house's
  * own panel and controls, no table.
@@ -30,24 +34,34 @@ import { HoldToApprove } from '@/components/mudavym';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
 import type { TeamMember } from '../../../services/api/team';
 
+type Person = { userId: string | null; name: string | null };
+
 export interface AuthorityGrantView {
   id: string;
   scope: string;
   grantee: { userId: string; name: string | null };
-  grantedBy: { userId: string | null; name: string | null };
+  grantedBy: Person;
+  /** The owner it rests on now; differs from grantedBy after a re-approval. */
+  vouchedBy: Person;
   limitAmount: number | null;
   limitCurrency: string | null;
   expiresAt: string | null;
   createdAt: string;
   revokedAt: string | null;
-  revokedBy: { userId: string | null; name: string | null } | null;
-  state: 'live' | 'expired' | 'revoked';
+  revokedBy: Person | null;
+  awaitingSince: string | null;
+  awaitingReason: string | null;
+  ownerOnly: boolean;
+  state: 'live' | 'awaiting_reapproval' | 'expired' | 'revoked';
 }
 
 interface GrantsReadout {
   viewerIsOwner: boolean;
+  viewer?: 'owner' | 'manager' | 'other';
   grants: AuthorityGrantView[];
 }
+
+type GrantAct = 'revoke' | 'reapprove' | 'delete';
 
 const grantKeys = (rid: string | null) => ['authority-grants', rid ?? ''] as const;
 
@@ -69,9 +83,24 @@ export function grantSentence(g: AuthorityGrantView): string {
   if (g.state === 'expired') {
     return `${who} — named by ${by}, ended ${day(g.expiresAt)}.`;
   }
-  return `${who} may send to vendors with one hold (${covers}), named by ${by}, ${
+  const restsOn = g.vouchedBy?.userId ?? null;
+  const voucher = g.vouchedBy?.name ?? by;
+  if (g.state === 'awaiting_reapproval') {
+    const since = g.awaitingSince ? ` on ${day(g.awaitingSince)}` : '';
+    return `${who} can no longer send (${covers}): ${voucher === by ? `${by}, who named them,` : `${voucher}, whom it rested on,`} is no longer an owner here, so it stopped${since}. It waits for an owner to re-approve it, or to delete it.`;
+  }
+  const reapproved = restsOn && restsOn !== g.grantedBy.userId ? `, re-approved by ${voucher}` : '';
+  return `${who} may send to vendors with one hold (${covers}), named by ${by}${reapproved}, ${
     g.expiresAt ? `until ${day(g.expiresAt)}` : 'until an owner revokes it'
   }.`;
+}
+
+/** What an empty register means, worded for who is reading it. */
+export function emptyRegisterSentence(viewer: 'owner' | 'manager' | 'other'): string {
+  if (viewer === 'owner') return 'Nobody has been named. Only owners and managers send with one hold.';
+  if (viewer === 'manager')
+    return 'Nobody has been named that managers can see. An owner may keep a grant owner-only.';
+  return 'No grant names you. Only owners and managers see who else has been named.';
 }
 
 export function SendGrantsSection({
@@ -89,6 +118,7 @@ export function SendGrantsSection({
   });
 
   const [granteeUserId, setGranteeUserId] = useState('');
+  const [ownerOnly, setOwnerOnly] = useState(false);
   const [ends, setEnds] = useState<'revoked' | 'date'>('revoked');
   const [endDate, setEndDate] = useState('');
   const [covers, setCovers] = useState<'letters' | 'deals'>('letters');
@@ -112,20 +142,41 @@ export function SendGrantsSection({
     (ends === 'revoked' || !!endDate) &&
     (covers === 'letters' || (Number.isFinite(amount) && amount >= 0 && limitAmount.trim() !== '' && /^[A-Z]{3}$/.test(currency)));
 
-  const issue = async () => {
+  /** The grant exactly as it will be issued: the seal is minted over this. */
+  const issueBody = () => ({
+    granteeUserId,
+    scope: 'vendor_send',
+    limitAmount: covers === 'letters' ? null : amount,
+    limitCurrency: covers === 'letters' ? null : currency,
+    // The end of the day chosen, in the owner's own clock.
+    expiresAt: ends === 'revoked' ? null : new Date(`${endDate}T23:59:59`).toISOString(),
+    ownerOnly,
+  });
+
+  // The seal is minted when the hold BEGINS (founder answer 4, 2026-09-21), so
+  // a hold that could not get one names nobody.
+  const issueChallenge = async (): Promise<string | null> => {
+    setProblem(null);
+    try {
+      const { data } = await apiClient.post('/authority/grants/seal-challenge', issueBody());
+      return (data?.challenge as string | undefined) ?? null;
+    } catch (e) {
+      setProblem(`Nobody was named: the seal could not be issued (${getErrorMessage(e)}).`);
+      setAttempt((a) => a + 1);
+      return null;
+    }
+  };
+
+  const issue = async (challenge?: string | null) => {
     setProblem(null);
     setSays(null);
     try {
-      const { data } = await apiClient.post('/authority/grants', {
-        granteeUserId,
-        scope: 'vendor_send',
-        limitAmount: covers === 'letters' ? null : amount,
-        limitCurrency: covers === 'letters' ? null : currency,
-        // The end of the day chosen, in the owner's own clock.
-        expiresAt: ends === 'revoked' ? null : new Date(`${endDate}T23:59:59`).toISOString(),
+      const { data } = await apiClient.post('/authority/grants', issueBody(), {
+        headers: { 'x-seal-challenge': challenge ?? '' },
       });
       setSays(data?.says ?? 'Named.');
       setGranteeUserId('');
+      setOwnerOnly(false);
       await qc.invalidateQueries({ queryKey: grantKeys(restaurantId) });
     } catch (e) {
       setProblem(`Nobody was named (${getErrorMessage(e)}).`);
@@ -134,18 +185,56 @@ export function SendGrantsSection({
     }
   };
 
-  const revoke = useMutation({
-    mutationFn: (id: string) => apiClient.post(`/authority/grants/${id}/revoke`).then((r) => r.data),
+  const actChallenge = (id: string, act: GrantAct) => async (): Promise<string | null> => {
+    setProblem(null);
+    try {
+      const { data } = await apiClient.post(`/authority/grants/${id}/seal-challenge`, { act });
+      return (data?.challenge as string | undefined) ?? null;
+    } catch (e) {
+      setProblem(`Nothing was changed: the seal could not be issued (${getErrorMessage(e)}).`);
+      setAttempt((a) => a + 1);
+      return null;
+    }
+  };
+
+  const act = (id: string, what: GrantAct) => async (challenge?: string | null) => {
+    setProblem(null);
+    setSays(null);
+    try {
+      const { data } = await apiClient.post(`/authority/grants/${id}/${what}`, undefined, {
+        headers: { 'x-seal-challenge': challenge ?? '' },
+      });
+      setSays(data?.says ?? 'Done.');
+      await qc.invalidateQueries({ queryKey: grantKeys(restaurantId) });
+    } catch (e) {
+      setProblem(
+        what === 'revoke'
+          ? `The grant was not revoked (${getErrorMessage(e)}). It still counts.`
+          : what === 'reapprove'
+            ? `The grant was not re-approved (${getErrorMessage(e)}). It still waits.`
+            : `The grant was not deleted (${getErrorMessage(e)}). It still waits.`,
+      );
+      setAttempt((a) => a + 1);
+      throw e;
+    }
+  };
+
+  const visibility = useMutation({
+    mutationFn: ({ id, ownerOnly: next }: { id: string; ownerOnly: boolean }) =>
+      apiClient.post(`/authority/grants/${id}/owner-only`, { ownerOnly: next }).then((r) => r.data),
     onSuccess: (data) => {
-      setSays(data?.says ?? 'Revoked.');
+      setSays(data?.says ?? 'Changed.');
       void qc.invalidateQueries({ queryKey: grantKeys(restaurantId) });
     },
-    onError: (e) => setProblem(`The grant was not revoked (${getErrorMessage(e)}). It still counts.`),
+    onError: (e) => setProblem(`Who sees the grant was not changed (${getErrorMessage(e)}).`),
   });
 
   const owner = grants.data?.viewerIsOwner === true;
-  const live = (grants.data?.grants ?? []).filter((g) => g.state === 'live');
-  const past = (grants.data?.grants ?? []).filter((g) => g.state !== 'live');
+  const viewer = grants.data?.viewer ?? (owner ? 'owner' : 'other');
+  const all = grants.data?.grants ?? [];
+  const live = all.filter((g) => g.state === 'live');
+  const waiting = all.filter((g) => g.state === 'awaiting_reapproval');
+  const past = all.filter((g) => g.state === 'expired' || g.state === 'revoked');
 
   return (
     <section aria-label="Who may send to vendors" className="tm-panel" data-testid="send-grants">
@@ -162,34 +251,91 @@ export function SendGrantsSection({
           Who has been named could not be read ({getErrorMessage(grants.error)}). That is unknown,
           not nobody.
         </p>
-      ) : live.length === 0 ? (
-        owner ? (
-          <p className="tm-note" data-testid="send-grants-none">
-            Nobody has been named. Only owners and managers send with one hold.
-          </p>
-        ) : (
-          <p className="tm-note" data-testid="send-grants-none">
-            No grant names you. Only owners see who else has been named.
-          </p>
-        )
+      ) : live.length === 0 && waiting.length === 0 ? (
+        <p className="tm-note" data-testid="send-grants-none">
+          {emptyRegisterSentence(viewer)}
+        </p>
       ) : (
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0 }} data-testid="send-grants-live">
-          {live.map((g) => (
-            <li key={g.id} className="flex flex-wrap items-baseline gap-2" style={{ padding: '6px 0', fontSize: 12.5 }}>
-              <span style={{ flex: 1, minWidth: 0 }}>{grantSentence(g)}</span>
+        <>
+          {live.length > 0 && (
+            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }} data-testid="send-grants-live">
+              {live.map((g) => (
+                <li key={g.id} style={{ padding: '6px 0', fontSize: 12.5 }}>
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span style={{ flex: 1, minWidth: 0 }}>{grantSentence(g)}</span>
+                    {g.ownerOnly && (
+                      <span className="tm-quiet" data-testid={`grant-owner-only-${g.id}`}>
+                        Owner-only
+                      </span>
+                    )}
+                  </div>
+                  {owner && (
+                    <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 4 }}>
+                      <div style={{ width: 180 }}>
+                        <HoldToApprove
+                          key={`revoke-${g.id}-${attempt}`}
+                          label="Hold to revoke"
+                          approvedLabel="Revoked"
+                          onChallenge={actChallenge(g.id, 'revoke')}
+                          onApprove={act(g.id, 'revoke')}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+                        disabled={visibility.isPending}
+                        onClick={() => visibility.mutate({ id: g.id, ownerOnly: !g.ownerOnly })}
+                      >
+                        {g.ownerOnly ? 'Let managers see it' : 'Make it owner-only'}
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {waiting.length > 0 && (
+            <div style={{ marginTop: 8 }} data-testid="send-grants-waiting">
+              <h3 className="tm-quiet" style={{ margin: '0 0 4px', fontSize: 12 }}>
+                Waiting for an owner
+              </h3>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {waiting.map((g) => (
+                  <li key={g.id} style={{ padding: '6px 0', fontSize: 12.5 }}>
+                    <span>{grantSentence(g)}</span>
+                    {owner && (
+                      <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 4 }}>
+                        <div style={{ width: 200 }}>
+                          <HoldToApprove
+                            key={`reapprove-${g.id}-${attempt}`}
+                            label="Hold to re-approve"
+                            approvedLabel="Re-approved"
+                            onChallenge={actChallenge(g.id, 'reapprove')}
+                            onApprove={act(g.id, 'reapprove')}
+                          />
+                        </div>
+                        <div style={{ width: 180 }}>
+                          <HoldToApprove
+                            key={`delete-${g.id}-${attempt}`}
+                            label="Hold to delete"
+                            approvedLabel="Deleted"
+                            onChallenge={actChallenge(g.id, 'delete')}
+                            onApprove={act(g.id, 'delete')}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
               {owner && (
-                <button
-                  type="button"
-                  className="tm-ctl tm-ctl--quiet tm-ctl--sm"
-                  disabled={revoke.isPending}
-                  onClick={() => revoke.mutate(g.id)}
-                >
-                  Revoke
-                </button>
+                <p className="tm-quiet" style={{ margin: '2px 0 0' }}>
+                  Re-approving makes it rest on you. Nothing brings it back by itself.
+                </p>
               )}
-            </li>
-          ))}
-        </ul>
+            </div>
+          )}
+        </>
       )}
 
       {past.length > 0 && (
@@ -284,17 +430,24 @@ export function SendGrantsSection({
             )}
           </fieldset>
 
+          <label style={{ display: 'block', marginTop: 8, fontSize: 12.5 }}>
+            <input type="checkbox" checked={ownerOnly} onChange={(e) => setOwnerOnly(e.target.checked)} />{' '}
+            owner-only (managers will not see it)
+          </label>
+
           <div style={{ marginTop: 10 }}>
             <HoldToApprove
               key={attempt}
               label="Hold to name them"
               approvedLabel="Named"
               disabled={!formReady}
+              onChallenge={issueChallenge}
               onApprove={issue}
             />
           </div>
           <p className="tm-quiet" style={{ margin: '4px 0 0' }}>
-            Every owner, and the person you name, is told. Any owner can revoke it.
+            Every owner, and the person you name, is told. Any owner can revoke it. If the owner it
+            rests on stops being an owner, it stops until a current owner re-approves it.
           </p>
         </div>
       )}

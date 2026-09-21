@@ -44,7 +44,7 @@ const NO_SENDER = {
     'No house sender. This house has not connected a mailbox of its own, and a Mudavym address is a paid-tier option that is not provisioned yet. Connect a mailbox on /connections; nothing is sent until one exists.',
   missing: ['No connected Google account for this house has granted gmail.send.'],
   deployment: {
-    address: 'notifications@wineops.ai',
+    address: 'notifications@mudavym.com',
     refusedBecause: 'This mailbox belongs to the deployment, not to this house.',
   },
   subdomain: {
@@ -145,7 +145,7 @@ describe('the house composer', () => {
     expect(send).toBeDisabled();
     expect(screen.getByText(/Send is disabled: No house sender/)).toBeInTheDocument();
     // and it names what it is REFUSING, not merely what it lacks
-    expect(screen.getByText(/Not notifications@wineops\.ai/)).toBeInTheDocument();
+    expect(screen.getByText(/Not notifications@mudavym\.com/)).toBeInTheDocument();
   });
 
   it('says the paid tier in words and never a price', () => {
@@ -363,9 +363,11 @@ describe('the composer is a vendor send: sealed, and only for those who may send
     expect(mockPost.mock.calls[0][0]).toBe('/communications/letters/seal-challenge');
   });
 
-  it('a staff member sees why before trying, and Send stays disabled', () => {
+  it("a staff member is offered no send, and their click ASKS a manager, keeping the exact letter (founder answer 3)", async () => {
+    const refetchRequests = vi.fn();
     mockData.current = {
       ...base,
+      refetchRequests,
       sender: {
         ...HOUSE_MAILBOX,
         sendOrAsk: {
@@ -374,14 +376,24 @@ describe('the composer is a vendor send: sealed, and only for those who may send
           mode: 'ask',
           basis: null,
           grant: null,
-          sentence: 'Only an owner, a manager, or someone an owner has named may send it with one hold. Ask an owner or a manager to do it.',
+          sentence: 'Your hold will ask a manager to send it; your version is kept exactly as you wrote it.',
         },
       },
     };
+    mockPost.mockResolvedValue({ data: { says: 'Asked. Your letter is saved exactly as you wrote it.', requestId: 'req-1' } });
     open();
+    expect(screen.queryByTestId('letter-send')).toBeNull();
+    const ask = screen.getByTestId('letter-ask');
+    expect(ask).toBeDisabled();
     pickRecipient();
-    expect(screen.getByTestId('letter-send')).toBeDisabled();
-    expect(screen.getByText(/Send is disabled: Only an owner, a manager, or someone an owner has named/)).toBeInTheDocument();
+    expect(screen.getByText(/your version is kept exactly as you wrote it/)).toBeInTheDocument();
+    fireEvent.click(ask);
+    await waitFor(() => expect(screen.getByTestId('letter-asked')).toHaveTextContent(/Asked\. Your letter is saved exactly/));
+    // One call: the request. No seal is minted and nothing is queued.
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockPost.mock.calls[0][0]).toBe('/communications/letters/requests');
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ subject: 'Standing order', body: 'Merhaba,' });
+    expect(refetchRequests).toHaveBeenCalled();
   });
 
   it('a grantee sees who granted them', () => {

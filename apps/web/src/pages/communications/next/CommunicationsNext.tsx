@@ -47,6 +47,8 @@ import {
 import { TemplateSheet } from './TemplateSheet';
 import { ComposeSheet } from './Compose/ComposeSheet';
 import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
+import { LetterRequestsPanel } from './LetterRequestsPanel';
+import { useLetterSenderStanding } from './Compose/useComposeData';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -311,6 +313,8 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
 
 export default function CommunicationsNext() {
   const data = useCommsNextData();
+  // Letters staff asked a manager to send (founder answer 3, 2026-09-21).
+  const letterStanding = useLetterSenderStanding();
   const [compose, setCompose] = useState(false);
   const [library, setLibrary] = useState(false);
   /* Which drafted reply is open. One panel for the page, keyed off the row the
@@ -426,6 +430,13 @@ export default function CommunicationsNext() {
               Try again
             </button>
           </div>
+        )}
+
+        {letterStanding.restaurantId && (
+          <LetterRequestsPanel
+            restaurantId={letterStanding.restaurantId}
+            canRelease={letterStanding.canRelease}
+          />
         )}
 
         {/* ── the drafts waiting, which the strip could only count ────

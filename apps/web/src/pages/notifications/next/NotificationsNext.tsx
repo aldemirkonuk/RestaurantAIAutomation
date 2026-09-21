@@ -1,6 +1,7 @@
 /**
- * NotificationsNext — the Mudavym redesign of `/notifications`, behind
- * `mudavym_design_notifications` (ADR 0044 p4 wave).
+ * NotificationsNext — the Mudavym redesign of `/notifications` (ADR 0044 p4
+ * wave). Live in code for every house since ADR 0149 row 36 (2026-09-17) —
+ * `mudavym_design_notifications` is no longer read.
  *
  * The verdict, quoted (MAKEOVER-VERDICTS.md:75-82):
  *

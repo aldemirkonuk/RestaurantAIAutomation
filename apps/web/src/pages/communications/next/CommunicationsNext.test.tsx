@@ -31,6 +31,15 @@ vi.mock('./Compose/ComposeSheet', () => ({
 vi.mock('./TemplateSheet', () => ({
   TemplateSheet: () => <div data-testid="letter-library" />,
 }));
+// The letters staff asked a manager to send (founder answer 3) are proved in
+// LetterRequests.test.tsx; here the panel is stubbed and its standing is fixed.
+vi.mock('./LetterRequestsPanel', () => ({
+  LetterRequestsPanel: () => <div data-testid="letter-requests-stub" />,
+}));
+vi.mock('./Compose/useComposeData', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./Compose/useComposeData')>()),
+  useLetterSenderStanding: () => ({ restaurantId: 'r1', canRelease: true }),
+}));
 
 import CommunicationsNext from './CommunicationsNext';
 

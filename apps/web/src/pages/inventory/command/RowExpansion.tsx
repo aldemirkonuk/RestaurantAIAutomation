@@ -321,12 +321,27 @@ export function RowExpansion({
               <div key={lot.id} className="py-1.5 border-t border-gray-50 first:border-t-0 text-xs">
                 <div className="flex items-center gap-2.5">
                   <span className="font-semibold text-gray-700 truncate">{lot.auctionHouse}</span>
-                  <span className="text-gray-400">lot {lot.lotNumber}</span>
+                  {/* Optional since 2026-09-21 (founder answer 11): not stated is said, not blank. */}
+                  <span className="text-gray-400">{lot.lotNumber ? `lot ${lot.lotNumber}` : 'lot number not stated'}</span>
                   <span className="flex-1 text-gray-500 truncate text-right">{lot.saleDate}</span>
                 </div>
                 <div className="text-[11px] text-gray-500 mt-0.5">
                   {lot.hammerPrice} + {lot.buyersPremium} premium {lot.currency}, {lot.bottles} bottles — recorded by {lot.recordedByName}
                 </div>
+                {/* What the book was given, in the house's money (founder answer 10). */}
+                {lot.bookedUnitCost != null && lot.houseCurrency && (
+                  <div className="text-[11px] text-gray-500 mt-0.5" data-testid={`auction-lot-booked-${lot.id}`}>
+                    Booked at {lot.bookedUnitCost} {lot.houseCurrency} a bottle
+                    {lot.houseUnitCost != null
+                      ? ', as typed'
+                      : lot.exchangeRate != null
+                        ? ` (1 ${lot.currency} = ${lot.exchangeRate} ${lot.houseCurrency}, as stated)`
+                        : ''}
+                    {lot.houseUnitCost != null && lot.exchangeRate != null
+                      ? `; rate stated: 1 ${lot.currency} = ${lot.exchangeRate} ${lot.houseCurrency}`
+                      : ''}
+                  </div>
+                )}
               </div>
             ))}
           </Card>

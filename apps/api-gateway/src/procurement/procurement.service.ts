@@ -141,6 +141,11 @@ import {
 } from "../organizations/vendor-send-authority.service";
 import { type ActAmount } from "../organizations/vendor-send-authority";
 import {
+  SEND_REQUEST_PUSH_TEXT,
+  VendorSendRequestsService,
+  type VendorSendRequestView,
+} from "../organizations/vendor-send-requests.service";
+import {
   ORDER_GOODS_ARRIVED_STATUSES,
   ORDER_TERMINAL_STATUSES,
   decideTransition,
@@ -151,7 +156,9 @@ import { toPostgrestInList } from "./order-status";
 import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
   DELIVERY_REFUSED_STATE_UNREADABLE,
+  DELIVERY_REFUSED_STOCK_NOT_BOOKED,
   earlierDeliveryOf,
+  refuseUnbookedDelivery,
   refuseLostDeliveryRace,
   refuseSecondDelivery,
   resolveReceiverName,
@@ -482,6 +489,13 @@ export interface SendRequestView {
  */
 export class SendRefusedBeforeSendError extends BadRequestException {}
 
+/**
+ * The `reason` a 422 carries when the in-process send refused a draft before
+ * anything left and the draft was closed as `SEND_REFUSED` (founder, answer 6,
+ * 2026-09-21; 20260921114950).
+ */
+export const DRAFT_SEND_REFUSED = "draft_send_refused";
+
 @Injectable()
 export class ProcurementService {
   private readonly logger = new Logger(ProcurementService.name);
@@ -526,6 +540,11 @@ export class ProcurementService {
     // dependency is absent is not a gate (`requireSendAuthority`).
     @Optional()
     private readonly vendorSendAuthority?: VendorSendAuthorityService,
+    // ── Staff ask for a deal (founder answer 3, 2026-09-21) ────────────────
+    // Last, for the positional specs. Supplied by VendorSendAuthorityModule;
+    // the ask route refuses when it is missing.
+    @Optional()
+    private readonly vendorSendRequests?: VendorSendRequestsService,
   ) {}
 
   /**
@@ -4419,6 +4438,14 @@ export class ProcurementService {
 
     const existingRow = existingOrder as Record<string, any>;
     const currentStatus = readOrderStatus(existingRow.status);
+    // What a refused booking puts back (founder answer 9), copied NOW, before
+    // anything is written: the put-back restores these values, not whatever
+    // the row object reads later.
+    const priorDelivery = {
+      status: existingRow.status,
+      delivered_at: existingRow.delivered_at ?? null,
+      received_by: existingRow.received_by ?? null,
+    };
 
     // An unreadable state is a refusal, not permission. A guard that cannot see
     // the state it is guarding has established nothing; letting the write
@@ -4545,11 +4572,14 @@ export class ProcurementService {
     //
     // The set is imported, not restated. A guard whose two halves are typed out
     // twice is a guard with two answers waiting to disagree.
+    // Held so a refused booking can put back exactly this write and nothing a
+    // later request wrote (see the revert below).
+    const deliveredAtWritten = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
         status: ProcurementOrderStatus.DELIVERED,
-        delivered_at: new Date().toISOString(),
+        delivered_at: deliveredAtWritten,
         received_by: userId,
       })
       .eq("restaurant_id", restaurantId)
@@ -4687,10 +4717,11 @@ export class ProcurementService {
     // Set when the live stock movement below is REFUSED. Before ADR 0192 its
     // result was never looked at, so a failed booking still recorded an
     // `order_delivered` event for bottles that never moved and told the
-    // manager they were "stocked in". The order stays DELIVERED — that is the
-    // caller's word that the truck came — but nothing claims the shelf moved:
-    // the response's `received` block is read from the ledger, and reads what
-    // is really there.
+    // manager they were "stocked in". Since the founder's answer (9) of
+    // 2026-09-21 a refused booking PUTS THE ORDER BACK to the status it had,
+    // so the delivery can be recorded again once the refusal is fixed (below,
+    // after the booking block); it used to stay DELIVERED with nothing on the
+    // shelf, which no screen offered a way out of.
     let stockNotMoved: string | null = null;
 
     if (deliveryOwns.value.booked) {
@@ -4819,7 +4850,10 @@ export class ProcurementService {
 
           // The event records a quantity that MOVED. When the movement was
           // refused there is no such quantity, and recording one is the lie
-          // this used to tell.
+          // this used to tell. [Last call, 2026-09-21: still told for an item
+          // with no master_wine_id, or whose row could not be read: no
+          // movement is attempted, this event is written and the manager is
+          // told the bottles were stocked in. A residual in ADR 0192 (9).]
           if (!stockNotMoved) {
             await this.databaseService.supabase.from("inventory_events").insert({
               restaurant_id: restaurantId,
@@ -4847,6 +4881,47 @@ export class ProcurementService {
       }
     }
 
+    // A REFUSED BOOKING PUTS THE ORDER BACK (founder, answer 9, 2026-09-21).
+    //
+    // Conditional on exactly the write above — DELIVERED, this delivered_at,
+    // this person — so it can never undo a different request's delivery; the
+    // race guard on that write (the NOT-IN on arrived statuses) is untouched.
+    // Nothing else is undone because nothing else was written: the live
+    // movement was refused whole, and no `order_delivered` event, no in-transit
+    // change, no calendar change and no verify task happen for it. The shadow
+    // release above is idempotent on its own key, so a later delivery of the
+    // same order does not release it twice.
+    if (stockNotMoved) {
+      const { data: putBack, error: putBackError } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .update(priorDelivery)
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .eq("status", ProcurementOrderStatus.DELIVERED)
+        .eq("delivered_at", deliveredAtWritten)
+        .eq("received_by", userId)
+        .select("id");
+      const reverted = !putBackError && Array.isArray(putBack) && putBack.length > 0;
+      if (!reverted) {
+        this.logger.error(
+          `markDelivered: order ${orderId}'s booking was refused and the order could not be put back ` +
+            `(${putBackError?.message ?? "no row matched the write this request made"}); it reads DELIVERED with nothing booked.`,
+        );
+      }
+      throw new UnprocessableEntityException({
+        reason: DELIVERY_REFUSED_STOCK_NOT_BOOKED,
+        orderId,
+        orderNumber: existingRow.order_number ?? null,
+        status: reverted ? currentStatus : ProcurementOrderStatus.DELIVERED,
+        reverted,
+        message: refuseUnbookedDelivery({
+          orderNumber: existingRow.order_number ?? null,
+          why: stockNotMoved,
+          revertedTo: reverted ? currentStatus : null,
+        }),
+      });
+    }
+
     // Update calendar event to COMPLETED on delivery
     await this.updateCalendarEventForDelivery(restaurantId, orderId, order);
 
@@ -4868,9 +4943,9 @@ export class ProcurementService {
           // ledger booked `receivedBottles` bottles (60) at :4681. Pre-fix
           // this notice told the manager 5 bottles came in when 60 did
           // (ADR 0190 D6 — filed as 0168 before its renumbering).
-          message: stockNotMoved
-            ? `Delivery recorded, but the stock did NOT move (${stockNotMoved}). Nothing is on the shelf for it yet; book it at the receiving door.`
-            : `${receivedBottles} bottles stocked in. Confirm the physical count against the vendor invoice.`,
+          // A refused booking never reaches this line (it put the order back
+          // and threw, above), so this is only ever said of stock that moved.
+          message: `${receivedBottles} bottles stocked in. Confirm the physical count against the vendor invoice.`,
           priority: "critical",
           actionUrl: `/inventory?verify=${orderId}`,
           actionLabel: "Verify receipt",
@@ -5405,6 +5480,11 @@ export class ProcurementService {
           // before `openCreditClaim` (which runs ahead of the update below and
           // does not roll back) can raise a claim against a write that is
           // about to fail its own column type (ADR 0190 D5 — filed as 0168).
+          // [2026-09-21, ADR 0192 amendment: that column is no longer written —
+          // the verification is a `reconciled` event in bottles — so the
+          // column type is no longer this refusal's reason. It is kept as it
+          // was, unchanged in behaviour; whether a part pack should now verify
+          // is recorded in ADR 0192 as a follow-up, not decided here.]
           if (!Number.isInteger(derivedAcceptedQty)) {
             throw new BadRequestException(
               `Cannot verify this receipt: ${stockedQtyInBottles} bottles ` +
@@ -5438,6 +5518,42 @@ export class ProcurementService {
       throw new UnprocessableEntityException(
         `${match.summary} Accept the price difference with a reason, or correct the invoice price.`,
       );
+    }
+
+    // THE VERIFICATION IS AN EVENT ROW (ADR 0192 amendment, founder answer 8,
+    // 2026-09-21). What the desk accepted, rejected and was invoiced for used
+    // to be written onto four `procurement_orders` columns — accepted and
+    // rejected in the COUNTED unit, backorder in bottles — and overwritten by
+    // the next verification. They are now one `reconciled` receipt event, all
+    // in BOTTLES (the unit `computeMatch` compared them in), written BEFORE
+    // anything else moves: if the facts cannot be recorded, nothing is changed.
+    // "Accepted" is then the ledger's own count (the correction below moves
+    // it), "rejected" the door's plus the desk's, "invoiced" this row's, and
+    // "backorder" what was ordered less what the ledger holds
+    // (`shelf-received.ts`). The four columns are no longer written or read;
+    // `scripts/check_no_quantity_received_column.py` holds that line.
+    if (match && bottles) {
+      const { error: eventError } = await this.databaseService.supabase
+        .from("procurement_receipt_events")
+        .insert({
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          stage: "reconciled",
+          counted_qty: bottles.acceptedQty,
+          counted_uom: "bottle",
+          counted_qty_bottles: bottles.acceptedQty,
+          rejected_qty: bottles.rejectedQty,
+          rejected_qty_bottles: bottles.rejectedQty,
+          invoice_qty_bottles: hasInvoice ? bottles.invoiceQty : null,
+          received_by: userId,
+          notes: body.rejectedReason ?? null,
+        });
+      if (eventError) {
+        throw new InternalServerErrorException(
+          `This verification's counts could not be recorded (${eventError.message}), so nothing was changed: ` +
+            "no stock was corrected and the order is as it was. Try again.",
+        );
+      }
     }
 
     // Correct the ordered line to the accepted count, then apply any unlisted extras.
@@ -5513,8 +5629,8 @@ export class ProcurementService {
     // manager DID type one, i.e. exactly the discrepancy runs. By then the
     // ledger correction and the credit claim above have already been written, so
     // a PGRST204 here leaves the order permanently half-verified: status,
-    // match_status, accepted_quantity, the invoice_* columns and the price
-    // history below never land, and the retry fails identically.
+    // match_status, the invoice price and the price history below never land,
+    // and the retry fails identically.
     //
     // Appended rather than assigned. A note left at the door and a note left at
     // verification are two different observations of the same delivery, and the
@@ -5529,13 +5645,6 @@ export class ProcurementService {
     }
 
     if (match) {
-      // These columns sit beside `quantity` and are read back by clients that
-      // display the order's own unit, so they stay in the COUNTED unit as
-      // submitted — not in the bottle-equivalents the verdict was computed from.
-      // Converting them here would silently restate a manager's count.
-      const acceptedQty = matchInput.acceptedQtyInCountedUom ?? 0;
-      const rejectedQty = rejectedQuantity ?? 0;
-
       // WHAT THE PRICE CHECK DID AND DID NOT COMPARE — ADR 0119 phase 2.
       //
       // Two sentences, and both exist because a verdict a manager cannot
@@ -5577,13 +5686,12 @@ export class ProcurementService {
 
       // `quantity_received` is not written (ADR 0192): what this order
       // received is the ledger's sum, which the correction above just moved.
+      // Nor are its four siblings (the ADR 0192 amendment, 2026-09-21): the
+      // accepted, rejected, invoiced and backordered quantities are the
+      // `reconciled` event above and the ledger, in bottles.
       Object.assign(update, {
-        accepted_quantity: acceptedQty,
-        rejected_quantity: rejectedQty,
         rejected_reason: body.rejectedReason ?? null,
-        invoice_quantity: invoiceQuantity ?? null,
         invoice_unit_price: body.invoiceUnitPrice ?? null,
-        backorder_quantity: match.backorderQty,
         match_status: match.verdict,
         // NULL, not false, when there was no invoice to verify against: "we
         // checked and it did not match" and "nobody has checked" are different
@@ -6295,7 +6403,16 @@ export class ProcurementService {
     if (pending) {
       const { data: saved, error: saveError } = await this.databaseService.supabase
         .from("procurement_conversations")
-        .update({ content, ...request })
+        .update({
+          content,
+          // Written out (not `...request`): check_order_capture_contract.py
+          // reads insert/update literals to prove every column exists, and a
+          // spread is invisible to it. Same four fields as `request` above.
+          send_requested_by: request.send_requested_by,
+          send_requested_at: request.send_requested_at,
+          send_requested_sha256: request.send_requested_sha256,
+          send_requested_cc: request.send_requested_cc,
+        })
         .eq("id", (pending as any).id)
         .eq("restaurant_id", restaurantId)
         .eq("order_id", orderId)
@@ -6365,7 +6482,13 @@ export class ProcurementService {
             in_reply_to: (lastInbound as any)?.message_id || inHeaders.message_id || null,
             references: inHeaders.references || null,
           },
-          ...request,
+          // Written out (not `...request`): check_order_capture_contract.py
+          // reads insert/update literals to prove every column exists, and a
+          // spread is invisible to it. Same four fields as `request` above.
+          send_requested_by: request.send_requested_by,
+          send_requested_at: request.send_requested_at,
+          send_requested_sha256: request.send_requested_sha256,
+          send_requested_cc: request.send_requested_cc,
         })
         .select("id")
         .single();
@@ -6417,7 +6540,9 @@ export class ProcurementService {
           // per-order deep link, so none is claimed. The order is in metadata.
           actionUrl: "/orders",
           actionLabel: "Read it and send",
-          metadata: { orderId: input.orderId, requestedBy: input.userId },
+          // The only words a push of this may ever carry (founder answer 5,
+          // 2026-09-21): no names on a locked screen.
+          metadata: { orderId: input.orderId, requestedBy: input.userId, lockScreenText: SEND_REQUEST_PUSH_TEXT },
         },
         { onlyUserIds: audience },
       );
@@ -6517,6 +6642,14 @@ export class ProcurementService {
       args: { ...draftSealArgs({ body: rawEmailBody, to: providerEmail, cc: dto.ccEmails }), draftId: conversationId },
       challenge: actor.challenge,
     });
+    // A send under a grant is a grant event, on the security ledger BEFORE
+    // anything leaves (ADR 0112 F12; founder answer 4, 2026-09-21).
+    await this.vendorSendAuthority?.witnessGrantUse(actor.grantId, {
+      userId: actor.userId,
+      restaurantId,
+      act: ORDER_SEND_DRAFT_ACT,
+      subject: `procurement_order:${orderId}`,
+    });
 
     // ── Atomic claim, BEFORE the send ────────────────────────────────────────
     // Two managers tapping "approve" at the same moment both used to pass the
@@ -6593,6 +6726,27 @@ export class ProcurementService {
       // So: release only on a positively-identified refusal; park everything
       // else as unconfirmed. The costs are asymmetric — a stuck draft costs a
       // phone call, a duplicate PO costs money and a vendor relationship.
+      // A refusal that would refuse the same letter identically on every retry
+      // (ADR 0172: GmailService refused to BUILD the message, so Gmail was
+      // never called) CLOSES the draft with the reason — the founder's answer
+      // (6) of 2026-09-21, the in-process twin of the relay's RELAY_REFUSED.
+      // Handing it back as PENDING_APPROVAL invited a tap that fails the same
+      // way. 422: the request was well formed; this letter cannot be sent.
+      if (sendError instanceof SendRefusedBeforeSendError) {
+        const reason = String(sendError.message ?? "").trim() || "The message could not be built.";
+        const closed = await this.closeRefusedDraft(conversationId, reason);
+        throw new UnprocessableEntityException({
+          reason: DRAFT_SEND_REFUSED,
+          conversationId,
+          closed,
+          message: closed
+            ? `Nothing was sent, and this draft is closed: ${reason} Write the letter again once the vendor's details are corrected.`
+            : `Nothing was sent: ${reason} The draft could not be closed and reads as being sent; do not approve it again, and check it on the order.`,
+        });
+      }
+      // Every other positively identified refusal (no transport, credentials
+      // refused, an SMTP 5xx) is released for another try: fixing the mailbox
+      // or the address can make the same letter go.
       if (this.isDefiniteSendRefusal(sendError)) {
         await this.releaseSendClaim(conversationId, sendError?.message);
         throw sendError;
@@ -6822,6 +6976,32 @@ export class ProcurementService {
   }
 
   /**
+   * Close a claimed draft whose send was refused before anything left
+   * (`SEND_REFUSED`, with the gateway's own sentence). Conditional on the
+   * claim this request holds, so it can never close a draft another request
+   * owns. Returns whether it closed; a failed write is logged and the row
+   * stays SENDING, which is not re-approvable either.
+   */
+  private async closeRefusedDraft(conversationId: string, reason: string): Promise<boolean> {
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .update({ status: "SEND_REFUSED", send_refusal_reason: reason.slice(0, 2000) })
+        .eq("id", conversationId)
+        .eq("status", "SENDING")
+        .select("id");
+      if (error) {
+        this.logger.error(`Could not close refused draft ${conversationId}: ${error.message}. Row remains SENDING.`);
+        return false;
+      }
+      return Array.isArray(data) && data.length > 0;
+    } catch (e: any) {
+      this.logger.error(`Could not close refused draft ${conversationId}: ${e?.message}. Row remains SENDING.`);
+      return false;
+    }
+  }
+
+  /**
    * Hand a claimed draft back for one-tap approval. ONLY safe when the send
    * provably did not happen — once an email is at the vendor, returning the row
    * to PENDING_APPROVAL is what invites a duplicate. Gated by
@@ -7005,7 +7185,7 @@ export class ProcurementService {
       if (result.refusedBeforeSend) {
         throw new SendRefusedBeforeSendError(
           `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
-            "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address) and approve again.",
+            "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address).",
         );
       }
       throw new BadRequestException(
@@ -7421,6 +7601,12 @@ export class ProcurementService {
       args: draftSealArgs({ body: content, to: providerEmail, cc: ccEmails ?? [] }),
       challenge,
     });
+    await this.vendorSendAuthority?.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
+      userId,
+      restaurantId,
+      act: ORDER_SEND_MANUAL_REPLY_ACT,
+      subject: `procurement_order:${orderId}`,
+    });
 
     // Thread to the vendor's latest inbound message if there is one.
     const { data: lastInbound } = await this.databaseService.supabase
@@ -7819,9 +8005,11 @@ export class ProcurementService {
     opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
   ): Promise<{ challenge: string; expiresAt: string; act: string }> {
     const order = await this.dealTarget(restaurantId, orderId);
+    // canAsk: a staff member whose hold cannot confirm may ASK a manager
+    // instead (founder answer 3, 2026-09-21; `requestConfirmDeal`).
     await this.requireSendAuthority(userId, restaurantId, "confirm this deal", {
       amount: this.dealAmount(order, opts),
-      canAsk: false,
+      canAsk: true,
     });
     if (!this.sealChallenges) {
       throw new InternalServerErrorException(
@@ -7840,6 +8028,92 @@ export class ProcurementService {
   }
 
   /**
+   * A staff member ASKS a manager to confirm a deal on the terms they set —
+   * the founder's answer (3) of 2026-09-21: *"the same request flow as drafted
+   * replies (request state, exact text/terms saved, manager releases with one
+   * hold)"*. The terms are saved exactly (`vendor_send_requests`); nothing is
+   * committed and nothing is mailed. The release is the ordinary sealed
+   * `confirm-deal` by a person who may confirm, which answers the waiting
+   * request and tells the person who asked whether it went on their terms.
+   */
+  async requestConfirmDeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
+  ): Promise<{ requestId: string; requestedAt: string; told: number; says: string }> {
+    if (!this.vendorSendRequests) {
+      throw new InternalServerErrorException(
+        "Requests could not be recorded (the requests service is not wired into procurement), so nothing was asked.",
+      );
+    }
+    const order = await this.dealTarget(restaurantId, orderId);
+    const terms = {
+      finalPrice: opts.finalPrice ?? null,
+      quantity: opts.quantity ?? null,
+      sendConfirmation: opts.sendConfirmation !== false,
+    };
+    const row = await this.vendorSendRequests.ask({
+      userId,
+      restaurantId,
+      kind: "confirm_deal",
+      orderId,
+      providerId: (order as any)?.provider_id ?? null,
+      payload: terms,
+      sealArgs: this.dealSeal(orderId, order, opts),
+      amount: this.dealAmount(order, opts),
+      act: "confirm this deal",
+    });
+    const told = await this.vendorSendRequests.tellManagers({
+      restaurantId,
+      requesterId: userId,
+      kind: "confirm_deal",
+      vendorName: (order as any)?.providers?.name ?? null,
+      requestId: row.id,
+      orderId,
+    });
+    this.emitConvUpdate(restaurantId, orderId, (order as any)?.provider_id ?? null, orderId);
+    return {
+      requestId: row.id,
+      requestedAt: row.requested_at,
+      told,
+      says:
+        told > 0
+          ? `Asked. Your terms are saved exactly, and ${told} ${told === 1 ? "owner or manager was" : "owners and managers were"} told. Nothing has been confirmed; you will see who confirms it.`
+          : "Asked. Your terms are saved exactly, but no owner or manager could be told; tell one yourself. Nothing has been confirmed.",
+    };
+  }
+
+  /**
+   * The deal's request and this person's standing to confirm it, read before
+   * the hold so the modal says "hold to confirm" or "hold to ask" up front.
+   * A failed read of the request is an error; a standing that could not be
+   * read is `readable: false` (never "ask", never "send").
+   */
+  async dealRequestReadout(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    opts: { finalPrice?: number; quantity?: number } = {},
+  ): Promise<{ request: VendorSendRequestView | null; standing: SendOrAsk }> {
+    if (!this.vendorSendRequests || !this.vendorSendAuthority) {
+      throw new InternalServerErrorException(
+        "Whether a deal request is waiting could not be read (the requests service is not wired into procurement).",
+      );
+    }
+    const order = await this.dealTarget(restaurantId, orderId);
+    const [waiting, standing] = await Promise.all([
+      this.vendorSendRequests.waiting(restaurantId, "confirm_deal", { orderId }),
+      this.vendorSendAuthority.readout(userId, restaurantId, {
+        canAsk: true,
+        amount: this.dealAmount(order, opts),
+        act: "confirm this deal",
+      }),
+    ]);
+    return { request: waiting[0] ?? null, standing };
+  }
+
+  /**
    * Confirm an AI-detected deal: commit the order at the (possibly edited)
    * terms and, by default, send the vendor a confirmation email.
    *
@@ -7850,8 +8124,10 @@ export class ProcurementService {
    * deal's total in its currency — then the seal, redeemed over the terms and
    * the vendor's address BEFORE anything is written, then `approved_by` on the
    * order and `sent_by_user_id` on the confirmation letter. Staff are refused
-   * with the sentence; a request path for deals is an open fork (ADR 0175
-   * amendment), not built.
+   * with the sentence, which points them at asking: since the founder's answer
+   * (3) of 2026-09-21 a staff member ASKS (`requestConfirmDeal`), and this
+   * confirmation answers the waiting request below. [Last call, 2026-09-21:
+   * this header still called the request path "an open fork, not built".]
    */
   async confirmDeal(
     restaurantId: string,
@@ -7875,7 +8151,7 @@ export class ProcurementService {
 
     const standing = await this.requireSendAuthority(userId, restaurantId, "confirm this deal", {
       amount: this.dealAmount(order, opts),
-      canAsk: false,
+      canAsk: true,
     });
     if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
       throw new ForbiddenException("The vendor does not belong to this house. Nothing was confirmed.");
@@ -7893,6 +8169,12 @@ export class ProcurementService {
       action: ORDER_CONFIRM_DEAL_ACT,
       args: this.dealSeal(orderId, order, opts),
       challenge,
+    });
+    await this.vendorSendAuthority?.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
+      userId,
+      restaurantId,
+      act: ORDER_CONFIRM_DEAL_ACT,
+      subject: `procurement_order:${orderId}`,
     });
 
     const providerEmail = (order as any)?.providers?.contact_email ?? null;
@@ -8164,6 +8446,30 @@ export class ProcurementService {
       }
     }
 
+    // A staff member's waiting request for this deal is answered by this
+    // confirmation (founder answer 3, 2026-09-21): released by this person,
+    // "as you set it" only when the terms are the ones asked for, and the
+    // person who asked is told. Best-effort: the deal is committed, and
+    // failing it because the request row could not be closed would tell the
+    // confirmer something false.
+    if (this.vendorSendRequests) {
+      const answered = await this.vendorSendRequests.answerWaitingDeal({
+        restaurantId,
+        orderId,
+        releasedBy: userId,
+        releaseSealArgs: this.dealSeal(orderId, order, opts),
+      });
+      if (answered) {
+        await this.vendorSendRequests.tellRequester({
+          restaurantId,
+          row: answered.row,
+          releasedBy: userId,
+          asWritten: answered.asWritten,
+          vendorName: (order as any)?.providers?.name ?? null,
+        });
+      }
+    }
+
     // Resolve the proposal + clear any waiting drafts; the deal is done.
     await this.resolveLatestDealProposal(orderId, "confirmed");
     await this.databaseService.supabase
@@ -8188,7 +8494,7 @@ export class ProcurementService {
   async dismissDeal(
     restaurantId: string,
     orderId: string,
-  ): Promise<{ dismissed: boolean }> {
+  ): Promise<{ dismissed: boolean; requestsClosed: number }> {
     const { data: order } = await this.databaseService.supabase
       .from("procurement_orders")
       .select("id")
@@ -8196,9 +8502,16 @@ export class ProcurementService {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    // A staff member's request to confirm this deal closes with it, BEFORE the
+    // proposal is dismissed: a failed close refuses the dismissal rather than
+    // leaving a request that blocks the next ask on this order (founder answer
+    // 3's request flow; `closeWaitingDeal`).
+    const requestsClosed = this.vendorSendRequests
+      ? await this.vendorSendRequests.closeWaitingDeal(restaurantId, orderId, "deal_dismissed")
+      : 0;
     await this.resolveLatestDealProposal(orderId, "dismissed");
     this.emitConvUpdate(restaurantId, orderId, null, orderId);
-    return { dismissed: true };
+    return { dismissed: true, requestsClosed };
   }
 
   async discardDraft(
@@ -8515,6 +8828,7 @@ export class ProcurementService {
         created_at,
         sent_at,
         status,
+        send_refusal_reason,
         content,
         message_text,
         constraint_flags,
@@ -8562,6 +8876,9 @@ export class ProcurementService {
         | "INBOUND",
       emailType: row.outbound_email_type,
       status: row.status,
+      // Why the gateway's own send closed this draft before anything left
+      // (SEND_REFUSED; founder answer 6, 2026-09-21). null otherwise.
+      refusalReason: row.send_refusal_reason ?? null,
       roundCount: row.round_count,
       createdAt: row.created_at,
       sentAt: row.sent_at ?? row.created_at,
@@ -8611,6 +8928,7 @@ export class ProcurementService {
         send_requested_by,
         sent_by_user_id,
         sent_under_grant_id,
+        send_refusal_reason,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price, status, ai_autonomy_paused,
           inventory:inventory_id(wine_name)
@@ -8648,6 +8966,8 @@ export class ProcurementService {
       id: row.id,
       orderId: row.order_id,
       status: row.status,
+      // SEND_REFUSED's own sentence (founder answer 6, 2026-09-21).
+      refusalReason: row.send_refusal_reason ?? null,
       sentBy: row.sent_by_user_id ?? null,
       sentByName: row.sent_by_user_id ? (people.get(row.sent_by_user_id) ?? null) : null,
       sentUnderGrant: !!row.sent_under_grant_id,

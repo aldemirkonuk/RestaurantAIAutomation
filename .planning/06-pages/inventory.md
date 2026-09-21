@@ -61,7 +61,14 @@ pinned task (not a popup), menu-scan intake, and per-branch views.
     to the `restaurant_inventory` row the carry produced (ADR 0083's review
     trail). See §9. *The census's own footer claimed "the ledger keeps both"
     back on 2026-09-06, when it did not; it does now.*
-  - Proved by `AuctionLot.test.tsx`.
+  - **[2026-09-21, founder answers 10 and 11; ADR 0083 second addendum.]** A lot in
+    another currency asks for the rate the person used and lets them type each
+    bottle's cost in the house's currency; a typed cost wins, both are recorded, and
+    the stock is carried at that booked cost (nothing looked up). A house whose own
+    currency is unstated or unreadable cannot book a lot until it is. The lot number
+    is optional; the auction house and the sale date are not. The item's card shows
+    what was booked and "lot number not stated" when there is none.
+  - Proved by `AuctionLot.test.tsx` and `auctionLotCost.test.ts`.
 - Attention rail surfacing low stock first
 - Spot counts with an offline-safe outbox (counts queue and sync when back online)
 - Receiving verification as a pinned task, not a popup — verify a delivery against its documents

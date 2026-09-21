@@ -20,6 +20,19 @@ import { normalizeUom, type Uom } from "./documents/document-types";
  *     ledger does not hold (a stock movement that failed, or an order whose
  *     item the door could not book to).
  *
+ * THE SIBLINGS (ADR 0192 amendment, founder answer 8, 2026-09-21). The same
+ * reading answers what the order's four other quantity columns used to hold,
+ * in BOTTLES, and the app no longer reads or writes those columns:
+ *
+ *   * accepted  — the ledger count above (the verification's correction is
+ *                 what moves it); there is no second "accepted" number;
+ *   * rejected  — at the door (above) and at verification: the latest
+ *                 `reconciled` event's `rejected_qty_bottles`;
+ *   * invoiced  — the latest `reconciled` event's `invoice_qty_bottles`
+ *                 (null = no invoice has been verified);
+ *   * backorder — the order's bottles less the ledger count, never below
+ *                 zero (null when the order's bottles are not known exactly).
+ *
  * ===========================================================================
  * WHY THE LEDGER AND NOT `procurement_orders.quantity_received`
  * ===========================================================================
@@ -95,6 +108,16 @@ export type ShelfReceived =
        * cannot be set against a keg or a litre ledger.
        */
       countedNotBookedBottles: number | null;
+      /** Refused at verification, in bottles, from the latest `reconciled` event; null = never verified. */
+      rejectedAtDeskBottles: number | null;
+      /** What the verified invoice billed, in bottles; null = no invoice verified. */
+      invoicedBottles: number | null;
+      /** When the latest verification was recorded; null = never verified. */
+      verifiedAt: string | null;
+      /** The order's quantity in bottles, exact, or null when it is not known exactly. */
+      orderedBottles: number | null;
+      /** Ordered bottles the ledger does not hold yet; null when either side is not a bottle count. */
+      backorderBottles: number | null;
     }
   | {
       readable: false;
@@ -109,6 +132,11 @@ export type ShelfReceived =
       words: null;
       rejectedAtDoorBottles: null;
       countedNotBookedBottles: null;
+      rejectedAtDeskBottles: null;
+      invoicedBottles: null;
+      verifiedAt: null;
+      orderedBottles: null;
+      backorderBottles: null;
     };
 
 export function shelfUnreadable(why: string): ShelfReceived {
@@ -124,6 +152,11 @@ export function shelfUnreadable(why: string): ShelfReceived {
     words: null,
     rejectedAtDoorBottles: null,
     countedNotBookedBottles: null,
+    rejectedAtDeskBottles: null,
+    invoicedBottles: null,
+    verifiedAt: null,
+    orderedBottles: null,
+    backorderBottles: null,
   };
 }
 
@@ -196,6 +229,12 @@ export function besideTheShelf(received: ShelfReceived): string {
     parts.push(
       `${pending} ${unitNoun("bottle", pending)} counted at the door and not on the shelf yet`,
     );
+  const desk = received.rejectedAtDeskBottles;
+  if (desk !== null && desk > 0)
+    parts.push(`${desk} ${unitNoun("bottle", desk)} rejected at verification`);
+  const owed = received.backorderBottles;
+  if (owed !== null && owed > 0)
+    parts.push(`${owed} ${unitNoun("bottle", owed)} still on backorder`);
   return parts.length ? ` (${parts.join("; ")})` : "";
 }
 
@@ -219,6 +258,10 @@ export interface ShelfDoorEvent {
   order_id: string;
   counted_qty_bottles: unknown;
   rejected_qty_bottles: unknown;
+  /** `case_count` (the door) or `reconciled` (a verification); absent = the door. */
+  stage?: string | null;
+  invoice_qty_bottles?: unknown;
+  occurred_at?: string | null;
 }
 
 export interface ShelfOrderLine {
@@ -309,8 +352,15 @@ export function composeShelfReceived(input: {
 
   let doorAccepted = 0;
   let doorRejected = 0;
+  // The verification of record is the LATEST `reconciled` event: a re-verify
+  // restates the whole delivery, so events are not added up across runs.
+  let desk: ShelfDoorEvent | null = null;
   for (const e of input.doorEvents) {
     if (e.order_id !== order.id) continue;
+    if (e.stage === "reconciled") {
+      if (!desk || String(e.occurred_at ?? "") >= String(desk.occurred_at ?? "")) desk = e;
+      continue;
+    }
     const counted = Number(e.counted_qty_bottles ?? 0);
     const rejected = Number(e.rejected_qty_bottles ?? 0);
     if (!Number.isFinite(counted) || !Number.isFinite(rejected)) {
@@ -322,10 +372,36 @@ export function composeShelfReceived(input: {
     doorRejected += Math.max(0, rejected);
   }
 
+  let rejectedAtDeskBottles: number | null = null;
+  let invoicedBottles: number | null = null;
+  if (desk) {
+    const rejected = Number(desk.rejected_qty_bottles ?? 0);
+    const invoiced = desk.invoice_qty_bottles == null ? null : Number(desk.invoice_qty_bottles);
+    if (!Number.isFinite(rejected) || (invoiced !== null && !Number.isFinite(invoiced))) {
+      return shelfUnreadable(
+        "The verification on this order holds a number that cannot be read, so what it rejected or was invoiced was not added up.",
+      );
+    }
+    rejectedAtDeskBottles = Math.max(0, rejected);
+    invoicedBottles = invoiced === null ? null : Math.max(0, invoiced);
+  }
+
   const pack = orderPack(
     order,
     input.lines.filter((l) => l.order_id === order.id),
   );
+  // The order's bottles, exactly, or unknown: a bottle order is its quantity;
+  // a pack order is its quantity times a pack size read exactly. Never a
+  // rounded guess — a backorder computed from one would be a number nobody
+  // counted.
+  const orderedQty = Number(order.quantity);
+  const orderedBottles: number | null = !Number.isSafeInteger(orderedQty) || orderedQty < 0
+    ? null
+    : pack.unit === "bottle" || pack.unit === "each"
+      ? orderedQty
+      : pack.unit !== null && MULTIPLYING.has(pack.unit) && pack.size !== null
+        ? orderedQty * pack.size
+        : null;
   const packView =
     stockUom === "bottle" &&
     pack.unit !== null &&
@@ -355,6 +431,14 @@ export function composeShelfReceived(input: {
     countedNotBookedBottles: BOTTLE_LIKE.has(stockUom)
       ? Math.max(0, doorAccepted - notDesk)
       : null,
+    rejectedAtDeskBottles,
+    invoicedBottles,
+    verifiedAt: desk ? (desk.occurred_at ?? null) : null,
+    orderedBottles,
+    backorderBottles:
+      orderedBottles !== null && BOTTLE_LIKE.has(stockUom)
+        ? Math.max(0, orderedBottles - quantity)
+        : null,
   };
 }
 
@@ -431,13 +515,15 @@ export async function readShelfReceived(
             .order("id", { ascending: true })
             .range(from, to),
         ),
-        readAll("The door's counts", (from, to) =>
+        readAll("The door's counts and the verifications", (from, to) =>
           db
             .from("procurement_receipt_events")
-            .select("id, order_id, counted_qty_bottles, rejected_qty_bottles")
+            .select(
+              "id, order_id, stage, counted_qty_bottles, rejected_qty_bottles, invoice_qty_bottles, occurred_at",
+            )
             .eq("restaurant_id", restaurantId)
             .in("order_id", ids)
-            .eq("stage", "case_count")
+            .in("stage", ["case_count", "reconciled"])
             .order("id", { ascending: true })
             .range(from, to),
         ),

@@ -41,6 +41,14 @@
  * table and not a column on `inventory_lots`. `inventory.md` §9 is amended to
  * match.
  *
+ * THE HOUSE'S MONEY (2026-09-21, founder answers 10 and 11). The book's
+ * unit cost is read everywhere as the house's own currency, and a lot's
+ * working is in the LOT's. A lot in another currency therefore asks for the
+ * exchange rate the person used and lets them type each bottle's cost in the
+ * house's currency ("people round"); a typed cost wins, both are recorded, and
+ * nothing is looked up (`auctionLotCost.ts`, the gateway's rule mirrored). The
+ * lot number is optional; the auction house and the sale date are not.
+ *
  * MERGE POINT WITH PACKET 1. Packet 1 is moving the carry sheet
  * (`components/inventory/AddWineToInventoryModal.tsx`) onto the primitive. This
  * file deliberately touches none of theirs: it is a Sheet of its own with a
@@ -54,7 +62,9 @@ import { Sheet } from '@/components/mudavym';
 import { getErrorMessage } from '@/services/api/client';
 import { searchWines } from '@/services/api/wines';
 import { createAuctionLotRecord } from '@/services/api/inventory';
+import { settingsApi } from '@/services/api/settings';
 import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
+import { lotBookedCost } from './auctionLotCost';
 
 export interface AuctionLot {
   house: string;
@@ -65,6 +75,10 @@ export interface AuctionLot {
   /** ISO-4217, never inferred (founder, 2026-09-21) — '' is "not chosen yet", never a guessed default. */
   currency: string;
   bottles: string;
+  /** 1 unit of the lot's currency in the house's, as the person states it; '' = not stated. */
+  exchangeRate: string;
+  /** Each bottle's cost in the house's currency, as the person types it; '' = not typed. */
+  houseCost: string;
 }
 
 export const EMPTY_LOT: AuctionLot = {
@@ -75,6 +89,8 @@ export const EMPTY_LOT: AuctionLot = {
   premium: '',
   currency: '',
   bottles: '1',
+  exchangeRate: '',
+  houseCost: '',
 };
 
 /** A wine as the register hands it over. Only what this start needs. */
@@ -137,15 +153,15 @@ export function lotCost(lot: AuctionLot): LotCost {
 /**
  * What the lot's own record still needs before the bottles may be carried
  * (2026-09-21), or null when nothing is missing. `auction_lot_records` holds
- * the auction house, the lot number, the sale date and the currency NOT NULL,
- * so the sheet refuses to carry until every one is stated: carrying first and
- * then failing the record would put the stock in the book with its receipt
- * missing — the one outcome this sheet cannot undo from here.
+ * the auction house, the sale date and the currency NOT NULL, so the sheet
+ * refuses to carry until each is stated: carrying first and then failing the
+ * record would put the stock in the book with its receipt missing — the one
+ * outcome this sheet cannot undo from here. The lot number is OPTIONAL
+ * (founder answer 11, 2026-09-21): a lot without one is recorded as not stated.
  */
 export function lotDetailsMissing(lot: AuctionLot): string | null {
   const missing = [
     lot.house.trim() ? null : 'the auction house',
-    lot.lotNumber.trim() ? null : 'the lot number',
     lot.saleDate.trim() ? null : 'the sale date',
     lot.currency ? null : 'the currency',
   ].filter((m): m is string => m !== null);
@@ -191,6 +207,31 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  /* The house's own currency. `undefined` = not read yet; `null` = unanswered
+     or unreadable — both refuse a booked cost rather than assume one. */
+  const [houseCurrency, setHouseCurrency] = useState<string | null | undefined>(undefined);
+  /* A failed read and an unanswered question are different facts (ADR 0083). */
+  const [houseCurrencyUnread, setHouseCurrencyUnread] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    settingsApi
+      .houseCurrency()
+      .then((h) => {
+        if (cancelled) return;
+        setHouseCurrencyUnread(!h?.readable);
+        setHouseCurrency(h?.readable ? (h.code ?? null) : null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHouseCurrencyUnread(true);
+        setHouseCurrency(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   /* The register, searched. `undefined` is "nothing asked yet", `null` is a read
      that FAILED — an empty list drawn for a thrown request would tell a person
@@ -226,17 +267,38 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
   // The auction house, the lot number and the sale date gate the carry the
   // same way: the record holds them NOT NULL (see `lotDetailsMissing`).
   const detailsMissing = lotDetailsMissing(lot);
-  const canCarry = !!wine && !detailsMissing && cost.ok && !!lot.currency && !busy;
+  // What the book is given per bottle, in the HOUSE's money (founder answer
+  // 10). Not worked out until the lot's own figures and currency are stated.
+  const foreign = !!lot.currency && !!houseCurrency && lot.currency !== houseCurrency;
+  const booked = useMemo(
+    () =>
+      !cost.ok || !lot.currency || houseCurrency === undefined
+        ? null
+        : houseCurrencyUnread
+          ? ({
+              ok: false,
+              why: 'This house’s currency could not be read, so a cost cannot be booked in it yet. Nothing is inferred.',
+            } as const)
+          : lotBookedCost({
+              lotPerBottle: cost.perBottle,
+              currency: lot.currency,
+              houseCurrency,
+              exchangeRate: lot.exchangeRate,
+              houseCost: lot.houseCost,
+            }),
+    [cost, lot.currency, lot.exchangeRate, lot.houseCost, houseCurrency, houseCurrencyUnread],
+  );
+  const canCarry = !!wine && !detailsMissing && cost.ok && !!lot.currency && !!booked?.ok && !busy;
 
   const carry = async () => {
-    if (!wine || detailsMissing || !cost.ok || !lot.currency || busy) return;
+    if (!wine || detailsMissing || !cost.ok || !lot.currency || !booked?.ok || busy) return;
     setBusy(true);
     setFailure(null);
     setDone(null);
 
     let inventoryId: string;
     try {
-      const carried = await onCarry({ wine, quantity: cost.bottles, costPerBottle: cost.perBottle });
+      const carried = await onCarry({ wine, quantity: cost.bottles, costPerBottle: booked.booked });
       inventoryId = carried.inventoryId;
     } catch (e) {
       setBusy(false);
@@ -247,7 +309,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
     }
 
     const wineLabel = wine.name;
-    const carriedSentence = `${wineLabel} carried in — ${cost.bottles} ${cost.bottles === 1 ? 'bottle' : 'bottles'} at ${cost.perBottle} ${lot.currency} each.`;
+    const carriedSentence = `${wineLabel} carried in — ${cost.bottles} ${cost.bottles === 1 ? 'bottle' : 'bottles'} at ${booked.booked} ${houseCurrency} each.`;
 
     // The stock is already written and cannot be un-carried from here — a
     // second failure now is a DIFFERENT fact than the first, and gets its own
@@ -257,15 +319,21 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       // `cost.ok` already proved both parse, so this cannot fail here — it
       // just avoids widening `LotCost`'s shape for two fields only this
       // caller needs.
+      const rate = num(lot.exchangeRate);
+      const typed = num(lot.houseCost);
       await createAuctionLotRecord({
         inventoryId,
         auctionHouse: lot.house.trim(),
-        lotNumber: lot.lotNumber.trim(),
+        lotNumber: lot.lotNumber.trim() || null,
         saleDate: lot.saleDate,
         hammerPrice: num(lot.hammer) as number,
         buyersPremium: num(lot.premium) as number,
         currency: lot.currency,
         bottles: cost.bottles,
+        // Both recorded as stated; the typed cost is what was booked when present.
+        exchangeRate: rate,
+        houseUnitCost: typed,
+        bookedUnitCost: booked.booked,
       });
       setDone(`${carriedSentence} The lot's own details (${lotWords(lot)}) were saved.`);
     } catch (e) {
@@ -415,7 +483,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
         </div>
         <div>
           <label style={legend} htmlFor="auction-lot">
-            Lot number
+            Lot number (if it has one)
           </label>
           <input
             id="auction-lot"
@@ -483,6 +551,36 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
             ))}
           </select>
         </div>
+        {foreign && (
+          <>
+            <div>
+              <label style={legend} htmlFor="auction-rate">
+                1 {lot.currency} was worth ({houseCurrency})
+              </label>
+              <input
+                id="auction-rate"
+                inputMode="decimal"
+                style={field}
+                value={lot.exchangeRate}
+                data-testid="auction-rate"
+                onChange={(e) => setLot({ ...lot, exchangeRate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label style={legend} htmlFor="auction-house-cost">
+                Or each bottle cost ({houseCurrency})
+              </label>
+              <input
+                id="auction-house-cost"
+                inputMode="decimal"
+                style={field}
+                value={lot.houseCost}
+                data-testid="auction-house-cost"
+                onChange={(e) => setLot({ ...lot, houseCost: e.target.value })}
+              />
+            </div>
+          </>
+        )}
         <div className="col-span-2">
           <label style={legend} htmlFor="auction-bottles">
             Bottles in the lot
@@ -511,6 +609,20 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       >
         {cost.ok ? cost.working : cost.why}
       </p>
+      {booked && (
+        <p className="mt-2" data-testid="auction-booked" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+          {booked.ok
+            ? booked.basis === 'typed_house_cost'
+              ? `The book is given ${booked.booked} ${houseCurrency} a bottle, as you typed it${
+                  lot.exchangeRate.trim() ? '; the rate you stated is recorded beside it' : ''
+                }.`
+              : booked.basis === 'stated_rate'
+                ? `The book is given ${booked.booked} ${houseCurrency} a bottle: ${booked.lotPerBottle} ${lot.currency} at the rate you stated.`
+                : `The book is given ${booked.booked} ${houseCurrency} a bottle.`
+            : booked.why}
+        </p>
+      )}
+
       {detailsMissing && (
         <p className="mt-2" data-testid="auction-details-missing" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
           {detailsMissing}
@@ -518,9 +630,10 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       )}
 
       <p className="mt-2" data-testid="auction-lot-saved-note" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
-        The book keeps the cost per bottle and records it as typed by a person. Carrying this in
-        also saves the lot's own details — {lotWords(lot)} — with the hammer price and premium in
-        the currency chosen above.
+        The book keeps the cost per bottle, in the house&rsquo;s currency, and records it as typed
+        by a person. Carrying this in also saves the lot&rsquo;s own details — {lotWords(lot)} —
+        with the hammer price and premium in the currency chosen above, and any rate or cost you
+        stated.
       </p>
 
       {done && (

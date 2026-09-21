@@ -26,6 +26,7 @@ import { ProcurementService } from "./procurement.service";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { VendorSendAuthorityService } from "../organizations/vendor-send-authority.service";
 import { letterVersionHash } from "./order-seal";
+import { installGrantLedger } from "../organizations/testing/grant-ledger-fake";
 import {
   FakeDb,
   fakeNotifications,
@@ -73,6 +74,7 @@ function seed(db: FakeDb) {
   ];
   db.tables.authority_grants = [];
   db.tables.mcp_seal_challenges = [];
+  installGrantLedger(db);
 }
 
 function build() {
@@ -306,6 +308,9 @@ describe("a person an owner has granted sends with one hold", () => {
       expires_at: null,
       created_at: "2026-09-20T10:00:00.000Z",
       revoked_at: null,
+      vouched_by_user_id: OWNER,
+      suspended_at: null,
+      deleted_at: null,
       ...over,
     });
   }
@@ -322,6 +327,27 @@ describe("a person an owner has granted sends with one hold", () => {
     const { challenge } = await t.mint(GRANTEE, ENGINE_WORDS);
     await t.send(GRANTEE, ENGINE_WORDS, challenge);
     expect(t.draft()).toMatchObject({ status: "SENT", sent_by_user_id: GRANTEE, sent_under_grant_id: "grant-1" });
+    // The send under a grant is on the security ledger (ADR 0112 F12; founder
+    // answer 4, 2026-09-21), written before anything left.
+    expect(t.db.tables.security_events.map((e) => [e.kind, e.actor_user_id, e.subject_id])).toEqual([
+      ["grant_relied_on", GRANTEE, "grant-1"],
+    ]);
+  });
+
+  it("a send under a grant the ledger cannot record is refused, and nothing leaves", async () => {
+    const t = build();
+    grant(t);
+    t.db.rpcHandlers.authority_grant_relied_on = () => ({ data: null, error: { message: "ledger unavailable" } });
+    const { challenge } = await t.mint(GRANTEE, ENGINE_WORDS);
+    await expect(t.send(GRANTEE, ENGINE_WORDS, challenge)).rejects.toThrow(/security ledger/);
+    expect(t.gmail.sendEmail.calls).toHaveLength(0);
+    expect(t.draft().status).toBe("PENDING_APPROVAL");
+  });
+
+  it("a grant whose owner went (latched) does not send, even if that owner is an owner again", async () => {
+    const t = build();
+    grant(t, { suspended_at: "2026-09-21T09:00:00.000Z" });
+    await expect(t.mint(GRANTEE, ENGINE_WORDS)).rejects.toThrow(/waits for a current owner to re-approve/);
   });
 
   it("an expired grant is refused at the act, and nothing is sent", async () => {

@@ -32,6 +32,7 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
     from(table: string) {
       const filters: Array<[string, any]> = [];
       const containsFilters: Array<[string, Row]> = [];
+      const inFilters: Array<[string, any[]]> = [];
       const rec: Asked = { table, order: [], limit: null, or: [] };
       asked.push(rec);
       const api: any = {
@@ -44,6 +45,10 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
         },
         contains(col: string, val: Row) {
           containsFilters.push([col, val]);
+          return api;
+        },
+        in(col: string, vals: any[]) {
+          inFilters.push([col, vals]);
           return api;
         },
         order(col: string, opts: any) {
@@ -67,14 +72,15 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
               return Object.entries(obj).every(([k, v]) => meta[k] === v);
             });
           }
+          for (const [col, vals] of inFilters) {
+            rows = rows.filter((r) => vals.includes(r[col]));
+          }
           // The cursor filter the service writes: `<col>.lte.<iso>,<col>.is.null`.
           for (const expr of rec.or) {
             const m = /^([a-z_]+)\.lte\.(.+),\1\.is\.null$/.exec(expr);
             if (!m) throw new Error(`fake client cannot parse or(${expr})`);
             const [, col, iso] = m;
-            rows = rows.filter(
-              (r) => r[col] === null || r[col] === undefined || r[col] <= iso,
-            );
+            rows = rows.filter((r) => r[col] === null || r[col] === undefined || r[col] <= iso);
           }
           // Newest first, NULLs last — what `nullsFirst: false` under DESC does.
           for (const [col, opts] of rec.order) {
@@ -86,9 +92,7 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
               if (av === null && bv === null) return 0;
               if (av === null) return nullsFirst ? -1 : 1;
               if (bv === null) return nullsFirst ? 1 : -1;
-              return desc
-                ? String(bv).localeCompare(String(av))
-                : String(av).localeCompare(String(bv));
+              return desc ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
             });
           }
           if (rec.limit !== null) rows = rows.slice(0, rec.limit);
@@ -100,11 +104,7 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
   };
 }
 
-function decision(
-  id: string,
-  createdAt: string | null,
-  restaurantId = "r1",
-): Row {
+function decision(id: string, createdAt: string | null, restaurantId = "r1"): Row {
   return {
     id,
     restaurant_id: restaurantId,
@@ -117,11 +117,7 @@ function decision(
   };
 }
 
-function document(
-  id: string,
-  createdAt: string | null,
-  restaurantId = "r1",
-): Row {
+function document(id: string, createdAt: string | null, restaurantId = "r1"): Row {
   return {
     id,
     restaurant_id: restaurantId,
@@ -141,7 +137,26 @@ const EMPTY = {
   procurement_documents: [],
   system_audit_log: [],
   event_store: [],
+  restaurant_inventory: [],
 };
+
+function eventStoreRow(
+  eventId: string,
+  aggregateType: string,
+  aggregateId: string,
+  correlationId: string,
+  createdAt: string,
+): Row {
+  return {
+    event_id: eventId,
+    aggregate_type: aggregateType,
+    aggregate_id: aggregateId,
+    event_type: "StockUpdated",
+    correlation_id: correlationId,
+    created_at: createdAt,
+    payload: {},
+  };
+}
 
 describe("LogsTimelineService.getTimeline", () => {
   it("merges sources and sorts newest-first", async () => {
@@ -229,59 +244,6 @@ describe("LogsTimelineService.getTimeline", () => {
     expect(events[0].correlationId).toBe("corr-1");
   });
 
-  it("only returns attributed house events even when another house shares the correlation", async () => {
-    const event = (id: string, payload: Row, correlation = "shared") => ({
-      event_id: id,
-      aggregate_type: "inventory",
-      aggregate_id: `${id}-item`,
-      event_type: "StockUpdated",
-      correlation_id: correlation,
-      created_at: "2026-09-13T12:00:00Z",
-      payload,
-    });
-    const client = makeFakeClient({
-      ...EMPTY,
-      event_store: [
-        event("foreign", { restaurant_id: "r2" }),
-        event("unattributed", { inventory_id: "unknown" }),
-        event("own", { restaurant_id: "r1" }),
-        event("other-thread", { restaurant_id: "r1" }, "elsewhere"),
-      ],
-    });
-    const service = new LogsTimelineService({
-      getClient: () => client,
-    } as unknown as DatabaseService);
-    const result = await service.getTimeline("r1", {
-      correlationId: "shared",
-      limit: 1,
-    });
-    expect(result.events.map((e) => e.id)).toEqual(["own"]);
-    expect(result.hasMore).toBe(false);
-    expect(result.failedSources).toEqual([]);
-    expect(result.sourcesQueried).toContain("event_store");
-  });
-
-  it("a foreign correlation gives no event-store metadata to another house", async () => {
-    const client = makeFakeClient({
-      ...EMPTY,
-      event_store: [
-        {
-          event_id: "foreign",
-          correlation_id: "foreign-thread",
-          created_at: "2026-09-13T12:00:00Z",
-          payload: { restaurant_id: "r2" },
-        },
-      ],
-    });
-    const service = new LogsTimelineService({
-      getClient: () => client,
-    } as unknown as DatabaseService);
-    expect(
-      (await service.getTimeline("r1", { correlationId: "foreign-thread" }))
-        .events,
-    ).toEqual([]);
-  });
-
   it("does not query event_store without a correlation_id", async () => {
     const fromSpy = jest.fn(() => {
       throw new Error("should not be called");
@@ -308,6 +270,80 @@ describe("LogsTimelineService.getTimeline", () => {
     const { events } = await service.getTimeline("r1");
     expect(events).toEqual([]);
     expect(fromSpy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 2026-09-17 finding: event_store carries no restaurant_id, so filtering
+   * only by correlation_id let one house read another house's rows whenever
+   * a correlation_id was shared or guessed. Every row must now be proven
+   * through its aggregate before it can leave the service.
+   */
+  describe("event_store rows are proven to belong to the caller's house", () => {
+    it("returns only the caller's rows when a correlation_id spans two houses", async () => {
+      const client = makeFakeClient({
+        ...EMPTY,
+        event_store: [
+          eventStoreRow("ev-mine", "inventory", "inv-r1", "corr-shared", "2026-09-17T10:00:00Z"),
+          eventStoreRow("ev-theirs", "inventory", "inv-r2", "corr-shared", "2026-09-17T09:00:00Z"),
+        ],
+        restaurant_inventory: [
+          { id: "inv-r1", restaurant_id: "r1" },
+          { id: "inv-r2", restaurant_id: "r2" },
+        ],
+      });
+      const service = new LogsTimelineService({
+        getClient: () => client,
+      } as unknown as DatabaseService);
+
+      const { events } = await service.getTimeline("r1", {
+        correlationId: "corr-shared",
+      });
+
+      expect(events.map((e) => e.id)).toEqual(["ev-mine"]);
+    });
+
+    it("returns nothing (not an error) when the correlation_id names only a foreign house, and logs the withholding", async () => {
+      const client = makeFakeClient({
+        ...EMPTY,
+        event_store: [
+          eventStoreRow("ev-theirs", "inventory", "inv-r2", "corr-foreign", "2026-09-17T09:00:00Z"),
+        ],
+        restaurant_inventory: [{ id: "inv-r2", restaurant_id: "r2" }],
+      });
+      const service = new LogsTimelineService({
+        getClient: () => client,
+      } as unknown as DatabaseService);
+      const warnSpy = jest.spyOn((service as any).logger, "warn");
+
+      const res = await service.getTimeline("r1", {
+        correlationId: "corr-foreign",
+      });
+
+      expect(res.events).toEqual([]);
+      expect(res.failedSources).toEqual([]);
+      expect(res.sourcesQueried).toContain("event_store");
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("corr-foreign"),
+      );
+    });
+
+    it("refuses a row whose aggregate_type has no known owning table, rather than trusting it", async () => {
+      const client = makeFakeClient({
+        ...EMPTY,
+        event_store: [
+          eventStoreRow("ev-unknown", "reservation", "res-1", "corr-1", "2026-09-17T09:00:00Z"),
+        ],
+      });
+      const service = new LogsTimelineService({
+        getClient: () => client,
+      } as unknown as DatabaseService);
+
+      const { events } = await service.getTimeline("r1", {
+        correlationId: "corr-1",
+      });
+
+      expect(events).toEqual([]);
+    });
   });
 
   /**
@@ -515,17 +551,11 @@ describe("LogsTimelineService.getTimeline", () => {
 
       // The boundary row is RE-READ (inclusive), the newer one is not, and the
       // undated row is still there — sorted last, never dropped.
-      expect(page.events.map((e) => e.id)).toEqual([
-        "boundary",
-        "older",
-        "undated",
-      ]);
+      expect(page.events.map((e) => e.id)).toEqual(["boundary", "older", "undated"]);
       expect(page.hasMore).toBe(false);
       for (const a of asked) {
         expect(a.or).toHaveLength(1);
-        expect(a.or[0]).toMatch(
-          /^[a-z_]+\.lte\.2026-09-01T08:00:00\.000Z,[a-z_]+\.is\.null$/,
-        );
+        expect(a.or[0]).toMatch(/^[a-z_]+\.lte\.2026-09-01T08:00:00\.000Z,[a-z_]+\.is\.null$/);
       }
     });
 

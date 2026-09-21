@@ -156,6 +156,15 @@ outbound-email audit trail, labelled by `outbound_email_type`).
     carries the same field, and its queue is sealed and gated too. Proved by
     `DraftedReply.test.tsx`, 25 tests as measured 2026-09-21 (the count below
     is the packet-2 count, kept as its record).
+    **[2026-09-21, ADR 0175 second amendment.]** A staff member's composer shows
+    "Ask a manager to send it" (a click, like the composer's send; answer 3/7):
+    `POST /communications/letters/requests` keeps the exact letter after checking
+    the book and the guardrails. "Letters waiting for a manager"
+    (`LetterRequestsPanel.tsx`, `GET /communications/letters/requests`) lets an
+    owner or a manager release one with one hold that mints the composer's seal
+    over it and names the request; it still waits out the 2-minute undo. A draft
+    refused before sending reads as failed, "Refused before sending — draft closed"
+    (answer 6).
   - Proved by `DraftedReply.test.tsx` (18 assertions).
 - **The house letter library** (flag ON): house-owned templates under five vendor
   purposes, each showing its declared merge fields, who last edited it and when it
@@ -1048,3 +1057,15 @@ lands, this route is open.
 ### Codex execution — overlay packet, 2026-09-13
 
 The recovered communications overlays and their interaction regressions were reconciled with current main. The cross-page seal, partial-result and validation account is appended to ADR 0118 under “overlay commitments”; the workspace immutable manifest records exactly what was integrated. This is implementation evidence, not a new design decision.
+
+## Execution reconciliation — 2026-09-13, reconciled 2026-09-17
+
+The WhatsApp inbound webhook and the `POST communications/text-senders/whatsapp/reply` /
+`GET .../whatsapp/window/:providerId` endpoints exist under ADR 0121 P1 — durable,
+tenant-scoped inbound receipts, retryable database failures, a signed-actor reply path,
+and (added 2026-09-17) delivery-status callbacks applied to the house's own outbound row.
+**No page surface consumes either endpoint yet** — this page has no composer for a
+WhatsApp reply and no rendering of the 24-hour window state; a grep of `apps/web/src`
+for `whatsapp/reply` or `whatsapp/window` returns nothing. That is on the pages build
+backlog, not shipped. See ADR 0121's 2026-09-17 review-trail row for what was fixed and
+what still needs a founder answer.

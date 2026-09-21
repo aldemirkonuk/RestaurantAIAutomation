@@ -25,6 +25,9 @@ import {
   requestDraftSend,
   issueManualReplyChallenge,
   issueConfirmDealChallenge,
+  useDealRequest,
+  requestConfirmDeal,
+  dealRequestKeys,
   orderConversationKeys,
   dealProposalKeys,
   draftKeys,
@@ -115,6 +118,18 @@ const STATUS_CONFIG: Record<string, {
   // "still waiting" for an email the vendor already has.
   SEND_UNCONFIRMED: {
     label: 'Sent · unconfirmed',
+    textColor: 'text-red-700',
+    bgColor: 'bg-red-50',
+    borderColor: 'border-red-200',
+    dotBg: 'bg-red-500',
+    dotBorder: 'border-red-300',
+    icon: AlertTriangle,
+  },
+  // The gateway refused to build the message, so nothing left, and the draft
+  // is CLOSED rather than handed back for a tap that fails the same way
+  // (founder answer 6, 2026-09-21). The reason is shown under the letter.
+  SEND_REFUSED: {
+    label: 'Refused · not sent',
     textColor: 'text-red-700',
     bgColor: 'bg-red-50',
     borderColor: 'border-red-200',
@@ -376,18 +391,30 @@ export function CommsThreadDrawer({
   }, [dealProposal?.conversationId, dealProposal?.urgency, autoOpenedDealId])
 
   // A deal confirmation commits money and mails the vendor, so it is sealed
-  // over its exact terms (ADR 0175 D9) and gated on who may (D10). A deal has
-  // no request path: a staff member is told who can confirm it instead.
+  // over its exact terms (ADR 0175 D9) and gated on who may (D10). Its
+  // standing is read with the deal's own money (a grantee's limit), and a
+  // staff member's hold ASKS a manager (founder answer 3, 2026-09-21).
+  const dealRequest = useDealRequest(isOpen && dealProposal ? orderId : null)
+  const dealStanding = dealRequest.data?.standing
+  const dealAct = holdAct(dealStanding)
+  const waitingDealRequest = dealRequest.data?.request ?? null
   const dealBlockedReason =
-    standing.isPending
+    dealRequest.isPending
       ? 'Reading whether you may confirm deals…'
-      : standing.isError
+      : dealRequest.isError
         ? 'Whether you may confirm deals could not be read. Nothing can be confirmed until it can.'
-        : replyAct === 'ask'
-          ? 'Only an owner, a manager, or someone an owner has named may confirm a deal. Ask one of them to confirm it.'
-          : replyAct === null
-            ? (standing.data?.sendOrAsk?.sentence ?? 'Whether you may confirm deals could not be read.')
+        : dealAct === 'ask'
+          ? (dealStanding?.sentence ??
+            'Your hold will ask a manager to confirm this deal; your terms are kept exactly as you set them.')
+          : dealAct === null
+            ? (dealStanding?.sentence ?? 'Whether you may confirm deals could not be read.')
             : null
+  const handleAskDeal = async (finalPrice: number, quantity: number) => {
+    if (!orderId) return
+    const out = await requestConfirmDeal({ orderId, finalPrice, quantity, sendConfirmation: true })
+    void queryClient.invalidateQueries({ queryKey: dealRequestKeys.byOrder(orderId) })
+    return out
+  }
   const handleDealChallenge = async (finalPrice: number, quantity: number) => {
     if (!orderId) return null
     return issueConfirmDealChallenge({ orderId, finalPrice, quantity, sendConfirmation: true })
@@ -936,6 +963,8 @@ export function CommsThreadDrawer({
         onConfirm={handleConfirmDeal}
         onChallenge={handleDealChallenge}
         confirmBlockedReason={dealBlockedReason}
+        onAsk={dealAct === 'ask' ? handleAskDeal : undefined}
+        waitingRequest={waitingDealRequest}
         onDismiss={handleDismissDeal}
         onAskForMore={handleAskForMore}
         onClose={() => setShowDealModal(false)}
@@ -1311,6 +1340,12 @@ function ThreadEvent({ conv, attachments, isLast, isLatest, isCancelled, onOpenD
           </div>
           <span className="text-[10px] text-gray-400 flex-shrink-0">{fmtTime(conv.createdAt)}</span>
         </div>
+
+        {conv.status === 'SEND_REFUSED' && (
+          <p role="status" data-testid={`send-refused-${conv.id}`} className="text-[11px] text-red-700 mb-2">
+            Nothing was sent, and this draft is closed: {conv.refusalReason ?? 'the reason was not recorded.'}
+          </p>
+        )}
 
         {/* Message body + meta — always inline (7a "The One") */}
         <div className={`rounded-xl border overflow-hidden ${isLatest ? cfg.borderColor : 'border-gray-100'}`}>
