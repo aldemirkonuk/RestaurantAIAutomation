@@ -1983,6 +1983,11 @@ answer and B's day sheet as the operating-hours editor.
   — neither a per-person schedule nor a weekday exists in this table or route. Open
   question for the founder, not decided here: does the digest become per-person, or does
   the per-house shape stand and the brief's language get corrected?
+  **[ANSWERED, 2026-09-19 — see §13.39 and §13.40:** the per-house shape stands; the
+  founder had the dossier corrected to it rather than a per-person table built here. The
+  narrower residual this answer left open (`recipientEmail` going unmailed once PR #391
+  lands, plus a possible per-person opt-in) is tracked as a named follow-up in §13.40's
+  open items, not re-opened as this same question.]
 * **The analytics consent panel is deleted** (ADR 0149 row 14): `ServicesSection.tsx`'s
   four "Dead" consent rows (email access, web access, product analytics, partner sharing)
   are replaced with one plain sentence — no analytics consent is collected yet — rather
@@ -2005,6 +2010,11 @@ from an ADR 0113 assistant-proposal system with no endpoint for arbitrary settin
 fields); Notifications' sketch-drawn split across IV ("the mapping") and VI ("your
 doors") — the "mapping" half has no real vocabulary in this worktree yet, owned by a
 concurrent lane; and graft C's `readBy` line on the twelve registers not listed above.
+**[ANSWERED, 2026-09-19 — see §13.40:** the tally was built (`certaintyTally.ts`, the
+counted "computed here" sentence); the "Waiting on you" rail stays held, exactly as the
+founder answered — it has no sketch of its own yet, so shipping one would be new,
+undesigned UI, not a fix. The Notifications split and the twelve-register `readBy` gap
+remain genuinely open and are not addressed by this bracket.]
 
 ### 13.38 — Fix pass on the audit above (2026-09-18)
 
@@ -2159,7 +2169,7 @@ those numbers had already drifted since §13.38 was written.
   inventing a fake integration but did not by itself pick "ship a
   data-computed interim now" over "hold the whole feature". The founder then
   settled it directly ("Lane answers batch 2", ~09:30Z,
-  `founder-sketch-decisions-106-115.md:132-133`): *"settings tally = ship the
+  `founder-sketch-decisions-106-115.md`): *"settings tally = ship the
   counted sentence now (from data, labelled 'computed here'), 'Waiting on you'
   rail later."* Built in this pass — `certaintyTally.ts`, wired into
   `SettingsNext.tsx`'s header — see §13.40 below for what it counts and why.
@@ -2209,7 +2219,7 @@ those numbers had already drifted since §13.38 was written.
   without deleting it, per the no-silent-rewrite rule:]** the paragraph above
   is ALSO wrong, on the one point that actually matters — whether shipping
   this control is safe. The founder settled it directly ("Lane answers batch
-  2", ~09:30Z, `founder-sketch-decisions-106-115.md:132-133`): *"settings
+  2", ~09:30Z, `founder-sketch-decisions-106-115.md`): *"settings
   digest = correct the dossier to the per-house control that shipped."* The
   per-house control this page ships (`digest_enabled`/`digest_hour`/
   `digest_min_urgency` on `recommendation_digest_prefs`) **is the shipped,
@@ -2225,7 +2235,7 @@ those numbers had already drifted since §13.38 was written.
   never mails `recommendation_digest_prefs.recipient_email`. That column is a
   free address…"), so recording an email there today has no effect once #391
   ships mail. **Open item, not a blocker:** the per-person opt-in (batch 4,
-  ~10:00Z, `founder-sketch-decisions-106-115.md:161`): *"settings digest email
+  ~10:00Z, `founder-sketch-decisions-106-115.md`): *"settings digest email
   = drop the free field when #391 lands + add a per-person 'send me the
   digest' opt-in on Settings."* `#391`/`train/finish-2` is confirmed NOT on
   `main` yet (checked 2026-09-19: `git merge-base --is-ancestor
@@ -2275,7 +2285,7 @@ no-silent-rewrite rule, with what actually happened recorded beside each:**
   only the "Waiting on you" rail, which has no sketch of its own yet and would
   be new undesigned UI, not a fix. **Founder answer matches this
   recommendation almost exactly** ("Lane answers batch 2", ~09:30Z,
-  `founder-sketch-decisions-106-115.md:132-133`) — the one difference is the
+  `founder-sketch-decisions-106-115.md`) — the one difference is the
   source: data, not a DOM read. Built; see §13.40. Does not block ready — the
   page has never claimed this feature exists.
 - Digest — **[CORRECTED 2026-09-19, this bullet was wrong and is superseded by
@@ -2303,7 +2313,7 @@ no-silent-rewrite rule, with what actually happened recorded beside each:**
   control is "at risk of being superseded" and needs a provisional label or a
   hold — is itself false: it is the decided per-house half of #391's own
   design (see above). Nothing here blocks ready. His actual answer (batch 4,
-  `founder-sketch-decisions-106-115.md:161`) names a real, smaller follow-up
+  `founder-sketch-decisions-106-115.md`) names a real, smaller follow-up
   instead — drop `recipientEmail`, add a per-person opt-in, once #391 lands —
   recorded as an open item above and not built now, since #391 is unmerged.
 
@@ -2347,7 +2357,7 @@ question the founder already settled.
   "will silently stop mattering" once PR #391 merges and recommended holding
   it or labelling it provisional — **the opposite of the founder's actual
   answer** ("Lane answers batch 2", ~09:30Z,
-  `founder-sketch-decisions-106-115.md:132-133`: *"settings digest = correct
+  `founder-sketch-decisions-106-115.md`: *"settings digest = correct
   the dossier to the per-house control that shipped"*). Re-verified directly
   against `origin/train/finish-2` rather than trusting the prior pass's
   reading of it: `readHousePref`
@@ -2360,7 +2370,7 @@ question the founder already settled.
   inside the founder-decision table itself — moved here, where a page's open
   items belong, rather than in a decision row).
   **Open items, not blockers** (founder, "Lane answers batch 4", ~10:00Z,
-  `founder-sketch-decisions-106-115.md:161`): (1) `recipientEmail` is real
+  `founder-sketch-decisions-106-115.md`): (1) `recipientEmail` is real
   today but goes unmailed once #391 ships — no UI change needed, just said
   plainly; (2) drop that field and add a per-person "send me the digest"
   opt-in on this page, backed by #391's `PUT
@@ -2428,22 +2438,38 @@ question the founder already settled.
   **Mutation results — each applied alone against a saved-off copy, run, then
   the file restored and re-verified byte-identical (`diff` empty) before the
   next:**
-  - deleting `if (alwaysOn) return true;` (useMudavymDesign.ts:184) → 2 of 12
+  - deleting `if (alwaysOn) return true;` (useMudavymDesign.ts:192) → 2 of 12
     tests fail (both "resolves true…" cases: `expected false to be true`).
-  - deleting the effect's `if (alwaysOn) return;` (useMudavymDesign.ts:161) →
+  - deleting the effect's `if (alwaysOn) return;` (useMudavymDesign.ts:169) →
     1 of 12 fails (the "…even once a restaurant is known" case: `checkFlag`
     gets called once, `expected "spy" to not be called at all`).
-  - removing `'settings'` from `ALWAYS_ON_PAGES` (useMudavymDesign.ts:140) →
+  - removing `'settings'` from `ALWAYS_ON_PAGES` (useMudavymDesign.ts:148) →
     3 of 12 fail (both "resolves true…" cases, plus the `ALWAYS_ON_PAGES`
     membership assertion itself).
   All three land on a genuine assertion failure, not a crash or a silently
-  vacuous test.
-  In passing, also extended `useMudavymDesign.ts`'s own top-of-file precedence
-  list — written before `ALWAYS_ON_PAGES` existed, so it named only the
-  override and the per-restaurant flag — to say where the always-on fork sits
-  (between them; an override still wins over it). Not a correction of
-  anything false, just an omission closed while this exact precedence was
-  under test; renumbered 1-4, nothing else about the function changed.
+  vacuous test. [Re-verified 2026-09-21, round 5: the line numbers above moved
+  again — `check_flag_readby_anchors.py` had gone stale (20 registry `readBy`
+  rows still pointed at :105 once `.checkFeatureFlag(` shifted to :110) — and
+  all three mutations were re-run against the corrected file; the fail counts
+  (2, 1, 3) are unchanged.]
+  In passing, this pass had also extended `useMudavymDesign.ts`'s own
+  top-of-file precedence list to name where the always-on fork sits, renumbering
+  it 1-4. **[Reverted 2026-09-21, round 5]:** that renumbering was never
+  registered anywhere the twenty `mudavym_design_*` registry rows or
+  `FeaturesSection.tsx`'s own `readBy` note could see, so every edit to
+  `MUDAVYM_PAGES`/`ALWAYS_ON_PAGES` kept nudging `.checkFeatureFlag(` off the
+  `:105` the registry hard-codes — `check_flag_readby_anchors.py` (the guard
+  written after the P3 wave had to hand-repoint the same anchors four times)
+  caught exactly this. Fixed by moving the added prose down into
+  `ALWAYS_ON_PAGES`'s own docblock instead, which sits below the call site: the
+  top-of-file list is back to its original 1-3, `.checkFeatureFlag(` is back at
+  `:105` matching all 20 registry rows and `FeaturesSection.tsx:235,242`
+  unchanged, and the always-on fork's precedence is now documented on
+  `ALWAYS_ON_PAGES` itself rather than above the anchor. Guard re-run:
+  `python3 scripts/check_flag_readby_anchors.py` → `PASS -- 23 ACTIVE flag
+  anchors all resolve to real gates.` Mutation-tested: shifting the call site
+  by one line (a comment inserted above it) reproduces the exact failure this
+  guard exists to catch (20 stale anchors, exit 1); restored, PASS again.
 
 **Verification, this pass (2026-09-19, later):** `apps/web` `tsc --noEmit`
 clean. `npx vitest run src/pages/settings/next/ src/lib/mudavym/` — 203
@@ -2465,3 +2491,143 @@ against 119 rows, PASS. Diffstat vs `cb756083e`: 26 tracked files (+2386/−519)
 plus 2 new untracked files not yet staged
 (`certaintyTally.ts`/`certaintyTally.test.ts`, 158+168 lines) — orchestrator
 commits through its own verified index, so nothing here was `git add`-ed.
+**[Superseded 2026-09-21, round 5 — see §13.41, not corrected in place a
+second time:** this split (tracked/untracked) no longer describes the tree —
+the round-4→5 handoff committed everything, including the two files named
+above, so a plain `git diff --stat cb756083e` is now the whole answer. That
+number was already stale the day it was written: round 4's own last-call
+verdict re-measured it the same day at +2554/−522. §13.41 has the number
+measured after round 5's fixes.]
+
+### 13.41 — Round-5 must-fix closure (2026-09-21)
+
+Round 4 (Opus last call) found the founder's answers correctly applied but
+blocked the lane on two failing CI guards it had never run, plus five smaller
+record defects. This pass closes all seven; nothing here re-opens a question
+the founder already settled.
+
+* **`check_flag_readby_anchors.py` — fixed, not worked around.** The prior
+  pass's 5-line addition to `useMudavymDesign.ts`'s top-of-file precedence
+  list (naming `ALWAYS_ON_PAGES` as step 2) had pushed `.checkFeatureFlag(`
+  from `:105` to `:110`, stranding the registry's twenty
+  `mudavym_design_*` `readBy` rows and `FeaturesSection.tsx:235,242` at the
+  old line. Took the preferred route named in the must-fix list rather than
+  re-pointing twenty rows other lanes also edit: moved the added prose out of
+  the top docblock (restoring its original 1-3 numbering, byte-for-byte) and
+  into `ALWAYS_ON_PAGES`'s own docblock instead, which sits below the call
+  site — additions there cannot move an anchor above them. `.checkFeatureFlag(`
+  is back at `:105`. Guard: `python3 scripts/check_flag_readby_anchors.py` →
+  `PASS -- 23 ACTIVE flag anchors all resolve to real gates.` Mutation-tested
+  per this lane's hard rules: inserted a one-line comment directly above the
+  call (shifting it to `:106`) → `FAIL -- 20 stale readBy anchor(s)`, all
+  twenty `mudavym_design_*` keys, exit 1; reverted from a snapshot taken
+  before the mutation → PASS again, confirmed byte-identical.
+* **`check_no_seeded_defaults.py` rule S1 — fixed at the source, not the
+  guard.** `st-format.ts`'s `INTERVIEW_GROUPS` carried `roman`/`anchor` as
+  hand-written literals alongside `id`/`title`/`hint`; S1 correctly reads
+  `roman`/`anchor` as domain fields outside its descriptor vocabulary once a
+  7-row array carries an `id:` and a third non-descriptor key. Both fields
+  are mechanical functions of `id` and array position, never independent
+  facts, so they are now computed: a private `INTERVIEW_GROUP_TEXT` array
+  carries only `id`/`title`/`hint` (all three are descriptor keys, so S1's
+  domain check is empty and the row-set rule never fires), and the exported
+  `INTERVIEW_GROUPS` derives `anchor: `a-${id}`` and `roman` from a
+  `romanForPosition` helper over the same fixed I-VII order. Guard: `python3
+  scripts/check_no_seeded_defaults.py` → `PASS — 207 web file(s) and 16
+  gateway file(s) across 21 root(s)`. `SettingsNext.test.tsx` re-run to
+  confirm the seven headings and their `?tab=`/nav anchors are byte-identical
+  post-refactor (they assert on rendered text/href, never on `INTERVIEW_GROUPS`
+  literal shape): 57 of 57 pass.
+* **`useMudavymDesign.ts` line citations re-measured**, per CLAUDE.md §5b —
+  fix 1 above moved code, so every citation into the file was re-checked
+  against the fixed file rather than copied forward: `if (alwaysOn) return
+  true;` is now `:192` (was cited stale at `:184`, real at the time of round
+  4's verdict was `:189`); the effect's `if (alwaysOn) return;` is `:169`
+  (stale `:161`, real-then `:166`); `'settings'` in `ALWAYS_ON_PAGES` is
+  `:148` (stale `:140`, real-then `:145`). None of these land on the
+  round-4-predicted `:189`/`:166`/`:145` either — that prediction assumed the
+  preferred fix would be a net no-op on line count, but documenting the
+  always-on fork's precedence in `ALWAYS_ON_PAGES`'s own doc (fix 1, above)
+  necessarily adds real lines above these three sites. Updated in
+  `useMudavymDesign.test.tsx:103,107,110` and in the mutation-results list
+  below §13.40's own paragraph two sections up. All three mutations were
+  re-run against the corrected file, snapshot-and-restore
+  (`unstaged-file-mutation-snapshot-first` memory: `cp -p` to scratch, never
+  `git checkout --`): deleting `:192` → 2 of 12 fail; deleting `:169` → 1 of
+  12 fails; removing `'settings'` from the set (`:148`) → 3 of 12 fail —
+  fail counts unchanged from the original build, confirming the refactor
+  moved documentation, not behaviour. The paragraph claiming this fix
+  "renumbered [the precedence list] 1-4" no longer describes what shipped;
+  corrected in place, two sections up, to say the list is back to its
+  original 1-3 and the always-on fork's precedence now lives on
+  `ALWAYS_ON_PAGES`'s own doc instead.
+* **Memory-file citations de-lined.** `founder-sketch-decisions-106-115.md`
+  lives outside git and keeps growing, so a line number into it goes stale on
+  its own schedule, independent of anything this lane touches — batch 2 had
+  already moved from the `:132-133` this page and two source files cited to
+  `:137-138`, and the batch-4 answer from `:161` to `:165-166`, before this
+  round even started. Dropped the line-number suffix at all ten sites that
+  carry one, keeping the batch label each site already names (`"Lane answers
+  batch 2", ~09:30Z` / `"Lane answers batch 4", ~10:00Z`) as the citation:
+  this page at what are now :2156, 2206, 2222, 2272, 2300, 2344 and 2357 (line
+  numbers shifted by this pass's own edits — grep the batch label, not a line
+  number, to find them again), `certaintyTally.ts:10`, and
+  `DigestRow.tsx:23,36`.
+* **ADR 0149 restored to `cb756083e`.** Row 26 carried both a residual note
+  this lane added ("Cross-lane sequencing … is undecided") and its own later
+  correction — the must-fix list is right that neither belongs inside the
+  founder's decision table, and no ref ever pointed at either sentence, so
+  removing them is not a silent rewrite (CLAUDE.md §5: "exactly one source of
+  truth per decision" — a lane's own marginalia on a decision it didn't make
+  is not that source). This page's own
+  open items (§13.39, §13.40) already carry the same information for anyone
+  who needs it. Verified: `git diff cb756083e --
+  .planning/decisions/0149-*.md` is empty. Side effect, not the goal: this
+  also drops the file out of every diffstat below, and off a table `main`
+  (row 35) and `train/finish-2` (rows 39-49) are editing concurrently.
+* **§13.37's two closed forks now carry forward brackets.** The digest
+  per-person/per-house question (`:1978`) and the certainty-tally/rail
+  question (`:1997`) were both answered in §13.39/§13.40 but §13.37 itself
+  still read as open, with nothing pointing a reader forward. Both now carry
+  a dated `[ANSWERED …]` bracket naming where the real answer and its
+  residuals live, without restating either.
+* **Full fresh re-run**, this pass, in this order:
+  - `apps/web` `tsc --noEmit -p tsconfig.json` — clean, exit 0.
+  - `npx vitest run src/pages/settings/next/ src/lib/mudavym/` — 203 of 203
+    pass, 11 files (unchanged from §13.40 — this pass touched no test
+    behaviour, only doc-comment citations and the two guard fixes, both of
+    which existing tests already cover).
+  - `apps/api-gateway` `tsc --noEmit` on both `tsconfig.json` and
+    `tsconfig.spec.json` — clean, exit 0 both (run because
+    `feature-flag-registry.ts` differs from `cb756083e`, per the must-fix's
+    own condition, even though round 5 itself did not edit it).
+  - `apps/api-gateway` jest on its settings + settings-audit specs (8 suites:
+    `settings.service`, `approval-thresholds`, `threshold-writes-are-role-
+    gated`, `flag-writes-are-role-gated`, `house-carrying-cost`,
+    `house-currency`, `settings-audit.service`, `settings-audit.controller`)
+    — 101 of 101 pass.
+  - `eslint --resolve-plugins-relative-to
+    /Users/aldemirkonuk/Projects/p4-scratch/web-lint` (per
+    `worktree-node-modules-links` memory) on all 24 changed web files — 0
+    errors, 4 `react-refresh/only-export-components` warnings (1 in
+    `CarryingCostSection.tsx`, 3 in `SectionKit.tsx`), all four pre-existing
+    (unrelated to this pass's edits to either file; §13.40's own text above
+    undercounts this at "one" — not corrected there, since this pass did not
+    audit that older claim, only re-measured its own).
+  - Nine named static guards, all PASS: `check_flag_readby_anchors.py` (23
+    anchors), `check_no_seeded_defaults.py` (207 web + 16 gateway files),
+    `check_decision_claims.sh` (358 checked, 358 holding — unchanged, since
+    the ADR 0149 restore returns it to the exact content every claim was
+    already written against), `check_citation_pairing.py` (179 register
+    citations against 119 rows — unchanged), `check_no_conflict_markers.py`
+    (5390 tracked files, 1448 planning documents), `check_adr_numbers_unique.py`
+    (no ADR introduced; next free swept across 1045 refs: 0183 — this lane
+    creates none), `check_migration_versions_unique.py` (no migration
+    introduced), `check_read_errors_not_swallowed.py` (1492 files, 178 sites,
+    178 baselined, 0 new), `check_web_reads_gateway_dto_keys.py` (3 mirrors,
+    no undeclared client key).
+  - Diffstat vs `cb756083e`, measured plain (`git diff --stat cb756083e`,
+    no tracked/untracked split — everything is tracked now): 27 files changed,
+    +3062 insertions(+), −514 deletions(−). (ADR 0149 dropping out of this
+    diff entirely — restored to `cb756083e` above — is why the file count is
+    27, not the 28 every earlier pass measured.)

@@ -226,22 +226,43 @@ export interface InterviewGroupSpec {
   anchor: string;
 }
 
-export const INTERVIEW_GROUPS: InterviewGroupSpec[] = [
-  { id: 'house', roman: 'I', title: 'The house', anchor: 'a-house',
+/**
+ * Text only — `roman` and `anchor` are both mechanical functions of `id` and
+ * position (see `INTERVIEW_GROUPS` below), not independent facts, so a
+ * literal here never asserts a value the source doesn't already carry.
+ * `check_no_seeded_defaults.py` rule S1 reads a module-level array of
+ * `id`-bearing objects with a third key outside its descriptor vocabulary as
+ * a table of rows; `roman`/`anchor` are exactly that kind of derived key, so
+ * they are computed, not hand-carried per entry.
+ */
+const INTERVIEW_GROUP_TEXT: ReadonlyArray<Pick<InterviewGroupSpec, 'id' | 'title' | 'hint'>> = [
+  { id: 'house', title: 'The house',
     hint: 'Kept on the restaurant. Everyone who works here gets the same answer.' },
-  { id: 'carries', roman: 'II', title: 'What it carries', anchor: 'a-carries',
+  { id: 'carries', title: 'What it carries',
     hint: 'Which of the seven drinks registers this house keeps.' },
-  { id: 'buys', roman: 'III', title: 'How it buys', anchor: 'a-buys',
+  { id: 'buys', title: 'How it buys',
     hint: "What each vendor told the house, and what the house's own orders can support." },
-  { id: 'own', roman: 'IV', title: 'What it may do on its own', anchor: 'a-own',
+  { id: 'own', title: 'What it may do on its own',
     hint: 'The mandates the house has given the system.' },
-  { id: 'who', roman: 'V', title: 'Who is here', anchor: 'a-who',
+  { id: 'who', title: 'Who is here',
     hint: 'Who can reach this house, and what each may change.' },
-  { id: 'yours', roman: 'VI', title: 'Yours', anchor: 'a-yours',
+  { id: 'yours', title: 'Yours',
     hint: 'Kept on your account or in this browser. Nobody else here sees these.' },
-  { id: 'record', roman: 'VII', title: 'The record', anchor: 'a-record',
+  { id: 'record', title: 'The record',
     hint: 'A log, not a question — not counted in the tally.' },
 ];
+
+/** I, II, III, … — the sketch's fixed interview order, from position alone. */
+function romanForPosition(position: number): string {
+  const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] as const;
+  return NUMERALS[position] ?? String(position + 1);
+}
+
+export const INTERVIEW_GROUPS: InterviewGroupSpec[] = INTERVIEW_GROUP_TEXT.map((g, i) => ({
+  ...g,
+  roman: romanForPosition(i),
+  anchor: `a-${g.id}`,
+}));
 
 export function interviewGroup(id: InterviewGroupId): InterviewGroupSpec {
   return INTERVIEW_GROUPS.find((g) => g.id === id) as InterviewGroupSpec;

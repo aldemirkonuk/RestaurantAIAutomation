@@ -20,7 +20,7 @@
  * [Corrected 2026-09-19, later pass — the sentence struck above was itself
  * wrong, kept rather than deleted (no-silent-rewrite rule): the founder
  * settled this directly ("Lane answers batch 2", ~09:30Z,
- * `founder-sketch-decisions-106-115.md:133`): "settings digest = correct the
+ * `founder-sketch-decisions-106-115.md`): "settings digest = correct the
  * dossier to the per-house control that shipped." The per-house control this
  * file edits (`digest_enabled`/`digest_hour`/`digest_min_urgency` on
  * `recommendation_digest_prefs`) IS the shipped, decided design. Verified
@@ -33,7 +33,7 @@
  * mails `recipientEmail` (:112, "It never mails
  * `recommendation_digest_prefs.recipient_email`. That column is a free
  * address…"). Founder's follow-up ("Lane answers batch 4", ~10:00Z,
- * `founder-sketch-decisions-106-115.md:161`): drop the free `recipientEmail`
+ * `founder-sketch-decisions-106-115.md`): drop the free `recipientEmail`
  * field WHEN #391 lands, and add a per-person "send me the digest" opt-in on
  * Settings. #391 is not yet on `main` (checked 2026-09-19: `train/finish-2`
  * is not an ancestor of `origin/main`), so this file is not changed to build

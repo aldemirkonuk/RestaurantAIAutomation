@@ -7,7 +7,7 @@
  * no endpoint for arbitrary settings fields today — `SettingsNext.tsx`'s own
  * docblock names that fork and why this pass could not build it as drawn. The
  * founder settled the fork directly ("Lane answers batch 2", 2026-09-19
- * ~09:30Z, `founder-sketch-decisions-106-115.md:132-133`): *"settings tally =
+ * ~09:30Z, `founder-sketch-decisions-106-115.md`): *"settings tally =
  * ship the counted sentence now (from data, labelled 'computed here'),
  * 'Waiting on you' rail later."* This module is that counted sentence. The
  * rail stays unbuilt — it has no design of its own yet, and shipping one
