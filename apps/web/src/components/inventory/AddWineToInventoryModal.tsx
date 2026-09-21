@@ -41,7 +41,7 @@ interface VolumeFields {
   saleType: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
-  /** This house's own whole-bottle price (migration 20260919160000) — never the wine library's reference price. Same shape as menuPriceGlass; collected whenever saleType includes "bottle". */
+  /** This house's own whole-bottle price (migration 20260919160000) — never the wine library's reference price. Collected whenever saleType includes "bottle". Omitted (not sent as 0) when the field was left blank — see costPerBottle's null handling below, which this mirrors. */
   menuPriceBottle?: number;
   costPerBottle?: number;
   /**
@@ -103,7 +103,15 @@ export function AddWineToInventoryModal({
   const [customPourSizeInput, setCustomPourSizeInput] = useState("");
   const [isCustomPourSize, setIsCustomPourSize] = useState(false);
   const [menuPriceGlass, setMenuPriceGlass] = useState<number>(0);
-  const [menuPriceBottle, setMenuPriceBottle] = useState<number>(0);
+  /**
+   * `null` means "nobody typed a bottle price" — kept distinct from an
+   * explicitly typed 0, the same distinction costPerBottle above makes and
+   * for the same reason: a blank field defaulting to 0 turned into a real
+   * $0.00 house price on BottleLeaf (round-4 must_fix). menuPriceGlass still
+   * carries the old `number` / "0 if untouched" shape; that defect is
+   * out of scope here (r4_verdict, "not this task's to fix").
+   */
+  const [menuPriceBottle, setMenuPriceBottle] = useState<number | null>(null);
 
   const customBottleParsed = customBottleSizeInput
     ? parseVolumeInput(customBottleSizeInput)
@@ -160,7 +168,7 @@ export function AddWineToInventoryModal({
     setCustomPourSizeInput("");
     setIsCustomPourSize(false);
     setMenuPriceGlass(0);
-    setMenuPriceBottle(0);
+    setMenuPriceBottle(null);
     setCostPerBottle(null);
     setIsSample(false);
     setShowPhotoModal(false);
@@ -185,7 +193,12 @@ export function AddWineToInventoryModal({
         bottleSizeMl,
         saleType,
         ...(showGlassFields && { pourSizeMl, menuPriceGlass }),
-        ...(showBottleFields && { menuPriceBottle }),
+        // menuPriceBottle === null means the field was left blank: omit the
+        // key entirely so the API writes NULL, not an invented $0.00 house
+        // price (round-4 must_fix; mirrors costPerBottle's null handling
+        // below). An explicitly typed 0 still sends {menuPriceBottle: 0}.
+        ...(showBottleFields &&
+          menuPriceBottle !== null && { menuPriceBottle }),
         // A sample carries a real $0, not an absent cost. The caller turns this flag
         // into costProvenance 'sample', which the WAC rollup excludes by name — so a
         // free bottle stays distinguishable from one whose price was never entered.
@@ -902,9 +915,11 @@ export function AddWineToInventoryModal({
                     )}
 
                     {/* Bottle Menu Price (conditional) — this house's own
-                        price, migration 20260919160000. Mirrors Glass Menu
-                        Price below exactly, gated on showBottleFields instead
-                        of showGlassFields. */}
+                        price, migration 20260919160000. Gated on
+                        showBottleFields instead of showGlassFields, same as
+                        Glass Menu Price below, but a blank field stays
+                        null/omitted here instead of coercing to 0 (round-4
+                        must_fix) — see menuPriceBottle's state comment. */}
                     {showBottleFields && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -918,11 +933,22 @@ export function AddWineToInventoryModal({
                             type="number"
                             min="0"
                             step="0.01"
-                            value={menuPriceBottle || ""}
-                            onChange={(e) =>
-                              setMenuPriceBottle(parseFloat(e.target.value) || 0)
-                            }
-                            placeholder="0.00"
+                            // `?? ''` and not `|| ''`: a deliberate $0 stays
+                            // visible instead of blanking itself (mirrors
+                            // costPerBottle above).
+                            value={menuPriceBottle ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw.trim() === "") {
+                                setMenuPriceBottle(null);
+                                return;
+                              }
+                              const n = parseFloat(raw);
+                              setMenuPriceBottle(
+                                Number.isFinite(n) ? Math.max(0, n) : null,
+                              );
+                            }}
+                            placeholder="leave blank if not set"
                             className="w-full pl-7 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-wine-500"
                           />
                         </div>

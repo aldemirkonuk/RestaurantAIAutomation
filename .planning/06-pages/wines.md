@@ -1546,7 +1546,38 @@ house bottle price. That's a huge thing ... gotta be dynamic."*
   used instead, per project memory, but only for this one file against a
   scratch `restaurant_inventory` stand-in — the fixture does not prove this
   migration composes with every migration between it and the baseline, only
-  that its own logic is sound). Gateway: `InventoryService.mapInventoryItem`
+  that its own logic is sound).
+  **[CORRECTED 2026-09-21 — round 5 must_fix. The "probe write admitted
+  then restored" this bullet describes — UPDATE a real row to $62.00, read
+  it back, UPDATE it back to whatever it held before — is REMOVED from the
+  migration. Its own comment called this "leaving no trace"; it did not.
+  `update_restaurant_inventory_updated_at`
+  (`20260805000000_baseline_from_production.sql:12286`, a BEFORE UPDATE
+  trigger calling `update_updated_at_column()`) moves `updated_at` on
+  every UPDATE regardless of which column changed, so both probe writes
+  moved `updated_at` on one real production row every time this migration
+  ran. Proved both directions with a fresh PGlite fixture (Docker still
+  down; this session's own isolated scratchpad, `@electric-sql/pglite`
+  installed outside any worktree so no shared `node_modules` was touched):
+  a minimal `restaurant_inventory` stand-in carrying only `id`,
+  `menu_price_glass`, `updated_at` plus the real trigger and function
+  bodies verbatim from the baseline citation above. Applying the ORIGINAL
+  migration (recovered via `git show HEAD` before this session's edits)
+  against a seeded row moved `updated_at` from the seeded value — CONFIRMED.
+  Applying the CORRECTED migration (this file, as it now stands) against
+  the same fixture did not move `updated_at`, on a first apply or a second
+  (idempotent) — column shape confirmed `numeric(10,2)`, no default, both
+  times. The three information_schema asserts (column exists, is
+  `numeric(10,2)`, carries no default) plus the backfill-count check are
+  UNCHANGED and still the migration's actual proof of type/default/backfill;
+  the write-probe never added coverage those four didn't already have —
+  admitting `62.00`/`61.99`/`0.00`/a negative value into a `NUMERIC(10,2)`
+  column proves NUMERIC accepts a NUMERIC, not anything about this
+  migration. `check_migration_probe_safety.py`, the targeted vitest set (16
+  files, 326/326 — two more than the 324 above, from must_fix #1's two new
+  cases), and `apps/web`'s `tsc --noEmit` were all re-run clean after this
+  change.]**
+  Gateway: `InventoryService.mapInventoryItem`
   reads it (`menuPriceBottle`), and `createInventoryItem`
   (single + bulk) and `updateInventoryItem` write it — all four sites mirror
   `menuPriceGlass`'s own four call sites exactly (`inventory.dto.ts`'s four
@@ -1579,13 +1610,30 @@ house bottle price. That's a huge thing ... gotta be dynamic."*
   `BottleLeaf.test.tsx` (+4). Every one of these was run failing before the
   matching source line existed and passing after (shown in this pass's own
   report, not restated here).
+  **[CORRECTED 2026-09-21 — round 5 must_fix. "the field genuinely absent
+  from the payload rather than merely empty when hidden" was true only when
+  `saleType` excluded "bottle" entirely. On the DEFAULT sale type
+  ("bottle"), the field was shown and left untouched, and still sent
+  `menuPriceBottle: 0` — state initialised at `0`
+  (`AddWineToInventoryModal.tsx:106`), coerced by `parseFloat(e.target.
+  value) || 0` (line 923) — the blocking defect the round-4 verdict
+  measured (probe:
+  `{"bottleSizeMl":750,"saleType":"bottle","menuPriceBottle":0}`), which
+  would have written $0.00 as this house's bottle price on `BottleLeaf`.
+  `menuPriceBottle` is now `number | null` in the modal's own state,
+  mirroring `costPerBottle`'s existing null handling in the same component:
+  the key is omitted unless a number was actually typed, and an explicitly
+  typed 0 still sends `menuPriceBottle: 0`. Two cases added to the same test
+  file (now 7 total, up from 5): the default-sale-type-and-blank case omits
+  the key; an explicitly-typed-0 case still sends 0. Both run
+  failing-before/passing-after — `npx vitest run
+  src/components/inventory/AddWineToInventoryModal.bottlePrice.test.tsx`:
+  1 failed / 6 passed against the pre-fix source, 7/7 passed after.]**
 - **The library figure relabelled "Market average" (founder-requested,
   wording only).** `BottleLeaf.tsx`'s two `price_reference` facts — the
   general "List price" and the in-cellar recap "List price (bottle)" — now
-  read "Market average" / "Market average (bottle)". No column changed: the
-  founder's words describe what this figure has always structurally been
-  (a reference price the library computes across houses and vendors), not a
-  new one to build. Left DISTINCT from the neighbouring "Market price" fact
+  read "Market average" / "Market average (bottle)". No column changed.
+  Left DISTINCT from the neighbouring "Market price" fact
   (`retail_price_avg`, still permanently `—`, still explained by its own
   existing note) rather than merged or renamed to match — two different
   columns, two different provenances, and collapsing them into one label
@@ -1594,6 +1642,28 @@ house bottle price. That's a huge thing ... gotta be dynamic."*
   formula) is NOT claimed anywhere in the new copy — that is the founder's
   stated intent for a mechanism this pass does not build (see "Not done"),
   and the UI does not assert a cadence nobody has verified.
+  **[CORRECTED 2026-09-21 — round 5 must_fix. This bullet originally said
+  the founder's words "describe what this figure has always structurally
+  been (a reference price the library computes across houses and
+  vendors)" — nothing in the tree computes that; it was an unverified
+  restatement, not a measured fact. `price_reference` is an imported
+  reference hint, passed straight through with no cross-house/vendor
+  computation: the JSONL import writes it unchanged
+  (`import_master_wine_library.py:149,168`,
+  `price_reference = EXCLUDED.price_reference`) and so does a submission
+  payload (`wines.service.ts:420`, `payload?.price_reference ??
+  payload?.price ?? null`). The sibling column on `beverages` names the
+  same fact plainly: "Market hint only, never a restaurant's actual price"
+  (`20260817070000_beverages_table.sql:230-232`). The founder's
+  daily-refreshed, cross-house/vendor average is real intent — restated
+  correctly two sentences up ("that is the founder's stated intent for a
+  mechanism this pass does not build") — but not built yet; this bracket
+  corrects only the false claim that it was already how the figure worked.
+  The "Market average" label is unchanged; `BottleLeaf.tsx`'s note and its
+  own comment block carry the same correction, dated the same day. The
+  migration header's parallel claim ("the one column that has always been
+  a market-wide figure") is corrected the same way in
+  `20260919160000_a_house_sets_its_own_bottle_price.sql`.]**
 - **`CellarSection.tsx:127`'s Note, corrected (must_fix #2).** "Only an
   owner or a manager of this house can change this" is now "Only an owner, a
   manager, or an admin" — the round-2 report had claimed this fix and it was
@@ -1624,6 +1694,29 @@ version was instead checked by hand: swept `origin/main` (max
 `supabase/migrations/` (max observed `20260919150000`, `wt-pg-receiving`) —
 `20260919160000` sits past both. Re-run the guard once this pass's files are
 committed and visible to `git ls-files`.
+**[UPDATED 2026-09-21 — round 5. The round-4 work landed as a single
+snapshot commit (`e7afb2ce7`, "NOT READY, do not merge") on `r5/cellar`
+before this round started, so every file above — the new migration
+included — is tracked and `git ls-files`-visible now; the caveat above no
+longer applies to this tree. Re-measured after closing the three round-5
+must_fix items: `apps/web` `tsc --noEmit` clean; `vitest run` on the same
+four targets plus `src/pages/menu/next/` — 16 files, 326/326 (up from 324;
+`AddWineToInventoryModal.bottlePrice.test.tsx` alone is now 7/7, up from 5,
+two cases added by must_fix #1). `check_migration_versions_unique.py`:
+"OK — introduced by this branch: ...20260919160000..., checked against
+origin/main + 36 other open PR(s)" — it now sees and names the file
+directly, no hand-sweep needed. `check_migration_probe_safety.py`: PASS,
+re-run after must_fix #3 dropped the write-probe. `check_decision_claims.sh`
+358/358 (unchanged — no claim in `CLAIMS.jsonl` names this migration or
+either corrected fact). `check_flag_readby_anchors.py` PASS (23 anchors,
+unchanged). `check_web_reads_gateway_dto_keys.py` and
+`check_no_seeded_defaults.py` both PASS against the corrected modal.
+`check_migration_ledger.py` and `check_beverage_identity_parity.py` still
+cannot run in this environment — the first needs a database URL none of
+`SUPABASE_DB_URL`/`SUPABASE_POOLER_URL`/`SUPABASE_POOLER_CONNECTION_STRING`/
+`SUPABASE_DIRECT_CONNECTION_STRING` supplies, the second needs a `.env` file
+that does not exist in this worktree — both exit non-zero rather than
+false-passing, and neither is about anything must_fix #1-#3 touched.]**
 
 **Not done this pass — filed, not attempted:**
 

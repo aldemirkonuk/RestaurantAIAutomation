@@ -37,8 +37,21 @@
 -- "our library price will be just the average price" — is a UI labelling
 -- fix, not a schema change: `BottleLeaf.tsx`'s existing "List price" facts
 -- (bound to `price_reference` already) are relabelled "Market average" in
--- this same pass, so the one column that has always been a market-wide
--- figure finally reads as one. No column here carries that change.
+-- this same pass. No column here carries that change.
+--
+-- [CORRECTED 2026-09-21 — round 5 must_fix.] This header originally said the
+-- relabel let "the one column that has always been a market-wide figure
+-- finally read as one" — overstated. Nothing computes `price_reference`
+-- across houses or vendors; it is an imported reference hint, passed
+-- through unchanged by the JSONL import (`import_master_wine_library.py:
+-- 149,168`) and by submission payloads (`wines.service.ts:420`). The
+-- sibling column on `beverages` says the same thing plainly: "Market hint
+-- only, never a restaurant's actual price"
+-- (`20260817070000_beverages_table.sql:230-232`). The founder's
+-- daily-refreshed, cross-house/vendor average is real intent (see WHAT
+-- THIS MIGRATION DOES NOT DO, above) but not built yet. "Market average" is
+-- still the right label for what the founder asked for; it is not yet an
+-- accurate description of how the number under it is produced.
 --
 -- Additive and nullable, same as `menu_price_glass` beside it: no existing
 -- column altered, no existing row rewritten, no backfill attempted, no
@@ -65,8 +78,6 @@ COMMENT ON COLUMN public.restaurant_inventory.menu_price_bottle IS
 DO $$
 DECLARE
   written_rows BIGINT;
-  probe_row_id UUID;
-  before_value NUMERIC;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns
@@ -110,31 +121,20 @@ BEGIN
       written_rows;
   END IF;
 
-  -- The column actually holds a value once one is written, and is silent
-  -- (not a CHECK failure) for the ordinary case: nullable, no floor beyond
-  -- what NUMERIC(10,2) itself enforces, matching menu_price_glass exactly.
-  SELECT id INTO probe_row_id FROM public.restaurant_inventory LIMIT 1;
-  IF probe_row_id IS NOT NULL THEN
-    SELECT menu_price_bottle INTO before_value
-      FROM public.restaurant_inventory WHERE id = probe_row_id;
-
-    UPDATE public.restaurant_inventory
-       SET menu_price_bottle = 62.00
-     WHERE id = probe_row_id;
-    IF (SELECT menu_price_bottle FROM public.restaurant_inventory
-         WHERE id = probe_row_id) IS DISTINCT FROM 62.00 THEN
-      RAISE EXCEPTION 'a plain bottle price of 62.00 was not admitted';
-    END IF;
-
-    -- Restore exactly what was there before the probe (usually NULL) —
-    -- leaving no trace, same discipline the count check above already
-    -- established for the migration as a whole.
-    UPDATE public.restaurant_inventory
-       SET menu_price_bottle = before_value
-     WHERE id = probe_row_id;
-  ELSE
-    RAISE NOTICE 'menu_price_bottle: no restaurant_inventory row exists here, so the write probe was NOT run. The column is declared; it is unproven on this database.';
-  END IF;
+  -- [CORRECTED 2026-09-21 — round 5 must_fix.] A write-probe used to live
+  -- here: UPDATE a real row to 62.00, read it back, UPDATE it back to
+  -- whatever it held before. Its own comment called that "leaving no
+  -- trace" — false. `update_restaurant_inventory_updated_at`
+  -- (`20260805000000_baseline_from_production.sql:12286`, a BEFORE UPDATE
+  -- trigger) moves `updated_at` on every UPDATE regardless of whether any
+  -- other column's value actually changes, so both probe writes moved
+  -- `updated_at` on one real production row. Dropped rather than kept with
+  -- an honest comment: the three asserts above already prove the column
+  -- exists, is `numeric(10,2)` matching its sibling, carries no default,
+  -- and backfilled zero rows — a round-trip write proves only that NUMERIC
+  -- accepts a NUMERIC, and this migration now touches no production row at
+  -- all. The probe's own `probe_row_id`/`before_value` variables are
+  -- removed along with it, not left declared and unused.
 
   RAISE NOTICE 'menu_price_bottle: column added, nullable, no default, numeric(10,2) matching menu_price_glass, zero rows backfilled';
 END

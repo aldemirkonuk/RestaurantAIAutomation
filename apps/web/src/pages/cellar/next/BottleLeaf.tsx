@@ -265,19 +265,35 @@ export default function BottleLeaf({
       {/* RELABELLED 2026-09-19 (founder, 19-lane blocking round, batch 4):
           "our library price will be just the average price that will be
           updating daily." This is a wording fix, not a data change — the
-          figure above is `price_reference`, unchanged, and was always the
-          library's own reference across houses and vendors, never this
-          house's own price (that is `menuPriceBottle`, below, once the
-          bottle is in the cellar). It was labelled "List price", which reads
-          as a fixed, definitive figure; "Market average" says what it
-          actually is. This is a DIFFERENT column from the "Market price"
-          fact beside it (`retail_price_avg`), which the note right below
-          still explains on its own — two figures, two provenances, kept
-          distinct rather than merged into one because they happen to share
-          the word "market". */}
+          figure above is `price_reference`, unchanged. It was labelled "List
+          price", which reads as a fixed, definitive figure; "Market average"
+          is the founder's own name for it. This is a DIFFERENT column from
+          the "Market price" fact beside it (`retail_price_avg`), which the
+          note right below still explains on its own — two figures, two
+          provenances, kept distinct rather than merged into one because they
+          happen to share the word "market".
+
+          [CORRECTED 2026-09-21 — round 5 must_fix. This comment and the note
+          below it originally claimed `price_reference` "was always the
+          library's own reference across houses and vendors" — nothing in
+          the tree computes that. Today the column is an imported reference
+          hint, passed straight through with no cross-house/vendor
+          computation: the JSONL import writes it unchanged
+          (`import_master_wine_library.py:149,168`, `price_reference =
+          EXCLUDED.price_reference`) and so does a submission payload
+          (`wines.service.ts:420`, `payload?.price_reference ??
+          payload?.price ?? null`). The sibling column on `beverages` is
+          commented "Market hint only, never a restaurant's actual price"
+          (`20260817070000_beverages_table.sql:230-232`) — the same fact,
+          named plainly, on the neighbouring table. The founder's
+          daily-refreshed, cross-house/vendor average is real intent, not
+          built yet (see wines.md's Seventh pass, same dated bracket). The
+          "Market average" label he asked for is unchanged; only the claim
+          about what computes the number under it is corrected.] */}
       <p className="cl-note">
-        Market average, above, is the library's own reference figure across every house and
-        vendor it has seen this wine at — not this house's own price. Market price is{' '}
+        Market average, above, is a reference price imported with this wine — not something
+        Mudavym computes across houses or vendors today, and not this house's own price. A
+        daily, cross-house average is planned, not built yet. Market price is{' '}
         <span className="cl-num">{EM}</span> because nothing writes it: the scoring job that
         fills <span className="cl-num">retail_price_avg</span> is scheduled but has no deployed
         worker, so the column is null on every row in the library.
