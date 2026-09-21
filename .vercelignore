@@ -26,15 +26,34 @@ test-results
 playwright-report
 coverage
 *.log
+# 2026-09-21, surfaced by this PR's audit: `.claude/` had no entry, so a CLI
+# deploy uploaded 82,537 files from it — agent settings and whole sibling
+# worktree copies of the repo. No credential-shaped key is in settings*.json
+# (checked), so this is build weight and noise rather than a leak, but nothing
+# under it is ever served.
+.claude/
 # 2026-09-21: ANCHORED. The bare pattern plus a `!` negation (below) still
 # excluded apps/web/src/pages/logs/ from a `vercel deploy` upload — the build
 # failed with the exact "Could not resolve ./pages/logs/next/LogsNext" this
 # file already warns about. Vercel's uploader does not re-include it the way
 # git does. Anchoring costs nothing: both directories named `logs` in this
 # repo are SOURCE (apps/api-gateway/src/logs, 5 tracked files;
-# apps/web/src/pages/logs, 8), there is no runtime logs directory, and
-# `*.log` above still covers log FILES anywhere.
+# apps/web/src/pages/logs, 8), and `*.log` above still covers log FILES anywhere.
+#
+# [CORRECTED 2026-09-21 by this PR's own audit: an earlier draft of this comment
+# said "there is no runtime logs directory". That is true of the TRACKED tree and
+# FALSE of disk — and disk is what Vercel uploads, which is the whole point of
+# the bug being fixed here. utils/logger.py:118-121 does a CWD-relative
+# `Path("logs").mkdir(exist_ok=True)`, so both ./logs and
+# services/agent-orchestrator/logs exist locally; the latter is 95 MB. Root
+# ./logs is still directory-pruned by `/logs`, and today's single
+# agent-orchestrator.log is still caught by `*.log` — but anchoring downgraded
+# the NESTED dir from directory-pruned to contents-only, so a rotated .log.1, a
+# .jsonl sink or a gzip would start shipping. The explicit entry below restores
+# directory pruning for the one runtime path that actually exists, without
+# shadowing source.]
 /logs
+services/agent-orchestrator/logs/
 # 2026-09-12: the bare `logs` pattern above (for runtime log output such as
 # services/agent-orchestrator/logs) also matched apps/web/src/pages/logs/ —
 # a real page's source, not log output — and Vercel silently dropped it
