@@ -123,6 +123,29 @@ The founder was offered a standing exemption for generated go-live and audit
 evidence and did not take it, so the next new document under `.planning/`
 still owes a real trade or its own row here.
 
+## Retire-to-write waiver — PR #433, motion rules locked (2026-09-21)
+
+**Founder call 2026-09-21, verbatim: "Waiver, drop screenshots".** Two rulings
+in one sentence, both recorded here: retire-to-write is waived for PR #433's
+two sketch-116 additions — `.planning/sketches/116-motion-rules/README.md`
+and `.planning/sketches/116-motion-rules/index.html` — and the sketch's three
+captured screenshots (`shots/index-1440.png`, `shots/index-1440-settled.png`,
+`shots/index-390.png` — 13,604,068 bytes together, measured) are dropped from
+the branch (`git rm`) rather than committed, kept regenerable from
+`index.html` per the sketch's own README, never restored from this history.
+
+Neither `README.md` nor `index.html` is a duplicate, byte-identical
+elsewhere, or superseding an existing doc — they are the design-critique
+canvas [0134](0134-one-motion-per-act-across-every-page.md) §Locked cites as
+the record the founder watched before locking its eleven motion rules, with
+no natural retirement candidate. `.planning/sketches/MANIFEST.md:117` already
+carries the index entry §4 requires.
+
+Same shape and same reasoning as the PR #353 and PR #421 waivers above, and
+on the same terms: **a one-time waiver for these two specific files, not a
+standing exemption.** The next new document under `.planning/` still owes a
+real trade or its own row here.
+
 Kept deliberately: `phases/999.1-consumer-food-profiles…/.gitkeep` (FUTURES §7
 backlog marker, not history); `archive/{ROADMAP,STATE}-pre-P2-20260825.md` (the
 only archive files anything references — STATE.md:5, ROADMAP.md:5, ADR 0018);

@@ -607,6 +607,20 @@ jobs:
       - name: The nightly artifact scrub removes a password and a JWT, and refuses what it cannot clean
         run: python3 scripts/e2e/scrub_artifacts.py --self-test
 
+      # ADR 0134 rule 7 ("The CI motion guard"), wired 2026-09-21 on the
+      # founder's word: "Motion token check" -- yes. Stdlib-only, so it sits
+      # beside this job's other check_*.py guards. Every house animate() call
+      # and plain-CSS animation/transition pairing under components/mudavym/,
+      # components/layout/ and each MUDAVYM_PAGES page's own directory must be
+      # a named token or a disclosed, ADR-cited exception. framer-motion,
+      # Tailwind motion classes and native el.animate() are outside it (the
+      # guard's docstring names them). Exit 2 is CANNOT CHECK -- a page slug
+      # that will not resolve, or a scan root that is missing -- never a skip.
+      - name: Motion token check -- the guard fires on a planted literal, then every scanned motion is a named token
+        run: |
+          python3 scripts/check_motion_tokens.py --self-test
+          python3 scripts/check_motion_tokens.py
+
       - name: Explain a failure
         if: failure()
         run: |

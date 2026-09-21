@@ -49,9 +49,9 @@ rejected alternatives matter as much as the outcome"), not edited to match.
 | 2 | One ration rule for the wax | `/profile`'s rule, both clauses, applied literally: wax where a server redeems a seal, or where nothing can undo the act. Rules 3, 4 and 8 are this rule's **consequences**, not separate arguments. | §2 | No |
 | 3 | A send inside a `/team` popover | **Corrected.** Delete the "Offer cover" menu item; the shift row's expander already sends with its candidates in view. **Not** the ADR's originally-drafted road (a Panel the item opens) — sketch 116 found the expander is a second, undocumented send surface the ADR's fork 5 never named, and that the panel road would duplicate it. | Fork 5 | **Yes** — supersedes fork 5's drafted recommendation ("the popover offers, a panel sends") |
 | 4 | Hold-to-reject | **Corrected.** Road (a): the reject **keeps** its cancel seal (census row 19 flips to `seal: true`; no code changes — `ResponsesSheet.tsx`'s hold and `DELETE orders/:id`'s 403-without-a-seal already mint and redeem it, ADR 0125, 2026-09-05). **Not** road (b) or the fork's own as-drafted road, both of which would strip a seal ADR 0125 already shipped eleven days before this ADR was drafted. | Fork 6 | **Yes** — supersedes fork 6's premise, which cited a "redeems no seal" note ADR 0125 had already retired before this ADR was drafted |
-| 5 | The 96px swipe | Keep 96px. Add the resistance curve `p(1 - 0.22p)`, the ghost seal, the `stamp` landing on commit, and a non-dragging Confirm (arm, then confirm) as the WCAG 2.5.7 single-pointer alternative. **Not settled by this lock:** that Confirm inherits `HoldToApprove`'s 3 s arm window (`ARM_WINDOW_MS`), which sketch 116 flagged as itself a timed twin and put to the founder with no recommendation (its founder question 4) — see "Not locked by this answer" below. | Fork 8 | No |
+| 5 | The 96px swipe | Keep 96px. Add the resistance curve `p(1 - 0.22p)`, the ghost seal, the `stamp` landing on commit, and a non-dragging Confirm (arm, then confirm) as the WCAG 2.5.7 single-pointer alternative. Its arm window, which this lock did not settle (sketch 116's founder question 4), was answered the same day: **no timer** — his words, *"Until Esc or click away"*. Built in the shared `HoldToApprove`; see "Rule 5's arm window — locked" below. | Fork 8 | No |
 | 6 | Reduced motion | A Sheet/Panel/Popover **entrance** crosses on a 120ms, opacity-only cross-fade under `prefers-reduced-motion`; every other motion in the house (the tear, the lean, the seal) still renders none. **The §1/§7 collision, resolved explicitly, per the founder's instruction above:** 120ms is disclosed by an ALLOW line in `scripts/check_motion_tokens.py`, cited by file:line to this section — it is **not** promoted to an eighth token, so §1's "no eighth token" stays literally true, and §7's guard is told about the one exception rather than going red on this rule's own shipped line. | §6, fork 9 | Clarifies (the ADR named the collision as a fork's *cost*, `README.md:70`, without stating which road; the founder's answer picks the ALLOW-line road over the named-constant road) |
-| 7 | The CI motion guard | Ship it, re-specified: resolve every `MUDAVYM_PAGES` slug's directory from `App.tsx`'s own routing (never a `pages/*/next` guess); scan `components/layout/` and `components/mudavym/` as well as every resolved page directory; allow-list a disclosed exception by file:line, citing this ADR; exit 2 when a slug cannot be resolved. Built this session as `scripts/check_motion_tokens.py`, mutation-tested against synthetic fixture trees (`--self-test`), proven PASS against the real, now-fixed tree (20/20 slugs resolved, `/inventory` and `/documents/:id` among them, `components/layout/Sidebar.tsx` scanned) with exactly three disclosed exceptions: rule 6's fade and rule 11's two sheens. **Built in part:** it checks the `animate()` wrapper's token argument and plain-CSS `animation:`/`transition:` pairings, which is the class rule 1 folded. It does **not** yet produce three of the seven reds §10 and the sketch's drawn run require on the pre-fix tree — `/inventory`'s missing reduced-motion guard, `/documents/:id`'s missing `MOTIONS.md`, `Sidebar.tsx`'s framer-motion transition — all three still standing on the current tree, and §10's second guard, `scripts/check_no_emoji.py`, is not built. Both are owed under this lock ("NOT built here" below). `ci.yml` wiring is **not** done here — see "Built in this lane" below. | §10, fork 10 | No — but built in part |
+| 7 | The CI motion guard | Ship it, re-specified: resolve every `MUDAVYM_PAGES` slug's directory from `App.tsx`'s own routing (never a `pages/*/next` guess); scan `components/layout/` and `components/mudavym/` as well as every resolved page directory; allow-list a disclosed exception by file:line, citing this ADR; exit 2 when a slug cannot be resolved. Built this session as `scripts/check_motion_tokens.py`, mutation-tested against synthetic fixture trees (`--self-test`), proven PASS against the real, now-fixed tree (20/20 slugs resolved, `/inventory` and `/documents/:id` among them, `components/layout/Sidebar.tsx` scanned) with exactly three disclosed exceptions: rule 6's fade and rule 11's two sheens. **Built in part:** it checks the `animate()` wrapper's token argument and plain-CSS `animation:`/`transition:` pairings, which is the class rule 1 folded. It does **not** yet produce three of the seven reds §10 and the sketch's drawn run require on the pre-fix tree — `/inventory`'s missing reduced-motion guard, `/documents/:id`'s missing `MOTIONS.md`, `Sidebar.tsx`'s framer-motion transition — all three still standing on the current tree, and §10's second guard, `scripts/check_no_emoji.py`, is not built. Both are owed under this lock ("NOT built here" below). `ci.yml` wiring is **done**, on the founder's word ("Motion token check" - yes, 2026-09-21) — see "Built in this lane" below. | §10, fork 10 | No — but built in part |
 | 8 | `/calendar`'s delete | Keeps the wax, under rule 2's second clause (an act nothing can undo). Not the day-book undo-after alternative. | Fork 12 | No |
 | 9 | Two wide sheets | Both forced to 440px — the census row 59 template sheet and (once packet 1's migration lands) row 33's delivery sheet. Not a third width, not an amended "or a table a person reconciles" clause. | Fork 13 | No |
 | 10 | Esc, the scrim and unsaved work | Keep packet 0's shipped shapes (a Sheet tears and leaves a Stub; a Panel leans and stays behind a plain footer button), split by SHAPE, and add primitive-internal `input`/`change` detection as a fallback to the `dirty` prop rather than requiring every call site to pass it correctly. | Fork 3 | No |
@@ -71,10 +71,15 @@ primitive, and a repo-wide guard — and are built in this same commit:
   `data-motion` now reads `'fade'` under reduced motion); `Sheet.test.tsx` and
   `housePolicy.test.tsx` updated to assert the new, correct behaviour rather than the old "renders
   none of it" claim (CLAUDE.md §5b — a corrected claim is struck and replaced, not left standing).
-- **Rule 7:** `scripts/check_motion_tokens.py` (new), a `CLAIMS.jsonl` row that runs it. **Not**
-  wired into `ci.yml` — `ci.yml` is gate-owned (`pr-audit-gate`); wiring this guard's invocation
-  into it is named as a follow-up needing the founder's word, in `founder_questions`, not done
-  silently here.
+- **Rule 7:** `scripts/check_motion_tokens.py` (new), a `CLAIMS.jsonl` row that runs it, **and now
+  wired into `ci.yml`** — `ci.yml` is gate-owned (`pr-audit-gate`), and the founder's word,
+  2026-09-21: **"Motion token check" - yes**, one of exactly two `ci.yml` additions he authorized
+  that day (the other is the migration order check). **One** new step in the `decision-claims`
+  job, named `Motion token check -- …`, beside that job's other stdlib-only `check_*.py` guards:
+  it runs `--self-test`, then the plain run, and fails on either. Nothing else in `ci.yml` changes.
+  The `CLAIMS.jsonl` row (`ADR-0134-MOTION-GUARD-RULES-1-6-7`) is kept as a second, independent check
+  — `ci.yml` blocks a PR that regresses the guard; the CLAIMS row blocks a PR that regresses this
+  ADR's own text about what the guard does.
 - **Disclosed limitation, rule 7:** the guard checks the house `animate()` wrapper and plain CSS
   only. `components/layout/Sidebar.tsx`, `Header.tsx`, `RestaurantBranchSwitcher.tsx` and
   `pages/cellar/next/WineRegister.tsx` animate through **framer-motion** (`transition={{ duration:
@@ -102,13 +107,50 @@ build order:
 | 2 | `pages/team/next/MOTIONS.md`, `pages/reports/next/MOTIONS.md`, `pages/reports/next/ReportsNext.tsx:366` (the dry die becomes the sentence), `pages/dashboard/next/OneTapPanel.tsx:560-570` (the die arm becomes a plain "Write it down" button), `BUILD-PROMPT.md` rule 3 (corrected: the bulk bar is a dry emboss, not a plain button) |
 | 3 | `pages/team/next/WeekGrid.tsx:466-476` (delete the menu item), `WeekGrid.tsx:591-598` (one contract line above the expander's "Offer cover to N" button), `WeekGrid.tsx:391,565-569` (`coverSent` reads `notified` back from the mutation instead of `isSuccess`) |
 | 4 | `.planning/07-reference/` census row 19 (`seal: false` → `true`) — no application code changes under road (a) |
-| 5 | `pages/receipts/next/SwipeToConfirm.tsx:27` (`TRAVEL` stays 96px) — the resistance map, the ghost `Seal`, the handle fading on `ink` at commit, `stamp` on the seal landing, a non-dragging arm-then-confirm control reusing `HoldToApprove`'s `ARM_WINDOW_MS` |
+| 5 | `pages/receipts/next/SwipeToConfirm.tsx:27` (`TRAVEL` stays 96px) — the resistance map, the ghost `Seal`, the handle fading on `ink` at commit, `stamp` on the seal landing, a non-dragging arm-then-confirm control reusing `HoldToApprove`'s (now untimed) arm window. The arm window itself is no longer owed here — see "Rule 5's arm window — locked" below |
 | 8 | No file changes — the wax stays as-is under rule 2's clause 2; nothing to build |
 | 9 | `apps/web/src/pages/communications/next/TemplateSheet.tsx:135` (`wide` removed), the delivery sheet once packet 1's migration lands (currently a legacy, untouched `ManualReceiptWorkspace.tsx` modal) |
 | 10 | `feat/overlays-packet-0-primitive` (not yet an ancestor of `main`) — one `input`/`change` listener on the panel node the primitive already owns, as a fallback to the `dirty` prop |
 | 11 | `pages/dashboard/next/dashboard-next.css:44`, `pages/reports/next/reports-next.css:391` (`animation-iteration-count: 2`, a `data-still` end state, two static sentences at 3.8s and 20s from the skeleton host — no interval, no counting) |
-| 7 (rest) | `scripts/check_no_emoji.py` (new — §10's second guard; sketch 116's cost row 7 names both scripts); `scripts/check_motion_tokens.py` widened to the three §10 reds it does not produce (`pages/inventory/command` has no reduced-motion guard; `pages/documents/next` has no `MOTIONS.md`; `components/layout/Sidebar.tsx`'s framer-motion transitions) and to Tailwind motion utilities; each line it then fails on either fixed by its page's lane or allow-listed by file:line with this ADR cited; `.github/workflows/ci.yml` wiring on the founder's word (gate-owned) |
+| 7 (rest) | `scripts/check_no_emoji.py` (new — §10's second guard; sketch 116's cost row 7 names both scripts); `scripts/check_motion_tokens.py` widened to the three §10 reds it does not produce (`pages/inventory/command` has no reduced-motion guard; `pages/documents/next` has no `MOTIONS.md`; `components/layout/Sidebar.tsx`'s framer-motion transitions) and to Tailwind motion utilities; each line it then fails on either fixed by its page's lane or allow-listed by file:line with this ADR cited. `.github/workflows/ci.yml` wiring is **done** (2026-09-21, lane last call — the founder's "Motion token check" - yes) — no longer owed |
 
+
+### Rule 5's arm window — locked 2026-09-21, lane last call
+
+Sketch 116's founder question 4 (rule 5's non-dragging Confirm) asked whether the control's
+inherited 3 s arm window stays as-is, lengthens, or becomes untimed. Put to the founder directly in
+this lane (`wt-motions` / `feat/motion-rules-locked`); his answer, verbatim:
+
+> Until Esc or click away
+
+**Status of this rule: Locked, with his words.** No timer. The two-step Confirm — one press arms
+it, the next confirms — stays armed until the reader disarms it explicitly: **Escape**, a
+**pointerdown outside the control**, or (page-owned, wherever the control is mounted inside an
+overlay) **the sheet closing**. A fixed auto-disarm is itself the kind of timed gesture WCAG 2.2.1
+Timing Adjustable (Level A) requires a way to turn off, extend or adjust — the criterion sketch
+116's founder question 4 named without resolving; "no timer" removes the exposure rather than
+adding a control for it.
+
+**Built here:** `apps/web/src/components/mudavym/HoldToApprove.tsx` — the shared primitive rule 5's
+own Confirm control is specified to reuse (§"What it costs to build", row 5, above). `ARM_WINDOW_MS`
+and its `setTimeout` are removed from `arm()`. While `phase === 'armed'`, two document listeners
+disarm it: `keydown` Escape, wherever focus is (a pointer arm under reduced motion leaves focus
+where it was, and Safari does not focus a clicked button), and a capture-phase `pointerdown` whose
+target the button does not contain (capture, so an element that stops propagation cannot keep it
+armed; the button itself excluded, so the press that confirms is never read as a click away). The
+sheet closing disarms it by unmount: `Sheet` renders null when closed, and no timer outlives the
+component. `HoldToApprove.test.tsx` gains six cases — armed past 3 s with no input, Escape on the
+control, Escape with focus elsewhere, a pointerdown outside, a pointerdown outside on an element
+that stops propagation, and a pointerdown on the control itself that confirms rather than disarms.
+Three mutations were each caught by exactly one case: the timer reinstated, the document Escape
+listener removed, the pointerdown listener moved to the bubble phase (CLAUDE.md's "a NO-OP mutation
+is a failed test").
+
+**Not touched here, page-owned:** two page-local copies of the identical `ARM_WINDOW_MS = 3000`
+pattern sit outside this primitive — `pages/receiving/next/DoorSeal.tsx` and
+`pages/orders/next/BulkApproveBar.tsx` — each its own hand-rolled arm/confirm, not an instance of
+`HoldToApprove`. Whether this same ruling reaches them is each page's own lane's call to make and
+record; they are named here so neither lane re-derives the question sketch 116 already asked.
 
 ### Not locked by this answer
 
@@ -121,10 +163,10 @@ them, and no builder should read the Status line above as covering them:
   field), §8 / fork 2 (`/inventory`'s gating and deferred swaps), §9 (the chip's explicit
   `line-height`), fork 14 (the unreachable consent panel, "not defaulted here" in its own text).
   Rule 2's lock does answer fork 4 and §3: wax versus nothing, the bulk bar a dry emboss.
-- **Raised by sketch 116 with no recommendation** (its founder questions 4 and 6): whether rule 5's
-  Confirm keeps the inherited 3 s arm window, lengthens it, or stays armed until Esc, a click
-  elsewhere or the sheet closing; and whether `ResponsesSheet.tsx:356`'s `wide` stays at 640 as
-  letters or is a third sheet under rule 9.
+- **Raised by sketch 116 with no recommendation, still open** (its founder question 6): whether
+  `ResponsesSheet.tsx:356`'s `wide` stays at 640 as letters or is a third sheet under rule 9.
+  Founder question 4 — rule 5's arm window — is now answered; see "Rule 5's arm window — locked"
+  above, not here.
 
 ## Context
 
@@ -446,3 +488,4 @@ _(Written 2026-09-06, alongside the original ten decisions; kept as-written. As 
 | 2026-09-17 | sketch 116 (design critic, 4 passes) | Drew all eleven rules today-vs-proposed at token speed; found two of this ADR's own decisions resting on stale premises (fork 6's cancel-seal retirement by ADR 0125, fork 5's second, undocumented send path) and one drawing failing the criterion it cited (rule 11's counting sentence against SC 2.2.2); recommended locking the eleven with those three corrections |
 | 2026-09-21 | Aldemir (founder) | **Locked**, as recommended by sketch 116, verbatim quote and per-rule roads in §Locked above. Rules 1 and 6 built same-day, rule 7 in part (`wt-motions` / `feat/motion-rules-locked`); rules 2, 3, 4, 5, 8, 9, 10, 11 remain to build, owned by their pages' own lanes |
 | 2026-09-21 | lane last call (Opus) | Four records corrected before merge: the quote cut to his three words (the rest was the brief's gloss); rule 7 marked built in part (`check_no_emoji.py` and three §10 reds owed; Tailwind and native `el.animate()` blind spots measured and named); rule 5's 3 s arm window and six sections outside the eleven marked not locked; the CLAIMS row's verify, which passed a guard blinded to object literals because it grepped the self-test's output for 'PASS', moved to exit status |
+| 2026-09-21 | Aldemir (founder), round 2 + lane last call (Opus) | Three answers built: *"Waiver, drop screenshots"* (ADR 0032's PR #433 row; sketch 116's three captures removed from the branch); *"Motion token check"* - yes (one `ci.yml` step); rule 5's arm window, *"Until Esc or click away"* (no timer, built in `HoldToApprove`). Last call corrected rule 5's table row, which still called the arm window unsettled; made Escape disarm wherever focus is and the click-away listener capture-phase; and made the guard exit 2 on an empty `MUDAVYM_PAGES` or a missing scan root, where it had printed PASS over the two shared roots alone |

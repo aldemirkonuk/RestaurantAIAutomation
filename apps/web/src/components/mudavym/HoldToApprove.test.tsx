@@ -15,12 +15,27 @@
  * rAF clock, and it exercises exactly the same `commit`.
  */
 
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { HoldToApprove } from './HoldToApprove';
 
 const press = () =>
   fireEvent.keyDown(screen.getByRole('button'), { key: 'Enter' });
+
+function setReducedMotion(reduce: boolean) {
+  (window.matchMedia as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+    (query: string) => ({
+      matches: reduce && query.includes('prefers-reduced-motion'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }),
+  );
+}
 
 describe('HoldToApprove without a challenge', () => {
   it('still approves, and passes null rather than inventing a token', async () => {
@@ -133,5 +148,126 @@ describe('HoldToApprove with a challenge', () => {
     press();
     press();
     await waitFor(() => expect(onApprove).toHaveBeenCalledWith('tok-2'));
+  });
+});
+
+/* ── the arm window — ADR 0134 rule 5, locked 2026-09-21 ("Until Esc or click
+   away") ────────────────────────────────────────────────────────────────── */
+describe('the two-step confirm stays armed until the reader disarms it', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    setReducedMotion(false);
+  });
+
+  // The armed label ("Enter again to approve") and the status hint below it
+  // ("Press Enter again to approve — Esc or clicking elsewhere cancels.")
+  // both contain this phrase, so every assertion below matches the label's
+  // own exact text — never a substring regex — to stay unambiguous.
+  const ARMED_LABEL = 'Enter again to approve';
+
+  it('is still armed well past the old 3s window, with no input at all', () => {
+    vi.useFakeTimers();
+    const onApprove = vi.fn();
+    render(<HoldToApprove onApprove={onApprove} label="Approve" />);
+
+    press(); // arm
+    expect(screen.getByText(ARMED_LABEL)).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(10_000); // 3.3x the removed ARM_WINDOW_MS
+    });
+
+    // Still armed, not idle: the SAME control confirms rather than re-arming.
+    expect(screen.getByText(ARMED_LABEL)).toBeInTheDocument();
+    press(); // confirm
+    expect(onApprove).toHaveBeenCalledTimes(1);
+  });
+
+  it('disarms on Escape', () => {
+    const onApprove = vi.fn();
+    render(<HoldToApprove onApprove={onApprove} label="Approve" />);
+    const control = screen.getByRole('button');
+
+    press(); // arm
+    expect(screen.getByText(ARMED_LABEL)).toBeInTheDocument();
+
+    fireEvent.keyDown(control, { key: 'Escape' });
+    expect(screen.queryByText(ARMED_LABEL)).toBeNull();
+
+    press(); // this is a fresh arm, not a confirm
+    expect(onApprove).not.toHaveBeenCalled();
+  });
+
+  it('disarms on a pointerdown outside the control', () => {
+    const onApprove = vi.fn();
+    render(
+      <div>
+        <HoldToApprove onApprove={onApprove} label="Approve" />
+        <button type="button">elsewhere</button>
+      </div>,
+    );
+    const control = screen.getByRole('button', { name: 'Approve' });
+
+    fireEvent.keyDown(control, { key: 'Enter' }); // arm
+    expect(screen.getByText(ARMED_LABEL)).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'elsewhere' }));
+    expect(screen.queryByText(ARMED_LABEL)).toBeNull();
+
+    fireEvent.keyDown(control, { key: 'Enter' }); // this is a fresh arm, not a confirm
+    expect(onApprove).not.toHaveBeenCalled();
+  });
+
+  it('disarms on Escape pressed while focus is somewhere else', () => {
+    const onApprove = vi.fn();
+    render(
+      <div>
+        <HoldToApprove onApprove={onApprove} label="Approve" />
+        <input aria-label="elsewhere" />
+      </div>,
+    );
+    const control = screen.getByRole('button', { name: 'Approve' });
+
+    fireEvent.keyDown(control, { key: 'Enter' }); // arm
+    expect(screen.getByText(ARMED_LABEL)).toBeInTheDocument();
+
+    // The key lands on another element, never on the control's own onKeyDown.
+    fireEvent.keyDown(screen.getByLabelText('elsewhere'), { key: 'Escape' });
+    expect(screen.queryByText(ARMED_LABEL)).toBeNull();
+
+    fireEvent.keyDown(control, { key: 'Enter' }); // this is a fresh arm, not a confirm
+    expect(onApprove).not.toHaveBeenCalled();
+  });
+
+  it('disarms on a pointerdown outside even when that element stops propagation', () => {
+    const onApprove = vi.fn();
+    render(
+      <div>
+        <HoldToApprove onApprove={onApprove} label="Approve" />
+        <button type="button" onPointerDown={(e) => e.stopPropagation()}>
+          elsewhere
+        </button>
+      </div>,
+    );
+    const control = screen.getByRole('button', { name: 'Approve' });
+
+    fireEvent.keyDown(control, { key: 'Enter' }); // arm
+    expect(screen.getByText(ARMED_LABEL)).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'elsewhere' }));
+    expect(screen.queryByText(ARMED_LABEL)).toBeNull();
+  });
+
+  it('does NOT disarm on a pointerdown on the control itself — the reduced-motion tap that confirms it', () => {
+    setReducedMotion(true);
+    const onApprove = vi.fn();
+    render(<HoldToApprove onApprove={onApprove} label="Approve" />);
+    const control = screen.getByRole('button');
+
+    fireEvent.pointerDown(control); // arm (reduced-motion path)
+    expect(screen.getByText(ARMED_LABEL)).toBeInTheDocument();
+
+    fireEvent.pointerDown(control); // confirm — must not be read as "clicked away"
+    expect(onApprove).toHaveBeenCalledTimes(1);
   });
 });

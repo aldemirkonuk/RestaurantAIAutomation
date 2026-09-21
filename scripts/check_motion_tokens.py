@@ -192,7 +192,14 @@ def _parse_mudavym_pages() -> list[str] | None:
     m = re.search(r"export const MUDAVYM_PAGES\s*=\s*\[(.*?)\]\s*as const", text, re.S)
     if not m:
         return None
-    return re.findall(r"'([a-z_]+)'", m.group(1))
+    # Comments out first, then every quoted item in EITHER quote style. The
+    # first cut read only `'[a-z_]+'`, so a re-quoted (double-quote) list, or
+    # one slug spelled outside [a-z_], dropped out of the scan without a word
+    # and the run still printed PASS over the pages it no longer saw. An empty
+    # list is unparseable (None -> exit 2), never "zero pages, all clean".
+    body = re.sub(r"//[^\n]*|/\*[\s\S]*?\*/", "", m.group(1))
+    slugs = [a or b for a, b in re.findall(r"'([^'\n]+)'|\"([^\"\n]+)\"", body)]
+    return slugs or None
 
 
 def _parse_import_map(app_text: str) -> dict[str, str]:
@@ -468,6 +475,17 @@ def main() -> int:
     scan_roots = {f"{WEB_SRC}/components/mudavym", f"{WEB_SRC}/components/layout"}
     scan_roots.update(page_dirs.values())
 
+    # A scan root that is not a directory would read as zero files and pass.
+    # `components/layout/` carries no allow-list line, so nothing else here
+    # would notice it moving: CANNOT CHECK, exit 2.
+    missing = sorted(r for r in scan_roots if not Path(ROOT, r).is_dir())
+    if missing:
+        print("CANNOT CHECK -- these scan roots are not directories in this tree:")
+        for r in missing:
+            print(f"  - {r}")
+        print("A root that is not there is not a root with nothing wrong in it -- exit 2.")
+        return 2
+
     findings: list[str] = []
     allowed_hits: set[tuple[str, int]] = set()
     ts_checked = 0
@@ -676,7 +694,7 @@ def self_test() -> int:
             )
 
     # 8. An unresolvable MUDAVYM_PAGES slug is CANNOT CHECK (exit 2), never a
-    #    silent pass.
+    #    silent pass. 8b-8d below are the same invariant's other ways in.
     with tempfile.TemporaryDirectory() as d:
         ROOT = d
         ALLOWLIST = {}
@@ -691,6 +709,54 @@ def self_test() -> int:
             failures.append(f"an unresolvable slug exited {code}, not 2 -- output:\n{out}")
         elif "ghost_page" not in out:
             failures.append(f"the unresolved slug was not named -- output:\n{out}")
+
+    # 8b. An EMPTY page list is CANNOT CHECK too -- not "0 slugs resolved,
+    #     PASS" over the two shared roots alone (lane last call, 2026-09-21:
+    #     the real guard printed exactly that with the list emptied and the
+    #     two page-dir sheen allow lines retired, as rule 11 will retire them).
+    with tempfile.TemporaryDirectory() as d:
+        ROOT = d
+        ALLOWLIST = {}
+        base_fixture(d)
+        write(d, USE_MUDAVYM_DESIGN, "export const MUDAVYM_PAGES = [\n] as const;\n")
+        code, out = run()
+        if code != 2:
+            failures.append(f"an empty MUDAVYM_PAGES exited {code}, not 2 -- output:\n{out}")
+
+    # 8c. A double-quoted slug is still READ, and its page still scanned: a
+    #     literal planted in it fails. The first parser read single quotes
+    #     only and dropped this page without a word.
+    with tempfile.TemporaryDirectory() as d:
+        ROOT = d
+        ALLOWLIST = {}
+        base_fixture(d)
+        write(
+            d,
+            USE_MUDAVYM_DESIGN,
+            'export const MUDAVYM_PAGES = [\n  "dashboard",\n  // a comment\'s quote\n  \'inventory\',\n] as const;\n',
+        )
+        write(
+            d,
+            f"{WEB_SRC}/pages/dashboard/next/DashboardNext.tsx",
+            "animate(el, KF, { easing: settle.easing, ms: 420 });\n",
+        )
+        code, out = run()
+        if code != 1 or "DashboardNext.tsx:1" not in out:
+            failures.append(f"a double-quoted slug's page was not scanned (exit {code}) -- output:\n{out}")
+
+    # 8d. A scan root that is not there is CANNOT CHECK -- components/layout/
+    #     carries no allow line, so nothing else would notice it moving.
+    with tempfile.TemporaryDirectory() as d:
+        ROOT = d
+        ALLOWLIST = {}
+        base_fixture(d)
+        Path(d, f"{WEB_SRC}/components/layout/Sidebar.tsx").unlink()
+        Path(d, f"{WEB_SRC}/components/layout").rmdir()
+        code, out = run()
+        if code != 2:
+            failures.append(f"a missing components/layout/ exited {code}, not 2 -- output:\n{out}")
+        elif "components/layout" not in out:
+            failures.append(f"the missing root was not named -- output:\n{out}")
 
     # 9. An allow-list entry that no scanned line ever hits fails the run --
     #    an allow-list is exception cover for what actually exists, not a
@@ -761,7 +827,8 @@ def self_test() -> int:
     print("   a CSS duration outside the seven tokens FAILs (the shimmer sheens' shape)")
     print("   the allow-list is read by EXACT file:line, not by file alone")
     print("   a known duration paired with a foreign easing still FAILs")
-    print("   an unresolvable MUDAVYM_PAGES slug is CANNOT CHECK (exit 2), never silent")
+    print("   an unresolvable slug, an empty MUDAVYM_PAGES or a missing scan root is CANNOT CHECK")
+    print("     (exit 2), and a double-quoted slug's page is still scanned -- never silent")
     print("   an allow-list entry nothing hits FAILs the run")
     print("   a comment directly above a correct token is not mistaken for the argument")
     print("   a var(...) fallback's nested cubic-bezier is excluded; a bare pairing beside it still FAILs")

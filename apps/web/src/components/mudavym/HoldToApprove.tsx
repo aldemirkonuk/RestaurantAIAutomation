@@ -13,8 +13,13 @@
  *
  * Paths:
  * - Pointer: press and hold for `holdMs`.
- * - Keyboard: Enter arms it ("Enter again to approve"), Enter again within
- *   3s approves; Escape or the timeout disarms.
+ * - Keyboard: Enter arms it ("Enter again to approve"), Enter again approves;
+ *   Escape, a pointerdown outside the control, or the sheet it is mounted in
+ *   closing (page-owned) disarms. No timer — ADR 0134 rule 5, locked
+ *   2026-09-21 ("Until Esc or click away"): a fixed auto-disarm is itself a
+ *   timed gesture WCAG 2.2.1 Timing Adjustable (Level A) requires a way to
+ *   turn off, extend or adjust, so the control simply carries no timer to
+ *   need one.
  * - Reduced motion: the timed hold collapses to the same two-step confirm as
  *   the keyboard path — press once to arm, press again to approve, instantly.
  */
@@ -121,14 +126,13 @@ export interface HoldCopy {
 
 const APPROVAL_COPY: HoldCopy = {
   armed: 'Enter again to approve',
-  armedHint: 'Press Enter again to approve — Esc cancels.',
+  armedHint: 'Press Enter again to approve — Esc or clicking elsewhere cancels.',
   pending: 'Confirming approval…',
   unconfirmed: 'Approval could not be confirmed. Check the record before trying again.',
 };
 
 type Phase = 'idle' | 'holding' | 'armed' | 'pending' | 'sealed';
 
-const ARM_WINDOW_MS = 3000;
 const RELEASE_NOTE_MS = 1800;
 
 export function HoldToApprove({
@@ -168,7 +172,7 @@ export function HoldToApprove({
   const committedRef = useRef(false);
   /** The in-flight mint, started when the gesture began. */
   const challengeRef = useRef<Promise<string | null> | null>(null);
-  const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const noteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Which gesture a settling write belongs to — a late answer to an older
@@ -182,7 +186,6 @@ export function HoldToApprove({
 
   const clearTimers = () => {
     cancelAnimationFrame(rafRef.current);
-    if (armTimerRef.current) clearTimeout(armTimerRef.current);
     if (noteTimerRef.current) clearTimeout(noteTimerRef.current);
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     confirmTimerRef.current = null;
@@ -305,11 +308,38 @@ export function HoldToApprove({
     // reader is being told what the next key press does (judge probe J4).
     setReleaseNote(null);
     setPhase('armed');
-    if (armTimerRef.current) clearTimeout(armTimerRef.current);
-    armTimerRef.current = setTimeout(() => {
-      setPhase((p) => (p === 'armed' ? 'idle' : p));
-    }, ARM_WINDOW_MS);
   };
+
+  /* Disarm on Escape or a pointer landing outside the control. ADR 0134 rule
+     5, locked 2026-09-21 ("Until Esc or click away"): `arm()` above sets no
+     timer, so these are how an armed-but-abandoned control returns to idle.
+     - Escape is read on the document, not only by `onKeyDown`: a pointer arm
+       under reduced motion leaves focus wherever it was (Safari does not
+       focus a clicked button), and a reader who tabbed away still pressed Esc.
+     - The pointerdown listener runs in the CAPTURE phase, so an outside
+       element that stops propagation cannot keep the control armed. A
+       pointerdown ON the button is excluded (`contains`), so this never
+       races the same press that confirms it.
+     - A sheet this control is mounted inside disarms it on close: `Sheet`
+       renders null when closed, the control unmounts, and these listeners
+       go with it. */
+  useEffect(() => {
+    if (phase !== 'armed') return;
+    const disarmOutside = (e: PointerEvent) => {
+      if (buttonRef.current && !buttonRef.current.contains(e.target as Node)) {
+        setPhase((p) => (p === 'armed' ? 'idle' : p));
+      }
+    };
+    const disarmOnEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPhase((p) => (p === 'armed' ? 'idle' : p));
+    };
+    document.addEventListener('pointerdown', disarmOutside, true);
+    document.addEventListener('keydown', disarmOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', disarmOutside, true);
+      document.removeEventListener('keydown', disarmOnEscape);
+    };
+  }, [phase]);
 
   /** Two-step confirm — keyboard path, and pointer path under reduced motion. */
   const stepConfirm = () => {
@@ -367,7 +397,6 @@ export function HoldToApprove({
       e.preventDefault(); // suppress the synthesized click
       if (!e.repeat) stepConfirm();
     } else if (e.key === 'Escape' && phase === 'armed') {
-      if (armTimerRef.current) clearTimeout(armTimerRef.current);
       setPhase('idle');
     }
   };
@@ -410,6 +439,7 @@ export function HoldToApprove({
   return (
     <div className={className}>
       <button
+        ref={buttonRef}
         type="button"
         style={trackStyle}
         disabled={disabled}

@@ -330,6 +330,12 @@ rule 6. Rule 11's words must not tick.
 
 ## Screenshots
 
+**Not committed** (founder, 2026-09-21: "Waiver, drop screenshots" — see
+[0032](../../decisions/0032-vault-cleanup-cut-line.md#retire-to-write-waiver--pr-433-motion-rules-locked-2026-09-21)).
+The three captures below are regenerable from `index.html` — open it per "How
+to view" above (or drive it headlessly, e.g. Playwright, at the given width
+and wait) — never restored from this file's git history:
+
 - `shots/index-1440.png` — the canvas at 1440, 800 ms after load (entrances mid-flight)
 - `shots/index-1440-settled.png` — the same 7 s after load (the ceremonies landed, rule 3's
   panel and rule 6's overlays drawn open, rule 8's undo window still draining, rule 11 past
@@ -338,7 +344,7 @@ rule 6. Rule 11's words must not tick.
 
 ## Related
 
-- ADR 0134 (Proposed) on `docs/motions-and-overlays-per-page` · ADR 0125 (the sealed
+- ADR 0134 (Locked 2026-09-21; drafted Proposed on `docs/motions-and-overlays-per-page`) · ADR 0125 (the sealed
   cancel that rule 4 now rests on) · ADR 0112 (Locked) · ADR 0138
 - `087-mudavym-motion-canvas/shortlist.html` — the 47 the mapping section places
 - `099-modal-shapes`, `102-modal-census`, `103-overlay-experience` — the overlay lineage

@@ -281,7 +281,9 @@ describe('the hold after a failure, a stuck write, and its own words', () => {
 
     fireEvent.keyDown(control, { key: 'Enter' });
     expect(screen.queryByText(/Approval could not be confirmed/)).toBeNull();
-    expect(screen.getByText('Press Enter again to approve — Esc cancels.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Press Enter again to approve — Esc or clicking elsewhere cancels.'),
+    ).toBeInTheDocument();
   });
 
   it('stops waiting on a write that never settles, when asked to, and says the outcome is unconfirmed', () => {
