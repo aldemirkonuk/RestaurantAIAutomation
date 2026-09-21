@@ -318,11 +318,22 @@ def test_an_external_worktree_finds_the_main_checkouts_key(tmp_path, monkeypatch
     assert _loaded_key(copy) == "main-checkout-key"
 
 
-def test_an_external_worktree_does_not_borrow_a_stranger_key(tmp_path, monkeypatch):
-    """Following the pointer must not become a wider search. A .env sitting in
-    a shared ancestor of the worktree — someone's home directory — is NOT the
-    repo's, and the main checkout's absence of one must read as 'no key', never
-    as licence to take the nearest one."""
+def test_a_shared_ancestor_env_still_wins_over_the_main_checkout(tmp_path, monkeypatch):
+    """The upward walk runs BEFORE the linked-worktree fallback, so a `.env` in
+    a shared ancestor of an external worktree is taken even though the main
+    checkout is the one that owns the key.
+
+    This test asserts ONE outcome on purpose. Its first version asserted
+    `in (None, "not-ours")` — passing under both the behaviour it described and
+    the opposite — which is not a test, and the ADR repeated its description as
+    if it were established (PR #408 re-audit). Pinning the real behaviour is
+    worth more than a sentence claiming a better one: if the order is ever
+    changed so the main checkout wins, this test fails and the change is
+    deliberate rather than silent.
+
+    Latent on this machine — no `.env` in $HOME, ~/.cursor, ~/Projects,
+    ~/Documents or /private/tmp — but $HOME is 0755, so a future `~/.env`
+    would take precedence over the repo's own key."""
     monkeypatch.delenv("JEV_API_KEY", raising=False)
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     root = tmp_path / "repo"
@@ -336,7 +347,69 @@ def test_an_external_worktree_does_not_borrow_a_stranger_key(tmp_path, monkeypat
     (tmp_path / ".env").write_text("JEV_API_KEY=not-ours\n")
     copy = far / "scripts" / "jev" / "prompt_gate.py"
     copy.write_text(GATE.read_text())
-    assert _loaded_key(copy) in (None, "not-ours")
+    assert _loaded_key(copy) == "not-ours"
+
+
+def test_a_redirect_never_reaches_its_target_with_the_bearer(tmp_path, monkeypatch):
+    """The one fix with security weight had NO executable coverage: deleting
+    `_RefuseRedirect,` from `_build_opener` reintroduced the leak while the
+    CLAIMS row and all 26 tests stayed green (PR #408 re-audit). urllib's
+    default opener follows `Location`, and CPython forwards `Authorization`
+    across it — including an https->http downgrade. So: two real servers, and
+    an assertion that the second one is never spoken to."""
+    import http.server
+    import threading
+
+    seen: list[tuple[str, str | None]] = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            seen.append((self.path, self.headers.get("Authorization")))
+            if self.path == "/start":
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{port}/steal")
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"answers": {}}')
+
+        def do_GET(self):  # noqa: N802
+            self.do_POST()
+
+        def log_message(self, *a):  # silence
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    port = srv.server_port
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        out = subprocess.run(
+            [sys.executable, str(GATE), "--for=claude"],
+            input=json.dumps(
+                {"hook_event_name": "UserPromptSubmit", "prompt": "check this"}
+            ),
+            capture_output=True,
+            text=True,
+            env={
+                **{k: v for k, v in os.environ.items() if k != "JEV_FAKE_ANSWERS"},
+                "JEV_API_KEY": "SENTINEL-KEY-do-not-leak",
+                "JEV_ENDPOINT_OVERRIDE": f"http://127.0.0.1:{port}/start",
+            },
+            timeout=30,
+        )
+    finally:
+        srv.shutdown()
+
+    paths = [p for p, _ in seen]
+    assert "/start" in paths, f"the gate never called the endpoint at all: {seen}"
+    assert "/steal" not in paths, f"THE REDIRECT WAS FOLLOWED — bearer leaked: {seen}"
+    for path, auth in seen:
+        if path == "/steal":  # defensive; the assert above already failed
+            assert auth is None
+    # Never blocks, whatever the endpoint did.
+    assert out.returncode == 0, out.stderr
 
 
 def _loaded_key(gate_copy: Path) -> str | None:

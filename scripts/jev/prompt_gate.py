@@ -55,6 +55,7 @@ import os
 import ssl
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -250,6 +251,37 @@ def _build_opener() -> urllib.request.OpenerDirector:
 _NO_REDIRECTS = _build_opener()
 
 
+_LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
+
+
+def _override_endpoint() -> str | None:
+    """JEV_ENDPOINT_OVERRIDE, accepted only when it points at this machine.
+
+    The guard uses it to drive the failure path against a closed port without
+    touching the network. An earlier version accepted ANY scheme and host, and
+    justified it as "whoever sets it already controls the key and the machine,
+    so it grants nothing new". That was an assumption stated as a fact: setting
+    one environment variable is strictly weaker than owning a machine — direnv,
+    a shell rc, a VS Code `terminal.integrated.env`, an npm postinstall — and an
+    unrestricted override turns env-write into "receives every prompt typed in
+    this repo, in plaintext over http if it likes". The response is allow-listed
+    field by field, so a hostile endpoint could never INJECT; it could only
+    RECEIVE, which for this hook is the whole of the risk.
+
+    Restricting it to loopback makes the sentence true instead of assumed.
+    """
+    raw = os.environ.get("JEV_ENDPOINT_OVERRIDE")
+    if not raw:
+        return None
+    try:
+        host = urllib.parse.urlsplit(raw).hostname
+    except ValueError:
+        return None
+    if host is None:
+        return None
+    return raw if host.strip("[]").lower() in ("127.0.0.1", "localhost", "::1") else None
+
+
 def _ask_jev(prompt_text: str, api_key: str) -> dict:
     """One TypeSafe call, all three questions batched together (Speculative
     Fan-Out — one round trip, not three). Raises on any failure; caller
@@ -264,13 +296,8 @@ def _ask_jev(prompt_text: str, api_key: str) -> dict:
             "questions": QUESTIONS,
         }
     ).encode("utf-8")
-    # JEV_ENDPOINT_OVERRIDE exists so a guard can drive the FAILURE path without
-    # touching the network: scripts/check_jev_never_blocks.py points it at a
-    # closed port and asserts the process still exits 0. Whoever sets it already
-    # controls the key and the machine, so it grants nothing new — and the
-    # response is allow-listed field by field either way, so a hostile endpoint
-    # still cannot put a byte of its own into the model's context.
-    endpoint = os.environ.get("JEV_ENDPOINT_OVERRIDE") or TYPESAFE_ENDPOINT
+    # JEV_ENDPOINT_OVERRIDE is a LOOPBACK-ONLY test seam; see _override_endpoint.
+    endpoint = _override_endpoint() or TYPESAFE_ENDPOINT
     req = urllib.request.Request(
         endpoint,
         data=body,
@@ -333,7 +360,13 @@ def _format_annotation(answers: dict) -> str:
 
     choice = section("request_type").get("choice")
     allowed = QUESTIONS["request_type"]["criteria"]
-    req_type = choice if choice in allowed else "unknown"
+    # `allowed` is a DICT, so `choice in allowed` hashes it. A response with
+    # `"choice": {...}` or `["..."]` raised `TypeError: unhashable type` — the
+    # only exception kind in a 60,000-shape fuzz, and it hit 26,036 times.
+    # main()'s broad except degraded it to "[JEV] unavailable (TypeError)", so
+    # it was never a hazard; it would just have silently cost every prompt in
+    # the repo its annotation the day TypeSafe returned an object here.
+    req_type = choice if isinstance(choice, str) and choice in allowed else "unknown"
     req_conf = _safe_number(section("request_type").get("confidence"), 0.0, 1.0)
 
     risk_score = _safe_number(section("risk").get("score"), 0.0, len(_RISK_LABELS) - 1)
@@ -437,9 +470,16 @@ def main(argv: list[str] | None = None) -> int:
         payload = json.loads(sys.stdin.read() or "{}")
     except json.JSONDecodeError:
         payload = {}
+    # Normalise ONCE, here, before anything reads a field. `_is_cursor_payload`
+    # was guarded and `resolve_platform:396` was not, so `echo null | ... ` with
+    # no --for= still reached `payload.get("turn_id")` and exited 1 with a
+    # traceback. Guarding each reader separately is how that gap survived the
+    # first fix; there is one entry point, so there is one guard.
+    if not isinstance(payload, dict):
+        payload = {}
 
     platform = resolve_platform(payload, argv)
-    prompt_text = payload.get("prompt", "") if isinstance(payload, dict) else ""
+    prompt_text = payload.get("prompt", "")
 
     def emit(annotation: str) -> None:
         print(json.dumps(emit_payload(platform, annotation)))

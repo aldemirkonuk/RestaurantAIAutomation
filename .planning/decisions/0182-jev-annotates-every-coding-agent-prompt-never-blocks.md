@@ -242,8 +242,13 @@ is kept only so the hook log still prints `[JEV]`.
 observed `Found 2 hook(s)` / `Merged 2 valid response(s)` for the same
 `generation_id`, 1 ms apart, so a file lock cannot dedupe). Each config now
 passes `--for=cursor|claude|codex`. When `--for=claude` sees a Cursor
-payload (`beforeSubmitPrompt` / `cursor_version` / `conversation_id`) it
-returns `{continue: true}` and does not call TypeSafe.
+payload it returns `{continue: true}` and does not call TypeSafe.
+**Superseded 2026-09-21 by addendum item 4 below:** that detection also keyed on
+`cursor_version` / `conversation_id` / `workspace_roots` being merely PRESENT,
+which is the wrong direction — one such field appearing in a future Claude Code
+payload would route a real prompt to `cursor-replay`, annotating nothing while
+exiting 0. It now keys on `beforeSubmitPrompt` alone, which is all Cursor ever
+sent.
 
 ## Addendum 2026-09-21 — what leaves the machine, decided rather than defaulted
 
@@ -326,8 +331,15 @@ that fails without it.
    main checkout above it, so it ran to `/`. It now reads the worktree's `.git`
    *file*, follows `gitdir:` to the main checkout and searches there. Read, never
    executed — no `git` subprocess, so it survives the same conditions that caused
-   defect 1. Two tests pin it, including one that refuses to borrow a stranger's
-   `.env` from a shared ancestor.
+   defect 1. Two tests pin it. The second was written to say it refuses
+   to borrow a stranger's `.env` from a shared ancestor and did not: it
+   asserted `in (None, "not-ours")`, which passes under both outcomes,
+   including the one its own name forbids. Corrected 2026-09-21 to assert one
+   outcome, and the ADR corrected with it — the walk reaches `/` before the
+   linked-worktree fallback is consulted, so a `.env` in a shared ancestor DOES
+   win today. Latent on this machine (no `.env` in `$HOME`, `~/.cursor`,
+   `~/Projects`, `~/Documents` or `/private/tmp`), and `$HOME` is 755, so a
+   future `~/.env` would take it. Recorded rather than papered over.
 3. **The bearer token followed redirects to any host**, including an https→http
    downgrade, because `urlopen`'s default opener follows `Location` and CPython
    forwards `Authorization`. Reproduced live: a `302` to a local server handed it
