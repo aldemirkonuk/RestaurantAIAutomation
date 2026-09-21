@@ -1,39 +1,94 @@
 # .github/workflows/e2e-prod.yml
-# Production E2E Test Suite — Phase 25
-# =====================================
-# Nightly cron (observability) + deploy-triggered blocking gate.
+# Production E2E — the nightly, rebuilt 2026-09-11 (ADR 0135)
+# ==============================================================
+# Nightly cron (observability) + workflow_dispatch (run it by hand against
+# production, or as the deploy-triggered gate deploy.yml already fires).
 #
-# TFND-05: Nightly cloud E2E skeleton — do not invent a second prod E2E paradigm (D-24).
-# Phase 42 will add a separate weekly AI eval workflow — do not implement here (D-25).
-# STATUS (measured 2026-09-02): NO WAVE HAS EVER RUN WITH CREDENTIALS.
-# `gh run list --workflow=e2e-prod.yml` returns 120 runs (2026-05-06 .. 2026-09-02),
-# 118 `failure` and 2 `success`, every one of them a `schedule` event — the deploy
-# dispatch in deploy.yml has never produced a run here either. The cause is not a
-# broken production: the secrets this job maps below were never set on the repository
-# (`gh secret list` holds only ADMIN_API_KEY, ANTHROPIC_API_KEY, API_GATEWAY_URL,
-# RAILWAY_ORCHESTRATOR_URL, SUPABASE_DB_URL, SUPABASE_DIRECT_CONNECTION_STRING,
-# SUPABASE_POOLER_URL). So a red here has always meant "not configured", which is
-# indistinguishable from "production is broken" — see .planning/v3.0-TECH-DEBT.md
-# "CI — the nightly production E2E has reported `failure` for `not configured`".
-# Do not equate cron with a healthy nightly, and do not read this red as a production
-# signal until the secrets-precondition step below passes.
+# WHAT IT ASSERTS, AND HOW IT REPORTS
+#   Every check ends in ONE of four states, counted separately in the summary
+#   (scripts/e2e/nightly_summary.py, also written to the job summary):
+#     pass          the assertion held
+#     fail          the assertion ran and did not hold — a production signal
+#     absent        the surface is not on this build, or this house has nothing
+#                   to open it on — reported, never a pass
+#     cannot_check  the check did not run (missing secret, unreachable service,
+#                   empty corpus) — RED on purpose (exit 2), never a pass
+#   Nothing here asserts on a figure. Nothing here writes to production: Wave H
+#   is read-only, and the browser walk ABORTS every non-GET request the app
+#   attempts except the token refresh and the flag read (ReadOnlyGuard in
+#   apps/web/e2e/nightly/lib.ts), listing what it aborted. The walk opens only
+#   the houses on apps/web/e2e/nightly/sim-houses.json. The legacy waves' session
+#   teardown no longer deletes the `sim-*` houses unless E2E_SIM_TEARDOWN=1
+#   (tests/e2e/conftest_prod.py — measured 2026-09-11: it would have deleted
+#   all four simulator houses on the first run with a service-role key).
 #
-# D-12: Nightly 02:00 UTC — observability only
-# D-13: workflow_dispatch from Vercel deploy hook — blocking gate
-# D-15: Continue-all-waves — the 4 surviving waves (A, B, C, F) run regardless
-#        of failures. D, E, G retired 2026-09-12 (ADR 0137).
-# D-19: Full suite in < 10 minutes — timeout-minutes: 15 hard cap
+# HISTORY WORTH KEEPING
+#   120 runs 2026-05-06..2026-09-02, 118 failed, none with credentials — the
+#   red meant "not configured" and read as "production is broken"
+#   (.planning/v3.0-TECH-DEBT.md "CI — the nightly production E2E…").
+#   The orchestrator URL the legacy waves target answered 404 "Application not
+#   found" on 2026-09-11; the preflight below turns that into cannot_check with
+#   the reason in the name instead of six waves of red.
 #
-# CRITICAL: PYTEST_RUNNING is NEVER set here.
-# main.py disables Sentry when PYTEST_RUNNING is in the environment.
-# Use TRIGGERED_BY_DEPLOY instead to signal blocking mode.
+# HOW TO READ, RUN AND CHANGE IT: apps/web/e2e/README.md
+#
+# SECRETS (names only). Credential values are not printed: the steps below echo
+# names; pytest runs --tb=short (no locals); every gateway call in the browser
+# walk goes through lib.ts `gateway()`, which rethrows only a redacted first
+# line, and every recorded reason and evidence passes `redact()` — because a
+# Playwright network error's "Call log" lists `authorization: Bearer <jwt>`, and
+# before 2026-09-17 that reached the summary and the artifact (audit of PR #349
+# at e18b1d48, finding B1; reproduced with sentinels, fixed, re-proven).
+# scripts/check_nightly_manifest.py fails the build on a raw request call. The
+# two TARGET URLs ARE printed, unmasked, because they are public — the web
+# bundle carries the gateway URL.
+#   REQUIRED — without any one of these the run proves NOTHING and the first
+#   step exits 2 with the missing names in its log:
+#     API_GATEWAY_URL            the NestJS gateway (already set — deploy.yml)
+#                                read by tests/e2e_gateway/conftest.py and
+#                                apps/web/e2e/nightly/lib.ts (as E2E_API_URL)
+#     E2E_TEST_EMAIL             the e2e account — aldemirkonuk@mudavym.com
+#                                (the founder registers it; a session grants it
+#                                a simulator house) — lib.ts, conftest.py
+#     E2E_TEST_PASSWORD          its password — same readers
+#   OPTIONAL — each changes what is covered, and its absence is reported:
+#     VERCEL_PRODUCTION_URL      the web app; defaults to https://mudavym.com
+#     RAILWAY_ORCHESTRATOR_URL   the FastAPI orchestrator (Waves A–C).
+#                                Probed first; unreachable = cannot_check
+#     ADMIN_API_KEY              Wave B (orchestrator agent health)
+#     SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY
+#                                the legacy waves' prod_jwt / prod_supabase
+#                                fixtures (conftest_prod.py). NOT needed by the
+#                                browser walk or Wave H. The service-role key
+#                                arms the legacy session teardown — see above
+#     RABBITMQ_URL               Wave C
+#     SENTRY_DSN                 failure alerting only
+#     E2E_LEGACY_RESTAURANT_ID   REFUSED if it names a house other than the
+#                                account's own (founder, 2026-09-17): the gateway
+#                                scopes by the sign-in token, so a second house
+#                                needs a second account (F3 reopened). The legacy
+#                                pass walks the account's house with the
+#                                per-browser override forcing legacy.
+#   RETIRED — Waves D (Toast), E (Gmail) and G (Calendar) were deleted
+#   2026-09-12 (ADR 0137), and with them the Toast webhook secret and both Gmail
+#   credentials: an unused secret mapped into a job env is readable by every
+#   step and action in it.
+#
+# PACING
+#   Every /api/v1/auth/* route is limited to 10 requests per 60 s per IP+route
+#   (rate-limit.guard.ts). The walk boots the SPA once per pass and navigates
+#   with pushState; Playwright runs one worker; the `concurrency` group below
+#   keeps two runs from sharing the runner IP's budget. /auth/sign-in-methods
+#   is 10 per 10 minutes — the form sign-in runs once.
+#
+# CRITICAL: PYTEST_RUNNING is NEVER set here (main.py disables Sentry on it).
 
 name: Production E2E Tests
 
 on:
   schedule:
-    - cron: '0 2 * * *'    # D-12: nightly 02:00 UTC
-  workflow_dispatch:         # D-13: triggered by Vercel deploy hook
+    - cron: '0 2 * * *' # nightly 02:00 UTC — observability
+  workflow_dispatch:
     inputs:
       triggered_by_deploy:
         description: 'Set to true when triggered by a production deploy'
@@ -47,125 +102,120 @@ on:
         description: 'PR number to comment on (deploy-triggered only)'
         type: string
         default: ''
+      expect_flags:
+        description: 'What the house''s mudavym_design_* flags are expected to be: report (default), on, off'
+        type: choice
+        options: [report, on, off]
+        default: report
+      base_url:
+        description: 'Override the web app URL (default: VERCEL_PRODUCTION_URL secret, else https://mudavym.com)'
+        type: string
+        default: ''
+      api_url:
+        description: 'Override the gateway URL (default: API_GATEWAY_URL secret)'
+        type: string
+        default: ''
+
+concurrency:
+  group: e2e-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   e2e-prod:
     name: Production E2E Suite
     runs-on: ubuntu-latest
-    timeout-minutes: 15    # TEST-PROD-10: hard cap
+    timeout-minutes: 25
 
     env:
-      # Supabase production credentials
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      # E2E service account credentials (D-07)
-      E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
-      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
-      # Production service credentials
-      ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+      # Targets
+      API_GATEWAY_URL: ${{ inputs.api_url || secrets.API_GATEWAY_URL }}
+      E2E_API_URL: ${{ inputs.api_url || secrets.API_GATEWAY_URL }}
+      E2E_BASE_URL: ${{ inputs.base_url || secrets.VERCEL_PRODUCTION_URL || 'https://mudavym.com' }}
       RAILWAY_ORCHESTRATOR_URL: ${{ secrets.RAILWAY_ORCHESTRATOR_URL }}
-      RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
-      # TOAST_WEBHOOK_SECRET, GMAIL_USER, GMAIL_PASSWORD removed 2026-09-12 (ADR 0137)
-      # -- their only readers (waves D, E) are retired; least-privilege: an unused
-      # secret mapped into a job env is readable by every step and action in it.
-      # Sentry (TEST-PROD-09)
+      # The account
+      # E2E_TEST_EMAIL / E2E_TEST_PASSWORD are mapped only into the steps that
+      # sign in or scrub (re-audit 2026-09-17, security N4): never into installs.
+      E2E_EXPECT_FLAGS: ${{ inputs.expect_flags || 'report' }}
+      E2E_LEGACY_RESTAURANT_ID: ${{ secrets.E2E_LEGACY_RESTAURANT_ID }}
+      # The legacy waves' SUPABASE_* / ADMIN_API_KEY / RABBITMQ_URL are mapped
+      # ONLY into the steps that read them (audit 2026-09-17, security N4): a
+      # secret in the job env is readable by every step and action, pnpm
+      # install included.
+      # The Toast and Gmail secrets are not mapped: waves D and E are retired (ADR 0137)
       SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
       GITHUB_SHA: ${{ github.sha }}
-      # Playwright (Wave F)
-      E2E_BASE_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}
-      # Deploy gate signal (D-14) — NOT PYTEST_RUNNING
       TRIGGERED_BY_DEPLOY: ${{ inputs.triggered_by_deploy || 'false' }}
-      # CRITICAL: PYTEST_RUNNING is intentionally NOT set here.
-      # Setting PYTEST_RUNNING would disable Sentry in the FastAPI app (main.py:27).
+      # PYTEST_RUNNING is intentionally NOT set (main.py:27 disables Sentry on it).
 
     steps:
       # -----------------------------------------------------------------------
-      # SECRETS PRECONDITION — deliberately the FIRST step, before any install.
-      #
-      # Why: 118 of this workflow's 120 runs reported `failure` while none of the
-      # secrets below were set, so the red carried no reason and read as a
-      # production signal. Same shape as OD-120 in
-      # .planning/decisions/OPEN-DECISIONS.md — a check that did not happen must
-      # never render as a neutral or a substantive result. This step puts the
-      # reason in the step name and in the first line of the log.
-      #
-      # REQUIRED — without any one of these the run asserts NOTHING about
-      # production, so its absence must fail, not skip. Full "which fixture reads
-      # which secret, at which line" table lives in ONE place —
-      # .planning/v3.0-TECH-DEBT.md, "What the founder must set" — not copied here,
-      # after four rounds of this comment block and that table drifting apart on
-      # exact line numbers every time either file was touched (see ADR 0137's
-      # review trail). Fixture/variable NAMES below are stable across edits; line
-      # numbers are not, so they live in exactly one document, not two.
-      #   RAILWAY_ORCHESTRATOR_URL   conftest_prod.py, prod_base_url fixture      -> Waves A,B,C
-      #   ADMIN_API_KEY              conftest_prod.py, prod_admin_headers fixture -> Wave B entirely
-      #   SUPABASE_URL               conftest_prod.py, prod_jwt + prod_supabase fixtures
-      #   SUPABASE_ANON_KEY          conftest_prod.py, prod_jwt fixture
-      #   SUPABASE_SERVICE_ROLE_KEY  conftest_prod.py, prod_supabase fixture — this one is
-      #                              autouse via teardown_e2e_records (session-scoped,
-      #                              autouse=True), so its absence skips EVERY test in
-      #                              the session, not just the teardown step. Waves A,B,C
-      #                              all depend on it, same as SUPABASE_URL/ANON_KEY.
-      #   E2E_TEST_EMAIL             conftest_prod.py + apps/web/e2e/prod-smoke.spec.ts
-      #   E2E_TEST_PASSWORD          conftest_prod.py + apps/web/e2e/prod-smoke.spec.ts
-      #   E2E_BASE_URL               apps/web/playwright.prod.config.ts — the config
-      #                              THROWS without it, so Wave F cannot start at all
-      #
-      # OPTIONAL — each gates exactly one wave, and a partial run is a legitimate
-      # result, so these warn and never fail:
-      #   RABBITMQ_URL          tests/e2e/wave_c_agent_triggers.py, rabbitmq_url fixture -> skips Wave C
-      #   SENTRY_DSN            conftest_prod.py -> failure alerting only
-      #
-      # Waves D (Toast), E (Gmail) and G (Calendar) were RETIRED 2026-09-12
-      # (ADR 0137), not merely gated — each tested a table or endpoint with zero
-      # production consumer (pos_webhook_logs / inventory_stock never existed in
-      # production; Google Calendar sync was investigated and cut 2026-08-26).
-      # TOAST_WEBHOOK_SECRET and GMAIL_USER are consequently no longer read by
-      # anything in this suite. GMAIL_PASSWORD (previously mapped but read by
-      # no wave here either -- only by the runtime service's own config, not this
-      # job) is removed above too.
-      #
-      # Secret VALUES are never printed — only presence.
+      # 0. SECRETS PRECONDITION — first, before any install. exit 2 = the check
+      #    itself could not run (repo-wide guard convention); names only, never values.
+      # -----------------------------------------------------------------------
       - name: Required secrets are present
+        env:
+          SECRET_API_GATEWAY_URL: ${{ secrets.API_GATEWAY_URL }}
+          SECRET_VERCEL_URL: ${{ secrets.VERCEL_PRODUCTION_URL }}
+          INPUT_API_URL: ${{ inputs.api_url }}
+          INPUT_BASE_URL: ${{ inputs.base_url }}
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
         run: |
-          REQUIRED="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY E2E_TEST_EMAIL E2E_TEST_PASSWORD E2E_BASE_URL"
-          # TOAST_WEBHOOK_SECRET / GMAIL_USER dropped 2026-09-12 (ADR 0137) --
-          # waves D and E, the only readers, are retired; nothing gates on them now.
-          OPTIONAL="RABBITMQ_URL SENTRY_DSN"
-
+          REQUIRED="API_GATEWAY_URL E2E_TEST_EMAIL E2E_TEST_PASSWORD E2E_BASE_URL"
+          OPTIONAL="RAILWAY_ORCHESTRATOR_URL ADMIN_API_KEY SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY RABBITMQ_URL SENTRY_DSN E2E_LEGACY_RESTAURANT_ID"
           MISSING=""
           for name in $REQUIRED; do
             if [ -z "${!name:-}" ]; then MISSING="$MISSING $name"; fi
           done
-
           if [ -n "$MISSING" ]; then
             echo "CANNOT CHECK -- missing secrets:$MISSING"
             echo "::error title=Production E2E cannot check::CANNOT CHECK -- missing secrets:$MISSING"
-            echo ""
-            echo "This run proves NOTHING about production. It is red because the"
-            echo "workflow is not configured, not because production is broken."
-            echo "Set the names listed above as repository secrets"
-            echo "(Settings > Secrets and variables > Actions), then re-run."
-            echo "E2E_BASE_URL is mapped from the secret VERCEL_PRODUCTION_URL."
-            # exit 2 = "the check itself could not run", the repo-wide guard convention
-            # (scripts/check_*.py); exit 1 is reserved for "the check ran and failed".
+            echo "This run proves NOTHING about production. It is red because the workflow is not"
+            echo "configured, not because production is broken. Set the names above as repository"
+            echo "secrets (Settings > Secrets and variables > Actions), then re-run."
             exit 2
           fi
-
-          echo "All 8 required secrets present -- this run's result is a real production signal."
-
+          echo "All required secrets present -- this run's result is a real production signal."
           for name in $OPTIONAL; do
             if [ -z "${!name:-}" ]; then
-              echo "::warning title=Wave will skip::$name is unset -- the wave it gates will skip, not fail."
+              echo "::notice title=Optional secret unset::$name is unset -- what it gates is reported as cannot_check or absent, never as a pass."
             fi
           done
+          case "$E2E_BASE_URL" in *localhost*|*127.0.0.1*|*0.0.0.0*) echo "::error::E2E_BASE_URL points at a local address"; exit 2;; esac
+          # The sign-in test types the password into the page at this URL.
+          case "$E2E_BASE_URL" in https://*) ;; *) echo "::error::E2E_BASE_URL is not https"; exit 2;; esac
+          # The gateway URL is the one that RECEIVES E2E_TEST_EMAIL and
+          # E2E_TEST_PASSWORD on every login (audit of PR #349, finding 1.2), so it
+          # gets the same refusal, plus a scheme check: a plain-http gateway would
+          # carry the password in the clear.
+          case "$API_GATEWAY_URL" in *localhost*|*127.0.0.1*|*0.0.0.0*) echo "::error::API_GATEWAY_URL points at a local address"; exit 2;; esac
+          case "$API_GATEWAY_URL" in https://*) ;; *) echo "::error::API_GATEWAY_URL is not https"; exit 2;; esac
+          # A dispatch input is where the password would go if someone typed the
+          # wrong host, so an input may only name the hosts this repo already
+          # targets (re-audit 2026-09-17, N4). Hosts, never values, are printed.
+          host() { printf '%s' "${1#*://}" | cut -d/ -f1; }
+          ALLOWED_API=$(host "$SECRET_API_GATEWAY_URL")
+          ALLOWED_WEB="mudavym.com $(host "${SECRET_VERCEL_URL:-}")"
+          if [ -n "${INPUT_API_URL:-}" ] && [ "$(host "$INPUT_API_URL")" != "$ALLOWED_API" ]; then
+            echo "::error::api_url names a host this workflow may not target"; exit 2
+          fi
+          if [ -n "${INPUT_BASE_URL:-}" ]; then
+            case " $ALLOWED_WEB " in *" $(host "$INPUT_BASE_URL") "*) ;; *) echo "::error::base_url names a host this workflow may not target"; exit 2;; esac
+          fi
 
-      # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # -----------------------------------------------------------------------
       - name: Set up Python 3.11
         uses: actions/setup-python@v6
         with:
@@ -175,34 +225,15 @@ jobs:
             services/agent-orchestrator/requirements.prod.txt
             services/agent-orchestrator/requirements.test.txt
 
-      # -----------------------------------------------------------------------
       - name: Install Python dependencies
         working-directory: services/agent-orchestrator
         run: |
           pip install -r requirements.prod.txt
           pip install -r requirements.test.txt
 
-      # -----------------------------------------------------------------------
-      # The `version:` input is deliberately ABSENT, and the action is @v6.
-      #
-      # pnpm 8 was pinned here while the root package.json declares
-      # `packageManager: pnpm@9.15.9` and `engines.pnpm >= 9.0.0`, so this step's
-      # `pnpm install --frozen-lockfile` died with ERR_PNPM_UNSUPPORTED_ENGINE
-      # ("Expected version: >=9.0.0 / Got: 8.15.9") and every wave after it was
-      # SKIPPED. Two sessions found this independently on 2026-09-03 (#266 and
-      # the Dependabot sweep, ADR 0106); this is the merged fix.
-      #
-      # @v6 rather than @v4 because Dependabot #2 asked for the bump and it was
-      # verified here — ci.yml and deploy.yml move to @v6 in the same change, so
-      # all seven action-setup usages in this repo now agree. From v4 onward the
-      # action reads `packageManager` from package.json and THROWS "Multiple
-      # versions of pnpm specified" if `version:` is also given, so do not
-      # reintroduce it.
-      #
-      # Fixing this step does NOT make the nightly meaningful — see the
-      # secrets precondition above. With the secrets unset every wave still
-      # skips, and a skipped wave exits 0.
-      - name: Set up pnpm + Node.js (Wave F — Playwright)
+      # `version:` deliberately absent — the action reads packageManager from
+      # package.json (pnpm 9) and THROWS if a version is also given (ADR 0106).
+      - name: Set up pnpm
         uses: pnpm/action-setup@v6
 
       - name: Set up Node.js
@@ -214,139 +245,208 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright Chromium (Wave F — D-09)
+      # Bundled Chromium. The retired config asked for `channel: 'chrome'`, which
+      # this step never installed — Wave F could not have launched a browser.
+      - name: Install Playwright Chromium
         working-directory: apps/web
         run: npx playwright install --with-deps chromium
 
-      # -----------------------------------------------------------------------
       - name: Create test-results directory
-        run: mkdir -p test-results services/agent-orchestrator/test-results
+        run: mkdir -p test-results services/agent-orchestrator/test-results apps/web/test-results
 
       # -----------------------------------------------------------------------
-      # WAVE A — API contracts (D-17: root wave, all others depend on it logically)
+      # 1. ORCHESTRATOR PREFLIGHT — a 404 here used to be six waves of red.
       # -----------------------------------------------------------------------
-      - name: Wave A — API Contract Tests
-        working-directory: services/agent-orchestrator
+      - name: Orchestrator preflight
+        id: preflight
+        env:
+          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
         run: |
-          pytest tests/e2e/wave_a_api_contracts.py \
-            --junitxml=test-results/wave_a.xml \
-            -v --tb=short -q \
-            2>&1 | tee test-results/wave_a.log || true
+          # Wave C stays unarmed by the founder's F2 answer; while RABBITMQ_URL is
+          # unset the summary reports it absent by decision (2026-09-17), not unchecked.
+          if [ -z "${RABBITMQ_URL:-}" ]; then
+            printf '{"unarmed": true, "reason": "Wave C is unarmed by decision (founder F2, ADR 0135): RABBITMQ_URL is unset, so it publishes nothing and is reported absent"}\n' > test-results/wave_c_unarmed.json
+          fi
+          OUT=test-results/orchestrator-preflight.json
+          if [ -z "${RAILWAY_ORCHESTRATOR_URL:-}" ]; then
+            printf '{"reachable": false, "status": null, "reason": "RAILWAY_ORCHESTRATOR_URL is unset -- Waves A-C cannot run"}\n' > "$OUT"
+            echo "reachable=false" >> "$GITHUB_OUTPUT"; cat "$OUT"; exit 0
+          fi
+          # `-w` already prints 000 on a connection failure; `|| true` keeps it from
+          # becoming "000000", which made the file invalid JSON (correctness 4).
+          CODE=$(curl -s -m 20 -o /dev/null -w '%{http_code}' "${RAILWAY_ORCHESTRATOR_URL%/}/health" || true)
+          case "$CODE" in ''|*[!0-9]*) CODE=000;; esac
+          if [ "$CODE" = "200" ]; then
+            printf '{"reachable": true, "status": 200, "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered 200"}\n' > "$OUT"
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+          else
+            printf '{"reachable": false, "status": "%s", "reason": "GET RAILWAY_ORCHESTRATOR_URL/health answered HTTP %s (000 = no answer) -- Waves A-C are cannot_check, not failed"}\n' "$CODE" "$CODE" > "$OUT"
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Orchestrator unreachable::HTTP $CODE from RAILWAY_ORCHESTRATOR_URL/health -- Waves A-C recorded as cannot_check"
+          fi
+          cat "$OUT"
 
       # -----------------------------------------------------------------------
-      # WAVES B+C — run concurrently as background processes, separate JUnit XML
-      # M-02 fix: separate XMLs let cascading_report attribute B vs C failures precisely.
-      # Both use '|| true' so failures don't stop the job.
+      # 2. WAVE H — the gateway, read-only (contracts, flags, backtest honesty)
       # -----------------------------------------------------------------------
-      - name: Waves B+C — Agent Health + RabbitMQ Triggers (concurrent)
+      - name: Wave H — Gateway contracts + backtest honesty (read-only)
         working-directory: services/agent-orchestrator
+        env:
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          E2E_CHECKS_FILE: ../../test-results/wave_h_checks.jsonl
         run: |
-          pytest tests/e2e/wave_b_agent_health.py \
-            --junitxml=test-results/wave_b.xml \
-            -v --tb=short -q \
-            2>&1 | tee test-results/wave_b.log || true &
-          WAVE_B_PID=$!
-          pytest tests/e2e/wave_c_agent_triggers.py \
-            --junitxml=test-results/wave_c.xml \
-            -v --tb=short -q \
-            2>&1 | tee test-results/wave_c.log || true &
-          WAVE_C_PID=$!
-          wait $WAVE_B_PID || true
-          wait $WAVE_C_PID || true
+          pytest tests/e2e_gateway \
+            --junitxml=../../test-results/wave_h.xml \
+            -v --tb=short -q -p no:cacheprovider \
+            2>&1 | tee ../../test-results/wave_h.log || true
 
       # -----------------------------------------------------------------------
-      # WAVES D, E, G — RETIRED 2026-09-12 (ADR 0137)
+      # 3. WAVE F — the browser walk (every rebuilt page, flag on and off)
       # -----------------------------------------------------------------------
-      # wave_d_toast_pipeline.py / wave_e_gmail_pipeline.py / wave_g_calendar.py
-      # are deleted, not skipped: each tested a table or endpoint with zero
-      # production consumer (measured 2026-09-11 via information_schema.columns
-      # on the live Supabase project). Repointing any of them would mean
-      # BUILDING new production wiring to make an E2E test pass, not repairing
-      # drift — see ADR 0137 for the per-wave evidence. This step is a no-op so
-      # the job's log states the reason instead of a bare "file not found".
+      # Playwright's own output stays on the runner: its stdout goes to the job log
+      # only — note GitHub masks REGISTERED SECRETS there, not a JWT minted during
+      # the run; what keeps a token out of that log is lib.ts `gateway()` plus the
+      # manifest guard's rule 7 (a text match). And
+      # apps/web/test-results/ (error-context.md holds every input's value when a
+      # test fails) is not uploaded WHOLE -- but read the `cp -R` below before
+      # relying on that: its `nightly/` subtree IS copied out, screenshots
+      # included (corrected 2026-09-21; the flat claim was wrong and three other
+      # places in the tree repeated it). The reporter's redacted summary and
+      # those screenshots are what leave; wave_f.xml is copied for the cascading
+      # report. All of it passes the scrub step -- with the limit the scrub now
+      # states out loud: it reads bytes, so for a PNG it reports "cannot read"
+      # rather than "clean", and the control that actually protects a screenshot
+      # is the capture-time `[data-secret]` mask in nightly.spec.ts.
+      - name: Wave F — Browser walk (Playwright)
+        working-directory: apps/web
+        env:
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+        run: |
+          npx playwright test --config playwright.nightly.config.ts || true
+          cp test-results/wave_f.xml ../../test-results/wave_f.xml 2>/dev/null || true
+          mkdir -p ../../test-results/nightly
+          cp -R test-results/nightly/. ../../test-results/nightly/ 2>/dev/null || true
+
+      # -----------------------------------------------------------------------
+      # 4. LEGACY WAVES A–C — only when the orchestrator answered.
+      #    Their session teardown is dry-run unless E2E_SIM_TEARDOWN=1 (never set here).
+      # -----------------------------------------------------------------------
+      - name: Wave A — API Contract Tests (orchestrator)
+        if: steps.preflight.outputs.reachable == 'true'
+        working-directory: services/agent-orchestrator
+        env:
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+        run: |
+          pytest tests/e2e/wave_a_api_contracts.py --junitxml=../../test-results/wave_a.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_a.log || true
+
+      - name: Waves B+C — Agent Health + RabbitMQ Triggers (orchestrator, concurrent)
+        if: steps.preflight.outputs.reachable == 'true'
+        working-directory: services/agent-orchestrator
+        env:
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
+        run: |
+          pytest tests/e2e/wave_b_agent_health.py --junitxml=../../test-results/wave_b.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_b.log || true &
+          B=$!
+          pytest tests/e2e/wave_c_agent_triggers.py --junitxml=../../test-results/wave_c.xml -v --tb=short -q 2>&1 | tee ../../test-results/wave_c.log || true &
+          C=$!
+          wait $B || true; wait $C || true
+
+      # Waves D, E, G — RETIRED 2026-09-12 (ADR 0137): deleted, not skipped. Each
+      # tested a table or endpoint with no production consumer; repointing one
+      # would re-arm a real write. This step states the reason in the log.
       - name: Waves D, E, G — retired
         run: |
           echo "::notice::Waves D (Toast), E (Gmail), G (Calendar) retired 2026-09-12 (ADR 0137) -- see .planning/decisions/0137-legacy-e2e-waves-d-e-g-are-retired-not-repointed.md"
-          echo "retired: no production consumer for the schema each tested (pos_webhook_logs, inventory_stock, Google Calendar sync)"
-
 
       # -----------------------------------------------------------------------
-      # WAVE F — Playwright frontend smoke tests (independent — D-17)
+      # 5. BACKTESTS — offline, this checkout. The canned day (ADR 0093, bistro /
+      #    random / seed 7 / 2026-09-02) must regenerate to its pinned hash, and
+      #    the forecast chain must return its pinned numbers. Drift = red.
       # -----------------------------------------------------------------------
-      - name: Wave F — Playwright Frontend Smoke Tests
-        working-directory: apps/web
+      - name: Backtests — canned scenario day + pinned forecast fixture
         run: |
-          npx playwright test \
-            --config playwright.prod.config.ts \
-            2>&1 | tee ../test-results/wave_f.log || true
-        # JUnit XML written by playwright.prod.config.ts to apps/web/test-results/wave_f.xml
+          set +e
+          python3 -m pytest scripts/test_simulate_scenarios.py -q -p no:cacheprovider -k canned_day > test-results/backtest_canned_day.log 2>&1
+          C1=$?
+          (cd apps/api-gateway && npx jest src/analytics/engine/forecasting.backtest.spec.ts --ci) > test-results/backtest_forecast.log 2>&1
+          C2=$?
+          python3 -m pytest scripts/test_simulate_scenarios.py -q -p no:cacheprovider > test-results/backtest_scenario_engine.log 2>&1
+          C3=$?
+          set -e
+          python3 - "$C1" "$C2" "$C3" <<'PY'
+          import json, sys
+          c1, c2, c3 = (int(x) for x in sys.argv[1:4])
+          json.dump({"steps": [
+            {"name": "scenario_canned_day", "exit": c1, "reason": "datasets/sim/fixtures/scenario-canned-day.json regenerates to its pinned hash"},
+            {"name": "forecast_pinned", "exit": c2, "reason": "datasets/sim/fixtures/forecast-backtest.json — seven series return their pinned MAE/RMSE/MAPE/MASE"},
+            {"name": "scenario_engine", "exit": c3, "reason": "scripts/test_simulate_scenarios.py — the whole scenario engine suite"},
+          ]}, open("test-results/backtests.json", "w"), indent=2)
+          PY
+          tail -3 test-results/backtest_canned_day.log test-results/backtest_forecast.log test-results/backtest_scenario_engine.log
 
-      # Copy Playwright JUnit XML to root test-results
-      # M-03 fix: synthetic failure XML when Playwright crashes before producing output
-      - name: Copy Playwright JUnit XML to root test-results
+      # -----------------------------------------------------------------------
+      # 6. SUMMARY — one table, four states, exit 1 on fail / 2 on cannot_check
+      # -----------------------------------------------------------------------
+      - name: Cascading failure report (legacy wave graph)
         if: always()
-        run: |
-          if [ -f "apps/web/test-results/wave_f.xml" ]; then
-            cp apps/web/test-results/wave_f.xml test-results/wave_f.xml
-          else
-            echo "::warning::Wave F JUnit XML missing — Playwright may have crashed before producing output"
-            cat > test-results/wave_f.xml << 'SYNTHETIC_XML'
-          <?xml version="1.0" encoding="utf-8"?><testsuite name="wave_f" tests="1" failures="1" errors="0" skipped="0"><testcase name="wave_f_setup_failed" classname="wave_f"><failure message="Wave F XML not produced — Playwright process crashed or E2E_BASE_URL was not set">Check the Wave F step logs above for the root cause.</failure></testcase></testsuite>
-          SYNTHETIC_XML
-            echo "Synthetic failure XML written to test-results/wave_f.xml"
-          fi
-
-      # -----------------------------------------------------------------------
-      # CASCADING REPORT — post all waves
-      # -----------------------------------------------------------------------
-      - name: Generate cascading failure report
         working-directory: services/agent-orchestrator
         run: |
-          python scripts/cascading_report.py \
-            --results-dir ../../test-results \
-            --output-dir ../../test-results \
-            2>&1 | tee ../../test-results/cascading_report.log || true
+          python scripts/cascading_report.py --results-dir ../../test-results --output-dir ../../test-results 2>&1 | tee ../../test-results/cascading_report.log || true
 
-      # -----------------------------------------------------------------------
-      # UPLOAD ARTIFACTS
-      # -----------------------------------------------------------------------
-      - name: Upload test results (TEST-PROD-08)
-        uses: actions/upload-artifact@v4
+      - name: Honest summary
+        id: summary
         if: always()
+        env:
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+        run: |
+          set +e
+          python3 scripts/e2e/nightly_summary.py --results-dir test-results --base-url "$E2E_BASE_URL" --api-url "$API_GATEWAY_URL"
+          CODE=$?
+          set -e
+          echo "verdict_exit=$CODE" >> "$GITHUB_OUTPUT"
+          echo "summary exit $CODE (0 pass · 1 fail · 2 cannot_check)"
+
+      # Fail-closed: every file about to be uploaded is scrubbed of the test
+      # password, JWTs and bearer tokens; if anything survives, nothing uploads.
+      - name: Scrub the upload set
+        id: scrub
+        if: always()
+        env:
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+        run: python3 scripts/e2e/scrub_artifacts.py --dir test-results
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always() && steps.scrub.outcome == 'success'
         with:
           name: e2e-prod-results-${{ github.run_id }}
-          path: |
-            test-results/
-            apps/web/test-results/
+          path: test-results/
           retention-days: 30
 
       # -----------------------------------------------------------------------
-      # DEPLOY GATE — blocking mode only (D-14)
-      # Fire Sentry alert + PR comment on failure when triggered by deploy
+      # 7. DEPLOY GATE (D-14) — alert + PR comment when a deploy triggered this
       # -----------------------------------------------------------------------
-      - name: Check for test failures
-        id: check_failures
-        if: always()
-        run: |
-          FAILED=0
-          for xml in test-results/wave_*.xml; do
-            if [ -f "$xml" ]; then
-              FAILURES=$(grep -o 'failures="[^"]*"' "$xml" | grep -v 'failures="0"' | wc -l)
-              ERRORS=$(grep -o 'errors="[^"]*"' "$xml" | grep -v 'errors="0"' | wc -l)
-              if [ "$FAILURES" -gt 0 ] || [ "$ERRORS" -gt 0 ]; then
-                FAILED=1
-              fi
-            fi
-          done
-          echo "any_failures=$FAILED" >> $GITHUB_OUTPUT
-
       - name: Sentry alert — deploy gate failure (D-14)
         if: |
           always() &&
-          steps.check_failures.outputs.any_failures == '1' &&
+          steps.summary.outputs.verdict_exit != '0' &&
           inputs.triggered_by_deploy == true
         env:
           DEPLOY_URL: ${{ inputs.deploy_url }}
+          VERDICT_EXIT: ${{ steps.summary.outputs.verdict_exit }}
         run: |
           python - <<'EOF'
           import os, sentry_sdk
@@ -354,46 +454,55 @@ jobs:
           if dsn:
               sentry_sdk.init(dsn=dsn, traces_sample_rate=0.0)
               sentry_sdk.capture_message(
-                  "Production E2E Deploy Gate Failed",
+                  "Production E2E Deploy Gate did not pass",
                   level="error",
-                  tags={
-                      "deploy-gate": "true",
-                      "e2e-failure": "true",
-                      "triggered_by": "deploy",
-                      "github_sha": os.environ.get("GITHUB_SHA", "unknown"),
-                      "deploy_url": os.environ.get("DEPLOY_URL", ""),
-                  },
+                  tags={"deploy-gate": "true", "e2e-failure": "true", "triggered_by": "deploy",
+                        "verdict_exit": os.environ.get("VERDICT_EXIT", ""),
+                        "github_sha": os.environ.get("GITHUB_SHA", "unknown"),
+                        "deploy_url": os.environ.get("DEPLOY_URL", "")},
               )
-              sentry_sdk.flush(2)  # L-01: flush before process exits (short-lived process)
+              sentry_sdk.flush(2)
               print("Sentry deploy-gate alert fired")
+          else:
+              print("SENTRY_DSN unset -- no alert sent (reported, not hidden)")
           EOF
 
-      - name: Post PR comment — deploy gate failure (D-14)
+      - name: Post PR comment — deploy gate (D-14)
         if: |
           always() &&
-          steps.check_failures.outputs.any_failures == '1' &&
+          steps.summary.outputs.verdict_exit != '0' &&
+          steps.scrub.outcome == 'success' &&
           inputs.triggered_by_deploy == true &&
           inputs.pr_number != ''
         uses: actions/github-script@v7
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
           DEPLOY_URL: ${{ inputs.deploy_url }}
+          VERDICT_EXIT: ${{ steps.summary.outputs.verdict_exit }}
         with:
           script: |
             const prNum = parseInt(process.env.PR_NUMBER || '', 10)
-            if (!prNum) return  // skip if not a valid integer
+            if (!prNum) return
+            const fs = require('fs')
+            let table = ''
+            try { table = fs.readFileSync('test-results/nightly-summary.md', 'utf8').slice(0, 60000) } catch {}
+            const verdict = process.env.VERDICT_EXIT === '1' ? 'FAILED' : 'COULD NOT CHECK'
             await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNum,
-              body: [
-                '❌ **Production E2E deploy gate failed** for this deploy.',
-                '',
-                `Deploy URL: ${process.env.DEPLOY_URL || ''}`,
-                `GitHub SHA: ${context.sha}`,
-                '',
-                'Check the [E2E test artifacts](https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId + ') for details.',
-                '',
-                'See `test-results/cascading_report.md` artifact for root cause analysis.',
-              ].join('\n')
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: prNum,
+              body: [`❌ **Production E2E deploy gate: ${verdict}** for this deploy.`, '',
+                     `Deploy URL: ${process.env.DEPLOY_URL || ''}`, `GitHub SHA: ${context.sha}`, '',
+                     `Artifacts: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`, '', table].join('\n')
             })
+
+      # The job's own colour follows the summary: green only when every check
+      # passed or was an honest absence; exit 2 (cannot_check) is red with its
+      # reason in the summary, never a skip.
+      - name: Verdict
+        if: always()
+        run: |
+          CODE="${{ steps.summary.outputs.verdict_exit }}"
+          case "$CODE" in
+            0) echo "PASS";;
+            1) echo "::error title=Production E2E failed::at least one check failed — see the job summary"; exit 1;;
+            *) echo "::error title=Production E2E could not check::at least one check could not run (exit ${CODE:-unset}) — see the job summary"; exit 2;;
+          esac
