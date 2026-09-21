@@ -4,7 +4,7 @@ import { useTheme } from '../../contexts/ThemeContext'
 import { cn } from '../../lib/utils'
 import { Popover } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
-import { useGroundChoice } from '../../lib/mudavym/groundChoice'
+import { useGroundState, setGroundChoice, type GroundState } from '../../lib/mudavym/groundChoice'
 
 /**
  * ThemeMenu — the header's one theme control, wearing two different jobs.
@@ -26,6 +26,19 @@ import { useGroundChoice } from '../../lib/mudavym/groundChoice'
  * choice of Paper or Charcoal (`lib/mudavym/groundChoice.ts`), independent of
  * `ThemeContext` — the Mudavym ground is still not the app's light/dark
  * theme (ADR 0138's title), it is just no longer fixed either.
+ *
+ * TWO OPTIONS, NEVER THREE (founder, 2026-09-21 — "Always paper, follows
+ * account"). Paper and Charcoal. There is deliberately no "System": a person
+ * who has never chosen gets paper, not their laptop's night mode. The legacy
+ * branch below still offers System because that is the app theme, a different
+ * thing this record does not touch.
+ *
+ * AND IT NEVER CLAIMS AN ANSWER IT DOES NOT HAVE. The choice lives on the
+ * person's account, which a page cannot read before it paints, so "paper on
+ * screen" can mean four different things (`GroundState.source`). Under
+ * `unknown` and `unreadable` this menu marks NO option active and says why,
+ * rather than checkmarking Paper as though it had been chosen — a failed or
+ * pending read is not an answer (CLAUDE.md §9).
  */
 
 const OPTIONS = [
@@ -39,9 +52,43 @@ const GROUND_OPTIONS = [
   { value: 'charcoal' as const, label: 'Charcoal', icon: Moon },
 ]
 
+/**
+ * What the menu says under the two options, or null when the ground on
+ * screen is simply this person's confirmed answer and needs no caveat.
+ * A write failure outranks a read one: it is the thing that just happened.
+ */
+function groundNote(state: GroundState): string | null {
+  if (state.writeError) return state.writeError
+  switch (state.source) {
+    case 'unknown':
+      return 'Reading the ground you saved to your account. Paper until it answers.'
+    case 'unreadable':
+      return state.readFailed
+        ? `The ground you saved could not be read (${state.detail ?? 'unknown reason'}). Paper until it can be.`
+        : 'The ground you saved could not be read. Paper until it can be.'
+    case 'device-cache':
+      return state.readFailed
+        ? `Your account could not be reached (${state.detail ?? 'unknown reason'}). This is the last ground this device saw you choose.`
+        : 'This is the last ground this device saw you choose, while your account answers.'
+    default:
+      return null
+  }
+}
+
+/** Under these, nobody has told us what this person chose — so nothing is
+ *  marked chosen. `default` is NOT one of them: paper-because-they-never-
+ *  chose is a real, confirmed answer. */
+function groundIsKnown(state: GroundState): boolean {
+  return state.source !== 'unknown' && state.source !== 'unreadable'
+}
+
 export function ThemeMenu({ className }: { className?: string }) {
   const { theme, resolvedTheme, setTheme } = useTheme()
-  const [ground, setGround] = useGroundChoice()
+  const groundState = useGroundState()
+  const ground = groundState.choice
+  const setGround = setGroundChoice
+  const note = groundNote(groundState)
+  const known = groundIsKnown(groundState)
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -81,7 +128,9 @@ export function ThemeMenu({ className }: { className?: string }) {
         aria-expanded={open}
         title={
           shell.on
-            ? `Ground: ${ground === 'charcoal' ? 'Charcoal' : 'Paper'}`
+            ? known
+              ? `Ground: ${ground === 'charcoal' ? 'Charcoal' : 'Paper'}`
+              : 'Ground: not read yet'
             : `Theme: ${theme === 'system' ? `System (${resolvedTheme})` : theme}`
         }
       >
@@ -94,11 +143,11 @@ export function ThemeMenu({ className }: { className?: string }) {
           onClose={() => setOpen(false)}
           anchorRef={triggerRef}
           label="Ground"
-          width={180}
+          width={note ? 260 : 180}
           showClose={false}
         >
           {GROUND_OPTIONS.map(({ value, label, icon: Icon }) => {
-            const active = ground === value
+            const active = known && ground === value
             return (
               <button
                 key={value}
@@ -116,6 +165,11 @@ export function ThemeMenu({ className }: { className?: string }) {
               </button>
             )
           })}
+          {note ? (
+            <p className="mdv-menu-note" role="status" data-ground-note>
+              {note}
+            </p>
+          ) : null}
         </Popover>
       ) : null}
 

@@ -1,33 +1,33 @@
 /**
- * ADR 0169 — no flash of the wrong ground on first paint.
+ * ADR 0169 — no flash of the wrong ground on first paint, and never the
+ * wrong PERSON'S ground.
  *
- * The default (paper) needs no script at all: it is the CSS default, so a
- * first-time visitor never needs JavaScript to see it correctly. A CHARCOAL
- * choice does need one — `data-mudavym-ground="charcoal"` has to be on
- * `<html>` before the browser paints anything, or the page would render
- * paper for one frame and then jump to charcoal.
+ * The founder, 2026-09-21: "Always paper, follows account." That makes the
+ * pre-paint problem harder than it was in round 4, because the truth now
+ * lives on the account and the account cannot be read before the page paints.
+ * The script in `index.html` therefore reads this device's MIRROR of the
+ * account value — and, because a device can be shared, only the mirror under
+ * the user id carried by the session's own access token.
  *
  * jsdom does not paint, so this cannot observe a flash directly (the same
  * honest limit `styles/mudavym-ground.test.ts` states for its own suite).
- * What IS checkable, mechanically, from the shipped `index.html` source:
+ * Two things ARE checkable, mechanically, and both are here:
  *
- *   1. the script exists, and is a plain, synchronous, blocking script — no
- *      `type="module"`, no `defer`, no `async`, any of which would let the
- *      browser continue parsing/painting before it runs;
- *   2. it appears before the first stylesheet and before the app's own
- *      module script — later would mean CSS or the bundle can already be at
- *      work before this script has decided the ground;
- *   3. it reads the SAME storage key and writes the SAME attribute that
- *      `groundChoice.ts` uses at runtime — the module doc says these two
- *      must be kept in sync "by hand," and nothing else enforces that; a
- *      drift here would mean the pre-paint script and the React module
- *      disagree about where the choice lives, silently.
+ *   A. the shape of the shipped `index.html` script — that it is blocking,
+ *      first, defaults to paper, and reads the same key prefix and writes the
+ *      same attribute that `groundChoice.ts` uses at runtime (the module doc
+ *      says these must be kept in sync "by hand," and nothing else enforces
+ *      it);
+ *   B. what the script DOES, by executing its exact source out of the file
+ *      against a seeded `localStorage`. A regex over the source cannot tell
+ *      you that a shared terminal shows paper to the second person; running
+ *      it can.
  */
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { GROUND_CHOICE_ATTR, GROUND_CHOICE_STORAGE_KEY } from './groundChoice';
+import { afterEach, describe, expect, it } from 'vitest';
+import { GROUND_CHOICE_ATTR, GROUND_MIRROR_KEY_PREFIX, groundMirrorKey } from './groundChoice';
 
 const INDEX_HTML = join(__dirname, '../../../index.html');
 
@@ -35,16 +35,45 @@ function html(): string {
   return readFileSync(INDEX_HTML, 'utf8');
 }
 
-describe('ADR 0169 — the pre-paint script avoids a flash of the wrong ground', () => {
+/** The body of the one inline script that decides the ground. */
+function scriptBody(): string {
+  const match = html().match(/<script[^>]*>([\s\S]*?data-mudavym-ground[\s\S]*?)<\/script>/);
+  expect(match, 'no inline ground-choice <script> found in index.html').not.toBeNull();
+  return match![1];
+}
+
+/** An unsigned JWT-shaped token whose payload carries `sub`. The pre-paint
+ *  script reads the claim, never verifies it — the gateway does that. */
+function tokenFor(sub: string): string {
+  const b64 = (o: unknown) =>
+    Buffer.from(JSON.stringify(o))
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  return `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub })}.signature`;
+}
+
+/** Run the shipped script exactly as the browser would. */
+function runPrePaintScript(): string | null {
+  document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
+  // eslint-disable-next-line no-new-func
+  new Function(scriptBody())();
+  return document.documentElement.getAttribute(GROUND_CHOICE_ATTR);
+}
+
+afterEach(() => {
+  window.localStorage.clear();
+  document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
+});
+
+describe('ADR 0169 — the pre-paint script is shaped to avoid a flash', () => {
   it('exists, inline, before the app mounts', () => {
-    const src = html();
-    const scriptMatch = src.match(/<script[^>]*>([\s\S]*?data-mudavym-ground[\s\S]*?)<\/script>/);
-    expect(scriptMatch, 'no inline ground-choice <script> found in index.html').not.toBeNull();
+    expect(scriptBody().length).toBeGreaterThan(0);
   });
 
   it('is a plain blocking script — no type="module", defer or async', () => {
-    const src = html();
-    const tagMatch = src.match(/<script(\b[^>]*)>[\s\S]*?data-mudavym-ground[\s\S]*?<\/script>/);
+    const tagMatch = html().match(/<script(\b[^>]*)>[\s\S]*?data-mudavym-ground[\s\S]*?<\/script>/);
     expect(tagMatch, 'could not find the ground-choice script tag').not.toBeNull();
     const attrs = tagMatch![1];
     expect(attrs).not.toMatch(/type\s*=\s*["']module["']/);
@@ -79,41 +108,91 @@ describe('ADR 0169 — the pre-paint script avoids a flash of the wrong ground',
     expect(scriptIdx).toBeLessThan(fontsIdx);
   });
 
-  it('reads the exact storage key groundChoice.ts uses at runtime', () => {
-    const src = html();
-    expect(src).toContain(`localStorage.getItem('${GROUND_CHOICE_STORAGE_KEY}')`);
+  it('reads the exact mirror key prefix groundChoice.ts writes at runtime', () => {
+    expect(scriptBody()).toContain(`'${GROUND_MIRROR_KEY_PREFIX}'`);
   });
 
   it('writes the exact attribute groundChoice.ts reads at runtime', () => {
-    const src = html();
-    // Both branches (charcoal chosen, and the paper/error fallback) must set
-    // the SAME attribute name as the runtime module, or a value applied here
-    // would be invisible to `getGroundChoice()`'s CSS-consuming counterpart.
-    const occurrences = src.split(`setAttribute('${GROUND_CHOICE_ATTR}'`).length - 1;
-    expect(occurrences).toBeGreaterThanOrEqual(2); // the charcoal branch and the fallback branch
+    expect(scriptBody()).toContain(`setAttribute('${GROUND_CHOICE_ATTR}'`);
   });
 
   it('never throws on a blocked localStorage — wrapped in try/catch', () => {
-    const src = html();
-    const scriptMatch = src.match(/<script[^>]*>([\s\S]*?data-mudavym-ground[\s\S]*?)<\/script>/);
-    expect(scriptMatch).not.toBeNull();
-    expect(scriptMatch![1]).toMatch(/try\s*{/);
-    expect(scriptMatch![1]).toMatch(/catch/);
+    const body = scriptBody();
+    expect(body).toMatch(/try\s*{/);
+    expect(body).toMatch(/catch/);
   });
 
-  it('defaults to paper, never a hardcoded charcoal, on any path through the script', () => {
-    const src = html();
-    const scriptMatch = src.match(/<script[^>]*>([\s\S]*?data-mudavym-ground[\s\S]*?)<\/script>/);
-    expect(scriptMatch, 'no inline ground-choice <script> found in index.html').not.toBeNull();
-    const body = scriptMatch![1];
-    // Every literal assignment of the attribute is either 'charcoal' (gated
-    // behind reading the stored choice) or 'paper' (the fallback / default) —
-    // never an unconditional 'charcoal'.
-    const assigned = [...body.matchAll(/setAttribute\('data-mudavym-ground',\s*'([a-z]+)'\)/g)].map(
-      (m) => m[1],
-    );
-    expect(assigned.length).toBeGreaterThan(0);
-    expect(assigned.every((v) => v === 'paper' || v === 'charcoal')).toBe(true);
-    expect(assigned).toContain('paper');
+  it('never consults the device\'s light/dark setting', () => {
+    // The founder's answer is paper on a first visit, full stop — not the OS
+    // preference, and there is no third "match my device" option to serve.
+    const body = scriptBody();
+    expect(body).not.toMatch(/matchMedia/);
+    expect(body).not.toMatch(/prefers-color-scheme/);
+  });
+});
+
+describe('ADR 0169 — the pre-paint script, executed', () => {
+  it('paints paper for a visitor with no session at all', () => {
+    expect(runPrePaintScript()).toBe('paper');
+  });
+
+  it('paints paper for a signed-in person this device has never mirrored', () => {
+    window.localStorage.setItem('accessToken', tokenFor('user-alice'));
+    expect(runPrePaintScript()).toBe('paper');
+  });
+
+  it('paints charcoal for the person whose mirror this device holds', () => {
+    window.localStorage.setItem('accessToken', tokenFor('user-alice'));
+    window.localStorage.setItem(groundMirrorKey('user-alice'), 'charcoal');
+    expect(runPrePaintScript()).toBe('charcoal');
+  });
+
+  it('paints PAPER for the next person on a shared terminal, not the last one\'s charcoal', () => {
+    // Alice chose charcoal here. Bob now signs in on the same browser.
+    window.localStorage.setItem(groundMirrorKey('user-alice'), 'charcoal');
+    window.localStorage.setItem('accessToken', tokenFor('user-bob'));
+    expect(runPrePaintScript()).toBe('paper');
+  });
+
+  it('paints paper when the token is not a token at all', () => {
+    window.localStorage.setItem('accessToken', 'not-a-jwt');
+    window.localStorage.setItem(groundMirrorKey('user-alice'), 'charcoal');
+    expect(runPrePaintScript()).toBe('paper');
+  });
+
+  it('paints paper when the token carries no sub claim', () => {
+    window.localStorage.setItem('accessToken', tokenFor(''));
+    window.localStorage.setItem(groundMirrorKey('user-alice'), 'charcoal');
+    expect(runPrePaintScript()).toBe('paper');
+  });
+
+  it('paints paper when the mirror holds a value this app does not know', () => {
+    window.localStorage.setItem('accessToken', tokenFor('user-alice'));
+    window.localStorage.setItem(groundMirrorKey('user-alice'), 'sepia');
+    expect(runPrePaintScript()).toBe('paper');
+  });
+
+  it('paints paper, without throwing, when localStorage is blocked entirely', () => {
+    const original = Object.getOwnPropertyDescriptor(Storage.prototype, 'getItem');
+    Storage.prototype.getItem = () => {
+      throw new Error('storage blocked');
+    };
+    try {
+      expect(runPrePaintScript()).toBe('paper');
+    } finally {
+      if (original) Object.defineProperty(Storage.prototype, 'getItem', original);
+    }
+  });
+
+  it('never paints a ground on a dark-mode machine that a paper person did not choose', () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) =>
+      ({ matches: true, media: query }) as unknown as MediaQueryList) as typeof window.matchMedia;
+    try {
+      window.localStorage.setItem('accessToken', tokenFor('user-alice'));
+      expect(runPrePaintScript()).toBe('paper');
+    } finally {
+      window.matchMedia = original;
+    }
   });
 });

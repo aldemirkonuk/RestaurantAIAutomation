@@ -134,8 +134,9 @@ export function useMudavymShell(): MudavymShellState {
  * The ground of the `.mudavym` subtree `anchor` sits in, or `null` when it sits
  * in none (a shell trigger in the header is outside every page root).
  *
- * A host with no `data-ground` stands on whatever a person chose for this
- * device (`groundChoice.ts`, ADR 0169; paper until they say otherwise) — the
+ * A host with no `data-ground` stands on whatever this person chose
+ * (`groundChoice.ts`, ADR 0169; paper until they say otherwise, and from
+ * 2026-09-21 the choice belongs to their ACCOUNT, not to this browser) — the
  * same rule `styles/mudavym.css` paints it with, so this answer and the pixel
  * always agree without the host declaring anything.
  * [2026-09-19, ADR 0169: before this, an undeclared host was hardcoded

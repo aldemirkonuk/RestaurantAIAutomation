@@ -3,23 +3,48 @@
   <head>
     <meta charset="UTF-8" />
     <!-- ADR 0169 — the person's Mudavym ground choice, applied before first
-         paint. The default is paper (no attribute needed); this only has
-         work to do when a person chose charcoal on this device. It must run
-         synchronously, before any stylesheet, or a charcoal choice would
-         flash paper first. Keep this in sync BY HAND with
-         `src/lib/mudavym/groundChoice.ts` (same storage key, same attribute)
-         — there is no bundler step that shares code into a static HTML file. -->
+         paint. It must run synchronously, before any stylesheet, or a
+         charcoal choice would flash paper first.
+
+         PAPER UNLESS THE ACCOUNT SAID OTHERWISE (founder, 2026-09-21). The
+         default needs no lookup at all and is NEVER the device's light/dark
+         setting — there is deliberately no `matchMedia` or
+         `prefers-color-scheme` read anywhere on this path.
+
+         The choice itself lives on the person's account
+         (`user_preferences.preferences.ground`), which cannot be read before
+         paint. So this reads the device MIRROR of it — and, because a device
+         can be shared, only the mirror belonging to the person whose session
+         is actually loaded: the user id is taken from the `sub` claim of the
+         access token this browser is holding, exactly the id the gateway will
+         answer for. No token, no `sub`, no mirror for that id, or anything at
+         all going wrong ⇒ paper. Signing in as someone else on a shared
+         terminal therefore shows THEIR ground (or paper), never the previous
+         person's.
+
+         Keep this in sync BY HAND with `src/lib/mudavym/groundChoice.ts`
+         (same key prefix, same attribute) — there is no bundler step that
+         shares code into a static HTML file. `groundChoiceNoFlash.test.ts`
+         checks that they still agree. -->
     <script>
       (function () {
+        var ground = 'paper';
         try {
-          if (window.localStorage.getItem('mudavym.ground') === 'charcoal') {
-            document.documentElement.setAttribute('data-mudavym-ground', 'charcoal');
-          } else {
-            document.documentElement.setAttribute('data-mudavym-ground', 'paper');
+          var token = window.localStorage.getItem('accessToken');
+          var payload = token && token.split('.')[1];
+          if (payload) {
+            payload = payload.replace(/-/g, '+').replace(/_/g, '/');
+            while (payload.length % 4) payload += '=';
+            var sub = JSON.parse(window.atob(payload)).sub;
+            if (sub) {
+              var mirrored = window.localStorage.getItem('mudavym.ground.' + sub);
+              if (mirrored === 'charcoal' || mirrored === 'paper') ground = mirrored;
+            }
           }
         } catch (e) {
-          document.documentElement.setAttribute('data-mudavym-ground', 'paper');
+          ground = 'paper';
         }
+        document.documentElement.setAttribute('data-mudavym-ground', ground);
       })();
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
