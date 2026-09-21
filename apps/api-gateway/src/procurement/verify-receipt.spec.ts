@@ -539,6 +539,46 @@ describe("markDelivered — the column records what was booked", () => {
     await service(db).markDelivered(REST, ORDER, USER);
     expect(calls.orderUpdates[0].quantity_received).not.toBeNull();
   });
+
+  it("D6 (ADR 0168) — the verify-receipt notice names how many BOTTLES were booked, not the order's own unit count", async () => {
+    // Neither `service()` nor `makeDb` wires a notificationsService, so every
+    // test above this one skips the `if (this.notificationsService)` block
+    // entirely and could not have caught this — the notice is only
+    // constructed when a real (or mocked) NotificationsService is present.
+    const notifications = {
+      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1 }),
+    };
+    const { db } = makeDb({
+      orderRow: {
+        ...pendingOrder,
+        quantity: 5,
+        bottles_total: 60,
+        unit_type: "case",
+        final_price: 360,
+      },
+    });
+
+    await new ProcurementService(
+      db,
+      events,
+      ledger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      notifications as any,
+    ).markDelivered(REST, ORDER, USER);
+
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+    const [, payload] = notifications.persistForRestaurant.mock.calls[0];
+    // Pre-fix this read "5 bottles stocked in" (resolvedQuantity — 5 cases,
+    // the order's own unit), while the ledger booked receivedBottles (60, the
+    // ledger call above asserts p_delta: 60 for this exact fixture shape).
+    expect(payload.message).toBe(
+      "60 bottles stocked in. Confirm the physical count against the vendor invoice.",
+    );
+  });
 });
 
 describe("markDelivered — ?quantityReceived is validated, not coerced", () => {
@@ -977,5 +1017,92 @@ describe("receipt quantity follows the booked ledger", () => {
     ).rejects.toThrow(/could not be read/);
     expect(calls.orderUpdates).toEqual([]);
     expect(calls.rpc).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D5 (ADR 0168) — a derived count that is not whole is refused, not written
+// ---------------------------------------------------------------------------
+/**
+ * `procurement_orders.quantity_received` and `.accepted_quantity` are INTEGER
+ * columns (baseline_from_production.sql:4539, :4560). When a caller states no
+ * accepted count but does state other match fields, `acceptedQtyInCountedUom`
+ * is BACK-DERIVED as `stockedQtyInBottles / bottlesPerUnit` — and that division
+ * is not guaranteed to land on a whole pack. 59 bottles already booked on a
+ * 12-pack case order derives 4.9167 cases, and pre-fix that fraction reached
+ * both integer columns: `openCreditClaim` runs before the update that would
+ * fail, so a retry could raise a claim against an order whose own write then
+ * 500s on its column type.
+ *
+ * Today's web and mobile desks always send an accepted count
+ * (`useOrdersData.ts`, the mobile receive screen), so only a direct API caller
+ * can reach this branch — which is exactly why a mock-level test is the only
+ * kind that exercises it at all.
+ */
+describe("verifyReceipt — a non-whole derived count is refused before any write", () => {
+  const casesOf12 = {
+    ...deliveredOrder,
+    quantity: 5,
+    unit_type: "case",
+    bottles_total: 60,
+    quantity_received: 5,
+  };
+
+  it("refuses with a 400 rather than writing a fraction into an integer column", async () => {
+    const { db, calls } = makeDb({
+      orderRow: casesOf12,
+      bookedBottles: 59, // 59 / 12 = 4.9166... — not a whole number of cases
+    });
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 59,
+        invoiceUnitPrice: 40,
+        invoiceCurrency: "USD",
+        // No acceptedQuantity: the derivation this guards is the one that
+        // only runs when the caller states no count of its own.
+      } as any),
+    ).rejects.toThrow(/does not divide evenly/);
+  });
+
+  it("writes nothing and raises no claim when the derived count is a fraction", async () => {
+    // The guard must run BEFORE `openCreditClaim`, not after: a claim raised
+    // ahead of a write that then fails leaves a claim standing against an
+    // order whose own correction never landed.
+    const { db, calls } = makeDb({
+      orderRow: casesOf12,
+      bookedBottles: 59,
+    });
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        invoiceQuantity: 59,
+        invoiceUnitPrice: 40,
+        invoiceCurrency: "USD",
+      } as any),
+    ).rejects.toThrow();
+
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.creditInserts).toEqual([]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual(
+      [],
+    );
+  });
+
+  it("still derives normally when the booked total divides evenly", async () => {
+    // The guard must not close the door on the case this derivation exists
+    // for: 60 booked bottles on the same 12-pack order is exactly 5 cases.
+    const { db, calls } = makeDb({
+      orderRow: casesOf12,
+      bookedBottles: 60,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 60,
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+    } as any);
+
+    expect(calls.orderUpdates[0].accepted_quantity).toBe(5);
   });
 });

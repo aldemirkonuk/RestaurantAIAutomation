@@ -4300,7 +4300,7 @@ export class ProcurementService {
         .from("procurement_orders")
         .select(
           "quantity, status, delivered_at, received_by, quantity_received, " +
-            "unit_type, bottles_total, order_number",
+            "unit_type, bottles_total, order_number, final_price",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -4744,7 +4744,12 @@ export class ProcurementService {
         {
           type: "invoice_received",
           title: `Verify delivery: ${order.wineName || order.orderNumber || "order"}`,
-          message: `${resolvedQuantity} bottles stocked in. Confirm the physical count against the vendor invoice.`,
+          // `receivedBottles`, not `resolvedQuantity`: the latter is in the
+          // ORDER's own unit (a 5-case order of 12 resolves to 5), while the
+          // ledger booked `receivedBottles` bottles (60) at :4681. Pre-fix
+          // this notice told the manager 5 bottles came in when 60 did
+          // (ADR 0168 D6).
+          message: `${receivedBottles} bottles stocked in. Confirm the physical count against the vendor invoice.`,
           priority: "critical",
           actionUrl: `/inventory?verify=${orderId}`,
           actionLabel: "Verify receipt",
@@ -5260,8 +5265,28 @@ export class ProcurementService {
               "The ledger counts bottles; this receipt must state a physical count in bottles or a known bottle pack.",
             );
           }
-          matchInput.acceptedQtyInCountedUom =
+          const derivedAcceptedQty =
             stockedQtyInBottles / unitReading.units.counted.bottlesPerUnit;
+          // `procurement_orders.quantity_received` and `.accepted_quantity`
+          // are INTEGER columns (baseline_from_production.sql:4539, :4560).
+          // Nobody stated an accepted count in the counted unit here, so it is
+          // BACK-DERIVED from what the ledger already booked — and that
+          // division does not always land on a whole pack: 59 bottles already
+          // booked on a 12-pack case order derives 4.9167 cases. Refused HERE,
+          // before `openCreditClaim` (which runs ahead of the update below and
+          // does not roll back) can raise a claim against a write that is
+          // about to fail its own column type (ADR 0168 D5).
+          if (!Number.isInteger(derivedAcceptedQty)) {
+            throw new BadRequestException(
+              `Cannot verify this receipt: ${stockedQtyInBottles} bottles ` +
+                `already booked does not divide evenly into ` +
+                `${unitReading.units.counted.uom} packs of ` +
+                `${unitReading.units.counted.bottlesPerUnit} ` +
+                `(${derivedAcceptedQty.toFixed(4)} derived). State the ` +
+                `accepted count in ${unitReading.units.counted.uom} directly.`,
+            );
+          }
+          matchInput.acceptedQtyInCountedUom = derivedAcceptedQty;
         }
         match = computeMatch(matchInput);
         bottles = toBottleOperands(matchInput);
