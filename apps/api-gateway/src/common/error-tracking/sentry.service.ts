@@ -77,8 +77,13 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
  * by PR #427's own security audit, which blocked the first version of this fix.
  */
 const TOKEN_PATH_PREFIXES = [
-  "/invite/", // web invite, and this service's /auth/invite/<code>
-  "/studio/invite/",
+  "/invite/", // web invite, and the gateway"s /auth/invite/<code>
+  "/invites/", // DELETE /restaurants/:id/invites/:code — the SAME
+  // organization_invites.code column as /auth/invite/. Found by PR #427"s own
+  // correctness audit: it leaks exactly when the revoke FAILED, i.e. while the
+  // invite is still live and still grants a role on a real tenant.
+  "/studio/invite/", // studio invite
+  "/devices/", // DELETE /mobile/devices/:token — a push-send capability
   "/calendar/feed/", // @Public() iCal feed — a tenant-wide 64-char bearer
   "/digest/unsubscribe/", // @Public() one-click unsubscribe token
 ] as const;
@@ -195,7 +200,19 @@ export class SentryService implements OnModuleInit {
           // Add integrations as needed
         ],
         // Last line of defense: strip secrets and PII from every event.
+        // Sentry calls `beforeSend` for ERROR events ONLY — @sentry/core gates it
+        // on `isErrorEvent(processedEvent) && beforeSend`. With tracesSampleRate
+        // set, a SUCCESSFUL request is sampled into a transaction event that
+        // carries request.url, query_string, headers and cookies straight from
+        // requestDataIntegration — so without this hook the @Public()
+        // /calendar/feed/<token>.ics bearer shipped in the clear on 1 in 10
+        // successful reads, a larger volume than the 5xx path. Found by PR
+        // #427's own security re-audit. scrubSentryEvent is type-agnostic and
+        // never returns null, so it cannot drop a transaction.
         beforeSend(event) {
+          return scrubSentryEvent(event);
+        },
+        beforeSendTransaction(event) {
           return scrubSentryEvent(event);
         },
       });

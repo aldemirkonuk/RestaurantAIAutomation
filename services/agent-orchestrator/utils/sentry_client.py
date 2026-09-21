@@ -83,7 +83,12 @@ def _scrub_pii_keys(obj: Any) -> None:
 # audit, which blocked the first version of this fix for missing them.
 TOKEN_PATH_PREFIXES = (
     "/invite/",
+    # DELETE /restaurants/:id/invites/:code -- the SAME organization_invites.code
+    # column as /auth/invite/. Found by PR #427's correctness audit: it leaks
+    # exactly when the revoke FAILED, while the invite is still live.
+    "/invites/",
     "/studio/invite/",
+    "/devices/",  # DELETE /mobile/devices/:token -- a push-send capability
     "/calendar/feed/",
     "/digest/unsubscribe/",
 )
@@ -238,6 +243,14 @@ class SentryClient:
                     ),
                 ],
                 before_send=scrub_sentry_event,
+                # sentry_sdk skips before_send when event['type'] == 'transaction'
+                # (client.py). With traces_sample_rate set, the ASGI integration
+                # attaches request.url and request.query_string to EVERY event
+                # type, so a SUCCESSFUL request shipped the query -- including
+                # INBOUND_WEBHOOK_SECRET -- unscrubbed. Found by PR #427's own
+                # security re-audit. scrub_sentry_event never returns None, so it
+                # cannot drop a transaction.
+                before_send_transaction=scrub_sentry_event,
             )
 
             self._initialized = True

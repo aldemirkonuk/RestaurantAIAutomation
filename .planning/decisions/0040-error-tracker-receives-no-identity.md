@@ -251,10 +251,46 @@ Only the **one segment** after a prefix is redacted, so `/auth/invite/<code>/acc
 keeps `/accept` and an on-call can still tell routes apart. Over-redaction is the
 safe direction and is accepted.
 
-**Still open, filed not fixed:** breadcrumb URLs are scrubbed in the web runtime
-only; `Referer` is not in `SENSITIVE_HEADERS`, which matters for the token routes
-that do not match ADR 0158's `no-referrer` source (the trailing-slash form,
-`ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH`, still `open`).
+**A fourth gap, found by this PR's own security re-audit after the first three
+were closed — and the most consequential of the four.** Both SDKs call the
+scrubber for **error events only**: `@sentry/core` gates on
+`isErrorEvent(processedEvent) && beforeSend`, and `sentry_sdk` skips it when
+`event["type"] == "transaction"`. With `tracesSampleRate` / `traces_sample_rate`
+at 0.1, a **successful** request is sampled into a transaction event that the
+request-data integration has already filled with `request.url`,
+`request.query_string`, headers and cookies. So the `@Public()`
+`/calendar/feed/<token>.ics` bearer shipped **in the clear on one in ten
+successful reads** — quieter and higher-volume than the 5xx path the first three
+fixes closed. Measured end to end through the SDKs' own integrations, not
+reasoned about.
+
+Closed by registering the same scrubber on `beforeSendTransaction` /
+`before_send_transaction` at all four init sites. It is required
+**unconditionally** by `check_init_posture`, not only where tracing is
+configured: a later `tracesSampleRate` would otherwise silently reopen it, and a
+hook that never fires costs nothing.
+
+This is why the guard, not the list, is the thing that matters. Three separate
+walk-arounds of `check_public_path_params` were also measured and closed: a
+`@Public()` sitting more than six lines from its route decorator (the fixed
+window is now the whole decorator block — `communications.controller.ts` already
+separates the two by fifteen lines of comment on main, so the blinding shape was
+already house style); a non-literal route argument such as `@Get(SHARE_ROUTE)`,
+which is now **refused** rather than skipped, because skipping leaves the route
+count unchanged and silence is indistinguishable from nothing-to-check; and
+`:id`/`:orderId` sitting in the not-a-credential list while matching **zero**
+routes, pre-blessing the two most generic parameter names in the repo. Widening
+the scan immediately found a seventeenth `@Public()` route the old window had
+never seen.
+
+**Still open, filed not fixed:** breadcrumb URLs are scrubbed in the **web
+runtime only**, which leaves the three runtimes asymmetric on a container — the
+exact condition the container check exists for, and the new guard does not
+require breadcrumbs. `Referer` is not in `SENSITIVE_HEADERS`, which matters for
+the token-route form ADR 0158's `no-referrer` source does not match (the
+trailing-slash case, `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH`, still
+`open`). And `scrubUrl` returns on the **first** matching prefix, so a path
+bearing two credentials would keep one; no route has that shape today.
 
 **Revisit when:** a new `@Public()` route takes a credential in its path (the
 guard will say so); Sentry's SDK adds another container carrying a URL; or the

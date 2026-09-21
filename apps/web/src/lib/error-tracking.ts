@@ -108,7 +108,12 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
  */
 const TOKEN_PATH_PREFIXES = [
   '/invite/', // web invite, and the gateway's /auth/invite/<code>
+  '/invites/', // DELETE /restaurants/:id/invites/:code — the SAME
+  // organization_invites.code column as /auth/invite/. Found by PR #427's own
+  // correctness audit: it leaks exactly when the revoke FAILED, i.e. while the
+  // invite is still live and still grants a role on a real tenant.
   '/studio/invite/', // studio invite
+  '/devices/', // DELETE /mobile/devices/:token — a push-send capability
   '/calendar/feed/', // @Public() iCal feed — a tenant-wide 64-char bearer
   '/digest/unsubscribe/', // @Public() one-click unsubscribe token
 ] as const
@@ -225,7 +230,16 @@ class ErrorTrackingService {
       sendDefaultPii: false,
       integrations: [],
       // Last line of defense: strip PII from every event, whatever set it.
+      // `beforeSend` fires for ERROR events only (@sentry/core gates it on
+      // `isErrorEvent`). This runtime emits no transactions today —
+      // @sentry/browser's defaults exclude browserTracing, so tracesSampleRate
+      // is inert here — but the hook is registered anyway so the three runtimes
+      // stay symmetric and enabling tracing later cannot silently reopen the
+      // gap it opened on the gateway. Found by PR #427's security re-audit.
       beforeSend(event) {
+        return scrubSentryEvent(event)
+      },
+      beforeSendTransaction(event) {
         return scrubSentryEvent(event)
       },
     })

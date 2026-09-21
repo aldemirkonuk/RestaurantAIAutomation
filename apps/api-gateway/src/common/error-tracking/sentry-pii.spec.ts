@@ -196,7 +196,16 @@ describe("sentry — what reaches the error tracker", () => {
         }
       ).extra;
       expect(reported).toEqual({
-        url: "/api/v1/invites/accept",
+        // `<redacted>`, not `accept`: the /invites/ prefix redacts the segment
+        // after it, and this fixture's next segment is the literal word
+        // "accept". Deliberate over-redaction — the alternative is an allow-list
+        // of "safe" next-segments, which is the same fail-open shape the founder
+        // rejected for parameter names. The real route it protects is
+        // DELETE /restaurants/:id/invites/:code, which carries the live
+        // organization_invites.code (PR #427's correctness audit). Cost: an
+        // on-call loses one word of route detail; paramKeys/queryKeys below
+        // still name the shape.
+        url: "/api/v1/invites/<redacted>",
         method: "GET",
         paramKeys: ["inviteId"],
         queryKeys: ["email", "token"],
@@ -270,6 +279,17 @@ describe("request.url never carries a credential (founder ruling 2026-09-21)", (
       "/api/v1/auth/invite/CODE/accept",
       "/api/v1/auth/invite/<redacted>/accept",
     ],
+    // the invite-REVOKE route: /invites/ is NOT /invite/, same code column.
+    [
+      "/api/v1/restaurants/1111/invites/XK7Q2M",
+      "/api/v1/restaurants/1111/invites/<redacted>",
+    ],
+    [
+      "/api/v1/mobile/devices/ExponentPushToken",
+      "/api/v1/mobile/devices/<redacted>",
+    ],
+    // first match wins — pins indexOf against lastIndexOf
+    ["/invite/AAA/invite/BBB", "/invite/<redacted>/invite/BBB"],
     ["/invite/SECRET?x=1", "/invite/<redacted>"],
     ["https://mudavym.com/orders", "https://mudavym.com/orders"],
     ["/", "/"],

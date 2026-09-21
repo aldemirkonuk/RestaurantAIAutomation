@@ -44,6 +44,13 @@ else:
         send_default_pii=False,
         integrations=[StarletteIntegration(), FastApiIntegration()],
         before_send=scrub_sentry_event,
+        # sentry_sdk skips before_send for transaction events. With
+        # traces_sample_rate above, the ASGI integration attaches request.url
+        # and request.query_string to EVERY event type, so a SUCCESSFUL request
+        # shipped its query -- INBOUND_WEBHOOK_SECRET arrives as ?secret= on a
+        # @Public() route -- entirely unscrubbed, at a higher volume than the
+        # error path. Found by PR #427's own security re-audit.
+        before_send_transaction=scrub_sentry_event,
     )
 # ── End Sentry ────────────────────────────────────────────────────────────────
 

@@ -206,6 +206,14 @@ describe('request.url never carries a credential (founder ruling 2026-09-21)', (
     ['https://gw/api/v1/recommendations/digest/unsubscribe/TOK', 'https://gw/api/v1/recommendations/digest/unsubscribe/<redacted>'],
     // only the ONE segment after the prefix goes, so the route stays legible
     ['https://gw/api/v1/auth/invite/CODE/accept', 'https://gw/api/v1/auth/invite/<redacted>/accept'],
+    // the invite-REVOKE route: /invites/ is NOT /invite/, and it carries the SAME
+    // organization_invites.code. PR #427's correctness audit found it leaking
+    // exactly when the revoke FAILED — while the invite is still live.
+    ['/api/v1/restaurants/1111/invites/XK7Q2M', '/api/v1/restaurants/1111/invites/<redacted>'],
+    ['/api/v1/mobile/devices/ExponentPushToken', '/api/v1/mobile/devices/<redacted>'],
+    // two credentials in one path: the FIRST is redacted, which pins indexOf
+    // against lastIndexOf (that mutation survived every suite).
+    ['/invite/AAA/invite/BBB', '/invite/<redacted>/invite/BBB'],
     // relative URLs must work — this runs before the SDK normalises anything
     ['/invite/SECRETCODE?x=1', '/invite/<redacted>'],
     // ordinary pages are left alone
@@ -241,12 +249,16 @@ describe('request.url never carries a credential (founder ruling 2026-09-21)', (
       breadcrumbs: [
         { category: 'navigation', data: { from: '/reset-password?token=SECRET', to: '/login' } },
         { category: 'fetch', data: { url: '/invite/SECRETCODE' } },
+        // `to` is the direction a person navigates TOWARD an invite link, and
+        // dropping it from the key list survived every suite before this case.
+        { category: 'navigation', data: { from: '/login', to: '/invite/SECRETCODE' } },
         { category: 'ui.click' },
       ],
     }
     scrubSentryEvent(event)
     expect(event.breadcrumbs[0].data.from).toBe('/reset-password')
     expect(event.breadcrumbs[1].data.url).toBe('/invite/<redacted>')
+    expect(event.breadcrumbs[2].data.to).toBe('/invite/<redacted>')
     expect(JSON.stringify(event)).not.toContain('SECRET')
   })
 

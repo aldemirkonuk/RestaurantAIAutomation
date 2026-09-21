@@ -336,6 +336,34 @@ def check_init_posture(files: list[Path]) -> tuple[list[str], int]:
                     f"{rel}:{line} — Sentry init has no "
                     f"{'before_send' if is_py else 'beforeSend'} scrubber"
                 )
+            # Added 2026-09-21 by PR #427's security re-audit, which measured the
+            # leak this prevents. BOTH SDKs call the error hook for ERROR events
+            # ONLY — @sentry/core gates on `isErrorEvent(processedEvent) &&
+            # beforeSend`, and sentry_sdk skips it when event["type"] ==
+            # "transaction". Whenever tracing is on, a SUCCESSFUL request is
+            # sampled into a transaction carrying request.url, query_string,
+            # headers and cookies straight from the request-data integration —
+            # so a scrubber registered only on the error hook leaves the larger,
+            # quieter path wide open. The @Public() /calendar/feed/<token>.ics
+            # bearer shipped in the clear on 1 in 10 successful reads.
+            #
+            # Required unconditionally, not only when tracing is configured: a
+            # later `tracesSampleRate` would otherwise silently reopen it, and a
+            # hook that never fires costs nothing.
+            txn_ok = (
+                re.search(r"before_send_transaction\s*=", block)
+                if is_py
+                else re.search(r"beforeSendTransaction\s*[(:]", block)
+            )
+            if scrub_ok and not txn_ok:
+                problems.append(
+                    f"{rel}:{line} — Sentry init scrubs errors but not "
+                    f"transactions: add "
+                    f"{'before_send_transaction' if is_py else 'beforeSendTransaction'}"
+                    f". The error hook is NOT called for transaction events, and "
+                    f"the request-data integration attaches the URL, the query "
+                    f"string, headers and cookies to those too."
+                )
     return problems, checked
 
 
@@ -523,6 +551,44 @@ PUBLIC_PATH_PARAMS_NOT_CREDENTIALS = {
 
 _PUBLIC_RE = re.compile(r"@Public\(\)")
 _ROUTE_RE = re.compile(r"""@(?:Get|Post|Put|Patch|Delete)\(\s*["']([^"']*)["']""")
+# A route decorator whose argument is NOT a quoted literal — `@Get(SHARE_ROUTE)`
+# or a template literal. _ROUTE_RE cannot read those, so the scan would skip the
+# route entirely and the count would not drop: silence, not a signal. Refused
+# instead (see below). Found by PR #427's security re-audit, which walked past
+# the scan three ways.
+_ROUTE_NONLITERAL_RE = re.compile(
+    r"""@(?:Get|Post|Put|Patch|Delete)\(\s*(?!["'\)])[^)]*\)"""
+)
+
+
+def _decorator_block(lines: list[str], i: int) -> str:
+    """Every decorator attached to the same method as the route decorator on
+    line `i`.
+
+    Was a fixed +/-6-line window, which the re-audit defeated by putting
+    `@Public()` eight lines away — and `communications.controller.ts` already
+    separates a route decorator from its `@Public()` by 15 lines of rationale
+    comment on main today, so the blinding shape is the house style. Walks the
+    contiguous run of decorators, comments and blank lines in BOTH directions
+    instead, stopping at the method signature or the previous member.
+    """
+    def is_attached(ln: str) -> bool:
+        t = ln.strip()
+        return (
+            t.startswith("@")
+            or t.startswith("//")
+            or t.startswith("*")
+            or t.startswith("/*")
+            or t == ""
+        )
+
+    start = i
+    while start > 0 and is_attached(lines[start - 1]):
+        start -= 1
+    end = i
+    while end + 1 < len(lines) and is_attached(lines[end + 1]):
+        end += 1
+    return "\n".join(lines[start : end + 1])
 _CONTROLLER_RE = re.compile(r"""@Controller\(\s*["']([^"']*)["']""")
 
 
@@ -544,12 +610,25 @@ def check_public_path_params(repo: Path) -> tuple[list[str], int]:
         cm = _CONTROLLER_RE.search(text)
         base = "/" + cm.group(1).strip("/") if cm else ""
         lines = text.splitlines()
+        # A @Public() method whose route argument is not a quoted literal cannot
+        # be read by this scan. Refuse rather than skip: skipping leaves the
+        # count unchanged, which is indistinguishable from "nothing to check".
+        for i, line in enumerate(lines):
+            if not _ROUTE_NONLITERAL_RE.search(line):
+                continue
+            if _PUBLIC_RE.search(_decorator_block(lines, i)):
+                failures.append(
+                    f"{f.relative_to(repo)}:{i + 1}: @Public() route decorator "
+                    f"takes a non-literal argument, which this check cannot "
+                    f"read. Use a quoted string literal so the route is "
+                    f"auditable, or the credential it may carry is invisible here."
+                )
         for i, line in enumerate(lines):
             rm = _ROUTE_RE.search(line)
             if not rm:
                 continue
             # @Public() sits within a few decorator lines of the route
-            window = "\n".join(lines[max(0, i - 6) : i + 7])
+            window = _decorator_block(lines, i)
             if not _PUBLIC_RE.search(window):
                 continue
             route = rm.group(1)
@@ -720,6 +799,7 @@ def _self_test() -> int:
       sendDefaultPii: false,
       integrations: [],
       beforeSend(event) { return scrubSentryEvent(event) },
+      beforeSendTransaction(event) { return scrubSentryEvent(event) },
     })
     // email and username are deliberately not forwarded
     Sentry.setUser({ id: user.id, restaurantId: user.restaurantId })
