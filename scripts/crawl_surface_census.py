@@ -21,8 +21,10 @@ WHAT IT CHECKS (each line of output is one check)
               self canonical in the HTML (JavaScript off)
   closed      a signed-in route serves `noindex` in the HTML
   soft-404    three paths that exist nowhere answer 404
-  token-route each link that carries a secret (/reset-password, /verify-email,
-              /invite/*, /studio/invite/*) is noindex+nofollow and no-referrer
+  token-route one slashless sample of each link that carries a secret
+              (/reset-password, /verify-email, /invite/*, /studio/invite/*) is
+              noindex+nofollow and no-referrer; the trailing-slash forms are
+              not probed yet (ADR 0158, Known limits)
   vendor      the first published catalogue (if any) serves its title, one
               parseable JSON-LD block and a listing row; a bad slug is 404
   old-host    (--old-host) pages 308 to mudavym.com keeping path and query,
@@ -335,6 +337,8 @@ def check_token_routes(c: Census) -> None:
 
     The static guard in apps/web/src/lib/seo/crawl-surface.test.ts reads vercel.json, not what
     Vercel sends; this reads what it sends, whichever of several matching header rules won.
+    It probes one slashless sample per prefix; /reset-password/ and /verify-email/ are a known
+    gap (ADR 0158, Known limits).
     """
     for path in TOKEN_SAMPLES:
         r = fetch(c.url(path))

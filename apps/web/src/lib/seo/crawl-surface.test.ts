@@ -79,8 +79,10 @@ function conditionHolds(cond: { type: string; value: unknown }, host: string): b
 
 /**
  * Every value that a `headers` rule of `config` sets for `key` on a request to `pathname` on
- * `host`, in file order. A rule this cannot evaluate throws: a guard that skipped a rule it did
- * not understand would pass on exactly the rule that breaks it.
+ * `host`, in file order. A condition or parameter this does not model (a cookie or query
+ * condition, a `:name` source) throws rather than pass unexamined. It does not model
+ * path-to-regexp-only syntax, which it reads as a JavaScript regular expression, and it skips a
+ * rule gated on a host outside HOSTS (ADR 0158, Known limits).
  */
 function headerValuesFor(config: VercelConfig, key: string, pathname: string, host: string): string[] {
   const values: string[] = [];
@@ -193,7 +195,7 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
     }
   });
 
-  it('the header evaluator refuses a rule it cannot evaluate, rather than pass it unexamined', () => {
+  it('the header evaluator refuses a cookie condition or a :name source, rather than pass it unexamined', () => {
     const rule = (extra: Partial<Rule>): VercelConfig => ({
       rewrites: [],
       headers: [{ source: '/(.*)', headers: [{ key: 'Referrer-Policy', value: 'origin' }], ...extra }],
