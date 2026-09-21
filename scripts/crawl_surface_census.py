@@ -21,6 +21,8 @@ WHAT IT CHECKS (each line of output is one check)
               self canonical in the HTML (JavaScript off)
   closed      a signed-in route serves `noindex` in the HTML
   soft-404    three paths that exist nowhere answer 404
+  token-route each link that carries a secret (/reset-password, /verify-email,
+              /invite/*, /studio/invite/*) is noindex+nofollow and no-referrer
   vendor      the first published catalogue (if any) serves its title, one
               parseable JSON-LD block and a listing row; a bad slug is 404
   old-host    (--old-host) pages 308 to mudavym.com keeping path and query,
@@ -67,6 +69,9 @@ PUBLIC_PAGES = ["/", "/login", "/register", "/privacy"]
 CLOSED_SAMPLE = "/inventory"
 NOWHERE = ["/zz-census-nowhere-1", "/inventory-zz-census", "/zz/census/nowhere"]
 BAD_SLUG = "/v/zz-census-not-a-vendor"
+# One sample per TOKEN_PREFIXES entry in apps/web/src/lib/seo/routes.ts (a prefix ending in "/"
+# gets a made-up token); crawl-surface.test.ts fails when one is missing here.
+TOKEN_SAMPLES = ["/reset-password", "/verify-email", "/invite/zz-census", "/studio/invite/zz-census"]
 MAX_CHILD_SITEMAPS = 5
 MAX_LOCS_PER_SITEMAP = 25
 
@@ -87,6 +92,16 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def header_map(msg) -> dict[str, str]:
+    """Lower-cased names; a field sent more than once is one comma-joined value (RFC 9110 5.3),
+    which is how a browser reads it. A plain dict would keep only the last copy and hide the
+    first, and a second Referrer-Policy is exactly the case worth seeing."""
+    out: dict[str, list[str]] = {}
+    for name, value in msg.items():
+        out.setdefault(name.lower(), []).append(value)
+    return {name: ", ".join(values) for name, values in out.items()}
+
+
 def fetch(url: str, follow: bool = False, timeout: float = 20.0) -> Response:
     handlers = [] if follow else [NoRedirect()]
     opener = urllib.request.build_opener(*handlers)
@@ -94,10 +109,10 @@ def fetch(url: str, follow: bool = False, timeout: float = 20.0) -> Response:
     try:
         with opener.open(req, timeout=timeout) as res:
             body = res.read().decode("utf-8", "replace")
-            return Response(res.status, {k.lower(): v for k, v in res.headers.items()}, body)
+            return Response(res.status, header_map(res.headers), body)
     except urllib.error.HTTPError as err:
         body = err.read().decode("utf-8", "replace") if err.fp else ""
-        return Response(err.code, {k.lower(): v for k, v in (err.headers or {}).items()}, body)
+        return Response(err.code, header_map(err.headers) if err.headers else {}, body)
     except (urllib.error.URLError, TimeoutError, ConnectionError) as err:
         raise CannotReach(f"{url}: {err}") from err
 
@@ -315,6 +330,23 @@ def check_old_host(c: Census, old: str) -> None:
     c.check("old-host", r.status != 308, f"/api/v1/health/live: {r.status} (must not redirect)")
 
 
+def check_token_routes(c: Census) -> None:
+    """A link that carries a secret is not indexed and does not leak in a Referer.
+
+    The static guard in apps/web/src/lib/seo/crawl-surface.test.ts reads vercel.json, not what
+    Vercel sends; this reads what it sends, whichever of several matching header rules won.
+    """
+    for path in TOKEN_SAMPLES:
+        r = fetch(c.url(path))
+        robots = r.headers.get("x-robots-tag", "")
+        directives = {d.strip().lower() for d in robots.split(",")}
+        policies = {p.strip().lower() for p in r.headers.get("referrer-policy", "").split(",")}
+        ok = (r.status == 200 and {"noindex", "nofollow"} <= directives and policies == {"no-referrer"})
+        c.check("token-route", ok,
+                f"{path}: {r.status} x-robots-tag={robots!r} "
+                f"referrer-policy={r.headers.get('referrer-policy', '')!r}")
+
+
 def check_duplicate(c: Census, dup: str) -> None:
     for path in ["/", "/login", "/robots.txt"]:
         r = fetch(dup.rstrip("/") + path)
@@ -343,6 +375,7 @@ def main() -> int:
         check_text_file(c, "llms", "/llms.txt", "# Mudavym")
         check_heads(c)
         check_soft_404(c)
+        check_token_routes(c)
         vendors = check_sitemaps(c)
         check_vendor(c, vendors)
         if args.old_host:
