@@ -72,6 +72,7 @@ import { AuthContext } from '../../contexts/AuthContext';
 import type { MudavymGround } from '../../lib/mudavym/shellGround';
 import type { MudavymPage } from '../../lib/mudavym/useMudavymDesign';
 import { NO_CHROME, pageNameFor } from '../../lib/mudavym/pageNames';
+import { useDocumentTitle } from '../../lib/seo/RouteHead';
 import { HouseBell } from './HouseBell';
 import { HouseUserMenu } from './HouseUserMenu';
 // `.mdv-kbd`, `.mdv-item`, `.mdv-link`, `.mdv-quiet` and `.mdv-note` are the
@@ -152,6 +153,10 @@ export function HouseHeader({ page, ground }: HouseHeaderProps) {
   const auth = useContext(AuthContext);
   const [keys] = useState(chord);
   const [stuck, setStuck] = useState(false);
+
+  // The one place a signed-in page's tab title is set (ADR 0158 "Integration
+  // at cutover" item 1) — pages themselves never call document.title.
+  useDocumentTitle(pageNameFor(page, pathname));
 
   /* The hairline hardens once the page has scrolled under the header — the
      only state this bar has, and it is a fact about the page, not a flourish. */

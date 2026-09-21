@@ -134,57 +134,11 @@ export function VendorPortal() {
     }
   }, [slug, reload])
 
-  // Injected rather than rendered into the tree: JSON-LD must live in a real
-  // <script type="application/ld+json"> element for crawlers to read it, and
-  // React will not render a script tag from JSX.
-  useEffect(() => {
-    if (!page) return
-    const el = document.createElement('script')
-    el.type = 'application/ld+json'
-    el.text = JSON.stringify({
-      '@context': 'https://schema.org',
-      '@type': 'ItemList',
-      name: `${page.displayName} — wine catalogue`,
-      url: window.location.href,
-      numberOfItems: page.listings.length,
-      itemListElement: page.listings.map((l, i) => ({
-        '@type': 'ListItem',
-        position: i + 1,
-        item: {
-          '@type': 'Product',
-          name: l.productName,
-          ...(l.producer
-            ? { brand: { '@type': 'Brand', name: l.producer } }
-            : {}),
-          ...(l.vintage ? { productionDate: String(l.vintage) } : {}),
-          ...(l.price !== null
-            ? {
-                offers: {
-                  '@type': 'Offer',
-                  price: l.price,
-                  priceCurrency: l.currency,
-                  ...(l.inStock === null
-                    ? {}
-                    : {
-                        availability: l.inStock
-                          ? 'https://schema.org/InStock'
-                          : 'https://schema.org/OutOfStock',
-                      }),
-                  seller: { '@type': 'Organization', name: page.displayName },
-                },
-              }
-            : {}),
-        },
-      })),
-    })
-    document.head.appendChild(el)
-    const previousTitle = document.title
-    document.title = `${page.displayName} — wine catalogue`
-    return () => {
-      document.head.removeChild(el)
-      document.title = previousTitle
-    }
-  }, [page])
+  // JSON-LD and the tab title for this page are served in the response head
+  // (ADR 0158, `vendor-edge.ts`; `RouteHead.tsx` leaves a /v/ title as
+  // served) — a second client-side
+  // ItemList after render would contradict the first, so this page injects
+  // neither (ADR 0158 "Integration at cutover" item 2).
 
   const visible = useMemo(() => {
     if (!page) return []

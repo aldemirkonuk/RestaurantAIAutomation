@@ -108,6 +108,7 @@ Adjacent server-side leaks surfaced *on* this page as error copy: `auth.service.
 - Apple is declared and disabled too, and **cannot be enabled without a migration** — `user_oauth_accounts.provider` carries a CHECK admitting only `google|microsoft` (`baseline_from_production.sql:5771`). `identity-first-signin.spec.ts` fails the build if that is forgotten.
 - "Remember me" deliberately removed 2026-07-31 (v3.0 task 44.15) — rationale preserved in `Login.tsx`.
 - The extra round-trip is not cached: revisiting `/login` re-resolves. Acceptable at 10/10min per IP; would matter if the page ever polls.
+- **The resting field underline on the endpaper is about 2.3:1** (`--mdv-ep-line`, `--ink-3` at 60% over `--paper-0`, `endpaper.css`), below the 3:1 that WCAG 1.4.11 asks for when an underline is a field's only visible edge. Every field has a visible text label, and the focused underline is about 7.2:1, so nothing is unlabelled. Found by PR #397's pr-audit-gate (planner's final call, 2026-09-19). Named follow-up: Roadmap 7.
 
 ---
 
@@ -155,6 +156,23 @@ No database write. Client-side only: `accessToken`/`refreshToken` (`AuthContext.
 
 **Should be:** the one door, showing every sign-in method that identity actually has, and never naming one it does not.
 
+**2026-09-19 — sketch 118 Direction B built.** The founder chose B, the endpaper, over the
+sketch README's recommended A (ADR 0149 row 35; ADR 0143 bracket). When `on === true`
+(`usePublicDesign()`), the page renders `EndpaperShell` (`components/brand/EndpaperShell.tsx`)
+instead of `AuthShell`/`AuthCard`. The fields are the same (`Login.tsx:206-404`, unchanged) inside
+a new two-column book frame, and the OFF branch is unchanged. His later call the same day puts
+"Sign in with Google" on the first page as well (PR #397, merged 1fba79f57, shipped dark behind
+`VITE_MUDAVYM_PUBLIC`). His build directions (ledger fields, the seal pressing, the page turn,
+"The mark draws", refusals in the book's voice) are listed in sketch 118's README. The password
+step needs the api-gateway, so it is covered by vitest only.
+
+**The front matter (the Easter egg).** On the house path only, the endpaper is a real button that
+turns back to the inside cover ("müdavim") and a short poem about the book the house keeps
+(`EndpaperShell` `frontMatter`, `FrontMatter.tsx`; sketch 118 `front-matter.html` Direction 1).
+The founder asked that nothing advertise it, so there is no dog-ear or hover hint. The sign-in
+under it stays mounted and inert, so the typed address survives. Escape turns back, and focus
+follows the page. /register does not have it.
+
 Note: an earlier revision of this section cited a normalising regex at `Login.tsx:25-28` that collapsed auth errors into "Invalid email or password". **No such code exists in `Login.tsx`** — it was already stale when written; the page renders `err.message` verbatim. The correction is recorded rather than silently deleted, per CLAUDE.md §5b.
 
 | State | Handled? | Evidence |
@@ -162,7 +180,7 @@ Note: an earlier revision of this section cited a normalising regex at `Login.ts
 | Empty | n/a (form) | — |
 | Resolving | yes | "Checking…" disables Continue, `Login.tsx:175-198` |
 | Loading | yes | `loading` disables submit, `Login.tsx:61,89` |
-| Error | yes, verbatim from the gateway | `Login.tsx:158-170` — the backend's message is now the honest one, so normalising it would lose information |
+| Error | yes. On today's page the gateway's words, verbatim. On the house path a plain 401 or 429 is worded in the book's voice ("That password did not match." / "Too many tries — wait a moment."), keyed on HTTP status and never on message text. A coded refusal (`OAUTH_ONLY`, `NO_SIGNIN_METHOD`) and anything else keeps the gateway's words | `Login.tsx` `signInNote`; `Login.signInNote.test.tsx` |
 | No sign-in method | **yes, stated** | `Login.tsx:236-263` — amber panel + "Set a password" → `/forgot-password?email=…` |
 | Provider linked but unusable | yes, stated with reason | `Login.tsx:294-310`, fed by `unavailable[]` |
 | Gateway unreachable / 429 | yes, degrades | `AuthContext.tsx:627-655` falls back to `password + google`, marked `assumed`; the page never claims anything about the address |
@@ -178,3 +196,4 @@ Note: an earlier revision of this section cited a normalising regex at `Login.ts
 4. Move the rate-limit store off in-memory `Map` before running >1 gateway replica (`rate-limit.guard.ts:69-121`). *Blocked:* no shared cache reachable from a guard today — the same blocker is written up at `password-reset-throttle.guard.ts:20-28`. **Now load-bearing for two routes**, not one.
 5. Emit sign-in success/failure/method signals — §5 is `none` and this is the top of every funnel. *Blocked:* no signal sink exists (see [[get-started]] §11).
 6. Decide whether `GET /auth/check-email` should move to the same POST-with-body shape. Out of scope for ADR 0024, which deliberately left it alone. See [[register]] §13.
+7. **Raise the endpaper's resting field underline to at least 3:1** (WCAG 1.4.11) on both grounds, with tokens only. Change the line's weight and colour, not its style, which the founder approved. It is the same stylesheet that dresses [[register]], so the fix covers both pages. Measure the contrast and state it in the commit. See §9.

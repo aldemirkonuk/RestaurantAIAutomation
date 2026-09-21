@@ -42,7 +42,7 @@ website_scrape — which is the whole reason to host it" (`VendorPortal.tsx:40-4
 link (`PAGE_MAP.md` entry-point list) — entry is entirely external: the vendor shares
 their own URL, and search engines can index it via the injected schema.org JSON-LD
 (`ItemList` → `Product` → `Offer` with price/currency/availability,
-`VendorPortal.tsx:118-158`) plus a real `document.title` (`:154`). Every visit is a
+`VendorPortal.tsx:118-158`) plus a real `document.title` (`:154`). [CLOSED 2026-09-21: see §9.] Every visit is a
 vendor marketing *their* catalogue on Mudavym infrastructure — inbound acquisition the
 platform gets for free, and the priced observations feed [[vendor-prices]] comparisons.
 Route comment: `App.tsx:159-161`.
@@ -55,7 +55,7 @@ Route comment: `App.tsx:159-161`.
 - `GET {VITE_API_GATEWAY_URL}/api/v1/vendor-portal/:slug` — direct axios
   (`VendorPortal.tsx:93-94`); ENDPOINTS.md:656-660, explicit `@Public()` 🌐
 - The sibling `GET /vendor-portal/:slug/jsonld` (ENDPOINTS.md:661) is **not called by
-  this page** — it serves the ingester; the page injects its own JSON-LD client-side.
+  this page** — it serves the ingester; the page injects its own JSON-LD client-side. [CLOSED 2026-09-21: see §9.]
 
 ## 5. Signals
 none — no view tracking of any kind. For the one page whose whole point is external
@@ -82,7 +82,7 @@ which also means zero Mudavym attribution (see §9).
   a true 404 for anything unpublished and a 503 on outage. Search and answer engines may
   read it; training crawlers are asked not to (robots.txt). **Still open:** the page's own
   client injection (`:118-158`) now duplicates the served block until it is deleted at the
-  ADR 0149 cutover (ADR 0158 "Integration at cutover" 2).
+  ADR 0149 cutover (ADR 0158 "Integration at cutover" 2). [CLOSED 2026-09-21, wave-5 lane C: VendorPortal.tsx no longer injects JSON-LD or writes `document.title`; the served head at `/v/:slug` carries both, and `RouteHead` (mounted once in `App.tsx`) leaves that served title in place. Check: CLAIMS `ADR-0158-VENDORPORTAL-CLIENT-INJECTION-REMOVED`.]
 - No platform attribution or sign-up path anywhere on the page — the Growth loop
   (vendor's customer → Mudavym) has no hook.
 - No pagination; entire catalogue in one payload/table.
@@ -124,11 +124,11 @@ no tenant, addressed by slug. The exposure is deliberately bounded:
   same way (`:154`). A crawler that does not execute JS sees the empty SPA shell from
   `vercel.json`'s rewrite (`:11-13`). The **server-side** `GET /vendor-portal/:slug/jsonld`
   exists and is `@Public()` (`vendor-portal.controller.ts:39-45`) — nothing wires it into
-  served HTML.
+  served HTML. [CLOSED 2026-09-21: see §9.]
 - **The client JSON-LD is a lossier copy of the server's.** The server emits
   `countryOfOrigin`, `size` as a `QuantitativeValue` in MLT, and `eligibleQuantity` for
   multi-bottle packs (`vendor-portal.service.ts:140-166`); the client omits all three
-  (`VendorPortal.tsx:131-150`). Two implementations of one contract, already diverged.
+  (`VendorPortal.tsx:131-150`). Two implementations of one contract, already diverged. [CLOSED 2026-09-21: see §9.]
 - **No OpenGraph or meta tags at all** — a link shared in chat or social unfurls blank.
 - **Zero telemetry.** The one page whose entire purpose is external reach cannot report a
   single visit (§5).
@@ -185,7 +185,7 @@ Everything on a **published** page, and nothing else:
   (`:51-57`).
 - Client-side search across product/producer/region/country/grape (`:163-168`) and three
   sorts (`:171-187`).
-- The injected JSON-LD block (`:118-158`) and a real `document.title` (`:154`).
+- The injected JSON-LD block (`:118-158`) and a real `document.title` (`:154`). [CLOSED 2026-09-21: see §9.]
 
 **Not visible, and confirmed absent from the payload:** `edit_token`, `master_wine_id`,
 `match_method`, `is_published`, any restaurant id, any negotiated rate, any other vendor's

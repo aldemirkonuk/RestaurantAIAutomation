@@ -184,10 +184,13 @@ it('preserves unknown vendor stock and volume and recovers from a failed read', 
   expect(container.querySelector('table')).toBeInTheDocument()
   expect(unitPrice(listing)).toBeNull()
   expect(unitPrice({ ...listing, volumeMl: 750 })).toBe(20)
-  const json = JSON.parse(
-    document.querySelector('script[type="application/ld+json"]')!.textContent!,
-  )
-  expect(json.itemListElement[0].item.offers).not.toHaveProperty('availability')
+  // The unknown-stock -> no schema.org `availability` claim is proven server
+  // side now (ADR 0158 "Integration at cutover" item 2 removed this page's
+  // own JSON-LD injection; the served head is what a crawler reads, and its
+  // ItemList is covered by apps/api-gateway's vendor-portal-read-errors.spec.ts
+  // and apps/web's vendor-edge.test.ts). This page no longer writes a
+  // <script type="application/ld+json"> node, so there is nothing to parse here.
+  expect(document.querySelector('script[type="application/ld+json"]')).toBeNull()
   fireEvent.change(screen.getByLabelText('Find a wine'), {
     target: { value: 'absent' },
   })

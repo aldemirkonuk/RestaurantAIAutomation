@@ -52,6 +52,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { PageLoader } from './components/ui/page-loader'
+import { RouteHead } from './lib/seo/RouteHead'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { OfflineBanner } from './components/ui/SyncStatus'
 
@@ -165,6 +166,7 @@ function App() {
               <WebSocketProvider>
                 <RealtimeProvider>
                   <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <RouteHead />
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 {/* Public Routes */}

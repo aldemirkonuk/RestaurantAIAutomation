@@ -24,8 +24,23 @@
  * form. Two claims are read from source instead of a render: every house-side
  * class string in the three files, including states no test drives (claim 4),
  * and the stylesheet, which jsdom does not resolve (claim 5).
+ *
+ * UPDATED for sketch 118, Direction B (the endpaper — `EndpaperShell.tsx`).
+ * ADR 0143's own row 35 bracket (2026-09-17) names exactly these two pages
+ * and "reopens its own colour-only reading" for them specifically, so claim 3
+ * ("nothing moves") no longer holds by construction once the endpaper ships:
+ * the ON tree is now a two-column book, not a re-inked copy of the OFF card.
+ * What claim 3 is FOR — proving the switch never touches a FIELD, only how
+ * the page is dressed — still matters and is re-asserted below by comparing
+ * the labelled controls each tree exposes, not by comparing the whole tree.
+ * Claims 1, 2, 4 and 5 are untouched: OFF is still byte-identical to today
+ * (claim 1 passes unmodified), and the fields inside the leaf still take
+ * their colour only from tokens (claim 2, minus the now-intentional
+ * `data-ground="paper"` on the root — every other rebuilt page states its
+ * own ground the same way, `lib/mudavym/shellGround.ts`).
  */
 
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createElement, type ReactElement } from 'react'
@@ -167,6 +182,16 @@ function renderAt(ui: ReactElement, url: string) {
 
 const WAIT = { timeout: 3000 }
 
+/*
+ * Where the endpaper (sketch 118 B, founder's build directions 2026-09-19)
+ * words a state differently from today's page, a reach waits for either
+ * wording: the state reached is the same one. Today's step bar says "Step 1
+ * of 2"; the endpaper's folio says "Register · 1 of 2". Today's door shows
+ * its cards; the endpaper's door is the sketch's two plain acts.
+ */
+const STEP_ONE = /^(Step 1 of 2|Register · 1 of 2)$/
+const DOOR = /^(Join Your Team|I have an invite code)$/
+
 async function loginResolved(result: {
   methods: ReturnType<typeof method>[]
   unavailable?: ReturnType<typeof method>[]
@@ -209,7 +234,7 @@ async function joinAccount(emailAvailable: boolean) {
   const r = renderAt(createElement(Register), '/register?invite=abcdefgh')
   await screen.findByText('Invited by', undefined, WAIT)
   fireEvent.click(screen.getByRole('button', { name: /continue/i }))
-  await screen.findByText('Your Account', undefined, WAIT)
+  await screen.findByText(/^(Your Account|Who is joining\?)$/, undefined, WAIT)
   type('Full Name *', 'Deniz Kaya')
   type('Email *', 'deniz@house.test')
   type('Password *', 'long-enough-1')
@@ -221,7 +246,7 @@ async function joinAccount(emailAvailable: boolean) {
 async function createToSection(section: 1 | 2 | 3) {
   gateway({ emailAvailable: true })
   const r = renderAt(createElement(Register), '/register?type=new')
-  await screen.findByText('Step 1 of 2', undefined, WAIT)
+  await screen.findByText(STEP_ONE, undefined, WAIT)
   type('Full Name *', 'Deniz Kaya')
   type('Email *', 'deniz@house.test')
   type('Password *', 'long-enough-1')
@@ -256,7 +281,7 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
     reach: async () => {
       h.auth.error = 'The gateway refused the sign-in.'
       const r = renderAt(createElement(Login), '/login')
-      await screen.findByText('Login Failed', undefined, WAIT)
+      await screen.findByText(/^(Login Failed|Sign-in didn’t go through\.)$/, undefined, WAIT)
       return r.container
     },
   },
@@ -285,7 +310,7 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
     page: 'register',
     reach: async () => {
       const r = renderAt(createElement(Register), '/register')
-      await screen.findByText('Join Your Team', undefined, WAIT)
+      await screen.findByText(DOOR, undefined, WAIT)
       return r.container
     },
   },
@@ -328,7 +353,7 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
     reach: async () => {
       gateway({ emailAvailable: false })
       const r = renderAt(createElement(Register), '/register?type=new')
-      await screen.findByText('Step 1 of 2', undefined, WAIT)
+      await screen.findByText(STEP_ONE, undefined, WAIT)
       type('Email *', 'taken@house.test')
       await screen.findByText(/already registered/, undefined, WAIT)
       return r.container
@@ -349,9 +374,6 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
 /* ── what counts as "colour" ────────────────────────────────────────────── */
 
 const LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(rgba?|hsla?)\(/
-
-/** The switch itself: the token scope and the page's stylesheet hook. */
-const HOUSE_SCOPE = new Set(['mudavym', 'mdv-auth'])
 
 /**
  * True when a utility class changes only paint — colour, shadow, focus ring,
@@ -390,42 +412,36 @@ export function isColourClass(token: string): boolean {
   return false
 }
 
-function classTokens(el: Element): string[] {
-  return (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
-}
-
-/** Inline declarations with the paint ones removed. */
-function layoutStyle(el: Element): string {
-  return (el.getAttribute('style') ?? '')
-    .split(';')
-    .map((d) => d.trim())
-    .filter(Boolean)
-    .filter((d) => !/^(box-shadow|background|background-color|background-image|color|border-color|outline|opacity)\s*:/.test(d))
-    .join('; ')
-}
-
-/** A structural fingerprint of a tree: everything except paint. */
-function fingerprint(root: Element): string[] {
-  const out: string[] = []
-  const walk = (el: Element, depth: number) => {
-    const attrs = Array.from(el.attributes)
-      .filter((a) => a.name !== 'class' && a.name !== 'style')
-      .map((a) => `${a.name}=${a.value}`)
-      .sort()
-    const layout = classTokens(el)
-      .filter((t) => !isColourClass(t) && !HOUSE_SCOPE.has(t))
-      .sort()
-    const ownText = Array.from(el.childNodes)
-      .filter((n) => n.nodeType === 3)
-      .map((n) => n.textContent)
-      .join('')
-    out.push(
-      `${'  '.repeat(depth)}<${el.tagName.toLowerCase()} ${attrs.join(' ')}> [${layout.join(' ')}] {${layoutStyle(el)}} "${ownText}"`,
-    )
-    Array.from(el.children).forEach((c) => walk(c, depth + 1))
-  }
-  walk(root, 0)
-  return out
+/**
+ * A field-level signature: which controls exist, in what order, with what
+ * identity — tag, id, type, name/label, required, disabled, and (for
+ * anything that is not a password) its current value. This is "same fields
+ * and flow" (ADR 0143 row 35's own words, and the sketch 118 README's)
+ * turned into something a test can check: not that no pixel differs
+ * (claim 3, pre-endpaper), but that no field was renamed, reordered, added
+ * or dropped when the chrome around it changed to the book. Deliberately
+ * blind to class/style — that is claim 2's job, above.
+ */
+function fieldSignature(root: Element): string[] {
+  // The endpaper's own controls (the front-matter turn, /login only) are the
+  // book's chrome, not the form's: they exist only on the house path by design.
+  return Array.from(root.querySelectorAll('input, select, textarea, button, label, a[href]'))
+    .filter((el) => !el.closest('[data-endpaper-chrome]'))
+    .map((el) => {
+    const tag = el.tagName.toLowerCase()
+    // A field's label and a link's destination are part of "same fields and
+    // flow" too (PR #397's audit plan): the label's words, and where a link goes.
+    if (tag === 'label') return `<label for=${el.getAttribute('for') ?? ''}> "${(el.textContent ?? '').replace(/\s+/g, ' ').trim()}"`
+    if (tag === 'a') return `<a href=${el.getAttribute('href')}>`
+    const id = el.getAttribute('id') ?? ''
+    const type = el.getAttribute('type') ?? ''
+    const label = el.getAttribute('aria-label') ?? el.getAttribute('name') ?? ''
+    const required = el.hasAttribute('required')
+    const disabled = el.hasAttribute('disabled')
+    const value = type === 'password' ? '' : (el as HTMLInputElement | HTMLSelectElement).value ?? ''
+    const text = tag === 'button' ? (el.textContent ?? '').replace(/\s+/g, ' ').trim() : ''
+    return `<${tag}#${id} type=${type} name=${label} required=${required} disabled=${disabled}> "${text}" =${value}`
+  })
 }
 
 /* ── 1. OFF is today's page ─────────────────────────────────────────────── */
@@ -439,6 +455,31 @@ describe('public switch OFF — today’s page', () => {
     // Today's ground literal, on the page root, exactly as it ships.
     expect(container.firstElementChild).toHaveClass('bg-[#FAF7F5]')
   })
+
+  /*
+   * The byte-level proof. Claim 3 compares controls, which says nothing about
+   * a class string or a node that moved on today's page; this does. Each
+   * fingerprint is the sha256 of the OFF render as origin/main 22695d129
+   * ships it (see the fixture's `_what` for how to re-take one on purpose).
+   * Added after PR #397's audit plan found the old whole-tree fingerprint
+   * gone and a stray space in one OFF class string that nothing caught.
+   */
+  const OFF_FINGERPRINTS = (
+    JSON.parse(readFileSync(resolve(process.cwd(), 'src/pages/__tests__/authPages.off-fingerprints.json'), 'utf8')) as {
+      states: Record<string, string>
+    }
+  ).states
+  it.each(STATES)('$name renders today’s page byte for byte', async ({ name, reach }) => {
+    setSwitch(false)
+    const container = await reach()
+    expect([name, createHash('sha256').update(container.innerHTML).digest('hex')]).toEqual([name, OFF_FINGERPRINTS[name]])
+  })
+
+  // No "absence is off" test here: decision 0149 row 37 turned the house on
+  // unconditionally, so absence is ON — asserted in section 2 below. The
+  // origin/main copy of that test came back through a merge conflict on
+  // 2026-09-21 and was removed again, because it asserts the opposite of
+  // publicDesign.ts.
 })
 
 /* ── 2. ON wears the house ──────────────────────────────────────────────── */
@@ -453,15 +494,19 @@ describe('public switch ON — the house, from tokens', () => {
     // page — and no `data-ground`, so the page follows the visitor's theme.
     expect(scopes[0]).toBe(container.firstElementChild)
     expect(scopes[0]).toHaveClass('mdv-auth')
-    expect(scopes[0].hasAttribute('data-ground')).toBe(false)
+    // The endpaper states its own ground (paper), same convention as every
+    // other rebuilt page (`shellGround.ts`) — mudavym.css's bare `.mudavym`
+    // resolves to Warm Charcoal now, so paper needs the explicit escape.
+    expect(scopes[0].getAttribute('data-ground')).toBe('paper')
     expect(scopes[0]).not.toHaveClass('bg-[#FAF7F5]')
   })
 
   it('absence is on: with no override and no env, the page wears the house', async () => {
     // No setSwitch() call at all — publicDesign.ts now resolves true unless
     // an explicit "off" override says otherwise (decision 0149 row 37).
+    // DOOR, not 'Join Your Team': the ON door is the endpaper's (sketch 118 B).
     const r = renderAt(createElement(Register), '/register')
-    await screen.findByText('Join Your Team', undefined, WAIT)
+    await screen.findByText(DOOR, undefined, WAIT)
     const scopes = r.container.querySelectorAll('.mudavym')
     expect(scopes).toHaveLength(1)
     expect(scopes[0]).toBe(r.container.firstElementChild)
@@ -480,14 +525,42 @@ describe('public switch ON — the house, from tokens', () => {
 
 /* ── 3. Nothing moves ───────────────────────────────────────────────────── */
 
-describe('the switch changes paint and nothing else', () => {
-  it.each(STATES)('$name: same elements, order, text, attributes and layout classes', async ({ reach }) => {
+describe('the switch changes the chrome, never the fields', () => {
+  it.each(STATES.filter((st) => st.name !== 'register-selector'))('$name: the same controls, in the same order, both switch positions', async ({ reach }) => {
     setSwitch(false)
-    const off = fingerprint((await reach()).firstElementChild as Element)
+    const off = fieldSignature(await reach())
     cleanup()
     setSwitch(true)
-    const on = fingerprint((await reach()).firstElementChild as Element)
+    const on = fieldSignature(await reach())
     expect(on).toEqual(off)
+  })
+
+  /*
+   * The door is the one screen whose controls the founder redrew (sketch 118:
+   * two plain acts in place of the four responsive cards — two per layout,
+   * both always in the DOM). Its buttons differ by design, so what must hold
+   * is the flow: every button on it leads to one of the same two paths, and
+   * both paths are offered, in both switch positions.
+   */
+  it('register-selector: the door leads to the same two paths, both switch positions', async () => {
+    const destinations = async (on: boolean) => {
+      setSwitch(on)
+      const count = (await STATES.find((st) => st.name === 'register-selector')!.reach()).querySelectorAll('button').length
+      cleanup()
+      const reached = new Set<string>()
+      for (let i = 0; i < count; i++) {
+        setSwitch(on)
+        const door = await STATES.find((st) => st.name === 'register-selector')!.reach()
+        fireEvent.click(door.querySelectorAll('button')[i])
+        if (await screen.findByLabelText('Invite Code', undefined, { timeout: 500 }).catch(() => null)) reached.add('join')
+        else if (screen.queryByLabelText('Full Name *')) reached.add('create')
+        else reached.add(`button ${i}: nowhere`)
+        cleanup()
+      }
+      return [...reached].sort()
+    }
+    expect(await destinations(false)).toEqual(['create', 'join'])
+    expect(await destinations(true)).toEqual(['create', 'join'])
   })
 
   it('the classifier keeps layout classes out of the paint set', () => {
@@ -497,6 +570,61 @@ describe('the switch changes paint and nothing else', () => {
     for (const paint of ['text-inkm-1', 'bg-paper-0', 'border-paper-2', 'hover:bg-seal-deep', 'focus:ring-4', 'shadow-none', 'outline-none', 'opacity-80', 'bg-[radial-gradient(ellipse_at_20%_0%,var(--seal-tint),transparent_50%)]', '!text-inkm-3', 'text-[color:var(--ink-1)]']) {
       expect([paint, isColourClass(paint)]).toEqual([paint, true])
     }
+  })
+})
+
+/* ── 3b. Google on the first page — the house path only ─────────────────── */
+
+/*
+ * The founder, 2026-09-19 (ADR 0149 row 35): on the endpaper, "Sign in with
+ * Google" also sits under the address on the first page. Today’s page keeps
+ * today’s flow — Google only once the address resolves to it. The host is
+ * the same mounted element either way (One Tap needs it mounted); only
+ * whether it is shown differs, so the control lists above stay equal.
+ */
+describe('Google on the first page — the house path only', () => {
+  const googleHost = () => screen.getByText(/Google sign-in isn.t configured/).closest('[aria-hidden]')
+
+  it('ON shows it under the address, before any method is resolved', async () => {
+    setSwitch(true)
+    await STATES.find((st) => st.name === 'login-email')!.reach()
+    expect(googleHost()).toHaveAttribute('aria-hidden', 'false')
+  })
+
+  it('OFF keeps it hidden until the address resolves to Google', async () => {
+    setSwitch(false)
+    await STATES.find((st) => st.name === 'login-email')!.reach()
+    expect(googleHost()).toHaveAttribute('aria-hidden', 'true')
+  })
+})
+
+/* ── 3c. The front matter — /login's endpaper only ───────────────────────── */
+
+/*
+ * The founder's Easter egg (2026-09-19): the endpaper on /login turns back to
+ * the front matter. It belongs to /login's house path alone — not /register,
+ * and not today's page.
+ */
+describe('the front matter — /login on the house path only', () => {
+  const TURN = 'Turn back to the front of the book'
+  const reachOf = (name: string) => STATES.find((st) => st.name === name)!.reach
+
+  it('ON /login offers the turn', async () => {
+    setSwitch(true)
+    await reachOf('login-email')()
+    expect(screen.getByRole('button', { name: TURN })).toBeInTheDocument()
+  })
+
+  it('ON /register does not', async () => {
+    setSwitch(true)
+    await reachOf('register-selector')()
+    expect(screen.queryByRole('button', { name: TURN })).toBeNull()
+  })
+
+  it('OFF /login does not', async () => {
+    setSwitch(false)
+    await reachOf('login-email')()
+    expect(screen.queryByRole('button', { name: TURN })).toBeNull()
   })
 })
 

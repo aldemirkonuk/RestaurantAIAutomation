@@ -581,6 +581,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               owner="public to anyone with the link"
               chips={[{ label: feed ? 'Published' : 'Not published', tone: feed ? 'on' : 'off' }]}
               subtitle={feed ?? DASH}
+              subtitleIsSecret={Boolean(feed)}
               why={
                 <>
                   A read-only iCal address. It is{' '}
