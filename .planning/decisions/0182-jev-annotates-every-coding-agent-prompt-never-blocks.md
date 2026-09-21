@@ -245,6 +245,115 @@ passes `--for=cursor|claude|codex`. When `--for=claude` sees a Cursor
 payload (`beforeSubmitPrompt` / `cursor_version` / `conversation_id`) it
 returns `{continue: true}` and does not call TypeSafe.
 
+## Addendum 2026-09-21 — what leaves the machine, decided rather than defaulted
+
+The pre-merge audit gate BLOCKED PR #408 on this, and the block was right: this
+ADR routed every prompt typed in this repo to a third party and said nothing
+about it. Grepped for `retention`, `retain`, `privacy`, `PII`, `redact`,
+`stored`, `DPA`, `trains on`, `data process`, `GDPR`, `KVKK` — **zero matches**.
+The Consequences section named exactly one cost of the arrangement, the dollar
+cost. The largest thing being given up was absent, and the document's shape
+presented the matter as settled. That is precisely the §0.1 failure — an
+undecided fork reading as a decision.
+
+Four of the options this ADR considered branch on *how to plumb the hook*. Not
+one branched on *what to send*. §3 asks the branching factor to grow with depth;
+this went three levels deep on hook dialects and zero levels deep on payload
+shape.
+
+**The founder's ruling, 2026-09-21, asked directly and answered directly:**
+
+> "it should send every prompt to typesafe to work it properly therefore, make
+> adjustments accordingly"
+
+**So: the whole prompt goes, verbatim, and that is the decision — not a default.**
+No truncation, no redaction, no content allow-list. The rejected alternative is
+named here so it is on the record rather than implied: redacting UUIDs, keys and
+SQL literals before the POST was considered and refused, because Jev classifies
+the *request* — type, risk, ambiguity — and a prompt with its nouns removed is a
+different request. A gate that reads a redacted prompt answers about a prompt
+nobody typed.
+
+**What that means concretely, measured on the wire 2026-09-21 against a local
+interception server** (PR #408 security angle):
+
+- The payload is `{"state": {"user_message": <the entire prompt>}, "model":
+  "jev-latest", "questions": {...}}` to `POST https://api.typesafe.ai/v1/systemone`
+  over TLS, with `Authorization: Bearer <JEV_API_KEY>`.
+- A test prompt carrying a vendor email address, an IBAN, a tenant UUID, a
+  production `UPDATE ... WHERE id=` and a pasted `SUPABASE_SERVICE_ROLE_KEY=`
+  arrived byte-identical.
+- Under ADR 0090 this repo is also where audit and merge work happens, so the
+  prompts that start those runs carry PR diffs, head SHAs and CI state.
+- Only machines holding `JEV_API_KEY` transmit. CI runners and any contributor
+  without the key send nothing — the gate reports "not configured" and steps
+  aside.
+
+**What is still open, and is not blocking:** TypeSafe's retention and training
+terms are not written down anywhere in this repo.
+`.planning/01-org/corporate/compliance-privacy/compliance-privacy-charter.md:202`
+records "no policy, no DPA, no data-processing record, no subprocessor register",
+with `compliance.subprocessor_classification` at 0/50. This arrangement adds the
+51st runtime host and classifies it as neither. That is a real gap, it is the
+founder's to close, and it is now **written down instead of absent** — which was
+the whole of the block. Filed as a fork in `OPEN-DECISIONS.md` rather than left
+in prose here, because prose rots and nothing re-reads it (§5b).
+
+Not verified, and stated so rather than assumed: whether `UserPromptSubmit`
+fires for subagent invocations. If it does, every audit subagent prompt egresses
+too, which would widen this materially.
+
+## Addendum 2026-09-21 — six defects the audit found in the gate itself
+
+Fixed in the same pass; each had a concrete failure and each now has a check
+that fails without it.
+
+1. **The gate could exit 2, which is the BLOCK signal** — the exact inverse of
+   this ADR's one locked constraint. `$CLAUDE_PROJECT_DIR` empty, or
+   `git rev-parse` failing (git absent, a `safe.directory` refusal, a cwd outside
+   a repo), made the argument `/scripts/jev/prompt_gate.py` and CPython exited 2,
+   which erases the prompt. All three configs now run through
+   `sh -c '... || exit 0'` with a `${CLAUDE_PROJECT_DIR:-.}` fallback.
+   `check_jev_never_blocks.py` now **runs the script as a subprocess** on six
+   paths and asserts the process exit code — it previously only walked
+   `emit_payload()`'s returned dict, so `main()` returning 2 passed both it and
+   the 24-case suite. It also now fires a **High-risk** answer, the one branch
+   every fixture had pinned to 0.0, because this ADR itself names "tighten from
+   annotate to ask on high risk" as a one-line future edit.
+2. **112 of 148 worktrees never found the key**, including every
+   `~/.cursor/worktrees/*` checkout — the surface this was built for. The walk
+   started at `__file__` and an external linked worktree has no `.env` and no
+   main checkout above it, so it ran to `/`. It now reads the worktree's `.git`
+   *file*, follows `gitdir:` to the main checkout and searches there. Read, never
+   executed — no `git` subprocess, so it survives the same conditions that caused
+   defect 1. Two tests pin it, including one that refuses to borrow a stranger's
+   `.env` from a shared ancestor.
+3. **The bearer token followed redirects to any host**, including an https→http
+   downgrade, because `urlopen`'s default opener follows `Location` and CPython
+   forwards `Authorization`. Reproduced live: a `302` to a local server handed it
+   `Bearer <key>` in plaintext. Now an opener with a refusing redirect handler.
+4. **One extra field silently turned the gate into a no-op.** `_is_cursor_payload`
+   returned True on the mere presence of `conversation_id` / `cursor_version` /
+   `workspace_roots`, so such a field appearing in a future Claude Code payload
+   would route a real prompt to `cursor-replay` — no call, no annotation, no
+   stderr, exit 0, indistinguishable from a working gate. Now keyed on the event
+   name alone, which is all Cursor ever needed.
+5. **Non-object stdin crashed.** `[]`, `null` or `"str"` reached `.get` before any
+   type guard, raising `AttributeError` outside the fail-open envelope: exit 1 and
+   a traceback instead of an annotation. Guarded.
+6. **`.codex/` had no ignore rule, and this change is what creates the directory.**
+   The Codex CLI writes credentials to `.codex/auth.json` and every prompt it has
+   been given to `.codex/history.jsonl`, and this ADR records moving to it as the
+   next step. `.gitignore` now carries the symmetric `.codex/*` + `!.codex/hooks.json`
+   carve-out. Nothing was exposed when it was found — only `hooks.json` existed.
+
+**Known and not fixed here:** `TIMEOUT_SECONDS` is a per-socket timeout, not a
+deadline — a server trickling bytes held the hook open for 212 seconds against a
+stated bound of 6. The real bound is the harness `timeout: 8`, which is enforced
+for Claude Code and config-verified-but-never-fired for Cursor and Codex. Left
+as-is because fixing it properly means a wall-clock deadline around the whole
+call, which is a change worth its own pass.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
