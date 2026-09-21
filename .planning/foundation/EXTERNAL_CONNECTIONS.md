@@ -46,6 +46,7 @@ so `ToastController` carries no JWT guard by design; its HMAC is the whole authe
 | **Firebase FCM** | `services/agent-orchestrator/services/push_notification_service.py:295` | FCM server key (unset → mock) | Mobile push |
 | **Supabase** | `apps/api-gateway/src/database/database.service.ts:13-15`; orchestrator `core/database.py` | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET` | Postgres, auth, storage — the system of record |
 | **Sentry** | `apps/api-gateway/src/common/error-tracking/sentry.service.ts:29`; `apps/web/src/lib/error-tracking.ts:154` | `SENTRY_DSN`, `VITE_SENTRY_DSN` | Error tracking |
+| **TypeSafe AI (Jev)** — added 2026-09-21, not in the 2026-08-25 count above | `scripts/jev/prompt_gate.py:74` (`https://api.typesafe.ai/v1/systemone`), developer machines only — outside the `apps/**`/`services/**` scope of the host census below, which is why a census re-run would miss it | `JEV_API_KEY` (or `TYPESAFE_API_KEY`, `prompt_gate.py:123`) | Today: every coding-agent prompt typed in this repo, verbatim (ADR 0182). Planned, not built: the menu line and claim P7(b) checks (ADR 0163 §4 P7, §14). **Unclassified** — its retention terms and classification are OD-133's |
 
 **Arbitrary user-supplied URLs** (vendor-intel page extraction) go through the SSRF guard —
 `safeFetch` re-validates every redirect hop: `apps/api-gateway/src/common/net/ssrf-guard.ts:150`,
