@@ -143,7 +143,9 @@ row first, `relay_email_queued`, at queue time — before any attempt row
 exists, since nothing is attempted with a provider until the window closes.
 `attemptRecorded` is `false` on a queued response for exactly that reason.] Not decided here: whether the
 orchestrator should release or park a conversation the relay refused with a 4xx
-(ADR 0099, Proposed, rejected widening its classifier).] [CORRECTED 2026-09-18:
+(ADR 0099, Proposed, rejected widening its classifier).] [DECIDED 2026-09-19,
+founder, lane answers batch 4: 400/403/422 are definite refusals and 401
+parks; ADR 0099 is now Locked, see its bracket.] [CORRECTED 2026-09-18:
 the queued shape above did not work against the real schema —
 `scheduled_send_at NOT NULL` rejected `cancelQueued`'s and `dispatchQueued`'s
 own terminal writes with 23502, so the undo never cancelled anything and a

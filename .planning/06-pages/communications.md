@@ -857,7 +857,11 @@ fixture. Still open: whether a relay 4xx should release a vendor conversation
 for retry or park it (ADR 0099's rejected alternative, never decided). [Which
 mailbox a person's mail leaves from — the other question this paragraph
 originally left open — was answered by the founder 2026-09-17, above; only the
-4xx-release-vs-park fork remains open and unfiled.]] [CORRECTED 2026-09-18,
+4xx-release-vs-park fork remains open and unfiled.]] [DECIDED 2026-09-19,
+founder, lane answers batch 4: that fork is closed; 400, 403 and 422 release
+the vendor conversation's claim as definite send refusals, 401 still parks it
+as SEND_UNCONFIRMED, and 404 and 429 are unchanged. ADR 0099 is now Locked,
+see its bracket.] [CORRECTED 2026-09-18,
 relay3 confirmer: the migration declared `scheduled_send_at NOT NULL`, and
 `cancelQueued` and both of `dispatchQueued`'s terminal writes all set it to
 `null` — Postgres rejected every one of the three with 23502. The undo could
