@@ -13,7 +13,7 @@
 -- the six per-category channel arrays for any row, old or new
 -- (`NotificationsService.updatePreferences`, `notifications.service.ts:
 -- 1156-1196`, never touches `low_stock_channels`). Before the 42P10 upsert
--- bug was fixed (row 39, migration 20260918120000), a member with NO
+-- bug was fixed (row 39, migration 20260921090000), a member with NO
 -- preferences row got low-stock email by default (a missing row was treated
 -- as "every channel allowed"). Now that 42P10 is fixed, the FIRST TIME a
 -- member saves ANY notification setting a real preferences row is created at
@@ -26,7 +26,7 @@
 -- shipped without this fix would have tripped it.
 --
 -- Same shape as row 46's `financial_reports_channels` fix (migration
--- 20260918123000): changing the DEFAULT applied to a NEW row (or a row whose
+-- 20260921093000): changing the DEFAULT applied to a NEW row (or a row whose
 -- channel value is later reset to default), never an existing row's
 -- already-stored array, UNLESS that stored array is EXACTLY the prior
 -- default -- see the STANDING RULE below, section 2.
@@ -48,7 +48,12 @@
 -- `financial_reports_channels` (row 46's earlier widening) is NOT backfilled
 -- by this file -- the rule applies to it too, but that column was outside
 -- this migration's task; flagged as a follow-up in ADR 0147, not silently
--- actioned here.
+-- actioned here. **[Corrected 2026-09-21, round-5 notify must-fix, CLAUDE.md
+-- §5b -- that follow-up is done, in the PR this file ships with:
+-- `20260921093000_a_daily_summary_can_reach_a_phone.sql`'s own section 2 now
+-- applies this same standing rule to `financial_reports_channels`. This
+-- file's section 2 was the first application, that one the second; neither
+-- flags the other as outstanding any more.]**
 --
 -- Idempotent and safe to re-run: section 2's UPDATE only ever matches rows
 -- still at the old default, so once a row is moved to the new default a

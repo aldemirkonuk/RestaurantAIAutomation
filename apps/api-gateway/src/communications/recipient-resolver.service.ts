@@ -96,7 +96,7 @@ export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
  *                           (low-stock count, pending orders), not an alert.
  *                           SMS-only, so `financial_reports_channels`' default
  *                           gained `sms` in the same row (see
- *                           `20260918123000_a_daily_summary_can_reach_a_phone.sql`).
+ *                           `20260921093000_a_daily_summary_can_reach_a_phone.sql`).
  *   experiment-ended        financial_reports — a report of an ended
  *                           experiment, sent to the founder house's managers.
  *   inventory-audit-reminder calendar_reminders — a scheduled count on a date,
@@ -579,7 +579,7 @@ export class RecipientResolverService {
    * [Corrected 2026-09-19: the low_stock row above describes a row already
    * holding the exact prior default (['sms','push']) as measured on production
    * 2026-09-02 -- it no longer describes every row. Migration
-   * 20260919100000_a_low_stock_warning_can_reach_an_inbox.sql widened
+   * 20260921100000_a_low_stock_warning_can_reach_an_inbox.sql widened
    * low_stock_channels' DEFAULT to ['sms','push','email'] and, by the
    * founder's standing rule (19-lane blocking round, batch 4, 2026-09-19),
    * backfilled every existing row that still held exactly the old default to

@@ -1006,7 +1006,7 @@ dashboard.md §7.
   an unmapped category is refused. ~~A stock row now declines low-stock email — see
   the ADR 0147 amendment.~~ **[Corrected 2026-09-19: true only for a row already
   holding a customised `low_stock_channels`. A row created after migration
-  `20260919100000_a_low_stock_warning_can_reach_an_inbox.sql` (or one reset to the
+  `20260921100000_a_low_stock_warning_can_reach_an_inbox.sql` (or one reset to the
   default) no longer declines it: that migration widened the DEFAULT to
   `['sms','push','email']` and, by the founder's standing rule (same 19-lane
   blocking round, batch 4), backfilled every existing row that still held exactly
