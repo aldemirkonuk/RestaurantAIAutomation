@@ -178,6 +178,27 @@ receiving door's charcoal (`DoorNext`) — still outranks both, unchanged, becau
 - `apps/web/src/pages/receiving/next/DoorNext.tsx` — comment corrected in place (its
   `data-ground="charcoal"` used to merely CONFIRM the default; it now FORCES it, unchanged in
   effect either way).
+- **[2026-09-21, round 5 — the live switch.]** The round-4 last call reproduced a defect: after
+  choosing charcoal, switching back to paper left the header, the sidebar hint, the Ground menu's
+  own popover and every Sheet overlay charcoal until a full reload. Two bugs, both required to
+  reproduce and both now fixed:
+  - `apps/web/src/components/mudavym/PageGate.tsx` — the effect that measures the ground and feeds
+    it to `HouseHeader` and `MudavymGroundContext` ran only on `[showNext, page]`; a change to the
+    person's choice alone never re-ran it. It now also depends on `useGroundChoice()`.
+  - `apps/web/src/lib/mudavym/shellGround.ts` — `readShellGroundFromDom` queried every
+    `.mudavym[data-ground=…]` in the document, excluding only `.mdv-ovl` (an open overlay). But
+    `HouseHeader` and the sidebar's `NavTooltip` are THEMSELVES `.mudavym` roots that only ever
+    MIRROR whatever this function returned last time — never a genuine declaration. Once charcoal
+    had been mirrored onto the header, a later call (even one the first fix now correctly
+    triggers) found the header's own leftover mirror before it found what the page actually
+    declared, and answered charcoal again — a self-reference the page-change case had too, which
+    is why the round-4 reviewer's repro still failed after a rerender with a different `page`, not
+    only after a bare choice change. The query now also excludes `.mdv-hdr` and `.mdv-hint`.
+  - Regression coverage: `HouseHeader.test.tsx`'s "PageGate" suite, two new cases — a live switch
+    with no page change, and the exact round-4 repro (switch, then rerender with a different
+    `page`). Both fail on the pre-fix code (`Expected: null, Received: "charcoal"`) and pass after.
+    Mutation-tested: reverting either fix alone (PageGate's dependency, or shellGround's exclusion)
+    while keeping the other fails both new cases the same way — neither half is sufficient alone.
 
 ### Measured — does every Mudavym page render correctly on paper?
 
@@ -212,6 +233,20 @@ after every edit in this record, `tsc --noEmit` and `eslint` both report zero er
 the two suites that specifically byte-compare rendered output on both grounds
 (`mudavym-ground.test.ts`, `authPages.publicDesign.test.tsx`) pass with new and existing
 assertions together — which is strong, mechanical evidence, not a substitute for a founder or QA
+pass looking at the real pages.
+
+**[2026-09-21, round 5 — re-measured on the merged tree, per CLAUDE.md §5b.]** The 2852-test figure
+above is what round 4 measured before the branch was brought current with `origin/main` (it had
+fallen 8 commits behind, not the 2 the round-4 last call itself measured) and before the two-file
+fix and its tests landed. On the merged tree, after the fix: `apps/web` runs **199 files, 2863
+tests passed, 14 skipped (2877 total)** — the 199-file count is unchanged (round 5 added 2 cases to
+the existing `HouseHeader.test.tsx`, not a new file; the origin/main merge added cases to existing
+files too, not new ones). `tsc --noEmit` is still 0 errors. `eslint` (run via
+`--resolve-plugins-relative-to` the scratch dir `worktree-node-modules-links.md` documents, since
+this worktree's linked `node_modules` predates `eslint-plugin-jsx-a11y`) is still 0
+errors/warnings on every file this record or round 5 touched. `check_decision_claims.sh` reads
+**370 of 370 holding** (359 at round 4, +11 additive rows from the commits this branch had fallen
+behind) — unchanged by the round-5 code fix itself, which the mechanism note above already covers.
 pass looking at the real pages. **No page is listed as a broken-on-paper workstream item because
 none was found broken** by either the static audit or the mechanical suite; a live visual pass is
 recommended as a follow-up, not because a defect is suspected, but because this record cannot
@@ -273,3 +308,5 @@ Two sub-questions surfaced while building this and are the founder's call, not t
 |---|---|---|
 | 2026-09-19 | Aldemir (founder), in a lane-answers batch (memory: `founder-sketch-decisions-106-115.md`, "THEME (cross-cutting)") | Default reversed to paper; a per-person choice required; ADR assigned number 0169 |
 | 2026-09-19 | — | Created; built on `feat/theme-white-default` (`wt-theme`); mechanism, tests and this record land together |
+| 2026-09-19 | Opus, round-4 last call | Not ready — reproduced a live-switch defect (charcoal to paper left the header, sidebar hint and every overlay charcoal until reload); branch also 2 commits behind `origin/main`. Two must-fix items filed. |
+| 2026-09-21 | — (round 5) | Both must-fix items closed: merged current `origin/main` (8 commits by then; one genuine conflict on ADR 0138's status line, resolved by keeping both dated brackets) and reran claims (370/370) and the full suite (green) on the merged tree; fixed `PageGate.tsx` and `shellGround.ts` per the Mechanism note above, with a new regression suite that fails pre-fix and passes post-fix, mutation-tested against each half of the fix independently |

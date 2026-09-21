@@ -32,7 +32,12 @@
  * a slot in `lib/mudavym/shellGround`, and each shell overlay reads it: on ⇒
  * the house shape, off ⇒ exactly the markup it always had. The ground is
  * measured off the DOM the page rendered, because the page — not the gate —
- * owns `data-ground` (see above).
+ * owns `data-ground` (see above) — EXCEPT when no page declares one, in which
+ * case the DOM reader's own fallback is the person's choice (`groundChoice.ts`,
+ * ADR 0169). This gate re-measures whenever that choice changes, not only when
+ * `page`/`showNext` do — see the `useGroundChoice()` call below and
+ * `shellGround.ts`'s file header for the self-reference bug that made getting
+ * this right harder than one dependency-array entry.
  *
  * ── The gate also carries the HEADER ──────────────────────────────────────
  * Measured 2026-09-04: `DashboardLayout.tsx:110` only re-exports `Header`, and
@@ -49,6 +54,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { HouseHeader } from './HouseHeader';
 import { SheetStackProvider } from './SheetStack';
 import { MudavymPage, useMudavymDesign } from '../../lib/mudavym/useMudavymDesign';
+import { useGroundChoice } from '../../lib/mudavym/groundChoice';
 import {
   MudavymGroundContext,
   claimMudavymShell,
@@ -72,6 +78,18 @@ export interface PageGateProps {
 
 export function PageGate({ page, legacy, next }: PageGateProps) {
   const showNext = useMudavymDesign(page);
+  // [ADR 0169 round 5] A page that declares no ground of its own resolves
+  // through `readShellGroundFromDom`'s fallback to the person's own choice —
+  // so this gate must re-measure when that choice changes, not only when the
+  // page underneath it changes. Before this, switching the choice live left
+  // `ground` (and everything fed from it: the header, the sidebar hint, every
+  // overlay through `useMudavymShell`/`MudavymGroundContext`) stuck at
+  // whatever it read at the last mount, until an unrelated `page`/`showNext`
+  // change forced a re-run — see `shellGround.ts`'s file-header note for why
+  // even THAT re-run used to answer wrong. `groundChoice` itself is not read
+  // in this component's JSX; it exists only to sit in the effect's dependency
+  // array below.
+  const [groundChoice] = useGroundChoice();
   const token = useRef<symbol>(Symbol('mudavym-page-gate'));
   const [ground, setGround] = useState<MudavymGround | undefined>(undefined);
 
@@ -87,7 +105,7 @@ export function PageGate({ page, legacy, next }: PageGateProps) {
     setGround(measured);
     claimMudavymShell(id, measured);
     return () => releaseMudavymShell(id);
-  }, [showNext, page]);
+  }, [showNext, page, groundChoice]);
 
   if (!showNext) return <>{legacy}</>;
   // Before the measurement lands the value is `undefined` — "nobody has
