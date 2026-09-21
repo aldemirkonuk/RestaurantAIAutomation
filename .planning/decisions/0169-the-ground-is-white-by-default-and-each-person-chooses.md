@@ -233,7 +233,10 @@ after every edit in this record, `tsc --noEmit` and `eslint` both report zero er
 the two suites that specifically byte-compare rendered output on both grounds
 (`mudavym-ground.test.ts`, `authPages.publicDesign.test.tsx`) pass with new and existing
 assertions together — which is strong, mechanical evidence, not a substitute for a founder or QA
-pass looking at the real pages.
+pass looking at the real pages. **No page is listed as a broken-on-paper workstream item because
+none was found broken** by either the static audit or the mechanical suite; a live visual pass is
+recommended as a follow-up, not because a defect is suspected, but because this record cannot
+honestly claim to have looked.
 
 **[2026-09-21, round 5 — re-measured on the merged tree, per CLAUDE.md §5b.]** The 2852-test figure
 above is what round 4 measured before the branch was brought current with `origin/main` (it had
@@ -247,10 +250,6 @@ this worktree's linked `node_modules` predates `eslint-plugin-jsx-a11y`) is stil
 errors/warnings on every file this record or round 5 touched. `check_decision_claims.sh` reads
 **370 of 370 holding** (359 at round 4, +11 additive rows from the commits this branch had fallen
 behind) — unchanged by the round-5 code fix itself, which the mechanism note above already covers.
-pass looking at the real pages. **No page is listed as a broken-on-paper workstream item because
-none was found broken** by either the static audit or the mechanical suite; a live visual pass is
-recommended as a follow-up, not because a defect is suspected, but because this record cannot
-honestly claim to have looked.
 
 ## Consequences
 
