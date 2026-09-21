@@ -49,14 +49,16 @@ if _sentry_dsn:
 
 
 def _extract_wave(nodeid: str) -> str:
-    """Return the wave letter (A–G) from a test node ID, or 'unknown'."""
+    """Return the wave letter (A–H) from a test node ID, or 'unknown'."""
     wave_map = {
         "wave_a_api_contracts": "A",
         "wave_b_agent_health": "B",
         "wave_c_agent_triggers": "C",
         # D, E, G retired 2026-09-12 (ADR 0137) — tested schema with no
         # production consumer; see the ADR before reusing these letters.
-        "prod_smoke": "F",
+        "prod_smoke": "F",  # retired 2026-09-11 (ADR 0135); kept so old XML still maps
+        "nightly": "F",  # apps/web/e2e/nightly/*.spec.ts — the browser wave
+        "e2e_gateway": "H",  # tests/e2e_gateway — the NestJS gateway, read-only
     }
     for key, letter in wave_map.items():
         if key in nodeid:
@@ -289,10 +291,22 @@ def teardown_e2e_records(prod_supabase, e2e_created_ids):
     # Step 4: Shared sim teardown (Phase 37 D-13) — same registry as pnpm synth:teardown.
     # NEVER deletes e2e-test-restaurant; NEVER deletes SIM_* Auth users.
     # Does NOT fork a second table list — imports scripts.synth.teardown.
+    #
+    # OPT-IN ONLY since 2026-09-11 (ADR 0135). `teardown_sim` resolves every
+    # restaurant whose slug starts with `sim-` (scripts/synth/teardown.py
+    # resolve_sim_restaurant_ids) and, with apply=True, deletes the restaurant
+    # rows and their whole write-set. Measured that day: all four production
+    # simulator houses — Sim Bistro, both Sim Meyhouse rows, Sim Vanilla
+    # Kaleiçi — carry such slugs, and the founder's 2026-09-06 instruction is
+    # "sims to be kept". This autouse fixture runs at the end of EVERY session
+    # that collects tests/e2e, so the first nightly to receive
+    # SUPABASE_SERVICE_ROLE_KEY would have wiped them. It now applies only when
+    # E2E_SIM_TEARDOWN=1 is set on purpose; otherwise it dry-runs and reports.
     try:
         from scripts.synth.teardown import teardown_sim
 
-        teardown_sim(client=prod_supabase, apply=True)
+        apply_sim_teardown = os.environ.get("E2E_SIM_TEARDOWN") == "1"
+        teardown_sim(client=prod_supabase, apply=apply_sim_teardown)
     except Exception as exc:  # noqa: BLE001 — absolute never-raise
         if _sentry_dsn:
             sentry_sdk.capture_message(

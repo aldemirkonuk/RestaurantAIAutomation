@@ -1,0 +1,495 @@
+{
+  "$comment": "The nightly page manifest (ADR 0135). ONE source for both walkers: apps/web/e2e/nightly/nightly.spec.ts (browser) and services/agent-orchestrator/tests/e2e_gateway/ (API). Every Mudavym page (MUDAVYM_PAGES in apps/web/src/lib/mudavym/useMudavymDesign.ts, enforced both ways by scripts/check_nightly_manifest.py) is listed whether or not the running build gates it yet — a page whose route is not gated on the build under test is reported as ABSENT, never as a pass and never silently dropped. Phrases are matched case-insensitively after curly apostrophes are straightened; they are the pages' own honest-state sentences (grep the page's next/ directory), never figures. `static_text` holds sentences a page ALWAYS renders that contain a shared phrase (logs' intro says 'could not be read'); they are removed from the page text before matching, so a page cannot read as a failed read by describing one. `public_pages` are the signed-out doors behind ADR 0133's one switch (VITE_MUDAVYM_PUBLIC, override localStorage 'mudavym.design.public'); `switch` says whether the page's own file reads it on the tree this manifest was written against, and the guard fails when that stops being true. `pending_pages` are signed-in routes the founder's new-pages list names that are NOT yet enrolled in MUDAVYM_PAGES (ADR 0143's open forks, ADR 0145's hold on /ask); the walk opens each and measures that no Mudavym root renders — absent — and the guard fails the day one enrols. The `walls` values are descriptions for the report, not phrases matched on the page. Founder's recorded design calls live in design-verdicts.json (generated), reported beside pages and never gating.",
+  "manifest_version": "1.1.0",
+  "flag_prefix": "mudavym_design_",
+  "override_prefix": "mudavym.design.",
+  "next_root_selector": ".mudavym",
+  "public_override_key": "mudavym.design.public",
+  "shared_phrases": {
+    "failed_read": [
+      "could not be reached",
+      "couldn't be reached",
+      "could not be read",
+      "could not be refreshed",
+      "could not be loaded",
+      "could not be checked",
+      "unknown, not zero",
+      "unknown, not empty",
+      "unknown, not absent"
+    ],
+    "denied": [
+      "not allowed to",
+      "You don't have permission to access this page",
+      "was refused"
+    ],
+    "walls": {
+      "/login": "signed out",
+      "/verify-email": "account email is unverified",
+      "/no-access": "account has no house"
+    }
+  },
+  "pages": [
+    {
+      "slug": "dashboard",
+      "flag": "mudavym_design_dashboard",
+      "route": "/",
+      "legacy": "page",
+      "source": "apps/web/src/pages/dashboard/next",
+      "empty": [
+        "Nothing on the calendar",
+        "No alerts carry this date",
+        "No recorded activity",
+        "Nothing was on the calendar"
+      ],
+      "failed_read": [
+        "The order ledger couldn't be reached",
+        "ledger couldn't be reached",
+        "The calendar couldn't be reached",
+        "Stock levels couldn't be reached",
+        "The approvals queue couldn't be reached"
+      ],
+      "provenance": [
+        "paid to vendors"
+      ]
+    },
+    {
+      "slug": "orders",
+      "flag": "mudavym_design_orders",
+      "route": "/orders",
+      "legacy": "page",
+      "source": "apps/web/src/pages/orders/next",
+      "empty": [
+        "no active orders"
+      ],
+      "failed_read": [
+        "The gateway could not be reached"
+      ],
+      "provenance_testids": [
+        "response-summary-provenance"
+      ]
+    },
+    {
+      "slug": "receiving",
+      "flag": "mudavym_design_receiving",
+      "route": "/receiving",
+      "legacy": "page",
+      "source": "apps/web/src/pages/receiving/next",
+      "empty": [
+        "Nothing queued on this device",
+        "Nothing is out for delivery right now",
+        "No credit request is waiting on a person"
+      ],
+      "failed_read": [
+        "Drafts could not be loaded",
+        "The figure could not be loaded",
+        "The phone-side queue could not be read",
+        "The queue could not be loaded"
+      ]
+    },
+    {
+      "slug": "receiving_door",
+      "flag": "mudavym_design_receiving_door",
+      "route": "/receiving/{orderId}/door",
+      "legacy": "page",
+      "source": "apps/web/src/pages/receiving/next",
+      "needs": {
+        "param": "orderId",
+        "list": "/procurement/orders",
+        "items_key": "orders",
+        "id_key": "id"
+      },
+      "failed_read": [
+        "The order could not be reached"
+      ]
+    },
+    {
+      "slug": "providers",
+      "flag": "mudavym_design_providers",
+      "route": "/providers",
+      "legacy": "page",
+      "source": "apps/web/src/pages/providers/next",
+      "empty": [
+        "no vendors",
+        "nothing here"
+      ],
+      "failed_read": [
+        "The vendor book could not be refreshed",
+        "The gateway could not be reached"
+      ]
+    },
+    {
+      "slug": "communications",
+      "flag": "mudavym_design_communications",
+      "route": "/communications",
+      "legacy": "page",
+      "source": "apps/web/src/pages/communications/next",
+      "empty": [
+        "no vendor exchanges yet"
+      ],
+      "failed_read": [
+        "The conversation book could not be refreshed",
+        "The conversation book could not be reached",
+        "Saved schedules could not be loaded"
+      ]
+    },
+    {
+      "slug": "team",
+      "flag": "mudavym_design_team",
+      "route": "/team",
+      "legacy": "page",
+      "source": "apps/web/src/pages/team/next",
+      "empty": [
+        "Nobody is on the roster yet",
+        "Nobody is on the roster, so there is no week to build"
+      ],
+      "failed_read": [
+        "The week could not be refreshed",
+        "The gateway could not be reached",
+        "The coverage rules could not be read",
+        "The roster could not be read",
+        "The credentials file could not be read"
+      ]
+    },
+    {
+      "slug": "inventory",
+      "flag": "mudavym_design_inventory",
+      "route": "/inventory",
+      "legacy": "same",
+      "source": "apps/web/src/pages/inventory/command",
+      "$comment": "Not a page swap: the flag only adds the ReceiptDepth card inside RowExpansion (registry comment). Both passes must render the same page; the .mudavym root count is recorded, not asserted."
+    },
+    {
+      "slug": "receipts",
+      "flag": "mudavym_design_receipts",
+      "route": "/receipts",
+      "legacy": "page",
+      "source": "apps/web/src/pages/receipts/next",
+      "empty": [
+        "Nothing awaits review — the paper trail is caught up",
+        "No lines were extracted from this document"
+      ],
+      "failed_read": [
+        "The linked order could not be read",
+        "This document could not be read",
+        "The paper trail could not be refreshed",
+        "The gateway could not be reached"
+      ]
+    },
+    {
+      "slug": "documents_reports",
+      "flag": "mudavym_design_documents_reports",
+      "route": "/documents-reports",
+      "legacy": "page",
+      "source": "apps/web/src/pages/documents-reports/next",
+      "empty": [
+        "Nothing needs you. The registers keep counting without you",
+        "The house has written no reports yet",
+        "nothing yet today"
+      ],
+      "failed_read": [
+        "The cross-file could not be checked",
+        "A register could not be refreshed",
+        "The registers could not be reached"
+      ]
+    },
+    {
+      "slug": "document",
+      "flag": "mudavym_design_document",
+      "route": "/documents/{documentId}",
+      "legacy": "redirect:/receipts",
+      "source": "apps/web/src/pages/documents/next",
+      "needs": {
+        "param": "documentId",
+        "list": "/procurement/documents",
+        "items_key": "items",
+        "id_key": "id"
+      },
+      "failed_read_testids": [
+        "failed-read",
+        "canonical-error",
+        "corrections-unreadable",
+        "gates-unavailable"
+      ]
+    },
+    {
+      "slug": "reports",
+      "flag": "mudavym_design_reports",
+      "route": "/reports",
+      "legacy": "page",
+      "source": "apps/web/src/pages/reports/next",
+      "failed_read": [
+        "could not be read"
+      ],
+      "failed_read_testids": [
+        "rp-scenario-request-error"
+      ]
+    },
+    {
+      "slug": "notifications",
+      "flag": "mudavym_design_notifications",
+      "route": "/notifications",
+      "legacy": "page",
+      "source": "apps/web/src/pages/notifications/next",
+      "failed_read": [
+        "The book could not be read",
+        "The notifications register could not be read",
+        "The index-series register could not be read",
+        "The price index could not be read",
+        "the inbox could not be read"
+      ]
+    },
+    {
+      "slug": "recommendations",
+      "flag": "mudavym_design_recommendations",
+      "route": "/recommendations",
+      "legacy": "page",
+      "source": "apps/web/src/pages/recommendations/next",
+      "failed_read": [
+        "The book of scenarios could not be read",
+        "Your goals could not be read"
+      ],
+      "failed_read_testids": [
+        "rc-scenarios-unread"
+      ],
+      "present_testids": [
+        "rc-entry"
+      ]
+    },
+    {
+      "slug": "calendar",
+      "flag": "mudavym_design_calendar",
+      "route": "/calendar",
+      "legacy": "page",
+      "source": "apps/web/src/pages/calendar/next",
+      "failed_read": [
+        "The reminder job could not be read",
+        "The forecast register could not be read",
+        "The day record could not be read",
+        "The book could not be refreshed",
+        "The calendar register could not be read",
+        "The advisory feed could not be read",
+        "The run ledger could not be read"
+      ]
+    },
+    {
+      "slug": "settings",
+      "flag": "mudavym_design_settings",
+      "route": "/settings",
+      "legacy": "page",
+      "source": "apps/web/src/pages/settings/next",
+      "failed_read": [
+        "The carrying cost could not be read",
+        "The currency could not be read",
+        "The record could not be read",
+        "The check register could not be read",
+        "the order ledger could not be read"
+      ],
+      "provenance": [
+        "kept ·"
+      ],
+      "provenance_required": true
+    },
+    {
+      "slug": "profile",
+      "flag": "mudavym_design_profile",
+      "route": "/profile",
+      "legacy": "page",
+      "source": "apps/web/src/pages/profile/next",
+      "failed_read": [
+        "Your account record could not be read",
+        "The account record could not be read",
+        "The integration catalogue could not be read",
+        "Your own agreement could not be read",
+        "The register could not be read",
+        "The restaurant record could not be read",
+        "The model-context register could not be read"
+      ]
+    },
+    {
+      "slug": "cellar",
+      "flag": "mudavym_design_cellar",
+      "route": "/wines",
+      "legacy": "page",
+      "source": "apps/web/src/pages/cellar/next",
+      "aliases": [
+        {
+          "route": "/cellar",
+          "legacy": "redirect:/wines"
+        }
+      ],
+      "failed_read": [
+        "This house's own record could not be read",
+        "The shared catalogue could not be read",
+        "The vendor book could not be read"
+      ],
+      "failed_read_testids": [
+        "house-unread",
+        "catalogue-unread",
+        "register-error"
+      ]
+    },
+    {
+      "slug": "connections",
+      "flag": "mudavym_design_connections",
+      "route": "/connections",
+      "legacy": "redirect:/profile",
+      "source": "apps/web/src/pages/connections/next",
+      "failed_read": [
+        "could not be read",
+        "The check table could not be read",
+        "The distributor register could not be read"
+      ]
+    },
+    {
+      "slug": "logs",
+      "flag": "mudavym_design_logs",
+      "route": "/logs",
+      "legacy": "page",
+      "source": "apps/web/src/pages/logs/next",
+      "static_text": [
+        "A register that could not be read is named."
+      ],
+      "empty": [
+        "No entries.",
+        "The registers answered and hold nothing for this house yet",
+        "No entry carries this correlation id"
+      ],
+      "failed_read": [
+        "The timeline could not be read",
+        "One register could not be read",
+        "registers could not be read",
+        "No house is selected, so there is no timeline to read"
+      ]
+    }
+  ],
+  "public_pages": [
+    {
+      "slug": "login",
+      "route": "/login",
+      "file": "apps/web/src/pages/Login.tsx",
+      "switch": "public"
+    },
+    {
+      "slug": "register",
+      "route": "/register",
+      "file": "apps/web/src/pages/Register.tsx",
+      "switch": "public"
+    },
+    {
+      "slug": "forgot_password",
+      "route": "/forgot-password",
+      "file": "apps/web/src/pages/ForgotPassword.tsx",
+      "switch": "none"
+    },
+    {
+      "slug": "reset_password",
+      "route": "/reset-password",
+      "file": "apps/web/src/pages/ResetPassword.tsx",
+      "switch": "none",
+      "honest": [
+        "missing its reset token",
+        "missing its token"
+      ]
+    },
+    {
+      "slug": "verify_email",
+      "route": "/verify-email",
+      "file": "apps/web/src/pages/VerifyEmail.tsx",
+      "switch": "none"
+    },
+    {
+      "slug": "invite",
+      "route": "/invite/nightly-not-a-code",
+      "file": "apps/web/src/pages/InviteLanding.tsx",
+      "switch": "none",
+      "honest": [
+        "This invite has expired"
+      ]
+    },
+    {
+      "slug": "no_access",
+      "route": "/no-access",
+      "file": "apps/web/src/pages/NoAccess.tsx",
+      "switch": "none"
+    },
+    {
+      "slug": "privacy",
+      "route": "/privacy",
+      "file": "apps/web/src/pages/Privacy.tsx",
+      "switch": "none"
+    },
+    {
+      "slug": "vendor_portal",
+      "route": "/v/nightly-not-a-vendor",
+      "file": "apps/web/src/pages/VendorPortal.tsx",
+      "switch": "none",
+      "honest": [
+        "This vendor page does not exist or has not been published yet",
+        "Could not load this catalogue"
+      ]
+    },
+    {
+      "slug": "get_started",
+      "route": "/get-started",
+      "file": "apps/web/src/pages/GetStarted.tsx",
+      "switch": "none"
+    },
+    {
+      "slug": "onboarding",
+      "route": "/onboarding",
+      "file": "apps/web/src/pages/Onboarding.tsx",
+      "switch": "none"
+    }
+  ],
+  "signed_out_redirects": [
+    {
+      "route": "/authorize/nightly-not-an-integration",
+      "to": "/login",
+      "$comment": "ProtectedRoute-wrapped (App.tsx), not a public door"
+    }
+  ],
+  "pending_pages": [
+    {
+      "slug": "promotions",
+      "route": "/promotions",
+      "file": "apps/web/src/pages/Promotions.tsx",
+      "held_by": "ADR 0143 (open fork)"
+    },
+    {
+      "slug": "vendor_prices",
+      "route": "/vendor-prices",
+      "file": "apps/web/src/pages/VendorPriceCompare.tsx",
+      "held_by": "ADR 0143 (open fork)"
+    },
+    {
+      "slug": "recommendations_catalog",
+      "route": "/recommendations/catalog",
+      "file": "apps/web/src/pages/InsightCatalog.tsx",
+      "held_by": "ADR 0143 (open fork)"
+    },
+    {
+      "slug": "help",
+      "route": "/help",
+      "file": "apps/web/src/pages/Help.tsx",
+      "held_by": "ADR 0143 (open fork)"
+    },
+    {
+      "slug": "admin",
+      "route": "/admin",
+      "file": "apps/web/src/pages/AdminPanel.tsx",
+      "held_by": "ADR 0143 §2 (/admin and /admin/health become one page)"
+    },
+    {
+      "slug": "admin_health",
+      "route": "/admin/health",
+      "file": "apps/web/src/pages/AdminHealth.tsx",
+      "held_by": "ADR 0143 §2 (becomes a redirect to /admin)"
+    },
+    {
+      "slug": "ask",
+      "route": "/ask",
+      "file": null,
+      "held_by": "ADR 0145 (not shipped until its readings pass a per-reading fixture test)"
+    }
+  ]
+}

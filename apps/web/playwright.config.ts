@@ -2,11 +2,11 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
-  // prod-smoke.spec.ts targets the LIVE Vercel deployment and requires
-  // E2E_BASE_URL + E2E_TEST_EMAIL/PASSWORD. It is run only via
-  // playwright.prod.config.ts (and the scheduled Production E2E workflow),
-  // never against the local dev server in this default config.
-  testIgnore: '**/prod-smoke.spec.ts',
+  // e2e/nightly/** targets a DEPLOYED app with a real account (ADR 0135) and
+  // runs only through playwright.nightly.config.ts — from the scheduled
+  // Production E2E workflow or by hand — never against this config's dev
+  // server, which has no gateway behind it.
+  testIgnore: ['**/nightly/**'],
   timeout: 30000,
   expect: {
     timeout: 5000,
