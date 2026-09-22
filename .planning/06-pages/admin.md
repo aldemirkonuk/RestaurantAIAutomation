@@ -222,7 +222,7 @@ Four honest states — the best-covered page in this cluster.
 `apps/web/src/pages/admin/next/AdminDesk.tsx` replaces this page and [[admin-health]]
 under one flag, `mudavym_design_admin` (`App.tsx:401-402`: `/admin` renders `AdminDesk`,
 `/admin/health` redirects to `/admin`). The flag defaults false
-(`supabase/migrations/20260922190200_mudavym_design_flag_admin.sql`) and is not yet in
+(`supabase/migrations/20260922210200_mudavym_design_flag_admin.sql`) and is not yet in
 `scripts/flip_mudavym_design_flags.py`'s `PAGES` tuple's rollout history — it was added
 to that tuple 2026-09-17, so the desk can now be flipped per house like every other
 Mudavym page. Per ADR 0149 row 10 the desk keeps ADR 0143 §2's three defaults: the five
@@ -239,7 +239,7 @@ by `OwnerOrPlatformOperatorGuard` on `GET /health/agents`, `GET /health/agents/:
 a cached JWT claim or Studio membership alone confers nothing. The grant table is
 SQL-only: `REVOKE ALL` (including `service_role`) then `GRANT SELECT` only to
 `service_role`, self-checked by a `DO` block in the same migration
-(`supabase/migrations/20260922190100_platform_operator_controls.sql`); no migration ever
+(`supabase/migrations/20260922210100_platform_operator_controls.sql`); no migration ever
 inserts a row, so no operator is seeded. `platform_agent_operations` (the restart/stop
 receipt ledger) is likewise `service_role`-only, with `actor_id ON DELETE RESTRICT` so
 deleting a user who ran an operation is refused rather than silently orphaning the
