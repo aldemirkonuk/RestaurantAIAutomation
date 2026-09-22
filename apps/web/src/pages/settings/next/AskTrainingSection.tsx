@@ -8,9 +8,26 @@
  * We ask a lawyer about KVKK and GDPR before the first real training run."
  * (ADR 0145, round-6r amendment.)
  *
+ * [2026-09-22, round 6y, KL5 verify — corrected: this page's own copy still
+ * said "with names removed" / "Names are removed first", describing the
+ * option's original wording rather than what was built. As built (round 6r)
+ * and reconfirmed by the founder (round 6y, "Text-free until lawyer
+ * (Recommended)"), the export carries NO question text at all yet — there is
+ * no free text for a name remover to act on, and none is built. Copy fixed
+ * to match; see apps/web/src/pages/Privacy.tsx's "Questions you ask Mudavym"
+ * section, which states the same thing.]
+ *
+ * [2026-09-22, round 6y, KL5 last call: the On and Off lines now say what
+ * the founder's "Never (Recommended)" means for this switch -- a question
+ * asked while it is off stays out of training even after it is turned back
+ * on (asked_while_opted_out, migration 20260922014000). "The questions may
+ * be used" alone was broader than the code.]
+ *
  * What this register holds, and what it does not:
  *   1. **One switch, the owner's.** On (the default, his) lets the house's
- *      questions be used; off keeps them out of the training export. The
+ *      questions be used, except those asked while it was off; off keeps them
+ *      out of the training export, and a question asked while off stays out
+ *      after it is turned back on (round 6y). The
  *      gateway refuses anyone but the house's owner (`PUT /settings/ask-training`
  *      checks the role in the house); the switch is disabled for everyone else
  *      and says so, but the route is the rule.
@@ -62,17 +79,18 @@ function AskTrainingBody({
     <>
       <Note>
         When someone asks Mudavym a question, the question and the answer are kept so the answer can be checked later.
-        Unless the owner turns this off, the questions may also be used to make Mudavym better. Names are removed first.
+        Unless the owner turns this off, the questions may also be used to make Mudavym better. If we ever export
+        them, that export carries no question text at all.
       </Note>
 
       <Row
         label="Use this house’s questions to improve Mudavym"
         consequence={
           allowed ? (
-            <>On. The questions may be used, with names removed. No training has started yet.</>
+            <>On. The questions may be used to improve Mudavym, except any asked while this was off. No training has started yet.</>
           ) : (
             <>
-              <strong>Off.</strong> This house’s questions are kept out of any training. Asking and answering work as before.
+              <strong>Off.</strong> This house’s questions are kept out of any training, and the ones asked while it is off stay out even if you turn it back on. Asking and answering work as before.
             </>
           )
         }

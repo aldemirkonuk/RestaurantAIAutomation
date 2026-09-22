@@ -41,7 +41,8 @@ describe('the training choice -- what it says and who may change it', () => {
     const toggle = screen.getByRole('switch', { name: /improve Mudavym/i });
     expect(toggle).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText(/the default is in force/i)).toBeInTheDocument();
-    expect(screen.getByText(/Names are removed first/i)).toBeInTheDocument();
+    expect(screen.getByText(/carries no question text at all/i)).toBeInTheDocument();
+    expect(screen.getByText(/except any asked while this was off/i)).toBeInTheDocument();
   });
 
   it('the owner turns it off: the page asks the gateway to opt the house out', () => {
@@ -57,6 +58,7 @@ describe('the training choice -- what it says and who may change it', () => {
     const toggle = screen.getByRole('switch', { name: /improve Mudavym/i });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByText(/kept out of any training/i)).toBeInTheDocument();
+    expect(screen.getByText(/stay out even if you turn it back on/i)).toBeInTheDocument();
     expect(screen.getByText(/set by · Burak/i)).toBeInTheDocument();
     fireEvent.click(toggle);
     expect(saveAskTraining).toHaveBeenCalledWith(false);

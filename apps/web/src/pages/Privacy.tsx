@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Cookie, Database, KeyRound, Share2, LineChart, Bug } from 'lucide-react'
+import { ArrowLeft, Cookie, Database, KeyRound, MessageSquare, Share2, LineChart, Bug } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 
 /**
@@ -11,6 +11,17 @@ import { BrandMark } from '../components/brand/BrandMark'
  * pseudonymous id (never email or name) to error tracking — see
  * lib/error-tracking.ts, which strips PII before every event leaves the browser.
  * If any of those change, this page has to change with them.
+ *
+ * The "Questions you ask Mudavym" section below is ADR 0145's 2026-09-22
+ * (round 6y) founder answer, verbatim: "Add to /privacy now" — a short, plain
+ * training notice, in the wording drawn from the same ADR's round-6r notice
+ * for the Terms page and /ask (neither page exists yet) and from
+ * AskTrainingSection.tsx's Settings copy, updated for what round 6y itself
+ * decided: a question asked while a house is opted out is never used for
+ * training even after the house opts back in (asked_while_opted_out,
+ * migration 20260922014000), and — round 6y's other answer, "Text-free until
+ * lawyer" — any export carries no question text at all today, not names
+ * removed from text that is exported.
  */
 export default function Privacy() {
   return (
@@ -43,6 +54,12 @@ export default function Privacy() {
             icon={Database}
             title="Connected integrations"
             body="Connecting Google Drive or Microsoft Excel grants Mudavym permission to write files on your behalf. We request the narrowest scopes that work — access is limited to files Mudavym creates, not your whole drive. The access and refresh tokens are encrypted before being stored, and you can revoke a connection at any time from Settings → Integrations, which also revokes it at the provider."
+          />
+
+          <Section
+            icon={MessageSquare}
+            title="Questions you ask Mudavym"
+            body="When someone in your house asks Mudavym a question, we keep the question, the answer, and how the answer was reached, so it can be checked later. Your house's owner can turn training use off for the whole house, in Settings → Training use — asking and answering keep working the same either way. A question asked while training is off is never used for training, even if the owner turns it back on afterward. If we ever export questions to improve Mudavym, that export carries no question text at all, only facts such as which kind of question it was and when it was asked. No training has started."
           />
 
           <Section
