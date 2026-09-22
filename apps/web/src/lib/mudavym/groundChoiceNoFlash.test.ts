@@ -57,7 +57,10 @@ function tokenFor(sub: string): string {
 /** Run the shipped script exactly as the browser would. */
 function runPrePaintScript(): string | null {
   document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
-  // eslint-disable-next-line no-new-func
+  // `new Function` is the point: the shipped text has to run as the browser
+  // runs it, not as an import. (No eslint-disable here — `no-new-func` is not
+  // in this repo's config, and `--report-unused-disable-directives` makes a
+  // directive for a rule that never fires an error in itself.)
   new Function(scriptBody())();
   return document.documentElement.getAttribute(GROUND_CHOICE_ATTR);
 }
