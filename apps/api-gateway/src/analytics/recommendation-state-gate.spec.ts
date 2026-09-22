@@ -72,6 +72,10 @@ function gateDb(
           error: null,
         };
       };
+      // Round 5: no fixture here carries a note-author column, so every key
+      // reads as unowned (NO_NOTES) — correct for every case in this file,
+      // none of which exercises a note someone else already made.
+      b.maybeSingle = async () => ({ data: null, error: null });
       b.insert = async (payload: any) => {
         calls.push({ table, op: "insert", payload });
         return {
@@ -170,7 +174,15 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
         (c) => c.table === "recommendation_personal_snoozes" && c.op === "upsert",
       ),
     ).toHaveLength(1);
-    expect(audits(calls)).toEqual([]);
+    // Neither is a RULE-WIDE act (round 2's audit), but round 5 audits the
+    // pin itself as a note change — one row, not the rule-wide action.
+    expect(audits(calls)).toHaveLength(1);
+    expect(audits(calls)[0].payload.action).toBe("recommendation_note_changed");
+    expect(
+      audits(calls).filter((c) =>
+        String(c.payload.action).startsWith("recommendation_rule_"),
+      ),
+    ).toEqual([]);
   });
 
   it("a manager's whole-rule dismissal is written AND filed in the house log", async () => {
@@ -279,6 +291,7 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
       updated: 2,
       audit: { recorded: 1, missed: 0 },
       history: { recorded: 2, missed: 0 },
+      noteAudit: { recorded: 0, missed: 0 },
       snoozedForYou: 0,
     });
     expect(audits(calls).map((a: any) => a.payload.changes.rule_key)).toEqual([

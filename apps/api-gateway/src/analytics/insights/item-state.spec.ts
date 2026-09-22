@@ -4,9 +4,15 @@ import {
   isRuleWideDismissOrRestore,
   isRuleWideKey,
   mayActRuleWide,
+  mayTouchNote,
+  noteRefusal,
+  notesTouchedBy,
+  PLATFORM_ADMIN_REFUSAL,
+  planAct,
   resolveItemState,
   stateBookFrom,
   StateRow,
+  touchesNotes,
 } from "./item-state";
 
 /**
@@ -233,5 +239,115 @@ describe("what counts as rule-wide (founder, 2026-09-21, answer 1)", () => {
     expect(mayActRuleWide("staff")).toBe(false);
     expect(mayActRuleWide(null)).toBe(false);
     expect(mayActRuleWide("")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Round 5, answer 2 (the founder, 2026-09-22, "Gate like acts"): a note
+// (pin, rating, assignment) is gated the way an act is.
+// ---------------------------------------------------------------------------
+
+const STAFF_A = { userId: "u-staff-a", role: "staff" };
+const STAFF_B = { userId: "u-staff-b", role: "staff" };
+const OWNER5 = { userId: "u-owner", role: "owner" };
+const MANAGER5 = { userId: "u-manager", role: "manager" };
+const ADMIN5 = { userId: "u-admin", role: "admin" };
+
+describe("notesTouchedBy / touchesNotes: which fields a patch touches", () => {
+  it("names pinned, feedback and assignment independently", () => {
+    expect(notesTouchedBy({})).toEqual([]);
+    expect(notesTouchedBy({ pinned: true })).toEqual(["pinned"]);
+    expect(notesTouchedBy({ feedback: "helpful" })).toEqual(["feedback"]);
+    expect(notesTouchedBy({ assignedTo: "u-x" })).toEqual(["assignment"]);
+    // assignedName alone is still the assignment note.
+    expect(notesTouchedBy({ assignedName: "Ada" })).toEqual(["assignment"]);
+    expect(
+      notesTouchedBy({ pinned: false, feedback: null, assignedTo: null }),
+    ).toEqual(["pinned", "feedback", "assignment"]);
+  });
+
+  it("a status-only patch touches no note", () => {
+    expect(touchesNotes({ status: "dismissed" })).toBe(false);
+    expect(touchesNotes({})).toBe(false);
+    expect(touchesNotes({ pinned: true })).toBe(true);
+  });
+});
+
+describe("mayTouchNote: whose note it is to change or clear", () => {
+  it("an UNSET field is anyone's first note — even an owner-unknown row", () => {
+    expect(mayTouchNote(STAFF_A, false, null)).toBe(true);
+    expect(mayTouchNote(STAFF_A, false, "u-other")).toBe(true); // unset: nothing to protect
+  });
+
+  it("a SET field with no recorded owner fails closed: owner/manager only", () => {
+    expect(mayTouchNote(STAFF_A, true, null)).toBe(false);
+    expect(mayTouchNote(OWNER5, true, null)).toBe(true);
+    expect(mayTouchNote(MANAGER5, true, null)).toBe(true);
+  });
+
+  it("staff may change or clear their own note; not someone else's", () => {
+    expect(mayTouchNote(STAFF_A, true, "u-staff-a")).toBe(true);
+    expect(mayTouchNote(STAFF_A, true, "u-staff-b")).toBe(false);
+    expect(mayTouchNote(STAFF_B, true, "u-staff-a")).toBe(false);
+  });
+
+  it("owners and managers change or clear anyone's — including their own", () => {
+    for (const who of [OWNER5, MANAGER5]) {
+      expect(mayTouchNote(who, true, "u-staff-a")).toBe(true);
+      expect(mayTouchNote(who, true, who.userId)).toBe(true);
+    }
+  });
+
+  it("a staff actor with no userId touches nothing that is set", () => {
+    expect(mayTouchNote({ userId: null, role: "staff" }, true, "u-x")).toBe(
+      false,
+    );
+  });
+});
+
+describe("noteRefusal: what a refused note change says", () => {
+  it("one field, one sentence", () => {
+    expect(noteRefusal(1)).toBe(
+      "Only the person who made this note, or an owner or manager, can change or clear it.",
+    );
+  });
+  it("more than one names the count", () => {
+    expect(noteRefusal(2)).toMatch(/\(2 in this selection\)/);
+  });
+});
+
+describe("planAct refuses the platform admin a note too (round 5)", () => {
+  it("a pin, a rating or an assignment alone — no status at all — is refused", () => {
+    for (const patch of [
+      { pinned: true },
+      { feedback: "helpful" as const },
+      { assignedTo: "u-x", assignedName: "X" },
+    ])
+      expect(planAct(patch, ADMIN5, [], NOW)).toEqual({
+        to: "refused",
+        why: PLATFORM_ADMIN_REFUSAL,
+        forbidden: true,
+      });
+  });
+
+  it("a note alongside a status write the admin may not make is still refused", () => {
+    expect(
+      planAct({ status: "done", pinned: true }, ADMIN5, [], NOW),
+    ).toMatchObject({ to: "refused", forbidden: true });
+  });
+
+  it("an owner or manager touching only a note is never caught by the admin rule", () => {
+    for (const actor of [OWNER5, MANAGER5])
+      expect(planAct({ pinned: true }, actor, [], NOW)).toMatchObject({
+        to: "house",
+        recordedAs: "note",
+      });
+  });
+
+  it("staff touching only a note routes to the house, unrefused by planAct — the service's ownership gate decides the rest", () => {
+    expect(planAct({ pinned: true }, STAFF_A, [], NOW)).toMatchObject({
+      to: "house",
+      recordedAs: "note",
+    });
   });
 });

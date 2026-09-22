@@ -7,6 +7,7 @@ import {
   DISMISS_REASONS,
   HeldRow,
   LatestAct,
+  NoteField,
   PersonalBook,
   RecordedAs,
   StateBook,
@@ -19,12 +20,16 @@ import {
   isRuleWideKey,
   mayActForTheHouse,
   mayActRuleWide,
+  mayTouchNote,
   mayUndo,
+  noteRefusal,
+  notesTouchedBy,
   personalBookFrom,
   personalView,
   planAct,
   snoozeHolds,
   stateBookFrom,
+  touchesNotes,
   undoRefusal,
 } from "./insights/item-state";
 
@@ -48,6 +53,14 @@ export type TypeToggleAction =
 export type RuleWideAction =
   | "recommendation_rule_dismissed"
   | "recommendation_rule_restored";
+
+/**
+ * The `system_audit_log.action` a note change files (round 5, founder
+ * 2026-09-22, answer 2: "every note change audited like an act"). One action
+ * for all three note fields — pin, rating, assignment — because a single
+ * write can touch more than one; `changes` names which.
+ */
+export type RecommendationNoteAction = "recommendation_note_changed";
 
 /** Who is writing, read from the JWT by the controller — never the body. */
 export interface RecommendationActor {
@@ -90,9 +103,11 @@ export class ActRefused extends Error {
     readonly forbidden: boolean,
     /**
      * A machine word for the one refusal a page words differently:
-     * `not_your_act` — staff undoing someone else's act (round 4, answer 5).
+     * `not_your_act` — staff undoing someone else's act (round 4, answer 5);
+     * `not_your_note` — staff changing or clearing someone else's note
+     * (round 5, answer 2).
      */
-    readonly code: "not_your_act" | null = null,
+    readonly code: "not_your_act" | "not_your_note" | null = null,
   ) {
     super(message);
     this.name = "ActRefused";
@@ -118,11 +133,61 @@ export interface ActWriteResult {
   audit: TypeToggleAuditReceipt | null;
   /** The append-only history's receipt for a house status write, else null. */
   history: TypeToggleAuditReceipt | null;
+  /**
+   * The house-log receipt of a note change (pin, rating, assignment), else
+   * null — round 5, answer 2: "every note change audited like an act".
+   */
+  noteAudit: TypeToggleAuditReceipt | null;
   /** What the write was recorded as — "Already handled" says `done`. */
   recordedAs: RecordedAs;
   /** The person's own snooze, when that is what the write became. */
   personal: PersonalSnoozeRow | null;
 }
+
+/**
+ * Who last set each note field on a `recommendation_actions` row (round 5,
+ * migration 20260922010000) — read before a note write, the same way
+ * `ruleWideStatus` reads a status before that write.
+ *
+ * `xBy: null` on a SET field is not provably anyone's — a row from before
+ * the author columns existed, or one whose author was cleared. Read by
+ * `mayTouchNote` (`insights/item-state.ts`), which fails closed on it, the
+ * same reading round 4 gave an act with no history row.
+ *
+ * The values themselves (`feedback`, `assignedTo`, `assignedName`) ride
+ * along so the note's audit row can say what the change replaced and whose
+ * it was — "audited like an act": an act's audit says `from` and `to`
+ * (`fileRuleWideAudit`), and an override of someone else's note is exactly
+ * the change an owner needs to read back as someone else's.
+ */
+export interface NoteOwnership {
+  pinned: boolean;
+  pinnedBy: string | null;
+  hasFeedback: boolean;
+  feedback: string | null;
+  ratedBy: string | null;
+  /**
+   * An assignment is SET when either half is: the pages show `assignedName`
+   * as the assignment, and a name written alone (`assignedName` with no
+   * `assignedTo` — the gateway takes one) is a note someone made.
+   */
+  assigned: boolean;
+  assignedTo: string | null;
+  assignedName: string | null;
+  assignedBy: string | null;
+}
+
+const NO_NOTES: NoteOwnership = {
+  pinned: false,
+  pinnedBy: null,
+  hasFeedback: false,
+  feedback: null,
+  ratedBy: null,
+  assigned: false,
+  assignedTo: null,
+  assignedName: null,
+  assignedBy: null,
+};
 
 /**
  * A rule-wide dismiss or restore by someone who may not make one. The
@@ -390,17 +455,32 @@ export class RecommendationActionsService {
     // A reason or an instant sent WITHOUT a status changes no state: the
     // state is (status, reason, instant) together, and half of it is not
     // written on its own.
-    if (patch.pinned !== undefined) row.pinned = patch.pinned;
+    // Round 5, answer 2: every note field names who last set it, so the
+    // note gate can tell "own" from "someone else's" per field — `created_by`
+    // alone cannot (round 4's own "Options considered", #1, rejected exactly
+    // this for acts: one column, many writers). Written whenever the field
+    // is, from the SAME actor as `created_by` below — the caller who reaches
+    // this far has already been asserted to have one (`assertNamedActor`).
+    if (patch.pinned !== undefined) {
+      row.pinned = patch.pinned;
+      row.pinned_by = createdBy ?? null;
+    }
     if (patch.acted) row.acted_at = new Date().toISOString();
-    if (patch.feedback !== undefined) row.feedback = patch.feedback;
+    if (patch.feedback !== undefined) {
+      row.feedback = patch.feedback;
+      row.rated_by = createdBy ?? null;
+    }
     if (patch.assignedTo !== undefined) {
       row.assigned_to = patch.assignedTo;
+      row.assigned_by = createdBy ?? null;
       // Clearing the assignee clears its denormalised name + timestamp too.
       row.assigned_at = patch.assignedTo ? new Date().toISOString() : null;
       if (!patch.assignedTo) row.assigned_name = null;
     }
-    if (patch.assignedName !== undefined)
+    if (patch.assignedName !== undefined) {
       row.assigned_name = patch.assignedName;
+      row.assigned_by = createdBy ?? null;
+    }
     if (snapshot?.observation !== undefined)
       row.observation = snapshot.observation;
     if (snapshot?.recommendation !== undefined)
@@ -570,6 +650,7 @@ export class RecommendationActionsService {
         row: null,
         audit: null,
         history: null,
+        noteAudit: null,
         recordedAs: route.recordedAs,
         personal,
       };
@@ -584,6 +665,11 @@ export class RecommendationActionsService {
     );
     if (gated.has(ruleKey)) this.assertMayActRuleWide(actor, 1);
     await this.assertMayUndo(restaurantId, held, actor);
+    const noteFields = notesTouchedBy(housePatch);
+    const notesBefore =
+      noteFields.length > 0
+        ? await this.assertMayTouchNotes(restaurantId, ruleKey, noteFields, actor)
+        : NO_NOTES;
     const row = await this.setAction(
       restaurantId,
       ruleKey,
@@ -605,9 +691,19 @@ export class RecommendationActionsService {
       row,
       audit: null,
       history,
+      noteAudit: null,
       recordedAs: route.recordedAs,
       personal: null,
     };
+    if (noteFields.length > 0)
+      out.noteAudit = await this.fileNoteAudit(
+        restaurantId,
+        actor.userId as string,
+        ruleKey,
+        noteFields,
+        housePatch,
+        notesBefore,
+      );
     if (!gated.has(ruleKey)) return out;
     out.audit = await this.fileRuleWideAudit(
       restaurantId,
@@ -635,6 +731,7 @@ export class RecommendationActionsService {
     updated: number;
     audit: { recorded: number; missed: number };
     history: { recorded: number; missed: number };
+    noteAudit: { recorded: number; missed: number };
     snoozedForYou: number;
   }> {
     const now = Date.now();
@@ -671,9 +768,20 @@ export class RecommendationActionsService {
         };
     if (gated.size > 0) this.assertMayActRuleWide(actor, gated.size);
     await this.assertMayUndo(restaurantId, held, actor);
+    const noteFields = housePatch ? notesTouchedBy(housePatch) : [];
+    const notesBefore =
+      noteFields.length > 0
+        ? await this.assertMayTouchNotesBulk(
+            restaurantId,
+            house.map((r) => r.it.ruleKey),
+            noteFields,
+            actor,
+          )
+        : new Map<string, NoteOwnership>();
     let updated = 0;
     const audit = { recorded: 0, missed: 0 };
     const history = { recorded: 0, missed: 0 };
+    const noteAudit = { recorded: 0, missed: 0 };
     for (const { it } of house) {
       try {
         await this.setAction(
@@ -698,6 +806,18 @@ export class RecommendationActionsService {
         );
         if (kept.recorded) history.recorded++;
         else history.missed++;
+      }
+      if (noteFields.length > 0) {
+        const kept = await this.fileNoteAudit(
+          restaurantId,
+          actor.userId as string,
+          it.ruleKey,
+          noteFields,
+          housePatch as RecommendationActionPatch,
+          notesBefore.get(it.ruleKey) ?? NO_NOTES,
+        );
+        if (kept.recorded) noteAudit.recorded++;
+        else noteAudit.missed++;
       }
       if (!gated.has(it.ruleKey)) continue;
       const receipt = await this.fileRuleWideAudit(
@@ -727,7 +847,7 @@ export class RecommendationActionsService {
         this.logger.warn(`bulk snooze-for-me ${it.ruleKey}: ${err?.message}`);
       }
     }
-    return { updated, audit, history, snoozedForYou };
+    return { updated, audit, history, noteAudit, snoozedForYou };
   }
 
   /** The patch a house route writes: the caller's fields, the routed state. */
@@ -896,6 +1016,190 @@ export class RecommendationActionsService {
     return latest;
   }
 
+  // ---- Touching someone's note (round 5, answer 2 — "Gate like acts") ------
+
+  /**
+   * Who last set each note field on ONE card — read before a note write, the
+   * same way `ruleWideStatus` reads a status before that one. A row with no
+   * key yet (nobody has ever noted it) reads as `NO_NOTES`: every field
+   * unset, every author null — the first note on it is anyone's (not the
+   * admin's) to make.
+   */
+  private async noteOwnershipOf(
+    restaurantId: string,
+    ruleKey: string,
+  ): Promise<NoteOwnership> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("recommendation_actions")
+      .select(
+        "pinned,pinned_by,feedback,rated_by,assigned_to,assigned_name,assigned_by",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("rule_key", ruleKey)
+      .maybeSingle();
+    if (error)
+      throw new Error(
+        `Could not read the note's current author, so could not tell whether this changes someone else's: ${error.message}`,
+      );
+    return this.noteOwnershipFrom(data);
+  }
+
+  /** The bulk form of `noteOwnershipOf` — one read for many keys. */
+  private async noteOwnershipMany(
+    restaurantId: string,
+    keys: string[],
+  ): Promise<Map<string, NoteOwnership>> {
+    const out = new Map<string, NoteOwnership>();
+    if (keys.length === 0) return out;
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("recommendation_actions")
+      .select(
+        "rule_key,pinned,pinned_by,feedback,rated_by,assigned_to,assigned_name,assigned_by",
+      )
+      .eq("restaurant_id", restaurantId)
+      .in("rule_key", keys);
+    if (error)
+      throw new Error(
+        `Could not read the notes' current authors, so could not tell whether this changes someone else's: ${error.message}`,
+      );
+    for (const r of data || [])
+      out.set(String(r.rule_key), this.noteOwnershipFrom(r));
+    return out;
+  }
+
+  private noteOwnershipFrom(d: any): NoteOwnership {
+    if (!d) return NO_NOTES;
+    return {
+      pinned: !!d.pinned,
+      pinnedBy: d.pinned_by ?? null,
+      hasFeedback: d.feedback != null,
+      feedback: d.feedback ?? null,
+      ratedBy: d.rated_by ?? null,
+      assigned: d.assigned_to != null || d.assigned_name != null,
+      assignedTo: d.assigned_to ?? null,
+      assignedName: d.assigned_name ?? null,
+      assignedBy: d.assigned_by ?? null,
+    };
+  }
+
+  /** One field's (isSet, owner) pair, as `mayTouchNote` reads it. */
+  private fieldState(o: NoteOwnership, field: NoteField): [boolean, string | null] {
+    if (field === "pinned") return [o.pinned, o.pinnedBy];
+    if (field === "feedback") return [o.hasFeedback, o.ratedBy];
+    return [o.assigned, o.assignedBy];
+  }
+
+  /**
+   * Round 5, answer 2 (the founder, 2026-09-22): a note (pin, rating,
+   * assignment) is theirs to change or clear when they made it, or when they
+   * are an owner or manager. The platform admin is already refused by
+   * `planAct`, before this is ever asked, so it is not checked again here.
+   *
+   * Refused BEFORE anything is written, whole when more than one field is
+   * touched — a pin-and-rate in one call that changes one field that is
+   * someone else's and one that is unset leaves the page unable to say which
+   * half moved, the same reasoning as a bulk act (round 4).
+   *
+   * Returns what it read, so the note's audit row can say what the change
+   * replaced and whose it was (`fileNoteAudit`).
+   */
+  private async assertMayTouchNotes(
+    restaurantId: string,
+    ruleKey: string,
+    fields: NoteField[],
+    actor: RecommendationActor,
+  ): Promise<NoteOwnership> {
+    const o = await this.noteOwnershipOf(restaurantId, ruleKey);
+    const refused = fields.filter(
+      (f) => !mayTouchNote(actor, ...this.fieldState(o, f)),
+    );
+    if (refused.length === 0) return o;
+    throw new ActRefused(noteRefusal(refused.length), true, "not_your_note");
+  }
+
+  /** The bulk form of `assertMayTouchNotes` — refused whole, before any write. */
+  private async assertMayTouchNotesBulk(
+    restaurantId: string,
+    keys: string[],
+    fields: NoteField[],
+    actor: RecommendationActor,
+  ): Promise<Map<string, NoteOwnership>> {
+    if (keys.length === 0) return new Map();
+    const ownership = await this.noteOwnershipMany(restaurantId, keys);
+    let refused = 0;
+    for (const k of keys) {
+      const o = ownership.get(k) ?? NO_NOTES;
+      for (const f of fields)
+        if (!mayTouchNote(actor, ...this.fieldState(o, f))) refused++;
+    }
+    if (refused === 0) return ownership;
+    throw new ActRefused(noteRefusal(refused), true, "not_your_note");
+  }
+
+  /**
+   * One `system_audit_log` row for a note change (round 5, answer 2: "every
+   * note change audited like an act"). Never throws — the pattern every
+   * audit write in this file follows (`fileAudit`): the change has already
+   * landed, and failing the request because the paper failed would report a
+   * change that took effect as one that did not.
+   *
+   * Like an act's row (`fileRuleWideAudit`, `status: { from, to }`), each
+   * field says what it was, what it became, and `from_by` — whose note it
+   * was before this change (null: nobody recorded). An owner clearing a
+   * staff member's pin reads back as exactly that, not as a bare "pinned:
+   * false". `before` is the row the gate read a moment earlier.
+   */
+  private fileNoteAudit(
+    restaurantId: string,
+    actorUserId: string,
+    ruleKey: string,
+    fields: NoteField[],
+    patch: RecommendationActionPatch,
+    before: NoteOwnership,
+  ): Promise<TypeToggleAuditReceipt> {
+    const changes: Record<string, unknown> = { rule_key: ruleKey };
+    if (fields.includes("pinned"))
+      changes.pinned = {
+        from: before.pinned,
+        to: patch.pinned,
+        from_by: before.pinnedBy,
+      };
+    if (fields.includes("feedback"))
+      changes.feedback = {
+        from: before.feedback,
+        to: patch.feedback,
+        from_by: before.ratedBy,
+      };
+    if (fields.includes("assignment")) {
+      // What `setAction` writes: a cleared assignee clears the name too, and
+      // a name sent with it (or alone) is written after that.
+      const toAssignee =
+        patch.assignedTo !== undefined ? patch.assignedTo : before.assignedTo;
+      const toName =
+        patch.assignedName !== undefined
+          ? patch.assignedName
+          : patch.assignedTo !== undefined && !patch.assignedTo
+            ? null
+            : before.assignedName;
+      changes.assignment = {
+        from: {
+          assigned_to: before.assignedTo,
+          assigned_name: before.assignedName,
+        },
+        to: { assigned_to: toAssignee ?? null, assigned_name: toName ?? null },
+        from_by: before.assignedBy,
+      };
+    }
+    return this.fileAudit(
+      restaurantId,
+      actorUserId,
+      "recommendation_note_changed",
+      { entityType: "recommendation_note", changes },
+    );
+  }
+
   /** Owners and managers only — not the platform `admin` (round 4, answer 7). */
   private assertMayActRuleWide(actor: RecommendationActor, n: number): void {
     if (!mayActRuleWide(actor.role))
@@ -912,15 +1216,22 @@ export class RecommendationActionsService {
 
   /**
    * Every house status write names who made it — the history is "who and
-   * when" (round 3, answer 2). No person, no write.
+   * when" (round 3, answer 2). Round 5, answer 2 extends this to a note (pin,
+   * rating, assignment): each field now names its own author
+   * (`pinned_by`/`rated_by`/`assigned_by`), which the note gate reads back to
+   * tell "own" from "someone else's" — an author-less note field can never be
+   * written from here on. No person, no write.
    */
   private assertNamedActor(
     patch: RecommendationActionPatch,
     actor: RecommendationActor,
   ): void {
-    if (patch.status !== undefined && !actor.userId)
+    if (
+      (patch.status !== undefined || touchesNotes(patch)) &&
+      !actor.userId
+    )
       throw new ActRefused(
-        "A signed-in user is required — every dismiss, restore, done and snooze is kept with who made it.",
+        "A signed-in user is required — every dismiss, restore, done, snooze and note (pin, rating, assignment) is kept with who made it.",
         true,
       );
   }
@@ -1176,7 +1487,7 @@ export class RecommendationActionsService {
   private async fileAudit(
     restaurantId: string,
     actorUserId: string,
-    action: TypeToggleAction | RuleWideAction,
+    action: TypeToggleAction | RuleWideAction | RecommendationNoteAction,
     what: { entityType: string; changes: Record<string, unknown> },
   ): Promise<TypeToggleAuditReceipt> {
     let audit: TypeToggleAuditReceipt;

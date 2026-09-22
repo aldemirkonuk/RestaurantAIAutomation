@@ -171,14 +171,34 @@ export function notYourActOf(err: unknown): string | null {
 }
 
 /**
+ * The page's sentence when a note (pin, rating, assignment) is not this
+ * person's to change — ADR 0191 round 5, answer 2 ("Gate like acts"): staff
+ * change or clear only their own note; owners and managers anyone's; the
+ * platform admin none.
+ */
+export const NOT_YOUR_NOTE_SAID =
+  'Only the person who made this note, or an owner or manager, can change or clear it.';
+
+/**
+ * A refused note change, in the gateway's own sentence: `not_your_note` for
+ * someone else's note, or the platform admin's refusal, which carries no
+ * code. Never a whole-house dismiss sentence — a pin is not a dismissal.
+ */
+export function noteRefusalOf(err: unknown): string {
+  const data = (err as { response?: { data?: { message?: unknown } } } | null)?.response?.data;
+  return typeof data?.message === 'string' && data.message ? data.message : NOT_YOUR_NOTE_SAID;
+}
+
+/**
  * The receipts a state write returns, said as one line when one of them
- * missed: the house log (a whole-rule act) or the append-only history
- * (every dismiss, restore, done and snooze for the house — "Keep every
- * label"). Null when nothing missed.
+ * missed: the house log (a whole-rule act, or — round 5 — a note change,
+ * `noteAudit`) or the append-only history (every dismiss, restore, done and
+ * snooze for the house — "Keep every label"). Null when nothing missed.
  */
 export function paperMissOf(data: unknown): string | null {
   const d = data as {
     audit?: { recorded?: unknown; reason?: unknown } | null;
+    noteAudit?: { recorded?: unknown; reason?: unknown } | null;
     history?: { recorded?: unknown; reason?: unknown } | null;
   } | null;
   const miss = (r: { recorded?: unknown; reason?: unknown } | null | undefined) =>
@@ -187,7 +207,7 @@ export function paperMissOf(data: unknown): string | null {
         ? r.reason
         : 'no reason given'
       : null;
-  const a = miss(d?.audit);
+  const a = miss(d?.audit) ?? miss(d?.noteAudit);
   const h = miss(d?.history);
   if (a && h) return `not written to the house log (${a}) or the history (${h})`;
   if (a) return `not written to the house log (${a})`;
