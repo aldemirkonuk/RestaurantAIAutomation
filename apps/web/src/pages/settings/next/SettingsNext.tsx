@@ -78,6 +78,8 @@ import { ThresholdsSection } from './ThresholdsSection';
 import { LedgerSection } from './LedgerSection';
 import { CurrencySection } from './CurrencySection';
 import { CarryingCostSection } from './CarryingCostSection';
+import { TimeZoneSection } from './TimeZoneSection';
+import { MailReadingSection } from './MailReadingSection';
 
 const CSS = `
 .st-ink, .st-ink * { transition: border-color ${ink.ms}ms ${ink.easing}, background-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}, transform ${ink.ms}ms ${ink.easing} }
@@ -229,8 +231,8 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             {capitalise(word(live.length))} registers — {keptTally(connectionsOn)}.
           </p>
           <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-3)', margin: '8px 0 0', maxWidth: 660 }}>
-            Four of these registers now record <em>who</em> changed a setting and what it was before — Features,
-            Vendor terms, Approval thresholds and Currency, read back under{' '}
+            Six of these registers now record <em>who</em> changed a setting and what it was before — Features,
+            Vendor terms, Approval thresholds, Currency, Time zone and Mail reading, read back under{' '}
             <button type="button" className="st-focus" onClick={() => open('ledger')}
               style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
               What changed here
@@ -404,6 +406,8 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             {shown === 'ledger' && <LedgerSection data={data} />}
             {shown === 'currency' && <CurrencySection data={data} />}
             {shown === 'carrying-cost' && <CarryingCostSection data={data} />}
+            {shown === 'time-zone' && <TimeZoneSection data={data} />}
+            {shown === 'mail-reading' && <MailReadingSection data={data} />}
           </main>
         </div>
 

@@ -12,7 +12,11 @@
  *
  * HIS RULINGS OF 2026-09-21 (ADR 0207 review trail, verbatim there):
  *   - an order past its expected date that has not landed is LATE in the
- *     on-time figure, and stays on the open list beneath it (question 8);
+ *     on-time figure, and stays on the open list beneath it (question 8) —
+ *     since his delegation of the same evening, only once CONFIRMED: someone
+ *     here answered "Not yet", or it landed after the date; unanswered it is
+ *     "unconfirmed, not counted", and 30 days on it leaves the figures for
+ *     the Incomplete orders register (`procurement/overdue-order.ts`);
  *   - the deadline is the house's local midnight (question 6) —
  *     `procurement/delivery-deadline.ts`, shared with the analytics read;
  *   - five records everywhere before a percent shows, credits included
@@ -63,14 +67,18 @@ import {
   DAY_MS,
   daysPast,
   deadlineOf,
-  isPastDue,
   landedVerdict,
 } from "../../procurement/delivery-deadline";
+import { zoneOffsetMs } from "../../calendar/zoned-time";
 import {
   ORDER_ARRIVED_STATUSES,
   ORDER_OPEN_WITH_VENDOR_STATUSES,
   hasStatus,
 } from "../../procurement/order-status";
+import {
+  ArrivalAnswerRow,
+  overdueStanding,
+} from "../../procurement/overdue-order";
 import {
   agreedPricePerBottleForDoor,
   readStatedPriceUnit,
@@ -134,6 +142,14 @@ export interface OrderArrivalRow {
   status: string | null;
   expected_delivery_date: string | null;
   delivered_at: string | null;
+  /**
+   * This order's recorded "Not yet" answers to the "Did it arrive?" act, read
+   * house-scoped by the service for orders still out with the vendor. Absent
+   * means none was read, which is also none given.
+   */
+  arrival_answers?: ArrivalAnswerRow[] | null;
+  /** A credit on this order was settled `credited`: closed with a credit. */
+  closed_with_credit?: boolean | null;
 }
 
 export interface ReceiptEventRow {
@@ -178,7 +194,6 @@ export interface ConversationRow {
   thread_key: string | null;
   gmail_thread_id: string | null;
   thread_id: string | null;
-  detected_sentiment: string | null;
 }
 
 /**
@@ -257,6 +272,13 @@ export interface DocketEntry {
   hours?: number | null;
   /** On time only: whole days after the expected date; 0 when on time. */
   daysLate?: number | null;
+  /**
+   * On time only, an order past its date and not landed: `unconfirmed`
+   * (nobody has said whether it arrived — not counted), `confirmed` (someone
+   * here said "Not yet" — counted late) or `incomplete` (30 days on — in the
+   * Incomplete orders register, out of the figures).
+   */
+  overdue?: "unconfirmed" | "confirmed" | "incomplete" | null;
   /** Price only: the agreed per-bottle price and the invoiced one. */
   agreed?: number | null;
   invoiced?: number | null;
@@ -310,6 +332,16 @@ export interface MeasureResult extends WindowTally {
   excluded: { because: string; count: number }[];
   /** Entries still waiting (orders not landed, unanswered messages, unsettled claims). */
   open: number;
+  /**
+   * On time only (null elsewhere): the orders past their date and not landed,
+   * by where they stand — counted late once confirmed, unconfirmed and not
+   * counted, or incomplete and out of the figures.
+   */
+  overdue: {
+    confirmed: number;
+    unconfirmed: number;
+    incomplete: number;
+  } | null;
   /** Every entry behind this line in the current window — the Docket filter's length. */
   rows: number;
   /** Why the register could not be read, or is not collected. */
@@ -328,17 +360,6 @@ export interface MeasureResult extends WindowTally {
   listed: DocketEntry[] | null;
 }
 
-export interface ToneReading {
-  outcome: "answered" | "could_not_read";
-  /** Vendor messages in the window carrying a model's tone label. */
-  read: number;
-  /** Vendor messages in the window. */
-  messages: number;
-  /** Labelled by a person. There is no such record yet, so always 0. */
-  labelledByPerson: 0;
-  sentence: string;
-}
-
 /** The house's clock and formats as this read used them. */
 export interface HouseClock {
   zone: string | null;
@@ -355,7 +376,12 @@ export interface VendorScorecard {
   window: { days: WindowDays; from: string; to: string; priorFrom: string };
   house: HouseClock;
   measures: MeasureResult[];
-  tone: ToneReading;
+  /*
+   * No tone here. The vendor's mail tone is read by owners and managers only
+   * (the founder, 2026-09-21: "Vendor sheet only", staff never see it), so it
+   * is its own route — `GET /vendor-scorecard/:id/mail`, `vendor-mail-tone.ts`
+   * — and this card, which every member of the house reads, carries none.
+   */
   /** Nothing at all in the window and every register answered. */
   quiet: boolean;
   /** The card's one behavioural fact (MAKEOVER-VERDICTS `/providers` MERGE). */
@@ -419,9 +445,29 @@ type Bounds = ReturnType<typeof windowBounds>;
  * On time. The universe is every order of the vendor that LANDED in the
  * window (PARTIALLY_RECEIVED included on purpose — order-status.ts: a short
  * delivery still came through the door) and every order still out with it
- * whose deadline passed in the window: that one is late, counted, and open
- * (question 8). Before its deadline an order is not late, so it is not listed.
+ * whose deadline passed in the window (`overdueEntry`). Before its deadline an
+ * order is not late, so it is not listed.
+ *
+ * A LATE landing is dated at its DEADLINE, not at its landing: it counts in
+ * the window its deadline fell in (the founder's delegation, 2026-09-21), so
+ * an order that was overdue and then arrived counts in the same window an
+ * order still overdue would, with its true landing date and days late in its
+ * detail. An on-time landing (and one that cannot be called) keeps its
+ * landing date.
  */
+/**
+ * The calendar day an instant falls on at the house (`YYYY-MM-DD`), for the
+ * words of an entry — a landing at 01:30 in Istanbul is the next day there,
+ * whatever UTC says. With no zone known, the UTC day, which the deadline
+ * sentence already says is not the house's.
+ */
+function localDay(at: number, zone: string | null): string {
+  const offset = zone ? zoneOffsetMs(new Date(at), zone) : 0;
+  return new Date(at + (Number.isFinite(offset) ? offset : 0))
+    .toISOString()
+    .slice(0, 10);
+}
+
 export function onTimeEntries(
   rows: OrderArrivalRow[],
   b: Bounds,
@@ -436,18 +482,22 @@ export function onTimeEntries(
       continue;
     }
     const landed = ms(o.delivered_at);
-    const w = whichWindow(landed, b);
-    if (!w || landed === null) continue;
+    if (landed === null) continue;
+    const deadline = deadlineOf(o.expected_delivery_date, zone);
+    const verdict = deadline ? landedVerdict(landed, deadline) : null;
+    const late = verdict === "late";
+    const at = late && deadline ? deadline.latest : landed;
+    const w = whichWindow(at, b);
+    if (!w) continue;
     const base = {
       id: `onTime:${o.id}`,
       measure: "onTime" as const,
-      at: o.delivered_at as string,
+      at: late ? new Date(at).toISOString() : (o.delivered_at as string),
       window: w,
       open: false,
       title: o.order_number || COPY.entry.order(o.id),
       source: { table: "procurement_orders", id: o.id, orderId: o.id },
     };
-    const deadline = deadlineOf(o.expected_delivery_date, zone);
     if (!deadline) {
       out.push({
         ...base,
@@ -459,7 +509,6 @@ export function onTimeEntries(
       });
       continue;
     }
-    const verdict = landedVerdict(landed, deadline);
     const date = fmt.date(deadline.date);
     if (verdict === "undecided") {
       out.push({
@@ -481,7 +530,7 @@ export function onTimeEntries(
       excludedBecause: null,
       detail: onTime
         ? COPY.entry.onTime(date)
-        : COPY.entry.late(daysLate, date),
+        : COPY.entry.late(daysLate, date, fmt.date(localDay(landed, zone))),
       daysLate,
     });
   }
@@ -490,9 +539,17 @@ export function onTimeEntries(
 
 /**
  * An order placed with the vendor (CONFIRMED / IN_TRANSIT) whose deadline has
- * passed and which has not landed: dated at its deadline, counted as LATE, and
- * open — "count it as late" (question 8), with the open list kept beneath the
- * figure. Once it lands it is an arrival instead, dated when it landed.
+ * passed and which has not landed, dated at its deadline and always OPEN.
+ * Whether it counts is `procurement/overdue-order.ts`'s one rule:
+ *
+ *   confirmed_late  someone here answered "Not yet" — counted, a miss;
+ *   unconfirmed     nobody has said whether it arrived — listed, NOT counted
+ *                   ("unconfirmed, not counted"), and the "Did it arrive?"
+ *                   act is raised by the overdue-orders read;
+ *   incomplete      30 days past the date and not arrived — listed, NOT
+ *                   counted, in the Incomplete orders register.
+ *
+ * Once it lands it is an arrival instead (late, dated at its deadline).
  */
 function overdueEntry(
   o: OrderArrivalRow,
@@ -502,23 +559,58 @@ function overdueEntry(
 ): DocketEntry | null {
   if (!hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES)) return null;
   const deadline = deadlineOf(o.expected_delivery_date, zone);
-  if (!deadline || !isPastDue(b.to, deadline)) return null;
+  if (!deadline) return null;
+  const standing = overdueStanding({
+    status: o.status,
+    expectedDate: o.expected_delivery_date,
+    deadline,
+    nowMs: b.to,
+    answers: o.arrival_answers ?? [],
+    closedWithCredit: o.closed_with_credit === true,
+  });
+  if (!standing || standing.kind === "not_due") return null;
   const w = whichWindow(deadline.latest, b);
   if (!w) return null;
-  const days = daysPast(b.to, deadline);
-  return {
+  const date = fmt.date(deadline.date);
+  const base = {
     id: `onTime:${o.id}`,
-    measure: "onTime",
+    measure: "onTime" as const,
     at: new Date(deadline.latest).toISOString(),
     window: w,
-    counted: true,
-    hit: false,
     open: true,
-    excludedBecause: null,
     title: o.order_number || COPY.entry.order(o.id),
-    detail: COPY.entry.overdueDetail(fmt.date(deadline.date), days),
     source: { table: "procurement_orders", id: o.id, orderId: o.id },
-    daysLate: days,
+    daysLate: standing.days,
+  };
+  if (standing.kind === "confirmed_late")
+    return {
+      ...base,
+      counted: true,
+      hit: false,
+      excludedBecause: null,
+      overdue: "confirmed",
+      detail: COPY.entry.overdueDetail(
+        date,
+        standing.days,
+        fmt.date(localDay(Date.parse(standing.answeredAt), zone)),
+      ),
+    };
+  if (standing.kind === "incomplete")
+    return {
+      ...base,
+      counted: false,
+      hit: null,
+      excludedBecause: COPY.entry.incomplete,
+      overdue: "incomplete",
+      detail: COPY.entry.incompleteDetail(date, standing.days),
+    };
+  return {
+    ...base,
+    counted: false,
+    hit: null,
+    excludedBecause: COPY.entry.unconfirmed,
+    overdue: "unconfirmed",
+    detail: COPY.entry.unconfirmedDetail(date, standing.days),
   };
 }
 
@@ -1087,11 +1179,28 @@ function tailSentence(
   for (const g of groupExcluded(excluded.filter((e) => !e.open)))
     parts.push(COPY.listedNotCounted(g.count, g.because));
   if (open.length) {
-    if (key === "onTime") parts.push(COPY.open.onTime(open.length));
-    else if (key === "replyTime") parts.push(COPY.open.replyTime(open.length));
+    if (key === "onTime") {
+      const by = overdueCounts(open);
+      if (by.confirmed) parts.push(COPY.open.onTime(by.confirmed));
+      if (by.unconfirmed)
+        parts.push(COPY.open.onTimeUnconfirmed(by.unconfirmed));
+      if (by.incomplete) parts.push(COPY.open.onTimeIncomplete(by.incomplete));
+    } else if (key === "replyTime")
+      parts.push(COPY.open.replyTime(open.length));
     else if (key === "credits") parts.push(COPY.open.credits(open.length));
   }
   return parts.join(" ");
+}
+
+/** The on-time line's open orders, by where each stands (`overdue-order.ts`). */
+function overdueCounts(entries: DocketEntry[]): {
+  confirmed: number;
+  unconfirmed: number;
+  incomplete: number;
+} {
+  const by = { confirmed: 0, unconfirmed: 0, incomplete: 0 };
+  for (const e of entries) if (e.open && e.overdue) by[e.overdue] += 1;
+  return by;
 }
 
 function groupExcluded(
@@ -1230,6 +1339,7 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
       minimumNoun: MINIMUM[key].noun,
       excluded: groupExcluded(cur.filter((e) => !e.counted && !e.open)),
       open: cur.filter((e) => e.open).length,
+      overdue: key === "onTime" ? overdueCounts(cur) : null,
       rows: cur.length,
       reason,
       sentence: measureSentence(key, t, cur, days, reason, fmt),
@@ -1247,7 +1357,6 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
     return result;
   });
 
-  const tone = toneReading(R.mail, providerId, b);
   const everyRegisterAnswered = measures.every(
     (m) => m.outcome !== "could_not_read",
   );
@@ -1275,7 +1384,6 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
       },
       house: houseClock(house),
       measures,
-      tone,
       quiet,
       fact: cardFact(measures[0], quiet, days),
       alerting: { built: false, sentence: ALERTING_SENTENCE },
@@ -1299,53 +1407,23 @@ function fromRegister<T>(
   return { entries: build(read.rows), blocked: null, reason: null };
 }
 
-function toneReading(
-  mail: RegisterRead<ConversationRow>,
-  providerId: string,
-  b: Bounds,
-): ToneReading {
-  if (!mail.ok)
-    return {
-      outcome: "could_not_read",
-      read: 0,
-      messages: 0,
-      labelledByPerson: 0,
-      sentence: COPY.tone.couldNotRead(mail.reason),
-    };
-  const inbound = mail.rows.filter(
-    (r) =>
-      r.provider_id === providerId &&
-      String(r.direction ?? "").toLowerCase() === "inbound" &&
-      whichWindow(ms(r.received_at), b) === "current",
-  );
-  const LABELS = new Set(["positive", "neutral", "negative"]);
-  const read = inbound.filter((r) =>
-    LABELS.has(String(r.detected_sentiment ?? "").toLowerCase()),
-  ).length;
-  return {
-    outcome: "answered",
-    read,
-    messages: inbound.length,
-    labelledByPerson: 0,
-    sentence:
-      inbound.length === 0
-        ? COPY.tone.none
-        : COPY.tone.read(read, inbound.length),
-  };
-}
-
 /**
  * The card's one fact — "Percent with count" (question 3): "86% on time · 12
- * of 14". Orders still out past their date are IN that count as late; the
- * suffix says how many of the late ones have still not landed, so a late
- * landing and a missing order do not read alike.
+ * of 14". An order still out past its date is IN that count as late once
+ * someone here has said "Not yet"; the suffix says how many of the late ones
+ * have still not landed, so a late landing and a missing order do not read
+ * alike, and how many past their date nobody has answered for — those are
+ * "unconfirmed, not counted".
  */
 function cardFact(
   onTime: MeasureResult,
   quiet: boolean,
   days: WindowDays,
 ): { text: string; outcome: MeasureOutcome } {
-  const overdue = onTime.open > 0 ? COPY.fact.overdue(onTime.open) : "";
+  const o = onTime.overdue ?? { confirmed: 0, unconfirmed: 0, incomplete: 0 };
+  const suffix =
+    (o.confirmed > 0 ? COPY.fact.overdue(o.confirmed) : "") +
+    (o.unconfirmed > 0 ? COPY.fact.unconfirmed(o.unconfirmed) : "");
   switch (onTime.outcome) {
     case "answered":
       return {
@@ -1354,7 +1432,7 @@ function cardFact(
             onTime.percent as string,
             onTime.hits as number,
             onTime.sample,
-          ) + overdue,
+          ) + suffix,
         outcome: "answered",
       };
     case "could_not_read":
@@ -1364,9 +1442,9 @@ function cardFact(
     default:
       if (quiet) return { text: COPY.fact.quiet(days), outcome: "too_few" };
       if (onTime.sample === 0)
-        return { text: COPY.fact.none(days), outcome: "too_few" };
+        return { text: COPY.fact.none(days) + suffix, outcome: "too_few" };
       return {
-        text: COPY.fact.tooFew(onTime.sample) + overdue,
+        text: COPY.fact.tooFew(onTime.sample) + suffix,
         outcome: "too_few",
       };
   }

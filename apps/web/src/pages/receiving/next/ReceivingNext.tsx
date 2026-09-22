@@ -32,6 +32,7 @@ import { useState } from 'react';
 import { Wordmark } from '@/components/mudavym';
 import { ink } from '@/lib/mudavym/motion';
 import { useAuth } from '@/contexts/AuthContext';
+import { RcArrivalAsks } from './RcArrivalAsks';
 import { RcCreditDrafts } from './RcCreditDrafts';
 import { RcManagerQueue } from './RcManagerQueue';
 import { RcOutboxRail } from './RcOutboxRail';
@@ -216,6 +217,9 @@ export default function ReceivingNext() {
             {rendering === 'owner' && <OwnerBody />}
           </main>
           <aside>
+            {/* "Did it arrive?" (ADR 0207 round 3) — asked of owners and
+                managers; a staff rendering never asks for it. */}
+            <RcArrivalAsks enabled={rendering !== 'staff'} />
             <RcOutboxRail data={outbox} />
           </aside>
         </div>

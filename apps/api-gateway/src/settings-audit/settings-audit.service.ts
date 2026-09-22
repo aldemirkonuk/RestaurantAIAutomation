@@ -73,7 +73,20 @@ export type SettingsRegister =
    * The founder, 2026-09-05 batch 59: *"Twice a year, and the house types its
    * carrying cost."*
    */
-  | "carrying-cost";
+  | "carrying-cost"
+  /**
+   * The clock this house keeps (`restaurants.timezone`). Its own register: it
+   * decides where midnight falls for every on-time verdict (ADR 0207). The
+   * founder, 2026-09-21: *"Add it to Settings"*.
+   */
+  | "time-zone"
+  /**
+   * Whether this house's inbound vendor mail is scored by Jev
+   * (`restaurants.vendor_tone_scoring_enabled`). Its own register: turning it
+   * on sends masked vendor mail to a third party (ADR 0207). The founder,
+   * 2026-09-21: *"this feature can also be disabled."*
+   */
+  | "tone-scoring";
 
 /**
  * The action strings this service writes, and the ones it reads back.
@@ -101,6 +114,16 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * clause is gated on the answer.
    */
   "carrying_cost_changed",
+  /**
+   * The house stated its time zone. Added 2026-09-21 (ADR 0207): until then
+   * `restaurants.timezone` had no writer a person could reach.
+   */
+  "house_time_zone_changed",
+  /**
+   * The house turned Jev tone scoring of its vendor mail on or off. Added
+   * 2026-09-21 (ADR 0207); off by default.
+   */
+  "vendor_tone_scoring_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

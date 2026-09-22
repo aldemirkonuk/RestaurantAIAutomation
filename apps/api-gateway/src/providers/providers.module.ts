@@ -5,6 +5,9 @@ import { ProviderIntelligenceController } from "./provider-intelligence.controll
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 import { VendorScorecardController } from "./scorecard/vendor-scorecard.controller";
 import { VendorScorecardService } from "./scorecard/vendor-scorecard.service";
+import { VendorMailToneService } from "./scorecard/vendor-mail-tone.service";
+import { JevToneScorer, TONE_SCORER } from "../vendor-tone/jev-tone.client";
+import { VendorToneScoringService } from "../vendor-tone/vendor-tone-scoring.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { EventsModule } from "../events/events.module";
@@ -51,6 +54,13 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     ProvidersService,
     ProviderIntelligenceService,
     VendorScorecardService,
+    // ADR 0207 round 3 — how a vendor's mail reads (owners and managers), and
+    // the Jev sweep that scores it for houses that turned it on. Registered
+    // here, beside the scorecard that reads it, so no shared module changes.
+    VendorMailToneService,
+    JevToneScorer,
+    { provide: TONE_SCORER, useExisting: JevToneScorer },
+    VendorToneScoringService,
   ],
   exports: [ProvidersService, ProviderIntelligenceService],
 })

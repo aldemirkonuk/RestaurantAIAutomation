@@ -8,6 +8,7 @@ import { DatabaseService } from "../../database/database.service";
 import { HouseFrame, houseFrame } from "../../common/house-frame";
 import { DAY_MS } from "../../procurement/delivery-deadline";
 import { ORDER_OPEN_WITH_VENDOR_STATUSES } from "../../procurement/order-status";
+import { readOverdueContext } from "../../procurement/overdue-order-reads";
 import {
   AgreedLineRow,
   BuiltScorecard,
@@ -313,8 +314,24 @@ export class VendorScorecardService {
       return q.order("id", { ascending: true });
     });
     if (!outstanding.ok) return outstanding;
+    // Whether each order still out is CONFIRMED late (a "Not yet" answer) or
+    // closed with a credit — `procurement/overdue-order.ts`. Read by this
+    // house's order ids, house-scoped; a failure refuses the whole line, never
+    // reads every order as unconfirmed.
+    const context = await readOverdueContext(
+      this.client(),
+      house,
+      outstanding.rows.map((r) => r.id),
+    );
+    if (!context.ok) return context;
     const merged = new Map<string, OrderArrivalRow>();
-    for (const r of [...rows.rows, ...outstanding.rows]) merged.set(r.id, r);
+    for (const r of rows.rows) merged.set(r.id, r);
+    for (const r of outstanding.rows)
+      merged.set(r.id, {
+        ...r,
+        arrival_answers: context.answers.get(r.id) ?? [],
+        closed_with_credit: context.closedWithCredit.has(r.id),
+      });
     const collected = await this.anyRow(() =>
       this.client()
         .from("procurement_orders")
@@ -450,7 +467,7 @@ export class VendorScorecardService {
     since: string,
   ): Promise<RegisterRead<ConversationRow>> {
     const COLS =
-      "id, provider_id, direction, status, sent_at, received_at, thread_key, gmail_thread_id, thread_id, detected_sentiment";
+      "id, provider_id, direction, status, sent_at, received_at, thread_key, gmail_thread_id, thread_id";
     const byColumn = async (col: "sent_at" | "received_at") =>
       this.readAll<ConversationRow>(() => {
         let q = this.client()

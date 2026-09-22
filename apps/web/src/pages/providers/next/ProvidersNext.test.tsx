@@ -113,6 +113,18 @@ vi.mock('./scorecard/LedgerCard', () => ({
     <div data-testid="ledger-stub">ledger of {providerName}</div>
   ),
 }));
+// "How their mail reads" is for owners and managers only (ADR 0207, round 3).
+// Its own behaviour is asserted in scorecard/MailTone.test.tsx; here the role
+// decides whether the sheet carries it at all.
+vi.mock('./scorecard/MailTone', () => ({
+  MailTone: ({ providerId }: { providerId: string }) => (
+    <div data-testid="mail-tone-stub">mail of {providerId}</div>
+  ),
+}));
+const auth = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'manager' | 'staff' | null }));
+vi.mock('../../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: auth.role, user: { role: auth.role }, activeRestaurantId: 'r1' }),
+}));
 
 import ProvidersNext from './ProvidersNext';
 
@@ -345,6 +357,24 @@ describe('ProvidersNext', () => {
       render(<ProvidersNext />);
       fireEvent.click(screen.getByText('Bodega Álvaro'));
       expect(await screen.findByTestId('ledger-stub')).toHaveTextContent('ledger of Bodega Álvaro');
+    });
+
+    it('carries how their mail reads for an owner and a manager, and never for staff', async () => {
+      for (const role of ['owner', 'manager'] as const) {
+        auth.role = role;
+        mockData.current = oneCard();
+        const { unmount } = render(<ProvidersNext />);
+        fireEvent.click(screen.getByText('Bodega Álvaro'));
+        expect(await screen.findByTestId('mail-tone-stub')).toBeInTheDocument();
+        unmount();
+      }
+      auth.role = 'staff';
+      mockData.current = oneCard();
+      render(<ProvidersNext />);
+      fireEvent.click(screen.getByText('Bodega Álvaro'));
+      await screen.findByTestId('ledger-stub');
+      expect(screen.queryByTestId('mail-tone-stub')).not.toBeInTheDocument();
+      auth.role = 'owner';
     });
   });
 });

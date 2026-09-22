@@ -21,6 +21,9 @@ import {
 } from "./vendor-scorecard";
 import { VendorScorecardService } from "./vendor-scorecard.service";
 import { COPY } from "./vendor-scorecard.copy";
+import { VendorMailToneService } from "./vendor-mail-tone.service";
+import { MAIL_COPY } from "./vendor-mail-tone.copy";
+import { OrganizationsService } from "../../organizations/organizations.service";
 
 type AuthUser = { userId?: string; id?: string; restaurantId?: string };
 
@@ -77,7 +80,11 @@ export function parseMeasure(raw: string | undefined): MeasureKey | null {
 @Controller("vendor-scorecard")
 @UseGuards(JwtAuthGuard)
 export class VendorScorecardController {
-  constructor(private readonly scorecard: VendorScorecardService) {}
+  constructor(
+    private readonly scorecard: VendorScorecardService,
+    private readonly mailTone: VendorMailToneService,
+    private readonly organizations: OrganizationsService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -110,6 +117,33 @@ export class VendorScorecardController {
       providerId,
       parseWindow(window),
     );
+  }
+
+  @Get(":providerId/mail")
+  @ApiOperation({
+    summary:
+      "How their mail reads — owners and managers only (ADR 0207, round 3)",
+    description:
+      "The vendor's inbound messages in the window, newest first, each with one word (warm, plain or terse) and the vendor's own line it rests on, or why it is not assessed; the standing line; and, only when this window and the one before it each hold 5 read messages, one sentence setting their counts side by side. No score, percent or direction word is returned: Jev's point-scale numbers stay in the gateway. A member who is not an owner or manager is refused with 403 before anything is read.",
+  })
+  @ApiQuery({ name: "window", required: false, enum: ["30", "90", "365"] })
+  async mail(
+    @CurrentUser() user: AuthUser,
+    @Param("providerId") providerId: string,
+    @Query("window") window?: string,
+  ) {
+    const house = houseOf(user);
+    const days = parseWindow(window);
+    const actor = user?.userId ?? user?.id;
+    if (!actor) throw new ForbiddenException(MAIL_COPY.error.notManager);
+    // Owners and managers only — the founder, 2026-09-21: staff never see it.
+    // The one role rule for every house setting, not a second copy of it.
+    await this.organizations.assertCanManageRestaurant(
+      actor,
+      house,
+      "read how a vendor's mail reads",
+    );
+    return this.mailTone.section(house, providerId, days);
   }
 
   @Get(":providerId/docket")

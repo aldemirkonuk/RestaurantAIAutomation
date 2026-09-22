@@ -4,6 +4,8 @@ import { SettingsService } from "./settings.service";
 import { ApprovalThresholdsService } from "./approval-thresholds.service";
 import { HouseCurrencyService } from "./house-currency.service";
 import { HouseCarryingCostService } from "./house-carrying-cost.service";
+import { HouseTimeZoneService } from "./house-time-zone.service";
+import { HouseToneScoringService } from "./house-tone-scoring.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { SettingsAuditModule } from "../settings-audit/settings-audit.module";
@@ -46,6 +48,8 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     ApprovalThresholdsService,
     HouseCurrencyService,
     HouseCarryingCostService,
+    HouseTimeZoneService,
+    HouseToneScoringService,
   ],
   exports: [
     SettingsService,

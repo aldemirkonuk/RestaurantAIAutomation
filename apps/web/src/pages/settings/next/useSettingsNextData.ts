@@ -377,6 +377,42 @@ export interface HouseCarryingCostRegister {
   auditReason?: string | null;
 }
 
+/**
+ * The clock this house keeps, as `GET /settings/time-zone` answers it (ADR
+ * 0207, round 3; the founder, 2026-09-21: "Add it to Settings"). Mirrors
+ * `HouseTimeZoneReadout`. `zone: null` is an unanswered question; `readable:
+ * false` a failed read; `unreadZone` a value the server cannot resolve, kept
+ * verbatim and never read as a zone.
+ */
+export interface HouseTimeZoneRegister {
+  restaurantId: string;
+  zone: string | null;
+  unreadZone: string | null;
+  country: string | null;
+  readable: boolean;
+  reason: string | null;
+  statedAt: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+  audited?: boolean;
+  auditReason?: string | null;
+}
+
+/**
+ * Whether Jev reads this house's vendor mail, as `GET
+ * /settings/vendor-tone-scoring` answers it (ADR 0207, round 3). Off by
+ * default. `enabled: null` only with `readable: false` — never read as off.
+ */
+export interface HouseToneScoringRegister {
+  restaurantId: string;
+  enabled: boolean | null;
+  readable: boolean;
+  reason: string | null;
+  statedAt: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+  audited?: boolean;
+  auditReason?: string | null;
+}
+
 export interface SetVendorTermsBody {
   deliveryWeekdays?: number[] | null;
   orderCutoffTime?: string | null;
@@ -536,6 +572,21 @@ export function useSettingsNextData(active: SectionId) {
     async () => {
       const { data } = await apiClient.get<HouseCarryingCostRegister>(
         '/settings/carrying-cost',
+      );
+      return data;
+    },
+  );
+
+  const houseTimeZone = useRemote<HouseTimeZoneRegister>(tenantKey('time-zone'), async () => {
+    const { data } = await apiClient.get<HouseTimeZoneRegister>('/settings/time-zone');
+    return data;
+  });
+
+  const houseToneScoring = useRemote<HouseToneScoringRegister>(
+    tenantKey('mail-reading'),
+    async () => {
+      const { data } = await apiClient.get<HouseToneScoringRegister>(
+        '/settings/vendor-tone-scoring',
       );
       return data;
     },
@@ -726,6 +777,39 @@ export function useSettingsNextData(active: SectionId) {
     [writer, houseCarryingCost, ledger],
   );
 
+  /**
+   * State the house's time zone — always a zone a person picked from the list;
+   * the page never writes one it derived. The server's answer replaces the
+   * register, so a write whose audit row failed shows it.
+   */
+  const saveTimeZone = useCallback(
+    (zone: string) =>
+      writer.run('time-zone', async () => {
+        const { data } = await apiClient.put<HouseTimeZoneRegister>('/settings/time-zone', {
+          zone,
+        });
+        if (data) houseTimeZone.set(data);
+        else houseTimeZone.reload();
+        ledger.reload();
+      }),
+    [writer, houseTimeZone, ledger],
+  );
+
+  /** Turn Jev's reading of vendor mail on or off — a person's press, never a default. */
+  const saveToneScoring = useCallback(
+    (enabled: boolean) =>
+      writer.run('mail-reading', async () => {
+        const { data } = await apiClient.put<HouseToneScoringRegister>(
+          '/settings/vendor-tone-scoring',
+          { enabled },
+        );
+        if (data) houseToneScoring.set(data);
+        else houseToneScoring.reload();
+        ledger.reload();
+      }),
+    [writer, houseToneScoring, ledger],
+  );
+
   const locations: RestaurantBranch[] = useMemo(
     () => availableRestaurants ?? [],
     [availableRestaurants],
@@ -742,10 +826,12 @@ export function useSettingsNextData(active: SectionId) {
     refreshBranches,
     team, flags, ical, sender, chains, pos, prefs, notif, integrations,
     vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost,
+    houseTimeZone, houseToneScoring,
     writer,
     saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, regenerateIcal,
     setMemberRole, removeMember, revokeInvite, disconnectIntegration,
     saveVendorTerms, saveThreshold, saveCurrency, saveCarryingCost,
+    saveTimeZone, saveToneScoring,
   };
 }
 

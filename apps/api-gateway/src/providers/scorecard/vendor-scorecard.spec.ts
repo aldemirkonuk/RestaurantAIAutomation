@@ -156,7 +156,6 @@ function msg(
     thread_key: thread,
     gmail_thread_id: null,
     thread_id: null,
-    detected_sentiment: null,
     ...over,
   };
 }
@@ -251,59 +250,177 @@ describe("on time — before the house's midnight, with its denominator", () => 
     expect(late.sort()).toEqual([1, 3]);
   });
 
-  it("counts an order past its date and not landed as LATE, keeps it open, and never lists it before its date (question 8)", () => {
-    const out = (expected: string, status: string) => ({
-      id: `out-${expected}-${status}`,
-      order_number: `PO-OUT-${status}-${expected}`,
-      provider_id: V,
-      status,
-      expected_delivery_date: expected,
-      delivered_at: null,
-    });
+  // The founder's delegation of 2026-09-21 ("think of a best way to handle
+  // this ... You tell me"): an order past its date is ASKED first, and counts
+  // late only once confirmed — a "Not yet" answer for that expected date, or a
+  // landing after it (procurement/overdue-order.ts).
+  const out = (
+    expected: string,
+    status: string,
+    over: Partial<OrderArrivalRow> = {},
+  ): OrderArrivalRow => ({
+    id: `out-${expected}-${status}`,
+    order_number: `PO-OUT-${status}-${expected}`,
+    provider_id: V,
+    status,
+    expected_delivery_date: expected,
+    delivered_at: null,
+    ...over,
+  });
+  const notYet = (orderId: string, expected: string, at: string) => ({
+    order_id: orderId,
+    answer: "not_yet",
+    expected_date: expected,
+    answered_at: at,
+  });
+  const fiveOnTime = () =>
+    [1, 2, 3, 4, 5].map((d) =>
+      arrival(`2026-09-0${d}T10:00:00Z`, `2026-09-0${d}`),
+    );
+
+  it("lists an order past its date that nobody has answered for as unconfirmed, NOT counted, and never lists it before its date", () => {
     const rows = [
-      ...[1, 2, 3, 4, 5].map((d) =>
-        arrival(`2026-09-0${d}T10:00:00Z`, `2026-09-0${d}`),
-      ),
-      out("2026-09-06", "IN_TRANSIT"), // 11 days past it: open
-      out("2026-09-16", "CONFIRMED"), // deadline 23:59:59 on the 16th: 1 day past
+      ...fiveOnTime(),
+      out("2026-09-06", "IN_TRANSIT"), // 11 days past it, unanswered
+      out("2026-09-16", "CONFIRMED"), // 1 day past, unanswered
       out("2026-09-17", "CONFIRMED"), // due today: not late yet
       out("2026-09-01", "PENDING"), // never placed with the vendor: not theirs
       out("2026-09-02", "CANCELLED"), // closed: not outstanding
-      out("2026-06-01", "IN_TRANSIT"), // prior window: open there, not here
     ];
     const built = build(regs({ arrivals: ok(rows) }));
     const m = measure(built.card, "onTime");
     expect(m).toMatchObject({
       outcome: "answered",
-      sample: 7,
+      sample: 5,
       hits: 5,
       open: 2,
       rows: 7,
-      percent: "71%",
+      overdue: { confirmed: 0, unconfirmed: 2, incomplete: 0 },
     });
-    expect(m.value).toBeCloseTo(5 / 7);
-    expect(m.excluded).toEqual([]);
-    expect(m.sentence).toBe(
-      "71% on time — 5 of 7 by the expected date. 2 orders are past the expected date and not landed — counted as late, still open.",
+    expect(m.sentence).toContain(
+      "2 orders are past the expected date and nobody here has said whether they arrived — unconfirmed, not counted.",
     );
-    expect(built.card.fact).toEqual({
-      text: "71% on time · 5 of 7 · 2 overdue",
-      outcome: "answered",
-    });
+    expect(built.card.fact.text).toBe(
+      "100% on time · 5 of 5 · 2 unconfirmed, not counted",
+    );
     const open = docketFor(built, "onTime").filter((e) => e.open);
-    expect(open.map((e) => [e.title, e.daysLate, e.counted, e.hit])).toEqual([
-      ["PO-OUT-CONFIRMED-2026-09-16", 1, true, false],
-      ["PO-OUT-IN_TRANSIT-2026-09-06", 11, true, false],
+    expect(
+      open.map((e) => [e.title, e.daysLate, e.counted, e.overdue]),
+    ).toEqual([
+      ["PO-OUT-CONFIRMED-2026-09-16", 1, false, "unconfirmed"],
+      ["PO-OUT-IN_TRANSIT-2026-09-06", 11, false, "unconfirmed"],
     ]);
+    expect(open[1].detail).toContain(
+      'waiting on the question "Did it arrive?"',
+    );
+  });
+
+  it("counts an order late once someone here answered Not yet for THAT expected date, in the window its deadline fell in (question 8)", () => {
+    const a = out("2026-09-06", "IN_TRANSIT", {
+      arrival_answers: [
+        notYet(
+          "out-2026-09-06-IN_TRANSIT",
+          "2026-09-06",
+          "2026-09-08T09:00:00Z",
+        ),
+      ],
+    });
+    const b = out("2026-09-16", "CONFIRMED", {
+      arrival_answers: [
+        notYet(
+          "out-2026-09-16-CONFIRMED",
+          "2026-09-16",
+          "2026-09-17T08:00:00Z",
+        ),
+      ],
+    });
+    const built = build(regs({ arrivals: ok([...fiveOnTime(), a, b]) }));
+    const m = measure(built.card, "onTime");
+    expect(m).toMatchObject({
+      sample: 7,
+      hits: 5,
+      open: 2,
+      percent: "71%",
+      overdue: { confirmed: 2, unconfirmed: 0, incomplete: 0 },
+    });
+    expect(m.sentence).toContain(
+      "2 orders are past the expected date and not landed, and someone here said not yet — counted as late, still open.",
+    );
+    expect(built.card.fact.text).toBe("71% on time · 5 of 7 · 2 overdue");
+    const open = docketFor(built, "onTime").filter((e) => e.open);
+    expect(
+      open.every(
+        (e) => e.counted && e.hit === false && e.overdue === "confirmed",
+      ),
+    ).toBe(true);
     expect(open[1].detail).toBe(
-      "Expected by 2026-09-06; 11 days past it and not landed — counted as late.",
+      "Expected by 2026-09-06; 11 days past it and not landed. Someone here said not yet on 2026-09-08 — counted as late.",
     );
-    const priorOpen = built.entries.filter(
-      (e) => e.window === "prior" && e.open,
+  });
+
+  it("does not let a Not yet for an earlier expected date, or one given before the date passed, confirm the deadline", () => {
+    const moved = out("2026-09-10", "CONFIRMED", {
+      // The vendor gave a new date; the answer was for the old one.
+      arrival_answers: [notYet("x", "2026-09-05", "2026-09-06T09:00:00Z")],
+    });
+    const early = out("2026-09-12", "CONFIRMED", {
+      // Answered before the deadline could have passed anywhere.
+      arrival_answers: [notYet("y", "2026-09-12", "2026-09-11T09:00:00Z")],
+    });
+    const built = build(
+      regs({ arrivals: ok([...fiveOnTime(), moved, early]) }),
     );
-    expect(priorOpen).toHaveLength(1);
-    expect(priorOpen[0].counted).toBe(true);
+    const m = measure(built.card, "onTime");
+    expect(m.overdue).toEqual({ confirmed: 0, unconfirmed: 2, incomplete: 0 });
+    expect(m.sample).toBe(5);
+  });
+
+  it("moves an order 30 days past its date to Incomplete orders and out of the figures, answered or not", () => {
+    const answered = out("2026-08-10", "IN_TRANSIT", {
+      arrival_answers: [notYet("z", "2026-08-10", "2026-08-12T09:00:00Z")],
+    });
+    const silent = out("2026-08-01", "CONFIRMED");
+    const built = build(
+      regs({ arrivals: ok([...fiveOnTime(), answered, silent]) }),
+    );
+    const m = measure(built.card, "onTime");
+    expect(m).toMatchObject({
+      sample: 5,
+      hits: 5,
+      overdue: { confirmed: 0, unconfirmed: 0, incomplete: 2 },
+    });
+    expect(m.sentence).toContain(
+      "2 orders are 30 days past the expected date and not arrived — in Incomplete orders under Documents & Reports",
+    );
+    const inc = docketFor(built, "onTime").filter(
+      (e) => e.overdue === "incomplete",
+    );
+    expect(inc).toHaveLength(2);
+    expect(inc.every((e) => !e.counted && e.open)).toBe(true);
+    // An order closed with a credit is not an open order at all.
+    const closed = build(
+      regs({
+        arrivals: ok([
+          ...fiveOnTime(),
+          out("2026-09-06", "IN_TRANSIT", { closed_with_credit: true }),
+        ]),
+      }),
+    );
+    expect(measure(closed.card, "onTime")).toMatchObject({ open: 0, rows: 5 });
+  });
+
+  it("dates a late landing at its deadline: expected in the prior window and landed in this one, it counts in the prior window", () => {
+    // 90-day window from 2026-06-19; expected 2026-06-10 (prior), landed 2026-06-25 (current).
+    const lateAcross = arrival("2026-06-25T10:00:00Z", "2026-06-10");
+    const built = build(regs({ arrivals: ok([...fiveOnTime(), lateAcross]) }));
+    const m = measure(built.card, "onTime");
+    expect(m).toMatchObject({ sample: 5, hits: 5 });
     expect(m.prior).toMatchObject({ sample: 1, hits: 0 });
+    const e = built.entries.find((x) => x.id === `onTime:${lateAcross.id}`);
+    expect(e).toMatchObject({ window: "prior", hit: false, daysLate: 15 });
+    expect(e?.detail).toBe(
+      "Landed on 2026-06-25, 15 days after the expected date (2026-06-10) — late, in the window its date fell in.",
+    );
   });
 
   it("refuses to score four deliveries, prints the count, and never prints a zero", () => {
@@ -817,27 +934,15 @@ describe("one vendor's card reads only that vendor's rows", () => {
   });
 });
 
-describe("tone is a minor reading, in no figure", () => {
-  it("counts a model's labels and says no person has labelled one", () => {
-    const rows = [
-      msg("inbound", "2026-09-01T10:00:00Z", "a", {
-        detected_sentiment: "negative",
-      }),
-      msg("inbound", "2026-09-02T10:00:00Z", "b", {
-        detected_sentiment: "professional",
-      }), // off-enum writer
-      msg("inbound", "2026-09-03T10:00:00Z", "c"),
-    ];
-    const card = build(regs({ mail: ok(rows) })).card;
-    expect(card.tone).toMatchObject({
-      outcome: "answered",
-      read: 1,
-      messages: 3,
-      labelledByPerson: 0,
-    });
-    expect(card.tone.sentence).toBe(
-      "A model read the tone of 1 of 3 vendor messages; no person has labelled one. Tone is in no figure above.",
-    );
+describe("tone is not on the ledger card", () => {
+  it("carries no tone: how a vendor's mail reads is its own owners-and-managers route (the founder, 2026-09-21)", () => {
+    const rows = [msg("inbound", "2026-09-01T10:00:00Z", "a")];
+    const card = build(regs({ mail: ok(rows) })).card as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(card).not.toHaveProperty("tone");
+    expect(JSON.stringify(card)).not.toMatch(/sentiment|tone of/i);
   });
 });
 
@@ -940,8 +1045,19 @@ describe("the deadline is the house's own midnight (question 6)", () => {
       V,
       istanbul,
     ).entries.find((e) => e.hit === false);
-    expect(late?.at).toBe("2026-09-10T22:30:00Z");
+    // A late landing is dated at its DEADLINE (Istanbul's midnight, 21:00Z),
+    // so it counts in the window its date fell in; the landing is in its words.
+    expect(late?.at).toBe("2026-09-10T21:00:00.000Z");
     expect(late?.daysLate).toBe(1);
+    // 22:30Z is 01:30 on the 11th in Istanbul: the landing's day is the house's.
+    expect(late?.detail).toContain(
+      `Landed on ${new Intl.DateTimeFormat(istanbul.locale as string, {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        timeZone: "UTC",
+      }).format(new Date("2026-09-11T00:00:00Z"))},`,
+    );
     // The same rows under the retired rule (23:59:59 UTC) read 5 of 5.
     expect(onTimeOf(rows, UTC_HOUSE).hits).toBe(5);
   });
@@ -1036,11 +1152,15 @@ describe("percent with count, in the house's formats (questions 3 and 7)", () =>
     }).format(0.83);
     expect(built.card.fact.text).toBe(`${pct} on time · 5 of 6`);
     const late = built.entries.find((e) => e.hit === false);
+    const trDate = (d: string) =>
+      new Intl.DateTimeFormat(tr.locale as string, {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        timeZone: "UTC",
+      }).format(new Date(`${d}T00:00:00Z`));
     expect(late?.detail).toBe(
-      `Landed 2 days after the expected date (${new Intl.DateTimeFormat(
-        tr.locale as string,
-        { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" },
-      ).format(new Date("2026-09-06T00:00:00Z"))}).`,
+      `Landed on ${trDate("2026-09-08")}, 2 days after the expected date (${trDate("2026-09-06")}) — late, in the window its date fell in.`,
     );
     expect(built.card.house.locale).toBe(tr.locale);
   });

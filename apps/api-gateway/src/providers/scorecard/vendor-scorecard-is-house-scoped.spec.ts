@@ -408,7 +408,13 @@ function make() {
   seed(db);
   const service = new VendorScorecardService({ getClient: () => db } as any);
   service.clock = () => NOW;
-  const controller = new VendorScorecardController(service);
+  // The mail route's two collaborators are not exercised in this file (its
+  // own spec is vendor-mail-tone.spec.ts); bare doubles keep this one gate.
+  const controller = new VendorScorecardController(
+    service,
+    {} as never,
+    {} as never,
+  );
   return { db, service, controller };
 }
 
@@ -454,7 +460,8 @@ function expectHouseAOnly(card: VendorScorecard) {
     { currency: "USD", allowed: 60, asked: 60, share: 1, percent: "100%" },
   ]);
   expect(card.house).toMatchObject({ zone: "UTC", zoneSource: "house" });
-  expect(card.tone).toMatchObject({ read: 0, messages: 5 });
+  // How the vendor's mail reads is its own owners-and-managers route now.
+  expect(card).not.toHaveProperty("tone");
 }
 
 describe("the vendor scorecard is house-scoped", () => {
@@ -493,7 +500,83 @@ describe("the vendor scorecard is house-scoped", () => {
     ]);
   });
 
-  it("counts house A's own order past its date and not landed as late, and keeps it open", async () => {
+  it("counts house A's own order late once house A answered Not yet — and reads neither house B's answers nor its credits", async () => {
+    const { controller, db } = make();
+    db.tables.procurement_orders.push(
+      {
+        id: "a-ord-overdue",
+        order_number: "A-OVERDUE",
+        restaurant_id: A,
+        provider_id: PA,
+        status: "CONFIRMED",
+        expected_delivery_date: "2026-09-04",
+        delivered_at: null,
+      },
+      {
+        id: "a-ord-silent",
+        order_number: "A-SILENT",
+        restaurant_id: A,
+        provider_id: PA,
+        status: "IN_TRANSIT",
+        expected_delivery_date: "2026-09-05",
+        delivered_at: null,
+      },
+    );
+    db.tables.procurement_order_arrival_answers = [
+      // House B first, cross-linked to house A's silent order: a read that lost
+      // its house clause would confirm A-SILENT late.
+      {
+        restaurant_id: B,
+        order_id: "a-ord-silent",
+        answer: "not_yet",
+        expected_date: "2026-09-05",
+        answered_at: "2026-09-07T09:00:00Z",
+      },
+      {
+        restaurant_id: A,
+        order_id: "a-ord-overdue",
+        answer: "not_yet",
+        expected_date: "2026-09-04",
+        answered_at: "2026-09-06T09:00:00Z",
+      },
+    ];
+    // House B's credited claim on house A's confirmed order: a credits read
+    // that lost its house clause would close A-OVERDUE and drop it.
+    db.tables.procurement_credits.push({
+      id: "b-closing-credit",
+      restaurant_id: B,
+      order_id: "a-ord-overdue",
+      provider_id: PA,
+      state: "credited",
+      claimed_amount: 1,
+      credited_amount: 1,
+      opened_at: day(8),
+      reason: "qty_short",
+      currency: "USD",
+      promised_at: null,
+    });
+    const card = await controller.card(userA, PA, "90");
+    expect(m(card, "onTime")).toMatchObject({
+      outcome: "answered",
+      sample: 6,
+      hits: 5,
+      open: 2,
+      rows: 7,
+      overdue: { confirmed: 1, unconfirmed: 1, incomplete: 0 },
+    });
+    expect(card.fact.text).toBe(
+      "83% on time · 5 of 6 · 1 overdue · 1 unconfirmed, not counted",
+    );
+    const docket = await controller.docket(userA, PA, "90", "onTime");
+    expect(
+      docket.entries.filter((e) => e.open).map((e) => [e.title, e.overdue]),
+    ).toEqual([
+      ["A-SILENT", "unconfirmed"],
+      ["A-OVERDUE", "confirmed"],
+    ]);
+  });
+
+  it("refuses the on-time line when the arrival answers cannot be read — never reads every order as unconfirmed", async () => {
     const { controller, db } = make();
     db.tables.procurement_orders.push({
       id: "a-ord-overdue",
@@ -504,17 +587,13 @@ describe("the vendor scorecard is house-scoped", () => {
       expected_delivery_date: "2026-09-04",
       delivered_at: null,
     });
+    db.failures.procurement_order_arrival_answers = "statement timeout";
     const card = await controller.card(userA, PA, "90");
-    expect(m(card, "onTime")).toMatchObject({
-      outcome: "answered",
-      sample: 6,
-      hits: 5,
-      open: 1,
-      rows: 6,
-    });
-    expect(card.fact.text).toBe("83% on time · 5 of 6 · 1 overdue");
-    const docket = await controller.docket(userA, PA, "90", "onTime");
-    expect(docket.entries.find((e) => e.open)?.title).toBe("A-OVERDUE");
+    expect(m(card, "onTime").outcome).toBe("could_not_read");
+    expect(m(card, "onTime").reason).toContain(
+      "the arrival answers did not answer",
+    );
+    expect(m(card, "linesAsOrdered").outcome).toBe("answered");
   });
 
   it("another house's vendor is a 404 — the same answer as no vendor at all", async () => {
@@ -715,19 +794,20 @@ describe("the request's own words are checked", () => {
 });
 
 describe("the house's own clock reaches the orders still out", () => {
-  it("reads an order due the day before the prior window when its midnight falls inside it (a UTC-12 house)", async () => {
+  it("dates a late landing at its deadline on the house's clock, at the prior window's edge (a UTC-12 house)", async () => {
     const { controller, db } = make();
     // 180 days before NOW is 2026-03-21T12:00Z. An order expected 2026-03-20
     // in a UTC-12 house falls due at 2026-03-21T12:00Z: inside the prior window.
+    // It landed two days later, so it is late and dated at that deadline.
     db.tables.restaurants.find((r) => r.id === A)!.timezone = "Etc/GMT+12";
     db.tables.procurement_orders.push({
       id: "a-ord-edge",
       order_number: "A-EDGE",
       restaurant_id: A,
       provider_id: PA,
-      status: "IN_TRANSIT",
+      status: "DELIVERED",
       expected_delivery_date: "2026-03-20",
-      delivered_at: null,
+      delivered_at: "2026-03-23T10:00:00Z",
     });
     const docket = await controller.docket(userA, PA, "90", "onTime");
     expect(m(docket.card, "onTime").prior).toMatchObject({

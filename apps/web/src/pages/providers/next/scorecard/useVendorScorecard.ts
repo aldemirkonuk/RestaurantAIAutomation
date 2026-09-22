@@ -6,6 +6,8 @@
  *                                                          one fact)
  *   useVendorCard    GET /vendor-scorecard/:id?window=    the ledger card
  *   useDocket        GET /vendor-scorecard/:id/docket     the rows behind a figure
+ *   useVendorMail    GET /vendor-scorecard/:id/mail       how their mail reads —
+ *                                                          owners and managers only
  *
  * TENANT KEY. Every key carries `activeRestaurantId`, so a house switch can
  * never leave the previous house's figures on screen for a frame. The gateway
@@ -19,7 +21,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../../services/api/client';
 import { useAuth } from '../../../../contexts/AuthContext';
-import type { Docket, MeasureKey, RollCall, VendorScorecard, WindowDays } from './scorecard-types';
+import type {
+  Docket,
+  MailToneSection,
+  MeasureKey,
+  RollCall,
+  VendorScorecard,
+  WindowDays,
+} from './scorecard-types';
 
 export function serverMessage(e: unknown, fallback: string): string {
   const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -77,5 +86,25 @@ export function useDocket(providerId: string | null, window: WindowDays, measure
       measure,
       entries: measure ? d.entries.filter((e) => e.measure === measure) : d.entries,
     }),
+  });
+}
+
+/**
+ * How the vendor's mail reads. `enabled` is false for anyone but an owner or a
+ * manager, so staff never ASK for it; the gateway refuses them independently
+ * (403), which is the rule — this is the courtesy.
+ */
+export function useVendorMail(providerId: string | null, window: WindowDays, enabled: boolean) {
+  const { activeRestaurantId } = useAuth();
+  return useQuery({
+    queryKey: ['vendor-scorecard', 'mail', activeRestaurantId ?? '', providerId, window],
+    enabled: enabled && Boolean(providerId) && Boolean(activeRestaurantId),
+    queryFn: async () => {
+      const { data } = await apiClient.get<MailToneSection>(
+        `/vendor-scorecard/${encodeURIComponent(providerId as string)}/mail`,
+        { params: { window } },
+      );
+      return data;
+    },
   });
 }

@@ -172,14 +172,6 @@ export function card(over: Partial<VendorScorecard> = {}): VendorScorecard {
         ],
       }),
     ],
-    tone: {
-      outcome: 'answered',
-      read: 1,
-      messages: 9,
-      labelledByPerson: 0,
-      sentence:
-        'A model read the tone of 1 of 9 vendor messages; no person has labelled one. Tone is in no figure above.',
-    },
     quiet: false,
     fact: { text: '86% on time · 12 of 14', outcome: 'answered' },
     alerting: {

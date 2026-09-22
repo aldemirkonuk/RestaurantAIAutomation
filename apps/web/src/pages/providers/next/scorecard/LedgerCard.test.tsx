@@ -108,12 +108,59 @@ describe('the ledger card', () => {
     expect(screen.getByTestId('ledger-figure-onTime')).toHaveTextContent('12');
   });
 
-  it('keeps tone to a minor line in no figure, and says no alert is built', async () => {
+  it('carries no tone line — how their mail reads is its own section — and says no alert is built', async () => {
     renderIt();
-    expect(await screen.findByTestId('ledger-tone')).toHaveTextContent(
-      'Tone · minor, not scored — A model read the tone of 1 of 9 vendor messages',
-    );
+    await screen.findByTestId('ledger-line-onTime');
+    expect(screen.queryByTestId('ledger-tone')).not.toBeInTheDocument();
+    expect(screen.getByTestId('ledger-card')).not.toHaveTextContent(/tone of/i);
     expect(screen.getByTestId('ledger-alerting')).toHaveTextContent('neither is built yet');
+  });
+
+  // The founder, 2026-09-21: "The font size are a little big". One step down
+  // the page's own scale: the percent 18 -> 16 px, its count 10.5 -> 10 px, the
+  // label left at 12.5 px so the figure still leads its line.
+  it('prints the figure one step smaller — 16 px, its count 10 px — and still larger than its label', async () => {
+    renderIt();
+    const fig = await screen.findByTestId('ledger-figure-onTime');
+    expect(fig).toHaveStyle({ fontSize: '16px' });
+    expect(fig.querySelector('small')).toHaveStyle({ fontSize: '10px' });
+    const label = within(screen.getByTestId('ledger-line-onTime')).getByText('On time');
+    expect(parseFloat(label.style.fontSize)).toBeLessThan(16);
+  });
+
+  it('says an order past its date is unconfirmed and not counted, late once someone said not yet, or in Incomplete orders', async () => {
+    const overdue = (id: string, standing: 'unconfirmed' | 'confirmed' | 'incomplete') =>
+      entry({
+        id: `onTime:${id}`,
+        measure: 'onTime',
+        title: id,
+        open: true,
+        counted: standing === 'confirmed',
+        hit: standing === 'confirmed' ? false : null,
+        overdue: standing,
+        detail: `Expected by 2026-09-10 (${standing}).`,
+      });
+    api.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.endsWith('/docket')
+          ? {
+              ...docket,
+              entries: [
+                overdue('PO-SILENT', 'unconfirmed'),
+                overdue('PO-SAID', 'confirmed'),
+                overdue('PO-OLD', 'incomplete'),
+              ],
+            }
+          : card(),
+      }),
+    );
+    renderIt();
+    fireEvent.click(await screen.findByRole('button', { name: /14 orders/ }));
+    const rows = await within(await screen.findByTestId('docket')).findAllByTestId('docket-entry');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent('unconfirmed · not counted');
+    expect(rows[1]).toHaveTextContent('late · not landed');
+    expect(rows[2]).toHaveTextContent('in Incomplete orders · not counted');
   });
 
   it('draws the labels and no figures while the read is out', () => {

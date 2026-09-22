@@ -5,8 +5,15 @@
  * Five lines, each a count over a count with its denominator printed, the
  * sentence that says what was left out and why, the prior window's own count
  * beside it, and a link whose number equals the rows it opens (the Docket, C's
- * day book, as the rows surface). Tone is a sixth, minor line that is in no
- * figure. Nothing here is a grade, a rank or an alert.
+ * day book, as the rows surface). Nothing here is a grade, a rank or an alert.
+ * Tone is not here: "How their mail reads" follows this card in the sheet, for
+ * owners and managers only (the founder, 2026-09-21).
+ *
+ * FIGURE SIZE (the founder, 2026-09-21: "The font size are a little big"): the
+ * figure steps down one place on the scale this page already uses (13 · 14 ·
+ * 15 · 16 · 18) — the percent from 18 to 16 px serif, its count beside it from
+ * 10.5 to 10 px mono. The line's label stays 12.5 px, so the figure still
+ * leads its line and the hierarchy holds.
  *
  * Honesty, in the order a reader meets it:
  *   - loading: the labels are drawn and the figures are not — no zero flashes;
@@ -32,6 +39,10 @@ import type { Formats } from './sc-format';
 import type { MeasureKey, MeasureResult, VendorScorecard, WindowDays } from './scorecard-types';
 import { MEASURE_ORDER, WINDOWS } from './scorecard-types';
 import { serverMessage, useVendorCard } from './useVendorScorecard';
+
+/** The figure's two sizes, one step down from 18 / 10.5 (the founder, 2026-09-21). */
+export const FIGURE_PX = 16;
+export const FIGURE_COUNT_PX = 10;
 
 const eyebrow: React.CSSProperties = {
   fontFamily: MONO,
@@ -124,7 +135,7 @@ function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: Meas
             fig.scored
               ? {
                   fontFamily: SERIF,
-                  fontSize: 18,
+                  fontSize: FIGURE_PX,
                   fontWeight: 600,
                   color: 'var(--ink-1, #211C16)',
                 }
@@ -140,7 +151,7 @@ function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: Meas
             <small
               style={{
                 fontFamily: MONO,
-                fontSize: 10.5,
+                fontSize: FIGURE_COUNT_PX,
                 fontWeight: 400,
                 fontStyle: 'normal',
                 marginLeft: 6,
@@ -229,17 +240,6 @@ function Body({ card, onRows }: { card: VendorScorecard; onRows: (k: MeasureKey)
       {card.measures.map((m) => (
         <Line key={m.key} m={m} f={f} onRows={onRows} />
       ))}
-      <div
-        data-testid="ledger-tone"
-        style={{
-          padding: '8px 0',
-          borderTop: '1px dashed var(--paper-2, #EAE4D8)',
-          fontSize: 11,
-        }}
-      >
-        <span style={{ color: 'var(--ink-3, #7C7365)' }}>{SC.ledger.tonePrefix}</span>
-        <span style={{ color: 'var(--ink-2, #4F473C)' }}>{card.tone.sentence}</span>
-      </div>
     </>
   );
 }

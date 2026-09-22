@@ -30,6 +30,8 @@ import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
 import { ContactsSection } from './ContactsSection';
 import { LedgerCard } from './scorecard/LedgerCard';
+import { MailTone } from './scorecard/MailTone';
+import { useAuth } from '../../../contexts/AuthContext';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -74,6 +76,12 @@ function FactRow({ label, value }: { label: string; value: string }) {
 
 export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
   const regions = provider.regionsCovered ?? provider.statesOrRegionsServed ?? [];
+  // "How their mail reads" is for owners and managers only (the founder,
+  // 2026-09-21: staff never see it). The gateway refuses anyone else with 403;
+  // this only keeps staff from asking.
+  const { user, activeRole } = useAuth();
+  const role = activeRole ?? user?.role ?? null;
+  const readsMail = role === 'owner' || role === 'manager';
 
   return (
     <Sheet
@@ -122,12 +130,21 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
 
       {/* what they DID — the operational vendor scorecard (ADR 0207, sketch
           117 A). Five measured lines from this house's own records, each
-          opening to its rows. Placed above the legacy panel, which is left
-          exactly as it was: whether it retires with its sentiment tab is the
-          founder's call, not this section's. */}
+          opening to its rows. Placed above the legacy panel, whose Sentiment
+          tab retired in round 3 (its reading lives in the section below). */}
       <div className="px-4 pb-4" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
         <LedgerCard providerId={provider.id} providerName={provider.name} />
       </div>
+
+      {/* how their mail reads — the vendor's own lines, one word each (ADR
+          0207 round 3: the founder's "A, Plus C's lines", vendor sheet only,
+          owners and managers only). It replaces the legacy Sentiment tab's
+          design; the feature stays, here. */}
+      {readsMail && (
+        <div className="px-4 pb-4" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+          <MailTone providerId={provider.id} />
+        </div>
+      )}
 
       {/* the twin — fetched on open, never on the grid */}
       <div className="px-4 pb-6" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>

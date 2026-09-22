@@ -61,7 +61,6 @@ export const SC = {
     heading: 'What they did',
     quiet: (days: number, vendor: string) =>
       `Nothing in the last ${days} days — no deliveries, door verdicts, invoices, replies or claims from ${vendor}. An empty record is not a clean one, so no line is drawn.`,
-    tonePrefix: 'Tone · minor, not scored — ',
     readFailed: 'The scorecard could not be read.',
     readFailedTail: 'That is a failed read, not a clean record — no line here is claimed.',
     tryAgain: 'Try again',
@@ -71,7 +70,7 @@ export const SC = {
       `Under ${minimum} claims there is no percent — these are the claims themselves:`,
     howScored: 'How this is scored',
     howScoredBody:
-      'Each line is a count of this house’s own records over a count of records, with its percent — nothing is weighted and nothing is added into a grade. The window is set beside the window of the same length before it, both counts printed, and they are compared only when both reach the line’s minimum. Every line needs 5 records before a percent is shown: 5 orders, 5 door verdicts, 5 compared invoice lines, 5 answered messages, 5 claims. An order past its expected date and not landed counts as late, and stays on the list as open until it lands. Price as agreed is the verdict recorded when the invoice was verified. Credits count only money a credit memo allowed — promised is not recovered. A register that did not answer says so on its own line; missing is never zero. Tone is a model’s reading and is in no figure.',
+      'Each line is a count of this house’s own records over a count of records, with its percent — nothing is weighted and nothing is added into a grade. The window is set beside the window of the same length before it, both counts printed, and they are compared only when both reach the line’s minimum. Every line needs 5 records before a percent is shown: 5 orders, 5 door verdicts, 5 compared invoice lines, 5 answered messages, 5 claims. An order past its expected date and not received is first asked about — “Did it arrive?” — and counts as late only once someone here says not yet, or it lands after its date; unanswered, it is listed as unconfirmed and not counted, and after 30 days it moves to Incomplete orders under Documents & Reports and out of these figures. Price as agreed is the verdict recorded when the invoice was verified. Credits count only money a credit memo allowed — promised is not recovered. A register that did not answer says so on its own line; missing is never zero. How the vendor’s mail reads is below, for owners and managers, and is in no figure.',
     alertingFallback:
       'No alert is sent from these figures. A labelled set and a shadow run come first, and neither is built yet.',
   },
@@ -103,12 +102,14 @@ export const SC = {
     footListed:
       'A line listed and not counted — an invoice with no agreed price, a delivery with no expected date — is not a miss. It is set beside the figure and named in the vendor’s rows.',
     footTone:
-      'Tone is not a column: it is a model’s reading of a vendor’s mail, never labelled by a person, and it is in no figure.',
+      'Tone is not a column: how a vendor’s mail reads is on that vendor’s sheet, for owners and managers, and it is in no figure.',
   },
 
   docket: {
     status: {
       overdue: 'late · not landed',
+      unconfirmed: 'unconfirmed · not counted',
+      incomplete: 'in Incomplete orders · not counted',
       openAsked: 'open · asked, not recovered',
       openNotCounted: 'open · not counted',
       listed: 'listed · not counted',
@@ -144,6 +145,22 @@ export const SC = {
       `Every entry in the last ${days} days, newest first. Each figure above is counted from these rows.`,
     missing: ' Its entries are missing from this list, not absent from the record.',
     empty: (days: number) => `No entries in the last ${days} days — an empty docket is not a clean one.`,
+  },
+
+  /** "How their mail reads" — the section under the ledger card (round 3). */
+  mail: {
+    heading: 'How their mail reads',
+    reading: 'Reading their mail…',
+    readFailed: 'Their mail could not be read.',
+    readFailedTail: 'That is a failed read, not a quiet vendor — no line here is claimed.',
+    tryAgain: 'Try again',
+    notAssessed: 'not assessed',
+    all: (n: number) => `All their mail (${n}) ›`,
+    fewer: 'Show fewer ‹',
+    earlier: (n: number) => `${n} earlier in this window`,
+    beyond: (n: number) => ` · ${n} more are not listed here`,
+    word: { warm: 'warm', plain: 'plain', terse: 'terse' } as Record<'warm' | 'plain' | 'terse', string>,
+    noSubject: 'no subject',
   },
 
   page: {

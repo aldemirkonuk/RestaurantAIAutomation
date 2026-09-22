@@ -107,8 +107,13 @@ function entryStatus(e: DocketEntry): {
   tone: 'hit' | 'miss' | 'aside';
 } {
   const W = SC.docket.status;
-  // An order past its date and not landed is counted as LATE and still open
-  // (question 8): a miss, and it says it has not landed.
+  // An order past its date and not landed (round 3): counted LATE once someone
+  // here said "Not yet" — a miss that says it has not landed; unconfirmed and
+  // not counted while nobody has answered; incomplete after 30 days.
+  if (e.open && e.measure === 'onTime' && e.overdue === 'unconfirmed')
+    return { word: W.unconfirmed, tone: 'aside' };
+  if (e.open && e.measure === 'onTime' && e.overdue === 'incomplete')
+    return { word: W.incomplete, tone: 'aside' };
   if (e.open && e.counted && e.measure === 'onTime') return { word: W.overdue, tone: 'miss' };
   // An open or promised claim IS counted — in what was asked, never in what
   // was recovered — so it must not read "not counted" like an unanswered message.

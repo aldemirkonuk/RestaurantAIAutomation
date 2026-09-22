@@ -43,6 +43,16 @@ import {
 } from "./dto/feature-flags.dto";
 import { SetHouseCurrencyDto } from "./dto/house-currency.dto";
 import { SetHouseCarryingCostDto } from "./dto/house-carrying-cost.dto";
+import {
+  HouseTimeZoneService,
+  type HouseTimeZoneReadout,
+} from "./house-time-zone.service";
+import {
+  HouseToneScoringService,
+  type HouseToneScoringReadout,
+} from "./house-tone-scoring.service";
+import { SetHouseTimeZoneDto } from "./dto/house-time-zone.dto";
+import { SetHouseToneScoringDto } from "./dto/house-tone-scoring.dto";
 
 @ApiTags("settings")
 @ApiBearerAuth("JWT-auth")
@@ -55,6 +65,8 @@ export class SettingsController {
     private readonly organizations: OrganizationsService,
     private readonly houseCurrency: HouseCurrencyService,
     private readonly houseCarryingCost: HouseCarryingCostService,
+    private readonly houseTimeZone: HouseTimeZoneService,
+    private readonly houseToneScoring: HouseToneScoringService,
   ) {}
 
   @Get("feature-flags")
@@ -326,6 +338,128 @@ export class SettingsController {
       dto?.basis,
       userId,
     );
+  }
+
+  /* ── The clock this house keeps ──────────────────────────────────────
+   *
+   * THE FOUNDER, 2026-09-21: *"Add it to Settings"*. The vendor scorecard reads
+   * every on-time verdict against midnight at the end of the expected day ON
+   * THE HOUSE'S CLOCK (ADR 0207 question 6), from `restaurants.timezone` — a
+   * column no person could write. A house that has not stated one keeps the
+   * span rule (a landing within a day of midnight is listed, not counted).
+   */
+
+  @Get("time-zone")
+  @ApiOperation({
+    summary: "The house's time zone, and who last stated it",
+    description:
+      "`zone: null` means nobody has stated one — the on-time line then counts only a verdict that holds in every zone. `unreadZone` is a value in the column this server cannot resolve, kept verbatim and never read as a zone. `readable: false` means the row could not be READ, which is a different state and says so in words.",
+  })
+  @ApiResponse({ status: 200, description: "The time-zone readout" })
+  async getHouseTimeZone(
+    @CurrentUser("restaurantId") restaurantId: string,
+  ): Promise<HouseTimeZoneReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so there is no time zone to read.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseTimeZone.read(restaurantId);
+  }
+
+  @Put("time-zone")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "State the house's time zone — owner or manager only",
+    description:
+      "The zone must be an IANA name this server's `Intl` lists (`Europe/Istanbul`, `America/Los_Angeles`, or `UTC`); abbreviations, offsets and misspellings are refused with a sentence. The write is explicit: no zone is ever derived or written here. The response carries `audited` and `auditReason`.",
+  })
+  @ApiResponse({ status: 200, description: "The readout after the write" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is not an owner or manager of this restaurant. The clock every on-time verdict is read on is not a per-person setting.",
+  })
+  async setHouseTimeZone(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @Body() dto: SetHouseTimeZoneDto,
+    @CurrentUser("userId") userId: string,
+  ): Promise<HouseTimeZoneReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so nothing was recorded.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "state the time zone this restaurant keeps",
+    );
+    return this.houseTimeZone.write(restaurantId, dto?.zone, userId);
+  }
+
+  /* ── Whether Jev reads this house's vendor mail ───────────────────────
+   *
+   * THE FOUNDER, 2026-09-21: *"this feature can also be disabled"*; the mail
+   * leaves *"Only with names removed"*. Off by default (ADR 0207).
+   */
+
+  @Get("vendor-tone-scoring")
+  @ApiOperation({
+    summary: "Whether Jev reads this house's vendor mail, and who last set it",
+    description:
+      "`enabled: false` is the default: nothing is sent. `readable: false` means the row could not be read, and is never reported as off.",
+  })
+  async getHouseToneScoring(
+    @CurrentUser("restaurantId") restaurantId: string,
+  ): Promise<HouseToneScoringReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so there is nothing to read.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseToneScoring.read(restaurantId);
+  }
+
+  @Put("vendor-tone-scoring")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Turn Jev's reading of vendor mail on or off — owner or manager only",
+    description:
+      "On, this house's inbound vendor mail is sent to Jev (TypeSafe) with emails, phone numbers and person names removed first, and scored on a point scale kept as internal data; the vendor sheet shows one word per message. Off, nothing is sent and the sheet reads the inbound model's existing label. Audited.",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is not an owner or manager of this restaurant. Sending the house's mail to a third party is not a per-person setting.",
+  })
+  async setHouseToneScoring(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @Body() dto: SetHouseToneScoringDto,
+    @CurrentUser("userId") userId: string,
+  ): Promise<HouseToneScoringReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so nothing was recorded.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "decide whether Jev reads this restaurant's vendor mail",
+    );
+    if (typeof dto?.enabled !== "boolean") {
+      throw new HttpException(
+        "Send true to have Jev read this house's vendor mail, or false to stop it. Nothing was recorded.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseToneScoring.write(restaurantId, dto.enabled, userId);
   }
 
   @Post("feature-flags/check")

@@ -18,6 +18,9 @@
  */
 
 import type { HouseFrame } from "../../common/house-frame";
+import { INCOMPLETE_AFTER_DAYS } from "../../procurement/overdue-order";
+
+const INCOMPLETE_DAYS = INCOMPLETE_AFTER_DAYS;
 
 // ---------------------------------------------------------------------------
 // Formats — the house's locale, never a pinned one
@@ -254,7 +257,11 @@ export const COPY = {
 
   open: {
     onTime: (n: number): string =>
-      `${plural(n, "order is", "orders are")} past the expected date and not landed — counted as late, still open.`,
+      `${plural(n, "order is", "orders are")} past the expected date and not landed, and someone here said not yet — counted as late, still open.`,
+    onTimeUnconfirmed: (n: number): string =>
+      `${plural(n, "order is", "orders are")} past the expected date and nobody here has said whether ${n === 1 ? "it" : "they"} arrived — unconfirmed, not counted.`,
+    onTimeIncomplete: (n: number): string =>
+      `${plural(n, "order is", "orders are")} ${INCOMPLETE_DAYS} days past the expected date and not arrived — in Incomplete orders under Documents & Reports, out of these figures until received, cancelled or closed with a credit.`,
     replyTime: (n: number): string =>
       `${plural(n, "message has", "messages have")} no reply yet — not counted, not forgotten.`,
     credits: (n: number): string =>
@@ -282,20 +289,13 @@ export const COPY = {
     answered: (pct: string, hits: number, sample: number): string =>
       `${pct} on time · ${hits} of ${sample}`,
     overdue: (n: number): string => ` · ${n} overdue`,
+    unconfirmed: (n: number): string => ` · ${n} unconfirmed, not counted`,
     couldNotRead: "the orders book did not answer",
     notCollected: "no expected dates recorded",
     quiet: (days: number): string => `nothing in ${days} d — nothing to score`,
     none: (days: number): string => `no dated orders in ${days} d`,
     tooFew: (sample: number): string =>
       `${plural(sample, "order", "orders")} — too few to score`,
-  },
-
-  tone: {
-    couldNotRead: (reason: string): string =>
-      `The vendor mail register did not answer (${reason}).`,
-    none: "No vendor message in this window, so nothing was read for tone. Tone is in no figure above.",
-    read: (read: number, messages: number): string =>
-      `A model read the tone of ${read} of ${plural(messages, "vendor message", "vendor messages")}; no person has labelled one. Tone is in no figure above.`,
   },
 
   /** How the on-time deadline was read for this house (question 6). */
@@ -326,14 +326,21 @@ export const COPY = {
     noExpectedDateDetail:
       "Landed with no expected date on the order, so it cannot be early or late.",
     onTime: (date: string): string => `Landed by the expected date (${date}).`,
-    late: (days: number, date: string): string =>
-      `Landed ${plural(days, "day", "days")} after the expected date (${date}).`,
+    late: (days: number, date: string, landed: string): string =>
+      `Landed on ${landed}, ${plural(days, "day", "days")} after the expected date (${date}) — late, in the window its date fell in.`,
     undecided:
       "landed within a day of midnight, and this house's time zone is not known",
     undecidedDetail: (date: string): string =>
       `Landed close to midnight at the end of the expected date (${date}); this house records no time zone, so it cannot be called on time or late.`,
-    overdueDetail: (date: string, days: number): string =>
-      `Expected by ${date}; ${plural(days, "day", "days")} past it and not landed — counted as late.`,
+    overdueDetail: (date: string, days: number, answered: string): string =>
+      `Expected by ${date}; ${plural(days, "day", "days")} past it and not landed. Someone here said not yet on ${answered} — counted as late.`,
+    unconfirmed:
+      "past its expected date, and nobody here has said whether it arrived — unconfirmed",
+    unconfirmedDetail: (date: string, days: number): string =>
+      `Expected by ${date}; ${plural(days, "day", "days")} past it and not booked in. Nobody here has said whether it arrived, so it is unconfirmed and not counted. It is waiting on the question "Did it arrive?".`,
+    incomplete: `${INCOMPLETE_DAYS} days past its expected date and not arrived — in Incomplete orders`,
+    incompleteDetail: (date: string, days: number): string =>
+      `Expected by ${date}; ${plural(days, "day", "days")} past it and still not arrived. It is in Incomplete orders under Documents & Reports and out of these figures until it is received (then counted late, with its true dates), cancelled, or closed with a credit.`,
 
     noVerdict: "counted at the door with no verdict recorded",
     noVerdictDetail:

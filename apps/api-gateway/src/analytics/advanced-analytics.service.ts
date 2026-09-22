@@ -17,11 +17,9 @@ import {
   ORDER_SPEND_STATUSES,
   hasStatus,
 } from "../procurement/order-status";
-import {
-  deadlineOf,
-  isPastDue,
-  landedVerdict,
-} from "../procurement/delivery-deadline";
+import { deadlineOf, landedVerdict } from "../procurement/delivery-deadline";
+import { overdueStanding } from "../procurement/overdue-order";
+import { readOverdueContext } from "../procurement/overdue-order-reads";
 import { HouseFrame, houseFrame } from "../common/house-frame";
 
 /**
@@ -320,6 +318,23 @@ export class AdvancedAnalyticsService {
     const orders = await this.loadOrders(restaurantId, 365);
     const house = await this.loadHouseFrame(restaurantId);
     const nowMs = Date.now();
+    // Which orders still out with a vendor are CONFIRMED late — the house
+    // answered "Not yet" — or closed with a credit (procurement/overdue-order.ts).
+    // A failed read degrades like every loader here, and says so: each order
+    // past its date is then `unread`, outside the rate, never guessed late.
+    const overdue = await readOverdueContext(
+      this.dbService.getClient(),
+      restaurantId,
+      orders
+        .filter((o: any) =>
+          hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES),
+        )
+        .map((o: any) => o.id),
+    );
+    if (!overdue.ok)
+      this.logQueryFailure("procurement_order_arrival_answers", {
+        message: overdue.reason,
+      });
     const byVendor = new Map<string, any[]>();
     for (const o of orders) {
       const key = o.provider_id || "unknown";
@@ -346,10 +361,21 @@ export class AdvancedAnalyticsService {
       // THE ON-TIME RULE — the one the vendor scorecard reads
       // (procurement/delivery-deadline.ts, ADR 0207): landed before midnight
       // at the end of the expected day on the HOUSE's clock (question 6), and
-      // an order still out with the vendor past that midnight is LATE
-      // (question 8). With no zone known, only a verdict that holds in every
-      // zone is counted; the rest are `undecided`, outside the rate.
-      const counts = { onTime: 0, late: 0, overdue: 0, undecided: 0 };
+      // an order still out with the vendor past that midnight is LATE once
+      // CONFIRMED — the house answered "Not yet" (question 8 and the founder's
+      // delegation of 2026-09-21, procurement/overdue-order.ts). Unanswered it
+      // is `unconfirmed`, and 30 days on `incomplete`: both outside the rate.
+      // With no zone known, only a verdict that holds in every zone is
+      // counted; the rest are `undecided`, outside the rate.
+      const counts = {
+        onTime: 0,
+        late: 0,
+        overdue: 0,
+        unconfirmed: 0,
+        incomplete: 0,
+        unread: 0,
+        undecided: 0,
+      };
       for (const o of os) {
         const d = deadlineOf(o.expected_delivery_date, house.zone);
         if (!d) continue;
@@ -360,12 +386,22 @@ export class AdvancedAnalyticsService {
           if (v === "on_time") counts.onTime += 1;
           else if (v === "late") counts.late += 1;
           else counts.undecided += 1;
-        } else if (
-          hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES) &&
-          isPastDue(nowMs, d)
-        ) {
-          counts.late += 1;
-          counts.overdue += 1;
+        } else if (hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES)) {
+          const standing = overdueStanding({
+            status: o.status,
+            expectedDate: o.expected_delivery_date,
+            deadline: d,
+            nowMs,
+            answers: overdue.ok ? (overdue.answers.get(o.id) ?? []) : [],
+            closedWithCredit: overdue.ok && overdue.closedWithCredit.has(o.id),
+          });
+          if (!standing || standing.kind === "not_due") continue;
+          if (!overdue.ok) counts.unread += 1;
+          else if (standing.kind === "confirmed_late") {
+            counts.late += 1;
+            counts.overdue += 1;
+          } else if (standing.kind === "incomplete") counts.incomplete += 1;
+          else counts.unconfirmed += 1;
         }
       }
       const scored = counts.onTime + counts.late;
@@ -411,6 +447,7 @@ export class AdvancedAnalyticsService {
         zone: house.zone,
         zoneSource: house.zoneSource,
         houseRecord: house.read,
+        arrivalAnswers: overdue.ok ? "read" : "could_not_read",
       },
       concentration: {
         hhi: E.herfindahlIndex(spendShare),

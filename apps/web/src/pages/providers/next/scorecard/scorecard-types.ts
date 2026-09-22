@@ -49,6 +49,12 @@ export interface MeasureResult extends WindowTally {
   minimumNoun: string;
   excluded: { because: string; count: number }[];
   open: number;
+  /**
+   * On time only: the orders past their date and not landed, by where they
+   * stand — counted late once confirmed ("Not yet"), unconfirmed and not
+   * counted, or incomplete and out of the figures. Null on the other lines.
+   */
+  overdue?: { confirmed: number; unconfirmed: number; incomplete: number } | null;
   rows: number;
   reason: string | null;
   sentence: string;
@@ -70,13 +76,6 @@ export interface HouseClock {
   deadline: string;
 }
 
-export interface ToneReading {
-  outcome: 'answered' | 'could_not_read';
-  read: number;
-  messages: number;
-  labelledByPerson: 0;
-  sentence: string;
-}
 
 export interface VendorScorecard {
   providerId: string;
@@ -84,7 +83,8 @@ export interface VendorScorecard {
   window: { days: WindowDays; from: string; to: string; priorFrom: string };
   house: HouseClock;
   measures: MeasureResult[];
-  tone: ToneReading;
+  // No tone here since round 3: how a vendor's mail reads is its own route,
+  // `GET /vendor-scorecard/:id/mail`, for owners and managers only.
   quiet: boolean;
   fact: { text: string; outcome: MeasureOutcome };
   alerting: { built: false; sentence: string };
@@ -111,6 +111,8 @@ export interface DocketEntry {
   source: { table: string; id: string; orderId: string | null };
   hours?: number | null;
   daysLate?: number | null;
+  /** On time, an order past its date and not landed: where it stands. */
+  overdue?: 'unconfirmed' | 'confirmed' | 'incomplete' | null;
   agreed?: number | null;
   invoiced?: number | null;
   amountAsked?: number | null;
@@ -122,4 +124,37 @@ export interface Docket {
   card: VendorScorecard;
   measure: MeasureKey | null;
   entries: DocketEntry[];
+}
+
+/**
+ * "How their mail reads" — `GET /vendor-scorecard/:id/mail`, owners and
+ * managers only (ADR 0207, round 3). Mirrors `MailToneSection` in
+ * `apps/api-gateway/src/providers/scorecard/vendor-mail-tone.ts`. It carries
+ * no number of the point scale: one word per message, and the line it rests on.
+ */
+export type ToneWord = 'warm' | 'plain' | 'terse';
+
+export interface MailMessage {
+  id: string;
+  at: string;
+  subject: string | null;
+  word: ToneWord | null;
+  notAssessed: string | null;
+  quote: string | null;
+  quoteMissing: string | null;
+  readBy: 'jev' | 'inbound_model' | null;
+}
+
+export interface MailToneSection {
+  providerId: string;
+  window: { days: number; from: string; to: string; priorFrom: string };
+  state: 'answered' | 'too_few' | 'not_assessed' | 'no_mail' | 'could_not_read';
+  jev: 'on' | 'off' | 'on_unavailable';
+  standing: string;
+  messages: MailMessage[];
+  shown: number;
+  beyondCap: number;
+  comparison: string | null;
+  note: string;
+  reason: string | null;
 }

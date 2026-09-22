@@ -25,6 +25,8 @@ import { DocumentExtractorService } from "./documents/document-extractor.service
 import { ReceivingController } from "./receiving.controller";
 import { ReceivingService } from "./receiving.service";
 import { CreditsController } from "./documents/credits.controller";
+import { ArrivalAsksController } from "./arrival-asks.controller";
+import { ArrivalAsksService } from "./arrival-asks.service";
 import { SettingsModule } from "../settings/settings.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
 // The seal on an order (founder, 2026-09-04). Not circular: SealModule imports
@@ -82,9 +84,12 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
     ReceivingController,
     CreditsController,
     DeliveriesController,
+    // ADR 0207 round 3 — "Did it arrive?" and the Incomplete orders register.
+    ArrivalAsksController,
   ],
   providers: [
     ProcurementService,
+    ArrivalAsksService,
     RecurringOrdersService,
     OrderRecurrenceService,
     DocumentIntakeService,
