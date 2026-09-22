@@ -93,12 +93,14 @@ const unresolvedLinesBody = {
  * the list" from "reject everything" apart. Classify first, then route by
  * the classification — every other endpoint below is unambiguous.
  */
-type Route = 'inventory-list' | 'inventory-summary' | 'inventory-low-stock' | 'inventory-research' | 'orders' | 'pos-unresolved' | 'storage-locations' | 'other';
+type Route = 'inventory-list' | 'inventory-summary' | 'inventory-low-stock' | 'inventory-research' | 'items-to-name' | 'orders' | 'pos-unresolved' | 'storage-locations' | 'other';
 
 function classify(url: string): Route {
   // The research list the "name this wine" flag reads (founder, 2026-09-21);
   // its own route so it is not counted as an inventory-list GET.
   if (url.endsWith('/inventory/research')) return 'inventory-research';
+  // Deliveries waiting for their item (founder, 2026-09-22).
+  if (url.endsWith('/procurement/items-to-name')) return 'items-to-name';
   if (url.includes('/inventory/')) {
     if (url.endsWith('/low-stock')) return 'inventory-low-stock';
     if (url.endsWith('/summary')) return 'inventory-summary';
@@ -129,6 +131,8 @@ function routeGets(overrides: Partial<Record<Route, 'reject' | unknown>> = {}) {
         return Promise.resolve({ data: [] });
       case 'inventory-research':
         return Promise.resolve({ data: { items: [] } });
+      case 'items-to-name':
+        return Promise.resolve({ data: { viewer: { mayName: true, mayNameReason: null }, deliveries: [] } });
       case 'orders':
         return Promise.resolve({ data: { orders: [], total: 0 } });
       case 'pos-unresolved':

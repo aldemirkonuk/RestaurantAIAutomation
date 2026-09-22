@@ -164,6 +164,69 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
   });
 });
 
+// Founder, 2026-09-22, verbatim pick: "Yes, same rule (Recommended)" — the
+// door queues research for an item the wine library lacks, by its id, once.
+describe("DeliveryStockService — the door queues research for a wine the library lacks", () => {
+  let db: MockDb;
+  let service: DeliveryStockService;
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    service = new DeliveryStockService(db.client as unknown as DatabaseService);
+    db.answers.deliveries = { data: { id: DEL, state: "DELIVERED", order_id: "o-1" }, error: null };
+    db.answers.procurement_document_lines = {
+      data: [{ document_id: DOC, line_no: 1, inventory_id: ITEM, qty_bottles: 10, unit_price: null, description: "x", vendor_sku: null }],
+      error: null,
+    };
+    db.answers.inventory_transactions = { data: [], error: null };
+    db.rpcAnswers.apply_stock_movement = { data: "txn-1", error: null };
+  });
+  const researchWrites = () => db.writes.filter((w) => w.table === "house_item_research");
+
+  it("an item with no library wine is queued by its id after the booking, from 'receiving'", async () => {
+    db.answers.restaurant_inventory = { data: { master_wine_id: null, wine_name: "Doluca Kav 2018", display_name: null }, error: null };
+    db.answers.house_item_research = { data: null, error: null };
+    const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(researchWrites()).toEqual([
+      expect.objectContaining({
+        verb: "insert",
+        payload: expect.objectContaining({ inventory_id: ITEM, status: "queued", queued_from: "receiving", source_order_id: "o-1", queued_by: USER, classified_name: "Doluca Kav 2018" }),
+      }),
+    ]);
+    expect(res.value.research).toEqual([{ inventoryId: ITEM, status: "queued" }]);
+    // The booking came first.
+    const bookedAt = db.verbs.indexOf("restaurant_inventory.select");
+    expect(db.rpcCalls.some((c) => c.fn === "apply_stock_movement")).toBe(true);
+    expect(bookedAt).toBeGreaterThan(-1);
+  });
+
+  it("a library wine is not queued", async () => {
+    db.answers.restaurant_inventory = { data: { master_wine_id: "mw-1", wine_name: "Barolo" }, error: null };
+    const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+    expect(res.ok && res.value.research).toEqual([]);
+    expect(researchWrites()).toHaveLength(0);
+  });
+
+  it("an item that cannot be read is listed with the reason; the booking stands", async () => {
+    db.answers.restaurant_inventory = { data: null, error: { message: "connection reset" } };
+    const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.bottlesMoved).toBe(10);
+    expect(res.value.research).toEqual([{ inventoryId: ITEM, error: "the item could not be read (connection reset)" }]);
+  });
+
+  it("a retry that moves nothing queues nothing", async () => {
+    db.answers.inventory_transactions = { data: [{ delivery_id: DEL, inventory_id: ITEM, quantity_change: 10, idempotency_key: `delivery-line:${DEL}:${DOC}:1` }], error: null };
+    db.answers.restaurant_inventory = { data: { master_wine_id: null, wine_name: "Doluca Kav 2018" }, error: null };
+    const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+    expect(res.ok && res.value.bottlesMoved).toBe(0);
+    expect(researchWrites()).toHaveLength(0);
+  });
+});
+
 describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
   let db: MockDb;
   let service: DeliveryStockService;

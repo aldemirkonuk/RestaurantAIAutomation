@@ -1146,7 +1146,7 @@ describe("markDelivered — an item with no master wine is booked, and queued fo
     await svc.markDelivered(REST, ORDER, USER_A);
     expect(liveMovements(calls)).toHaveLength(0);
     expect(notice().message).toBe(
-      "No stock was booked: this order names no house item. Confirm the physical count against the vendor invoice.",
+      "No stock was booked: this order names no house item. An owner or a manager is asked to name the item on Inventory; naming it books the stock then, once. Confirm the physical count against the vendor invoice.",
     );
     expect(notice().message).not.toMatch(/stocked in/);
   });
@@ -1168,5 +1168,113 @@ describe("markDelivered — an item with no master wine is booked, and queued fo
     expect(notice().message).toBe(
       "The receiving door already booked this order's stock; nothing was booked twice. Confirm the physical count against the vendor invoice.",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deliver, flag to name it (founder, 2026-09-22, verbatim pick: "Deliver,
+// flag to name it (Recommended)"; ADR 0192, third amendment)
+// ---------------------------------------------------------------------------
+describe("markDelivered — a delivery that books nothing asks an owner or a manager to name its item", () => {
+  const OWNER = "66666666-6666-4666-8666-666666666666";
+  const withBells = (db: DatabaseService, opts: { authority?: any } = {}) => {
+    const notifications = {
+      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1 }),
+    };
+    const authority =
+      opts.authority ??
+      ({
+        ownersAndManagers: jest.fn().mockResolvedValue({ owners: [OWNER], managers: [] }),
+      } as any);
+    const svc = new ProcurementService(
+      db,
+      events,
+      ledger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      notifications as any,
+      undefined,
+      undefined,
+      undefined,
+      authority,
+    );
+    const byType = (type: string) =>
+      notifications.persistForRestaurant.mock.calls.filter((c) => c[1]?.type === type);
+    return { svc, notifications, byType, authority };
+  };
+
+  it("a zero-bottle delivery stays delivered with nothing booked, and raises one ask", async () => {
+    const { db, calls, store } = makeDb({ order: { ...baseOrder } });
+    const { svc, byType } = withBells(db);
+    const out = await svc.markDelivered(REST, ORDER, USER_A, 0);
+    expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(liveMovements(calls)).toHaveLength(0);
+    expect((store as any).delivery_item_to_name).toEqual([
+      expect.objectContaining({ restaurant_id: REST, order_id: ORDER, why: "zero_bottles", bottles_resolved: 0, raised_by: USER_A }),
+    ]);
+    const verify = byType("invoice_received");
+    expect(verify).toHaveLength(1);
+    expect(verify[0][1].message).toBe(
+      "No stock was booked: the delivered quantity is 0. An owner or a manager is asked to name the item on Inventory; naming it books the stock then, once. Confirm the physical count against the vendor invoice.",
+    );
+    expect(verify[0][1].metadata.nameAsk).toBe("asked");
+  });
+
+  it("the owners and managers are told on the bell, and only they", async () => {
+    const { db } = makeDb({ order: { ...baseOrder } });
+    const { svc, byType } = withBells(db);
+    await svc.markDelivered(REST, ORDER, USER_A, 0);
+    const bell = byType("delivery_item_to_name");
+    expect(bell).toHaveLength(1);
+    expect(bell[0][1]).toMatchObject({
+      title: "Name the item of ORD-2026-00042",
+      actionUrl: `/inventory?name-delivery=${ORDER}`,
+    });
+    expect(bell[0][2]).toMatchObject({ onlyUserIds: [OWNER] });
+  });
+
+  it("an order that names no item raises its ask with the bottles it resolved to", async () => {
+    const { db, store } = makeDb({ order: { ...baseOrder, inventory_id: null } });
+    const { svc } = withBells(db);
+    await svc.markDelivered(REST, ORDER, USER_A);
+    expect((store as any).delivery_item_to_name).toEqual([
+      expect.objectContaining({ why: "no_item", bottles_resolved: 12 }),
+    ]);
+  });
+
+  it("a delivery that booked its stock raises no ask", async () => {
+    const { db, store } = makeDb({ order: { ...baseOrder } });
+    const { svc, byType } = withBells(db);
+    await svc.markDelivered(REST, ORDER, USER_A);
+    expect((store as any).delivery_item_to_name ?? []).toHaveLength(0);
+    expect(byType("delivery_item_to_name")).toHaveLength(0);
+  });
+
+  it("an ask that cannot be written is said in the notice; the delivery stands", async () => {
+    const { db, calls } = makeDb({
+      order: { ...baseOrder },
+      writeErrors: { delivery_item_to_name: { message: "permission denied for table delivery_item_to_name" } },
+    });
+    const { svc, byType } = withBells(db);
+    const out = await svc.markDelivered(REST, ORDER, USER_A, 0);
+    expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(liveMovements(calls)).toHaveLength(0);
+    const verify = byType("invoice_received")[0][1];
+    expect(verify.message).toMatch(/could not be asked to name it: the ask to name the item could not be recorded \(permission denied/);
+    expect(verify.metadata.nameAsk).toBe("not_asked");
+    expect(byType("delivery_item_to_name")).toHaveLength(0);
+  });
+
+  it("owners and managers that cannot be read leave the ask standing; nobody is told falsely", async () => {
+    const { db, store } = makeDb({ order: { ...baseOrder } });
+    const { svc, byType } = withBells(db, {
+      authority: { ownersAndManagers: jest.fn().mockRejectedValue(new Error("user_restaurant_access: timeout")) },
+    });
+    await svc.markDelivered(REST, ORDER, USER_A, 0);
+    expect((store as any).delivery_item_to_name).toHaveLength(1);
+    expect(byType("delivery_item_to_name")).toHaveLength(0);
   });
 });

@@ -16,6 +16,10 @@
  *   withdraw their own. A manager who just released one can pull it back from
  *   here while its undo window is open; a letter pulled back comes back here as
  *   waiting, and says so.
+ * - A released letter the dispatcher could not send (founder, 2026-09-22,
+ *   verbatim pick: "Back to waiting (Recommended)") comes back here as
+ *   waiting, with the reason it was not sent, for the manager and for the
+ *   person who asked.
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,6 +45,13 @@ export interface LetterRequest {
   state: 'waiting' | 'released' | 'closed';
   /** Times a manager released it and pulled it back inside the undo window. */
   undoneCount?: number;
+  /** The latest released letter that could not be sent, which put it back to waiting. */
+  lastSendFailure?: {
+    reason: string;
+    at: string;
+    releasedBy: { userId: string | null; name: string | null };
+    count: number;
+  } | null;
 }
 
 /** Who is reading the list (from the gateway): an owner or a manager may decline. */
@@ -220,6 +231,12 @@ export function LetterRequestsPanel({
             {(r.undoneCount ?? 0) > 0 && (
               <p data-testid="letter-request-undone" style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
                 It was released and then pulled back before it left, so it is waiting again. Nothing was sent.
+              </p>
+            )}
+            {r.lastSendFailure && (
+              <p data-testid="letter-request-send-failed" style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--alarm-deep, #8C3322)' }}>
+                {r.lastSendFailure.releasedBy.name ?? 'A manager'} released it, but it could not be sent:{' '}
+                {r.lastSendFailure.reason} It is waiting again. Nothing was sent.
               </p>
             )}
             {canRelease ? (

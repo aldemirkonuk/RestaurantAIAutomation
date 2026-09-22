@@ -637,3 +637,44 @@ export const ordersApi = {
 };
 
 export default ordersApi;
+
+// ==================== Deliveries that booked nothing ====================
+
+/**
+ * A delivered order that booked nothing (no house item, or zero bottles) and
+ * waits for an owner or a manager to name its item (founder, 2026-09-22,
+ * verbatim pick: "Deliver, flag to name it (Recommended)"; ADR 0192).
+ */
+export interface DeliveryToName {
+  orderId: string;
+  orderNumber: string | null;
+  why: 'no_item' | 'zero_bottles';
+  /** What the delivery resolved to; 0 means the count must be stated when naming. */
+  bottlesResolved: number;
+  /** The item the order already names, by id; null only for a no-item order. */
+  orderInventoryId: string | null;
+  raisedAt: string;
+}
+
+export interface DeliveriesToName {
+  viewer: { mayName: boolean; mayNameReason: string | null };
+  deliveries: DeliveryToName[];
+}
+
+/** This house's deliveries waiting for their item; the house comes from the sign-in. A failed read throws. */
+export async function fetchDeliveriesToName(): Promise<DeliveriesToName> {
+  const response = await apiClient.get<DeliveriesToName>('/procurement/items-to-name');
+  return response.data;
+}
+
+/** Name the item by its id; the stock is booked then, once. */
+export async function nameDeliveredItem(
+  orderId: string,
+  body: { inventoryId: string; bottles?: number },
+): Promise<{ bottlesBooked: number; says: string }> {
+  const response = await apiClient.post<{ bottlesBooked: number; says: string }>(
+    `${ORDERS_PATH}/${orderId}/name-item`,
+    body,
+  );
+  return response.data;
+}

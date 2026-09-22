@@ -314,6 +314,10 @@ race), web receiving tests; PGlite probe for the new column and CHECK. CLAIMS ro
    item from another house. Its fields are `status` (`queued` | `matched` | `not_findable`),
    `reason`, `queued_from` (`delivery` | `rename`), the source order, and `queued_by` on
    `public.users(user_id)`. The name is read off the item, by id, only to classify it.
+   **[E4, 2026-09-22: the classified name is now also kept on the row (`classified_name`,
+   20260921170520) as the only name research is ever given, so a name changed after the
+   decision is never researched in its place. It is never a lookup key; every read and
+   write is still by the item's id.]**
 5. **A name that cannot identify a wine is skipped and flagged.** `classifyHouseItemName`
    (`house-item-research.ts`) is a narrow classifier, tested in
    `house-item-research.spec.ts`. It treats these as placeholders: a blank; a generic noun
@@ -336,15 +340,18 @@ race), web receiving tests; PGlite probe for the new column and CHECK. CLAIMS ro
 
 **Not built, stated.**
 - **Nothing consumes `queued` rows yet.** The table is the durable hand-off. Which research
-  consumer reads it is the founder's call (lane report, round 3).
+  consumer reads it is the founder's call (lane report, round 3). **[E4, 2026-09-22: the
+  founder chose the existing enrich chain; built, dark behind a flag (third amendment,
+  item 1).]**
 - **Orders with nothing to book.** An order that names no house item, or resolves to zero
   bottles, still reads delivered with nothing booked. The notice now says so in words; it
-  no longer says "stocked in".
+  no longer says "stocked in". **[E4, 2026-09-22: it now also asks an owner or a manager to
+  name the item, and naming it books the stock once (third amendment, item 2).]**
 - **[Last call, 2026-09-21] Stock the receiving door booked is not queued.** When the door
   already booked the order (ADR 0103 A5), `markDelivered` books nothing and queues nothing;
   the door's own booking (`canonical/delivery-stock.service.ts`) does not write
   `house_item_research` either. Such an item reaches the queue only when the house renames
-  it.
+  it. **[E4, 2026-09-22: both door paths now queue it (third amendment, item 4).]**
 - **Unverified here.** No browser check and no production read. A failed shadow release is
   logged, and the live booking does not depend on it.
 
@@ -354,6 +361,148 @@ not this house's, the booking throws, or the door's or an earlier booking cannot
 the notice, no-item and door-booked wording), `house-item-research.spec.ts` (classifier,
 queue row, rename, the list), `NameThisWine.test.tsx`, the PGlite probe `E3-migrations.mjs`.
 CLAIMS rows `ADR-0192-UNMATCHED-ITEM-IS-BOOKED` and `ADR-0192-PLACEHOLDER-NAMES-ARE-FLAGGED`.
+
+## Third amendment 2026-09-22 — the queue is worked, a delivery with nothing booked asks for its item, and every booking path queues research
+
+**Source.** The founder's answers to the round-3 lane report, relayed in the round-6u lane
+brief and dated there 2026-09-22. His picks, verbatim:
+
+> (1) "Existing enrich chain (Recommended)"
+> (2) "Deliver, flag to name it (Recommended)"
+> (4) "Yes, same rule (Recommended)"
+
+(His (3), "Back to waiting (Recommended)", is ADR 0175's fourth amendment.) What each pick
+chose, as the brief states it: (1) queued rows are worked by the existing submission chain
+(`haiku_enrich_task` -> `web_verify_task`), linked by id, never by name; a row flips to
+`matched` when its submission gets `matched_master_id`; placeholders are skipped and flagged,
+never researched. (2) A delivery whose order names no house item or resolves to zero bottles
+stays "delivered, nothing booked" with its truthful notice AND raises a flag asking an owner
+or a manager to name the item; naming it books the stock then, once, audited. (4) Every path
+that books stock for a wine the library lacks (markDelivered, the receiving door, a rename)
+queues research once per item id, idempotently.
+
+**Built (lane E round 4):**
+
+1. **The enrich chain works the queue, by id** (20260921170520).
+   - `claim_house_item_research()` (service_role only; anon and authenticated revoked)
+     takes the oldest `queued` rows not yet handed off, under a 30-minute lease and
+     `FOR UPDATE SKIP LOCKED`. It files ONE `master_wine_library_submissions` row per item,
+     only when the row has none, and keeps its id on the row (`submission_id`, unique). A
+     retry after the lease re-hands the same submission; it never files a second.
+   - It hands back only `classified_name`: the name the gateway classifier judged
+     researchable when it decided the row. A queued row must carry it (CHECK). A placeholder
+     (`not_findable`) is never claimed, and a name edited later by a path that does not
+     re-decide is never researched in its place.
+   - An item that meanwhile gained a library wine is matched to that wine by id, not filed.
+   - The orchestrator sweep `house_item_research.dispatch`
+     (`services/agent-orchestrator/jobs/house_item_research_tasks.py`, Celery beat hourly
+     at :45) hands each submission id to `haiku_enrich_task`, which queues `web_verify_task`
+     itself. It stamps `dispatched_at` after a hand-off, or `last_dispatch_error` when the
+     broker refuses (claimed again after the lease, at most five times). A claim that cannot
+     be read raises; it is never "nothing to do".
+   - **The flip.** A SECURITY DEFINER trigger on `master_wine_library_submissions` sets the
+     row `matched`, with the wine's id, by the submission's id and only while `queued`, when
+     the submission is settled `merged` or `accepted` with a `matched_master_id`.
+   - **A rename to a new name** clears the hand-off so the new name is researched; the older
+     submission stays in the library's queue, unlinked.
+   - **Off by default.** The sweep does nothing unless `HOUSE_ITEM_RESEARCH_DISPATCH_ENABLED=true`,
+     the same pattern as `research.dispatch_batch`, because the chain spends money on model
+     calls and web searches. Switching it on is the founder's keystroke.
+2. **A delivery with nothing booked asks for its item** (20260921170530).
+   - `markDelivered` keeps the order delivered with nothing booked and the notice's words,
+     and raises one `delivery_item_to_name` row per order (why: `no_item` | `zero_bottles`,
+     the bottles it resolved to, who marked it delivered). The notice adds: "An owner or a
+     manager is asked to name the item on Inventory; naming it books the stock then, once."
+     The owners and managers are told on the bell (`delivery_item_to_name`, linking to
+     `/inventory?name-delivery=<order>`). A failed ask is said in the notice, never dropped.
+   - **Naming** (`POST /procurement/orders/:id/name-item`, the house from the token, the item
+     by its id; `GET /procurement/items-to-name` lists them): owner or manager only, the
+     role read strictly before any write. A zero-bottle delivery must state its count; a
+     delivery that resolved to bottles books that number. The ask is claimed open -> named
+     conditionally, so a second or concurrent naming books nothing. The booking uses
+     markDelivered's own ledger key (`order-delivered-live:<order>`). Stock the door booked
+     since (either door) or an earlier booking refuses. A refused booking puts the ask back to
+     open and unlinks a no-item order. The naming writes a `delivery_item_named` row to
+     `system_audit_log`; the ask row itself records who, when, which item and how many.
+   - **What a house meets, stated:** `procurement_orders.inventory_id` is NOT NULL in every
+     migration, so no stored order names no item. The `no_item` branch is kept and flags;
+     the case that happens is zero bottles. For it the order already names its item, so
+     naming it means confirming that item and saying how many bottles came in.
+   - `/inventory` shows "Deliveries waiting for their item" (`DeliveriesToName.tsx`): the
+     order, what happened, and for an owner or a manager the item (chosen by id) and the
+     count; anyone else is told who can. A failed read is said on the page.
+3. **(Round-3 item 5, unchanged.)** Placeholders stay `not_findable` and flagged; the claim
+   above never takes them.
+4. **Every booking path queues research, once per item id.** `queueResearchIfLibraryLacks`
+   (`house-item-research.ts`) reads the item by id and house, strictly, and queues only an
+   item with no `master_wine_id`. It now runs after the door's case count booked bottles in
+   (`recordDoorReceipt`, `queued_from = 'receiving'`), after `DeliveryStockService.bookAtTheDoor`
+   for each item a count booked stock into, and after a delivery's item is named.
+   `markDelivered` and the rename already queued. The one-row-per-item index is the "once",
+   and a second booking with the same name changes nothing. An unreadable or foreign item is
+   said in the door's answer, never "nothing to queue"; the stock stands.
+   **[Last call, 2026-09-22: the build missed one path that receives stock. A verification
+   correction that books bottles in (`applyReceiptAdjustment`, after its `receipt-verify:`
+   movement, delta > 0) did not queue. A zero-bottle delivery verified at its real count
+   therefore booked the wine and never queued it. It now queues (`queued_from = 'receiving'`),
+   with a failure logged; `verify-receipt.spec.ts`. Paths that change stock without receiving
+   it (count corrections, POS sales) are not wired. Every path that adds a new item with
+   stock (add-to-inventory, bulk receive) carries a library wine by construction.]**
+   **[Last call 2, 2026-09-22: one more path is not wired. `POST /inventory-ledger/transactions`
+   (and its `/bulk`) books whatever transaction type its caller names, a `purchase` included,
+   and does not queue. It is API-only: no web page calls it (grep of `apps/web/src`).]**
+
+**Not built, stated.**
+- **The chain's first step cannot persist, measured from the migrations.** `haiku_enrich_task`
+  (`jobs/haiku_tasks.py`) writes `ai_enriched`, `enrichment_source` and seven JSONB keys
+  (`grape_family`, `wine_structure`, ...) onto `master_wine_library_submissions`. None of
+  those nine columns exists in any migration (grep: 0 files for `ai_enriched` and
+  `enrichment_source`; the JSONB keys exist only on other tables). Against a database built
+  from `supabase/migrations/`, that update fails, the task retries (a model call each time),
+  and `web_verify_task` is never queued. This predates the lane. It is one reason the sweep
+  ships off: switched on as is, it would spend on calls whose results are not kept.
+- **Nothing in the chain sets `matched_master_id`.** Only
+  `WineSubmissionsService.processPendingSubmissions` does (`merged`, `accepted`, or a near
+  miss), and it runs only when someone POSTs `/wines/submissions/process`; no scheduler calls
+  it. So a queued item flips to `matched` only after such a run.
+- **A near miss does not flip the row.** processPendingSubmissions writes `pending_review`
+  WITH the candidate's id in `matched_master_id`. The brief says the row flips "when its
+  submission gets matched_master_id"; the build flips only a settled `merged`/`accepted` link,
+  because a candidate nobody confirmed is not a match. Put to the founder as a question.
+- **"Research found nothing" does not flag.** The chain has no "nowhere to be found" outcome,
+  so a researched row that finds nothing stays `queued`.
+- **A matched row does not link the house item** (`restaurant_inventory.master_wine_id` stays
+  NULL). Not asked for; stated.
+- **Naming leaves no unit cost** on the lot (nobody has read an invoice there); verification
+  settles it, as at the door.
+- **A crash between the ask's claim and the booking** leaves the ask `named` with nothing
+  booked. The window is one request; it is stated, not handled.
+- **[Last call, 2026-09-22] An ask outlives a booking made elsewhere.** When the door or a
+  verification books the order after the ask was raised, nothing closes the ask. Naming it
+  then refuses with a 409 ("booked since it was delivered") and books nothing twice, but
+  `/inventory` keeps listing the delivery as waiting. Closing it needs a third status, which
+  is a founder question (lane report).
+- **[Last call, 2026-09-22] A handed-off row holds its submission.** `submission_id` is
+  `ON DELETE SET NULL`, and a dispatched row must keep its submission (CHECK). So deleting a
+  submission the chain was handed fails with a check violation, rather than leaving the row
+  dispatched with nothing to follow. No path deletes submissions except test teardown.
+- **[Last call 2, 2026-09-22] The /inventory card is not in Mudavym components.**
+  `DeliveriesToName.tsx` uses the host page's own Tailwind styling. `components/mudavym` has no
+  select or count input, and the card has no ADR 0134 motion.
+- **Unverified here:** no browser check, no production read, and no Celery worker or beat was
+  run (the orchestrator's Dockerfile starts uvicorn only; whether a worker and beat run in
+  production is not known from the repo).
+
+**Evidence.** PGlite `p4-scratch/pglite-probe/E4-migrations.mjs` (51 checks: the claim, the
+lease, one submission per item, placeholders never claimed, the flip on merged/accepted and
+not on a near miss, the ask's constraints, one ask per order, the conditional naming, the
+failed-send columns, re-runs are no-ops); `delivery-item-to-name.spec.ts`,
+`delivered-once.spec.ts` (the ask block), `house-item-research.spec.ts` (the same-rule
+block), `receiving.spec.ts`, `delivery-stock.service.spec.ts`,
+`test_house_item_research_tasks.py`, `DeliveriesToName.test.tsx`. CLAIMS rows
+`ADR-0192-QUEUED-ITEMS-WORKED-BY-ENRICH-CHAIN`, `ADR-0192-DELIVERY-ASKS-FOR-ITS-ITEM`,
+`ADR-0192-EVERY-BOOKING-PATH-QUEUES-RESEARCH`; `ADR-0192-UNMATCHED-ITEM-IS-BOOKED` re-pinned
+with a dated bracket.
 
 ## Review trail
 
@@ -368,3 +517,7 @@ CLAIMS rows `ADR-0192-UNMATCHED-ITEM-IS-BOOKED` and `ADR-0192-PLACEHOLDER-NAMES-
 | 2026-09-21 | Aldemir (founder), on the residual under (9) | *"book the stock anyway"*; research an item the library lacks, by its id; skip and flag a placeholder name (second amendment, verbatim) |
 | 2026-09-21 | Claude (Opus 5), lane E round 3 | Built (second amendment): booked by the house item id, more refusals that put the order back, a true notice, `house_item_research` + the classifier + the /inventory flag and rename path; the consumer is a founder question |
 | 2026-09-21 | Claude (Opus 5), lane E round 3 last call | Classifier fixed both ways (a glued counter is a placeholder; an unread script is researchable), tests and mutants; the door-booked gap stated under "Not built" |
+| 2026-09-22 | Aldemir (founder), answers (1), (2), (4) (relayed in the round-6u lane brief) | *"Existing enrich chain (Recommended)"*; *"Deliver, flag to name it (Recommended)"*; *"Yes, same rule (Recommended)"* (third amendment, verbatim) |
+| 2026-09-22 | Claude (Opus 5), lane E round 4 | Built the three (third amendment): the claim, the sweep (off by default) and the flip; the ask, the naming act and the /inventory card; research from both doors and the naming; the enrich chain's persist defect, the unscheduled promotion and the near-miss reading stated |
+| 2026-09-22 | Claude (Opus 5), lane E round 4 last call | A verification correction that booked bottles in did not queue research; it now does, with tests and mutants (item 4). The /inventory card lost the gateway's sentence when the refetch dropped the named delivery; the card now holds it. Two residuals stated: an ask outlives a booking made elsewhere, and a handed-off row holds its submission |
+| 2026-09-22 | Claude (Opus 5), lane E round 4 last call 2 | Record narrowed to the code: the API-only ledger endpoint does not queue research (item 4 bracket, the CLAIMS row text, the module comment), and the /inventory card is not in Mudavym components (Not built). No behaviour changed |

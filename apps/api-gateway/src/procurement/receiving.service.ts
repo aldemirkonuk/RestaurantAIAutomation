@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
+import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { readBookedOrderBottles } from "./booked-order-quantity";
 import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
@@ -146,6 +147,14 @@ export interface DoorReceiptResult {
   stockBooked: boolean;
   /** A sentence for the receiver when the stock did not move. Never a code. */
   stockIssue?: string;
+  /**
+   * The research queue's answer for an item the wine library lacks, after
+   * this receipt booked it (founder, 2026-09-22: "Yes, same rule"). Absent for
+   * a library wine or when nothing was booked here.
+   */
+  research?: "queued" | "not_findable" | "matched";
+  /** A sentence when the item could not be queued for research. The stock stands. */
+  researchIssue?: string;
 }
 
 export interface UnverifiedDelivery {
@@ -532,6 +541,29 @@ export class ReceivingService {
       .eq("restaurant_id", input.restaurantId)
       .eq("id", input.orderId);
 
+    // THE SAME RULE AT THE DOOR (founder, 2026-09-22, verbatim pick: "Yes, same
+    // rule (Recommended)"): stock this receipt booked for a wine the library
+    // lacks queues research, by the item's id, once per item. After the
+    // booking and never undoing it; a failure is said, not swallowed.
+    let research: DoorReceiptResult["research"];
+    let researchIssue: string | undefined;
+    if (stockBooked && delta > 0 && order.inventory_id) {
+      const queued = await queueResearchIfLibraryLacks(this.db.getClient(), {
+        restaurantId: input.restaurantId,
+        inventoryId: order.inventory_id,
+        queuedFrom: "receiving",
+        sourceOrderId: input.orderId,
+        queuedBy: input.userId ?? null,
+      });
+      if (queued && queued.ok) research = queued.status;
+      if (queued && !queued.ok) {
+        researchIssue = `The stock is booked, but whether this wine needs research could not be recorded: ${queued.error}.`;
+        this.logger.error(
+          `door receipt for order ${input.orderId} booked, but its item was not queued for research: ${queued.error}`,
+        );
+      }
+    }
+
     return {
       alreadyRecorded,
       eventId,
@@ -542,6 +574,8 @@ export class ReceivingService {
       stockDelta: stockBooked ? delta : null,
       stockBooked,
       ...(stockIssue ? { stockIssue } : {}),
+      ...(research ? { research } : {}),
+      ...(researchIssue ? { researchIssue } : {}),
     };
   }
 

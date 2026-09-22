@@ -27,9 +27,19 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import {
   enqueueHouseItemResearch,
+  queueResearchIfLibraryLacks,
   type EnqueueOutcome,
 } from "../inventory/house-item-research";
 import { type DeliveryBooking, verifyNoticeMessage } from "./delivered-notice";
+import {
+  nameDeliveredItem as nameDeliveredItemAct,
+  raiseDeliveryItemToName,
+  readOpenDeliveryItemsToName,
+  type DeliveryItemToNameView,
+  type NameAskWhy,
+  type NamedDelivery,
+  type RaiseOutcome,
+} from "./delivery-item-to-name";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
@@ -4383,6 +4393,111 @@ export class ProcurementService {
     }
   }
 
+  // ==========================================================================
+  // A delivery that booked nothing asks for its item (founder, 2026-09-22,
+  // verbatim pick: "Deliver, flag to name it (Recommended)"; ADR 0192).
+  // ==========================================================================
+
+  /** Whether this person is an owner or a manager here. Strict: a failed read THROWS. */
+  private async isOwnerOrManagerHere(userId: string, restaurantId: string): Promise<boolean> {
+    if (!this.vendorSendAuthority) {
+      throw new Error("who holds which role here cannot be checked on this server");
+    }
+    const reading = await this.vendorSendAuthority.standing(userId, restaurantId);
+    const role = (reading.role ?? "").trim().toLowerCase();
+    return role === "owner" || role === "manager";
+  }
+
+  /**
+   * This house's deliveries waiting for their item to be named, and whether the
+   * viewer may name them. A failed read throws; it is never an empty list.
+   */
+  async deliveriesToName(
+    restaurantId: string,
+    userId: string,
+  ): Promise<{ viewer: { mayName: boolean; mayNameReason: string | null }; deliveries: DeliveryItemToNameView[] }> {
+    const deliveries = await readOpenDeliveryItemsToName(this.databaseService.supabase, restaurantId);
+    let mayName = false;
+    let mayNameReason: string | null = null;
+    try {
+      mayName = await this.isOwnerOrManagerHere(userId, restaurantId);
+      if (!mayName) mayNameReason = "Only an owner or a manager names a delivery's item.";
+    } catch (err: any) {
+      mayNameReason = `Whether you may name them could not be read (${err?.message ?? String(err)}).`;
+    }
+    return { viewer: { mayName, mayNameReason }, deliveries };
+  }
+
+  /** An owner or a manager names a delivery's item; the stock is booked then, once. */
+  async nameDeliveredItem(input: {
+    restaurantId: string;
+    orderId: string;
+    userId: string;
+    inventoryId: string;
+    bottles?: number | null;
+  }): Promise<NamedDelivery> {
+    return nameDeliveredItemAct(
+      {
+        client: this.databaseService.supabase as any,
+        logger: this.logger,
+        isOwnerOrManager: (userId, restaurantId) => this.isOwnerOrManagerHere(userId, restaurantId),
+      },
+      input,
+    );
+  }
+
+  /**
+   * The bell for the owners and managers when a delivery asks for its item.
+   * Best-effort: the ask row stands and /inventory lists it whatever happens
+   * here; a failure is logged, never read as "told".
+   */
+  private async tellOwnersAndManagersToName(
+    restaurantId: string,
+    orderId: string,
+    input: { orderNumber: string | null; why: NameAskWhy; raisedBy: string },
+  ): Promise<void> {
+    if (!this.notificationsService || !this.vendorSendAuthority) {
+      this.logger.warn(
+        `markDelivered: order ${orderId} asks for its item, but the owners and managers cannot be told on this server; /inventory lists it.`,
+      );
+      return;
+    }
+    try {
+      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(restaurantId);
+      const audience = [...new Set([...owners, ...managers])];
+      if (audience.length === 0) {
+        this.logger.warn(`markDelivered: order ${orderId} asks for its item, but this house has no owner or manager to tell.`);
+        return;
+      }
+      const order = input.orderNumber ?? "An order";
+      const what =
+        input.why === "zero_bottles"
+          ? "was delivered with no bottle count, so nothing was booked"
+          : "was delivered naming no item, so nothing was booked";
+      const { inserted } = await this.notificationsService.persistForRestaurant(
+        restaurantId,
+        {
+          type: "delivery_item_to_name",
+          title: `Name the item of ${order}`,
+          message: `${order} ${what}. Name the item${input.why === "zero_bottles" ? " and how many bottles came in" : ""} on Inventory; its stock is booked then, once.`,
+          priority: "high",
+          actionUrl: `/inventory?name-delivery=${orderId}`,
+          actionLabel: "Name the item",
+          groupKey: `delivery_item_to_name:${orderId}`,
+          metadata: { orderId, why: input.why, raisedBy: input.raisedBy },
+        },
+        { onlyUserIds: audience, dedupeWithinMinutes: 24 * 60 },
+      );
+      if (inserted === 0) {
+        this.logger.warn(`markDelivered: order ${orderId} asks for its item, but no bell row was written for its owners and managers.`);
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `markDelivered: order ${orderId} asks for its item, but the owners and managers could not be told (${err?.message ?? String(err)}).`,
+      );
+    }
+  }
+
   async markDelivered(
     restaurantId: string,
     orderId: string,
@@ -4733,6 +4848,12 @@ export class ProcurementService {
     // The item's place on the research queue, when the wine library does not
     // have it (founder, 2026-09-21; below). Null for a library wine.
     let research: EnqueueOutcome | null = null;
+    // DELIVER, FLAG TO NAME IT (founder, 2026-09-22, verbatim pick: "Deliver,
+    // flag to name it (Recommended)"): a delivery that names no house item or
+    // resolves to zero bottles stays delivered with nothing booked, and asks
+    // an owner or a manager to name the item (`delivery-item-to-name.ts`).
+    let nameAsk: { why: NameAskWhy; bottles: number } | null = null;
+    let nameAskOutcome: RaiseOutcome | null = null;
 
     if (!deliveryOwns.ok) {
       // Whether the receiving door already booked this order could not be
@@ -4752,11 +4873,16 @@ export class ProcurementService {
       booking = { kind: "booked_by_door" };
     } else if (!order.inventoryId) {
       booking = { kind: "nothing", why: "this order names no house item" };
+      nameAsk = {
+        why: "no_item",
+        bottles: receivedBottles > 0 ? receivedBottles : 0,
+      };
     } else if (!(resolvedQuantity > 0) || !(receivedBottles > 0)) {
       booking = {
         kind: "nothing",
         why: `the delivered quantity is ${resolvedQuantity}`,
       };
+      nameAsk = { why: "zero_bottles", bottles: 0 };
     } else {
       const inventoryId = order.inventoryId;
       const idempotencyKey = `order-delivered:${orderId}`;
@@ -5060,6 +5186,34 @@ export class ProcurementService {
       });
     }
 
+    // THE ASK TO NAME THE ITEM (founder, 2026-09-22: "Deliver, flag to name
+    // it"). After the delivered write and never instead of it: the order
+    // stays delivered with nothing booked, and the ask is one row per order.
+    // A failed ask is said in the notice and logged, never dropped.
+    if (nameAsk) {
+      nameAskOutcome = await raiseDeliveryItemToName(
+        this.databaseService.supabase,
+        {
+          restaurantId,
+          orderId,
+          why: nameAsk.why,
+          bottlesResolved: nameAsk.bottles,
+          raisedBy: userId,
+        },
+      );
+      if (!nameAskOutcome.ok) {
+        this.logger.error(
+          `markDelivered: order ${orderId} was delivered with nothing booked, and the ask to name its item failed: ${nameAskOutcome.error}`,
+        );
+      } else if (nameAskOutcome.created) {
+        await this.tellOwnersAndManagersToName(restaurantId, orderId, {
+          orderNumber: existingRow.order_number ?? null,
+          why: nameAsk.why,
+          raisedBy: userId,
+        });
+      }
+    }
+
     // Update calendar event to COMPLETED on delivery
     await this.updateCalendarEventForDelivery(restaurantId, orderId, order);
 
@@ -5086,7 +5240,7 @@ export class ProcurementService {
           // THIS call did (`delivered-notice.ts`): "N bottles stocked in" only
           // for a booking that moved them, and the research sentence for an
           // item the wine library does not have (founder, 2026-09-21).
-          message: verifyNoticeMessage(booking, research),
+          message: verifyNoticeMessage(booking, research, nameAskOutcome),
           priority: "critical",
           actionUrl: `/inventory?verify=${orderId}`,
           actionLabel: "Verify receipt",
@@ -5103,6 +5257,13 @@ export class ProcurementService {
               ? research.ok
                 ? research.status
                 : "not_queued"
+              : null,
+            // The ask to name the item (founder, 2026-09-22); null when the
+            // delivery booked what it named.
+            nameAsk: nameAskOutcome
+              ? nameAskOutcome.ok
+                ? "asked"
+                : "not_asked"
               : null,
           },
         },
@@ -5277,6 +5438,30 @@ export class ProcurementService {
         throw new UnprocessableEntityException(
           `Adjustment failed for item ${inventoryId}: ${error.message}`,
         );
+      }
+      // THE SAME RULE AT VERIFICATION (founder, 2026-09-22, verbatim pick:
+      // "Yes, same rule (Recommended)"): a correction that booked bottles in
+      // is a path that books stock, so an item the wine library lacks is
+      // queued for research by its id, once per item. [Last call, 2026-09-22:
+      // this path was missed; a zero-bottle delivery verified at its real
+      // count booked the wine and never queued it.] After the booking and
+      // never undoing it; a failure is logged, the stock stands.
+      if (delta > 0) {
+        const research = await queueResearchIfLibraryLacks(
+          this.databaseService.supabase,
+          {
+            restaurantId,
+            inventoryId,
+            queuedFrom: "receiving",
+            sourceOrderId: orderId,
+            queuedBy: userId ?? null,
+          },
+        );
+        if (research && !research.ok) {
+          this.logger.error(
+            `verifyReceipt booked ${delta} bottles of ${inventoryId} on order ${orderId}, but the item was not queued for research: ${research.error}`,
+          );
+        }
       }
     }
 

@@ -150,9 +150,29 @@ Not decided here, and not added to `OPEN-DECISIONS.md` (see ADR 0173's register 
 - The service methods take a deal request's kind as well, but no route declines or withdraws a waiting *deal* request. The founder's answer names letter requests; a waiting deal request still leaves `waiting` only when its deal is confirmed (released) or dismissed (closed).
 - If the re-wait fails after a pull-back, the letter stays pulled back and the answer says the request could not be put back. The request is not retried.
 - If the requester or the managers cannot be told, that is logged. It does not refuse the close.
-- **[Last call, 2026-09-21]** A released letter that the dispatcher then fails to send (`FAILED`) leaves its request `released`; only a pull-back puts a request back to waiting. Whether a failed send should re-wait the request too is not decided here.
+- **[Last call, 2026-09-21]** A released letter that the dispatcher then fails to send (`FAILED`) leaves its request `released`; only a pull-back puts a request back to waiting. Whether a failed send should re-wait the request too is not decided here. **[E4, 2026-09-22: decided, "Back to waiting", and built (fourth amendment).]**
 
 **Evidence.** `house-letters-sealed.spec.ts`: decline with a reason; owner yes, staff and grantee no; a role that cannot be read refused; blank reason refused; withdraw by the asker only; no close after a release, or in a lost race; re-wait after undo; no request touched by an unrelated letter; a failed re-wait said; a dispatcher-taken letter not reported pulled back; the viewer flag. Also `LetterRequests.test.tsx`: decline, withdraw, re-waiting line, pull-back and a failed pull-back. PGlite probe `E3-migrations.mjs`. CLAIMS row `ADR-0175-REQUEST-DECLINE-WITHDRAW-REWAIT`.
+
+## Fourth amendment 2026-09-22 — a released letter that fails to send puts its request back to waiting
+
+**Source.** The founder's answer to the round-3 lane report's question 4, relayed in the round-6u lane brief and dated there 2026-09-22. His pick, verbatim: *"Back to waiting (Recommended)"*. As the brief states it: a released staff letter the dispatcher fails to send returns its request to waiting in the manager's queue, with the failure reason shown to the manager and the staffer; `released` never stands on an unsent letter.
+
+**Built (lane E round 4):**
+
+1. **The dispatcher re-waits.** When `dispatchDue` records a letter as failed, it calls `VendorSendRequestsService.rewaitAfterFailedSend`. That goes through the ONE re-wait the pull-back uses (`rewaitReleased`): found by the request id the letter carries or by the letter's own id, and written only while the request is still released by THIS letter. It clears the release and writes, in the same statement, `send_failed_count`, `last_send_failed_at`, `last_send_failure` (the dispatcher's words, trimmed to 300 characters) and `last_send_failed_by` (the manager who released it) (20260921170540, with a CHECK that a failure is counted, dated and said together).
+2. **Both people are told why.** The person who asked: "<manager> released your letter to <vendor>, but it could not be sent: <reason> Your request is waiting for an owner or a manager again." The manager who released it: "The letter you released for <asker> to <vendor> could not be sent: <reason> The request is back in the managers' queue, waiting." The panel shows the reason on the waiting request (`letter-request-send-failed`).
+3. **A sent letter is never called failed.** Once Gmail accepted the letter, nothing after it may mark it failed or re-wait its request (that would let a manager release the same letter twice): a failure to record SENT is logged, and the letter counts as sent. Before, a throw after the send marked a sent letter `HOUSE_FAILED`.
+4. **`released` does not stand on an unsent letter.** A re-wait that could not land (the request could not be written) is retried at the start of the next run: released house-letter requests whose linked letter reads failed go back to waiting, with the reason the letter recorded.
+5. **Each dispatcher failure in its own words.** A mailbox with no send grant used to fail as "the queued letter has no recipient recorded"; that sentence is now shown to people, so each cause is worded as itself.
+
+**Not built, stated.**
+- **A letter stuck in `SENDING`** (the dispatcher claimed it and then stopped) keeps its request `released`; whether it left is not known from the row, so it is not re-waited.
+- **The retry looks at the newest 100 released requests** each run, and only at those linked to their letter; a request whose release link never landed is re-waited on the failing run only (found by the letter's stamped request id).
+- **A request re-waited after a failed send is not released again automatically**; a manager releases it, as after a pull-back.
+- **Unverified here:** no browser check and no production read.
+
+**Evidence.** `house-letters-sealed.spec.ts` (the failed send re-waits, on the record, both told; Gmail's own refusal kept as the reason; a sent letter whose record failed is neither failed nor re-waited; a letter that released no request touches none; a request another letter carries is untouched; a re-wait that did not land is retried next run), `LetterRequests.test.tsx`, PGlite `E4-migrations.mjs`. CLAIMS row `ADR-0175-FAILED-SEND-REWAITS`.
 
 ## Review trail
 
@@ -178,3 +198,5 @@ Not decided here, and not added to `OPEN-DECISIONS.md` (see ADR 0173's register 
 | 2026-09-21 | Aldemir (founder), on the round-2 last call's request gaps | *"Decline/withdraw; undo re-waits"* (verbatim) |
 | 2026-09-21 | Claude (Opus 5), lane E round 3 | Built (third amendment): decline with a reason by an owner or a manager, withdraw by the asker, both on the record and told; an undone release waits again and the asker is told; the cancel no longer reports a letter the dispatcher took |
 | 2026-09-21 | Claude (Opus 5), lane E round 3 last call | A request whose release link did not land now waits again too: the letter carries the request's id; tests and mutants |
+| 2026-09-22 | Aldemir (founder), on the round-3 report's question 4 (relayed in the round-6u lane brief) | *"Back to waiting (Recommended)"* (fourth amendment, verbatim) |
+| 2026-09-22 | Claude (Opus 5), lane E round 4 | Built (fourth amendment): a failed send re-waits the request through the one re-wait, counted, dated, said and named; both people told why; a sent letter is never called failed; a missed re-wait is retried next run |

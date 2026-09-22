@@ -1260,3 +1260,24 @@ export class OrderListResponseDto {
   @ApiProperty()
   hasMore: boolean;
 }
+
+/**
+ * An owner or a manager names the item of a delivery that booked nothing
+ * (founder, 2026-09-22: "Deliver, flag to name it"). The item is named by its
+ * id, never by a name; `bottles` is required only when the delivery resolved
+ * to no bottles.
+ */
+export class NameDeliveredItemDto {
+  @ApiProperty({ description: "The house item's id (restaurant_inventory.id)." })
+  @IsUUID()
+  inventoryId: string;
+
+  @ApiPropertyOptional({
+    description: "Bottles that came in; required when the delivery resolved to zero bottles.",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  bottles?: number;
+}

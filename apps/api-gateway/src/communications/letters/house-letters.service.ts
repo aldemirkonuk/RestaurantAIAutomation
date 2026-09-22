@@ -1088,7 +1088,14 @@ export class HouseLettersService {
     sent: number;
     failed: number;
     skipped: number;
+    /** Staff requests put back to waiting because their letter was not sent. */
+    rewaited: number;
   }> {
+    // A re-wait that did not land on an earlier run is retried first, so
+    // `released` never stands on an unsent letter for longer than one run
+    // (founder, 2026-09-22: "Back to waiting").
+    let rewaited = await this.rewaitRequestsOfFailedLetters();
+
     const { data, error } = await this.db.client
       .from("procurement_conversations")
       .select(
@@ -1102,7 +1109,7 @@ export class HouseLettersService {
       this.logger.error(
         `letter dispatch could not read the queue: ${error.message}`,
       );
-      return { considered: 0, sent: 0, failed: 0, skipped: 0 };
+      return { considered: 0, sent: 0, failed: 0, skipped: 0, rewaited };
     }
 
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
@@ -1130,15 +1137,17 @@ export class HouseLettersService {
         continue;
       }
 
+      // Set the moment the provider accepted the letter. After that, nothing
+      // here may call it failed or put its request back to waiting: that would
+      // let a manager release the same letter again.
+      let leftTheHouse = false;
       try {
         const identity = await this.sender.resolve(restaurantId, writer);
-        if (!identity.sendable || !identity.grant || !to) {
-          throw new Error(
-            identity.sendable
-              ? "the queued letter has no recipient recorded"
-              : identity.words,
-          );
-        }
+        // Each failure in its own words: the reason is now shown to the
+        // manager and to the person who asked (founder, 2026-09-22).
+        if (!identity.sendable) throw new Error(identity.words || "the house's mailbox cannot send");
+        if (!identity.grant) throw new Error("the house's mailbox holds no grant to send with");
+        if (!to) throw new Error("the queued letter has no recipient recorded");
         const token = await this.oauth.getAccessToken(
           identity.grant.personUserId,
           restaurantId,
@@ -1151,7 +1160,8 @@ export class HouseLettersService {
           subject,
           text: String(row.message_text ?? ""),
         });
-        await this.db.client
+        leftTheHouse = true;
+        const { error: sentWriteError } = await this.db.client
           .from("procurement_conversations")
           .update({
             status: LETTER_STATUS.SENT,
@@ -1161,10 +1171,19 @@ export class HouseLettersService {
             scheduled_send_at: null,
           })
           .eq("id", id);
+        if (sentWriteError) {
+          this.logger.error(`house letter ${id} was SENT, but the book could not record it (${sentWriteError.message}).`);
+        }
         sent += 1;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await this.db.client
+        if (leftTheHouse) {
+          // The provider took it: the letter is sent, whatever failed after.
+          this.logger.error(`house letter ${id} was sent, but recording it failed: ${message}`);
+          sent += 1;
+          continue;
+        }
+        const { error: failWriteError } = await this.db.client
           .from("procurement_conversations")
           .update({
             status: LETTER_STATUS.FAILED,
@@ -1173,12 +1192,93 @@ export class HouseLettersService {
             constraint_flags: { house_letter_failure: message },
           })
           .eq("id", id);
+        if (failWriteError) {
+          this.logger.error(`house letter ${id} was not sent, and the book could not record the failure (${failWriteError.message}).`);
+        }
         this.logger.error(`house letter ${id} was not sent: ${message}`);
         failed += 1;
+        // BACK TO WAITING (founder, 2026-09-22, verbatim pick: "Back to
+        // waiting (Recommended)"): the staff request this letter was
+        // released from goes back to the managers' queue, with the reason
+        // shown to the manager and the person who asked.
+        if (await this.rewaitAfterFailedSend(restaurantId, id, headers, (row.provider_id as string | null) ?? null, message)) {
+          rewaited += 1;
+        }
       }
     }
 
-    return { considered: rows.length, sent, failed, skipped };
+    return { considered: rows.length, sent, failed, skipped, rewaited };
+  }
+
+  /**
+   * Put the staff request a failed letter was released from back to waiting.
+   * Found by the request id the letter carries (stamped at release) or by the
+   * letter's own id. Never throws: the letter is already recorded as failed;
+   * a re-wait that could not land is logged, and the next run retries it
+   * (`rewaitRequestsOfFailedLetters`).
+   */
+  private async rewaitAfterFailedSend(
+    restaurantId: string,
+    letterId: string,
+    headers: Record<string, unknown>,
+    providerId: string | null,
+    reason: string,
+  ): Promise<boolean> {
+    if (!this.requests) return false;
+    const stampedRequestId =
+      typeof headers.request_id === "string" && headers.request_id.trim() ? headers.request_id.trim() : null;
+    try {
+      const vendorName = await this.vendorNameOf(restaurantId, providerId);
+      const back = await this.requests.rewaitAfterFailedSend({
+        restaurantId,
+        conversationId: letterId,
+        requestId: stampedRequestId,
+        reason,
+        vendorName,
+      });
+      if (!back && stampedRequestId) {
+        this.logger.error(
+          `house letter ${letterId} was not sent, and its staff request ${stampedRequestId} no longer reads as released by it, so it was not put back to waiting.`,
+        );
+      }
+      return back != null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`house letter ${letterId} was not sent, and its staff request was not put back to waiting: ${message}`);
+      return false;
+    }
+  }
+
+  /**
+   * The retry: released requests whose linked letter reads FAILED go back to
+   * waiting. Never throws; a failed read is logged and retried next run.
+   */
+  private async rewaitRequestsOfFailedLetters(): Promise<number> {
+    if (!this.requests) return 0;
+    let stuck: Array<{ row: { id: string; restaurant_id: string; conversation_id: string | null; provider_id: string | null }; reason: string }>;
+    try {
+      stuck = await this.requests.releasedOnFailedLetters();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`letter dispatch could not read which released requests have a failed letter: ${message}`);
+      return 0;
+    }
+    let n = 0;
+    for (const { row, reason } of stuck) {
+      if (!row.conversation_id) continue;
+      if (
+        await this.rewaitAfterFailedSend(
+          row.restaurant_id,
+          row.conversation_id,
+          { request_id: row.id },
+          row.provider_id,
+          reason,
+        )
+      ) {
+        n += 1;
+      }
+    }
+    return n;
   }
 
   // ==========================================================================

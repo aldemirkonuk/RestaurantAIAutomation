@@ -19,16 +19,29 @@
  *     sees the flag below. Anything else is `queued`.
  *   - A row research has already `matched` is never moved back by a rename.
  *
- * WHAT CONSUMES `queued` ROWS: nothing yet, stated plainly. The research agent
- * (`services/agent-orchestrator/jobs/research_tasks.py`) reads
- * `master_wine_library_submissions` joined to a LIBRARY row, which this item
- * does not have; the submission chain (`haiku_enrich_task` ->
- * `web_verify_task`) runs per submission id, is dispatched only from
- * onboarding imports, and keys a submission by its payload (a name). Wiring
- * a consumer to this table is an open founder question (lane E round 3
- * report; ADR 0163 is Proposed).
+ * WHAT CONSUMES `queued` ROWS (founder, 2026-09-22, verbatim pick: "Existing
+ * enrich chain (Recommended)"): the existing submission chain. The
+ * orchestrator's sweep (`house_item_research.dispatch`,
+ * `services/agent-orchestrator/jobs/house_item_research_tasks.py`) claims
+ * queued rows through `claim_house_item_research()` (20260921170520), which
+ * files ONE `master_wine_library_submissions` row per item and keeps its id
+ * on the queue row (`submission_id`), and hands that submission id to
+ * `haiku_enrich_task` -> `web_verify_task`. The row flips to `matched` when
+ * its submission is settled with a `matched_master_id` (a trigger, by the
+ * submission's id). Only `classified_name` — the name this module judged
+ * researchable — is ever filed, so a placeholder is never researched.
  *
- * Table: `house_item_research` (20260921170500).
+ * EVERY PATH THAT BOOKS STOCK for a wine the library lacks queues it here,
+ * once per item id (founder, 2026-09-22, verbatim pick: "Yes, same rule
+ * (Recommended)"): `markDelivered`, the receiving door (`recordDoorReceipt`
+ * and `DeliveryStockService.bookAtTheDoor`, through
+ * `queueResearchIfLibraryLacks`), the naming of a delivery that booked
+ * nothing, a verification correction that booked bottles in
+ * (`applyReceiptAdjustment`), and a rename. The unique index on the item id
+ * is the "once". Not wired, stated in ADR 0192: count corrections, POS sales,
+ * and the API-only `POST /inventory-ledger/transactions`.
+ *
+ * Tables: `house_item_research` (20260921170500, 20260921170520).
  */
 
 /** The flag the house sees on an item whose name cannot identify a wine (lane brief, 2026-09-21). */
@@ -174,6 +187,9 @@ export function classifyHouseItemName(name: string | null | undefined): NameVerd
 // The queue row, read and written by the item's id
 // ---------------------------------------------------------------------------
 
+/** What put an item on the queue: a delivery, the receiving door, or a rename. */
+export type HouseItemResearchOrigin = "delivery" | "rename" | "receiving";
+
 export interface HouseItemResearchRow {
   id: string;
   restaurant_id: string;
@@ -181,15 +197,23 @@ export interface HouseItemResearchRow {
   status: HouseItemResearchStatus;
   reason: string;
   matched_master_wine_id: string | null;
-  queued_from: "delivery" | "rename";
+  queued_from: HouseItemResearchOrigin;
   source_order_id: string | null;
   queued_by: string | null;
   created_at: string;
   updated_at: string;
+  // 20260921170520 (founder, 2026-09-22: "Existing enrich chain").
+  /** The name the classifier judged researchable; the only name ever filed. */
+  classified_name?: string | null;
+  /** The library submission the enrich chain works for this item, by id. */
+  submission_id?: string | null;
+  /** When the orchestrator handed the submission to the chain. */
+  dispatched_at?: string | null;
+  last_dispatch_error?: string | null;
 }
 
 export const HOUSE_ITEM_RESEARCH_COLUMNS =
-  "id, restaurant_id, inventory_id, status, reason, matched_master_wine_id, queued_from, source_order_id, queued_by, created_at, updated_at";
+  "id, restaurant_id, inventory_id, status, reason, matched_master_wine_id, queued_from, source_order_id, queued_by, created_at, updated_at, classified_name, submission_id, dispatched_at, last_dispatch_error";
 
 export type EnqueueOutcome =
   | { ok: true; status: HouseItemResearchStatus; reason: string; changed: boolean }
@@ -213,7 +237,7 @@ export async function enqueueHouseItemResearch(
     restaurantId: string;
     inventoryId: string;
     name: string | null;
-    queuedFrom: "delivery" | "rename";
+    queuedFrom: HouseItemResearchOrigin;
     sourceOrderId: string | null;
     queuedBy: string | null;
   },
@@ -224,6 +248,10 @@ export async function enqueueHouseItemResearch(
     const reason = verdict.findable
       ? "This wine is not in the wine library yet, so it waits for research by its item id."
       : verdict.reason;
+    // The name this verdict was reached on. For a queued row it is the ONLY
+    // name the enrich chain is ever given (20260921170520's claim files it,
+    // never the item's current name), so a placeholder is never researched.
+    const classifiedName = (input.name ?? "").trim() || null;
 
     const { data: existing, error: readError } = await client
       .from("house_item_research")
@@ -240,16 +268,42 @@ export async function enqueueHouseItemResearch(
       if (row.status === "matched") {
         return { ok: true, status: "matched", reason: row.reason, changed: false };
       }
-      if (row.status === status && row.reason === reason) {
+      // Once per item id (founder, 2026-09-22: "Yes, same rule"): a second
+      // booking of the same item with the same name changes nothing — no
+      // second row, no second research.
+      if (row.status === status && row.reason === reason && (row.classified_name ?? null) === classifiedName) {
         return { ok: true, status, reason, changed: false };
       }
-      const { data: updated, error: updateError } = await client
-        .from("house_item_research")
-        .update({ status, reason, queued_from: input.queuedFrom })
-        .eq("id", row.id)
-        .eq("restaurant_id", input.restaurantId)
-        .neq("status", "matched")
-        .select("id");
+      // A NEW name is researched as the new name: the hand-off to the chain
+      // is cleared so the claim files a submission for it. The earlier
+      // submission stays in the library's queue, unlinked, and no longer
+      // flips this row.
+      const renamed = (row.classified_name ?? null) !== classifiedName;
+      const { data: updated, error: updateError } = await (renamed
+        ? client
+            .from("house_item_research")
+            .update({
+              status,
+              reason,
+              queued_from: input.queuedFrom,
+              classified_name: classifiedName,
+              submission_id: null,
+              dispatched_at: null,
+              dispatch_claimed_at: null,
+              dispatch_attempts: 0,
+              last_dispatch_error: null,
+            })
+            .eq("id", row.id)
+            .eq("restaurant_id", input.restaurantId)
+            .neq("status", "matched")
+            .select("id")
+        : client
+            .from("house_item_research")
+            .update({ status, reason, queued_from: input.queuedFrom, classified_name: classifiedName })
+            .eq("id", row.id)
+            .eq("restaurant_id", input.restaurantId)
+            .neq("status", "matched")
+            .select("id"));
       if (updateError) {
         return { ok: false, error: `the research queue could not be updated (${updateError.message})` };
       }
@@ -268,6 +322,7 @@ export async function enqueueHouseItemResearch(
       queued_from: input.queuedFrom,
       source_order_id: input.sourceOrderId,
       queued_by: input.queuedBy,
+      classified_name: classifiedName,
     });
     if (insertError) {
       if ((insertError as { code?: string }).code === "23505") {
@@ -289,6 +344,8 @@ export interface HouseItemResearchView {
   reason: string;
   flag: string | null;
   updatedAt: string;
+  /** True once the enrich chain has been handed this item's submission. */
+  researchStarted: boolean;
 }
 
 export function presentHouseItemResearch(row: HouseItemResearchRow): HouseItemResearchView {
@@ -298,7 +355,56 @@ export function presentHouseItemResearch(row: HouseItemResearchRow): HouseItemRe
     reason: row.reason,
     flag: row.status === "not_findable" ? NAME_THIS_WINE_FLAG : null,
     updatedAt: row.updated_at,
+    researchStarted: row.status === "queued" && row.dispatched_at != null,
   };
+}
+
+/**
+ * THE ONE RULE FOR EVERY PATH THAT BOOKS STOCK (founder, 2026-09-22, verbatim
+ * pick: "Yes, same rule (Recommended)"): after a booking, an item the wine
+ * library lacks is queued for research, once per item id. The item is read by
+ * its id and its house, strictly. Returns null when the library has the item
+ * (nothing to queue); an unreadable or foreign item is `ok:false` with the
+ * reason, never a quiet "nothing to queue". Never throws: the booking has
+ * already happened, and the caller says the outcome.
+ */
+export async function queueResearchIfLibraryLacks(
+  client: Client,
+  input: {
+    restaurantId: string;
+    inventoryId: string;
+    queuedFrom: HouseItemResearchOrigin;
+    sourceOrderId: string | null;
+    queuedBy: string | null;
+  },
+): Promise<EnqueueOutcome | null> {
+  try {
+    const { data, error } = await client
+      .from("restaurant_inventory")
+      .select("master_wine_id, wine_name, display_name")
+      .eq("restaurant_id", input.restaurantId)
+      .eq("id", input.inventoryId)
+      .maybeSingle();
+    if (error) {
+      return { ok: false, error: `the item could not be read (${error.message})` };
+    }
+    if (!data) {
+      return { ok: false, error: "the item is not an item of this house" };
+    }
+    const item = data as Record<string, unknown>;
+    if (item.master_wine_id) return null;
+    const pick = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+    return await enqueueHouseItemResearch(client, {
+      restaurantId: input.restaurantId,
+      inventoryId: input.inventoryId,
+      name: pick(item.wine_name) ?? pick(item.display_name),
+      queuedFrom: input.queuedFrom,
+      sourceOrderId: input.sourceOrderId,
+      queuedBy: input.queuedBy,
+    });
+  } catch (err: any) {
+    return { ok: false, error: `the item could not be read (${err?.message ?? String(err)})` };
+  }
 }
 
 /** This house's research rows. A failed read THROWS: it is never an empty list. */

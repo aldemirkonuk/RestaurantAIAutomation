@@ -9,6 +9,7 @@
  */
 import type { EnqueueOutcome } from "../inventory/house-item-research";
 import { NAME_THIS_WINE_FLAG } from "../inventory/house-item-research";
+import { nameAskWords, type RaiseOutcome } from "./delivery-item-to-name";
 
 export type DeliveryBooking =
   /** This call moved `bottles` onto the shelf through the ledger. */
@@ -53,10 +54,20 @@ export function researchWords(r: EnqueueOutcome | null): string | null {
   }
 }
 
-export function verifyNoticeMessage(b: DeliveryBooking, r: EnqueueOutcome | null): string {
+/**
+ * The whole notice. `ask` is the ask to name the item of a delivery that
+ * booked nothing (founder, 2026-09-22: "Deliver, flag to name it"); null when
+ * none was due.
+ */
+export function verifyNoticeMessage(
+  b: DeliveryBooking,
+  r: EnqueueOutcome | null,
+  ask: RaiseOutcome | null = null,
+): string {
   const research = researchWords(r);
   return [
     deliveredStockWords(b),
+    nameAskWords(ask),
     research,
     "Confirm the physical count against the vendor invoice.",
   ]

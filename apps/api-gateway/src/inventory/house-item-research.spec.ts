@@ -15,6 +15,8 @@ import {
   classifyHouseItemName,
   enqueueHouseItemResearch,
   foldName,
+  presentHouseItemResearch,
+  queueResearchIfLibraryLacks,
   readHouseItemResearch,
 } from "./house-item-research";
 import { InventoryService } from "./inventory.service";
@@ -131,7 +133,12 @@ describe("the queue row, keyed by the item's id", () => {
     queuedBy: PERSON,
   };
 
-  it("queues a real name, and keeps no copy of the name", async () => {
+  // [E4, 2026-09-22: round 3 kept no copy of the name on the row. The enrich
+  // chain now works queued rows (founder: "Existing enrich chain"), and the
+  // claim files `classified_name` — the name this verdict was reached on —
+  // so a name changed after the decision is never researched in its place.
+  // The name is still never a lookup key: every read and write is by id.]
+  it("queues a real name, keeping the name only as what research is given", async () => {
     const db = store();
     const out = await enqueueHouseItemResearch(db, { ...base, name: "Barolo" });
     expect(out).toEqual({ ok: true, status: "queued", reason: expect.any(String), changed: true });
@@ -145,7 +152,7 @@ describe("the queue row, keyed by the item's id", () => {
         queued_by: PERSON,
       }),
     ]);
-    expect(JSON.stringify(db.tables.house_item_research[0])).not.toContain("Barolo");
+    expect(db.tables.house_item_research[0].classified_name).toBe("Barolo");
   });
 
   it("marks a placeholder not_findable at once, and it is never queued for research", async () => {
@@ -302,6 +309,128 @@ describe("the queue row, keyed by the item's id", () => {
     };
     const out = await enqueueHouseItemResearch(client, { ...base, name: "Barolo" });
     expect(out).toEqual({ ok: false, error: expect.stringMatching(/not an item of restaurant/) });
+  });
+});
+
+// Founder, 2026-09-22, verbatim picks: "Existing enrich chain (Recommended)"
+// and "Yes, same rule (Recommended)". Every path that books stock for a wine
+// the library lacks queues it once per item id; a new name is researched as
+// the new name; the name research is given is the one classified.
+describe("the same rule on every booking path, once per item id", () => {
+  const base = {
+    restaurantId: HOUSE,
+    inventoryId: ITEM,
+    queuedFrom: "delivery" as const,
+    sourceOrderId: ORDER,
+    queuedBy: PERSON,
+  };
+  const withItem = (item: Record<string, any>) => {
+    const db = store();
+    db.tables.restaurant_inventory = [{ id: ITEM, restaurant_id: HOUSE, master_wine_id: null, ...item }];
+    return db;
+  };
+
+  it("the door booking the same item again after a delivery changes nothing: one row, no second research", async () => {
+    const db = withItem({ wine_name: "Barolo" });
+    await queueResearchIfLibraryLacks(db, base);
+    const handed = { submission_id: "sub-1", dispatched_at: "2026-09-22T09:00:00Z" };
+    Object.assign(db.tables.house_item_research[0], handed);
+    const again = await queueResearchIfLibraryLacks(db, { ...base, queuedFrom: "receiving" });
+    expect(again).toMatchObject({ ok: true, status: "queued", changed: false });
+    expect(db.tables.house_item_research).toHaveLength(1);
+    expect(db.tables.house_item_research[0]).toMatchObject({ queued_from: "delivery", ...handed });
+  });
+
+  it("a library wine is not queued (null, not an error)", async () => {
+    const db = withItem({ master_wine_id: "55555555-5555-4555-8555-555555555555", wine_name: "Barolo" });
+    expect(await queueResearchIfLibraryLacks(db, base)).toBeNull();
+    expect(db.tables.house_item_research).toHaveLength(0);
+  });
+
+  it("the name comes off the item by id: the house's alias first, then the declared name", async () => {
+    const db = withItem({ wine_name: null, display_name: "Doluca Kav 2018" });
+    const out = await queueResearchIfLibraryLacks(db, { ...base, queuedFrom: "receiving" });
+    expect(out).toMatchObject({ ok: true, status: "queued" });
+    expect(db.tables.house_item_research[0]).toMatchObject({ classified_name: "Doluca Kav 2018", queued_from: "receiving" });
+  });
+
+  it("a placeholder booked at the door is flagged, never queued", async () => {
+    const db = withItem({ wine_name: "Wine 1" });
+    const out = await queueResearchIfLibraryLacks(db, { ...base, queuedFrom: "receiving" });
+    expect(out).toMatchObject({ ok: true, status: "not_findable" });
+  });
+
+  it("an item that cannot be read is said, never 'nothing to queue'", async () => {
+    const db = withItem({ wine_name: "Barolo" });
+    db.failures.restaurant_inventory = "connection reset";
+    expect(await queueResearchIfLibraryLacks(db, base)).toEqual({
+      ok: false,
+      error: "the item could not be read (connection reset)",
+    });
+  });
+
+  it("another house's item is refused, never queued under this house", async () => {
+    const db = withItem({ wine_name: "Barolo", restaurant_id: "another-house" });
+    expect(await queueResearchIfLibraryLacks(db, base)).toEqual({ ok: false, error: "the item is not an item of this house" });
+    expect(db.tables.house_item_research).toHaveLength(0);
+  });
+
+  it("a new name clears the hand-off so the new name is researched; the old submission no longer links", async () => {
+    const db = store();
+    db.tables.house_item_research.push({
+      id: "hir-1",
+      restaurant_id: HOUSE,
+      inventory_id: ITEM,
+      status: "queued",
+      reason: "This wine is not in the wine library yet, so it waits for research by its item id.",
+      classified_name: "Barollo",
+      submission_id: "sub-1",
+      dispatched_at: "2026-09-22T09:00:00Z",
+      dispatch_attempts: 1,
+    });
+    const out = await enqueueHouseItemResearch(db, { ...base, name: "Barolo", queuedFrom: "rename" });
+    expect(out).toMatchObject({ ok: true, status: "queued", changed: true });
+    expect(db.tables.house_item_research[0]).toMatchObject({
+      classified_name: "Barolo",
+      submission_id: null,
+      dispatched_at: null,
+      dispatch_attempts: 0,
+    });
+  });
+
+  it("a rename to a placeholder takes the row off the queue before it is researched", async () => {
+    const db = store();
+    db.tables.house_item_research.push({
+      id: "hir-1",
+      restaurant_id: HOUSE,
+      inventory_id: ITEM,
+      status: "queued",
+      reason: "This wine is not in the wine library yet, so it waits for research by its item id.",
+      classified_name: "Barolo",
+      submission_id: null,
+      dispatched_at: null,
+    });
+    const out = await enqueueHouseItemResearch(db, { ...base, name: "wine 1", queuedFrom: "rename" });
+    expect(out).toMatchObject({ ok: true, status: "not_findable", changed: true });
+    expect(db.tables.house_item_research[0]).toMatchObject({ status: "not_findable", classified_name: "wine 1" });
+  });
+
+  it("the house sees when research has started", () => {
+    const row = {
+      id: "a",
+      restaurant_id: HOUSE,
+      inventory_id: ITEM,
+      status: "queued" as const,
+      reason: "r",
+      matched_master_wine_id: null,
+      queued_from: "delivery" as const,
+      source_order_id: null,
+      queued_by: null,
+      created_at: "t",
+      updated_at: "t",
+    };
+    expect(presentHouseItemResearch(row).researchStarted).toBe(false);
+    expect(presentHouseItemResearch({ ...row, dispatched_at: "2026-09-22T09:00:00Z" }).researchStarted).toBe(true);
   });
 });
 

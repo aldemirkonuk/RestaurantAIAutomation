@@ -46,7 +46,10 @@ export const SEND_REQUEST_PUSH_TEXT = "A letter is waiting for your approval";
 export type VendorSendRequestKind = "confirm_deal" | "house_letter";
 
 const REQUEST_COLUMNS =
-  "id, restaurant_id, kind, order_id, provider_id, requested_by, requested_at, payload, payload_sha256, state, released_by, released_at, released_as_written, closed_reason, conversation_id, closed_how, closed_by, closed_at, undone_count, last_undone_at, last_undone_by";
+  "id, restaurant_id, kind, order_id, provider_id, requested_by, requested_at, payload, payload_sha256, state, released_by, released_at, released_as_written, closed_reason, conversation_id, closed_how, closed_by, closed_at, undone_count, last_undone_at, last_undone_by, send_failed_count, last_send_failed_at, last_send_failure, last_send_failed_by";
+
+/** The longest failure reason kept on a request and shown to people (20260921170540). */
+export const SEND_FAILURE_MAX = 300;
 
 /** How a request was closed (20260921170510). */
 export type VendorSendRequestCloseHow = "declined" | "withdrawn" | "deal_dismissed";
@@ -77,6 +80,11 @@ export interface VendorSendRequestRow {
   undone_count?: number | null;
   last_undone_at?: string | null;
   last_undone_by?: string | null;
+  // 20260921170540 (founder, 2026-09-22: "Back to waiting").
+  send_failed_count?: number | null;
+  last_send_failed_at?: string | null;
+  last_send_failure?: string | null;
+  last_send_failed_by?: string | null;
 }
 
 export interface VendorSendRequestView {
@@ -95,11 +103,32 @@ export interface VendorSendRequestView {
   conversationId: string | null;
   /** Times a manager released it and then pulled the letter back inside the undo window. */
   undoneCount: number;
+  /**
+   * The latest letter released from this request that the dispatcher failed
+   * to send, which put the request back to waiting (founder, 2026-09-22:
+   * "Back to waiting"). Null when none failed.
+   */
+  lastSendFailure: {
+    reason: string;
+    at: string;
+    releasedBy: { userId: string | null; name: string | null };
+    count: number;
+  } | null;
 }
 
 /** The canonical hash of what was asked for — the same digest the seal takes over its args. */
 export function requestHash(sealArgs: Record<string, unknown>): string {
   return hashCallArgs(sealArgs);
+}
+
+/** The dispatcher's failed status for a house letter (house-letters.service LETTER_STATUS.FAILED). */
+export const HOUSE_LETTER_FAILED_STATUS = "HOUSE_FAILED";
+
+/** A dispatcher's failure message as the words kept on the request and shown to people. */
+export function sendFailureWords(raw: string): string {
+  const text = String(raw ?? "").replace(/\s+/g, " ").trim() || "The dispatcher did not say why.";
+  const clipped = text.length > SEND_FAILURE_MAX ? `${text.slice(0, SEND_FAILURE_MAX - 1)}…` : text;
+  return /[.!?…]$/.test(clipped) ? clipped : `${clipped}.`;
 }
 
 @Injectable()
@@ -469,11 +498,60 @@ export class VendorSendRequestsService {
     undoneBy: string | null;
     vendorName?: string | null;
   }): Promise<VendorSendRequestRow | null> {
-    // By the id the letter carries or, for a letter queued before that stamp,
-    // by the letter's own id. Whether the request is still released by THIS
-    // letter is decided once, on the write below. [Last call, 2026-09-21: the
-    // same test sat on this read too, a second copy no test could see; a
-    // mutant dropping it survived.]
+    const back = await this.rewaitReleased(input, { kind: "undone", by: input.undoneBy });
+    if (!back) return null;
+    await this.tellRequesterRewaits({
+      restaurantId: input.restaurantId,
+      row: back,
+      by: input.undoneBy,
+      vendorName: input.vendorName ?? null,
+    });
+    return back;
+  }
+
+  /**
+   * A released letter the dispatcher FAILED to send puts its request back to
+   * waiting (founder, 2026-09-22, verbatim pick: "Back to waiting
+   * (Recommended)"): back in the managers' queue, the failure counted, dated
+   * and said on the row, and the reason told to the manager who released it
+   * and to the person who asked. `released` never stands on an unsent letter.
+   * Found exactly as a pull-back finds it (the one guard is the write's).
+   * Returns null when no request reads released by this letter. A failed read
+   * or write THROWS; the dispatcher has already recorded the letter as failed.
+   */
+  async rewaitAfterFailedSend(input: {
+    restaurantId: string;
+    conversationId: string;
+    requestId?: string | null;
+    reason: string;
+    vendorName?: string | null;
+  }): Promise<VendorSendRequestRow | null> {
+    const reason = sendFailureWords(input.reason);
+    const back = await this.rewaitReleased(input, { kind: "send_failed", reason });
+    if (!back) return null;
+    await this.tellSendFailed({
+      restaurantId: input.restaurantId,
+      row: back,
+      releasedBy: back.last_send_failed_by ?? null,
+      reason,
+      vendorName: input.vendorName ?? null,
+    });
+    return back;
+  }
+
+  /**
+   * The ONE re-wait: a request still `released` by this letter goes back to
+   * `waiting` with its release cleared and the cause (a pull-back, or a
+   * failed send) written on the record in the same statement. Found by the request id the letter carries (stamped at
+   * release) or, for a letter queued before that stamp, by the letter's own
+   * id. Whether it is still released by THIS letter is decided once, on the
+   * write. [Last call, 2026-09-21: the same test sat on the read too, a second
+   * copy no test could see; a mutant dropping it survived.]
+   */
+  private async rewaitReleased(
+    input: { restaurantId: string; conversationId: string; requestId?: string | null },
+    cause: { kind: "undone"; by: string | null } | { kind: "send_failed"; reason: string },
+  ): Promise<VendorSendRequestRow | null> {
     let find = this.db
       .from("vendor_send_requests")
       .select(REQUEST_COLUMNS)
@@ -491,18 +569,32 @@ export class VendorSendRequestsService {
     }
     if (!found) return null;
     const row = found as unknown as VendorSendRequestRow;
-    let rewait = this.db
-      .from("vendor_send_requests")
-      .update({
-        state: "waiting",
-        released_by: null,
-        released_at: null,
-        released_as_written: null,
-        conversation_id: null,
-        undone_count: (Number(row.undone_count ?? 0) || 0) + 1,
-        last_undone_at: new Date().toISOString(),
-        last_undone_by: input.undoneBy,
-      })
+    const now = new Date().toISOString();
+    let rewait = (
+      cause.kind === "undone"
+        ? this.db.from("vendor_send_requests").update({
+            state: "waiting",
+            released_by: null,
+            released_at: null,
+            released_as_written: null,
+            conversation_id: null,
+            undone_count: (Number(row.undone_count ?? 0) || 0) + 1,
+            last_undone_at: now,
+            last_undone_by: cause.by,
+          })
+        : this.db.from("vendor_send_requests").update({
+            state: "waiting",
+            released_by: null,
+            released_at: null,
+            released_as_written: null,
+            conversation_id: null,
+            send_failed_count: (Number(row.send_failed_count ?? 0) || 0) + 1,
+            last_send_failed_at: now,
+            last_send_failure: cause.reason,
+            // The manager the reason is shown to: who released the letter.
+            last_send_failed_by: row.released_by ?? null,
+          })
+    )
       .eq("id", row.id)
       .eq("restaurant_id", input.restaurantId)
       .eq("state", "released");
@@ -517,14 +609,48 @@ export class VendorSendRequestsService {
       throw new InternalServerErrorException(`The staff request could not be put back to waiting (${error.message}).`);
     }
     const rows = (data ?? []) as unknown as VendorSendRequestRow[];
-    if (rows.length === 0) return null;
-    await this.tellRequesterRewaits({
-      restaurantId: input.restaurantId,
-      row: rows[0],
-      by: input.undoneBy,
-      vendorName: input.vendorName ?? null,
-    });
-    return rows[0];
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Released house-letter requests whose linked letter the dispatcher recorded
+   * as FAILED but which still read `released` — a re-wait that did not land
+   * the first time. Read so the dispatcher can put them back; the newest
+   * `limit` released requests are looked at. A failed read THROWS.
+   */
+  async releasedOnFailedLetters(limit = 100): Promise<Array<{ row: VendorSendRequestRow; reason: string }>> {
+    const { data, error } = await this.db
+      .from("vendor_send_requests")
+      .select(REQUEST_COLUMNS)
+      .eq("kind", "house_letter")
+      .eq("state", "released")
+      .order("released_at", { ascending: false })
+      .limit(limit);
+    if (error) {
+      throw new InternalServerErrorException(`The released staff requests could not be read (${error.message}).`);
+    }
+    const rows = ((data ?? []) as unknown as VendorSendRequestRow[]).filter((r) => r.conversation_id);
+    if (rows.length === 0) return [];
+    const { data: letters, error: lettersError } = await this.db
+      .from("procurement_conversations")
+      .select("id, status, constraint_flags")
+      .in(
+        "id",
+        rows.map((r) => r.conversation_id as string),
+      );
+    if (lettersError) {
+      throw new InternalServerErrorException(`The letters of the released staff requests could not be read (${lettersError.message}).`);
+    }
+    const failed = new Map<string, string>();
+    for (const l of (letters ?? []) as Array<{ id: string; status: string; constraint_flags: Record<string, unknown> | null }>) {
+      if (l.status === HOUSE_LETTER_FAILED_STATUS) {
+        const why = l.constraint_flags?.house_letter_failure;
+        failed.set(l.id, typeof why === "string" && why.trim() ? why : "the dispatcher recorded the letter as failed");
+      }
+    }
+    return rows
+      .filter((r) => failed.has(r.conversation_id as string))
+      .map((r) => ({ row: r, reason: failed.get(r.conversation_id as string) as string }));
   }
 
   private async tellRequesterClosed(input: {
@@ -602,9 +728,49 @@ export class VendorSendRequestsService {
     }
   }
 
+  private async tellSendFailed(input: {
+    restaurantId: string;
+    row: VendorSendRequestRow;
+    releasedBy: string | null;
+    reason: string;
+    vendorName: string | null;
+  }): Promise<void> {
+    const vendor = input.vendorName ?? "the vendor";
+    const requester = input.row.requested_by;
+    try {
+      const names = await this.authority.namesOf([requester, input.releasedBy]);
+      const releaser = input.releasedBy ? (names.get(input.releasedBy) ?? "A manager") : "A manager";
+      const asker = requester ? (names.get(requester) ?? "A member of the team") : "A member of the team";
+      if (requester && requester !== input.releasedBy) {
+        await this.bell(input.restaurantId, [requester], {
+          type: "vendor_letter_send_failed",
+          title: `Your letter to ${vendor} was not sent`,
+          message: `${releaser} released your letter to ${vendor}, but it could not be sent: ${input.reason} Your request is waiting for an owner or a manager again.`,
+          actionUrl: "/communications",
+          actionLabel: "See it",
+          metadata: { requestId: input.row.id, releasedBy: input.releasedBy, sendFailedCount: input.row.send_failed_count ?? null },
+        });
+      }
+      if (input.releasedBy) {
+        await this.bell(input.restaurantId, [input.releasedBy], {
+          type: "vendor_letter_send_failed",
+          title: `The letter you released to ${vendor} was not sent`,
+          message: `The letter you released for ${asker} to ${vendor} could not be sent: ${input.reason} The request is back in the managers' queue, waiting.`,
+          actionUrl: "/communications",
+          actionLabel: "See it",
+          metadata: { requestId: input.row.id, releasedBy: input.releasedBy, sendFailedCount: input.row.send_failed_count ?? null },
+        });
+      }
+    } catch (e: any) {
+      this.logger.warn(`The people could not be told a released letter failed to send: ${e?.message}`);
+    }
+  }
+
   async present(rows: VendorSendRequestRow[]): Promise<VendorSendRequestView[]> {
     if (rows.length === 0) return [];
-    const names = await this.authority.namesOf(rows.flatMap((r) => [r.requested_by, r.released_by]));
+    const names = await this.authority.namesOf(
+      rows.flatMap((r) => [r.requested_by, r.released_by, r.last_send_failed_by ?? null]),
+    );
     return rows.map((r) => ({
       id: r.id,
       kind: r.kind,
@@ -621,6 +787,18 @@ export class VendorSendRequestsService {
       releasedAsWritten: r.released_as_written,
       conversationId: r.conversation_id,
       undoneCount: Number(r.undone_count ?? 0) || 0,
+      lastSendFailure:
+        r.last_send_failed_at && r.last_send_failure
+          ? {
+              reason: r.last_send_failure,
+              at: r.last_send_failed_at,
+              releasedBy: {
+                userId: r.last_send_failed_by ?? null,
+                name: r.last_send_failed_by ? (names.get(r.last_send_failed_by) ?? null) : null,
+              },
+              count: Number(r.send_failed_count ?? 0) || 0,
+            }
+          : null,
     }));
   }
 

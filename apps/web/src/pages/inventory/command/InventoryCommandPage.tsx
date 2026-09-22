@@ -79,6 +79,7 @@ import {
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
 import { HouseItemResearchUnread, NameThisWineHint } from "./NameThisWine";
+import { DeliveriesToName } from "./DeliveriesToName";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
 import { CellarMapView } from "./CellarMapView";
 
@@ -993,6 +994,9 @@ export function InventoryCommandPage() {
           tone="red"
         />
       </div>
+
+      {/* deliveries that booked nothing wait for their item (founder, 2026-09-22) */}
+      <DeliveriesToName items={inventory} />
 
       {/* engine insights in context (NEW-729) */}
       <ContextualInsights

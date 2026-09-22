@@ -24,6 +24,7 @@ import {
   OrderFilterDto,
   OrderListResponseDto,
   OrderResponseDto,
+  NameDeliveredItemDto,
   UpdateOrderDto,
   VerifyReceiptDto,
 } from "./dto/procurement.dto";
@@ -577,6 +578,37 @@ export class ProcurementController {
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Deliveries that booked nothing and wait for an owner or a manager to name
+   * their item (founder, 2026-09-22: "Deliver, flag to name it"). The house is
+   * the token's. A failed read is an error, never an empty list.
+   */
+  @Get("items-to-name")
+  @ApiOperation({ summary: "Deliveries waiting for their item to be named" })
+  async deliveriesToName(@CurrentUser() user: { userId: string; restaurantId: string }) {
+    return this.procurementService.deliveriesToName(user.restaurantId, user.userId);
+  }
+
+  /**
+   * An owner or a manager names a delivery's item by its id; the stock is
+   * booked then, once, and the naming is audited.
+   */
+  @Post("orders/:id/name-item")
+  @ApiOperation({ summary: "Name the item of a delivery that booked nothing, booking its stock once" })
+  async nameDeliveredItem(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @Body() dto: NameDeliveredItemDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.nameDeliveredItem({
+      restaurantId: user.restaurantId,
+      orderId,
+      userId: user.userId,
+      inventoryId: dto.inventoryId,
+      bottles: dto.bottles ?? null,
+    });
   }
 
   @Post("orders/:id/verify-receipt")

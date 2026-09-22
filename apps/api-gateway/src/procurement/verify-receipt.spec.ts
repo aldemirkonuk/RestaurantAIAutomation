@@ -142,6 +142,8 @@ interface Calls {
   priceHistoryInserts: Row[];
   /** `procurement_receipt_events` rows: the verification's own `reconciled` event (ADR 0192 amendment). */
   receiptEvents: Row[];
+  /** `house_item_research` inserts: research queued for a wine the library lacks (ADR 0192, third amendment). */
+  researchInserts: Row[];
 }
 
 /**
@@ -167,6 +169,8 @@ function makeDb(opts: {
   updateError?: { code: string; message: string } | null;
   /** The verification's event insert fails with this. */
   receiptEventError?: { message: string } | null;
+  /** The item's wine-library id; null = a wine the library lacks. Default: a library wine. */
+  libraryWineId?: string | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -176,6 +180,7 @@ function makeDb(opts: {
     eventInserts: [],
     priceHistoryInserts: [],
     receiptEvents: [],
+    researchInserts: [],
   };
   const owned = new Set(opts.ownedInventoryIds ?? [OWN_INVENTORY]);
 
@@ -231,7 +236,11 @@ function makeDb(opts: {
             };
           return {
             data: {
-              master_wine_id: "55555555-5555-4555-8555-555555555555",
+              master_wine_id:
+                opts.libraryWineId === undefined
+                  ? "55555555-5555-4555-8555-555555555555"
+                  : opts.libraryWineId,
+              wine_name: "Barolo Riserva",
               shadow_stock: 0,
               in_transit_quantity: 0,
             },
@@ -270,6 +279,8 @@ function makeDb(opts: {
             calls.priceHistoryInserts.push(payload);
           if (table === "procurement_receipt_events")
             calls.receiptEvents.push(payload);
+          if (table === "house_item_research")
+            calls.researchInserts.push(payload);
           return q;
         },
         update(payload: Row) {
@@ -481,6 +492,63 @@ describe("verifyReceipt — adjustments cannot reach another tenant", () => {
     expect(movements).toHaveLength(1);
     expect(movements[0].args.p_inventory_id).toBe(OWN_INVENTORY);
     expect(movements[0].args.p_delta).toBe(3);
+  });
+});
+
+describe("verifyReceipt — a correction that books a wine the library lacks queues research (ADR 0192, third amendment)", () => {
+  // Founder, 2026-09-22, verbatim pick: "Yes, same rule (Recommended)" — every
+  // path that books stock for a wine the library lacks queues research once
+  // per item id. [Last call, 2026-09-22: verification was the path missed.]
+  it("queues the item by its id when a correction booked bottles in", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, inventory_id: "other-own-id" },
+      ownedInventoryIds: [OWN_INVENTORY, "other-own-id"],
+      libraryWineId: null,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3, reason: "unlisted extras" }],
+    } as any);
+
+    expect(calls.researchInserts).toHaveLength(1);
+    expect(calls.researchInserts[0]).toMatchObject({
+      restaurant_id: REST,
+      inventory_id: OWN_INVENTORY,
+      status: "queued",
+      queued_from: "receiving",
+      source_order_id: ORDER,
+      queued_by: USER,
+      classified_name: "Barolo Riserva",
+    });
+  });
+
+  it("queues nothing for a correction that took bottles out", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, inventory_id: "other-own-id" },
+      ownedInventoryIds: [OWN_INVENTORY, "other-own-id"],
+      libraryWineId: null,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [{ inventoryId: OWN_INVENTORY, delta: -2, reason: "breakage" }],
+    } as any);
+
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(1);
+    expect(calls.researchInserts).toEqual([]);
+  });
+
+  it("queues nothing for a wine the library holds", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, inventory_id: "other-own-id" },
+      ownedInventoryIds: [OWN_INVENTORY, "other-own-id"],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [{ inventoryId: OWN_INVENTORY, delta: 3, reason: "unlisted extras" }],
+    } as any);
+
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(1);
+    expect(calls.researchInserts).toEqual([]);
   });
 });
 

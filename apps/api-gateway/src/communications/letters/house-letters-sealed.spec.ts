@@ -15,10 +15,10 @@
  * the identity names no grant).
  */
 
-import { HouseLettersService, HOUSE_LETTER_ACT, houseLetterSealArgs } from "./house-letters.service";
+import { HouseLettersService, HOUSE_LETTER_ACT, LETTER_STATUS, houseLetterSealArgs } from "./house-letters.service";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import { VendorSendAuthorityService } from "../../organizations/vendor-send-authority.service";
-import { VendorSendRequestsService } from "../../organizations/vendor-send-requests.service";
+import { VendorSendRequestsService, sendFailureWords, SEND_FAILURE_MAX } from "../../organizations/vendor-send-requests.service";
 import { FakeDb } from "../../notifications/producers/testing/fake-db";
 import { installGrantLedger } from "../../organizations/testing/grant-ledger-fake";
 
@@ -525,5 +525,214 @@ describe("decline, withdraw, and an undone release waits again (founder, 2026-09
     await asked(t);
     expect((await t.letters.requestsFor(MANAGER, HOUSE)).viewer).toEqual({ userId: MANAGER, mayDecline: true });
     expect((await t.letters.requestsFor(STAFF, HOUSE)).viewer).toEqual({ userId: STAFF, mayDecline: false });
+  });
+});
+
+// Founder, 2026-09-22 (round 6u), verbatim pick: "Back to waiting
+// (Recommended)" — a released staff letter the dispatcher fails to send
+// returns its request to waiting in the manager's queue, with the failure
+// reason shown to the manager and the staffer; 'released' never stands on an
+// unsent letter. (ADR 0175, fourth amendment.)
+describe("a released letter the dispatcher fails to send puts its request back to waiting", () => {
+  const AFTER_WINDOW = () => Date.now() + 10 * 60_000;
+  async function asked(t: ReturnType<typeof build>) {
+    const { requestId } = await t.letters.ask({ restaurantId: HOUSE, userId: STAFF, dto: DRAFT as any });
+    return requestId;
+  }
+  async function released(t: ReturnType<typeof build>, requestId: string, by = MANAGER) {
+    const release = { ...DRAFT, requestId };
+    const { challenge } = await t.letters.issueQueueSeal({ restaurantId: HOUSE, userId: by, dto: release as any });
+    return t.letters.queue({ restaurantId: HOUSE, userId: by, dto: release as any, challenge });
+  }
+  const request = (t: ReturnType<typeof build>) => t.db.tables.vendor_send_requests[0];
+  const noticesOf = (t: ReturnType<typeof build>, type: string) =>
+    (t.db.tables.notifications ?? []).filter((n) => n.type === type);
+
+  /** A sender that can send: a grant, a token, and Gmail answering through `fetch`. */
+  function sendable(t: ReturnType<typeof build>, gmail: () => Promise<any>) {
+    (t.letters as any).sender = {
+      resolve: async () => ({
+        kind: "house_mailbox",
+        sendable: true,
+        address: "siparis@house.example",
+        ceremony: "undo",
+        undoMs: 120_000,
+        words: "",
+        grant: { personUserId: MANAGER, integrationId: "gmail_send", accountEmail: "siparis@house.example" },
+      }),
+    };
+    (globalThis as any).fetch = jest.fn(gmail);
+  }
+  const realFetch = (globalThis as any).fetch;
+  afterEach(() => {
+    (globalThis as any).fetch = realFetch;
+  });
+
+  it("the failed send puts the request back to waiting, on the record, and both people are told why", async () => {
+    const t = build();
+    const requestId = await asked(t);
+    const queued = await released(t, requestId);
+    const result = await t.letters.dispatchDue(AFTER_WINDOW());
+    expect(result).toMatchObject({ failed: 1, sent: 0, rewaited: 1 });
+    expect(t.queued().find((r) => r.id === queued.id)).toMatchObject({ status: "HOUSE_FAILED" });
+    expect(request(t)).toMatchObject({
+      state: "waiting",
+      released_by: null,
+      released_at: null,
+      conversation_id: null,
+      send_failed_count: 1,
+      last_send_failure: "the house's mailbox holds no grant to send with.",
+      last_send_failed_by: MANAGER,
+    });
+    expect(request(t).last_send_failed_at).toEqual(expect.any(String));
+    const told = noticesOf(t, "vendor_letter_send_failed");
+    expect(told.map((n) => n.user_id).sort()).toEqual([MANAGER, STAFF].sort());
+    expect(told.find((n) => n.user_id === STAFF)?.message).toBe(
+      "Mert Manager released your letter to Fikri Tarım, but it could not be sent: the house's mailbox holds no grant to send with. Your request is waiting for an owner or a manager again.",
+    );
+    expect(told.find((n) => n.user_id === MANAGER)?.message).toBe(
+      "The letter you released for Ayse Staff to Fikri Tarım could not be sent: the house's mailbox holds no grant to send with. The request is back in the managers' queue, waiting.",
+    );
+    // Back in the manager's queue, with the reason shown.
+    const { requests } = await t.letters.requestsFor(OWNER, HOUSE);
+    expect(requests).toEqual([
+      expect.objectContaining({
+        id: requestId,
+        state: "waiting",
+        lastSendFailure: expect.objectContaining({
+          reason: "the house's mailbox holds no grant to send with.",
+          releasedBy: { userId: MANAGER, name: "Mert Manager" },
+          count: 1,
+        }),
+      }),
+    ]);
+    // And it can be released again: a new letter is queued.
+    await released(t, requestId, OWNER);
+    expect(request(t)).toMatchObject({ state: "released", released_by: OWNER });
+  });
+
+  it("a letter Gmail accepted is never called failed, and its request stays released, even when the book cannot record it", async () => {
+    const t = build();
+    const requestId = await asked(t);
+    await released(t, requestId);
+    sendable(t, async () => ({ ok: true, status: 200, json: async () => ({ id: "gm-1" }), text: async () => "" }));
+    const realFrom = t.db.from.bind(t.db);
+    (t.db as any).from = (table: string) => {
+      const q = realFrom(table);
+      if (table === "procurement_conversations") {
+        const realUpdate = q.update.bind(q);
+        q.update = (patch: Record<string, unknown>) => {
+          if (patch.status === LETTER_STATUS.SENT) throw new Error("socket hang up");
+          return realUpdate(patch);
+        };
+      }
+      return q;
+    };
+    const result = await t.letters.dispatchDue(AFTER_WINDOW());
+    expect(result).toMatchObject({ sent: 1, failed: 0, rewaited: 0 });
+    expect(request(t)).toMatchObject({ state: "released" });
+    expect(request(t).send_failed_count ?? 0).toBe(0);
+    expect(t.queued()[0].status).not.toBe("HOUSE_FAILED");
+    expect(noticesOf(t, "vendor_letter_send_failed")).toHaveLength(0);
+  });
+
+  it("a letter Gmail refused puts its request back with Gmail's reason", async () => {
+    const t = build();
+    const requestId = await asked(t);
+    await released(t, requestId);
+    sendable(t, async () => ({ ok: false, status: 429, json: async () => null, text: async () => "User-rate limit exceeded" }));
+    await t.letters.dispatchDue(AFTER_WINDOW());
+    expect(request(t)).toMatchObject({ state: "waiting", send_failed_count: 1 });
+    expect(request(t).last_send_failure).toMatch(/429/);
+    expect(request(t).last_send_failure).toMatch(/User-rate limit exceeded/);
+  });
+
+  it("a failed letter that released no request touches no request", async () => {
+    const t = build();
+    const requestId = await asked(t);
+    const { challenge } = await t.letters.issueQueueSeal({ restaurantId: HOUSE, userId: MANAGER, dto: DRAFT as any });
+    await t.letters.queue({ restaurantId: HOUSE, userId: MANAGER, dto: DRAFT as any, challenge });
+    const result = await t.letters.dispatchDue(AFTER_WINDOW());
+    expect(result).toMatchObject({ failed: 1, rewaited: 0 });
+    expect(request(t)).toMatchObject({ id: requestId, state: "waiting" });
+    expect(request(t).send_failed_count ?? 0).toBe(0);
+    expect(noticesOf(t, "vendor_letter_send_failed")).toHaveLength(0);
+  });
+
+  it("a request another letter now carries is not put back by this letter's failure", async () => {
+    const t = build();
+    const requestId = await asked(t);
+    const first = await released(t, requestId);
+    // The request was re-linked to another letter meanwhile (the one guard is the write's).
+    request(t).conversation_id = "another-letter";
+    await t.letters.dispatchDue(AFTER_WINDOW());
+    expect(t.queued().find((r) => r.id === first.id)).toMatchObject({ status: "HOUSE_FAILED" });
+    expect(request(t)).toMatchObject({ state: "released", conversation_id: "another-letter" });
+  });
+
+  it("a request put back to waiting between the read and the write is not put back twice", async () => {
+    const t = build();
+    const requestId = await asked(t);
+    await released(t, requestId);
+    // The release link did not land (the letter still carries the request id).
+    request(t).conversation_id = null;
+    const realFrom = t.db.from.bind(t.db);
+    (t.db as any).from = (table: string) => {
+      const q = realFrom(table);
+      if (table === "vendor_send_requests") {
+        const realUpdate = q.update.bind(q);
+        q.update = (patch: Record<string, unknown>) => {
+          // A pull-back lands first: waiting, unlinked.
+          if (patch.state === "waiting") request(t).state = "waiting";
+          return realUpdate(patch);
+        };
+      }
+      return q;
+    };
+    const result = await t.letters.dispatchDue(AFTER_WINDOW());
+    expect(result).toMatchObject({ failed: 1, rewaited: 0 });
+    expect(request(t).send_failed_count ?? 0).toBe(0);
+    expect(noticesOf(t, "vendor_letter_send_failed")).toHaveLength(0);
+  });
+
+  it("the retry leaves a released request alone while its letter has not failed", async () => {
+    const t = build();
+    const requestId = await asked(t);
+    const queued = await released(t, requestId);
+    // Inside the undo window: the letter is still queued, not due, not failed.
+    const result = await t.letters.dispatchDue(Date.now());
+    expect(result).toMatchObject({ considered: 0, rewaited: 0 });
+    expect(request(t)).toMatchObject({ state: "released", conversation_id: queued.id });
+    t.queued()[0].status = LETTER_STATUS.SENT;
+    await t.letters.dispatchDue(AFTER_WINDOW());
+    expect(request(t)).toMatchObject({ state: "released", conversation_id: queued.id });
+  });
+
+  it("the reason kept and shown is the dispatcher's words, clipped and ended", () => {
+    expect(sendFailureWords("Google refused the send (429)")).toBe("Google refused the send (429).");
+    expect(sendFailureWords("  ")).toBe("The dispatcher did not say why.");
+    const long = sendFailureWords("x".repeat(1000));
+    expect(long.length).toBe(SEND_FAILURE_MAX);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
+  it("a re-wait that did not land is retried on the next run: 'released' does not stand on the failed letter", async () => {
+    const t = build();
+    const requestId = await asked(t);
+    const queued = await released(t, requestId);
+    // The first run's re-wait could not write the request.
+    t.db.failures.vendor_send_requests = "connection reset";
+    const first = await t.letters.dispatchDue(AFTER_WINDOW());
+    expect(first).toMatchObject({ failed: 1, rewaited: 0 });
+    delete t.db.failures.vendor_send_requests;
+    expect(request(t)).toMatchObject({ state: "released", conversation_id: queued.id });
+    // The next run finds it and puts it back, with the failure the letter recorded.
+    const second = await t.letters.dispatchDue(AFTER_WINDOW());
+    expect(second).toMatchObject({ considered: 0, rewaited: 1 });
+    expect(request(t)).toMatchObject({
+      state: "waiting",
+      send_failed_count: 1,
+      last_send_failure: "the house's mailbox holds no grant to send with.",
+    });
   });
 });

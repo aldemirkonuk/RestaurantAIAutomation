@@ -66,6 +66,7 @@ celery_app.conf.update(
         "jobs.trend_tasks",
         "jobs.research_tasks",
         "jobs.drift_tasks",
+        "jobs.house_item_research_tasks",
     ),
 )
 
@@ -160,6 +161,16 @@ celery_app.conf.beat_schedule = {
     "research-staleness-reverify-weekly": {
         "task": "research.staleness_reverify",
         "schedule": crontab(day_of_week=0, hour=2, minute=0),  # Sunday 2 AM UTC
+        "options": {"expires": 3500},
+    },
+    # A house item the wine library lacks, handed to the existing enrich chain
+    # (haiku_enrich_task -> web_verify_task) by its submission id. Founder,
+    # 2026-09-22: "Existing enrich chain (Recommended)" (ADR 0192). A no-op
+    # unless HOUSE_ITEM_RESEARCH_DISPATCH_ENABLED=true, because the chain
+    # spends money. At :45 so it does not contend with the :00/:15/:30 jobs.
+    "house-item-research-dispatch": {
+        "task": "house_item_research.dispatch",
+        "schedule": crontab(minute=45),
         "options": {"expires": 3500},
     },
     # SimPOS testbed: catalog ↔ mappings/inventory drift (sim-* only, C31)

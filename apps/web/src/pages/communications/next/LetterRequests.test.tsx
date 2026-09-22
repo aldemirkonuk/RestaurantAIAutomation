@@ -156,3 +156,30 @@ describe('letters waiting for a manager', () => {
     await waitFor(() => expect(screen.getByTestId('letter-requests-unread')).toHaveTextContent(/could not be read/));
   });
 });
+
+// Founder, 2026-09-22, verbatim pick: "Back to waiting (Recommended)".
+describe('a released letter that could not be sent', () => {
+  it('comes back waiting, with who released it and why it was not sent, for the manager and the person who asked', async () => {
+    const failed: LetterRequest = {
+      ...REQ,
+      lastSendFailure: {
+        reason: "the house's mailbox holds no grant to send with.",
+        at: '2026-09-22T09:05:00.000Z',
+        releasedBy: { userId: 'u-manager', name: 'Mert' },
+        count: 1,
+      },
+    };
+    api.get.mockResolvedValue({ data: { requests: [failed] } });
+    draw(true);
+    expect(await screen.findByTestId('letter-request-send-failed')).toHaveTextContent(
+      "Mert released it, but it could not be sent: the house's mailbox holds no grant to send with. It is waiting again. Nothing was sent.",
+    );
+  });
+
+  it('says nothing about a failure that did not happen', async () => {
+    api.get.mockResolvedValue({ data: { requests: [{ ...REQ, lastSendFailure: null }] } });
+    draw(false);
+    await screen.findByTestId('letter-requests');
+    expect(screen.queryByTestId('letter-request-send-failed')).toBeNull();
+  });
+});

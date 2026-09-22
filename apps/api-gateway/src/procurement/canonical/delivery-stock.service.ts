@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -67,6 +68,16 @@ export interface BookingReceipt {
   notBooked: UnbookedLine[];
   /** Bottles moved by this call. 0 with a non-empty `booked` = a retry. */
   bottlesMoved: number;
+  /**
+   * Per item this call booked stock INTO that the wine library lacks: its
+   * place on the research queue, or why it could not be queued (founder,
+   * 2026-09-22: "Yes, same rule"). A library wine is not listed. The stock
+   * stands either way.
+   */
+  research?: Array<
+    | { inventoryId: string; status: "queued" | "not_findable" | "matched" }
+    | { inventoryId: string; error: string }
+  >;
 }
 
 export interface FinalisedItem {
@@ -290,9 +301,34 @@ export class DeliveryStockService {
       });
     }
 
+    // THE SAME RULE AT THE DOOR (founder, 2026-09-22, verbatim pick: "Yes,
+    // same rule (Recommended)"): every item this count booked stock into that
+    // the wine library lacks is queued for research by its id, once per item.
+    // After the bookings, never undoing them; a failure is listed and logged.
+    const research: NonNullable<BookingReceipt["research"]> = [];
+    const bookedInto = [...new Set(booked.filter((b) => b.delta > 0).map((b) => b.inventoryId))];
+    for (const inventoryId of bookedInto) {
+      const queued = await queueResearchIfLibraryLacks(this.db.getClient(), {
+        restaurantId,
+        inventoryId,
+        queuedFrom: "receiving",
+        sourceOrderId: delivery.value.orderId,
+        queuedBy: userId,
+      });
+      if (queued === null) continue;
+      if (queued.ok) {
+        research.push({ inventoryId, status: queued.status });
+      } else {
+        this.logger.error(
+          `bookAtTheDoor: delivery ${deliveryId} booked item ${inventoryId}, but it was not queued for research: ${queued.error}`,
+        );
+        research.push({ inventoryId, error: queued.error });
+      }
+    }
+
     return {
       ok: true,
-      value: { deliveryId, documentId, booked, notBooked, bottlesMoved },
+      value: { deliveryId, documentId, booked, notBooked, bottlesMoved, research },
     };
   }
 

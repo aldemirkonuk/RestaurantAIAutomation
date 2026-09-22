@@ -545,6 +545,8 @@ export interface HouseItemResearch {
   reason: string;
   flag: string | null;
   updatedAt: string;
+  /** True once the enrich chain has been handed this item (founder, 2026-09-22). */
+  researchStarted?: boolean;
 }
 
 /** This house's research rows; the house comes from the sign-in. A failed read throws. */
