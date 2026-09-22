@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { ProcurementModule } from "../procurement/procurement.module";
+import { SealModule } from "../common/seal/seal.module";
 import { AskAiController } from "./ask-ai.controller";
 import { AskAiService } from "./ask-ai.service";
 
@@ -22,7 +23,15 @@ import { AskAiService } from "./ask-ai.service";
  * no import line.
  */
 @Module({
-  imports: [DatabaseModule, ConfigModule, AuthModule, ProcurementModule],
+  // SealModule supplies the seal a proposal is applied with from the house
+  // counter (sketch 119 D). Not circular: SealModule imports only Database.
+  imports: [
+    DatabaseModule,
+    ConfigModule,
+    AuthModule,
+    ProcurementModule,
+    SealModule,
+  ],
   controllers: [AskAiController],
   providers: [AskAiService],
   exports: [AskAiService],

@@ -1,16 +1,34 @@
 /**
- * The Ask AI proposal card — the confirm gate, made legible.
+ * The Ask AI proposal card — the seal gate, made legible.
  *
- * Ask → propose → **confirm** → execute (FUTURES §8.1). Everything about this
+ * Ask → propose → **seal** → execute (FUTURES §8.1). Everything about this
  * component is downstream of one fact: the row behind it is `proposed`, and
  * nothing has happened yet. So the card is written to survive being wrong.
+ *
+ * NEVER WITHOUT THE SEAL
+ * ----------------------
+ * The founder, 2026-09-21, on /ask: "Never without the seal". This card used
+ * to apply a proposal with a click on `POST /ask-ai/actions/:id/confirm` — a
+ * role check and nothing else. That route now answers 410. The card applies
+ * ONLY through `HoldToApprove` bound to a server seal of its own, the same
+ * ceremony as the house counter's sheet:
+ *
+ *   1. the operator edits (or does not);
+ *   2. the hold BEGINS → `mintProposalSeal(id, edit?)` — the gateway checks the
+ *      edit and binds it into the seal, so the seal is minted AFTER any edits;
+ *   3. the hold completes → `applyProposalSealed(id, seal, edit?)` carries the
+ *      very same edit back. An edit made after the hold began is caught here
+ *      before any request, and the gateway refuses it too ("changed after the
+ *      seal was issued").
+ *
+ * There is no click-to-apply control on this card.
  *
  * EDITABLE, BECAUSE A NEAR-MISS SHOULD BE ONE TAP
  * ----------------------------------------------
  * "Order 6 cases" when you meant 8 is the common case, and re-asking is a
  * worse answer than fixing the number in front of you. The fields below are
- * live inputs; Confirm sends `{payload}` only when something actually changed,
- * so an untouched confirm is byte-for-byte "confirm as proposed" and the
+ * live inputs; the seal binds `{payload}` only when something actually
+ * changed, so an untouched apply is byte-for-byte "apply as proposed" and the
  * gateway records `edited: false`.
  *
  * WHAT IS NOT EDITABLE, AND WHY THE UI AGREES WITH THE SERVER
@@ -30,32 +48,34 @@
  *    Two ways that set can fail to contain the proposed id — it was capped
  *    out, or the row went inactive between propose and now. The select then
  *    carries the current id as its own leading option rather than dropping it.
- *    Silently rewriting what a person is about to confirm is the one thing a
- *    confirm gate must never do; and an UNTOUCHED confirm sends no payload at
+ *    Silently rewriting what a person is about to seal is the one thing a
+ *    seal gate must never do; and an UNTOUCHED apply sends no payload at
  *    all, so the stored id must still be the value showing.
  *
  *    When the candidate fetch has not landed, or failed, the ids degrade to
  *    the read-only rows they used to be. The old note still holds for that
  *    path: a bare uuid text box is not a UI, it is a trap.
  *
- * THE THREE FAILURE SHAPES ARE DIFFERENT AND ARE SHOWN DIFFERENTLY
+ * THE FOUR FAILURE SHAPES ARE DIFFERENT AND ARE SHOWN DIFFERENTLY
  * ---------------------------------------------------------------
  *  • **gone** (404) — the compare-and-swap lost. A double tap, another tab, a
  *    retry. Exactly one execution happened. That is the mechanism working, so
  *    it is a plain note, not a red banner.
- *  • **rejected** (400) — the edit failed re-validation. The gateway rolls the
- *    row back to `proposed`, so the card MUST stay usable and show why rather
- *    than vanishing and losing the operator's typing.
+ *  • **rejected** (400) — the edit failed re-validation, at the mint or at the
+ *    apply. The row is (or is rolled back to) `proposed`, so the card MUST stay
+ *    usable and show why rather than vanishing and losing the operator's typing.
+ *  • **refused** (403) — the seal said no (spent, expired, minted on another
+ *    edit) or this role may not apply. Nothing was written; the card stays
+ *    usable, says the gateway's sentence, and the hold can be taken again.
  *  • **failed** (5xx) — the executor threw. The row is terminal; the card says
- *    so and stops offering a button that cannot work.
+ *    so and stops offering a hold that cannot work.
  */
 
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Check,
   Info,
-  Loader2,
   Mail,
   ShoppingCart,
   X,
@@ -68,9 +88,11 @@ import {
   CandidateOption,
   ReorderPayload,
   VendorDraftPayload,
-  confirmAction,
+  applyProposalSealed,
   discardAction,
+  mintProposalSeal,
 } from '../../services/api/askAi'
+import { HoldToApprove, type HoldCopy } from '../mudavym/HoldToApprove'
 
 /**
  * Mirrors `MAX_REORDER_QUANTITY` in `apps/api-gateway/src/ask-ai/ask-ai-actions.ts`.
@@ -204,6 +226,44 @@ function samePayload(a: AskAiPayload, b: AskAiPayload): boolean {
   return true
 }
 
+/** The hold's words around the act: this hold applies, it does not approve. */
+const APPLY_COPY: Partial<HoldCopy> = {
+  armed: 'Enter again to apply',
+  armedHint: 'Press Enter again to apply — Esc cancels.',
+  pending: 'Applying…',
+  unconfirmed: 'The apply could not be confirmed. Check the proposal before trying again.',
+}
+
+/** Same edit, or both untouched — what the seal bound vs what is showing. */
+function sameHeld(a: AskAiPayload | undefined, b: AskAiPayload | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b
+  return samePayload(a, b)
+}
+
+/**
+ * The ground the seal stands on, by the APP theme — never inherited.
+ *
+ * This card is a legacy Tailwind surface: `bg-white` that `styles/globals.css`
+ * repaints under `html.dark`. It is mounted in two places — the legacy Ask
+ * overlay and, with the shell gate on, inside the house `Panel`, which is a
+ * `.mudavym` scope painting Warm Charcoal in every theme. `useStandaloneGround`
+ * would inherit charcoal there and draw a dark track on a white card, so this
+ * follows the signal the card itself obeys: `html.dark` → charcoal, otherwise
+ * paper. Read before paint, as `useStandaloneGround` does.
+ */
+function useCardGround(): 'paper' | 'charcoal' {
+  const read = (): 'paper' | 'charcoal' =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+      ? 'charcoal'
+      : 'paper'
+  const [ground, setGround] = useState<'paper' | 'charcoal'>(read)
+  useLayoutEffect(() => {
+    const next = read()
+    setGround((prev) => (prev === next ? prev : next))
+  })
+  return ground
+}
+
 export function ProposalCard({ proposal, candidates }: Props) {
   const isReorder = proposal.action.actionType === 'reorder'
   const original = proposal.action.payload
@@ -235,6 +295,16 @@ export function ProposalCard({ proposal, candidates }: Props) {
   const [notice, setNotice] = useState<string | null>(null)
   const [executionRef, setExecutionRef] = useState<string | null>(null)
   const [wasEdited, setWasEdited] = useState(false)
+  /** Bumped after a refusal so the hold returns to rest, never reads "Applied". */
+  const [attempt, setAttempt] = useState(0)
+  /** A discard in flight — the one time the hold itself is switched off. */
+  const [discarding, setDiscarding] = useState(false)
+  /**
+   * What the seal was minted on — captured when the hold BEGINS and carried,
+   * unchanged, into the apply. `null` between gestures.
+   */
+  const heldRef = useRef<{ payload: AskAiPayload | undefined } | null>(null)
+  const ground = useCardGround()
 
   /** The payload as currently chosen, or null when a field is locally invalid. */
   const edited = useMemo<AskAiPayload | null>(() => {
@@ -301,38 +371,85 @@ export function ProposalCard({ proposal, candidates }: Props) {
   const settled =
     phase === 'executed' || phase === 'discarded' || phase === 'gone' || phase === 'failed'
 
-  async function onConfirm() {
-    if (busy || !edited || localProblem) return
-    setPhase('working')
+  /** What an apply would send right now: the edit, or nothing when untouched. */
+  const showing: AskAiPayload | undefined = dirty && edited ? edited : undefined
+  const showingRef = useRef(showing)
+  showingRef.current = showing
+
+  /** The hold BEGINS: mint the seal on what is showing now, edits included. */
+  async function onChallenge(): Promise<string | null> {
+    if (busy || !edited || localProblem) return null
+    const payload = showingRef.current
+    heldRef.current = { payload }
     setNotice(null)
     try {
-      // Only send a payload when something actually changed: an untouched
-      // confirm must reach the gateway as "confirm as proposed".
-      const result = await confirmAction(proposal.actionId, dirty ? edited : undefined)
+      return await mintProposalSeal(proposal.actionId, payload)
+    } catch (error) {
+      heldRef.current = null
+      const err = error as AskAiActionError
+      if (err?.kind === 'gone') {
+        setPhase('gone')
+        setNotice(err.message)
+        return null
+      }
+      // Rejected edit, a role that may not apply, a seal the gateway could not
+      // issue: nothing was written, so the card stays usable and says why.
+      setNotice(err?.message ?? 'The seal could not be issued, so nothing was applied.')
+      return null
+    }
+  }
+
+  /** The hold completes: apply exactly what the seal was minted on. */
+  async function onApprove(challenge?: string | null) {
+    const held = heldRef.current
+    heldRef.current = null
+    if (!challenge || !held) {
+      // Unreachable while HoldToApprove keeps its contract (a null seal never
+      // reaches here); kept so a vanished seal cannot apply.
+      throw new Error('No seal was carried, so nothing was applied.')
+    }
+    if (!sameHeld(held.payload, showingRef.current)) {
+      // Keyboard path: armed, then a field changed, then committed. The seal
+      // binds the earlier version; applying it would run something other than
+      // what is on screen, and sending the new one would be refused anyway.
+      setNotice(
+        'You changed the proposal after the hold began, so nothing was applied. Hold again to seal what is showing now.',
+      )
+      setAttempt((a) => a + 1)
+      throw new Error('changed after the hold began')
+    }
+    setPhase('working')
+    try {
+      const result = await applyProposalSealed(proposal.actionId, challenge, held.payload)
       setWasEdited(result.edited)
       setExecutionRef(result.executionRef || null)
       setPhase('executed')
+      return result
     } catch (error) {
       const err = error as AskAiActionError
-      if (err?.kind === 'rejected') {
-        // Rolled back to `proposed` server-side — the card stays usable.
+      if (err?.kind === 'rejected' || err?.kind === 'refused') {
+        // Nothing ran: the edit failed re-validation (the row was rolled back
+        // to `proposed`) or the seal was refused before any write.
         setPhase('editing')
         setNotice(err.message)
-        return
+        setAttempt((a) => a + 1)
+        throw err
       }
       if (err?.kind === 'gone') {
         setPhase('gone')
         setNotice(err.message)
-        return
+        throw err
       }
       setPhase('failed')
       setNotice(err?.message ?? 'That action could not be executed.')
+      throw err
     }
   }
 
   async function onDiscard() {
     if (busy) return
     setPhase('working')
+    setDiscarding(true)
     setNotice(null)
     try {
       await discardAction(proposal.actionId)
@@ -346,6 +463,8 @@ export function ProposalCard({ proposal, candidates }: Props) {
       }
       setPhase('editing')
       setNotice(err?.message ?? 'That action could not be discarded.')
+    } finally {
+      setDiscarding(false)
     }
   }
 
@@ -458,7 +577,7 @@ export function ProposalCard({ proposal, candidates }: Props) {
           {dirty && !localProblem && (
             <p className="text-[11px] text-gray-500 flex items-center gap-1">
               <Info className="w-3 h-3 shrink-0" />
-              Edited — your version is what gets confirmed, and it is re-checked
+              Edited — your version is what the seal binds, and it is re-checked
               before it runs.
             </p>
           )}
@@ -536,31 +655,39 @@ export function ProposalCard({ proposal, candidates }: Props) {
         </div>
       )}
 
-      {/* ── Actions ──────────────────────────────────────────────────── */}
-      {!settled && (
-        <div className="flex items-center justify-end gap-2 px-4 py-3 bg-gray-50 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={onDiscard}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-          >
-            <X className="w-3.5 h-3.5" />
-            Discard
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={busy || !!localProblem}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-wine-600 text-white hover:bg-wine-700 disabled:opacity-50"
-          >
-            {busy ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Check className="w-3.5 h-3.5" />
-            )}
-            {dirty ? 'Confirm edits' : 'Confirm'}
-          </button>
+      {/* ── Actions: the hold is the only way to apply ───────────────── */}
+      {(!settled || phase === 'executed') && (
+        <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 space-y-2">
+          <div className="mudavym" data-ground={ground}>
+            <HoldToApprove
+              key={`proposal-${proposal.actionId}-${attempt}`}
+              label={dirty ? 'Hold to apply your edits' : 'Hold to apply'}
+              approvedLabel="Applied"
+              copy={APPLY_COPY}
+              boundSummary={
+                dirty ? `${proposal.summary} (with your edits)` : proposal.summary
+              }
+              // NOT disabled while the apply is in flight: HoldToApprove is
+              // inert while pending on its own, and a focused button that
+              // becomes disabled drops focus out of the panel's focus trap.
+              disabled={discarding || !!localProblem}
+              onChallenge={onChallenge}
+              onApprove={onApprove}
+            />
+          </div>
+          {!settled && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onDiscard}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+              >
+                <X className="w-3.5 h-3.5" />
+                Discard
+              </button>
+            </div>
+          )}
         </div>
       )}
     </article>

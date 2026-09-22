@@ -96,19 +96,21 @@ describe('useMudavymDesign precedence', () => {
 /**
  * ADR 0149 row 36 (2026-09-17): 16 pages go live for every house in code.
  * `settings`, `cellar`, `recommendations` and `receiving` (the desk, not the
- * door) stay flag-gated.
+ * door) stay flag-gated. `shell` (the house shell, sketch 119 D, ADR 0149
+ * row 5) is held back too: it stays behind its own flag, default off
+ * (migration 20260921114300), and is never a LIVE_PAGES entry.
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
-  const HELD_BACK = ['settings', 'cellar', 'recommendations', 'receiving'] as const;
+  const HELD_BACK = ['settings', 'cellar', 'recommendations', 'receiving', 'shell'] as const;
 
-  it('is exactly MUDAVYM_PAGES minus the four held-back pages', () => {
+  it('is exactly MUDAVYM_PAGES minus the five held-back pages', () => {
     const held = new Set(HELD_BACK);
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p as (typeof HELD_BACK)[number]));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
     expect(LIVE_PAGES.size).toBe(16);
   });
 
-  it('holds back exactly settings, cellar, recommendations, receiving', () => {
+  it('holds back exactly settings, cellar, recommendations, receiving, shell', () => {
     for (const page of HELD_BACK) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated

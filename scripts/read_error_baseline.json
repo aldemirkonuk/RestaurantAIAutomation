@@ -113,7 +113,6 @@
     "apps/api-gateway/src/procurement/procurement.service.ts::restaurants::r": 1,
     "apps/api-gateway/src/procurement/procurement.service.ts::vendor-attachments::blob": 1,
     "apps/api-gateway/src/procurement/procurement.service.ts::vendor-attachments::signed": 1,
-    "apps/api-gateway/src/procurement/receiving.service.ts::procurement_orders::orders": 1,
     "apps/api-gateway/src/providers/providers.service.ts::provider_locations::locs": 1,
     "apps/api-gateway/src/providers/providers.service.ts::providers::existingProvider": 1,
     "apps/api-gateway/src/restaurants/members.service.ts::restaurants::restaurant": 1,

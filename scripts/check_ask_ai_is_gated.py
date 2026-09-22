@@ -95,8 +95,8 @@ def main() -> int:
         "runtime and ValidationPipe validates nothing",
     )
     want(
-        re.search(r"@Body\(\)\s+body:\s*ConfirmDto", controller) is not None,
-        "confirm does not take ConfirmDto",
+        len(re.findall(r"@Body\(\)\s+body:\s*ConfirmDto", controller)) >= 2,
+        "the sealed routes (seal-challenge, sealed-confirm) do not both take ConfirmDto",
     )
     want(
         re.search(r"@Body\(\)\s+\w+:\s*\{", controller) is None,
@@ -137,37 +137,109 @@ def main() -> int:
         )
         want("RolesGuard" in names, "RolesGuard is not on the controller")
 
-    # --- 4. Confirm is the act that writes, so it takes standing ----------
+    # --- 4. Applying is the act that writes: standing AND a redeemed seal ---
     #
-    # Checked per HANDLER, on every controller in the gateway, not on the one
-    # named route: the first version sliced the controller from the confirm
-    # route to END OF FILE, so an @Roles on any later handler satisfied it, and
-    # a second route calling confirm was never looked at. A handler here is the
-    # text from one route decorator to the next, which assumes @Roles sits
-    # below its route decorator, as every handler in this controller does.
-    want(
-        '@Post("actions/:id/confirm")' in controller,
-        "the confirm route is gone or renamed; this guard no longer describes the tree",
-    )
+    # "Never without the seal" (the founder, 2026-09-21, on /ask). A proposal
+    # is applied only through `confirmSealed`, which redeems the seal before it
+    # calls the private executor. Five things hold that, each read from code:
+    #
+    #   a. no handler on ANY controller calls an unsealed `askAi*.confirm(` --
+    #      the public method is gone, and a new route reintroducing one fails
+    #      here even if it carries @Roles;
+    #   b. every handler calling `confirmSealed(` or `issueProposalSeal(` takes
+    #      @Roles("owner", "manager") -- checked per HANDLER, on every
+    #      controller (the first version sliced from one route to END OF FILE,
+    #      so an @Roles on any later handler satisfied it);
+    #   c. the retired `@Post("actions/:id/confirm")`, if present, throws a
+    #      GoneException and calls NOTHING on the service;
+    #   d. the executor is `private async applyAfterSeal(` and the service has
+    #      no public `async confirm(`;
+    #   e. inside `confirmSealed`, `seals.redeem(` comes BEFORE
+    #      `this.applyAfterSeal(` -- a write before the redemption is the
+    #      assertion model with extra steps.
+    #
+    # A handler here is the text from one route decorator to the next, which
+    # assumes @Roles sits below its route decorator, as every handler in this
+    # controller does.
     route = re.compile(r"@(?:Get|Post|Put|Patch|Delete)\(")
     roles = re.compile(r'@Roles\(\s*"owner"\s*,\s*"manager"\s*\)')
-    callers = 0
+    sealed_callers = 0
     for ctrl in sorted(GW.rglob("*.controller.ts")):
         text = source(ctrl)
         starts = [m.start() for m in route.finditer(text)] + [len(text)]
         for a, b in zip(starts, starts[1:]):
             handler = text[a:b]
-            if re.search(r"\.confirm\(", handler) and re.search(r"askAi\w*\.confirm\(", handler):
-                callers += 1
+            # `askAi.confirm(` and the cast spelling `(this.askAi as any).confirm(`
+            # both count: a handler that names Ask AI and calls a `.confirm(` or
+            # the private executor is an unsealed apply, however it is typed.
+            if re.search(r"\baskAi\w*\b", handler) and re.search(
+                r"\.(?:confirm|applyAfterSeal)\(", handler
+            ):
+                failures.append(
+                    f"a handler in {ctrl.relative_to(ROOT)} applies a proposal through "
+                    "an unsealed askAi.confirm( -- a proposal is applied only behind a "
+                    "redeemed seal (confirmSealed)"
+                )
+            if re.search(r"askAi\w*\.(?:confirmSealed|issueProposalSeal)\(", handler):
+                sealed_callers += 1
                 want(
                     roles.search(handler) is not None,
-                    f"a handler in {ctrl.relative_to(ROOT)} calls Ask AI's confirm without "
-                    '@Roles("owner", "manager") -- confirming is what WRITES',
+                    f"a handler in {ctrl.relative_to(ROOT)} mints or redeems a proposal "
+                    'seal without @Roles("owner", "manager") -- applying is what WRITES',
                 )
+    # The private executor is called from exactly one place: confirmSealed.
+    for ts in sorted(GW.rglob("*.ts")):
+        if ts.name.endswith(".spec.ts") or ts == SERVICE:
+            continue
+        if ".applyAfterSeal(" in source(ts):
+            failures.append(
+                f"{ts.relative_to(ROOT)} calls applyAfterSeal -- the executor is "
+                "reached only from AskAiService.confirmSealed, after the redemption"
+            )
     want(
-        callers >= 1,
-        "no handler calls askAi.confirm( any more; this guard no longer describes the tree",
+        len(re.findall(r"\.applyAfterSeal\(", service)) == 1,
+        "AskAiService calls applyAfterSeal from more than one place (or none) -- "
+        "confirmSealed must be its only caller",
     )
+    want(
+        sealed_callers >= 2,
+        "fewer than two handlers mint (issueProposalSeal) or redeem (confirmSealed) "
+        "a proposal seal; this guard no longer describes the tree",
+    )
+    retired_at = controller.find('@Post("actions/:id/confirm")')
+    if retired_at != -1:
+        nxt = route.search(controller, retired_at + 1)
+        retired = controller[retired_at : nxt.start() if nxt else len(controller)]
+        want(
+            "throw new GoneException(" in retired,
+            'the retired @Post("actions/:id/confirm") no longer throws GoneException',
+        )
+        want(
+            re.search(r"this\.askAi\b", retired) is None,
+            'the retired @Post("actions/:id/confirm") reaches the service again',
+        )
+    want(
+        re.search(r"private\s+async\s+applyAfterSeal\(", service) is not None,
+        "the proposal executor is not `private async applyAfterSeal(` -- a public "
+        "executor is an unsealed apply one caller away",
+    )
+    want(
+        re.search(r"^\s+(?:public\s+)?async\s+confirm\(", service, flags=re.M) is None,
+        "AskAiService has a public `async confirm(` again -- the unsealed apply",
+    )
+    sealed_body = re.search(
+        r"async\s+confirmSealed\((.*?)\n  async\s+discard\(", service, flags=re.S
+    )
+    if sealed_body is None:
+        failures.append("confirmSealed not found before discard in ask-ai.service.ts")
+    else:
+        body = sealed_body.group(1)
+        redeem_at = body.find("seals.redeem(")
+        apply_at = body.find("this.applyAfterSeal(")
+        want(
+            redeem_at != -1 and apply_at != -1 and redeem_at < apply_at,
+            "confirmSealed does not redeem the seal BEFORE it calls applyAfterSeal",
+        )
 
     # --- 5. propose declares a per-person AND a per-house limit -----------
     #
@@ -322,7 +394,8 @@ def main() -> int:
 
     print(
         "PASS -- Ask AI validates its bodies, bounds its rate per person and per "
-        "house, meters its first call, and takes standing to confirm."
+        "house, meters its first call, and applies a proposal only behind a "
+        "redeemed seal taken with standing."
     )
     return 0
 
