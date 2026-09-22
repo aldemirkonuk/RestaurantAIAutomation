@@ -59,9 +59,21 @@ export type Register = {
   id: string
   carried: boolean | null
   decidedBy: string
+  /**
+   * `unknown` is NOT the bottom of this scale — see
+   * `cellar-registers.ts:31-38`. `none` means the books were read and hold
+   * nothing of the kind; `unknown` means there were no books to read. The
+   * reveal renders two different sentences for them.
+   */
+  confidence: string
   basis: string
   evidence: { inventoryRows: number; menuRows: number }
 }
+/**
+ * The reading count the reveal prints. `null` when the menu could not be read
+ * at all, which the gateway is careful never to report as three zeroes.
+ */
+export type MenuLines = { read: number; placed: number; notPlaced: number }
 export type Term = { value: unknown; source: string; reason?: string }
 export type Vendor = {
   providerId: string
@@ -98,6 +110,7 @@ export type Book = {
   }>
   cellar: Source<{
     registers: Register[]
+    menuLines: MenuLines | null
     sources: {
       answers: { readable: boolean }
       inventory: { readable: boolean }

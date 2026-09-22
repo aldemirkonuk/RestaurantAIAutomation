@@ -96,6 +96,265 @@
   margin-top: 25px;
   font-size: 13px;
 }
+/* ── the flyleaf's one act ──────────────────────────────────────────────
+   The upload is the inscription, so it is drawn as the leaf's own content.
+   Three ways in as RULED LINES, not cards: a card implies three equal
+   containers to choose between, and a line implies one list to read down. */
+.ar-inscribe {
+  max-width: 720px;
+  text-align: left;
+}
+.ar-inscribe .ar-lede {
+  max-width: 54ch;
+}
+.ar-ways {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 30px;
+}
+.ar-way {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: baseline;
+  gap: 16px;
+  padding: 17px 2px;
+  border-bottom: 1px solid var(--rule);
+}
+.ar-way:first-child {
+  border-top: 1px solid var(--rule);
+}
+.ar-way[data-primary] {
+  background: color-mix(in srgb, var(--seal) 14%, transparent);
+  margin: 0 -14px;
+  padding-inline: 14px;
+}
+.ar-way strong {
+  font: 400 21px var(--serif);
+}
+.ar-way small {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  margin-top: 3px;
+}
+.ar-numeral {
+  font: 12px var(--mono);
+  color: var(--ink-3);
+}
+.ar-way[data-primary] .ar-numeral {
+  color: var(--seal);
+}
+/* The way in is the whole ruled line, so its affordance is a phrase at the end
+   of it — not a browser file widget, which draws a box and reintroduces the
+   card this direction replaced. The input keeps its own accessible name and
+   stays in the tab order via the label. */
+.ar-way-control input.ar-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.ar-way-choose {
+  font: 12.5px var(--sans);
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ar-way-choose:hover,
+.ar-way-control input.ar-file:focus-visible + .ar-way-choose {
+  color: var(--seal);
+  border-bottom-color: var(--seal);
+}
+.ar-way[data-primary] .ar-way-choose {
+  color: var(--ink-1);
+}
+.ar-typed {
+  margin: 0 0 26px;
+}
+.ar-typed textarea {
+  width: 100%;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  border: 1px solid var(--rule);
+  font: 14px var(--sans);
+  padding: 12px;
+  margin: 8px 0 12px;
+}
+.ar-aside {
+  display: flex;
+  align-items: baseline;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+/* Visible, and secondary. The escape is not hidden — a read that will not
+   finish must never trap a house on this leaf — but it is not the act. */
+.ar-page button.ar-quiet {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  font: 13px var(--sans);
+  color: var(--ink-3);
+  padding: 2px 0;
+  min-height: 0;
+}
+.ar-page button.ar-quiet:hover:not(:disabled) {
+  color: var(--seal);
+  border-bottom-color: var(--seal);
+}
+.ar-aside .ar-note {
+  margin: 0;
+  flex: 1;
+  min-width: 220px;
+}
+
+/* ── the wait: facts landing, never a spinner ───────────────────────────
+   One `settle` per fact as it lands, then stasis. No token is a loop. */
+.ar-writing {
+  margin: 0 0 26px;
+}
+.ar-writing > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+  align-items: baseline;
+  padding: 13px 2px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+}
+.ar-writing > div:first-child {
+  border-top: 1px solid var(--rule);
+}
+.ar-writing > div[data-done] {
+  color: var(--ink-1);
+  animation: ar-turn var(--ar-turn-duration) var(--ar-turn-easing);
+}
+.ar-writing > div[data-waiting] {
+  color: var(--ink-3);
+}
+.ar-writing em {
+  font: 11px var(--mono);
+  font-style: normal;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ar-writing > div[data-done] em {
+  color: var(--seal);
+}
+
+/* ── the reveal: a reading count, not a capability claim ──────────────── */
+.ar-count {
+  display: flex;
+  gap: 0;
+  margin: 22px 0 8px;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.ar-count > div {
+  padding: 14px 26px 13px 0;
+  margin-right: 26px;
+  animation: ar-turn var(--ar-turn-duration) var(--ar-turn-easing);
+}
+.ar-count > div + div {
+  border-left: 1px solid var(--rule);
+  padding-left: 26px;
+}
+.ar-count dt {
+  font: 11px var(--mono);
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ar-count dd {
+  margin: 4px 0 0;
+  font: 400 30px/1.2 var(--serif);
+  color: var(--ink-1);
+}
+.ar-count > div[data-open] dd {
+  color: var(--seal);
+}
+
+/* A register with evidence is READ BACK, not offered for a tick. Only the
+   un-evidenced ones carry a control, so nothing here can be rubber-stamped. */
+.ar-registers {
+  margin: 26px 0 0;
+}
+.ar-register {
+  display: grid;
+  grid-template-columns: 150px 1fr auto;
+  gap: 20px;
+  align-items: baseline;
+  padding: 15px 2px;
+  border-bottom: 1px solid var(--rule);
+}
+.ar-register:first-child {
+  border-top: 1px solid var(--rule);
+}
+.ar-register h3 {
+  font-size: 17px;
+  text-transform: capitalize;
+}
+.ar-register p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 62ch;
+}
+.mudavym.ar-page .ar-register p {
+  color: var(--ink-3);
+}
+.mudavym.ar-page .ar-register[data-silent] h3 {
+  color: var(--ink-3);
+}
+.ar-mark {
+  font: 11px var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--seal);
+  white-space: nowrap;
+}
+.ar-register[data-silent] .ar-mark {
+  color: var(--ink-3);
+}
+.ar-page button.ar-ask {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  font: 12px var(--mono);
+  color: var(--ink-3);
+  padding: 2px 0;
+  min-height: 0;
+  white-space: nowrap;
+}
+.ar-page button.ar-ask:hover:not(:disabled) {
+  color: var(--seal);
+  border-bottom-color: var(--seal);
+}
+
+/* Optional has to LOOK optional: on the contents line, on the folio, and on
+   the control. */
+.ar-optional {
+  display: inline-block;
+  margin-left: 8px;
+  font: 11px var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--seal);
+  vertical-align: middle;
+}
+.ar-book aside button[data-asking] {
+  background: color-mix(in srgb, var(--seal) 14%, transparent);
+}
+.ar-book aside button[data-asking] small {
+  color: var(--seal);
+}
+
 .ar-book {
   max-width: 1320px;
   margin: 40px auto;
@@ -351,6 +610,51 @@
   }
   .ar-flyleaf {
     padding: 60px 10px;
+  }
+  /* The phone fold. The three ways lose their right-hand column and the whole
+     ruled line becomes the target; the counts stack label-left/number-right;
+     a register becomes one stacked entry and the 150px name column goes. */
+  .ar-way {
+    grid-template-columns: 20px 1fr;
+    gap: 12px;
+  }
+  .ar-way-control {
+    grid-column: 2;
+  }
+  .ar-aside {
+    display: block;
+  }
+  .ar-aside .ar-note {
+    margin-top: 10px;
+  }
+  .ar-count {
+    display: block;
+  }
+  .ar-count > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 12px 0;
+    margin: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .ar-count > div:last-child {
+    border-bottom: 0;
+  }
+  .ar-count > div + div {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .ar-count dd {
+    font-size: 24px;
+  }
+  .ar-register {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  .ar-register .ar-mark,
+  .ar-register .ar-ask {
+    justify-self: start;
   }
   .ar-batch li {
     display: block;

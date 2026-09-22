@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../../contexts/AuthContext'
@@ -17,6 +17,14 @@ import {
   Folio,
   Vendor,
 } from './arrival-api'
+import {
+  folioState,
+  MENU_FILE_LIMIT,
+  nextAct,
+  pencilMenuRows,
+  stageMenuFile,
+  typedLinesToCsv,
+} from './arrival-reading'
 import '../../styles/mudavym.css'
 import './arrival.css'
 
@@ -24,6 +32,14 @@ export const ARRIVAL_FOLIOS: Array<{
   id: Folio
   title: string
   purpose: string
+  /**
+   * Founder's instruction of 2026-09-22: "whom we buy from" stays and must be
+   * skippable. No folio is a gate, so every folio is *technically* optional —
+   * this flag is about the one the founder named, which has to LOOK optional
+   * on the contents line, on the folio and on its controls, because a folio
+   * that only reads as required defeats the instruction.
+   */
+  optional?: true
 }> = [
   {
     id: 'evidence',
@@ -45,7 +61,9 @@ export const ARRIVAL_FOLIOS: Array<{
   {
     id: 'vendors',
     title: 'Whom we buy from',
-    purpose: 'Write only the terms somebody has told you.',
+    purpose:
+      'Optional. Write only the terms somebody has told you. Most houses leave this until the first delivery argument — that is the right time for it.',
+    optional: true,
   },
   {
     id: 'notifications',
@@ -59,122 +77,226 @@ export const ARRIVAL_FOLIOS: Array<{
       'Read what Mudavym put in pencil. One held seal records the batch.',
   },
 ]
-export function folioState(
-  book: Book,
-  folio: Folio,
-): { state: string; detail: string } {
-  if (!book.folios.readable)
-    return {
-      state: 'unreadable',
-      detail: 'The folio history could not be read.',
-    }
-  const saved = book.folios.data?.find((row) => row.folio === folio)
-  const source =
-    folio === 'evidence' || folio === 'assistant'
-      ? book.batches
-      : folio === 'pour'
-        ? book.cellar
-        : folio === 'notifications'
-          ? book.preferences
-          : book[folio]
-  if (!source.readable)
-    return {
-      state: 'blocked',
-      detail: source.reason ?? 'This register could not be read.',
-    }
-  if (saved?.state === 'skipped')
-    return {
-      state: 'skipped',
-      detail: `Carried forward · ${new Date(saved.updated_at).toLocaleDateString()}`,
-    }
-  if (
-    folio === 'currency' &&
-    book.currency.data?.readable &&
-    book.currency.data.code
-  )
-    return {
-      state: 'posted',
-      detail: `${book.currency.data.code} · already recorded`,
-    }
-  if (folio === 'currency' && book.currency.data?.readable === false)
-    return {
-      state: 'blocked',
-      detail: book.currency.data.reason ?? 'Currency could not be read.',
-    }
-  if (folio === 'pour') {
-    if (book.cellar.data?.sources.answers.readable === false)
-      return {
-        state: 'blocked',
-        detail: 'The recorded registers could not be read.',
-      }
-    const registers = book.cellar.data?.registers ?? []
-    const stated = registers.filter((row) =>
-      ['manual', 'confirmed'].includes(row.decidedBy),
-    ).length
-    if (stated)
-      return {
-        state: stated === registers.length ? 'posted' : 'open',
-        detail: `${stated} of ${registers.length} registers answered`,
-      }
-  }
-  if (folio === 'vendors') {
-    if (
-      !book.vendors.data?.terms.sources.providers.readable ||
-      !book.vendors.data?.terms.sources.statedTerms.readable
-    )
-      return {
-        state: 'blocked',
-        detail: 'The vendors or their stated terms could not be read.',
-      }
-    const vendors = book.vendors.data?.terms.vendors ?? []
-    if (!vendors.length)
-      return { state: 'blocked', detail: 'Add a vendor to open its terms.' }
-    const answered = vendors.filter(
-      (v) =>
-        [
-          v.deliveryWeekdays,
-          v.leadTimeDays,
-          v.minimumOrder,
-          v.orderCutoff,
-          v.paymentTerms,
-        ].every(
-          (cell) => cell.source === 'stated' || cell.source === 'vendor_record',
-        ) &&
-        book.vendors.data?.currencies.some(
-          (c) => c.id === v.providerId && c.usual_currency,
-        ),
-    ).length
-    return {
-      state: answered === vendors.length ? 'posted' : 'open',
-      detail: `${answered} of ${vendors.length} vendors fully answered`,
-    }
-  }
-  if (folio === 'notifications' && book.preferences.data?.updatedAt)
-    return { state: 'posted', detail: 'Your preferences are recorded' }
-  if (folio === 'assistant') {
-    const draft = book.batches.data?.find((batch) => batch.status === 'draft')
-    if (draft?.rows.length)
-      return {
-        state: 'open',
-        detail: `${draft.rows.filter((row) => row.status === 'pending').length} entries in pencil`,
-      }
-    if (
-      book.batches.data?.some((batch) =>
-        ['applying', 'undoing'].includes(batch.status),
+/**
+ * The flyleaf — and the one act it holds.
+ *
+ * A flyleaf is the leaf at the front of a book where the owner writes their
+ * name. This house inscribes itself by handing over its menu, so the upload is
+ * NOT a folio: it is the inscription, and nothing stands in front of it. No
+ * currency, no vendor, no notifications, no checklist.
+ *
+ * Founder's decision of 2026-09-22: this is a STRONG DEFAULT, not a hard gate.
+ * "Open the book without it" is present, works, and records nothing — so a read
+ * that will not finish cannot trap a house on this leaf. It is drawn secondary,
+ * not hidden.
+ */
+function Inscription({
+  keeper,
+  house,
+  canManage,
+  onRead,
+  onSkip,
+}: {
+  keeper: string
+  house: string
+  canManage: boolean
+  onRead: () => void
+  onSkip: () => void
+}) {
+  const [reading, setReading] = useState<string | null>(null)
+  const [typing, setTyping] = useState(false)
+  const [lines, setLines] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+
+  async function stage(label: string, work: () => Promise<Batch>) {
+    setMessage(null)
+    setReading(label)
+    try {
+      const batch = await work()
+      const entries = batch.rows.filter((row) => row.status === 'pending')
+        .length
+      setMessage(
+        `${entries} ${entries === 1 ? 'entry is' : 'entries are'} in pencil. No menu, library or inventory row was created — read them, then hold one seal.`,
       )
-    )
-      return {
-        state: 'blocked',
-        detail: 'A batch has an unresolved receipt. Read it here.',
-      }
+      onRead()
+    } catch (error) {
+      setMessage(arrivalError(error))
+    } finally {
+      setReading(null)
+    }
   }
-  return {
-    state: saved?.state ?? 'open',
-    detail:
-      saved?.state === 'posted'
-        ? `Recorded · ${new Date(saved.updated_at).toLocaleDateString()}`
-        : 'Not yet answered',
-  }
+
+  const way = (
+    id: string,
+    numeral: string,
+    title: string,
+    detail: string,
+    control: ReactNode,
+    primary?: true,
+  ) => (
+    <li className="ar-way" data-primary={primary}>
+      <span className="ar-numeral">{numeral}</span>
+      <span>
+        <strong>{title}</strong>
+        <small>{detail}</small>
+      </span>
+      <span className="ar-way-control" id={`${id}-control`}>
+        {control}
+      </span>
+    </li>
+  )
+
+  return (
+    <section className="ar-flyleaf ar-inscribe">
+      <p className="ar-meta">Opening entries</p>
+      <h1>{house}’s book is empty.</h1>
+      <p className="ar-lede">
+        Kept by {keeper}. A book needs something written in it before it can be
+        read back. Give it the menu and it will open already written.
+      </p>
+
+      {reading ? (
+        /*
+         * The wait is a page being written, not a spinner. Each row is a fact
+         * that is true at the moment it is drawn — no percentage is invented,
+         * no count is guessed ahead of the read, and nothing loops.
+         */
+        <div className="ar-writing" role="status">
+          <div data-done>
+            <span>{reading} taken in</span>
+            <em>kept</em>
+          </div>
+          <div data-waiting>
+            <span>Reading the lines that name a drink</span>
+            <em>reading</em>
+          </div>
+          <div data-waiting>
+            <span>Placing them on this house’s registers</span>
+            <em>waits</em>
+          </div>
+          <p className="ar-note">
+            Nothing is committed while this runs. You will read it before it
+            counts.
+          </p>
+        </div>
+      ) : (
+        <ul className="ar-ways">
+          {way(
+            'ar-fly-photo',
+            'i',
+            'Photograph the menu',
+            'Camera or an image from this machine. Best for a printed card.',
+            <>
+            <label className="ar-way-choose" htmlFor="ar-fly-photo">
+              Read it →
+            </label>
+            <input
+              id="ar-fly-photo"
+              className="ar-file"
+              type="file"
+              aria-label="Photograph the menu"
+              accept="image/*,application/pdf"
+              capture="environment"
+              disabled={!canManage}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (!file) return
+                if (file.size > MENU_FILE_LIMIT) {
+                  setMessage('Use a menu smaller than 10 MB.')
+                  return
+                }
+                void stage(file.name, () => stageMenuFile(file))
+              }}
+            />
+            </>,
+            true,
+          )}
+          {way(
+            'ar-fly-file',
+            'ii',
+            'Send a file',
+            'PDF, CSV or a spreadsheet you already keep.',
+            <>
+            <label className="ar-way-choose" htmlFor="ar-fly-file">
+              Read it →
+            </label>
+            <input
+              id="ar-fly-file"
+              className="ar-file"
+              type="file"
+              aria-label="Send a file"
+              accept="application/pdf,.csv,.xlsx,.xls,image/*"
+              disabled={!canManage}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (!file) return
+                if (file.size > MENU_FILE_LIMIT) {
+                  setMessage('Use a menu smaller than 10 MB.')
+                  return
+                }
+                void stage(file.name, () => stageMenuFile(file))
+              }}
+            />
+            </>,
+          )}
+          {way(
+            'ar-fly-typed',
+            'iii',
+            'Write the lines yourself',
+            'For a short list, or a house that keeps no file.',
+            <button
+              disabled={!canManage}
+              onClick={() => setTyping((was) => !was)}
+            >
+              {typing ? 'Close the page' : 'Open a page'}
+            </button>,
+          )}
+        </ul>
+      )}
+
+      {typing && !reading && (
+        <div className="ar-typed">
+          <label className="ar-meta" htmlFor="ar-fly-lines">
+            One drink to a line. Nothing else is asked for.
+          </label>
+          <textarea
+            id="ar-fly-lines"
+            rows={6}
+            value={lines}
+            onChange={(event) => setLines(event.target.value)}
+          />
+          <button
+            disabled={!lines.trim()}
+            onClick={() =>
+              void stage('The lines you wrote', () =>
+                arrivalApi.menuEvidence('csv', typedLinesToCsv(lines), false),
+              )
+            }
+          >
+            Read these lines
+          </button>
+        </div>
+      )}
+
+      {message && (
+        <p role="status" className="ar-message">
+          {message}
+        </p>
+      )}
+
+      <div className="ar-aside">
+        <button className="ar-quiet" onClick={onSkip}>
+          Open the book without it
+        </button>
+        <p className="ar-note">
+          Skipping loses nothing and records nothing. The flyleaf stays here
+          until a menu is read.
+        </p>
+      </div>
+    </section>
+  )
 }
 
 function SourceFailure({
@@ -383,28 +505,14 @@ function EvidenceFolio({ book, refresh }: { book: Book; refresh: () => void }) {
     }
   }
   async function stageMenu(file: File) {
-    if (file.size > 10_000_000) {
+    if (file.size > MENU_FILE_LIMIT) {
       setMessage('Use a menu smaller than 10 MB.')
       return
     }
     setBusy(true)
     setMessage(null)
     try {
-      const csv = /\.csv$/i.test(file.name)
-      const binary = /\.xlsx?$/i.test(file.name)
-      const content = csv
-        ? await file.text()
-        : await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(String(reader.result).split(',')[1])
-            reader.onerror = reject
-            reader.readAsDataURL(file)
-          })
-      const batch = await arrivalApi.menuEvidence(
-        csv || binary ? 'csv' : 'scan',
-        content,
-        binary,
-      )
+      const batch = await stageMenuFile(file)
       setMessage(
         `${batch.rows.filter((row) => row.status === 'pending').length} supported entries are in pencil. No menu, library or inventory row was created. Read each entry in The assistant before sealing.`,
       )
@@ -546,6 +654,225 @@ function EvidenceFolio({ book, refresh }: { book: Book; refresh: () => void }) {
           </>
         )}
       </section>
+    </>
+  )
+}
+
+/**
+ * The reveal — what the menu says this house pours.
+ *
+ * THREE THINGS THIS IS NOT, each of them a shape an earlier build had:
+ *
+ * 1. It is not a capability claim. It is a READING COUNT — lines read, lines
+ *    placed, lines not placed (founder's decision, 2026-09-22: keep all three).
+ *    Measured today most non-wine registers read `none` or `unknown` on a fresh
+ *    upload, so a reveal that claimed capabilities would fail on a thin
+ *    harvest. A reveal that reports "9 lines read, 2 placed, 7 not placed"
+ *    still reports real work — and the not-placed figure is the only thing here
+ *    that asks the house for anything.
+ * 2. It is not seven pre-ticked checkboxes over a confirm button. Nothing is
+ *    ticked, so nothing can be tick-approved: registers the books support are
+ *    READ BACK as stated facts carrying the service's own `basis` sentence
+ *    verbatim, and are not actionable. Only the un-evidenced ones can be acted
+ *    on, one at a time.
+ * 3. It is not a place where an un-evidenced register reads as a failure. The
+ *    service already distinguishes "we read your books and found none" from
+ *    "there were no books to read" (`cellar-registers.ts:31-38`) and prints the
+ *    difference itself. This renders that sentence rather than flattening both
+ *    into an empty row.
+ */
+function PourReveal({
+  book,
+  refresh,
+  announce,
+}: {
+  book: Book
+  refresh: () => void
+  announce: (message: string) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const data = book.cellar.data!
+  const lines = data.menuLines
+  const pencil = pencilMenuRows(book)
+  const stated = data.registers.filter((row) => row.carried === true)
+  const silent = data.registers.filter((row) => row.carried !== true)
+
+  async function act(work: () => Promise<unknown>, said: string) {
+    setBusy(true)
+    try {
+      await work()
+      announce(said)
+      refresh()
+    } catch (error) {
+      announce(arrivalError(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      {lines ? (
+        <>
+          {/* `role="group"` because a <dl> has no implicit role to hang the
+              label on, and the three figures are one labelled statement. */}
+          <dl className="ar-count" role="group" aria-label="The reading count">
+            <div>
+              <dt>Lines read</dt>
+              <dd>{lines.read}</dd>
+            </div>
+            <div>
+              <dt>Placed on a register</dt>
+              <dd>{lines.placed}</dd>
+            </div>
+            <div data-open={lines.notPlaced > 0 ? '' : undefined}>
+              <dt>Not placed</dt>
+              <dd>{lines.notPlaced}</dd>
+            </div>
+          </dl>
+          <p className="ar-note">
+            A line is “placed” when the book can name the register it belongs
+            to. These are the {lines.read} lines this house’s book holds, read
+            by the same pass that wrote the registers below — not a count of
+            what any file contained.
+          </p>
+        </>
+      ) : (
+        <p className="ar-message" role="alert">
+          The menu could not be read, so there is no reading count. That is a
+          failure to read, not an empty menu — no zero has been substituted for
+          it.
+        </p>
+      )}
+
+      {pencil > 0 && (
+        <p className="ar-note">
+          {pencil} menu {pencil === 1 ? 'entry is' : 'entries are'} still in
+          pencil from the last read and {pencil === 1 ? 'is' : 'are'} not
+          counted above. They join the reading when the batch is sealed in The
+          assistant.
+        </p>
+      )}
+
+      <div className="ar-registers">
+        {stated.map((register) => (
+          <div className="ar-register" key={register.id} data-read="">
+            <h3>{register.id.replace(/_/g, ' ')}</h3>
+            {/* The service's own sentence, verbatim. Never a template. */}
+            <p>{register.basis}</p>
+            <span className="ar-mark">{register.confidence}</span>
+          </div>
+        ))}
+        {silent.map((register) => (
+          <div className="ar-register" key={register.id} data-silent="">
+            <h3>{register.id.replace(/_/g, ' ')}</h3>
+            <p>{register.basis}</p>
+            <button
+              className="ar-ask"
+              disabled={busy || !book.canManage}
+              onClick={() =>
+                void act(
+                  () =>
+                    arrivalApi.typed({
+                      target: 'cellar',
+                      field: register.id,
+                      value: true,
+                    }),
+                  `${register.id.replace(/_/g, ' ')} is recorded as carried. What you switch by hand posts at once.`,
+                )
+              }
+            >
+              We pour this →
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="ar-actions">
+        <button
+          disabled={!book.canManage || busy}
+          onClick={() => {
+            const rows = data.registers
+              .filter(
+                (row) =>
+                  row.decidedBy === 'inferred' &&
+                  row.carried !== null &&
+                  (row.evidence.inventoryRows || row.evidence.menuRows),
+              )
+              .map((row) => ({
+                target: 'cellar' as const,
+                field: row.id,
+                value: row.carried,
+              }))
+            if (!rows.length) {
+              announce(
+                'There are no supported register proposals yet. Add items to the menu or cellar, or state a register yourself.',
+              )
+              return
+            }
+            void act(
+              () => arrivalApi.propose(rows, 'inferred'),
+              'What the book read is in pencil in The assistant. Nothing is applied yet.',
+            )
+          }}
+        >
+          This reads right — put it in pencil
+        </button>
+      </div>
+      <p className="ar-note">
+        {lines && lines.notPlaced > 0
+          ? `The ${lines.notPlaced} lines the reader could not place stay in this house’s menu book. The book returns their number, not yet the lines themselves — it will not list what it cannot name.`
+          : 'Nothing above was ticked, so nothing here has been rubber-stamped. What the book read enters the ledger through one held seal; what you switch by hand posts at once.'}
+      </p>
+
+      <details className="ar-threshold">
+        <summary>Not quite right? State a register yourself</summary>
+        <p>
+          A stored answer always wins over the books — a house that does not run
+          a whiskey programme is describing its business, and the books are
+          describing its shelves.
+        </p>
+        {data.registers.map((register) => (
+          <ArrivalField
+            key={register.id}
+            label={register.id.replace(/_/g, ' ')}
+            input={{
+              target: 'cellar',
+              field: register.id,
+              value: register.decidedBy === 'inferred' ? null : register.carried,
+            }}
+            kind="boolean"
+            source={`${register.decidedBy} · ${register.basis}`}
+            disabled={!book.canManage}
+            onRecorded={refresh}
+          />
+        ))}
+      </details>
+
+      <details className="ar-threshold">
+        <summary>The existing low-stock setting</summary>
+        <p>
+          This changes the default copied when new inventory rows are imported.
+          It does not rewrite existing item thresholds or the notification
+          engine’s policy.
+        </p>
+        <ArrivalField
+          label="Default minimum · bottles"
+          input={{
+            target: 'threshold',
+            field: 'thresholdMin',
+            value: book.house.data?.default_threshold_min ?? null,
+          }}
+          kind="number"
+          source={
+            book.house.data?.threshold_configured
+              ? 'Previously configured'
+              : 'Existing default · not yet confirmed'
+          }
+          disabled={!book.canManage}
+          onRecorded={refresh}
+        />
+      </details>
     </>
   )
 }
@@ -736,6 +1063,18 @@ export default function Arrival() {
   const book = query.data
   const active = ARRIVAL_FOLIOS.find((row) => row.id === folio)!
   /*
+   * A house that has already given the book a menu never sees the flyleaf
+   * again. The inscription is the act of a book that is empty; drawing it over
+   * a book that is already written would be the gate the founder ruled against
+   * (decision of 2026-09-22: strong default, not a hard gate).
+   */
+  const inscribed = book
+    ? (book.openingMenu.data?.items.length ?? 0) > 0 ||
+      pencilMenuRows(book) > 0 ||
+      folioState(book, 'evidence').state === 'skipped'
+    : false
+  const asking = book ? nextAct(book) : null
+  /*
    * The page names the ground it is already on. `.ar-page` paints
    * `background: var(--paper-0)`, but since ADR 0138 the bare `.mudavym`
    * selector redefines `--paper-0` to Warm Charcoal in every app theme, so the
@@ -779,22 +1118,25 @@ export default function Arrival() {
         </div>
       ) : (
         <>
-          {!opened ? (
-            <section className="ar-flyleaf">
-              <p className="ar-meta">Opening entries</p>
-              <h1>{book.house.data?.name ?? 'This house’s book'}</h1>
-              <p>
-                Kept by {user?.name ?? 'you'}. Open any folio, write what you
-                know, and carry the rest forward. This book remembers between
-                sittings.
-              </p>
-              <p>
-                What you type is recorded when you press Record. What Mudavym
-                interprets stays in pencil until you read it and hold the seal.
-              </p>
-              <button onClick={() => setOpened(true)}>Open the book</button>
-              <Link to="/">Return to the house</Link>
-            </section>
+          {!opened && !inscribed ? (
+            <Inscription
+              keeper={user?.name ?? 'you'}
+              house={book.house.data?.name ?? 'This house'}
+              canManage={book.canManage}
+              onRead={() => {
+                /*
+                 * The read opens the book on the reveal rather than on fo. 00.
+                 * The legacy page already did this (`GetStarted.tsx:238-274`)
+                 * and #414's book did not — it defaulted every action back to
+                 * fo. 00, so the one thing the upload produced was the one
+                 * thing the house had to go looking for.
+                 */
+                setFolio('pour')
+                setOpened(true)
+                refresh()
+              }}
+              onSkip={() => setOpened(true)}
+            />
           ) : (
             <div className="ar-book">
               <aside aria-label="Contents">
@@ -804,10 +1146,20 @@ export default function Arrival() {
                 <ol>
                   {ARRIVAL_FOLIOS.map((row, index) => {
                     const state = folioState(book, row.id)
+                    /*
+                     * The contents page IS the guidance. Every line states what
+                     * it knows; exactly one — never two — also states what the
+                     * book still wants, and why. There is no separate guidance
+                     * object to place, rank or keep from going stale, because
+                     * the line that tells you is the line that records what was
+                     * done.
+                     */
+                    const wants = asking?.folio === row.id
                     return (
                       <li key={row.id} data-state={state.state}>
                         <button
                           aria-current={folio === row.id ? 'page' : undefined}
+                          data-asking={wants ? '' : undefined}
                           onClick={() => {
                             setFolio(row.id)
                             setMessage(null)
@@ -818,7 +1170,12 @@ export default function Arrival() {
                           </span>
                           <span>
                             {row.title}
-                            <small>{state.detail}</small>
+                            {row.optional && (
+                              <span className="ar-optional">Optional</span>
+                            )}
+                            <small>
+                              {wants ? asking!.want : state.detail}
+                            </small>
                           </span>
                         </button>
                       </li>
@@ -827,15 +1184,20 @@ export default function Arrival() {
                 </ol>
                 <Link to="/">Leave the book open</Link>
                 <p className="ar-note">
-                  No folio is a gate. Recorded entries and carried-forward dates
-                  stay here.
+                  No folio is a gate. One line asks at a time; the rest only
+                  state. Recorded entries and carried-forward dates stay here.
                 </p>
               </aside>
               <article key={folio} aria-labelledby="ar-title">
                 <p className="ar-meta">
                   Folio {ARRIVAL_FOLIOS.findIndex((row) => row.id === folio)}
                 </p>
-                <h1 id="ar-title">{active.title}</h1>
+                <h1 id="ar-title">
+                  {active.title}
+                  {active.optional && (
+                    <span className="ar-optional">Optional</span>
+                  )}
+                </h1>
                 <p className="ar-intro">{active.purpose}</p>
                 {folio === 'evidence' && (
                   <EvidenceFolio book={book} refresh={refresh} />
@@ -886,88 +1248,11 @@ export default function Arrival() {
                       retry={refresh}
                     />
                   ) : (
-                    <>
-                      {book.cellar.data.registers.map((register) => (
-                        <ArrivalField
-                          key={register.id}
-                          label={register.id.replace(/_/g, ' ')}
-                          input={{
-                            target: 'cellar',
-                            field: register.id,
-                            value:
-                              register.decidedBy === 'inferred'
-                                ? null
-                                : register.carried,
-                          }}
-                          kind="boolean"
-                          source={`${register.decidedBy} · ${register.basis}`}
-                          disabled={!book.canManage}
-                          onRecorded={refresh}
-                        />
-                      ))}
-                      <button
-                        disabled={!book.canManage || busy}
-                        onClick={() => {
-                          const rows = book.cellar
-                            .data!.registers.filter(
-                              (row) =>
-                                row.decidedBy === 'inferred' &&
-                                row.carried !== null &&
-                                (row.evidence.inventoryRows ||
-                                  row.evidence.menuRows),
-                            )
-                            .map((row) => ({
-                              target: 'cellar' as const,
-                              field: row.id,
-                              value: row.carried,
-                            }))
-                          if (!rows.length) {
-                            setMessage(
-                              'There are no supported register proposals yet. Add items to the menu or cellar, or type your answers.',
-                            )
-                            return
-                          }
-                          setBusy(true)
-                          void arrivalApi
-                            .propose(rows, 'inferred')
-                            .then(() => {
-                              setMessage(
-                                'Supported register proposals are in The assistant. Nothing is applied yet.',
-                              )
-                              refresh()
-                            })
-                            .catch((error) => setMessage(arrivalError(error)))
-                            .finally(() => setBusy(false))
-                        }}
-                      >
-                        Put the house’s inferred registers in pencil
-                      </button>
-                      <details className="ar-threshold">
-                        <summary>The existing low-stock setting</summary>
-                        <p>
-                          This changes the default copied when new inventory
-                          rows are imported. It does not rewrite existing item
-                          thresholds or the notification engine’s policy.
-                        </p>
-                        <ArrivalField
-                          label="Default minimum · bottles"
-                          input={{
-                            target: 'threshold',
-                            field: 'thresholdMin',
-                            value:
-                              book.house.data?.default_threshold_min ?? null,
-                          }}
-                          kind="number"
-                          source={
-                            book.house.data?.threshold_configured
-                              ? 'Previously configured'
-                              : 'Existing default · not yet confirmed'
-                          }
-                          disabled={!book.canManage}
-                          onRecorded={refresh}
-                        />
-                      </details>
-                    </>
+                    <PourReveal
+                      book={book}
+                      refresh={refresh}
+                      announce={setMessage}
+                    />
                   ))}
                 {folio === 'vendors' && (
                   <VendorFolio book={book} refresh={refresh} />
@@ -1090,6 +1375,13 @@ export default function Arrival() {
                     {message}
                   </p>
                 )}
+                {/*
+                  * Skip is named and listed FIRST on an optional folio. A folio
+                  * that is technically skippable but whose only control carries
+                  * the same weight as every other folio's reads as a required
+                  * step, which defeats the founder's instruction that "whom we
+                  * buy from" stays skippable.
+                  */}
                 <footer className="ar-folio-footer">
                   <button
                     disabled={
@@ -1099,9 +1391,17 @@ export default function Arrival() {
                     }
                     onClick={() => void skip()}
                   >
-                    {busy ? 'Recording…' : 'Carry this folio forward'}
+                    {busy
+                      ? 'Recording…'
+                      : active.optional
+                        ? 'Not yet — carry it forward'
+                        : 'Carry this folio forward'}
                   </button>
-                  <span>A dated skip. No setting changes.</span>
+                  <span>
+                    {active.optional
+                      ? 'A recorded act, not an abandonment. The line stays on the contents with its date.'
+                      : 'A dated skip. No setting changes.'}
+                  </span>
                 </footer>
               </article>
             </div>

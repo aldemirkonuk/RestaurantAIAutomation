@@ -164,6 +164,60 @@ describe("CellarRegistersService.read", () => {
     expect(out.carried).toEqual([]);
   });
 
+  it("returns the reading count off the SAME menu read the registers were inferred from", async () => {
+    // The founder's 2026-09-22 decision keeps three numbers on the reveal, and
+    // `notPlaced` is the one no read returned before. It has to be derived from
+    // the register reader's own pass — not from a second count of the menu —
+    // or the reveal's headline can disagree with the registers under it.
+    const service = await serviceWith({
+      restaurant_cellar_registers: { data: [] },
+      restaurant_inventory: { data: [] },
+      menu_items: {
+        data: [
+          { category: "Wines by the glass", name: "Barolo" },
+          { category: "Wines by the glass", name: "Chablis" },
+          { category: "Draft Beer", name: "Efes" },
+          { category: "Kitchen", name: "Mixed olives" },
+          { category: null, name: "Today's plate" },
+        ],
+      },
+      cocktails: { count: 0 },
+    });
+
+    const out = await service.read(RID);
+    expect(out.menuLines).toEqual({ read: 5, placed: 3, notPlaced: 2 });
+    // The same pass: the placed lines are exactly the lines credited to a
+    // register below, so the headline cannot drift from the body.
+    expect(out.sources.menu.rows).toBe(5);
+    expect(out.registers.find((r) => r.id === "wines")!.evidence.menuRows).toBe(2);
+    expect(out.registers.find((r) => r.id === "beer")!.evidence.menuRows).toBe(1);
+  });
+
+  it("leaves the reading count NULL — never zeroes — when the menu could not be read", async () => {
+    // "0 lines read, 0 placed, 0 not placed" over a failed read is the same
+    // absence-reported-as-health failure this file exists to prevent.
+    const service = await serviceWith({
+      restaurant_cellar_registers: { data: [] },
+      restaurant_inventory: { data: [] },
+      menu_items: { error: { code: "57014", message: "statement timeout" } },
+      cocktails: { count: 0 },
+    });
+    const out = await service.read(RID);
+    expect(out.sources.menu.readable).toBe(false);
+    expect(out.menuLines).toBeNull();
+  });
+
+  it("reports an empty but readable menu as zero lines read", async () => {
+    const service = await serviceWith({
+      restaurant_cellar_registers: { data: [] },
+      restaurant_inventory: { data: [] },
+      menu_items: { data: [] },
+      cocktails: { count: 0 },
+    });
+    const out = await service.read(RID);
+    expect(out.menuLines).toEqual({ read: 0, placed: 0, notPlaced: 0 });
+  });
+
   it("a house with nothing in any book gets UNKNOWN on every register, not false", async () => {
     const service = await serviceWith({
       restaurant_cellar_registers: { data: [] },
