@@ -174,7 +174,9 @@ export function HouseHeader({ page, ground, name, trailing, shell = false }: Hou
 
   // The one place a signed-in page's tab title is set (ADR 0158 "Integration
   // at cutover" item 1) — pages themselves never call document.title.
-  useDocumentTitle(pageNameFor(page, pathname));
+  // `page` is optional when the APP SHELL mounts this header (sketch 119 D);
+  // then the room `name` is the title, same rule as the visible eyebrow below.
+  useDocumentTitle(page ? pageNameFor(page, pathname) : (name ?? null));
 
   /* The hairline hardens once the page has scrolled under the header — the
      only state this bar has, and it is a fact about the page, not a flourish. */
