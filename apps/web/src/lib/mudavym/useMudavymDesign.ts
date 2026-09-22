@@ -72,6 +72,18 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // Not a page: the app SHELL (sketch 119 direction D, the founder's pick of
+  // 2026-09-21; ADR 0149 row 5). `DashboardLayout` reads this gate and renders
+  // `HouseShell` — rooms rail, house header, counter, the phone's four doors —
+  // around whatever page is routed, legacy or rebuilt. Off, the legacy
+  // Sidebar layout renders byte-for-byte. Column added by 20260921114300.
+  'shell',
+  // ADR 0160 §111 / ADR 0149 row 52 (2026-09-21). `/help` resolves on for
+  // every house in code — see LIVE_PAGES below — so it carries no
+  // `mudavym_design_help` ACTIVE registry entry; enrolling it here is still
+  // required, since MUDAVYM_PAGES is the source of the `MudavymPage` type
+  // PageGate, HouseHeader and PAGE_NAMES all key off.
+  'help',
   // ADR 0144 -- the /authorize consent page. Enrolled after the 2026-09-17
   // go-live, so NOT in LIVE_PAGES: flag-gated, OFF by default (20260922200200).
   'authorize_integration',
@@ -84,11 +96,15 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * Mudavym design for every house, in code, with no `restaurant_feature_flags`
  * read and no database write. `receiving` is the receiving DESK (the flagged
  * list/history page, route `/receiving`) — distinct from `receiving_door`,
- * which IS live. Held back, still flag-gated: `settings`, `cellar`,
- * `recommendations`, `receiving`.
+ * which IS live. `settings` joined 2026-09-19 after its sketch review cleared
+ * (ADR 0160 "109 — settings · A, the interview"; PR #419) — same code-side
+ * always-on as the original sixteen, still no database write. `help` joined
+ * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. Held back, still
+ * flag-gated: `cellar`, `recommendations`, `receiving`, and `shell`
+ * (the house shell; production may have flipped its column independently).
  *
- * `MUDAVYM_PAGES.length` is 20 [21 since 2026-09-21: `authorize_integration`
- * (ADR 0144) was enrolled after the go-live and stays flag-gated]; this is deliberately not "the rest" spelled
+ * `MUDAVYM_PAGES.length` is 23 (`shell` + `help` from main, plus
+ * `authorize_integration` from #430, which stays flag-gated); this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.
@@ -110,6 +126,8 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'connections',
   'notifications',
   'logs',
+  'settings',
+  'help',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

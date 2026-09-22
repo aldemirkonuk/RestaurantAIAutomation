@@ -76,7 +76,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CalendarPlus,
   Megaphone,
@@ -92,6 +92,7 @@ import { Wordmark, monthOf } from '@/components/mudavym';
 import { animate, tuck } from '@/lib/mudavym/motion';
 import Entry from './Entry';
 import Ribbon from './Ribbon';
+import DigestPost from './DigestPost';
 import {
   ACT_LABEL,
   ACT_ORDER,
@@ -116,7 +117,6 @@ import {
   STAKE_LABEL,
   STAKE_ORDER,
   URGENCY_RANK,
-  ensureFraunces,
   failureSentence,
   fmtDay,
   fmtReadAt,
@@ -200,10 +200,6 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   const [sheetFor, setSheetFor] = useState<string | null>(null);
   const docketRef = useRef<HTMLElement | null>(null);
   const { leaf, setLeaf } = data;
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   // Changing leaf clears what belonged to the old one: no selection survives
   // into rows it was never made against.
@@ -567,6 +563,9 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               </button>
             );
           })}
+          <Link className="rc-leaf" to="/recommendations/catalog">
+            The catalogue
+          </Link>
         </nav>
 
         {data.phase === 'failed' && data.failure && (
@@ -665,22 +664,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               )}
             </div>
 
-            {/* the digest — its sender is built (ADR 0149 row 26); asking for it, and
-                editing the house's digest, from this page wait on the re-sketch (108).
-                The reason states no deployment fact this page does not read. */}
-            <div className="rc-aside-block">
-              <div className="rc-micro">Daily digest</div>
-              <button type="button" className="rc-dark rc-dark-wide" disabled>
-                {data.digest === undefined
-                  ? 'Reading the preference…'
-                  : data.digest === null
-                    ? `Preference unreadable ${EM}`
-                    : `Stored: ${data.digest.digestEnabled ? 'on' : 'off'}, ${data.digest.digestHour}:00`}
-              </button>
-              <p className="rc-why">
-                {`Disabled on purpose: this shows the house's stored preference. A digest goes only to a member who asked for it, and asking for it ${EM} or changing the house's digest ${EM} from this page waits on the page's rebuild.`}
-              </p>
-            </div>
+            {/* the post — sketch 120 §2, bound into the rail where the disabled placeholder stood */}
+            <DigestPost digest={data.digest} onSaveHouse={data.setHouseDigest} />
 
             {/* the margin — the keys */}
             <div className="rc-aside-block">
@@ -805,6 +790,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         }
                         onDayBook={(href) => navigate(href)}
                         goalSlip={a === 'goal' ? (slipFor(e) ?? null) : null}
+                        siblings={data.entries}
                       />
                     ))}
                   </div>

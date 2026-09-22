@@ -52,22 +52,23 @@ describe('useMudavymDesign precedence', () => {
 
   // These four exercise the FLAG path (step 3 of precedence), so — since
   // ADR 0149 row 36 (2026-09-17) resolves 'dashboard' via LIVE_PAGES without
-  // ever spending a request — they run against 'settings', a held-back page
-  // that still reads restaurant_feature_flags. LIVE_PAGES' own behaviour is
-  // asserted in the LIVE_PAGES describe block below.
+  // ever spending a request, and settings joined LIVE_PAGES in PR #419 —
+  // they run against 'cellar', a held-back page that still reads
+  // restaurant_feature_flags. LIVE_PAGES' own behaviour is asserted in the
+  // LIVE_PAGES describe block below.
   it('without an override, an active+enabled server flag turns the page on', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockResolvedValue(checkResult(true, true));
-    const { result } = renderHook(() => useMudavymDesign('settings'));
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
     expect(result.current).toBe(false); // legacy while the check is in flight
     await waitFor(() => expect(result.current).toBe(true));
-    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_settings');
+    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_cellar');
   });
 
   it('an inactive flag (unregistered in the gateway) stays legacy', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockResolvedValue(checkResult(true, false));
-    const { result } = renderHook(() => useMudavymDesign('settings'));
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
     await act(async () => {});
     expect(result.current).toBe(false);
   });
@@ -75,13 +76,13 @@ describe('useMudavymDesign precedence', () => {
   it('an API failure stays legacy rather than breaking the page', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockRejectedValue(new Error('network down'));
-    const { result } = renderHook(() => useMudavymDesign('settings'));
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
     await act(async () => {});
     expect(result.current).toBe(false);
   });
 
   it('no active restaurant → legacy, no request', async () => {
-    const { result } = renderHook(() => useMudavymDesign('settings'));
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
     await act(async () => {});
     expect(result.current).toBe(false);
     expect(checkFlag).not.toHaveBeenCalled();
@@ -95,11 +96,15 @@ describe('useMudavymDesign precedence', () => {
 
 /**
  * ADR 0149 row 36 (2026-09-17): 16 pages go live for every house in code.
- * `settings`, `cellar`, `recommendations` and `receiving` (the desk, not the
- * door) stay flag-gated.
+ * `settings` joined 2026-09-19 (PR #419) after its sketch review — still
+ * code-side always-on, no flag read. `cellar`, `recommendations` and
+ * `receiving` (the desk, not the door) stay flag-gated. `shell` (the house
+ * shell, sketch 119 D, ADR 0149 row 5) is held back too: it stays behind its
+ * own flag in this set (production may have flipped the column independently)
+ * and is never a LIVE_PAGES entry.
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
-  const HELD_BACK = ['settings', 'cellar', 'recommendations', 'receiving'] as const;
+  const HELD_BACK = ['cellar', 'recommendations', 'receiving', 'shell'] as const;
   // Enrolled AFTER the 2026-09-17 go-live and not part of it: the /authorize
   // consent page (ADR 0144), flag-gated and OFF by default (migration
   // 20260922200200). Making it live is a separate founder call.
@@ -109,14 +114,19 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
     const held = new Set<string>([...HELD_BACK, ...ENROLLED_AFTER_GO_LIVE]);
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
-    expect(LIVE_PAGES.size).toBe(16);
+    expect(LIVE_PAGES.size).toBe(18);
   });
 
-  it('holds back exactly settings, cellar, recommendations, receiving -- and the pages enrolled after go-live stay gated', () => {
+  it('holds back exactly cellar, recommendations, receiving, shell -- and pages enrolled after go-live stay gated', () => {
     for (const page of [...HELD_BACK, ...ENROLLED_AFTER_GO_LIVE]) {
+
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated
     }
+  });
+
+  it('settings is live (always-on in code, no flag read)', () => {
+    expect(LIVE_PAGES.has('settings')).toBe(true);
   });
 
   it.each([...LIVE_PAGES])(
@@ -165,10 +175,28 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
 
   it('the QA override can force a held-back page on without a flag row', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
-    window.localStorage.setItem('mudavym.design.settings', 'on');
+    window.localStorage.setItem('mudavym.design.cellar', 'on');
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
+    expect(result.current).toBe(true);
+    await act(async () => {});
+    expect(checkFlag).not.toHaveBeenCalled();
+  });
+
+  it('settings resolves true with no restaurant known, and never fetches', async () => {
     const { result } = renderHook(() => useMudavymDesign('settings'));
     expect(result.current).toBe(true);
     await act(async () => {});
+    expect(result.current).toBe(true);
+    expect(checkFlag).not.toHaveBeenCalled();
+  });
+
+  it('the QA override can still force legacy on settings', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r1');
+    window.localStorage.setItem('mudavym.design.settings', 'off');
+    const { result } = renderHook(() => useMudavymDesign('settings'));
+    expect(result.current).toBe(false);
+    await act(async () => {});
+    expect(result.current).toBe(false);
     expect(checkFlag).not.toHaveBeenCalled();
   });
 
