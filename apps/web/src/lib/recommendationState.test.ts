@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   DISMISS_CHOICES,
   DISMISS_REASONS,
+  NOT_YOUR_ACT_SAID,
   insightActKey,
+  mayActForTheHouse,
   maySnoozeForEveryone,
+  notYourActOf,
   paperMissOf,
   patchForChoice,
 } from './recommendationState';
@@ -94,6 +97,42 @@ describe('DISMISS_CHOICES and what each posts', () => {
     expect(maySnoozeForEveryone('Manager')).toBe(true);
     expect(maySnoozeForEveryone('staff')).toBe(false);
     expect(maySnoozeForEveryone(null)).toBe(false);
+    // Round 4, answer 7: the platform admin is not an owner or manager.
+    expect(maySnoozeForEveryone('admin')).toBe(false);
+  });
+});
+
+/**
+ * ADR 0191 round 4 (the founder, 2026-09-21, "Take all seven" — the options
+ * he picked): answer 7, the platform admin never acts for a house's cards;
+ * answer 5, staff undo only their own acts, and that refusal has its own words.
+ */
+describe('round 4: who acts for the house, and the not-your-act refusal', () => {
+  it('owners and managers act for the house; the platform admin and staff do not', () => {
+    for (const r of ['owner', 'manager', 'Owner'])
+      expect(mayActForTheHouse(r)).toBe(true);
+    for (const r of ['admin', 'ADMIN', 'staff', '', null, undefined])
+      expect(mayActForTheHouse(r)).toBe(false);
+  });
+
+  it("reads the gateway's not_your_act refusal, in its own sentence when it sent one", () => {
+    const said = 'It is not recorded who did this, so only an owner or manager can undo it.';
+    expect(
+      notYourActOf({ response: { status: 403, data: { code: 'not_your_act', message: said } } }),
+    ).toBe(said);
+    expect(notYourActOf({ response: { status: 403, data: { code: 'not_your_act' } } })).toBe(
+      NOT_YOUR_ACT_SAID,
+    );
+    expect(NOT_YOUR_ACT_SAID).toBe(
+      'Only the person who did this, or an owner or manager, can undo it.',
+    );
+  });
+
+  it('any other refusal is not this one', () => {
+    expect(notYourActOf({ response: { status: 403, data: { message: 'no' } } })).toBeNull();
+    expect(notYourActOf({ response: { status: 500 } })).toBeNull();
+    expect(notYourActOf(null)).toBeNull();
+    expect(notYourActOf(new Error('network'))).toBeNull();
   });
 });
 

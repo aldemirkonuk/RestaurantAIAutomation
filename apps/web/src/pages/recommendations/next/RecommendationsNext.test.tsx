@@ -1521,6 +1521,40 @@ describe('rule-wide acts are owner/manager only; snooze and done are the item', 
     expect(restore).toHaveBeenCalledWith('sales_below_weekday_baseline#wednesday#d:2026-09-02');
   });
 
+  it("staff cannot return someone else's act — the gateway said so on the row (round 4, answer 5)", () => {
+    mockData.current = {
+      ...staff,
+      leaf: 'dismissed',
+      entries: [
+        entry({
+          ruleKey: 'stockout_imminent#*#fire:day:2026-09-21',
+          status: 'dismissed',
+          ruleWide: false,
+          suppression: null,
+          undoableByYou: false,
+        }),
+        entry({
+          ruleKey: 'sales_below_weekday_baseline#wednesday#d:2026-09-02',
+          status: 'dismissed',
+          ruleWide: false,
+          suppression: null,
+          undoableByYou: null,
+        }),
+      ],
+    };
+    draw();
+    const [theirs, unknown] = screen.getAllByTestId('rc-entry');
+    expect(within(theirs).getByTestId('rc-restore-not-yours')).toBeDisabled();
+    expect(
+      within(theirs).getByText('Only the person who did this, or an owner or manager, can undo it.'),
+    ).toBeInTheDocument();
+    fireEvent.click(within(theirs).getByTestId('rc-restore-not-yours'));
+    expect(restore).not.toHaveBeenCalled();
+    // Could not tell: the control stays open — the gateway decides at the write.
+    fireEvent.click(within(unknown).getByText('Return it to the book'));
+    expect(restore).toHaveBeenCalledWith('sales_below_weekday_baseline#wednesday#d:2026-09-02');
+  });
+
   it('a manager may return a whole-rule dismissal', () => {
     mockData.current = {
       ...base,

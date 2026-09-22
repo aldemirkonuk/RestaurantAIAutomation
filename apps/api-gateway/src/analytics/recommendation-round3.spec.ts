@@ -258,7 +258,8 @@ describe("answers 3 and 4: where one write goes", () => {
   it("snooze for everyone: owners and managers; area leads only through the typed hook", () => {
     expect(maySnoozeForEveryone("owner")).toBe(true);
     expect(maySnoozeForEveryone("manager")).toBe(true);
-    expect(maySnoozeForEveryone("admin")).toBe(true);
+    // Round 4, answer 7: the platform admin is not an owner or manager.
+    expect(maySnoozeForEveryone("admin")).toBe(false);
     expect(maySnoozeForEveryone("staff")).toBe(false);
     expect(maySnoozeForEveryone(null)).toBe(false);
     // The hook the areas lane will fill: a lead, for a card in their area.
@@ -337,6 +338,8 @@ function db(
     historyError?: string;
     personal?: Array<{ rule_key: string; snooze_until: string }>;
     personalReadError?: string;
+    /** Rows a read of the history answers (round 4: who made the act). */
+    history?: Array<{ rule_key: string; actor_id: string | null; status_to: string }>;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -345,7 +348,7 @@ function db(
       const b: any = {};
       let op = "read";
       let payload: any = null;
-      for (const m of ["eq", "in", "gt", "lte", "order"]) b[m] = () => b;
+      for (const m of ["eq", "in", "gt", "lte", "order", "limit"]) b[m] = () => b;
       b.select = () => b;
       b.delete = () => {
         op = "delete";
@@ -383,6 +386,11 @@ function db(
               ? { data: null, error: { message: opts.personalReadError } }
               : { data: opts.personal ?? [], error: null },
           ).then(resolve, reject);
+        if (table === "recommendation_action_history")
+          return Promise.resolve({ data: opts.history ?? [], error: null }).then(
+            resolve,
+            reject,
+          );
         return Promise.resolve({
           data: Object.entries(opts.current ?? {}).map(([rule_key, status]) => ({
             rule_key,
@@ -704,7 +712,12 @@ describe("answer 2: every house act is kept — who, when, what it lifted, its l
   });
 
   it("the undo is its own row: a restore names the dismissal it lifted — nothing is overwritten", async () => {
-    const { db: d, calls } = db({ current: { [FIRING]: "dismissed" } });
+    // Their own dismissal, as the history names it: round 4, answer 5 —
+    // staff undo only their own acts.
+    const { db: d, calls } = db({
+      current: { [FIRING]: "dismissed" },
+      history: [{ rule_key: FIRING, actor_id: "u-staff", status_to: "dismissed" }],
+    });
     await new RecommendationActionsService(d).setActionAs(
       RID,
       FIRING,

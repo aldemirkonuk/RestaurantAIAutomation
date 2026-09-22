@@ -35,7 +35,7 @@ import type { CatalogPayload } from './rec-catalog';
 
 const auth = vi.hoisted(() => ({
   rid: 'r1' as string | null,
-  role: 'owner' as 'owner' | 'manager' | 'staff' | null,
+  role: 'owner' as 'owner' | 'manager' | 'staff' | 'admin' | null,
 }));
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 
@@ -254,6 +254,13 @@ describe('CatalogView — type on/off (ADR 0191)', () => {
     await drawAndExpand('overall.revenue.vs_same_weekday');
     expect(await screen.findByTestId('rc-type-onoff-badge')).toHaveTextContent('On');
     expect(screen.queryByRole('button', { name: 'On' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Off' })).not.toBeInTheDocument();
+  });
+
+  it('the platform admin sees the badge too — the gateway refuses their toggle (round 4, answer 7)', async () => {
+    auth.role = 'admin';
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    expect(await screen.findByTestId('rc-type-onoff-badge')).toHaveTextContent('On');
     expect(screen.queryByRole('button', { name: 'Off' })).not.toBeInTheDocument();
   });
 

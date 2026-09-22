@@ -128,14 +128,46 @@ export function patchForChoice(
 }
 
 /**
- * Who may snooze a card for everyone — owners and managers, the gateway's
- * set (`maySnoozeForEveryone`; `admin` is `RolesGuard`'s alias for them).
- * Anyone else's snooze hides the card from them alone (round 3, answer 4).
+ * Who acts FOR the house on its cards — owners and managers, the gateway's
+ * `mayActForTheHouse`. Not the platform `admin` (ADR 0191 round 4, answer 7:
+ * the platform admin never acts for a house's cards unless an owner or
+ * manager of that house — and then the token reads that role, not `admin`).
  * The gateway decides; the page only stops offering what it would refuse.
  */
-export function maySnoozeForEveryone(role: string | null | undefined): boolean {
+export function mayActForTheHouse(role: string | null | undefined): boolean {
   const r = role ? String(role).toLowerCase() : '';
-  return r === 'owner' || r === 'manager' || r === 'admin';
+  return r === 'owner' || r === 'manager';
+}
+
+/**
+ * Who may snooze a card for everyone — owners and managers (round 3, answer
+ * 4; round 4 took `admin` out). Anyone else's snooze hides the card from them
+ * alone.
+ */
+export function maySnoozeForEveryone(role: string | null | undefined): boolean {
+  return mayActForTheHouse(role);
+}
+
+/**
+ * The gateway's word for a refused undo of someone else's act (round 4,
+ * answer 5): staff undo only their own acts; owners and managers anyone's.
+ */
+export const NOT_YOUR_ACT = 'not_your_act';
+
+/** The page's sentence when a return to the book is not this person's to make. */
+export const NOT_YOUR_ACT_SAID =
+  'Only the person who did this, or an owner or manager, can undo it.';
+
+/**
+ * Whether a refused write was the not-your-act refusal, and the gateway's
+ * own sentence for it when it sent one (it words the unnamed-author case
+ * differently). Null when the refusal was something else.
+ */
+export function notYourActOf(err: unknown): string | null {
+  const data = (err as { response?: { data?: { code?: unknown; message?: unknown } } } | null)
+    ?.response?.data;
+  if (!data || data.code !== NOT_YOUR_ACT) return null;
+  return typeof data.message === 'string' && data.message ? data.message : NOT_YOUR_ACT_SAID;
 }
 
 /**

@@ -88,6 +88,21 @@ function parseHorizon(raw?: string): number | undefined {
   return n;
 }
 
+/**
+ * A recommendation write that was not made (ADR 0191): 403 when the actor may
+ * not make it, 400 when it is malformed. A refusal that carries a code — an
+ * undo of someone else's act, round 4 — says it in the body next to the
+ * sentence, so a page can word that one refusal as its own.
+ */
+function refusedAct(error: ActRefused): HttpException {
+  const status = error.forbidden ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST;
+  if (!error.code) return new HttpException(error.message, status);
+  return new HttpException(
+    { statusCode: status, message: error.message, code: error.code },
+    status,
+  );
+}
+
 @ApiTags("analytics")
 @Controller("analytics")
 // Every route here is tenant-scoped and several cost money: POST /consult/:id
@@ -343,7 +358,7 @@ export class AnalyticsController {
     @Param("restaurantId") restaurantId: string,
     @Param("candidateKey") candidateKey: string,
     @Body() body: { enabled?: boolean; reason?: string | null },
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     const actor = typeof user?.userId === "string" ? user.userId : "";
     if (!actor)
@@ -364,6 +379,9 @@ export class AnalyticsController {
           body.enabled,
           actor,
           body.reason ?? null,
+          // The house role the token names: `RolesGuard` above also admits
+          // the platform admin, which the service refuses (round 4, answer 7).
+          actorOf(user).role,
         );
       return {
         candidateKey,
@@ -374,6 +392,7 @@ export class AnalyticsController {
         history,
       };
     } catch (error) {
+      if (error instanceof ActRefused) throw refusedAct(error);
       throw new HttpException(
         error.message || "Failed to toggle the catalogue type",
         HttpStatus.BAD_REQUEST,
@@ -1107,7 +1126,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Set a recommendation's disposition (NEW-284…NEW-298)",
     description:
-      "Body: { ruleKey, status?, reason?, snoozeUntil?, snoozeFor?, pinned?, acted?, feedback?, snapshot? }. Upserts the state of one item so it survives recompute and holds on every surface (ADR 0191). A dismissal needs a reason label (not_relevant|disagree); 'already_handled' is recorded as done and 'not_now' as the caller's own snooze (round 3). A snooze needs a future snoozeUntil; snoozeFor 'me' hides the card from the caller alone, 'house' from everyone (owner/manager only — 403 otherwise); absent, a staff snooze is the caller's own. A RULE-WIDE dismiss or restore (a key with no subject and no period) is owner/manager only — 403 otherwise — and files a system_audit_log row whose receipt comes back as `audit`. Every house status write is kept in the append-only history (receipt `history`); `recordedAs` says what the write became. The actor is the authenticated caller; a body `createdBy` is ignored.",
+      "Body: { ruleKey, status?, reason?, snoozeUntil?, snoozeFor?, pinned?, acted?, feedback?, snapshot? }. Upserts the state of one item so it survives recompute and holds on every surface (ADR 0191). A dismissal needs a reason label (not_relevant|disagree); 'already_handled' is recorded as done and 'not_now' as the caller's own snooze (round 3). A snooze needs a future snoozeUntil; snoozeFor 'me' hides the card from the caller alone, 'house' from everyone (owner/manager only — 403 otherwise); absent, a staff snooze is the caller's own. A RULE-WIDE dismiss or restore (a key with no subject and no period) is owner/manager only — 403 otherwise — and files a system_audit_log row whose receipt comes back as `audit`. Every house status write is kept in the append-only history (receipt `history`); `recordedAs` says what the write became. Round 4: a status write over someone else's act (dismissed, done, or snoozed for everyone) is theirs or an owner's/manager's to make — 403 with code `not_your_act` otherwise; the platform admin makes no house act (403). The actor is the authenticated caller; a body `createdBy` is ignored.",
   })
   async setRecommendationAction(
     @Param("restaurantId") restaurantId: string,
@@ -1165,11 +1184,7 @@ export class AnalyticsController {
     } catch (error) {
       if (error instanceof RuleWideActForbidden)
         throw new HttpException(error.message, HttpStatus.FORBIDDEN);
-      if (error instanceof ActRefused)
-        throw new HttpException(
-          error.message,
-          error.forbidden ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST,
-        );
+      if (error instanceof ActRefused) throw refusedAct(error);
       throw new HttpException(
         error.message || "Failed to set recommendation action",
         HttpStatus.BAD_REQUEST,
@@ -1181,7 +1196,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Bulk-set disposition on many cards (NEW-293)",
     description:
-      "Body: { items: [{ ruleKey, snapshot? }], status?, reason?, snoozeUntil?, snoozeFor?, pinned? }. Same rules as the single write; a selection holding any rule-wide dismiss or restore, or a snooze for everyone, is refused whole (403) for anyone but an owner/manager, before anything is written. Returns { updated, audit: { recorded, missed }, history: { recorded, missed }, snoozedForYou }.",
+      "Body: { items: [{ ruleKey, snapshot? }], status?, reason?, snoozeUntil?, snoozeFor?, pinned? }. Same rules as the single write; a selection holding any rule-wide dismiss or restore, or a snooze for everyone, is refused whole (403) for anyone but an owner/manager, before anything is written; so is one holding someone else's act for staff (code `not_your_act`, round 4). Returns { updated, audit: { recorded, missed }, history: { recorded, missed }, snoozedForYou }.",
   })
   async bulkRecommendationAction(
     @Param("restaurantId") restaurantId: string,
@@ -1222,11 +1237,7 @@ export class AnalyticsController {
     } catch (error) {
       if (error instanceof RuleWideActForbidden)
         throw new HttpException(error.message, HttpStatus.FORBIDDEN);
-      if (error instanceof ActRefused)
-        throw new HttpException(
-          error.message,
-          error.forbidden ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST,
-        );
+      if (error instanceof ActRefused) throw refusedAct(error);
       throw new HttpException(
         error.message || "Failed to bulk-set recommendation actions",
         HttpStatus.BAD_REQUEST,
@@ -1237,16 +1248,23 @@ export class AnalyticsController {
   @Get("recommendations/:restaurantId/actions")
   @ApiOperation({
     summary: "Cards in a given disposition (snoozed/dismissed/done tabs)",
+    description:
+      "Each item says `undoableByYou` for the caller (ADR 0191 round 4): whether they may return it to the book — owners and managers anyone's, staff only their own act as the history names it, the platform admin none; null when the history could not be read.",
   })
   @ApiQuery({ name: "status", required: false, example: "dismissed" })
   async listRecommendationActions(
     @Param("restaurantId") restaurantId: string,
     @Query("status") status?: string,
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
       const s = (status || "all") as RecommendationStatus | "all";
       return {
-        items: await this.recommendationActions.listByStatus(restaurantId, s),
+        items: await this.recommendationActions.listByStatus(
+          restaurantId,
+          s,
+          actorOf(user),
+        ),
       };
     } catch (error) {
       throw new HttpException(

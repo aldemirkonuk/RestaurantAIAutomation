@@ -46,6 +46,7 @@ import {
   type SuppressionScope,
   type SuppressionVM,
   itemKeyOf,
+  mayActForTheHouse,
   maySnoozeForEveryone,
   paperMissOf,
 } from './rec-format';
@@ -105,6 +106,14 @@ export interface EntryVM {
    */
   ruleWide: boolean;
   /**
+   * Whether this person may return this row to the book (ADR 0191 round 4,
+   * answer 5 — staff undo only their own acts; owners and managers anyone's).
+   * The gateway's own answer on the Dismissed, Done and Snoozed leaves; null
+   * when it could not tell (the history was unreadable) or did not say, and
+   * then the control stays open — the gateway decides at the write.
+   */
+  undoableByYou: boolean | null;
+  /**
    * A snooze this person made for themselves alone (ADR 0191 round 3 — the
    * founder: a staff snooze is "Only them"). Only on the Snoozed leaf, read
    * from `GET …/snoozed-for-me`; the entry's own control wakes it for them.
@@ -112,10 +121,12 @@ export interface EntryVM {
   personal?: boolean;
 }
 
-/** The roles that may dismiss or return a WHOLE rule — the gateway's set. */
+/**
+ * The roles that may dismiss or return a WHOLE rule — the gateway's set:
+ * owners and managers, not the platform admin (ADR 0191 round 4, answer 7).
+ */
 export function mayActRuleWide(role: string | null | undefined): boolean {
-  const r = role ? role.toLowerCase() : '';
-  return r === 'owner' || r === 'manager' || r === 'admin';
+  return mayActForTheHouse(role);
 }
 
 /**
@@ -253,6 +264,7 @@ function toEntry(raw: Record<string, unknown>, fallbackStatus: Disposition): Ent
     periodKey: typeof raw.periodKey === 'string' && raw.periodKey ? raw.periodKey : null,
     suppression: readSuppression(raw.suppression),
     ruleWide: raw.ruleWide === true,
+    undoableByYou: typeof raw.undoableByYou === 'boolean' ? raw.undoableByYou : null,
   };
 }
 

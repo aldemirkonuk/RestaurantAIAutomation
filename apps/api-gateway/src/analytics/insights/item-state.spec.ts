@@ -226,10 +226,10 @@ describe("what counts as rule-wide (founder, 2026-09-21, answer 1)", () => {
     ).toBe(false);
   });
 
-  it("owner, manager and admin may; staff and no role may not", () => {
+  it("owner and manager may; the platform admin, staff and no role may not (round 4, answer 7)", () => {
     expect(mayActRuleWide("owner")).toBe(true);
     expect(mayActRuleWide("Manager")).toBe(true);
-    expect(mayActRuleWide("admin")).toBe(true);
+    expect(mayActRuleWide("admin")).toBe(false);
     expect(mayActRuleWide("staff")).toBe(false);
     expect(mayActRuleWide(null)).toBe(false);
     expect(mayActRuleWide("")).toBe(false);

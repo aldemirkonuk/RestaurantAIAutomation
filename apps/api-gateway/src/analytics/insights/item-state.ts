@@ -226,10 +226,39 @@ export function isRuleWideDismissOrRestore(
   return nextStatus === "dismissed" || currentStatus === "dismissed";
 }
 
-/** The roles that may make a rule-wide act — `RolesGuard`'s owner/manager set. */
-export function mayActRuleWide(role: string | null | undefined): boolean {
+/**
+ * The roles that act FOR the house on its cards — owners and managers, and
+ * nobody else (ADR 0191 round 4, answer 7, 2026-09-21: the platform `admin`
+ * role never acts for a house's cards unless that person is also an owner or
+ * manager of that house).
+ *
+ * `admin` is deliberately NOT here, although `RolesGuard` lets it through
+ * every `@Roles("owner", "manager")` route. The role is the one the token's
+ * house gives (`JwtStrategy.validate` → `roleInHouse`, ADR 0162): an access
+ * row in the house decides, and its role is `owner`, `manager` or `staff`
+ * (the CHECK of migration 20260902200000), so an owner or manager of the
+ * house reads `owner` or `manager`. `admin` reaches this code only from a
+ * `users` row — one with no access row in the house whose `restaurant_id`
+ * names it, or a token that names no house. The areas lane's
+ * `mayActForEveryone` (`areas/area-routing.ts`, ADR 0218) draws the same
+ * line: owner and manager act for everyone, `admin` does not.
+ */
+export function mayActForTheHouse(role: string | null | undefined): boolean {
   const r = role ? String(role).toLowerCase() : "";
-  return r === "owner" || r === "manager" || r === "admin";
+  return r === "owner" || r === "manager";
+}
+
+/**
+ * The platform role, when the token reads it for this house — a person with
+ * no owner, manager or staff role here (round 4, answer 7).
+ */
+export function isPlatformAdminRole(role: string | null | undefined): boolean {
+  return (role ? String(role).toLowerCase() : "") === "admin";
+}
+
+/** The roles that may make a rule-wide act: owners and managers (round 4 dropped `admin`). */
+export function mayActRuleWide(role: string | null | undefined): boolean {
+  return mayActForTheHouse(role);
 }
 
 /**
@@ -240,8 +269,9 @@ export function mayActRuleWide(role: string | null | undefined): boolean {
  * The area half is a typed hook, not a feature: nothing builds areas here,
  * `actorOf` never fills `leadsAreas` and no card carries an area yet
  * (`RecommendationActionsService.cardAreasOf` returns none), so today this
- * is exactly owner/manager/admin. When the areas lane fills both, a lead
- * may snooze for everyone a card in an area they lead, and nothing else.
+ * is exactly owner/manager — not the platform `admin` (round 4, answer 7).
+ * When the areas lane fills both, a lead may snooze for everyone a card in
+ * an area they lead, and nothing else.
  */
 export function maySnoozeForEveryone(
   role: string | null | undefined,
@@ -305,8 +335,34 @@ export type ActRoute =
  * Everything else goes to the house state unchanged. Validation of what is
  * left (a label from DISMISS_REASONS, an instant in the future) stays with
  * the write path, which runs it on the routed result.
+ *
+ * Round 4, answer 7: the platform `admin` role never acts for a house's
+ * cards — a dismiss, done, restore or snooze for everyone that would land
+ * on the house state is refused (403). Their own snooze hides a card from
+ * them alone and acts for nobody else, so it stays; so do notes (pin,
+ * rating, assignment), which round 3 already said are not acts.
  */
 export function planAct(
+  patch: StateWriteIn,
+  actor: { role: string | null; leadsAreas?: ReadonlyArray<string> },
+  cardAreas: ReadonlyArray<string>,
+  now: number,
+): ActRoute {
+  const route = routeOf(patch, actor, cardAreas, now);
+  if (
+    route.to === "house" &&
+    route.status !== undefined &&
+    isPlatformAdminRole(actor.role)
+  )
+    return { to: "refused", why: PLATFORM_ADMIN_REFUSAL, forbidden: true };
+  return route;
+}
+
+/** Why a platform admin's house act is refused (round 4, answer 7). */
+export const PLATFORM_ADMIN_REFUSAL =
+  "A platform admin acts on a house's cards only as an owner or manager of that house.";
+
+function routeOf(
   patch: StateWriteIn,
   actor: { role: string | null; leadsAreas?: ReadonlyArray<string> },
   cardAreas: ReadonlyArray<string>,
@@ -399,6 +455,74 @@ export function historyActOf(status: string): HistoryAct | null {
   if (status === "done") return "done";
   if (status === "snoozed") return "snooze";
   return null;
+}
+
+// ---- Undoing someone's act (round 4, answer 5) -------------------------------
+
+/** What a `recommendation_actions` row holds now, as the undo gate reads it. */
+export interface HeldRow {
+  status: string;
+  snoozeUntil: string | null;
+}
+
+/**
+ * Whether the row holds somebody's act — a dismissal, a done, or a house
+ * snooze still in force. A status write over such a row undoes (or replaces)
+ * that act. An active row, a snooze whose instant has passed and a key with
+ * no row hold nothing: writing over them undoes nobody.
+ */
+export function holdsAnAct(row: HeldRow | null | undefined, now: number): boolean {
+  if (!row) return false;
+  if (row.status === "dismissed" || row.status === "done") return true;
+  return row.status === "snoozed" && snoozeHolds(row.snoozeUntil, now);
+}
+
+/** The newest history row for a key, as the undo gate reads it. */
+export interface LatestAct {
+  actorId: string | null;
+  statusTo: string;
+}
+
+/**
+ * Who made the act a row holds, or null when that is not known.
+ *
+ * The append-only history is the record of who did what (round 3, "Keep
+ * every label"); its newest row for the key names the person — but only
+ * when it wrote the very status the row holds now. Otherwise the act that
+ * set the row was never kept (written before the history existed, or its
+ * history row missed), and the newest row is someone else's older act. A
+ * name the retention rule removed, or a deleted person, is null too.
+ */
+export function authorOf(
+  row: HeldRow,
+  latest: LatestAct | null | undefined,
+): string | null {
+  if (!latest || latest.statusTo !== row.status) return null;
+  return latest.actorId ?? null;
+}
+
+/**
+ * Round 4, answer 5 (the founder, 2026-09-21): staff undo only their own
+ * acts; owners and managers undo anyone's. An act nobody can name — no
+ * history row, a history row for another act, a name removed after two
+ * years — is not provably the person's own, so only an owner or manager
+ * undoes it.
+ */
+export function mayUndo(
+  actor: { userId: string | null; role: string | null },
+  madeBy: string | null,
+): boolean {
+  if (mayActForTheHouse(actor.role)) return true;
+  return !!actor.userId && madeBy !== null && madeBy === actor.userId;
+}
+
+/** What a refused undo says — the one refusal, in words, per case. */
+export function undoRefusal(unknownAuthor: boolean, n: number): string {
+  if (n > 1)
+    return `Only an owner or manager can undo someone else's act (${n} in this selection).`;
+  return unknownAuthor
+    ? "It is not recorded who did this, so only an owner or manager can undo it."
+    : "Only the person who did this, or an owner or manager, can undo it.";
 }
 
 /** One person's own snoozes — `recommendation_personal_snoozes` rows. */

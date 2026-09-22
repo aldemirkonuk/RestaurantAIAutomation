@@ -133,6 +133,7 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
       false,
       "u-actor",
       "not_relevant",
+      "owner",
     );
 
     const write = calls.find((c) => c.table === "recommendation_actions");
@@ -181,8 +182,8 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
   it("turning it back on is its own audit row, so the trail keeps who turned it off", async () => {
     const { db, calls } = recordingDb();
     const svc = new RecommendationActionsService(db);
-    await svc.setTypeEnabled("r-1", TYPE, false, "u-first", "disagree");
-    await svc.setTypeEnabled("r-1", TYPE, true, "u-second");
+    await svc.setTypeEnabled("r-1", TYPE, false, "u-first", "disagree", "owner");
+    await svc.setTypeEnabled("r-1", TYPE, true, "u-second", null, "manager");
     const rows = calls.filter((c) => c.table === "system_audit_log");
     expect(rows.map((r) => [r.payload.action, r.payload.actor_id])).toEqual([
       ["recommendation_type_turned_off", "u-first"],
@@ -199,6 +200,7 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
       false,
       "u-actor",
       "disagree",
+      "owner",
     );
     expect(out.audit).toEqual({ recorded: false, reason: "permission denied" });
   });
@@ -207,7 +209,14 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
     const { db, calls } = recordingDb();
     const svc = new RecommendationActionsService(db);
     await expect(
-      svc.setTypeEnabled("r-1", `${TYPE}#tuesday#d:2026-09-16`, false, "u-actor"),
+      svc.setTypeEnabled(
+        "r-1",
+        `${TYPE}#tuesday#d:2026-09-16`,
+        false,
+        "u-actor",
+        null,
+        "owner",
+      ),
     ).rejects.toThrow(/Unknown catalogue type/);
     expect(calls).toEqual([]);
   });
@@ -216,19 +225,19 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
     const { db, calls } = recordingDb();
     const svc = new RecommendationActionsService(db);
     await expect(
-      svc.setTypeEnabled("r-1", TYPE, false, "u-actor"),
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", null, "owner"),
     ).rejects.toThrow(/needs a reason/);
     await expect(
-      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "because I said so"),
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "because I said so", "owner"),
     ).rejects.toThrow(/needs a reason/);
     // Round 3: neither former label turns a whole type off — "Already
     // handled" is done and "Not now" is one person's snooze, and a type is
     // neither.
     await expect(
-      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "already_handled"),
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "already_handled", "owner"),
     ).rejects.toThrow(/needs a reason/);
     await expect(
-      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "not_now"),
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "not_now", "owner"),
     ).rejects.toThrow(/needs a reason/);
     expect(calls).toEqual([]);
   });
@@ -236,9 +245,9 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
   it("refuses without an actor, and writes nothing", async () => {
     const { db, calls } = recordingDb();
     const svc = new RecommendationActionsService(db);
-    await expect(svc.setTypeEnabled("r-1", TYPE, false, "")).rejects.toThrow(
-      /actor/,
-    );
+    await expect(
+      svc.setTypeEnabled("r-1", TYPE, false, "", "disagree", "owner"),
+    ).rejects.toThrow(/actor/);
     expect(calls).toEqual([]);
   });
 });

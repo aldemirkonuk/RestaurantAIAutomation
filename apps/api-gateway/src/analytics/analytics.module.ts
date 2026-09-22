@@ -6,6 +6,7 @@ import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
 import { RecommendationActionsService } from "./recommendation-actions.service";
+import { RecommendationHistoryRetention } from "./recommendation-history-retention";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
 import { GoalScenarioRequestsService } from "./goal-scenario-requests.service";
@@ -56,6 +57,9 @@ import { PricingModule } from "../pricing/pricing.module";
     // The engine's one hook for "do not count this day" — closures, buyouts,
     // outages the manager has ruled out of every baseline.
     DayExclusionsService,
+    // ADR 0191 round 4: a name leaves the recommendation history after two
+    // years (the act stays) — the daily sweep of migration 20260921171100.
+    RecommendationHistoryRetention,
   ],
   // TableAnalyticsService joined the exports for ADR 0093: the scenario
   // verifier asks table performance whether it can see the day's tables, and

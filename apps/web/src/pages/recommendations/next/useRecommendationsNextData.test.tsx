@@ -503,18 +503,50 @@ describe('useRecommendationsNextData — the shared state and the house log', ()
     expect(result.current.note).toMatch(/Only 0 of 1 were saved/);
   });
 
-  it('staff may not act rule-wide; an owner, a manager or an admin may', async () => {
+  it('staff may not act rule-wide, nor may the platform admin (round 4, answer 7); an owner or a manager may', async () => {
     const { result, rerender } = renderHook(() => useRecommendationsNextData());
     await waitFor(() => expect(result.current.phase).toBe('ready'));
     expect(result.current.canActRuleWide).toBe(false);
-    role.current = 'staff';
-    rerender();
-    expect(result.current.canActRuleWide).toBe(false);
-    for (const r of ['owner', 'manager', 'admin']) {
+    for (const r of ['staff', 'admin']) {
+      role.current = r;
+      rerender();
+      expect(result.current.canActRuleWide).toBe(false);
+    }
+    for (const r of ['owner', 'manager']) {
       role.current = r;
       rerender();
       expect(result.current.canActRuleWide).toBe(true);
     }
+  });
+
+  it("reads the gateway's undoableByYou off a tab row — only a boolean counts (round 4, answer 5)", async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
+      if (url.includes('/exclusions'))
+        return { data: { items: [], readable: true, problem: null } };
+      if (url.includes('/actions'))
+        return {
+          data: {
+            items: [
+              { ruleKey: 'a#*#fire:week:2026-W39', status: 'dismissed', undoableByYou: false },
+              { ruleKey: 'b#*#fire:week:2026-W39', status: 'dismissed', undoableByYou: true },
+              { ruleKey: 'c#*#fire:week:2026-W39', status: 'dismissed', undoableByYou: null },
+              { ruleKey: 'd#*#fire:week:2026-W39', status: 'dismissed', undoableByYou: 'no' },
+            ],
+          },
+        };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    act(() => result.current.setLeaf('dismissed'));
+    await waitFor(() => expect(result.current.entries).toHaveLength(4));
+    expect(result.current.entries.map((e) => e.undoableByYou)).toEqual([
+      false,
+      true,
+      null,
+      null,
+    ]);
   });
 
   it('reads the gateway\'s own "this row is a whole rule" off an actions row', async () => {

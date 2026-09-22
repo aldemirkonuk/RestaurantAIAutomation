@@ -864,7 +864,15 @@ settled:**
   3, 2026-09-21** (ADR 0191 "Round 3"): the live-items panel's Snooze asks
   who it is for (staff: themselves alone), its dismiss list records "Already
   handled" as done and "Not right now" as your own snooze, and it says how
-  many of the type are hidden just for you.]
+  many of the type are hidden just for you.] [**Round 4, 2026-09-21** (ADR
+  0191 "Round 4", the founder: "Take all seven"): staff return only their own
+  acts. The Dismissed, Done and Snoozed leaves darken "Return it to the book"
+  on anyone else's and say why (`undoableByYou`, `not_your_act`). The gateway
+  refuses every house act from the platform `admin`. The page no longer
+  offers them snooze for everyone, the whole-rule acts or the catalogue's
+  on/off. It still offers them a card's Done and Dismiss: the gateway refuses
+  these, and the page puts the card back with the gateway's sentence. The
+  history keeps a name two years.]
 
 **The handoff to sketch 122 (lane `recs-sketch`).** The founder's sketch-120
 feedback (`founder-sketch-decisions-106-115.md:146-151`, batch 3
