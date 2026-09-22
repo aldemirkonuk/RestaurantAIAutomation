@@ -882,7 +882,15 @@ answer as JSON.
   at all. His answer covers the trace; hiding this bit means reporting an
   empty book as zero deliveries, which J4 forbids. Which rule wins is his
   call; nothing else open to staff decides "not in your books" on a relation
-  staff cannot count.
+  staff cannot count. [Second last call, 2026-09-21: a second bit, a ceiling.
+  `RecordingSession.read` refuses a relation over 20,000 rows (`maxRows`), so
+  a book over 20,000 orders makes `orders.due_today` and `orders.lines`
+  answer `could_not_read` / `source_limit` for staff too. Same fork.]
+- [Added 2026-09-21, second last call.] A staff question the pick files under
+  a class that is not built -- `landed_cost` (money), `sales_revenue` (sales),
+  `forecast` -- is answered "not built", not refused with a one-line reason.
+  Nothing is read or shown, but his rule says money is refused. Giving each
+  unbuilt class a data class (so staff get the refusal line now) is his call.
 - Unchanged from the amendment above: consent and notice for training, what
   `reading_version` means, and whether a page follow-up to a different Reading
   carries `previous_folio_id` (a follow-up versus a correction label).
@@ -904,3 +912,4 @@ answer as JSON.
 |---|---|---|
 | 2026-09-21 | Aldemir (founder), round 6, relayed by the orchestrating session | Staff on `/ask`, his pick verbatim: "Yes, own-work only", with the meaning he approved, verbatim: "Staff can ask about stock, receiving and today's deliveries. Money, supplier prices and people data are refused with a one-line reason. General-knowledge answers are allowed but count toward the house's daily limit." Finding trace row counts, his pick verbatim: "Hide by data type". Built by the KL lane the same day; see the round-6 amendment above. Still open: movements-as-sales, staff order lookup over closed orders, training consent, `reading_version`, follow-up versus correction. |
 | 2026-09-21 | Opus last call, KL round 6 | Built as he chose, with one leak closed and one bit recorded. Closed: a paged read left staff one withheld trace entry per 500 rows, so the entry count still dated the order book (1,041 orders gave three); now one entry per relation read, jest-pinned and mutation-tested. The trace CLAIMS verify also passed with withholding under the owner row; it now requires the asker's `policy`. Recorded, not decided: `orders.due_today` tells staff whether the order book is empty at all (J4 versus "Hide by data type", his call). |
+| 2026-09-21 | Opus second last call, KL round 6 | Both answers re-derived from the code and held; ready. One guard hole closed: the trace CLAIMS verify could not see the withheld entry itself (keeping a page's own `rowsScanned` left it PASS while three jest cases failed); it now requires the entry's `withheld` outcome and counts, mutation-tested. Recorded, not decided: a 20,000-row ceiling is a second bit of order-book size staff can learn, and an unbuilt money or sales question answers "not built" rather than a refusal line. |
