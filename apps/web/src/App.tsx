@@ -46,6 +46,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppToaster } from './components/mudavym/AppToaster'
 import { AuthProvider } from './contexts/AuthContext'
+import { GroundChoiceSync } from './lib/mudavym/GroundChoiceSync'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import { WebSocketProvider } from './lib/websocket'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -163,6 +164,13 @@ function App() {
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           <AuthProvider>
+            {/* ADR 0169 — the person's Mudavym ground follows their account,
+                not this browser. Renders nothing; it joins the synchronous
+                ground store to `/users/:userId/preferences`. Mounted here so
+                it is inside the QueryClientProvider and above every route,
+                public ones included (where it resolves to a signed-out
+                paper). */}
+            <GroundChoiceSync />
             {/* Nested INSIDE AuthProvider (not outside it, as sonner's
                 Toaster/OfflineBanner below still are) so its gate
                 (`useMudavymDesign('shell')`, ToastContext.tsx) reads the
