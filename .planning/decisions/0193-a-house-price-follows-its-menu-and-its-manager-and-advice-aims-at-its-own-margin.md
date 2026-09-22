@@ -438,10 +438,17 @@ spend trigger exists in code -- `allowance` is the two-value type `"enforced" | 
 (`model-client.service.ts:259`), set once, statically, at the menu read's one call site
 (`scan-parser.service.ts:342`), and tested as a plain `opts.allowance === "unlimited"`
 (`model-client.service.ts:342`, feeding the first-attempt gate and the retry ceiling); nothing
-reads a clock or a ledger total to flip it. What keeps that true is CLAIMS row
-`ADR-0193-A-MENU-READ-IS-NEVER-REFUSED-FOR-ALLOWANCE`: either line made conditional on a date
-fails it (both mutated 2026-09-22, both caught), while `scan-parser.ledger-waits.spec.ts` and
-`spend-ledger-fail-closed.spec.ts` stay green (17 of 17) under a future date. The refusal
+reads a clock or a ledger total to flip it. The specs do not guard that:
+`scan-parser.ledger-waits.spec.ts` and `spend-ledger-fail-closed.spec.ts` stay green (17 of 17)
+under a future-dated condition. CLAIMS row `ADR-0193-A-MENU-READ-IS-NEVER-REFUSED-FOR-ALLOWANCE`
+does, on the lines it pins: the literal, the `:342` test, both retry calls that pass `unlimited`
+on (`model-client.service.ts:399`, `:443`), and the retry ceiling's `if (unlimited) {` (`:674`)
+-- the one test of it the menu read reaches, since it never sets `gateFirstAttempt` -- plus the
+first-attempt gate's test (`:344`). A date condition on any of them fails the row (mutated
+2026-09-22: the call site and `:342` were caught by the row as first written; `:674` passed the
+row and the specs alike, and `:399` and `:443` the row, so the row was widened to all three, and
+each is now caught). A new statement inside that `if` block, or a wrapper that rewrites the options before
+the call, would still pass it. The refusal
 when the spend ledger itself cannot be read is unchanged and stays
 (`spendLedgerUnreadable: "closed"`, `scan-parser.service.ts:338`) -- that is a different gate
 from the allowance tier and his round-2 answer on it stands. Docs-only: the grep found no
@@ -588,3 +595,4 @@ is the landing session's step, not this build's.
 | 2026-09-22 | Founder (round 6w) | The menu-read allowance's open end date answered (the last call's founder question: his round-6c words, *"for at the short period of time"*, named no end). Put to him as three paths -- (a) unlimited until he says, (b) a date, (c) a spend figure that switches tiers back on -- he picked, verbatim, *"Until I say (Recommended)"*: the menu read stays unlimited for allowance until he gives the word; the refusal when the spend ledger itself cannot be read stays |
 | 2026-09-22 | Cellar lane (docs, round 6w) | Recorded in "Amendment, round 3" §2 and bracket-corrected two now-false sentences: "Tiers are a later decision" (§2) and "for now" (the open-questions list). Verified by grep, not by code change: `allowance` is the static two-value type `"enforced" \| "unlimited"` (`model-client.service.ts:259`), set once at the menu read's one call site (`scan-parser.service.ts:342`) with no date or spend-total check anywhere in the gateway; `spendLedgerUnreadable: "closed"` (`scan-parser.service.ts:338`) is unchanged. No trigger contradicted the answer, so no code changed |
 | 2026-09-22 | Last-call review (round 6w) | Tried to break it: a sentence left calling the end open, a founder word paraphrased as his, a record now false, a trigger in code, a migration outside the band (none: docs only). The question and his pick read back from the session record: three options, "Until I say (Recommended)", "A set date", "A spend figure"; he picked the first. The code still matches: neither place `unlimited` is read (the first-attempt gate, `retryAllowedBySpendCeiling`) gates on a date or a spend total; the retry path reads the ledger only to refuse when it cannot be read. One gap, closed in the text: the jest specs do not pin "no trigger" -- a future-date condition on either line leaves `scan-parser.ledger-waits.spec.ts` and `spend-ledger-fail-closed.spec.ts` green (17 of 17), and only CLAIMS row `ADR-0193-A-MENU-READ-IS-NEVER-REFUSED-FOR-ALLOWANCE` fails (both mutations caught, restored byte-for-byte); §2 now cites it. The Founder row's quoted "no end was given" (the last call's words, not his) replaced by his round-6c words. Claims 427 of 427 |
+| 2026-09-22 | Last call (round 6w, on the commit) | Tried to break the committed text again: his pick read back from the session record (the question and his answer, 2026-09-22T03:27Z); every line citation re-read; no sentence left calling the end open; no date or spend trigger in the gateway (the model client's `allowance` option is set only at the scan parser's one model call, and read only at `model-client.service.ts:342`). One break, in the guard the text leaned on: a date condition on the retry ceiling's `if (unlimited) {` (`model-client.service.ts:674`) -- the one test of `unlimited` the menu read reaches -- left the CLAIMS row and both specs green (17 of 17), and the same condition on either retry call that passes `unlimited` on (`:399`, `:443`) left the row green. The row's verify now also pins those three lines: each of the five date mutations (the call site, `:342`, `:399`, `:443`, `:674`) fails it, and the unmutated tree passes; §2 now says what the row pins and what it cannot see. The ADR index row still said F1-F7 were "recorded for his confirmation"; bracketed. Claims 427 of 427 |
