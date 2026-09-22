@@ -75,6 +75,32 @@ def _scrub_pii_keys(obj: Any) -> None:
             obj.pop(key, None)
 
 
+# OpenTelemetry attaches its own copy of the request URL here, independent of
+# `event["request"]`: `contexts["trace"]["data"]` and each span's own "data"
+# carry "url"/"http.url"/"http.target"/"http.query" (and similar) regardless
+# of what request["url"] says. `_scrub_pii_keys`'s key-name pass over contexts
+# never reaches these because "data" is not a PII key name -- confirmed live
+# by PR #427's own round-2 audit, which found the calendar feed token and the
+# inbound-webhook secret both survived here after request["url"] was already
+# fixed. Query-only keys are dropped entirely, matching the founder's ruling
+# already applied to request["query_string"]; URL/path keys go through
+# scrub_url, which redacts a path-borne token and drops any query it still has.
+_SPAN_DATA_QUERY_KEYS = ("url.query", "http.query")
+_SPAN_DATA_URL_KEYS = ("url", "url.full", "url.path", "http.url", "http.target")
+
+
+def _scrub_span_data(data: Any) -> None:
+    """Strip the same URL-shaped keys from one span/trace `data` dict, in place."""
+    if not isinstance(data, dict):
+        return
+    for key in _SPAN_DATA_QUERY_KEYS:
+        data.pop(key, None)
+    for key in _SPAN_DATA_URL_KEYS:
+        value = data.get(key)
+        if isinstance(value, str):
+            data[key] = scrub_url(value)
+
+
 # Route prefixes whose NEXT path segment is a credential. Enumerates ROUTES that
 # bear a secret, not parameter names. Still an allow-list, so it does not stand
 # alone: scripts/check_sentry_pii_scope.py enumerates every @Public() gateway
@@ -165,10 +191,26 @@ def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dic
 
     _scrub_pii_keys(event.get("extra"))
 
+    # The transaction/span NAME is built from the raw request path -- a
+    # GET /calendar/feed/<token>.ics request names its own transaction
+    # <token>.ics regardless of what request["url"] says.
+    transaction = event.get("transaction")
+    if isinstance(transaction, str):
+        event["transaction"] = scrub_url(transaction)
+
     contexts = event.get("contexts")
     if isinstance(contexts, dict):
         for ctx in contexts.values():
             _scrub_pii_keys(ctx)
+        trace = contexts.get("trace")
+        if isinstance(trace, dict):
+            _scrub_span_data(trace.get("data"))
+
+    spans = event.get("spans")
+    if isinstance(spans, list):
+        for span in spans:
+            if isinstance(span, dict):
+                _scrub_span_data(span.get("data"))
 
     return event
 

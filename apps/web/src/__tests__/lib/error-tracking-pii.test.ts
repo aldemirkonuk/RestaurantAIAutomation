@@ -275,3 +275,74 @@ describe('request.url never carries a credential (founder ruling 2026-09-21)', (
     expect(event.request.url).toBe(42)
   })
 })
+
+// PR #427's round-2 audit found request.url/query_string being clean was not
+// enough: OpenTelemetry keeps its OWN copy of the URL in `contexts.trace.data`
+// and each `event.spans[].data`, and the transaction NAME is the raw path too
+// -- none of it reached by scrubPiiKeys's key-name pass over `contexts`. Shapes
+// mirror @sentry/core's own type declarations (types-hoist/{event,context,span}.d.ts),
+// not a hand-picked literal.
+describe("OpenTelemetry's own copy of the URL (PR #427 round 2)", () => {
+  it('scrubs contexts.trace.data — the calendar feed token survives request.url being clean', async () => {
+    const { scrubSentryEvent } = await freshModule()
+    const event: any = {
+      request: { url: '/api/v1/calendar/feed/<redacted>' }, // already fixed
+      transaction: 'GET /api/v1/calendar/feed/SECRETTOKEN.ics',
+      contexts: {
+        trace: {
+          span_id: 'abc123',
+          trace_id: 'def456',
+          data: {
+            url: 'http://mudavym.com/api/v1/calendar/feed/SECRETTOKEN.ics',
+            'http.url': 'http://mudavym.com/api/v1/calendar/feed/SECRETTOKEN.ics',
+            'http.target': '/api/v1/calendar/feed/SECRETTOKEN.ics',
+          },
+        },
+      },
+    }
+    scrubSentryEvent(event)
+    expect(event.transaction).toBe('GET /api/v1/calendar/feed/<redacted>')
+    expect(event.contexts.trace.data.url).toBe(
+      'http://mudavym.com/api/v1/calendar/feed/<redacted>',
+    )
+    expect(event.contexts.trace.data['http.target']).toBe('/api/v1/calendar/feed/<redacted>')
+    expect(JSON.stringify(event)).not.toContain('SECRETTOKEN')
+  })
+
+  it("deletes contexts.trace.data['http.query'] — INBOUND_WEBHOOK_SECRET arrives as a query param", async () => {
+    const { scrubSentryEvent } = await freshModule()
+    const event: any = {
+      contexts: {
+        trace: {
+          span_id: 'abc123',
+          trace_id: 'def456',
+          data: {
+            'http.url': 'http://mudavym.com/api/v1/inbound-email?secret=SECRET',
+            'http.query': 'secret=SECRET',
+          },
+        },
+      },
+    }
+    scrubSentryEvent(event)
+    expect(event.contexts.trace.data['http.query']).toBeUndefined()
+    expect(event.contexts.trace.data['http.url']).toBe('http://mudavym.com/api/v1/inbound-email')
+    expect(JSON.stringify(event)).not.toContain('SECRET')
+  })
+
+  it('scrubs every span\'s own data, not just contexts.trace', async () => {
+    const { scrubSentryEvent } = await freshModule()
+    const event: any = {
+      spans: [
+        {
+          span_id: 's1',
+          trace_id: 't1',
+          start_timestamp: 0,
+          data: { 'http.url': 'https://mudavym.com/invite/SECRETCODE' },
+        },
+      ],
+    }
+    scrubSentryEvent(event)
+    expect(event.spans[0].data['http.url']).toBe('https://mudavym.com/invite/<redacted>')
+    expect(JSON.stringify(event)).not.toContain('SECRETCODE')
+  })
+})

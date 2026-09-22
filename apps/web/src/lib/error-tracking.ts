@@ -74,6 +74,31 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
   }
 }
 
+// OpenTelemetry attaches its own copy of the request URL here, independent of
+// `event.request`: `contexts.trace.data` and each span's own `data` carry
+// `url`/`http.url`/`http.target`/`http.query` (and similar) regardless of what
+// `event.request.url` says. `scrubPiiKeys`'s key-name pass over `contexts`
+// never reaches these because `data` is not a PII key name -- confirmed live
+// by PR #427's own round-2 audit, which found the calendar feed token and the
+// inbound-webhook secret both survived here after `request.url` was already
+// fixed. Query-only keys are dropped entirely, matching the founder's ruling
+// already applied to `request.query_string`; URL/path keys go through
+// scrubUrl, which redacts a path-borne token and drops any query it still has.
+const SPAN_DATA_QUERY_KEYS = ['url.query', 'http.query'] as const
+const SPAN_DATA_URL_KEYS = ['url', 'url.full', 'url.path', 'http.url', 'http.target'] as const
+
+function scrubSpanData(data: Record<string, unknown> | undefined): void {
+  if (!data || typeof data !== 'object') return
+  for (const key of SPAN_DATA_QUERY_KEYS) {
+    delete data[key]
+  }
+  for (const key of SPAN_DATA_URL_KEYS) {
+    if (typeof data[key] === 'string') {
+      data[key] = scrubUrl(data[key] as string)
+    }
+  }
+}
+
 /**
  * Remove PII from a Sentry event before it is transmitted.
  * - drops credential request headers and cookies
@@ -194,6 +219,18 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
   if (event.contexts) {
     for (const ctx of Object.values(event.contexts)) {
       scrubPiiKeys(ctx as Record<string, any>)
+    }
+  }
+  // The transaction/span NAME is built from the raw request path -- a
+  // navigation to `/reset-password?token=...` names its own transaction from
+  // the path regardless of what request.url says.
+  if (typeof event.transaction === 'string') {
+    event.transaction = scrubUrl(event.transaction)
+  }
+  scrubSpanData(event.contexts?.trace?.data)
+  if (Array.isArray(event.spans)) {
+    for (const span of event.spans) {
+      scrubSpanData(span.data)
     }
   }
   return event

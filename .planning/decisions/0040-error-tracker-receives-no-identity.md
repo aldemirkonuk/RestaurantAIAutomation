@@ -199,6 +199,7 @@ agreeing *constant* is the easy half to check and the half that matters least.
 | 2026-08-28 | — | Created; proposed, awaiting founder lock |
 | 2026-08-28 | audit | Scrubber symmetry gap found and closed; guard extended to containers (amendment above) |
 | 2026-09-21 | PR #427 (self-authored; its own security and compliance audits BLOCKED v1) | Amended — `before_send` never scrubbed `request.url`; `query_string`, a path-borne credential (`@Public()` `/calendar/feed/<token>.ics`) and breadcrumbs were all missed. See the amendment below the trail |
+| 2026-09-22 | PR #427 round 2 (self-authored; its own correctness and security audits independently reproduced the same leak via the real SDK and BLOCKED v2) | Amended — the `beforeSendTransaction`/`before_send_transaction` fix from the row above scrubbed `event.request` but not `event.transaction` or `contexts.trace.data`/`spans[].data`, an OpenTelemetry-populated copy of the same URL one level deeper than the existing `contexts` key-name pass reaches. Same two secrets (calendar feed token, inbound-webhook secret) leaked through the new field. See the fifth-gap paragraph below |
 
 ---
 
@@ -283,9 +284,40 @@ routes, pre-blessing the two most generic parameter names in the repo. Widening
 the scan immediately found a seventeenth `@Public()` route the old window had
 never seen.
 
+**A fifth gap, found by this PR's own round-2 audit after the fourth was
+closed — the fourth gap's own "Revisit when" clause naming it before either
+auditor did.** `beforeSendTransaction`/`before_send_transaction` calls the same
+`scrubSentryEvent`/`scrub_sentry_event`, but that scrubber's reach stopped at
+`event.request`, `event.user`, `event.extra`, and a key-**name** pass over each
+`contexts` entry. It never reached `event.transaction` (the transaction/span
+NAME, built from the raw path) or `contexts.trace.data` / each `spans[].data`
+— a SEPARATE copy of the URL the OpenTelemetry integrations every runtime's
+SDK ships attach on their own, one level deeper than the `contexts` key-name
+loop looks (`data` is not a PII key name). Both angles independently
+reproduced this against the real installed SDK, not reasoned about: the
+`/calendar/feed/<token>.ics` bearer and the `/inbound-email?secret=` webhook
+secret both still reached Sentry through these fields, on error events too —
+not only the transaction path the fourth gap closed.
+
+Closed by scrubbing `event.transaction` (through the same `scrubUrl` path
+redaction) and both `contexts.trace.data` and every `spans[].data` entry —
+their `url`/`http.url`/`http.target` keys through `scrubUrl`, their
+`url.query`/`http.query` keys dropped entirely, matching the founder's
+"strip the query entirely" ruling already applied to `request.query_string`.
+`http.route` is deliberately left untouched: it is already the parameterized
+route template (`/calendar/feed/:token`), not a live value, and running
+`scrubUrl` on it would corrupt the template. Pinned in `CONTAINER_PATTERNS`
+as three new required containers (`transaction`, `contexts.trace.data`,
+`spans`) so a runtime that stops covering one fails the build, mutation-tested
+the same way as the rest of this guard (removing the coverage from one
+runtime exits 1; a no-op change exits 0). Tested against event/span/context
+shapes that mirror what the SDKs actually emit, not another hand-picked
+minimal literal — the exact gap that let this round's finding through CI
+clean in the first place.
+
 **Still open, filed not fixed:** breadcrumb URLs are scrubbed in the **web
 runtime only**, which leaves the three runtimes asymmetric on a container — the
-exact condition the container check exists for, and the new guard does not
+exact condition the container check exists for, and the guard does not
 require breadcrumbs. `Referer` is not in `SENSITIVE_HEADERS`, which matters for
 the token-route form ADR 0158's `no-referrer` source does not match (the
 trailing-slash case, `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH`, still
@@ -293,5 +325,8 @@ trailing-slash case, `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH`, still
 bearing two credentials would keep one; no route has that shape today.
 
 **Revisit when:** a new `@Public()` route takes a credential in its path (the
-guard will say so); Sentry's SDK adds another container carrying a URL; or the
-trailing-slash referrer gap is closed.
+guard will say so); Sentry's SDK adds a further container carrying a URL
+beyond `contexts.trace.data`/`spans` (e.g. a new integration's own event
+extension) — the fourth gap's own version of this clause named exactly this
+one, so treat this list as open-ended rather than closed by two entries; the
+breadcrumb asymmetry is closed; or the trailing-slash referrer gap is closed.

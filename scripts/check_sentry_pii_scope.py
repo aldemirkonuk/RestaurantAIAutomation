@@ -173,6 +173,29 @@ CONTAINER_PATTERNS = {
         "ts": r"request\??\.url\b",
         "py": r"""request\.(?:get|pop)\(\s*['"]url['"]""",
     },
+    # Added by PR #427's round-2 audit (both the correctness and security
+    # angles independently reproduced this against the real SDK). The
+    # OpenTelemetry integrations every runtime's SDK ships keep their OWN copy
+    # of the request path in `event.transaction` and in `contexts.trace.data`
+    # / each span's own `data` (as `url`, `http.url`, `http.target`,
+    # `http.query`, ...) -- entirely independent of `event.request.url`. The
+    # calendar feed token and the inbound-webhook secret both survived here
+    # after `request.url` was already clean, on both error AND transaction
+    # events. `_scrub_pii_keys`'s key-name pass over `contexts` cannot reach
+    # `data` because "data" is not a PII key name -- a container one level
+    # deeper than the loop looks.
+    "transaction": {
+        "ts": r"event\.transaction\b",
+        "py": r"""event\.(?:get|pop)\(\s*['"]transaction['"]""",
+    },
+    "contexts.trace.data": {
+        "ts": r"trace\??\.data\b",
+        "py": r"""trace\.(?:get|pop)\(\s*['"]data['"]""",
+    },
+    "spans": {
+        "ts": r"event\.spans\b",
+        "py": r"""event\.(?:get|pop)\(\s*['"]spans['"]""",
+    },
 }
 REQUIRED_CONTAINERS = frozenset(CONTAINER_PATTERNS)
 
@@ -685,6 +708,9 @@ export function scrubSentryEvent(event) {
   scrubPiiKeys(event.extra)
   scrubPiiKeys(event.request?.data)
   if (event.contexts) { each(event.contexts) }
+  if (typeof event.transaction === 'string') { event.transaction = scrubUrl(event.transaction) }
+  scrubSpanData(event.contexts?.trace?.data)
+  if (Array.isArray(event.spans)) { for (const span of event.spans) { scrubSpanData(span.data) } }
   return event
 }
 """
@@ -720,7 +746,18 @@ def scrub_sentry_event(event, hint=None):
         _scrub_pii_keys(request.get("data"))
     user = event.get("user")
     _scrub_pii_keys(event.get("extra"))
+    transaction = event.get("transaction")
+    if isinstance(transaction, str):
+        event["transaction"] = scrub_url(transaction)
     contexts = event.get("contexts")
+    if isinstance(contexts, dict):
+        trace = contexts.get("trace")
+        if isinstance(trace, dict):
+            _scrub_span_data(trace.get("data"))
+    spans = event.get("spans")
+    if isinstance(spans, list):
+        for span in spans:
+            _scrub_span_data(span.get("data"))
     return event
 """
 

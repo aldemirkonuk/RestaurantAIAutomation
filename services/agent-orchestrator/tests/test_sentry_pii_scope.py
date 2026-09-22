@@ -239,3 +239,101 @@ def test_query_string_is_dropped_because_asgi_puts_the_query_there():
     scrub_sentry_event(event)
     assert "query_string" not in event["request"]
     assert "SECRET" not in repr(event)
+
+
+# PR #427's round-2 audit found request["url"]/query_string being clean was not
+# enough: the OpenTelemetry-shaped integrations Sentry's own SDK ships keep a
+# separate copy of the URL in contexts["trace"]["data"] and each span's own
+# "data", and event["transaction"] is the raw path too -- none of it reached by
+# _scrub_pii_keys's key-name pass over contexts. Shapes mirror the JS SDKs'
+# real event/span/context types (types-hoist/{event,context,span}.d.ts), not a
+# hand-picked literal, so the three runtimes are exercised the same way.
+
+
+def test_scrubs_transaction_name_and_trace_data_calendar_feed_token():
+    from utils.sentry_client import scrub_sentry_event
+
+    event = {
+        "request": {"url": "/api/v1/calendar/feed/<redacted>"},  # already fixed
+        "transaction": "GET /api/v1/calendar/feed/SECRETTOKEN.ics",
+        "contexts": {
+            "trace": {
+                "span_id": "abc123",
+                "trace_id": "def456",
+                "data": {
+                    "url": "http://mudavym.com/api/v1/calendar/feed/SECRETTOKEN.ics",
+                    "http.url": "http://mudavym.com/api/v1/calendar/feed/SECRETTOKEN.ics",
+                    "http.target": "/api/v1/calendar/feed/SECRETTOKEN.ics",
+                },
+            }
+        },
+    }
+    scrub_sentry_event(event)
+    assert event["transaction"] == "GET /api/v1/calendar/feed/<redacted>"
+    assert (
+        event["contexts"]["trace"]["data"]["url"]
+        == "http://mudavym.com/api/v1/calendar/feed/<redacted>"
+    )
+    assert (
+        event["contexts"]["trace"]["data"]["http.target"]
+        == "/api/v1/calendar/feed/<redacted>"
+    )
+    assert "SECRETTOKEN" not in repr(event)
+
+
+def test_deletes_trace_data_http_query_inbound_webhook_secret():
+    from utils.sentry_client import scrub_sentry_event
+
+    event = {
+        "contexts": {
+            "trace": {
+                "span_id": "abc123",
+                "trace_id": "def456",
+                "data": {
+                    "http.url": "http://mudavym.com/api/v1/inbound-email?secret=SECRET",
+                    "http.query": "secret=SECRET",
+                },
+            }
+        }
+    }
+    scrub_sentry_event(event)
+    assert "http.query" not in event["contexts"]["trace"]["data"]
+    assert (
+        event["contexts"]["trace"]["data"]["http.url"]
+        == "http://mudavym.com/api/v1/inbound-email"
+    )
+    assert "SECRET" not in repr(event)
+
+
+def test_scrubs_every_spans_own_data():
+    from utils.sentry_client import scrub_sentry_event
+
+    event = {
+        "spans": [
+            {
+                "span_id": "s1",
+                "trace_id": "t1",
+                "data": {"http.url": "https://mudavym.com/invite/SECRETCODE"},
+            },
+            {
+                "span_id": "s2",
+                "trace_id": "t1",
+                "data": {"http.query": "secret=SECRET"},
+            },
+        ]
+    }
+    scrub_sentry_event(event)
+    assert (
+        event["spans"][0]["data"]["http.url"]
+        == "https://mudavym.com/invite/<redacted>"
+    )
+    assert "http.query" not in event["spans"][1]["data"]
+    assert "SECRET" not in repr(event)
+
+
+def test_no_trace_context_does_not_raise():
+    from utils.sentry_client import scrub_sentry_event
+
+    event = {"request": {"url": "/orders"}}
+    scrub_sentry_event(event)
+    assert "contexts" not in event
