@@ -1,6 +1,6 @@
-# PR #414 — stale readBy anchors fixed (pending CI + re-audit)
+# PR #414 — stale readBy anchors fixed at `b53c84d23` (pending CI + re-audit)
 
-Date: 2026-09-22. Worktree: `feat/skyleaf-next-act` pushed to `feat/finish-arrival`.
+Date: 2026-09-22. Worktree: `feat/skyleaf-next-act` pushed to `feat/finish-arrival` (`b53c84d23`).
 
 Prior gate markers for `2466fc7` / `6bf1c39` / `d58a26830` are **stale** (head moved).
 
@@ -16,8 +16,8 @@ Sketch 121 next-act (upload-first flyleaf, three counts, strong-default skip) fr
 
 ## Before merge
 
-- CI green on the new head SHA (update this line after push)
-- Fresh `/pr-audit-gate 414` PASS on that exact SHA — parent should run next once CI is green (check `.planning/07-reference/pr-audits/` for an in-flight 414 report)
+- CI green on `b53c84d23`
+- Fresh `/pr-audit-gate 414` PASS on that exact SHA — parent should run next once CI is green (existing reports: `414-2466fc7.md`, this status note; no in-flight PASS for `b53c84d23` yet)
 - Gate-owned files in `origin/main...HEAD`: none (re-check before merge)
 - Do not flip `mudavym_design_arrival` in this PR
 - Do not merge without audit (and founder auth only if gate-owned appears later)
