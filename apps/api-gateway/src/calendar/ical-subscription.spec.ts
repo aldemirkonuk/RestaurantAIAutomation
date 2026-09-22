@@ -7,6 +7,10 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { WeatherService } from "../weather/weather.service";
 import { DayRecordService } from "./day-record.service";
 import { OrganizationsService } from "../organizations/organizations.service";
+import {
+  CalendarLinksService,
+  FeedUnavailableError,
+} from "./calendar-links.service";
 
 /**
  * The two subscribe suspects that live in the CONTROLLER, not the feed body
@@ -23,6 +27,11 @@ import { OrganizationsService } from "../organizations/organizations.service";
  * Host header there is no absolute URL, and the response says `none` rather
  * than inventing `https://localhost` and handing the operator a link that
  * silently never resolves.
+ *
+ * Since 2026-09-21 the link is personal and its secret is shown ONCE, on the
+ * answer to the act that made it (ADR 0111 review trail): the URL shape is
+ * asserted on create and on a new link, and a failed read answers 503 so the
+ * subscriber keeps its last good copy.
  */
 
 const USER = { userId: "u-1", restaurantId: "r-1" };
@@ -32,28 +41,42 @@ function req(headers: Record<string, string | undefined>): Request {
   return { headers, protocol: "http" } as unknown as Request;
 }
 
+const MINE = {
+  connected: true,
+  createdAt: "2026-09-21T12:00:00.000Z",
+  issuedAt: "2026-09-21T12:00:00.000Z",
+  lastFetchedAt: null,
+  role: "staff" as const,
+  scope: "Your link shows your own shifts.",
+  categories: null,
+  canPickCategories: false,
+  areasModelled: false,
+  houseLinkRetired: false,
+};
+
 describe("iCal subscription — the controller half", () => {
   let controller: CalendarController;
-  const calendar = {
-    getICalFeed: jest.fn(),
-    getICalToken: jest.fn(),
-    createICalToken: jest.fn(),
-    regenerateICalToken: jest.fn(),
+  const links = {
+    renderFor: jest.fn(),
+    getMine: jest.fn(),
+    create: jest.fn(),
+    rotate: jest.fn(),
   };
   const savedPublicUrl = process.env.API_PUBLIC_URL;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     delete process.env.API_PUBLIC_URL;
-    calendar.getICalToken.mockResolvedValue(TOKEN);
-    calendar.createICalToken.mockResolvedValue({ token: TOKEN, created: true });
-    calendar.regenerateICalToken.mockResolvedValue(TOKEN);
-    calendar.getICalFeed.mockResolvedValue("BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+    links.getMine.mockResolvedValue(MINE);
+    links.create.mockResolvedValue({ link: MINE, secret: TOKEN });
+    links.rotate.mockResolvedValue({ link: MINE, secret: TOKEN });
+    links.renderFor.mockResolvedValue("BEGIN:VCALENDAR\r\nEND:VCALENDAR");
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CalendarController],
       providers: [
-        { provide: CalendarService, useValue: calendar },
+        { provide: CalendarService, useValue: {} },
+        { provide: CalendarLinksService, useValue: links },
         {
           provide: CalendarRemindersService,
           useValue: { statusFor: jest.fn() },
@@ -72,9 +95,8 @@ describe("iCal subscription — the controller half", () => {
           useValue: { windowFor: jest.fn() },
         },
         {
-          // The create/rotate/revoke role gate (2026-09-21). Who may pass it
-          // is `ical-token-role-gate.spec.ts`'s job; this file always lets the
-          // caller through so it stays about the URL shape.
+          // The owner/manager gate on someone else's link. Who may pass it is
+          // `calendar-links.gate.spec.ts`'s job.
           provide: OrganizationsService,
           useValue: { assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined) },
         },
@@ -92,72 +114,104 @@ describe("iCal subscription — the controller half", () => {
     else process.env.API_PUBLIC_URL = savedPublicUrl;
   });
 
-  it("serves the feed inline, never as an attachment", async () => {
+  function fakeRes() {
     const headers: Record<string, string> = {};
     const res = {
+      statusCode: 200,
+      status(code: number) {
+        res.statusCode = code;
+        return res;
+      },
       setHeader: (k: string, v: string) => {
         headers[k] = v;
       },
       send: jest.fn(),
-    } as unknown as Response;
+    };
+    return { res, headers };
+  }
 
-    await controller.getICalFeed(TOKEN, res);
+  it("serves the feed inline, never as an attachment", async () => {
+    const { res, headers } = fakeRes();
+
+    await controller.getICalFeed(TOKEN, res as unknown as Response);
 
     expect(headers["Content-Type"]).toBe("text/calendar; charset=utf-8");
     expect(headers["Content-Disposition"]).toMatch(/^inline;/);
     expect(headers["Content-Disposition"]).not.toContain("attachment");
   });
 
+  it("a failed read answers 503 with Retry-After — never a calendar, empty or expired", async () => {
+    links.renderFor.mockRejectedValueOnce(new FeedUnavailableError("db down"));
+    const { res, headers } = fakeRes();
+
+    await controller.getICalFeed(TOKEN, res as unknown as Response);
+
+    expect(res.statusCode).toBe(503);
+    expect(headers["Retry-After"]).toBe("300");
+    expect(headers["Content-Type"]).not.toContain("text/calendar");
+    expect(String(res.send.mock.calls[0][0])).not.toContain("VCALENDAR");
+  });
+
   it("returns an absolute URL and a webcal:// form from the configured origin", async () => {
     process.env.API_PUBLIC_URL = "https://api.mudavym.com/";
 
-    const out = await controller.getICalToken(USER, req({ host: "ignored" }));
+    const out = await controller.createICalToken(USER, {}, req({ host: "ignored" }));
 
-    expect(out.token).toBe(TOKEN);
-    expect(out.feedUrl).toBe(`/api/v1/calendar/feed/${TOKEN}.ics`);
-    expect(out.absoluteFeedUrl).toBe(
+    expect(out.issued?.feedUrl).toBe(`/api/v1/calendar/feed/${TOKEN}.ics`);
+    expect(out.issued?.absoluteFeedUrl).toBe(
       `https://api.mudavym.com/api/v1/calendar/feed/${TOKEN}.ics`,
     );
-    expect(out.webcalUrl).toBe(
+    expect(out.issued?.webcalUrl).toBe(
       `webcal://api.mudavym.com/api/v1/calendar/feed/${TOKEN}.ics`,
     );
-    expect(out.originSource).toBe("config");
+    expect(out.issued?.originSource).toBe("config");
   });
 
   it("derives the origin from the request when nothing is configured", async () => {
-    const out = await controller.getICalToken(
+    const out = await controller.createICalToken(
       USER,
+      {},
       req({ host: "gateway.example:4000", "x-forwarded-proto": "https, http" }),
     );
 
-    expect(out.absoluteFeedUrl).toBe(
+    expect(out.issued?.absoluteFeedUrl).toBe(
       `https://gateway.example:4000/api/v1/calendar/feed/${TOKEN}.ics`,
     );
-    expect(out.originSource).toBe("request");
+    expect(out.issued?.originSource).toBe("request");
   });
 
   it("says 'none' rather than inventing an origin it does not have", async () => {
-    const out = await controller.getICalToken(USER, req({}));
+    const out = await controller.createICalToken(USER, {}, req({}));
 
-    expect(out.absoluteFeedUrl).toBeNull();
-    expect(out.webcalUrl).toBeNull();
-    expect(out.originSource).toBe("none");
+    expect(out.issued?.absoluteFeedUrl).toBeNull();
+    expect(out.issued?.webcalUrl).toBeNull();
+    expect(out.issued?.originSource).toBe("none");
     // The relative path is still returned, because it is true.
-    expect(out.feedUrl).toBe(`/api/v1/calendar/feed/${TOKEN}.ics`);
+    expect(out.issued?.feedUrl).toBe(`/api/v1/calendar/feed/${TOKEN}.ics`);
   });
 
-  it("regenerating a token answers in the same shape", async () => {
+  it("a create that found a link already made carries no address", async () => {
+    links.create.mockResolvedValueOnce({ link: MINE, secret: null });
+    const out = await controller.createICalToken(USER, {}, req({ host: "h" }));
+    expect(out.issued).toBeNull();
+    expect(out.connected).toBe(true);
+  });
+
+  it("the read never carries an address", async () => {
+    const out = await controller.getICalToken(USER);
+    expect(out).not.toHaveProperty("issued");
+    expect(JSON.stringify(out)).not.toContain(TOKEN);
+  });
+
+  it("a new link answers in the same shape, for the caller's own house and self", async () => {
     process.env.API_PUBLIC_URL = "https://api.mudavym.com";
 
-    const out = await controller.regenerateICalToken(
-      USER,
-      req({ host: "ignored" }),
-    );
+    const out = await controller.regenerateICalToken(USER, req({ host: "ignored" }));
 
-    expect(out.absoluteFeedUrl).toBe(
+    expect(out.issued?.absoluteFeedUrl).toBe(
       `https://api.mudavym.com/api/v1/calendar/feed/${TOKEN}.ics`,
     );
-    expect(out.webcalUrl?.startsWith("webcal://")).toBe(true);
-    expect(calendar.regenerateICalToken).toHaveBeenCalledWith("r-1", USER.userId);
+    expect(out.issued?.webcalUrl?.startsWith("webcal://")).toBe(true);
+    expect(links.rotate).toHaveBeenCalledWith("r-1", USER.userId);
   });
 });

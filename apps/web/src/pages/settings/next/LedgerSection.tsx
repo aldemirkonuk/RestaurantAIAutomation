@@ -47,7 +47,7 @@ const NOT_YET_FILED: Array<{ id: string; label: string; hint: string }> = [
   { id: 'map', label: 'Map', hint: 'user-preferences.service.ts' },
   { id: 'services', label: 'Services & permissions', hint: 'user-preferences.service.ts' },
   { id: 'pos', label: 'Point of sale', hint: 'user-preferences.service.ts' },
-  { id: 'calendar', label: 'Calendar subscription', hint: 'calendar ical-token route' },
+  { id: 'calendar', label: 'Calendar links', hint: 'calendar-links.service.ts' },
   { id: 'cellar', label: 'Cellar registers', hint: 'cellar-registers.service.ts' },
 ];
 

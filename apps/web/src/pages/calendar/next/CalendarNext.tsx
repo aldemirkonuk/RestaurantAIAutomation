@@ -55,6 +55,8 @@ import MonthLedger, { DayLedger } from './MonthLedger';
 import TimeGrid from './TimeGrid';
 import AgendaRoll from './AgendaRoll';
 import EventSheet, { type SheetTarget } from './EventSheet';
+import CalendarLinkSheet from './CalendarLinkSheet';
+import { useMyCalendarLink } from '@/components/calendar-link/useMyCalendarLink';
 import './calendar-next.css';
 
 const VIEWS: Array<{ key: CalView; label: string; hint: string }> = [
@@ -116,6 +118,10 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
   const [cursor, setCursor] = useState(() => new Date());
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
+  /* ── connect my calendar (ADR 0111, 2026-09-21) — a READ on open, never a
+     mint; the link is made only by the button inside the sheet. */
+  const calLink = useMyCalendarLink();
+  const [linkOpen, setLinkOpen] = useState(false);
   const [q, setQ] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const headRef = useRef<HTMLElement | null>(null);
@@ -231,6 +237,19 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
 
   /* ── the command-palette deep link ────────────────────────────────────── */
   const [params, setParams] = useSearchParams();
+  // `?connect=1` opens "Connect my calendar" — where the dashboard and the
+  // settings pages send a person. It opens the sheet; it makes nothing.
+  useEffect(() => {
+    if (params.get('connect') !== '1') return;
+    setLinkOpen(true);
+    setParams(
+      (prev) => {
+        prev.delete('connect');
+        return prev;
+      },
+      { replace: true },
+    );
+  }, [params, setParams]);
   useEffect(() => {
     // `?new=` first: a link carrying both is the richer one, and the drafted
     // entry is what the person clicked.
@@ -433,7 +452,27 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            className="cn-btn cn-ink"
+            style={{ marginLeft: 'auto' }}
+            onClick={() => setLinkOpen(true)}
+          >
+            {calLink.link?.connected ? 'My calendar link' : 'Connect my calendar'}
+          </button>
         </div>
+
+        {calLink.link?.houseLinkRetired && !calLink.link.connected && (
+          <p role="status" className="cn-notice">
+            <span>
+              The shared calendar link for this house was switched off. Everyone now connects their
+              own calendar, showing what they may see.
+            </span>
+            <button type="button" className="cn-btn cn-ink" onClick={() => setLinkOpen(true)}>
+              Connect my calendar
+            </button>
+          </p>
+        )}
 
         {data.noRestaurant && (
           <p role="status" className="cn-notice">
@@ -571,6 +610,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
       </div>
 
       {sheet && <EventSheet data={data} target={sheet} onClose={() => setSheet(null)} />}
+      {linkOpen && <CalendarLinkSheet state={calLink} onClose={() => setLinkOpen(false)} />}
     </div>
   );
 }

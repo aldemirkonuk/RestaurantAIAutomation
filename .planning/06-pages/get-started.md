@@ -67,7 +67,7 @@ The live activation surface: **Activate** tab (import your wine list via Scan Ph
 | PATCH | `/menus/items/:id` · POST `/menus/items` | `MenuReviewScreen` → `menus.ts:96,104` | ENDPOINTS.md:284-285 |
 | PATCH | `/onboarding/threshold` | `ThresholdStep` → `menus.ts:136` | ENDPOINTS.md:288 |
 | GET | `/onboarding/vendor-email` | `OptionalTail` → `menus.ts:128` | ENDPOINTS.md:289 |
-| GET | (ical token) | `OptionalTail` → `services/api/calendar.ts` `getIcalToken` | — |
+| GET | (ical token) | `OptionalTail` → `services/api/calendar.ts` `getIcalToken` *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — `OptionalTail` reads the reader's own link through `useMyCalendarLink` → `getMyCalendarLink` (GET `/calendar/ical-token`, read-only, never the address) and connects only on a click]* | — |
 | GET | `/auth/me/linked-providers` | `OptionalTail` → `profileApi` (`profile.ts:39-40`) | ENDPOINTS.md:72 |
 
 ## 5. Signals

@@ -7,6 +7,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { WeatherService } from "../weather/weather.service";
 import { DayRecordService } from "./day-record.service";
 import { OrganizationsService } from "../organizations/organizations.service";
+import { CalendarLinksService } from "./calendar-links.service";
 import {
   CalendarEventType,
   CalendarEventStatus,
@@ -66,10 +67,16 @@ describe("CalendarController", () => {
           useValue: { windowFor: jest.fn() },
         },
         {
-          // The ical-token create/rotate/revoke role gate (2026-09-21). Who
-          // may pass it is `ical-token-role-gate.spec.ts`'s job; here it only
-          // has to resolve, since none of this file's cases exercise those
-          // routes.
+          // Personal calendar links (ADR 0111, 2026-09-21). Specified in
+          // calendar-links.service.spec.ts and calendar-links.gate.spec.ts;
+          // here it only has to resolve, since none of this file's cases
+          // exercise those routes.
+          provide: CalendarLinksService,
+          useValue: {},
+        },
+        {
+          // The owner/manager gate on someone else's link. Who may pass it is
+          // `calendar-links.gate.spec.ts`'s job.
           provide: OrganizationsService,
           useValue: { assertCanManageRestaurant: jest.fn().mockResolvedValue(undefined) },
         },

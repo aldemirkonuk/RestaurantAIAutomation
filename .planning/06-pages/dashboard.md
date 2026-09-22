@@ -294,7 +294,7 @@ atlas's **"all unguarded"** row is stale; guarded at class level since 2026-08-2
 | GET | `/wines` | `useWines` → `services/api/wines.ts:30` |
 | GET | `/inventory/:id` + `/low-stock` + `/summary` | `hooks/useInventoryData.ts:15` → `services/api/inventory.ts:66,118,129` |
 | GET | `/procurement/orders/pending` (+ list) | OneTapActionCenter.tsx:45 → `services/api/orders.ts:206,217` |
-| GET | `/api/v1/calendar/ical-token` | **relative `fetch`**, `pages/Dashboard.tsx:267` — see §9 |
+| GET | `/api/v1/calendar/ical-token` | **relative `fetch`**, `pages/Dashboard.tsx:267` — see §9 *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — the legacy dashboard no longer reads it; its button opens `/calendar?connect=1`]* |
 
 ## 5. Signals
 
@@ -530,7 +530,7 @@ side is what the page claims to be for ("the actions worth doing first", Sidebar
 | GET `/dashboard/sales-chart/:rid` | JWT | `:240` → `:751` | buckets of delivered-PO cost + `wine_consumption_log` glasses |
 | GET `/dashboard/calendar-revenue/:rid` | JWT | `:107` → `:380` | per-day join of `calendar_events` × delivered POs |
 | GET `/calendar/events`, `/wines`, `/inventory/:id`(+`/low-stock`,`/summary`), `/procurement/orders/pending` | JWT via `apiClient` | see [[inventory]] §11, [[orders]] §11 | overlay data |
-| GET `/api/v1/calendar/ical-token` | JWT, **raw `fetch` relative to the SPA origin** | `calendar` module | `{ token }`; the copied URL is then built from `window.location.origin`, so on any host that is not the gateway the subscription URL is wrong as well as the request |
+| GET `/api/v1/calendar/ical-token` | JWT, **raw `fetch` relative to the SPA origin** *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — no longer called by the dashboard; the answer carries no token, only the reader's own link state]* | `calendar` module | `{ token }`; the copied URL is then built from `window.location.origin`, so on any host that is not the gateway the subscription URL is wrong as well as the request |
 
 ### Fed by
 
@@ -588,7 +588,7 @@ the two or three actions worth doing before service, each of which actually happ
    connection; the label fix does not, and should not wait for it.*
 3. Add an error state to the KPI row so a failed `/dashboard/stats` stops rendering `$0`.
 4. Fix `Dashboard.tsx:267` to use `apiClient` and build the iCal URL from
-   `VITE_API_GATEWAY_URL`, not `window.location.origin` (§9, §11).
+   `VITE_API_GATEWAY_URL`, not `window.location.origin` (§9, §11). *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — moot: the button opens "Connect my calendar" on `/calendar`, and the address is built by the gateway (`feedOrigin`: `API_PUBLIC_URL`, else the request's own host)]*
 5. Distinguish empty-restaurant from zero — "no orders yet" beats `$0`.
 6. Turn on the uxSignals reporter for this page (§5) once the actions are real; measuring
    taps on buttons that do nothing measures nothing.

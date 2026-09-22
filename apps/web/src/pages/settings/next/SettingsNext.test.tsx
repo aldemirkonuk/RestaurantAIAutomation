@@ -115,7 +115,19 @@ function base(over: Record<string, unknown> = {}) {
     refreshBranches: vi.fn(),
     team: remote({ members: [], invites: [], invitesDenied: false }),
     flags: remote({}),
-    ical: remote({ token: 'tok', exists: true }),
+    ical: remote({
+      connected: true,
+      createdAt: '2026-09-21T12:00:00Z',
+      issuedAt: '2026-09-21T12:00:00Z',
+      lastFetchedAt: null,
+      role: 'owner',
+      scope: 'Your link shows everything: every shift and every event in this house.',
+      categories: null,
+      canPickCategories: true,
+      areasModelled: false,
+      houseLinkRetired: false,
+    }),
+    icalIssued: null,
     sender: remote(null),
     chains: remote([]),
     pos: remote({ providers: { summary: { total: 0, byTier: {}, byStatus: {} }, providers: [] }, status: null, statusError: null }),
@@ -569,39 +581,56 @@ describe('SettingsNext — provenance and unknowns', () => {
 
   it('does not promise the calendar feed subscribes anywhere', () => {
     mount('/settings?tab=calendar');
-    expect(screen.getByText(/No external calendar client has ever been observed subscribing/i)).toBeInTheDocument();
+    expect(screen.getByText(/No external calendar app has been observed subscribing/i)).toBeInTheDocument();
     expect(screen.getByText('Untested')).toBeInTheDocument();
-    expect(screen.getByText(/Content-Disposition: attachment/)).toBeInTheDocument();
   });
 
-  it('arms a destructive regeneration before it fires', () => {
+  it('never shows an address the read did not issue — the link is shown once (ADR 0111, 2026-09-21)', () => {
+    mount('/settings?tab=calendar');
+    expect(screen.getByText(/Shown once, when it was made/i)).toBeInTheDocument();
+    expect(screen.queryByText(/api\/v1\/calendar\/feed/)).toBeNull();
+  });
+
+  it('shows the address marked as a secret in the moment after it was made', () => {
+    const address = `https://api.mudavym.test/api/v1/calendar/feed/${'e'.repeat(64)}.ics`;
+    mock.current = base({ icalIssued: address });
+    mount('/settings?tab=calendar');
+    expect(screen.getByText(address)).toHaveAttribute('data-secret', 'credential');
+  });
+
+  it('arms "Get a new link" before it fires', () => {
     const regenerateIcal = vi.fn();
     mock.current = base({ regenerateIcal });
     mount('/settings?tab=calendar');
-    fireEvent.click(screen.getByRole('button', { name: /^Regenerate$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Get a new link$/ }));
     expect(regenerateIcal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /Yes, break the old address/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Yes, make a new link/i }));
     expect(regenerateIcal).toHaveBeenCalled();
   });
 
-  it('arms a destructive revoke before it fires', () => {
+  it('arms "Stop my link" before it fires', () => {
     const revokeIcal = vi.fn();
     mock.current = base({ revokeIcal });
     mount('/settings?tab=calendar');
-    fireEvent.click(screen.getByRole('button', { name: /^Revoke$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Stop my link$/ }));
     expect(revokeIcal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /Yes, revoke it/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Yes, stop my link/i }));
     expect(revokeIcal).toHaveBeenCalled();
   });
 
-  it('a house with no calendar link yet: no address, no Regenerate/Revoke, only Create — the GET never minted it (ADR 0111 §5, 2026-09-21)', () => {
+  it('no link yet: only "Connect my calendar", and the switched-off house link is named — the GET never minted it', () => {
     const createIcal = vi.fn();
-    mock.current = base({ ical: remote({ token: null, exists: false }), createIcal });
+    const none = {
+      connected: false, createdAt: null, issuedAt: null, lastFetchedAt: null, role: 'manager',
+      scope: 'Your link shows the house calendar and every shift.', categories: null,
+      canPickCategories: false, areasModelled: false, houseLinkRetired: true,
+    };
+    mock.current = base({ ical: remote(none), createIcal });
     mount('/settings?tab=calendar');
-    expect(screen.getByText(/no calendar link exists yet/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Regenerate$/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^Revoke$/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^Create$/ }));
+    expect(screen.getByText(/shared calendar link for this house was switched off/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Get a new link$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Stop my link$/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Connect my calendar$/ }));
     expect(createIcal).toHaveBeenCalled();
   });
 

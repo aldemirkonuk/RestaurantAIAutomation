@@ -2,6 +2,7 @@ import { Module, forwardRef } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { CalendarController } from "./calendar.controller";
 import { CalendarService } from "./calendar.service";
+import { CalendarLinksService } from "./calendar-links.service";
 import { CalendarRemindersService } from "./calendar-reminders.service";
 import { DatabaseModule } from "../database/database.module";
 import { EventsModule } from "../events/events.module";
@@ -21,8 +22,9 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     DatabaseModule,
     EventsModule,
     AuthModule,
-    // Gates the ical-token create/rotate/revoke acts on manager/owner
-    // (`OrganizationsService.assertCanManageRestaurant`). Imports only
+    // Gates the owner/manager acts on someone else's calendar link (the
+    // house register and stopping a person's link) through
+    // `OrganizationsService.assertCanManageRestaurant`. Imports only
     // DatabaseModule and AuthModule itself, so this adds no cycle.
     OrganizationsModule,
     // The reminder cron writes through `persistForRestaurant` and enumerates
@@ -44,6 +46,10 @@ import { OrganizationsModule } from "../organizations/organizations.module";
   // beside `NwsWeatherProvider` and not a change here.
   providers: [
     CalendarService,
+    // Personal calendar links (ADR 0111, 2026-09-21). Its `PERSON_AREAS`
+    // dependency is @Optional: until the areas lane binds a provider for that
+    // token here, a staff link falls back to what the app already shows them.
+    CalendarLinksService,
     CalendarRemindersService,
     NwsWeatherProvider,
     WeatherService,

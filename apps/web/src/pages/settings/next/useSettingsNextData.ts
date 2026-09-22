@@ -34,6 +34,14 @@ import {
   type PosStatusResponse,
 } from '@/services/api/posHub';
 import {
+  connectMyCalendar,
+  getMyCalendarLink,
+  renewMyCalendarLink,
+  stopMyCalendarLink,
+  subscribeAddress,
+  type MyCalendarLink,
+} from '@/services/api/calendar';
+import {
   fetchNotificationPreferences,
   updateNotificationPreferences,
   type NotificationPreferences,
@@ -139,14 +147,11 @@ export interface TeamRegister {
 }
 
 /**
- * The house's calendar link. `token` is null on a house that has never
- * created one — a true answer, not a pending state (ADR 0111 §5 bracket,
- * 2026-09-21: the GET that reads this used to mint the token itself).
+ * The reader's OWN calendar link (ADR 0111, review trail 2026-09-21: "they
+ * can connect their own"). The read never carries the address; it is shown
+ * once, from `icalIssued`, on the answer to the act that made it.
  */
-export interface IcalRegister {
-  token: string | null;
-  exists: boolean;
-}
+export type IcalRegister = MyCalendarLink;
 
 export interface ChainRow {
   id: string;
@@ -475,15 +480,12 @@ export function useSettingsNextData(active: SectionId) {
     return data ?? {};
   });
 
-  // Read-only (fixed 2026-09-21, ADR 0111 §5 bracket): this GET used to mint
-  // the token itself when the house had none, so opening this tab was
-  // enough to write a permanent bearer credential. `token` is null on a
-  // house with no link — `CalendarSection` renders that as "create one",
-  // not as a pending value.
-  const ical = useRemote<IcalRegister>(tenantKey('calendar'), async () => {
-    const { data } = await apiClient.get<IcalRegister>('/calendar/ical-token');
-    return data;
-  });
+  // Read-only: a GET never makes a link (the defect this lane began with),
+  // and never carries the address. `icalIssued` holds the address in memory
+  // for the moment after `createIcal`/`regenerateIcal` made it, and nowhere else.
+  const ical = useRemote<IcalRegister>(tenantKey('calendar'), () => getMyCalendarLink());
+  const [icalIssued, setIcalIssued] = useState<string | null>(null);
+  useEffect(() => setIcalIssued(null), [rid]);
 
   const sender = useRemote<SenderIdentityRow | null>(tenantKey('email'), async () => {
     const { data } = await apiClient.get<SenderIdentityRow[]>(`/restaurants/${rid}/templates`);
@@ -620,8 +622,9 @@ export function useSettingsNextData(active: SectionId) {
   const createIcal = useCallback(
     () =>
       writer.run('ical-create', async () => {
-        const { data } = await apiClient.post<IcalRegister>('/calendar/ical-token');
-        ical.set(data);
+        const next = await connectMyCalendar();
+        ical.set(next);
+        setIcalIssued(next.issued ? subscribeAddress(next.issued) : null);
       }),
     [writer, ical],
   );
@@ -629,8 +632,9 @@ export function useSettingsNextData(active: SectionId) {
   const regenerateIcal = useCallback(
     () =>
       writer.run('ical', async () => {
-        const { data } = await apiClient.post<{ token: string }>('/calendar/ical-token/regenerate');
-        ical.set({ token: data.token, exists: true });
+        const next = await renewMyCalendarLink();
+        ical.set(next);
+        setIcalIssued(next.issued ? subscribeAddress(next.issued) : null);
       }),
     [writer, ical],
   );
@@ -638,8 +642,11 @@ export function useSettingsNextData(active: SectionId) {
   const revokeIcal = useCallback(
     () =>
       writer.run('ical-revoke', async () => {
-        await apiClient.delete('/calendar/ical-token');
-        ical.set({ token: null, exists: false });
+        await stopMyCalendarLink();
+        setIcalIssued(null);
+        if (ical.data) {
+          ical.set({ ...ical.data, connected: false, createdAt: null, issuedAt: null, lastFetchedAt: null });
+        }
       }),
     [writer, ical],
   );
@@ -773,7 +780,7 @@ export function useSettingsNextData(active: SectionId) {
     isOwner: role === 'owner',
     locations,
     refreshBranches,
-    team, flags, ical, sender, chains, pos, prefs, notif, integrations,
+    team, flags, ical, icalIssued, sender, chains, pos, prefs, notif, integrations,
     vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost,
     writer,
     saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, createIcal, regenerateIcal, revokeIcal,

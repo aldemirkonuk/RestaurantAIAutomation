@@ -46,6 +46,15 @@ import { AuthContext } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
 import { stripePublishableKey } from '../../../components/mudavym/stripe-js';
 import { readError } from './cx-format';
+import {
+  connectMyCalendar,
+  getMyCalendarLink,
+  listHouseCalendarLinks,
+  renewMyCalendarLink,
+  stopMyCalendarLink,
+  type HouseCalendarLink,
+  type MyCalendarLink,
+} from '../../../services/api/calendar';
 
 /* ── view models ──────────────────────────────────────────────────────── */
 
@@ -591,17 +600,23 @@ export function useConnectionsNextData() {
     staleTime: 120_000,
   });
 
-  /* read 4 — the calendar feed. Read-only (fixed 2026-09-21, ADR 0111 §5
-     bracket): this GET used to mint the token on a bare page mount, which was
-     a view writing a permanent bearer credential. `token` is null on a house
-     that has never created one, and `createFeed` below is the explicit act
-     that does. */
+  /* read 4 — the reader's OWN calendar link (ADR 0111, review trail
+     2026-09-21: "they can connect their own"). Read-only: a GET never makes a
+     link, and it never carries the address — that is shown once, on the
+     answer to `createFeed`/`regenerateFeed`. */
   const icalQ = useQuery({
     queryKey: ['connections-next-ical', rid],
-    queryFn: async (): Promise<{ token: string | null }> => {
-      const { data } = await apiClient.get<{ token: string | null }>('/calendar/ical-token');
-      return data;
-    },
+    queryFn: (): Promise<MyCalendarLink> => getMyCalendarLink(),
+    enabled: on,
+    staleTime: 300_000,
+  });
+
+  /* read 4b — how many personal calendar links are live in this house. Each
+     is an address that needs no login, so it is what "public to anyone"
+     counts. This page is manager/owner only, and so is the route. */
+  const icalLinksQ = useQuery({
+    queryKey: ['connections-next-ical-links', rid],
+    queryFn: (): Promise<HouseCalendarLink[]> => listHouseCalendarLinks(),
     enabled: on,
     staleTime: 300_000,
   });
@@ -804,36 +819,26 @@ export function useConnectionsNextData() {
     invalidate('connections-next-mcp-runtime');
   }, [invalidate]);
 
-  const regenerateFeed = useMutation({
-    mutationFn: async () => {
-      await apiClient.post('/calendar/ical-token/regenerate');
-    },
-    onSuccess: () => invalidate('connections-next-ical'),
-  });
-
   /**
-   * Create the calendar feed. The explicit act `getIcalToken`'s GET used to
-   * perform silently on every page mount — now a button, and manager/owner
-   * only at the gateway (this whole page already is, see `isManager` above).
+   * The reader's own calendar link: connect, get a new one, stop. Each
+   * answer that made a secret carries the address ONCE in `data.issued`; the
+   * row shows it from there and nowhere else (ADR 0111, 2026-09-21).
    */
+  const invalidateFeed = () => {
+    invalidate('connections-next-ical');
+    invalidate('connections-next-ical-links');
+  };
   const createFeed = useMutation({
-    mutationFn: async () => {
-      await apiClient.post('/calendar/ical-token');
-    },
-    onSuccess: () => invalidate('connections-next-ical'),
+    mutationFn: (): Promise<MyCalendarLink> => connectMyCalendar(),
+    onSuccess: invalidateFeed,
   });
-
-  /**
-   * Revoke the calendar feed. The old address then reads exactly like a
-   * token that never existed — an empty calendar, not an error (T-30-09,
-   * ADR 0111 §5 bracket, 2026-09-21) — so this is the only way to actually
-   * stop it, short of rotating past it.
-   */
+  const regenerateFeed = useMutation({
+    mutationFn: (): Promise<MyCalendarLink> => renewMyCalendarLink(),
+    onSuccess: invalidateFeed,
+  });
   const revokeFeed = useMutation({
-    mutationFn: async () => {
-      await apiClient.delete('/calendar/ical-token');
-    },
-    onSuccess: () => invalidate('connections-next-ical'),
+    mutationFn: () => stopMyCalendarLink(),
+    onSuccess: invalidateFeed,
   });
 
   /**
@@ -1217,13 +1222,14 @@ export function useConnectionsNextData() {
      * never be produced by a failed request.
      */
     const houseCount =
-      posQ.error || providerQ.error || senderQ.error || icalQ.error || mcpQ.error
+      posQ.error || providerQ.error || senderQ.error || mcpQ.error
         ? null
         : [
             (posQ.data?.totalChecks ?? 0) > 0 ? 1 : 0,
             providerQ.data?.connected ? 1 : 0,
             senderQ.data?.address ? 1 : 0,
-            icalQ.data?.token ? 1 : 0,
+            // The calendar link is no longer the house's: each person
+            // connects their own (ADR 0111, 2026-09-21), counted below.
             liveMcp.length,
           ].reduce((a, b) => a + b, 0);
 
@@ -1248,7 +1254,7 @@ export function useConnectionsNextData() {
             (n, s) => n + s.toolGrants.filter((g) => g.writes).length,
             0,
           ),
-      publicToAnyone: icalQ.error ? null : icalQ.data?.token ? 1 : 0,
+      publicToAnyone: icalLinksQ.error ? null : (icalLinksQ.data?.length ?? null),
       houseHasLetGoOf: houseGrantsQ.error
         ? null
         : grants.filter((g) => g.houseAccess.revoked).length,
@@ -1258,7 +1264,7 @@ export function useConnectionsNextData() {
     providerQ.data, providerQ.error,
     paymentsQ.data, paymentsQ.error,
     senderQ.data, senderQ.error,
-    icalQ.data, icalQ.error,
+    icalLinksQ.data, icalLinksQ.error,
     mcpQ.data, mcpQ.error,
     houseGrantsQ.data, houseGrantsQ.error,
   ]);
