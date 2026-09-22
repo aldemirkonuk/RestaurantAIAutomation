@@ -73,7 +73,7 @@ export const MUDAVYM_PAGES = [
   // 20260912080000's own note for why they arrive separately.
   'logs',
   // ADR 0144 -- the /authorize consent page. Enrolled after the 2026-09-17
-  // go-live, so NOT in LIVE_PAGES: flag-gated, OFF by default (20260921111200).
+  // go-live, so NOT in LIVE_PAGES: flag-gated, OFF by default (20260922200200).
   'authorize_integration',
 ] as const;
 

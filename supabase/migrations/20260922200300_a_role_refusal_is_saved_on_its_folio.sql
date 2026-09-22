@@ -2,7 +2,7 @@
 --
 -- The blocker. `ReadingFolioStore.finish` writes `reply_kind: answer.kind`, and
 -- a Reading the asker's role may not receive answers `not_permitted`
--- (bound-reply.ts). 20260921111000:19 listed nine kinds and not that one, so
+-- (bound-reply.ts). 20260922200000:19 listed nine kinds and not that one, so
 -- in a real database every staff refusal failed the CHECK, the folio stayed
 -- `pending`, and the person got a 503 "saved state is uncertain" instead of a
 -- refusal -- measured in PGlite 2026-09-21 (23514 on

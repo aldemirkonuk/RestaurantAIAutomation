@@ -4,7 +4,7 @@
 -- like asked_as_role; the export leaves out anything asked while opted out,
 -- even after opting back in.
 --
--- The gap this closes: 20260921171200's export excluded an opted-out house
+-- The gap this closes: 20260922200500's export excluded an opted-out house
 -- at READ time only (`not exists (... where opted_out)`). An owner who
 -- turned training off, then back on, put every question asked in between
 -- back into the export, because the view re-checks the house's CURRENT
@@ -13,7 +13,7 @@
 -- ("Not built, not verified (round 6r)") and put to the founder by the KL4b
 -- last-call report.
 --
--- The fix, modelled line for line on `asked_as_role` (20260921115310): a
+-- The fix, modelled line for line on `asked_as_role` (20260922200400): a
 -- new column snapshots the house's opt-out answer AT INSERT, derived by the
 -- database from `ask_training_opt_outs` -- never sent by a client, so a
 -- folio cannot forge its way back into training by lying about when it was
@@ -49,7 +49,7 @@ alter table public.ask_reading_folios
 -- sits in system_audit_log (ask_training_opt_out_changed), and a row asked
 -- during an earlier opt-out in a house that has since opted back in is
 -- backfilled false. No such row can exist in production: ask_reading_folios
--- (20260921111000) is not on main and ships in the same PR as this file, and
+-- (20260922200000) is not on main and ships in the same PR as this file, and
 -- ASK_LAUNCHED is unset, so production runs this update on zero rows. It
 -- exists for a branch or local database that already ran the earlier files.
 do $$
@@ -72,7 +72,7 @@ alter table public.ask_reading_folios alter column asked_while_opted_out set def
 alter table public.ask_reading_folios alter column asked_while_opted_out set not null;
 
 comment on column public.ask_reading_folios.asked_while_opted_out is
-  'ADR 0145 (2026-09-22, founder: "Never (Recommended)"): whether the house had opted its /ask questions out of training AT THE MOMENT this folio was created. Derived by a database trigger from ask_training_opt_outs, never sent by a client, and frozen by the existing written-once trigger (20260921115310) -- a snapshot exactly like asked_as_role. ask_folio_training_export excludes a folio with this set to true FOREVER, even after the house opts back in, because opting back in changes the house''s CURRENT answer, never the answer it gave when this question was asked.';
+  'ADR 0145 (2026-09-22, founder: "Never (Recommended)"): whether the house had opted its /ask questions out of training AT THE MOMENT this folio was created. Derived by a database trigger from ask_training_opt_outs, never sent by a client, and frozen by the existing written-once trigger (20260922200400) -- a snapshot exactly like asked_as_role. ask_folio_training_export excludes a folio with this set to true FOREVER, even after the house opts back in, because opting back in changes the house''s CURRENT answer, never the answer it gave when this question was asked.';
 
 create or replace function public.ask_reading_folios_opt_out_is_derived()
 returns trigger
@@ -96,7 +96,7 @@ create trigger ask_reading_folios_opt_out_is_derived
   for each row execute function public.ask_reading_folios_opt_out_is_derived();
 
 -- Written once: asked_while_opted_out joins the ask-time snapshot half
--- (20260921115310, extended by 20260921171200 with reask_kind).
+-- (20260922200400, extended by 20260922200500 with reask_kind).
 create or replace function public.ask_reading_folios_capture_is_written_once()
 returns trigger
 language plpgsql
@@ -128,7 +128,7 @@ $$;
 revoke all on function public.ask_reading_folios_capture_is_written_once() from public, anon, authenticated;
 
 -- 2. The export ---------------------------------------------------------------
--- Replaced, not amended: same columns as 20260921171200, three more clauses.
+-- Replaced, not amended: same columns as 20260922200500, three more clauses.
 -- Both row checks stay: the current-state check (unchanged) still hides every
 -- folio of a house that is opted out RIGHT NOW, snapshot or not; the new
 -- snapshot check hides a folio asked while opted out even once the house's

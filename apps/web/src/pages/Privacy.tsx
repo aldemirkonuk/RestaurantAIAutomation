@@ -19,7 +19,7 @@ import { BrandMark } from '../components/brand/BrandMark'
  * AskTrainingSection.tsx's Settings copy, updated for what round 6y itself
  * decided: a question asked while a house is opted out is never used for
  * training even after the house opts back in (asked_while_opted_out,
- * migration 20260922014000), and — round 6y's other answer, "Text-free until
+ * migration 20260922200600), and — round 6y's other answer, "Text-free until
  * lawyer" — any export carries no question text at all today, not names
  * removed from text that is exported.
  */
