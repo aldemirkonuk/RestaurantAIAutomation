@@ -304,10 +304,10 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
         <p className="cx-lede">What acts for this house.</p>
         <div className="cx-rule" />
 
-        {/* Persistent reconnect banner — founder Q8 (HELP-ALERT research
-            2026-09-22): routine tone, on this page, stays until a live grant
-            returns. Shown only when Settings has mail reading ON and no live
-            grant backs it. Phone push is a separate channel (MailGrantAbsentProducer). */}
+        {/* Persistent reconnect banner — ADR 0149 row 53 (closes ADR 0160 §111
+            Open item 5 / PAGE-GAP Q8): routine tone, on this page, stays until a
+            live grant returns. Shown only when Settings has mail reading ON and
+            no live grant backs it. Phone push is separate (MailGrantAbsentProducer). */}
         {d.mailReader.data?.enabled === true &&
         d.mailReader.data.granted === false ? (
           <div className="cx-mail-banner" role="status" data-testid="mail-reconnect-banner">

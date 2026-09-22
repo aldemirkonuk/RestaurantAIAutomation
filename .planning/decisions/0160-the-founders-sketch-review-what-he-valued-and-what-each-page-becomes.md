@@ -395,14 +395,15 @@ tasks and goals, a general overview (must-have; no direction draws it yet — al
 carry only an "Open the app guide" link, A:517, B:516, C:492 — so it needs its own
 drawing before or during the build); email contact only (`support@mudavym.com`), no Slack
 (README fork 5, answered); a standing alert when the house's mail grant is absent or
-revoked, pushed on mobile; keep "what to do next" and the write-to-support panel (both
-B's); promote the one-tap acts (must-have). **[verification 2026-09-18: the correction
+revoked, pushed on mobile **and** shown as a persistent routine-tone banner on
+`/connections` (Open item 5 — **answered 2026-09-22**, ADR 0149 row 53 / PR #413);
+keep "what to do next" and the write-to-support panel (both B's); promote the one-tap
+acts (must-have). **[verification 2026-09-18: the correction
 pass had dropped the guide collection's
 contents, "(using the assistant, moving between tasks, configuring tasks and goals, a
 general overview)," and cited it to "README fork 3," which is the WIP-base fork
 (`README:284-286`), not the guides; contents restored, citation replaced.]** **Open (see
-Consequences):** the web half of the mail-access alert ("maybe not" ×3, "I'm not sure";
-Open item 5); whether `/help` is reachable signed out (README fork 7, `README:295-297`,
+Consequences):** whether `/help` is reachable signed out (README fork 7, `README:295-297`,
 not embodied by any direction; listed with the unanswered README questions).
 
 ### 112 — vendor prices · A's ladder as the spine, C's chart and trail grafted; README's fork answers accepted, fork 6 moved to (a)
@@ -651,8 +652,10 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
      founder's or lane's call.]**
   4. 107 — "too many operations for the record, what could happen": his risk, not yet
      his fix; paging or grouping is proposed, not decided.
-  5. 111 — the web half of the mail-access-revoked alert ("maybe not" ×3, "I'm not
-     sure").
+  5. 111 — the web half of the mail-access-revoked alert. **[answered 2026-09-22,
+     founder via the PR #413 merge queue: persistent routine-tone banner on
+     `/connections` in addition to the phone push. Recorded as ADR 0149 row 53.
+     Rejected: phone-only / no web alert.]**
   6. **115 — arrival action boxes.** Listed among the files he asked to open, and opened,
      but his dictation never reaches it — his spoken review stops at 113, so "we looked
      at everything" does not cover it. No verdict given. **[added 2026-09-18, correction
