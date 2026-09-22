@@ -498,4 +498,22 @@ describe('PageGate', () => {
       expect(getMudavymShell().ground).toBe('paper');
     });
   });
+
+  /**
+   * ADR 0149 row 36 go-live, at the DOM level, with NO setup at all — no
+   * localStorage override, no feature-flag mock (`apiClient.post` is not
+   * even stubbed in this file, so a page still reading the flag would throw
+   * here). This is what a real house with no `restaurant_feature_flags` row
+   * actually renders the instant a live page mounts: no legacy, no flash,
+   * one request never made.
+   */
+  it('a LIVE_PAGES page (providers) shows the Mudavym header with zero setup — no override, no flag row', async () => {
+    const { container } = mount(
+      <PageGate page="providers" legacy={<p>legacy</p>} next={<main data-testid="next">the page</main>} />,
+      '/providers',
+    );
+    expect(screen.getByTestId('next')).toBeTruthy();
+    expect(screen.queryByText('legacy')).toBeNull();
+    await waitFor(() => expect(container.querySelector('.mdv-hdr')).toBeTruthy());
+  });
 });

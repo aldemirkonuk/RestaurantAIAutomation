@@ -69,6 +69,27 @@
   --seal-tint: rgba(26, 94, 107, 0.1);
   --seal-ring: rgba(26, 94, 107, 0.32);
 
+  /* alarm — the paper-ground pair. No call site measured on this ground
+     today (every `var(--alarm…)` read found 2026-09-18 sits on a page whose
+     nearest `.mudavym` stays on the charcoal default), but the escape above
+     is declared for every other token, and an undeclared pair here would be
+     the next silent-fallback landmine the moment an error message lands on
+     a paper surface (TwinSheet, the canonical document). [2026-09-22, ADR
+     0169: the first sentence is now history, not a live reading. Paper is
+     the default column from this change onward, so those same ~22 call
+     sites land HERE unless the person chose charcoal — this pair went from
+     the unused half to the common one, which is why it is kept and why its
+     contrast figures below are the ones that matter most.] These are the
+     original fallback values themselves: dark-on-near-white already clears
+     4.5:1 by a wide margin (7.01:1 for `--alarm-deep` against `--paper-1`,
+     6.46:1 for `--alarm` against `--paper-0`), so no re-tint was needed here
+     — only `--seal`'s already-established rule applies, that "deep" is the
+     light ground's darker companion. */
+  --alarm: #A33A2B;
+  --alarm-deep: #8C3322;
+  --alarm-tint: rgba(163, 58, 43, 0.1);
+  --alarm-ring: rgba(163, 58, 43, 0.3);
+
   /* grounds — the paper column (ADR 0042's light column; ADR 0169 default) */
   --paper-0: #fffdf8;
   --paper-1: #f3efe6;
@@ -105,6 +126,29 @@ html[data-mudavym-ground="charcoal"] .mudavym:not([data-ground]) {
   --seal-deep: #7DC3CD;
   --seal-tint: rgba(95, 176, 188, 0.14);
   --seal-ring: rgba(95, 176, 188, 0.38);
+
+  /* alarm — failed-read / error red, the dark-ground pair.
+     MEASURED 2026-09-18 (wave5/live-fix.md, live-confirm.md §6): ~22 call
+     sites across communications, providers and orders read `var(--alarm,
+     #A33A2B)` / `var(--alarm-deep, #8C3322)` for error text, but neither
+     custom property was ever declared anywhere in this file — every one of
+     those sites was silently rendering its CSS fallback. On this ground the
+     fallbacks measured 2.68:1 (`--alarm`, ProvidersNext error span on
+     `#1D1813`) and 2.31:1 (`--alarm-deep`, CommunicationsNext KPI labels on
+     `#15130F`), both short of the 4.5:1 body-text minimum. Declaring the
+     tokens here fixes every call site at once, the same lever `--seal` uses.
+     Same hue (~9.6°) and saturation (~61%) as the old fallbacks, lightened
+     until `--alarm` clears 4.5:1 against BOTH grounds it is used on:
+     `--alarm` measures 4.77:1 on paper-0 and 4.52:1 on paper-1; `--alarm-deep`
+     measures 5.94:1 and 5.64:1 respectively — deeper
+     reads BRIGHTER here, matching `--seal-deep` on this same ground, because
+     "deep" means "the more emphasized companion," and emphasis on a dark
+     ground means lighter, not darker (the opposite holds on the paper column
+     above, where deep is measurably darker for the same reason). */
+  --alarm: #D25D46;
+  --alarm-deep: #D97663;
+  --alarm-tint: rgba(210, 93, 70, 0.14);
+  --alarm-ring: rgba(210, 93, 70, 0.38);
 
   /* ADR 0042: #15130F overrides sketch 083's #16120E */
   --paper-0: #15130F;
@@ -206,3 +250,78 @@ html .mudavym input[type]::-webkit-datetime-edit-text {
    black calendar on a black field: the exact defect this block exists to fix,
    re-created one line lower. It is left alone because it was measured, not
    because nobody thought about it. */
+
+/* ============================================================
+   Bare `<h1>`, `<h2>`, `<h3>`, `<h4>` and `<p>` carry the house ink, not
+   globals.css's slate-9xx/slate-6xx
+   ============================================================
+
+   MEASURED 2026-09-17, go-live sweep (wave4/live-fix.md), isolated mounts of
+   the 16 row-36 pages: `globals.css`'s `@layer base { h1 { ... text-slate-900
+   } }` targets the bare tag with no dark counterpart. Any Mudavym `<h1>` that
+   does not itself set `color` — the page-title h1 on Team, Receipts, Logs,
+   Reports, Calendar, Connections, and the error-state h1 on the canonical
+   document page — inherited `rgb(28,26,24)` against this file's charcoal
+   ground `rgb(21,19,15)` (TeamNext, measured): a contrast ratio near 1:1,
+   effectively invisible text carrying the one heading every one of those
+   pages leads with.
+
+   RE-MEASURED 2026-09-18, wave-5 fix pass (this file's `h1` rule alone left
+   the same leak open one level down): `globals.css` also sets a bare `p`
+   (`text-slate-600`, `.dark` counterpart `text-slate-300`) and bare `h2`
+   (`text-slate-900`), `h3`/`h4` (`text-slate-800`), none of which have a
+   Mudavym-scoped override. Measured on the charcoal ground:
+     - `/connections`, the two 900px intro paragraphs: `rgb(92,83,77)` on
+       `#15130F`, 2.47:1.
+     - `/documents/:id` error state, the explanation `<p>` and error detail:
+       2.35:1 on `#1D1813`.
+     - `/logs` error state ("The timeline could not be read", explanation,
+       error span) and the footer disclaimer: 2.35–2.47:1.
+   All four cleared to ink-3 (~4.9:1) or better once the bare tag stopped
+   winning.
+
+   CORRECTED 2026-09-19 (wave-5 verify + repair pass, CLAUDE.md §5b — the
+   text above stands as measured; only the paragraph that followed it, and
+   the rule that lived here, were wrong and are struck below rather than
+   silently deleted):
+
+   The struck claim was "`.mudavym h1` (and now `h2`/`h3`/`h4`/`p`) at (0,1,1)
+   ... does not touch `.mudavym .cl-h1` / `.mdv-pub__title` (single-class
+   selectors already ahead of any bare-tag rule)". That is false. Specificity
+   compares (id, class, type) in that order: a single class alone is (0,1,0);
+   `.mudavym h1` is (0,1,1); (0,1,1) > (0,1,0) regardless of which class it
+   is being compared to, so the rule that lived here outranked every
+   single-class colour on those tags — it was never "behind" them.
+
+   Measured on the real `TwinSheet`/`ProviderIntelligencePanel` mount on
+   `/providers`: text that should have read 17.35:1 and 4.88:1 read 1.23:1
+   instead. A sweep of the 16 pages at 1440/390 found 106 h1–h4/p elements
+   whose colour changed with the rule on vs off; only 18 were the intended
+   fixes measured above, the other 88 were legible text that lost its
+   designed ink-2/ink-3/ink-4 or seal colour — `DashboardNext.tsx:133`,
+   `TeamNext.tsx:423,482`, `CalendarNext.tsx:359,364`,
+   `rp-registers-goals.tsx:563`, the house header bell, the user menu, the
+   sidebar hint, and the public doors' own `.mdv-pub__title`, the exact class
+   this comment had named safe. 504 single-class `<p>`/`<h1-4>` sites across
+   the app carry a colour this rule could reach the same way.
+
+   The fix moved to `globals.css`'s own `@layer base`, immediately after its
+   bare `h1`–`p` and `.dark` rules, as `:where(.mudavym) h1, ... p { color:
+   inherit }` — see the comment there for why `:where()` plus living in that
+   file (not this one) closes both the specificity hole and a dev/prod
+   build-order difference measured in the same pass (this file landed at dev
+   index 2311/2312 vs prod offset 22868, on either side of `globals.css`'s
+   own rules depending on the build). This file no longer carries a
+   `.mudavym h1..p` rule at all — do not re-add one here at class+type
+   specificity; that is the exact defect this correction fixes.
+
+   CORRECTED 2026-09-19 (lane verification pass, CLAUDE.md §5b): the
+   comment this paragraph points to originally attributed that close to
+   CSS cascade layers. It doesn't ship one — apps/web's tailwindcss 3.4.19
+   compiles `@layer base` away, confirmed as 0 `@layer` occurrences in the
+   built CSS. The specificity hole closes on a same-specificity tie broken
+   by source order inside Tailwind's hoisted base block. The dev/prod
+   build-order difference closes because the rule no longer lives in this
+   file: the fix and the rules it must beat now share globals.css's one
+   hoisted base block, so this file's placement is irrelevant to it.
+   See globals.css's own comment for the corrected mechanism in full. */

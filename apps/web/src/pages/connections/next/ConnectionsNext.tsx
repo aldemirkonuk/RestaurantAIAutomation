@@ -82,7 +82,12 @@
  * §9 is closed.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
+// The one write this page makes to a text sender: a manager ending the house's
+// use of it (ADR 0114 — the attachment is the house's, and a manager may stop
+// it). Declaring one is still disabled and still carries the server's reason.
+import { revokeTextSender } from '../../../services/api/textSenders';
+import { getErrorMessage } from '../../../services/api/client';
 import {
   CalendarDays,
   CreditCard,
@@ -564,8 +569,16 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             />
           ) : (
             <>
-              <TextSenderRow channel="whatsapp" vm={d.textSenders.data} />
-              <TextSenderRow channel="sms" vm={d.textSenders.data} />
+              <TextSenderRow
+                channel="whatsapp"
+                vm={d.textSenders.data}
+                onStopped={d.reloadTextSenders}
+              />
+              <TextSenderRow
+                channel="sms"
+                vm={d.textSenders.data}
+                onStopped={d.reloadTextSenders}
+              />
             </>
           )}
 
@@ -586,6 +599,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               owner="public to anyone with the link"
               chips={[{ label: feed ? 'Published' : 'Not published', tone: feed ? 'on' : 'off' }]}
               subtitle={feed ?? DASH}
+              subtitleIsSecret={Boolean(feed)}
               why={
                 <>
                   A read-only iCal address. It is{' '}
@@ -1408,16 +1422,38 @@ const STATE_WORDS: Record<
 function TextSenderRow({
   channel,
   vm,
+  onStopped,
 }: {
   channel: 'whatsapp' | 'sms';
   vm: import('./useConnectionsNextData').TextSendersVM | null;
+  /**
+   * Re-read the register after a stop. Optional because the row renders inside
+   * a page whose data hook is stubbed in tests; a stop with no re-read leaves
+   * the old state on screen, which is worse than a no-op but is not a lie.
+   */
+  onStopped?: () => void;
 }) {
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
+  // FOUNDER, 2026-09-17 (ADR 0121 review trail): stopping a sender now takes the
+  // same ceremony this page's other revokes use — `HoldToApprove`
+  // (`AttachmentRow.tsx:181`; also `HouseServerControls.tsx:332`) — plus a
+  // TYPED reason, kept on the record (`revoked_reason`, already persisted
+  // server-side by `text-sender.service.ts revoke()`; only the client sent a
+  // fixed string before this). The hold does not even arm until one is typed —
+  // see `disabled` below — so a placeholder can never reach the gateway.
+  const [stopReason, setStopReason] = useState('');
+  const stopReasonId = useId();
   const definition =
     channel === 'whatsapp'
       ? vm?.catalogue?.whatsapp_business ?? null
       : vm?.catalogue?.sms_sender ?? null;
   const sender = channel === 'whatsapp' ? vm?.senders.whatsapp ?? null : vm?.senders.sms ?? null;
   const readable = vm?.readable ?? false;
+  const senderLabel =
+    definition?.label ?? (channel === 'whatsapp' ? 'WhatsApp Business' : 'SMS sender');
+  const canStop = Boolean(sender && sender.state !== 'revoked');
+  const stopReasonGiven = stopReason.trim().length > 0;
 
   /**
    * SIX STATES AND AN UNREAD ONE, KEPT APART. "Not connected" and "we could not
@@ -1439,9 +1475,10 @@ function TextSenderRow({
     .map((m) => m.marketLabel);
 
   return (
+    <>
     <AttachmentRow
       icon={channel === 'whatsapp' ? <MessageCircle {...ICON} /> : <MessageSquare {...ICON} />}
-      title={definition?.label ?? (channel === 'whatsapp' ? 'WhatsApp Business' : 'SMS sender')}
+      title={senderLabel}
       owner={sender ? "the house's" : "nobody's"}
       chips={chips}
       subtitle={
@@ -1489,12 +1526,122 @@ function TextSenderRow({
       controls={[
         { label: 'Bring our own', disabled: true },
         { label: 'Ask Mudavym to register one', disabled: true },
+        // ADR 0114: the attachment is the HOUSE's, and a manager may end it.
+        // Enabled only when there is a live sender to stop — a control that is
+        // always clickable would suggest an act that has nothing to act on.
+        //
+        // FOUNDER, 2026-09-17: this used to be one click with a fixed reason
+        // string. It is now `HoldToApprove` — the ceremony this page's other
+        // revokes already use (`AttachmentRow.tsx:181`; also
+        // `HouseServerControls.tsx:332`) — gated on a TYPED reason via
+        // `disabled` below, so the gesture cannot even begin on a blank one.
+        // `onChallenge` captures the reason at the moment the hold STARTS
+        // (the same rule every sealed control on this page follows) and
+        // refuses — same as a failed seal mint — if it somehow reads blank;
+        // that branch is unreachable through the UI while `disabled` holds,
+        // and is kept for the same reason `SealedRejectDie`'s does.
+        //
+        // The guard below is written out (not `canStop`) so TypeScript keeps
+        // narrowing `sender` as non-null inside the closures underneath —
+        // `canStop` is the same boolean, kept separately for the reason box.
+        ...(sender && sender.state !== 'revoked'
+          ? [
+              {
+                label: `Hold to stop ${senderLabel}`,
+                wrap: true,
+                busy: stopping,
+                disabled: !stopReasonGiven,
+                hold: {
+                  onChallenge: async () => {
+                    const reason = stopReason.trim();
+                    return reason.length > 0 ? reason : null;
+                  },
+                  onApprove: (typedReason?: string | null) => {
+                    if (stopping) return;
+                    const reason = typedReason ?? '';
+                    if (!reason) return;
+                    setStopping(true);
+                    setStopError(null);
+                    void revokeTextSender({ senderId: sender.id, reason })
+                      // Re-read rather than patch the row locally: the row's
+                      // state is the SERVER's, and a client that painted
+                      // 'Stopped' itself would be claiming a write it only asked
+                      // for (ADR 0083).
+                      //
+                      // The gateway resolves 200 even when nothing matched
+                      // (text-sender.service.ts revoke(): a stale senderId, or a
+                      // race with another revoke, both come back as
+                      // `{revoked: false, words: ...}`, not a thrown error), so
+                      // axios lands that case here too — check the body before
+                      // treating it as a success.
+                      .then((result) => {
+                        if (result?.revoked !== true) {
+                          setStopError(
+                            result?.words ?? 'The gateway did not say why.',
+                          );
+                          return;
+                        }
+                        setStopReason('');
+                        onStopped?.();
+                      })
+                      .catch((e) => setStopError(getErrorMessage(e)))
+                      .finally(() => setStopping(false));
+                  },
+                },
+              } as const,
+            ]
+          : []),
       ]}
       stopNote={
-        vm?.transport.words ??
-        'The deployment did not say whether anything could be sent.'
+        stopError
+          ? `This sender was NOT stopped, so the house can still send through it: ${stopError}`
+          : canStop && !stopReasonGiven
+            ? `${
+                vm?.transport.words ??
+                'The deployment did not say whether anything could be sent.'
+              } Stopping it needs a reason typed below, then the hold to confirm.`
+            : (vm?.transport.words ??
+              'The deployment did not say whether anything could be sent.')
       }
     />
+    {/* The typed reason the hold above requires. A plain sibling block, not a
+        fifth AttachmentRow column — that row draws "whose it is · what it may
+        do · what it last did · how to stop it" and no fifth thing
+        (`AttachmentRow.tsx` header), the same reason `HouseServerControls.tsx`
+        keeps its own inline form fields outside that component rather than
+        inside it. */}
+    {canStop ? (
+      <div className="cx-row is-nested">
+        <div style={{ width: '100%' }}>
+          <label htmlFor={stopReasonId} className="cx-col-h">
+            Reason for stopping {senderLabel}
+          </label>
+          <textarea
+            id={stopReasonId}
+            data-testid={`text-sender-stop-reason-${channel}`}
+            rows={2}
+            value={stopReason}
+            onChange={(e) => setStopReason(e.target.value)}
+            disabled={stopping}
+            placeholder="Say why — it is written onto the record and is the only account anyone will have of it."
+            style={{
+              width: '100%',
+              maxWidth: 520,
+              marginTop: 4,
+              fontFamily: 'inherit',
+              fontSize: 12.5,
+              padding: '7px 9px',
+              borderRadius: 4,
+              border: '1px solid var(--paper-2)',
+              background: 'var(--paper-0)',
+              color: 'var(--ink-1)',
+              resize: 'vertical',
+            }}
+          />
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }
 

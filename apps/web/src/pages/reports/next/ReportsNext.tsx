@@ -1,6 +1,7 @@
 /**
- * ReportsNext — the Mudavym redesign of `/reports`, behind
- * `mudavym_design_reports` (ADR 0044 p4 wave). Verdict: **MERGE**.
+ * ReportsNext — the Mudavym redesign of `/reports` (ADR 0044 p4 wave).
+ * Verdict: **MERGE**. Live in code for every house since ADR 0149 row 36
+ * (2026-09-17) — `mudavym_design_reports` is no longer read.
  *
  *   "Used to like today's drag-to-rearrange canvas — where we can just swipe
  *    and change everything to its place." The new version is "more modern."
@@ -73,6 +74,7 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
+import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import './reports-next.css';
@@ -443,6 +445,16 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             onMove={onMove}
             containerRef={holdSheetEl}
             ghost={arrange.origin}
+          />
+        )}
+
+        {/* OD-81: the written-up cuttings. Not while arranging — a layout in
+            progress is not yet what the reader is exporting. */}
+        {data.restaurantId !== null && !arranging && (
+          <ExportsShelf
+            desk={data.exportDesk}
+            onSheet={view.cuttings.map((c) => c.id)}
+            tillDays={tillDays}
           />
         )}
 

@@ -100,6 +100,76 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(data.title, options))
 })
 
+/**
+ * Resolve a notification click to the app URL it should open.
+ *
+ * Every action button used to fire its own unauthenticated `fetch` straight
+ * from the service worker — no bearer token, no seal, and (for "approve") a
+ * path (`/api/orders/:id/approve`) the gateway has never served; the real
+ * endpoint is `POST /procurement/orders/:id/approve` and it will not act
+ * without the JWT AND a freshly-minted seal (order-seal.ts) that only the
+ * page can obtain. Every action now does one thing — open the app at the
+ * page that has the real, authenticated, sealed ceremony for it.
+ *
+ * Two producers feed this handler, and they don't agree on a payload shape:
+ * `push_notification_service.py` (Python) sends snake_case keys (`order_id`,
+ * `wine_name`, `delivery_id`); the gateway's `sendWebPush`
+ * (`notifications.service.ts`) sends camelCase keys (`orderId`, `wineName`)
+ * and never adds `type` to the browser-push `data` at all — before this
+ * fix, every gateway-originated push button fell through to `url = "/"`,
+ * since this handler read only the Python spelling. Reading both
+ * conventions here — rather than picking one producer to be "the" schema —
+ * means neither has to remember to match the other, and a future third
+ * producer that gets only one spelling right still routes.
+ *
+ * Routing is value-driven, not type-driven: which id is actually present on
+ * the payload decides the destination, not `data.type`. The two producers
+ * also disagree on `type` strings (Python's "low_stock_alert" /
+ * "delivery_confirmation" vs the gateway's "low_stock" / "delivery"), so a
+ * type-string branch would need to track both vocabularies forever — an
+ * id-presence branch does not care which producer sent it.
+ */
+function resolveNotificationUrl(action, data) {
+  data = data || {}
+  const orderId = data.order_id ?? data.orderId
+  const deliveryId = data.delivery_id ?? data.deliveryId
+  const wineName = data.wine_name ?? data.wineName
+
+  let url = "/"
+
+  if (action === "approve" || action === "reject") {
+    if (orderId) url = `/orders/${orderId}`
+  } else if (action === "confirm" || action === "issue") {
+    // send_delivery_confirmation_request's two actions (notification_agent.py)
+    if (orderId) url = `/orders/${orderId}`
+  } else if (action === "reorder") {
+    url = wineName
+      ? `/inventory?wine=${encodeURIComponent(wineName)}&action=reorder`
+      : "/inventory"
+  } else if (action === "view") {
+    if (orderId) {
+      url = `/orders/${orderId}`
+    } else if (deliveryId) {
+      url = `/deliveries/${deliveryId}`
+    } else if (wineName) {
+      url = `/inventory?wine=${encodeURIComponent(wineName)}`
+    }
+  }
+
+  // "open" is push_notification_service.py's single collapsed action —
+  // send_approval_notification and send_negotiation_complete_notification
+  // both moved to it once one-tap approve/reject stopped being a real thing
+  // to promise — and this same fallback also covers any action id this
+  // table doesn't otherwise recognise: if the payload names an order and
+  // nothing above already routed there, that is still the most useful
+  // place to land rather than the bare app root.
+  if (url === "/" && orderId) {
+    url = `/orders/${orderId}`
+  }
+
+  return url
+}
+
 // Notification click event
 self.addEventListener("notificationclick", (event) => {
   console.log("Service Worker: Notification clicked", event)
@@ -107,69 +177,8 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close()
 
   const action = event.action
-  const data = event.notification.data
-
-  let url = "/"
-
-  // Handle different actions
-  if (action === "approve" && data.orderId) {
-    url = `/api/orders/${data.orderId}/approve`
-    // Send API request to approve
-    event.waitUntil(
-      fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approved: true }),
-      })
-        .then((response) => {
-          if (response.ok) {
-            // Show success notification
-            self.registration.showNotification("✅ Order Approved", {
-              body: "The order has been approved successfully",
-              icon: "/logo.png",
-              tag: "approval-success",
-            })
-          }
-        })
-        .catch((error) => {
-          console.error("Failed to approve order:", error)
-        })
-    )
-    url = `/orders/${data.orderId}`
-  } else if (action === "reorder" && data.wineId) {
-    // One-tap reorder: send API request to create procurement order
-    event.waitUntil(
-      fetch(`/api/procurement/${data.restaurantId || "default"}/quick-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wineId: data.wineId,
-          quantity: data.suggestedQuantity || 12,
-        }),
-      })
-        .then((response) => {
-          if (response.ok) {
-            self.registration.showNotification("Reorder Placed", {
-              body: `Reorder for ${data.wineName || "wine"} has been submitted`,
-              icon: "/logo.png",
-              tag: "reorder-success",
-            })
-          }
-        })
-        .catch((error) => {
-          console.error("Failed to place reorder:", error)
-        })
-    )
-    url = "/orders"
-  } else if (action === "view") {
-    if (data.orderId) {
-      url = `/orders/${data.orderId}`
-    } else if (data.type === "low_stock") {
-      url = "/inventory"
-    } else if (data.type === "delivery") {
-      url = "/orders"
-    }
-  }
+  const data = event.notification.data || {}
+  const url = resolveNotificationUrl(action, data)
 
   // Open or focus the app
   event.waitUntil(
