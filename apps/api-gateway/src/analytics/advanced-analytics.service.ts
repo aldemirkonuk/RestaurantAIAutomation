@@ -12,10 +12,17 @@ import {
 } from "./inventory-cost";
 import {
   ORDER_ARRIVED_STATUSES,
+  ORDER_OPEN_WITH_VENDOR_STATUSES,
   ORDER_OUTSTANDING_STATUSES,
   ORDER_SPEND_STATUSES,
   hasStatus,
 } from "../procurement/order-status";
+import {
+  deadlineOf,
+  isPastDue,
+  landedVerdict,
+} from "../procurement/delivery-deadline";
+import { HouseFrame, houseFrame } from "../common/house-frame";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -121,6 +128,28 @@ export class AdvancedAnalyticsService {
       qty: c.quantity || (c.volume_ml ? c.volume_ml / 750 : 0),
       date: (c.created_at || "").substring(0, 10),
     }));
+  }
+
+  /**
+   * The house's clock (ADR 0207 question 6). A failed read degrades like every
+   * loader here — to no zone, which the deadline rule answers by counting only
+   * verdicts that hold in every zone, never by assuming UTC — and says so in
+   * `onTimeDeadline.houseRecord`.
+   */
+  private async loadHouseFrame(
+    restaurantId: string,
+  ): Promise<HouseFrame & { read: "read" | "could_not_read" | "no_record" }> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("restaurants")
+      .select("id, timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logQueryFailure("restaurants", error);
+      return { ...houseFrame(null), read: "could_not_read" };
+    }
+    return { ...houseFrame(data), read: data ? "read" : "no_record" };
   }
 
   private async loadOrders(restaurantId: string, sinceDays = 365) {
@@ -289,6 +318,8 @@ export class AdvancedAnalyticsService {
 
   async getVendorScorecard(restaurantId: string) {
     const orders = await this.loadOrders(restaurantId, 365);
+    const house = await this.loadHouseFrame(restaurantId);
+    const nowMs = Date.now();
     const byVendor = new Map<string, any[]>();
     for (const o of orders) {
       const key = o.provider_id || "unknown";
@@ -312,14 +343,32 @@ export class AdvancedAnalyticsService {
             86400000,
         )
         .filter((d) => d >= 0 && d < 120);
-      const onTime = delivered.filter(
-        (o) =>
-          o.expected_delivery_date &&
-          o.delivered_at &&
-          new Date(o.delivered_at) <=
-            new Date(`${o.expected_delivery_date}T23:59:59Z`),
-      ).length;
-      const withEta = delivered.filter((o) => o.expected_delivery_date).length;
+      // THE ON-TIME RULE — the one the vendor scorecard reads
+      // (procurement/delivery-deadline.ts, ADR 0207): landed before midnight
+      // at the end of the expected day on the HOUSE's clock (question 6), and
+      // an order still out with the vendor past that midnight is LATE
+      // (question 8). With no zone known, only a verdict that holds in every
+      // zone is counted; the rest are `undecided`, outside the rate.
+      const counts = { onTime: 0, late: 0, overdue: 0, undecided: 0 };
+      for (const o of os) {
+        const d = deadlineOf(o.expected_delivery_date, house.zone);
+        if (!d) continue;
+        if (hasStatus(o.status, ORDER_ARRIVED_STATUSES)) {
+          const landed = o.delivered_at ? Date.parse(o.delivered_at) : NaN;
+          if (!Number.isFinite(landed)) continue;
+          const v = landedVerdict(landed, d);
+          if (v === "on_time") counts.onTime += 1;
+          else if (v === "late") counts.late += 1;
+          else counts.undecided += 1;
+        } else if (
+          hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES) &&
+          isPastDue(nowMs, d)
+        ) {
+          counts.late += 1;
+          counts.overdue += 1;
+        }
+      }
+      const scored = counts.onTime + counts.late;
       const unitPrices = delivered
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
@@ -344,7 +393,8 @@ export class AdvancedAnalyticsService {
           stdev: E.stdev(leadTimes, true),
           n: leadTimes.length,
         },
-        onTimeRate: withEta > 0 ? onTime / withEta : null,
+        onTimeRate: scored > 0 ? counts.onTime / scored : null,
+        onTimeCounts: counts,
         unitPrice: {
           mean: E.mean(unitPrices),
           latest: unitPrices.length ? unitPrices[unitPrices.length - 1] : null,
@@ -357,6 +407,11 @@ export class AdvancedAnalyticsService {
     const spendShare = vendors.map((v) => v.spend);
     return {
       vendors,
+      onTimeDeadline: {
+        zone: house.zone,
+        zoneSource: house.zoneSource,
+        houseRecord: house.read,
+      },
       concentration: {
         hhi: E.herfindahlIndex(spendShare),
         effectiveVendors: E.effectiveCount(spendShare),

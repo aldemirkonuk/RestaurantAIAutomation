@@ -5,6 +5,8 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { HouseFrame, houseFrame } from "../../common/house-frame";
+import { DAY_MS } from "../../procurement/delivery-deadline";
 import { ORDER_OPEN_WITH_VENDOR_STATUSES } from "../../procurement/order-status";
 import {
   AgreedLineRow,
@@ -12,6 +14,7 @@ import {
   ConversationRow,
   CreditRow,
   DocketEntry,
+  HouseClock,
   HouseRegisters,
   MeasureKey,
   OrderArrivalRow,
@@ -23,8 +26,10 @@ import {
   ALERTING_SENTENCE,
   buildVendorScorecard,
   docketFor,
+  houseClock,
   windowBounds,
 } from "./vendor-scorecard";
+import { COPY } from "./vendor-scorecard.copy";
 
 /**
  * VendorScorecardService — reads this house's registers and hands them to the
@@ -43,6 +48,11 @@ import {
  * so rather than scoring the first page (PostgREST caps an unranged select, and
  * a silently truncated count is a wrong count).
  *
+ * THE HOUSE'S OWN RECORD IS READ FIRST. Its time zone and country set the
+ * on-time deadline (the house's local midnight) and the formats of every
+ * figure (ADR 0207 questions 6 and 7). It is read by the token's house id, and
+ * a failure is a 503 — never a silent UTC or a pinned locale.
+ *
  * NOTHING HERE WRITES. No alert, no label, no row.
  */
 
@@ -55,6 +65,7 @@ type ReadRows<T> = { ok: true; rows: T[] } | { ok: false; reason: string };
 
 export interface RollCall {
   window: VendorScorecard["window"];
+  house: HouseClock;
   vendors: VendorScorecard[];
   alerting: { built: false; sentence: string };
 }
@@ -68,10 +79,8 @@ export interface Docket {
 function reasonOf(
   error: { code?: string; message?: string } | null | undefined,
 ): string {
-  if (!error) return "no reason given";
-  return (
-    [error.code, error.message].filter(Boolean).join(" ") || "no reason given"
-  );
+  if (!error) return COPY.noReason;
+  return [error.code, error.message].filter(Boolean).join(" ") || COPY.noReason;
 }
 
 @Injectable()
@@ -94,6 +103,7 @@ export class VendorScorecardService {
   /** The Roll Call: every vendor of this house on the five measures. */
   async rollCall(house: string, days: WindowDays): Promise<RollCall> {
     const now = this.clock();
+    const frame = await this.houseFrameOf(house);
     const vendors = await this.vendorsOfHouse(house);
     const registers = await this.readRegisters(house, null, now, days);
     const cards = vendors.map(
@@ -103,6 +113,7 @@ export class VendorScorecardService {
           providerName: v.name,
           days,
           now,
+          house: frame,
           registers,
         }).card,
     );
@@ -121,6 +132,7 @@ export class VendorScorecardService {
         to: new Date(b.to).toISOString(),
         priorFrom: new Date(b.priorFrom).toISOString(),
       },
+      house: houseClock(frame),
       vendors: cards,
       alerting: { built: false, sentence: ALERTING_SENTENCE },
     };
@@ -152,6 +164,7 @@ export class VendorScorecardService {
     days: WindowDays,
   ): Promise<BuiltScorecard> {
     const now = this.clock();
+    const frame = await this.houseFrameOf(house);
     const vendor = await this.vendorOfHouse(house, providerId);
     const registers = await this.readRegisters(house, providerId, now, days);
     return buildVendorScorecard({
@@ -159,8 +172,30 @@ export class VendorScorecardService {
       providerName: vendor.name,
       days,
       now,
+      house: frame,
       registers,
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // The house's own record
+  // -------------------------------------------------------------------------
+
+  /** The house's clock and formats, from its own row — by the token's house id only. */
+  private async houseFrameOf(house: string): Promise<HouseFrame> {
+    const { data, error } = await this.client()
+      .from("restaurants")
+      .select("id, timezone, country")
+      .eq("id", house)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`house record read failed: ${reasonOf(error)}`);
+      throw new ServiceUnavailableException(
+        COPY.error.houseRecord(reasonOf(error)),
+      );
+    }
+    if (!data) throw new NotFoundException(COPY.error.noHouseRecord);
+    return houseFrame(data as { timezone?: string; country?: string });
   }
 
   // -------------------------------------------------------------------------
@@ -179,12 +214,12 @@ export class VendorScorecardService {
     if (error) {
       this.logger.error(`vendor book read failed: ${reasonOf(error)}`);
       throw new ServiceUnavailableException(
-        `The vendor book could not be read (${reasonOf(error)}). No scorecard is claimed.`,
+        COPY.error.vendorBook(reasonOf(error)),
       );
     }
     return (data ?? []).map((r: any) => ({
       id: r.id,
-      name: r.name ?? "Unnamed vendor",
+      name: r.name ?? COPY.unnamedVendor,
     }));
   }
 
@@ -201,17 +236,14 @@ export class VendorScorecardService {
       .maybeSingle();
     if (error) {
       throw new ServiceUnavailableException(
-        `The vendor book could not be read (${reasonOf(error)}). No scorecard is claimed.`,
+        COPY.error.vendorBook(reasonOf(error)),
       );
     }
     // A foreign house's vendor and a missing one are the same answer.
-    if (!data)
-      throw new NotFoundException(
-        `No vendor with id ${providerId} belongs to this house.`,
-      );
+    if (!data) throw new NotFoundException(COPY.error.noSuchVendor(providerId));
     return {
       id: (data as any).id,
-      name: (data as any).name ?? "Unnamed vendor",
+      name: (data as any).name ?? COPY.unnamedVendor,
     };
   }
 
@@ -259,11 +291,15 @@ export class VendorScorecardService {
       return q.order("id", { ascending: true });
     });
     if (!rows.ok) return rows;
-    // Orders placed and NOT landed whose expected date falls in the windows.
-    // The on-time figure counts arrivals only (the built rule), so without
-    // these a vendor holding three orders weeks past their date would read
-    // "5 of 5 on time" — its non-deliveries absent, and absence read as health.
-    // They are listed as open beside the figure, never counted into it.
+    // Orders placed and NOT landed whose deadline falls in the windows. They
+    // are LATE in the on-time figure (the founder's ruling, ADR 0207 question
+    // 8) and stay open until they land. The date filter reaches one day before
+    // the prior window: a deadline is midnight at the END of the expected day
+    // in the house's zone, so an expected date the day before the window can
+    // still fall due inside it; the pure module drops what falls outside.
+    const earliestDate = new Date(Date.parse(since) - DAY_MS)
+      .toISOString()
+      .slice(0, 10);
     const outstanding = await this.readAll<OrderArrivalRow>(() => {
       let q = this.client()
         .from("procurement_orders")
@@ -272,7 +308,7 @@ export class VendorScorecardService {
         )
         .eq("restaurant_id", house)
         .in("status", [...ORDER_OPEN_WITH_VENDOR_STATUSES])
-        .gte("expected_delivery_date", since.slice(0, 10));
+        .gte("expected_delivery_date", earliestDate);
       if (providerId) q = q.eq("provider_id", providerId);
       return q.order("id", { ascending: true });
     });
@@ -331,10 +367,7 @@ export class VendorScorecardService {
         .eq("restaurant_id", house)
         .in("id", chunk);
       if (error)
-        return {
-          ok: false,
-          reason: `the orders behind the door records did not answer: ${reasonOf(error)}`,
-        };
+        return { ok: false, reason: COPY.reason.doorOrders(reasonOf(error)) };
       for (const o of data ?? [])
         orders.set((o as any).id, {
           provider_id: (o as any).provider_id ?? null,
@@ -491,10 +524,7 @@ export class VendorScorecardService {
         .eq("restaurant_id", house)
         .in("id", chunk);
       if (error)
-        return {
-          ok: false,
-          reason: `the orders behind the claims did not answer: ${reasonOf(error)}`,
-        };
+        return { ok: false, reason: COPY.reason.claimOrders(reasonOf(error)) };
       for (const o of data ?? [])
         orders.set((o as any).id, {
           provider_id: (o as any).provider_id ?? null,
@@ -541,10 +571,7 @@ export class VendorScorecardService {
       rows.push(...got);
       if (got.length < PAGE) return { ok: true, rows };
     }
-    return {
-      ok: false,
-      reason: `more than ${PAGE * MAX_PAGES} rows in the window — too many to read in one answer, so none is scored`,
-    };
+    return { ok: false, reason: COPY.reason.tooMany(PAGE * MAX_PAGES) };
   }
 
   /** Has this house EVER held such a record? The line between "not collected" and "too few". */

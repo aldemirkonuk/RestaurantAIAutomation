@@ -17,6 +17,11 @@
  *
  * It is a second Sheet: on /providers the page's SheetStack stacks it on the
  * vendor sheet as level two of the spindle (sketch 103 · 1c).
+ *
+ * The founder's rulings of 2026-09-21: an order past its date and not landed
+ * is counted as late and stays open ("late · not landed"); every tally is a
+ * percent with its count; dates and money in the house's own formats, and
+ * every word in `sc-copy.ts`.
  */
 
 import { useState } from 'react';
@@ -24,20 +29,26 @@ import { AlertTriangle } from 'lucide-react';
 import { Sheet } from '../../../../components/mudavym/Sheet';
 import { ink } from '../../../../lib/mudavym/motion';
 import { MONO, SANS } from '../pv-format';
-import { dayLabel, figureOf, fmtMoney, windowLabel } from './sc-format';
+import { SC } from './sc-copy';
+import { dayLabel, figureOf, fmtMoney, formatsOf, windowLabel } from './sc-format';
+import type { Formats } from './sc-format';
 import type { DocketEntry, MeasureKey, MeasureResult, WindowDays } from './scorecard-types';
 import { serverMessage, useDocket } from './useVendorScorecard';
 
-const LABEL: Record<MeasureKey, string> = {
-  onTime: 'On time',
-  linesAsOrdered: 'Lines as ordered',
-  priceAsAgreed: 'Price as agreed',
-  replyTime: 'Reply time',
-  credits: 'Credits',
-};
+const LABEL = SC.labels;
 
-function Tally({ m, pressed, onPress }: { m: MeasureResult; pressed: boolean; onPress: () => void }) {
-  const fig = figureOf(m.key, m);
+function Tally({
+  m,
+  f,
+  pressed,
+  onPress,
+}: {
+  m: MeasureResult;
+  f: Formats;
+  pressed: boolean;
+  onPress: () => void;
+}) {
+  const fig = figureOf(m.key, m, f);
   return (
     <button
       type="button"
@@ -95,34 +106,28 @@ function entryStatus(e: DocketEntry): {
   word: string;
   tone: 'hit' | 'miss' | 'aside';
 } {
+  const W = SC.docket.status;
+  // An order past its date and not landed is counted as LATE and still open
+  // (question 8): a miss, and it says it has not landed.
+  if (e.open && e.counted && e.measure === 'onTime') return { word: W.overdue, tone: 'miss' };
   // An open or promised claim IS counted — in what was asked, never in what
   // was recovered — so it must not read "not counted" like an unanswered message.
-  if (e.open) return { word: e.counted ? 'open · asked, not recovered' : 'open · not counted', tone: 'aside' };
-  if (!e.counted) return { word: 'listed · not counted', tone: 'aside' };
-  if (e.measure === 'replyTime') return { word: 'counted', tone: 'hit' };
-  if (e.hit) {
-    const word =
-      e.measure === 'onTime'
-        ? 'on time'
-        : e.measure === 'linesAsOrdered'
-          ? 'as ordered'
-          : e.measure === 'priceAsAgreed'
-            ? 'at agreed'
-            : 'credited';
-    return { word, tone: 'hit' };
-  }
+  if (e.open) return { word: e.counted ? W.openAsked : W.openNotCounted, tone: 'aside' };
+  if (!e.counted) return { word: W.listed, tone: 'aside' };
+  if (e.measure === 'replyTime') return { word: W.counted, tone: 'hit' };
+  if (e.hit) return { word: W.hit[e.measure], tone: 'hit' };
   const word =
     e.measure === 'onTime'
-      ? `+${e.daysLate ?? '?'} d late`
+      ? W.miss.onTime(e.daysLate)
       : e.measure === 'linesAsOrdered'
-        ? 'not as ordered'
+        ? W.miss.linesAsOrdered
         : e.measure === 'priceAsAgreed'
-          ? 'not at agreed'
-          : 'not recovered';
+          ? W.miss.priceAsAgreed
+          : W.miss.credits;
   return { word, tone: 'miss' };
 }
 
-function Entry({ e }: { e: DocketEntry }) {
+function Entry({ e, f }: { e: DocketEntry; f: Formats }) {
   const s = entryStatus(e);
   return (
     <li
@@ -143,7 +148,7 @@ function Entry({ e }: { e: DocketEntry }) {
               marginRight: 8,
             }}
           >
-            {dayLabel(e.at)}
+            {dayLabel(e.at, f)}
           </span>
           {e.title}
         </span>
@@ -180,9 +185,10 @@ function Entry({ e }: { e: DocketEntry }) {
               color: 'var(--ink-3, #7C7365)',
             }}
           >
-            {' '}
-            agreed {e.currency ? fmtMoney(e.agreed, e.currency) : e.agreed.toFixed(2)} · invoiced{' '}
-            {e.currency ? fmtMoney(e.invoiced, e.currency) : e.invoiced.toFixed(2)}
+            {SC.docket.agreedInvoiced(
+              fmtMoney(e.agreed, e.currency ?? null, f),
+              fmtMoney(e.invoiced, e.currency ?? null, f),
+            )}
           </span>
         )}
       </p>
@@ -195,7 +201,7 @@ function Entry({ e }: { e: DocketEntry }) {
             color: 'var(--ink-3, #7C7365)',
           }}
         >
-          Not counted: {e.excludedBecause}.
+          {SC.docket.notCounted(e.excludedBecause)}
         </p>
       )}
     </li>
@@ -218,17 +224,18 @@ export function DocketSheet({
   const [filter, setFilter] = useState<MeasureKey | null>(measure);
   const q = useDocket(providerId, days, filter);
   const card = q.data?.card;
+  const f = formatsOf(card?.house);
   const current = card?.measures.find((m) => m.key === filter) ?? null;
-  const title = filter ? `${providerName} · ${LABEL[filter]}` : `${providerName} · every entry`;
+  const title = SC.docket.title(providerName, filter ? LABEL[filter] : null);
 
   return (
     <Sheet
       open
       onClose={onClose}
-      label={`The rows behind ${filter ? LABEL[filter].toLowerCase() : 'the figures'} for ${providerName}`}
-      eyebrow={card ? `${days} d · ${windowLabel(card.window.from, card.window.to)}` : `${days} d`}
+      label={SC.docket.sheetLabel(filter ? LABEL[filter] : null, providerName)}
+      eyebrow={SC.docket.eyebrow(days, card ? windowLabel(card.window.from, card.window.to, f) : null)}
       title={title}
-      spine={filter ? LABEL[filter] : 'Docket'}
+      spine={filter ? LABEL[filter] : SC.docket.spine}
     >
       <div className="px-4 py-3" style={{ fontFamily: SANS }} data-testid="docket">
         {q.isError ? (
@@ -245,19 +252,18 @@ export function DocketSheet({
           >
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" style={{ marginTop: 2 }} />
             <span>
-              {serverMessage(q.error, 'The rows could not be read.')} That is a failed read — this list is
-              unknown, not empty.
+              {serverMessage(q.error, SC.docket.readFailed)} {SC.docket.readFailedTail}
             </span>
           </p>
         ) : !q.data || !card ? (
           <p aria-busy="true" style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
-            Reading the rows…
+            {SC.docket.reading}
           </p>
         ) : (
           <>
             <div
               role="group"
-              aria-label="Filter by measure"
+              aria-label={SC.docket.filterGroup}
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))',
@@ -268,6 +274,7 @@ export function DocketSheet({
                 <Tally
                   key={m.key}
                   m={m}
+                  f={f}
                   pressed={filter === m.key}
                   onPress={() => setFilter(filter === m.key ? null : m.key)}
                 />
@@ -282,8 +289,8 @@ export function DocketSheet({
               }}
             >
               {filter
-                ? `${current?.label}: ${q.data.entries.length} ${q.data.entries.length === 1 ? 'entry' : 'entries'} in the last ${days} days, newest first. The figure above is counted from exactly these rows.`
-                : `Every entry in the last ${days} days, newest first. Each figure above is counted from these rows.`}
+                ? SC.docket.filtered(current?.label ?? LABEL[filter], q.data.entries.length, days)
+                : SC.docket.unfiltered(days)}
             </p>
             {current && current.outcome !== 'answered' && (
               <p
@@ -297,8 +304,7 @@ export function DocketSheet({
                 }}
               >
                 {current.sentence}
-                {current.outcome === 'could_not_read' &&
-                  ' Its entries are missing from this list, not absent from the record.'}
+                {current.outcome === 'could_not_read' && SC.docket.missing}
               </p>
             )}
             {!filter &&
@@ -314,18 +320,18 @@ export function DocketSheet({
                       color: 'var(--alarm, #A33A2B)',
                     }}
                   >
-                    {m.label}: {m.sentence} Its entries are missing from this list, not absent from the
-                    record.
+                    {m.label}: {m.sentence}
+                    {SC.docket.missing}
                   </p>
                 ))}
             {q.data.entries.length === 0 ? (
               <p data-testid="docket-empty" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
-                No entries in the last {days} days — an empty docket is not a clean one.
+                {SC.docket.empty(days)}
               </p>
             ) : (
               <ul style={{ margin: 0, padding: 0 }}>
                 {q.data.entries.map((e) => (
-                  <Entry key={e.id} e={e} />
+                  <Entry key={e.id} e={e} f={f} />
                 ))}
               </ul>
             )}

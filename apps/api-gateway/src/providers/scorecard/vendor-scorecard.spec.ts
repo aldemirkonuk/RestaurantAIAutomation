@@ -21,6 +21,14 @@ import {
   buildVendorScorecard,
   docketFor,
 } from "./vendor-scorecard";
+import { HouseFrame, houseFrame } from "../../common/house-frame";
+
+/**
+ * The house most cases run in: its clock is UTC and it names no country, so
+ * dates print as ISO and numbers in plain English formats. Cases about the
+ * house's own midnight and formats build their own frame from a house record.
+ */
+const UTC_HOUSE: HouseFrame = houseFrame({ timezone: "UTC", country: null });
 
 const NOW = new Date("2026-09-17T12:00:00Z");
 const V = "prov-skurnik";
@@ -44,12 +52,18 @@ function regs(over: Partial<HouseRegisters> = {}): HouseRegisters {
   };
 }
 
-function build(r: HouseRegisters, days: 30 | 90 | 365 = 90, providerId = V) {
+function build(
+  r: HouseRegisters,
+  days: 30 | 90 | 365 = 90,
+  providerId = V,
+  house: HouseFrame = UTC_HOUSE,
+) {
   return buildVendorScorecard({
     providerId,
     providerName: "Skurnik",
     days,
     now: NOW,
+    house,
     registers: r,
   });
 }
@@ -201,8 +215,8 @@ function assertTalliesAreTheirRows(
   }
 }
 
-describe("on time — the built rule, with its denominator", () => {
-  it("counts landed-by-23:59-UTC on the expected date, and lists an undated delivery without counting it", () => {
+describe("on time — before the house's midnight, with its denominator", () => {
+  it("counts landed-before-midnight on the expected date, and lists an undated delivery without counting it", () => {
     const rows = [
       arrival("2026-09-10T09:00:00Z", "2026-09-10"),
       arrival("2026-09-10T23:59:59Z", "2026-09-10"), // the last second still counts
@@ -223,13 +237,12 @@ describe("on time — the built rule, with its denominator", () => {
     expect(m.value).toBeCloseTo(4 / 6);
     expect(m.excluded).toEqual([{ because: "no expected date", count: 1 }]);
     expect(m.rows).toBe(7);
-    expect(m.sentence).toContain("4 of 6 landed by the expected date.");
-    expect(m.sentence).toContain("by 1, 3 days");
-    expect(m.sentence).toContain(
-      "1 is listed and not counted: no expected date.",
+    expect(m.percent).toBe("67%");
+    expect(m.sentence).toBe(
+      "67% on time — 4 of 6 by the expected date. 2 landed late, by 1, 3 days. 1 is listed and not counted: no expected date.",
     );
     expect(built.card.fact).toEqual({
-      text: "4 of 6 on time",
+      text: "67% on time · 4 of 6",
       outcome: "answered",
     });
     const late = built.entries
@@ -238,7 +251,7 @@ describe("on time — the built rule, with its denominator", () => {
     expect(late.sort()).toEqual([1, 3]);
   });
 
-  it("lists an order past its date and not landed as open beside the figure, never in it, and never before its date", () => {
+  it("counts an order past its date and not landed as LATE, keeps it open, and never lists it before its date (question 8)", () => {
     const out = (expected: string, status: string) => ({
       id: `out-${expected}-${status}`,
       order_number: `PO-OUT-${status}-${expected}`,
@@ -262,30 +275,35 @@ describe("on time — the built rule, with its denominator", () => {
     const m = measure(built.card, "onTime");
     expect(m).toMatchObject({
       outcome: "answered",
-      sample: 5,
+      sample: 7,
       hits: 5,
       open: 2,
       rows: 7,
+      percent: "71%",
     });
+    expect(m.value).toBeCloseTo(5 / 7);
     expect(m.excluded).toEqual([]);
     expect(m.sentence).toBe(
-      "5 of 5 landed by the expected date. 2 orders are past the expected date and not landed — not counted, not forgotten.",
+      "71% on time — 5 of 7 by the expected date. 2 orders are past the expected date and not landed — counted as late, still open.",
     );
     expect(built.card.fact).toEqual({
-      text: "5 of 5 on time · 2 overdue",
+      text: "71% on time · 5 of 7 · 2 overdue",
       outcome: "answered",
     });
     const open = docketFor(built, "onTime").filter((e) => e.open);
-    expect(open.map((e) => [e.title, e.daysLate, e.counted])).toEqual([
-      ["PO-OUT-CONFIRMED-2026-09-16", 1, false],
-      ["PO-OUT-IN_TRANSIT-2026-09-06", 11, false],
+    expect(open.map((e) => [e.title, e.daysLate, e.counted, e.hit])).toEqual([
+      ["PO-OUT-CONFIRMED-2026-09-16", 1, true, false],
+      ["PO-OUT-IN_TRANSIT-2026-09-06", 11, true, false],
     ]);
     expect(open[1].detail).toBe(
-      "Expected by 6 Sep 2026; 11 days past it and not landed.",
+      "Expected by 2026-09-06; 11 days past it and not landed — counted as late.",
     );
-    expect(
-      built.entries.filter((e) => e.window === "prior" && e.open),
-    ).toHaveLength(1);
+    const priorOpen = built.entries.filter(
+      (e) => e.window === "prior" && e.open,
+    );
+    expect(priorOpen).toHaveLength(1);
+    expect(priorOpen[0].counted).toBe(true);
+    expect(m.prior).toMatchObject({ sample: 1, hits: 0 });
   });
 
   it("refuses to score four deliveries, prints the count, and never prints a zero", () => {
@@ -297,11 +315,12 @@ describe("on time — the built rule, with its denominator", () => {
     expect(m.outcome).toBe("too_few");
     expect(m.value).toBeNull();
     expect(m.sample).toBe(4);
+    expect(m.percent).toBeNull();
     expect(m.sentence).toBe(
-      "4 deliveries with an expected date in 90 days — too few to score; 5 are needed.",
+      "4 orders that landed or fell due in 90 days — too few to score; 5 are needed.",
     );
     expect(built.card.fact).toEqual({
-      text: "4 deliveries — too few to score",
+      text: "4 orders — too few to score",
       outcome: "too_few",
     });
   });
@@ -356,7 +375,7 @@ describe("the prior window is a window, never an endpoint", () => {
     expect(m.hits).toBe(6);
     expect(m.sample).toBe(6);
     expect(m.prior).toMatchObject({ outcome: "answered", hits: 3, sample: 5 });
-    expect(m.priorSentence).toBe("prior 90 d · 3 of 5");
+    expect(m.priorSentence).toBe("prior 90 d · 60% · 3 of 5");
   });
 
   it("compares nothing when the prior window is under the minimum, and says the count", () => {
@@ -386,7 +405,9 @@ describe("the prior window is a window, never an endpoint", () => {
     const card = build(regs({ arrivals: ok([...cur, ...prior]) })).card;
     const text = JSON.stringify(card);
     expect(text).not.toMatch(/declin|improv|worse|better/i);
-    expect(measure(card, "onTime").priorSentence).toBe("prior 90 d · 5 of 5");
+    expect(measure(card, "onTime").priorSentence).toBe(
+      "prior 90 d · 100% · 5 of 5",
+    );
   });
 
   it("drops rows older than the prior window from both", () => {
@@ -482,7 +503,7 @@ describe("price as agreed — the verification's own verdict", () => {
       rows: 8,
     });
     expect(m.sentence).toContain(
-      "4 of 6 invoiced lines were at the agreed price. 1 above it. 1 below it.",
+      "67% at the agreed price — 4 of 6 invoiced lines. 1 above it. 1 below it.",
     );
     expect(m.excluded.map((x) => x.because).sort()).toEqual([
       "no agreed price it can be compared with",
@@ -616,55 +637,140 @@ describe("reply time — our message to their next reply, same thread", () => {
 });
 
 describe("credits — recovered by credit memo, of what was asked", () => {
-  it("rebuilds the sketch's Skurnik record: $286.00 of $412.50, the promised claim in the denominator only", () => {
-    const rows = [
-      claim("credited", 182.5, 182.5, "2026-07-03T10:00:00Z"),
-      claim("credited", 118, 103.5, "2026-07-27T10:00:00Z"),
-      claim("promised", 112, null, "2026-08-09T10:00:00Z", {
-        promised_at: "2026-08-09T10:00:00Z",
-      }),
-    ];
-    const built = build(regs({ credits: ok(rows) }));
+  const skurnik = () => [
+    claim("credited", 182.5, 182.5, "2026-07-03T10:00:00Z"),
+    claim("credited", 118, 103.5, "2026-07-27T10:00:00Z"),
+    claim("promised", 112, null, "2026-08-09T10:00:00Z", {
+      promised_at: "2026-08-09T10:00:00Z",
+    }),
+  ];
+
+  it("under five claims shows no percent and lists the claims themselves as rows (question 2)", () => {
+    const built = build(regs({ credits: ok(skurnik()) }));
     const m = measure(built.card, "credits");
-    expect(m.outcome).toBe("answered");
-    expect(m.money).toEqual([{ currency: "USD", allowed: 286, asked: 412.5 }]);
-    expect(m.hits).toBe(2);
-    expect(m.open).toBe(1);
-    expect(m.sentence).toContain(
-      "$286.00 recovered by credit memo of $412.50 asked, on 3 claims; 2 credited.",
+    expect(m).toMatchObject({
+      outcome: "too_few",
+      sample: 3,
+      hits: 2,
+      value: null,
+      percent: null,
+      money: null,
+      minimum: 5,
+      open: 1,
+    });
+    expect(m.sentence).toBe(
+      "3 claims in 90 days — too few to score; 5 are needed. 1 claim is still open or promised — in what was asked, not in what was recovered.",
     );
-    const promised = built.entries.find((e) => e.detail.startsWith("Promised"));
-    expect(promised?.detail).toBe(
+    expect(m.listed?.map((e) => e.at)).toEqual([
+      "2026-08-09T10:00:00Z",
+      "2026-07-27T10:00:00Z",
+      "2026-07-03T10:00:00Z",
+    ]);
+    expect(m.listed?.map((e) => e.detail)).toEqual([
       "Promised, 39 days ago, not recovered — promised is not recovered.",
-    );
-    expect(promised?.amountAllowed).toBeNull();
+      "Credited $103.50 of $118.00 asked.",
+      "Credited $182.50 of $182.50 asked.",
+    ]);
+    expect(m.listed?.[0].amountAllowed).toBeNull();
   });
 
-  it("never adds two currencies together: two totals and no share", () => {
+  it("at five claims prints the percent recovered with the money, the promised claim in the denominator only", () => {
+    const rows = [
+      ...skurnik(),
+      claim("credited", 50, 40, "2026-08-20T10:00:00Z"),
+      claim("rejected", 20, null, "2026-09-01T10:00:00Z"),
+    ];
+    const m = measure(build(regs({ credits: ok(rows) })).card, "credits");
+    expect(m.outcome).toBe("answered");
+    expect(m.listed).toBeNull();
+    expect(m.money).toEqual([
+      {
+        currency: "USD",
+        allowed: 326,
+        asked: 482.5,
+        share: 326 / 482.5,
+        percent: "68%",
+      },
+    ]);
+    expect(m.percent).toBe("68%");
+    expect(m.value).toBeCloseTo(326 / 482.5);
+    expect(m.sentence).toBe(
+      "68% recovered — $326.00 by credit memo of $482.50 asked, on 5 claims; 3 credited. 1 claim is still open or promised — in what was asked, not in what was recovered.",
+    );
+  });
+
+  it("never adds two currencies together: two totals, no single share, and no percent for a currency under five claims (question 2)", () => {
     const rows = [
       claim("credited", 100, 100, "2026-09-01T10:00:00Z", { currency: "USD" }),
+      claim("credited", 50, 25, "2026-09-02T10:00:00Z", { currency: "USD" }),
+      claim("rejected", 50, null, "2026-09-03T10:00:00Z", { currency: "USD" }),
+      claim("credited", 1200, 1200, "2026-09-02T10:00:00Z", {
+        currency: "TRY",
+      }),
+      claim("open", 300, null, "2026-09-04T10:00:00Z", { currency: "TRY" }),
+    ];
+    const m = measure(build(regs({ credits: ok(rows) })).card, "credits");
+    // Five claims in all, so the line answers — but three dollars and two
+    // lira are not five of either, so neither currency prints a percent.
+    expect(m.outcome).toBe("answered");
+    expect(m.value).toBeNull();
+    expect(m.percent).toBeNull();
+    expect(m.money?.map((x) => [x.currency, x.share, x.percent])).toEqual([
+      ["TRY", null, null],
+      ["USD", null, null],
+    ]);
+    expect(m.sentence).toContain(
+      "Money in two currencies is not added together",
+    );
+    expect(m.sentence).toContain(
+      "A currency with fewer than 5 claims of its own shows its money and no percent.",
+    );
+    expect(m.sentence).not.toContain("%");
+    expect(m.priorSentence).not.toContain("%");
+  });
+
+  it("prints a currency's percent once it alone holds five claims, and only that one's", () => {
+    const rows = [
+      claim("credited", 100, 100, "2026-09-01T10:00:00Z", { currency: "USD" }),
+      claim("credited", 50, 25, "2026-09-02T10:00:00Z", { currency: "USD" }),
+      claim("rejected", 50, null, "2026-09-03T10:00:00Z", { currency: "USD" }),
+      claim("credited", 40, 40, "2026-09-05T10:00:00Z", { currency: "USD" }),
+      claim("credited", 60, 30, "2026-09-06T10:00:00Z", { currency: "USD" }),
       claim("credited", 1200, 1200, "2026-09-02T10:00:00Z", {
         currency: "TRY",
       }),
     ];
     const m = measure(build(regs({ credits: ok(rows) })).card, "credits");
     expect(m.outcome).toBe("answered");
-    expect(m.value).toBeNull();
-    expect(m.money?.map((x) => x.currency)).toEqual(["TRY", "USD"]);
+    expect(m.percent).toBeNull();
+    // USD: 195 of 300 asked on its own five claims; TRY: one claim, no percent.
+    expect(m.money?.map((x) => [x.currency, x.percent])).toEqual([
+      ["TRY", null],
+      ["USD", "65%"],
+    ]);
+    expect(m.sentence).toContain("65% recovered — $195.00 by credit memo");
     expect(m.sentence).toContain(
-      "Money in two currencies is not added together",
+      "A currency with fewer than 5 claims of its own shows its money and no percent.",
     );
   });
 
   it("prints a claim whose currency is not recorded as a bare amount, and says why", () => {
-    const rows = [
-      claim("credited", 50, 40, "2026-09-01T10:00:00Z", { currency: null }),
-    ];
+    const rows = [1, 2, 3, 4, 5].map((d) =>
+      claim("credited", 50, 40, `2026-09-0${d}T10:00:00Z`, { currency: null }),
+    );
     const built = build(regs({ credits: ok(rows) }));
     const m = measure(built.card, "credits");
-    expect(m.money).toEqual([{ currency: null, allowed: 40, asked: 50 }]);
+    expect(m.money).toEqual([
+      {
+        currency: null,
+        allowed: 200,
+        asked: 250,
+        share: 0.8,
+        percent: "80%",
+      },
+    ]);
     expect(m.sentence).toContain(
-      "40.00 recovered by credit memo of 50.00 asked",
+      "80% recovered — 200.00 by credit memo of 250.00 asked",
     );
     expect(m.sentence).toContain(
       "The currency is not recorded on the order behind a claim",
@@ -677,6 +783,7 @@ describe("credits — recovered by credit memo, of what was asked", () => {
     const m = measure(build(regs({ credits: ok([]) })).card, "credits");
     expect(m.outcome).toBe("too_few");
     expect(m.money).toBeNull();
+    expect(m.listed).toBeNull();
     expect(m.sentence).toBe(
       "No claim opened in the last 90 days — nothing asked, nothing to score.",
     );
@@ -798,5 +905,161 @@ describe("the Docket is the figures' rows", () => {
       sentence:
         "No alert is sent from these figures. A labelled set and a shadow run come first, and neither is built yet.",
     });
+  });
+});
+
+describe("the deadline is the house's own midnight (question 6)", () => {
+  const istanbul = houseFrame({
+    timezone: "Europe/Istanbul",
+    country: "Türkiye",
+  });
+  const paloAlto = houseFrame({
+    timezone: "America/Los_Angeles",
+    country: "United States",
+  });
+  // The real tenant's shape: its zone was cleared with the LA default, and its
+  // country keeps many zones.
+  const noZone = houseFrame({ timezone: null, country: "United States" });
+
+  const onTimeOf = (rows: OrderArrivalRow[], house: HouseFrame) =>
+    measure(build(regs({ arrivals: ok(rows) }), 90, V, house).card, "onTime");
+
+  it("reads Istanbul's midnight: 01:30 local the next morning is late, 23:59 local is on time", () => {
+    const rows = [
+      arrival("2026-09-10T22:30:00Z", "2026-09-10"), // 01:30 on the 11th, Istanbul
+      arrival("2026-09-10T20:59:59Z", "2026-09-10"), // 23:59:59 on the 10th
+      ...[1, 2, 3].map((d) =>
+        arrival(`2026-09-0${d}T09:00:00Z`, `2026-09-0${d}`),
+      ),
+    ];
+    const m = onTimeOf(rows, istanbul);
+    expect(m).toMatchObject({ sample: 5, hits: 4 });
+    const late = build(
+      regs({ arrivals: ok(rows) }),
+      90,
+      V,
+      istanbul,
+    ).entries.find((e) => e.hit === false);
+    expect(late?.at).toBe("2026-09-10T22:30:00Z");
+    expect(late?.daysLate).toBe(1);
+    // The same rows under the retired rule (23:59:59 UTC) read 5 of 5.
+    expect(onTimeOf(rows, UTC_HOUSE).hits).toBe(5);
+  });
+
+  it("reads Palo Alto's midnight: 18:00 local on the day is on time, though it is past midnight UTC", () => {
+    const rows = [
+      arrival("2026-09-11T01:00:00Z", "2026-09-10"), // 18:00 PDT on the 10th
+      arrival("2026-09-11T07:00:00Z", "2026-09-10"), // 00:00 PDT on the 11th: late
+      ...[1, 2, 3].map((d) =>
+        arrival(`2026-09-0${d}T18:00:00Z`, `2026-09-0${d}`),
+      ),
+    ];
+    expect(onTimeOf(rows, paloAlto)).toMatchObject({ sample: 5, hits: 4 });
+    expect(onTimeOf(rows, UTC_HOUSE)).toMatchObject({ sample: 5, hits: 3 });
+  });
+
+  it("with no zone, never assumes UTC: counts only what holds in every zone and lists the rest", () => {
+    const rows = [
+      arrival("2026-09-10T09:00:00Z", "2026-09-10"), // before midnight anywhere: on time
+      arrival("2026-09-10T18:00:00Z", "2026-09-10"), // before or after, by zone: undecided
+      arrival("2026-09-11T12:00:00Z", "2026-09-10"), // after midnight everywhere: late
+      ...[1, 2, 3].map((d) =>
+        arrival(`2026-09-0${d}T09:00:00Z`, `2026-09-0${d}`),
+      ),
+    ];
+    const built = build(regs({ arrivals: ok(rows) }), 90, V, noZone);
+    const m = measure(built.card, "onTime");
+    expect(m).toMatchObject({ sample: 5, hits: 4, rows: 6 });
+    expect(m.excluded).toEqual([
+      {
+        because:
+          "landed within a day of midnight, and this house's time zone is not known",
+        count: 1,
+      },
+    ]);
+    expect(built.card.house).toMatchObject({ zone: null, zoneSource: "none" });
+    expect(built.card.house.deadline).toContain(
+      "This house records no time zone, and its country keeps",
+    );
+    expect(built.card.house.deadline).not.toMatch(/UTC/);
+  });
+
+  it("with no zone, an order not landed is late only once its date has passed in every zone", () => {
+    const out = (expected: string) => ({
+      id: `out-${expected}`,
+      order_number: `PO-OUT-${expected}`,
+      provider_id: V,
+      status: "CONFIRMED",
+      expected_delivery_date: expected,
+      delivered_at: null,
+    });
+    // NOW is 2026-09-17T12:00Z: the 16th has ended in every zone by exactly
+    // then (UTC-12 midnight), the 17th has not ended anywhere.
+    const built = build(
+      regs({ arrivals: ok([out("2026-09-16"), out("2026-09-17")]) }),
+      90,
+      V,
+      noZone,
+    );
+    expect(docketFor(built, "onTime").map((e) => e.title)).toEqual([
+      "PO-OUT-2026-09-16",
+    ]);
+  });
+
+  it("uses the country's only zone when the house records none, and says so", () => {
+    const frame = houseFrame({ timezone: null, country: "TR" });
+    const card = build(regs(), 90, V, frame).card;
+    expect(card.house).toMatchObject({
+      zone: "Europe/Istanbul",
+      zoneSource: "country",
+    });
+    expect(card.house.deadline).toContain("its country's only zone is used");
+  });
+});
+
+describe("percent with count, in the house's formats (questions 3 and 7)", () => {
+  it("prints the fact and the prior window with the house's own percent and date formats", () => {
+    const tr = houseFrame({ timezone: "Europe/Istanbul", country: "Türkiye" });
+    expect(tr.locale).toBe(
+      `${new Intl.Locale("und", { region: "TR" }).maximize().language}-TR`,
+    );
+    const rows = [
+      ...[1, 2, 3, 4, 5].map((d) =>
+        arrival(`2026-09-0${d}T09:00:00Z`, `2026-09-0${d}`),
+      ),
+      arrival("2026-09-08T09:00:00Z", "2026-09-06"),
+    ];
+    const built = build(regs({ arrivals: ok(rows) }), 90, V, tr);
+    const pct = new Intl.NumberFormat(tr.locale as string, {
+      style: "percent",
+      maximumFractionDigits: 1,
+    }).format(0.83);
+    expect(built.card.fact.text).toBe(`${pct} on time · 5 of 6`);
+    const late = built.entries.find((e) => e.hit === false);
+    expect(late?.detail).toBe(
+      `Landed 2 days after the expected date (${new Intl.DateTimeFormat(
+        tr.locale as string,
+        { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" },
+      ).format(new Date("2026-09-06T00:00:00Z"))}).`,
+    );
+    expect(built.card.house.locale).toBe(tr.locale);
+  });
+
+  it("never prints 100% short of all, nor 0% above none", () => {
+    const rows = (hits: number, n: number) =>
+      Array.from({ length: n }, (_, i) =>
+        arrival(
+          `2026-09-${String(1 + (i % 9)).padStart(2, "0")}T0${i % 9}:00:00Z`,
+          i < hits ? "2026-09-10" : "2026-08-01",
+        ),
+      );
+    const at = (hits: number, n: number) =>
+      measure(build(regs({ arrivals: ok(rows(hits, n)) })).card, "onTime")
+        .percent;
+    expect(at(199, 200)).toBe("99.5%");
+    expect(at(1, 250)).toBe("0.4%");
+    expect(at(12, 14)).toBe("86%");
+    expect(at(5, 5)).toBe("100%");
+    expect(at(0, 5)).toBe("0%");
   });
 });

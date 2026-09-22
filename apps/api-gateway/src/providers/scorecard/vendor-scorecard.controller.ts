@@ -20,6 +20,7 @@ import {
   isWindowDays,
 } from "./vendor-scorecard";
 import { VendorScorecardService } from "./vendor-scorecard.service";
+import { COPY } from "./vendor-scorecard.copy";
 
 type AuthUser = { userId?: string; id?: string; restaurantId?: string };
 
@@ -31,7 +32,7 @@ type AuthUser = { userId?: string; id?: string; restaurantId?: string };
  */
 export function houseOf(user: AuthUser | null | undefined): string {
   if (!user?.restaurantId) {
-    throw new ForbiddenException("This session names no restaurant.");
+    throw new ForbiddenException(COPY.error.noHouse);
   }
   return user.restaurantId;
 }
@@ -41,7 +42,7 @@ export function parseWindow(raw: string | undefined): WindowDays {
   const n = Number(raw);
   if (!isWindowDays(n)) {
     throw new BadRequestException(
-      `A window is ${WINDOW_DAYS.join(", ")} days. "${raw}" is not one of them, so nothing was counted.`,
+      COPY.error.badWindow(WINDOW_DAYS.join(", "), raw),
     );
   }
   return n;
@@ -51,7 +52,7 @@ export function parseMeasure(raw: string | undefined): MeasureKey | null {
   if (raw === undefined || raw === "") return null;
   if (!isMeasureKey(raw)) {
     throw new BadRequestException(
-      `A measure is one of ${MEASURE_KEYS.join(", ")}. "${raw}" is not one of them.`,
+      COPY.error.badMeasure(MEASURE_KEYS.join(", "), raw),
     );
   }
   return raw;

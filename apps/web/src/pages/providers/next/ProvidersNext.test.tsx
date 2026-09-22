@@ -286,18 +286,18 @@ describe('ProvidersNext', () => {
 
     it('puts one behavioural fact on the card, read from the Roll Call', () => {
       mockData.current = oneCard();
-      roll.current = rollOf({ text: '12 of 14 on time', outcome: 'answered' });
+      roll.current = rollOf({ text: '86% on time · 12 of 14', outcome: 'answered' });
       render(<ProvidersNext />);
       const did = screen.getByTestId('pv-card-did');
-      expect(did).toHaveTextContent('Did · 90 d12 of 14 on time');
-      expect(within(did).getByText('12 of 14 on time')).toHaveStyle({ fontStyle: 'normal' });
+      expect(did).toHaveTextContent('Did · 90 d86% on time · 12 of 14');
+      expect(within(did).getByText('86% on time · 12 of 14')).toHaveStyle({ fontStyle: 'normal' });
     });
 
     it('prints a refusal on the card in italic words, never a zero', () => {
       mockData.current = oneCard();
-      roll.current = rollOf({ text: '2 deliveries — too few to score', outcome: 'too_few' });
+      roll.current = rollOf({ text: '2 orders — too few to score', outcome: 'too_few' });
       render(<ProvidersNext />);
-      const fact = within(screen.getByTestId('pv-card-did')).getByText('2 deliveries — too few to score');
+      const fact = within(screen.getByTestId('pv-card-did')).getByText('2 orders — too few to score');
       expect(fact).toHaveStyle({ fontStyle: 'italic' });
     });
 

@@ -10,7 +10,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { card, entry } from './scorecard-fixtures';
+import { card, entry, measure, statedDollars } from './scorecard-fixtures';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 
@@ -77,15 +77,14 @@ beforeEach(() => {
 });
 
 describe('the ledger card', () => {
-  it('prints each answered line as a count over its denominator, with the prior window and its rows', async () => {
+  it('prints each answered line as a percent with its count, the prior window and its rows (question 3)', async () => {
     renderIt();
     const onTime = await screen.findByTestId('ledger-line-onTime');
-    expect(within(onTime).getByTestId('ledger-figure-onTime')).toHaveTextContent('12of 14');
-    expect(onTime).toHaveTextContent('12 of 14 landed by the expected date.');
-    expect(onTime).toHaveTextContent('prior 90 d · 9 of 13');
+    expect(within(onTime).getByTestId('ledger-figure-onTime')).toHaveTextContent('86%12 of 14');
+    expect(onTime).toHaveTextContent('86% on time — 12 of 14 by the expected date.');
+    expect(onTime).toHaveTextContent('prior 90 d · 69% · 9 of 13');
     expect(within(onTime).getByRole('button', { name: '14 orders ›' })).toBeInTheDocument();
     expect(screen.getByTestId('ledger-figure-replyTime')).toHaveTextContent('5 h 40median · 9');
-    expect(screen.getByTestId('ledger-figure-credits')).toHaveTextContent('$286.00of $412.50');
     expect(api.get).toHaveBeenCalledWith('/vendor-scorecard/p1', {
       params: { window: 90 },
     });
@@ -146,17 +145,98 @@ describe('the ledger card', () => {
     expect(screen.queryByTestId('ledger-line-onTime')).not.toBeInTheDocument();
   });
 
-  it('prints claim money whose currency is not recorded as a bare amount, never as dollars', async () => {
+  it('under five claims prints no percent and lists the claims themselves (question 2)', async () => {
+    renderIt();
+    const credits = await screen.findByTestId('ledger-line-credits');
+    expect(within(credits).getByTestId('ledger-figure-credits')).toHaveTextContent('too few3 of 5');
+    expect(within(credits).getByTestId('ledger-figure-credits')).not.toHaveTextContent('%');
+    const claims = within(credits).getAllByTestId('ledger-listed-claim');
+    expect(claims).toHaveLength(3);
+    expect(claims[0]).toHaveTextContent('Claim c3 · qty short — Promised, 39 days ago');
+    expect(claims[1]).toHaveTextContent('Credited $103.50 of $118.00 asked.');
+    // No list under any other refusal: only claims are listed on the card.
+    expect(
+      within(screen.getByTestId('ledger-line-linesAsOrdered')).queryByTestId('ledger-listed-claims'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('at five claims prints the percent recovered with the money beside it', async () => {
     const c = card();
-    c.measures[4] = {
-      ...c.measures[4],
-      money: [{ currency: null, allowed: 40, asked: 50 }],
-    };
+    c.measures[4] = measure({
+      key: 'credits',
+      label: 'Credits',
+      sample: 5,
+      hits: 3,
+      value: 326 / 482.5,
+      percent: '68%',
+      money: [statedDollars(326, 482.5, '68%')],
+      sentence: '68% recovered — $326.00 by credit memo of $482.50 asked, on 5 claims; 3 credited.',
+    });
     api.get.mockResolvedValue({ data: c });
     renderIt();
     const fig = await screen.findByTestId('ledger-figure-credits');
-    expect(fig).toHaveTextContent('40.00of 50.00');
+    expect(fig).toHaveTextContent('68%$326.00 of $482.50');
+    expect(screen.queryByTestId('ledger-listed-claims')).not.toBeInTheDocument();
+  });
+
+  it('prints claim money whose currency is not recorded as a bare amount, never as dollars', async () => {
+    const c = card();
+    c.measures[4] = measure({
+      key: 'credits',
+      label: 'Credits',
+      sample: 5,
+      hits: 5,
+      value: 0.8,
+      percent: '80%',
+      money: [{ currency: null, allowed: 40, asked: 50, share: 0.8, percent: '80%' }],
+    });
+    api.get.mockResolvedValue({ data: c });
+    renderIt();
+    const fig = await screen.findByTestId('ledger-figure-credits');
+    expect(fig).toHaveTextContent('80%40.00 of 50.00');
     expect(fig).not.toHaveTextContent('$');
+  });
+
+  it('formats money and dates in the house’s locale from the gateway, never a pinned one (question 7)', async () => {
+    const tr = { ...card().house, zone: 'Europe/Istanbul', locale: 'tr-TR', deadline: 'Istanbul midnight.' };
+    // 22:30 UTC is already the next day in Istanbul: the label must be read on the house's clock.
+    const c = card({
+      house: tr,
+      window: {
+        days: 90,
+        from: '2026-06-19T22:30:00.000Z',
+        to: '2026-09-17T22:30:00.000Z',
+        priorFrom: '2026-03-21T22:30:00.000Z',
+      },
+    });
+    c.measures[4] = measure({
+      key: 'credits',
+      label: 'Credits',
+      sample: 5,
+      hits: 5,
+      value: 1,
+      percent: '%100',
+      money: [{ currency: 'TRY', allowed: 1234.5, asked: 1234.5, share: 1, percent: '%100' }],
+    });
+    api.get.mockResolvedValue({ data: c });
+    renderIt();
+    const fig = await screen.findByTestId('ledger-figure-credits');
+    const lira = new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'TRY',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(1234.5);
+    expect(fig).toHaveTextContent(`%100${lira} of ${lira}`);
+    const day = (iso: string) =>
+      new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Istanbul' }).format(
+        new Date(iso),
+      );
+    expect(screen.getByTestId('ledger-card')).toHaveTextContent(
+      `${day('2026-06-19T22:30:00.000Z')} – ${day('2026-09-17T22:30:00.000Z')}`,
+    );
+    fireEvent.click(screen.getByText('How this is scored'));
+    expect(screen.getByTestId('ledger-deadline')).toHaveTextContent('Istanbul midnight.');
   });
 
   it('asks again for the chosen window', async () => {
@@ -173,6 +253,35 @@ describe('the ledger card', () => {
 });
 
 describe('the Docket, opened from a line', () => {
+  it('marks an order past its date and not landed as late and still open (question 8)', async () => {
+    api.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.endsWith('/docket')
+          ? {
+              ...docket,
+              entries: [
+                entry({
+                  id: 'onTime:o9',
+                  measure: 'onTime',
+                  title: 'PO-OUT',
+                  counted: true,
+                  hit: false,
+                  open: true,
+                  daysLate: 4,
+                  detail: 'Expected by 09/13/2026; 4 days past it and not landed — counted as late.',
+                }),
+              ],
+            }
+          : card(),
+      }),
+    );
+    renderIt();
+    fireEvent.click(await screen.findByRole('button', { name: '14 orders ›' }));
+    const row = await within(await screen.findByTestId('docket')).findByTestId('docket-entry');
+    expect(row).toHaveTextContent('late · not landed');
+    expect(row).not.toHaveTextContent('not counted');
+  });
+
   it('opens on that line’s rows, with the tallies above as filters', async () => {
     renderIt();
     fireEvent.click(await screen.findByRole('button', { name: '14 orders ›' }));

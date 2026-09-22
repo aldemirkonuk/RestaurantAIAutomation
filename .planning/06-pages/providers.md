@@ -63,10 +63,13 @@ export; **discover** — the U.S. distributor catalogue on a map, one-tap add (S
 - **Discover** tab: the U.S. distributor catalogue on a map with facet filters and one-tap add
 - **The operational vendor scorecard** (redesign only, ADR 0207, sketch 117 A + B + C as
   the founder picked it 2026-09-21): *What they did* in the TwinSheet — on time, lines as
-  ordered, price as agreed, reply time, credits recovered, each a count over its
-  denominator with the prior window's own count and a link to its rows; one fact on each
-  card (*Did · 90 d*); a *Book · Scorecard* switch (`?view=scorecard`) whose Scorecard is
-  the Roll Call; and the Docket, a stacked sheet of the dated rows behind every figure.
+  ordered, price as agreed, reply time, credits recovered, each a percent with its count
+  (founder, 2026-09-21) beside the prior window's own and a link to its rows; one fact on
+  each card (*Did · 90 d — 86% on time · 12 of 14*); a *Book · Scorecard* switch
+  (`?view=scorecard`) whose Scorecard is the Roll Call; and the Docket, a stacked sheet of
+  the dated rows behind every figure. Five records everywhere before a percent (credits
+  too — under five the claims are listed); on time is the house's local midnight, and an
+  order past it not landed counts late; English words in the house's own formats.
   Too few, not collected and could-not-read are sentences with their counts, never a zero.
   Tone is a minor line in no figure. **No alert is built** — a labelled set and a shadow
   run come first. Files: `pages/providers/next/scorecard/*`,

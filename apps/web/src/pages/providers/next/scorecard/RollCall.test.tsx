@@ -9,7 +9,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { card, measure } from './scorecard-fixtures';
+import { card, measure, statedDollars } from './scorecard-fixtures';
 import type { VendorScorecard } from './scorecard-types';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
@@ -51,8 +51,9 @@ function vendor(
           sample: 2,
           hits: 2,
           value: null,
+          percent: null,
           rows: 2,
-          sentence: '2 deliveries with an expected date in 90 days — too few to score; 5 are needed.',
+          sentence: '2 orders that landed or fell due in 90 days — too few to score; 5 are needed.',
         })
       : measure({
           key: 'onTime',
@@ -60,6 +61,7 @@ function vendor(
           hits: onTimeHits,
           sample: 10,
           value: onTimeHits / 10,
+          percent: `${onTimeHits * 10}%`,
           rows: 10,
         });
   return { ...base, ...over };
@@ -86,8 +88,8 @@ describe('the Roll Call', () => {
     });
     renderIt();
     const cell = await screen.findByTestId('rc-cell-a-onTime');
-    expect(cell).toHaveTextContent('7of 10');
-    expect(cell).toHaveTextContent('prior 90 d · 9 of 13');
+    expect(cell).toHaveTextContent('70%7 of 10');
+    expect(cell).toHaveTextContent('prior 90 d · 69% · 9 of 13');
     expect(screen.getByTestId('rc-cell-a-linesAsOrdered')).toHaveTextContent('too few2 of 5');
     expect(screen.getByTestId('rc-alerting')).toHaveTextContent('neither is built yet');
     expect(api.get).toHaveBeenCalledWith('/vendor-scorecard', {
@@ -126,6 +128,53 @@ describe('the Roll Call', () => {
     expect(rows.filter((r) => r.startsWith('rc-row'))).toEqual(['rc-row-b', 'rc-row-a', 'rc-row-c']);
     expect(screen.getByTestId('rc-refused-rule')).toHaveTextContent(
       'One vendor has no “On time” figure in this window — listed apart, never ranked among the scored.',
+    );
+  });
+
+  it('sorted by credits, ranks only vendors with five claims or more and lists the rest apart (question 2)', async () => {
+    const credits = (n: number, pct: string | null) =>
+      measure({
+        key: 'credits',
+        label: 'Credits',
+        outcome: n >= 5 ? 'answered' : 'too_few',
+        sample: n,
+        hits: n,
+        value: n >= 5 ? Number.parseInt(pct as string, 10) / 100 : null,
+        percent: n >= 5 ? pct : null,
+        money:
+          n >= 5
+            ? [statedDollars(10 * n, 10 * n, pct)]
+            : null,
+        rows: n,
+        prior: { outcome: 'too_few', sample: 0, hits: 0, value: null, percent: null, money: null },
+        priorSentence: 'prior 90 d · nothing to compare with',
+      });
+    const withCredits = (id: string, name: string, n: number, pct: string | null) => {
+      const v = vendor(id, name, 7);
+      v.measures[4] = credits(n, pct);
+      return v;
+    };
+    api.get.mockResolvedValue({
+      data: {
+        window: card().window,
+        house: card().house,
+        vendors: [
+          withCredits('a', 'Skurnik', 3, null),
+          withCredits('b', 'Winebow', 6, '50%'),
+          withCredits('c', 'Cellar Nine', 5, '90%'),
+        ],
+        alerting,
+      },
+    });
+    renderIt();
+    await screen.findByTestId('rc-row-a');
+    expect(screen.getByTestId('rc-cell-a-credits')).toHaveTextContent('too few3 of 5');
+    expect(screen.getByTestId('rc-cell-a-credits')).not.toHaveTextContent('%');
+    fireEvent.click(screen.getByRole('button', { name: /^Credits recovered/ }));
+    const rows = screen.getAllByRole('row').map((r) => r.getAttribute('data-testid') ?? 'rule-or-head');
+    expect(rows.filter((r) => r.startsWith('rc-row'))).toEqual(['rc-row-c', 'rc-row-b', 'rc-row-a']);
+    expect(screen.getByTestId('rc-refused-rule')).toHaveTextContent(
+      'One vendor has no “Credits recovered” figure in this window',
     );
   });
 

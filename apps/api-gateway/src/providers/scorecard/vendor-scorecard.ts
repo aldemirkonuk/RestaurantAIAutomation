@@ -10,14 +10,26 @@
  * and a shadow run before any alert ships; windowed trends with a minimum
  * sample.
  *
+ * HIS RULINGS OF 2026-09-21 (ADR 0207 review trail, verbatim there):
+ *   - an order past its expected date that has not landed is LATE in the
+ *     on-time figure, and stays on the open list beneath it (question 8);
+ *   - the deadline is the house's local midnight (question 6) —
+ *     `procurement/delivery-deadline.ts`, shared with the analytics read;
+ *   - five records everywhere before a percent shows, credits included
+ *     (question 2); below it, the claims themselves are the answer;
+ *   - every figure is a percent with its count, "86% on time · 12 of 14"
+ *     (question 3);
+ *   - English words, the house's own formats (question 7) — every word this
+ *     read sends is in `vendor-scorecard.copy.ts`.
+ *
  * WHY THE FIGURES ARE COMPUTED FROM THE ENTRIES, AND NEVER BESIDE THEM
  * -------------------------------------------------------------------
  * "Every figure opens to its rows" is only true if the figure IS its rows. So
  * this module first turns each register's rows into dated docket entries —
- * one per delivery, door verdict, invoiced line, message wait, claim — and
- * then counts the entries. The card, the Roll Call cell and the Docket are all
- * read from one `buildVendorScorecard` call, so the tally at the top of the
- * Docket cannot disagree with the list beneath it: the spec proves
+ * one per order, door verdict, invoiced line, message wait, claim — and then
+ * counts the entries. The card, the Roll Call cell and the Docket are all read
+ * from one `buildVendorScorecard` call, so the tally at the top of the Docket
+ * cannot disagree with the list beneath it: the spec proves
  * `hits === entries.filter(hit).length` for every measure, both windows.
  *
  * THE FOUR ANSWERS A MEASURE CAN GIVE, AND NO FIFTH
@@ -40,12 +52,20 @@
  *
  * NO ALERTS. Nothing here fires, sends or ranks. The shadow run and the
  * labelled set the founder asked for come before any alert, and neither is
- * built in this change (ADR 0207 "Follow-ups").
+ * built in this change (ADR 0207 "Not built").
  *
  * Pure: no database, no Nest, no clock of its own — `now` is an input.
  */
 
 import { median } from "../../analytics/engine/statistics";
+import type { HouseFrame } from "../../common/house-frame";
+import {
+  DAY_MS,
+  daysPast,
+  deadlineOf,
+  isPastDue,
+  landedVerdict,
+} from "../../procurement/delivery-deadline";
 import {
   ORDER_ARRIVED_STATUSES,
   ORDER_OPEN_WITH_VENDOR_STATUSES,
@@ -55,6 +75,7 @@ import {
   agreedPricePerBottleForDoor,
   readStatedPriceUnit,
 } from "../../procurement/agreed-price";
+import { COPY, Fmt, makeFmt } from "./vendor-scorecard.copy";
 
 // ---------------------------------------------------------------------------
 // Vocabulary
@@ -83,40 +104,23 @@ export const DEFAULT_WINDOW: WindowDays = 90;
 /**
  * The minimum sample, PER MEASURE, for both the figure and the comparison.
  *
- * 5 and 5 are the numbers sketch 117 drew (README "the minimum sample is per
- * measure — 5 deliveries in the window for the delivery-borne lines, 5 replies
- * for the reply line") — placeholders the founder has not ruled on, recorded
- * as such in ADR 0207. Credits is a SUM of money, not a sampled rate: every
- * claim is on its row, so one claim is enough to print what was allowed of
- * what was asked. That choice is also the founder's to overrule.
+ * The founder, 2026-09-21 (question 2): "5 everywhere". Sketch 117 drew 5
+ * deliveries and 5 replies; the builder had allowed credits a single claim (a
+ * sum of money, every claim on its row). The ruling puts credits at 5 claims
+ * too: below it no percent is shown and the claims are listed as rows.
  */
 export const MINIMUM: Record<MeasureKey, { count: number; noun: string }> = {
-  onTime: { count: 5, noun: "deliveries with an expected date" },
-  linesAsOrdered: { count: 5, noun: "lines with a door verdict" },
-  priceAsAgreed: {
-    count: 5,
-    noun: "invoiced lines compared with an agreed price",
-  },
-  replyTime: { count: 5, noun: "answered messages" },
-  credits: { count: 1, noun: "claims" },
+  onTime: { count: 5, noun: COPY.noun.onTime[1] },
+  linesAsOrdered: { count: 5, noun: COPY.noun.linesAsOrdered[1] },
+  priceAsAgreed: { count: 5, noun: COPY.noun.priceAsAgreed[1] },
+  replyTime: { count: 5, noun: COPY.noun.replyTime[1] },
+  credits: { count: 5, noun: COPY.noun.credits[1] },
 };
 
-export const MEASURE_LABEL: Record<MeasureKey, string> = {
-  onTime: "On time",
-  linesAsOrdered: "Lines as ordered",
-  priceAsAgreed: "Price as agreed",
-  replyTime: "Reply time",
-  credits: "Credits",
-};
+export const MEASURE_LABEL: Record<MeasureKey, string> = COPY.label;
 
 /** Which register each measure is counted from — named in every refusal. */
-export const MEASURE_REGISTER: Record<MeasureKey, string> = {
-  onTime: "the orders book",
-  linesAsOrdered: "the receiving door's records",
-  priceAsAgreed: "the verified invoices",
-  replyTime: "the vendor mail register",
-  credits: "the credits register",
-};
+export const MEASURE_REGISTER: Record<MeasureKey, string> = COPY.register;
 
 // ---------------------------------------------------------------------------
 // Register rows, as read. Every field optional-ish: the reader is honest about
@@ -204,7 +208,7 @@ export type RegisterRead<T> =
   | { ok: false; reason: string };
 
 export interface HouseRegisters {
-  /** Orders that arrived (delivered_at) since the prior window began. */
+  /** Orders that arrived since the prior window began, and orders out with the vendor due in it. */
   arrivals: RegisterRead<OrderArrivalRow>;
   /** Door receipt events since the prior window began, with their order's vendor. */
   door: RegisterRead<
@@ -233,14 +237,14 @@ export interface DocketEntry {
   /** `${measure}:${source id}` — stable across reads. */
   id: string;
   measure: MeasureKey;
-  /** When it happened: landed, verdict given, verified, sent, opened. */
+  /** When it happened: landed, fell due, verdict given, verified, sent, opened. */
   at: string;
   window: EntryWindow;
   /** In the figure's denominator. False = listed and not counted, with why. */
   counted: boolean;
   /** In the numerator: on time / as ordered / at the agreed price / credited. Null when not a rate entry or not counted. */
   hit: boolean | null;
-  /** Still waiting — a message with no reply, a claim not yet settled. */
+  /** Still waiting — an order not landed, a message with no reply, a claim not yet settled. */
   open: boolean;
   /** Why it is listed but not counted. Null when counted. */
   excludedBecause: string | null;
@@ -266,6 +270,16 @@ export interface DocketEntry {
 // The measure — what the card, the cell and the tally print.
 // ---------------------------------------------------------------------------
 
+export interface MoneyTotal {
+  allowed: number;
+  asked: number;
+  currency: string | null;
+  /** allowed / asked; null when nothing was asked or this currency holds fewer than five claims. */
+  share: number | null;
+  /** The share as the house formats a percent; null when there is no share. */
+  percent: string | null;
+}
+
 export interface WindowTally {
   outcome: MeasureOutcome;
   /** Entries counted toward the minimum (the denominator). */
@@ -278,8 +292,13 @@ export interface WindowTally {
    * share (two monies are never added together).
    */
   value: number | null;
+  /**
+   * The rate as the house formats a percent ("86%", "%86"). Null unless the
+   * measure is answered and is a share — never a percent over too few records.
+   */
+  percent: string | null;
   /** Credits only: money allowed and asked, one entry per currency. */
-  money: { allowed: number; asked: number; currency: string | null }[] | null;
+  money: MoneyTotal[] | null;
 }
 
 export interface MeasureResult extends WindowTally {
@@ -289,7 +308,7 @@ export interface MeasureResult extends WindowTally {
   minimumNoun: string;
   /** Entries listed and not counted, grouped by the reason. */
   excluded: { because: string; count: number }[];
-  /** Entries still waiting (unanswered messages, unsettled claims). */
+  /** Entries still waiting (orders not landed, unanswered messages, unsettled claims). */
   open: number;
   /** Every entry behind this line in the current window — the Docket filter's length. */
   rows: number;
@@ -302,6 +321,11 @@ export interface MeasureResult extends WindowTally {
   priorSentence: string;
   /** Reply time only: the slowest counted reply, in hours. */
   slowestHours?: number | null;
+  /**
+   * Credits only, and only under the minimum: the claims themselves, newest
+   * first — "below that the claims are listed as rows" (question 2).
+   */
+  listed: DocketEntry[] | null;
 }
 
 export interface ToneReading {
@@ -315,10 +339,21 @@ export interface ToneReading {
   sentence: string;
 }
 
+/** The house's clock and formats as this read used them. */
+export interface HouseClock {
+  zone: string | null;
+  zoneSource: HouseFrame["zoneSource"];
+  locale: string | null;
+  localeSource: HouseFrame["localeSource"];
+  /** How the on-time deadline was read, in words. */
+  deadline: string;
+}
+
 export interface VendorScorecard {
   providerId: string;
   providerName: string;
   window: { days: WindowDays; from: string; to: string; priorFrom: string };
+  house: HouseClock;
   measures: MeasureResult[];
   tone: ToneReading;
   /** Nothing at all in the window and every register answered. */
@@ -329,14 +364,11 @@ export interface VendorScorecard {
   alerting: { built: false; sentence: string };
 }
 
-export const ALERTING_SENTENCE =
-  "No alert is sent from these figures. A labelled set and a shadow run come first, and neither is built yet.";
+export const ALERTING_SENTENCE = COPY.alerting;
 
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-const DAY_MS = 86_400_000;
 
 function toNum(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -367,54 +399,14 @@ function whichWindow(
   return null;
 }
 
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
-function dayLabel(dateOnly: string): string {
-  // `YYYY-MM-DD` read as a calendar date, never shifted through a time zone.
-  const [y, m, d] = dateOnly.slice(0, 10).split("-").map(Number);
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  if (!y || !m || !d) return dateOnly;
-  return `${d} ${months[m - 1]} ${y}`;
-}
-
-export function fmtHours(h: number): string {
-  if (h < 1) return `${Math.max(1, Math.round(h * 60))} min`;
-  const whole = Math.floor(h);
-  const mins = Math.round((h - whole) * 60);
-  if (whole >= 48) return `${Math.round(h / 24)} d`;
-  return mins === 0
-    ? `${whole} h`
-    : `${whole} h ${String(mins).padStart(2, "0")}`;
-}
-
-/** A money figure in its currency; a bare amount when none is recorded. */
-export function fmtMoney(amount: number, currency: string | null): string {
-  if (!currency) return amount.toFixed(2);
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)} ${currency}`;
-  }
+export function houseClock(h: HouseFrame): HouseClock {
+  return {
+    zone: h.zone,
+    zoneSource: h.zoneSource,
+    locale: h.locale,
+    localeSource: h.localeSource,
+    deadline: COPY.deadline(h),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -423,60 +415,73 @@ export function fmtMoney(amount: number, currency: string | null): string {
 
 type Bounds = ReturnType<typeof windowBounds>;
 
+/**
+ * On time. The universe is every order of the vendor that LANDED in the
+ * window (PARTIALLY_RECEIVED included on purpose — order-status.ts: a short
+ * delivery still came through the door) and every order still out with it
+ * whose deadline passed in the window: that one is late, counted, and open
+ * (question 8). Before its deadline an order is not late, so it is not listed.
+ */
 export function onTimeEntries(
   rows: OrderArrivalRow[],
   b: Bounds,
+  zone: string | null,
+  fmt: Fmt,
 ): DocketEntry[] {
   const out: DocketEntry[] = [];
   for (const o of rows) {
-    // The built rule's universe: an arrival — PARTIALLY_RECEIVED included on
-    // purpose (order-status.ts: a short delivery still came through the door).
-    // An order still out with the vendor past its date is listed as OPEN and
-    // not counted, so a non-delivery is on the page instead of silently absent.
     if (!hasStatus(o.status, ORDER_ARRIVED_STATUSES)) {
-      const past = outstandingEntry(o, b);
-      if (past) out.push(past);
+      const due = overdueEntry(o, b, zone, fmt);
+      if (due) out.push(due);
       continue;
     }
     const landed = ms(o.delivered_at);
     const w = whichWindow(landed, b);
     if (!w || landed === null) continue;
-    const title = o.order_number || `Order ${o.id.slice(0, 8)}`;
     const base = {
       id: `onTime:${o.id}`,
       measure: "onTime" as const,
       at: o.delivered_at as string,
       window: w,
       open: false,
-      title,
+      title: o.order_number || COPY.entry.order(o.id),
       source: { table: "procurement_orders", id: o.id, orderId: o.id },
     };
-    if (!o.expected_delivery_date) {
+    const deadline = deadlineOf(o.expected_delivery_date, zone);
+    if (!deadline) {
       out.push({
         ...base,
         counted: false,
         hit: null,
-        excludedBecause: "no expected date",
-        detail:
-          "Landed with no expected date on the order, so it cannot be early or late.",
+        excludedBecause: COPY.entry.noExpectedDate,
+        detail: COPY.entry.noExpectedDateDetail,
         daysLate: null,
       });
       continue;
     }
-    // THE BUILT RULE, verbatim (advanced-analytics.service.ts getVendorScorecard):
-    // landed at or before 23:59:59 UTC on the stated expected date.
-    const expected = o.expected_delivery_date.slice(0, 10);
-    const deadline = new Date(`${expected}T23:59:59Z`).getTime();
-    const onTime = landed <= deadline;
-    const daysLate = onTime ? 0 : Math.ceil((landed - deadline) / DAY_MS);
+    const verdict = landedVerdict(landed, deadline);
+    const date = fmt.date(deadline.date);
+    if (verdict === "undecided") {
+      out.push({
+        ...base,
+        counted: false,
+        hit: null,
+        excludedBecause: COPY.entry.undecided,
+        detail: COPY.entry.undecidedDetail(date),
+        daysLate: null,
+      });
+      continue;
+    }
+    const onTime = verdict === "on_time";
+    const daysLate = onTime ? 0 : daysPast(landed, deadline);
     out.push({
       ...base,
       counted: true,
       hit: onTime,
       excludedBecause: null,
       detail: onTime
-        ? `Landed by the expected date (${dayLabel(expected)}).`
-        : `Landed ${plural(daysLate, "day", "days")} after the expected date (${dayLabel(expected)}).`,
+        ? COPY.entry.onTime(date)
+        : COPY.entry.late(daysLate, date),
       daysLate,
     });
   }
@@ -484,35 +489,36 @@ export function onTimeEntries(
 }
 
 /**
- * An order placed with the vendor (CONFIRMED / IN_TRANSIT) whose expected date
- * has passed and which has not landed. Dated at its deadline, listed OPEN, not
- * counted: the built rule scores arrivals, and whether a non-delivery counts as
- * late is the founder's question (ADR 0207). Before the date it is not late,
- * so it is not listed.
+ * An order placed with the vendor (CONFIRMED / IN_TRANSIT) whose deadline has
+ * passed and which has not landed: dated at its deadline, counted as LATE, and
+ * open — "count it as late" (question 8), with the open list kept beneath the
+ * figure. Once it lands it is an arrival instead, dated when it landed.
  */
-function outstandingEntry(o: OrderArrivalRow, b: Bounds): DocketEntry | null {
+function overdueEntry(
+  o: OrderArrivalRow,
+  b: Bounds,
+  zone: string | null,
+  fmt: Fmt,
+): DocketEntry | null {
   if (!hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES)) return null;
-  if (!o.expected_delivery_date) return null;
-  const expected = o.expected_delivery_date.slice(0, 10);
-  const deadline = new Date(`${expected}T23:59:59Z`).getTime();
-  if (!Number.isFinite(deadline) || deadline >= b.to) return null;
-  const w = whichWindow(deadline, b);
+  const deadline = deadlineOf(o.expected_delivery_date, zone);
+  if (!deadline || !isPastDue(b.to, deadline)) return null;
+  const w = whichWindow(deadline.latest, b);
   if (!w) return null;
-  const daysPast = Math.ceil((b.to - deadline) / DAY_MS);
+  const days = daysPast(b.to, deadline);
   return {
     id: `onTime:${o.id}`,
     measure: "onTime",
-    at: new Date(deadline).toISOString(),
+    at: new Date(deadline.latest).toISOString(),
     window: w,
-    counted: false,
-    hit: null,
+    counted: true,
+    hit: false,
     open: true,
-    excludedBecause:
-      "past its expected date and not landed — open, not counted",
-    title: o.order_number || `Order ${o.id.slice(0, 8)}`,
-    detail: `Expected by ${dayLabel(expected)}; ${plural(daysPast, "day", "days")} past it and not landed.`,
+    excludedBecause: null,
+    title: o.order_number || COPY.entry.order(o.id),
+    detail: COPY.entry.overdueDetail(fmt.date(deadline.date), days),
     source: { table: "procurement_orders", id: o.id, orderId: o.id },
-    daysLate: daysPast,
+    daysLate: days,
   };
 }
 
@@ -541,14 +547,13 @@ export function doorEntries(
     const at = ms(chosen.occurred_at);
     const w = whichWindow(at, b);
     if (!w) continue;
-    const title = chosen.order_number || `Order ${orderId.slice(0, 8)}`;
     const base = {
       id: `linesAsOrdered:${orderId}`,
       measure: "linesAsOrdered" as const,
       at: chosen.occurred_at,
       window: w,
       open: false,
-      title,
+      title: chosen.order_number || COPY.entry.order(orderId),
       source: { table: "procurement_receipt_events", id: chosen.id, orderId },
     };
     if (!verdict) {
@@ -556,9 +561,8 @@ export function doorEntries(
         ...base,
         counted: false,
         hit: null,
-        excludedBecause: "counted at the door with no verdict recorded",
-        detail:
-          "A count was taken at the door, but no accepted, short or refused verdict was recorded with it.",
+        excludedBecause: COPY.entry.noVerdict,
+        detail: COPY.entry.noVerdictDetail,
       });
       continue;
     }
@@ -568,18 +572,17 @@ export function doorEntries(
     const asOrdered = outcome === "accepted" && rejected <= 0 && !photographed;
     let detail: string;
     if (outcome === "refused") {
-      const why = verdict.refusal_reason
-        ? ` (${String(verdict.refusal_reason).replace(/_/g, " ")})`
-        : "";
-      detail = `Refused at the door${why}.`;
+      detail = COPY.entry.refused(
+        verdict.refusal_reason ? String(verdict.refusal_reason) : null,
+      );
     } else if (outcome === "short") {
-      detail = "Short at the door.";
+      detail = COPY.entry.short;
     } else if (rejected > 0) {
-      detail = `Accepted, with ${rejected} refused at the door.`;
+      detail = COPY.entry.partRefused(rejected);
     } else if (photographed) {
-      detail = "Accepted, with damage photographed at the door.";
+      detail = COPY.entry.photographed;
     } else {
-      detail = "Accepted at the door as ordered.";
+      detail = COPY.entry.asOrdered;
     }
     out.push({
       ...base,
@@ -596,13 +599,13 @@ export function priceEntries(
   rows: VerifiedLineRow[],
   agreed: Map<string, AgreedLineRow>,
   b: Bounds,
+  fmt: Fmt,
 ): DocketEntry[] {
   const out: DocketEntry[] = [];
   for (const o of rows) {
     const at = ms(o.match_verified_at);
     const w = whichWindow(at, b);
     if (!w) continue;
-    const title = o.order_number || `Order ${o.id.slice(0, 8)}`;
     const line = agreed.get(o.id) ?? null;
     const base = {
       id: `priceAsAgreed:${o.id}`,
@@ -610,7 +613,7 @@ export function priceEntries(
       at: o.match_verified_at as string,
       window: w,
       open: false,
-      title,
+      title: o.order_number || COPY.entry.order(o.id),
       source: { table: "procurement_orders", id: o.id, orderId: o.id },
       currency: line?.currency ?? null,
     };
@@ -620,9 +623,8 @@ export function priceEntries(
         ...base,
         counted: false,
         hit: null,
-        excludedBecause: "no invoiced price recorded",
-        detail:
-          "Verified with no invoiced unit price, so there was nothing to compare.",
+        excludedBecause: COPY.entry.noInvoicedPrice,
+        detail: COPY.entry.noInvoicedPriceDetail,
         agreed: null,
         invoiced: null,
       });
@@ -633,8 +635,8 @@ export function priceEntries(
         ...base,
         counted: false,
         hit: null,
-        excludedBecause: "not checked against the agreed price",
-        detail: "The verification recorded no price check for this line.",
+        excludedBecause: COPY.entry.notChecked,
+        detail: COPY.entry.notCheckedDetail,
         agreed: null,
         invoiced,
       });
@@ -656,8 +658,8 @@ export function priceEntries(
         ...base,
         counted: false,
         hit: null,
-        excludedBecause: "no agreed price it can be compared with",
-        detail: `Not compared: ${door.reason}.`,
+        excludedBecause: COPY.entry.noAgreedPrice,
+        detail: COPY.entry.noAgreedPriceDetail(door.reason),
         agreed: null,
         invoiced,
       });
@@ -674,10 +676,10 @@ export function priceEntries(
       hit: atAgreed,
       excludedBecause: null,
       detail: atAgreed
-        ? "Invoiced at the agreed price."
+        ? COPY.entry.atAgreed
         : diff === null
-          ? "Invoiced away from the agreed price."
-          : `Invoiced ${diff > 0 ? "above" : "below"} the agreed price by ${Math.abs(diff * 100).toFixed(1)}%.`,
+          ? COPY.entry.awayFromAgreed
+          : COPY.entry.offAgreed(diff > 0, fmt.pct1(Math.abs(diff))),
       agreed: door.perBottle,
       invoiced,
     });
@@ -725,12 +727,33 @@ function threadOf(r: ConversationRow): string | null {
 export function replyEntries(
   rows: ConversationRow[],
   b: Bounds,
+  fmt: Fmt,
 ): DocketEntry[] {
   const out: DocketEntry[] = [];
   const threads = new Map<
     string,
     { at: number; row: ConversationRow; dir: "out" | "in" }[]
   >();
+  const aside = (
+    r: ConversationRow,
+    w: EntryWindow,
+    because: string,
+    detail: string,
+  ) =>
+    out.push({
+      id: `replyTime:${r.id}`,
+      measure: "replyTime",
+      at: r.sent_at as string,
+      window: w,
+      counted: false,
+      hit: null,
+      open: false,
+      excludedBecause: because,
+      title: COPY.entry.ourMessage,
+      detail,
+      source: { table: "procurement_conversations", id: r.id, orderId: null },
+      hours: null,
+    });
   for (const r of rows) {
     const dir = String(r.direction ?? "").toLowerCase();
     if (dir === "outbound") {
@@ -740,49 +763,17 @@ export function replyEntries(
       const w = whichWindow(sent, b);
       if (!SENT_STATUSES.has(status)) {
         if (w)
-          out.push({
-            id: `replyTime:${r.id}`,
-            measure: "replyTime",
-            at: r.sent_at as string,
-            window: w,
-            counted: false,
-            hit: null,
-            open: false,
-            excludedBecause: "the send was never confirmed",
-            title: "Our message",
-            detail: `Recorded as ${status ? status.toLowerCase().replace(/_/g, " ") : "no status"}, so it may never have reached them.`,
-            source: {
-              table: "procurement_conversations",
-              id: r.id,
-              orderId: null,
-            },
-            hours: null,
-          });
+          aside(
+            r,
+            w,
+            COPY.entry.neverConfirmed,
+            COPY.entry.neverConfirmedDetail(status),
+          );
         continue;
       }
       const t = threadOf(r);
       if (!t) {
-        if (w)
-          out.push({
-            id: `replyTime:${r.id}`,
-            measure: "replyTime",
-            at: r.sent_at as string,
-            window: w,
-            counted: false,
-            hit: null,
-            open: false,
-            excludedBecause:
-              "no thread on record, so no reply can be matched to it",
-            title: "Our message",
-            detail:
-              "Sent with no thread on the record, so no reply can be matched to it.",
-            source: {
-              table: "procurement_conversations",
-              id: r.id,
-              orderId: null,
-            },
-            hours: null,
-          });
+        if (w) aside(r, w, COPY.entry.noThread, COPY.entry.noThreadDetail);
         continue;
       }
       const list = threads.get(t) ?? [];
@@ -815,11 +806,11 @@ export function replyEntries(
         counted: reply !== null,
         hit: null,
         open: reply === null,
-        excludedBecause: reply ? null : "no reply yet — open, not counted",
-        title: "Our message",
+        excludedBecause: reply ? null : COPY.entry.noReplyYet,
+        title: COPY.entry.ourMessage,
         detail: reply
-          ? `Answered in ${fmtHours(hours as number)} in the same thread.`
-          : "No reply in this thread yet.",
+          ? COPY.entry.answered(fmt.hours(hours as number))
+          : COPY.entry.unanswered,
         source: {
           table: "procurement_conversations",
           id: start.row.id,
@@ -845,6 +836,7 @@ export function creditEntries(
   rows: CreditRow[],
   b: Bounds,
   now: Date,
+  fmt: Fmt,
 ): DocketEntry[] {
   const out: DocketEntry[] = [];
   for (const c of rows) {
@@ -857,31 +849,35 @@ export function creditEntries(
     const currency = c.currency ? c.currency.toUpperCase() : null;
     const open =
       c.state === "open" || c.state === "requested" || c.state === "promised";
+    const askedText = fmt.money(asked, currency);
     let detail: string;
     switch (c.state) {
       case "credited":
-        detail = `Credited ${fmtMoney(allowed as number, currency)} of ${fmtMoney(asked, currency)} asked.`;
+        detail = COPY.entry.credited(
+          fmt.money(allowed as number, currency),
+          askedText,
+        );
         break;
       case "promised": {
         const since = ms(c.promised_at) ?? (at as number);
         const days = Math.max(0, Math.floor((now.getTime() - since) / DAY_MS));
-        detail = `Promised, ${plural(days, "day", "days")} ago, not recovered — promised is not recovered.`;
+        detail = COPY.entry.promised(days);
         break;
       }
       case "requested":
-        detail = `${fmtMoney(asked, currency)} asked of the vendor; no answer recorded.`;
+        detail = COPY.entry.requested(askedText);
         break;
       case "open":
-        detail = `${fmtMoney(asked, currency)} owed back; not yet asked of the vendor.`;
+        detail = COPY.entry.openClaim(askedText);
         break;
       case "rejected":
-        detail = `The vendor refused ${fmtMoney(asked, currency)}.`;
+        detail = COPY.entry.rejected(askedText);
         break;
       case "written_off":
-        detail = `${fmtMoney(asked, currency)} written off by the house.`;
+        detail = COPY.entry.writtenOff(askedText);
         break;
       default:
-        detail = `State ${c.state}.`;
+        detail = COPY.entry.otherState(c.state);
     }
     out.push({
       id: `credits:${c.id}`,
@@ -892,7 +888,7 @@ export function creditEntries(
       hit: c.state === "credited",
       open,
       excludedBecause: null,
-      title: `Claim ${c.id.slice(0, 8)}${c.reason ? ` · ${c.reason.replace(/_/g, " ")}` : ""}`,
+      title: COPY.entry.claim(c.id, c.reason),
       detail,
       source: { table: "procurement_credits", id: c.id, orderId: c.order_id },
       amountAsked: asked,
@@ -911,10 +907,11 @@ function tally(
   key: MeasureKey,
   entries: DocketEntry[],
   blocked: MeasureOutcome | null,
+  fmt: Fmt,
 ): WindowTally {
   const counted = entries.filter((e) => e.counted);
   const sample = counted.length;
-  const empty = { sample, hits: null, value: null, money: null };
+  const empty = { sample, hits: null, value: null, percent: null, money: null };
   if (blocked) return { outcome: blocked, ...empty };
   if (key === "replyTime") {
     const hours = counted.map((e) => e.hours as number);
@@ -924,49 +921,68 @@ function tally(
       sample,
       hits: null,
       value: median(hours),
+      percent: null,
       money: null,
     };
   }
   const hits = counted.filter((e) => e.hit === true).length;
+  if (sample < MINIMUM[key].count)
+    return {
+      outcome: "too_few",
+      sample,
+      hits,
+      value: null,
+      percent: null,
+      money: null,
+    };
   if (key === "credits") {
-    if (sample < MINIMUM[key].count)
-      return { outcome: "too_few", sample, hits, value: null, money: null };
     // One total per currency. Two monies are never added together, so a
-    // vendor with claims in two currencies gets two totals and no share.
+    // vendor with claims in two currencies gets two totals and no one share.
+    // "5 everywhere" (question 2) holds per currency too: a currency's share
+    // rests on its own claims only, so under five of them it prints its money
+    // and no percent — five claims across two currencies are not five of either.
     const byCurrency = new Map<
       string | null,
-      { allowed: number; asked: number }
+      { allowed: number; asked: number; claims: number }
     >();
     for (const e of counted) {
       const c = e.currency ?? null;
-      const m = byCurrency.get(c) ?? { allowed: 0, asked: 0 };
+      const m = byCurrency.get(c) ?? { allowed: 0, asked: 0, claims: 0 };
       m.asked += e.amountAsked ?? 0;
       m.allowed += e.amountAllowed ?? 0;
+      m.claims += 1;
       byCurrency.set(c, m);
     }
-    const money = [...byCurrency.entries()]
+    const money: MoneyTotal[] = [...byCurrency.entries()]
       .sort(([a], [c]) => String(a ?? "").localeCompare(String(c ?? "")))
-      .map(([currency, m]) => ({
-        currency,
-        allowed: round2(m.allowed),
-        asked: round2(m.asked),
-      }));
+      .map(([currency, m]) => {
+        const allowed = round2(m.allowed);
+        const asked = round2(m.asked);
+        const scores = asked > 0 && m.claims >= MINIMUM[key].count;
+        return {
+          currency,
+          allowed,
+          asked,
+          share: scores ? allowed / asked : null,
+          percent: scores ? fmt.pct(allowed, asked) : null,
+        };
+      });
     const single = money.length === 1 ? money[0] : null;
     return {
       outcome: "answered",
       sample,
       hits,
-      value: single && single.asked > 0 ? single.allowed / single.asked : null,
+      value: single ? single.share : null,
+      percent: single ? single.percent : null,
       money,
     };
   }
-  if (sample < MINIMUM[key].count)
-    return { outcome: "too_few", sample, hits, value: null, money: null };
   return {
     outcome: "answered",
     sample,
     hits,
     value: hits / sample,
+    percent: fmt.pct(hits, sample),
     money: null,
   };
 }
@@ -975,99 +991,87 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-const NOT_COLLECTED: Record<MeasureKey, string> = {
-  onTime:
-    "No order in this house carries an expected delivery date, so no delivery can be on time or late. Not late — unknown.",
-  linesAsOrdered:
-    "No delivery in this house has been received through the door yet, so there is no verdict to count. Not clean — unknown.",
-  priceAsAgreed:
-    "No invoice in this house has been verified against its order yet, so no price has been compared. Not at the agreed price — unknown.",
-  replyTime:
-    "No vendor mail is recorded for this house, so reply times cannot be measured. Not slow — unknown.",
-  credits:
-    "No credit claim has ever been recorded for this house, so nothing has been asked back or recovered.",
-};
-
 function measureSentence(
   key: MeasureKey,
   t: WindowTally,
   cur: DocketEntry[],
   days: WindowDays,
   reason: string | null,
+  fmt: Fmt,
 ): string {
-  if (t.outcome === "could_not_read")
-    return `${capital(MEASURE_REGISTER[key])} did not answer (${reason ?? "no reason given"}). This line is unknown, not zero.`;
-  if (t.outcome === "not_collected") return NOT_COLLECTED[key];
+  if (t.outcome === "could_not_read") return COPY.couldNotRead(key, reason);
+  if (t.outcome === "not_collected") return COPY.notCollected[key];
 
-  const excluded = cur.filter((e) => !e.counted && !e.open);
+  const excluded = cur.filter((e) => !e.counted);
   const open = cur.filter((e) => e.open);
-  const min = MINIMUM[key];
 
   if (t.outcome === "too_few") {
-    if (t.sample === 0) {
-      const none: Record<MeasureKey, string> = {
-        onTime: `No delivery with an expected date landed in the last ${days} days — nothing to score.`,
-        linesAsOrdered: `No door verdict in the last ${days} days — nothing to score.`,
-        priceAsAgreed: `No invoiced line was compared with an agreed price in the last ${days} days — nothing to score.`,
-        replyTime: `No answered message in the last ${days} days — nothing to score.`,
-        credits: `No claim opened in the last ${days} days — nothing asked, nothing to score.`,
-      };
-      return [none[key], tailSentence(key, excluded, open)]
-        .filter(Boolean)
-        .join(" ");
-    }
-    return [
-      `${plural(t.sample, singular(min.noun), min.noun)} in ${days} days — too few to score; ${min.count} are needed.`,
-      tailSentence(key, excluded, open),
-    ]
-      .filter(Boolean)
-      .join(" ");
+    const head =
+      t.sample === 0
+        ? COPY.nothingInWindow(key, days)
+        : COPY.tooFew(key, t.sample, days, MINIMUM[key].count);
+    return [head, tailSentence(key, excluded, open)].filter(Boolean).join(" ");
   }
 
   const counted = cur.filter((e) => e.counted);
-  let head: string;
+  const pct = t.percent ?? "";
+  let head = "";
   switch (key) {
     case "onTime": {
-      const late = counted
-        .filter((e) => e.hit === false)
-        .map((e) => e.daysLate as number);
-      head =
-        `${t.hits} of ${t.sample} landed by the expected date.` +
-        (late.length
-          ? ` ${plural(late.length, "landed late", "landed late")}, by ${late.sort((a, c) => a - c).join(", ")} ${late.length === 1 && late[0] === 1 ? "day" : "days"}.`
-          : "");
+      // Days late of the orders that LANDED late; the ones not landed are in
+      // the tail, named as open.
+      const landedLate = counted
+        .filter((e) => e.hit === false && !e.open)
+        .map((e) => e.daysLate as number)
+        .sort((a, c) => a - c);
+      head = COPY.head.onTime(pct, t.hits as number, t.sample, landedLate);
       break;
     }
-    case "linesAsOrdered": {
-      const misses = counted.filter((e) => e.hit === false);
-      head = `${t.hits} of ${t.sample} lines had no short, refused or damaged verdict at the door.${misses.length ? ` ${plural(misses.length, "line was not", "lines were not")}.` : ""}`;
+    case "linesAsOrdered":
+      head = COPY.head.linesAsOrdered(
+        pct,
+        t.hits as number,
+        t.sample,
+        counted.filter((e) => e.hit === false).length,
+      );
       break;
-    }
-    case "priceAsAgreed": {
-      const above = counted.filter(
-        (e) => e.hit === false && (e.invoiced ?? 0) > (e.agreed ?? 0),
-      ).length;
-      const below = counted.filter(
-        (e) => e.hit === false && (e.invoiced ?? 0) < (e.agreed ?? 0),
-      ).length;
-      head = `${t.hits} of ${t.sample} invoiced lines were at the agreed price.${above ? ` ${above} above it.` : ""}${below ? ` ${below} below it.` : ""}`;
+    case "priceAsAgreed":
+      head = COPY.head.priceAsAgreed(
+        pct,
+        t.hits as number,
+        t.sample,
+        counted.filter(
+          (e) => e.hit === false && (e.invoiced ?? 0) > (e.agreed ?? 0),
+        ).length,
+        counted.filter(
+          (e) => e.hit === false && (e.invoiced ?? 0) < (e.agreed ?? 0),
+        ).length,
+      );
       break;
-    }
-    case "replyTime": {
-      const slowest = Math.max(...counted.map((e) => e.hours as number));
-      head = `Median ${fmtHours(t.value as number)} from our message to their next reply in the same thread, over ${plural(t.sample, "reply", "replies")}. Slowest ${fmtHours(slowest)}.`;
+    case "replyTime":
+      head = COPY.head.replyTime(
+        fmt.hours(t.value as number),
+        t.sample,
+        fmt.hours(Math.max(...counted.map((e) => e.hours as number))),
+      );
       break;
-    }
     case "credits": {
       const money = t.money ?? [];
-      head =
-        `${money.map((m) => `${fmtMoney(m.allowed, m.currency)} recovered by credit memo of ${fmtMoney(m.asked, m.currency)} asked`).join("; ")}, on ${plural(t.sample, "claim", "claims")}; ${t.hits} credited.` +
-        (money.length > 1
-          ? " Money in two currencies is not added together, so each is its own total."
-          : "") +
-        (money.some((m) => m.currency === null)
-          ? " The currency is not recorded on the order behind a claim, so its amount is printed with none."
-          : "");
+      head = COPY.head.credits(
+        money.map((m) => ({
+          allowed: fmt.money(m.allowed, m.currency),
+          asked: fmt.money(m.asked, m.currency),
+          pct: m.percent,
+        })),
+        t.sample,
+        t.hits as number,
+        money.length > 1,
+        money.some((m) => m.currency === null),
+        // Asked and still no percent: that currency holds under five claims.
+        money.some((m) => m.asked > 0 && m.percent === null)
+          ? MINIMUM[key].count
+          : null,
+      );
       break;
     }
   }
@@ -1080,24 +1084,12 @@ function tailSentence(
   open: DocketEntry[],
 ): string {
   const parts: string[] = [];
-  const groups = groupExcluded(excluded);
-  for (const g of groups)
-    parts.push(
-      `${g.count} ${g.count === 1 ? "is" : "are"} listed and not counted: ${g.because}.`,
-    );
+  for (const g of groupExcluded(excluded.filter((e) => !e.open)))
+    parts.push(COPY.listedNotCounted(g.count, g.because));
   if (open.length) {
-    if (key === "onTime")
-      parts.push(
-        `${plural(open.length, "order is", "orders are")} past the expected date and not landed — not counted, not forgotten.`,
-      );
-    else if (key === "replyTime")
-      parts.push(
-        `${plural(open.length, "message has", "messages have")} no reply yet — not counted, not forgotten.`,
-      );
-    else if (key === "credits")
-      parts.push(
-        `${plural(open.length, "claim is", "claims are")} still open or promised — in what was asked, not in what was recovered.`,
-      );
+    if (key === "onTime") parts.push(COPY.open.onTime(open.length));
+    else if (key === "replyTime") parts.push(COPY.open.replyTime(open.length));
+    else if (key === "credits") parts.push(COPY.open.credits(open.length));
   }
   return parts.join(" ");
 }
@@ -1107,39 +1099,26 @@ function groupExcluded(
 ): { because: string; count: number }[] {
   const m = new Map<string, number>();
   for (const e of entries) {
-    const k = e.excludedBecause ?? "not counted";
+    const k = e.excludedBecause ?? "";
     m.set(k, (m.get(k) ?? 0) + 1);
   }
   return [...m.entries()].map(([because, count]) => ({ because, count }));
 }
 
-function singular(noun: string): string {
-  const map: Record<string, string> = {
-    "deliveries with an expected date": "delivery with an expected date",
-    "lines with a door verdict": "line with a door verdict",
-    "invoiced lines compared with an agreed price":
-      "invoiced line compared with an agreed price",
-    "answered messages": "answered message",
-    claims: "claim",
-  };
-  return map[noun] ?? noun;
-}
-
-function capital(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function tallyText(key: MeasureKey, t: WindowTally): string {
+function tallyText(key: MeasureKey, t: WindowTally, fmt: Fmt): string {
   if (key === "replyTime")
-    return `${fmtHours(t.value as number)} median · ${plural(t.sample, "reply", "replies")}`;
+    return COPY.tally.reply(fmt.hours(t.value as number), t.sample);
   if (key === "credits" && t.money)
     return t.money
-      .map(
-        (m) =>
-          `${fmtMoney(m.allowed, m.currency)} of ${fmtMoney(m.asked, m.currency)}`,
+      .map((m) =>
+        COPY.tally.money(
+          m.percent,
+          fmt.money(m.allowed, m.currency),
+          fmt.money(m.asked, m.currency),
+        ),
       )
       .join(" · ");
-  return `${t.hits} of ${t.sample}`;
+  return COPY.tally.rate(t.percent, t.hits as number, t.sample);
 }
 
 /**
@@ -1151,15 +1130,18 @@ function priorSentence(
   key: MeasureKey,
   prior: WindowTally,
   days: WindowDays,
+  fmt: Fmt,
 ): string {
-  const label = `prior ${days} d`;
-  if (prior.outcome === "could_not_read") return `${label} · could not be read`;
-  if (prior.outcome === "not_collected") return `${label} · not collected`;
+  const label = COPY.prior.label(days);
+  if (prior.outcome === "could_not_read")
+    return `${label} · ${COPY.prior.couldNotRead}`;
+  if (prior.outcome === "not_collected")
+    return `${label} · ${COPY.prior.notCollected}`;
   if (prior.outcome === "too_few")
     return prior.sample === 0
-      ? `${label} · nothing to compare with`
-      : `${label} · ${prior.sample} — too few to compare`;
-  return `${label} · ${tallyText(key, prior)}`;
+      ? `${label} · ${COPY.prior.nothing}`
+      : `${label} · ${COPY.prior.tooFew(prior.sample)}`;
+  return `${label} · ${tallyText(key, prior, fmt)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1171,6 +1153,8 @@ export interface BuildInput {
   providerName: string;
   days: WindowDays;
   now: Date;
+  /** The house's clock and formats (`common/house-frame.ts`). */
+  house: HouseFrame;
   registers: HouseRegisters;
 }
 
@@ -1187,9 +1171,14 @@ function forVendor<T extends { provider_id: string | null }>(
   return rows.filter((r) => r.provider_id === id);
 }
 
+function newestFirst(a: DocketEntry, c: DocketEntry): number {
+  return (ms(c.at) ?? 0) - (ms(a.at) ?? 0);
+}
+
 export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
-  const { providerId, providerName, days, now, registers: R } = input;
+  const { providerId, providerName, days, now, house, registers: R } = input;
   const b = windowBounds(now, days);
+  const fmt = makeFmt(house.locale);
 
   const agreedMap = new Map<string, AgreedLineRow>();
   if (R.agreedLines.ok)
@@ -1205,7 +1194,7 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
     }
   > = {
     onTime: fromRegister(R.arrivals, (rows) =>
-      onTimeEntries(forVendor(rows, providerId), b),
+      onTimeEntries(forVendor(rows, providerId), b, house.zone, fmt),
     ),
     linesAsOrdered: fromRegister(R.door, (rows) =>
       doorEntries(forVendor(rows, providerId), b),
@@ -1214,16 +1203,16 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
       ? {
           entries: [],
           blocked: "could_not_read",
-          reason: `the agreed lines did not answer: ${R.agreedLines.reason}`,
+          reason: COPY.reason.agreedLines(R.agreedLines.reason),
         }
       : fromRegister(R.verified, (rows) =>
-          priceEntries(forVendor(rows, providerId), agreedMap, b),
+          priceEntries(forVendor(rows, providerId), agreedMap, b, fmt),
         ),
     replyTime: fromRegister(R.mail, (rows) =>
-      replyEntries(forVendor(rows, providerId), b),
+      replyEntries(forVendor(rows, providerId), b, fmt),
     ),
     credits: fromRegister(R.credits, (rows) =>
-      creditEntries(forVendor(rows, providerId), b, now),
+      creditEntries(forVendor(rows, providerId), b, now, fmt),
     ),
   };
 
@@ -1231,8 +1220,8 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
     const { entries, blocked, reason } = perMeasure[key];
     const cur = entries.filter((e) => e.window === "current");
     const pri = entries.filter((e) => e.window === "prior");
-    const t = tally(key, cur, blocked);
-    const p = tally(key, pri, blocked);
+    const t = tally(key, cur, blocked, fmt);
+    const p = tally(key, pri, blocked, fmt);
     const result: MeasureResult = {
       key,
       label: MEASURE_LABEL[key],
@@ -1243,9 +1232,13 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
       open: cur.filter((e) => e.open).length,
       rows: cur.length,
       reason,
-      sentence: measureSentence(key, t, cur, days, reason),
+      sentence: measureSentence(key, t, cur, days, reason, fmt),
       prior: p,
-      priorSentence: priorSentence(key, p, days),
+      priorSentence: priorSentence(key, p, days, fmt),
+      listed:
+        key === "credits" && t.outcome === "too_few" && cur.length > 0
+          ? [...cur].sort(newestFirst)
+          : null,
     };
     if (key === "replyTime" && t.outcome === "answered")
       result.slowestHours = Math.max(
@@ -1267,7 +1260,7 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
     );
 
   const entries = MEASURE_KEYS.flatMap((k) => perMeasure[k].entries).sort(
-    (a, c) => (ms(c.at) ?? 0) - (ms(a.at) ?? 0),
+    newestFirst,
   );
 
   return {
@@ -1280,6 +1273,7 @@ export function buildVendorScorecard(input: BuildInput): BuiltScorecard {
         to: new Date(b.to).toISOString(),
         priorFrom: new Date(b.priorFrom).toISOString(),
       },
+      house: houseClock(house),
       measures,
       tone,
       quiet,
@@ -1316,7 +1310,7 @@ function toneReading(
       read: 0,
       messages: 0,
       labelledByPerson: 0,
-      sentence: `The vendor mail register did not answer (${mail.reason}).`,
+      sentence: COPY.tone.couldNotRead(mail.reason),
     };
   const inbound = mail.rows.filter(
     (r) =>
@@ -1335,45 +1329,44 @@ function toneReading(
     labelledByPerson: 0,
     sentence:
       inbound.length === 0
-        ? "No vendor message in this window, so nothing was read for tone. Tone is in no figure above."
-        : `A model read the tone of ${read} of ${plural(inbound.length, "vendor message", "vendor messages")}; no person has labelled one. Tone is in no figure above.`,
+        ? COPY.tone.none
+        : COPY.tone.read(read, inbound.length),
   };
 }
 
+/**
+ * The card's one fact — "Percent with count" (question 3): "86% on time · 12
+ * of 14". Orders still out past their date are IN that count as late; the
+ * suffix says how many of the late ones have still not landed, so a late
+ * landing and a missing order do not read alike.
+ */
 function cardFact(
   onTime: MeasureResult,
   quiet: boolean,
   days: WindowDays,
 ): { text: string; outcome: MeasureOutcome } {
-  // Orders past their date and not landed ride on the fact, so "5 of 5 on
-  // time" can never stand beside a vendor holding orders it has not brought.
-  const overdue = onTime.open > 0 ? ` · ${onTime.open} overdue` : "";
+  const overdue = onTime.open > 0 ? COPY.fact.overdue(onTime.open) : "";
   switch (onTime.outcome) {
     case "answered":
       return {
-        text: `${onTime.hits} of ${onTime.sample} on time${overdue}`,
+        text:
+          COPY.fact.answered(
+            onTime.percent as string,
+            onTime.hits as number,
+            onTime.sample,
+          ) + overdue,
         outcome: "answered",
       };
     case "could_not_read":
-      return {
-        text: "the orders book did not answer",
-        outcome: "could_not_read",
-      };
+      return { text: COPY.fact.couldNotRead, outcome: "could_not_read" };
     case "not_collected":
-      return { text: "no expected dates recorded", outcome: "not_collected" };
+      return { text: COPY.fact.notCollected, outcome: "not_collected" };
     default:
-      if (quiet)
-        return {
-          text: `nothing in ${days} d — nothing to score`,
-          outcome: "too_few",
-        };
+      if (quiet) return { text: COPY.fact.quiet(days), outcome: "too_few" };
       if (onTime.sample === 0)
-        return {
-          text: `no dated deliveries in ${days} d${overdue}`,
-          outcome: "too_few",
-        };
+        return { text: COPY.fact.none(days), outcome: "too_few" };
       return {
-        text: `${plural(onTime.sample, "delivery", "deliveries")} — too few to score${overdue}`,
+        text: COPY.fact.tooFew(onTime.sample) + overdue,
         outcome: "too_few",
       };
   }

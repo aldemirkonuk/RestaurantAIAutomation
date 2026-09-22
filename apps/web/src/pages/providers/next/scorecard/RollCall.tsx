@@ -16,6 +16,11 @@
  *
  * At phone width the same rows become one block per vendor — the cells carry
  * their own column label there — so the page never scrolls sideways.
+ *
+ * The founder's rulings of 2026-09-21: every cell is a percent with its count;
+ * five records everywhere before a percent shows, so sorting by credits ranks
+ * only vendors with five claims or more and lists the rest apart; formats are
+ * the house's own, words in `sc-copy.ts`.
  */
 
 import { Fragment, useMemo, useState } from 'react';
@@ -24,29 +29,21 @@ import { ink } from '../../../../lib/mudavym/motion';
 import { MONO, SANS, SERIF } from '../pv-format';
 import { DocketSheet } from './DocketSheet';
 import { WindowChips } from './LedgerCard';
-import { figureOf, rowsLabel, windowLabel } from './sc-format';
+import { SC } from './sc-copy';
+import { figureOf, formatsOf, rowsLabel, windowLabel } from './sc-format';
+import type { Formats } from './sc-format';
 import type { MeasureKey, MeasureResult, VendorScorecard, WindowDays } from './scorecard-types';
 import { serverMessage, useRollCall } from './useVendorScorecard';
 
-const COLUMNS: { key: MeasureKey; label: string; rule: string }[] = [
-  { key: 'onTime', label: 'On time', rule: 'by the expected date' },
-  {
-    key: 'linesAsOrdered',
-    label: 'Lines as ordered',
-    rule: 'no short · refused · damaged',
-  },
-  {
-    key: 'priceAsAgreed',
-    label: 'Price as agreed',
-    rule: 'invoiced at the agreed price',
-  },
-  { key: 'replyTime', label: 'Reply time', rule: 'median · same thread' },
-  { key: 'credits', label: 'Credits recovered', rule: 'credited of asked' },
-];
+const COLUMNS = SC.roll.columns;
 
 type SortKey = 'deliveries' | MeasureKey;
 
-/** A comparable number for a scored cell; null when it cannot be ranked. */
+/**
+ * A comparable number for a scored cell; null when it cannot be ranked. Only an
+ * ANSWERED measure ranks — under five records it is `too_few` and has no value
+ * (question 2: "5 everywhere", credits included).
+ */
 function rankOf(m: MeasureResult): number | null {
   if (m.outcome !== 'answered' || m.value === null) return null;
   // Faster replies first; every other measure, the higher share first.
@@ -59,10 +56,10 @@ function rankOf(m: MeasureResult): number | null {
  * "nothing to score" does not repeat that the window before held nothing too.
  */
 function priorLine(m: MeasureResult): string | null {
-  if (m.outcome === 'could_not_read') return m.reason ?? 'did not answer';
+  if (m.outcome === 'could_not_read') return m.reason ?? SC.figure.didNotAnswer;
   const priorEmpty = m.prior.outcome === 'too_few' && m.prior.sample === 0;
   if (priorEmpty && m.outcome === 'too_few' && m.sample === 0) return null;
-  if (priorEmpty) return 'prior window: none';
+  if (priorEmpty) return SC.roll.priorNone;
   return m.priorSentence;
 }
 
@@ -74,21 +71,23 @@ function Cell({
   v,
   m,
   label,
+  f,
   onOpen,
 }: {
   v: VendorScorecard;
   m: MeasureResult;
   label: string;
+  f: Formats;
   onOpen: () => void;
 }) {
-  const fig = figureOf(m.key, m);
+  const fig = figureOf(m.key, m, f);
   return (
     <div role="cell" className="rc-cell">
       <span className="rc-cell-label">{label}</span>
       <button
         type="button"
         onClick={onOpen}
-        aria-label={`${v.providerName} — ${label}: ${fig.big}${fig.small ? ` ${fig.small}` : ''}. Open the rows.`}
+        aria-label={SC.roll.cellAria(v.providerName, label, `${fig.big}${fig.small ? ` ${fig.small}` : ''}`)}
         data-testid={`rc-cell-${v.providerId}-${m.key}`}
         className="rc-cell-btn"
       >
@@ -147,6 +146,7 @@ export function RollCall() {
     measure: MeasureKey;
   } | null>(null);
   const q = useRollCall(days);
+  const f = formatsOf(q.data?.house);
 
   const groups = useMemo(() => {
     const vendors = q.data?.vendors ?? [];
@@ -181,8 +181,8 @@ export function RollCall() {
           }}
         >
           {v.quiet
-            ? `nothing in ${v.window.days} d`
-            : `${rowsLabel(measureOf(v, 'onTime'))} · ${v.window.days} d`}
+            ? SC.roll.vendorQuiet(v.window.days)
+            : SC.roll.vendorRows(rowsLabel(measureOf(v, 'onTime')), v.window.days)}
         </span>
       </div>
       {COLUMNS.map((c) => (
@@ -191,6 +191,7 @@ export function RollCall() {
           v={v}
           m={measureOf(v, c.key)}
           label={c.label}
+          f={f}
           onOpen={() => setOpen({ id: v.providerId, name: v.providerName, measure: c.key })}
         />
       ))}
@@ -220,11 +221,8 @@ export function RollCall() {
         <WindowChips value={days} onChange={setDays} />
         {q.data && (
           <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
-            {windowLabel(q.data.window.from, q.data.window.to)} · each cell beside the {days} days before it ·
-            ordered by{' '}
-            {sortLabel
-              ? `${sortLabel.toLowerCase()}, vendors that cannot score last`
-              : 'deliveries — not a rank'}
+            {SC.roll.header(windowLabel(q.data.window.from, q.data.window.to, f), days)}
+            {sortLabel ? SC.roll.orderedByMeasure(sortLabel) : SC.roll.orderedByOrders}
           </span>
         )}
       </div>
@@ -243,20 +241,19 @@ export function RollCall() {
         >
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" style={{ marginTop: 2 }} />
           <span>
-            {serverMessage(q.error, 'The scorecard could not be read.')} That is a failed read, not a table of
-            clean vendors — nothing below is claimed.
+            {serverMessage(q.error, SC.roll.readFailed)} {SC.roll.readFailedTail}
           </span>
         </p>
       ) : !q.data ? (
         <p aria-busy="true" style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
-          Reading the orders, the door, the invoices, the mail and the credits for every vendor…
+          {SC.roll.reading}
         </p>
       ) : q.data.vendors.length === 0 ? (
         <p data-testid="rc-empty" style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
-          No vendors yet — the book is open and empty, so there is nothing to score and no table is drawn.
+          {SC.roll.empty}
         </p>
       ) : (
-        <div role="table" aria-label={`Vendor scorecard, ${days} days`}>
+        <div role="table" aria-label={SC.roll.tableLabel(days)}>
           <div role="row" className="rc-row rc-head">
             <div role="columnheader">
               <button
@@ -272,7 +269,7 @@ export function RollCall() {
                     color: 'var(--ink-2, #4F473C)',
                   }}
                 >
-                  Vendor
+                  {SC.roll.vendor}
                 </span>
                 <span
                   style={{
@@ -282,7 +279,7 @@ export function RollCall() {
                     color: 'var(--ink-3, #7C7365)',
                   }}
                 >
-                  orders · {days} d
+                  {SC.roll.vendorRule(days)}
                 </span>
               </button>
             </div>
@@ -332,8 +329,7 @@ export function RollCall() {
                 }}
               >
                 <span role="cell">
-                  {groups.refused.length === 1 ? 'One vendor has' : `${groups.refused.length} vendors have`}{' '}
-                  no “{sortLabel}” figure in this window — listed apart, never ranked among the scored.
+                  {SC.roll.refused(groups.refused.length, sortLabel ?? '')}
                 </span>
               </div>
               {groups.refused.map(row)}
@@ -351,14 +347,8 @@ export function RollCall() {
             color: 'var(--ink-3, #7C7365)',
           }}
         >
-          <p style={{ margin: '0 0 4px' }}>
-            A line listed and not counted — an invoice with no agreed price, a delivery with no expected date
-            — is not a miss. It is set beside the figure and named in the vendor’s rows.
-          </p>
-          <p style={{ margin: '0 0 4px' }}>
-            Tone is not a column: it is a model’s reading of a vendor’s mail, never labelled by a person, and
-            it is in no figure.
-          </p>
+          <p style={{ margin: '0 0 4px' }}>{SC.roll.footListed}</p>
+          <p style={{ margin: '0 0 4px' }}>{SC.roll.footTone}</p>
           <p
             data-testid="rc-alerting"
             style={{

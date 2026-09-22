@@ -26,6 +26,7 @@ import { TwinSheet } from './TwinSheet';
 import { UsualCurrencyCoveragePanel } from './UsualCurrencyCoveragePanel';
 import { useProvidersNextData, type ProviderCardVM } from './useProvidersNextData';
 import { RollCall } from './scorecard/RollCall';
+import { SC } from './scorecard/sc-copy';
 import { useRollCall } from './scorecard/useVendorScorecard';
 import type { VendorScorecard } from './scorecard/scorecard-types';
 
@@ -146,7 +147,7 @@ function BucketCard({
           <dd style={{ margin: 0 }}>{fmtLastContact(vm.lastContact)}</dd>
         </div>
         <div className="flex justify-between gap-3" data-testid="pv-card-did">
-          <dt style={{ color: 'var(--ink-3, #7C7365)', whiteSpace: 'nowrap' }}>Did · 90 d</dt>
+          <dt style={{ color: 'var(--ink-3, #7C7365)', whiteSpace: 'nowrap' }}>{SC.page.didLabel}</dt>
           <dd
             style={{
               margin: 0,
@@ -155,7 +156,7 @@ function BucketCard({
               color: did === null ? 'var(--alarm, #A33A2B)' : undefined,
             }}
           >
-            {did === undefined ? EM : did === null ? 'could not be read' : did.text}
+            {did === undefined ? EM : did === null ? SC.page.didFailed : did.text}
           </dd>
         </div>
       </dl>
@@ -247,7 +248,7 @@ export default function ProvidersNext() {
           <div className="flex flex-col items-end gap-2">
             <span
               role="group"
-              aria-label="View"
+              aria-label={SC.page.viewGroup}
               data-testid="pv-view-toggle"
               style={{
                 display: 'inline-flex',
@@ -274,7 +275,7 @@ export default function ProvidersNext() {
                     transition: `color ${ink.ms}ms ${ink.easing}, background ${ink.ms}ms ${ink.easing}`,
                   }}
                 >
-                  {v === 'book' ? 'Book' : 'Scorecard'}
+                  {v === 'book' ? SC.page.book : SC.page.scorecard}
                 </button>
               ))}
             </span>

@@ -17,6 +17,9 @@
  * MUTATION RECORD (2026-09-21): each of the 15 house clauses in the service,
  * and the controller's `houseOf` refusal, was removed one at a time; every
  * removal turned at least one case below red. The run is recorded in ADR 0207.
+ * The house's own record (its time zone and country) is read by the token's
+ * house id; house B is seeded FIRST, in a zone (UTC+14) that turns every one
+ * of house A's deliveries late, so a read that lost its id clause is visible.
  */
 
 import {
@@ -149,6 +152,11 @@ function day(n: number, hour = 10): string {
  * A's vendor — the cross-links that make a missing clause visible.
  */
 function seed(db: FakeDb) {
+  // House B first: a read of `restaurants` that lost its id clause takes it.
+  db.tables.restaurants = [
+    { id: B, timezone: "Pacific/Kiritimati", country: "KI" },
+    { id: A, timezone: "UTC", country: null },
+  ];
   db.tables.providers = [
     { id: PA, name: "Skurnik", restaurant_id: A, deleted_at: null },
     { id: PB, name: "Foreign Vendor", restaurant_id: B, deleted_at: null },
@@ -440,10 +448,12 @@ function expectHouseAOnly(card: VendorScorecard) {
     outcome: "answered",
     sample: 6,
     hits: 6,
+    percent: "100%",
   });
   expect(m(card, "credits").money).toEqual([
-    { currency: "USD", allowed: 60, asked: 60 },
+    { currency: "USD", allowed: 60, asked: 60, share: 1, percent: "100%" },
   ]);
+  expect(card.house).toMatchObject({ zone: "UTC", zoneSource: "house" });
   expect(card.tone).toMatchObject({ read: 0, messages: 5 });
 }
 
@@ -483,7 +493,7 @@ describe("the vendor scorecard is house-scoped", () => {
     ]);
   });
 
-  it("lists house A's own order past its date and not landed beside the on-time figure, never in it", async () => {
+  it("counts house A's own order past its date and not landed as late, and keeps it open", async () => {
     const { controller, db } = make();
     db.tables.procurement_orders.push({
       id: "a-ord-overdue",
@@ -497,12 +507,12 @@ describe("the vendor scorecard is house-scoped", () => {
     const card = await controller.card(userA, PA, "90");
     expect(m(card, "onTime")).toMatchObject({
       outcome: "answered",
-      sample: 5,
+      sample: 6,
       hits: 5,
       open: 1,
       rows: 6,
     });
-    expect(card.fact.text).toBe("5 of 5 on time · 1 overdue");
+    expect(card.fact.text).toBe("83% on time · 5 of 6 · 1 overdue");
     const docket = await controller.docket(userA, PA, "90", "onTime");
     expect(docket.entries.find((e) => e.open)?.title).toBe("A-OVERDUE");
   });
@@ -575,10 +585,10 @@ describe("a claim's money is in its order's currency, never the column default",
       if (o.restaurant_id === A) o.currency = null;
     const card = await controller.card(userA, PA, "90");
     expect(m(card, "credits").money).toEqual([
-      { currency: null, allowed: 60, asked: 60 },
+      { currency: null, allowed: 60, asked: 60, share: 1, percent: "100%" },
     ]);
     expect(m(card, "credits").sentence).toContain(
-      "60.00 recovered by credit memo of 60.00 asked",
+      "100% recovered — 60.00 by credit memo of 60.00 asked",
     );
     expect(m(card, "credits").sentence).not.toContain("$");
   });
@@ -614,6 +624,28 @@ describe("a failed read is never an empty one", () => {
     expect(roll.vendors).toHaveLength(2);
     for (const v of roll.vendors)
       expect(m(v, "replyTime").outcome).toBe("could_not_read");
+  });
+
+  it("an unreadable house record is a 503 on every route — never a silent UTC", async () => {
+    const { controller, db } = make();
+    db.failures.restaurants = "connection refused";
+    await expect(controller.rollCall(userA, undefined)).rejects.toMatchObject({
+      status: 503,
+    });
+    await expect(controller.card(userA, PA, "90")).rejects.toMatchObject({
+      status: 503,
+    });
+    await expect(
+      controller.docket(userA, PA, "90", undefined),
+    ).rejects.toMatchObject({ status: 503 });
+  });
+
+  it("a house with no record of its own is a 404, never a default clock", async () => {
+    const { controller, db } = make();
+    db.tables.restaurants = db.tables.restaurants.filter((r) => r.id !== A);
+    await expect(controller.card(userA, PA, "90")).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it("an unreadable vendor book is a 503, never an empty Roll Call", async () => {
@@ -679,5 +711,28 @@ describe("the request's own words are checked", () => {
     expect(houseOf({ restaurantId: A })).toBe(A);
     expect(() => houseOf({})).toThrow("This session names no restaurant.");
     expect(() => houseOf(undefined)).toThrow(ForbiddenException);
+  });
+});
+
+describe("the house's own clock reaches the orders still out", () => {
+  it("reads an order due the day before the prior window when its midnight falls inside it (a UTC-12 house)", async () => {
+    const { controller, db } = make();
+    // 180 days before NOW is 2026-03-21T12:00Z. An order expected 2026-03-20
+    // in a UTC-12 house falls due at 2026-03-21T12:00Z: inside the prior window.
+    db.tables.restaurants.find((r) => r.id === A)!.timezone = "Etc/GMT+12";
+    db.tables.procurement_orders.push({
+      id: "a-ord-edge",
+      order_number: "A-EDGE",
+      restaurant_id: A,
+      provider_id: PA,
+      status: "IN_TRANSIT",
+      expected_delivery_date: "2026-03-20",
+      delivered_at: null,
+    });
+    const docket = await controller.docket(userA, PA, "90", "onTime");
+    expect(m(docket.card, "onTime").prior).toMatchObject({
+      sample: 1,
+      hits: 0,
+    });
   });
 });

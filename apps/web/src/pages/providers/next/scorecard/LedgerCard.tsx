@@ -14,6 +14,11 @@
  *   - a register failed: THAT line says so, the other four stand;
  *   - too few / not collected: a sentence with the count, never a figure;
  *   - a quiet vendor: one sentence — an empty record is not a clean one.
+ *
+ * The founder's rulings of 2026-09-21: every figure is a percent with its
+ * count (the gateway's percent, printed); five records everywhere before a
+ * percent shows, and under five claims the claims themselves are listed here;
+ * English words in the house's own formats, every word in `sc-copy.ts`.
  */
 
 import { useState } from 'react';
@@ -21,12 +26,12 @@ import { AlertTriangle } from 'lucide-react';
 import { ink } from '../../../../lib/mudavym/motion';
 import { MONO, SANS, SERIF } from '../pv-format';
 import { DocketSheet } from './DocketSheet';
-import { figureOf, rowsLabel, windowLabel } from './sc-format';
+import { SC } from './sc-copy';
+import { dayLabel, figureOf, formatsOf, rowsLabel, windowLabel } from './sc-format';
+import type { Formats } from './sc-format';
 import type { MeasureKey, MeasureResult, VendorScorecard, WindowDays } from './scorecard-types';
-import { WINDOWS } from './scorecard-types';
+import { MEASURE_ORDER, WINDOWS } from './scorecard-types';
 import { serverMessage, useVendorCard } from './useVendorScorecard';
-
-const LABELS = ['On time', 'Lines as ordered', 'Price as agreed', 'Reply time', 'Credits'];
 
 const eyebrow: React.CSSProperties = {
   fontFamily: MONO,
@@ -40,7 +45,7 @@ const eyebrow: React.CSSProperties = {
 
 export function WindowChips({ value, onChange }: { value: WindowDays; onChange: (w: WindowDays) => void }) {
   return (
-    <span role="group" aria-label="Window" style={{ display: 'inline-flex', gap: 4 }}>
+    <span role="group" aria-label={SC.window.group} style={{ display: 'inline-flex', gap: 4 }}>
       {WINDOWS.map((w) => (
         <button
           key={w}
@@ -60,15 +65,41 @@ export function WindowChips({ value, onChange }: { value: WindowDays; onChange: 
             transition: `border-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}`,
           }}
         >
-          {w} d
+          {SC.window.chip(w)}
         </button>
       ))}
     </span>
   );
 }
 
-function Line({ m, onRows }: { m: MeasureResult; onRows: (k: MeasureKey) => void }) {
-  const fig = figureOf(m.key, m);
+/** Under the minimum, the claims themselves — no percent over too few (question 2). */
+function ListedClaims({ m, f }: { m: MeasureResult; f: Formats }) {
+  if (!m.listed || m.listed.length === 0) return null;
+  return (
+    <div data-testid="ledger-listed-claims" style={{ marginTop: 4 }}>
+      <p style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+        {SC.ledger.claimsBelowMinimum(m.minimum)}
+      </p>
+      <ul style={{ margin: '2px 0 0', padding: 0 }}>
+        {m.listed.map((e) => (
+          <li
+            key={e.id}
+            data-testid="ledger-listed-claim"
+            style={{ listStyle: 'none', fontSize: 11, lineHeight: 1.45, color: 'var(--ink-2, #4F473C)' }}
+          >
+            <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)', marginRight: 6 }}>
+              {dayLabel(e.at, f)}
+            </span>
+            {e.title} — {e.detail}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Line({ m, f, onRows }: { m: MeasureResult; f: Formats; onRows: (k: MeasureKey) => void }) {
+  const fig = figureOf(m.key, m, f);
   return (
     <div
       data-testid={`ledger-line-${m.key}`}
@@ -131,6 +162,7 @@ function Line({ m, onRows }: { m: MeasureResult; onRows: (k: MeasureKey) => void
       >
         {m.sentence}
       </p>
+      <ListedClaims m={m} f={f} />
       <div className="flex items-baseline justify-between gap-3" style={{ marginTop: 4 }}>
         <span
           style={{
@@ -167,7 +199,7 @@ function Line({ m, onRows }: { m: MeasureResult; onRows: (k: MeasureKey) => void
               color: 'var(--ink-3, #7C7365)',
             }}
           >
-            no rows
+            {SC.ledger.noRows}
           </span>
         )}
       </div>
@@ -176,6 +208,7 @@ function Line({ m, onRows }: { m: MeasureResult; onRows: (k: MeasureKey) => void
 }
 
 function Body({ card, onRows }: { card: VendorScorecard; onRows: (k: MeasureKey) => void }) {
+  const f = formatsOf(card.house);
   if (card.quiet) {
     return (
       <p
@@ -187,15 +220,14 @@ function Body({ card, onRows }: { card: VendorScorecard; onRows: (k: MeasureKey)
           margin: '6px 0',
         }}
       >
-        Nothing in the last {card.window.days} days — no deliveries, door verdicts, invoices, replies or
-        claims from {card.providerName}. An empty record is not a clean one, so no line is drawn.
+        {SC.ledger.quiet(card.window.days, card.providerName)}
       </p>
     );
   }
   return (
     <>
       {card.measures.map((m) => (
-        <Line key={m.key} m={m} onRows={onRows} />
+        <Line key={m.key} m={m} f={f} onRows={onRows} />
       ))}
       <div
         data-testid="ledger-tone"
@@ -205,7 +237,7 @@ function Body({ card, onRows }: { card: VendorScorecard; onRows: (k: MeasureKey)
           fontSize: 11,
         }}
       >
-        <span style={{ color: 'var(--ink-3, #7C7365)' }}>Tone · minor, not scored — </span>
+        <span style={{ color: 'var(--ink-3, #7C7365)' }}>{SC.ledger.tonePrefix}</span>
         <span style={{ color: 'var(--ink-2, #4F473C)' }}>{card.tone.sentence}</span>
       </div>
     </>
@@ -224,12 +256,12 @@ export function LedgerCard({ providerId, providerName }: { providerId: string; p
         .sc-chip:focus-visible, .sc-rows:focus-visible { outline: 2px solid var(--seal, #1A5E6B); outline-offset: 2px }
         @media (prefers-reduced-motion: reduce) { .sc-chip { transition: none !important } }
       `}</style>
-      <h3 style={eyebrow}>What they did</h3>
+      <h3 style={eyebrow}>{SC.ledger.heading}</h3>
       <div className="flex flex-wrap items-center justify-between gap-2" style={{ marginBottom: 4 }}>
         <WindowChips value={days} onChange={setDays} />
         {q.data && (
           <span style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
-            {windowLabel(q.data.window.from, q.data.window.to)} · against the {days} days before it
+            {windowLabel(q.data.window.from, q.data.window.to, formatsOf(q.data.house))} · {SC.window.against(days)}
           </span>
         )}
       </div>
@@ -249,8 +281,7 @@ export function LedgerCard({ providerId, providerName }: { providerId: string; p
           >
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" style={{ marginTop: 2 }} />
             <span>
-              {serverMessage(q.error, 'The scorecard could not be read.')} That is a failed read, not a clean
-              record — no line here is claimed.
+              {serverMessage(q.error, SC.ledger.readFailed)} {SC.ledger.readFailedTail}
             </span>
           </p>
           <button
@@ -268,7 +299,7 @@ export function LedgerCard({ providerId, providerName }: { providerId: string; p
               cursor: 'pointer',
             }}
           >
-            Try again
+            {SC.ledger.tryAgain}
           </button>
         </div>
       ) : !q.data ? (
@@ -280,9 +311,9 @@ export function LedgerCard({ providerId, providerName }: { providerId: string; p
               margin: '6px 0',
             }}
           >
-            Reading the orders, the door, the invoices, the mail and the credits…
+            {SC.ledger.reading}
           </p>
-          {LABELS.map((l) => (
+          {MEASURE_ORDER.map((k) => SC.labels[k]).map((l) => (
             <div
               key={l}
               className="flex justify-between"
@@ -302,18 +333,14 @@ export function LedgerCard({ providerId, providerName }: { providerId: string; p
 
       <details style={{ marginTop: 8, fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
         <summary style={{ cursor: 'pointer', color: 'var(--seal-deep, #14515C)' }}>
-          How this is scored
+          {SC.ledger.howScored}
         </summary>
-        <p style={{ margin: '6px 0 0', lineHeight: 1.5 }}>
-          Each line is a count of this house’s own records over a count of records — nothing is weighted and
-          nothing is added into a grade. The window is set beside the window of the same length before it,
-          both counts printed, and they are compared only when both reach the line’s minimum (5 deliveries, 5
-          door verdicts, 5 compared invoice lines, 5 answered messages; every claim counts). On time is the
-          built rule: landed by 23:59 UTC on the order’s expected date; an order past that date and not landed is listed beside it as open, not counted in it. Price as agreed is the verdict
-          recorded when the invoice was verified. Credits count only money a credit memo allowed — promised is
-          not recovered. A register that did not answer says so on its own line; missing is never zero. Tone
-          is a model’s reading and is in no figure.
-        </p>
+        <p style={{ margin: '6px 0 0', lineHeight: 1.5 }}>{SC.ledger.howScoredBody}</p>
+        {q.data && (
+          <p data-testid="ledger-deadline" style={{ margin: '6px 0 0', lineHeight: 1.5 }}>
+            {q.data.house.deadline}
+          </p>
+        )}
       </details>
 
       <p
@@ -328,8 +355,7 @@ export function LedgerCard({ providerId, providerName }: { providerId: string; p
           color: 'var(--ink-3, #7C7365)',
         }}
       >
-        {q.data?.alerting.sentence ??
-          'No alert is sent from these figures. A labelled set and a shadow run come first, and neither is built yet.'}
+        {q.data?.alerting.sentence ?? SC.ledger.alertingFallback}
       </p>
 
       {rowsFor && (

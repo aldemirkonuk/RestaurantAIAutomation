@@ -9,6 +9,9 @@
 
 export type MeasureKey = 'onTime' | 'linesAsOrdered' | 'priceAsAgreed' | 'replyTime' | 'credits';
 
+/** The five measures in the order every surface draws them. */
+export const MEASURE_ORDER: readonly MeasureKey[] = ['onTime', 'linesAsOrdered', 'priceAsAgreed', 'replyTime', 'credits'];
+
 export type MeasureOutcome = 'answered' | 'too_few' | 'not_collected' | 'could_not_read';
 
 export type WindowDays = 30 | 90 | 365;
@@ -19,6 +22,10 @@ export interface Money {
   asked: number;
   /** Null when the claim's order states no currency — printed as a bare amount, never as dollars. */
   currency: string | null;
+  /** allowed / asked; null when nothing was asked. */
+  share: number | null;
+  /** The gateway's percent in the house's format; null when there is no share. */
+  percent: string | null;
 }
 
 export interface WindowTally {
@@ -26,6 +33,12 @@ export interface WindowTally {
   sample: number;
   hits: number | null;
   value: number | null;
+  /**
+   * The gateway's percent in the house's format ("86%", "%86"): printed, never
+   * computed here, so one rounding rule holds — never 100% short of all, never
+   * 0% above none. Null unless answered and a share.
+   */
+  percent: string | null;
   money: Money[] | null;
 }
 
@@ -42,6 +55,19 @@ export interface MeasureResult extends WindowTally {
   prior: WindowTally;
   priorSentence: string;
   slowestHours?: number | null;
+  /** Credits only, under the minimum: the claims themselves (question 2). */
+  listed?: DocketEntry[] | null;
+}
+
+/** The house's clock and formats as the gateway read them (questions 6 and 7). */
+export interface HouseClock {
+  zone: string | null;
+  zoneSource: 'house' | 'country' | 'none';
+  /** A BCP 47 tag for formats only; null when the house names none. */
+  locale: string | null;
+  localeSource: 'country' | 'zone' | 'none';
+  /** How the on-time deadline was read, in words. */
+  deadline: string;
 }
 
 export interface ToneReading {
@@ -56,6 +82,7 @@ export interface VendorScorecard {
   providerId: string;
   providerName: string;
   window: { days: WindowDays; from: string; to: string; priorFrom: string };
+  house: HouseClock;
   measures: MeasureResult[];
   tone: ToneReading;
   quiet: boolean;
@@ -65,6 +92,7 @@ export interface VendorScorecard {
 
 export interface RollCall {
   window: VendorScorecard['window'];
+  house: HouseClock;
   vendors: VendorScorecard[];
   alerting: { built: false; sentence: string };
 }
