@@ -30,7 +30,9 @@ export class ReadingRunner {
     const descriptor = READING_CATALOGUE.find(r => r.id === id);
     // Cells may come only from the fields this Reading declares: those are
     // the fields whose data classes decided who may receive it.
-    const s = new RecordingSession(this.client, this.clock, new Set(descriptor ? shownFields(descriptor) : []));
+    // The version ASKED for is the one the Finding names, including when it is
+    // refused below (round 6r: a refused version 2 was recorded as version 1).
+    const s = new RecordingSession(this.client, this.clock, new Set(descriptor ? shownFields(descriptor) : []), version);
     const sources = new ReadingSources(s, restaurantId);
     if (version !== 1) return s.finish(id, args, [], "not_built", "unknown_reading_version");
     if (!descriptor) return s.finish(id, args, [], "not_built", "unknown_reading_version");
@@ -269,6 +271,10 @@ export class ReadingRunner {
       const scanned = s.scannedRows(resultEvidence!);
       if (scanned === null) throw new ReadingFailure("invalid_source_result");
       if (matched === 0 && scanned === 0) {
+        // The measured zero stays on the Finding: it is the evidence for "not
+        // in your books". A `source_only` asker (staff) is given the empty
+        // register's one line instead and no zero cell (founder, 2026-09-21,
+        // round 6r, "J4 wins, hide size (Recommended)"; `withholdFailureDetail`).
         return s.finish(id, args, rows, "not_in_your_books", "empty_register");
       }
       return s.finish(id, args, rows, "read", null);

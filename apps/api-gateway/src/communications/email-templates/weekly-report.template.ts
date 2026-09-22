@@ -6,6 +6,7 @@ import {
   EMAIL_CONFIG,
   formatCurrency,
   formatShortDate,
+  frontendUrl,
 } from "./template-config";
 import { baseTemplate, metricBox, tableRow } from "./base-template";
 
@@ -179,7 +180,7 @@ export function weeklyReportTemplate(data: WeeklyReportData): string {
     content,
     ctaButton: {
       text: "View Full Report",
-      url: "#", // Replace with actual URL
+      url: `${frontendUrl()}/reports`,
       color: colors.primary,
     },
   });

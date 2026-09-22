@@ -1,6 +1,7 @@
-import { createHash, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
 import { CalendarOccurrenceException, CalendarOccurrenceRow, CalendarOccurrenceRule,
   resolveCalendarOccurrences } from "../calendar/calendar-occurrences";
+import { findingFingerprint } from "./finding-fingerprint";
 import { baseRelation } from "./reading-data-classes";
 import { BoundCell, Finding, FindingRow, Provenance, ReadingArgs, ReadingId,
   ReadingOutcome, ReadingReason, SourceTrace } from "./reading.types";
@@ -44,8 +45,13 @@ export class RecordingSession {
    * carries the data class the role gate was decided on. Absent means an empty
    * set: a session nobody declared fields for mints nothing (fail closed).
    */
+  /**
+   * `version` is the Reading version the caller ASKED for. It is written on the
+   * Finding as asked, so a refused unknown version is not recorded as version
+   * 1 (2026-09-21, round 6r: until then `finish` wrote 1 whatever was asked).
+   */
   constructor(client: any, private readonly clock: () => Date = () => new Date(),
-    private readonly shown: ReadonlySet<string> = new Set()) {
+    private readonly shown: ReadonlySet<string> = new Set(), private readonly version = 1) {
     this.client = new Proxy(client, { get: (target, property) => {
       if (property !== "from" && property !== "rpc")
         throw new ReadingFailure("unrecorded_figure");
@@ -238,9 +244,9 @@ export class RecordingSession {
       if (!this.cells.has(cell)) throw new ReadingFailure("unrecorded_figure");
     if (rows.length && !this.trace.length) throw new ReadingFailure("unrecorded_figure");
     const traces = this.trace.map(t => ({ ...t }));
-    const fingerprint = createHash("sha256").update(JSON.stringify({ id, version: 1, args, outcome, reason,
-      rows: rows.map(row => ({ key: row.key, cells: row.cells.map(({ id: _id, ...cell }) => cell) })) })).digest("hex");
-    return { kind: "finding", readingId: id, readingVersion: 1, args, outcome, reason,
+    const version = this.version;
+    const fingerprint = findingFingerprint({ id, version, args, outcome, reason, rows });
+    return { kind: "finding", readingId: id, readingVersion: version, args, outcome, reason,
       asOf: this.clock().toISOString(), trace: traces,
       sourcesQueried: [...new Set(traces.map(t => t.relation))],
       failedSources: [...new Set(traces.filter(t => t.outcome === "failed").map(t => t.relation))],

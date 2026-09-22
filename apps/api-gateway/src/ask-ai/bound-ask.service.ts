@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Optional, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, Logger, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHash } from "crypto";
 import { Role } from "../auth/guards/roles.guard";
@@ -16,19 +16,26 @@ import {
   bindKnowledgeReply,
   bindReadingReply,
   BoundReply,
+  couldNotReadReply,
   findingReply,
   ModelFailureReason,
   modelFailureReply,
   notPermittedReply,
+  unbuiltNotPermittedReply,
 } from "../ask-readings/bound-reply";
 import { isReadingAllowedForRole, isReadingId, QUESTION_DISPOSITIONS, READING_CATALOGUE } from "../ask-readings/reading-catalogue";
 import {
+  ClassifiedUnbuiltQuestion,
+  failureDetailFor,
+  FailureDetail,
   hiddenClasses,
   policyRoleFor,
   policySha,
   ROLE_POLICY,
   RolePolicy,
   RolePolicyTable,
+  unbuiltClassOf,
+  withholdFailureDetail,
   withholdTraceCounts,
 } from "../ask-readings/reading-data-classes";
 import { FolioCapture, ReadingFolio, ReadingFolioStore } from "../ask-readings/reading-folio.store";
@@ -126,6 +133,8 @@ export function parseReadingPick(
 
 @Injectable()
 export class BoundAskService {
+  private readonly logger = new Logger(BoundAskService.name);
+
   constructor(
     private readonly db: DatabaseService,
     private readonly config: ConfigService,
@@ -180,6 +189,9 @@ export class BoundAskService {
     // in the model (founder, 2026-09-21, "Rules in code, label rows").
     const policyRole = policyRoleFor(role, this.policyTable);
     const policy = this.policyTable[policyRole];
+    // How much of a failed read this asker is told (round 6r, "J4 wins, hide
+    // size"): the reason for owners and managers, the source only for staff.
+    const detail: FailureDetail = failureDetailFor(role, this.policyTable);
 
     const began = await this.folios.begin({
       restaurantId,
@@ -203,6 +215,7 @@ export class BoundAskService {
     let answer: BoundReply;
     let finding: Finding | undefined;
     let failureReason: string | undefined;
+    let readingId: ReadingId | undefined;
     try {
       // A Reading the page chose (a catalogue row, a follow-up) skips the pick.
       const pick = chosenReading
@@ -211,7 +224,13 @@ export class BoundAskService {
       const disposition = QUESTION_DISPOSITIONS[pick.questionClass];
 
       if (disposition.kind === "not_built") {
-        answer = { kind: "not_built", reason: "unimplemented_question" };
+        // An unbuilt question with a data class this row does not see is
+        // refused with that class's line (founder, 2026-09-21, round 6r,
+        // "Classify now, forecast=sales (Recommended)"); otherwise not built.
+        const cls = unbuiltClassOf(pick.questionClass);
+        answer = cls && hiddenClasses([cls], policy).length
+          ? unbuiltNotPermittedReply(pick.questionClass as ClassifiedUnbuiltQuestion, [cls])
+          : { kind: "not_built", reason: "unimplemented_question" };
       } else if (disposition.kind === "no_reading_matched") {
         answer = { kind: "no_reading_matched", reason: "no_matching_question" };
       } else if (disposition.kind === "model_knowledge") {
@@ -226,14 +245,26 @@ export class BoundAskService {
         // a Finding -- the books were never queried for this ask.
         answer = this.refusal(disposition.id, policy);
       } else {
+        readingId = disposition.id;
         const runner = new ReadingRunner(this.db.getClient());
+        // The version is the page's, for the Reading the page chose; a Reading
+        // the model picked is run at the catalogue's version (round 6r: a
+        // client-sent version used to reach a model-picked Reading too).
+        const version = chosenReading ? input.readingVersion || 1 : 1;
+        const read = await runner.run(restaurantId, disposition.id, pick.args, version);
+        if (read.outcome === "could_not_read" && detail === "source_only") {
+          // The reason is withheld from this asker, not lost: operators read it here.
+          this.logger.warn(`could_not_read withheld from the asker's role: folio ${folio.id}, ${read.readingId}, reason ${read.reason}`);
+        }
         // The trace hides by data type (founder, 2026-09-21, round 6, "Hide by
         // data type"): a relation's row count stays only when this row sees its
-        // class. Applied before the Finding goes anywhere -- the composer, the
-        // reply, the saved folio -- so no copy of the whole count survives.
-        finding = withholdTraceCounts(await runner.run(restaurantId, disposition.id, pick.args, input.readingVersion || 1), policy);
+        // class. A failed read hides its reason and size from a `source_only`
+        // row (round 6r, "J4 wins, hide size"). Both are applied before the
+        // Finding goes anywhere -- the composer, the reply, the saved folio --
+        // so no copy of the whole count or the reason survives.
+        finding = withholdFailureDetail(withholdTraceCounts(read, policy), detail);
         // A Finding that did not read is decided before any compose call.
-        answer = finding.outcome === "read" ? await this.compose(turn, finding) : findingReply(finding);
+        answer = finding.outcome === "read" ? await this.compose(turn, finding) : findingReply(finding, detail);
       }
     } catch (error) {
       if (error instanceof ModelPhaseFailure) {
@@ -242,7 +273,7 @@ export class BoundAskService {
       } else {
         // Not the model: the runner itself threw outside its own refusals.
         failureReason = "reading_failed";
-        answer = { kind: "could_not_read", reason: "query_failed", ...(finding ? { finding } : {}) };
+        answer = couldNotReadReply(detail, readingId, finding);
       }
     }
     // Persistence failure sits OUTSIDE the execution catch. A failed save never

@@ -79,6 +79,7 @@ import { ThresholdsSection } from './ThresholdsSection';
 import { LedgerSection } from './LedgerSection';
 import { CurrencySection } from './CurrencySection';
 import { CarryingCostSection } from './CarryingCostSection';
+import { AskTrainingSection } from './AskTrainingSection';
 
 const CSS = `
 .st-ink, .st-ink * { transition: border-color ${ink.ms}ms ${ink.easing}, background-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}, transform ${ink.ms}ms ${ink.easing} }
@@ -406,6 +407,7 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
             {shown === 'ledger' && <LedgerSection data={data} />}
             {shown === 'currency' && <CurrencySection data={data} />}
             {shown === 'carrying-cost' && <CarryingCostSection data={data} />}
+            {shown === 'ask-training' && <AskTrainingSection data={data} />}
           </main>
         </div>
 

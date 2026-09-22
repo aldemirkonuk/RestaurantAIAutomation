@@ -3,6 +3,8 @@ import {
   classesOfFields,
   countClassOf,
   DATA_CLASSES,
+  FAILURE_DETAIL,
+  failureDetailFor,
   FIELD_CLASS,
   policyFor,
   policyRoleFor,
@@ -10,8 +12,12 @@ import {
   ROLE_POLICY,
   ROLE_POLICY_FALLBACK,
   rolesSeeing,
+  UNBUILT_QUESTION_CLASS,
+  unbuiltClassOf,
+  withholdFailureDetail,
   withholdTraceCounts,
 } from "./reading-data-classes";
+import { findingFingerprint } from "./finding-fingerprint";
 import { Finding } from "./reading.types";
 import { READING_CATALOGUE, shownFields } from "./reading-catalogue";
 import { RecordingSession, ReadingFailure } from "./recording-session";
@@ -190,5 +196,103 @@ describe("withholdTraceCounts: the trace hides by data type", () => {
     expect(countClassOf("secret_ledger")).toBeNull();
     const seen = withholdTraceCounts(finding([trace("secret_ledger", 3)]), ROLE_POLICY.owner);
     expect(seen.trace[0].rowsScanned).toBe("withheld_for_your_role");
+  });
+});
+
+// Founder, 2026-09-21, round 6r, his pick verbatim: "J4 wins, hide size
+// (Recommended)". A failed read tells a `source_only` role (staff) which
+// source did not answer and nothing of why; an empty register keeps its
+// outcome and loses its zero cells.
+describe("withholdFailureDetail: staff are told a source did not answer, never why", () => {
+  const at = "2026-09-21T00:00:00.000Z";
+  const failed = (reason: "source_limit" | "query_failed"): Finding => {
+    const trace: Finding["trace"] = reason === "source_limit"
+      ? [{ relation: "procurement_orders", operation: "select", outcome: "rows", rowsScanned: 500, matchedRows: 20_001, asOf: at }]
+      : [{ relation: "procurement_orders", operation: "select", outcome: "failed", rowsScanned: null, matchedRows: null, asOf: at, failureCode: "57014" }];
+    return { kind: "finding", readingId: "orders.due_today", readingVersion: 1, args: {}, outcome: "could_not_read", reason,
+      asOf: at, sourcesQueried: ["procurement_orders"], failedSources: reason === "query_failed" ? ["procurement_orders"] : [],
+      rowsScanned: reason === "source_limit" ? 500 : null, trace, rows: [],
+      fingerprint: findingFingerprint({ id: "orders.due_today", version: 1, args: {}, outcome: "could_not_read", reason, rows: [] }) };
+  };
+
+  it("the role table: owner and manager keep the reason, staff are told the source only", () => {
+    expect(FAILURE_DETAIL).toEqual({ owner: "full", manager: "full", staff: "source_only" });
+  });
+
+  it("an unknown, absent or admin role reads its policy row's detail (fail closed to staff)", () => {
+    expect(failureDetailFor("admin")).toBe("full");
+    for (const role of [null, undefined, "", "waiter", "super_owner"]) expect(failureDetailFor(role)).toBe("source_only");
+    expect(failureDetailFor(" Manager ")).toBe("full"); // normalised as the policy row is
+  });
+
+  it("source_limit and query_failed become the same Finding for staff, fingerprint included", () => {
+    const a = withholdFailureDetail(failed("source_limit"), "source_only");
+    const b = withholdFailureDetail(failed("query_failed"), "source_only");
+    expect(a).toEqual(b);
+    expect(a.reason).toBe("withheld_for_your_role");
+    expect(a.failedSources).toBe("withheld_for_your_role");
+    expect(a.rowsScanned).toBe("withheld_for_your_role");
+    expect(a.trace).toEqual([{ relation: "procurement_orders", operation: "select", outcome: "withheld",
+      rowsScanned: "withheld_for_your_role", matchedRows: "withheld_for_your_role", asOf: at }]);
+    expect(JSON.stringify(a)).not.toMatch(/source_limit|20001|57014|failureCode/);
+    // The fingerprint hashes the reason: left in place it would name it.
+    expect(a.fingerprint).not.toBe(failed("source_limit").fingerprint);
+  });
+
+  it("a failed read that paged leaves staff one entry per relation, whatever the page count", () => {
+    const page = (n: number) => ({ relation: "procurement_orders", operation: "select" as const, outcome: "rows" as const,
+      rowsScanned: 500, matchedRows: n, asOf: at });
+    const paged: Finding = { ...failed("query_failed"), reason: "source_changed", failedSources: [],
+      trace: [page(1041), page(1041), { ...page(1042), outcome: "rows" }, { relation: "procurement_order_items", operation: "select", outcome: "failed",
+        rowsScanned: null, matchedRows: null, asOf: at, failureCode: "57014" }] };
+    const seen = withholdFailureDetail(paged, "source_only");
+    expect(seen.trace.map(t => [t.relation, t.outcome])).toEqual([["procurement_orders", "withheld"], ["procurement_order_items", "withheld"]]);
+    expect(JSON.stringify(seen)).not.toMatch(/1041|1042|source_changed/);
+  });
+
+  it("full detail returns every Finding unchanged", () => {
+    const original = failed("source_limit");
+    expect(withholdFailureDetail(original, "full")).toBe(original);
+  });
+
+  it("an empty register keeps its outcome and reason for staff, and loses its zero cells", () => {
+    const empty: Finding = { ...failed("query_failed"), outcome: "not_in_your_books", reason: "empty_register", failedSources: [],
+      rows: [{ key: "deliveries:coverage", cells: [{ id: "c1", key: "deliveries:count", label: "Matching records", value: 0, unit: null,
+        source: "house", provenance: "stated", sourceRelations: ["procurement_orders@due_today"] }] }] };
+    const seen = withholdFailureDetail(empty, "source_only");
+    expect(seen).toMatchObject({ outcome: "not_in_your_books", reason: "empty_register", rows: [] });
+    expect(seen.fingerprint).toBe(findingFingerprint({ id: "orders.due_today", version: 1, args: {}, outcome: "not_in_your_books",
+      reason: "empty_register", rows: [] }));
+    expect(withholdFailureDetail(empty, "full")).toBe(empty);
+  });
+
+  it("a read, a clarification and a requirement are returned unchanged", () => {
+    for (const outcome of ["read", "clarify", "requirements_unsatisfied"] as const) {
+      const f: Finding = { ...failed("query_failed"), outcome, reason: outcome === "read" ? null : "missing_subject" };
+      expect(withholdFailureDetail(f, "source_only")).toBe(f);
+    }
+  });
+});
+
+// Founder, 2026-09-21, round 6r, his pick verbatim: "Classify now,
+// forecast=sales (Recommended)".
+describe("UNBUILT_QUESTION_CLASS: the unbuilt questions have a data class now", () => {
+  it("landed cost is money; sales revenue and a forecast are sales; lot expiry has none", () => {
+    expect(UNBUILT_QUESTION_CLASS).toEqual({ landed_cost: "money", sales_revenue: "sales", forecast: "sales" });
+    expect(unbuiltClassOf("lot_expiry")).toBeNull();
+    expect(unbuiltClassOf("constructor")).toBeNull();
+    expect(unbuiltClassOf(undefined)).toBeNull();
+  });
+
+  it("staff do not see any of the three; owner and manager see all three", () => {
+    for (const cls of Object.values(UNBUILT_QUESTION_CLASS)) {
+      expect(ROLE_POLICY.staff.sees).not.toContain(cls);
+      expect(ROLE_POLICY.owner.sees).toContain(cls);
+      expect(ROLE_POLICY.manager.sees).toContain(cls);
+    }
+  });
+
+  it("the policy hash covers both new tables", () => {
+    expect(policySha()).toMatch(/^[0-9a-f]{64}$/);
   });
 });

@@ -21,7 +21,17 @@ export type ReadingReason = "empty_register" | "missing_subject" | "ambiguous_su
   | "query_failed" | "invalid_source_result" | "scope_mismatch" | "source_changed"
   | "source_limit" | "unrecorded_figure" | "unknown_reading_version"
   | "unsupported_recurrence" | "unimplemented_question" | "no_matching_question"
-  | "undeclared_field";
+  | "undeclared_field"
+  /**
+   * A source did not answer, and WHY is withheld from the asking role (founder,
+   * 2026-09-21, round 6r, his pick verbatim: "J4 wins, hide size
+   * (Recommended)"). The reasons a read can fail include `source_limit`, which
+   * says the relation holds more than 20,000 rows -- a size. So for a role whose
+   * failure detail is `source_only` (`FAILURE_DETAIL`, reading-data-classes.ts)
+   * every `could_not_read` reason becomes this one, and the reply carries a
+   * one-line "couldn't read ... right now" instead.
+   */
+  | "withheld_for_your_role";
 export type Provenance = "stated" | "defaulted" | "derived" | "not_recorded";
 export interface ReadingArgs {
   subjectId?: string;
@@ -75,7 +85,11 @@ export interface Finding {
   reason: ReadingReason | null;
   asOf: string;
   sourcesQueried: string[];
-  failedSources: string[];
+  /**
+   * Withheld with the reason (round 6r): which sources FAILED separates a query
+   * that failed (one failed source) from a relation over the row limit (none).
+   */
+  failedSources: string[] | WithheldCount;
   /** Withheld whenever any trace count is withheld: a total would let the hidden one be subtracted out. */
   rowsScanned: number | null | WithheldCount;
   trace: Array<SourceTrace | WithheldSourceTrace>;

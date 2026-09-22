@@ -112,6 +112,7 @@ export const SECTION_IDS = [
   // position is not its identity, but a bookmark is, and `?tab=` is the id.
   'currency',
   'carrying-cost',
+  'ask-training',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -179,6 +180,11 @@ export const SECTIONS: SectionSpec[] = [
   // product had ever asked a house for that number.
   { id: 'carrying-cost', label: 'Carrying cost', title: 'What holding stock costs', kind: 'restaurant', group: 'house', order: 6,
     description: 'What a month of holding stock costs this house, as a percent of its value. Until it is stated, no alert here prints a saving.' },
+  // The house's consent for its /ask questions (ADR 0145, founder 2026-09-21,
+  // "Same as the wine pool (Recommended)": an owner opt-out per house). Under
+  // The house because it is the house's answer, given by its owner.
+  { id: 'ask-training', label: 'Training use', title: 'Questions and training', kind: 'restaurant', group: 'house', order: 7,
+    description: 'Whether this house’s questions to Mudavym may be used to improve it. Only the owner can change it.' },
 ];
 
 /**

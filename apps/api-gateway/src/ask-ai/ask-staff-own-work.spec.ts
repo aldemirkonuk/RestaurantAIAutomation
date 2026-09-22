@@ -306,3 +306,167 @@ describe("staff general knowledge counts toward the house's daily limit (real Mo
     expect((await gateway(ledger, "1").askAs(HOUSE, "owner")).kind).toBe("model_knowledge");
   });
 });
+
+/**
+ * Founder, 2026-09-21, round 6r. His picks, verbatim: "J4 wins, hide size
+ * (Recommended)" -- staff are told "no orders recorded yet" for an empty book,
+ * and a book too large to read answers them only "couldn't read the order book
+ * right now", never why; and "Classify now, forecast=sales (Recommended)" --
+ * landed cost is money, sales revenue and a forecast are sales, so staff are
+ * refused with the class's line instead of "not built".
+ */
+describe("round 6r, \"J4 wins, hide size\": what staff are told when the books do not answer", () => {
+  const LIMIT = 20_000;
+  const emptyBook = () => { const book = books(); book.tables.procurement_orders = []; return book; };
+  const hugeBook = (table = "procurement_orders") => {
+    const book = books();
+    book.tables[table] = Array.from({ length: LIMIT + 1 }, (_, i) => table === "procurement_orders"
+      ? order(`PO-HUGE-${String(i).padStart(5, "0")}`)
+      : house(`item-${String(i).padStart(5, "0")}`, { display_name: `Wine ${i}`, wine_name: `Wine ${i}`, uom: "bottle",
+        stock_live: 1, shadow_stock: 0, in_transit_quantity: 0, threshold_min: 4, is_active: true, deleted_at: null }));
+    return book;
+  };
+  /** The order book answers with a database error instead of rows. */
+  const failingBook = () => {
+    const book = books();
+    const from = book.from.bind(book);
+    (book as any).from = (table: string) => {
+      if (table !== "procurement_orders") return from(table);
+      const q: any = new Proxy({}, { get: (_t, p) => p === "then"
+        ? (resolve: any, reject: any) => Promise.resolve({ data: null, count: null, error: { code: "57014" } }).then(resolve, reject)
+        : () => q });
+      return q;
+    };
+    return book;
+  };
+  const saved = (r: { answer: unknown; finding?: Finding }) => JSON.stringify({ answer: r.answer, finding: r.finding });
+
+  it("an empty order book: staff are told no orders are recorded yet, and are shown no zero", async () => {
+    const staff = await ask("staff", "orders.due_today", "what is coming today", undefined, emptyBook());
+    expect(staff.answer.kind).toBe("not_in_your_books");
+    expect(staff.answer.reason).toBe("empty_register");
+    expect(staff.answer.line).toBe("No orders recorded yet.");
+    expect(staff.finding!.outcome).toBe("not_in_your_books");
+    expect(staff.finding!.rows).toEqual([]);
+    expect(saved(staff)).not.toMatch(/"value":0\b/);
+    // The book's count stays withheld, as for any staff trace.
+    expect(staff.finding!.trace.find(t => t.relation === "procurement_orders")!.matchedRows).toBe("withheld_for_your_role");
+  });
+
+  it("control: a manager asking the same keeps the measured zero and no line", async () => {
+    const manager = await ask("manager", "orders.due_today", "what is coming today", undefined, emptyBook());
+    expect(manager.answer.kind).toBe("not_in_your_books");
+    expect(manager.answer.line).toBeUndefined();
+    expect(manager.finding!.rows.flatMap(r => r.cells).find(c => c.key === "deliveries:count")?.value).toBe(0);
+  });
+
+  it.each([
+    ["today's deliveries", "orders.due_today" as QuestionClass, undefined],
+    ["an order's contents", "orders.lines" as QuestionClass, "PO-HUGE-00001"],
+  ])("%s over the 20,000-row limit: staff are told only that the order book could not be read right now", async (_n, questionClass, subjectText) => {
+    const staff = await ask("staff", questionClass, "what is coming today PO-HUGE-00001", subjectText, hugeBook());
+    expect(staff.answer).toMatchObject({ kind: "could_not_read", reason: "withheld_for_your_role",
+      line: "Couldn't read the order book right now." });
+    expect(staff.finding!.reason).toBe("withheld_for_your_role");
+    expect(staff.finding!.failedSources).toBe("withheld_for_your_role");
+    expect(staff.finding!.rowsScanned).toBe("withheld_for_your_role");
+    expect(staff.finding!.trace.length).toBeGreaterThan(0);
+    expect(staff.finding!.trace.every(t => t.outcome === "withheld" && t.matchedRows === "withheld_for_your_role")).toBe(true);
+    const text = saved(staff);
+    expect(text).not.toContain("source_limit");
+    expect(text).not.toContain(String(LIMIT + 1));
+    expect(text).not.toContain("failureCode");
+  });
+
+  it("control: a manager over the same limit keeps the reason", async () => {
+    const manager = await ask("manager", "orders.due_today", "what is coming today", undefined, hugeBook());
+    expect(manager.answer.kind).toBe("could_not_read");
+    expect(manager.answer.reason).toBe("source_limit");
+    expect(manager.answer.line).toBeUndefined();
+    expect(manager.finding!.reason).toBe("source_limit");
+  });
+
+  it("any staff-visible source: a stock register over the limit names the stock records, not a reason", async () => {
+    const staff = await ask("staff", "inventory.low_stock", "which wines are below par", undefined, hugeBook("restaurant_inventory"));
+    expect(staff.answer).toMatchObject({ kind: "could_not_read", reason: "withheld_for_your_role",
+      line: "Couldn't read the stock records right now." });
+    expect(saved(staff)).not.toContain("source_limit");
+  });
+
+  it("a book too large and a query that failed look the same to staff, fingerprint included", async () => {
+    const huge = await ask("staff", "orders.due_today", "what is coming today", undefined, hugeBook());
+    const failed = await ask("staff", "orders.due_today", "what is coming today", undefined, failingBook());
+    const manager = await ask("manager", "orders.due_today", "what is coming today", undefined, failingBook());
+    expect(manager.finding!.reason).toBe("query_failed");
+    expect(failed.answer).toEqual({ ...huge.answer, finding: failed.finding });
+    expect(failed.finding!.fingerprint).toBe(huge.finding!.fingerprint);
+    expect(failed.finding!.failedSources).toBe(huge.finding!.failedSources);
+    expect(failed.finding!.trace.map(t => [t.relation, t.outcome])).toEqual(huge.finding!.trace.map(t => [t.relation, t.outcome]));
+    expect(manager.finding!.fingerprint).not.toBe(failed.finding!.fingerprint);
+  });
+});
+
+describe("round 6r, \"Classify now, forecast=sales\": an unbuilt question has a data class", () => {
+  it.each([
+    ["landed_cost" as QuestionClass, ["money"]],
+    ["sales_revenue" as QuestionClass, ["sales"]],
+    ["forecast" as QuestionClass, ["sales"]],
+  ])("staff asking %s are refused with the class's line, before any book is read", async (questionClass, classes) => {
+    const { answer, getClient, call } = await ask("staff", questionClass, "tell me");
+    expect(answer).toEqual({ kind: "not_permitted", reason: "class_not_visible", questionClass, classes,
+      line: classRefusalLine(classes as DataClass[]) });
+    expect(getClient).not.toHaveBeenCalled();
+    expect(call).toHaveBeenCalledTimes(1); // the pick only
+  });
+
+  it.each(["owner", "manager"])("%s: each is still not built", async role => {
+    for (const questionClass of ["landed_cost", "sales_revenue", "forecast"] as QuestionClass[]) {
+      const { answer } = await ask(role, questionClass, "tell me");
+      expect(answer).toEqual({ kind: "not_built", reason: "unimplemented_question" });
+    }
+  });
+
+  it("lot expiry has no class and answers every role not built", async () => {
+    for (const role of ["staff", "owner"]) {
+      expect((await ask(role, "lot_expiry", "tell me")).answer).toEqual({ kind: "not_built", reason: "unimplemented_question" });
+    }
+  });
+});
+
+// [2026-09-21, round 6r] What `reading_version` means in the code: the version
+// of a Reading's definition (`ReadingDescriptor.version`, today 1 for all).
+// The page may name it for a Reading it chose; a Reading the model picked runs
+// at the catalogue's version, whatever the request carries.
+describe("round 6r: reading_version is the page's, and only for the Reading the page chose", () => {
+  async function submit(input: Partial<BoundAskDto>, questionClass: QuestionClass = "inventory.low_stock") {
+    const call = jest.fn(async (opts: any) => {
+      if (opts.nf.taskType === "ask_reading_pick") return reply({ questionClass });
+      const { cells } = JSON.parse(opts.body.messages[0].content);
+      return reply({ kind: "reading", focus: [cells[0].id] });
+    });
+    const folios = {
+      begin: jest.fn(async () => ({ created: true, folio: pendingFolio("which wines are below par") })),
+      finish: jest.fn(async (folio: ReadingFolio, answer: any, finding?: Finding) => ({ ...folio, answer, finding: finding ?? null })),
+    };
+    const service = new BoundAskService({ getClient: () => books() } as any, new ConfigService({ ASK_LAUNCHED: "true" }),
+      { call, dailyShareOfAllowance: jest.fn() } as any, { record: jest.fn() } as any, folios as any);
+    await service.submit(HOUSE, USER, "staff", { requestId: "req-1", utterance: "which wines are below par", origin: "page", ...input } as BoundAskDto);
+    const [, answer, finding] = folios.finish.mock.calls[0];
+    return { answer, finding: finding as Finding, begin: (folios.begin.mock.calls[0] as any[])[0], call };
+  }
+
+  it("a page-chosen Reading at a version that does not exist is refused and recorded at that version", async () => {
+    const { answer, finding, begin, call } = await submit({ readingId: "inventory.low_stock", readingVersion: 2 });
+    expect(begin.readingVersion).toBe(2);
+    expect(finding).toMatchObject({ outcome: "not_built", reason: "unknown_reading_version", readingVersion: 2 });
+    expect(answer.kind).toBe("not_built");
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it("a model-picked Reading runs at version 1 whatever version the request carries", async () => {
+    const { answer, finding, begin } = await submit({ readingVersion: 2 });
+    expect(begin.readingVersion).toBeUndefined();
+    expect(finding).toMatchObject({ outcome: "read", readingVersion: 1 });
+    expect(answer.kind).toBe("reading");
+  });
+});

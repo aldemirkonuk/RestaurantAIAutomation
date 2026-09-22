@@ -1,7 +1,8 @@
 import { createHash } from "crypto";
 import { Role } from "../auth/guards/roles.guard";
+import { findingFingerprint } from "./finding-fingerprint";
 import { WITHHELD_FOR_YOUR_ROLE } from "./reading.types";
-import type { Finding, SourceTrace, WithheldSourceTrace } from "./reading.types";
+import type { Finding, QuestionClass, SourceTrace, WithheldSourceTrace } from "./reading.types";
 
 /**
  * What a person may see on /ask is a RULE, not a model behaviour (founder,
@@ -57,9 +58,13 @@ export type AnswerKind = (typeof ANSWER_KINDS)[number];
  * entries are `people`; stock movements are `stock` although they net sales
  * depletion in (the judge's section 1.3).
  * [ANSWERED 2026-09-21, founder round 6 ("Yes, own-work only"): an order's
- * number and contents and the document register are `receiving`; calendar
+ * number and contents and the document register are `receiving` -- the
+ * lane's reading of his word "receiving", not his words; calendar
  * entries stay `people`, which staff no longer see. Stock movements stay
  * `stock` -- whether they are sales is still open (ADR 0145, round 6).]
+ * [ANSWERED 2026-09-21, founder round 6r, his pick verbatim: "Stays stock
+ * (Recommended)" -- movements are stock, open to staff; only money-valued
+ * sales are sales data. Pinned by CLAIMS row ADR-0145-ASK-MOVEMENTS-STAY-STOCK.]
  *
  * Every relation a Reading reads (its `shelves`) carries a `relation.*` tag,
  * because the source trace reports every read's row count: an untagged count
@@ -192,6 +197,46 @@ export const CLASS_LABEL: Readonly<Record<DataClass, string>> = {
   todays_deliveries: "today's deliveries",
 };
 
+/**
+ * The data class of each question class the pick can name that has no Reading
+ * yet (founder, 2026-09-21, round 6r, his pick verbatim: "Classify now,
+ * forecast=sales (Recommended)"). A role that does not see the class is
+ * refused with the class's one-line reason, as for a built Reading; a role
+ * that does see it is still told "not built" until that Reading ships. The
+ * pick has already been paid for; nothing is read and no other model call is
+ * made for either answer. `lot_expiry` is not listed: he classified the three
+ * money and sales questions only, so it answers "not built" to every role.
+ */
+export const UNBUILT_QUESTION_CLASS = {
+  landed_cost: "money",
+  sales_revenue: "sales",
+  forecast: "sales",
+} as const satisfies Partial<Record<QuestionClass, DataClass>>;
+export type ClassifiedUnbuiltQuestion = keyof typeof UNBUILT_QUESTION_CLASS;
+
+/** The data class of an unbuilt question class, or null when it has none. */
+export function unbuiltClassOf(questionClass: unknown): DataClass | null {
+  return typeof questionClass === "string" && Object.prototype.hasOwnProperty.call(UNBUILT_QUESTION_CLASS, questionClass)
+    ? UNBUILT_QUESTION_CLASS[questionClass as ClassifiedUnbuiltQuestion]
+    : null;
+}
+
+/**
+ * How much of a failed read a role is told (founder, 2026-09-21, round 6r, his
+ * pick verbatim: "J4 wins, hide size (Recommended)"). `full`: the reason the
+ * runner gave (`source_limit`, `query_failed`, ...), with the trace. And
+ * `source_only`: which source could not be read, right now -- no reason and no
+ * size, because `source_limit` alone says a relation holds more than 20,000
+ * rows (`RecordingSession.read`). One line per role, like ROLE_POLICY; any
+ * other or absent role reads the fallback row's (`staff`) value.
+ */
+export type FailureDetail = "full" | "source_only";
+export const FAILURE_DETAIL: Readonly<Record<Role, FailureDetail>> = {
+  owner: "full",
+  manager: "full",
+  staff: "source_only",
+};
+
 /** `admin` passes every owner/manager gate in RolesGuard, so it reads the owner row. */
 export const ROLE_POLICY_ALIASES: Readonly<Record<string, Role>> = { admin: "owner" };
 /** Any other, absent or unrecognised role reads the least-privileged row. */
@@ -207,6 +252,11 @@ export function policyRoleFor(role: string | null | undefined, table: RolePolicy
 
 export function policyFor(role: string | null | undefined, table: RolePolicyTable = ROLE_POLICY): RolePolicy {
   return table[policyRoleFor(role, table)];
+}
+
+/** How much of a failed read this role is told. Fails closed: an unknown role reads the fallback row's. */
+export function failureDetailFor(role: string | null | undefined, table: RolePolicyTable = ROLE_POLICY): FailureDetail {
+  return FAILURE_DETAIL[policyRoleFor(role, table)] ?? FAILURE_DETAIL[ROLE_POLICY_FALLBACK];
 }
 
 /** The classes a set of shown fields carries. An untagged field is a thrown error, never "no class". */
@@ -281,6 +331,59 @@ export function withholdTraceCounts(finding: Finding, policy: RolePolicy): Findi
   return { ...finding, trace, rowsScanned: finding.rowsScanned === null ? null : WITHHELD_FOR_YOUR_ROLE };
 }
 
+/**
+ * A Finding that could not be read, as a `source_only` role may see it
+ * (founder, 2026-09-21, round 6r, "J4 wins, hide size (Recommended)"). Every
+ * part that separates one failure from another is withheld, because each one
+ * would say which it was and `source_limit` is a size:
+ *   - the reason                  -> `withheld_for_your_role`;
+ *   - each trace entry            -> relation, operation and time only; its
+ *                                    outcome (`rows` before a limit, `failed`
+ *                                    for a query error), counts and failure
+ *                                    code go, one entry per relation read;
+ *   - `failedSources` and the total -> withheld;
+ *   - the fingerprint             -> recomputed from what is left, since it
+ *                                    hashes the reason (`finding-fingerprint.ts`).
+ * Which sources were queried, and when, stays.
+ *
+ * An empty register ("not in your books") stays what it is -- J4 wins -- but
+ * loses its cells: the only cells built over an empty register are its zero
+ * counts, and his pick is that staff are told "no orders recorded yet", never a
+ * zero. Its trace was already shaped by `withholdTraceCounts`. Every other
+ * outcome is returned unchanged: a read, a clarification or a refusal is not a
+ * failure. `full` returns every Finding unchanged.
+ */
+export function withholdFailureDetail(finding: Finding, detail: FailureDetail): Finding {
+  if (detail === "full") return finding;
+  if (finding.outcome === "not_in_your_books") {
+    if (!finding.rows.length) return finding;
+    return { ...finding, rows: [], fingerprint: findingFingerprint({ id: finding.readingId, version: finding.readingVersion,
+      args: finding.args, outcome: finding.outcome, reason: finding.reason, rows: [] }) };
+  }
+  if (finding.outcome !== "could_not_read") return finding;
+  const listed = new Set<string>();
+  const trace: WithheldSourceTrace[] = [];
+  for (const entry of finding.trace) {
+    const read = `${entry.operation}:${entry.relation}`;
+    if (listed.has(read)) continue;
+    listed.add(read);
+    trace.push({ relation: entry.relation, operation: entry.operation, outcome: "withheld",
+      rowsScanned: WITHHELD_FOR_YOUR_ROLE, matchedRows: WITHHELD_FOR_YOUR_ROLE, asOf: entry.asOf });
+  }
+  const reason = WITHHELD_FOR_YOUR_ROLE;
+  const { choices: _choices, ...rest } = finding;
+  return {
+    ...rest,
+    reason,
+    trace,
+    failedSources: WITHHELD_FOR_YOUR_ROLE,
+    rowsScanned: WITHHELD_FOR_YOUR_ROLE,
+    rows: [],
+    fingerprint: findingFingerprint({ id: finding.readingId, version: finding.readingVersion, args: finding.args,
+      outcome: finding.outcome, reason, rows: [] }),
+  };
+}
+
 const sha256 = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 /**
@@ -290,5 +393,5 @@ const sha256 = (value: unknown) => createHash("sha256").update(JSON.stringify(va
  * changes without it).
  */
 export function policySha(table: RolePolicyTable = ROLE_POLICY): string {
-  return sha256({ FIELD_CLASS, ROLE_POLICY: table, ROLE_POLICY_ALIASES, ROLE_POLICY_FALLBACK });
+  return sha256({ FIELD_CLASS, ROLE_POLICY: table, ROLE_POLICY_ALIASES, ROLE_POLICY_FALLBACK, FAILURE_DETAIL, UNBUILT_QUESTION_CLASS });
 }

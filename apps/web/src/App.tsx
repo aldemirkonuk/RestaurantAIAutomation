@@ -96,6 +96,7 @@ const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/ne
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
+const DeliveryRedirect = lazyWithRefresh(() => import('./pages/receiving/DeliveryRedirect'))
 const SimposTerminalPage = lazyWithRefresh(() => import('./pages/simpos/SimposTerminalPage'))
 const SimposOrderLogPage = lazyWithRefresh(() => import('./pages/simpos/SimposOrderLogPage'))
 const SimposScenariosPage = lazyWithRefresh(() => import('./pages/simpos/SimposScenariosPage'))
@@ -323,8 +324,30 @@ function App() {
                       landed on the Dashboard, which reads as a broken app. */}
                   <Route path="/inventory-legacy" element={<Navigate to="/inventory" replace />} />
                   <Route path="/orders" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
+                  {/* One order, asked for by id — an email/SMS/push deep link
+                      (notification_agent.py, email_composer_service.py) or a
+                      hand-off from another page. Same gate, same two trees as
+                      `/orders`: `Orders` (legacy) ignores the extra param and
+                      renders exactly as it does today; `OrdersNext` reads it
+                      and opens that order's row (OrdersNext.tsx). */}
+                  <Route path="/orders/:id" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome. */}
                   <Route path="/receiving" element={<PageGate page="receiving" legacy={<ReceivingHome />} next={<ReceivingNext />} />} />
+                  {/* One delivery, asked for by id — the in-app notification
+                      actionUrls `delivery-clock.service.ts` and
+                      `delivery.service.ts` already build (`/deliveries/:id`),
+                      which had no route at all until now. A delivery has no
+                      page of its own once it is past the door — the manager
+                      decision queue on `/receiving` is where the founder's
+                      "worst money first" verdicts on it live (ReceivingNext's
+                      RcManagerQueue) — so this resolves the delivery to its
+                      order and hands off there. Not the door
+                      (`/receiving/:orderId/door`): that screen is the one-time
+                      box count at the truck, and every notification a delivery
+                      sends is about something AFTER that — a clock closing, a
+                      vendor's proposal, a paperwork mismatch — none of which
+                      the door screen has any control for. */}
+                  <Route path="/deliveries/:id" element={<DeliveryRedirect />} />
                   <Route path="/wines" element={<PageGate page="cellar" legacy={<WineLibrary />} next={<CellarNext category="wines" />} />} />
                   {/* `/cellar` is the parent surface (founder, 2026-08-29/30): what is in
                       the building, with /wines /beer /whiskey /cocktails as its children.

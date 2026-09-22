@@ -313,6 +313,15 @@ describe("proof, scope, absence and provenance regressions", () => {
     expect(result.reason).toBe("unknown_reading_version");
     expect(books.calls).toEqual([]);
   });
+  // [2026-09-21, round 6r] The Finding names the version ASKED for: a refused
+  // version 2 was recorded as version 1, the one version that exists.
+  test("a refused version is recorded as the version asked for, never as 1", async () => {
+    for (const version of [0, 2, 7]) {
+      const result = await new ReadingRunner(fixture()).run(rid, "inventory.position", args, version);
+      expect(result).toMatchObject({ outcome: "not_built", reason: "unknown_reading_version", readingVersion: version });
+    }
+    expect((await run(fixture(), "inventory.position")).readingVersion).toBe(1);
+  });
   test("timestamp windows are exact inclusive calendar dates, with no guessed period", () => {
     expect(readingWindow({ from: "2026-09-12", to: "2026-09-12" })).toEqual({ from: "2026-09-12T00:00:00.000Z", to: "2026-09-13T00:00:00.000Z" });
     expect(() => readingWindow({ from: "2026-02-30", to: "2026-03-01" })).toThrow();

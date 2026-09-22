@@ -3,12 +3,17 @@ import {
   bindKnowledgeReply,
   bindReadingReply,
   classRefusalLine,
+  couldNotReadLine,
+  couldNotReadReply,
   findingReply,
   isBoundReply,
   isRefusalLine,
   modelFailureReply,
   notPermittedReply,
+  READING_BOOK,
+  unbuiltNotPermittedReply,
 } from "./bound-reply";
+import { READING_CATALOGUE } from "./reading-catalogue";
 import { CLASS_LABEL, DATA_CLASSES } from "./reading-data-classes";
 import { Finding } from "./reading.types";
 
@@ -194,5 +199,61 @@ describe("isBoundReply: a wire boundary that must never call a tampered shape co
     expect(isBoundReply({ ...refusal, line: "   " })).toBe(false);
     expect(isBoundReply({ ...refusal, line: "Refused.\nAnd more." })).toBe(false);
     expect(isBoundReply({ kind: "not_permitted", reason: "answer_kind_not_permitted", answerKind: "reading" })).toBe(false);
+  });
+});
+
+// Founder, 2026-09-21, round 6r: "J4 wins, hide size (Recommended)" and
+// "Classify now, forecast=sales (Recommended)".
+describe("round 6r replies: a withheld reason travels with its one line, never alone", () => {
+  it("every Reading names its book and its empty line, each one short line", () => {
+    for (const r of READING_CATALOGUE) {
+      expect(isRefusalLine(couldNotReadLine(r.id))).toBe(true);
+      expect(isRefusalLine(READING_BOOK[r.id].empty)).toBe(true);
+    }
+    expect(couldNotReadLine("orders.due_today")).toBe("Couldn't read the order book right now.");
+    expect(READING_BOOK["orders.due_today"].empty).toBe("No orders recorded yet.");
+  });
+
+  it("staff: a failed read replies with the line and no reason; full detail keeps the reason", () => {
+    const failed = finding({ outcome: "could_not_read", reason: "source_limit", rows: [] });
+    const staff = findingReply(failed, "source_only");
+    expect(staff).toMatchObject({ kind: "could_not_read", reason: "withheld_for_your_role", line: "Couldn't read the order book right now." });
+    expect(JSON.stringify(staff)).not.toContain("source_limit");
+    expect(isBoundReply(staff)).toBe(true);
+    expect(findingReply(failed, "full")).toEqual({ kind: "could_not_read", reason: "source_limit", finding: failed });
+  });
+
+  it("staff: an empty register replies with its line and no zero cell", () => {
+    const empty = finding({ outcome: "not_in_your_books", reason: "empty_register" });
+    const staff = findingReply(empty, "source_only");
+    expect(staff).toMatchObject({ kind: "not_in_your_books", reason: "empty_register", line: READING_BOOK["orders.open"].empty });
+    expect((staff as { finding: Finding }).finding.rows).toEqual([]);
+    expect(isBoundReply(staff)).toBe(true);
+  });
+
+  it("a runner that threw: staff get the line, owners and managers get query_failed", () => {
+    expect(couldNotReadReply("full", "orders.lines")).toEqual({ kind: "could_not_read", reason: "query_failed" });
+    const staff = couldNotReadReply("source_only", "orders.lines");
+    expect(staff).toEqual({ kind: "could_not_read", reason: "withheld_for_your_role", line: "Couldn't read the order book right now." });
+    expect(isBoundReply(staff)).toBe(true);
+    expect(couldNotReadReply("source_only")).toMatchObject({ line: "Couldn't read the house's records right now." });
+  });
+
+  it("refuses a saved withheld reason without its line, on another kind, or with a line over one line", () => {
+    expect(isBoundReply({ kind: "could_not_read", reason: "withheld_for_your_role" })).toBe(false);
+    expect(isBoundReply({ kind: "not_in_your_books", reason: "withheld_for_your_role", line: "No orders recorded yet." })).toBe(false);
+    expect(isBoundReply({ kind: "could_not_read", reason: "withheld_for_your_role", line: "Couldn't.\nread" })).toBe(false);
+    expect(isBoundReply({ kind: "could_not_read", reason: "query_failed", line: "" })).toBe(false);
+  });
+
+  it("an unbuilt question refused for its class: a real classified question, never a Reading id too", () => {
+    const refusal = unbuiltNotPermittedReply("landed_cost", ["money"]);
+    expect(refusal).toEqual({ kind: "not_permitted", reason: "class_not_visible", questionClass: "landed_cost", classes: ["money"],
+      line: classRefusalLine(["money"]) });
+    expect(isBoundReply(refusal)).toBe(true);
+    expect(isBoundReply({ ...refusal, questionClass: "lot_expiry" })).toBe(false);
+    expect(isBoundReply({ ...refusal, questionClass: "unrecognized" })).toBe(false);
+    expect(isBoundReply({ ...refusal, readingId: "orders.open" })).toBe(false);
+    expect(() => unbuiltNotPermittedReply("forecast", [])).toThrow();
   });
 });

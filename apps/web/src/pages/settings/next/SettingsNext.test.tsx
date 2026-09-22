@@ -324,11 +324,12 @@ describe('SettingsNext — the editorial spine', () => {
   it('opens on a contents page naming every register and where each is kept', () => {
     mount();
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(16);
+    expect(within(nav).getAllByRole('button')).toHaveLength(17);
     // The legacy ten under their legacy names, plus cellar, plus the three the
-    // fourth pass added, plus Currency (2026-09-05) and Carrying cost
-    // (2026-09-06). Every one of these is still a live `?tab=` id.
-    for (const label of ['Team', 'Services', 'Email', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features', 'POS', 'Calendar', 'Cellar', 'Vendor terms', 'Approval thresholds', 'What changed here', 'Currency', 'Carrying cost']) {
+    // fourth pass added, plus Currency (2026-09-05), Carrying cost
+    // (2026-09-06) and Training use (2026-09-21, ADR 0145 round 6r). Every one
+    // of these is still a live `?tab=` id.
+    for (const label of ['Team', 'Services', 'Email', 'Notifications', 'Locations', 'Measurement', 'Map', 'Features', 'POS', 'Calendar', 'Cellar', 'Vendor terms', 'Approval thresholds', 'What changed here', 'Currency', 'Carrying cost', 'Training use']) {
       expect(within(nav).getByText(label)).toBeInTheDocument();
     }
     // The contents column now reads in GROUPS, so the headings must be there —
@@ -336,7 +337,7 @@ describe('SettingsNext — the editorial spine', () => {
     for (const heading of ['The house', 'How it buys', 'What it does on its own', 'Yours', 'The record']) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();
     }
-    expect(screen.getByText(/twelve kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
+    expect(screen.getByText(/thirteen kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
     // The standing honesty statement, now that FOUR registers DO record an
     // author: it names which four — Currency joined them 2026-09-05 — and
     // admits the other eight still do not.
@@ -926,10 +927,10 @@ describe('the collapse — four connection tabs become one line', () => {
     design.connections = true;
   });
 
-  it('drops exactly the four connection registers and keeps the other twelve', () => {
+  it('drops exactly the four connection registers and keeps the other thirteen', () => {
     mount();
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(12);
+    expect(within(nav).getAllByRole('button')).toHaveLength(13);
     for (const gone of ['Services', 'Email', 'POS', 'Calendar']) {
       expect(within(nav).queryByText(gone)).not.toBeInTheDocument();
     }
@@ -944,12 +945,13 @@ describe('the collapse — four connection tabs become one line', () => {
 
   it('counts the registers actually on the page, not the id set', () => {
     mount();
-    // Twelve tabs plus the one line out. The tally beside it counts the same
-    // twelve, and drops a clause whose count reached zero rather than printing
+    // Thirteen tabs plus the one line out. The tally beside it counts the same
+    // thirteen, and drops a clause whose count reached zero rather than printing
     // "none". The numbers moved by one on 2026-09-05 when the Currency register
-    // was added and by one again on 2026-09-06 with Carrying cost; they are
-    // derived, so this line is the only place that says so.
-    expect(screen.getByText(/^Twelve registers — /)).toBeInTheDocument();
+    // was added, by one on 2026-09-06 with Carrying cost and by one on
+    // 2026-09-21 with Training use; they are derived, so this line is the only
+    // place that says so.
+    expect(screen.getByText(/^Thirteen registers — /)).toBeInTheDocument();
     expect(screen.queryByText(/Sixteen registers/)).not.toBeInTheDocument();
   });
 
@@ -990,7 +992,7 @@ describe('the collapse — four connection tabs become one line', () => {
     design.connections = false;
     mount('/settings?tab=pos');
     const nav = screen.getByRole('navigation', { name: /settings registers/i });
-    expect(within(nav).getAllByRole('button')).toHaveLength(16);
+    expect(within(nav).getAllByRole('button')).toHaveLength(17);
     expect(screen.getByTestId('where')).toHaveTextContent('/settings?tab=pos');
     expect(within(nav).queryByRole('link', { name: /Connections/ })).not.toBeInTheDocument();
   });

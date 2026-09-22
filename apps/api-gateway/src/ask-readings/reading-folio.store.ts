@@ -93,6 +93,10 @@ export class ReadingFolioStore {
     // reading) becomes a pick label on the folio it follows. That label is
     // written by the database in THIS insert's transaction (trigger in
     // 20260921115310), so it can neither be lost nor half-written.
+    // [2026-09-21, round 6r, "Two labels (Recommended)": the database also
+    // derives the re-ask's kind -- `correction` for the same Reading,
+    // `follow_up` for a different one -- and the derived label is that kind,
+    // never correct | incorrect (20260921171200). No client field sets it.]
     const { data, error } = await this.db.getClient().from("ask_reading_folios").insert({
       id, restaurant_id: input.restaurantId, user_id: input.userId, request_id: input.requestId,
       correlation_id: id, utterance: input.utterance, origin: input.origin, status: "pending",
@@ -138,7 +142,9 @@ export class ReadingFolioStore {
     // no reading to name, and keeps falling through to `folio.reading_id`
     // exactly as before.
     // [2026-09-21: an answer-kind refusal of model knowledge names no reading.]
-    const refusedReadingId = answer.kind === "not_permitted" ? answer.readingId : undefined;
+    // [2026-09-21, round 6r: an unbuilt question class refused for the role
+    // ("Classify now") names a question class, not a Reading, so it names none.]
+    const refusedReadingId = answer.kind === "not_permitted" && "readingId" in answer ? answer.readingId : undefined;
     const { data, error } = await this.db.getClient().from("ask_reading_folios").update({
       status: failureReason ? "failed" : "complete", reply_kind: answer.kind, answer,
       reading_id: finding?.readingId || refusedReadingId || folio.reading_id,

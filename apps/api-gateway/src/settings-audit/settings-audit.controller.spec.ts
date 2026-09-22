@@ -51,6 +51,7 @@ const EVERY: Record<SettingsRegister, true> = {
   preferences: true,
   currency: true,
   "carrying-cost": true,
+  "ask-training": true,
 };
 
 describe("the ?register= allow-list holds every register the type admits", () => {
