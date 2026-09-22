@@ -1,10 +1,12 @@
 /**
  * Ask AI — the web client for `POST /ask-ai/*` (P3.C, FUTURES §8).
  *
- * Five calls, one rule: **this module never executes anything by itself.**
- * `propose` returns a proposal; only `confirm` executes, and only against an
- * action id a human has looked at. That is the gate ADR 0029 §5 closes P3.C on,
- * and the UI's job is to make it legible rather than to route around it.
+ * Six calls, one rule: **this module never executes anything by itself.**
+ * `propose` returns a proposal; only the sealed apply (`applyProposalSealed`)
+ * executes, and only against an action id a human has held for (the seal
+ * `mintProposalSeal` minted when the hold began). That is the gate ADR 0029
+ * §5 closes P3.C on, and the UI's job is to make it legible rather than to
+ * route around it.
  *
  * SHAPE NOTE — the two endpoints disagree, on purpose here
  * ------------------------------------------------------

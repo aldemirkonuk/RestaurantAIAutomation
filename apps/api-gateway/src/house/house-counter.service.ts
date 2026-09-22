@@ -284,7 +284,8 @@ export class HouseCounterService {
         },
       },
       // Every member reads the proposals; applying one is owner/manager
-      // (ask-ai.controller.ts confirm carries @Roles("owner","manager")).
+      // (ask-ai.controller.ts: seal-challenge and sealed-confirm carry
+      // @Roles("owner","manager"); the unsealed confirm is retired, 410).
       proposals: {
         act: manager ? "yours" : "not_yours",
         load: async () => {
