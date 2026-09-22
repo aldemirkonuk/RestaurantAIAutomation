@@ -30,6 +30,7 @@ from core.message_bus import (
     EventPriority,
     CircuitBreaker,
     CircuitBreakerConfig,
+    ConsumerUnavailable,
 )
 from core.database import DatabaseClient
 from utils.logger import setup_logger, set_log_context
@@ -280,6 +281,13 @@ class BaseAgent(ABC):
         self._shutdown_event = asyncio.Event()
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # Not paused by default
+        self._queue_space = asyncio.Event()
+        self._queue_space.set()
+        self._message_ready = asyncio.Event()
+        self._lifecycle_lock = asyncio.Lock()
+        self._accepting_messages = False
+        self._needs_cleanup = False
+        self._consumer_tags: Dict[str, str] = {}
 
         # Message queue (for backpressure)
         self._message_queue: asyncio.Queue = asyncio.Queue(
@@ -346,71 +354,155 @@ class BaseAgent(ABC):
     # =========================================================================
 
     async def start(self) -> None:
-        """Start the agent and begin processing messages"""
-        try:
-            self.status = AgentStatus.STARTING
-            self.logger.info(f"🚀 Starting agent: {self.agent_name}")
-
-            # Initialize resources
-            await self.initialize()
-
-            # Subscribe to queues
-            await self._setup_subscriptions()
-
-            # Start message processor (store reference to detect silent failures)
-            self._processor_task = asyncio.create_task(
-                self._message_processor(),
-                name=f"{self.agent_name}-processor",
-            )
-            self._processor_task.add_done_callback(self._on_processor_done)
-
-            # Update state
-            self.status = AgentStatus.ACTIVE
-            self.metrics.started_at = datetime.utcnow()
-
-            self.logger.info(f"✅ Agent {self.agent_name} is ACTIVE")
-
-        except Exception as e:
-            self.status = AgentStatus.ERROR
-            self.metrics.record_error(str(e))
-            self.logger.error(f"❌ Failed to start agent: {e}")
-            raise
+        """Start once; a failed stop must be completed before another start."""
+        async with self._lifecycle_lock:
+            if self.status in (
+                AgentStatus.ACTIVE,
+                AgentStatus.IDLE,
+                AgentStatus.PAUSED,
+            ):
+                if self._processor_task and not self._processor_task.done():
+                    return
+            if (
+                self._needs_cleanup
+                or self._consumer_tags
+                or any(not task.done() for task in self._active_tasks)
+                or (self._processor_task and not self._processor_task.done())
+            ):
+                raise RuntimeError(
+                    "Previous agent run has not stopped; check health and stop again"
+                )
+            try:
+                self.status = AgentStatus.STARTING
+                self._shutdown_event.clear()
+                self._pause_event.set()
+                self._needs_cleanup = True
+                await self.initialize()
+                self._accepting_messages = True
+                # Start the worker before subscriptions so startup deliveries have
+                # a consumer even while the remaining bindings are being installed.
+                self._processor_task = asyncio.create_task(
+                    self._message_processor(), name=f"{self.agent_name}-processor"
+                )
+                self._processor_task.add_done_callback(self._on_processor_done)
+                await self._setup_subscriptions()
+                self.status = AgentStatus.ACTIVE
+                self.metrics.started_at = datetime.utcnow()
+                self.logger.info(f"Agent {self.agent_name} is ACTIVE")
+            except BaseException as exc:
+                self._accepting_messages = False
+                self._shutdown_event.set()
+                self._message_ready.set()
+                self._queue_space.set()
+                self.status = AgentStatus.ERROR
+                self.metrics.record_error(str(exc))
+                # Quiesce partial subscriptions immediately. If the broker is
+                # unavailable, retained tags and unacked deliveries allow an
+                # explicit stop retry without a hot requeue loop.
+                for queue_name, tag in list(self._consumer_tags.items()):
+                    try:
+                        await self.message_bus.stop_consuming(
+                            queue_name, tag, timeout=self.config.task_timeout_seconds
+                        )
+                        del self._consumer_tags[queue_name]
+                    except Exception as cancel_error:
+                        self.logger.error(
+                            f"Partial startup cancellation failed: {cancel_error}"
+                        )
+                # Resource cleanup remains mandatory before starting again.
+                raise
 
     async def stop(self) -> None:
-        """Stop the agent gracefully"""
-        try:
+        """Quiesce ingress and drain accepted work before releasing resources.
+
+        A timeout leaves work running under the same instance, reports ERROR,
+        and requires a later stop retry. It does not cancel business operations
+        or declare them completed. Broker deliveries racing cancellation requeue.
+        """
+        async with self._lifecycle_lock:
+            if self.status == AgentStatus.STOPPED:
+                return
             self.status = AgentStatus.STOPPING
-            self.logger.info(f"🛑 Stopping agent: {self.agent_name}")
-
-            # Signal shutdown
+            self._accepting_messages = False
             self._shutdown_event.set()
-            self._pause_event.set()  # Unpause if paused
-
-            # Wait for active tasks with timeout
-            if self._active_tasks:
-                self.logger.info(
-                    f"Waiting for {len(self._active_tasks)} tasks to complete..."
-                )
-                try:
-                    await asyncio.wait_for(
-                        asyncio.gather(*self._active_tasks, return_exceptions=True),
-                        timeout=self.config.task_timeout_seconds,
+            self._pause_event.set()
+            self._message_ready.set()
+            self._queue_space.set()
+            deadline = (
+                asyncio.get_running_loop().time() + self.config.task_timeout_seconds
+            )
+            try:
+                for queue_name, tag in list(self._consumer_tags.items()):
+                    await self.message_bus.stop_consuming(
+                        queue_name,
+                        tag,
+                        timeout=max(0.0, deadline - asyncio.get_running_loop().time()),
                     )
-                except asyncio.TimeoutError:
-                    self.logger.warning("Task completion timeout, forcing shutdown")
+                    del self._consumer_tags[queue_name]
+                if self._processor_task:
+                    await self._drain_tasks({self._processor_task}, deadline)
+                await self._drain_tasks(set(self._active_tasks), deadline)
+                if not self._message_queue.empty():
+                    raise RuntimeError(
+                        "Accepted messages remain unprocessed; stop is incomplete"
+                    )
+                await self.cleanup()
+                self._needs_cleanup = False
+                self.status = AgentStatus.STOPPED
+                self.logger.info(f"Agent {self.agent_name} stopped")
+            except BaseException as exc:
+                self.status = AgentStatus.ERROR
+                self.metrics.record_error(str(exc))
+                self.logger.error(f"Agent shutdown incomplete: {exc}")
+                raise
 
-            # Cleanup
-            await self.cleanup()
-
-            self.status = AgentStatus.STOPPED
-            self.logger.info(f"✅ Agent {self.agent_name} stopped")
-
-        except Exception as e:
-            self.logger.error(f"Error during shutdown: {e}")
-            self.status = AgentStatus.ERROR
+    async def _drain_tasks(self, tasks: set, deadline: float) -> None:
+        if not tasks:
+            return
+        done, pending = await asyncio.wait(
+            tasks, timeout=max(0.0, deadline - asyncio.get_running_loop().time())
+        )
+        if pending:
+            raise TimeoutError(
+                "Agent work is still draining; check health before retrying stop"
+            )
+        for task in done:
+            try:
+                # Cancellation of a worker is a failed drain, not cancellation
+                # of the operator's HTTP request (which must receive a clear
+                # failure).
+                if task.cancelled():
+                    raise RuntimeError(
+                        "Agent task was cancelled before drain completed"
+                    )
+                task.result()
+            except BaseException:
+                # A FAILED handle is forgotten here so a later stop doesn't
+                # re-examine it. Before this, `self._processor_task` kept
+                # pointing at the same cancelled/errored task after a failed
+                # stop() reported it once: the next stop() re-awaited that
+                # same already-done task, asyncio.wait returned it in `done`
+                # immediately, and the same failure was raised again —
+                # forever, since nothing but a fresh start() ever reassigns
+                # `_processor_task`. A task that drained successfully is left
+                # exactly as it was (callers such as
+                # `test_restart_reuses_instance_with_live_worker...` read it
+                # afterwards), and a still-PENDING task (the branch above) is
+                # also left in place, so a retry keeps watching the same slow
+                # task rather than orphaning it mid-drain.
+                if task is self._processor_task:
+                    self._processor_task = None
+                raise
 
     async def pause(self) -> None:
         """Pause message processing"""
+        if self.status not in (
+            AgentStatus.ACTIVE,
+            AgentStatus.IDLE,
+            AgentStatus.DEGRADED,
+            AgentStatus.PAUSED,
+        ):
+            raise RuntimeError("Only a running agent can be paused")
         self.logger.info(f"⏸️ Pausing agent: {self.agent_name}")
         self._pause_event.clear()
         self.status = AgentStatus.PAUSED
@@ -418,6 +510,8 @@ class BaseAgent(ABC):
 
     async def resume(self) -> None:
         """Resume message processing"""
+        if self.status not in (AgentStatus.PAUSED, AgentStatus.ACTIVE):
+            raise RuntimeError("A stopped agent must be started, not resumed")
         self.logger.info(f"▶️ Resuming agent: {self.agent_name}")
         self._pause_event.set()
         self.status = AgentStatus.ACTIVE
@@ -451,72 +545,70 @@ class BaseAgent(ABC):
             )
 
             # Start consuming
-            await self.message_bus.consume(
+            tag = await self.message_bus.consume(
                 queue_name=queue_name,
                 callback=self._enqueue_message,
                 auto_ack=False,
             )
 
+            self._consumer_tags[queue_name] = tag
+
             self.logger.info(f"📬 Subscribed: {exchange_name}/{routing_key}")
 
     async def _enqueue_message(self, message: Dict[str, Any]) -> None:
-        """Enqueue message for processing (with backpressure)"""
-        try:
-            if self._message_queue.full():
-                if self.config.drop_oldest_on_overflow:
-                    # Drop oldest message
-                    try:
-                        self._message_queue.get_nowait()
-                        self.metrics.messages_skipped += 1
-                        self.logger.warning("Queue full, dropped oldest message")
-                    except asyncio.QueueEmpty:
-                        pass
-                else:
-                    # Reject new message
-                    self.metrics.messages_skipped += 1
-                    self.logger.warning("Queue full, rejecting message")
-                    return
+        """Accept into memory or leave the delivery available at the broker.
 
-            await self._message_queue.put(message)
-
-        except Exception as e:
-            self.logger.error(f"Failed to enqueue message: {e}")
+        The old drop-oldest/reject-return behavior ACKed messages that would
+        never run. Keep the legacy config field parseable, but never drop work.
+        """
+        while self._message_queue.full() and self._accepting_messages:
+            # Hold the broker delivery unacknowledged instead of a hot requeue
+            # loop. A dequeue or stop wakes all waiters; each rechecks capacity.
+            self._queue_space.clear()
+            await self._queue_space.wait()
+        if not self._accepting_messages:
+            raise ConsumerUnavailable("Agent is not accepting deliveries")
+        self._message_queue.put_nowait(message)
+        self._message_ready.set()
 
     async def _message_processor(self) -> None:
-        """Background task that processes messages from queue"""
-        self.logger.info("Message processor started")
-
-        while not self._shutdown_event.is_set():
+        """Drain accepted work on stop; never abandon a message after dequeue."""
+        while True:
+            await self._pause_event.wait()
+            if self._message_queue.empty():
+                if self._shutdown_event.is_set():
+                    return
+                self._message_ready.clear()
+                await self._message_ready.wait()
+                continue
+            # Acquire before dequeue so waiting/cancellation cannot lose a body.
+            await self._semaphore.acquire()
             try:
-                # Wait if paused
-                await self._pause_event.wait()
+                message = self._message_queue.get_nowait()
+                self._queue_space.set()
+            except asyncio.QueueEmpty:
+                self._semaphore.release()
+                continue
+            task = asyncio.create_task(self._process_queued_message(message))
+            self._active_tasks.add(task)
+            task.add_done_callback(self._active_tasks.discard)
 
-                # Get message with timeout
-                try:
-                    message = await asyncio.wait_for(
-                        self._message_queue.get(),
-                        timeout=1.0,
-                    )
-                except asyncio.TimeoutError:
-                    continue
-
-                # Process with concurrency limit
-                async with self._semaphore:
-                    task = asyncio.create_task(self._process_with_retry(message))
-                    self._active_tasks.add(task)
-                    task.add_done_callback(self._active_tasks.discard)
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                self.logger.error(f"Message processor error: {e}")
-
-        self.logger.info("Message processor stopped")
+    async def _process_queued_message(self, message: Dict[str, Any]) -> None:
+        try:
+            await self._process_with_retry(message)
+        finally:
+            self._message_queue.task_done()
+            self._semaphore.release()
 
     def _on_processor_done(self, task: asyncio.Task) -> None:
         """Callback when message processor task finishes (expected or unexpected)"""
         if task.cancelled():
             self.logger.info(f"Message processor for {self.agent_name} was cancelled")
+            if not self._shutdown_event.is_set():
+                self.status = AgentStatus.ERROR
+                self.metrics.record_error(
+                    "Message processor was unexpectedly cancelled"
+                )
             return
 
         exc = task.exception()
