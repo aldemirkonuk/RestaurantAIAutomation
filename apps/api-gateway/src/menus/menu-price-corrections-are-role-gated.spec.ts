@@ -76,20 +76,27 @@ describe("POST /menu-versions/:menuId/make-current — owner or manager only", (
   function controller(role: string | null) {
     const make = jest.fn(async () => ({ outcome: "made_current" }));
     const list = jest.fn(async () => ({ versions: [] }));
-    const c = new MenuVersionsController({ makeCurrent: make, listVersions: list } as any, orgs(role));
-    return { c, make, list };
+    const plan = jest.fn(async () => ({ fingerprint: "fp-1" }));
+    const c = new MenuVersionsController({ makeCurrent: make, listVersions: list, planFor: plan } as any, orgs(role));
+    return { c, make, list, plan };
   }
 
-  it.each(["owner", "manager"])("a %s may choose the current menu", async (role) => {
+  it.each(["owner", "manager"])("a %s may choose the current menu, naming the plan it was shown (L13)", async (role) => {
     const { c, make } = controller(role);
-    await c.makeCurrent("rest-1", "u-1", MENU);
-    expect(make).toHaveBeenCalledWith("rest-1", MENU, "u-1");
+    await c.makeCurrent("rest-1", "u-1", MENU, { fingerprint: "fp-1" });
+    expect(make).toHaveBeenCalledWith("rest-1", MENU, "u-1", "fp-1");
   });
 
   it.each(["staff", null])("%s is refused, and nothing is switched", async (role) => {
     const { c, make } = controller(role as string | null);
-    await expect(c.makeCurrent("rest-1", "u-1", MENU)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(c.makeCurrent("rest-1", "u-1", MENU, { fingerprint: "fp-1" })).rejects.toBeInstanceOf(ForbiddenException);
     expect(make).not.toHaveBeenCalled();
+  });
+
+  it("anyone of the house may READ the plan (ADR 0193 round 3); only choosing is gated", async () => {
+    const { c, plan } = controller("staff");
+    await c.plan("rest-1", MENU);
+    expect(plan).toHaveBeenCalledWith("rest-1", MENU);
   });
 
   it("any member of the house may read the menus; the house comes from the token", async () => {

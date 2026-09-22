@@ -65,4 +65,15 @@ describe("the menu read waits when the spend ledger cannot be read", () => {
     await service(call).parse(await pdfWithPages(1), "rest-1");
     expect(call.mock.calls[0][0]).toMatchObject({ spendLedgerUnreadable: "closed" });
   });
+
+  it("the founder, round 6c: \"never refuse a menu read\" -- the parser asks for no allowance refusal, on every request", async () => {
+    // 30 pages: three chunked requests, each must carry it.
+    const call = jest.fn().mockResolvedValue({ content: [{ text: "[]" }], stop_reason: "end_turn" });
+    await service(call).parse(await pdfWithPages(30), "rest-1");
+    expect(call.mock.calls.length).toBeGreaterThanOrEqual(3);
+    for (const [opts] of call.mock.calls) {
+      expect(opts).toMatchObject({ allowance: "unlimited", spendLedgerUnreadable: "closed" });
+      expect(opts.gateFirstAttempt).not.toBe(true);
+    }
+  });
 });

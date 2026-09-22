@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
@@ -24,6 +25,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * `changedBy` is `public.users.user_id` from the verified JWT and is required:
  * the function refuses a change that names nobody.
  *
+ * LOCKS (ADR 0193 round 3; the founder, 2026-09-21: "add a section to that
+ * where you can lock price"). A kind with an open lock in `house_price_locks`
+ * is never written: the function writes the other kind if it was named, and
+ * answers per kind. Overall `locked` means every named kind was held; `held`
+ * names each lock whatever the overall outcome, so no caller can report
+ * "changed" without the held kind beside it (L5).
+ *
  * A plain function, not an injectable: the inventory and menu services call it
  * with the client they already hold, and their specs exercise it against the
  * same fake client rather than a mock of this function.
@@ -46,9 +54,25 @@ export interface HousePriceChange {
   /** Cost of one BOTTLE in effect when this price took over, when known. */
   unitCost?: number | null;
   pricingAnalysisId?: string | null;
+  /** The menu whose choice (or line) set this price, recorded on the version row (L11). */
+  menuId?: string | null;
 }
 
-export type HousePriceOutcome = "changed" | "unchanged" | "stale";
+export type HousePriceOutcome = "changed" | "unchanged" | "stale" | "locked";
+
+export type PriceKindName = "bottle" | "glass";
+
+/** What happened to one named kind. */
+export type KindOutcome = "changed" | "unchanged" | "stale" | "locked";
+
+/** A kind this write did not touch because a lock holds it. */
+export interface HeldKind {
+  kind: PriceKindName;
+  lockId: string;
+  lockedPrice: number | null;
+  lockedBy: string | null;
+  lockedAt: string | null;
+}
 
 export interface HousePriceResult {
   outcome: HousePriceOutcome;
@@ -60,6 +84,10 @@ export interface HousePriceResult {
   currentSince: string | null;
   currentSource: string | null;
   versionId: string | null;
+  /** Every named kind a lock held, with the lock. Empty when none was held. */
+  held: HeldKind[];
+  /** Per named kind; null for a kind the change did not name. */
+  kinds: { bottle: KindOutcome | null; glass: KindOutcome | null };
 }
 
 function num(v: unknown): number | null {
@@ -93,6 +121,7 @@ export async function setHouseMenuPrice(
     p_reason: change.reason ?? null,
     p_unit_cost: change.unitCost ?? null,
     p_pricing_analysis_id: change.pricingAnalysisId ?? null,
+    p_menu_id: change.menuId ?? null,
   });
 
   if (error) {
@@ -105,6 +134,11 @@ export async function setHouseMenuPrice(
     if (code === "22023") {
       throw new BadRequestException(`${error.message}`);
     }
+    if (code === "HPL01") {
+      // The database guard (a write that reached a locked column). This
+      // function never aims at a held kind, so it is said, never swallowed.
+      throw new ConflictException(`${error.message}`);
+    }
     throw new InternalServerErrorException(
       `The price was not saved: ${error.message}`,
     );
@@ -112,12 +146,33 @@ export async function setHouseMenuPrice(
 
   const r = (data ?? {}) as Record<string, unknown>;
   const outcome = r.outcome;
-  if (outcome !== "changed" && outcome !== "unchanged" && outcome !== "stale") {
+  if (
+    outcome !== "changed" &&
+    outcome !== "unchanged" &&
+    outcome !== "stale" &&
+    outcome !== "locked"
+  ) {
     // An answer this writer does not recognise is not a success.
     throw new InternalServerErrorException(
       "The price writer returned no outcome; whether the price changed is unknown.",
     );
   }
+  const held = heldFrom(r.held);
+  if (outcome === "locked" && held.length === 0) {
+    // "Locked" with no lock named would be a hold nobody can see.
+    throw new InternalServerErrorException(
+      "The price writer said the price is locked but named no lock; whether the price changed is unknown.",
+    );
+  }
+  const kinds = (r.kinds ?? {}) as Record<string, unknown>;
+  const kindOf = (k: PriceKindName, named: boolean): KindOutcome | null => {
+    if (!named) return null;
+    const v = kinds[k];
+    if (v === "changed" || v === "unchanged" || v === "stale" || v === "locked") return v;
+    if (held.some((h) => h.kind === k)) return "locked";
+    // An older answer without per-kind outcomes: the overall one applies.
+    return outcome === "locked" ? "locked" : outcome;
+  };
   return {
     outcome,
     bottlePrice: num(r.bottle_price),
@@ -127,5 +182,39 @@ export async function setHouseMenuPrice(
     currentSince: typeof r.current_since === "string" ? r.current_since : null,
     currentSource: typeof r.current_source === "string" ? r.current_source : null,
     versionId: typeof r.version_id === "string" ? r.version_id : null,
+    held,
+    kinds: { bottle: kindOf("bottle", setBottle), glass: kindOf("glass", setGlass) },
   };
+}
+
+/** The `held` list as the SQL returns it; an entry that is not a lock is an error, never dropped. */
+function heldFrom(raw: unknown): HeldKind[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) {
+    throw new InternalServerErrorException(
+      "The price writer returned a held list that is not a list; whether a lock held the price is unknown.",
+    );
+  }
+  return raw.map((h) => {
+    const e = (h ?? {}) as Record<string, unknown>;
+    if ((e.kind !== "bottle" && e.kind !== "glass") || typeof e.lock_id !== "string") {
+      throw new InternalServerErrorException(
+        "The price writer named a held price without its kind or its lock; whether the price changed is unknown.",
+      );
+    }
+    return {
+      kind: e.kind,
+      lockId: e.lock_id,
+      lockedPrice: num(e.locked_price),
+      lockedBy: typeof e.locked_by === "string" ? e.locked_by : null,
+      lockedAt: typeof e.locked_at === "string" ? e.locked_at : null,
+    };
+  });
+}
+
+/** "the bottle price (locked at 95.00)" -- for a sentence that must name what a lock held. */
+export function heldWords(held: HeldKind[]): string {
+  return held
+    .map((h) => `the ${h.kind} price (locked${h.lockedPrice === null ? "" : ` at ${h.lockedPrice.toFixed(2)}`})`)
+    .join(" and ");
 }

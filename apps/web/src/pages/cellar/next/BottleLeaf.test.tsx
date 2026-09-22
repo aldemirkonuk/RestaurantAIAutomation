@@ -24,6 +24,25 @@ vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
 vi.mock('../../../hooks/queries/useProviderQueries', () => ({
   useRecommendedProviders: () => ({ data: undefined, isError: false }),
 }));
+// The lock list (ADR 0193 round 3, L8): read, and empty unless a test says otherwise.
+const listPriceLocks = vi.fn(async () => ({
+  restaurantId: 'r1',
+  generatedAt: '2026-09-21T12:00:00Z',
+  readable: true,
+  reason: null,
+  scope: 'this house' as const,
+  currentMenus: [],
+  locks: [] as unknown[],
+  counts: { open: 0, onCurrentMenu: 0, notOnCurrentMenu: 0, toReview: 0 },
+  namesReadable: true,
+  namesReason: null,
+  markersReadable: true,
+  markersReason: null,
+}));
+vi.mock('../../../services/api/pricing', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  listPriceLocks: () => listPriceLocks(),
+}));
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useCellarSettings: () => ({
@@ -163,6 +182,37 @@ describe('BottleLeaf — bottle price vs. the library\'s market average', () => 
     const facts = screen.getByTestId('bottle-leaf-fact-set');
     const bottlePriceDd = within(facts).getByText('Bottle price (this house)').nextElementSibling!;
     expect(bottlePriceDd).not.toHaveTextContent('92');
+  });
+});
+
+describe('BottleLeaf — a locked house price is said beside the price (ADR 0193 round 3, L8)', () => {
+  it('says the lock on this row, read from the lock list', async () => {
+    listPriceLocks.mockResolvedValueOnce({
+      ...(await listPriceLocks()),
+      locks: [
+        {
+          lockId: 'lk-1',
+          inventoryId: 'inv-1',
+          kind: 'bottle',
+          lockedPrice: 65,
+          lockedAt: '2026-09-21T10:00:00Z',
+          ageDays: 0,
+          note: null,
+          movedFromLockId: null,
+          lockedBy: { userId: 'u-1', name: 'Ayse' },
+          wine: { name: 'Boğazkere', vintage: 2021, masterWineId: 'w1', active: true, housePrice: 65 },
+          dormant: false,
+          menuPrice: null,
+          markers: [],
+          advice: null,
+          adviceUnknownReason: null,
+        },
+      ],
+    });
+    mount(bottle({ cellar: cellarRow({ inventoryId: 'inv-1', menuPriceBottle: 65 }) }));
+    expect(await screen.findByTestId('bottle-leaf-lock-bottle')).toHaveTextContent(
+      'The bottle price is locked at $65.00 at this house, by Ayse since 2026-09-21.',
+    );
   });
 });
 

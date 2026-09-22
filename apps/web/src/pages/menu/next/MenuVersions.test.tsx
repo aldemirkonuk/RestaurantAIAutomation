@@ -15,9 +15,11 @@ import {
   versionLabel,
 } from './MenuVersions';
 import {
+  getMenuPlan,
   importMenu,
   listMenuVersions,
   makeMenuCurrent,
+  type MenuPlan,
   type MenuVersion,
 } from '../../../services/api/menus';
 
@@ -31,8 +33,26 @@ vi.mock('../../../services/api/menus', async () => {
     makeMenuCurrent: vi.fn(),
     importMenu: vi.fn(),
     getMenuSourceUrl: vi.fn(),
+    getMenuPlan: vi.fn(),
   };
 });
+
+/** A plan with nothing to hold: the choice goes straight through (ADR 0193 round 3, L13). */
+function plan(menuId: string, over: Partial<MenuPlan> = {}): MenuPlan {
+  return {
+    menuId,
+    current: false,
+    generatedAt: '2026-09-21T12:00:00Z',
+    fingerprint: `fp-${menuId}`,
+    lines: [],
+    counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 0, not_linked: 0, new_wine: 0 },
+    dormantLocks: [],
+    namesReadable: true,
+    namesReason: null,
+    ...over,
+  };
+}
+const mockPlan = vi.mocked(getMenuPlan);
 
 const mockList = vi.mocked(listMenuVersions);
 const mockMake = vi.mocked(makeMenuCurrent);
@@ -74,6 +94,8 @@ beforeEach(() => {
   mockList.mockReset();
   mockMake.mockReset();
   mockImport.mockReset();
+  mockPlan.mockReset();
+  mockPlan.mockImplementation(async (id: string) => plan(id));
 });
 
 describe('the words the panel uses', () => {
@@ -116,7 +138,27 @@ describe('the words the panel uses', () => {
         failed: [{ menuItemId: 'l9', name: 'Barolo', error: 'timeout' }],
       }),
     ).toBe(
-      'This is now the current menu: 3 lines, 1 price set from this menu, 1 kept a price someone set after this menu was read, 1 flagged: a blank price kept the last known one, 1 not matched to a wine, so no price. 1 could not be priced: Barolo (timeout).',
+      'This is now the current menu: 3 lines, 1 price set from this menu, 1 kept a price someone set after this menu was chosen, 1 not matched to a wine, so no price, 1 flagged for a blank price. 1 could not be priced: Barolo (timeout).',
+    );
+  });
+
+  it('ADR 0193 round 3 (L15): a held kind is counted AND named, a returned lock is named, and an outcome the page does not know is still printed', () => {
+    const s = makeCurrentSentence({
+      outcome: 'made_current',
+      menuId: 'm1',
+      previousMenuIds: ['m0'],
+      lines: 4,
+      priceSync: { changed: 2, locked: 1, something_new: 1 },
+      flagged: 0,
+      failed: [],
+      held: [
+        { menuItemId: 'l1', name: 'Barolo', kind: 'bottle', lockId: 'k1', lockedPrice: 95, lockedBy: 'u1', lockedAt: '2026-09-01T00:00:00Z' },
+        { menuItemId: 'l2', name: 'Soave', kind: 'glass', lockId: 'k2', lockedPrice: 9, lockedBy: 'u1', lockedAt: '2026-09-01T00:00:00Z' },
+      ],
+      returned: [{ menuItemId: 'l1', name: 'Barolo' }],
+    });
+    expect(s).toBe(
+      'This is now the current menu: 4 lines, 2 prices set from this menu, 1 held by a lock, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at 95.00); Soave (glass, locked at 9.00). Back on the menu with its lock still holding: Barolo.',
     );
   });
 });
@@ -164,7 +206,11 @@ describe('MenuVersions', () => {
     });
     mount(true);
     fireEvent.click(await screen.findByRole('button', { name: 'Make the menu read 2026-09-20 current' }));
-    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m1'));
+    // The plan comes first (L13); nothing is chosen until the person confirms it.
+    expect(await screen.findByTestId('menu-plan')).toBeInTheDocument();
+    expect(mockMake).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Make it current' }));
+    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m1', 'fp-m1'));
     expect(await screen.findByText(/This is now the current menu: 42 lines, 40 prices set from this menu, 2 flagged/)).toBeInTheDocument();
   });
 
@@ -199,7 +245,8 @@ describe('MenuVersions', () => {
       'Read 12 lines and kept this menu. It is not the current menu, and no price has changed.',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Make this the current menu' }));
-    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m9'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m9', 'fp-m9'));
     expect(await screen.findByTestId('menu-choice-said')).toHaveTextContent('This is now the current menu: 12 lines');
   });
 

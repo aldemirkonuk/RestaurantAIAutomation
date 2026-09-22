@@ -33,6 +33,7 @@ const RULES = [
   'margin_to_target',
   'margin_target_unset',
   'margin_advice_blind',
+  'price_locks_to_review',
 ];
 
 describe('the docket — filing by the act', () => {

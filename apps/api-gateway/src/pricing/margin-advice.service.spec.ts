@@ -21,6 +21,11 @@ interface FakeOpts {
   inventoryError?: { message: string } | null;
   rollup?: Row[];
   rollupError?: { message: string } | null;
+  /** house_price_locks rows (ADR 0193 round 3). */
+  locks?: Row[];
+  locksError?: { message: string } | null;
+  users?: Row[];
+  usersError?: { message: string } | null;
   rpc?: (fn: string, args: Row) => { data: unknown; error: unknown };
 }
 
@@ -30,8 +35,20 @@ function fakeClient(o: FakeOpts) {
   const rpcs: Array<[string, Row]> = [];
   const from = (table: string) => {
     const filters: Array<[string, unknown]> = [];
+    const extra: Array<(r: Row) => boolean> = [];
     let insertRow: Row | null = null;
     const rows = (): { data: any; error: any } => {
+      if (table === "house_price_locks") {
+        if (o.locksError) return { data: null, error: o.locksError };
+        return {
+          data: (o.locks ?? []).filter((r) => filters.every(([c, v]) => r[c] === v) && extra.every((f) => f(r))),
+          error: null,
+        };
+      }
+      if (table === "users") {
+        if (o.usersError) return { data: null, error: o.usersError };
+        return { data: (o.users ?? []).filter((r) => extra.every((f) => f(r))), error: null };
+      }
       if (table === "restaurants") return { data: o.house ?? null, error: o.houseError ?? null };
       if (table === "restaurant_inventory") {
         if (o.inventoryError) return { data: null, error: o.inventoryError };
@@ -56,6 +73,23 @@ function fakeClient(o: FakeOpts) {
       },
       eq(c: string, v: unknown) {
         filters.push([c, v]);
+        return api;
+      },
+      is(c: string, v: unknown) {
+        extra.push((r) => (r[c] ?? null) === v);
+        return api;
+      },
+      in(c: string, vs: unknown[]) {
+        extra.push((r) => vs.includes(r[c]));
+        return api;
+      },
+      gt() {
+        return api;
+      },
+      order() {
+        return api;
+      },
+      limit() {
         return api;
       },
       insert(row: Row) {
@@ -293,5 +327,153 @@ describe("MarginAdviceService.accept — one tap, applied only when a manager ac
     });
     await expect(svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9")).rejects.toBeInstanceOf(NotFoundException);
     expect(rpcs).toHaveLength(0);
+  });
+});
+
+/**
+ * ADR 0193 round 3. The founder, 2026-09-21, verbatim: "Yes, confirmed per
+ * wine" (a wine's own pour, used for glass advice only once an owner or
+ * manager confirms it, else the house's confirmed pour); and "add a section
+ * to that where you can lock price" (a locked kind keeps its advice, marked,
+ * and cannot be accepted -- L7, L22, L25).
+ */
+describe("MarginAdviceService -- a wine's own confirmed pour (round 6c answer 3)", () => {
+  const confirmed = (ml: number) => ({ pour_size_ml: ml, pour_size_confirmed_by: "user-1", pour_size_confirmed_at: "2026-09-21T10:00:00Z" });
+
+  it("a confirmed 75 ml wine pour prices the glass: cost 20 x 75 / 750 = 2, 75 % target -> 8.00, so 10 is 'lower to 8'", async () => {
+    const { svc } = service({ house: HOUSE_SET, inventory: [{ ...WINE_A, ...confirmed(75) }], rollup: ROLLUP });
+    const a = (await svc.adviseHouse("rest-1")).wines[0];
+    expect(a.pour).toEqual({ ml: 75, source: "wine" });
+    expect(a.glass!.unitCost).toBeCloseTo(2, 10);
+    expect(a.glass).toMatchObject({ state: "lower", advisedPrice: 8 });
+  });
+
+  it("a confirmed wine pour advises the glass even before the HOUSE confirms its own", async () => {
+    const { svc } = service({ house: HOUSE_POUR_UNCONFIRMED, inventory: [{ ...WINE_A, ...confirmed(75) }], rollup: ROLLUP });
+    const a = (await svc.adviseHouse("rest-1")).wines[0];
+    expect(a.pour).toEqual({ ml: 75, source: "wine" });
+    expect(a.glass!.state).toBe("lower");
+  });
+
+  it("an UNCONFIRMED wine pour is never read: the house's confirmed 150 ml prices the glass", async () => {
+    // WINE_A carries pour_size_ml 50 with no confirmation.
+    const { svc } = service({ house: HOUSE_SET, inventory: [WINE_A], rollup: ROLLUP });
+    const a = (await svc.adviseHouse("rest-1")).wines[0];
+    expect(a.pour).toEqual({ ml: 150, source: "house" });
+    expect(a.glass!.unitCost).toBeCloseTo(4, 10);
+  });
+
+  it("a confirmation without its person is not a confirmation", async () => {
+    const { svc } = service({
+      house: HOUSE_POUR_UNCONFIRMED,
+      inventory: [{ ...WINE_A, pour_size_ml: 75, pour_size_confirmed_at: "2026-09-21T10:00:00Z", pour_size_confirmed_by: null }],
+      rollup: ROLLUP,
+    });
+    const a = (await svc.adviseHouse("rest-1")).wines[0];
+    expect(a.pour).toEqual({ ml: null, source: null });
+    expect(a.glass!.state).toBe("pour_unconfirmed");
+  });
+
+  it("the accepted glass advice records which pour priced it", async () => {
+    const { svc, inserts } = service({
+      house: HOUSE_SET,
+      inventory: [{ ...WINE_A, ...confirmed(75) }],
+      rollup: ROLLUP,
+      rpc: () => ({ data: { outcome: "changed", held: [] }, error: null }),
+    });
+    await svc.accept("rest-1", "inv-a", "glass", 8, "user-9");
+    expect(inserts[0][1].inputs).toMatchObject({ pourMl: 75, pourSource: "wine" });
+  });
+});
+
+describe("MarginAdviceService -- a locked price keeps its advice and cannot be accepted (round 3)", () => {
+  const LOCK_A_BOTTLE = {
+    id: "lock-1",
+    restaurant_id: "rest-1",
+    inventory_id: "inv-a",
+    kind: "bottle",
+    locked_price: "50.00",
+    locked_by: "user-5",
+    locked_at: "2026-09-02T09:00:00Z",
+    released_at: null,
+  };
+  const USERS = [{ user_id: "user-5", name: "Aylin" }];
+
+  it("L22: the locked bottle is still advised (a true margin is never hidden) and marked with who and when", async () => {
+    const { svc } = service({ house: HOUSE_SET, inventory: [WINE_A], rollup: ROLLUP, locks: [LOCK_A_BOTTLE] });
+    const out = await svc.adviseHouse("rest-1");
+    const a = out.wines[0];
+    expect(a.bottle).toMatchObject({ state: "raise", advisedPrice: 57.14, locked: { lockId: "lock-1", lockedPrice: 50, lockedBy: "user-5" } });
+    expect(a.glass!.locked).toBeNull();
+    expect(out.locks).toEqual({ readable: true, reason: null, held: 1 });
+  });
+
+  it("a released lock marks nothing", async () => {
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+      locks: [{ ...LOCK_A_BOTTLE, released_at: "2026-09-10T00:00:00Z" }],
+    });
+    const out = await svc.adviseHouse("rest-1");
+    expect(out.wines[0].bottle!.locked).toBeNull();
+    expect(out.locks.held).toBe(0);
+  });
+
+  it("L7: accepting advice on a locked kind is a 409 naming who locked it and when, and NOTHING is written", async () => {
+    const { svc, inserts, rpcs } = service({ house: HOUSE_SET, inventory: [WINE_A], rollup: ROLLUP, locks: [LOCK_A_BOTTLE], users: USERS });
+    const p = svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9");
+    await expect(p).rejects.toBeInstanceOf(ConflictException);
+    await expect(svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9")).rejects.toThrow(
+      /bottle price is locked at 50\.00 by Aylin since 2026-09-02\. Nothing was changed/,
+    );
+    expect(inserts).toHaveLength(0);
+    expect(rpcs).toHaveLength(0);
+  });
+
+  it("L7: the free kind of a wine whose other kind is locked can still be accepted", async () => {
+    const { svc, rpcs } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+      locks: [LOCK_A_BOTTLE],
+      rpc: () => ({ data: { outcome: "changed", held: [] }, error: null }),
+    });
+    await expect(svc.accept("rest-1", "inv-a", "glass", 16, "user-9")).resolves.toMatchObject({ outcome: "changed" });
+    expect(rpcs).toHaveLength(1);
+  });
+
+  it("L25: a lock read that fails is said on the advice, and accept refuses (500) with nothing written", async () => {
+    const { svc, inserts, rpcs } = service({ house: HOUSE_SET, inventory: [WINE_A], rollup: ROLLUP, locksError: { message: "denied" } });
+    const out = await svc.adviseHouse("rest-1");
+    expect(out.locks.readable).toBe(false);
+    expect(out.locks.reason).toMatch(/could not be read \(denied\)/);
+    await expect(svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9")).rejects.toBeInstanceOf(InternalServerErrorException);
+    expect(inserts).toHaveLength(0);
+    expect(rpcs).toHaveLength(0);
+  });
+
+  it("L25: a lock whose author cannot be named still refuses, and says the name could not be read", async () => {
+    const { svc } = service({ house: HOUSE_SET, inventory: [WINE_A], rollup: ROLLUP, locks: [LOCK_A_BOTTLE], usersError: { message: "timeout" } });
+    await expect(svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9")).rejects.toThrow(
+      /by a person whose name could not be read \(timeout\)/,
+    );
+  });
+
+  it("L7 race: a lock landing between the check and the write is a 409; the advice record stays unapplied", async () => {
+    const { svc, inserts, rpcs } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+      rpc: () => ({
+        data: { outcome: "locked", held: [{ kind: "bottle", lock_id: "lock-2", locked_price: 50, locked_by: "user-5", locked_at: "2026-09-21T12:00:00Z" }] },
+        error: null,
+      }),
+    });
+    await expect(svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9")).rejects.toThrow(
+      /locked a moment ago at 50\.00, so it was not changed\. The advice is recorded \(analysis-1\) and not applied/,
+    );
+    expect(inserts).toHaveLength(1);
+    expect(rpcs).toHaveLength(1);
   });
 });

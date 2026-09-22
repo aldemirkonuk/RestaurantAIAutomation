@@ -20,10 +20,12 @@ import {
 } from "./margin-to-target";
 import {
   confirmedPourFrom,
+  confirmedWinePourFrom,
   readHouseTargetMargin,
   targetsFrom,
 } from "./target-margin.service";
 import { setHouseMenuPrice, type HousePriceResult } from "./house-menu-price";
+import { type OpenLock, dayOf, lockIndex, readOpenLocks, readPeople } from "./price-locks";
 
 /**
  * Per-wine price advice toward the house's own target margin, and the one tap
@@ -39,13 +41,20 @@ import { setHouseMenuPrice, type HousePriceResult } from "./house-menu-price";
  * CONFIRMED pour, and the house's target.
  *
  * THE POUR (founder, 2026-09-21, relayed: glass advice appears only after the
- * house confirms its pour size, once; bottle advice unaffected). A glass is
- * priced on the house's confirmed pour (`restaurants.default_pour_ml` with
+ * house confirms its pour size, once; bottle advice unaffected; and round 6c,
+ * verbatim: "Yes, confirmed per wine"). A glass is priced on the WINE's own
+ * pour when an owner or manager has confirmed it (`confirmedWinePourFrom`),
+ * else on the house's confirmed pour (`restaurants.default_pour_ml` with
  * `pour_size_confirmed_at`), and on nothing else: the per-wine
- * `restaurant_inventory.pour_size_ml` carries a database DEFAULT of its own and
- * cannot be told from a typed value (ADR 0193 F7), so it is not read here.
- * Until the house confirms, every glass is `pour_unconfirmed`. Never the market average: neither of the wine library's
+ * `restaurant_inventory.pour_size_ml` carries a database DEFAULT of its own
+ * and cannot be told from a typed value (ADR 0193 F7), so an unconfirmed one
+ * is never read as a pour. With neither confirmed, the glass is
+ * `pour_unconfirmed`. Never the market average: neither of the wine library's
  * market columns is selected here (CLAIMS row, ADR 0193).
+ *
+ * LOCKS (round 3, L22). A locked kind still gets its advice -- a true margin is
+ * never hidden -- marked `locked` with who and when, and it cannot be
+ * accepted (L7): `accept` checks the lock before it writes anything.
  *
  * Nothing here changes a price except `accept`, which a manager calls with
  * one tap, and which re-computes the advice server-side and refuses if it is
@@ -53,6 +62,17 @@ import { setHouseMenuPrice, type HousePriceResult } from "./house-menu-price";
  */
 
 export const MARGIN_ADVICE_ENGINE = "margin-to-target/1";
+
+/** Who holds a kind's price, when a lock does (L22). */
+export interface LockMark {
+  lockId: string;
+  lockedPrice: number;
+  lockedBy: string;
+  lockedAt: string;
+}
+
+/** One kind's advice, and the lock that holds it, if any. */
+export type KindAdvice = PriceAdvice & { locked: LockMark | null };
 
 export interface WineAdvice {
   inventoryId: string;
@@ -62,9 +82,14 @@ export interface WineAdvice {
   costBasisLabel: string;
   bottleCost: number | null;
   /** Null when this wine is not sold by the bottle and has no bottle price. */
-  bottle: PriceAdvice | null;
+  bottle: KindAdvice | null;
   /** Null when this wine is not sold by the glass and has no glass price. */
-  glass: PriceAdvice | null;
+  glass: KindAdvice | null;
+  /**
+   * The pour the glass advice used: the wine's own once confirmed, else the
+   * house's confirmed one (round 6c answer 3); null when neither is.
+   */
+  pour: { ml: number | null; source: "wine" | "house" | null };
 }
 
 export interface HouseAdvice {
@@ -85,9 +110,14 @@ export interface HouseAdvice {
   wines: WineAdvice[];
   /** Advice lines by state, bottle and glass together. */
   counts: Record<AdviceState, number>;
+  /**
+   * Whether the house's price locks could be read (L25). `false` means every
+   * `locked` below is UNKNOWN, not "not locked", and accepting is refused.
+   */
+  locks: { readable: boolean; reason: string | null; held: number };
 }
 
-interface InventoryPriceRow {
+export interface InventoryPriceRow {
   id: string;
   wine_name: string | null;
   sale_type: string | null;
@@ -95,6 +125,9 @@ interface InventoryPriceRow {
   menu_price_glass: number | string | null;
   last_purchase_price: number | string | null;
   bottle_size_ml: number | null;
+  pour_size_ml?: number | string | null;
+  pour_size_confirmed_by?: string | null;
+  pour_size_confirmed_at?: string | null;
   master_wine_library?: { name?: string | null; bottle_size_ml?: number | null } | null;
 }
 
@@ -108,7 +141,7 @@ interface HouseTerms {
 }
 
 const INVENTORY_SELECT =
-  "id, wine_name, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, master_wine_library(name, bottle_size_ml)";
+  "id, wine_name, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_library(name, bottle_size_ml)";
 
 const ROLLUP_SELECT = "inventory_id, live_qty, wac, has_invoice_cost, wac_qty";
 
@@ -139,7 +172,7 @@ export class MarginAdviceService {
   /** Every active wine's advice. A failed read throws; it is never an empty list. */
   async adviseHouse(restaurantId: string): Promise<HouseAdvice> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup] = await Promise.all([
+    const [targets, inv, rollup, lockRead] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       client
         .from("restaurant_inventory")
@@ -147,6 +180,7 @@ export class MarginAdviceService {
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
       client.from("inventory_lot_rollup").select(ROLLUP_SELECT).eq("restaurant_id", restaurantId),
+      readOpenLocks(client, restaurantId),
     ]);
     if (targets.error !== null) {
       throw new InternalServerErrorException(
@@ -172,11 +206,17 @@ export class MarginAdviceService {
       lots.set(String(r.inventory_id), r);
     }
 
+    // A failed lock read is said (locks.readable false), never taken for "no
+    // lock" (L25): every `locked` is then unknown and accept refuses.
+    const byKind = lockIndex(lockRead.locks);
     const counts = emptyCounts();
+    let held = 0;
     const wines = ((inv.data ?? []) as unknown as InventoryPriceRow[]).map((row) => {
-      const w = this.adviseWine(row, lots.get(row.id) ?? null, t);
+      const w = this.adviseWine(row, lots.get(row.id) ?? null, t, byKind);
       if (w.bottle) counts[w.bottle.state] += 1;
       if (w.glass) counts[w.glass.state] += 1;
+      if (w.bottle?.locked) held += 1;
+      if (w.glass?.locked) held += 1;
       return w;
     });
 
@@ -193,6 +233,14 @@ export class MarginAdviceService {
       },
       wines,
       counts,
+      locks: {
+        readable: lockRead.error === null,
+        reason:
+          lockRead.error === null
+            ? null
+            : `Whether any price is locked could not be read (${lockRead.error}); accepting advice is refused until it can.`,
+        held,
+      },
     };
   }
 
@@ -200,6 +248,7 @@ export class MarginAdviceService {
     row: InventoryPriceRow,
     lot: Record<string, unknown> | null,
     t: HouseTerms,
+    locks: Map<string, OpenLock> = new Map(),
   ): WineAdvice {
     const { unitCost, costBasis } = resolveUnitCost(
       { last_purchase_price: row.last_purchase_price },
@@ -212,6 +261,15 @@ export class MarginAdviceService {
     const sellsGlass = saleType === "glass" || saleType === "both" || glassPrice !== null;
 
     const bottleMl = n(row.bottle_size_ml) ?? n(row.master_wine_library?.bottle_size_ml);
+    // The wine's own pour once an owner or manager confirmed it, else the
+    // house's confirmed pour (round 6c answer 3). An unconfirmed per-wine
+    // pour is never read as one.
+    const winePour = confirmedWinePourFrom(row);
+    const pourMl = winePour ?? t.pourMl;
+    const mark = (kind: PriceKind): LockMark | null => {
+      const l = locks.get(`${row.id}:${kind}`);
+      return l ? { lockId: l.lockId, lockedPrice: l.lockedPrice, lockedBy: l.lockedBy, lockedAt: l.lockedAt } : null;
+    };
 
     return {
       inventoryId: row.id,
@@ -220,24 +278,31 @@ export class MarginAdviceService {
       costBasisLabel: COST_BASIS_LABEL[costBasis],
       bottleCost: unitCost,
       bottle: sellsBottle
-        ? adviseToTarget({
-            kind: "bottle",
-            price: bottlePrice,
-            unitCost,
-            targetPct: t.bottlePct,
-            bandPct: t.bandPct,
-          })
+        ? {
+            ...adviseToTarget({
+              kind: "bottle",
+              price: bottlePrice,
+              unitCost,
+              targetPct: t.bottlePct,
+              bandPct: t.bandPct,
+            }),
+            locked: mark("bottle"),
+          }
         : null,
       glass: sellsGlass
-        ? adviseToTarget({
-            kind: "glass",
-            price: glassPrice,
-            unitCost: glassCostFrom(unitCost, t.pourMl, bottleMl),
-            targetPct: t.glassPct,
-            bandPct: t.bandPct,
-            pourConfirmed: t.pourMl !== null,
-          })
+        ? {
+            ...adviseToTarget({
+              kind: "glass",
+              price: glassPrice,
+              unitCost: glassCostFrom(unitCost, pourMl, bottleMl),
+              targetPct: t.glassPct,
+              bandPct: t.bandPct,
+              pourConfirmed: pourMl !== null,
+            }),
+            locked: mark("glass"),
+          }
         : null,
+      pour: { ml: pourMl, source: winePour !== null ? "wine" : t.pourMl !== null ? "house" : null },
     };
   }
 
@@ -291,6 +356,19 @@ export class MarginAdviceService {
         `The recorded cost could not be read; nothing was changed. ${rollup.error.message}`,
       );
 
+    // L7: a locked kind cannot be accepted. Checked BEFORE anything is
+    // written, so no pricing_analyses row is left behind; a lock that cannot
+    // be read is a refusal too, never "not locked" (L25).
+    const held = await readOpenLocks(client, restaurantId, { inventoryId, kind });
+    if (held.error !== null) {
+      throw new InternalServerErrorException(
+        `Whether the ${kind} price is locked could not be read, so nothing was changed: ${held.error}`,
+      );
+    }
+    if (held.locks.length > 0) {
+      throw new ConflictException(await this.lockedSentence(held.locks[0], kind));
+    }
+
     const t: HouseTerms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
     const wine = this.adviseWine(
       inv.data as unknown as InventoryPriceRow,
@@ -339,7 +417,8 @@ export class MarginAdviceService {
           targetPct: advice.targetPct,
           bandPct: advice.bandPct,
           gapPct: advice.gapPct,
-          pourMl: kind === "glass" ? t.pourMl : null,
+          pourMl: kind === "glass" ? wine.pour.ml : null,
+          pourSource: kind === "glass" ? wine.pour.source : null,
           state: advice.state,
           acceptedBy: userId,
         },
@@ -367,6 +446,14 @@ export class MarginAdviceService {
     this.logger.log(
       `price advice accepted: ${restaurantId}/${inventoryId} ${kind} -> ${advice.advisedPrice} (${result.outcome})`,
     );
+    if (result.outcome === "locked") {
+      // A lock landed between the check above and the write (L7's race). The
+      // analysis row stays unapplied: no version row points at it.
+      const lock = result.held[0];
+      throw new ConflictException(
+        `The ${kind} price was locked a moment ago${lock?.lockedPrice == null ? "" : ` at ${lock.lockedPrice.toFixed(2)}`}, so it was not changed. The advice is recorded (${pricingAnalysisId}) and not applied.`,
+      );
+    }
 
     return {
       outcome: result.outcome,
@@ -375,5 +462,15 @@ export class MarginAdviceService {
       previousPrice: advice.price,
       pricingAnalysisId,
     };
+  }
+
+  /** "The glass price is locked at 14.00 by Ayse since 2026-09-21. ..." -- who, never a blank. */
+  private async lockedSentence(lock: OpenLock, kind: PriceKind): Promise<string> {
+    const people = await readPeople(this.databaseService.client, [lock.lockedBy]);
+    const who =
+      people.error !== null
+        ? `by a person whose name could not be read (${people.error})`
+        : `by ${people.people.get(lock.lockedBy)?.name ?? "a person with no name on record"}`;
+    return `The ${kind} price is locked at ${lock.lockedPrice.toFixed(2)} ${who} since ${dayOf(lock.lockedAt)}. Nothing was changed. An owner or a manager can change it and keep it locked, or release the lock, on Menu, under Locked prices.`;
   }
 }

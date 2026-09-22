@@ -16,17 +16,79 @@
  * when the manager taps it. Every change is on the record server-side
  * (menu_price_versions, with who and from where). Staff see the price and
  * the advice but no controls — and the gateway refuses them regardless.
+ *
+ * ADR 0193 round 3. A LOCKED price (the founder, 2026-09-21: "add a section to
+ * that where you can lock price") carries a "locked" mark with who and when;
+ * its advice is still shown but has no Accept (a lock holds it); an edit that
+ * reaches a locked kind is refused for that kind and said. A wine may carry
+ * its own POUR ("Yes, confirmed per wine"), confirmed here by an owner or a
+ * manager; empty means the house's pour.
  */
 import { useState } from 'react'
 import { cn } from '../../../lib/utils'
 import { fmtMoneyExact } from './bits'
 import { updateInventoryItem } from '../../../services/api/inventory'
-import { acceptPriceAdvice, type PriceAdvice, type WineAdvice } from '../../../services/api/pricing'
+import {
+  acceptPriceAdvice,
+  confirmWinePour,
+  type PriceAdvice,
+  type WineAdvice,
+} from '../../../services/api/pricing'
 
 export type AdviceLoad =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; byId: Map<string, WineAdvice>; targetSet: boolean }
+  | {
+      status: 'ready'
+      byId: Map<string, WineAdvice>
+      targetSet: boolean
+      /** false = whether a price is locked is unknown; no Accept is offered. */
+      locksReadable?: boolean
+      locksReason?: string | null
+    }
+
+/** What an edit did, when a lock held part of it (ADR 0193 round 3, L5). */
+export function heldNote(res: {
+  priceChange?: { outcome?: string; held?: Array<{ kind: string; lockedPrice: number | null }> }
+}): string | null {
+  const held = res?.priceChange?.held ?? []
+  if (held.length === 0) return null
+  const words = held
+    .map((h) => `the ${h.kind} price is locked${h.lockedPrice == null ? '' : ` at ${h.lockedPrice.toFixed(2)}`}`)
+    .join(' and ')
+  const rest = res.priceChange?.outcome === 'changed' ? ' The rest was saved.' : ''
+  return `Not changed: ${words}. Change it on Menu, under Locked prices.${rest}`
+}
+
+/**
+ * What adding a wine did to the price typed with it (the gateway's
+ * `priceChange`, ADR 0193). Null when the price landed or none was typed.
+ * Last-call review, 2026-09-21: the add form said "added to inventory" whatever
+ * this answered, so a price a lock held (a removed wine added back), a newer
+ * price, or a failed write read as saved.
+ */
+export function addedPriceNote(
+  res:
+    | {
+        priceChange?: {
+          outcome?: string
+          error?: string
+          held?: Array<{ kind: string; lockedPrice: number | null }>
+        }
+      }
+    | null
+    | undefined,
+): string | null {
+  const pc = res?.priceChange
+  if (!pc) return null
+  const held = heldNote({ priceChange: pc })
+  if (held) return `The wine was added. ${held}`
+  if (pc.outcome === 'failed') {
+    return `The wine was added, but its price was not saved (${pc.error || 'no reason was given'}). Set it under Your price.`
+  }
+  if (pc.outcome === 'stale') return 'The wine was added, but its price was not changed: a newer price was already set. See Your price.'
+  return null
+}
 
 function reasonOf(err: unknown): string {
   const e = err as { response?: { status?: number; data?: { message?: unknown } }; message?: string }
@@ -68,12 +130,17 @@ export function HousePriceCell({
   const [editing, setEditing] = useState(false)
   const [bottleText, setBottleText] = useState('')
   const [glassText, setGlassText] = useState('')
+  const [pourText, setPourText] = useState('')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ tone: 'error' | 'info'; text: string } | null>(null)
+
+  const wine = advice.status === 'ready' ? advice.byId.get(inventoryId) : undefined
+  const winePour = wine?.pour?.source === 'wine' ? wine.pour.ml : null
 
   const open = () => {
     setBottleText(bottle == null ? '' : bottle.toFixed(2))
     setGlassText(glass == null ? '' : glass.toFixed(2))
+    setPourText(winePour == null ? '' : String(winePour))
     setNote(null)
     setEditing(true)
   }
@@ -85,23 +152,51 @@ export function HousePriceCell({
       setNote({ tone: 'error', text: 'A price is a number of 0 or more. Leave it empty to take the price off.' })
       return
     }
+    // This wine's own pour (round 6c answer 3): empty = the house's pour.
+    const pourRaw = pourText.trim()
+    const pour = pourRaw === '' ? null : Number(pourRaw)
+    if (pour !== null && (!Number.isFinite(pour) || pour < 10 || pour > 500)) {
+      setNote({ tone: 'error', text: "A pour is between 10 and 500 ml. Leave it empty to use the house's pour." })
+      return
+    }
+    const pourChanged = pour !== winePour
     const body: { menuPriceBottle?: number | null; menuPriceGlass?: number | null } = {}
     if (b.value !== bottle) body.menuPriceBottle = b.value
     if (g.value !== glass) body.menuPriceGlass = g.value
-    if (Object.keys(body).length === 0) {
+    if (Object.keys(body).length === 0 && !pourChanged) {
       setEditing(false)
       return
     }
     setBusy(true)
     setNote(null)
+    let priceSaved = false
     try {
-      const res = (await updateInventoryItem(inventoryId, body)) as { priceChange?: { outcome?: string } }
-      const outcome = res?.priceChange?.outcome
+      let said: string | null = null
+      if (Object.keys(body).length > 0) {
+        const res = (await updateInventoryItem(inventoryId, body)) as {
+          priceChange?: { outcome?: string; held?: Array<{ kind: string; lockedPrice: number | null }> }
+        }
+        const outcome = res?.priceChange?.outcome
+        said = heldNote(res) ?? (outcome === 'unchanged' ? 'Already that price. Nothing changed.' : null)
+        priceSaved = true
+      }
+      if (pourChanged) {
+        await confirmWinePour(inventoryId, pour)
+        const pourSaid =
+          pour === null ? "This wine now uses the house's pour for glass advice." : `This wine's pour is confirmed at ${pour} ml.`
+        said = said ? `${said} ${pourSaid}` : pourSaid
+      }
       setEditing(false)
-      if (outcome === 'unchanged') setNote({ tone: 'info', text: 'Already that price. Nothing changed.' })
+      if (said) setNote({ tone: 'info', text: said })
       onChanged()
     } catch (err) {
-      setNote({ tone: 'error', text: reasonOf(err) })
+      // The price call answered before the pour was refused: say both, so a
+      // saved price is never reported as "nothing was changed".
+      setNote({
+        tone: 'error',
+        text: priceSaved ? `The price was saved; this wine's pour was not: ${reasonOf(err)}` : reasonOf(err),
+      })
+      if (priceSaved) onChanged()
     } finally {
       setBusy(false)
     }
@@ -121,9 +216,11 @@ export function HousePriceCell({
     }
   }
 
-  const wine = advice.status === 'ready' ? advice.byId.get(inventoryId) : undefined
   const lines = [wine?.bottle, wine?.glass].filter((a): a is PriceAdvice => !!a)
-  const actionable = lines.filter((a) => a.state === 'raise' || a.state === 'lower')
+  const locksKnown = advice.status === 'ready' && advice.locksReadable !== false
+  // A locked kind keeps its advice but offers no Accept (L7, L22).
+  const actionable = lines.filter((a) => (a.state === 'raise' || a.state === 'lower') && !a.locked)
+  const lockedLines = lines.filter((a) => !!a.locked)
 
   return (
     <div className="text-right" onClick={(e) => e.stopPropagation()} data-testid={`house-price-${inventoryId}`}>
@@ -156,6 +253,21 @@ export function HousePriceCell({
               className="w-[68px] rounded border border-gray-300 px-1.5 py-0.5 text-right font-mono text-xs"
             />
           </label>
+          {/* Only when this wine's pour is known (the advice read it): an empty
+              field would otherwise read as "the house's pour" when it may not be. */}
+          {advice.status === 'ready' && (
+            <label className="flex items-center gap-1 text-[10px] text-gray-500" title="This wine's own pour, for glass advice. Empty = the house's pour.">
+              pour ml
+              <input
+                aria-label={`Pour in ml for ${wineName} (empty = the house's pour)`}
+                inputMode="numeric"
+                placeholder="house"
+                value={pourText}
+                onChange={(e) => setPourText(e.target.value)}
+                className="w-[68px] rounded border border-gray-300 px-1.5 py-0.5 text-right font-mono text-xs"
+              />
+            </label>
+          )}
           <span className="flex gap-1">
             <button
               type="button"
@@ -202,6 +314,23 @@ export function HousePriceCell({
             </span>
           )}
           {advice.status === 'ready' &&
+            lockedLines.map((a) => (
+              <span
+                key={`locked-${a.kind}`}
+                className="text-gray-600"
+                data-testid={`locked-${a.kind}`}
+                title={`${a.sentence} This price is locked, so advice cannot be accepted here. Change it on Menu, under Locked prices.`}
+              >
+                {KIND_SHORT[a.kind]} locked at {fmtMoneyExact(a.locked!.lockedPrice)} since {a.locked!.lockedAt.slice(0, 10)}
+              </span>
+            ))}
+          {advice.status === 'ready' && !locksKnown && (
+            <span className="text-gray-400" title={advice.locksReason ?? undefined}>
+              locks unknown, no accept
+            </span>
+          )}
+          {advice.status === 'ready' &&
+            locksKnown &&
             actionable.map((a) =>
               canEdit ? (
                 <button

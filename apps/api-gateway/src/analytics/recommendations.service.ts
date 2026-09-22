@@ -22,6 +22,7 @@ import {
   type HouseAdvice,
 } from "../pricing/margin-advice.service";
 import type { PriceAdvice } from "../pricing/margin-to-target";
+import { PriceLocksService, type LockReadout } from "../pricing/price-locks.service";
 
 export interface Recommendation {
   /** The observed number, restated ("Tuesday sales 12% below average Tuesdays"). */
@@ -110,6 +111,10 @@ export class RecommendationsService {
     // not computed (`priceAdviceReadable: false`) rather than going quiet.
     @Optional()
     private readonly marginAdvice?: MarginAdviceService,
+    // ADR 0193 round 3: the house's price locks, for `price_locks_to_review`.
+    // Optional for the same reason; absent, the source is named as unread.
+    @Optional()
+    private readonly priceLocks?: PriceLocksService,
   ) {}
 
   async getRecommendations(
@@ -148,6 +153,7 @@ export class RecommendationsService {
       insightsRes,
       goals,
       priceAdviceRes,
+      priceLocksRes,
     ] = await Promise.allSettled([
       this.analyticsService.getFinancialSummary(restaurantId),
       this.analyticsService.getRiskProfile(restaurantId),
@@ -160,6 +166,14 @@ export class RecommendationsService {
       this.marginAdvice
         ? this.marginAdvice.adviseHouse(restaurantId)
         : Promise.reject(new Error("price advice is not wired into this build")),
+      // A lock list that could not be read answers readable: false (L25); it
+      // is turned into a rejection here so the feed names it as unread.
+      this.priceLocks
+        ? this.priceLocks.list(restaurantId).then((r) => {
+            if (!r.readable) throw new Error(r.reason ?? "the price locks could not be read");
+            return r;
+          })
+        : Promise.reject(new Error("price locks are not wired into this build")),
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
@@ -180,6 +194,8 @@ export class RecommendationsService {
         // ADR 0193: price advice is a source like the others; the digest's
         // "could not read" note names it when it rejected.
         ["price advice", priceAdviceRes],
+        // ADR 0193 round 3: the price locks, likewise.
+        ["price locks", priceLocksRes],
       ] as Array<[string, PromiseSettledResult<unknown>]>
     )
       .filter(([, r]) => r.status === "rejected")
@@ -195,6 +211,7 @@ export class RecommendationsService {
       insights: ok(insightsRes)?.insights ?? [],
       goals: ok(goals) ?? [],
       priceAdvice: ok(priceAdviceRes) as HouseAdvice | null,
+      priceLocks: ok(priceLocksRes) as LockReadout | null,
     };
     const priceAdviceReason =
       priceAdviceRes.status === "rejected"
@@ -351,13 +368,16 @@ export class RecommendationsService {
       }),
     );
 
+    // A LOCKED kind is left out of the actions (ADR 0193 round 3, L22): it
+    // cannot be accepted. Its advice is not hidden -- it is counted under
+    // price_locks_to_review below, where the lock can be looked at.
     const adviceLines = (pa?.wines ?? []).flatMap((w) =>
       [w.bottle, w.glass]
         .filter(
-          (a): a is PriceAdvice =>
-            !!a && (a.state === "raise" || a.state === "lower"),
+          (a): a is NonNullable<typeof w.bottle> =>
+            !!a && (a.state === "raise" || a.state === "lower") && !a.locked,
         )
-        .map((a) => ({ w, a })),
+        .map((a) => ({ w, a: a as PriceAdvice })),
     );
     // Furthest from its advised price first, in percent: that is the line
     // worth the manager's tap, in the unit the house's "close enough" uses.
@@ -368,8 +388,12 @@ export class RecommendationsService {
     rule("margin_to_target", !!pa && pa.target.set && adviceLines.length > 0, () => {
       const raises = adviceLines.filter((l) => l.a.state === "raise").length;
       const lowers = adviceLines.length - raises;
+      const lockNote =
+        pa!.locks && !pa!.locks.readable
+          ? ` ${pa!.locks.reason ?? "Whether any of these prices is locked could not be read."}`
+          : "";
       return {
-        observation: `${adviceLines.length} ${adviceLines.length === 1 ? "price sits" : "prices sit"} outside your target margin: ${raises} below it, ${lowers} above it.${blind > 0 ? ` ${blind} more cannot be judged (no recorded cost or no price).` : ""}`,
+        observation: `${adviceLines.length} ${adviceLines.length === 1 ? "price sits" : "prices sit"} outside your target margin: ${raises} below it, ${lowers} above it.${blind > 0 ? ` ${blind} more cannot be judged (no recorded cost or no price).` : ""}${lockNote}`,
         recommendation:
           adviceLines
             .slice(0, 3)
@@ -412,6 +436,44 @@ export class RecommendationsService {
         score: 1.3,
       }),
     );
+    // ADR 0193 round 3 (L22, L23): locked prices worth a look. A lock never
+    // ends by itself; this entry is how one that no longer fits is noticed.
+    const pl = ctx.priceLocks;
+    // Last-call review, 2026-09-21: a lock list read in part (the menu, the
+    // wines or the advice behind the facts could not be read) is SAID, never
+    // taken for "nothing to review" (L25; absence is not health).
+    const partlyRead = !!pl && pl.readable && !pl.markersReadable && pl.counts.open > 0;
+    rule("price_locks_to_review", !!pl && pl.readable && (pl.counts.toReview > 0 || partlyRead), () => {
+      const has = (m: string) => pl!.locks.filter((l) => l.markers.includes(m as never)).length;
+      const parts = [
+        has("off_target") > 0 ? `${has("off_target")} outside your target margin` : null,
+        has("not_on_current_menu") + has("no_current_menu") > 0
+          ? `${has("not_on_current_menu") + has("no_current_menu")} not on the current menu`
+          : null,
+        has("wine_removed") > 0 ? `${has("wine_removed")} on a wine removed from inventory` : null,
+        has("author_without_access") > 0
+          ? `${has("author_without_access")} set by someone who no longer manages this house`
+          : null,
+      ].filter((x): x is string => !!x);
+      const n = pl!.counts.toReview;
+      const open = pl!.counts.open;
+      const lead =
+        n > 0
+          ? `${n} locked price${n === 1 ? "" : "s"} at this house need${n === 1 ? "s" : ""} a look: ${parts.join(", ")}.`
+          : `${open} locked price${open === 1 ? "" : "s"} at this house could not be fully checked.`;
+      const unread = partlyRead ? ` ${pl!.markersReason ?? "Some facts about these locks could not be read."}` : "";
+      return {
+        observation: `${lead}${unread}`,
+        recommendation:
+          "Look at them on Menu, under Locked prices: keep, change and keep locked, move to the right wine, or release. A lock never ends by itself.",
+        rationale:
+          "A lock holds a price against every menu, correction and accepted advice until a person ends it, so the only way a lock that no longer fits is noticed is to say so.",
+        category: "pricing",
+        urgency: "this_month",
+        score: 1.4,
+      };
+    });
+
     rule(
       "margin_advice_blind",
       !!pa && pa.target.set && (pa.counts.no_cost ?? 0) > 0,

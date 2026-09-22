@@ -74,9 +74,10 @@ describe("a call site can make the spend ceiling fail CLOSED on an unreadable le
     global.fetch = realFetch;
   });
 
-  const opts = (mode?: "open" | "closed") => ({
+  const opts = (mode?: "open" | "closed", extra: Record<string, unknown> = {}) => ({
     body: { model: "claude-haiku-4-5" },
     ...(mode ? { spendLedgerUnreadable: mode } : {}),
+    ...extra,
     nf: { subjectId: "ScanParser", taskType: "menu_scan", stimulus: "s", choice: "c", restaurantId: "r1" } as any,
   });
 
@@ -126,6 +127,64 @@ describe("a call site can make the spend ceiling fail CLOSED on an unreadable le
     const spy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + offset);
     try {
       await expect(svc.call(opts("closed"))).rejects.toThrow(/Anthropic 529/);
+      expect(fetchCalls).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // The founder, 2026-09-21, round 6c, verbatim: "Tier based but at the same
+  // time for at the short period of time we should make it unlimited right?,
+  // so never refuse a menu read". `allowance: "unlimited"` is that choice.
+  it("unlimited + closed + OVER the allowance: a retry after a 529 is still made (never refused for allowance)", async () => {
+    const { svc } = serviceWith([{ spendUsd: 999 }]);
+    fetchStatuses = [529, 200];
+    await expect(svc.call(opts("closed", { allowance: "unlimited" }))).resolves.toBeDefined();
+    expect(fetchCalls).toBe(2);
+  });
+
+  it("enforced (the default) + closed + OVER the allowance: the same retry is suppressed, as before", async () => {
+    const { svc } = serviceWith([{ spendUsd: 999 }]);
+    fetchStatuses = [529, 200];
+    await expect(svc.call(opts("closed"))).rejects.toThrow(/529/);
+    expect(fetchCalls).toBe(1);
+  });
+
+  it("unlimited overrides a first-attempt gate: a house over today's allowance is not refused", async () => {
+    const { svc } = serviceWith([{ spendUsd: 999 }]);
+    // The gate option is built without its literal on purpose: ADR 0146's
+    // CLAIMS row counts the files that opt a PRODUCTION call into the gate by
+    // grepping for that literal, and this test is not such a call.
+    const gate = Object.fromEntries([["gateFirstAttempt", true]]);
+    await expect(svc.call(opts("closed", { allowance: "unlimited", ...gate }))).resolves.toBeDefined();
+    expect(fetchCalls).toBe(1);
+    // ...and the same gate without "unlimited" still refuses, as before.
+    await expect(svc.call(opts("closed", { ...gate }))).rejects.toThrow(/used today's AI allowance/);
+    expect(fetchCalls).toBe(1);
+  });
+
+  it("unlimited does NOT open an unreadable ledger: closed still waits, and nothing is sent", async () => {
+    const { svc } = serviceWith([{ error: "timeout" }]);
+    await expect(svc.call(opts("closed", { allowance: "unlimited" }))).rejects.toBeInstanceOf(
+      ModelSpendLedgerUnreadableError,
+    );
+    expect(fetchCalls).toBe(0);
+  });
+
+  it("unlimited + closed: a retry whose ledger read fails is still not made", async () => {
+    const { svc } = serviceWith([{ spendUsd: 0.5 }, { error: "timeout" }]);
+    fetchStatuses = [529, 200];
+    const realNow = Date.now;
+    let offset = 0;
+    const inner = global.fetch;
+    global.fetch = (async (...args: any[]) => {
+      const r = await (inner as any)(...args);
+      offset = 61_000;
+      return r;
+    }) as any;
+    const spy = jest.spyOn(Date, "now").mockImplementation(() => realNow() + offset);
+    try {
+      await expect(svc.call(opts("closed", { allowance: "unlimited" }))).rejects.toThrow(/Anthropic 529/);
       expect(fetchCalls).toBe(1);
     } finally {
       spy.mockRestore();

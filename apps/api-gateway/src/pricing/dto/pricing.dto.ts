@@ -1,5 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsIn, IsNumber, IsOptional, Max, Min, ValidateIf } from "class-validator";
+import {
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from "class-validator";
 
 /**
  * The body of `PUT /pricing/target-margin` (ADR 0193).
@@ -79,4 +89,68 @@ export class AcceptPriceAdviceDto {
   @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
   @Min(0)
   advisedPrice: number;
+}
+
+/**
+ * The body of `PUT /pricing/wines/:inventoryId/pour`: ONE wine's own pour,
+ * confirmed by an owner or manager (founder, 2026-09-21, round 6c: "Yes,
+ * confirmed per wine"). `null` sends the wine back to the house's pour.
+ */
+export class ConfirmWinePourDto {
+  @ApiProperty({
+    description: "This wine's pour in ml, between 10 and 500; null = use the house's confirmed pour.",
+    example: 75,
+    nullable: true,
+  })
+  @ValidateIf((_o, v) => v !== null)
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 1 })
+  @Min(10)
+  @Max(500)
+  pourMl: number | null;
+}
+
+/** A person's optional words on a lock act, kept on the lock row. */
+class LockNote {
+  @ApiPropertyOptional({ description: "Why, in a few words. Kept on the record.", maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+
+/** `POST /pricing/locks`: hold the house's price for one kind of one wine, as it is now (ADR 0193 L1, L2). */
+export class LockPriceDto extends LockNote {
+  @ApiProperty({ description: "The house wine (restaurant_inventory.id)." })
+  @IsUUID()
+  inventoryId: string;
+
+  @ApiProperty({ enum: ["bottle", "glass"] })
+  @IsIn(["bottle", "glass"])
+  kind: "bottle" | "glass";
+}
+
+/** `POST /pricing/locks/:lockId/release`. Releasing changes no price (L24). */
+export class ReleaseLockDto extends LockNote {}
+
+/** `POST /pricing/locks/:lockId/change`: change and keep locked, one act (L6). */
+export class ChangeLockedPriceDto extends LockNote {
+  @ApiProperty({ description: "The new price, 0 or more.", example: 98 })
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  price: number;
+}
+
+/**
+ * `POST /pricing/locks/:lockId/move`: link a lock to another wine of this
+ * house (L20). The price is named by the person; there is no default.
+ */
+export class MoveLockDto extends LockNote {
+  @ApiProperty({ description: "The wine of this house the lock moves to (restaurant_inventory.id)." })
+  @IsUUID()
+  targetInventoryId: string;
+
+  @ApiProperty({ description: "The price the target wine is locked at, 0 or more. Required.", example: 95 })
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  price: number;
 }

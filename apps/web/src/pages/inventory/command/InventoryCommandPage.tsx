@@ -77,7 +77,7 @@ import {
   type RowFlag,
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
-import { HousePriceCell, type AdviceLoad } from "./HousePriceCell";
+import { HousePriceCell, addedPriceNote, type AdviceLoad } from "./HousePriceCell";
 import { getPriceAdvice } from "../../../services/api/pricing";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
 import { CellarMapView } from "./CellarMapView";
@@ -220,6 +220,10 @@ export function InventoryCommandPage() {
       status: "ready",
       byId: new Map(adviceQuery.data.wines.map((w) => [w.inventoryId, w])),
       targetSet: adviceQuery.data.target.set,
+      // ADR 0193 round 3: whether a price is locked could not be read ->
+      // every lock is unknown and the one-tap accept is not offered.
+      locksReadable: adviceQuery.data.locks?.readable !== false,
+      locksReason: adviceQuery.data.locks?.reason ?? null,
     };
   }, [adviceQuery.isError, adviceQuery.error, adviceQuery.data]);
   const multiLocation = availableRestaurants.length > 1;
@@ -1589,7 +1593,7 @@ export function InventoryCommandPage() {
           storageLocationId?: string,
           volumeFields?: any,
         ) => {
-          await createInventoryItem.mutateAsync({
+          const added = await createInventoryItem.mutateAsync({
             wineId: wine.id,
             stockLive: quantity,
             thresholdMin: threshold,
@@ -1625,6 +1629,10 @@ export function InventoryCommandPage() {
                 ? `${wine.name} added — cost recorded as unknown, not $0`
                 : `${wine.name} added to inventory`,
           );
+          // The price typed with it is said when it did not land (a lock
+          // held it, a newer price stood, or the write failed): ADR 0193.
+          const priceNote = addedPriceNote(added as unknown as Parameters<typeof addedPriceNote>[0]);
+          if (priceNote) toast.error(priceNote);
           void refetchInventory();
         }}
       />

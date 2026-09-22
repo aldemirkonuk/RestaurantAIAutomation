@@ -40,6 +40,31 @@ vi.mock('../../../services/api/menus', async () => {
   };
 });
 
+// The Locked prices section (LockedPrices.tsx, its own test file) reads on
+// mount; here it answers "no locks" so this file tests the current menu.
+vi.mock('../../../services/api/pricing', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/api/pricing')>(
+    '../../../services/api/pricing',
+  );
+  return {
+    ...actual,
+    listPriceLocks: vi.fn().mockResolvedValue({
+      restaurantId: 'r1',
+      generatedAt: '2026-09-21T12:00:00Z',
+      readable: true,
+      reason: null,
+      scope: 'this house',
+      currentMenus: [],
+      locks: [],
+      counts: { open: 0, onCurrentMenu: 0, notOnCurrentMenu: 0, toReview: 0 },
+      namesReadable: true,
+      namesReason: null,
+      markersReadable: true,
+      markersReason: null,
+    }),
+  };
+});
+
 vi.mock('../../../services/api/settings', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/settings')>(
     '../../../services/api/settings',

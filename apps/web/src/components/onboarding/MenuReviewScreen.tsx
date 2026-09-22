@@ -4,12 +4,13 @@ import { Button } from '../ui/button'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   addMenuItem,
-  makeMenuCurrent,
   reviewMenuItem,
+  type MakeCurrentResult,
   type MenuImportResult,
   type MenuImportReviewItem,
 } from '../../services/api/menus'
 import { makeCurrentSentence } from '../../pages/menu/next/MenuVersions'
+import { MenuPlan } from '../../pages/menu/next/MenuPlan'
 
 interface MenuReviewScreenProps {
   result: MenuImportResult
@@ -86,28 +87,22 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
   const auth = useAuth()
   const role = (auth?.activeRole ?? auth?.user?.role ?? null) as string | null
   const canChoose = role === 'owner' || role === 'manager'
-  const [choosing, setChoosing] = useState(false)
-  const [chooseError, setChooseError] = useState<string | null>(null)
   // What the switch did, when there is something to say: a line whose price
   // failed, or a blank price that kept the last known one. Said here and the
   // review waits for Continue, rather than moving on as if every price landed
   // (last-call review, 2026-09-21; /menu says the same sentence).
   const [madeNote, setMadeNote] = useState<string | null>(null)
-  const makeCurrent = async () => {
-    setChoosing(true)
-    setChooseError(null)
-    try {
-      const made = await makeMenuCurrent(result.menuId)
-      if (made.failed.length > 0 || made.flagged > 0) {
-        setMadeNote(makeCurrentSentence(made))
-        return
-      }
-      onConfirm(true)
-    } catch (e: any) {
-      setChooseError(e?.response?.data?.message || e?.message || 'no reason was given')
-    } finally {
-      setChoosing(false)
+  // ADR 0193 round 3 (L13): the choice goes through the same plan /menu
+  // shows -- what the menu would change, a Keep switch on each price -- and
+  // names the plan's fingerprint. Nothing is chosen blind.
+  const [planning, setPlanning] = useState(false)
+  const madeCurrent = (made: MakeCurrentResult) => {
+    setPlanning(false)
+    if (made.failed.length > 0 || made.flagged > 0 || (made.held?.length ?? 0) > 0) {
+      setMadeNote(makeCurrentSentence(made))
+      return
     }
+    onConfirm(true)
   }
   const [items, setItems] = useState<MenuImportReviewItem[]>(result.items)
   const [showClean, setShowClean] = useState(false)
@@ -287,12 +282,12 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
             </Button>
           ) : canChoose ? (
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => onConfirm(false)} disabled={choosing}>
+              <Button variant="outline" onClick={() => onConfirm(false)}>
                 Keep it, not current
               </Button>
-              <Button onClick={() => void makeCurrent()} disabled={choosing} className="bg-[#1A5E6B] hover:bg-[#14515C] text-white">
+              <Button onClick={() => setPlanning(true)} disabled={planning} className="bg-[#1A5E6B] hover:bg-[#14515C] text-white">
                 <Sparkles className="w-4 h-4 mr-1.5" />
-                {choosing ? 'Making it current...' : 'Make this the current menu'}
+                Make this the current menu
               </Button>
             </div>
           ) : (
@@ -306,14 +301,20 @@ export function MenuReviewScreen({ result, onConfirm, onSkip }: MenuReviewScreen
           This menu is kept either way. Its prices reach your wines only when it is the current menu
           {canChoose ? '.' : ', which an owner or a manager chooses.'}
         </p>
+        {planning && !madeNote && (
+          // The same plan /menu shows (MenuPlan), in the Mudavym tokens it is drawn with.
+          <div className="mudavym" style={{ background: 'transparent' }} data-testid="onboarding-menu-plan">
+            <MenuPlan
+              menuId={result.menuId}
+              canManage={canChoose}
+              onCancel={() => setPlanning(false)}
+              onDone={madeCurrent}
+            />
+          </div>
+        )}
         {madeNote && (
           <p role="status" className="text-xs text-gray-700 mt-1">
             {madeNote}
-          </p>
-        )}
-        {chooseError && (
-          <p role="alert" className="text-xs text-red-600 mt-1">
-            It was not made current: {chooseError}. It is kept as a draft.
           </p>
         )}
       </div>

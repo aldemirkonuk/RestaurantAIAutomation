@@ -8,11 +8,24 @@ import type { MenuImportReviewItem } from '../../../services/api/menus';
  * that matches no wine the house stocks).
  */
 export function housePriceNote(
-  item: Pick<MenuImportReviewItem, 'priceSync' | 'priceSyncError'> | null | undefined,
+  item: Pick<MenuImportReviewItem, 'priceSync' | 'priceSyncError' | 'priceHeld'> | null | undefined,
 ): { tone: 'alert' | 'said'; text: string } | null {
+  // ADR 0193 round 3 (L5): a kind a lock held is always named, even when the
+  // other kind changed -- "changed" alone would hide the hold.
+  const held = item?.priceHeld ?? [];
+  const heldWords = held
+    .map((h) => `the ${h.kind} price is locked${h.lockedPrice === null ? '' : ` at ${h.lockedPrice.toFixed(2)}`}`)
+    .join(' and ');
   switch (item?.priceSync) {
     case 'changed':
-      return { tone: 'said', text: "This wine's own price on Inventory now matches the line." };
+      return held.length
+        ? { tone: 'said', text: `This wine's own price on Inventory was updated where it could be; ${heldWords}, so that one was not changed.` }
+        : { tone: 'said', text: "This wine's own price on Inventory now matches the line." };
+    case 'locked':
+      return {
+        tone: 'said',
+        text: `Added to the menu, but ${heldWords || 'this price is locked'}, so the house's price was not changed. An owner or a manager changes it under Locked prices.`,
+      };
     case 'stale':
       return {
         tone: 'said',

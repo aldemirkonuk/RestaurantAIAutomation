@@ -243,6 +243,20 @@ export interface ModelCallOptions {
    * a separate choice this option does not make.
    */
   spendLedgerUnreadable?: "open" | "closed";
+  /**
+   * Whether being OVER the allowance may stop this call. Default "enforced":
+   * unchanged for every existing path (a retry is suppressed when over, and
+   * `gateFirstAttempt` refuses a first attempt when over).
+   *
+   * "unlimited" is the menu read's (founder, 2026-09-21, round 6c, verbatim:
+   * "Tier based but at the same time for at the short period of time we
+   * should make it unlimited right?, so never refuse a menu read"). Being
+   * over the allowance then refuses nothing -- neither a first attempt nor a
+   * retry. It does NOT touch `spendLedgerUnreadable`: a ledger that cannot be
+   * read still stops a "closed" call, because his earlier answer (the
+   * menu-upload spend ceiling fails closed) stands.
+   */
+  allowance?: "enforced" | "unlimited";
 }
 
 /**
@@ -323,8 +337,11 @@ export class ModelClientService {
     // resets, so a lifetime read here made the refusal permanent while its
     // message said it would pass. Reading today only is what makes "it resets
     // at midnight UTC" true.
+    // `allowance: "unlimited"` (the menu read, founder 2026-09-21) refuses
+    // nothing for being over the allowance, this gate included.
+    const unlimited = opts.allowance === "unlimited";
     if (opts.gateFirstAttempt === true) {
-      if (!(await this.allowedBySpendCeiling(opts.nf.restaurantId, "daily"))) {
+      if (!unlimited && !(await this.allowedBySpendCeiling(opts.nf.restaurantId, "daily"))) {
         throw new ModelSpendCeilingError(
           "This restaurant has used today's AI allowance. " +
             `It resets at midnight UTC, ${untilUtcMidnight()} from now; ` +
@@ -379,7 +396,7 @@ export class ModelClientService {
         // load-bearing), and retrying after it multiplies the worst case by
         // the attempt count. Connection-level failures are cheap and retried.
         if (isTimeout || !retryEnabled) break;
-        if (!(await this.retryAllowedBySpendCeiling(opts.nf.restaurantId, failClosed))) {
+        if (!(await this.retryAllowedBySpendCeiling(opts.nf.restaurantId, failClosed, unlimited))) {
           ceilingSuppressedRetry = true;
           break;
         }
@@ -423,7 +440,7 @@ export class ModelClientService {
       const retryable =
         res.status === 429 || res.status === 529 || res.status >= 500;
       if (!retryable || !retryEnabled) break;
-      if (!(await this.retryAllowedBySpendCeiling(opts.nf.restaurantId, failClosed))) {
+      if (!(await this.retryAllowedBySpendCeiling(opts.nf.restaurantId, failClosed, unlimited))) {
         ceilingSuppressedRetry = true;
         break;
       }
@@ -652,7 +669,15 @@ export class ModelClientService {
   private async retryAllowedBySpendCeiling(
     restaurantId?: string | null,
     failClosed = false,
+    unlimited = false,
   ): Promise<boolean> {
+    if (unlimited) {
+      // Over the allowance refuses nothing on this path (the menu read,
+      // founder 2026-09-21: "never refuse a menu read"). Only a ledger that
+      // cannot be read stops a fail-closed retry.
+      if (!failClosed) return true;
+      return (await this.spendCeilingState(restaurantId, "tier")).kind !== "unreadable";
+    }
     if (!failClosed) return this.allowedBySpendCeiling(restaurantId);
     return (await this.spendCeilingState(restaurantId, "tier")).kind === "allowed";
   }

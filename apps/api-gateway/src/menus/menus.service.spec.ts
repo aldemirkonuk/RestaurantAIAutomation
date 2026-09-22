@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
 import { MenusService } from "./menus.service";
@@ -70,6 +72,11 @@ function makeFakeSupabase(
       },
       in(col: string, vals: any[]) {
         extra.push((r) => vals.includes(r[col]));
+        return api;
+      },
+      // `.is(col, null)`: an absent column reads as null, as in Postgres.
+      is(col: string, val: any) {
+        extra.push((r) => (r[col] ?? null) === val);
         return api;
       },
       limit() {
@@ -465,7 +472,7 @@ describe("MenusService.addMenuItem — the line's prices reach the house (ADR 01
     normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
   };
 
-  it("an existing house wine gets the line's prices as 'import', effective from the line's own created_at", async () => {
+  it("an existing house wine gets the line's prices as 'import', dated NOW and naming the menu (never the line's created_at, L11)", async () => {
     const calls: RpcCall[] = [];
     const tables: Record<string, Row[]> = {
       restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", status: "active" }],
@@ -497,7 +504,8 @@ describe("MenusService.addMenuItem — the line's prices reach the house (ADR 01
       p_glass_price: 14,
       p_change_source: "import",
       p_changed_by: "user-1",
-      p_effective_from: "2026-09-21T10:00:00.000Z",
+      p_effective_from: null,
+      p_menu_id: "menu-1",
     });
     expect(item.priceSync).toBe("changed");
   });
@@ -578,6 +586,10 @@ describe("MenusService.addMenuItem — the line's prices reach the house (ADR 01
     );
     expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
     expect(item.priceSync).toBe("no_price");
+    // Round 6c answer 4, "Flag it": no price on the line, none at the house.
+    expect(item.priceFlag).toBe("blank_no_house_price");
+    expect(tables.menu_items[0].price_flag).toBe("blank_no_house_price");
+    expect(tables.menu_items[0].price_flag_note).toMatch(/shows no price, and the house had no price for this wine either/);
   });
 });
 
@@ -701,9 +713,12 @@ describe("MenusService — every menu read is kept as its own version", () => {
         const prev = tables.restaurant_menus.filter((m) => m.restaurant_id === args.p_restaurant_id && m.status === "active");
         for (const m of prev) Object.assign(m, { status: "archived", retired_by: args.p_actor, retired_at: "2026-09-21T12:00:00Z" });
         Object.assign(menu, { status: "active", made_current_by: args.p_actor, made_current_at: "2026-09-21T12:00:00Z" });
-        return { data: { outcome: "made_current", previous_menu_ids: prev.map((m) => m.id) }, error: null };
+        return {
+          data: { outcome: "made_current", previous_menu_ids: prev.map((m) => m.id), made_current_at: "2026-09-21T12:00:00Z" },
+          error: null,
+        };
       }
-      if (fn === "set_house_menu_price") return { data: { outcome: "changed" }, error: null };
+      if (fn === "set_house_menu_price") return { data: { outcome: "changed", held: [] }, error: null };
       return { data: null, error: { message: `no rpc ${fn}` } };
     };
 
@@ -723,9 +738,13 @@ describe("MenusService — every menu read is kept as its own version", () => {
       return { calls, tables, service, read };
     }
 
+    /** The plan the page showed, then the choice naming it (L13). */
+    const choose = async (service: MenusService, menuId: string, house = "rest-1", user = "user-2") =>
+      service.makeCurrent(house, menuId, user, (await service.planFor(house, menuId)).fingerprint);
+
     it("switches the current menu, archives the old one, and carries the lines' prices by the chooser", async () => {
       const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64, by_glass_price: 15 }]);
-      const r = await service.makeCurrent("rest-1", read.menuId, "user-2");
+      const r = await choose(service, read.menuId);
 
       expect(r).toMatchObject({ outcome: "made_current", previousMenuIds: ["menu-old"], lines: 1, priceSync: { changed: 1 }, flagged: 0, failed: [] });
       expect(tables.restaurant_menus.find((m) => m.id === "menu-old")).toMatchObject({ status: "archived", retired_by: "user-2" });
@@ -737,15 +756,18 @@ describe("MenusService — every menu read is kept as its own version", () => {
         p_glass_price: 15,
         p_change_source: "import",
         p_changed_by: "user-2",
-        // dated by the LINE (the newest scan wins), not by the choice
-        p_effective_from: "2026-09-21T10:00:00.000Z",
+        // ADR 0193 round 3, L11 (this assertion was flipped): dated by the
+        // CHOICE, never by the line's created_at, and naming the menu.
+        p_effective_from: "2026-09-21T12:00:00Z",
+        p_menu_id: read.menuId,
       });
+      expect(r.madeCurrentAt).toBe("2026-09-21T12:00:00Z");
       expect(tables.menu_items[0].inventory_item_id).toBe("inv-1");
     });
 
     it("a blank bottle price keeps the house's last known 60.00 and FLAGS the line (founder answer 3)", async () => {
       const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", by_glass_price: 15 }]);
-      const r = await service.makeCurrent("rest-1", read.menuId, "user-2");
+      const r = await choose(service, read.menuId);
       const price = calls.filter(([fn]) => fn === "set_house_menu_price");
       expect(price[0][1]).toMatchObject({ p_set_bottle: false, p_set_glass: true, p_glass_price: 15 });
       expect(r.flagged).toBe(1);
@@ -756,7 +778,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
 
     it("a blank kind the house never priced is not flagged: nothing is kept, nothing is unclear", async () => {
       const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
-      const r = await service.makeCurrent("rest-1", read.menuId, "user-2");
+      const r = await choose(service, read.menuId);
       expect(r.flagged).toBe(0);
       expect(tables.menu_items[0].price_flag).toBeNull();
     });
@@ -765,7 +787,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
       const calls: RpcCall[] = [];
       const tables: Record<string, Row[]> = base();
       const service = makeService(tables, { rpcCalls: calls, rpc: makeCurrentRpc(tables) });
-      const r = await service.makeCurrent("rest-1", "menu-old", "user-2");
+      const r = await choose(service, "menu-old");
       expect(r.outcome).toBe("already_current");
       expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
     });
@@ -773,13 +795,15 @@ describe("MenusService — every menu read is kept as its own version", () => {
     it("another house's menu id is a 404", async () => {
       const tables: Record<string, Row[]> = base();
       const service = makeService(tables, { rpc: makeCurrentRpc(tables) });
-      await expect(service.makeCurrent("rest-2", "menu-old", "user-2")).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.makeCurrent("rest-2", "menu-old", "user-2", "any-fingerprint")).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.planFor("rest-2", "menu-old")).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it("a failed read of the menu's lines changes NOTHING: the switch is not made, so it can be tried again", async () => {
       const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+      const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
       (tables as any).__readFails = [{ menu_items: "statement timeout" }];
-      await expect(service.makeCurrent("rest-1", read.menuId, "user-2")).rejects.toThrow(/statement timeout/);
+      await expect(service.makeCurrent("rest-1", read.menuId, "user-2", fp)).rejects.toThrow(/statement timeout/);
       expect(calls.filter(([fn]) => fn === "make_menu_current")).toHaveLength(0);
       expect(tables.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
       expect(tables.restaurant_menus.find((m) => m.id === read.menuId)!.status).toBe("draft");
@@ -787,8 +811,19 @@ describe("MenusService — every menu read is kept as its own version", () => {
 
     it("a failed read of the house's own wine row is a FAILED line with the reason -- never 'not_linked', no price, no flag", async () => {
       const { calls, tables, service, read } = await readThenChoose([{ name: "Opus One", by_glass_price: 15 }]);
-      (tables as any).__readFails = [{ restaurant_inventory: "connection reset" }];
-      const r = await service.makeCurrent("rest-1", read.menuId, "user-2");
+      const fp = (await service.planFor("rest-1", read.menuId)).fingerprint;
+      // The read fails AFTER the plan and the switch, while the lines are carried.
+      const rpc = makeCurrentRpc(tables);
+      const failing = makeService(tables, {
+        wineSubmissions,
+        rpcCalls: calls,
+        rpc: (fn, args) => {
+          const out = rpc(fn, args);
+          if (fn === "make_menu_current") (tables as any).__readFails = [{ restaurant_inventory: "connection reset" }];
+          return out;
+        },
+      });
+      const r = await failing.makeCurrent("rest-1", read.menuId, "user-2", fp);
       expect(r.outcome).toBe("made_current");
       expect(r.priceSync).toEqual({ failed: 1 });
       expect(r.failed).toEqual([
@@ -802,7 +837,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
 
     it("a switch that returns no outcome is an error, never a success", async () => {
       const service = makeService(base(), { rpc: () => ({ data: {}, error: null }) });
-      await expect(service.makeCurrent("rest-1", "menu-old", "user-2")).rejects.toThrow(/no outcome/);
+      await expect(choose(service, "menu-old")).rejects.toThrow(/no outcome/);
     });
   });
 
@@ -874,5 +909,278 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(calls).toHaveLength(0);
     // The correction answers the blank-price flag.
     expect(tables.menu_items[0]).toMatchObject({ bottle_price: 72, price_flag: null, price_flag_note: null });
+  });
+});
+
+/**
+ * ADR 0193 ROUND 3 (the founder, 2026-09-21, verbatim: "add a section to that
+ * where you can lock price, but wha f that menu item disappears? so think
+ * verify validate your decision and build"). The plan shown before a menu is
+ * chosen (L13), the choice that names it, the carry dated by the choice
+ * (L11), what a lock holds (L4, L5, L15), a locked wine coming back (L18),
+ * and the never-priced blank flag (round 6c answer 4, "Flag it").
+ *
+ * The fake answers `set_house_menu_price` the way the SQL does (PGlite probe
+ * cellar-r3-locks.mjs proves the SQL itself): a kind with an open lock in
+ * `house_price_locks` is held and named.
+ */
+describe("MenusService — the plan before a menu is chosen, and the locks it respects (ADR 0193 round 3)", () => {
+  const T0 = "2026-09-21T12:00:00Z";
+  /** A house with a current menu (menu-old) and a kept one (menu-new) to choose. */
+  function house(): Record<string, Row[]> {
+    return {
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_menus: [
+        { id: "menu-old", restaurant_id: "rest-1", status: "active" },
+        { id: "menu-new", restaurant_id: "rest-1", status: "draft" },
+      ],
+      restaurant_inventory: [
+        // mw-1: bottle LOCKED at 60, glass free at 14
+        { id: "inv-1", restaurant_id: "rest-1", master_wine_id: "mw-1", wine_name: "Barolo", menu_price_current: 60, menu_price_glass: 14, is_active: true, master_wine_library: { vintage: 2019 } },
+        // mw-2: priced 50 by the bottle only
+        { id: "inv-2", restaurant_id: "rest-1", master_wine_id: "mw-2", wine_name: "Chianti", menu_price_current: 50, menu_price_glass: null, is_active: true },
+        // mw-4: priced 30; its line will be blank
+        { id: "inv-4", restaurant_id: "rest-1", master_wine_id: "mw-4", wine_name: "Soave", menu_price_current: 30, menu_price_glass: null, is_active: true },
+        // mw-9: LOCKED, removed from inventory, on no menu
+        { id: "inv-9", restaurant_id: "rest-1", master_wine_id: "mw-9", wine_name: "Old Rioja", menu_price_current: 80, menu_price_glass: null, is_active: false },
+      ],
+      house_price_locks: [
+        { id: "lock-1", restaurant_id: "rest-1", inventory_id: "inv-1", kind: "bottle", locked_price: 60, locked_by: "user-1", locked_at: "2026-09-01T09:00:00Z", released_at: null },
+        { id: "lock-9", restaurant_id: "rest-1", inventory_id: "inv-9", kind: "bottle", locked_price: 80, locked_by: "user-1", locked_at: "2026-08-01T09:00:00Z", released_at: null },
+        { id: "lock-old", restaurant_id: "rest-1", inventory_id: "inv-2", kind: "bottle", locked_price: 45, locked_by: "user-1", locked_at: "2026-07-01T09:00:00Z", released_at: "2026-08-01T09:00:00Z" },
+      ],
+      menu_price_versions: [
+        { id: "v-2", restaurant_id: "rest-1", inventory_id: "inv-2", changed_by: "user-3", effective_from: "2026-09-10T08:00:00Z", change_source: "manual", effective_to: null },
+      ],
+      users: [
+        { user_id: "user-1", name: "Aylin" },
+        { user_id: "user-3", name: "Deniz" },
+      ],
+      menu_items: [
+        // The current menu lists only mw-2, so mw-1 is NOT on it (its lock is dormant now).
+        { id: "old-1", menu_id: "menu-old", restaurant_id: "rest-1", name: "Chianti", wine_library_id: "mw-2", bottle_price: 50, status: "approved" },
+        // The menu to choose:
+        { id: "n-1", menu_id: "menu-new", restaurant_id: "rest-1", name: "Barolo", vintage: "2020", wine_library_id: "mw-1", bottle_price: 64, by_glass_price: 15, status: "approved" },
+        { id: "n-2", menu_id: "menu-new", restaurant_id: "rest-1", name: "Chianti", wine_library_id: "mw-2", bottle_price: 55, status: "approved" },
+        { id: "n-3", menu_id: "menu-new", restaurant_id: "rest-1", name: "Nebbiolo", wine_library_id: "mw-3", bottle_price: 40, status: "approved" },
+        { id: "n-4", menu_id: "menu-new", restaurant_id: "rest-1", name: "Soave", wine_library_id: "mw-4", status: "approved" },
+        { id: "n-5", menu_id: "menu-new", restaurant_id: "rest-1", name: "House red", wine_library_id: null, bottle_price: 20, status: "approved" },
+        { id: "n-6", menu_id: "menu-new", restaurant_id: "rest-1", name: "Mystery", wine_library_id: "mw-6", status: "approved" },
+      ],
+      user_onboarding_progress: [],
+    };
+  }
+
+  /** The SQL's answer: a locked kind is held and named, the rest is changed. */
+  function rpcFor(tables: Record<string, Row[]>) {
+    return (fn: string, args: Row) => {
+      if (fn === "make_menu_current") {
+        const menu = tables.restaurant_menus.find((m) => m.id === args.p_menu_id && m.restaurant_id === args.p_restaurant_id);
+        if (!menu) return { data: null, error: { code: "P0002", message: "no menu" } };
+        for (const m of tables.restaurant_menus.filter((x) => x.restaurant_id === args.p_restaurant_id && x.status === "active")) m.status = "archived";
+        Object.assign(menu, { status: "active", made_current_at: T0 });
+        return { data: { outcome: "made_current", previous_menu_ids: ["menu-old"], made_current_at: T0 }, error: null };
+      }
+      if (fn === "set_house_menu_price") {
+        const open = (k: string) =>
+          (tables.house_price_locks ?? []).find((l) => l.inventory_id === args.p_inventory_id && l.kind === k && l.released_at === null);
+        const held = [
+          args.p_set_bottle && open("bottle"),
+          args.p_set_glass && open("glass"),
+        ].filter(Boolean).map((l: any) => ({ kind: l.kind, lock_id: l.id, locked_price: l.locked_price, locked_by: l.locked_by, locked_at: l.locked_at }));
+        const all = (!args.p_set_bottle || open("bottle")) && (!args.p_set_glass || open("glass"));
+        return { data: { outcome: all ? "locked" : "changed", held }, error: null };
+      }
+      return { data: null, error: { message: `no rpc ${fn}` } };
+    };
+  }
+
+  const setup = () => {
+    const calls: RpcCall[] = [];
+    const tables = house();
+    const service = makeService(tables, { rpcCalls: calls, rpc: rpcFor(tables) });
+    return { calls, tables, service };
+  };
+
+  it("L13: the plan says, per line and per kind, what choosing the menu would do -- and writes nothing", async () => {
+    const { calls, tables, service } = setup();
+    const plan = await service.planFor("rest-1", "menu-new");
+    const by = Object.fromEntries(plan.lines.map((l) => [l.menuItemId, l]));
+    expect(by["n-1"].bottle).toMatchObject({ result: "held_by_lock", menuPrice: 64, housePrice: 60, lock: { lockId: "lock-1", lockedPrice: 60, lockedBy: { userId: "user-1", name: "Aylin" } } });
+    expect(by["n-1"].glass).toMatchObject({ result: "change", menuPrice: 15, housePrice: 14 });
+    // A price that would be replaced says who set it and when.
+    expect(by["n-2"].bottle).toMatchObject({ result: "change", lastSet: { by: { userId: "user-3", name: "Deniz" }, at: "2026-09-10T08:00:00Z", source: "manual" } });
+    expect(by["n-2"].glass.result).toBe("blank_never_priced");
+    expect(by["n-3"].bottle.result).toBe("new_wine");
+    expect(by["n-4"].bottle.result).toBe("blank_kept");
+    expect(by["n-4"].flag).toBe("blank_kept_last_known");
+    expect(by["n-5"].bottle.result).toBe("not_linked");
+    expect(by["n-6"].bottle.result).toBe("blank_never_priced");
+    expect(by["n-6"].flag).toBe("blank_no_house_price");
+    expect(plan.counts).toMatchObject({ held_by_lock: 1, change: 2, new_wine: 1, blank_kept: 1, not_linked: 2 });
+    // Every open lock whose wine is not on this menu -- a removed wine included, a released lock not.
+    expect(plan.dormantLocks).toEqual([
+      expect.objectContaining({ lockId: "lock-9", wineName: "Old Rioja", active: false, lockedBy: { userId: "user-1", name: "Aylin" } }),
+    ]);
+    expect(plan.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(plan.namesReadable).toBe(true);
+    expect(calls).toHaveLength(0);
+    expect(tables.restaurant_menus.find((m) => m.id === "menu-new")!.status).toBe("draft");
+  });
+
+  it("L11, as the founder confirmed it (\"The menu sets it, locks keep\"): a price a PERSON set after this menu was read is marked setAfterRead; a menu's own, or one set before the read, is not", async () => {
+    const { tables, service } = setup();
+    const menu = tables.restaurant_menus.find((m) => m.id === "menu-new")!;
+    menu.extracted_at = "2026-09-05T10:00:00Z";
+    // inv-1's price was last set by ANOTHER menu's choice after the read: not a person's.
+    tables.menu_price_versions.push({ id: "v-1", restaurant_id: "rest-1", inventory_id: "inv-1", changed_by: "user-1", effective_from: "2026-09-12T08:00:00Z", change_source: "import", effective_to: null });
+    const lineOf = async (id: string) => (await service.planFor("rest-1", "menu-new")).lines.find((l) => l.menuItemId === id)!;
+
+    const plan = await service.planFor("rest-1", "menu-new");
+    expect(plan.readAt).toBe("2026-09-05T10:00:00Z");
+    // Deniz typed the Chianti's 50.00 by hand on 2026-09-10, after the read: the menu replaces it, listed first.
+    expect((await lineOf("n-2")).bottle).toMatchObject({ result: "change", setAfterRead: true });
+    expect((await lineOf("n-1")).glass).toMatchObject({ result: "change", setAfterRead: false });
+    // A price that is not being replaced is never marked.
+    expect((await lineOf("n-1")).bottle.setAfterRead).toBe(false);
+
+    // Accepted advice is a person's act too.
+    const v2 = tables.menu_price_versions.find((v) => v.id === "v-2")!;
+    v2.change_source = "agent_accepted";
+    expect((await lineOf("n-2")).bottle.setAfterRead).toBe(true);
+    // Set BEFORE the read: the menu already saw it.
+    v2.change_source = "manual";
+    menu.extracted_at = "2026-09-11T00:00:00Z";
+    expect((await lineOf("n-2")).bottle.setAfterRead).toBe(false);
+    // A legacy menu with no read moment falls back to when its row was made...
+    delete menu.extracted_at;
+    menu.created_at = "2026-09-01T00:00:00Z";
+    expect((await service.planFor("rest-1", "menu-new")).readAt).toBe("2026-09-01T00:00:00Z");
+    expect((await lineOf("n-2")).bottle.setAfterRead).toBe(true);
+    // ...and with neither recorded, nothing is called "after".
+    delete menu.created_at;
+    expect((await service.planFor("rest-1", "menu-new")).readAt).toBeNull();
+    expect((await lineOf("n-2")).bottle.setAfterRead).toBe(false);
+  });
+
+  it("L18: a locked wine that was NOT on the menu being replaced is 'returned', and a differing vintage is marked", async () => {
+    const { service } = setup();
+    const plan = await service.planFor("rest-1", "menu-new");
+    const barolo = plan.lines.find((l) => l.menuItemId === "n-1")!;
+    expect(barolo.returned).toBe(true);
+    // Read "2020" beside the locked row's library vintage 2019: the lock still holds, the mark is there to be seen.
+    expect(barolo.vintageMismatch).toBe(true);
+    expect(barolo.house).toEqual({ wineName: "Barolo", vintage: 2019, active: true });
+    // Chianti is on the current menu too: not "returned"; and it has no lock.
+    expect(plan.lines.find((l) => l.menuItemId === "n-2")!.returned).toBe(false);
+  });
+
+  it("L13: make-current without the plan's fingerprint is a 400, and nothing changes", async () => {
+    const { calls, tables, service } = setup();
+    await expect(service.makeCurrent("rest-1", "menu-new", "user-2")).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.makeCurrent("rest-1", "menu-new", "user-2", "  ")).rejects.toBeInstanceOf(BadRequestException);
+    expect(calls).toHaveLength(0);
+    expect(tables.restaurant_menus.find((m) => m.id === "menu-new")!.status).toBe("draft");
+  });
+
+  it("L13: a plan that changed since it was shown is a 409, and nothing changes", async () => {
+    const { calls, tables, service } = setup();
+    const shown = await service.planFor("rest-1", "menu-new");
+    // Someone typed a new price while the page was open.
+    tables.restaurant_inventory.find((r) => r.id === "inv-2")!.menu_price_current = 52;
+    await expect(service.makeCurrent("rest-1", "menu-new", "user-2", shown.fingerprint)).rejects.toBeInstanceOf(ConflictException);
+    // ...and a lock that was set while it was open changes the plan too.
+    const again = await service.planFor("rest-1", "menu-new");
+    tables.house_price_locks.push({ id: "lock-new", restaurant_id: "rest-1", inventory_id: "inv-2", kind: "bottle", locked_price: 52, locked_by: "user-1", locked_at: T0, released_at: null });
+    await expect(service.makeCurrent("rest-1", "menu-new", "user-2", again.fingerprint)).rejects.toBeInstanceOf(ConflictException);
+    expect(calls).toHaveLength(0);
+    expect(tables.restaurant_menus.find((m) => m.id === "menu-new")!.status).toBe("draft");
+  });
+
+  it("L11/L15: the choice carries every line dated by the choice, naming the menu; a held kind is counted AND named", async () => {
+    const { calls, tables, service } = setup();
+    const plan = await service.planFor("rest-1", "menu-new");
+    const r = await service.makeCurrent("rest-1", "menu-new", "user-2", plan.fingerprint);
+    const writes = calls.filter(([fn]) => fn === "set_house_menu_price").map(([, a]) => a);
+    expect(writes.length).toBeGreaterThan(0);
+    for (const w of writes) expect(w).toMatchObject({ p_effective_from: T0, p_menu_id: "menu-new", p_change_source: "import", p_changed_by: "user-2" });
+    // The Barolo line named both kinds: the bottle was held, the glass changed -- "changed" AND the held bottle named.
+    expect(r.held).toEqual([
+      expect.objectContaining({ menuItemId: "n-1", name: "Barolo", kind: "bottle", lockId: "lock-1", lockedPrice: 60 }),
+    ]);
+    expect(r.priceSync.changed).toBeGreaterThanOrEqual(1);
+    expect(r.returned).toEqual([{ menuItemId: "n-1", name: "Barolo" }]);
+    expect(r.madeCurrentAt).toBe(T0);
+    // The two flags were written on their lines.
+    expect(tables.menu_items.find((m) => m.id === "n-4")!.price_flag).toBe("blank_kept_last_known");
+    expect(tables.menu_items.find((m) => m.id === "n-6")!.price_flag).toBe("blank_no_house_price");
+  });
+
+  it("L4/L15: a line whose every named kind is held is 'locked', counted as such, and named", async () => {
+    const { tables, service } = setup();
+    // Only the Barolo bottle on this menu, and it is locked.
+    tables.menu_items = tables.menu_items.filter((m) => m.menu_id !== "menu-new");
+    tables.menu_items.push({ id: "n-7", menu_id: "menu-new", restaurant_id: "rest-1", name: "Barolo", wine_library_id: "mw-1", bottle_price: 70, status: "approved" });
+    const plan = await service.planFor("rest-1", "menu-new");
+    const r = await service.makeCurrent("rest-1", "menu-new", "user-2", plan.fingerprint);
+    expect(r.priceSync).toEqual({ locked: 1 });
+    expect(r.held).toEqual([expect.objectContaining({ menuItemId: "n-7", kind: "bottle", lockId: "lock-1" })]);
+  });
+
+  it("L12: silence changes nothing -- a wine the chosen menu does not list is not written, and a kind a line leaves blank is never named in the write", async () => {
+    const { calls, tables, service } = setup();
+    const plan = await service.planFor("rest-1", "menu-new");
+    const r = await service.makeCurrent("rest-1", "menu-new", "user-2", plan.fingerprint);
+    const writes = calls.filter(([fn]) => fn === "set_house_menu_price").map(([, a]) => a);
+    // Old Rioja (inv-9) is on no line of this menu: no write names it, and its price stands.
+    expect(writes.some((w) => w.p_inventory_id === "inv-9")).toBe(false);
+    expect(tables.restaurant_inventory.find((r) => r.id === "inv-9")!.menu_price_current).toBe(80);
+    // The Soave line (inv-4) states no price at all: nothing is written for it (answer 3 keeps 30.00),
+    // and it is said as "no price" -- not as a failure (Soave and the new Mystery wine: two lines).
+    expect(writes.some((w) => w.p_inventory_id === "inv-4")).toBe(false);
+    expect(r.priceSync).toEqual({ changed: 3, not_linked: 1, no_price: 2 });
+    expect(r.failed).toEqual([]);
+    // The Chianti line states a bottle price only: the glass is not named, so the house's glass stands.
+    expect(writes.find((w) => w.p_inventory_id === "inv-2")).toMatchObject({ p_set_bottle: true, p_bottle_price: 55, p_set_glass: false, p_glass_price: null });
+  });
+
+  it("L25: a lock list that cannot be read makes the plan a 500, and make-current cannot go ahead", async () => {
+    const { calls, tables, service } = setup();
+    const plan = await service.planFor("rest-1", "menu-new");
+    (tables as any).__readFails = [{ house_price_locks: "permission denied" }];
+    await expect(service.planFor("rest-1", "menu-new")).rejects.toBeInstanceOf(InternalServerErrorException);
+    await expect(service.makeCurrent("rest-1", "menu-new", "user-2", plan.fingerprint)).rejects.toThrow(/price locks could not be read.*permission denied/);
+    expect(calls.filter(([fn]) => fn === "make_menu_current")).toHaveLength(0);
+  });
+
+  it("L25: a plan whose people cannot be named says so, and still decides nothing from names", async () => {
+    const { tables, service } = setup();
+    const before = await service.planFor("rest-1", "menu-new");
+    (tables as any).__readFails = [{ users: "timeout" }];
+    const plan = await service.planFor("rest-1", "menu-new");
+    expect(plan.namesReadable).toBe(false);
+    expect(plan.namesReason).toMatch(/could not be named: timeout/);
+    expect(plan.fingerprint).toBe(before.fingerprint);
+  });
+
+  it("L4: a menu price correction on a locked kind is 'locked', names the lock, and names the menu on the write", async () => {
+    const calls: RpcCall[] = [];
+    const tables = house();
+    tables.restaurant_menus[0].status = "active";
+    tables.menu_items.push({ id: "c-1", menu_id: "menu-old", restaurant_id: "rest-1", name: "Barolo", wine_library_id: "mw-1", bottle_price: 60, inventory_item_id: "inv-1", status: "approved" });
+    const service = makeService(tables, { rpcCalls: calls, rpc: rpcFor(tables) });
+    const r = await service.reviewMenuItem("c-1", "user-2", "rest-1", { fieldName: "bottle_price", newValue: "75" } as any);
+    expect(r.priceSync).toBe("locked");
+    expect(r.priceHeld).toEqual([expect.objectContaining({ kind: "bottle", lockId: "lock-1" })]);
+    expect(calls[0][1]).toMatchObject({ p_menu_id: "menu-old" });
+  });
+
+  it("the people behind kept menus: a failed name read is said (namesReadable false), never dropped", async () => {
+    const { tables, service } = setup();
+    tables.restaurant_menus[0].extracted_by = "user-1";
+    (tables as any).__readFails = [{ users: "timeout" }];
+    const list = await service.listVersions("rest-1");
+    expect(list.namesReadable).toBe(false);
+    expect(list.namesReason).toMatch(/timeout/);
   });
 });

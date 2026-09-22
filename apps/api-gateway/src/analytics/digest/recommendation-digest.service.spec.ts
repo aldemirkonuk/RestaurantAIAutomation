@@ -106,6 +106,17 @@ function engine(db: FakeDb, o: EngineOpts = {}) {
         target: { bottlePct: null, glassPct: null, bandPct: null, set: false, pourConfirmed: false, pourMl: null },
         wines: [],
         counts: { no_target: 0, pour_unconfirmed: 0, no_price: 0, no_cost: 0, on_target: 0, raise: 0, lower: 0 },
+        locks: { readable: true, reason: null, held: 0 },
+      }),
+    } as any,
+    // ADR 0193 round 3: the engine's price-lock source, answering "no locks".
+    {
+      list: async (restaurantId: string) => ({
+        restaurantId,
+        readable: true,
+        reason: null,
+        locks: [],
+        counts: { open: 0, onCurrentMenu: 0, notOnCurrentMenu: 0, toReview: 0 },
       }),
     } as any,
   );

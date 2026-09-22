@@ -336,6 +336,10 @@ export class ScanParserService {
         // The menu-upload billed read: if the house's spend ledger cannot be
         // read, this call is not made (founder, 2026-09-21, ADR 0163 Q22).
         spendLedgerUnreadable: "closed",
+        // ...and being OVER the allowance never refuses it, first attempt or
+        // retry (founder, 2026-09-21, round 6c: "never refuse a menu read";
+        // tiers later). ADR 0193 round 3, answer 2.
+        allowance: "unlimited",
         nf: {
           subjectId: "ScanParser",
           taskType: "menu_scan",

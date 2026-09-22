@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  NotFoundException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { SettingsAuditService } from "../settings-audit/settings-audit.service";
@@ -133,6 +134,38 @@ export function confirmedPourFrom(row: TargetRow | null): number | null {
   if (!row?.pour_size_confirmed_at || !row.pour_size_confirmed_by) return null;
   const ml = asNumber(row.default_pour_ml);
   return ml !== null && ml > 0 ? ml : null;
+}
+
+/** What the advice reads of a wine's own pour (round 6c answer 3). */
+export interface WinePourRow {
+  pour_size_ml?: number | string | null;
+  pour_size_confirmed_by?: string | null;
+  pour_size_confirmed_at?: string | null;
+}
+
+/**
+ * A WINE's own CONFIRMED pour, or null (founder, 2026-09-21, round 6c:
+ * "Yes, confirmed per wine"). `restaurant_inventory.pour_size_ml` carries a
+ * database DEFAULT of 150 and any house member may write it, so the number is
+ * used only with an owner's or a manager's confirmation beside it (who and
+ * when). A pour changed after its confirmation loses it in the database
+ * (20260921170001), so a confirmation here always describes this number.
+ * Null means: use the house's confirmed pour.
+ */
+export function confirmedWinePourFrom(row: WinePourRow | null | undefined): number | null {
+  if (!row?.pour_size_confirmed_at || !row.pour_size_confirmed_by) return null;
+  const ml = asNumber(row.pour_size_ml);
+  return ml !== null && ml >= POUR_MIN_ML && ml <= POUR_MAX_ML ? ml : null;
+}
+
+/** What `PUT /pricing/wines/:inventoryId/pour` answers. */
+export interface WinePourReadout {
+  inventoryId: string;
+  wineName: string | null;
+  /** This wine's own confirmed pour; null = it uses the house's confirmed pour. */
+  pour: { confirmed: boolean; ml: number | null; confirmedAt: string | null; confirmedBy: string | null };
+  audited: boolean;
+  auditReason: string | null;
 }
 
 function checkPct(label: string, value: unknown): number | null {
@@ -333,6 +366,87 @@ export class TargetMarginService {
 
     const after = await this.read(restaurantId);
     return { ...after, audited: receipt.recorded, auditReason: receipt.reason };
+  }
+
+  /**
+   * Confirm ONE wine's own pour, or send it back to the house's pour (founder,
+   * 2026-09-21, round 6c: "Yes, confirmed per wine"). A number writes
+   * `pour_size_ml` with the person and the moment in ONE update; `null` clears
+   * the confirmation, so the glass advice uses the house's confirmed pour
+   * again (the stored number is left as it is). Audited as
+   * `pour_size_confirmed` on the wine. The role check (owner or manager) is
+   * the controller's.
+   */
+  async confirmWinePour(
+    restaurantId: string,
+    inventoryId: string,
+    body: { pourMl?: unknown },
+    actorUserId: string,
+  ): Promise<WinePourReadout> {
+    const ml = body.pourMl;
+    if (ml !== null && (typeof ml !== "number" || !Number.isFinite(ml))) {
+      throw new BadRequestException(
+        "Say this wine's pour in ml (for example 75), or null to use the house's pour. Nothing was recorded.",
+      );
+    }
+    if (ml !== null && (ml < POUR_MIN_ML || ml > POUR_MAX_ML)) {
+      throw new BadRequestException(
+        `A pour is between ${POUR_MIN_ML} and ${POUR_MAX_ML} ml; ${ml} ml is outside it. Nothing was recorded.`,
+      );
+    }
+    const client = this.databaseService.client;
+    const { data: before, error: readErr } = await client
+      .from("restaurant_inventory")
+      .select("id, wine_name, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at")
+      .eq("id", inventoryId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (readErr) {
+      throw new InternalServerErrorException(
+        `This wine's pour could not be read, so nothing was changed: ${readErr.message}`,
+      );
+    }
+    if (!before) throw new NotFoundException("No wine of this house by that id. Nothing was changed.");
+    const row = before as WinePourRow & { wine_name?: string | null };
+    const previous = confirmedWinePourFrom(row);
+    const now = new Date().toISOString();
+    const patch =
+      ml === null
+        ? { pour_size_confirmed_by: null, pour_size_confirmed_at: null }
+        : { pour_size_ml: ml, pour_size_confirmed_by: actorUserId, pour_size_confirmed_at: now };
+    const { error } = await client
+      .from("restaurant_inventory")
+      .update(patch)
+      .eq("id", inventoryId)
+      .eq("restaurant_id", restaurantId);
+    if (error) {
+      this.logger.error(`Could not confirm the pour of ${restaurantId}/${inventoryId}: ${error.message}`);
+      throw new InternalServerErrorException(
+        `This wine's pour was not confirmed. Nothing was changed. ${error.message}`,
+      );
+    }
+    const receipt = await this.audit.record({
+      restaurantId,
+      actorUserId,
+      action: POUR_SIZE_AUDIT_ACTION,
+      register: "target-margin",
+      entityType: "restaurant_inventory",
+      entityId: inventoryId,
+      subject: `pour size of ${row.wine_name ?? "a wine"}`,
+      fields: { wine_pour_ml: { from: previous, to: ml as number | null } },
+    });
+    return {
+      inventoryId,
+      wineName: row.wine_name ?? null,
+      pour: {
+        confirmed: ml !== null,
+        ml: ml as number | null,
+        confirmedAt: ml === null ? null : now,
+        confirmedBy: ml === null ? null : actorUserId,
+      },
+      audited: receipt.recorded,
+      auditReason: receipt.reason,
+    };
   }
 
   private shape(

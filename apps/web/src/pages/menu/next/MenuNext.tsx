@@ -24,6 +24,11 @@
  * of making one current (`MenuVersions.tsx`). A blank price on a current
  * menu's line keeps the last known price and the line says so.
  *
+ * LOCKED PRICES (ADR 0193 round 3, `LockedPrices.tsx`): every price the house
+ * holds, grouped by whether its wine is on the current menu; choosing a menu
+ * shows its plan first (`MenuPlan.tsx`), with a Keep switch on each price it
+ * would change.
+ *
  * WHAT THIS DOES NOT DO. `addMenuItem`'s DTO is the review-step shape
  * (name/producer/category/vintage/region/grape_variety/by_glass_price/
  * bottle_price) — the same fields the onboarding scanner's review screen
@@ -38,6 +43,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { addMenuItem, discardMenuItem, getMenu, type MenuLine } from '../../../services/api/menus';
 import { housePriceNote } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
+import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
 import { formatMoney } from '@/lib/currency';
 import { Wordmark } from '@/components/mudavym';
@@ -363,6 +369,11 @@ export default function MenuNext() {
             ) : null}
           </>
         )}
+
+        {/* ADR 0193 round 3: every price this house holds, kept when its wine
+            leaves the menu (the founder, 2026-09-21: "add a section to that
+            where you can lock price, but wha f that menu item disappears?"). */}
+        {activeRestaurantId ? <LockedPrices canManage={canManage} /> : null}
 
         {activeRestaurantId ? <MenuVersions canManage={canManage} /> : null}
 

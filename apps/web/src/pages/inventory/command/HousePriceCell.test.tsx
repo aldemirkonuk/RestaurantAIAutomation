@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { HousePriceCell, parsePriceInput, type AdviceLoad } from './HousePriceCell'
+import { HousePriceCell, addedPriceNote, parsePriceInput, type AdviceLoad } from './HousePriceCell'
 import type { PriceAdvice } from '../../../services/api/pricing'
 
 /**
@@ -11,11 +11,13 @@ import type { PriceAdvice } from '../../../services/api/pricing'
  */
 const updateInventoryItem = vi.fn()
 const acceptPriceAdvice = vi.fn()
+const confirmWinePour = vi.fn()
 vi.mock('../../../services/api/inventory', () => ({
   updateInventoryItem: (...a: unknown[]) => updateInventoryItem(...a),
 }))
 vi.mock('../../../services/api/pricing', () => ({
   acceptPriceAdvice: (...a: unknown[]) => acceptPriceAdvice(...a),
+  confirmWinePour: (...a: unknown[]) => confirmWinePour(...a),
 }))
 
 const raise: PriceAdvice = {
@@ -61,6 +63,7 @@ function mount(over: Partial<Parameters<typeof HousePriceCell>[0]> = {}) {
 beforeEach(() => {
   updateInventoryItem.mockReset()
   acceptPriceAdvice.mockReset()
+  confirmWinePour.mockReset()
 })
 
 describe('HousePriceCell', () => {
@@ -182,5 +185,132 @@ describe('parsePriceInput', () => {
     expect(parsePriceInput('57.144')).toEqual({ ok: true, value: 57.14 })
     expect(parsePriceInput('-1')).toEqual({ ok: false })
     expect(parsePriceInput('ten')).toEqual({ ok: false })
+  })
+})
+
+/**
+ * ADR 0193 round 3. A locked price (the founder, 2026-09-21: "add a section to
+ * that where you can lock price") is marked with who and when, keeps its
+ * advice, and offers no Accept; an edit a lock held is said. A wine's own pour
+ * ("Yes, confirmed per wine") is confirmed from the same edit.
+ */
+describe('HousePriceCell -- locks and a wine\'s own pour (round 3)', () => {
+  const lockedRaise: PriceAdvice = {
+    ...raise,
+    locked: { lockId: 'lock-1', lockedPrice: 50, lockedBy: 'u5', lockedAt: '2026-09-02T09:00:00Z' },
+  }
+
+  it('L22: a locked price is marked with since when, its advice is shown on hover, and there is NO accept', () => {
+    mount({ advice: ready(lockedRaise) })
+    expect(screen.getByTestId('locked-bottle')).toHaveTextContent('btl locked at $50.00 since 2026-09-02')
+    expect(screen.getByTestId('locked-bottle').getAttribute('title')).toMatch(/Raise the bottle to 57\.14.*advice cannot be accepted here/)
+    expect(screen.queryByRole('button', { name: /raise btl/i })).not.toBeInTheDocument()
+  })
+
+  it('L25: when whether a price is locked is unknown, no accept is offered and the cell says why', () => {
+    const load = ready(raise)
+    mount({ advice: { ...(load as Extract<AdviceLoad, { status: 'ready' }>), locksReadable: false, locksReason: 'the locks could not be read (denied)' } })
+    expect(screen.getByText('locks unknown, no accept')).toHaveAttribute('title', 'the locks could not be read (denied)')
+    expect(screen.queryByRole('button', { name: /raise btl/i })).not.toBeInTheDocument()
+  })
+
+  it('L5: an edit a lock held is SAID -- the held kind named, the rest saved', async () => {
+    updateInventoryItem.mockResolvedValue({ priceChange: { outcome: 'changed', held: [{ kind: 'bottle', lockedPrice: 50 }] } })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    fireEvent.change(screen.getByLabelText(/bottle price for barolo/i), { target: { value: '70' } })
+    fireEvent.change(screen.getByLabelText(/glass price for barolo/i), { target: { value: '13' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Not changed: the bottle price is locked at 50.00. Change it on Menu, under Locked prices. The rest was saved.')).toBeInTheDocument()
+  })
+
+  it('an edit where every kind was held says so, and claims nothing was saved', async () => {
+    updateInventoryItem.mockResolvedValue({ priceChange: { outcome: 'locked', held: [{ kind: 'bottle', lockedPrice: 50 }] } })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    fireEvent.change(screen.getByLabelText(/bottle price for barolo/i), { target: { value: '70' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Not changed: the bottle price is locked at 50.00. Change it on Menu, under Locked prices.')).toBeInTheDocument()
+  })
+
+  it('answer 3: a manager confirms this wine\'s own pour from the same edit; empty sends it back to the house pour', async () => {
+    confirmWinePour.mockResolvedValue({ inventoryId: 'inv-1', pour: { confirmed: true, ml: 75 } })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    fireEvent.change(screen.getByLabelText(/pour in ml for barolo/i), { target: { value: '75' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(confirmWinePour).toHaveBeenCalledWith('inv-1', 75))
+    expect(updateInventoryItem).not.toHaveBeenCalled()
+    expect(await screen.findByText("This wine's pour is confirmed at 75 ml.")).toBeInTheDocument()
+  })
+
+  it('answer 3: a wine already on its own pour shows it, and emptying the field returns it to the house pour', async () => {
+    confirmWinePour.mockResolvedValue({ inventoryId: 'inv-1', pour: { confirmed: false, ml: null } })
+    const load = ready(raise) as Extract<AdviceLoad, { status: 'ready' }>
+    const wine = load.byId.get('inv-1')!
+    load.byId.set('inv-1', { ...wine, pour: { ml: 75, source: 'wine' } })
+    mount({ advice: load })
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    const pour = screen.getByLabelText(/pour in ml for barolo/i) as HTMLInputElement
+    expect(pour.value).toBe('75')
+    fireEvent.change(pour, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(confirmWinePour).toHaveBeenCalledWith('inv-1', null))
+  })
+
+  it('answer 3: a pour outside 10-500 ml is refused on the page, and nothing is sent', async () => {
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    fireEvent.change(screen.getByLabelText(/pour in ml for barolo/i), { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/A pour is between 10 and 500 ml/)).toBeInTheDocument()
+    expect(confirmWinePour).not.toHaveBeenCalled()
+    expect(updateInventoryItem).not.toHaveBeenCalled()
+  })
+})
+
+describe('HousePriceCell -- a price and a pour saved in one edit (round 3)', () => {
+  it('a saved price and a refused pour are both said -- never "nothing was changed"', async () => {
+    updateInventoryItem.mockResolvedValue({ priceChange: { outcome: 'changed', held: [] } })
+    confirmWinePour.mockRejectedValue({ response: { status: 500, data: { message: 'This wine\'s pour was not confirmed. Nothing was changed. timeout' } } })
+    const { onChanged } = mount()
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    fireEvent.change(screen.getByLabelText(/bottle price for barolo/i), { target: { value: '70' } })
+    fireEvent.change(screen.getByLabelText(/pour in ml for barolo/i), { target: { value: '75' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText(/^The price was saved; this wine's pour was not: /)).toBeInTheDocument()
+    expect(onChanged).toHaveBeenCalled()
+  })
+
+  it('while this wine\'s pour is not known (the advice is still loading), no pour field is offered', () => {
+    mount({ advice: { status: 'loading' } })
+    fireEvent.click(screen.getByRole('button', { name: /change your price/i }))
+    expect(screen.queryByLabelText(/pour in ml for barolo/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/bottle price for barolo/i)).toBeInTheDocument()
+  })
+})
+
+describe('addedPriceNote -- what adding a wine did to the price typed with it (last-call review)', () => {
+  it('a price a lock held (a removed wine added back) is said, with the lock', () => {
+    expect(
+      addedPriceNote({ priceChange: { outcome: 'locked', held: [{ kind: 'bottle', lockedPrice: 95 }] } }),
+    ).toBe('The wine was added. Not changed: the bottle price is locked at 95.00. Change it on Menu, under Locked prices.')
+  })
+
+  it('a failed price write is said with its reason, never as saved', () => {
+    expect(addedPriceNote({ priceChange: { outcome: 'failed', error: 'timeout' } })).toBe(
+      'The wine was added, but its price was not saved (timeout). Set it under Your price.',
+    )
+  })
+
+  it('a newer price that stood is said', () => {
+    expect(addedPriceNote({ priceChange: { outcome: 'stale', held: [] } })).toMatch(/^The wine was added, but its price was not changed/)
+  })
+
+  it('a price that landed, or none typed, says nothing more', () => {
+    expect(addedPriceNote({ priceChange: { outcome: 'changed', held: [] } })).toBeNull()
+    expect(addedPriceNote({ priceChange: { outcome: 'unchanged', held: [] } })).toBeNull()
+    expect(addedPriceNote({})).toBeNull()
+    expect(addedPriceNote(null)).toBeNull()
   })
 })

@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   InternalServerErrorException,
 } from "@nestjs/common";
@@ -18,8 +19,10 @@ import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dt
 import { WineExtractItem } from "./wine-extract-item.interface";
 import {
   setHouseMenuPrice,
+  type HeldKind,
   type HousePriceOutcome,
 } from "../pricing/house-menu-price";
+import { readOpenLocks, readPeople, type OpenLock } from "../pricing/price-locks";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
 /** The private bucket the gateway already keeps original bytes in (document intake). */
@@ -44,12 +47,173 @@ interface InsertedMenuItem {
   id: string;
   wine_library_id: string | null;
   name: string;
-  // The menu's own prices and when this line was written: ADR 0193 carries
-  // them to the house's price, dated by the line ("the newest dated change
-  // wins").
+  // The menu's own prices: ADR 0193 carries them to the house's price. Dated
+  // by the moment the menu was CHOSEN (round 3, L11), never by the line.
   by_glass_price?: number | string | null;
   bottle_price?: number | string | null;
   created_at?: string | null;
+  producer?: string | null;
+  vintage?: string | null;
+}
+
+/**
+ * How a carry is dated and which menu it names (ADR 0193 round 3, L11). A
+ * chosen menu passes the moment of the choice (`made_current_at`); a line
+ * added to the current menu passes null, which the writer reads as now.
+ */
+interface CarryDating {
+  effectiveFrom: string | null;
+  menuId: string | null;
+}
+
+/** The price flags a line can carry (founder answers 3 and 4). */
+type PriceFlag = "blank_kept_last_known" | "blank_no_house_price";
+
+/**
+ * What choosing a menu WOULD do, per line and per kind (ADR 0193 round 3,
+ * L13) -- the section the founder asked for ("add a section to that where you
+ * can lock price"), shown before an owner or manager confirms:
+ *   change              the house price becomes the menu's
+ *   unchanged           it already is
+ *   held_by_lock        a lock holds the house price; the menu's is not applied
+ *   blank_kept          the line shows no price; the house keeps its own (flagged)
+ *   blank_never_priced  the line shows no price and the house has none either
+ *   not_linked          the line matched no wine, so there is no house price
+ *   new_wine            the house has no row for this wine yet; it is added with the menu's price
+ */
+export type PlanResult =
+  | "change"
+  | "unchanged"
+  | "held_by_lock"
+  | "blank_kept"
+  | "blank_never_priced"
+  | "not_linked"
+  | "new_wine";
+
+export interface PlanPerson {
+  userId: string | null;
+  name: string | null;
+}
+
+export interface PlanKind {
+  kind: "bottle" | "glass";
+  menuPrice: number | null;
+  housePrice: number | null;
+  result: PlanResult;
+  /** For a price this choice would replace: who set it, when, and from where. */
+  lastSet: { by: PlanPerson; at: string | null; source: string | null } | null;
+  /**
+   * A person set this wine's price (by hand, or by accepting advice) AFTER this
+   * menu was read. The founder, 2026-09-21, confirming L11 verbatim: "The menu
+   * sets it, locks keep" -- so the chosen menu replaces it, and the plan lists
+   * it FIRST, with who and when, beside its Keep switch. Read from the open
+   * version row, which carries both kinds of the wine: a glass edit marks the
+   * bottle too (listed first when it need not be, never the other way round).
+   */
+  setAfterRead: boolean;
+  /** The lock that holds this kind, when one does. */
+  lock: { lockId: string; lockedPrice: number; lockedBy: PlanPerson; lockedAt: string } | null;
+}
+
+export interface PlanLine {
+  menuItemId: string;
+  /** As the menu reads. */
+  name: string;
+  producer: string | null;
+  vintage: string | null;
+  wineLibraryId: string | null;
+  inventoryId: string | null;
+  /** The house's own row for this wine, beside the line as read (L18). */
+  house: { wineName: string | null; vintage: number | null; active: boolean } | null;
+  bottle: PlanKind;
+  glass: PlanKind;
+  /** The flag the line will carry once this menu is current. */
+  flag: PriceFlag | null;
+  /** A locked wine that was not on the menu being replaced comes back with this one (L18). */
+  returned: boolean;
+  /** Both vintages are years and they differ: look before trusting the link (L18). */
+  vintageMismatch: boolean;
+}
+
+export interface DormantLock {
+  lockId: string;
+  inventoryId: string;
+  kind: "bottle" | "glass";
+  lockedPrice: number;
+  lockedBy: PlanPerson;
+  lockedAt: string;
+  wineName: string | null;
+  active: boolean | null;
+}
+
+export interface MenuPlan {
+  menuId: string;
+  /** Whether this menu is already the current one (choosing it again changes nothing). */
+  current: boolean;
+  /** When this menu was read (a legacy menu: when its row was made); null when neither is recorded. */
+  readAt: string | null;
+  generatedAt: string;
+  /**
+   * The plan's decisive content, hashed. `POST make-current` requires it and
+   * refuses (409, nothing changed) when the plan it recomputes differs (L13).
+   */
+  fingerprint: string;
+  lines: PlanLine[];
+  /** Per kind, bottle and glass together. */
+  counts: Record<PlanResult, number>;
+  /** Every open lock whose wine is NOT on this menu: kept, dormant, never released by the choice (L16, L17). */
+  dormantLocks: DormantLock[];
+  /** Whether the people named in the plan could be named (L25). */
+  namesReadable: boolean;
+  namesReason: string | null;
+}
+
+function emptyPlanCounts(): Record<PlanResult, number> {
+  return {
+    change: 0,
+    unchanged: 0,
+    held_by_lock: 0,
+    blank_kept: 0,
+    blank_never_priced: 0,
+    not_linked: 0,
+    new_wine: 0,
+  };
+}
+
+/** A menu line's price as a number, or null (blank, malformed or negative). */
+function linePrice(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** A four-digit year out of a vintage as the menu reads it, or null ("NV", blank, anything else). */
+function yearOf(v: unknown): number | null {
+  if (typeof v === "number" && Number.isInteger(v) && v >= 1800 && v <= 2200) return v;
+  const m = /\b(1[89]\d{2}|2[01]\d{2})\b/.exec(String(v ?? ""));
+  return m ? Number(m[1]) : null;
+}
+
+/** When a kept menu was read: `extracted_at`, or, for a menu read before menus were kept, when its row was made. */
+function readMomentOf(row: Record<string, unknown>): string | null {
+  const at = row.extracted_at ?? row.created_at ?? null;
+  return typeof at === "string" && at !== "" ? at : null;
+}
+
+/**
+ * A price a PERSON set (`manual`: typed on /inventory, or a lock changed or
+ * moved; `agent_accepted`: advice accepted) after the menu was read -- the case the founder's L11
+ * confirmation names ("The menu sets it, locks keep"): the chosen menu replaces
+ * it, and the plan lists it first with who and when. A price another menu set
+ * (`import`) is not a person's, and an unknown moment on either side is not
+ * "after".
+ */
+function setByAPersonAfter(set: { at: string | null; source: string | null }, readAt: string | null): boolean {
+  if (set.source !== "manual" && set.source !== "agent_accepted") return false;
+  if (!set.at || !readAt) return false;
+  const a = Date.parse(set.at);
+  const r = Date.parse(readAt);
+  return Number.isFinite(a) && Number.isFinite(r) && a > r;
 }
 
 /**
@@ -131,9 +295,14 @@ export function parseMenuDate(
  *              it current)
  *   failed     the write was refused or failed; `priceSyncError` says why
  *
+ *   locked     every kind the line names is held by a price lock (ADR 0193
+ *              round 3); a line that changed one kind while another was
+ *              held says "changed" AND names the held kind in `priceHeld`
+ *
  * Separately, `priceFlag` says a line was FLAGGED: its menu price was blank
  * for a price the house already has, so the house kept its last known price
- * (founder, 2026-09-21, answer 3).
+ * (founder, 2026-09-21, answer 3), or it shows no price at all for a wine the
+ * house has no price for either (round 6c answer 4, "Flag it").
  */
 export type MenuPriceSync =
   | HousePriceOutcome
@@ -146,8 +315,10 @@ export type MenuPriceSync =
 interface PriceSyncEntry {
   outcome: MenuPriceSync;
   error: string | null;
-  flag: "blank_kept_last_known" | null;
+  flag: PriceFlag | null;
   flagNote: string | null;
+  /** Every kind a price lock held (L5): never dropped from what is said. */
+  held: HeldKind[];
   /** Set when the flag itself could not be written on the line. */
   flagError?: string;
 }
@@ -168,9 +339,11 @@ export interface MenuImportReviewItem {
   /** ADR 0193: what this line did to the house's own price. */
   priceSync?: MenuPriceSync;
   priceSyncError?: string | null;
-  /** ADR 0193: set when a blank menu price kept the house's last known one. */
-  priceFlag?: "blank_kept_last_known" | null;
+  /** ADR 0193: set when a blank menu price kept the house's last known one, or found none. */
+  priceFlag?: PriceFlag | null;
   priceFlagNote?: string | null;
+  /** ADR 0193 round 3: the kinds a price lock held, with their locks. */
+  priceHeld?: HeldKind[];
 }
 
 @Injectable()
@@ -497,6 +670,7 @@ export class MenusService {
     newValue: string;
     priceSync?: MenuPriceSync;
     priceSyncError?: string | null;
+    priceHeld?: HeldKind[];
   }> {
     // TENANT CHECK (ADR 0193, fixed before this route could write a price).
     // `PATCH /menus/items/:id` names no restaurant, so `JwtAuthGuard`'s
@@ -572,6 +746,7 @@ export class MenusService {
     // price at all (owner or manager) is the controller's check.
     let priceSync: MenuPriceSync | undefined;
     let priceSyncError: string | null = null;
+    let priceHeld: HeldKind[] = [];
     let lineMenuCurrent = false;
     if (isPrice) {
       const { data: lineMenu, error: lineMenuErr } = await this.dbService.supabase
@@ -605,8 +780,10 @@ export class MenusService {
             source: "import",
             changedBy: userId,
             reason: `menu line corrected (${dto.fieldName})`,
+            menuId: menuItem.menu_id ?? null,
           });
           priceSync = r.outcome;
+          priceHeld = r.held;
         } catch (err) {
           priceSync = "failed";
           priceSyncError = err instanceof Error ? err.message : String(err);
@@ -644,7 +821,7 @@ export class MenusService {
       menuItemId,
       fieldName: dto.fieldName,
       newValue: dto.newValue,
-      ...(priceSync !== undefined ? { priceSync, priceSyncError } : {}),
+      ...(priceSync !== undefined ? { priceSync, priceSyncError, priceHeld } : {}),
     };
   }
 
@@ -726,6 +903,8 @@ export class MenusService {
     current: MenuVersion | null;
     lastUsed: MenuVersion | null;
     versions: MenuVersion[];
+    namesReadable: boolean;
+    namesReason: string | null;
   }> {
     const rows: Array<Record<string, any>> = [];
     let after: string | null = null;
@@ -744,7 +923,7 @@ export class MenusService {
       if (page.length < PAGE_ROWS) break;
       after = String(page[page.length - 1].id);
     }
-    const names = await this.namesOf(
+    const { names, error: namesError } = await this.namesOf(
       rows.flatMap((r) => [r.extracted_by, r.made_current_by, r.retired_by]),
     );
     const versions = rows
@@ -755,17 +934,33 @@ export class MenusService {
       versions
         .filter((v) => v.status === "archived" && v.retiredAt)
         .sort((a, b) => String(b.retiredAt).localeCompare(String(a.retiredAt)))[0] ?? null;
-    return { current, lastUsed, versions };
+    return {
+      current,
+      lastUsed,
+      versions,
+      namesReadable: namesError === null,
+      namesReason: namesError === null ? null : `who read or chose these menus could not be named: ${namesError}`,
+    };
   }
 
   /** One kept menu of this house and its lines. Another house's id is a 404. */
   async getVersion(
     restaurantId: string,
     menuId: string,
-  ): Promise<{ version: MenuVersion; items: Array<Record<string, unknown>> }> {
+  ): Promise<{
+    version: MenuVersion;
+    items: Array<Record<string, unknown>>;
+    namesReadable: boolean;
+    namesReason: string | null;
+  }> {
     const row = await this.readVersionRow(restaurantId, menuId);
-    const names = await this.namesOf([row.extracted_by, row.made_current_by, row.retired_by]);
-    return { version: this.toVersion(row, names), items: await this.readLines(menuId, restaurantId) };
+    const { names, error } = await this.namesOf([row.extracted_by, row.made_current_by, row.retired_by]);
+    return {
+      version: this.toVersion(row, names),
+      items: await this.readLines(menuId, restaurantId),
+      namesReadable: error === null,
+      namesReason: error === null ? null : `who read or chose this menu could not be named: ${error}`,
+    };
   }
 
   /**
@@ -799,39 +994,307 @@ export class MenusService {
   }
 
   /**
+   * What choosing this menu WOULD do (ADR 0193 round 3, L13): per line and per
+   * kind, the house price, the menu price and the planned result; for a price
+   * that would be replaced, who set it and when; every lock that holds a kind;
+   * and every open lock whose wine is not on this menu. The founder,
+   * 2026-09-21: "add a section to that where you can lock price, but wha f that
+   * menu item disappears?" -- this is that section's data. Nothing is written.
+   * A failed read is a 5xx, so make-current cannot go ahead on a plan nobody
+   * saw (L25).
+   */
+  async planFor(restaurantId: string, menuId: string): Promise<MenuPlan> {
+    const row = await this.readVersionRow(restaurantId, menuId);
+    const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
+    const plan = await this.computePlan(restaurantId, menuId, row.status === "active", lines, readMomentOf(row));
+    // Names are for reading the plan; they never decide it (the fingerprint
+    // leaves them out). A failed read is said.
+    const ids = new Set<string>();
+    for (const l of plan.lines) {
+      for (const k of [l.bottle, l.glass]) {
+        if (k.lastSet?.by.userId) ids.add(k.lastSet.by.userId);
+        if (k.lock?.lockedBy.userId) ids.add(k.lock.lockedBy.userId);
+      }
+    }
+    for (const d of plan.dormantLocks) if (d.lockedBy.userId) ids.add(d.lockedBy.userId);
+    const { names, error } = await this.namesOf([...ids]);
+    const named = (p: PlanPerson): PlanPerson => ({ userId: p.userId, name: p.userId ? (names.get(p.userId) ?? null) : null });
+    for (const l of plan.lines) {
+      for (const k of [l.bottle, l.glass]) {
+        if (k.lastSet) k.lastSet.by = named(k.lastSet.by);
+        if (k.lock) k.lock.lockedBy = named(k.lock.lockedBy);
+      }
+    }
+    for (const d of plan.dormantLocks) d.lockedBy = named(d.lockedBy);
+    return {
+      ...plan,
+      namesReadable: error === null,
+      namesReason: error === null ? null : `the people named in this plan could not be named: ${error}`,
+    };
+  }
+
+  /**
+   * The plan itself, from what the house holds NOW. Shared by `planFor` (the
+   * page) and `makeCurrent` (which recomputes it and compares fingerprints).
+   * Every read that decides it throws on failure: a plan with a hole in it is
+   * not a plan.
+   */
+  private async computePlan(
+    restaurantId: string,
+    menuId: string,
+    current: boolean,
+    lines: InsertedMenuItem[],
+    readAt: string | null,
+  ): Promise<MenuPlan> {
+    const client = this.dbService.supabase;
+    const fail = (what: string, message: string): never => {
+      throw new InternalServerErrorException(
+        `What choosing this menu would do could not be worked out, so nothing was changed: ${what} could not be read (${message}).`,
+      );
+    };
+
+    // The house's wines, every one (keyset-paged): which line lands on which row.
+    const house = new Map<string, Record<string, any>>();
+    {
+      let after: string | null = null;
+      for (;;) {
+        let q = client
+          .from("restaurant_inventory")
+          .select("id, master_wine_id, wine_name, is_active, deleted_at, menu_price_current, menu_price_glass, master_wine_library(vintage)")
+          .eq("restaurant_id", restaurantId);
+        if (after) q = q.gt("id", after);
+        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+        if (error) fail("the house's wines", error.message);
+        const rows = (data ?? []) as Array<Record<string, any>>;
+        for (const r of rows) if (r.master_wine_id) house.set(String(r.master_wine_id), r);
+        if (rows.length < PAGE_ROWS) break;
+        after = String(rows[rows.length - 1].id);
+      }
+    }
+    const byInventory = new Map<string, Record<string, any>>();
+    for (const r of house.values()) byInventory.set(String(r.id), r);
+
+    const lockRead = await readOpenLocks(client, restaurantId);
+    if (lockRead.error !== null) fail("the house's price locks", lockRead.error);
+    const locks = new Map<string, OpenLock>(lockRead.locks.map((l) => [`${l.inventoryId}:${l.kind}`, l]));
+    const lockedWines = new Set(lockRead.locks.map((l) => l.inventoryId));
+
+    // Who set each price now in effect (the open version row).
+    const lastSet = new Map<string, { by: string | null; at: string | null; source: string | null }>();
+    {
+      let after: string | null = null;
+      for (;;) {
+        let q = client
+          .from("menu_price_versions")
+          .select("id, inventory_id, changed_by, effective_from, change_source")
+          .eq("restaurant_id", restaurantId)
+          .is("effective_to", null);
+        if (after) q = q.gt("id", after);
+        const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+        if (error) fail("who set the house's prices", error.message);
+        const rows = (data ?? []) as Array<Record<string, any>>;
+        for (const r of rows) {
+          lastSet.set(String(r.inventory_id), {
+            by: r.changed_by ?? null,
+            at: r.effective_from ?? null,
+            source: r.change_source ?? null,
+          });
+        }
+        if (rows.length < PAGE_ROWS) break;
+        after = String(rows[rows.length - 1].id);
+      }
+    }
+
+    // The wines on the menu being REPLACED (every other active menu), for L18's "returned".
+    const onReplaced = new Set<string>();
+    let replacing = false;
+    if (!current) {
+      const { data: actives, error: activeErr } = await client
+        .from("restaurant_menus")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "active");
+      if (activeErr) fail("the current menu", activeErr.message);
+      for (const m of (actives ?? []) as Array<{ id: string }>) {
+        if (m.id === menuId) continue;
+        replacing = true;
+        for (const line of await this.readLines(m.id, restaurantId)) {
+          if (line.wine_library_id) onReplaced.add(String(line.wine_library_id));
+        }
+      }
+    }
+
+    const counts = emptyPlanCounts();
+    const onThisMenu = new Set<string>();
+    const planLines: PlanLine[] = lines.map((line) => {
+      const wineId = line.wine_library_id ?? null;
+      const row = wineId ? (house.get(wineId) ?? null) : null;
+      if (row) onThisMenu.add(String(row.id));
+      const menuB = linePrice(line.bottle_price);
+      const menuG = linePrice(line.by_glass_price);
+      const houseB = row ? linePrice(row.menu_price_current) : null;
+      const houseG = row ? linePrice(row.menu_price_glass) : null;
+      const kindPlan = (kind: "bottle" | "glass", menuPrice: number | null, housePrice: number | null): PlanKind => {
+        const lock = row ? (locks.get(`${row.id}:${kind}`) ?? null) : null;
+        let result: PlanResult;
+        if (!wineId) result = "not_linked";
+        else if (!row) result = menuPrice === null ? "blank_never_priced" : "new_wine";
+        else if (menuPrice === null) result = housePrice === null ? "blank_never_priced" : "blank_kept";
+        else if (lock) result = "held_by_lock";
+        else if (housePrice !== null && Math.abs(menuPrice - housePrice) < 0.005) result = "unchanged";
+        else result = "change";
+        counts[result] += 1;
+        const set = row && result === "change" ? (lastSet.get(String(row.id)) ?? null) : null;
+        return {
+          kind,
+          menuPrice,
+          housePrice,
+          result,
+          lastSet: set ? { by: { userId: set.by, name: null }, at: set.at, source: set.source } : null,
+          setAfterRead: !!set && setByAPersonAfter(set, readAt),
+          lock: lock
+            ? { lockId: lock.lockId, lockedPrice: lock.lockedPrice, lockedBy: { userId: lock.lockedBy, name: null }, lockedAt: lock.lockedAt }
+            : null,
+        };
+      };
+      const bottle = kindPlan("bottle", menuB, houseB);
+      const glass = kindPlan("glass", menuG, houseG);
+      // The same rule the carry writes (carryMenuPrice): answer 3, then answer 4.
+      let flag: PriceFlag | null = null;
+      if (wineId) {
+        if ((menuB === null && houseB !== null) || (menuG === null && houseG !== null)) flag = "blank_kept_last_known";
+        else if (menuB === null && menuG === null && houseB === null && houseG === null) flag = "blank_no_house_price";
+      }
+      const locked = !!row && lockedWines.has(String(row.id));
+      const libVintage = row?.master_wine_library?.vintage ?? null;
+      const readYear = yearOf(line.vintage);
+      return {
+        menuItemId: line.id,
+        name: line.name,
+        producer: line.producer ?? null,
+        vintage: line.vintage ?? null,
+        wineLibraryId: wineId,
+        inventoryId: row ? String(row.id) : null,
+        house: row
+          ? {
+              wineName: row.wine_name ?? null,
+              vintage: typeof libVintage === "number" ? libVintage : null,
+              active: row.is_active !== false && !row.deleted_at,
+            }
+          : null,
+        bottle,
+        glass,
+        flag,
+        returned: !current && locked && (!replacing || !onReplaced.has(String(wineId))),
+        vintageMismatch: locked && readYear !== null && typeof libVintage === "number" && readYear !== libVintage,
+      };
+    });
+
+    const dormantLocks: DormantLock[] = lockRead.locks
+      .filter((l) => !onThisMenu.has(l.inventoryId))
+      .map((l) => {
+        const w = byInventory.get(l.inventoryId) ?? null;
+        return {
+          lockId: l.lockId,
+          inventoryId: l.inventoryId,
+          kind: l.kind,
+          lockedPrice: l.lockedPrice,
+          lockedBy: { userId: l.lockedBy, name: null },
+          lockedAt: l.lockedAt,
+          wineName: w?.wine_name ?? null,
+          active: w ? w.is_active !== false && !w.deleted_at : null,
+        };
+      });
+
+    const decisive = {
+      menuId,
+      lines: [...planLines]
+        .sort((a, b) => a.menuItemId.localeCompare(b.menuItemId))
+        .map((l) => [
+          l.menuItemId,
+          l.inventoryId,
+          [l.bottle.result, l.bottle.menuPrice, l.bottle.housePrice, l.bottle.lock?.lockId ?? null],
+          [l.glass.result, l.glass.menuPrice, l.glass.housePrice, l.glass.lock?.lockId ?? null],
+        ]),
+      dormant: dormantLocks.map((d) => d.lockId).sort(),
+    };
+    return {
+      menuId,
+      current,
+      readAt,
+      generatedAt: new Date().toISOString(),
+      fingerprint: crypto.createHash("sha256").update(JSON.stringify(decisive)).digest("hex"),
+      lines: planLines,
+      counts,
+      dormantLocks,
+      namesReadable: true,
+      namesReason: null,
+    };
+  }
+
+  /**
    * Make a kept menu the house's current one (founder, 2026-09-21: after a
    * photo and an extraction the person chooses whether it becomes the current
    * default menu). An owner's or a manager's act: the controller checks.
    *
-   * `make_menu_current` (migration 20260921115100) does the switch in one
-   * transaction under the house row's lock: every other active menu is
-   * archived with who and when (that is how "the last one used" is known),
-   * and this one is stamped current. THEN its lines reach the house the way a
-   * current menu's always have: each linked line seeds the house's inventory
-   * and sets its price through set_house_menu_price, dated by the line (the
-   * newest scan wins: a line read before a price someone set later is
-   * `stale` and does not overwrite it), and a blank price keeps the last
-   * known one and flags the line.
+   * THE PLAN FIRST (ADR 0193 round 3, L13). The caller sends the fingerprint
+   * of the plan it showed; the plan is recomputed here, before the switch, and
+   * a missing fingerprint (400) or a different one (409) changes nothing.
+   *
+   * `make_menu_current` (migrations 20260921115100, 20260921170000) does the
+   * switch in one transaction under the house row's lock and returns the
+   * moment of the choice. THEN every linked line reaches the house: its price
+   * is written through set_house_menu_price DATED BY THE CHOICE
+   * (`made_current_at`) and naming the menu (L11) -- an older menu chosen
+   * again brings its prices back, except a kind a lock holds (L4), which is
+   * reported and named (L15). A price someone set after the choice but before
+   * its line was carried wins (`stale`, L14). A blank price keeps the house's
+   * price and flags the line; a line with no price for a wine the house has
+   * no price for is flagged too (answers 3 and 4).
    */
   async makeCurrent(
     restaurantId: string,
     menuId: string,
     userId: string,
+    fingerprint?: string | null,
   ): Promise<{
     outcome: "made_current" | "already_current";
     menuId: string;
     previousMenuIds: string[];
+    madeCurrentAt: string | null;
     lines: number;
     priceSync: Record<string, number>;
     flagged: number;
     failed: Array<{ menuItemId: string; name: string; error: string }>;
+    held: Array<{
+      menuItemId: string;
+      name: string;
+      kind: "bottle" | "glass";
+      lockId: string;
+      lockedPrice: number | null;
+      lockedBy: string | null;
+      lockedAt: string | null;
+    }>;
+    returned: Array<{ menuItemId: string; name: string }>;
   }> {
+    if (typeof fingerprint !== "string" || fingerprint.trim() === "") {
+      throw new BadRequestException(
+        "Choosing the current menu names the plan it was shown (its fingerprint, from GET /menu-versions/:menuId/plan). Nothing was changed.",
+      );
+    }
     // The lines are read BEFORE the switch (last-call review, 2026-09-21). Read
     // after it, a failed read left the menu current with nothing carried, and
     // choosing it again answered "already_current" with zero lines: a switch
     // that could never be finished, reported as one that had been. Now a failed
     // read throws here and nothing is changed.
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
+    const version = await this.readVersionRow(restaurantId, menuId);
+    const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
+    if (plan.fingerprint !== fingerprint.trim()) {
+      throw new ConflictException(
+        "What choosing this menu would do has changed since it was shown (a price or a lock moved). Nothing was changed; look at the plan again.",
+      );
+    }
     const { data, error } = await this.dbService.supabase.rpc("make_menu_current", {
       p_restaurant_id: restaurantId,
       p_menu_id: menuId,
@@ -843,31 +1306,78 @@ export class MenusService {
       if (code === "22023") throw new BadRequestException(error.message);
       throw new InternalServerErrorException(`The menu was not made current: ${error.message}`);
     }
-    const r = (data ?? {}) as { outcome?: string; previous_menu_ids?: string[] };
+    const r = (data ?? {}) as { outcome?: string; previous_menu_ids?: string[]; made_current_at?: string | null };
     if (r.outcome !== "made_current" && r.outcome !== "already_current") {
       throw new InternalServerErrorException(
         "The menu switch returned no outcome; whether this menu is current is unknown.",
       );
     }
-    const empty = { menuId, previousMenuIds: r.previous_menu_ids ?? [], lines: 0, priceSync: {}, flagged: 0, failed: [] };
+    const madeCurrentAt = typeof r.made_current_at === "string" ? r.made_current_at : null;
+    const empty = {
+      menuId,
+      previousMenuIds: r.previous_menu_ids ?? [],
+      madeCurrentAt,
+      lines: 0,
+      priceSync: {},
+      flagged: 0,
+      failed: [],
+      held: [],
+      returned: [],
+    };
     if (r.outcome === "already_current") return { outcome: "already_current", ...empty };
 
-    const { inventoryMap, priceSync } = await this.addToInventory(lines, restaurantId, userId);
+    if (!madeCurrentAt) {
+      // The menu IS current, and its prices cannot be dated by the choice. Said
+      // on every line, never dated by something else.
+      const why = "the menu switch did not say when it happened, so no price was dated or carried";
+      return {
+        outcome: "made_current",
+        ...empty,
+        lines: lines.length,
+        priceSync: lines.length ? { failed: lines.length } : {},
+        failed: lines.map((l) => ({ menuItemId: l.id, name: l.name, error: why })),
+      };
+    }
+
+    const { inventoryMap, priceSync } = await this.addToInventory(lines, restaurantId, userId, {
+      effectiveFrom: madeCurrentAt,
+      menuId,
+    });
     await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
 
     const counts: Record<string, number> = {};
     const failed: Array<{ menuItemId: string; name: string; error: string }> = [];
+    const held: Array<{
+      menuItemId: string;
+      name: string;
+      kind: "bottle" | "glass";
+      lockId: string;
+      lockedPrice: number | null;
+      lockedBy: string | null;
+      lockedAt: string | null;
+    }> = [];
     let flagged = 0;
     for (const line of lines) {
       const entry = priceSync.get(line.id);
       const outcome = entry?.outcome ?? "not_linked";
       counts[outcome] = (counts[outcome] ?? 0) + 1;
       if (entry?.flag) flagged += 1;
+      for (const h of entry?.held ?? []) held.push({ menuItemId: line.id, name: line.name, ...h });
       if (entry?.outcome === "failed" || entry?.flagError) {
         failed.push({ menuItemId: line.id, name: line.name, error: entry.error ?? entry.flagError ?? "" });
       }
     }
-    return { outcome: "made_current", ...empty, lines: lines.length, priceSync: counts, flagged, failed };
+    const returned = plan.lines.filter((l) => l.returned).map((l) => ({ menuItemId: l.menuItemId, name: l.name }));
+    return {
+      outcome: "made_current",
+      ...empty,
+      lines: lines.length,
+      priceSync: counts,
+      flagged,
+      failed,
+      held,
+      returned,
+    };
   }
 
   private async readVersionRow(restaurantId: string, menuId: string): Promise<Record<string, any>> {
@@ -914,21 +1424,19 @@ export class MenusService {
     };
   }
 
-  /** `public.users.user_id` -> name. A failed lookup is null names (logged), never raw ids shown as names. */
-  private async namesOf(ids: Array<string | null | undefined>): Promise<Map<string, string | null>> {
-    const unique = [...new Set(ids.filter((x): x is string => !!x))];
-    const out = new Map<string, string | null>();
-    if (unique.length === 0) return out;
-    const { data, error } = await this.dbService.supabase
-      .from("users")
-      .select("user_id, name")
-      .in("user_id", unique);
-    if (error) {
-      this.logger.warn(`The people behind this house's menus could not be named: ${error.message}`);
-      return out;
-    }
-    for (const u of (data ?? []) as Array<{ user_id: string; name: string | null }>) out.set(u.user_id, u.name ?? null);
-    return out;
+  /**
+   * `public.users.user_id` -> name. A failed lookup is RETURNED with its reason
+   * (ADR 0193 round 3, L25: it used to be logged and dropped, so "read by X"
+   * vanished without a word), never raw ids shown as names.
+   */
+  private async namesOf(
+    ids: Array<string | null | undefined>,
+  ): Promise<{ names: Map<string, string | null>; error: string | null }> {
+    const { people, error } = await readPeople(this.dbService.supabase, ids);
+    const names = new Map<string, string | null>();
+    for (const [id, p] of people) names.set(id, p.name);
+    if (error) this.logger.warn(`The people behind this house's menus could not be named: ${error}`);
+    return { names, error };
   }
 
   // ── Shared pipeline: resolve against the library, insert, seed inventory ──
@@ -1045,12 +1553,17 @@ export class MenusService {
     // table named "inventory" that does not exist in this schema) -- only for
     // the CURRENT menu. A kept menu's lines stay out of the house's inventory
     // and prices until an owner or manager makes it current.
+    // A line added to the CURRENT menu is dated now (the writer's default)
+    // and names its menu (ADR 0193 round 3, L11).
     const { inventoryMap, priceSync } = current
-      ? await this.addToInventory(insertedMenuItems, restaurantId, userId)
+      ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId })
       : {
           inventoryMap: new Map<string, string>(),
           priceSync: new Map<string, PriceSyncEntry>(
-            insertedMenuItems.map((m) => [m.id, { outcome: "not_current", error: null, flag: null, flagNote: null }]),
+            insertedMenuItems.map((m) => [
+              m.id,
+              { outcome: "not_current", error: null, flag: null, flagNote: null, held: [] },
+            ]),
           ),
         };
     await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
@@ -1097,6 +1610,7 @@ export class MenusService {
           : null,
         priceFlag: menuItem ? (priceSync.get(menuItem.id)?.flag ?? null) : null,
         priceFlagNote: menuItem ? (priceSync.get(menuItem.id)?.flagNote ?? null) : null,
+        priceHeld: menuItem ? (priceSync.get(menuItem.id)?.held ?? []) : [],
       };
     });
   }
@@ -1168,9 +1682,11 @@ export class MenusService {
    * row with no price at all -- the scanned line's by_glass_price /
    * bottle_price sat on `item` and were dropped -- and an existing row was
    * never touched by a re-scan. Now every linked line with a price writes it
-   * through set_house_menu_price as change_source 'import', DATED BY THE LINE
-   * (`created_at`), so the newest dated change wins: a line older than a
-   * price a manager typed is reported "stale" and does not overwrite it. A
+   * through set_house_menu_price as change_source 'import', DATED BY THE
+   * CHOICE of the menu (`dating.effectiveFrom`, ADR 0193 round 3, L11; it had
+   * been the line's own `created_at`, which backdated history and stopped an
+   * older menu chosen again from bringing its prices back) and naming the
+   * menu. A kind a price lock holds is not written and is named (L4, L5). A
    * line that states no price leaves the house's price alone -- a scan that
    * missed the glass column is not a decision to clear it.
    */
@@ -1178,6 +1694,7 @@ export class MenusService {
     menuItems: InsertedMenuItem[],
     restaurantId: string,
     userId: string,
+    dating: CarryDating,
   ): Promise<{
     inventoryMap: Map<string, string>;
     priceSync: Map<string, PriceSyncEntry>;
@@ -1204,7 +1721,7 @@ export class MenusService {
       if (existingErr) {
         const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${existingErr.message}`;
         this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
-        priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null });
+        priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
         continue;
       }
 
@@ -1230,17 +1747,24 @@ export class MenusService {
           // means the menu matched no wine, never that the house's row failed.
           const message = `the wine could not be added to the house's inventory, so no price was set: ${error.message}`;
           this.logger.warn(`inventory seeding failed for "${item.name}" (non-fatal): ${error.message}`);
-          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null });
+          priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
           continue;
         }
         inventoryId = created?.id ?? null;
       }
       if (!inventoryId) continue;
       result.set(item.id, inventoryId);
-      const entry = await this.carryMenuPrice(item, restaurantId, inventoryId, userId, {
-        bottle: existing?.menu_price_current ?? null,
-        glass: existing?.menu_price_glass ?? null,
-      });
+      const entry = await this.carryMenuPrice(
+        item,
+        restaurantId,
+        inventoryId,
+        userId,
+        {
+          bottle: existing?.menu_price_current ?? null,
+          glass: existing?.menu_price_glass ?? null,
+        },
+        dating,
+      );
       priceSync.set(item.id, entry);
       await this.writeLineFlag(item.id, entry);
     }
@@ -1274,18 +1798,22 @@ export class MenusService {
    * when the house HAS a price for that kind, keeping it is the unclear case
    * -- the scan may have missed the column, or the menu may have dropped it --
    * so the line is flagged `blank_kept_last_known` with a sentence naming the
-   * kept price. A blank kind the house has no price for is not flagged: there
-   * is nothing to keep and nothing to be unclear about.
+   * kept price.
+   *
+   * A LINE WITH NO PRICE AT ALL, FOR A WINE THE HOUSE HAS NO PRICE FOR, IS
+   * FLAGGED TOO (founder, 2026-09-21, round 6c, verbatim: "Flag it"):
+   * `blank_no_house_price`. The wine would stand on the current menu with no
+   * price anywhere. A single blank kind beside a priced one, for a kind the
+   * house never priced (most wines are not poured by the glass), is not
+   * flagged: that is the ordinary shape of a wine list, not an unclear line.
    */
   private async carryMenuPrice(
     item: InsertedMenuItem,
     restaurantId: string,
     inventoryId: string,
     userId: string,
-    house: { bottle: number | string | null; glass: number | string | null } = {
-      bottle: null,
-      glass: null,
-    },
+    house: { bottle: number | string | null; glass: number | string | null },
+    dating: CarryDating,
   ): Promise<PriceSyncEntry> {
     const price = (v: unknown): number | null => {
       if (v === null || v === undefined || v === "") return null;
@@ -1299,7 +1827,10 @@ export class MenusService {
     const kept: string[] = [];
     if (bottle === null && knownBottle !== null) kept.push(`bottle price ${knownBottle.toFixed(2)}`);
     if (glass === null && knownGlass !== null) kept.push(`glass price ${knownGlass.toFixed(2)}`);
-    const flag = kept.length > 0 ? ("blank_kept_last_known" as const) : null;
+    const noPriceAnywhere =
+      bottle === null && glass === null && knownBottle === null && knownGlass === null;
+    const flag: PriceFlag | null =
+      kept.length > 0 ? "blank_kept_last_known" : noPriceAnywhere ? "blank_no_house_price" : null;
     // Past tense on purpose (last-call review, 2026-09-21): the note stays on
     // the line after a manager changes the price on Inventory, so it states
     // what was kept when the line was carried -- true forever -- not what the
@@ -1307,8 +1838,10 @@ export class MenusService {
     const flagNote =
       kept.length > 0
         ? `The menu line shows no ${kept.map((k) => k.split(" ")[0]).join(" or ")} price, so the house kept the ${kept.join(" and ")} it already had. A manager can change it on Inventory, under Your price.`
-        : null;
-    if (bottle === null && glass === null) return { outcome: "no_price", error: null, flag, flagNote };
+        : noPriceAnywhere
+          ? "The menu line shows no price, and the house had no price for this wine either, so it stands on the menu unpriced. A manager can set one on Inventory, under Your price."
+          : null;
+    if (bottle === null && glass === null) return { outcome: "no_price", error: null, flag, flagNote, held: [] };
     try {
       const r = await setHouseMenuPrice(this.dbService.supabase, {
         restaurantId,
@@ -1317,16 +1850,19 @@ export class MenusService {
         ...(glass !== null ? { glass } : {}),
         source: "import",
         changedBy: userId,
-        effectiveFrom: item.created_at ?? null,
+        // Dated by the choice of the menu, or now for a line added to the
+        // current menu -- never by the line's own created_at (L11).
+        effectiveFrom: dating.effectiveFrom,
+        menuId: dating.menuId,
         reason: "menu line",
       });
-      return { outcome: r.outcome, error: null, flag, flagNote };
+      return { outcome: r.outcome, error: null, flag, flagNote, held: r.held };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
         `menu line ${item.id} ("${item.name}"): the house price was not updated: ${message}`,
       );
-      return { outcome: "failed", error: message, flag, flagNote };
+      return { outcome: "failed", error: message, flag, flagNote, held: [] };
     }
   }
 

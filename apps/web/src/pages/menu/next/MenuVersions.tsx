@@ -12,11 +12,15 @@
  * WHAT THIS READS AND WRITES (all real, all house-scoped by the token):
  *   GET  /menu-versions                       every kept menu, current, last used
  *   GET  /menu-versions/:id/source            a five-minute link to the source
- *   POST /menu-versions/:id/make-current      owner or manager only
+ *   GET  /menu-versions/:id/plan              what choosing it would do (round 3)
+ *   POST /menu-versions/:id/make-current      owner or manager only, naming the plan
  *   POST /menus/import                        read a new menu, kept as a draft
  *
  * Choosing the current menu is offered to owners and managers; the gateway
- * refuses anyone else regardless of this page.
+ * refuses anyone else regardless of this page. Since ADR 0193 round 3 the
+ * choice goes through the plan (`MenuPlan.tsx`): what it would change, with a
+ * Keep switch on each price (the founder, 2026-09-21: "add a section to that
+ * where you can lock price"), then "Make it current".
  */
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,12 +29,12 @@ import {
   getMenuSourceUrl,
   importMenu,
   listMenuVersions,
-  makeMenuCurrent,
   type MakeCurrentResult,
   type MenuCadence,
   type MenuImportResult,
   type MenuVersion,
 } from '../../../services/api/menus';
+import { MenuPlan } from './MenuPlan';
 
 const EM = '—';
 
@@ -68,21 +72,49 @@ export function sourceWords(v: MenuVersion): string {
   return 'read before menus were kept, no file';
 }
 
-/** What making a menu current did, in one sentence. */
+/**
+ * The words for each line outcome the gateway reports. A key the page does
+ * not know is still printed (ADR 0193 round 3, L15): an outcome the page
+ * drops is a price change -- or a hold -- nobody hears about.
+ */
+const OUTCOME_WORDS: Record<string, (n: number) => string> = {
+  changed: (n) => `${n} price${n === 1 ? '' : 's'} set from this menu`,
+  unchanged: (n) => `${n} already at the menu's price`,
+  stale: (n) => `${n} kept a price someone set after this menu was chosen`,
+  locked: (n) => `${n} held by a lock`,
+  no_price: (n) => `${n} with no price on the line`,
+  not_linked: (n) => `${n} not matched to a wine, so no price`,
+  failed: () => '',
+};
+
+/** What making a menu current did, in one sentence -- every outcome it was told, and every lock by name. */
 export function makeCurrentSentence(r: MakeCurrentResult): string {
   if (r.outcome === 'already_current') return 'That menu was already the current one. Nothing changed.';
-  const n = (k: string) => r.priceSync[k] ?? 0;
-  const parts = [
-    `${r.lines} line${r.lines === 1 ? '' : 's'}`,
-    `${n('changed')} price${n('changed') === 1 ? '' : 's'} set from this menu`,
-  ];
-  if (n('stale') > 0) parts.push(`${n('stale')} kept a price someone set after this menu was read`);
-  if (r.flagged > 0) parts.push(`${r.flagged} flagged: a blank price kept the last known one`);
-  if (n('not_linked') > 0) parts.push(`${n('not_linked')} not matched to a wine, so no price`);
+  const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
+  const keys = Object.keys(r.priceSync);
+  if (!keys.includes('changed')) parts.push(OUTCOME_WORDS.changed(0));
+  for (const k of ['changed', 'unchanged', 'stale', 'locked', 'no_price', 'not_linked']) {
+    const n = r.priceSync[k] ?? 0;
+    if (n > 0) parts.push(OUTCOME_WORDS[k](n));
+  }
+  for (const k of keys) {
+    if (k in OUTCOME_WORDS) continue;
+    const n = r.priceSync[k] ?? 0;
+    if (n > 0) parts.push(`${n} ${k.replace(/_/g, ' ')}`);
+  }
+  if (r.flagged > 0) parts.push(`${r.flagged} flagged for a blank price`);
+  const held = r.held?.length
+    ? ` Held by a lock, not changed: ${r.held
+        .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${h.lockedPrice.toFixed(2)}`})`)
+        .join('; ')}.`
+    : '';
+  const returned = r.returned?.length
+    ? ` Back on the menu with its lock still holding: ${r.returned.map((x) => x.name).join('; ')}.`
+    : '';
   const failed = r.failed.length
     ? ` ${r.failed.length} could not be priced: ${r.failed.map((f) => `${f.name} (${f.error})`).join('; ')}.`
     : '';
-  return `This is now the current menu: ${parts.join(', ')}.${failed}`;
+  return `This is now the current menu: ${parts.join(', ')}.${held}${returned}${failed}`;
 }
 
 /** A menu date the gateway accepts: a day or just a month. Empty = none. */
@@ -109,6 +141,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
+  const [planning, setPlanning] = useState(false);
   const dateRead = readMenuDate(date);
 
   const read = useMutation({
@@ -127,15 +160,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
     onSuccess: (r) => {
       setResult(r);
       setChosen(null);
-      onRead();
-    },
-  });
-
-  const choose = useMutation({
-    mutationFn: (menuId: string) => makeMenuCurrent(menuId),
-    onSuccess: (r) => {
-      setChosen(makeCurrentSentence(r));
-      void queryClient.invalidateQueries({ queryKey: ['menu'] });
+      setPlanning(false);
       onRead();
     },
   });
@@ -201,26 +226,34 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
               <button
                 type="button"
                 className="cl-btn cl-ink cl-focus"
-                disabled={choose.isPending || chosen !== null}
-                onClick={() => choose.mutate(result.menuId)}
+                disabled={planning || chosen !== null}
+                onClick={() => setPlanning(true)}
               >
-                {choose.isPending ? 'Making it current…' : 'Make this the current menu'}
+                Make this the current menu
               </button>
-              <button type="button" className="cl-btn cl-focus" disabled={chosen !== null} onClick={() => setChosen('Kept, not current. It stays in the list below.')}>
+              <button type="button" className="cl-btn cl-focus" disabled={chosen !== null} onClick={() => { setPlanning(false); setChosen('Kept, not current. It stays in the list below.'); }}>
                 Keep it, not current
               </button>
             </div>
           ) : (
             <p className="cl-note">An owner or a manager chooses whether it becomes the current menu. It is kept either way.</p>
           )}
+          {planning && chosen === null ? (
+            <MenuPlan
+              menuId={result.menuId}
+              canManage={canManage}
+              onCancel={() => setPlanning(false)}
+              onDone={(r) => {
+                setPlanning(false);
+                setChosen(makeCurrentSentence(r));
+                void queryClient.invalidateQueries({ queryKey: ['menu'] });
+                onRead();
+              }}
+            />
+          ) : null}
           {chosen ? (
             <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-choice-said">
               {chosen}
-            </p>
-          ) : null}
-          {choose.isError ? (
-            <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
-              It was not made current: {reasonOf(choose.error)}.
             </p>
           ) : null}
         </div>
@@ -229,21 +262,14 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
   );
 }
 
-function VersionRow({ v, canManage, lastUsedId, onChosen }: {
+function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
   v: MenuVersion
   canManage: boolean
   lastUsedId: string | null
-  onChosen: (sentence: string) => void
+  planning: boolean
+  onPlan: (menuId: string) => void
 }) {
-  const queryClient = useQueryClient();
   const [linkError, setLinkError] = useState<string | null>(null);
-  const choose = useMutation({
-    mutationFn: () => makeMenuCurrent(v.menuId),
-    onSuccess: (r) => {
-      onChosen(makeCurrentSentence(r));
-      void queryClient.invalidateQueries({ queryKey: ['menu'] });
-    },
-  });
   const openSource = async () => {
     setLinkError(null);
     try {
@@ -285,17 +311,12 @@ function VersionRow({ v, canManage, lastUsedId, onChosen }: {
           <button
             type="button"
             className="cl-btn cl-focus"
-            disabled={choose.isPending}
-            onClick={() => choose.mutate()}
+            data-on={planning ? 'true' : 'false'}
+            onClick={() => onPlan(v.menuId)}
             aria-label={`Make ${versionLabel(v)} current`}
           >
-            {choose.isPending ? 'Making it current…' : 'Make current'}
+            {planning ? 'See below' : 'Make current'}
           </button>
-        ) : null}
-        {choose.isError ? (
-          <span role="alert" style={{ display: 'block' }}>
-            Not made current: {reasonOf(choose.error)}.
-          </span>
         ) : null}
       </td>
     </tr>
@@ -305,6 +326,7 @@ function VersionRow({ v, canManage, lastUsedId, onChosen }: {
 export function MenuVersions({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
+  const [planFor, setPlanFor] = useState<string | null>(null);
   const q = useQuery({ queryKey: ['menu', 'versions'], queryFn: listMenuVersions });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
 
@@ -338,6 +360,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
             {q.data?.lastUsed ? `Last one used: ${versionLabel(q.data.lastUsed)}.` : 'No earlier menu has been used.'}
           </p>
           {q.data && q.data.versions.length > 0 ? (
+            <>
             <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10, marginTop: 10 }}>
               <table className="cl-table" style={{ width: '100%' }}>
                 <thead>
@@ -356,15 +379,33 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                       v={v}
                       canManage={canManage}
                       lastUsedId={q.data?.lastUsed?.menuId ?? null}
-                      onChosen={(s) => {
-                        setSaid(s);
-                        refresh();
+                      planning={planFor === v.menuId}
+                      onPlan={(id) => {
+                        setSaid(null);
+                        setPlanFor(id);
                       }}
                     />
                   ))}
                 </tbody>
               </table>
             </div>
+            {q.data.namesReadable === false ? (
+              <p className="cl-note">{q.data.namesReason ?? 'Who read or chose these menus could not be named.'}</p>
+            ) : null}
+            {planFor ? (
+              <MenuPlan
+                key={planFor}
+                menuId={planFor}
+                canManage={canManage}
+                onCancel={() => setPlanFor(null)}
+                onDone={(r) => {
+                  setPlanFor(null);
+                  setSaid(makeCurrentSentence(r));
+                  refresh();
+                }}
+              />
+            ) : null}
+            </>
           ) : (
             <p className="cl-said" style={{ marginTop: 10 }}>
               No menu has been read yet.

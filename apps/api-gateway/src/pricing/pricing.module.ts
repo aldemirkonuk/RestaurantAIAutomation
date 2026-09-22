@@ -6,12 +6,13 @@ import { SettingsAuditModule } from "../settings-audit/settings-audit.module";
 import { PricingController } from "./pricing.controller";
 import { TargetMarginService } from "./target-margin.service";
 import { MarginAdviceService } from "./margin-advice.service";
+import { PriceLocksService } from "./price-locks.service";
 
 /**
  * A house's own price, its target margin, and advice toward it (ADR 0193).
  *
  * Imported by `AnalyticsModule` only (the live recommendations feed reads
- * `MarginAdviceService`), which is also how this module's controller is
+ * `MarginAdviceService` and `PriceLocksService`), which is also how this module's controller is
  * registered. `InventoryModule` and `MenusModule` do NOT import it: they write
  * prices through `setHouseMenuPrice`, a plain function in
  * `house-menu-price.ts`, and `InventoryModule` imports `OrganizationsModule`
@@ -22,7 +23,7 @@ import { MarginAdviceService } from "./margin-advice.service";
 @Module({
   imports: [DatabaseModule, AuthModule, OrganizationsModule, SettingsAuditModule],
   controllers: [PricingController],
-  providers: [TargetMarginService, MarginAdviceService],
-  exports: [TargetMarginService, MarginAdviceService],
+  providers: [TargetMarginService, MarginAdviceService, PriceLocksService],
+  exports: [TargetMarginService, MarginAdviceService, PriceLocksService],
 })
 export class PricingModule {}

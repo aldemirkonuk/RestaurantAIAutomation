@@ -203,6 +203,7 @@ describe("PricingController — owner or manager only for the two writes", () =>
       { write, confirmPour, read: jest.fn() } as any,
       { accept, adviseHouse: jest.fn() } as any,
       organizations,
+      {} as any,
     );
     return { c, write, accept, confirmPour };
   }
@@ -236,5 +237,64 @@ describe("PricingController — owner or manager only for the two writes", () =>
     const { c, write } = controller("owner");
     await expect(c.setTargetMargin(undefined as any, "user-1", DTO)).rejects.toMatchObject({ status: 400 });
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ADR 0193 round 3, answer 3. The founder, 2026-09-21, verbatim: "Yes,
+ * confirmed per wine". One wine's own pour, confirmed by an owner or manager
+ * (the controller's check), written with who and when in ONE update, audited;
+ * null sends the wine back to the house's pour.
+ */
+describe("TargetMarginService.confirmWinePour", () => {
+  const WINE = { id: "inv-1", wine_name: "Moscato d'Asti", pour_size_ml: 150, pour_size_confirmed_by: null, pour_size_confirmed_at: null };
+
+  it("writes the pour, the person and the moment in one update, and audits it on the wine", async () => {
+    const { svc, updates, audits } = fake({ ...WINE });
+    const r = await svc.confirmWinePour("rest-1", "inv-1", { pourMl: 75 }, "user-1");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ pour_size_ml: 75, pour_size_confirmed_by: "user-1" });
+    expect(typeof updates[0].pour_size_confirmed_at).toBe("string");
+    expect(audits[0]).toMatchObject({
+      action: "pour_size_confirmed",
+      entityType: "restaurant_inventory",
+      entityId: "inv-1",
+      subject: "pour size of Moscato d'Asti",
+      fields: { wine_pour_ml: { from: null, to: 75 } },
+    });
+    expect(r).toMatchObject({ inventoryId: "inv-1", pour: { confirmed: true, ml: 75, confirmedBy: "user-1" }, audited: true });
+  });
+
+  it("null sends the wine back to the house's pour: the confirmation is cleared, the stored number is left alone", async () => {
+    const { svc, updates, audits } = fake({ ...WINE, pour_size_ml: 75, pour_size_confirmed_by: "user-1", pour_size_confirmed_at: "2026-09-21T10:00:00Z" });
+    const r = await svc.confirmWinePour("rest-1", "inv-1", { pourMl: null }, "user-2");
+    expect(updates).toEqual([{ pour_size_confirmed_by: null, pour_size_confirmed_at: null }]);
+    expect(audits[0].fields).toEqual({ wine_pour_ml: { from: 75, to: null } });
+    expect(r.pour).toEqual({ confirmed: false, ml: null, confirmedAt: null, confirmedBy: null });
+  });
+
+  it.each([[{}], [{ pourMl: "75" }], [{ pourMl: 9 }], [{ pourMl: 501 }]])("refuses %j and writes nothing", async (body) => {
+    const { svc, updates } = fake({ ...WINE });
+    await expect(svc.confirmWinePour("rest-1", "inv-1", body as any, "user-1")).rejects.toBeInstanceOf(BadRequestException);
+    expect(updates).toHaveLength(0);
+  });
+
+  it("a wine that cannot be read is an error and nothing is written; a wine of no house is a 404", async () => {
+    const failing = fake({ ...WINE }, { readError: "denied" });
+    await expect(failing.svc.confirmWinePour("rest-1", "inv-1", { pourMl: 75 }, "user-1")).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    expect(failing.updates).toHaveLength(0);
+    const missing = fake(null);
+    await expect(missing.svc.confirmWinePour("rest-1", "inv-1", { pourMl: 75 }, "user-1")).rejects.toMatchObject({ status: 404 });
+    expect(missing.updates).toHaveLength(0);
+  });
+
+  it("a failed write is an error, and nothing is audited", async () => {
+    const { svc, audits } = fake({ ...WINE }, { writeError: "check violation" });
+    await expect(svc.confirmWinePour("rest-1", "inv-1", { pourMl: 75 }, "user-1")).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    expect(audits).toHaveLength(0);
   });
 });

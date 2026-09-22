@@ -23,6 +23,7 @@ import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { SetThresholdDto } from "./dto/set-threshold.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
+import { MakeMenuCurrentDto } from "./dto/make-menu-current.dto";
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 
 /** The two fields of a menu line that are prices (ADR 0193). */
@@ -195,18 +196,33 @@ export class MenuVersionsController {
     return this.menusService.sourceUrl(this.house(restaurantId), menuId);
   }
 
+  @Get(":menuId/plan")
+  @ApiOperation({
+    summary: "What choosing this menu would do, per line and per kind, before anyone chooses it",
+    description:
+      "ADR 0193 round 3 (L13; the founder, 2026-09-21: \"add a section to that where you can lock price\"). Per line and per kind: the house price, the menu price and the result (change, unchanged, held_by_lock, blank_kept, blank_never_priced, not_linked, new_wine); for a price that would be replaced, who set it and when; the lock that holds a kind; every open lock whose wine is NOT on this menu (kept, dormant); and a fingerprint that make-current requires. Nothing is written. A failed read is a 500, never a plan with a hole in it.",
+  })
+  async plan(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    return this.menusService.planFor(this.house(restaurantId), menuId);
+  }
+
   @Post(":menuId/make-current")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Make a kept menu the current one — owner or manager only",
+    summary: "Make a kept menu the current one — owner or manager only, naming the plan it was shown",
     description:
-      "Archives the house's current menu (who and when: that is 'the last one used'), stamps this one current, then carries its lines to the house's inventory and prices, dated by each line (the newest scan wins). A blank price keeps the last known one and flags the line. Says per outcome how many lines did what, and names any line whose price failed.",
+      "Requires the fingerprint of GET /menu-versions/:menuId/plan: 400 without it, 409 (nothing changed) when the plan recomputed now differs. Archives the house's current menu (who and when: that is 'the last one used'), stamps this one current, then carries its lines to the house's inventory and prices DATED BY THE CHOICE (an older menu chosen again brings its prices back), except a kind a price lock holds, which is reported and named. A blank price keeps the house's price and flags the line; a line with no price for a wine the house has none for is flagged too. Says per outcome how many lines did what, and names any line whose price failed or was held.",
   })
   @ApiResponse({ status: 403, description: "The caller is not an owner or manager of this restaurant." })
+  @ApiResponse({ status: 409, description: "The plan changed since it was shown. Nothing was changed." })
   async makeCurrent(
     @CurrentUser("restaurantId") restaurantId: string,
     @CurrentUser("userId") userId: string,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
+    @Body() dto: MakeMenuCurrentDto,
   ) {
     const house = this.house(restaurantId);
     await this.organizations.assertCanManageRestaurant(
@@ -214,7 +230,7 @@ export class MenuVersionsController {
       house,
       "choose the current menu",
     );
-    return this.menusService.makeCurrent(house, menuId, userId);
+    return this.menusService.makeCurrent(house, menuId, userId, dto?.fingerprint ?? null);
   }
 }
 
