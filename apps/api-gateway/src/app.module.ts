@@ -50,6 +50,7 @@ import { PaymentMethodsModule } from "./payment-methods/payment-methods.module";
 import { BillingModule } from "./billing/billing.module";
 import { RestaurantsModule } from "./restaurants/restaurants.module";
 import { TeamModule } from "./team/team.module";
+import { HouseAreasModule } from "./areas/house-areas.module";
 import { VendorCatalogueModule } from "./vendor-catalogue/vendor-catalogue.module";
 import { DistributorDiscoveryModule } from "./distributor-discovery/distributor-discovery.module";
 import { MenusModule } from "./menus/menus.module";
@@ -139,6 +140,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     BillingModule, // Stripe: SetupIntents, reconcile, signed webhook (ADR 0110)
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)
     TeamModule, // Team ops: schedules, shifts, coverage, labor, certs, performance
+    HouseAreasModule, // Areas, lead marks and Away dates (ADR 0218)
     VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints
     DistributorDiscoveryModule, // Territory-gated distributor map search (geo + portfolio facets)
     MenusModule, // Menu import (scan/CSV/manual) + onboarding progress

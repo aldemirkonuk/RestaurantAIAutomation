@@ -22,6 +22,7 @@ import { GrantSuspendedProducer } from "./producers/grant-suspended.producer";
 import { AddedToolProducer } from "./producers/added-tool.producer";
 import { ExperimentEndedProducer } from "./producers/experiment-ended.producer";
 import { NotificationProducersService } from "./producers/notification-producers.service";
+import { AreaRoutingModule } from "../areas/area-routing.module";
 
 @Module({
   imports: [
@@ -52,6 +53,9 @@ import { NotificationProducersService } from "./producers/notification-producers
     // this module, so it sits on no cycle. `check_gateway_boots.sh` is what proves
     // that, since tsc and jest cannot see a Nest injector.
     UxOptimizerModule,
+    // ADR 0218: the funnel routes a broadcast by area label and Away. Database
+    // only, so it joins no cycle.
+    AreaRoutingModule,
   ],
   controllers: [NotificationsController],
   providers: [

@@ -45,6 +45,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  LayoutGrid,
   Megaphone,
   Send,
   Upload,
@@ -76,6 +77,8 @@ import {
   TimeOffSheet,
 } from './TeamOverlays';
 import { TeamRecordSection, TrailSheet } from './TeamRecord';
+import { AreasSheet } from './AreasSheet';
+import { useHouseAreas } from './useHouseAreas';
 import {
   useActiveRestaurantId,
   useTeamNextData,
@@ -381,6 +384,7 @@ type Overlay =
   | { kind: 'note'; only: string | null }
   | { kind: 'timeoff' }
   | { kind: 'trail' }
+  | { kind: 'areas' }
   | { kind: 'export' };
 
 function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
@@ -393,6 +397,7 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
   const exportAnchor = useRef<HTMLButtonElement | null>(null);
 
   const data = useTeamNextData(weekStart);
+  const house = useHouseAreas();
   const labor = data.labor;
   const rules = data.coverageRules;
   // Three states, three sentences: the rule file has not answered, it is empty
@@ -435,6 +440,14 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
             >
               <UsersRound className="tm-icon" aria-hidden="true" />
               People · {data.membersCount === null ? EM : data.membersCount}
+            </button>
+            <button
+              type="button"
+              className="tm-ctl tm-ctl--quiet"
+              onClick={() => setOverlay({ kind: 'areas' })}
+            >
+              <LayoutGrid className="tm-icon" aria-hidden="true" />
+              Areas
             </button>
             <button
               type="button"
@@ -748,9 +761,21 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           certs={data.certs}
           timeOff={data.timeOff}
           wageVisible={data.wageVisible}
+          house={house}
           onClose={() => setOverlay(null)}
           onEdit={(m) => setOverlay({ kind: 'member', member: m })}
           onAdd={() => setOverlay({ kind: 'member', member: null })}
+        />
+      )}
+      {overlay?.kind === 'areas' && (
+        <AreasSheet
+          readout={house.areas}
+          failed={house.areasFailed}
+          roster={data.members}
+          awayByUser={house.awayByUser}
+          today={house.away?.today ?? null}
+          awayFailed={house.awayFailed}
+          onClose={() => setOverlay(null)}
         />
       )}
       {overlay?.kind === 'member' && (

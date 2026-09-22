@@ -47,8 +47,19 @@ export interface AccessChange {
   actorUserId: string;
   /** `public.users.user_id` of the person it happens to, when they have an account. */
   targetUserId: string | null;
-  action: "team_member_removed" | "member_role_changed";
-  entityType: "team_member" | "restaurant_member";
+  action:
+    | "team_member_removed"
+    | "member_role_changed"
+    // ADR 0218 — the house log for areas, leads and Away set on someone's
+    // behalf. Same row shape, same receipt; one writer for "record the change".
+    | "house_area_changed"
+    | "area_member_added"
+    | "area_member_removed"
+    | "area_lead_granted"
+    | "area_lead_removed"
+    | "away_set_for_member"
+    | "away_ended_for_member";
+  entityType: "team_member" | "restaurant_member" | "house_area";
   entityId: string;
   /** Before → after, as it will be read back off the /logs timeline. */
   changes: Record<string, unknown>;

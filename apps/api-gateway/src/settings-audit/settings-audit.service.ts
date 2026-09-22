@@ -107,6 +107,19 @@ export const READ_BACK_ACTIONS = [
   ...SETTINGS_AUDIT_ACTIONS,
   "member_role_changed",
   "team_member_removed",
+  /**
+   * ADR 0218 — areas, lead marks, and Away set or ended on someone's behalf.
+   * Written by `recordAccessChange` from `HouseAreasService`; read back here
+   * because the Team page's "What changed here" is this same trail, and a lead
+   * grant the house log could not show would be a grant nobody can find.
+   */
+  "house_area_changed",
+  "area_member_added",
+  "area_member_removed",
+  "area_lead_granted",
+  "area_lead_removed",
+  "away_set_for_member",
+  "away_ended_for_member",
 ] as const;
 
 export type SettingsAuditAction = (typeof SETTINGS_AUDIT_ACTIONS)[number];

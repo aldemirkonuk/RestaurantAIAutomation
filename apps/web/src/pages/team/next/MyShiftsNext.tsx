@@ -27,6 +27,9 @@ import {
   type MyWeekPayload,
 } from '../../../services/api/team';
 import { useActiveRestaurantId } from './useTeamNextData';
+import { useAuth } from '../../../contexts/AuthContext';
+import { AwayCard } from './AwayCard';
+import { useHouseAreas } from './useHouseAreas';
 import {
   DOW,
   EM,
@@ -47,6 +50,14 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const qc = useQueryClient();
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const days = weekDays(weekStart);
+  const { user } = useAuth();
+  const house = useHouseAreas();
+  const myAreas = house.areas
+    ? house.areas.mine.areas.map((k) => {
+        const name = house.areas!.areas.find((a) => a.kind === k)?.name ?? k;
+        return house.areas!.mine.leadOf.includes(k) ? `${name} (you lead it)` : name;
+      })
+    : null;
 
   const q = useQuery({
     queryKey: ['team-next-my-week', rid, weekStart],
@@ -293,6 +304,39 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             ))}
           </section>
         )}
+
+        <section className="tm-cards" style={{ marginTop: 18 }}>
+          <AwayCard
+            userId={user?.userId ?? null}
+            personLabel={user?.name || 'You'}
+            window={user?.userId ? (house.awayByUser.get(user.userId) ?? null) : null}
+            today={house.away?.today ?? null}
+            failed={house.awayFailed}
+            self
+          />
+          {house.areasFailed && (
+            // A failed read must not look like "you are in no area".
+            <section className="tm-card">
+              <h4 className="tm-card__h">Your areas</h4>
+              <p className="tm-alert" role="alert" style={{ margin: 0 }}>
+                Your areas could not be read, so which ones are yours is unknown — not
+                &quot;none&quot;.
+              </p>
+            </section>
+          )}
+          {myAreas !== null && myAreas.length > 0 && (
+            <section className="tm-card">
+              <h4 className="tm-card__h">Your areas</h4>
+              <p className="tm-note" style={{ margin: 0 }}>
+                {myAreas.join(', ')}
+              </p>
+              <p className="tm-hint">
+                Alerts for these areas come to you first. Everything else in the house is
+                still yours to see.
+              </p>
+            </section>
+          )}
+        </section>
 
         {memberId ? (
           <div className="tm-actions" style={{ marginTop: 18 }}>

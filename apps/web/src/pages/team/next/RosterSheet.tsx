@@ -44,6 +44,10 @@ import {
 import { Card, Fact, KV, Mark, MutationError, Tag } from './tm-bits';
 import { PerformanceCard } from './PerformanceCard';
 import type { TimeOffRow } from './useTeamNextData';
+import { AwayMarker } from '@/components/mudavym/AwayMarker';
+import { AwayCard } from './AwayCard';
+import type { HouseAreasData } from './useHouseAreas';
+import { useAuth } from '../../../contexts/AuthContext';
 
 const EMPLOYMENT: ReadonlyArray<[string, string]> = [
   ['full_time', 'full time'],
@@ -70,6 +74,7 @@ function MemberDetail({
   certs,
   timeOff,
   wageVisible,
+  house,
   onEdit,
 }: {
   member: TeamMember;
@@ -78,13 +83,27 @@ function MemberDetail({
   certs: Certification[] | null;
   timeOff: TimeOffRow[] | null;
   wageVisible: boolean;
+  /** Areas and Away (ADR 0218). */
+  house: HouseAreasData;
   onEdit: () => void;
 }) {
   const name = resolveName(member);
+  const { user } = useAuth();
+  // An owner opening their own row sets their OWN dates: not logged, and the
+  // card must not claim it will be.
+  const isSelf = !!user?.userId && member.user_id === user.userId;
   const mine = (shifts ?? []).filter((s) => s.member_id === member.id);
   const hours = mine.reduce((sum, s) => sum + shiftHours(s.start_time, s.end_time), 0);
   const myCerts = (certs ?? []).filter((c) => c.member_id === member.id);
   const myLeave = (timeOff ?? []).filter((r) => r.member_id === member.id);
+  const areaNames = house.areas
+    ? house.areas.memberships
+        .filter((a) => a.memberId === member.id)
+        .map((a) => {
+          const area = house.areas!.areas.find((x) => x.kind === a.kind);
+          return `${area?.name ?? a.kind}${a.lead ? ' (lead)' : ''}${area && !area.enabled ? ' — off' : ''}`;
+        })
+    : null;
 
   return (
     <div className="tm-rrow__body">
@@ -97,6 +116,18 @@ function MemberDetail({
           v={shifts === null ? `${EM} not read` : `${mine.length} shifts · ${fmtHours(hours)}`}
         />
         {wageVisible && <Fact k="Wage" v={money(member.hourly_wage)} />}
+        <Fact
+          k="Areas"
+          v={
+            house.areasFailed
+              ? `${EM} not read`
+              : areaNames === null
+                ? EM
+                : areaNames.length === 0
+                  ? 'none (the whole house)'
+                  : areaNames.join(', ')
+          }
+        />
       </div>
 
       {!name.known && (
@@ -163,6 +194,15 @@ function MemberDetail({
           )}
         </Card>
 
+        <AwayCard
+          userId={member.user_id}
+          personLabel={name.text}
+          window={member.user_id ? (house.awayByUser.get(member.user_id) ?? null) : null}
+          today={house.away?.today ?? null}
+          failed={house.awayFailed}
+          self={isSelf}
+        />
+
         <PerformanceCard memberId={member.id} memberName={name.text} />
       </div>
 
@@ -184,6 +224,7 @@ export function RosterSheet({
   certs,
   timeOff,
   wageVisible,
+  house,
   onClose,
   onEdit,
   onAdd,
@@ -194,6 +235,7 @@ export function RosterSheet({
   certs: Certification[] | null;
   timeOff: TimeOffRow[] | null;
   wageVisible: boolean;
+  house: HouseAreasData;
   onClose: () => void;
   onEdit: (m: TeamMember) => void;
   onAdd: () => void;
@@ -249,7 +291,16 @@ export function RosterSheet({
           header.
         </p>
       ) : (
-        members.map((m) => {
+        <>
+        {house.awayFailed && (
+          // Without this line every name would simply show no Away marker,
+          // which reads as "nobody is away" — a failed read shown as empty.
+          <p className="tm-alert" role="alert" style={{ margin: 16 }}>
+            Away dates could not be read, so nobody here is marked Away. Whether anyone is
+            away is unknown — not &quot;no&quot;.
+          </p>
+        )}
+        {members.map((m) => {
           const name = resolveName(m);
           const flag = flagById.get(m.id);
           const open = openId === m.id;
@@ -269,7 +320,19 @@ export function RosterSheet({
                 <Mark name={name} avatarUrl={m.avatar_url} owner={m.role === 'owner'} />
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span className="tm-membercell__name" data-known={String(name.known)}>
-                    {name.text}
+                    {house.away && m.user_id ? (
+                      // Static inside the row's own button; the expanded row's
+                      // Away card says the sentence.
+                      <AwayMarker
+                        name={name.text}
+                        personLabel={name.text}
+                        window={house.awayByUser.get(m.user_id)}
+                        today={house.away.today}
+                        interactive={false}
+                      />
+                    ) : (
+                      name.text
+                    )}
                   </span>
                   <span className="tm-rrow__line">
                     {[
@@ -294,12 +357,14 @@ export function RosterSheet({
                   certs={certs}
                   timeOff={timeOff}
                   wageVisible={wageVisible}
+                  house={house}
                   onEdit={() => onEdit(m)}
                 />
               )}
             </div>
           );
-        })
+        })}
+        </>
       )}
     </Sheet>
   );
