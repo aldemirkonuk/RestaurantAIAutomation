@@ -343,7 +343,7 @@ jobs:
           echo "::error::A 404 means the route is missing; 000 means nothing answered."
           exit 1
 
-  # ── Stage 3: Frontend build smoke (Vercel deploys separately) ──────────────
+  # ── Stage 3: Frontend build smoke + web provenance (ADR 0219) ──────────────
   verify-frontend:
     name: "Stage 3 — Frontend Build"
     runs-on: ubuntu-latest
@@ -351,8 +351,21 @@ jobs:
     if: >-
       github.event_name == 'workflow_run'
       || (github.event_name == 'workflow_dispatch' && inputs.mode == 'deploy-audit')
+    # Exposed for the same reason Stage 2 exposes gateway_commit: deploy-audit
+    # records what was actually VERIFIED (FLOOR — see resolve_watched_commit.py),
+    # not just the raw merged sha (ADR 0219).
+    outputs:
+      web_commit_expected: ${{ steps.web-expect.outputs.expect }}
     steps:
+      # fetch-depth: 0 (full history), same requirement as Stage 2 and for the
+      # same reason: scripts/check_web_deployed_sha.py and
+      # scripts/resolve_watched_commit.py both walk `git log`/`merge-base`
+      # against this checkout, which a shallow clone cannot answer (their own
+      # self-tests build a full throwaway repo precisely because a partial one
+      # would prove nothing).
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
 
@@ -370,10 +383,100 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder' }}
 
-      - name: Production URL smoke (optional)
-        if: env.VERCEL_PRODUCTION_URL != ''
+      # ── WEB PROVENANCE (ADR 0219) ───────────────────────────────────────────
+      #
+      # On 2026-09-21 two production merges (#421, #424) were refused by
+      # Vercel's deployment cap and mudavym.com kept serving #418's build for
+      # hours. The only check here was the "Production URL smoke" step this
+      # replaces — `curl` for HTTP 200, which the STALE previous build answers
+      # perfectly — and it did not even run: it was gated on
+      # VERCEL_PRODUCTION_URL, which is not set as a repository secret
+      # (`gh secret list`, 2026-09-22), so it concluded "skipped" in all 37 of
+      # the last 40 runs that reached this stage (2026-09-11 to 2026-09-22).
+      # A 200 proves *a* build is serving, never WHICH one (ADR 0097's lesson
+      # for the gateway, one service over). The founder, asked 2026-09-22 "may
+      # I add a check that fails loudly when mudavym.com is not serving the
+      # latest web commit?", chose the option "Yes, add it (Recommended)".
+      #
+      # The URL defaults to https://mudavym.com, the address named in the
+      # question the founder approved, and a public name, not a secret. A
+      # VERCEL_PRODUCTION_URL secret, if one is ever set, overrides it. It can
+      # therefore never be empty, and this stage can no longer skip itself
+      # into a pass.
+      - name: Which production URL is checked
+        env:
+          WEB_PRODUCTION_URL: ${{ secrets.VERCEL_PRODUCTION_URL || 'https://mudavym.com' }}
         run: |
-          curl -fsS -o /dev/null -w "HTTP %{http_code}\n" "${VERCEL_PRODUCTION_URL%/}/"
+          if [ -z "$WEB_PRODUCTION_URL" ]; then
+            echo "::error::No production URL to check; this stage cannot do its job."
+            exit 1
+          fi
+          echo "Checking $WEB_PRODUCTION_URL"
+
+      # --self-test builds a real throwaway git repo, a clone of it and a real
+      # HTTP server and drives every state (MATCH/UNCHANGED/SUPERSEDED/STALE/
+      # PAGE_MALFORMED/NETWORK_UNREACHABLE/UNKNOWN_MARKER/DIVERGENT/
+      # CANNOT_RESOLVE) end to end, including the tip refresh. --check-paths
+      # fails when the web bundle imports a file the watched-path list does
+      # not cover (a gap there lets a stale build pass). CLAIMS rows run both
+      # on every pull request (ADR 0219), so this step re-proves them here.
+      - name: The web provenance check's own logic still holds
+        run: |
+          set -euo pipefail
+          python3 scripts/check_web_deployed_sha.py --self-test
+          python3 scripts/check_web_deployed_sha.py --check-paths
+
+      # ── WHICH COMMIT SHOULD THE WEB BE RUNNING, AT LEAST? ───────────────────
+      #
+      # Vercel builds every push to main (the web project has no Ignored Build
+      # Step), but a push whose build is refused or fails leaves the previous
+      # build serving. When that push touched nothing the web build reads, the
+      # page is unchanged, so the floor is the last commit at or before the
+      # merged sha that touched a watched path. --print-floor reads the same
+      # DEFAULT_PATHS list the check below uses, so the recorded
+      # web_commit_expected is the floor that was actually checked.
+      - name: Resolve which commit the web should be running
+        id: web-expect
+        run: |
+          set -euo pipefail
+          SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
+          RESOLVED="$(python3 scripts/check_web_deployed_sha.py --print-floor --sha "$SHA")"
+          echo "Merged: $SHA"
+          echo "web's watched paths were last touched at: $RESOLVED"
+          echo "expect=$RESOLVED" >> "$GITHUB_OUTPUT"
+
+      # tip(main) is fetched here, not read from HEAD: with no `ref`,
+      # actions/checkout checks out github.sha, which for a workflow_run event
+      # is main's tip when the event fired, so HEAD is already behind any
+      # merge that landed while Stages 1-2 and the build above ran. The check also
+      # gets --refresh-remote origin, so a merge that lands (and that Vercel
+      # serves) during its own poll is fetched and classified against, rather
+      # than read as DIVERGENT.
+      - name: Resolve tip(main), fresh
+        id: web-tip
+        run: |
+          set -euo pipefail
+          git fetch --quiet --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          TIP="$(git rev-parse --verify "refs/remotes/origin/main^{commit}")"
+          echo "tip(main) at check time: $TIP"
+          echo "tip=$TIP" >> "$GITHUB_OUTPUT"
+
+      # THE STEP THAT MAKES THIS STAGE MEAN SOMETHING. Polls the served
+      # <meta name="mudavym:commit"> (written at build time by
+      # apps/web/src/lib/build-provenance.ts) until it reports a commit inside
+      # [FLOOR, tip(main)], or 600 s pass. Vercel's measured web build time
+      # over 19 READY builds: median 72 s, max 104 s.
+      - name: The deployed web build IS the build it should be
+        env:
+          WEB_PRODUCTION_URL: ${{ secrets.VERCEL_PRODUCTION_URL || 'https://mudavym.com' }}
+        run: |
+          python3 scripts/check_web_deployed_sha.py \
+            --url "${WEB_PRODUCTION_URL%/}/" \
+            --sha "${{ github.event.workflow_run.head_sha || github.sha }}" \
+            --tip "${{ steps.web-tip.outputs.tip }}" \
+            --refresh-remote origin \
+            --timeout-seconds 600 \
+            --poll-seconds 15
 
   # ── Post-deploy audit artifact ─────────────────────────────────────────────
   deploy-audit:
@@ -407,8 +510,19 @@ jobs:
         run: |
           SHA="${{ github.event.workflow_run.head_sha || github.sha }}"
           GW="${{ needs.verify-api-gateway.result }}"
+          FE="${{ needs.verify-frontend.result }}"
           GATEWAY_COMMIT="${{ needs.verify-api-gateway.outputs.gateway_commit }}"
+          WEB_COMMIT_EXPECTED="${{ needs.verify-frontend.outputs.web_commit_expected }}"
           if [ "$GW" = "success" ]; then PROV=true; else PROV=false; fi
+          # Mirrors the gateway's own PROV derivation one paragraph up: the
+          # step this depends on (verify-frontend's "The deployed web build
+          # IS the build it should be") is the one that actually polled
+          # mudavym.com's served commit and classified it against
+          # [FLOOR, tip(main)] — see scripts/check_web_deployed_sha.py. A
+          # SUCCESS job result here means that step ended in a MATCH/
+          # UNCHANGED/SUPERSEDED verdict, never merely "curl saw 200" (the
+          # field this replaces — ADR 0219).
+          if [ "$FE" = "success" ]; then WEB_PROV=true; else WEB_PROV=false; fi
           cat > deploy-audit.json <<EOF
           {
             "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -418,7 +532,10 @@ jobs:
             "provenance_means": "the gateway's /api/v1/health/live reported gateway_commit (not necessarily the merged commit — see resolve_watched_commit.py for path-scoped services) as its own build, and /api/v1/health/ready answered 200",
             "orchestrator": "${{ needs.verify-orchestrator.result }}",
             "api_gateway": "${GW}",
-            "frontend": "${{ needs.verify-frontend.result }}",
+            "frontend": "${FE}",
+            "web_commit_expected": "${WEB_COMMIT_EXPECTED}",
+            "web_provenance_verified": ${WEB_PROV},
+            "web_provenance_means": "mudavym.com's served <meta name=\"mudavym:commit\"> (apps/web/src/lib/build-provenance.ts) reported a commit inside [web_commit_expected, tip(main) at check time] — not necessarily the merged commit itself, same path-scoped reasoning as gateway_commit (scripts/check_web_deployed_sha.py, ADR 0219). NOT merely that curl saw HTTP 200, which is what this field replaced.",
             "recheck": "scripts/check_deploy_audit_ran.sh ${SHA}",
             "rollback_hint": "Re-run this workflow with mode=rollback-guide and rollback_target_sha=<previous-good-sha>"
           }
