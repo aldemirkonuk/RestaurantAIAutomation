@@ -407,7 +407,10 @@ export async function deleteRecurringEventFuture(
  * gateway keeps only a hash), and a dead address answers one notice event —
  * "Calendar link expired - connect again". */
 
-/** The categories an owner may pick, in the order the page lists them. */
+/**
+ * The categories a person may pick to narrow their own link, in the order the
+ * page lists them. Every member may narrow; a pick never widens (round 6t).
+ */
 export const CALENDAR_LINK_CATEGORIES = [
   { key: 'shifts', label: 'Shifts' },
   { key: 'deliveries', label: 'Deliveries' },
@@ -450,6 +453,13 @@ export interface MyCalendarLink {
 export interface HouseCalendarLink {
   userId: string
   name: string | null
+  /** Their role in this house now; null when they are no longer a member. */
+  role: 'owner' | 'manager' | 'staff' | null
+  /**
+   * Whether the reader may stop this link. Owners manage owners: a manager may
+   * stop a manager's or staff's link, never an owner's (round 6t).
+   */
+  canStop: boolean
   createdAt: string
   issuedAt: string
   lastFetchedAt: string | null
@@ -495,7 +505,7 @@ export async function stopMyCalendarLink(): Promise<{ revoked: boolean }> {
   return response.data
 }
 
-/** An owner's pick of what their link shows; null for everything. */
+/** Narrow what my own link shows; null for everything my role allows. */
 export async function pickMyCalendarCategories(
   categories: CalendarLinkCategory[] | null,
 ): Promise<MyCalendarLink> {
@@ -509,7 +519,10 @@ export async function listHouseCalendarLinks(): Promise<HouseCalendarLink[]> {
   return response.data
 }
 
-/** Stop one person's link — owners and managers only. Only theirs stops. */
+/**
+ * Stop one person's link — owners and managers only, and a manager never an
+ * owner's. Only theirs stops.
+ */
 export async function stopCalendarLinkFor(userId: string): Promise<{ revoked: boolean }> {
   const response = await apiClient.delete<{ revoked: boolean }>(
     `/calendar/ical-links/${encodeURIComponent(userId)}`,

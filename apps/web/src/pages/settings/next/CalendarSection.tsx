@@ -28,6 +28,7 @@ import { useState } from 'react';
 import { Action, ConfirmAction, Disclosure, Micro, Note, Register, Row, SaveFailure } from './SectionKit';
 import { MONO, SANS } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
+import { ON_LEAVING, SHOWN_ONCE } from '@/components/calendar-link/calendar-link-copy';
 
 export function CalendarSection({ data }: { data: SettingsNextData }) {
   const { ical, icalIssued, createIcal, regenerateIcal, revokeIcal, writer } = data;
@@ -51,7 +52,7 @@ export function CalendarSection({ data }: { data: SettingsNextData }) {
               <Row
                 label="My calendar link"
                 provenance={{ kept: 'account', when: null, whenUnknown: 'you have not connected a calendar' }}
-                consequence="Makes an address only you use. It needs no login, so anyone holding it sees what you see. It is shown once."
+                consequence={`Makes an address only you use. It needs no login, so anyone holding it sees what you see. ${SHOWN_ONCE}`}
                 control={
                   <Action
                     disabled={writer.busy === 'ical-create'}
@@ -67,15 +68,13 @@ export function CalendarSection({ data }: { data: SettingsNextData }) {
         }
         return (
           <>
-            <Note>{link.scope} If you leave this house it stops, and nobody else’s link changes.</Note>
+            <Note>{link.scope} {ON_LEAVING}</Note>
 
             <Row
               label="My calendar link"
               provenance={{ kept: 'account', when: link.issuedAt, verb: 'made' }}
               consequence={
-                icalIssued
-                  ? 'Copy it now — for your privacy it is shown only this once.'
-                  : 'Shown once, when it was made. Get a new link to see one again.'
+                icalIssued ? `Copy it now. ${SHOWN_ONCE}` : SHOWN_ONCE
               }
               control={
                 icalIssued ? (

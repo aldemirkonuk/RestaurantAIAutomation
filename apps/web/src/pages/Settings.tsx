@@ -49,6 +49,7 @@ import { cn } from '../lib/utils';
 import { ServicesPermissions } from '../components/settings/ServicesPermissions';
 import { apiClient, getErrorMessage } from '../services/api/client';
 import { useMyCalendarLink } from '../components/calendar-link/useMyCalendarLink';
+import { ON_LEAVING, SHOWN_ONCE } from '../components/calendar-link/calendar-link-copy';
 import {
   CURRENCY_CODES,
   CURRENCY_NOT_RECORDED,
@@ -341,7 +342,7 @@ export function CalendarSubscriptionSection() {
           )}
           <p className="text-sm text-gray-600">{link.scope}</p>
           <p className="text-xs text-gray-500">
-            Your link is yours alone and needs no login, so treat it like a key. If you leave this house it stops, and nobody else's link changes.
+            Your link is yours alone and needs no login, so treat it like a key. {ON_LEAVING}
           </p>
           {!link.connected && (
             <button
@@ -355,7 +356,7 @@ export function CalendarSubscriptionSection() {
           )}
           {justIssued && (
             <>
-              <p className="text-xs text-gray-600">Copy it now — for your privacy it is shown only this once.</p>
+              <p className="text-xs text-gray-600">Copy it now. {SHOWN_ONCE}</p>
               <div className="flex items-center gap-2">
                 <div
                   data-secret="credential"
@@ -386,9 +387,7 @@ export function CalendarSubscriptionSection() {
           {link.connected && (
             <div className="pt-2 border-t border-gray-100 space-y-3">
               {!justIssued && (
-                <p className="text-xs text-gray-500">
-                  Connected. The link was shown once when it was made; get a new link to see one again.
-                </p>
+                <p className="text-xs text-gray-500">Connected. {SHOWN_ONCE}</p>
               )}
               <div className="flex flex-wrap gap-2">
                 <button

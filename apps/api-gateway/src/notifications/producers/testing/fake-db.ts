@@ -112,6 +112,8 @@ export class FakeQuery {
   private payload: Row[] = [];
   private patch: Row = {};
   private limitN: number | null = null;
+  private offsetN = 0;
+  private ranged = false;
   private headCount = false;
   private orderKey: string | null = null;
   private orderAsc = true;
@@ -213,6 +215,13 @@ export class FakeQuery {
     this.limitN = n;
     return this;
   }
+  /** PostgREST's `Range`: rows `from`..`to`, both inclusive, after ordering. */
+  range(from: number, to: number) {
+    this.offsetN = from;
+    this.limitN = to - from + 1;
+    this.ranged = true;
+    return this;
+  }
   single() {
     return this.run(true);
   }
@@ -294,11 +303,16 @@ export class FakeQuery {
       );
     }
     if (this.headCount) return { data: null, count: hit.length, error: null };
-    if (this.limitN !== null) hit = hit.slice(0, this.limitN);
+    const total = hit.length;
+    if (this.limitN !== null) {
+      hit = hit.slice(this.offsetN, this.offsetN + this.limitN);
+    }
     return {
       data: single ? (hit[0] ?? null) : hit,
       error: null,
-      count: hit.length,
+      // PostgREST's `count: exact` on a range is the whole match, not the
+      // page. Without a range this keeps the count it always returned.
+      count: this.ranged ? total : hit.length,
     };
   }
 }

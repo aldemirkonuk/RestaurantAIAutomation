@@ -746,8 +746,9 @@ export class CalendarController {
   //
   // `ical-token` keeps its path but now means THE CALLER'S OWN link in the
   // house their token names. Any member may read, make, renew or stop their
-  // own; only an owner may pick categories (service), and only an owner or a
-  // manager may list the house's links or stop someone else's (here).
+  // own, and narrow what their own shows (service); only an owner or a
+  // manager may list the house's links or stop someone else's (here), and a
+  // manager never an owner's (service, `CalendarLinksService.revokeFor`).
 
   @Get("feed/:token.ics")
   @Public()
@@ -904,10 +905,11 @@ export class CalendarController {
   @Patch("ical-token")
   @ApiOperation({
     summary:
-      "Pick what my link shows. Owner only; the address does not change.",
+      "Narrow what my link shows. Any member, for their own link; a pick " +
+      "only ever shows less than the role allows. The address does not change.",
   })
   @ApiResponse({ status: 200, type: MyCalendarLinkDto })
-  @ApiResponse({ status: 403, description: "The caller is not an owner." })
+  @ApiResponse({ status: 403, description: "Not a member of this house." })
   async setICalCategories(
     @CurrentUser() user: { userId: string; restaurantId: string },
     @Body() dto: CalendarLinkCategoriesDto,
@@ -947,18 +949,23 @@ export class CalendarController {
       user.restaurantId,
       "see who has connected a calendar",
     );
-    return this.links.listHouse(user.restaurantId);
+    return this.links.listHouse(user.restaurantId, user.userId);
   }
 
   @Delete("ical-links/:userId")
   @ApiOperation({
     summary:
       "Stop one person's calendar link. Owner/manager only, audited. Only " +
-      "that person's link stops.",
+      "that person's link stops. A manager may stop a manager's or staff's " +
+      "link, never an owner's; only an owner stops an owner's.",
   })
   @ApiParam({ name: "userId", description: "public.users.user_id (uuid)" })
   @ApiResponse({ status: 200, type: CalendarLinkRevokedResponseDto })
-  @ApiResponse({ status: 403, description: "Not an owner or manager here." })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Not an owner or manager here, or a manager stopping an owner's link.",
+  })
   async revokeICalLinkFor(
     @CurrentUser() user: { userId: string; restaurantId: string },
     @Param("userId", new ParseUUIDPipe()) targetUserId: string,

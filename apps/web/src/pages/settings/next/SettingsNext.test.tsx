@@ -587,7 +587,8 @@ describe('SettingsNext — provenance and unknowns', () => {
 
   it('never shows an address the read did not issue — the link is shown once (ADR 0111, 2026-09-21)', () => {
     mount('/settings?tab=calendar');
-    expect(screen.getByText(/Shown once, when it was made/i)).toBeInTheDocument();
+    // Round 6t, "Show once": the same sentence every surface uses.
+    expect(screen.getByText(/shown only once, when it is made.*“Get a new link” makes a new address/i)).toBeInTheDocument();
     expect(screen.queryByText(/api\/v1\/calendar\/feed/)).toBeNull();
   });
 

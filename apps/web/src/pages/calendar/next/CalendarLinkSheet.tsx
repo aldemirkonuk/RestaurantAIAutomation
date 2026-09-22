@@ -9,9 +9,13 @@
  *
  * Written for the person, not the operator: what the link shows, one button
  * to connect, the address once with a copy button, and plain words for what
- * "get a new link" and "stop" do to the phone that already has it. Owners get
- * the category pick; owners and managers also see who has connected and can
- * stop anyone's link — only that person's link stops.
+ * "get a new link" and "stop" do to the phone that already has it. Everyone
+ * may narrow their own link by category, and a pick only ever shows less
+ * (round 6t: "Everyone can narrow"). Owners and managers also see who has
+ * connected and can stop a link — only that person's stops — but a manager
+ * never an owner's (round 6t: "No, owners only"): the row says so instead of
+ * offering the button. The address is shown once, and the sheet says so in
+ * the words every surface uses (round 6t: "Show once").
  *
  * The state comes from `useMyCalendarLink`, which the page holds, so opening
  * this sheet reads nothing new about the caller and never makes a link.
@@ -20,6 +24,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Sheet } from '@/components/mudavym';
 import type { MyCalendarLinkState } from '@/components/calendar-link/useMyCalendarLink';
+import { NARROW_ONLY, ON_LEAVING, SHOWN_ONCE } from '@/components/calendar-link/calendar-link-copy';
 import { getErrorMessage } from '../../../services/api/client';
 import {
   CALENDAR_LINK_CATEGORIES,
@@ -55,7 +60,7 @@ export default function CalendarLinkSheet({
   const [copied, setCopied] = useState<string | null>(null);
   const manages = link?.role === 'owner' || link?.role === 'manager';
 
-  /* ── the owner's pick ───────────────────────────────────────────────── */
+  /* ── the person's own pick (narrows only) ───────────────────────────── */
   const savedPick = useMemo(() => link?.categories ?? null, [link?.categories]);
   const [pick, setPick] = useState<CalendarLinkCategory[] | null>(savedPick);
   useEffect(() => setPick(savedPick), [savedPick]);
@@ -137,10 +142,7 @@ export default function CalendarLinkSheet({
             )}
 
             <p style={{ fontSize: 13.5, lineHeight: 1.55, margin: '0 0 12px' }}>{link.scope}</p>
-            <p className="cn-quiet">
-              Your link is yours alone. If you leave this house it stops, and nobody else’s link
-              changes.
-            </p>
+            <p className="cn-quiet">Your link is yours alone. {ON_LEAVING}</p>
 
             {!link.connected && (
               <div className="cn-actions">
@@ -159,9 +161,7 @@ export default function CalendarLinkSheet({
             {justIssued && (
               <section aria-label="Your calendar link" style={{ marginTop: 16 }}>
                 <p className="cn-label">Your link</p>
-                <p className="cn-quiet">
-                  Copy it now. For your privacy it is shown only this once.
-                </p>
+                <p className="cn-quiet">Copy it now. {SHOWN_ONCE}</p>
                 <p data-secret="credential" className="cn-address">
                   {justIssued.address}
                 </p>
@@ -200,6 +200,7 @@ export default function CalendarLinkSheet({
                 <p className="cn-quiet">
                   Connected on {day(link.createdAt)}, {lastRead(link.lastFetchedAt)}.
                 </p>
+                {!justIssued && <p className="cn-quiet">{SHOWN_ONCE}</p>}
 
                 {confirming === 'renew' ? (
                   <div className="cn-notice" role="group" aria-label="Confirm a new link">
@@ -312,7 +313,8 @@ export default function CalendarLinkSheet({
                   {busy === 'pick' ? 'Saving…' : 'Save what my link shows'}
                 </button>
                 <p className="cn-quiet" style={{ marginTop: 6 }}>
-                  Your link stays the same; your calendar app picks up the change within the hour.
+                  {NARROW_ONLY} Your link stays the same; your calendar app picks up the change
+                  within the hour.
                 </p>
               </section>
             )}
@@ -341,9 +343,14 @@ export default function CalendarLinkSheet({
                       <li key={p.userId}>
                         <span>
                           <strong>{p.name ?? 'A member of this house'}</strong>
-                          <span className="cn-meta"> · since {day(p.createdAt)}, {lastRead(p.lastFetchedAt)}</span>
+                          <span className="cn-meta">
+                            {p.role === null ? ' · no longer in this house' : ''} · since{' '}
+                            {day(p.createdAt)}, {lastRead(p.lastFetchedAt)}
+                          </span>
                         </span>
-                        {typeof confirming === 'object' && confirming?.person === p.userId ? (
+                        {!p.canStop ? (
+                          <span className="cn-meta">Only an owner can stop an owner’s link.</span>
+                        ) : typeof confirming === 'object' && confirming?.person === p.userId ? (
                           <span className="cn-row">
                             <button
                               type="button"

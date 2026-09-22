@@ -24,6 +24,7 @@ import { devBypassEnvEnabled } from "./dev-bypass.util";
 import { grantRefusal } from "./role-grant";
 import { roleInHouse, tokenHouse } from "./house-role";
 import { canonicalOrigin } from "../communications/email-templates/template-config";
+import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import {
   IDENTITY_PROVIDERS,
   IdentityProviderDescriptor,
@@ -2596,6 +2597,21 @@ export class AuthService {
       }
     }
 
+    // Their calendar link in this house stops for good, audited, before the
+    // first membership write (ADR 0111, 2026-09-21, round 6t: "Yes, revoke on
+    // leaving (Recommended)"). A stop that fails throws here, so nothing about
+    // the membership has changed (`calendar/stop-links-on-leaving.ts`).
+    await stopCalendarLinksOnLeaving(
+      this.databaseService.supabase,
+      this.logger,
+      {
+        restaurantId,
+        userId,
+        actorUserId: userId,
+        via: "AuthService.leaveRestaurant",
+      },
+    );
+
     // The `users` row stops naming this house BEFORE the access row goes, and
     // only when it names this house (a `users` row naming another house is that
     // house's business). Until 2026-09-18 only the access row was deleted, so
@@ -2656,6 +2672,21 @@ export class AuthService {
         );
       }
     }
+
+    // Every calendar link the person holds, in every house, stops and is
+    // audited before anything is deleted (ADR 0111, 2026-09-21, round 6t).
+    // The `users` delete below would cascade the rows away with no record of
+    // them; this files one `calendar_link_revoked` row per link first.
+    await stopCalendarLinksOnLeaving(
+      this.databaseService.supabase,
+      this.logger,
+      {
+        restaurantId: null,
+        userId,
+        actorUserId: userId,
+        via: "AuthService.deleteAccount",
+      },
+    );
 
     await this.databaseService.supabase
       .from("user_oauth_accounts")

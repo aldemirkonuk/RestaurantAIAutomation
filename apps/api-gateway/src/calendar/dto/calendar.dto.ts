@@ -632,11 +632,15 @@ export class MyCalendarLinkDto {
   @ApiProperty({
     nullable: true,
     type: [String],
-    description: "An owner's pick of categories, or null for everything.",
+    description:
+      "The caller's pick of categories, or null for everything their role allows.",
   })
   categories: string[] | null;
 
-  @ApiProperty({ description: "Only an owner may pick categories." })
+  @ApiProperty({
+    description:
+      "Every member may narrow their own link by category; a pick only ever shows less than the role allows.",
+  })
   canPickCategories: boolean;
 
   @ApiProperty({ description: "Whether the house's areas model is live yet." })
@@ -665,7 +669,8 @@ export class CalendarLinkCategoriesDto {
     type: [String],
     nullable: true,
     description:
-      "Owner only. The categories the link shows; null or absent for everything.",
+      "Any member, for their own link. The categories it keeps; null or absent " +
+      "for everything the caller's role allows. A pick only ever narrows.",
   })
   @IsOptional()
   @IsArray()
@@ -676,6 +681,19 @@ export class CalendarLinkCategoriesDto {
 export class HouseCalendarLinkDto {
   @ApiProperty() userId: string;
   @ApiProperty({ nullable: true }) name: string | null;
+  @ApiProperty({
+    nullable: true,
+    enum: ["owner", "manager", "staff"],
+    description:
+      "The person's role in this house now; null when they are no longer a member.",
+  })
+  role: "owner" | "manager" | "staff" | null;
+  @ApiProperty({
+    description:
+      "Whether the caller may stop this link: an owner may stop anyone's, a " +
+      "manager a manager's or staff's, never an owner's.",
+  })
+  canStop: boolean;
   @ApiProperty() createdAt: string;
   @ApiProperty() issuedAt: string;
   @ApiProperty({ nullable: true }) lastFetchedAt: string | null;

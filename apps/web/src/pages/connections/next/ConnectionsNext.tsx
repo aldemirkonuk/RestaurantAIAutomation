@@ -89,6 +89,7 @@ import { useEffect, useId, useMemo, useState } from 'react';
 import { revokeTextSender } from '../../../services/api/textSenders';
 import { getErrorMessage } from '../../../services/api/client';
 import { subscribeAddress, type MyCalendarLink } from '../../../services/api/calendar';
+import { ON_LEAVING, SHOWN_ONCE } from '../../../components/calendar-link/calendar-link-copy';
 import {
   CalendarDays,
   CreditCard,
@@ -632,9 +633,8 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               why={
                 feed ? (
                   <>
-                    This is your link. Copy it now — it is shown only this once. It needs
-                    no login, so treat it like a key: <em>anyone holding it</em> sees what
-                    you see.
+                    This is your link. Copy it now. {SHOWN_ONCE} It needs no login, so
+                    treat it like a key: <em>anyone holding it</em> sees what you see.
                   </>
                 ) : myLink?.houseLinkRetired && !myLink.connected ? (
                   <>
@@ -646,9 +646,9 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 ) : (
                   <>
                     Each person connects their own calendar, and it shows what they may
-                    see. {myLink?.scope ?? ''} If you leave this house it stops, and
-                    nobody else&rsquo;s link changes. Who else has connected, and stopping
-                    someone&rsquo;s link, is on the calendar page.
+                    see. {myLink?.scope ?? ''} {myLink?.connected ? `${SHOWN_ONCE} ` : ''}
+                    {ON_LEAVING} Who else has connected, and stopping someone&rsquo;s link,
+                    is on the calendar page.
                   </>
                 )
               }
@@ -707,7 +707,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               stopNote={
                 myLink?.connected
                   ? 'A new link or stopping this one ends your current address at once. Your calendar app then shows “Calendar link expired - connect again”. Nobody else’s link changes.'
-                  : 'Nothing is made until you connect. The address is shown once.'
+                  : `Nothing is made until you connect. ${SHOWN_ONCE}`
               }
               alert={feedAlert()}
             />

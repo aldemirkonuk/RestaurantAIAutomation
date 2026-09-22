@@ -32,6 +32,8 @@ import {
   type FeedShift,
 } from "./ical-render";
 import { resolveZone } from "./zoned-time";
+import { roleInHouse } from "../auth/house-role";
+import { stopCalendarLinksOnLeaving } from "./stop-links-on-leaving";
 
 /**
  * Personal calendar links (ADR 0111, review trail 2026-09-21).
@@ -51,13 +53,19 @@ import { resolveZone } from "./zoned-time";
  *     shown once, the way `mcp_server_credentials` keeps its keys.
  *  3. What a link serves is decided when the calendar app ASKS, from the
  *     person's role in the house at that moment (`feed-scope.ts`). A person
- *     removed from the house has no role, so their link answers the expired
- *     notice from the next request — no revocation step, and nobody else's
- *     link is touched.
- *  4. The person may rotate or revoke their own; an owner or manager may
- *     revoke anyone's. Every one of those acts — and an owner's category pick
- *     — is filed to `system_audit_log` under the caller's `public.users` id,
- *     never with the secret.
+ *     who leaves the house loses the link for good: every door that ends a
+ *     membership stops it, audited, before its first membership write
+ *     (`stop-links-on-leaving.ts`; the founder, round 6t: *"Yes, revoke on
+ *     leaving (Recommended)"*), and a live link whose person has no role —
+ *     a membership that ended outside those doors — is stopped by the feed
+ *     itself. A returning person connects again; an old address never
+ *     revives. Nobody else's link is touched.
+ *  4. The person may rotate or revoke their own. An owner may stop anyone's
+ *     link; a manager may stop a manager's or staff's, never an owner's
+ *     (ADR 0162's owner rule; the founder, round 6t: *"No, owners only
+ *     (Recommended)"*). Every one of those acts — and a category pick — is
+ *     filed to `system_audit_log` under the caller's `public.users` id, never
+ *     with the secret.
  *  5. Nothing expires on a timer.
  *  6. A dead address (revoked, rotated away, left the house, never existed,
  *     the retired shared house link) answers `expiredNoticeFeed` — the same
@@ -107,9 +115,22 @@ export interface MyCalendarLink {
 export interface HouseLinkRow {
   userId: string;
   name: string | null;
+  /**
+   * The person's role in the house now, read the way the ADR 0162 doors read
+   * it (`house-role.ts`); null when they are no longer a member.
+   */
+  role: FeedRole | null;
+  /** Whether the caller may stop this link (owners manage owners). */
+  canStop: boolean;
   createdAt: string;
   issuedAt: string;
   lastFetchedAt: string | null;
+}
+
+/** A role word from `roleInHouse`, narrowed to the three the feed knows. */
+function narrowRole(role: string | null): FeedRole | null {
+  if (role === null) return null;
+  return role === "owner" ? "owner" : role === "manager" ? "manager" : "staff";
 }
 
 type AuditAction =
@@ -223,8 +244,8 @@ export class CalendarLinksService {
     userId: string,
     categories?: readonly string[] | null,
   ): Promise<{ link: MyCalendarLink; secret: string | null }> {
-    const role = await this.requireRole(restaurantId, userId);
-    const picked = this.validatePick(role, categories);
+    await this.requireRole(restaurantId, userId);
+    const picked = this.validatePick(categories);
 
     const existing = await this.liveLinkOf(restaurantId, userId);
     if (existing) {
@@ -331,25 +352,27 @@ export class CalendarLinksService {
     return this.revoke(restaurantId, userId, userId);
   }
 
-  /** An owner's pick of what their link shows. Owners only. */
+  /**
+   * The person's pick of what their own link shows. Every member may narrow
+   * their own (the founder, round 6t: *"Everyone can narrow (Recommended)"*);
+   * a pick only ever removes from what the role allows (`feedScopeFor`).
+   */
   async setCategories(
     restaurantId: string,
     userId: string,
     categories: readonly string[] | null,
   ): Promise<MyCalendarLink> {
-    const role = await this.requireRole(restaurantId, userId);
-    if (role !== "owner") {
-      throw new ForbiddenException(
-        "Only an owner can pick what their calendar link shows.",
-      );
-    }
-    const picked = this.validatePick(role, categories);
+    await this.requireRole(restaurantId, userId);
+    const picked = this.validatePick(categories);
     const existing = await this.liveLinkOf(restaurantId, userId);
     if (!existing) {
       throw new NotFoundException(
         "Connect your calendar first, then pick what it shows.",
       );
     }
+    // The before-state, copied now: nothing below may be allowed to change
+    // what the audit row says it changed from.
+    const from = existing.categories ? [...existing.categories] : null;
     const { error } = await this.db
       .from("calendar_feed_links")
       .update({ categories: picked ?? null })
@@ -365,7 +388,7 @@ export class CalendarLinksService {
       existing.id,
       {
         for_user_id: userId,
-        from: existing.categories ?? null,
+        from,
         to: picked ?? null,
       },
     );
@@ -376,7 +399,13 @@ export class CalendarLinksService {
   // EVERYONE'S LINKS — owner/manager (gated at the controller)
   // ==========================================================================
 
-  async listHouse(restaurantId: string): Promise<HouseLinkRow[]> {
+  async listHouse(
+    restaurantId: string,
+    actorUserId: string,
+  ): Promise<HouseLinkRow[]> {
+    const actorRole = narrowRole(
+      await this.houseRoleOf(restaurantId, actorUserId),
+    );
     const { data, error } = await this.db
       .from("calendar_feed_links")
       .select("user_id, created_at, issued_at, last_fetched_at")
@@ -396,48 +425,142 @@ export class CalendarLinksService {
     }>;
     if (rows.length === 0) return [];
 
+    const ids = rows.map((r) => r.user_id);
     const { data: users, error: usersErr } = await this.db
       .from("users")
-      .select("user_id, name, email")
-      .in(
-        "user_id",
-        rows.map((r) => r.user_id),
-      );
+      .select("user_id, name, email, restaurant_id, role")
+      .in("user_id", ids);
     if (usersErr) {
       throw new Error(
         `Could not read the names of who has connected: ${usersErr.message}`,
       );
     }
-    const names = new Map<string, string | null>();
+    const { data: access, error: accessErr } = await this.db
+      .from("user_restaurant_access")
+      .select("user_id, role")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .in("user_id", ids);
+    if (accessErr) {
+      throw new Error(
+        `Could not read the roles of who has connected: ${accessErr.message}`,
+      );
+    }
+    const userRows = new Map<
+      string,
+      {
+        user_id: string;
+        name?: string | null;
+        email?: string | null;
+        restaurant_id?: string | null;
+        role?: string | null;
+      }
+    >();
     for (const u of (users ?? []) as Array<{
       user_id: string;
       name?: string | null;
       email?: string | null;
+      restaurant_id?: string | null;
+      role?: string | null;
     }>) {
-      names.set(u.user_id, u.name?.trim() || u.email?.trim() || null);
+      userRows.set(u.user_id, u);
     }
-    return rows.map((r) => ({
-      userId: r.user_id,
-      name: names.get(r.user_id) ?? null,
-      createdAt: r.created_at,
-      issuedAt: r.issued_at,
-      lastFetchedAt: r.last_fetched_at,
-    }));
+    const accessRows = new Map<string, { role?: string | null }>();
+    for (const a of (access ?? []) as Array<{
+      user_id: string;
+      role?: string | null;
+    }>) {
+      accessRows.set(a.user_id, a);
+    }
+    return rows.map((r) => {
+      const u = userRows.get(r.user_id) ?? null;
+      const access = accessRows.get(r.user_id) ?? null;
+      // An active access row proves membership even with a NULL role (the
+      // column's CHECK lets NULL through): such a person reads as staff here,
+      // never as "no longer in this house".
+      const role = narrowRole(
+        access ? (access.role ?? "staff") : roleInHouse(null, u, restaurantId),
+      );
+      return {
+        userId: r.user_id,
+        name: u?.name?.trim() || u?.email?.trim() || null,
+        role,
+        canStop: CalendarLinksService.mayStop(
+          actorRole,
+          role,
+          r.user_id === actorUserId,
+        ),
+        createdAt: r.created_at,
+        issuedAt: r.issued_at,
+        lastFetchedAt: r.last_fetched_at,
+      };
+    });
   }
 
-  /** An owner or manager stops someone's link (theirs included). */
+  /**
+   * Owners manage owners (ADR 0162's owner rule; ADR 0111, round 6t, the
+   * founder: *"No, owners only (Recommended)"*). An owner may stop anyone's
+   * link. A manager may stop a manager's or staff's, never an owner's. Staff,
+   * and anyone who is not a member, stop nobody else's. Your own is always
+   * yours to stop.
+   */
+  static mayStop(
+    actorRole: FeedRole | null,
+    targetRole: FeedRole | null,
+    ownLink: boolean,
+  ): boolean {
+    if (ownLink) return actorRole !== null;
+    if (actorRole === "owner") return true;
+    if (actorRole === "manager") return targetRole !== "owner";
+    return false;
+  }
+
+  /**
+   * An owner or manager stops someone's link (theirs included).
+   *
+   * The gate is here, in code, on BOTH roles read before any write — the
+   * controller's `assertCanManageRestaurant` is the outer door, this is the
+   * owner rule it cannot express: a manager stops a manager's or staff's link,
+   * never an owner's, and only an owner stops an owner's (`mayStop`). Both
+   * roles are read the way the ADR 0162 removal doors read them
+   * (`house-role.ts` `roleInHouse`: the active access row, else a `users` row
+   * naming the house at its role), so a person who is an owner there is an
+   * owner here too. A refused stop writes nothing. The audit row of a stop
+   * records both roles.
+   */
   async revokeFor(
     restaurantId: string,
     actorUserId: string,
     targetUserId: string,
   ): Promise<{ revoked: boolean }> {
-    return this.revoke(restaurantId, actorUserId, targetUserId);
+    const actorRole = narrowRole(
+      await this.houseRoleOf(restaurantId, actorUserId),
+    );
+    if (actorRole !== "owner" && actorRole !== "manager") {
+      throw new ForbiddenException(
+        "Only an owner or a manager can stop someone else's calendar link.",
+      );
+    }
+    const own = targetUserId === actorUserId;
+    const targetRole = own
+      ? actorRole
+      : narrowRole(await this.houseRoleOf(restaurantId, targetUserId));
+    if (!CalendarLinksService.mayStop(actorRole, targetRole, own)) {
+      throw new ForbiddenException(
+        "Only an owner can stop an owner's calendar link.",
+      );
+    }
+    return this.revoke(restaurantId, actorUserId, targetUserId, {
+      actor_role: actorRole,
+      target_role: targetRole,
+    });
   }
 
   private async revoke(
     restaurantId: string,
     actorUserId: string,
     targetUserId: string,
+    roles: Record<string, unknown> = {},
   ): Promise<{ revoked: boolean }> {
     const { data, error } = await this.db
       .from("calendar_feed_links")
@@ -467,6 +590,7 @@ export class CalendarLinksService {
       {
         for_user_id: targetUserId,
         by: actorUserId === targetUserId ? "self" : "owner_or_manager",
+        ...roles,
       },
     );
     return { revoked: true };
@@ -501,9 +625,14 @@ export class CalendarLinksService {
     > | null;
     if (!link) return expiredNoticeFeed(now);
 
-    // Rule 3: the role NOW. Removed from the house → no role → expired.
+    // Rule 3: the role NOW. No role → the membership is over → the link is
+    // stopped for good (a door that ended it outside `stop-links-on-leaving`:
+    // a lapsed `valid_until`, a hand-run delete) and answers the notice.
     const role = await this.roleOf(link.restaurant_id, link.user_id);
-    if (!role) return expiredNoticeFeed(now);
+    if (!role) {
+      await this.stopLeftover(link.restaurant_id, link.user_id, now);
+      return expiredNoticeFeed(now);
+    }
 
     const { data: house, error: houseErr } = await this.db
       .from("restaurants")
@@ -691,6 +820,39 @@ export class CalendarLinksService {
   }
 
   /**
+   * A live link whose person is no longer a member: stop it, as the system,
+   * the same way the leaving doors do (audited, `left_house`), so that if the
+   * person is let back in the old address does not serve again. Best effort:
+   * the notice is the right answer either way, and a failed stop is logged,
+   * not turned into a 503 for a dead address.
+   */
+  private async stopLeftover(
+    restaurantId: string,
+    userId: string,
+    now: Date,
+  ): Promise<void> {
+    try {
+      await stopCalendarLinksOnLeaving(
+        this.db,
+        this.logger,
+        {
+          restaurantId,
+          userId,
+          actorUserId: null,
+          via: "feed_found_no_membership",
+        },
+        now,
+      );
+    } catch (err: unknown) {
+      this.logger.warn(
+        `a link of someone no longer in the house was not stopped: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /**
    * Record that a calendar app read this link. Best effort: the answer has
    * already been built, and failing the subscriber because the note failed
    * would trade a real calendar for a bookkeeping line.
@@ -714,6 +876,49 @@ export class CalendarLinksService {
   // HELPERS
   // ==========================================================================
 
+  /**
+   * The person's role word here, read the way the ADR 0162 doors read it
+   * (`house-role.ts` `roleInHouse`). Used ONLY for the owner rule on stopping
+   * someone else's link, never for what a feed serves (`roleOf`, which reads a
+   * `users`-row member as staff). A failed read throws: it is never "not an
+   * owner".
+   */
+  private async houseRoleOf(
+    restaurantId: string,
+    userId: string,
+  ): Promise<string | null> {
+    const { data: access, error: accessErr } = await this.db
+      .from("user_restaurant_access")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (accessErr) {
+      throw new Error(
+        `Could not read a role in this house, so nothing was changed: ${accessErr.message}`,
+      );
+    }
+    const { data: user, error: userErr } = await this.db
+      .from("users")
+      .select("restaurant_id, role")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (userErr) {
+      throw new Error(
+        `Could not read a role in this house, so nothing was changed: ${userErr.message}`,
+      );
+    }
+    return roleInHouse(
+      (access as { role?: string | null } | null) ?? null,
+      (user as {
+        restaurant_id?: string | null;
+        role?: string | null;
+      } | null) ?? null,
+      restaurantId,
+    );
+  }
+
   private async requireRole(
     restaurantId: string,
     userId: string,
@@ -726,19 +931,14 @@ export class CalendarLinksService {
   }
 
   /**
-   * A category pick is an owner's, and every entry must be a known category.
-   * `undefined`/`null` means "no pick" and is allowed for anyone.
+   * Any member may pick for their own link, and every entry must be a known
+   * category. `undefined`/`null` means "no pick": everything the role allows.
+   * A pick can only narrow — `feedScopeFor` intersects it with the role.
    */
   private validatePick(
-    role: FeedRole,
     categories: readonly string[] | null | undefined,
   ): FeedCategory[] | null {
     if (categories === undefined || categories === null) return null;
-    if (role !== "owner") {
-      throw new ForbiddenException(
-        "Only an owner can pick what their calendar link shows.",
-      );
-    }
     const unknown = categories.filter((c) => !isFeedCategory(c));
     if (unknown.length > 0) {
       throw new BadRequestException(
@@ -763,7 +963,8 @@ export class CalendarLinksService {
       role,
       scope: scopeSentence(scope, areas),
       categories: scope.categories ? Array.from(scope.categories) : null,
-      canPickCategories: role === "owner",
+      // Every member may narrow their own link (round 6t).
+      canPickCategories: true,
       areasModelled: areas.modelled,
       houseLinkRetired,
     };

@@ -24,18 +24,27 @@
  *    (`schedule.service.ts` `getWeek`, `assertAccess(..., "manager")`); staff
  *    see only their own (`getMyWeek`). Labor cost is never in any feed.
  *  - Areas: the areas model is another lane's build. Until it binds
- *    `PERSON_AREAS` (below), a staff link carries their own shifts plus the
- *    house-wide events they can already see in the app — which, by the first
- *    bullet, is every event. That is wider than the founder's "only bar-area
- *    events" and is said so on the page and in the ADR.
+ *    `PERSON_AREAS` (below), a staff link carries EXACTLY the house events
+ *    that person sees in the app plus their own shifts, never more — the
+ *    founder, round 6t: *"Same as the app (Recommended)"*. By the first
+ *    bullet that is every event of the house (`GET /calendar/events` has no
+ *    role filter), which is wider than the founder's "only bar-area events";
+ *    it is said so on the page and in the ADR, and it narrows by itself the
+ *    day a provider is bound.
+ *  - A category pick narrows ANY member's own link (round 6t: *"Everyone can
+ *    narrow (Recommended)"*), and only ever shows less than the role allows,
+ *    never more: `feedScopeFor` keeps the role's shifts/events rule and
+ *    intersects the pick with it, and `selectEvents`/`selectShifts` apply the
+ *    pick as one more filter on top.
  */
 
 /** A person's role in one house, as far as the feed is concerned. */
 export type FeedRole = "owner" | "manager" | "staff";
 
 /**
- * The categories an owner may pick. The same list is the CHECK on
- * `calendar_feed_links.categories` (migration 20260921170600) — change both.
+ * The categories a member may pick to narrow their own link. The same list is
+ * the CHECK on `calendar_feed_links.categories` (migration 20260921170600) —
+ * change both.
  */
 export const FEED_CATEGORIES = [
   "shifts",
@@ -58,7 +67,7 @@ export function isFeedCategory(value: unknown): value is FeedCategory {
   );
 }
 
-/** `calendar_events.event_type` → the category an owner picks it by. */
+/** `calendar_events.event_type` → the category a pick names it by. */
 export function categoryOfEventType(
   eventType: string | null | undefined,
 ): FeedCategory {
@@ -169,30 +178,31 @@ export interface FeedScope {
   shifts: "all" | "own";
   /** `all` = every house event; `house_and_areas` = house-wide + the person's areas. */
   events: "all" | "house_and_areas";
-  /** An owner's narrowing pick, or null for everything the role allows. */
+  /** The person's narrowing pick, or null for everything the role allows. */
   categories: ReadonlySet<FeedCategory> | null;
 }
 
 /**
- * The scope for a role. A saved category pick narrows an OWNER's link and is
- * ignored for anyone else (a demoted owner keeps their row, and their link
- * serves the manager's scope until they change it): the founder gave the pick
- * to the owner, and a pick can never widen what a role may see.
+ * The scope for a role, narrowed by the person's saved pick.
+ *
+ * The role decides the CEILING — which shifts (`all`/`own`) and which events
+ * (`all`/`house_and_areas`) — and nothing in a pick can change it. The pick is
+ * only a set of categories to KEEP, filtered to known words, so every filter
+ * it adds removes rows and none adds any: a staff pick naming "shifts" still
+ * serves only her own shifts. A pick saved while the person held a higher
+ * role narrows the lower role's ceiling after a demotion; it never lifts it.
  */
 export function feedScopeFor(
   role: FeedRole,
   savedCategories: readonly string[] | null,
 ): FeedScope {
-  if (role === "owner") {
-    const picked = savedCategories
-      ? new Set(savedCategories.filter(isFeedCategory))
-      : null;
-    return { role, shifts: "all", events: "all", categories: picked };
+  const categories = savedCategories
+    ? new Set(savedCategories.filter(isFeedCategory))
+    : null;
+  if (role === "owner" || role === "manager") {
+    return { role, shifts: "all", events: "all", categories };
   }
-  if (role === "manager") {
-    return { role, shifts: "all", events: "all", categories: null };
-  }
-  return { role, shifts: "own", events: "house_and_areas", categories: null };
+  return { role, shifts: "own", events: "house_and_areas", categories };
 }
 
 /** One plain sentence for the page: what this link shows. */
@@ -209,11 +219,19 @@ export function scopeSentence(scope: FeedScope, areas: PersonAreas): string {
       : "Your link shows everything: every shift and every event in this house.";
   }
   if (scope.role === "manager") {
-    return "Your link shows the house calendar and every shift.";
+    return picked
+      ? `Your link shows ${picked}, from the house calendar and every shift.`
+      : "Your link shows the house calendar and every shift.";
   }
-  return areas.modelled
-    ? "Your link shows your own shifts, the events for your areas and the events for the whole house."
-    : "Your link shows your own shifts and the house calendar you can already see here. Areas are not set up yet, so it cannot narrow to your area.";
+  const base = areas.modelled
+    ? "your own shifts, the events for your areas and the events for the whole house"
+    : "your own shifts and the house calendar you can already see here";
+  const areasNote = areas.modelled
+    ? ""
+    : " Areas are not set up yet, so it cannot narrow to your area.";
+  return picked
+    ? `Your link shows ${picked}, from ${base}.${areasNote}`
+    : `Your link shows ${base}.${areasNote}`;
 }
 
 /**

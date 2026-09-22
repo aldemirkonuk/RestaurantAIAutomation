@@ -83,26 +83,153 @@ describe("feedScopeFor", () => {
     ).toEqual(["deliveries"]);
   });
 
-  it("an unknown word in a saved pick is dropped, never read as a wildcard", () => {
-    expect(
-      Array.from(feedScopeFor("owner", ["everything"]).categories ?? []),
-    ).toEqual([]);
-  });
+  it.each(["owner", "manager", "staff"] as const)(
+    "%s: an unknown word in a saved pick is dropped — never a wildcard, never 'no pick'",
+    (role) => {
+      const scope = feedScopeFor(role, ["everything"]);
+      // Not null: null would mean "no pick", i.e. the whole ceiling.
+      expect(scope.categories).not.toBeNull();
+      expect(scope.categories?.size).toBe(0);
+      expect(
+        Array.from(feedScopeFor(role, ["everything", "tastings"]).categories!),
+      ).toEqual(["tastings"]);
+    },
+  );
 
-  it("manager: everything, and a saved pick is ignored", () => {
-    expect(feedScopeFor("manager", ["deliveries"])).toMatchObject({
+  it("manager: everything, narrowed only by their own pick", () => {
+    expect(feedScopeFor("manager", null)).toMatchObject({
       shifts: "all",
       events: "all",
       categories: null,
     });
+    const picked = feedScopeFor("manager", ["deliveries"]);
+    expect(picked).toMatchObject({ shifts: "all", events: "all" });
+    expect(Array.from(picked.categories ?? [])).toEqual(["deliveries"]);
   });
 
-  it("staff: own shifts and the house-and-areas events, and a saved pick is ignored", () => {
-    expect(feedScopeFor("staff", ["deliveries"])).toMatchObject({
+  it("staff: own shifts and the house-and-areas events, narrowed only by their own pick", () => {
+    expect(feedScopeFor("staff", null)).toMatchObject({
       shifts: "own",
       events: "house_and_areas",
       categories: null,
     });
+    // A pick naming "shifts" keeps her OWN shifts: the ceiling is the role's.
+    const picked = feedScopeFor("staff", ["shifts", "deliveries"]);
+    expect(picked).toMatchObject({ shifts: "own", events: "house_and_areas" });
+    expect(Array.from(picked.categories ?? []).sort()).toEqual([
+      "deliveries",
+      "shifts",
+    ]);
+  });
+});
+
+/**
+ * The founder, 2026-09-21 (round 6t): "Everyone can narrow (Recommended)" —
+ * managers and staff may narrow their own link, and narrowing can only ever
+ * show less than their role allows, never more.
+ *
+ * Measured exhaustively rather than on examples: every role, every one of the
+ * 2^10 subsets of the category list (plus the same subsets with an unknown
+ * word and a duplicate mixed in), over a fixture holding one event of every
+ * category in three areas and shifts of the person, of someone else and open.
+ * For each, what the pick serves must be a subset of what no pick serves.
+ */
+describe("a pick only ever shows less than the role allows, never more", () => {
+  const types = [
+    "delivery",
+    "order",
+    "meeting",
+    "inventory",
+    "tasting",
+    "reminder",
+    "provider_birthday",
+    "holiday",
+    "something_new",
+  ];
+  const events = types.flatMap((t) =>
+    (["bar", "kitchen", null] as Array<AreaKind | null>).map((area) => ({
+      id: `${t}-${area ?? "house"}`,
+      event_type: t,
+      area,
+    })),
+  );
+  const areaOf = (e: (typeof events)[number]) => e.area;
+  const shifts = [
+    { id: "mine", member_id: "m-me" },
+    { id: "theirs", member_id: "m-other" },
+    { id: "open", member_id: null },
+  ];
+  const mine = new Set(["m-me"]);
+  const areaWorlds = [
+    { modelled: false as const },
+    { modelled: true as const, kinds: ["bar" as AreaKind] },
+  ];
+
+  const subsets: string[][] = [];
+  for (let mask = 0; mask < 1 << FEED_CATEGORIES.length; mask += 1) {
+    subsets.push(FEED_CATEGORIES.filter((_, i) => mask & (1 << i)));
+  }
+
+  it.each(["owner", "manager", "staff"] as const)(
+    "%s: every pick serves a subset of what no pick serves",
+    (role) => {
+      let checked = 0;
+      for (const areas of areaWorlds) {
+        const ceiling = feedScopeFor(role, null);
+        const allEvents = new Set(
+          selectEvents(events, ceiling, areas, areaOf).map((e) => e.id),
+        );
+        const allShifts = new Set(
+          selectShifts(shifts, ceiling, mine).map((s) => s.id),
+        );
+        for (const subset of subsets) {
+          for (const saved of [subset, [...subset, "everything", ...subset]]) {
+            const scope = feedScopeFor(role, saved);
+            // The role's ceiling is untouched by any pick.
+            expect(scope.shifts).toBe(ceiling.shifts);
+            expect(scope.events).toBe(ceiling.events);
+            const shownEvents = selectEvents(events, scope, areas, areaOf);
+            const shownShifts = selectShifts(shifts, scope, mine);
+            for (const e of shownEvents) {
+              expect(allEvents.has(e.id)).toBe(true);
+            }
+            for (const s of shownShifts) {
+              expect(allShifts.has(s.id)).toBe(true);
+            }
+            // A junk word or a duplicate changes nothing: the pick is exactly
+            // the known words in it.
+            const clean = feedScopeFor(role, subset);
+            expect(shownEvents).toEqual(
+              selectEvents(events, clean, areas, areaOf),
+            );
+            expect(shownShifts).toEqual(selectShifts(shifts, clean, mine));
+            checked += 1;
+          }
+        }
+      }
+      expect(checked).toBe(2 * 2 * 1024);
+    },
+  );
+
+  it("staff can never reach someone else's shift or another area's event by picking", () => {
+    const bar = { modelled: true as const, kinds: ["bar" as AreaKind] };
+    const scope = feedScopeFor("staff", [...FEED_CATEGORIES]);
+    expect(selectShifts(shifts, scope, mine).map((s) => s.id)).toEqual([
+      "mine",
+    ]);
+    expect(
+      selectEvents(events, scope, bar, areaOf).some(
+        (e) => e.area === "kitchen",
+      ),
+    ).toBe(false);
+  });
+
+  it("an empty pick serves nothing, for every role", () => {
+    for (const role of ["owner", "manager", "staff"] as const) {
+      const scope = feedScopeFor(role, []);
+      expect(selectEvents(events, scope, areaWorlds[0], areaOf)).toEqual([]);
+      expect(selectShifts(shifts, scope, mine)).toEqual([]);
+    }
   });
 });
 
@@ -224,6 +351,21 @@ describe("scopeSentence says so when areas are not set up", () => {
     expect(
       scopeSentence(feedScopeFor("staff", null), { modelled: false }),
     ).toMatch(/Areas are not set up yet/);
+  });
+
+  it("a narrowed manager or staff link says it is narrowed, and from what", () => {
+    expect(
+      scopeSentence(feedScopeFor("manager", ["shifts"]), { modelled: false }),
+    ).toBe(
+      "Your link shows only what you picked (1 of 10), from the house calendar and every shift.",
+    );
+    expect(
+      scopeSentence(feedScopeFor("staff", ["shifts", "deliveries"]), {
+        modelled: false,
+      }),
+    ).toBe(
+      "Your link shows only what you picked (2 of 10), from your own shifts and the house calendar you can already see here. Areas are not set up yet, so it cannot narrow to your area.",
+    );
   });
 });
 

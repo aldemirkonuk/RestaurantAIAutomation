@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { recordAccessChange } from "./access-audit";
+import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import {
   ChannelPreferences,
   loadChannelOptOuts,
@@ -542,6 +543,17 @@ export class TeamService {
           );
         }
       }
+
+      // Their calendar link in this house stops for good, audited, before the
+      // first membership write (ADR 0111, 2026-09-21, round 6t: "Yes, revoke
+      // on leaving (Recommended)"). A stop that fails throws here, so nothing
+      // about the membership has changed (`calendar/stop-links-on-leaving.ts`).
+      await stopCalendarLinksOnLeaving(this.sb, this.logger, {
+        restaurantId,
+        userId: member.user_id,
+        actorUserId: userId,
+        via: "TeamService.deleteMember",
+      });
 
       // The `users` row stops naming this house (only this house) before the
       // access row goes; the reverse order could leave the person a member by

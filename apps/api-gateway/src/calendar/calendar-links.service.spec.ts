@@ -10,6 +10,7 @@ import {
 } from "./calendar-links.service";
 import { EXPIRED_NOTICE_TITLE, expiredNoticeFeed } from "./ical-render";
 import type { PersonAreasSource } from "./feed-scope";
+import { CalendarService } from "./calendar.service";
 
 /**
  * Personal calendar links (ADR 0111, review trail 2026-09-21), run against the
@@ -369,6 +370,57 @@ describe("what each person's link shows", () => {
     expect(shown.join("|")).not.toMatch(/Bora|kitchen|Open shift/);
   });
 
+  // The founder, 2026-09-21 (round 6t): "Same as the app (Recommended)" —
+  // until areas bind PERSON_AREAS, a staff link carries exactly the house
+  // events that person sees in the app plus their shifts, never more.
+  it("STAFF before areas exist: exactly the events GET /calendar/events gives her, plus her own shifts — never more", async () => {
+    const db = seed();
+    db.tables.calendar_events.push(
+      {
+        ...event("e-cancelled", "Cancelled meeting", "meeting"),
+        status: "cancelled",
+      },
+      { ...event("e-weekly", "Weekly order", "order"), is_recurring: true },
+      // A generated occurrence: the app's list leaves it out by default, and
+      // the feed carries its series once, as an RRULE.
+      {
+        ...event("e-weekly-occurrence", "Weekly order", "order"),
+        parent_event_id: "e-weekly",
+      },
+    );
+    db.tables.calendar_recurrence_rules.push({
+      calendar_event_id: "e-weekly",
+      frequency: "weekly",
+      interval_value: 1,
+      end_on_date: null,
+      end_after_count: null,
+      days_of_week: null,
+    });
+
+    // The app's read, the real one, over the same rows. Her role does not
+    // enter it: `GET /calendar/events` has no role filter.
+    const app = await new CalendarService(
+      fakeDatabase(db, []) as never,
+      {} as never,
+    ).listEvents(HOUSE, {});
+
+    const svc = service(db);
+    const { secret } = await svc.create(HOUSE, AYSE);
+    const uids = unfold(await svc.renderFor(secret as string))
+      .split("\r\n")
+      .filter((l) => l.startsWith("UID:"))
+      .map((l) => l.slice("UID:".length));
+    const eventIds = uids
+      .filter((u) => !u.startsWith("shift-"))
+      .map((u) => u.replace(/@wineops\.app$/, ""));
+    expect(eventIds.sort()).toEqual(app.events.map((e) => e.id).sort());
+    expect(eventIds).not.toContain("e-elsewhere");
+    expect(uids.filter((u) => u.startsWith("shift-")).sort()).toEqual([
+      "shift-sh-ayse-next@wineops.app",
+      "shift-sh-ayse@wineops.app",
+    ]);
+  });
+
   it("a shift in an unpublished week is marked a draft and TENTATIVE", async () => {
     const db = seed();
     const svc = service(db);
@@ -393,7 +445,7 @@ describe("what each person's link shows", () => {
     expect(await svc.renderFor(secret as string)).not.toContain("987");
   });
 
-  it("an owner's pick narrows the link — and only the owner may pick", async () => {
+  it("an owner's pick narrows the link", async () => {
     const db = seed();
     const svc = service(db);
     const { secret } = await svc.create(HOUSE, OWNER, ["deliveries"]);
@@ -417,29 +469,76 @@ describe("what each person's link shows", () => {
     );
   });
 
-  it("staff and managers cannot pick, and nothing is written when refused", async () => {
+  // The founder, 2026-09-21 (round 6t): "Everyone can narrow (Recommended)".
+  it("staff and managers may narrow their own link, audited under their own id", async () => {
     const db = seed();
     const svc = service(db);
-    await expect(
-      svc.create(HOUSE, AYSE, ["deliveries"]),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(db.tables.calendar_feed_links).toHaveLength(0);
-    await svc.create(HOUSE, MANAGER);
-    await expect(
-      svc.setCategories(HOUSE, MANAGER, ["shifts"]),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(db.tables.calendar_feed_links[0].categories).toBeNull();
+    const ayse = await svc.create(HOUSE, AYSE, ["deliveries"]);
+    expect(summaries(await svc.renderFor(ayse.secret as string))).toEqual([
+      "Bar delivery",
+    ]);
+    expect((await svc.getMine(HOUSE, AYSE)).canPickCategories).toBe(true);
+
+    const manager = await svc.create(HOUSE, MANAGER);
+    const mine = await svc.setCategories(HOUSE, MANAGER, ["tastings"]);
+    expect(mine.categories).toEqual(["tastings"]);
+    expect(summaries(await svc.renderFor(manager.secret as string))).toEqual([
+      "Wine tasting",
+    ]);
+    const audit = db.tables.system_audit_log.find(
+      (r) => r.action === "calendar_link_categories_changed",
+    )!;
+    expect(audit).toMatchObject({
+      actor_id: MANAGER,
+      changes: { for_user_id: MANAGER, from: null, to: ["tastings"] },
+    });
   });
 
-  it("a pick saved on a row is ignored once that person is no longer an owner", async () => {
+  it("narrowing never shows more than the role allows: staff picking every category still gets only her own shifts", async () => {
     const db = seed();
     const svc = service(db);
-    const { secret } = await svc.create(HOUSE, OWNER, ["deliveries"]);
-    db.tables.user_restaurant_access.find((r) => r.user_id === OWNER)!.role =
-      "manager";
-    expect(summaries(await svc.renderFor(secret as string))).toContain(
-      "Wine tasting",
-    );
+    const all = await svc.create(HOUSE, AYSE);
+    const ceiling = summaries(await svc.renderFor(all.secret as string));
+    await svc.setCategories(HOUSE, AYSE, [
+      "shifts",
+      "deliveries",
+      "orders",
+      "meetings",
+      "stock_counts",
+      "tastings",
+      "reminders",
+      "suppliers",
+      "holidays",
+      "other",
+    ]);
+    const everyCategory = summaries(await svc.renderFor(all.secret as string));
+    expect(everyCategory.sort()).toEqual([...ceiling].sort());
+    expect(everyCategory.join("|")).not.toMatch(/Bora|Open shift|Legacy/);
+
+    await svc.setCategories(HOUSE, AYSE, ["shifts"]);
+    const shifts = summaries(await svc.renderFor(all.secret as string));
+    expect(shifts.every((l) => ceiling.includes(l))).toBe(true);
+    expect(shifts).toEqual(["Your shift · bar", "Your shift · bar (draft)"]);
+  });
+
+  it("a pick saved as an owner still narrows after a demotion — never more than the new role allows", async () => {
+    const db = seed();
+    const svc = service(db);
+    const { secret } = await svc.create(HOUSE, OWNER, ["deliveries", "shifts"]);
+    const access = db.tables.user_restaurant_access.find(
+      (r) => r.user_id === OWNER,
+    )!;
+
+    access.role = "manager";
+    const asManager = summaries(await svc.renderFor(secret as string));
+    expect(asManager).toContain("Bar delivery");
+    expect(asManager).toContain("Bora — shift · kitchen");
+    expect(asManager).not.toContain("Wine tasting");
+
+    access.role = "staff";
+    const asStaff = summaries(await svc.renderFor(secret as string));
+    // The owner has no roster profile, so as staff there are no own shifts.
+    expect(asStaff).toEqual(["Bar delivery"]);
   });
 
   it("an unknown category is refused", async () => {
@@ -505,6 +604,79 @@ describe("a person removed from the house: their link stops, nobody else's", () 
     expect(summaries(await svc.renderFor(owner.secret as string))).toContain(
       "Bar delivery",
     );
+  });
+
+  // The founder, 2026-09-21 (round 6t): "Yes, revoke on leaving
+  // (Recommended)" — a returning person connects again; no dormant revival.
+  // The doors that end a membership stop the link themselves
+  // (`calendar-links-leaving.spec.ts`); this is the feed's own catch for a
+  // membership that ended outside them.
+  it("a membership that ended outside the doors: the feed stops the link for good, audited as the system", async () => {
+    const db = seed();
+    const svc = service(db);
+    const { secret } = await svc.create(HOUSE, BORA);
+    const access = db.tables.user_restaurant_access.find(
+      (r) => r.user_id === BORA,
+    )!;
+    access.valid_until = "2026-09-20T00:00:00.000Z";
+
+    expect(await svc.renderFor(secret as string)).toBe(expiredNoticeFeed(NOW));
+    const row = db.tables.calendar_feed_links.find((r) => r.user_id === BORA)!;
+    expect(row).toMatchObject({
+      revoked_at: NOW.toISOString(),
+      revoked_by: null,
+      revoke_reason: "left_house",
+    });
+    expect(
+      db.tables.system_audit_log.find(
+        (r) => r.action === "calendar_link_revoked",
+      ),
+    ).toMatchObject({
+      actor_type: "system",
+      actor_id: null,
+      entity_id: row.id,
+      restaurant_id: HOUSE,
+      changes: {
+        for_user_id: BORA,
+        by: "leaving_house",
+        via: "feed_found_no_membership",
+      },
+    });
+
+    // Let back in: the old address does NOT serve again.
+    access.valid_until = null;
+    expect(await svc.renderFor(secret as string)).toBe(expiredNoticeFeed(NOW));
+    expect((await svc.getMine(HOUSE, BORA)).connected).toBe(false);
+    // Connecting again makes a new address, and it serves.
+    const again = await svc.create(HOUSE, BORA);
+    expect(again.secret).not.toBe(secret);
+    expect(summaries(await svc.renderFor(again.secret as string))).toContain(
+      "Your shift · kitchen",
+    );
+  });
+
+  it("a failed stop by the feed is logged, never a 503: the dead address still answers the notice", async () => {
+    const db = seed();
+    const svc = service(db);
+    const { secret } = await svc.create(HOUSE, BORA);
+    db.tables.user_restaurant_access = db.tables.user_restaurant_access.filter(
+      (r) => r.user_id !== BORA,
+    );
+    const update = db.from.bind(db);
+    // Fail only the stop (an UPDATE on calendar_feed_links); the lookup still reads.
+    db.from = ((table: string) => {
+      const q = update(table);
+      if (table !== "calendar_feed_links") return q;
+      const realUpdate = q.update.bind(q);
+      q.update = (patch: Record<string, unknown>) => {
+        if ("revoke_reason" in patch) {
+          db.failures.calendar_feed_links = "write refused";
+        }
+        return realUpdate(patch);
+      };
+      return q;
+    }) as typeof db.from;
+    expect(await svc.renderFor(secret as string)).toBe(expiredNoticeFeed(NOW));
   });
 
   it("a deactivated access row stops the link too", async () => {
@@ -663,12 +835,254 @@ describe("an owner or manager stops someone's link", () => {
     const svc = service(db);
     const ayse = await svc.create(HOUSE, AYSE);
     await svc.create(OTHER_HOUSE, STRANGER);
-    const list = await svc.listHouse(HOUSE);
+    const list = await svc.listHouse(HOUSE, OWNER);
     expect(list.map((r) => [r.userId, r.name])).toEqual([[AYSE, "Ayse"]]);
     expect(JSON.stringify(list)).not.toContain(ayse.secret as string);
     expect(JSON.stringify(list)).not.toContain(
       hashSecret(ayse.secret as string),
     );
+  });
+});
+
+/**
+ * Owners manage owners (ADR 0162's owner rule). The founder, 2026-09-21
+ * (round 6t): "No, owners only (Recommended)" — a manager can stop manager
+ * and staff links, never an owner's; only an owner stops an owner's link.
+ * The gate is in the service, on both roles, before any write; tested both
+ * ways.
+ */
+describe("stopping someone's link: owners manage owners", () => {
+  const OWNER2 = "77777777-7777-4777-8777-777777777777";
+  const MANAGER2 = "88888888-8888-4888-8888-888888888888";
+  const LEGACY_OWNER = "99999999-9999-4999-8999-999999999999";
+
+  function house(): FakeDb {
+    const db = seed();
+    db.tables.user_restaurant_access.push(
+      {
+        user_id: OWNER2,
+        restaurant_id: HOUSE,
+        role: "owner",
+        is_active: true,
+        valid_until: null,
+      },
+      {
+        user_id: MANAGER2,
+        restaurant_id: HOUSE,
+        role: "manager",
+        is_active: true,
+        valid_until: null,
+      },
+    );
+    db.tables.users.push(
+      { user_id: OWNER2, name: "Co-owner", restaurant_id: null },
+      { user_id: MANAGER2, name: "Second manager", restaurant_id: null },
+      // An owner known only by a `users` row naming the house — the ADR 0162
+      // doors read them as an owner, so this one does too.
+      {
+        user_id: LEGACY_OWNER,
+        name: "Setup-era owner",
+        restaurant_id: HOUSE,
+        role: "owner",
+      },
+    );
+    return db;
+  }
+
+  async function linkOf(svc: CalendarLinksService, user: string) {
+    return (await svc.create(HOUSE, user)).secret as string;
+  }
+
+  it.each([
+    ["an owner's", OWNER],
+    ["a users-row owner's", LEGACY_OWNER],
+  ])(
+    "a manager may NOT stop %s link: refused, nothing written, and it still serves",
+    async (_label, target) => {
+      const db = house();
+      const svc = service(db);
+      const secret = await linkOf(svc, target);
+      const before = JSON.stringify(db.tables.calendar_feed_links);
+      const audits = db.tables.system_audit_log.length;
+
+      await expect(svc.revokeFor(HOUSE, MANAGER, target)).rejects.toThrow(
+        "Only an owner can stop an owner's calendar link.",
+      );
+      await expect(
+        svc.revokeFor(HOUSE, MANAGER, target),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(JSON.stringify(db.tables.calendar_feed_links)).toBe(before);
+      expect(db.tables.system_audit_log).toHaveLength(audits);
+      expect(await svc.renderFor(secret)).not.toBe(expiredNoticeFeed(NOW));
+    },
+  );
+
+  it.each([
+    ["another manager's", MANAGER2, "manager"],
+    ["a staff member's", AYSE, "staff"],
+  ])(
+    "a manager MAY stop %s link, audited with both roles",
+    async (_label, target, targetRole) => {
+      const db = house();
+      const svc = service(db);
+      const secret = await linkOf(svc, target);
+      expect(await svc.revokeFor(HOUSE, MANAGER, target)).toEqual({
+        revoked: true,
+      });
+      expect(await svc.renderFor(secret)).toBe(expiredNoticeFeed(NOW));
+      expect(
+        db.tables.system_audit_log.find(
+          (r) => r.action === "calendar_link_revoked",
+        ),
+      ).toMatchObject({
+        actor_id: MANAGER,
+        changes: {
+          for_user_id: target,
+          by: "owner_or_manager",
+          actor_role: "manager",
+          target_role: targetRole,
+        },
+      });
+    },
+  );
+
+  it.each([
+    ["a co-owner's", OWNER2, "owner"],
+    ["a users-row owner's", LEGACY_OWNER, "owner"],
+    ["a manager's", MANAGER, "manager"],
+    ["a staff member's", AYSE, "staff"],
+  ])("an owner MAY stop %s link", async (_label, target, targetRole) => {
+    const db = house();
+    const svc = service(db);
+    const secret = await linkOf(svc, target);
+    expect(await svc.revokeFor(HOUSE, OWNER, target)).toEqual({
+      revoked: true,
+    });
+    expect(await svc.renderFor(secret)).toBe(expiredNoticeFeed(NOW));
+    expect(
+      db.tables.system_audit_log.find(
+        (r) => r.action === "calendar_link_revoked",
+      )?.changes,
+    ).toMatchObject({ actor_role: "owner", target_role: targetRole });
+  });
+
+  it("CalendarLinksService.mayStop: owners manage owners, both ways", () => {
+    const mayStop = CalendarLinksService.mayStop;
+    const roles = ["owner", "manager", "staff", null] as const;
+    const table: Record<string, boolean> = {};
+    for (const a of roles) {
+      for (const t of roles) table[`${a}->${t}`] = mayStop(a, t, false);
+    }
+    expect(table).toEqual({
+      "owner->owner": true,
+      "owner->manager": true,
+      "owner->staff": true,
+      "owner->null": true,
+      "manager->owner": false,
+      "manager->manager": true,
+      "manager->staff": true,
+      "manager->null": true,
+      "staff->owner": false,
+      "staff->manager": false,
+      "staff->staff": false,
+      "staff->null": false,
+      "null->owner": false,
+      "null->manager": false,
+      "null->staff": false,
+      "null->null": false,
+    });
+    // Your own link is yours to stop, whatever your role — if you have one.
+    expect(mayStop("staff", "staff", true)).toBe(true);
+    expect(mayStop("manager", "manager", true)).toBe(true);
+    expect(mayStop(null, null, true)).toBe(false);
+  });
+
+  it("a manager may stop their own link through the register", async () => {
+    const db = house();
+    const svc = service(db);
+    await linkOf(svc, MANAGER);
+    expect(await svc.revokeFor(HOUSE, MANAGER, MANAGER)).toEqual({
+      revoked: true,
+    });
+  });
+
+  it("staff, and someone not in the house, stop nobody else's link — refused before any write", async () => {
+    const db = house();
+    const svc = service(db);
+    await linkOf(svc, BORA);
+    const before = JSON.stringify(db.tables);
+    for (const actor of [AYSE, STRANGER]) {
+      await expect(svc.revokeFor(HOUSE, actor, BORA)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      await expect(svc.revokeFor(HOUSE, actor, BORA)).rejects.toThrow(
+        "Only an owner or a manager can stop someone else's calendar link.",
+      );
+    }
+    expect(JSON.stringify(db.tables)).toBe(before);
+  });
+
+  it("a failed role read refuses the stop and writes nothing — never read as 'not an owner'", async () => {
+    const db = house();
+    const svc = service(db);
+    await linkOf(svc, OWNER);
+    const before = JSON.stringify(db.tables.calendar_feed_links);
+    db.failures.user_restaurant_access = "connection reset";
+    await expect(svc.revokeFor(HOUSE, MANAGER, OWNER)).rejects.toThrow(
+      /Could not read a role in this house/,
+    );
+    delete db.failures.user_restaurant_access;
+    expect(JSON.stringify(db.tables.calendar_feed_links)).toBe(before);
+  });
+
+  it("the register says, per row and per caller, who may stop what", async () => {
+    const db = house();
+    const svc = service(db);
+    for (const u of [OWNER, OWNER2, MANAGER, MANAGER2, AYSE, LEGACY_OWNER]) {
+      await linkOf(svc, u);
+    }
+    const byManager = new Map(
+      (await svc.listHouse(HOUSE, MANAGER)).map((r) => [
+        r.userId,
+        [r.role, r.canStop],
+      ]),
+    );
+    expect(Object.fromEntries(byManager)).toEqual({
+      [OWNER]: ["owner", false],
+      [OWNER2]: ["owner", false],
+      [LEGACY_OWNER]: ["owner", false],
+      [MANAGER]: ["manager", true],
+      [MANAGER2]: ["manager", true],
+      [AYSE]: ["staff", true],
+    });
+    const byOwner = await svc.listHouse(HOUSE, OWNER);
+    expect(byOwner.every((r) => r.canStop)).toBe(true);
+  });
+
+  it("the register shows a person with no role here as no longer a member", async () => {
+    const db = house();
+    const svc = service(db);
+    await linkOf(svc, BORA);
+    // Left by a hand-run delete: no door stopped the link.
+    db.tables.user_restaurant_access = db.tables.user_restaurant_access.filter(
+      (r) => r.user_id !== BORA,
+    );
+    const row = (await svc.listHouse(HOUSE, MANAGER)).find(
+      (r) => r.userId === BORA,
+    )!;
+    expect(row).toMatchObject({ role: null, canStop: true });
+  });
+
+  it("an active access row with a NULL role is a member (staff), not someone who left", async () => {
+    const db = house();
+    const svc = service(db);
+    await linkOf(svc, BORA);
+    db.tables.user_restaurant_access.find((r) => r.user_id === BORA)!.role =
+      null;
+    const row = (await svc.listHouse(HOUSE, MANAGER)).find(
+      (r) => r.userId === BORA,
+    )!;
+    expect(row).toMatchObject({ role: "staff", canStop: true });
   });
 });
 

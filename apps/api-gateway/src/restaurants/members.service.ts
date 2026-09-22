@@ -10,6 +10,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
 import { grantRefusal } from "../auth/role-grant";
+import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 
 @Injectable()
 export class MembersService {
@@ -379,6 +380,7 @@ export class MembersService {
         }
       }
 
+      await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
       await this.clearUsersRowHouse(targetUserId, restaurantId);
       return;
     }
@@ -402,6 +404,7 @@ export class MembersService {
     // person is still a member by their access row, which is the truth; the
     // other order could leave them a member by a `users` row nobody meant to
     // keep (v3.0-TECH-DEBT 44.1j).
+    await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
     await this.clearUsersRowHouse(targetUserId, restaurantId);
 
     const { error } = await this.databaseService.supabase
@@ -414,6 +417,29 @@ export class MembersService {
       this.logger.error(`removeMember delete failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to remove member");
     }
+  }
+
+  /**
+   * The leaver's calendar link in this house stops for good, audited, before
+   * the first membership write (ADR 0111, 2026-09-21, round 6t: *"Yes, revoke
+   * on leaving (Recommended)"*). A stop that fails throws here, so nothing
+   * about the membership has changed; see `calendar/stop-links-on-leaving.ts`.
+   */
+  private async stopCalendarLinkOfLeaver(
+    actorUserId: string,
+    restaurantId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    await stopCalendarLinksOnLeaving(
+      this.databaseService.supabase,
+      this.logger,
+      {
+        restaurantId,
+        userId: targetUserId,
+        actorUserId,
+        via: "MembersService.removeMember",
+      },
+    );
   }
 
   /**

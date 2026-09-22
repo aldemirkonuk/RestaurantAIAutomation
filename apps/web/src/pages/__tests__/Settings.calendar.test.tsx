@@ -91,7 +91,7 @@ describe('legacy /settings — my calendar link', () => {
     expect(api.post).toHaveBeenCalledTimes(1);
     expect(api.post).toHaveBeenCalledWith('/calendar/ical-token', {});
     expect(address).toHaveAttribute('data-secret', 'credential');
-    expect(screen.getByText(/shown only this once/i)).toBeInTheDocument();
+    expect(screen.getByText(/shown only once, when it is made/i)).toBeInTheDocument();
   });
 
   it('a connected reader: no address from the read, and a new link / stop are separate calls', async () => {

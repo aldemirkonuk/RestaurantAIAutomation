@@ -26,6 +26,7 @@ vi.mock('../../../services/api/calendar', async (importOriginal) => {
 
 import CalendarLinkSheet from './CalendarLinkSheet';
 import { useMyCalendarLink } from '@/components/calendar-link/useMyCalendarLink';
+import { NARROW_ONLY, ON_LEAVING, SHOWN_ONCE } from '@/components/calendar-link/calendar-link-copy';
 
 const SECRET = 'f'.repeat(64);
 const ADDRESS = `https://api.mudavym.test/api/v1/calendar/feed/${SECRET}.ics`;
@@ -40,7 +41,8 @@ function mine(over: Record<string, unknown> = {}) {
     scope:
       'Your link shows your own shifts and the house calendar you can already see here. Areas are not set up yet, so it cannot narrow to your area.',
     categories: null,
-    canPickCategories: false,
+    // Every member may narrow their own link (round 6t).
+    canPickCategories: true,
     areasModelled: false,
     houseLinkRetired: false,
     ...over,
@@ -112,7 +114,11 @@ describe('connecting shows the address once', () => {
     const address = await within(dialog).findByText(ADDRESS);
     expect(api.connectMyCalendar).toHaveBeenCalledTimes(1);
     expect(address).toHaveAttribute('data-secret', 'credential');
-    expect(within(dialog).getByText(/shown only this once/i)).toBeInTheDocument();
+    // Round 6t, "Show once": the address is shown once, and the sheet says so
+    // and says what "Get a new link" does.
+    expect(within(dialog).getByText(`Copy it now. ${SHOWN_ONCE}`)).toBeInTheDocument();
+    expect(SHOWN_ONCE).toMatch(/shown only once/);
+    expect(SHOWN_ONCE).toMatch(/“Get a new link” makes a new address, and the old one stops working/);
     expect(within(dialog).getByRole('link', { name: 'Open in my calendar app' })).toHaveAttribute(
       'href',
       ADDRESS.replace('https://', 'webcal://'),
@@ -171,12 +177,39 @@ describe('a connected person', () => {
     expect(api.stopMyCalendarLink).toHaveBeenCalledTimes(1);
   });
 
-  it('staff get no category pick and no register of other people', async () => {
+  it('a returning reader is told the address was shown once, and what "Get a new link" does', async () => {
+    const dialog = await openSheet();
+    expect(await within(dialog).findByText(SHOWN_ONCE)).toBeInTheDocument();
+    expect(within(dialog).getByText(`Your link is yours alone. ${ON_LEAVING}`)).toBeInTheDocument();
+  });
+
+  // Round 6t, "Everyone can narrow": staff narrow their own link too.
+  it('staff may narrow their own link, told it only ever shows less; they see no register', async () => {
+    api.pickMyCalendarCategories.mockResolvedValue(mine({ connected: true, categories: ['shifts'] }));
     const dialog = await openSheet();
     await within(dialog).findByRole('button', { name: 'Get a new link' });
-    expect(within(dialog).queryByText(/what my link shows/i)).toBeNull();
+    expect(within(dialog).getByRole('region', { name: 'What my link shows' })).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        (_, el) => el?.tagName === 'P' && (el.textContent ?? '').startsWith(NARROW_ONLY),
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Shifts' }));
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save what my link shows' }));
+    });
+    expect(api.pickMyCalendarCategories).toHaveBeenCalledWith(['shifts']);
     expect(within(dialog).queryByText(/who has connected/i)).toBeNull();
     expect(api.listHouseCalendarLinks).not.toHaveBeenCalled();
+  });
+
+  it('the pick is offered only when the gateway says so', async () => {
+    api.getMyCalendarLink.mockResolvedValue(
+      mine({ connected: true, createdAt: '2026-09-21T12:00:00Z', canPickCategories: false }),
+    );
+    const dialog = await openSheet();
+    await within(dialog).findByRole('button', { name: 'Get a new link' });
+    expect(within(dialog).queryByRole('region', { name: 'What my link shows' })).toBeNull();
   });
 });
 
@@ -203,6 +236,8 @@ describe('owners and managers', () => {
       {
         userId: '33333333-3333-4333-8333-333333333333',
         name: 'Ayse',
+        role: 'staff',
+        canStop: true,
         createdAt: '2026-09-21T12:00:00Z',
         issuedAt: '2026-09-21T12:00:00Z',
         lastFetchedAt: null,
@@ -218,5 +253,36 @@ describe('owners and managers', () => {
       fireEvent.click(within(dialog).getByRole('button', { name: 'Yes, stop it' }));
     });
     expect(api.stopCalendarLinkFor).toHaveBeenCalledWith('33333333-3333-4333-8333-333333333333');
+  });
+
+  // Round 6t, "No, owners only": a manager never stops an owner's link. The
+  // gateway decides (`canStop`); the sheet offers no button and says why.
+  it('a manager is offered no Stop on an owner’s link, and is told why', async () => {
+    api.getMyCalendarLink.mockResolvedValue(mine({ role: 'manager' }));
+    api.listHouseCalendarLinks.mockResolvedValue([
+      {
+        userId: '11111111-1111-4111-8111-111111111111',
+        name: 'Aldemir',
+        role: 'owner',
+        canStop: false,
+        createdAt: '2026-09-21T12:00:00Z',
+        issuedAt: '2026-09-21T12:00:00Z',
+        lastFetchedAt: null,
+      },
+      {
+        userId: '44444444-4444-4444-8444-444444444444',
+        name: 'Bora',
+        role: null,
+        canStop: true,
+        createdAt: '2026-09-20T12:00:00Z',
+        issuedAt: '2026-09-20T12:00:00Z',
+        lastFetchedAt: null,
+      },
+    ]);
+    const dialog = await openSheet();
+    expect(await within(dialog).findByText('Only an owner can stop an owner’s link.')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: "Stop Aldemir's calendar link" })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: "Stop Bora's calendar link" })).toBeInTheDocument();
+    expect(within(dialog).getByText(/no longer in this house/)).toBeInTheDocument();
   });
 });

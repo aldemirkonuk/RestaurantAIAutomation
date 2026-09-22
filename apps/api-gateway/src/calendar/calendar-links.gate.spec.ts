@@ -16,7 +16,10 @@ import { CalendarLinksService } from "./calendar-links.service";
  *    never an id from the request. Staff must pass: "Ayse connects HER OWN
  *    link to her phone".
  *  - SOMEONE ELSE's — the register of who has connected, and stopping a
- *    person's link — is an owner's or a manager's.
+ *    person's link — is an owner's or a manager's. Which of them may stop an
+ *    OWNER's link (only an owner; the founder, round 6t: "No, owners only
+ *    (Recommended)") is decided in the service on both roles, and tested both
+ *    ways in `calendar-links.service.spec.ts`.
  *
  * Follows `settings/flag-writes-are-role-gated.spec.ts`'s shape — the real
  * `assertCanManageRestaurant` delegate with only the role READ stubbed, so the
@@ -83,7 +86,9 @@ describe("GET /calendar/ical-links — the register is owner/manager only", () =
   it.each(["owner", "manager"] as const)("%s may read it", async (role) => {
     const { controller: c, links } = controller(role);
     await expect(c.listICalLinks(USER)).resolves.toEqual([]);
-    expect(links.listHouse).toHaveBeenCalledWith("r-1");
+    // The caller's own id goes with it: the register says, per row, whether
+    // THIS caller may stop that link (owners manage owners, service spec).
+    expect(links.listHouse).toHaveBeenCalledWith("r-1", USER.userId);
   });
 
   it.each(["staff", null] as const)(

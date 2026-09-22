@@ -6,6 +6,7 @@ import { GoogleLinkButton } from '../auth/GoogleLinkButton'
 import { InviteTeamDialog } from '../team/InviteTeamDialog'
 import { getVendorEmail } from '../../services/api/menus'
 import { useMyCalendarLink } from '../calendar-link/useMyCalendarLink'
+import { SHOWN_ONCE } from '../calendar-link/calendar-link-copy'
 import { profileApi, type LinkedProviders } from '../../services/api/profile'
 
 interface OptionalTailProps {
@@ -131,8 +132,8 @@ export function OptionalTail({ restaurantId }: OptionalTailProps) {
                 </button>
               </div>
               <p className="text-xs text-gray-400 mt-1">
-                Copy it now — for your privacy it is shown only this once. Paste it into Google
-                Calendar, Apple Calendar or Outlook as a subscribed calendar.
+                Copy it now. {SHOWN_ONCE} Paste it into Google Calendar, Apple Calendar or Outlook
+                as a subscribed calendar.
               </p>
             </>
           ) : cal.readError ? (
@@ -143,7 +144,7 @@ export function OptionalTail({ restaurantId }: OptionalTailProps) {
             <p className="text-xs text-gray-400">Reading your calendar link…</p>
           ) : cal.link.connected ? (
             <>
-              <p className="text-xs text-gray-600">Your calendar is connected.</p>
+              <p className="text-xs text-gray-600">Your calendar is connected. {SHOWN_ONCE}</p>
               <button
                 onClick={() => navigate('/calendar?connect=1')}
                 className="text-xs text-[#1A5E6B] hover:text-[#14515C] font-medium mt-1"
