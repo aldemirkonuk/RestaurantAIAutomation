@@ -39,6 +39,7 @@ import {
   DISMISS_REASONS,
   EM,
   SNOOZE_CHOICES,
+  mayActForTheHouse,
   maySnoozeForEveryone,
   patchForChoice,
   ensureFraunces,
@@ -120,8 +121,9 @@ export default function CatalogView({ ground }: CatalogViewProps) {
   const rid = activeRestaurantId ?? null;
   const role = activeRole ?? user?.role ?? null;
   // Owner/manager only — a house policy, not a note on one card (ADR 0191).
-  // The gateway's set (`RolesGuard`): owner, manager, admin.
-  const canManage = ['owner', 'manager', 'admin'].includes(String(role ?? ''));
+  // Not the platform admin, although `RolesGuard` admits it: the gateway's
+  // toggle refuses it (round 4, answer 7), so the page does not offer it.
+  const canManage = mayActForTheHouse(role);
   /** Snooze for everyone is owners and managers (round 3); anyone else's is theirs. */
   const canSnoozeForEveryone = maySnoozeForEveryone(role);
 

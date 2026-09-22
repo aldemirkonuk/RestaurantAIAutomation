@@ -1,9 +1,9 @@
 # 0191 — The recommendations catalogue is actionable, not a read-only leaf
 
-- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below. The seven questions round 2 left open were answered the same day too — six answers, built in "Round 3" below.
+- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below. The seven questions round 2 left open were answered the same day too — six answers, built in "Round 3" below. The seven round 3 left open (six here, the seventh — the platform `admin` — in the lane's report) were answered the same day with "Take all seven", built in "Round 4" below.
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
-- **Keywords:** recommendations, catalogue, insight catalog, candidate type, on/off, toggle, recommendation_actions, insight prefs, rule toggle, suppression, audited, owner/manager, one-tap acts, CatalogView, InsightCatalog, NEW-434, NEW-707, ADR 0149, firing, fire:week, append-only history, recommendation_action_history, snooze for me, recommendation_personal_snoozes, already handled, not now, area lead hook
+- **Keywords:** recommendations, catalogue, insight catalog, candidate type, on/off, toggle, recommendation_actions, insight prefs, rule toggle, suppression, audited, owner/manager, one-tap acts, CatalogView, InsightCatalog, NEW-434, NEW-707, ADR 0149, firing, fire:week, append-only history, recommendation_action_history, snooze for me, recommendation_personal_snoozes, already handled, not now, area lead hook, undo own acts, not_your_act, platform admin, mayActForTheHouse, retention, two years, recommendation_action_history_forget_old_names, cardKeyOf
 - **Links:** [[recommendations]] (page note, §"Forks built on a DEFAULT" — the fork this closes), [[recommendations-catalog]] (legacy page note, addended), `.planning/handoff/PROGRESS.md` §6 (struck), [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] (why the legacy `InsightCatalog.tsx` stays in the tree, untouched), `apps/web/src/pages/recommendations/next/CatalogView.tsx`, `apps/web/src/pages/recommendations/next/rec-catalog.ts`, `apps/api-gateway/src/analytics/analytics.controller.ts` (new `PUT insight-catalog/types/:restaurantId/:candidateKey/toggle`), `apps/api-gateway/src/analytics/recommendation-actions.service.ts`, `apps/api-gateway/src/analytics/insights/suppression.ts` (`insightRuleId`, rule-scope `buildSuppressionKey`). Referenced but not present in this worktree: ADR 0160 §108 (the founder's 2026-09-19 sketch-120 feedback batch, on `train/finish-2`).
 
 ## Context
@@ -253,7 +253,10 @@ ones; the verbatim relay is in the review trail):
   `POST /analytics/recommendations/:id/action` and `…/bulk-action` with the
   actor read from the JWT (`actorOf(@CurrentUser())`; a body `createdBy` is
   ignored). Owner, manager or admin — `RolesGuard`'s own set — else
-  `RuleWideActForbidden` → **403, before anything is written**. A bulk
+  `RuleWideActForbidden` → **403, before anything is written** [**round 4,
+  answer 7:** owner or manager only (`mayActForTheHouse`). The platform
+  `admin` is refused here too, although `RolesGuard` still admits it to the
+  route]. A bulk
   selection holding any rule-wide item is refused whole. Whether a status
   write is a restore depends on the row already there, so it is read first; a
   failed read refuses the write.
@@ -384,7 +387,11 @@ words. What each asked, and which answer closed it:
    the legacy page's Done (and its "Already handled", now recorded as done)
    sends exactly that, so a staff member there still hides the whole rule
    house-wide until someone returns it — now as a history row with their
-   name. That is round 3's open question 4.]
+   name. That is round 3's open question 4.] [**Round 4, answer 4:** the
+   legacy page's Done and "Already handled" now post the card's own key
+   (`cardKeyOf`), so no web surface sends a bare-key done. The gateway still
+   takes one from any member, from an older client or a direct call. Round 4
+   did not gate it: the founder's gate names dismiss and restore only.]
 2. A card whose rule names no subject and no period: one finding or the
    whole rule? → **answer 1**, "Each firing is one card".
 3. Done on such a card: keep until returned, or end when it next fires? →
@@ -564,39 +571,254 @@ chose):
   in Istanbul). No house time zone exists on the analytics path to use.
 - Anything two people could previously disagree over silently — who put a
   card away and why — is now a row naming them. Names leave the history when
-  the person's user row is deleted; there is no retention period yet.
+  the person's user row is deleted; there is no retention period yet
+  [**round 4, answer 6:** two years, then the name is removed and the act is
+  kept (migration `20260921171100`).]
 - "Not now" from the legacy page's quick Dismiss, its `d` key and its bulk
   Dismiss (all of which send `not_now` without asking) is now a one-day snooze
-  for the person who pressed it, not a house-wide dismissal.
+  for the person who pressed it, not a house-wide dismissal [**round 4,
+  answer 3:** confirmed. Precisely: those controls write the rule's key, so
+  the snooze hides that rule's card from the person for the day, whatever
+  subject or period it names. The feed shows one card per rule, so today that
+  is the card they pressed on].
 - The legacy page still writes every act on the bare rule key: its Done, from
   any member, hides the whole rule house-wide until returned (now a history
   row with their name); its snooze from staff is theirs alone and is not
-  listed on its Snoozed tab (that tab lists the house's).
+  listed on its Snoozed tab (that tab lists the house's). [**Round 4, answer
+  4:** its Done and "Already handled" now write the card's own key. Its
+  snooze and its real dismissals still write the rule's key.]
 - A history row can miss while the state change holds (the receipt says so);
   the state write and the history write are two statements, not one
   transaction.
 
-### Founder questions round 3 leaves open (not decided by the build)
+### Founder questions round 3 left open — all answered 2026-09-21 (round 4)
+
+Moved out of "open": the founder took all seven options with "Take all
+seven". Each question is answered in "Round 4" below, and the seventh (the
+platform `admin`) was put in the lane's report. What each asked, and the
+answer that closed it:
 
 1. **Each rule's firing period.** Built as the horizon the rule declares —
    `now` → a day, `this_week` → a week, `this_month` → a month — and a week for
-   catalogue types. Confirm, or name the period per rule.
+   catalogue types. Confirm, or name the period per rule. → **Round 4,
+   answer 1: confirmed.**
 2. **How long "Not now" hides a card** when no time is picked (the legacy
    page, its `d` key and bulk Dismiss): built as one day, the shortest snooze
-   the product offers. Confirm, or name the length.
+   the product offers. Confirm, or name the length. → **Round 4, answer 2:
+   confirmed.**
 3. **The legacy page's quick Dismiss, `d` key and bulk Dismiss** send "Not
    now" without asking, so on the page houses see today they now hide a card
    from the person for a day instead of dismissing it for the house. Keep,
    or have those controls ask a label (a legacy-page change ADR 0149 would
-   otherwise not make)?
+   otherwise not make)? → **Round 4, answer 3: kept.**
 4. **The legacy page's Done** is on the bare rule key, so it still hides the
    whole rule house-wide until returned — not "this firing". Move the legacy
-   page's acts to the item key, or leave it to the page's retirement?
+   page's acts to the item key, or leave it to the page's retirement? →
+   **Round 4, answer 4: Done and "Already handled" move to the card's key.**
 5. **Undoing someone else's act.** Any member may still restore another
    person's one-card dismissal or done (named in the history). The areas
-   judgement proposed "staff undo their own acts only". Keep or narrow?
+   judgement proposed "staff undo their own acts only". Keep or narrow? →
+   **Round 4, answer 5: narrowed.**
 6. **History retention.** No number exists anywhere in the repo. How long
-   are named acts kept?
+   are named acts kept? → **Round 4, answer 6: two years.**
+
+## Round 4 — the founder took all seven (2026-09-21)
+
+The six questions above and the seventh from the lane's report (the platform
+`admin`) went to the founder as seven options. He answered, verbatim as
+relayed to this lane: **"Take all seven"**. The seven options he took, in the
+relay's words:
+
+1. A card's firing lasts the rule's own period: `now` is a day, `this_week` a
+   week, `this_month` a month, and catalogue rules a week. Confirm the build.
+2. "Not now" hides a card for 1 day unless a time is picked. Confirm.
+3. On the legacy `/recommendations` page, the quick Dismiss (and its `d` key
+   and the bulk Dismiss) becomes that personal 1-day "Not now". Confirm.
+4. Fix the legacy page so Done and "Already handled" act on the single
+   card's item key, not the whole rule.
+5. Staff can undo only their own acts; owners and managers can undo anyone's.
+6. The action history keeps people's names for 2 years. After that the name
+   is removed or pseudonymised, and the act is kept.
+7. The platform `admin` role never acts for a house's cards unless that
+   person is also an owner or manager of that house. This lines up with the
+   areas lane's `mayActForEveryone`, which leaves `admin` out.
+
+### What was built
+
+- **1 and 2 — confirmed, nothing rebuilt.** The numbers are now pinned by a
+  test, so the names alone can no longer carry them
+  (`recommendation-round4.spec.ts`):
+  - `firingPeriodOf` maps `now`, `this_week` and `this_month` to a day, a
+    week and a month;
+  - the generator keys a catalogue type by its week (round 3's spec);
+  - `NOT_NOW_DEFAULT_MS` is 24 hours;
+  - a picked time is kept, and a time already past counts as no pick, so the
+    card hides for one day.
+- **3 — confirmed.** The legacy page's `d` key, its right-click Dismiss and
+  its bulk Dismiss send `not_now` with no instant. The gateway turns that
+  into the person's own one-day snooze. This is pinned by
+  `Recommendations.test.tsx`.
+- **4 — the legacy Done is this card's.** `Recommendations.tsx` `cardKeyOf`
+  reads the key the gateway built for the card (`suppression.key`: the exact
+  finding, or the rule plus its firing).
+  - Done and "Already handled" write that key, and their Undo returns it.
+  - A card that arrives without a key writes nothing and says so
+    (`NO_CARD_KEY`), so the page never falls back to the whole rule.
+  - A real dismissal ("Not relevant", "Disagree") and "Not right now" keep
+    the key they had: a real dismissal on the legacy page is still the
+    owner/manager whole-rule door.
+- **5 — staff undo only their own acts.** An *undo* is any house status
+  write over a row that holds somebody's act (`holdsAnAct`): a dismissal, a
+  done, or a house snooze that is still running. That covers a return to the
+  book, and also a different act laid over the first (a done over a
+  dismissal lifts it just the same).
+  - **Whose act it is** comes from the append-only history (`authorOf`). The
+    newest row for the key, in this house, names the person, but only when
+    that row wrote the status the state row holds now.
+  - **An act nobody can name** is not provably anyone's own, so only an
+    owner or manager undoes it. This covers an act with no history row, an
+    act whose newest row belongs to another act, and a name the two-year
+    rule removed (`mayUndo`).
+  - **The check runs before anything is written** (`assertMayUndo`, in
+    `setActionAs` and `bulkSetActionAs`). A bulk selection that holds one
+    such act is refused whole.
+    - A refusal is a 403 whose body carries `code: "not_your_act"` next to
+      the sentence (`refusedAct` in the controller).
+    - For an owner or a manager, or a write over a row that holds nothing,
+      the history is not read at all.
+  - **A history read that fails refuses the write**, and so does a read
+    that fills a whole page (PostgREST `max_rows`, 1000) before it reaches
+    every key. The gate never opens on a partial answer.
+  - **The tabs say it ahead of time.** `GET …/actions` gives each row an
+    `undoableByYou` field:
+    - true for an owner or a manager, and for anyone on a row that holds
+      nothing;
+    - for staff, true only on their own act;
+    - false for the platform admin;
+    - null when the history could not be read. Then the control stays open,
+      and the gateway decides at the write.
+  - **What the pages show.** The feed's Entry and the legacy tab row both
+    show a dark "Return it to the book" / "Restore to feed" with *"Only the
+    person who did this, or an owner or manager, can undo it."*. A refused
+    write says the gateway's own sentence (`notYourActOf`), never the
+    whole-house one.
+- **6 — a name is kept two years.** Migration `20260921171100` (in the lane
+  band) adds three things:
+  - `recommendation_action_history_name_kept_for()` holds the period, two
+    calendar years, in one place;
+  - a replaced append-only trigger lets exactly one more change through, at
+    any trigger depth: `actor_id` set to NULL on a row acted on more than two
+    years ago, with every other column unchanged. Nothing younger than that
+    can be touched, and no row can ever be deleted;
+  - `recommendation_action_history_forget_old_names()` is the sweep. It
+    returns how many names it removed, and only the service role may run it.
+  - `RecommendationHistoryRetention` (in the gateway) runs the sweep daily at
+    03:45 UTC. A name's two years end on its own date, so a yearly run would
+    keep some names nearly three years. It says 0 as a real answer, reports
+    a failed call as a failed run, and `lastRun()` is null until the first
+    run.
+  - **Removed, not pseudonymised.** The founder allowed either. A stable
+    pseudonym can be joined back to the person by anyone who can compute it,
+    so under KVKK it is still personal data; NULL keeps the minimum. The cost:
+    after two years the history cannot tell two acts by one person from acts
+    by two people.
+  - The rule is proven by the self-asserting SQL test
+    `supabase/tests/20260921171100_…_test.sql` (T1–T10) on a database built
+    from every migration.
+- **7 — the platform admin makes no house act.** `mayActForTheHouse` is
+  owner or manager. It is the one set behind `mayActRuleWide`,
+  `maySnoozeForEveryone`, the undo gate and the catalogue toggle, and it
+  draws the same line as the areas lane's `mayActForEveryone`.
+  - The role is the one the token's house gives (`JwtStrategy.validate` →
+    `roleInHouse`, ADR 0162). An owner or manager of the house reads `owner`
+    or `manager` from their access row there, so `admin` only reaches this
+    code for a person with no role in the house.
+  - `planAct` refuses the admin's dismiss, done, restore or snooze for
+    everyone with a 403, before anything is read. Their own snooze and "Not
+    now" hide a card from them alone, and a note (pin, rating, assignment)
+    stays a note.
+  - The catalogue toggle now takes the token's role and refuses anyone but
+    an owner or manager inside the service (`setTypeEnabled`), because the
+    route's `RolesGuard` still admits `admin`.
+  - On the web, `mayActForTheHouse` in `@/lib/recommendationState` drops
+    `admin` from `maySnoozeForEveryone`, the feed's `canActRuleWide` and the
+    catalogue's on/off control.
+
+### Options considered in round 4
+
+1. **Whose act, from `recommendation_actions.created_by`.** Rejected. A write
+   with no actor used to leave it naming the previous one (round 3, option
+   4), and it holds one name for a row that many acts touch. The history is
+   the record the founder asked for.
+2. **An act nobody can name counts as anyone's.** Rejected: a gate that opens
+   when it cannot see is not a gate. The cost is named below and put to the
+   founder.
+3. **Undo = only a return to the book.** Rejected. A done or a dismissal laid
+   over someone's act lifts it just the same, so a narrower rule would leave
+   an open door beside the gated one.
+4. **A pseudonym instead of NULL** after two years. Rejected: it is still
+   personal data (above).
+5. **`pg_cron` for the sweep.** Not used. No migration in the repo schedules
+   a job, and the gateway already runs the raw-mail retention the same way
+   (`RawMailRetentionCron`), with a status someone can read.
+6. **Take `admin` out of `RolesGuard`.** Not done. That guard gates every
+   `@Roles` route in the gateway, and the founder's answer is about a house's
+   cards. The refusal sits in the recommendation write path and the toggle.
+
+### Consequences of round 4
+
+- **Every act made before the history existed names nobody.** That is every
+  `recommendation_actions` row a house has today. After this lands, only an
+  owner or manager can return one of them. Staff lose Restore on their own
+  pre-history dismissals and dones (the founder question below).
+- A staff member's own act whose history row missed is also not provably
+  theirs, so an owner or manager returns it. The receipt already says "not
+  kept in the history" when that happens.
+- Staff can no longer wake a house snooze from the Snoozed tab. Only an owner
+  or manager can make one, so it is never staff's own.
+- **The gateway still takes a done on a bare rule key from any member.**
+  Nothing on the web sends one after answer 4, but a direct call can. The
+  founder's rule-wide gate names dismiss and restore only.
+- **The platform admin's legacy-page wording.** A refused admin Done on the
+  legacy page says the page's whole-house sentence, not the gateway's
+  admin sentence. The new feed says the gateway's.
+- **The dark Restore's sentence on an unnamed act** is the general one ("Only
+  the person who did this…"). The tab row does not say whether the author is
+  unknown or someone else. The refused write does say which.
+- Names leave the history only while the gateway runs. The trigger permits
+  the removal, it does not perform it.
+- **The two-year rule reaches the history table only.** The sweep clears
+  `recommendation_action_history.actor_id`. Two other places still keep the
+  person's id with no end date:
+  - `recommendation_actions.created_by`, the state row's last writer (its
+    `uuid` column in the baseline migration, set on every write,
+    `recommendation-actions.service.ts` `setAction`). No page shows it,
+    because `toRow` does not return it.
+  - the `system_audit_log` rows for rule-wide acts and catalogue toggles
+    (`actor_id`, written by `fileAudit` for both).
+
+  Whether "the action history" in answer 6 covers these two as well is put
+  to the founder below. The build did not decide it.
+- `latestActs` reads a key's whole history newest-first in one request. A
+  selection whose history passes 1000 rows before it reaches every key is
+  refused (write) or shown as "could not tell" (tabs). It is never guessed.
+
+### Founder questions round 4 leaves open (not decided by the build)
+
+1. **Acts made before the history existed** (every row a house has today)
+   name nobody. As built, only an owner or manager can return them. Keep
+   that, or trust the state row's `created_by` for rows that have no history
+   row?
+2. **The platform admin's notes.** As built, a pin, a rating or an assignment
+   from the platform admin is still accepted: round 3 called these notes,
+   not acts. Refuse them too? The same line decides answer 5 for notes: as
+   built, staff may also change or clear a note someone else made (an
+   unpin, a reassignment), because the undo gate reads status writes only.
+3. **What the two-year rule covers.** As built, it removes names from
+   `recommendation_action_history` only. The state row's `created_by` and
+   the `system_audit_log` rows of rule-wide acts and toggles keep the id with
+   no end (Consequences above). Extend the rule to them, or keep it on the
+   history alone?
 
 ## Review trail
 
@@ -610,3 +832,6 @@ chose):
 | 2026-09-21 | founder (relayed to lane `recs3`) | Answered round 2's seven questions with six picks, verbatim as relayed: (1) "Each firing is one card"; (2) "Keep every label"; (3) "Already handled" recorded as DONE; (4) "Only them" — staff snooze is personal, "Not now" becomes it, snooze for everyone owners/managers (area leads once that lane lands); (5) "Fix the message" — 'Only an owner or manager can dismiss this for the whole house.'; (6) 'Restore all' = the per-card Restore as built, no bulk button. |
 | 2026-09-21 | — | Round 3 built in lane `recs3` (`wt-recs-cat`): firing keys (`suppression.ts`, the feed, the generator), `recommendation_action_history` (20260921170400) and `recommendation_personal_snoozes` (20260921170410), `planAct` routing, the personal view on the two named-person reads, the legacy message, the four web surfaces; round 3's six open questions written above. |
 | 2026-09-21 | last call (Opus), round 3 | Amended before merge: (1) "Only them" had no test that could fail: the write-path stub ignored every filter, so dropping the `user_id` or `restaurant_id` filter from `listForMe`, or the `user_id` filter from `wakeForMe`, left all 45 round-3 tests green. Each of those drops means one person's snooze hides the card from the whole house, or a wake ends someone else's snooze. A table stub that applies the filters, with rows for two people and two houses, now kills all three (`recommendation-round3.spec.ts`, "a snooze for me is read, applied and woken for me alone"). (2) The mapping of round 2's first question now says its done half is not closed at the gateway: a bare-key done from any member still hides the whole rule, and the legacy page sends one (round 3 open question 4). (3) The claim that every surface says an unreadable personal read is corrected: the legacy page says neither flag. |
+| 2026-09-21 | founder (relayed to lane `recs4`) | Answered round 3's seven questions, verbatim as relayed: "Take all seven" — (1) firing = the rule's own period, confirmed; (2) "Not now" = 1 day unless a time is picked, confirmed; (3) the legacy quick Dismiss, `d` key and bulk Dismiss are that personal Not now, confirmed; (4) legacy Done and "Already handled" act on the card's item key; (5) staff undo only their own acts, owners/managers anyone's; (6) names kept 2 years, then removed or pseudonymised, the act kept; (7) the platform `admin` never acts for a house's cards unless also its owner or manager. |
+| 2026-09-21 | — | Round 4 built in lane `recs4` (`wt-recs-cat`): the undo gate (`holdsAnAct`, `authorOf`, `mayUndo`, `assertMayUndo`, `undoableByYou`, `not_your_act`), `mayActForTheHouse` without `admin` (gateway, toggle, web), the legacy page's `cardKeyOf`, migration `20260921171100` + `RecommendationHistoryRetention`; round 4's two open questions written above [a third, what the two-year rule covers, was added at round 4's last call]. |
+| 2026-09-21 | last call (Opus), round 4 | Amended before merge, docs only: (1) the two-year rule clears `recommendation_action_history.actor_id` only; `recommendation_actions.created_by` and the `system_audit_log` rows of rule-wide acts and toggles keep the id with no end. This is now said under Consequences and put to the founder as question 3. (2) Question 2 now also says that, as built, staff may change a note someone else made, because the undo gate reads status writes only. (3) The page note's round-4 bracket said the admin "is offered no house act"; the new feed still offers a card's Done and Dismiss, which the gateway refuses, and the bracket now says so. Re-run on the staged tree: 5 gateway suites (121 tests) and 17 web files (313 tests) green. Two mutations, both killed: `authorOf` without its status match (2 tests), and the legacy Done on the rule key (1 test). |

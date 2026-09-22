@@ -5,20 +5,35 @@ import { insightRuleId } from "./insights/suppression";
 import { SuppressionTarget } from "./insights/suppression";
 import {
   DISMISS_REASONS,
+  HeldRow,
+  LatestAct,
   PersonalBook,
   RecordedAs,
   StateBook,
+  authorOf,
   historyActOf,
+  holdsAnAct,
   isDismissReason,
+  isPlatformAdminRole,
   isRuleWideDismissOrRestore,
   isRuleWideKey,
+  mayActForTheHouse,
   mayActRuleWide,
+  mayUndo,
   personalBookFrom,
   personalView,
   planAct,
   snoozeHolds,
   stateBookFrom,
+  undoRefusal,
 } from "./insights/item-state";
+
+/**
+ * The most rows one read of the history answers — PostgREST's `max_rows`
+ * (supabase/config.toml:18). Who made an act is read in one request; a full
+ * answer that has not reached every key is refused, not read as "nobody".
+ */
+export const HISTORY_READ_ROWS = 1000;
 
 /** The `system_audit_log.action` a catalogue on/off files (ADR 0191). */
 export type TypeToggleAction =
@@ -73,6 +88,11 @@ export class ActRefused extends Error {
   constructor(
     message: string,
     readonly forbidden: boolean,
+    /**
+     * A machine word for the one refusal a page words differently:
+     * `not_your_act` — staff undoing someone else's act (round 4, answer 5).
+     */
+    readonly code: "not_your_act" | null = null,
   ) {
     super(message);
     this.name = "ActRefused";
@@ -425,13 +445,20 @@ export class RecommendationActionsService {
    * client, so a lost audit row is visible instead of inferred from a short
    * log. `actorUserId` is required — `public.users.user_id` from the JWT,
    * never the body — and the controller refuses the toggle without one.
+   *
+   * `actorRole` is the token's house role, checked HERE and not only by the
+   * route's `RolesGuard`, which also admits the platform `admin`: round 4,
+   * answer 7 — the platform admin never acts for a house's cards unless an
+   * owner or manager of that house. Refused (`ActRefused`, 403) before
+   * anything is read or written.
    */
   async setTypeEnabled(
     restaurantId: string,
     candidateKey: string,
     enabled: boolean,
     actorUserId: string,
-    reason: string | null = null,
+    reason: string | null,
+    actorRole: string | null,
   ): Promise<{
     row: RecommendationActionRow;
     ruleKey: string;
@@ -439,6 +466,11 @@ export class RecommendationActionsService {
     history: TypeToggleAuditReceipt;
   }> {
     if (!actorUserId) throw new Error("a signed-in actor is required");
+    if (!mayActForTheHouse(actorRole))
+      throw new ActRefused(
+        "Only an owner or manager of this house can turn a type on or off.",
+        true,
+      );
     // Only a type the catalogue actually lists. Without this, the owner door
     // would write any string — including an instance-scope `a#b#c` key —
     // and file it in the audit log as a "type".
@@ -498,10 +530,14 @@ export class RecommendationActionsService {
    *   - a staff member asking to snooze for everyone is refused (403).
    *
    * Then the house write:
+   *   - the platform `admin` role makes no house act at all (round 4, answer
+   *     7 — `planAct` refuses it, 403);
    *   - a rule-wide dismiss or restore (`isRuleWideDismissOrRestore`) needs
-   *     an owner, manager or admin (the `RolesGuard` set), is refused with
+   *     an owner or manager (`mayActForTheHouse`), is refused with
    *     `RuleWideActForbidden` BEFORE anything is written otherwise, and files
    *     a `system_audit_log` row whose receipt is returned;
+   *   - a write over somebody's act (`assertMayUndo`) is theirs to make, or an
+   *     owner's or manager's (round 4, answer 5) — refused (403) otherwise;
    *   - every status write — dismiss, restore, done, snooze — is kept in the
    *     append-only history with its label, who and when (answer 2, "Keep
    *     every label"), and needs a signed-in person to name. The state row
@@ -541,12 +577,13 @@ export class RecommendationActionsService {
     const housePatch = this.routedPatch(patch, route);
     this.validateStatePatch(housePatch);
     this.assertNamedActor(housePatch, actor);
-    const { gated, current } = await this.ruleWideStatus(
+    const { gated, current, held } = await this.ruleWideStatus(
       [ruleKey],
       restaurantId,
       housePatch,
     );
     if (gated.has(ruleKey)) this.assertMayActRuleWide(actor, 1);
+    await this.assertMayUndo(restaurantId, held, actor);
     const row = await this.setAction(
       restaurantId,
       ruleKey,
@@ -585,9 +622,9 @@ export class RecommendationActionsService {
   /**
    * The bulk bar's write, under the same routing and gate. Refused WHOLE,
    * before any write, when any item is a rule-wide dismiss or restore the
-   * actor may not make, or a snooze for everyone they may not make — a
-   * half-applied bulk act with a 403 for the rest would leave the page unable
-   * to say which entries moved.
+   * actor may not make, a snooze for everyone they may not make, or an undo
+   * of someone else's act (round 4) — a half-applied bulk act with a 403 for
+   * the rest would leave the page unable to say which entries moved.
    */
   async bulkSetActionAs(
     restaurantId: string,
@@ -621,14 +658,19 @@ export class RecommendationActionsService {
       this.validateStatePatch(housePatch);
       this.assertNamedActor(housePatch, actor);
     }
-    const { gated, current } = housePatch
+    const { gated, current, held } = housePatch
       ? await this.ruleWideStatus(
           house.map((r) => r.it.ruleKey),
           restaurantId,
           housePatch,
         )
-      : { gated: new Map<string, string | null>(), current: new Map() };
+      : {
+          gated: new Map<string, string | null>(),
+          current: new Map(),
+          held: new Map<string, HeldRow>(),
+        };
     if (gated.size > 0) this.assertMayActRuleWide(actor, gated.size);
+    await this.assertMayUndo(restaurantId, held, actor);
     let updated = 0;
     const audit = { recorded: 0, missed: 0 };
     const history = { recorded: 0, missed: 0 };
@@ -717,10 +759,12 @@ export class RecommendationActionsService {
 
   /**
    * For each key under a status write: the status it has now (null when it
-   * has no row) in `current`, and — in `gated` — the keys this patch would
-   * dismiss or lift as a WHOLE rule, with that same status. A write that
+   * has no row) in `current`; in `gated`, the keys this patch would dismiss
+   * or lift as a WHOLE rule, with that same status; and in `held`, the keys
+   * whose row holds somebody's act now (`holdsAnAct` — dismissed, done, or a
+   * house snooze still in force), which this write would undo. A write that
    * changes no status reads nothing. A failed read throws: what a write
-   * lifts decides both the gate and the history row.
+   * lifts decides the gates and the history row.
    */
   private async ruleWideStatus(
     keys: string[],
@@ -729,31 +773,130 @@ export class RecommendationActionsService {
   ): Promise<{
     gated: Map<string, string | null>;
     current: Map<string, string | null>;
+    held: Map<string, HeldRow>;
   }> {
     const gated = new Map<string, string | null>();
     const current = new Map<string, string | null>();
+    const held = new Map<string, HeldRow>();
     if (patch.status === undefined || keys.length === 0)
-      return { gated, current };
+      return { gated, current, held };
     const { data, error } = await this.dbService
       .getClient()
       .from("recommendation_actions")
-      .select("rule_key,status")
+      .select("rule_key,status,snooze_until")
       .eq("restaurant_id", restaurantId)
       .in("rule_key", keys);
     if (error)
       throw new Error(
-        `Could not read the item's current state, so could not tell whether this lifts a rule-wide dismissal, or keep it in the history: ${error.message}`,
+        `Could not read the item's current state, so could not tell whether this lifts a rule-wide dismissal or someone else's act, or keep it in the history: ${error.message}`,
       );
-    const now = new Map<string, string>();
-    for (const r of data || []) now.set(String(r.rule_key), String(r.status));
+    const rows = new Map<string, HeldRow>();
+    for (const r of data || [])
+      rows.set(String(r.rule_key), {
+        status: String(r.status),
+        snoozeUntil: r.snooze_until ?? null,
+      });
+    const at = Date.now();
     for (const k of keys) {
-      const was = now.get(k) ?? null;
+      const row = rows.get(k) ?? null;
+      const was = row?.status ?? null;
       current.set(k, was);
       if (isRuleWideDismissOrRestore(k, patch.status, was)) gated.set(k, was);
+      if (row && holdsAnAct(row, at)) held.set(k, row);
     }
-    return { gated, current };
+    return { gated, current, held };
   }
 
+  /**
+   * Round 4, answer 5 (the founder, 2026-09-21): staff undo only their own
+   * acts; owners and managers undo anyone's.
+   *
+   * An undo is any status write over a row that holds somebody's act — a
+   * return to the book, or a different act laid over it (a done over a
+   * dismissal lifts the dismissal just the same). Whose act it is comes from
+   * the append-only history (`authorOf`): the newest row for the key, when it
+   * wrote the status the row holds. Anything it cannot name — no history row,
+   * one for another act, a name the two-year rule removed — is not the
+   * person's own, so only an owner or manager undoes it (`mayUndo`).
+   *
+   * Refused BEFORE anything is written, whole for a bulk selection. The
+   * history is read only when it can change the answer: an owner or manager,
+   * or a write over nothing held, reads nothing. A failed read refuses the
+   * write — a gate that opens when it cannot see is not a gate.
+   */
+  private async assertMayUndo(
+    restaurantId: string,
+    held: Map<string, HeldRow>,
+    actor: RecommendationActor,
+  ): Promise<void> {
+    if (held.size === 0 || mayActForTheHouse(actor.role)) return;
+    let latest: Map<string, LatestAct>;
+    try {
+      latest = await this.latestActs(restaurantId, [...held.keys()]);
+    } catch (err: any) {
+      throw new Error(
+        `Could not read who made this act, so could not tell whether it is yours to undo: ${err?.message}`,
+      );
+    }
+    const refused: Array<{ key: string; unknown: boolean }> = [];
+    for (const [k, row] of held) {
+      const madeBy = authorOf(row, latest.get(k));
+      if (!mayUndo(actor, madeBy)) refused.push({ key: k, unknown: madeBy === null });
+    }
+    if (refused.length === 0) return;
+    throw new ActRefused(
+      undoRefusal(refused[0].unknown, refused.length),
+      true,
+      "not_your_act",
+    );
+  }
+
+  /**
+   * The newest history row for each key, in this house — who made the act
+   * each key holds, read by `authorOf`. A failed read throws.
+   *
+   * One read, newest first, so the first row seen for a key is its newest.
+   * PostgREST stops a response at `max_rows` (supabase/config.toml:18) and
+   * says nothing when it does; a key absent from a FULL answer may have a
+   * history the read never reached, which `authorOf` would take for "nobody
+   * recorded" — so that read throws too, instead of passing a partial answer
+   * off as a whole one.
+   */
+  private async latestActs(
+    restaurantId: string,
+    keys: string[],
+  ): Promise<Map<string, LatestAct>> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("recommendation_action_history")
+      .select("rule_key,actor_id,status_to,acted_at")
+      .eq("restaurant_id", restaurantId)
+      .in("rule_key", keys)
+      .order("acted_at", { ascending: false })
+      .limit(HISTORY_READ_ROWS);
+    if (error) throw new Error(error.message);
+    const rows = data || [];
+    const latest = new Map<string, LatestAct>();
+    for (const r of rows) {
+      const k = String(r.rule_key);
+      // Newest first: the first row seen for a key is its latest act.
+      if (!latest.has(k))
+        latest.set(k, {
+          actorId: r.actor_id ?? null,
+          statusTo: String(r.status_to),
+        });
+    }
+    if (rows.length >= HISTORY_READ_ROWS) {
+      const unseen = keys.filter((k) => !latest.has(k)).length;
+      if (unseen > 0)
+        throw new Error(
+          `the history answered ${rows.length} rows, the most one read returns, before reaching ${unseen} of the ${keys.length} items asked about`,
+        );
+    }
+    return latest;
+  }
+
+  /** Owners and managers only — not the platform `admin` (round 4, answer 7). */
   private assertMayActRuleWide(actor: RecommendationActor, n: number): void {
     if (!mayActRuleWide(actor.role))
       throw new RuleWideActForbidden(
@@ -1068,11 +1211,22 @@ export class RecommendationActionsService {
     return audit;
   }
 
-  /** Cards currently in a given non-active state (for the status tabs). */
+  /**
+   * Cards currently in a given non-active state (for the status tabs).
+   *
+   * With a `viewer`, each row also says `undoableByYou` (round 4, answer 5):
+   * whether this person may return it to the book — true for an owner or a
+   * manager, and for anyone over a row that holds nobody's act; for anyone
+   * else, true only when the history names them as the one who made it; false
+   * for the platform admin, who makes no house act (answer 7). `null` when
+   * the history could not be read — the page must not darken a control on a
+   * guess; the gateway decides again at the write either way.
+   */
   async listByStatus(
     restaurantId: string,
     status: RecommendationStatus | "all",
-  ): Promise<RecommendationActionRow[]> {
+    viewer?: RecommendationActor,
+  ): Promise<Array<RecommendationActionRow & { undoableByYou?: boolean | null }>> {
     let q = this.dbService
       .getClient()
       .from("recommendation_actions")
@@ -1083,7 +1237,7 @@ export class RecommendationActionsService {
     const { data, error } = await q;
     if (error) throw new Error(error.message);
     const now = Date.now();
-    return (data || [])
+    const rows = (data || [])
       .map((d) => this.toRow(d))
       .filter((r) => {
         // Hide snoozes that have expired from the "snoozed" tab.
@@ -1093,6 +1247,45 @@ export class RecommendationActionsService {
             : false;
         return true;
       });
+    if (!viewer) return rows;
+    const undoable = await this.undoableFor(restaurantId, rows, viewer, now);
+    return rows.map((r) => ({ ...r, undoableByYou: undoable.get(r.ruleKey) ?? null }));
+  }
+
+  /** `undoableByYou` for each row — see `listByStatus`. Never throws. */
+  private async undoableFor(
+    restaurantId: string,
+    rows: RecommendationActionRow[],
+    viewer: RecommendationActor,
+    now: number,
+  ): Promise<Map<string, boolean | null>> {
+    const out = new Map<string, boolean | null>();
+    const held = rows.filter((r) =>
+      holdsAnAct({ status: r.status, snoozeUntil: r.snoozeUntil }, now),
+    );
+    for (const r of rows) out.set(r.ruleKey, true);
+    if (isPlatformAdminRole(viewer.role)) {
+      for (const r of rows) out.set(r.ruleKey, false);
+      return out;
+    }
+    if (held.length === 0 || mayActForTheHouse(viewer.role)) return out;
+    try {
+      const latest = await this.latestActs(
+        restaurantId,
+        held.map((r) => r.ruleKey),
+      );
+      for (const r of held) {
+        const madeBy = authorOf(
+          { status: r.status, snoozeUntil: r.snoozeUntil },
+          latest.get(r.ruleKey),
+        );
+        out.set(r.ruleKey, mayUndo(viewer, madeBy));
+      }
+    } catch (err: any) {
+      this.logger.warn(`undoableFor: the history could not be read: ${err?.message}`);
+      for (const r of held) out.set(r.ruleKey, null);
+    }
+    return out;
   }
 
   /** NEW-302: everything the manager has acted on / dismissed / completed. */

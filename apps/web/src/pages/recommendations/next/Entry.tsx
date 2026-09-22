@@ -40,6 +40,7 @@ import {
   dateOfGrain,
   dismissalSentence,
   NOT_NOW_DAYS,
+  NOT_YOUR_ACT_SAID,
   entryNo,
   firingOf,
   fmtDay,
@@ -912,6 +913,19 @@ export default function Entry(props: EntryProps) {
                   This dismissal silences the whole rule {EM} only an owner or manager can
                   return it.
                 </span>
+              </>
+            ) : e.undoableByYou === false ? (
+              <>
+                {/* ADR 0191 round 4, answer 5: staff undo only their own acts. */}
+                <button
+                  type="button"
+                  className="rc-dark rc-dark-inline"
+                  disabled
+                  data-testid="rc-restore-not-yours"
+                >
+                  Return it to the book
+                </button>
+                <span className="rc-said">{NOT_YOUR_ACT_SAID}</span>
               </>
             ) : (
               <Quiet onClick={props.onRestore}>Return it to the book</Quiet>
