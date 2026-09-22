@@ -298,6 +298,57 @@ describe('the shell gate', () => {
  * importantly, that it does NOT emit it for a Panel, where it would be a
  * no-op the next reader would take for a supported option.
  */
+/* ADR 0134 §4, locked by the founder 2026-09-21 ("Lock all four (Recommended)"): a surface
+   opened from the keyboard arrives with no enter animation at all, whatever the
+   motion setting. The control case — the same Panel without `instant` — is in
+   each pair, so a primitive that stopped animating everything would fail here
+   rather than pass. */
+describe('an instant surface (ADR 0134 §4)', () => {
+  function Opened({ instant }: { instant?: boolean }) {
+    const [open, setOpen] = useState(false);
+    return (
+      <div className="mudavym">
+        <button type="button" onClick={() => setOpen(true)}>
+          opener
+        </button>
+        <Panel open={open} onClose={() => setOpen(false)} label="Palette" instant={instant}>
+          <button type="button">row</button>
+        </Panel>
+      </div>
+    );
+  }
+
+  it('schedules nothing and says "none" under full motion', () => {
+    render(<Opened instant />);
+    fireEvent.click(screen.getByRole('button', { name: 'opener' }));
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-motion', 'none');
+    expect(vi.mocked(animate)).not.toHaveBeenCalled();
+  });
+
+  it('schedules nothing — not even the §6 fade — under reduced motion', () => {
+    setReducedMotion(true);
+    render(<Opened instant />);
+    fireEvent.click(screen.getByRole('button', { name: 'opener' }));
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-motion', 'none');
+    expect(vi.mocked(animate)).not.toHaveBeenCalled();
+  });
+
+  it('the same Panel without it still settles, and still fades under reduced motion', () => {
+    const { unmount } = render(<Opened />);
+    fireEvent.click(screen.getByRole('button', { name: 'opener' }));
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-motion', 'settle');
+    expect(vi.mocked(animate)).toHaveBeenCalledTimes(1);
+    unmount();
+
+    vi.mocked(animate).mockClear();
+    setReducedMotion(true);
+    render(<Opened />);
+    fireEvent.click(screen.getByRole('button', { name: 'opener' }));
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-motion', 'fade');
+    expect(vi.mocked(animate)).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('the wide sheet', () => {
   it('marks a wide Sheet and leaves a plain one unmarked', () => {
     const { rerender } = render(

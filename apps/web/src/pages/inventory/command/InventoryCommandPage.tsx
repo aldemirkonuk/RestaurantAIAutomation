@@ -79,6 +79,9 @@ import {
 import { RowExpansion } from "./RowExpansion";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
 import { CellarMapView } from "./CellarMapView";
+import { useReducedMotion } from "../../../lib/mudavym/motion";
+import { ReducedMotionScope } from "../../../lib/mudavym/ReducedMotionScope";
+import "../../../components/mudavym/reduced-motion.css";
 
 const GRID =
   "34px minmax(215px,1.5fr) 80px 128px 195px 90px 78px 84px 92px 106px 32px";
@@ -118,7 +121,37 @@ const FLAG_DEFS: Array<{ key: RowFlag; label: string; dot: string }> = [
 /** An unknown figure, never a fabricated zero (CLAUDE.md §9). */
 const UNKNOWN = "—";
 
+/**
+ * ADR 0134 §8, locked 2026-09-21: this page's reduced-motion guard, inside the
+ * component because App.tsx mounts this same page on both arms of the gate. A
+ * pure removal, in two halves keyed on one `prefers-reduced-motion` read:
+ *
+ *   - CSS: `data-reduced-motion` on the page root (components/mudavym/
+ *     reduced-motion.css) stops the page's Tailwind `transition-*` and
+ *     `animate-spin` classes;
+ *   - framer-motion: the legacy modals this page opens (AddWineSelectionModal,
+ *     AddWineToInventoryModal, AutoLocatePreviewModal, RemoveFromInventoryModal)
+ *     animate through it, some portalled out of the root, so the CSS cannot
+ *     reach them — `ReducedMotionScope` lands their movement with no frames,
+ *     and every value without a transition of its own too. One residue,
+ *     named: AutoLocatePreviewModal names its own opacity transitions
+ *     (200/220ms), which beat any scope, so under reduced motion it still
+ *     fades — and no longer scales or rises.
+ *
+ * For a reader who has not asked for less, neither half is present: no
+ * attribute, and a scope handed nothing, which renders no element.
+ * The `ink` swap and the `settle` row expand stay deferred (§8).
+ */
 export function InventoryCommandPage() {
+  const reducedMotion = useReducedMotion();
+  return (
+    <ReducedMotionScope reduced={reducedMotion}>
+      <InventoryCommand reducedMotion={reducedMotion} />
+    </ReducedMotionScope>
+  );
+}
+
+function InventoryCommand({ reducedMotion }: { reducedMotion: boolean }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const page = useInventoryPage({});
   const {
@@ -352,6 +385,24 @@ export function InventoryCommandPage() {
     const match = (toVerify as any[]).find((o) => o.id === id);
     if (match) setVerifyOrder(match);
   }, [searchParams, toVerify, verifyOrder]);
+
+  /**
+   * Deep-link: /inventory?wine=<name> (low-stock-alert.template.ts's email
+   * CTA, sw.js's push action) — reuses the same substring search the search
+   * box already runs (useInventoryPage.ts) so the named wine is what is
+   * actually visible, once, rather than an unfiltered page.
+   * `?action=reorder` is deliberately NOT read here: there is no distinct
+   * reorder flow on this page to open, so that promise goes no further than
+   * "the item is now visible" — stated plainly rather than built on a guess
+   * at what a reorder flow should do.
+   */
+  const appliedWineParam = useRef(false);
+  useEffect(() => {
+    const wine = searchParams.get("wine");
+    if (!wine || appliedWineParam.current) return;
+    appliedWineParam.current = true;
+    setSearchQuery(wine);
+  }, [searchParams, setSearchQuery]);
 
   const closeVerify = () => {
     setVerifyOrder(null);
@@ -804,7 +855,10 @@ export function InventoryCommandPage() {
   };
 
   return (
-    <div className="p-6 max-w-[1500px] mx-auto">
+    <div
+      className="p-6 max-w-[1500px] mx-auto"
+      data-reduced-motion={reducedMotion ? "true" : undefined}
+    >
       {/* header */}
       <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
         <div data-tour="inventory-filters">

@@ -69,6 +69,8 @@ export function RecentlyViewed({
       <Panel
         open={open}
         onClose={onClose}
+        // ADR 0134 §4: opened from the keyboard, so it arrives with no motion.
+        instant
         label="Recently viewed"
         eyebrow="Where you have been"
         title="Recently viewed"

@@ -260,6 +260,8 @@ export function CommandPalette({
       <Panel
         open={open}
         onClose={onClose}
+        // ADR 0134 §4: opened from the keyboard, so it arrives with no motion.
+        instant
         label="Command palette"
         showClose={false}
         bodyClassName="mdv-ovl__body--flush"
@@ -296,7 +298,16 @@ export function CommandPalette({
           />
           <kbd className="mdv-kbd">esc</kbd>
         </div>
-        <div id="command-list" ref={listRef} role="listbox" style={{ padding: "4px 0 8px" }}>
+        {/* ADR 0134 §4: the palette does not animate its filtering. Every
+            keystroke moves the selection, and `mdv-list-still` stops a row that
+            survives the filter from fading its seal tint in on each one. */}
+        <div
+          id="command-list"
+          ref={listRef}
+          role="listbox"
+          className="mdv-list-still"
+          style={{ padding: "4px 0 8px" }}
+        >
           {flat.length === 0 ? (
             <p className="mdv-quiet">Nothing here matches “{query}”.</p>
           ) : (

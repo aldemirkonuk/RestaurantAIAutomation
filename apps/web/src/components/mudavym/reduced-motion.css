@@ -1,0 +1,23 @@
+/* The reduced-motion guard for surfaces that animate through Tailwind utility
+   classes rather than the house tokens — ADR 0134, locked by the founder
+   2026-09-21:
+
+     §5(a)  the sidebar rail, on every route and ungated, because it only ever
+            removes motion (components/layout/Sidebar.tsx);
+     §8     /inventory, inside its own component, since App.tsx mounts the same
+            page on both arms of the gate (pages/inventory/command).
+
+   The component sets `data-reduced-motion="true"` only while the reader has
+   asked for less (`useReducedMotion()`, lib/mudavym/motion.ts). A reader who
+   has not gets byte-identical markup, and nothing below can match them. The
+   media query is kept as well, so a stale attribute can never outlive the
+   setting. It removes; it never adds or retimes. */
+@media (prefers-reduced-motion: reduce) {
+  [data-reduced-motion='true'],
+  [data-reduced-motion='true'] *,
+  [data-reduced-motion='true'] *::before,
+  [data-reduced-motion='true'] *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

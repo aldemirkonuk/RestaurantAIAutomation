@@ -271,6 +271,36 @@ describe('with a Mudavym page on screen', () => {
     expect(document.querySelector('.bg-gray-900\\/40')).toBeNull();
   });
 
+  /* ADR 0134 §4, locked 2026-09-21: the four keyboard-opened surfaces arrive
+     with no enter animation (`instant` on the Panel), and the palette does not
+     animate its filtering (`mdv-list-still` on its listbox, sheet.css). */
+  it('the four keyboard surfaces arrive with no motion, and the palette filters still', () => {
+    const motionOf = () =>
+      (document.querySelector('.mdv-ovl--panel [role="dialog"]') as HTMLElement | null)?.getAttribute(
+        'data-motion',
+      );
+
+    const a = render(<ShortcutsSheet open onClose={() => {}} />);
+    expect(motionOf()).toBe('none');
+    a.unmount();
+
+    const b = render(
+      <MemoryRouter>
+        <RecentlyViewed open onClose={() => {}} />
+      </MemoryRouter>,
+    );
+    expect(motionOf()).toBe('none');
+    b.unmount();
+
+    const c = renderShell(<CommandPalette open onClose={() => {}} />);
+    expect(motionOf()).toBe('none');
+    expect(document.getElementById('command-list')).toHaveClass('mdv-list-still');
+    c.unmount();
+
+    renderShell(<AskAiBar open onClose={() => {}} />);
+    expect(motionOf()).toBe('none');
+  });
+
   it("the Header's bell and user menu become house Popovers", () => {
     renderShell(<Header title="Dashboard" />);
     fireEvent.click(screen.getByRole('button', { name: /^Notifications/ }));

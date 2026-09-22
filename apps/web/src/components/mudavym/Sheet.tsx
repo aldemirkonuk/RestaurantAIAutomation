@@ -247,8 +247,25 @@ export interface OverlayProps {
    *
    * It is a boolean rather than a number so it cannot become per-page freedom
    * by increments: there are two widths, and a third needs an ADR.
+   *
+   * Two callers hold letters: the composer (`communications/next/Compose/
+   * ComposeSheet.tsx`, sketch 100) and the vendor answers
+   * (`orders/next/ResponsesSheet.tsx`) — ADR 0134 fork 13, the founder
+   * 2026-09-21: "Stays 640, it's letters (Recommended)". A vendor's reply is a
+   * letter the reader reads back — this width's own case, not a third width.
    */
   wide?: boolean;
+  /**
+   * No enter animation at all — ADR 0134 §4, locked by the founder 2026-09-21.
+   *
+   * For a surface a person opens from the keyboard, hundreds of times a day:
+   * the command palette, Ask AI, Recently viewed and Keyboard shortcuts. The
+   * surface is simply there, whatever the motion setting — not the shape's
+   * token under full motion and not §6's 120ms fade under reduced motion — and
+   * `data-motion` reads `'none'`. Per surface, not per opener: the same
+   * surface never answers a mouse and a key differently.
+   */
+  instant?: boolean;
   /**
    * Paint the scrim — sketch 103 · 1a, "The Pass".
    *
@@ -455,6 +472,7 @@ function OverlayRoot({
   className,
   bodyClassName,
   wide,
+  instant = false,
   dirty = false,
   onTear,
   denied,
@@ -706,9 +724,10 @@ function OverlayRoot({
      under reduced motion every OTHER motion in this family skips `animate()`
      entirely so nothing is scheduled at all — the entrance is the single
      exception ADR 0134 §6 draws, a 120ms opacity-only cross-fade so an
-     arriving surface is not literally invisible to notice. */
+     arriving surface is not literally invisible to notice. An `instant`
+     surface (ADR 0134 §4) schedules nothing in either case. */
   useEffect(() => {
-    if (!live || !holdsLevel()) return;
+    if (!live || instant || !holdsLevel()) return;
     const panel = panelRef.current;
     if (!panel) return;
     if (reduced) {
@@ -716,7 +735,7 @@ function OverlayRoot({
       return;
     }
     animate(panel, bottom ? ENTER_BOTTOM : ENTER[shape], TOKEN[shape]);
-  }, [live, reduced, shape, bottom, holdsLevel]);
+  }, [live, instant, reduced, shape, bottom, holdsLevel]);
 
   /* ── the tear (1b) ──────────────────────────────────────────────────────
      A dirty Sheet does not vanish when you press Esc: it leaves on `tuck`, the
@@ -1045,8 +1064,9 @@ function OverlayRoot({
         // ADR 0134 §6: reduced motion renders NO MOVEMENT, not necessarily no
         // frames — an entrance crosses on the disclosed 120ms fade, and
         // `data-motion` says so rather than claiming 'none' for a surface
-        // that did, in fact, animate.
-        data-motion={reduced ? 'fade' : TOKEN_NAME[shape]}
+        // that did, in fact, animate. An `instant` surface (§4) did not, in
+        // either setting, and says 'none'.
+        data-motion={instant ? 'none' : reduced ? 'fade' : TOKEN_NAME[shape]}
         tabIndex={-1}
         onKeyDown={onKeyDown}
         style={

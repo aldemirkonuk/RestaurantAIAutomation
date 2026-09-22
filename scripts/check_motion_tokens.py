@@ -151,7 +151,7 @@ CSS_ALLOWED_PAIRS: dict[int, set[str]] = {
 # (repo-relative file, 1-based line) -> why, citing the ADR. Path-listed, not
 # pattern-matched, so a new entry shows up in a diff. See "EXEMPTIONS" above.
 ALLOWLIST: dict[tuple[str, int], str] = {
-    (f"{WEB_SRC}/components/mudavym/Sheet.tsx", 715): (
+    (f"{WEB_SRC}/components/mudavym/Sheet.tsx", 734): (
         "ADR 0134 §6 (2026-09-21, locked) -- REDUCED_FADE, the reduced-motion "
         "entrance cross-fade, 120ms opacity-only. Disclosed, not an eighth "
         "token; §1's \"no eighth token\" stays literally true."

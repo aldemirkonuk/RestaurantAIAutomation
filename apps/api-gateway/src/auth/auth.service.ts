@@ -23,6 +23,7 @@ import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 import { devBypassEnvEnabled } from "./dev-bypass.util";
 import { grantRefusal } from "./role-grant";
 import { roleInHouse, tokenHouse } from "./house-role";
+import { canonicalOrigin } from "../communications/email-templates/template-config";
 import {
   IDENTITY_PROVIDERS,
   IdentityProviderDescriptor,
@@ -928,9 +929,16 @@ export class AuthService {
           ownerName: dto.name,
           restaurantName: dto.restaurantName,
           restaurantCity: dto.city,
+          // Fallback only -- the pre-rebrand Vercel URL below is still LIVE
+          // (curl -> 200), which is exactly what made it dangerous: it never
+          // errors, it just silently mails out the wrong domain if
+          // FRONTEND_URL is ever unset (ADR 0149 row 28).
+          // FRONTEND_URL is a comma-separated CORS allow-list (cors-origins.ts);
+          // canonicalOrigin() takes only its first entry so this never mails a
+          // literal comma-joined URL (template-config.ts).
           frontendBaseUrl:
-            this.configService.get("FRONTEND_URL") ||
-            "https://restaurant-ai-automation-web.vercel.app",
+            canonicalOrigin(this.configService.get("FRONTEND_URL")) ||
+            "https://mudavym.com",
         })
         .catch((err) =>
           this.logger.warn(
@@ -974,9 +982,11 @@ export class AuthService {
         .single();
       if (!verif) return;
 
+      // FRONTEND_URL is a comma-separated CORS allow-list (cors-origins.ts);
+      // canonicalOrigin() takes only its first entry (template-config.ts).
       const frontendUrl =
-        this.configService.get("FRONTEND_URL") ||
-        "https://restaurant-ai-automation-web.vercel.app";
+        canonicalOrigin(this.configService.get("FRONTEND_URL")) ||
+        "https://mudavym.com";
       const verifyUrl = `${frontendUrl}/verify-email?token=${verif.token}`;
 
       // Always call sendEmail() — it handles lazy-init and falls back to mock if OAuth unconfigured
@@ -1237,7 +1247,9 @@ export class AuthService {
     return {
       code: invite.code,
       expiresAt: invite.expires_at,
-      inviteUrl: `${this.configService.get("FRONTEND_URL") || "https://restaurant-ai-automation-web.vercel.app"}/invite/${invite.code}`,
+      // FRONTEND_URL is a comma-separated CORS allow-list; canonicalOrigin()
+      // takes only its first entry (template-config.ts).
+      inviteUrl: `${canonicalOrigin(this.configService.get("FRONTEND_URL")) || "https://mudavym.com"}/invite/${invite.code}`,
     };
   }
 
@@ -2139,9 +2151,11 @@ export class AuthService {
       return { sent: true };
     }
 
+    // FRONTEND_URL is a comma-separated CORS allow-list; canonicalOrigin()
+    // takes only its first entry (template-config.ts).
     const frontendUrl =
-      this.configService.get("FRONTEND_URL") ||
-      "https://restaurant-ai-automation-web.vercel.app";
+      canonicalOrigin(this.configService.get("FRONTEND_URL")) ||
+      "https://mudavym.com";
     const resetUrl = `${frontendUrl}/reset-password?token=${reset.token}`;
 
     try {

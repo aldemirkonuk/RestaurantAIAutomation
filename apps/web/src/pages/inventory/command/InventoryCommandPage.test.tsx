@@ -157,6 +157,23 @@ function mount() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The page reads `prefers-reduced-motion` since ADR 0134 §8 (2026-09-21), and
+  // `vi.restoreAllMocks()` below strips the setup file's `matchMedia`
+  // implementation after the first case, leaving it returning undefined. Each
+  // case re-installs it: a reader who has not asked for less.
+  vi.mocked(window.matchMedia).mockImplementation(
+    (query: string) =>
+      ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }) as unknown as MediaQueryList,
+  );
 });
 
 afterEach(() => {

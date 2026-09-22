@@ -353,6 +353,9 @@ export function ResponsesSheet({
     <Sheet
       open={open}
       onClose={onClose}
+      // 640, not 440: vendor replies are letters the reader reads back. ADR
+      // 0134 rule 9 / fork 13, the founder 2026-09-21: "Stays 640, it's letters
+      // (Recommended)".
       wide
       label={`Vendor answers for ${row.wineName ?? 'this order'}`}
       eyebrow="Vendor answers"

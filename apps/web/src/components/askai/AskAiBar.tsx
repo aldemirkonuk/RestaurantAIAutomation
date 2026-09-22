@@ -166,6 +166,8 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
       <Panel
         open={open}
         onClose={onClose}
+        // ADR 0134 §4: opened from the keyboard, so it arrives with no motion.
+        instant
         label="Ask AI"
         showClose={false}
         bodyClassName="mdv-ovl__body--flush"

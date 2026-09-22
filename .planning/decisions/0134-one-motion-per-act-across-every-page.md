@@ -3,6 +3,9 @@
 - **Status:** Locked — the eleven rules below, as recommended by sketch 116 and locked by the
   founder 2026-09-21. Landed on `main` from `docs/motions-and-overlays-per-page`, where this ADR
   sat unmerged since 2026-09-06 while the founder watched the motion first (sketch 116).
+  **[2026-09-21, round 6: §4, §5, §7's SC 3.3.8 bullet, §8, §9, fork 14 and sketch 116's founder
+  question 6 (`ResponsesSheet`'s `wide`) are now locked too, with his words — see "Round 6
+  answers — locked 2026-09-21" below. Nothing this ADR drafted is still Proposed.]**
 - **Date:** 2026-09-06 (drafted) · **Locked:** 2026-09-21
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** motion, tokens, overlays, ceremony, wax, ration, reduced motion, WCAG, sidebar, guard, census
@@ -51,9 +54,9 @@ rejected alternatives matter as much as the outcome"), not edited to match.
 | 4 | Hold-to-reject | **Corrected.** Road (a): the reject **keeps** its cancel seal (census row 19 flips to `seal: true`; no code changes — `ResponsesSheet.tsx`'s hold and `DELETE orders/:id`'s 403-without-a-seal already mint and redeem it, ADR 0125, 2026-09-05). **Not** road (b) or the fork's own as-drafted road, both of which would strip a seal ADR 0125 already shipped eleven days before this ADR was drafted. | Fork 6 | **Yes** — supersedes fork 6's premise, which cited a "redeems no seal" note ADR 0125 had already retired before this ADR was drafted |
 | 5 | The 96px swipe | Keep 96px. Add the resistance curve `p(1 - 0.22p)`, the ghost seal, the `stamp` landing on commit, and a non-dragging Confirm (arm, then confirm) as the WCAG 2.5.7 single-pointer alternative. Its arm window, which this lock did not settle (sketch 116's founder question 4), was answered the same day: **no timer** — his words, *"Until Esc or click away"*. Built in the shared `HoldToApprove`; see "Rule 5's arm window — locked" below. | Fork 8 | No |
 | 6 | Reduced motion | A Sheet/Panel/Popover **entrance** crosses on a 120ms, opacity-only cross-fade under `prefers-reduced-motion`; every other motion in the house (the tear, the lean, the seal) still renders none. **The §1/§7 collision, resolved explicitly, per the founder's instruction above:** 120ms is disclosed by an ALLOW line in `scripts/check_motion_tokens.py`, cited by file:line to this section — it is **not** promoted to an eighth token, so §1's "no eighth token" stays literally true, and §7's guard is told about the one exception rather than going red on this rule's own shipped line. | §6, fork 9 | Clarifies (the ADR named the collision as a fork's *cost*, `README.md:70`, without stating which road; the founder's answer picks the ALLOW-line road over the named-constant road) |
-| 7 | The CI motion guard | Ship it, re-specified: resolve every `MUDAVYM_PAGES` slug's directory from `App.tsx`'s own routing (never a `pages/*/next` guess); scan `components/layout/` and `components/mudavym/` as well as every resolved page directory; allow-list a disclosed exception by file:line, citing this ADR; exit 2 when a slug cannot be resolved. Built this session as `scripts/check_motion_tokens.py`, mutation-tested against synthetic fixture trees (`--self-test`), proven PASS against the real, now-fixed tree (20/20 slugs resolved, `/inventory` and `/documents/:id` among them, `components/layout/Sidebar.tsx` scanned) with exactly three disclosed exceptions: rule 6's fade and rule 11's two sheens. **Built in part:** it checks the `animate()` wrapper's token argument and plain-CSS `animation:`/`transition:` pairings, which is the class rule 1 folded. It does **not** yet produce three of the seven reds §10 and the sketch's drawn run require on the pre-fix tree — `/inventory`'s missing reduced-motion guard, `/documents/:id`'s missing `MOTIONS.md`, `Sidebar.tsx`'s framer-motion transition — all three still standing on the current tree, and §10's second guard, `scripts/check_no_emoji.py`, is not built. Both are owed under this lock ("NOT built here" below). `ci.yml` wiring is **done**, on the founder's word ("Motion token check" - yes, 2026-09-21) — see "Built in this lane" below. | §10, fork 10 | No — but built in part |
+| 7 | The CI motion guard | Ship it, re-specified: resolve every `MUDAVYM_PAGES` slug's directory from `App.tsx`'s own routing (never a `pages/*/next` guess); scan `components/layout/` and `components/mudavym/` as well as every resolved page directory; allow-list a disclosed exception by file:line, citing this ADR; exit 2 when a slug cannot be resolved. Built this session as `scripts/check_motion_tokens.py`, mutation-tested against synthetic fixture trees (`--self-test`), proven PASS against the real, now-fixed tree (20/20 slugs resolved, `/inventory` and `/documents/:id` among them, `components/layout/Sidebar.tsx` scanned) with exactly three disclosed exceptions: rule 6's fade and rule 11's two sheens. **Built in part:** it checks the `animate()` wrapper's token argument and plain-CSS `animation:`/`transition:` pairings, which is the class rule 1 folded. It does **not** yet produce three of the seven reds §10 and the sketch's drawn run require on the pre-fix tree — `/inventory`'s missing reduced-motion guard, `/documents/:id`'s missing `MOTIONS.md`, `Sidebar.tsx`'s framer-motion transition — all three still standing on the current tree **[2026-09-21, round 6: two no longer stand — `/inventory` has its guard (§8) and the house hint moves in CSS (§5(b)); the guard still cannot see either, and `/documents/:id`'s red stands]**, and §10's second guard, `scripts/check_no_emoji.py`, is not built. Both are owed under this lock ("NOT built here" below). `ci.yml` wiring is **done**, on the founder's word ("Motion token check" - yes, 2026-09-21) — see "Built in this lane" below. | §10, fork 10 | No — but built in part |
 | 8 | `/calendar`'s delete | Keeps the wax, under rule 2's second clause (an act nothing can undo). Not the day-book undo-after alternative. | Fork 12 | No |
-| 9 | Two wide sheets | Both forced to 440px — the census row 59 template sheet and (once packet 1's migration lands) row 33's delivery sheet. Not a third width, not an amended "or a table a person reconciles" clause. | Fork 13 | No |
+| 9 | Two wide sheets | Both forced to 440px — the census row 59 template sheet and (once packet 1's migration lands) row 33's delivery sheet. Not a third width, not an amended "or a table a person reconciles" clause. **[2026-09-21, round 6: a third `wide` caller this row did not name, `orders/next/ResponsesSheet.tsx`, stays at 640 on the founder's word — "Stays 640, it's letters" — because vendor replies are letters, the width's own case; this row's two sheets are unchanged. See "Round 6 answers", 4.]** | Fork 13 | No |
 | 10 | Esc, the scrim and unsaved work | Keep packet 0's shipped shapes (a Sheet tears and leaves a Stub; a Panel leans and stays behind a plain footer button), split by SHAPE, and add primitive-internal `input`/`change` detection as a fallback to the `dirty` prop rather than requiring every call site to pass it correctly. | Fork 3 | No |
 | 11 | The 1.9s shimmer (SC 2.2.2) | Two cycles (3.8s), then still, then the wait **in words, changing at named thresholds only** — 3.8s and 20s — **never a sentence that counts or ticks**. A counting sentence ("— 7s", updating every second) is itself an SC 2.2.2 auto-updating-information violation with no five-second exemption; that is the critic correction the founder's answer names explicitly. | §7 (first bullet) | Clarifies (the ADR's own text already said "the wait in words"; sketch 116's first pass drew a counting sentence against that text and its own critique caught the contradiction before this lock) |
 
@@ -86,7 +89,11 @@ primitive, and a repo-wide guard — and are built in this same commit:
   0.15, ease: […] }}` JSX props), a second, older motion system this ADR does not fold into the
   token vocabulary and this guard cannot see. Sidebar's own migration was never one of the eleven
   rules the founder was asked to watch (sketch 116 does not draw it) and is not decided here —
-  it remains this ADR's original §5, unlocked, open for a future pass.
+  it remains this ADR's original §5, unlocked, open for a future pass. **[CORRECTED 2026-09-21,
+  round 6: §5 is now locked ("Lock all four (Recommended)") and built — the house hint moves in
+  CSS on `ink`, and the rail has its reduced-motion guard; see "Round 6 answers", 1. The guard's
+  blindness to framer-motion stands: the legacy hint, the rail's width and the label reveals
+  still animate through it at full motion, and this script still cannot see them.]**
 - **Also invisible to the guard, measured 2026-09-21** (and named in its docstring): Tailwind motion
   utilities in `className` strings — `transition-colors duration-150` at
   `pages/receiving/next/DoorNext.tsx:652` (150 ms on Tailwind's own curve, not a token) and seven
@@ -112,7 +119,7 @@ build order:
 | 9 | `apps/web/src/pages/communications/next/TemplateSheet.tsx:135` (`wide` removed), the delivery sheet once packet 1's migration lands (currently a legacy, untouched `ManualReceiptWorkspace.tsx` modal) |
 | 10 | `feat/overlays-packet-0-primitive` (not yet an ancestor of `main`) — one `input`/`change` listener on the panel node the primitive already owns, as a fallback to the `dirty` prop |
 | 11 | `pages/dashboard/next/dashboard-next.css:44`, `pages/reports/next/reports-next.css:391` (`animation-iteration-count: 2`, a `data-still` end state, two static sentences at 3.8s and 20s from the skeleton host — no interval, no counting) |
-| 7 (rest) | `scripts/check_no_emoji.py` (new — §10's second guard; sketch 116's cost row 7 names both scripts); `scripts/check_motion_tokens.py` widened to the three §10 reds it does not produce (`pages/inventory/command` has no reduced-motion guard; `pages/documents/next` has no `MOTIONS.md`; `components/layout/Sidebar.tsx`'s framer-motion transitions) and to Tailwind motion utilities; each line it then fails on either fixed by its page's lane or allow-listed by file:line with this ADR cited. `.github/workflows/ci.yml` wiring is **done** (2026-09-21, lane last call — the founder's "Motion token check" - yes) — no longer owed |
+| 7 (rest) | `scripts/check_no_emoji.py` (new — §10's second guard; sketch 116's cost row 7 names both scripts); `scripts/check_motion_tokens.py` widened to the three §10 reds it does not produce (`pages/inventory/command` has no reduced-motion guard; `pages/documents/next` has no `MOTIONS.md`; `components/layout/Sidebar.tsx`'s framer-motion transitions) and to Tailwind motion utilities; each line it then fails on either fixed by its page's lane or allow-listed by file:line with this ADR cited. `.github/workflows/ci.yml` wiring is **done** (2026-09-21, lane last call — the founder's "Motion token check" - yes) — no longer owed. **[2026-09-21, round 6: two of the three reds are now fixed in the tree — `/inventory` has its reduced-motion guard (§8) and the house hint no longer moves through framer-motion (§5(b)) — so a widened guard would find them green; widening it, so that a regression of either goes red, is still owed. `/documents/:id`'s missing `MOTIONS.md` is untouched.]** |
 
 
 ### Rule 5's arm window — locked 2026-09-21, lane last call
@@ -152,7 +159,149 @@ pattern sit outside this primitive — `pages/receiving/next/DoorSeal.tsx` and
 `HoldToApprove`. Whether this same ruling reaches them is each page's own lane's call to make and
 record; they are named here so neither lane re-derives the question sketch 116 already asked.
 
+### Round 6 answers — locked 2026-09-21
+
+Everything "Not locked by this answer" (below) held open was put to the founder in this lane
+(`wt-motions` / `feat/motion-rules-locked`, PR #433) as four questions. His picks, verbatim — each
+is the label of the option he chose; what each option meant is the orchestrating session's brief
+relaying it to this lane, not his words, and is written below as that:
+
+> Lock all four (Recommended)
+
+> Passkey + paste (Recommended)
+
+> Bring back, real switches (Recommended)
+
+> Stays 640, it's letters (Recommended)
+
+Before building, each was checked against what packets 0-2 already shipped (grep over the merged
+tree, 2026-09-21): none of it was there — no no-enter-animation option on the primitive, no
+`prefers-reduced-motion` read anywhere under `components/layout/` or `pages/inventory/command/`, no
+`line-height` on `.mdv-chip`, no passcode field. So everything under 1 below is new in this lane.
+
+**1. "Lock all four (Recommended)" — §4, §5, §8 and §9, exactly as this ADR drafted them.**
+Status: **Locked, and built.**
+
+- **§4.** One boolean on the primitive, `instant` (`components/mudavym/Sheet.tsx:268`, default
+  `false` at `:475`): the entrance effect schedules nothing (`:730`) and `data-motion` reads
+  `'none'` (`:1069`) — in both motion settings, so neither the shape's token nor §6's 120 ms fade.
+  Passed per surface, never per opener: `components/command/CommandPalette.tsx:264`,
+  `components/askai/AskAiBar.tsx:170`, `components/command/RecentlyViewed.tsx:73`,
+  `components/command/ShortcutsSheet.tsx:71`. The palette does not animate its filtering: its
+  listbox carries `mdv-list-still` (`CommandPalette.tsx:308`), which sets `transition: none` on its
+  rows (`sheet.css:488`) — the 160 ms seal-tint fade a surviving row re-ran on every keystroke. No
+  FLIP existed to remove. **Not reached, and put back to the founder rather than decided here:**
+  the flag-off (legacy) branches of the palette and Ask AI still enter on their own 120 ms
+  `motion-safe:animate-[popIn…]` (`CommandPalette.tsx:387`, `AskAiBar.tsx:312`), over a 120 ms
+  scrim `motion-safe:animate-[fadeIn…]` (`CommandPalette.tsx:384`, `AskAiBar.tsx:309`) **[the scrim
+  half added 2026-09-21, lane last call — the first pass named only the popIn]**; removing them
+  would be a removal of motion for flag-off tenants, which §4's text does not name either way.
+  Flag-off Recently viewed and Keyboard shortcuts carry no entrance animation to remove.
+- **§5.** (a) The rail's reduced-motion guard, on every route and ungated, in three halves keyed
+  on one `useReducedMotion()` read (`components/layout/Sidebar.tsx:421-428`): the rail carries
+  `data-reduced-motion` (`:558`) and `components/mudavym/reduced-motion.css` (new) removes every
+  CSS transition and animation under it (the drawer slide, the colour fades);
+  `lib/mudavym/ReducedMotionScope.tsx` (new) lands the rail's framer-motion children with no frames
+  (the four label reveals, the Learn & Help panel); and the two framer elements that name their own
+  transition, which beats any scope, are switched where they are named — the width (`:556`) and
+  the legacy hint, which starts at its end state (`:289`). For a reader who has not asked for less
+  none of it is present: no attribute, a scope handed nothing. (b) The house branch's hint is a
+  plain element that enters on `ink` 160 in CSS, inside `@media (prefers-reduced-motion:
+  no-preference)` only (`sheet.css:693-707`); the legacy branch keeps framer's 150 ms. Its
+  `-translate-y-1/2` is dropped because framer's inline `transform` always overrode it, so its
+  geometry is unchanged (pinned by test). (c) The 260-to-72 collapse keeps its 200 ms Material
+  curve at full motion, recorded as the last unmigrated chrome. **A reading, disclosed and put back
+  to the founder:** (a)'s guard does reach (c) under reduced motion — the width lands with no
+  frames. "Left alone" was read against its own rejected alternative (migrating it to `settle`),
+  not as "exempt from the guard"; a founder question asks whether he meant untouched even then.
+  The false "Tokens only (ADR 0112)" comment is corrected in place, bracketed
+  (`Sidebar.tsx:254-265`).
+- **§8.** `/inventory`'s guard, inside the component (`pages/inventory/command/
+  InventoryCommandPage.tsx:124-152`), a pure removal: the page root carries the same attribute
+  (`:860`) and stylesheet (its Tailwind `transition-*` / `animate-spin` classes), and the same
+  `ReducedMotionScope` wraps the page, because the four legacy modals it opens
+  (`AddWineSelectionModal`, `AddWineToInventoryModal`, `AutoLocatePreviewModal`,
+  `RemoveFromInventoryModal`) animate through framer-motion, some portalled out of the root where
+  CSS cannot follow. **Residue, named:** `AutoLocatePreviewModal` names its own opacity
+  transitions (200/220 ms), which beat any scope, so under reduced motion it still fades — it no
+  longer scales or rises. The `ink` swap and the `settle` row expand stay deferred, unbuilt.
+- **§9.** `.mdv-chip` declares `line-height: 1.5` (`sheet.css:658`) — the value it already
+  inherited, so nothing moves. Measured 2026-09-21 in headless Chromium (Playwright 1.59.1) on a
+  harness loading the real `styles/mudavym.css` and `sheet.css`: **24.5 px** tall on its own
+  line-height; the same chip at `line-height: normal` (no Tailwind preflight) is **22.0 px**, the
+  fail the dependency hid; the shortest, one-letter chip is 43.47 x 24.5 px. **The spacing between
+  adjacent chips: there are none.** `apps/web/src` holds exactly one `.mdv-chip`
+  (`askai/AskAiBar.tsx:222`), and its only neighbour is a non-interactive `<span>` 8 px away. The
+  Spacing exception never arises: the chip passes SC 2.5.8 on size, in both axes, by itself.
+
+Tests: `Sheet.test.tsx` "an instant surface" (with the non-instant control), `shellOverlays.test.tsx`
+(the four surfaces, `data-motion="none"`), `components/mudavym/motionRules0134.test.ts` (the CSS
+halves, read from the stylesheets because jsdom cannot cascade), `layout/Sidebar.motion.test.tsx`,
+`lib/mudavym/ReducedMotionScope.test.tsx` and `InventoryCommandPage.reduced-motion.test.tsx` — every
+framer case beside its full-motion control. **Mutation-tested, 24 mutations, none a no-op:** each of
+the four `instant` props, the effect's and `data-motion`'s `instant` reads, the listbox class, the
+chip's line-height (dropped, and 1.4), the palette rows' `transition: none`, the hint's duration and
+its media query, the guard stylesheet's media query and its `animation: none`, both surfaces'
+attribute and scope, the rail's width switch, the legacy hint's start state, the house hint's
+geometry, and the scope's two halves and its reduced gate — each failed its suite, and the source
+was restored byte-identically.
+
+**2. "Passkey + paste (Recommended)" — §7's SC 3.3.8 bullet.** Status: **Locked.**
+
+- **Paste, nothing to build, measured.** There is no manager passcode field to fix: `git grep -i
+  passcode` returns 0 hits under `apps/` and `supabase/` (2026-09-21) — the passcode is still
+  ADR 0112 F11's ceremony, unbuilt. Nothing in `apps/web/src`, `apps/mobile/app` or
+  `apps/mobile/src` blocks paste: 0 `onPaste`, 0 `contextMenuHidden`, 0 native `paste` listeners.
+  The `autoComplete="off"` sites are not passcodes — three model-context-server credential fields
+  (`connections/next/HouseServerControls.tsx:268`, `profile/next/McpRegister.tsx:196` and `:549`, a
+  third party's bearer token, not the reader authenticating, so 3.3.8 does not reach them), search
+  and palette inputs, the door's initials and driver's name. **[Corrected 2026-09-21, lane last
+  call: this said "two" credential fields and cited only `:549`; `McpRegister.tsx:196` is the same
+  field on each stored server's replace form.]** The sign-in and current-password fields
+  (web `pages/Login.tsx`, `pages/Profile.tsx`, `profile/next/SecurityRegister.tsx`; mobile
+  `app/login.tsx`) carry `current-password`, which a password manager fills. So nothing is removed. The rule binds the
+  field the day F11 builds it: it accepts paste and turns no password manager away (no paste
+  block, no `autocomplete` that refuses one). Two `CLAIMS.jsonl` rows hold it:
+  `ADR-0134-SC338-NOTHING-BLOCKS-PASTE` (resolved — fails the build on a paste block) and
+  `ADR-0134-SC338-MANAGER-PASSCODE-UNBUILT` (open — the day a manager passcode lands in code it
+  fails the build, so its builder meets this rule and flips the row with the field's own check).
+- **Passkey — a named later lane, not built here.** Its scope as recorded: **WebAuthn**; **per
+  user** (each owner or manager enrols their own credential — never per house, never per device);
+  **owner and manager only**; a **peer path** beside the passcode, neither replacing the other;
+  enrolment and revocation on **`/profile`**; **audited** — who enrolled or revoked which
+  credential and when, and each use at a point of action written as the passcode's use would be.
+  It waits on F11's point-of-action ceremony existing, since a peer path needs the path it sits
+  beside.
+
+**3. "Bring back, real switches (Recommended)" — fork 14.** Status: **Locked; a named later lane,
+not built here.** The consent panel comes back, opened from the rebuilt `/settings`, and holds
+**only switches the product actually reads**: the per-house ask-training opt-out, Jev scoring on or
+off, and any legacy consent once something is wired to read it. **Owner only; every flip audited.**
+The four legacy consents are **not** shown as switches, because nothing reads them
+(`pages/settings/next/ServicesSection.tsx:4`, that page's own four-runtime re-grep). Why recorded
+and not built: it is not a pure UI move — measured 2026-09-21, neither switch has a store the
+product reads (0 hits for an ask-training opt-out or a Jev setting under `apps/` or
+`supabase/migrations/`). The brief names PR #430 as building the opt-out store; `gh pr diff 430`
+(open, `feat/finish-authorize-consent`) carries 0 hits for `opt.out` / `opt_out` / `optOut`, and its
+own ADR 0145 amendment lists training consent as still open — so this lane waits on whichever
+change lands that store, and the discrepancy is reported back rather than resolved here.
+
+**4. "Stays 640, it's letters (Recommended)" — sketch 116's founder question 6, under rule 9 /
+fork 13.** Status: **Locked.** `pages/orders/next/ResponsesSheet.tsx:359`'s `wide` stays at 640,
+because vendor replies are letters a person reads back — the width's own case ("A LETTER only",
+`Sheet.tsx`'s `wide` doc), not a third width, so rule 9's two forced-to-440 sheets are unchanged.
+Recorded at the call site (`:356-358`) and in that doc (`Sheet.tsx:251-255`), which now names both
+letter callers, the composer and the vendor answers. No guard checks `wide` — measured, no script
+and no test checks which callers pass it (`Sheet.test.tsx` exercises the primitive's own `wide`,
+not its callers) **[corrected 2026-09-21, lane last call: this said "no test … reads the prop",
+which `Sheet.test.tsx` does]** — so there is no allow-list to name it in; the call-site note is the
+record. `communications/next/TemplateSheet.tsx:135`'s `wide` is rule 9's own, still owed by its
+lane.
+
 ### Not locked by this answer
+
+**[CORRECTED 2026-09-21, round 6: every item below is now answered — see "Round 6 answers —
+locked 2026-09-21" above. The list is kept as it stood, for the record of what was open.]**
 
 "Lock as recommended" answers the eleven rules sketch 116 drew. It does not reach what the sketch
 did not draw or drew without a recommendation, so these stay **Proposed** until the founder answers
@@ -163,10 +312,13 @@ them, and no builder should read the Status line above as covering them:
   field), §8 / fork 2 (`/inventory`'s gating and deferred swaps), §9 (the chip's explicit
   `line-height`), fork 14 (the unreachable consent panel, "not defaulted here" in its own text).
   Rule 2's lock does answer fork 4 and §3: wax versus nothing, the bulk bar a dry emboss.
+  **[Answered 2026-09-21: §4, §5, §8, §9 — "Lock all four (Recommended)"; §7's SC 3.3.8 bullet —
+  "Passkey + paste (Recommended)"; fork 14 — "Bring back, real switches (Recommended)".]**
 - **Raised by sketch 116 with no recommendation, still open** (its founder question 6): whether
   `ResponsesSheet.tsx:356`'s `wide` stays at 640 as letters or is a third sheet under rule 9.
   Founder question 4 — rule 5's arm window — is now answered; see "Rule 5's arm window — locked"
-  above, not here.
+  above, not here. **[Answered 2026-09-21: "Stays 640, it's letters (Recommended)". The prop now
+  sits at `:359`.]**
 
 ## Context
 
@@ -489,3 +641,5 @@ _(Written 2026-09-06, alongside the original ten decisions; kept as-written. As 
 | 2026-09-21 | Aldemir (founder) | **Locked**, as recommended by sketch 116, verbatim quote and per-rule roads in §Locked above. Rules 1 and 6 built same-day, rule 7 in part (`wt-motions` / `feat/motion-rules-locked`); rules 2, 3, 4, 5, 8, 9, 10, 11 remain to build, owned by their pages' own lanes |
 | 2026-09-21 | lane last call (Opus) | Four records corrected before merge: the quote cut to his three words (the rest was the brief's gloss); rule 7 marked built in part (`check_no_emoji.py` and three §10 reds owed; Tailwind and native `el.animate()` blind spots measured and named); rule 5's 3 s arm window and six sections outside the eleven marked not locked; the CLAIMS row's verify, which passed a guard blinded to object literals because it grepped the self-test's output for 'PASS', moved to exit status |
 | 2026-09-21 | Aldemir (founder), round 2 + lane last call (Opus) | Three answers built: *"Waiver, drop screenshots"* (ADR 0032's PR #433 row; sketch 116's three captures removed from the branch); *"Motion token check"* - yes (one `ci.yml` step); rule 5's arm window, *"Until Esc or click away"* (no timer, built in `HoldToApprove`). Last call corrected rule 5's table row, which still called the arm window unsettled; made Escape disarm wherever focus is and the click-away listener capture-phase; and made the guard exit 2 on an empty `MUDAVYM_PAGES` or a missing scan root, where it had printed PASS over the two shared roots alone |
+| 2026-09-21 | Aldemir (founder), round 6 + lane motions3b (Opus) | Four answers, his picks verbatim: *"Lock all four (Recommended)"* — §4, §5, §8, §9 built (`instant` on the primitive and the four keyboard surfaces, the palette's still list; the rail's and `/inventory`'s reduced-motion guards in CSS plus a shared `ReducedMotionScope` for their framer-motion, the house hint on `ink` in CSS, the chip's own line-height, measured 24.5 px with no adjacent chip in the product); *"Passkey + paste (Recommended)"* — no passcode field exists and nothing blocks paste, so nothing to remove, two CLAIMS rows hold the rule, the passkey recorded as a named later lane; *"Bring back, real switches (Recommended)"* — fork 14 recorded as a named later lane waiting on a switch store that does not exist yet; *"Stays 640, it's letters (Recommended)"* — `ResponsesSheet` keeps `wide`, recorded at the call site. 24 source mutations, none a no-op. Three things put back to the founder rather than decided: whether §4 reaches the flag-off palette and Ask AI, whether §5(a)'s guard may reach the collapse under reduced motion, and where the opt-out store PR #430 was named for actually lands |
+| 2026-09-21 | round 6 last call (Opus) | Three records corrected and three `CLAIMS.jsonl` verifies tightened before merge. Records: the model-context credential fields are three, not two (`McpRegister.tsx:196` added); "no test reads" `wide` was false (`Sheet.test.tsx` does, of the primitive — no test checks its callers); §4's flag-off residue names the legacy scrim's 120 ms `fadeIn` beside the `popIn`. Verifies: `ADR-0134-ROUND6-KEYBOARD-GUARDS-CHIP` now pins the two `data-reduced-motion` attributes, the legacy hint's reduced start, the house hint's CSS and the guard stylesheet's body, which its sentence claimed and it did not check (8 mutations, 8 caught); `ADR-0134-SC338-NOTHING-BLOCKS-PASTE` also refuses a native `paste` listener (3 plants, 3 caught); `ADR-0134-SC338-MANAGER-PASSCODE-UNBUILT` trips on any `passcode` / `pass_code` / `pass-code`, not only a "manager passcode" phrase (4 plants, 4 trip). All on a scratch copy of the tree. |

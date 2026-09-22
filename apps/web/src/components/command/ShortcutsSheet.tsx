@@ -67,6 +67,8 @@ export function ShortcutsSheet({
       <Panel
         open={open}
         onClose={onClose}
+        // ADR 0134 §4: opened from the keyboard, so it arrives with no motion.
+        instant
         label="Keyboard shortcuts"
         eyebrow="The house"
         title="Keyboard shortcuts"

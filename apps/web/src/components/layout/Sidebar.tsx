@@ -41,7 +41,10 @@ import { useLowStockItems } from '../../hooks/queries/useInventoryQueries'
 import { useUIStore } from '../../stores/uiStore'
 import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import { useReducedMotion } from '../../lib/mudavym/motion'
+import { NO_MOTION, ReducedMotionScope } from '../../lib/mudavym/ReducedMotionScope'
 import '../mudavym/sheet.css'
+import '../mudavym/reduced-motion.css'
 
 interface NavItem {
   name: string
@@ -242,24 +245,30 @@ const TOOLTIP_HALF_HEIGHT = 34
  */
 function NavTooltip({ title, description, badgeLabel, x, y }: NavTooltipState) {
   const shell = useMudavymShell()
+  const reduced = useReducedMotion()
   const top = Math.min(
     Math.max(y, TOOLTIP_HALF_HEIGHT + 8),
     window.innerHeight - TOOLTIP_HALF_HEIGHT - 8,
   )
 
-  // Tokens only (ADR 0112): the hint keeps its geometry, its motion and its
-  // aria-hidden contract — it changes ink and paper, nothing else. It is
-  // portalled to <body>, so it must carry `.mudavym` itself to have tokens at
-  // all, and the page's ground with it.
+  // The house branch changes ink, paper and — since ADR 0134 §5(b), locked
+  // 2026-09-21 — its motion: it arrives on `ink` 160 in CSS (`.mdv-hint`,
+  // sheet.css), not framer-motion's 150ms Material curve, and under reduced
+  // motion not at all. Geometry and the aria-hidden contract are unchanged. It
+  // is portalled to <body>, so it must carry `.mudavym` itself to have tokens
+  // at all, and the page's ground with it.
+  // [Corrected 2026-09-21: this comment said "Tokens only (ADR 0112): the hint
+  // keeps its geometry, its motion…" — false about the motion in both
+  // branches, which was framer-motion's, never a token (ADR 0134 §5).]
+  // No `-translate-y-1/2` here: framer-motion's inline `transform` overrode it
+  // in the branch this replaces (it still does in the legacy branch below), so
+  // it never applied, and keeping it would lift the hint by half its height.
   if (shell.on) {
     return createPortal(
-      <motion.div
+      <div
         aria-hidden
-        initial={{ opacity: 0, x: -4 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
         style={{ top, left: x + 8 }}
-        className="mudavym mdv-hint pointer-events-none fixed z-[60] w-56 -translate-y-1/2 rounded-lg border p-2.5"
+        className="mudavym mdv-hint pointer-events-none fixed z-[60] w-56 rounded-lg border p-2.5"
         data-ground={shell.ground === 'charcoal' ? 'charcoal' : undefined}
       >
         <div className="flex items-center gap-1.5">
@@ -267,15 +276,17 @@ function NavTooltip({ title, description, badgeLabel, x, y }: NavTooltipState) {
           {badgeLabel && <span className="mdv-hint__badge">{badgeLabel}</span>}
         </div>
         <p className="mdv-hint__desc">{description}</p>
-      </motion.div>,
+      </div>,
       document.body,
     )
   }
 
+  // Legacy branch: byte-identical, except that under reduced motion it starts
+  // at its end state (ADR 0134 §5(a), ungated — it only ever removes motion).
   return createPortal(
     <motion.div
       aria-hidden
-      initial={{ opacity: 0, x: -4 }}
+      initial={reduced ? false : { opacity: 0, x: -4 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
       style={{ top, left: x + 8 }}
@@ -390,7 +401,33 @@ function SidebarNavItem({
   )
 }
 
+/**
+ * ADR 0134 §5(a), locked 2026-09-21: the rail's reduced-motion guard, on every
+ * route and ungated, because it only ever removes motion. Three halves, all
+ * keyed on the same `prefers-reduced-motion` read:
+ *
+ *   - CSS: `data-reduced-motion` on the rail (reduced-motion.css) stops every
+ *     Tailwind `transition-*` inside it — the drawer slide, the colour fades;
+ *   - framer-motion, by scope: `ReducedMotionScope` lands every framer child's
+ *     movement, and every value on a child that names no transition of its
+ *     own, with no frames — the four label reveals and the Learn & Help panel;
+ *   - framer-motion, where named: the rail's width names its own transition,
+ *     which beats the scope, so it is switched below; the legacy hint starts
+ *     at its end state instead.
+ *
+ * For a reader who has not asked for less the scope is handed nothing and the
+ * attribute is absent, so the rail renders and resolves exactly as before.
+ */
 export function Sidebar() {
+  const reduced = useReducedMotion()
+  return (
+    <ReducedMotionScope reduced={reduced}>
+      <SidebarRail reduced={reduced} />
+    </ReducedMotionScope>
+  )
+}
+
+function SidebarRail({ reduced }: { reduced: boolean }) {
   const collapsed = useUIStore((s) => s.sidebarCollapsed)
   const setCollapsed = useUIStore((s) => s.setSidebarCollapsed)
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
@@ -511,8 +548,14 @@ export function Sidebar() {
   return (
     <motion.aside
       initial={false}
+      // The 260-to-72 collapse is left alone (ADR 0134 §5(c)): the last
+      // unmigrated chrome, to go with the legacy pages — not a token, on
+      // purpose. Only §5(a)'s guard reaches it: under reduced motion the width
+      // lands with no frames, which removes motion and retimes nothing.
       animate={{ width: effectiveCollapsed ? 72 : 260 }}
-      transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+      transition={reduced ? NO_MOTION : { duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+      // The attribute exists only while the reader asks for less.
+      data-reduced-motion={reduced ? 'true' : undefined}
       className={cn(
         'fixed left-0 top-0 h-screen bg-white border-r border-gray-200 flex flex-col shadow-sm',
         'z-50 md:z-40',

@@ -480,6 +480,14 @@
 .mdv-item:hover {
   background: var(--paper-1);
 }
+/* ADR 0134 §4 (locked 2026-09-21): the palette does not animate its filtering.
+   Each keystroke moves the selection, and a row that survives the filter would
+   otherwise fade its seal tint in over 160ms on every one — a motion on a
+   keyboard act repeated hundreds of times a day. In the palette hover and
+   selection are one state (a mouse move selects), so both are instant there. */
+.mdv-list-still .mdv-item {
+  transition: none;
+}
 /* The seal marks the row you are on. One chromatic colour, ADR 0042. */
 .mdv-item[data-active='true'],
 .mdv-item[aria-selected='true'] {
@@ -636,13 +644,18 @@
   color: var(--ink-1);
 }
 
-/* A toggle chip. Ink label always; the seal marks "on", never the text. */
+/* A toggle chip. Ink label always; the seal marks "on", never the text.
+   ADR 0134 §9 (locked 2026-09-21): the line-height is the chip's own, so its
+   24px target (WCAG 2.2 SC 2.5.8) no longer rests on Tailwind's preflight:
+   11px x 1.5 = 16.5, + 2 x 3px padding + 2 x 1px border = 24.5px tall. It is
+   the value the chip already inherited, so nothing moves. */
 .mdv-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-family: var(--mdv-sans);
   font-size: 11px;
+  line-height: 1.5;
   font-weight: 500;
   padding: 3px 9px;
   border-radius: 999px;
@@ -671,6 +684,26 @@
   border-color: var(--paper-2) !important;
   background: var(--paper-0);
   box-shadow: 0 12px 28px -18px rgba(0, 0, 0, 0.45);
+}
+/* ADR 0134 §5(b) (locked 2026-09-21): the hint arrives on `ink` — 160ms, the
+   house curve — in CSS, in the house branch only; it had been framer-motion's
+   150ms Material curve in both branches. Same 4px along the rail, same fade.
+   Under reduced motion it has no animation at all: the keyframes are only named
+   when the reader has not asked for less. */
+@media (prefers-reduced-motion: no-preference) {
+  .mdv-hint {
+    animation: mdv-hint-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+}
+@keyframes mdv-hint-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .mdv-hint__title {
   font-family: var(--mdv-sans, 'DM Sans', system-ui, sans-serif);
