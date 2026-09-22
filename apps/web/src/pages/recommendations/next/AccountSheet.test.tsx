@@ -123,7 +123,9 @@ describe('AccountSheet', () => {
     api.get.mockResolvedValue({ data: { insights: [] } });
     const e = entry();
     renderSheet(<AccountSheet entry={e} siblings={[e]} onClose={vi.fn()} />);
-    expect(screen.getByText(/Not read here/)).toBeInTheDocument();
+    // Done and Silenced both admit unread leaf scope with "Not read here".
+    expect(screen.getAllByText(/Not read here/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/Dismissed and History leaves/i)).toBeInTheDocument();
   });
 
   it('links the catalogue pre-searched for the subject’s own words', () => {
