@@ -2,7 +2,12 @@
  * Daily Summary Email Template
  */
 
-import { EMAIL_CONFIG, formatCurrency, formatDate } from "./template-config";
+import {
+  EMAIL_CONFIG,
+  formatCurrency,
+  formatDate,
+  frontendUrl,
+} from "./template-config";
 import { baseTemplate, metricBox, alertBox } from "./base-template";
 
 export interface DailySummaryData {
@@ -168,8 +173,9 @@ export function dailySummaryTemplate(data: DailySummaryData): string {
     preheader: `${data.metrics.lowStockCount} low stock items, ${data.metrics.pendingOrders} pending orders, ${data.metrics.deliveriesToday} deliveries today`,
     content,
     ctaButton: {
+      // `/dashboard` is not a route (App.tsx) -- the dashboard IS `/`.
       text: "Open Dashboard",
-      url: "#",
+      url: `${frontendUrl()}/`,
       color: colors.primary,
     },
   });

@@ -28,7 +28,7 @@ export interface ManagerReviewEmailData {
 
 export function managerReviewTemplate(data: ManagerReviewEmailData): string {
   const { colors } = EMAIL_CONFIG;
-  const baseUrl = data.dashboardBaseUrl || "https://app.wineops.ai";
+  const baseUrl = data.dashboardBaseUrl || "https://app.mudavym.com";
 
   const urgencyColors = {
     normal: colors.info,
@@ -127,7 +127,7 @@ export interface VendorOutboundEmailData {
 
 export function vendorOutboundTemplate(data: VendorOutboundEmailData): string {
   const { colors, styles } = EMAIL_CONFIG;
-  const restaurantName = data.restaurantName || "WineOps AI";
+  const restaurantName = data.restaurantName || "Mudavym";
   const senderName = data.senderName || "Restaurant Manager";
 
   const signatureBlock = `
@@ -204,7 +204,7 @@ export function conversationSummaryTemplate(
   data: ConversationSummaryEmailData,
 ): string {
   const { colors } = EMAIL_CONFIG;
-  const baseUrl = data.dashboardBaseUrl || "https://app.wineops.ai";
+  const baseUrl = data.dashboardBaseUrl || "https://app.mudavym.com";
 
   const sentimentColors: Record<string, string> = {
     positive: colors.success,

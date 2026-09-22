@@ -160,7 +160,7 @@ record rather than from imagination:
   option 1.0 *by definition*, because that is what `core/` already is;
 - "harness overhead" measured without the messaging surface OD-52 says `base_agent.py`
   actually is — *"zero LLM integration … it is RabbitMQ/saga/DLQ infrastructure"*
-  (OD-52, `OPEN-DECISIONS.md:42`) — prices two candidates on different substrates;
+  (OD-52, `OPEN-DECISIONS.md:43`) — prices two candidates on different substrates;
 - weights chosen or revised after a pilot run.
 
 - **Doneability:** every axis carries one line naming which candidate it favours before
@@ -169,7 +169,7 @@ record rather than from imagination:
 - **Close-time:** same pass, before the first scored run.
 
 **AR-A1.3 · Candidate-set completeness — what is not on the list?**
-OD-03 names three candidates (`OPEN-DECISIONS.md:42`); OD-52 reframes the question to
+OD-03 names three candidates (`OPEN-DECISIONS.md:43`); OD-52 reframes the question to
 *"which reasoning layer sits ON our messaging infra"* (`:40`). Under the reframe the
 candidate set is a different set, and the **null candidate** — no separate harness, a
 reasoning loop behind the `common/model-client` boundary that already exists and is

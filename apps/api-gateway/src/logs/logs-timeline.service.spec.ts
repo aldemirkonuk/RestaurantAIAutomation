@@ -32,6 +32,7 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
     from(table: string) {
       const filters: Array<[string, any]> = [];
       const containsFilters: Array<[string, Row]> = [];
+      const inFilters: Array<[string, any[]]> = [];
       const rec: Asked = { table, order: [], limit: null, or: [] };
       asked.push(rec);
       const api: any = {
@@ -44,6 +45,10 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
         },
         contains(col: string, val: Row) {
           containsFilters.push([col, val]);
+          return api;
+        },
+        in(col: string, vals: any[]) {
+          inFilters.push([col, vals]);
           return api;
         },
         order(col: string, opts: any) {
@@ -66,6 +71,9 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
               const meta = r[col] || {};
               return Object.entries(obj).every(([k, v]) => meta[k] === v);
             });
+          }
+          for (const [col, vals] of inFilters) {
+            rows = rows.filter((r) => vals.includes(r[col]));
           }
           // The cursor filter the service writes: `<col>.lte.<iso>,<col>.is.null`.
           for (const expr of rec.or) {
@@ -129,7 +137,26 @@ const EMPTY = {
   procurement_documents: [],
   system_audit_log: [],
   event_store: [],
+  restaurant_inventory: [],
 };
+
+function eventStoreRow(
+  eventId: string,
+  aggregateType: string,
+  aggregateId: string,
+  correlationId: string,
+  createdAt: string,
+): Row {
+  return {
+    event_id: eventId,
+    aggregate_type: aggregateType,
+    aggregate_id: aggregateId,
+    event_type: "StockUpdated",
+    correlation_id: correlationId,
+    created_at: createdAt,
+    payload: {},
+  };
+}
 
 describe("LogsTimelineService.getTimeline", () => {
   it("merges sources and sorts newest-first", async () => {
@@ -243,6 +270,80 @@ describe("LogsTimelineService.getTimeline", () => {
     const { events } = await service.getTimeline("r1");
     expect(events).toEqual([]);
     expect(fromSpy).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 2026-09-17 finding: event_store carries no restaurant_id, so filtering
+   * only by correlation_id let one house read another house's rows whenever
+   * a correlation_id was shared or guessed. Every row must now be proven
+   * through its aggregate before it can leave the service.
+   */
+  describe("event_store rows are proven to belong to the caller's house", () => {
+    it("returns only the caller's rows when a correlation_id spans two houses", async () => {
+      const client = makeFakeClient({
+        ...EMPTY,
+        event_store: [
+          eventStoreRow("ev-mine", "inventory", "inv-r1", "corr-shared", "2026-09-17T10:00:00Z"),
+          eventStoreRow("ev-theirs", "inventory", "inv-r2", "corr-shared", "2026-09-17T09:00:00Z"),
+        ],
+        restaurant_inventory: [
+          { id: "inv-r1", restaurant_id: "r1" },
+          { id: "inv-r2", restaurant_id: "r2" },
+        ],
+      });
+      const service = new LogsTimelineService({
+        getClient: () => client,
+      } as unknown as DatabaseService);
+
+      const { events } = await service.getTimeline("r1", {
+        correlationId: "corr-shared",
+      });
+
+      expect(events.map((e) => e.id)).toEqual(["ev-mine"]);
+    });
+
+    it("returns nothing (not an error) when the correlation_id names only a foreign house, and logs the withholding", async () => {
+      const client = makeFakeClient({
+        ...EMPTY,
+        event_store: [
+          eventStoreRow("ev-theirs", "inventory", "inv-r2", "corr-foreign", "2026-09-17T09:00:00Z"),
+        ],
+        restaurant_inventory: [{ id: "inv-r2", restaurant_id: "r2" }],
+      });
+      const service = new LogsTimelineService({
+        getClient: () => client,
+      } as unknown as DatabaseService);
+      const warnSpy = jest.spyOn((service as any).logger, "warn");
+
+      const res = await service.getTimeline("r1", {
+        correlationId: "corr-foreign",
+      });
+
+      expect(res.events).toEqual([]);
+      expect(res.failedSources).toEqual([]);
+      expect(res.sourcesQueried).toContain("event_store");
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("corr-foreign"),
+      );
+    });
+
+    it("refuses a row whose aggregate_type has no known owning table, rather than trusting it", async () => {
+      const client = makeFakeClient({
+        ...EMPTY,
+        event_store: [
+          eventStoreRow("ev-unknown", "reservation", "res-1", "corr-1", "2026-09-17T09:00:00Z"),
+        ],
+      });
+      const service = new LogsTimelineService({
+        getClient: () => client,
+      } as unknown as DatabaseService);
+
+      const { events } = await service.getTimeline("r1", {
+        correlationId: "corr-1",
+      });
+
+      expect(events).toEqual([]);
+    });
   });
 
   /**

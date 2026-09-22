@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -251,11 +252,21 @@ export class ProviderIntelligenceController {
   @ApiQuery({ name: "limit", required: false })
   async getSentimentTrend(
     @Param("id") providerId: string,
+    @CurrentUser() user: { restaurantId: string },
     @Query("limit") limit?: string,
   ) {
+    // user.restaurantId falls back to the nullable users.restaurant_id column
+    // (jwt.strategy.ts:29-31) when the token carries none; an empty value
+    // reaching `.eq("restaurant_id", ...)` on a NOT NULL uuid column below
+    // fails as a Postgres cast error inside a 500, not as "this session has
+    // no house" (2026-09-17 finding). Refuse before the query.
+    if (!user.restaurantId) {
+      throw new BadRequestException("no restaurant on this session");
+    }
     try {
       return await this.intelligenceService.getSentimentTrend(
         providerId,
+        user.restaurantId,
         limit ? parseInt(limit, 10) : 30,
       );
     } catch (error) {
@@ -337,12 +348,25 @@ export class ProviderIntelligenceController {
   @Get("intelligence/compare")
   @ApiOperation({ summary: "Cross-vendor intelligence comparison" })
   @ApiQuery({ name: "providerIds", required: false, type: String })
-  async compareProviders(@Query("providerIds") providerIdsStr?: string) {
+  async compareProviders(
+    @CurrentUser() user: { restaurantId: string },
+    @Query("providerIds") providerIdsStr?: string,
+  ) {
+    // Same refusal as getSentimentTrend above, and for the same reason:
+    // user.restaurantId can be empty (jwt.strategy.ts:29-31), and an empty
+    // value reaching `.eq("restaurant_id", ...)` below is a 500 carrying a
+    // Postgres cast message, not a stated "no house" error.
+    if (!user.restaurantId) {
+      throw new BadRequestException("no restaurant on this session");
+    }
     try {
       const providerIds = providerIdsStr
         ? providerIdsStr.split(",").map((id) => id.trim())
         : undefined;
-      return await this.intelligenceService.compareProviders(providerIds);
+      return await this.intelligenceService.compareProviders(
+        user.restaurantId,
+        providerIds,
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compare providers",
