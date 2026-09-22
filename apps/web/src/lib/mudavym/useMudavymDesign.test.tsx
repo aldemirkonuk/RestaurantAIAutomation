@@ -110,7 +110,7 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
     const held = new Set(HELD_BACK);
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p as (typeof HELD_BACK)[number]));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
-    expect(LIVE_PAGES.size).toBe(17);
+    expect(LIVE_PAGES.size).toBe(18);
   });
 
   it('holds back exactly cellar, recommendations, receiving, shell', () => {

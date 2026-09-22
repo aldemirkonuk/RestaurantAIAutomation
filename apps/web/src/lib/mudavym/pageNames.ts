@@ -79,6 +79,8 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // exhaustive; never printed in the header — under the shell the header
   // prints the ROOM's own name from `rooms.ts`, the table the rail reads.
   shell: 'The house',
+  // Sidebar.tsx — the entry that links here (ADR 0160 §111 / PR #413).
+  help: 'Help & Support',
 };
 
 /**

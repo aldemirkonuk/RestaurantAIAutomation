@@ -304,6 +304,26 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
         <p className="cx-lede">What acts for this house.</p>
         <div className="cx-rule" />
 
+        {/* Persistent reconnect banner — ADR 0149 row 53 (closes ADR 0160 §111
+            Open item 5 / PAGE-GAP Q8): routine tone, on this page, stays until a
+            live grant returns. Shown only when Settings has mail reading ON and
+            no live grant backs it. Phone push is separate (MailGrantAbsentProducer). */}
+        {d.mailReader.data?.enabled === true &&
+        d.mailReader.data.granted === false ? (
+          <div className="cx-mail-banner" role="status" data-testid="mail-reconnect-banner">
+            <p>
+              Mail connection needs to be reconnected — vendor replies will not
+              reach this house until someone reconnects Gmail read access.
+            </p>
+            <a
+              className="cx-mail-banner-action"
+              href={`/authorize/gmail_read?returnPath=${encodeURIComponent('/connections')}`}
+            >
+              Reconnect
+            </a>
+          </div>
+        ) : null}
+
         {/* ══ THE LEDGER SENTENCE ═══════════════════════════════════════ */}
         <div className="cx-ledger">
           <p className="cx-ledger-line">

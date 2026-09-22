@@ -78,6 +78,12 @@ export const MUDAVYM_PAGES = [
   // around whatever page is routed, legacy or rebuilt. Off, the legacy
   // Sidebar layout renders byte-for-byte. Column added by 20260921114300.
   'shell',
+  // ADR 0160 §111 / ADR 0149 row 52 (2026-09-21). `/help` resolves on for
+  // every house in code — see LIVE_PAGES below — so it carries no
+  // `mudavym_design_help` ACTIVE registry entry; enrolling it here is still
+  // required, since MUDAVYM_PAGES is the source of the `MudavymPage` type
+  // PageGate, HouseHeader and PAGE_NAMES all key off.
+  'help',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
@@ -89,11 +95,12 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * list/history page, route `/receiving`) — distinct from `receiving_door`,
  * which IS live. `settings` joined 2026-09-19 after its sketch review cleared
  * (ADR 0160 "109 — settings · A, the interview"; PR #419) — same code-side
- * always-on as the original sixteen, still no database write. Held back,
- * still flag-gated: `cellar`, `recommendations`, `receiving`, and `shell`
+ * always-on as the original sixteen, still no database write. `help` joined
+ * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. Held back, still
+ * flag-gated: `cellar`, `recommendations`, `receiving`, and `shell`
  * (the house shell; production may have flipped its column independently).
  *
- * `MUDAVYM_PAGES.length` is 21; this is deliberately not "the rest" spelled
+ * `MUDAVYM_PAGES.length` is 22; this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.
@@ -116,6 +123,7 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'notifications',
   'logs',
   'settings',
+  'help',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */
