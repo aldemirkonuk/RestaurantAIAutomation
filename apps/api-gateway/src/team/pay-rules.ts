@@ -27,17 +27,22 @@
  * hours of work and ten hours of pay. `workedHours` subtracts the break the
  * shift carries.
  *
- * AND A SHIFT OVER 4 HOURS WITH NO BREAK ON RECORD HAS THE LEGAL MINIMUM
- * ----------------------------------------------------------------------
+ * ANY SHIFT WITH NO BREAK ON RECORD HAS THE LEGAL MINIMUM
+ * --------------------------------------------------------
  * The founder, 2026-09-21, picked "Take all five" (the options he picked, one
- * of which was this): a shift over 4 hours with no break recorded assumes the
- * Art. 68 minimum, shown as an ASSUMED break, and whoever edits the shift can
- * record the real one. Art. 68 keys the break on the length of the WORK, and
+ * of which was this): a shift with no break recorded assumes the Art. 68
+ * minimum, shown as an ASSUMED break, and whoever edits the shift can record
+ * the real one. That round's relayed option named shifts over 4 hours only;
+ * ADR 0215 returned shifts of 4 hours or less as a question, and the founder
+ * answered it 2026-09-22 (round 6y): "Yes, follow Art. 68 (Recommended)" — so
+ * the assumption is not gated on length any more; it applies from the
+ * shortest shift up. Art. 68 keys the break on the length of the WORK, and
  * says in its last sentence "Ara dinlenmeleri çalışma süresinden sayılmaz" (a
  * break is not counted as working time), so the minimum for a shift is the
  * smallest of the three statutory breaks (15 / 30 / 60 min) that the shift's
- * worked time, after that break, still allows. An 8-hour shift is
- * 7.5 hours of work and a 30-minute break, not 60. See `art68MinimumBreak`.
+ * worked time, after that break, still allows. A 4-hour shift is 15 minutes;
+ * an 8-hour shift is 7.5 hours of work and a 30-minute break, not 60. See
+ * `art68MinimumBreak`.
  *
  * THE WEEK'S HOURS ARE A REVIEW, NOT OVERTIME PAY
  * -----------------------------------------------
@@ -151,13 +156,6 @@ export function breakMinutes(breaks: BreakLike[] | null | undefined): number {
 // ── the break a shift is counted with (4857 Art. 68) ────────────────────────
 
 /**
- * Founder, 2026-09-21: a shift OVER 4 hours with no break recorded assumes the
- * Art. 68 minimum. A shift of 4 hours or less assumes none (the pick names
- * shifts over 4 hours only; ADR 0215 returns the shorter ones as a question).
- */
-export const ASSUME_BREAK_OVER_MIN = 240;
-
-/**
  * 4857 Art. 68 (a)-(c), keyed on WORKING minutes, which do not include the
  * break (Art. 68, last sentence: "Ara dinlenmeleri çalışma süresinden
  * sayılmaz"): (a) 4 hours or less, 15 minutes; (b) over 4 hours up to and
@@ -215,8 +213,10 @@ export function recordedBreakMinutes(s: ShiftLike): number | null {
 
 /**
  * The break a shift is counted with, and whether it was assumed. Recorded
- * wins; a shift over 4 hours with nothing recorded is counted with the Art. 68
- * minimum and says so (`assumed: true`); anything else is counted with none.
+ * wins; a shift with nothing recorded — of any length, founder 2026-09-22
+ * round 6y — is counted with the Art. 68 minimum for its length and says so
+ * (`assumed: true`). A shift with no length (malformed times) assumes
+ * nothing, so it is never priced on a negative span.
  */
 export function breakCounted(s: ShiftLike): {
   minutes: number;
@@ -225,10 +225,8 @@ export function breakCounted(s: ShiftLike): {
   const recorded = recordedBreakMinutes(s);
   if (recorded != null) return { minutes: recorded, assumed: false };
   const span = Math.round(hoursBetween(s.start_time, s.end_time) * 60);
-  if (span > ASSUME_BREAK_OVER_MIN) {
-    return { minutes: art68MinimumBreak(span), assumed: true };
-  }
-  return { minutes: 0, assumed: false };
+  if (span <= 0) return { minutes: 0, assumed: false };
+  return { minutes: art68MinimumBreak(span), assumed: true };
 }
 
 /**
@@ -259,6 +257,26 @@ export function priceShift(
 /** A called-out shift was not worked: its person is replaced by a cover shift. */
 export function isWorked(shift: { state?: string | null }): boolean {
   return shift?.state !== "callout";
+}
+
+/**
+ * KEPT, NOT SHOWN (ADR 0215 item 20). A removed person's shifts and leave
+ * requests are kept five years (founder, 2026-09-22 round 6y, "Keep them 5
+ * years (Recommended)") — as a record, like the wage record, which no page
+ * reads. Before migration 20260922013000 a removal deleted them, so no week,
+ * copy or leave list ever held a person who had left. This keeps it that way:
+ * a row whose `member_id` names nobody on `roster` (the house's live
+ * `team_members` ids) is left out; a row with no person (an open shift) stays.
+ * Without it, a removed person's NEXT week read as covered and costed by
+ * someone who will not come, and "Copy last week" wrote them into new weeks.
+ * Whether a removed person's hours should show on a PAST week is the
+ * founder's question (ADR 0215), not decided here.
+ */
+export function onTheRoster<T extends { member_id?: string | null }>(
+  rows: T[],
+  roster: ReadonlySet<string>,
+): T[] {
+  return rows.filter((r) => !r.member_id || roster.has(r.member_id));
 }
 
 // ── leave ──────────────────────────────────────────────────────────────────

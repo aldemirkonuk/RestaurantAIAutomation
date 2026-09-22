@@ -165,9 +165,10 @@ export function WeekGrid({
     const hours = id ? (hoursById.get(id) ?? 0) : 0;
     const closes = id ? (closesById.get(id) ?? 0) : 0;
     const fair = hours > WEEKLY_REVIEW_HOURS || closes >= 2;
-    // A shift over 4 hours with no break recorded is counted with the Art. 68
-    // minimum (ADR 0215): the lens says the break is assumed, and a recorded
-    // break shorter than the law asks for says that instead.
+    // A shift with no break recorded is counted with the Art. 68 minimum
+    // (ADR 0215; any length, founder round 6y): the lens says the break is
+    // assumed, and a recorded break shorter than the law asks for says that
+    // instead.
     const assumedBreak = breakCounted(s).assumed;
     const shortBreak = breakUnderMinimum(s);
     const lapsed = id ? lapsedIds.has(id) : false;

@@ -1,10 +1,14 @@
 /**
  * The founder's five answers on the page — ADR 0215, 2026-09-21, "Take all
- * five" (the options he picked, bundled):
+ * five" (the options he picked, bundled), and 2026-09-22 round 6y (shifts of
+ * 4 hours or less):
  *
- *   B1  a shift over 4 hours with no break recorded is counted with the Labour
- *       Law 4857 Art. 68 minimum, shown as ASSUMED, and whoever edits the shift
- *       can record the real one;
+ *   B1  a shift with no break recorded, any length, is counted with the
+ *       Labour Law 4857 Art. 68 minimum, shown as ASSUMED, and whoever edits
+ *       the shift can record the real one. Round 2 (2026-09-21) built this
+ *       for shifts over 4 hours only and returned the shorter ones as a
+ *       question; round 6y (2026-09-22) answered "Yes, follow Art. 68
+ *       (Recommended)", so it is not gated on length any more.
  *   S1  only the owner switches labour-cost tracking off or changes the target;
  *   L3  whoever approves leave marks it paid or unpaid, and a person may say so
  *       on their own request.
@@ -142,7 +146,7 @@ beforeEach(() => {
 
 // ── B1: the rule the grid and the week share with the gateway ────────────────
 
-describe('B1 — a shift over 4 hours with nothing recorded has the legal minimum, assumed', () => {
+describe('B1 — a shift with nothing recorded has the legal minimum, assumed (any length)', () => {
   const at = (start_time: string, end_time: string, over: Record<string, unknown> = {}) => ({
     start_time,
     end_time,
@@ -156,8 +160,17 @@ describe('B1 — a shift over 4 hours with nothing recorded has the legal minimu
     expect(art68MinimumBreak(481)).toBe(60);
   });
 
-  it('assumes only over 4 hours, and only when nothing is on record', () => {
-    expect(breakCounted(at('09:00', '13:00'))).toEqual({ minutes: 0, assumed: false });
+  it('assumes it at any length, and only when nothing is on record (founder round 6y)', () => {
+    // 4h00: the fork round 6y answers. Round 2 built 0/not-assumed here
+    // (gated on "over 4 hours"); round 6y assumes 15, Art. 68(a).
+    expect(breakCounted(at('09:00', '13:00'))).toEqual({ minutes: 15, assumed: true });
+    // 4h01: already assumed under round 2 (just over the old gate); unchanged.
+    expect(breakCounted(at('09:00', '13:01'))).toEqual({ minutes: 15, assumed: true });
+    // 7h30 / 7h31: the (b)/(c) statute edge, keyed on work time (item 3,
+    // "On work time (Recommended)", as built), not the span — both 30, not
+    // the span-level step at 8h00/8h01 (art68MinimumBreak(480)/(481) above).
+    expect(breakCounted(at('09:00', '16:30'))).toEqual({ minutes: 30, assumed: true });
+    expect(breakCounted(at('09:00', '16:31'))).toEqual({ minutes: 30, assumed: true });
     expect(breakCounted(at('09:00', '17:00'))).toEqual({ minutes: 30, assumed: true });
     expect(breakCounted(at('09:00', '19:00', { recorded_break_min: 0 }))).toEqual({ minutes: 0, assumed: false });
     expect(workedHours(at('09:00', '17:00'))).toBe(7.5);
@@ -167,13 +180,17 @@ describe('B1 — a shift over 4 hours with nothing recorded has the legal minimu
     expect(fmtBreak(at('09:00', '17:00'))).toBe('30 min · assumed');
     expect(fmtBreak(at('09:00', '17:00', { recorded_break_min: 45 }))).toBe('45 min');
     expect(fmtBreak(at('09:00', '17:00', { recorded_break_min: 0 }))).toBe('none taken');
-    expect(fmtBreak(at('09:00', '12:00'))).toBe('none');
+    // A 3-hour shift with nothing recorded: assumed too, since round 6y
+    // (was 'none' when the assumption was gated on "over 4 hours").
+    expect(fmtBreak(at('09:00', '12:00'))).toBe('15 min · assumed');
     expect(breakUnderMinimum(at('09:00', '19:00', { recorded_break_min: 30 }))).toBe(true); // 9.5h of work owes 60
     expect(breakUnderMinimum(at('09:00', '19:00', { recorded_break_min: 60 }))).toBe(false);
     expect(breakUnderMinimum(at('09:00', '19:00'))).toBe(false); // assumed is the minimum
     // Keyed on the work the break leaves: 8h with 30 min recorded is 7.5h of
     // work, which owes 30, so it is not under.
     expect(breakUnderMinimum(at('09:00', '17:00', { recorded_break_min: 30 }))).toBe(false);
+    // A short shift's recorded break, under Art. 68(a)'s own minimum.
+    expect(breakUnderMinimum(at('09:00', '12:00', { recorded_break_min: 10 }))).toBe(true); // 2h50m of work owes 15
   });
 
   it('names an assumed break and a short one in the compliance lens, and the break on the shift', () => {

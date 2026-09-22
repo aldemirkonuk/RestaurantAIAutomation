@@ -12,6 +12,7 @@ import {
   LeaveType,
   labourSettingsRefusal,
   memberForViewer,
+  onTheRoster,
   seesMoney,
   TeamRole,
 } from "./pay-rules";
@@ -138,6 +139,31 @@ export class TeamService {
       .maybeSingle();
     if (!data)
       throw new NotFoundException("Member not found in this restaurant");
+  }
+
+  /**
+   * The ids of everyone on this house's roster now — inactive people
+   * included, because only a removal takes a person off it (ADR 0215 item
+   * 19). A removed person's shifts and leave are kept but are not part of the
+   * working week (`onTheRoster`, item 20). A failed read RAISES: an empty set
+   * here would hide every shift and every leave request, and "could not read
+   * the roster" is not "nobody works here".
+   */
+  async rosterMemberIds(restaurantId: string): Promise<Set<string>> {
+    const { data, error } = await this.sb
+      .from("team_members")
+      .select("id")
+      .eq("restaurant_id", restaurantId);
+    if (error) {
+      this.logger.error(
+        `rosterMemberIds: could not read the roster of ${restaurantId}: ` +
+          error.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not read who is on the team, so the request was not answered.",
+      );
+    }
+    return new Set((data ?? []).map((m: any) => m.id as string));
   }
 
   async listMembers(userId: string, restaurantId: string): Promise<any[]> {
@@ -829,7 +855,11 @@ export class TeamService {
       q = q.eq("member_id", mine);
     }
     const { data } = await q.order("created_at", { ascending: false });
-    return data ?? [];
+    if (role === "staff") return data ?? [];
+    // A removed person's requests are kept five years, not listed (ADR 0215
+    // item 20): before 20260922013000 the removal deleted them, and a
+    // pending one would otherwise wait for a decision about someone gone.
+    return onTheRoster(data ?? [], await this.rosterMemberIds(restaurantId));
   }
 
   async createTimeOff(

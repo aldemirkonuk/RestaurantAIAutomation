@@ -448,7 +448,10 @@ describe("C1 — copying a week re-prices it from the wage on file now", () => {
     const db = seed();
     sourceWeek(db);
     db.tables.shifts.push(shift({ id: "tgt1", member_id: "m-staff", labor_cost: 160 }));
-    db.errors["team_members:select"] = { message: "boom" };
+    // The WAGE read alone fails (it names `hourly_wage`, answered 42703 here);
+    // the roster read before it (`id` only, ADR 0215 item 20) still answers,
+    // so this holds the wage read's own refusal, not the roster read's.
+    db.schema = { team_members: ["id", "restaurant_id"] };
     await expect(
       scheduleOf(db).copyWeek(MANAGER, RID, { fromWeekStart: "2026-08-31", toWeekStart: WEEK, replaceTarget: true } as any),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
@@ -586,9 +589,11 @@ describe("B1 — the Art. 68 minimum, keyed on worked time", () => {
     expect(art68MinimumBreak(600)).toBe(60);
   });
 
-  it("assumes a break only over 4 hours, and only with nothing on record", () => {
+  it("assumes a break at any length, once nothing is on record (founder 2026-09-22, round 6y)", () => {
     const at = (start_time: string, end_time: string, over: Record<string, any> = {}) => ({ start_time, end_time, ...over });
-    expect(breakCounted(at("09:00", "13:00"))).toEqual({ minutes: 0, assumed: false });
+    // A 1-hour shift: round 2 built "no assumption at 4h or under"; round 6y
+    // ("Yes, follow Art. 68 (Recommended)") assumes the 15-minute minimum here too.
+    expect(breakCounted(at("09:00", "10:00"))).toEqual({ minutes: 15, assumed: true });
     expect(breakCounted(at("09:00", "13:01"))).toEqual({ minutes: 15, assumed: true });
     expect(breakCounted(at("09:00", "17:00"))).toEqual({ minutes: 30, assumed: true });
     expect(breakCounted(at("22:00", "07:00"))).toEqual({ minutes: 60, assumed: true }); // overnight 9h
@@ -599,6 +604,25 @@ describe("B1 — the Art. 68 minimum, keyed on worked time", () => {
     expect(
       breakCounted(at("09:00", "19:00", { shift_breaks: [{ duration_min: 20 }], recorded_break_min: 50 })),
     ).toEqual({ minutes: 50, assumed: false });
+  });
+
+  it("the 4h00/4h01 and 7h30/7h31 boundaries (founder 2026-09-22, round 6y)", () => {
+    const at = (start_time: string, end_time: string) => ({ start_time, end_time });
+    // 4h00 exactly: the fork this round answers. Round 2 built 0/not-assumed
+    // here (gated on "over 4 hours"); round 6y assumes 15, Art. 68(a).
+    expect(breakCounted(at("09:00", "13:00"))).toEqual({ minutes: 15, assumed: true });
+    // 4h01: already assumed under round 2 (just over the old gate); unchanged
+    // by this round — a regression check that the low-end fix did not move it.
+    expect(breakCounted(at("09:00", "13:01"))).toEqual({ minutes: 15, assumed: true });
+    // 7h30 (7.5h span, Art. 68(b)'s own edge): 30 minutes.
+    expect(breakCounted(at("09:00", "16:30"))).toEqual({ minutes: 30, assumed: true });
+    // 7h31 span: still 30 — a 30-minute break here leaves 7h01m of work,
+    // inside (b) (art68BreakForWork(421) === 30, pinned above). The span-level
+    // step to 60 is at 8h00/8h01 (art68MinimumBreak(480)/(481), also pinned
+    // above), not at 7h30/7h31: this test fixes that distinction, keyed on
+    // work time (item 3, founder round 6y "On work time (Recommended)", as
+    // built), not the span.
+    expect(breakCounted(at("09:00", "16:31"))).toEqual({ minutes: 30, assumed: true });
   });
 
   it("counts the week with the assumed breaks and says how much is assumed", async () => {
@@ -864,25 +888,88 @@ describe("L3 — whoever approves marks leave paid or unpaid; staff may say so",
   });
 });
 
-describe("R1 — the wage record's retention job", () => {
+describe("R1 — the retention job: shifts and leave, then wages, same clock", () => {
   const svcWith = (rpc: jest.Mock) =>
     new WageRecordRetentionService({ supabase: { rpc } } as any);
 
-  it("calls the database's purge and reports its counts", async () => {
-    const rpc = jest.fn(async () => ({ data: [{ wage_rows_deleted: 3, departures_deleted: 1 }], error: null }));
-    const run = await svcWith(rpc).purgeExpired();
-    expect(rpc).toHaveBeenCalledWith("purge_expired_wage_records");
-    expect(run).toMatchObject({ ok: true, wageRowsDeleted: 3, departuresDeleted: 1 });
+  // A stub keyed by RPC name, so the ordering assertions below are real:
+  // calling the wrong name (or the right one twice) fails loudly rather than
+  // silently reusing the other RPC's fixture.
+  const rpcOf = (byName: Record<string, { data?: any; error?: any }>) =>
+    jest.fn(async (name: string) =>
+      Object.prototype.hasOwnProperty.call(byName, name)
+        ? byName[name]
+        : { data: null, error: { message: `unexpected rpc ${name}` } },
+    );
+
+  const SL_OK = (shifts = 0, leave = 0) => ({
+    data: [{ shifts_deleted: shifts, leave_rows_deleted: leave }],
+    error: null,
+  });
+  const WAGE_OK = (wage = 0, dep = 0) => ({
+    data: [{ wage_rows_deleted: wage, departures_deleted: dep }],
+    error: null,
   });
 
-  it("reports a failed purge as failed, never as nothing due", async () => {
-    const rpc = jest.fn(async () => ({ data: null, error: { message: "boom" } }));
+  it("calls the shifts-and-leave purge, then the wage purge, in that order, and reports all four counts (founder 2026-09-22 round 6y)", async () => {
+    const rpc = rpcOf({
+      purge_expired_shift_and_leave_records: SL_OK(2, 1),
+      purge_expired_wage_records: WAGE_OK(3, 1),
+    });
     const run = await svcWith(rpc).purgeExpired();
+    expect(rpc.mock.calls.map((c) => c[0])).toEqual([
+      "purge_expired_shift_and_leave_records",
+      "purge_expired_wage_records",
+    ]);
+    expect(run).toMatchObject({
+      ok: true,
+      shiftsDeleted: 2,
+      leaveRowsDeleted: 1,
+      wageRowsDeleted: 3,
+      departuresDeleted: 1,
+    });
+  });
+
+  it("does not call the wage purge at all when the shifts-and-leave purge fails", async () => {
+    const rpc = rpcOf({
+      purge_expired_shift_and_leave_records: { data: null, error: { message: "boom" } },
+    });
+    const run = await svcWith(rpc).purgeExpired();
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(run).toMatchObject({
+      ok: false,
+      shiftsDeleted: null,
+      leaveRowsDeleted: null,
+      wageRowsDeleted: null,
+      departuresDeleted: null,
+      error: "boom",
+    });
+  });
+
+  it("reports a failed wage purge as failed, never as nothing due, after a successful shifts-and-leave purge", async () => {
+    const rpc = rpcOf({
+      purge_expired_shift_and_leave_records: SL_OK(),
+      purge_expired_wage_records: { data: null, error: { message: "boom" } },
+    });
+    const run = await svcWith(rpc).purgeExpired();
+    expect(rpc).toHaveBeenCalledTimes(2);
     expect(run).toMatchObject({ ok: false, wageRowsDeleted: null, departuresDeleted: null, error: "boom" });
   });
 
-  it("reports an answer without its counts as failed, not as 0 deleted", async () => {
-    const rpc = jest.fn(async () => ({ data: [{}], error: null }));
+  it("reports the shifts-and-leave purge answering without its counts as failed, not as 0 deleted", async () => {
+    const rpc = rpcOf({ purge_expired_shift_and_leave_records: { data: [{}], error: null } });
+    const run = await svcWith(rpc).purgeExpired();
+    expect(run.ok).toBe(false);
+    expect(run.shiftsDeleted).toBeNull();
+    expect(run.leaveRowsDeleted).toBeNull();
+    expect(rpc).toHaveBeenCalledTimes(1); // never reaches the wage purge
+  });
+
+  it("reports the wage purge answering without its counts as failed, not as 0 deleted", async () => {
+    const rpc = rpcOf({
+      purge_expired_shift_and_leave_records: SL_OK(),
+      purge_expired_wage_records: { data: [{}], error: null },
+    });
     const run = await svcWith(rpc).purgeExpired();
     expect(run.ok).toBe(false);
     expect(run.wageRowsDeleted).toBeNull();
@@ -896,25 +983,159 @@ describe("R1 — the wage record's retention job", () => {
     expect(run).toMatchObject({ ok: false, error: "network" });
   });
 
-  it("reads null counts as no answer, not as 0 deleted", async () => {
+  it("reads null counts as no answer, not as 0 deleted — both purges", async () => {
     // Number(null) is 0: without the guard this run would report "0 deleted".
-    const rpc = jest.fn(async () => ({
-      data: [{ wage_rows_deleted: null, departures_deleted: null }],
-      error: null,
-    }));
-    const run = await svcWith(rpc).purgeExpired();
-    expect(run).toMatchObject({ ok: false, wageRowsDeleted: null, departuresDeleted: null });
+    const rpcSL = rpcOf({
+      purge_expired_shift_and_leave_records: {
+        data: [{ shifts_deleted: null, leave_rows_deleted: null }],
+        error: null,
+      },
+    });
+    const runSL = await svcWith(rpcSL).purgeExpired();
+    expect(runSL).toMatchObject({ ok: false, shiftsDeleted: null, leaveRowsDeleted: null });
+
+    const rpcWage = rpcOf({
+      purge_expired_shift_and_leave_records: SL_OK(),
+      purge_expired_wage_records: {
+        data: [{ wage_rows_deleted: null, departures_deleted: null }],
+        error: null,
+      },
+    });
+    const runWage = await svcWith(rpcWage).purgeExpired();
+    expect(runWage).toMatchObject({ ok: false, wageRowsDeleted: null, departuresDeleted: null });
   });
 
-  it("is scheduled nightly, and the scheduled run is the purge", async () => {
+  it("is scheduled nightly, and the scheduled run is shifts-and-leave then wages, in order", async () => {
     const opts = Reflect.getMetadata(
       "SCHEDULE_CRON_OPTIONS",
       WageRecordRetentionService.prototype.scheduled,
     );
     expect(opts?.cronTime).toBe(WAGE_RETENTION_CRON);
     expect(WAGE_RETENTION_CRON).toBe("23 3 * * *");
-    const rpc = jest.fn(async () => ({ data: [{ wage_rows_deleted: 0, departures_deleted: 0 }], error: null }));
+    const rpc = rpcOf({
+      purge_expired_shift_and_leave_records: SL_OK(),
+      purge_expired_wage_records: WAGE_OK(),
+    });
     await svcWith(rpc).scheduled();
-    expect(rpc).toHaveBeenCalledWith("purge_expired_wage_records");
+    expect(rpc.mock.calls.map((c) => c[0])).toEqual([
+      "purge_expired_shift_and_leave_records",
+      "purge_expired_wage_records",
+    ]);
+  });
+});
+
+// ── K1: a removed person's kept rows are kept, not part of the working week ──
+//
+// ADR 0215 item 20 (founder 2026-09-22, round 6y, "Keep them 5 years
+// (Recommended)"): a removal no longer deletes a person's shifts and leave.
+// The database keeps them (migration 20260922013000, PGlite probe); the
+// gateway reads the week as it did before the removal stopped deleting them.
+// "m-gone" is a person removed from the roster whose rows were kept.
+
+describe("K1 — a removed person's kept shifts and leave are kept, not part of the week", () => {
+  const GONE = "m-gone";
+
+  it("leaves them out of the week's shifts, hours, cost and coverage, and keeps the rows", async () => {
+    const db = seed();
+    db.tables.coverage_templates.push({
+      id: "ct1", restaurant_id: RID, day_of_week: null, role: "line", shift_period: "am", min_staff: 2,
+    });
+    db.tables.shifts.push(
+      shift({ id: "live", member_id: "m-staff", role: "line", labor_cost: 150 }),
+      shift({ id: "kept", member_id: GONE, role: "line", labor_cost: 150 }),
+      // An open shift names nobody and is still part of the week.
+      shift({ id: "open", member_id: null, role: "line", state: "open", shift_type: "open" }),
+    );
+    for (const who of [MANAGER, OWNER]) {
+      const week = await scheduleOf(db).getWeek(who, RID, WEEK);
+      expect(week.shifts.map((s: any) => s.id)).toEqual(["live", "open"]);
+      expect(week.coverage.days.find((d: any) => d.date === WEEK).openShifts).toBe(1);
+      // 7.5 worked on the live shift + 7.5 planned on the open one; the kept
+      // shift's 7.5 is not in the week.
+      expect(week.labor.totalHours).toBe(15);
+      const day = week.coverage.days.find((d: any) => d.date === WEEK);
+      // Nobody on the roster covers the second "line" slot: a gap, as it was
+      // before a removal stopped deleting the removed person's shift.
+      expect(day.staffed).toBe(1);
+      expect(day.gaps).toEqual([{ role: "line", period: "am", staffed: 1, required: 2 }]);
+      if (who === OWNER) {
+        expect(week.labor.totalCost).toBe(150);
+        expect(week.labor.pricedShifts).toBe(1);
+      }
+    }
+    // Kept: reading the week deleted nothing.
+    expect(db.tables.shifts.map((s) => s.id).sort()).toEqual(["kept", "live", "open"]);
+    expect(db.opsOn("shifts", "delete")).toHaveLength(0);
+  });
+
+  it("does not count their approved paid leave in the owner's week", async () => {
+    const db = seed();
+    db.tables.time_off_requests.push(
+      { id: "t-live", restaurant_id: RID, member_id: "m-staff", start_date: WEEK, end_date: WEEK, status: "approved", leave_type: "paid" },
+      { id: "t-kept", restaurant_id: RID, member_id: GONE, start_date: WEEK, end_date: WEEK, status: "approved", leave_type: "paid" },
+    );
+    const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(week.labor.leave).toEqual({
+      readable: true,
+      paid: [{ memberId: "m-staff", days: 1 }],
+      paidDays: 1,
+      unknownTypeDays: 0,
+    });
+  });
+
+  it("does not list their leave requests to a manager, and keeps them", async () => {
+    const db = seed();
+    db.tables.time_off_requests.push(
+      { id: "t-live", restaurant_id: RID, member_id: "m-staff", start_date: WEEK, end_date: WEEK, status: "pending", created_at: "2026-09-01" },
+      { id: "t-kept", restaurant_id: RID, member_id: GONE, start_date: WEEK, end_date: WEEK, status: "pending", created_at: "2026-09-02" },
+    );
+    const asManager = await teamOf(db).listTimeOff(MANAGER, RID);
+    expect(asManager.map((t: any) => t.id)).toEqual(["t-live"]);
+    const asStaff = await teamOf(db).listTimeOff(STAFF, RID);
+    expect(asStaff.map((t: any) => t.id)).toEqual(["t-live"]);
+    expect(db.tables.time_off_requests).toHaveLength(2);
+  });
+
+  it("never copies them into a new week, and replacing a week does not delete them", async () => {
+    const db = seed();
+    const FROM = "2026-08-31";
+    db.tables.schedules.push({ id: "s-from", restaurant_id: RID, week_start: FROM, status: "published" });
+    db.tables.shifts.push(
+      shift({ id: "src-live", schedule_id: "s-from", shift_date: FROM, member_id: "m-staff", labor_cost: 150 }),
+      shift({ id: "src-kept", schedule_id: "s-from", shift_date: FROM, member_id: GONE, labor_cost: 150 }),
+      // Already in the target week: the removed person's kept shift.
+      shift({ id: "tgt-kept", member_id: GONE, labor_cost: 150 }),
+    );
+    // The kept shift is not "in the way": no 409 without the flag.
+    const res: any = await scheduleOf(db).copyWeek(MANAGER, RID, { fromWeekStart: FROM, toWeekStart: WEEK } as any);
+    expect(res).toMatchObject({ copied: 1, deleted: 0 });
+    const inWeek = db.tables.shifts.filter((s) => s.shift_date === WEEK);
+    expect(inWeek.filter((s) => s.member_id === GONE).map((s) => s.id)).toEqual(["tgt-kept"]);
+    expect(inWeek.filter((s) => s.member_id === "m-staff")).toHaveLength(1);
+
+    // Replacing the week deletes the live copy it made, never the kept shift.
+    const again: any = await scheduleOf(db).copyWeek(MANAGER, RID, {
+      fromWeekStart: FROM,
+      toWeekStart: WEEK,
+      replaceTarget: true,
+    } as any);
+    expect(again).toMatchObject({ copied: 1, deleted: 1 });
+    expect(db.tables.shifts.some((s) => s.id === "tgt-kept")).toBe(true);
+    expect(db.tables.shifts.some((s) => s.id === "src-kept")).toBe(true);
+  });
+
+  it("refuses the week when the roster cannot be read, rather than hiding every shift", async () => {
+    const db = seed();
+    db.tables.shifts.push(shift({ id: "live", member_id: "m-staff" }));
+    db.errors["team_members:select"] = { message: "boom" };
+    await expect(scheduleOf(db).getWeek(OWNER, RID, WEEK)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    await expect(
+      scheduleOf(db).copyWeek(MANAGER, RID, { fromWeekStart: WEEK, toWeekStart: "2026-09-14" } as any),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    await expect(teamOf(db).listTimeOff(MANAGER, RID)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
   });
 });

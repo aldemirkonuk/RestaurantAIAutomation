@@ -1,28 +1,36 @@
 # 0215 — Money on /team is the owner's, and hours are worked hours
 
-- **Status:** Locked (the founder's four picks, 2026-09-21, and his answer the
-  same day to the five forks this record first left open: "Take all five"). The
-  design below applies them; what is still unsettled is listed under "Open, for
-  the founder" and is not decided here.
-- **Date:** 2026-09-21
-- **Decider:** Aldemir (founder) — four picks and one answer to five forks,
-  quoted verbatim below
+- **Status:** Locked (the founder's four picks, 2026-09-21, his answer the same
+  day to the five forks this record first left open, "Take all five", and his
+  answers 2026-09-22, round 6y, to the five questions round 2 in turn left
+  open — see "Answered, 2026-09-22 (round 6y)"). All five of "Open, for the
+  founder"'s questions are answered; the round-3 last call returned two new
+  ones, listed there and not decided here.
+- **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
+  2026-09-22)
+- **Decider:** Aldemir (founder) — four picks and one answer to five forks
+  (2026-09-21), and five more answers (2026-09-22, round 6y), quoted verbatim
+  below
 - **Keywords:** team, wage, hourly_wage, labor_cost, wage_visible, owner only,
   money rule, breaks, 4857 Art. 68, assumed break, recorded_break_min, 45 hours,
   overtime review, copy week, re-price, paid leave, leave_type,
   time_off_requests, team_member_wage_changes, append-only, retention, five
-  years, team_member_departures, purge_expired_wage_records, labour settings,
-  owner only switch-off, house currency, Intl, KVKK, labour page
+  years, team_member_departures, purge_expired_wage_records,
+  purge_expired_shift_and_leave_records, labour settings, owner only
+  switch-off, house currency, Intl, KVKK, labour page, shifts outlive removal,
+  leave outlive removal, member_id foreign key dropped
 - **Links:** [[0088-a-team-change-is-recorded-and-a-wage-is-not-invented]],
   [[0051-rebuilt-pages-show-live-data-only]], ADR 0117 (Q25, a house names its
   money), `supabase/migrations/20260921170200_a_wage_is_the_owners_and_every_change_is_kept.sql`,
   `supabase/migrations/20260921170900_a_shift_over_four_hours_has_a_break.sql`,
   `supabase/migrations/20260921170910_a_wage_record_is_kept_five_years_after_leaving.sql`,
+  `supabase/migrations/20260922013000_a_persons_shifts_and_leave_outlive_their_removal.sql`,
   `apps/api-gateway/src/team/pay-rules.ts`,
   `apps/api-gateway/src/team/wage-record-retention.service.ts`,
   `apps/api-gateway/src/team/team-pay.spec.ts`,
   `apps/web/src/pages/team/next/TeamPay.test.tsx`,
-  `apps/web/src/pages/team/next/TeamBreaks.test.tsx`
+  `apps/web/src/pages/team/next/TeamBreaks.test.tsx`,
+  `p4-scratch/pglite-probe/teamfix-r3-shifts-and-leave-outlive-removal.mjs`
 
 ## The founder's words
 
@@ -293,7 +301,15 @@ killed mutation:
     manager alike (it is hours); a shift's detail says "30 min · assumed"; the
     compliance lens names "break assumed · not recorded", and a RECORDED break
     shorter than the law asks for as "break under the legal minimum" (it
-    changes no figure).
+    changes no figure). **[Corrected 2026-09-22, round 6y: the "over 4 hours"
+    gate is removed.** Open question 2, below, asked whether a shift of 4
+    hours or less should also assume the Art. 68(a) 15-minute minimum; the
+    founder answered "Yes, follow Art. 68 (Recommended)". `ASSUME_BREAK_OVER_MIN`
+    is deleted from both `pay-rules.ts` and its `tm-format.ts` mirror; the
+    assumption now applies from the shortest shift up, still keyed on the work
+    the break leaves (item 18, below). Tests at the 4h00/4h01 and 7h30/7h31
+    boundaries the founder named: `team-pay.spec.ts` (B1) and
+    `TeamBreaks.test.tsx`.]**
 11. **Whoever edits the shift records the real one.** `createShift` and
     `updateShift` take `breakMinutes` (whole minutes, `0` = no break taken,
     `null` on an update clears the record back to the assumption, omitted
@@ -311,8 +327,13 @@ killed mutation:
     then deleted** — by the database's rule and a nightly call (Options,
     above). "Leaves the roster" is read as the `team_members` row being
     removed; a person marked inactive is still on the roster, and their record
-    is kept (a question below). A person already off the roster when this ships
-    is timed from the day it ships, so the error is on the side of keeping.
+    is kept (a question below, **answered 2026-09-22 round 6y as built — item
+    19**). A person already off the roster when this ships is timed from the
+    day it ships, so the error is on the side of keeping. **[Broadened
+    2026-09-22, round 6y — item 20, below: the same five-year clock and the
+    same deletion job now also cover the person's SHIFTS and LEAVE REQUESTS,
+    not the wage record alone (question 5, below, "Keep them 5 years
+    (Recommended)").]**
 13. **Only the owner switches labour-cost tracking off or changes the labour
     target.** A manager's save that does either is a 403 in words before any
     write; the settings reply carries `mayChange` and the settings page locks
@@ -328,6 +349,114 @@ killed mutation:
     request (My Shifts: "Paid or unpaid?", default "Leave it to my manager"),
     and the approver's word replaces theirs. Staff cannot state it for someone
     else or review their own.
+
+And, from the founder's five answers 2026-09-22 (round 6y) to the five
+questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
+
+16. **A manager may switch labour-cost tracking back ON; only the owner may
+    switch it OFF (unchanged).** Founder pick: "Yes, on and off (Recommended)"
+    — as built (open question 1): `labourSettingsMayChange` already returned
+    `trackingOn: true` for a manager and `trackingOff: false`, and
+    `labourSettingsRefusal` already refused only a manager's attempt to switch
+    OFF or change the target. No code changed; this closes the question the
+    record left open. `mayChange` on `getSettings`/`updateSettings` is the
+    test: `{trackingOff: false, trackingOn: true, target: false}` for a
+    manager, all `true` for the owner (`team-pay.spec.ts`, S1, "tells each
+    viewer what they may change"). **[Reading, recorded 2026-09-22 at the
+    round-3 last call: the question put was "May a manager switch labour-cost
+    tracking back ON?", and the orchestrator relayed this pick as "as built,
+    record" — a manager switches it on, only the owner switches it off (item
+    13). Read literally, "on and off" could instead mean a manager may also
+    switch it OFF, which would reverse item 13, a pick of 2026-09-21. That
+    reading is returned to the founder to confirm, not built.]**
+17. *(Item 10, above, carries the Art. 68-at-any-length correction — no
+    separate item here to avoid saying it twice.)*
+18. **The Art. 68 minimum is measured on the work the break leaves, not the
+    shift's span (unchanged) — named for the labour lawyer's review.** Founder
+    pick: "On work time (Recommended)" — as built (open question 3): the
+    Options section's "Which minimum an unrecorded shift assumes" already
+    chose "the least statutory break the shift's remaining work allows"
+    (`art68MinimumBreak`), over the span reading it rejected. No code changed.
+    The founder's pick closes the question but does not itself resolve the
+    open legal reading (no court decision was checked, tahanci.av.tr's
+    commentary was not verified against one) — flagged here, verbatim, for
+    the labour lawyer's review before this basis is relied on in a dispute:
+    the rule as built is **Art. 68's break, keyed on working time, is the
+    least of 15/30/60 minutes that the shift's WORKED time (span minus that
+    break) still satisfies** (`pay-rules.ts:art68MinimumBreak`,
+    `art68BreakForWork`).
+19. **"Leaves the roster" stays read as removal only; an inactive person's
+    wage record, shifts and leave are all still kept while they remain on the
+    roster (unchanged).** Founder pick: "Only removal counts (Recommended)" —
+    as built (open question 4): `team_member_departure_recorded()` fires only
+    on a `team_members` row being removed (`AFTER DELETE`), never on an
+    `is_active`/status change. No code changed.
+20. **A removed person's shifts and leave requests are kept, not deleted the
+    same second, and end with the wage record: the same five-year clock, the
+    same nightly job.** Founder, verbatim: "removing a person must no longer
+    delete their shifts and leave requests straight away; they are kept and
+    end with the wage record (same five-year clock, same deletion job)" (open
+    question 5, "Keep them 5 years (Recommended)"). Migration
+    `20260922013000`:
+    - `shifts.member_id` and `time_off_requests.member_id` drop their foreign
+      key to `team_members` (the same reason `team_member_wage_changes.member_id`
+      already carries none: a row that must outlive its person's removal
+      cannot be pinned to a row the removal deletes). The columns and their
+      values are unchanged; new writes are still checked against the live
+      roster in the gateway (`assertMemberInRestaurant`), the same as every
+      other actor reference in this schema.
+    - `team_member_departure_recorded()` now stamps a departure when the
+      removed person has a wage record, a shift OR a leave request — not a
+      wage record alone.
+    - `purge_expired_shift_and_leave_records()` (service_role only, SECURITY
+      INVOKER) deletes shifts and leave requests whose person's departure is
+      more than five years old; `WageRecordRetentionService` calls it
+      **first**, then `purge_expired_wage_records()` (updated: its own
+      departure cleanup now waits on shifts and leave too, not the wage
+      record alone) — see the file header of
+      `wage-record-retention.service.ts` for why the order matters: running
+      the wage purge first is provably safe on its own (it re-checks shifts
+      and leave before clearing a departure) but running shifts-and-leave
+      first is what lets a single nightly run clear a departure whose only
+      remaining row was, until that same run, a shift or a leave request.
+      `tmd_guard()` (the departures table's own DELETE guard) gained the
+      identical check, so a direct DELETE outside the purge is refused on the
+      same terms.
+    - RLS is unchanged: `shifts` and `time_off_requests` have RLS on and no
+      policy, and no grant to `anon`/`authenticated` since
+      `20260825210000_od72_revoke_client_grants.sql` revoked client grants
+      schema-wide (the baseline dump carries no grants, so it cannot show
+      this; the migration's DO block asserts it). **[Corrected 2026-09-22 at
+      the round-3 last call: this bullet first said neither table "has ever
+      carried" a grant to them; until OD-72 both did, like 203 of 206 public
+      tables.]** Every read and write goes through the gateway's
+      service-role client, gated by role in code.
+    - **Kept, not shown** (added at the round-3 last call). With the foreign
+      keys gone, a removed person's rows would otherwise have entered the
+      working week: their NEXT week read as covered and costed by someone who
+      will not come (the grid, drawn by roster row, showed no shift for
+      them), "Copy last week" wrote them into every new week, replacing a
+      week deleted their kept shifts in it, and a pending leave request of
+      theirs waited in the manager's list. So the gateway reads a removed
+      person's rows as it did before this change, when a removal deleted
+      them: `onTheRoster` (`pay-rules.ts`) drops a row whose `member_id`
+      names nobody on the live roster (an open shift stays), applied to
+      `getWeek`'s shifts (and so its coverage, hours and cost) and approved
+      leave, to `copyWeek`'s source week and to the rows a replaced week
+      deletes (now by id), and to a manager's `listTimeOff`.
+      `TeamService.rosterMemberIds` raises on a failed read, never an empty
+      roster. The kept rows are therefore a record, like the wage record,
+      which no page reads: "readable only by owners/managers" holds because
+      nobody reads them through the product at all. Whether a PAST week
+      should show a removed person's hours, and what a removed person's
+      unworked FUTURE shifts should become, are returned to the founder —
+      not decided here. `team-pay.spec.ts` K1, 10 of 10 targeted mutations
+      killed; CLAIMS row
+      `ADR-0215-TEAM-A-REMOVED-PERSONS-KEPT-ROWS-ARE-NOT-IN-THE-WEEK`.
+    - Additive and idempotent: two constraints dropped (`IF EXISTS`,
+      re-dropping a no-op), three functions replaced/added
+      (`CREATE OR REPLACE`), no row written or deleted by the migration
+      itself.
 
 ## Consequences
 
@@ -363,16 +492,33 @@ killed mutation:
   the legacy desk (`pages/team/command/**`) saves shifts without one, which
   leaves a recorded break as it was. (i) The retention job runs in every
   gateway instance; the purge is idempotent, so two instances delete nothing
-  twice. (j) Found at the round-2 last call, not changed here: removing a
+  twice. (j) ~~Found at the round-2 last call, not changed here: removing a
   person still deletes their shifts, leave requests, availability and
   credentials the same second (baseline foreign keys `shifts_member_id_fkey`,
   `time_off_requests_member_id_fkey` and others, `ON DELETE CASCADE`,
   `20260805000000_baseline_from_production.sql:13502`, `:13654`), so the
   wage record kept five years outlives the hours it priced. Keeping those is
-  a founder question (below), not a default. (k) A departure is stamped once
+  a founder question (below), not a default.~~ **[Resolved 2026-09-22, round
+  6y, item 20: shifts and leave requests are no longer taken by the removal —
+  the two foreign keys named above are dropped, and both are kept on the same
+  five-year clock as the wage record.** Availability and credentials are
+  UNCHANGED by item 20 (the founder's pick, verbatim, named shifts and leave
+  requests only): a removal still deletes those two the same second. That is
+  a residual of item 20, not a decision — restated so it is not mistaken for
+  one.] (k) A departure is stamped once
   (`ON CONFLICT DO NOTHING`): a roster row removed, re-inserted under the SAME
   id and removed again would keep the first date. No product path re-inserts
   an id (every insert takes a generated one), so this is noted, not guarded.
+  (l) Found at the round-3 last call, not changed: with no foreign key, a
+  shift or leave request written in the instant between `createShift`'s
+  (or `createTimeOff`'s) roster check and a concurrent removal is kept under
+  an id nobody holds; if that person had nothing else at the removal, no
+  departure was stamped for them and nothing times that row's five years. A
+  race of one request's width, noted, not guarded. (m) `rosterAt`
+  (`notifications/producers/roster.ts`), which names who the schedule had on
+  shift at an instant, still reads every shift: a removed person's kept
+  shift at that instant is named with the em dash its "member row is gone"
+  case already renders, where before this change it was absent.
 - **Revisit when** the labour page lands (it will own pay basis and confirmed
   hours), or if a second role is ever meant to see pay.
 
@@ -423,25 +569,65 @@ answered all five with "Take all five" (quoted above), and Decision items
 
 ## Open, for the founder
 
-Not decided here; returned to the orchestrator as questions, not filed as OD
-rows:
+**All five, answered 2026-09-22 (round 6y) — see "Answered, 2026-09-22 (round
+6y)" below and Decision items 16–20. Kept here, struck through, so the record
+shows what was asked and that nothing was silently dropped (CLAUDE.md §5b):**
 
-1. May a manager switch labour-cost tracking back ON? The pick names only
-   switching it off. As built, yes (whoever may save the settings).
-2. Should a shift of 4 hours or less also assume the Art. 68 (a) minimum of 15
-   minutes? The pick names shifts over 4 hours. As built, no.
-3. Is the Art. 68 minimum measured on the work the break leaves (as built: an
+1. ~~May a manager switch labour-cost tracking back ON? The pick names only
+   switching it off. As built, yes (whoever may save the settings).~~ **Answered:
+   "Yes, on and off (Recommended)" — as built (item 16); no code change.**
+2. ~~Should a shift of 4 hours or less also assume the Art. 68 (a) minimum of 15
+   minutes? The pick names shifts over 4 hours. As built, no.~~ **Answered:
+   "Yes, follow Art. 68 (Recommended)" — built (item 10, corrected).**
+3. ~~Is the Art. 68 minimum measured on the work the break leaves (as built: an
    8-hour shift is 7.5 hours of work and a 30-minute break) or on the span
    (an 8-hour shift would assume 60 minutes)? The statute keys it on the work
-   and says a break is not working time; no court decision was checked.
-4. Does "leaves the roster" include being marked inactive? As built, only the
+   and says a break is not working time; no court decision was checked.~~
+   **Answered: "On work time (Recommended)" — as built (item 18); no code
+   change; flagged for the labour lawyer's review.**
+4. ~~Does "leaves the roster" include being marked inactive? As built, only the
    removal of the person's roster row starts the five years, so an inactive
-   person's wage record is kept for as long as they stay on the roster.
-5. Removing a person deletes their shifts and leave requests at once
+   person's wage record is kept for as long as they stay on the roster.~~
+   **Answered: "Only removal counts (Recommended)" — as built (item 19); no
+   code change.**
+5. ~~Removing a person deletes their shifts and leave requests at once
    (residual (j)), so after a removal the kept wage record has no hours
    beside it. Should the shifts and leave of a person who left be kept for
    the same five years, or is the wage record alone what the pick meant?
-   As built, only the wage record is kept.
+   As built, only the wage record is kept.~~ **Answered: "Keep them 5 years
+   (Recommended)" — built (item 20): the same five-year clock, the same job,
+   migration `20260922013000`.**
+
+Nothing from rounds 1 and 2 is open. The round-3 last call (2026-09-22)
+returned two new questions to the orchestrator, not filed as OD rows and not
+decided here: whether "Yes, on and off" means a manager may also switch
+tracking OFF (item 16's reading note), and how a removed person's kept rows
+should appear, if at all — their hours on a past week, their unworked future
+shifts (item 20, "Kept, not shown").
+
+## Answered, 2026-09-22 (round 6y)
+
+The five questions round 2 (above) returned; the founder answered each,
+verbatim, per-item picks relayed as options with a recommended default (his
+words quoted where the brief carried more than the option label):
+
+| # | Question | Pick |
+|---|---|---|
+| 1 | May a manager switch labour-cost tracking back ON? | **"Yes, on and off (Recommended)"** — as built, as relayed: item 16 (its reading note returns the literal "and off" to the founder) |
+| 2 | Should a shift of 4 hours or less also assume the Art. 68(a) 15-minute minimum? | **"Yes, follow Art. 68 (Recommended)"** — item 10 |
+| 3 | Is the Art. 68 minimum measured on the work the break leaves, or the span? | **"On work time (Recommended)"** — as built: item 18 |
+| 4 | Does "leaves the roster" include being marked inactive? | **"Only removal counts (Recommended)"** — as built: item 19 |
+| 5 | Should a removed person's shifts and leave be kept the same five years as their wage record? | **"Keep them 5 years (Recommended)"**, and verbatim: "removing a person must no longer delete their shifts and leave requests straight away; they are kept and end with the wage record (same five-year clock, same deletion job)" — item 20 |
+
+Three of the five (1, 3, 4) matched what round 2 had already built and needed
+no code change — they close the question the record left open, nothing more.
+One (2) removed a length gate already narrow by construction (`art68MinimumBreak`
+itself was never gated; only the caller's `span > ASSUME_BREAK_OVER_MIN` check
+was). One (5) was the substantial change: two foreign keys dropped, one
+trigger function broadened, one new purge function, one existing purge
+function's departure cleanup broadened, one service reordered to call both,
+in that order, for the reason given in item 20 and the file header of
+`wage-record-retention.service.ts`.
 
 ## Evidence
 
@@ -537,6 +723,115 @@ Round 2 ("Take all five", items 10–15), measured 2026-09-21 on the index tree
   to fire (its `@Cron` registration is asserted by a test, the purge by the
   probe).
 
+Round 3 (round 6y, the founder's five answers 2026-09-22), measured 2026-09-22
+on the index tree (`wt-labor`, lane team3):
+
+- Gateway: `team-pay.spec.ts`, 66 of 66 (re-measured, this file alone); the
+  full `apps/api-gateway/src/team` suite, 135 of 135 (7 files). R1's rewrite
+  (the two-purge ordering) adds 8 cases in place of the previous 6, covering:
+  the call order itself; the short-circuit that skips the wage purge entirely
+  when the shifts-and-leave purge fails; each purge's own "answered without
+  its counts" guard, separately; a thrown call; null counts from either
+  purge; and the scheduled run calling both, in order. **3 of 3 targeted
+  mutations of the new service code killed** (the two RPC names swapped
+  everywhere, so the order is effectively reversed; the short-circuit
+  removed, so a failed shifts-and-leave purge no longer stops the wage purge
+  from running; the shifts-and-leave purge's count validation removed) —
+  `wage-record-retention.service.ts` mutated in place, snapshotted first
+  (memory: unstaged-file-mutation-snapshot-first), restored and diffed
+  identical after each run.
+- Web: `TeamBreaks.test.tsx`, 15 of 15 (unchanged count; B1's cases were
+  already built for this round in an earlier pass of this same session — the
+  4h00/4h01/7h30/7h31 boundaries the founder named are in it, keyed on work
+  time per item 18). The full `apps/web/src/pages/team` + `.../components/team`
+  suites: 105 of 105 (9 files).
+- SQL: `p4-scratch/pglite-probe/teamfix-r3-shifts-and-leave-outlive-removal.mjs`,
+  the full corpus (195 migrations, then this one) on PGlite, **31 checks
+  pass**: the pre-migration cascade defect reproduced first (so the fixture
+  proves what the migration fixes, not an assumption); both FKs dropped,
+  structurally; a person with a shift only, a leave request only, or all
+  three (wage + shift + leave) keeps every one of them on removal; the
+  departure is stamped for all three cases, not the wage-bearing case alone;
+  `tmd_guard` refuses a DELETE while ANY of the three remain, tested in
+  isolation from the purge (a departure past five years with NO wage row at
+  all, while a shift is still live, is still refused — this is the case the
+  round-2 guard would have wrongly accepted); the shifts-and-leave purge
+  deletes exactly the due rows and nothing not due; running the wage purge
+  BEFORE the shifts-and-leave purge on a fresh due person still correctly
+  leaves the departure (the "wrong order" case is safe on its own; the
+  service's order is what makes ONE nightly run finish the job, not a
+  correctness requirement of either function alone); a second run of both
+  finds nothing; a person still on the roster is never touched, whatever a
+  departure row says; only `service_role` may run the new purge, and it is
+  `SECURITY INVOKER`; RLS and grants on `shifts`/`time_off_requests` are
+  unchanged (no policy on either, and no grant to `anon`/`authenticated`
+  since OD-72, `20260825210000`; **[corrected at the last call: this line
+  first said neither "ever had" one]**);
+  a restaurant deletion's effect on shifts is confirmed unchanged by this
+  migration (neither table has ever carried a foreign key to `restaurants`,
+  before or after). **8 of 8 targeted mutations of the migration killed**
+  (each FK drop reverted separately; the departure trigger's shift-OR-leave
+  clause narrowed; the shifts purge's still-on-roster exclusion removed; the
+  new purge function explicitly granted to `anon`; the new purge function
+  made `SECURITY DEFINER`; the wage purge's departure cleanup reverted to its
+  round-2 form dropping the shifts/leave check; `tmd_guard` reverted the same
+  way) — migrations mutated in a 2.7 MB scratch copy
+  (`TEAMFIX_R3_MIGDIR`, not a repo copy), never the tree itself; restored and
+  diffed identical after the run; scratch copy deleted after.
+- Register: the `AN-UNRECORDED-BREAK-IS-ASSUMED` row was rewritten (item 10's
+  correction) rather than left to read as still gated on 4 hours; its verify
+  now asserts `ASSUME_BREAK_OVER_MIN` is ABSENT from both files, not merely
+  that a stale threshold constant still equals 240. No new CLAIMS row for
+  items 16, 18, 19 (no code changed by them — nothing to check that the
+  existing rows don't already); a new row,
+  `ADR-0215-TEAM-A-PERSONS-SHIFTS-AND-LEAVE-OUTLIVE-THEIR-REMOVAL`, covers
+  item 20 (static, python over source; see CLAIMS.jsonl). **Found and fixed
+  this round:** both of those two rows' `verify` fields, as an earlier,
+  interrupted pass of this session had written them, embedded REAL newline
+  bytes (JSON `\n`) to format the Python source across multiple lines.
+  `scripts/check_decision_claims.sh` builds its own claim list as one row per
+  physical line; a `verify` string containing a real newline silently split
+  into several garbage "rows" downstream — both claims showed as REGRESSED,
+  and each fragment of their Python source printed as a separate spurious
+  STALE entry (35 of them). Running the checker (not just each claim's
+  command standalone) is what caught this — a lesson in `CLAIMS
+  conflict resolution`/`static verify` memory terms: **the checker's own
+  parser is part of what "static and mutation-tested" has to survive, not
+  only the command's own exit code.** Fixed by joining the Python source onto
+  one physical line with `;` (the search strings' own `\n` — matching real
+  newlines INSIDE the target source files — are untouched: JSON `\\n`, a
+  Python-level escape, not a raw byte). Full run after the fix: **415 of 415
+  claims hold**, 0 regressed, 0 stale.
+- Not run, round 3: `check_migration_ledger.py` and
+  `check_definer_functions_closed.py` answer CANNOT CHECK without a database
+  URL (this session has none); the gateway was not booted, so the reordered
+  nightly job was not seen to fire in production shape — the PGlite probe and
+  the mutation-tested service unit tests are what stand in for it. No browser
+  pass. **[Corrected at the last call: this line first said the round
+  "changed no page a person looks at". It did: the shift sheet's break line
+  and the grid's "break assumed" flag now reach shifts of 4 hours or less.
+  Both are covered in jsdom by `TeamBreaks.test.tsx`, not seen in a
+  browser.]**
+
+Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
+
+- Gateway: `team-pay.spec.ts` 71 of 71 (66 + K1's 5); the full
+  `apps/api-gateway/src/team` suite 140 of 140 (7 files). K1 held by **10 of
+  10 targeted mutations killed** (each `onTheRoster` call site removed in
+  turn, the replace-week delete put back on a date range, the roster read's
+  error swallowed, the helper made to keep everyone and to drop open
+  shifts, and the copy's wage-read refusal, which C1 now fails on its own:
+  the roster read ahead of it made C1's forced `team_members` error land on
+  the wrong read, so C1 fails the wage read alone by its column).
+- SQL: the round-3 PGlite probe re-run, 31 of 31; plus a boundary probe
+  (scratchpad, `team3-lastcall-boundary.mjs`, full corpus 196 of 196): a
+  departure one day short of five years keeps that person's shift and leave,
+  one at five years and a minute has both deleted, the wage purge then
+  clears only the due departure, and a removal keeps a kept shift's own
+  `shift_breaks` rows (they cascade from `shifts`, not from `team_members`).
+- The new CLAIMS row fails against each of 7 mutants of its anchors, run in
+  a scratch copy of the three files, never the tree.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -545,3 +840,5 @@ Round 2 ("Take all five", items 10–15), measured 2026-09-21 on the index tree
 | 2026-09-21 | Opus last call | The settings save still echoed `wage_visible` (fixed, test + mutation); the CLAIMS currency row's prose named every /team file while the per-server sales still print `$` (narrowed; residual (f)); the legacy Tonight pulse's called-out double count named as residual (d) |
 | 2026-09-21 | Round 2 build (founder: "Take all five") | Items 10–15 built; four questions returned (switching tracking on, shifts of 4 h or less, span vs work for the minimum, inactive as leaving); the HOURS claim row had gone red on the moved `workedHours` line and was re-pointed; two migration mutants survived the first probe and were killed by two added checks |
 | 2026-09-21 | Round 2 Opus last call | The sheet's under-minimum warning said "60 minutes for this shift" on an 8-hour shift whose minimum it also said was 30; it now names the minimum owed for the work the typed break leaves (fixed, test + killed mutation). The ADR's "safer side" sentence read as if the chosen break were the larger one (reworded). `assignCover`'s price read (`recomputeCostForMember`, whose select this round had widened) swallowed its error and wrote the cover as unpriced, which also made residual (g) untrue for that path (fixed: a 500 in words, nothing assigned; test + killed mutation). Found and recorded, not changed: a removal still cascades a person's shifts and leave (residual (j), question 5), and a departure is stamped once (residual (k)). Re-run: `team-pay.spec.ts` 63 of 63, one new mutation (an empty `shift_breaks` embed read as a recorded 0) killed by 4 cases, the PGlite probe ALL PASS |
+| 2026-09-22 | Round 3 build (founder round 6y, five answers, verbatim in "Answered, 2026-09-22") | Items 16–20 built or recorded; the "Open, for the founder" section's five questions are all struck, answered. Item 10 corrected in place (the "over 4 hours" gate removed; `ASSUME_BREAK_OVER_MIN` deleted from `pay-rules.ts` and its `tm-format.ts` mirror; boundary tests at 4h00/4h01/7h30/7h31 the founder named). Item 20 is the substantial change: `shifts.member_id` and `time_off_requests.member_id` drop their foreign key to `team_members` (migration `20260922013000`); `team_member_departure_recorded()` broadened to shifts and leave, not wage records alone; a new `purge_expired_shift_and_leave_records()` (service_role only, SECURITY INVOKER); `purge_expired_wage_records()`'s departure cleanup broadened the same way; `tmd_guard()` broadened identically; `WageRecordRetentionService` reordered to call the new purge first, then the wage purge, with a short-circuit on the first's failure (this was the one piece left unfinished from an earlier, interrupted pass of this session — found via `grep purge_expired_shift_and_leave_records apps/**/*.ts` turning up only the migration and comments, never a call site). Residual (j) struck (resolved), not deleted. New PGlite probe `teamfix-r3-shifts-and-leave-outlive-removal.mjs`, 31 checks, reproduces the pre-migration cascade defect first, then proves the fix and isolates the broadened `tmd_guard` from the purge functions (a departure with no wage row at all, past five years, with a live shift, refused). 8 of 8 migration mutations and 3 of 3 service mutations killed. Full `/team` suites re-measured: gateway 135 of 135 (7 files), web 105 of 105 (9 files). |
+| 2026-09-22 | Round 3 Opus last call | Item 20 dropped the foreign keys but nothing read the week any differently, so a removed person's kept rows entered it: their next week counted as covered and costed, "Copy last week" wrote them into new weeks, replacing a week deleted their kept shifts, and a pending leave request waited in the manager's list. Fixed as "kept, not shown" (`onTheRoster`; K1, 10 of 10 mutations killed; new CLAIMS row), the week reading as it did before the change; how kept rows should appear is returned to the founder. Records corrected in place: "never had a grant" (OD-72 revoked them), the retention job's header said the other order could clear a departure on live rows (it cannot; the order finishes the job in one night) and that "the tables refuse" an early delete of shifts and leave (no guard on them; the purge's clause is the rule), the Answered table's question 1 carried an "(and off)" the question never had, and "changed no page a person looks at". Returned: the literal reading of "on and off". Residuals (l) and (m) added. |

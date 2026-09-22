@@ -416,9 +416,10 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
     );
   /**
    * The breaks the hours rest on (ADR 0215; founder 2026-09-21, "Take all
-   * five"): a shift over 4 hours with no break recorded is counted with the
-   * 4857 Art. 68 minimum, and the figure says so rather than passing an
-   * assumption off as a record. Hours, so owner and manager alike.
+   * five", and 2026-09-22 round 6y for shifts of 4 hours or less): a shift
+   * with no break recorded, any length, is counted with the 4857 Art. 68
+   * minimum, and the figure says so rather than passing an assumption off as
+   * a record. Hours, so owner and manager alike.
    */
   const assumedLine =
     labor?.assumedBreak && labor.assumedBreak.shifts > 0 ? (

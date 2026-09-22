@@ -8,11 +8,12 @@
  * redesigned half mounts no toaster, so a failed save says so inside the sheet
  * and the sheet stays open with the operator's values still in it.
  *
- * THE BREAK (ADR 0215; founder 2026-09-21, "Take all five"). Whoever edits the
- * shift records the break taken, in minutes. Left empty, nothing is recorded,
- * and a shift over 4 hours is counted with the Labour Law 4857 Art. 68 minimum
- * and shown as assumed; the sheet says which minimum, live, as the times move.
- * Emptying a recorded break clears the record rather than keeping it.
+ * THE BREAK (ADR 0215; founder 2026-09-21, "Take all five", and 2026-09-22
+ * round 6y for shifts of 4 hours or less). Whoever edits the shift records the
+ * break taken, in minutes. Left empty, nothing is recorded, and the shift —
+ * any length — is counted with the Labour Law 4857 Art. 68 minimum and shown
+ * as assumed; the sheet says which minimum, live, as the times move. Emptying
+ * a recorded break clears the record rather than keeping it.
  */
 
 import { useState } from 'react';
@@ -109,11 +110,11 @@ export function ShiftSheet({
     ? `A break is a whole number of minutes, less than the shift's ${spanMin}.`
     : counted.assumed
       ? `Nothing recorded, so this shift is counted with a ${counted.minutes}-minute break: the legal minimum for it (Labour Law 4857 Art. 68), shown as assumed. Type the real break to replace it.`
-      : breakTyped === null && counted.minutes === 0
-        ? 'Nothing recorded. A shift of 4 hours or less is counted with no break.'
-        : breakTyped === 0
-          ? 'Recorded as no break taken: the whole shift counts as worked.'
-          : `Recorded: ${counted.minutes} minutes, not counted as work.`;
+      : breakTyped === 0
+        ? 'Recorded as no break taken: the whole shift counts as worked.'
+        : breakTyped !== null
+          ? `Recorded: ${counted.minutes} minutes, not counted as work.`
+          : 'Nothing recorded.';
   const underMinimum = breakValid && breakUnderMinimum(preview);
 
   const body = () => ({

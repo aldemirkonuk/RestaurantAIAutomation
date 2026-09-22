@@ -263,8 +263,8 @@ export interface LaborVM {
   breakHours: number | null;
   /**
    * The ASSUMED part of `breakHours` and the shifts it is on (ADR 0215): a
-   * shift over 4 hours with no break recorded is counted with the 4857 Art. 68
-   * minimum. `null` when the gateway did not say.
+   * shift with no break recorded, any length, is counted with the 4857
+   * Art. 68 minimum. `null` when the gateway did not say.
    */
   assumedBreak: { hours: number; shifts: number } | null;
   /** The weekly review line (45). */

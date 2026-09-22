@@ -16,6 +16,7 @@ import {
   hoursBetween,
   isWorked,
   leaveInWeek,
+  onTheRoster,
   priceShift,
   recordedBreakMinutes,
   seesMoney,
@@ -142,7 +143,11 @@ export class ScheduleService {
       );
     }
 
-    const shiftRows = shifts ?? [];
+    // A removed person's shifts are kept five years, not shown (ADR 0215 item
+    // 20, `onTheRoster`): read as they were before the removal stopped
+    // deleting them, so a removed person's next week is not "covered" by them.
+    const roster = await this.team.rosterMemberIds(restaurantId);
+    const shiftRows = onTheRoster(shifts ?? [], roster);
     const receipts = schedule
       ? ((
           await this.sb
@@ -163,6 +168,7 @@ export class ScheduleService {
       shiftRows,
       settings,
       role,
+      roster,
     );
 
     return {
@@ -272,7 +278,9 @@ export class ScheduleService {
    *  - a target week that already holds shifts is a **409** naming how many are
    *    in the way, unless the caller passes `replaceTarget: true`;
    *  - the response says `deleted`, always, so the caller can report the real
-   *    outcome rather than only the happy half of it.
+   *    outcome rather than only the happy half of it;
+   *  - a removed person's kept shifts, in either week, are neither copied nor
+   *    counted nor deleted (ADR 0215 item 20, `onTheRoster`).
    *
    * The confirmation dialog is the client's half of the same fix.
    */
@@ -306,7 +314,14 @@ export class ScheduleService {
         "Could not read the week you are copying from, so nothing was copied.",
       );
     }
-    if (!src?.length) return { copied: 0, deleted: 0, schedule: target };
+    // A removed person's shifts are kept five years, never copied (ADR 0215
+    // item 20): a copy writes a NEW shift, and a new shift is only ever for
+    // someone on the roster — the check createShift makes, which the dropped
+    // foreign key used to make here. Nor is a kept shift in the target week
+    // "in the way": replacing the week does not delete it.
+    const roster = await this.team.rosterMemberIds(restaurantId);
+    const source = onTheRoster(src ?? [], roster);
+    if (!source.length) return { copied: 0, deleted: 0, schedule: target };
 
     // This read is what arms the "the target week is not empty" guard below.
     // supabase-js RESOLVES with { data, error }, so a failed query used to give
@@ -316,7 +331,7 @@ export class ScheduleService {
     // not knowing what is in the target week is not the same as it being empty.
     const { data: existing, error: existingErr } = await this.sb
       .from("shifts")
-      .select("id")
+      .select("id, member_id")
       .eq("restaurant_id", restaurantId)
       .gte("shift_date", dto.toWeekStart)
       .lte("shift_date", toEnd);
@@ -330,7 +345,10 @@ export class ScheduleService {
           "copy was not made. Nothing was changed.",
       );
     }
-    const inTheWay = existing?.length ?? 0;
+    const inTheWayIds = onTheRoster(existing ?? [], roster).map(
+      (s: any) => s.id as string,
+    );
+    const inTheWay = inTheWayIds.length;
 
     if (inTheWay > 0 && !dto.replaceTarget) {
       throw new ConflictException(
@@ -339,7 +357,7 @@ export class ScheduleService {
       );
     }
 
-    const copyable = src.filter(
+    const copyable = source.filter(
       (s: any) => s.state !== "callout" && s.state !== "open",
     );
 
@@ -374,12 +392,22 @@ export class ScheduleService {
 
     let deleted = 0;
     if (inTheWay > 0) {
-      await this.sb
+      // By id, the rows counted above: a date-range delete would also take a
+      // removed person's kept shifts in that week (ADR 0215 item 20).
+      const { error: deleteErr } = await this.sb
         .from("shifts")
         .delete()
         .eq("restaurant_id", restaurantId)
-        .gte("shift_date", dto.toWeekStart)
-        .lte("shift_date", toEnd);
+        .in("id", inTheWayIds);
+      if (deleteErr) {
+        this.logger.error(
+          `copyWeek: could not clear the target week ${dto.toWeekStart} for ` +
+            `restaurant ${restaurantId}: ${deleteErr.message}`,
+        );
+        throw new InternalServerErrorException(
+          "Could not clear the week you are copying into, so nothing was copied.",
+        );
+      }
       deleted = inTheWay;
     }
 
@@ -562,8 +590,8 @@ export class ScheduleService {
   // ── Shifts ────────────────────────────────────────────────────────────────
   /**
    * A shift's planned cost: worked hours (span minus the break the shift is
-   * counted with — recorded, or the Art. 68 minimum when a shift over 4 hours
-   * has none on record) at the wage on file now. A failed wage read is an
+   * counted with — recorded, or the Art. 68 minimum for its length when none
+   * is on record) at the wage on file now. A failed wage read is an
    * error, not an unpriced shift: "no wage on file" is what `null` says, and a
    * database hiccup is not that.
    */
@@ -594,9 +622,10 @@ export class ScheduleService {
   /**
    * The break a writer records, checked against the shift it belongs to.
    * `undefined` = the writer said nothing (no change); `null` = clear the
-   * record (a shift over 4 hours is then counted with the Art. 68 minimum);
-   * a whole number of minutes, 0 included (no break taken), shorter than the
-   * shift. A break as long as the shift is refused in words, not clamped.
+   * record (the shift is then counted with the Art. 68 minimum for its
+   * length); a whole number of minutes, 0 included (no break taken), shorter
+   * than the shift. A break as long as the shift is refused in words, not
+   * clamped.
    */
   private recordedBreakFrom(
     minutes: number | null | undefined,
@@ -624,9 +653,10 @@ export class ScheduleService {
     if (dto.memberId)
       await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
     // The break whoever writes the shift records, if they record one (ADR
-    // 0215). Omitted, nothing is recorded, and a shift over 4 hours is counted
-    // with the Art. 68 minimum and shown as assumed. Checked before the week
-    // row below can be created, so a refused break writes nothing.
+    // 0215). Omitted, nothing is recorded, and the shift — any length,
+    // founder round 6y — is counted with the Art. 68 minimum and shown as
+    // assumed. Checked before the week row below can be created, so a
+    // refused break writes nothing.
     const recordedBreak = this.recordedBreakFrom(
       dto.breakMinutes,
       dto.startTime,
@@ -714,8 +744,8 @@ export class ScheduleService {
     if (!cur) throw new NotFoundException("Shift not found");
 
     // The break, as whoever edits the shift records it (ADR 0215): a number of
-    // minutes records it (0 = no break taken); `null` clears the record, so a
-    // shift over 4 hours is counted with the Art. 68 minimum again.
+    // minutes records it (0 = no break taken); `null` clears the record, so
+    // the shift is counted with the Art. 68 minimum for its length again.
     const nextStart = dto.startTime ?? cur.start_time;
     const nextEnd = dto.endTime ?? cur.end_time;
     const recordedBreak = this.recordedBreakFrom(
@@ -1111,6 +1141,7 @@ export class ScheduleService {
     shifts: any[],
     settings: any,
     role: TeamRole,
+    roster: ReadonlySet<string>,
   ): Promise<any> {
     const worked = shifts.filter(isWorked);
     let totalHours = 0;
@@ -1139,8 +1170,8 @@ export class ScheduleService {
       totalHours: Math.round(totalHours * 10) / 10,
       breakHours: Math.round(breakHours * 10) / 10,
       /**
-       * How much of `breakHours` is ASSUMED (a shift over 4 hours with no
-       * break on record is counted with the Art. 68 minimum), so the figure
+       * How much of `breakHours` is ASSUMED (a shift with no break on record,
+       * any length, is counted with the Art. 68 minimum), so the figure
        * says it rests on an assumption rather than passing it off as recorded.
        */
       assumedBreakHours: Math.round(assumedBreakHours * 10) / 10,
@@ -1185,7 +1216,7 @@ export class ScheduleService {
        * page's work (ADR 0215), not a guess this block makes.
        */
       costCovers: "scheduled_shifts",
-      leave: await this.leaveThisWeek(restaurantId, weekStart),
+      leave: await this.leaveThisWeek(restaurantId, weekStart, roster),
     };
   }
 
@@ -1197,6 +1228,7 @@ export class ScheduleService {
   private async leaveThisWeek(
     restaurantId: string,
     weekStart: string,
+    roster: ReadonlySet<string>,
   ): Promise<any> {
     const weekEnd = addDays(weekStart, 6);
     const { data, error } = await this.sb
@@ -1213,7 +1245,11 @@ export class ScheduleService {
       );
       return { readable: false, paid: null, paidDays: null, unknownTypeDays: null };
     }
-    return { readable: true, ...leaveInWeek(data ?? [], weekStart) };
+    // A removed person's leave is kept, not counted (ADR 0215 item 20).
+    return {
+      readable: true,
+      ...leaveInWeek(onTheRoster(data ?? [], roster), weekStart),
+    };
   }
 
   /**
