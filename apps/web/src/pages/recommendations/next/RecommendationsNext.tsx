@@ -394,14 +394,22 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
    * it the item IS the rule, as before. A snooze carries its instant and no
    * reason — the reason is the dismissal's label alone.
    */
-  const snooze = (e: EntryVM, days: number, label: string) =>
+  /*
+   * Round 3 (founder, 2026-09-21): a snooze says who it is for. `me` hides
+   * it from this person alone — anyone may; `house` from everyone — owners
+   * and managers. The gateway refuses a staff `house` snooze with a 403.
+   */
+  const snooze = (e: EntryVM, days: number, label: string, forWhom: 'me' | 'house') =>
     void data.setDisposition(
       e,
       {
         status: 'snoozed',
+        snoozeFor: forWhom,
         snoozeUntil: new Date(Date.now() + days * 86_400_000).toISOString(),
       },
-      `Snoozed ${label}.`,
+      forWhom === 'me'
+        ? `Snoozed ${label}, for you alone — everyone else still sees it.`
+        : `Snoozed ${label}, for everyone.`,
       true,
       itemKeyOf(e),
     );
@@ -469,7 +477,10 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
           if (e && leaf === 'standing') setSheetFor(e.ruleKey);
           break;
         case 's':
-          if (e && leaf === 'standing') snooze(e, 1, 'until tomorrow');
+          // Round 3: the key keeps each role's own default — for everyone
+          // from an owner or manager, for you alone from anyone else.
+          if (e && leaf === 'standing')
+            snooze(e, 1, 'until tomorrow', data.canSnoozeForEveryone ? 'house' : 'me');
           break;
         case 'p':
           if (e && leaf === 'standing') pin(e);
@@ -551,6 +562,26 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                 : data.suppressed && data.suppressed > 0
                   ? `${data.suppressed} ${data.suppressed === 1 ? 'entry was' : 'entries were'} withheld because you dismissed ${data.suppressed === 1 ? 'it' : 'them'}. They are on the Dismissed leaf, and every one can be returned.`
                   : 'Nothing was withheld by a dismissal.'}
+            </p>
+          )}
+          {/*
+            What THIS person snoozed for themselves (ADR 0191 round 3): hidden
+            from them alone, so it is counted to them alone — and when it
+            could not be read, that is said rather than shown as nothing.
+          */}
+          {data.phase === 'ready' &&
+            leaf === 'standing' &&
+            (!data.personalSnoozesReadable || (data.hiddenForYou ?? 0) > 0) && (
+              <p className="rc-said" data-testid="rc-hidden-for-you">
+                {!data.personalSnoozesReadable
+                  ? 'What you snoozed for yourself could not be read, so some of it may be standing below.'
+                  : `${data.hiddenForYou} ${data.hiddenForYou === 1 ? 'entry is' : 'entries are'} hidden just for you ${EM} snoozed by you, still shown to everyone else. They are on the Snoozed leaf.`}
+              </p>
+            )}
+          {data.phase === 'ready' && leaf === 'snoozed' && data.personalProblem && (
+            <p className="rc-said" role="alert" data-testid="rc-personal-unread">
+              What you snoozed for yourself could not be read ({data.personalProblem}). The
+              house&rsquo;s snoozes below are complete; yours are not listed.
             </p>
           )}
           {linked && data.phase === 'ready' && !data.entries.some((e) => e.ruleKey === linked) && (
@@ -788,7 +819,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         onDismissOpened={() => setSheetFor(null)}
                         onAct={() => void act(e)}
                         onDismiss={(choice) => dismiss(e, choice)}
-                        onSnooze={(inDays, label) => snooze(e, inDays, label)}
+                        onSnooze={(inDays, label, forWhom) => snooze(e, inDays, label, forWhom)}
+                        onWake={() => void data.wake(e.ruleKey)}
                         onPin={() => pin(e)}
                         onRate={(v) => rate(e, v)}
                         onDone={() => done(e)}
@@ -812,6 +844,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         goalSlip={a === 'goal' ? (slipFor(e) ?? null) : null}
                         siblings={data.entries}
                         canActRuleWide={data.canActRuleWide}
+                        canSnoozeForEveryone={data.canSnoozeForEveryone}
                       />
                     ))}
                   </div>
@@ -854,7 +887,11 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             <button
               type="button"
               className="rc-undo"
-              onClick={() => void data.restore(data.undo!.ruleKey)}
+              onClick={() =>
+                void (data.undo!.personal
+                  ? data.wake(data.undo!.ruleKey)
+                  : data.restore(data.undo!.ruleKey))
+              }
             >
               Undo
             </button>
@@ -923,14 +960,20 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
               onClick={() => {
                 void data.bulk(
                   picked,
-                  { status: 'snoozed', snoozeUntil: new Date(Date.now() + 7 * 86_400_000).toISOString() },
-                  `Snoozed ${picked.length} entries for a week.`,
+                  {
+                    status: 'snoozed',
+                    snoozeFor: data.canSnoozeForEveryone ? 'house' : 'me',
+                    snoozeUntil: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+                  },
+                  data.canSnoozeForEveryone
+                    ? `Snoozed ${picked.length} entries for a week, for everyone.`
+                    : `Snoozed ${picked.length} entries for a week, for you alone.`,
                   true,
                 );
                 setSelected(new Set());
               }}
             >
-              Snooze a week
+              {data.canSnoozeForEveryone ? 'Snooze a week — everyone' : 'Snooze a week — just me'}
             </button>
             <button type="button" className="rc-quiet" onClick={() => setSelected(new Set())}>
               Clear

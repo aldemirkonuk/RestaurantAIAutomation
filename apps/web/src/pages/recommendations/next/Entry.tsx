@@ -31,7 +31,7 @@ import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import AccountSheet from './AccountSheet';
 import {
-  DISMISS_REASONS,
+  DISMISS_CHOICES,
   EM,
   SCOPE_ORDER,
   SNOOZE_CHOICES,
@@ -39,7 +39,9 @@ import {
   STANDING_BASIS,
   dateOfGrain,
   dismissalSentence,
+  NOT_NOW_DAYS,
   entryNo,
+  firingOf,
   fmtDay,
   fmtWakes,
   readKey,
@@ -48,6 +50,7 @@ import {
   scopePromise,
   standingOf,
   urgencyLabel,
+  type DismissChoiceId,
   type SuppressionScope,
 } from './rec-format';
 import {
@@ -84,7 +87,12 @@ import type {
   TeamOption,
 } from './useRecommendationsNextData';
 
-const REASONS = DISMISS_REASONS;
+/**
+ * The dismiss list (ADR 0191 round 3): four choices, and two of them are not
+ * dismissals — "Already handled" is recorded as done and "Not right now"
+ * hides it from this person alone (`DISMISS_CHOICES`).
+ */
+const CHOICES = DISMISS_CHOICES;
 
 /** The snooze vocabulary — shared with the catalogue (`rec-format.ts`). */
 const SNOOZES = SNOOZE_CHOICES;
@@ -106,7 +114,14 @@ export interface EntryProps {
   onToggleSelect: () => void;
   onAct: () => void;
   onDismiss: (choice: DismissChoice) => void;
-  onSnooze: (days: number, label: string) => void;
+  /**
+   * Snooze for `days`. `forWhom: 'me'` hides it from this person alone;
+   * `'house'` from everyone — owners and managers only (founder, round 3:
+   * a staff snooze is "Only them").
+   */
+  onSnooze: (days: number, label: string, forWhom: 'me' | 'house') => void;
+  /** End this person's own snooze on the entry (Snoozed leaf, personal rows). */
+  onWake?: () => void;
   onPin: () => void;
   onRate: (value: 'helpful' | 'not_helpful') => void;
   onDone: () => void;
@@ -161,6 +176,11 @@ export interface EntryProps {
    * finding and this subject; the whole rule is not offered to them.
    */
   canActRuleWide: boolean;
+  /**
+   * Whether this person may snooze for EVERYONE — owners and managers (ADR
+   * 0191 round 3). Anyone else's snooze hides the entry from them alone.
+   */
+  canSnoozeForEveryone: boolean;
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -647,7 +667,10 @@ export default function Entry(props: EntryProps) {
     [allScopes, canActRuleWide, e],
   );
   const wholeRuleOnly = scopes.length === 0;
-  const [reason, setReason] = useState<string | null>(null);
+  const [reason, setReason] = useState<DismissChoiceId | null>(null);
+  /** What the picked choice records — only a real dismissal asks a scope. */
+  const records = CHOICES.find((c) => c.id === reason)?.records ?? null;
+  const dismissing = records === null || records === 'dismissed';
   const [scope, setScope] = useState<SuppressionScope>(scopes[0] ?? 'insight');
   const [alsoExclude, setAlsoExclude] = useState(false);
   useEffect(() => {
@@ -670,6 +693,8 @@ export default function Entry(props: EntryProps) {
   }, [openDismiss, onDismissOpened]);
 
   const day = dateOfGrain(e.periodKey);
+  /** This entry's firing, when its rule names no subject and no period. */
+  const firing = firingOf(e.periodKey);
   const exclusions = props.exclusions;
   const canExclude = !!day && exclusions?.readable === true;
 
@@ -866,7 +891,14 @@ export default function Entry(props: EntryProps) {
             <Quiet onClick={props.onToggleExpand}>
               {expanded ? 'Hide the working' : 'The working'}
             </Quiet>
-            {e.ruleWide && e.status === 'dismissed' && !canActRuleWide ? (
+            {e.personal ? (
+              <>
+                <Quiet onClick={() => props.onWake?.()}>Wake it for me</Quiet>
+                <span className="rc-said" data-testid="rc-snoozed-for-you">
+                  Snoozed just for you {EM} everyone else still sees it.
+                </span>
+              </>
+            ) : e.ruleWide && e.status === 'dismissed' && !canActRuleWide ? (
               <>
                 <button
                   type="button"
@@ -1016,12 +1048,18 @@ export default function Entry(props: EntryProps) {
 
         {menu === 'dismiss' && (
           <div className="rc-menu rc-sheet" role="group" aria-label="Dismiss this entry">
-            <p className="rc-serif rc-sheet-title">Dismiss it — and never show it again</p>
+            <p className="rc-serif rc-sheet-title">
+              {records === 'done'
+                ? 'Record it as done'
+                : records === 'snoozed_for_you'
+                  ? 'Hide it from you, for now'
+                  : 'Dismiss it — and never show it again'}
+            </p>
 
             <div className="rc-sheet-block">
               <span className="rc-micro">Why are you dismissing it?</span>
               <div className="rc-row">
-                {REASONS.map((r) => (
+                {CHOICES.map((r) => (
                   <Quiet
                     key={r.id}
                     pressed={reason === r.id}
@@ -1031,9 +1069,14 @@ export default function Entry(props: EntryProps) {
                   </Quiet>
                 ))}
               </div>
+              {reason && (
+                <p className="rc-why" data-testid="rc-choice-note">
+                  {CHOICES.find((c) => c.id === reason)?.note}
+                </p>
+              )}
             </div>
 
-            {wholeRuleOnly ? (
+            {dismissing && (wholeRuleOnly ? (
               <div className="rc-sheet-block" data-testid="rc-dismiss-whole-rule-only">
                 <p className="rc-why">
                   This rule names no weekday and no date, so dismissing it would silence the
@@ -1054,7 +1097,7 @@ export default function Entry(props: EntryProps) {
                       checked={scope === s}
                       onChange={() => setScope(s)}
                     />
-                    <span>{scopeLabel(s, e.subject, day)}</span>
+                    <span>{scopeLabel(s, e.subject, day, firing)}</span>
                   </label>
                 ))}
               </div>
@@ -1071,8 +1114,9 @@ export default function Entry(props: EntryProps) {
                 </p>
               )}
             </div>
-            )}
+            ))}
 
+            {dismissing && (
             <div className="rc-sheet-block">
               <label className="rc-scope">
                 <input
@@ -1095,40 +1139,73 @@ export default function Entry(props: EntryProps) {
                       : `The exclusion store could not be read (${exclusions.problem ?? 'no reason given'}), so this cannot be offered. Dismissing still works.`}
               </p>
             </div>
+            )}
 
-            {!wholeRuleOnly && (
+            {dismissing && !wholeRuleOnly && (
               <p className="rc-said rc-sheet-promise">
                 After this you will not see{' '}
-                {scopePromise(scope, e.subject, scope === 'insight' ? day : null, e.ruleKey)}.
-                Undo it from the History leaf.
+                {scopePromise(
+                  scope,
+                  e.subject,
+                  scope === 'insight' ? day : null,
+                  e.ruleKey,
+                  scope === 'insight' ? firing : null,
+                )}
+                . Undo it from the History leaf.
               </p>
             )}
 
             <div className="rc-row">
-              <button
-                type="button"
-                className="rc-act"
-                disabled={!reason || wholeRuleOnly}
-                onClick={() => {
-                  if (!reason || wholeRuleOnly) return;
-                  const key = e.suppression?.keys[scope] ?? e.ruleKey;
-                  setMenu(null);
-                  props.onDismiss({
-                    reason,
-                    scope,
-                    key,
-                    excludeDate: alsoExclude && day ? day : null,
-                    said: `Dismissed. You will not see ${scopePromise(
+              {records === 'done' ? (
+                <button
+                  type="button"
+                  className="rc-act"
+                  onClick={() => {
+                    setMenu(null);
+                    props.onDone();
+                  }}
+                >
+                  Record it done
+                </button>
+              ) : records === 'snoozed_for_you' ? (
+                <button
+                  type="button"
+                  className="rc-act"
+                  onClick={() => {
+                    setMenu(null);
+                    props.onSnooze(NOT_NOW_DAYS, 'until tomorrow', 'me');
+                  }}
+                >
+                  Hide it from me
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="rc-act"
+                  disabled={!reason || wholeRuleOnly}
+                  onClick={() => {
+                    if (!reason || wholeRuleOnly) return;
+                    const key = e.suppression?.keys[scope] ?? e.ruleKey;
+                    const promise = scopePromise(
                       scope,
                       e.subject,
                       scope === 'insight' ? day : null,
                       e.ruleKey,
-                    )}.`,
-                  });
-                }}
-              >
-                Dismiss it
-              </button>
+                      scope === 'insight' ? firing : null,
+                    );
+                    setMenu(null);
+                    props.onDismiss({
+                      reason,
+                      scope,
+                      key,
+                      excludeDate: alsoExclude && day ? day : null,
+                      said: `Dismissed. You will not see ${promise}.`,
+                    });
+                  }}
+                >
+                  Dismiss it
+                </button>
+              )}
               <Quiet onClick={() => setMenu(null)}>Keep it standing</Quiet>
               {!reason && (
                 <span className="rc-said">Pick a reason first {EM} it is stored with the entry.</span>
@@ -1140,19 +1217,41 @@ export default function Entry(props: EntryProps) {
         {menu === 'snooze' && (
           <div className="rc-menu" role="group" aria-label="Snooze this entry">
             <span className="rc-micro">Put it back on the shelf until…</span>
-            <div className="rc-row">
+            <div className="rc-row" role="group" aria-label="Snooze it for you">
+              <span className="rc-micro">Just for you</span>
               {SNOOZES.map((s) => (
                 <Quiet
                   key={s.id}
                   onClick={() => {
                     setMenu(null);
-                    props.onSnooze(s.value, s.label.toLowerCase());
+                    props.onSnooze(s.value, s.label.toLowerCase(), 'me');
                   }}
                 >
                   {s.label}
                 </Quiet>
               ))}
             </div>
+            {props.canSnoozeForEveryone ? (
+              <div className="rc-row" role="group" aria-label="Snooze it for everyone">
+                <span className="rc-micro">For everyone</span>
+                {SNOOZES.map((s) => (
+                  <Quiet
+                    key={s.id}
+                    onClick={() => {
+                      setMenu(null);
+                      props.onSnooze(s.value, s.label.toLowerCase(), 'house');
+                    }}
+                  >
+                    {s.label}
+                  </Quiet>
+                ))}
+              </div>
+            ) : (
+              <p className="rc-why" data-testid="rc-snooze-for-everyone-withheld">
+                This hides it from you alone {EM} everyone else still sees it. Only an owner or
+                manager can snooze it for everyone.
+              </p>
+            )}
           </div>
         )}
 

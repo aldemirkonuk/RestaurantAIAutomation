@@ -1,9 +1,9 @@
 # 0191 — The recommendations catalogue is actionable, not a read-only leaf
 
-- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below.
+- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below. The seven questions round 2 left open were answered the same day too — six answers, built in "Round 3" below.
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
-- **Keywords:** recommendations, catalogue, insight catalog, candidate type, on/off, toggle, recommendation_actions, insight prefs, rule toggle, suppression, audited, owner/manager, one-tap acts, CatalogView, InsightCatalog, NEW-434, NEW-707, ADR 0149
+- **Keywords:** recommendations, catalogue, insight catalog, candidate type, on/off, toggle, recommendation_actions, insight prefs, rule toggle, suppression, audited, owner/manager, one-tap acts, CatalogView, InsightCatalog, NEW-434, NEW-707, ADR 0149, firing, fire:week, append-only history, recommendation_action_history, snooze for me, recommendation_personal_snoozes, already handled, not now, area lead hook
 - **Links:** [[recommendations]] (page note, §"Forks built on a DEFAULT" — the fork this closes), [[recommendations-catalog]] (legacy page note, addended), `.planning/handoff/PROGRESS.md` §6 (struck), [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] (why the legacy `InsightCatalog.tsx` stays in the tree, untouched), `apps/web/src/pages/recommendations/next/CatalogView.tsx`, `apps/web/src/pages/recommendations/next/rec-catalog.ts`, `apps/api-gateway/src/analytics/analytics.controller.ts` (new `PUT insight-catalog/types/:restaurantId/:candidateKey/toggle`), `apps/api-gateway/src/analytics/recommendation-actions.service.ts`, `apps/api-gateway/src/analytics/insights/suppression.ts` (`insightRuleId`, rule-scope `buildSuppressionKey`). Referenced but not present in this worktree: ADR 0160 §108 (the founder's 2026-09-19 sketch-120 feedback batch, on `train/finish-2`).
 
 ## Context
@@ -266,7 +266,10 @@ ones; the verbatim relay is in the review trail):
 - **What each surface stops offering**: the feed's dismissal sheet drops "the
   whole rule" for staff and says why; a rule that names no subject and no
   period has only the whole-rule key, so staff are told to snooze it or rule
-  it off instead of being shown a control the gateway would refuse; the bulk
+  it off instead of being shown a control the gateway would refuse [**round
+  3:** such a rule's card is now keyed by its firing (`rule#*#fire:…`), so
+  staff dismiss THIS firing and the "whole-rule only" sheet is left for keys
+  written before round 3]; the bulk
   bar's "whole rules" is dark for staff; "Return it to the book" on a
   whole-rule dismissal is dark for staff. The catalogue, the rails and the
   Reports panel never offer a one-item act on a whole-type key at all.
@@ -317,7 +320,10 @@ ones; the verbatim relay is in the review trail):
   key (`@/lib/recommendationState` `insightActKey`) and filter nothing.
 - **1 — dismiss with a reason (the labelled signal)**: `DISMISS_REASONS` is
   a closed set — the four labels the feed and the legacy page already
-  offered (`not_relevant`, `already_handled`, `disagree`, `not_now`). A
+  offered (`not_relevant`, `already_handled`, `disagree`, `not_now`).
+  [**Round 3:** two — `not_relevant`, `disagree`. "Already handled" is
+  recorded as done and "Not now" is the person's own snooze; both labels are
+  still accepted at the door and routed (`planAct`).] A
   dismissal without one is a 400 from every door, the catalogue's "Off"
   included. The rails, Reports and the catalogue used to stamp
   `not_relevant` and the bulk bar `not_now` without asking; each now asks. A
@@ -349,6 +355,8 @@ ones; the verbatim relay is in the review trail):
    ONE shared state, and a second table is a second store the founder has
    not asked for. The label lives on the state row while the item is
    dismissed; whether a history of labels is wanted is his question.
+   [**Round 3: asked and answered — "Keep every label"; built as
+   `recommendation_action_history`.**]
 3. **A CHECK constraint on `recommendation_actions.reason`.** Rejected for
    now: legacy rows hold free text (the feed's and the legacy page's snoozes
    wrote "until tomorrow", "1 week" into `reason`), so a constraint needs a
@@ -357,48 +365,238 @@ ones; the verbatim relay is in the review trail):
    staff keep one-finding and one-subject acts on the same route; the gate
    reads the key's shape and the row's current state, server-side.
 5. **Gate a rule-wide snooze or done too.** Not done: the answer names
-   dismiss and restore. Left to the founder.
+   dismiss and restore. Left to the founder. [**Round 3:** a staff snooze is
+   now the person's own ("Only them"); snooze for everyone is owner/manager.
+   Done stays open to staff, named in the history and undoable.]
 
-### Founder questions round 2 leaves open (not decided by the build)
+### Founder questions round 2 left open — all answered 2026-09-21 (round 3)
 
-1. **Whole-rule snooze and done are open to staff** — the answer named
-   dismiss and restore. The gateway takes any future `snoozeUntil`, so a
-   staff snooze of a whole rule to a far date, or a done on it, hides the
-   rule house-wide with no house-log row: in effect the dismissal the answer
-   reserved for owner/manager. Gate them too, cap the snooze, or keep?
-2. **A card whose rule names no subject and no period** (most deterministic
-   feed rules: `plowhorse_repricing`, `vendor_concentration`, …) has only the
-   whole-rule key, so staff can no longer dismiss it at all — only snooze it
-   or mark it done. Is such a card "a single finding" staff keep, or "the
-   whole rule"?
-3. **Done on such a card** hides the rule until someone returns it. Keep, or
-   should done end when the rule next fires?
-4. **Labels are overwritten**: the label lives on the state row, so restore
-   then re-dismiss replaces the earlier one. Is an append-only history of
-   labels wanted for the model?
-5. **"Already handled"** is a dismissal label but means what done means
-   (completion, no negative signal). Keep it as a label, or record done?
-6. **Legacy `/recommendations`** (what a house sees until the page is in
-   `LIVE_PAGES`) dismisses whole rules: staff now get a refusal there. Patch
-   the legacy page, or accept until go-live?
-7. **"Restore all"** in the relay is read as the Dismissed leaf's Restore —
-   no control by that name exists. Confirm, or was a bulk control wanted?
+Moved out of "open": each is answered below, in "Round 3", in the founder's
+words. What each asked, and which answer closed it:
+
+1. Whole-rule snooze and done open to staff → **answer 4** (a staff snooze
+   is the person's own; snooze for everyone is owner/manager) and **answer
+   1** (done on a card that names nothing hides only this firing).
+   [**Last call, round 3:** answered, not fully closed in the build. The
+   snooze half is closed at the gateway. The done half holds on the new
+   feed, the rails, Reports and the catalogue, which post the firing's key;
+   the gateway still takes a done on a BARE rule key from any member, and
+   the legacy page's Done (and its "Already handled", now recorded as done)
+   sends exactly that, so a staff member there still hides the whole rule
+   house-wide until someone returns it — now as a history row with their
+   name. That is round 3's open question 4.]
+2. A card whose rule names no subject and no period: one finding or the
+   whole rule? → **answer 1**, "Each firing is one card".
+3. Done on such a card: keep until returned, or end when it next fires? →
+   **answer 1**: it returns when the rule fires again.
+4. Labels overwritten: an append-only history? → **answer 2**, "Keep every
+   label".
+5. "Already handled": a label, or done? → **answer 3**, done.
+6. Legacy `/recommendations` refusal → **answer 5**, "Fix the message".
+7. "Restore all" → **answer 6**: the per-card Restore as built.
 
 ### Consequences of round 2
 
 - Staff cannot dismiss a rule that names no subject and no period — most of
   the deterministic feed rules. They can snooze it or rule it off.
+  [**Superseded by round 3:** each firing is one card, so staff dismiss this
+  firing; only the whole rule stays owner/manager.]
 - The legacy `/recommendations` page (`Recommendations.tsx`, still what a
   house sees until `recommendations` is in `LIVE_PAGES`) dismisses on the
   bare rule key: for staff that is now a 403 and its generic "Couldn't save
   that" toast, and its optimistic hide is not rolled back until a reload.
-  Not rebuilt here — ADR 0149 governs the legacy page.
+  Not rebuilt here — ADR 0149 governs the legacy page. [**Round 3, answer
+  5:** the 403 now says the founder's sentence and the card comes back.]
 - Existing rows written as `snoozed` with no instant come back on every
   surface; before, they were invisible everywhere and listed nowhere.
 - After deploy, every stored insight row is version 2 and is recomputed on
   its first read; until migration `20260921115500` is applied, `persist()`
   cannot write the new columns and each read computes live.
 - A period-only finding's `suppression.scope` reads `insight`, not `rule`.
+
+## Round 3 — the founder's six answers, and what was built (2026-09-21)
+
+The seven questions round 2 left open went to the founder and came back the
+same day. His picks, verbatim as relayed to this lane (the quoted words are
+his; the rest is the relay's gloss, kept because it carries the detail he
+chose):
+
+1. **A subject-less rule's card** — **"Each firing is one card"**: key it by
+   the rule plus the rule's own firing period (e.g. its week), so dismiss or
+   done hides only this firing, and it returns when the rule fires again
+   with new numbers.
+2. **Labels** — **"Keep every label"**: an append-only history of every
+   dismiss, restore, done and snooze, with the reason label, who and when.
+   The state row may keep the latest; the history is the record.
+3. **"Already handled"** is recorded as DONE, not as a dismissal.
+4. **Staff snooze** — **"Only them"**: a snooze by staff is personal — it
+   hides the card only for that person and is not written to the house
+   history; "Not now" in the dismiss list becomes this personal snooze.
+   Snooze for everyone is owners/managers, and area leads in their area once
+   the areas lane lands (a typed hook here, no areas built). Staff keep Done
+   and one-card Dismiss, both named in the append-only history and undoable.
+5. **Legacy `/recommendations`** — **"Fix the message"**: a staff whole-rule
+   dismissal there shows *"Only an owner or manager can dismiss this for the
+   whole house."* instead of "try again".
+6. **"Restore all"** = the per-card Restore as built; no bulk button.
+
+### What was built
+
+- **1 — each firing is one card.** `suppression.ts` `firingGrain` names a
+  firing `fire:day:2026-09-21`, `fire:week:2026-W39` (ISO week) or
+  `fire:month:2026-09`, in UTC like every business date the engine computes;
+  `withFiring` keys a target by it only when the target names no subject and
+  no period — anything that names either keeps the key it had. The feed
+  (`RecommendationsService`) keys each such rule by the horizon the rule
+  itself declares — `now` a day, `this_week` a week, `this_month` a month
+  (`firingPeriodOf`); the generator's `record()` keys such a catalogue type by
+  its week, the founder's own example (the catalogue carries no per-type
+  horizon). The card's default key is then `rule#*#fire:…`, which is not a
+  whole-rule key (`isRuleWideKey` false), so staff may dismiss or finish it,
+  and a dismissal or done of this firing does not match next period's key.
+  A firing is deliberately not a `d:`/`m:` data grain: `dateOfGrain` never
+  matches it, so no surface offers to exclude "the day a warning was
+  dismissed" from the baselines. `INSIGHT_GENERATOR_VERSION` stays 3: no
+  version-3 row has been served (`main` is at 2), so the change of key needs
+  no second recompute. Keys written before round 3 keep meaning what they
+  meant: a bare-key dismissal still hides the whole rule.
+- **2 — keep every label.** Migration `20260921170400` adds
+  `recommendation_action_history`: act (`dismiss | restore | done |
+  snooze`), the status it lifted (read before the write), the status it
+  wrote, the label (on a dismiss, and only there — CHECKed to the two
+  labels), the instant (on a snooze), whether the key is a whole rule, the
+  actor (`public.users(user_id)`, ON DELETE SET NULL) and when. Append-only
+  by trigger: a direct UPDATE or DELETE is refused, for the service role too;
+  only a foreign key's own action passes (a deleted user's name leaves, a
+  deleted house's rows go) — told apart by `pg_trigger_depth()`. RLS on,
+  service role only, anon/authenticated revoked. Every house status write —
+  `setActionAs`, `bulkSetActionAs` and the catalogue toggle — files a row
+  and returns its receipt (`history`), on the audit contract (never throws;
+  the page says "not kept in the history" when it missed). A status write
+  with no signed-in person is refused (403): the history names who. Pins,
+  ratings and assignments are notes, not acts, and file nothing. The
+  `recommendation_actions` row keeps the latest state, as before.
+- **3 — "Already handled" is done.** `DISMISS_REASONS` is two labels
+  (`not_relevant`, `disagree`). The gateway routes a dismissal labelled
+  `already_handled` to done with no label (`planAct`), so every door — the
+  legacy page and older clients included — records done; every web dismiss
+  list keeps the choice and posts `{ status: 'done' }` (`patchForChoice`).
+- **4 — a staff snooze is "Only them".** Migration `20260921170410` adds
+  `recommendation_personal_snoozes` — house, person, key, until, and the
+  card's own words for the person's Snoozed leaf; no reason (KVKK: the
+  minimum); deleted when woken, cleared once ended on the person's next
+  snooze, and with the person or the house. `planAct` routes: a snooze
+  `snoozeFor: 'me'` is personal for anyone; `'house'` needs owner/manager
+  (`maySnoozeForEveryone`) and is refused (403), never narrowed; a snooze
+  naming no audience is the house's from an owner or manager (what theirs has
+  always done) and personal from anyone else; "Not now" is personal, until
+  the instant sent or one day when none is (`NOT_NOW_DEFAULT_MS`, the
+  shortest snooze the product offers). A personal snooze is never written to
+  `recommendation_actions`, its history or the house log. It is applied only
+  where a named person looks — `GET recommendations/:id` (the feed, new and
+  legacy) and `GET insights/:id` (the catalogue's live items, the rails,
+  Reports) — after the house state, from the JWT's user
+  (`RecommendationActionsService.viewFor`); the digest, the MCP reader and
+  the stored cache stay the house's one truth. Each answer says
+  `hiddenForYou` and `personalSnoozesReadable` (false is said on every
+  surface, never shown as none) [**CORRECTED 2026-09-21, last call:** on
+  every surface but the legacy page, which reads neither this flag nor the
+  house's `suppressionsReadable` (that half predates round 3). There a
+  failed read of a person's own snoozes shows the cards they hid, with no
+  word — more cards than they chose, never fewer.]. `GET …/snoozed-for-me` lists a person's own
+  snoozes on their Snoozed leaf; `POST …/snoozed-for-me/wake` ends one. The
+  area-lead half is a typed hook only: `RecommendationActor.leadsAreas`
+  (always empty from `actorOf`) and `cardAreasOf` (always none) —
+  `maySnoozeForEveryone` lets a lead snooze for everyone a card in an area
+  they lead, which nothing can be until the areas lane fills both.
+  Staff keep Done and one-card Dismiss; both are history rows with their
+  name, and both are undone by a restore, itself a history row.
+- **5 — the legacy message.** `Recommendations.tsx` says
+  *"Only an owner or manager can dismiss this for the whole house."* on a
+  403 (its own sentence for a refused return), puts the card back by reading
+  the feed again, offers no Undo for what did not happen, and only says
+  "Restored" when the restore landed. It also words what round 3 recorded —
+  "Recorded as done", "Hidden from you — everyone else still sees it" — and
+  its Undo of a personal snooze wakes it rather than writing the house's
+  state. Nothing else on the legacy page was rebuilt (ADR 0149).
+- **6 — "Restore all".** Nothing to build: the per-card Restore on the
+  Dismissed leaf, owner/manager for a whole rule (round 2).
+- **The web.** One vocabulary, `@/lib/recommendationState`:
+  `DISMISS_CHOICES` (the four choices and what each records, said under the
+  choice), `patchForChoice`, `undoOf`, `maySnoozeForEveryone`,
+  `paperMissOf`. The feed's sheet records done or hides-for-you without
+  asking a scope; its Snooze offers "Just for you" to everyone and "For
+  everyone" to owners and managers, and says why to staff; the Snoozed leaf
+  lists the person's own snoozes with "Wake it for me"; the standing leaf
+  says how many are hidden just for you. The catalogue's live items, the
+  rails and Reports post the same bodies and undo the act each was.
+
+### Options considered in round 3
+
+1. **Firing = every compute** (a new key per request). Rejected: a dismiss
+   or done would never hold past the next read.
+2. **Firing = one long run while the rule stays true.** Rejected: a done on
+   `vendor_concentration` would hide it for months — the defect answer 1
+   closes.
+3. **Firing = the rule's own period bucket.** Chosen, as the founder said
+   ("e.g. its week"); for the feed's rules the bucket is the horizon each
+   rule declares (its urgency), for catalogue types the week. The mapping is
+   the build's reading and is put to the founder below.
+4. **History by trigger on `recommendation_actions`.** Would be atomic with
+   the state write, but the actor would have to ride on `created_by`, which a
+   write without an actor leaves naming the previous one. Rejected for an
+   application write with a receipt, the pattern the house log already uses;
+   the gap it leaves is named below.
+5. **A personal snooze on `recommendation_actions`** (a row per person).
+   Rejected: every reader of that table — the digest, MCP, the stored cache —
+   would hide the card from the house, which "Only them" rules out.
+6. **Refuse "Not now" and "Already handled" at the door** instead of
+   routing them. Rejected: the legacy page (what houses see) and older
+   clients send them; a 400 there would break a working control. Routed
+   server-side so every door records what the founder said it means.
+
+### Consequences of round 3
+
+- A card that names nothing is a new card every period: a dismissal or done
+  of September's `vendor_concentration` does not hide October's. Rules
+  declared `now` (e.g. `stockout_imminent`) are a new card every UTC day.
+- UTC, not the house's clock: a week or a day rolls over at 00:00 UTC (03:00
+  in Istanbul). No house time zone exists on the analytics path to use.
+- Anything two people could previously disagree over silently — who put a
+  card away and why — is now a row naming them. Names leave the history when
+  the person's user row is deleted; there is no retention period yet.
+- "Not now" from the legacy page's quick Dismiss, its `d` key and its bulk
+  Dismiss (all of which send `not_now` without asking) is now a one-day snooze
+  for the person who pressed it, not a house-wide dismissal.
+- The legacy page still writes every act on the bare rule key: its Done, from
+  any member, hides the whole rule house-wide until returned (now a history
+  row with their name); its snooze from staff is theirs alone and is not
+  listed on its Snoozed tab (that tab lists the house's).
+- A history row can miss while the state change holds (the receipt says so);
+  the state write and the history write are two statements, not one
+  transaction.
+
+### Founder questions round 3 leaves open (not decided by the build)
+
+1. **Each rule's firing period.** Built as the horizon the rule declares —
+   `now` → a day, `this_week` → a week, `this_month` → a month — and a week for
+   catalogue types. Confirm, or name the period per rule.
+2. **How long "Not now" hides a card** when no time is picked (the legacy
+   page, its `d` key and bulk Dismiss): built as one day, the shortest snooze
+   the product offers. Confirm, or name the length.
+3. **The legacy page's quick Dismiss, `d` key and bulk Dismiss** send "Not
+   now" without asking, so on the page houses see today they now hide a card
+   from the person for a day instead of dismissing it for the house. Keep,
+   or have those controls ask a label (a legacy-page change ADR 0149 would
+   otherwise not make)?
+4. **The legacy page's Done** is on the bare rule key, so it still hides the
+   whole rule house-wide until returned — not "this firing". Move the legacy
+   page's acts to the item key, or leave it to the page's retirement?
+5. **Undoing someone else's act.** Any member may still restore another
+   person's one-card dismissal or done (named in the history). The areas
+   judgement proposed "staff undo their own acts only". Keep or narrow?
+6. **History retention.** No number exists anywhere in the repo. How long
+   are named acts kept?
 
 ## Review trail
 
@@ -409,3 +607,6 @@ ones; the verbatim relay is in the review trail):
 | 2026-09-21 | founder (relayed to lane `recs-catalogue`) | Answered both forks, verbatim as relayed: "(1) rule-wide dismiss and restore (the feed's 'dismiss the whole rule', Restore all, the catalogue toggle) are owner/manager only and audited EVERYWHERE; staff keep dismissing a single finding or subject; (2) "Build it right, in order": the engine gets ONE shared per-item state (dismissed with a reason / snoozed-until / done) that the feed, the catalogue, reports and the rails all read; build in order dismiss-with-reason (the reason is a labelled signal), then snooze (time suppression; the item returns after), then done (completion, no negative signal); show each action on the catalogue's live-items panel only once it is honoured on every surface." |
 | 2026-09-21 | — | Round 2 built in lane `recs-catalogue` (`wt-recs-cat`): the gate in `setActionAs`/`bulkSetActionAs`, `item-state.ts`, the stored read, migration `20260921115500`, the four web surfaces. "Restore all" in the relay is read as the Dismissed leaf's Restore (no control by that name exists; the question put to him said "the Dismissed tab's Restore"). |
 | 2026-09-21 | last call (Opus), round 2 | Amended before merge: (1) the stored cache is state-free — a rebuild stores what fired as well as what is shown, so a snooze that ends, or a dismissal or done returned to the book, is back on Reports and the rails without waiting for the category's next rebuild (the first build persisted only what was visible, so the founder's "the item returns after" did not hold on the stored surfaces); (2) the rails and the Reports panel say when the state could not be read; (3) two code citations the new lines shifted (`mcp-tool-readers.service.ts`, `house-letters.service.ts`) now name the function instead of a line range; (4) the round's founder questions are written here — the text pointed at a section that did not exist — with the subject-less-card question added. |
+| 2026-09-21 | founder (relayed to lane `recs3`) | Answered round 2's seven questions with six picks, verbatim as relayed: (1) "Each firing is one card"; (2) "Keep every label"; (3) "Already handled" recorded as DONE; (4) "Only them" — staff snooze is personal, "Not now" becomes it, snooze for everyone owners/managers (area leads once that lane lands); (5) "Fix the message" — 'Only an owner or manager can dismiss this for the whole house.'; (6) 'Restore all' = the per-card Restore as built, no bulk button. |
+| 2026-09-21 | — | Round 3 built in lane `recs3` (`wt-recs-cat`): firing keys (`suppression.ts`, the feed, the generator), `recommendation_action_history` (20260921170400) and `recommendation_personal_snoozes` (20260921170410), `planAct` routing, the personal view on the two named-person reads, the legacy message, the four web surfaces; round 3's six open questions written above. |
+| 2026-09-21 | last call (Opus), round 3 | Amended before merge: (1) "Only them" had no test that could fail: the write-path stub ignored every filter, so dropping the `user_id` or `restaurant_id` filter from `listForMe`, or the `user_id` filter from `wakeForMe`, left all 45 round-3 tests green. Each of those drops means one person's snooze hides the card from the whole house, or a wake ends someone else's snooze. A table stub that applies the filters, with rows for two people and two houses, now kills all three (`recommendation-round3.spec.ts`, "a snooze for me is read, applied and woken for me alone"). (2) The mapping of round 2's first question now says its done half is not closed at the gateway: a bare-key done from any member still hides the whole rule, and the legacy page sends one (round 3 open question 4). (3) The claim that every surface says an unreadable personal read is corrected: the legacy page says neither flag. |

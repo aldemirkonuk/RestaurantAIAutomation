@@ -165,13 +165,10 @@ describe("the shared per-item state", () => {
 });
 
 describe("the dismissal label set", () => {
-  it("is the four reasons the feed and the legacy page already offered", () => {
-    expect([...DISMISS_REASONS]).toEqual([
-      "not_relevant",
-      "already_handled",
-      "disagree",
-      "not_now",
-    ]);
+  it("is two labels since round 3 — 'Already handled' is done and 'Not now' the person's own snooze", () => {
+    expect([...DISMISS_REASONS]).toEqual(["not_relevant", "disagree"]);
+    expect(isDismissReason("already_handled")).toBe(false);
+    expect(isDismissReason("not_now")).toBe(false);
   });
 
   it("refuses free text, an empty string and a missing reason", () => {

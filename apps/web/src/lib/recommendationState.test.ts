@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DISMISS_REASONS, insightActKey } from './recommendationState';
+import {
+  DISMISS_CHOICES,
+  DISMISS_REASONS,
+  insightActKey,
+  maySnoozeForEveryone,
+  paperMissOf,
+  patchForChoice,
+} from './recommendationState';
 
 /**
  * ADR 0191: one shared per-item state. A surface acts at the key the gateway
@@ -44,12 +51,60 @@ describe('insightActKey', () => {
 });
 
 describe('DISMISS_REASONS', () => {
-  it('is the gateway label set, in its order', () => {
-    expect(DISMISS_REASONS.map((r) => r.id)).toEqual([
-      'not_relevant',
-      'already_handled',
-      'disagree',
-      'not_now',
+  it('is the gateway label set, in its order — two since round 3', () => {
+    expect(DISMISS_REASONS.map((r) => r.id)).toEqual(['not_relevant', 'disagree']);
+  });
+});
+
+/**
+ * ADR 0191 round 3 (founder, 2026-09-21): the dismiss list keeps its four
+ * choices, but "Already handled" is recorded as done and "Not right now" is
+ * the person's own snooze.
+ */
+describe('DISMISS_CHOICES and what each posts', () => {
+  const NOW = Date.parse('2026-09-21T12:00:00.000Z');
+
+  it('keeps the four choices a person already knows, and says what each records', () => {
+    expect(DISMISS_CHOICES.map((c) => [c.id, c.records])).toEqual([
+      ['not_relevant', 'dismissed'],
+      ['already_handled', 'done'],
+      ['disagree', 'dismissed'],
+      ['not_now', 'snoozed_for_you'],
     ]);
+  });
+
+  it("'Already handled' posts done, with no label", () => {
+    expect(patchForChoice('already_handled', NOW)).toEqual({ status: 'done' });
+  });
+
+  it("'Not right now' posts a snooze for me, until tomorrow", () => {
+    expect(patchForChoice('not_now', NOW)).toEqual({
+      status: 'snoozed',
+      snoozeFor: 'me',
+      snoozeUntil: '2026-09-22T12:00:00.000Z',
+    });
+  });
+
+  it('a real dismissal posts its label', () => {
+    expect(patchForChoice('disagree', NOW)).toEqual({ status: 'dismissed', reason: 'disagree' });
+  });
+
+  it('snooze for everyone is offered to owners and managers only', () => {
+    expect(maySnoozeForEveryone('owner')).toBe(true);
+    expect(maySnoozeForEveryone('Manager')).toBe(true);
+    expect(maySnoozeForEveryone('staff')).toBe(false);
+    expect(maySnoozeForEveryone(null)).toBe(false);
+  });
+});
+
+describe('paperMissOf', () => {
+  it('says which record missed, and nothing when both landed', () => {
+    expect(paperMissOf({ audit: null, history: { recorded: true, reason: null } })).toBeNull();
+    expect(paperMissOf({ history: { recorded: false, reason: 'timeout' } })).toBe(
+      'not kept in the history (timeout)',
+    );
+    expect(paperMissOf({ audit: { recorded: false, reason: 'x' }, history: { recorded: true } })).toBe(
+      'not written to the house log (x)',
+    );
   });
 });

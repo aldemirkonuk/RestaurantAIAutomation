@@ -29,7 +29,10 @@
  *   grain    the period the observation covers, at its own grain:
  *            `d:2026-09-02` (a day), `p7:2026-09-02` (the 7 days ending then),
  *            `t28:2026-09-02` (a 28-day trend), `m:2026-09`. `*` when the rule
- *            is not about a period at all.
+ *            is not about a period at all — except that since ADR 0191 round
+ *            3 such a rule's card is keyed by the period it FIRED in
+ *            (`fire:week:2026-W39`, `withFiring` below), so `*` survives only
+ *            on keys written before that and on a whole-rule instruction.
  *
  * Three scopes, and only three, are representable — deliberately, because the
  * founder has not yet said which one "dismiss" should mean (page note §13.14):
@@ -212,6 +215,84 @@ export function trendGrain(
 ): string | null {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   return `t${spanDays}:${date}`;
+}
+
+/**
+ * A rule's own firing period (ADR 0191 round 3). The founder, 2026-09-21, on
+ * a card whose rule names no subject and no period: "Each firing is one
+ * card". Such a card used to have only the bare rule key, so dismissing or
+ * finishing it silenced the whole rule until someone returned it. It is now
+ * keyed by the rule plus the period it fired in, so a dismiss or a done
+ * hides this firing only, and the card comes back when the rule fires in
+ * its next period with new numbers.
+ */
+export type FiringPeriod = "day" | "week" | "month";
+
+/**
+ * The grain of a firing: `fire:day:2026-09-21`, `fire:week:2026-W39`,
+ * `fire:month:2026-09`. Read in UTC, like every business date this engine
+ * computes (`getUTCDay` in the generator); there is no house time zone in the
+ * analytics path to read instead.
+ *
+ * Deliberately NOT the `d:`/`m:` data grains. Those name the days the
+ * NUMBERS cover, and `dateOfGrain` offers to exclude such a day from the
+ * baselines; a firing names the day the RULE spoke, and excluding the day a
+ * stock warning was dismissed would be nonsense. `fire:` never matches
+ * `dateOfGrain`, so no surface offers it.
+ */
+export const FIRING_GRAIN_PREFIX = "fire";
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+/** ISO-8601 week (Monday first; week 1 holds the year's first Thursday), UTC. */
+export function isoWeekOf(at: Date): { year: number; week: number } {
+  const d = new Date(
+    Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()),
+  );
+  const weekday = d.getUTCDay() || 7; // Monday 1 … Sunday 7
+  d.setUTCDate(d.getUTCDate() + 4 - weekday); // the Thursday of this week
+  const yearStart = Date.UTC(d.getUTCFullYear(), 0, 1);
+  const week = Math.ceil(((d.getTime() - yearStart) / 86_400_000 + 1) / 7);
+  return { year: d.getUTCFullYear(), week };
+}
+
+export function firingGrain(period: FiringPeriod, at: Date): string {
+  const t = at.getTime();
+  if (!Number.isFinite(t)) throw new Error("a firing needs a real instant");
+  const y = at.getUTCFullYear();
+  if (period === "day")
+    return `${FIRING_GRAIN_PREFIX}:day:${y}-${pad2(at.getUTCMonth() + 1)}-${pad2(at.getUTCDate())}`;
+  if (period === "month")
+    return `${FIRING_GRAIN_PREFIX}:month:${y}-${pad2(at.getUTCMonth() + 1)}`;
+  const w = isoWeekOf(at);
+  return `${FIRING_GRAIN_PREFIX}:week:${w.year}-W${pad2(w.week)}`;
+}
+
+/** Whether a grain is a firing (`fire:…`) rather than the numbers' own period. */
+export function isFiringGrain(grain: string | null | undefined): boolean {
+  return (
+    typeof grain === "string" &&
+    /^fire:(day:\d{4}-\d{2}-\d{2}|week:\d{4}-W\d{2}|month:\d{4}-\d{2})$/.test(
+      grain,
+    )
+  );
+}
+
+/**
+ * The target a card is keyed by (round 3): a rule that names no subject and
+ * no period is keyed by the period it fired in. Anything that names a
+ * subject or a period keeps exactly the key it had.
+ */
+export function withFiring<T extends SuppressionTarget>(
+  target: T,
+  period: FiringPeriod,
+  at: Date,
+): T {
+  if (slugSubject(target.subject) !== ANY || safeGrain(target.periodKey) !== ANY)
+    return target;
+  return { ...target, periodKey: firingGrain(period, at) };
 }
 
 /** The date a `d:` grain names, or null. Used to offer a day exclusion. */

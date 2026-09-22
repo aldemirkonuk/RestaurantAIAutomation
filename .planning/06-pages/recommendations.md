@@ -367,7 +367,13 @@ scope, the bulk bar's "whole rules" and "Return it to the book" on a whole-rule 
 are owner/manager only (403 from the gateway, audited in `system_audit_log`); staff see them
 dark or absent, with why. Every dismissal carries one of four reason labels — the bulk bar
 now asks instead of stamping `not_now`. Snooze and rule-off write the finding's own key, and
-one shared per-item state (`item-state.ts`) decides what every surface hides.]
+one shared per-item state (`item-state.ts`) decides what every surface hides.] [**2026-09-21,
+ADR 0191 round 3 (founder):** a rule that names no subject and no period is keyed by its
+firing ("Each firing is one card"), so staff dismiss or finish this firing and it returns
+when the rule fires again; the dismiss list keeps four choices but "Already handled" records
+done and "Not right now" hides it from you alone; Snooze offers "Just for you" to everyone
+and "For everyone" to owners and managers; every house act is kept in
+`recommendation_action_history` ("Keep every label").]
 
 **Verified, not asserted — and which endpoints.** Against the running local gateway on :4000,
 for `550e8400-…`, **both** readers of this generator were checked, because the first attempt at
@@ -849,7 +855,11 @@ settled:**
   follow-up forks CLOSED 2026-09-21** (ADR 0191 "Round 2"): the gate and the
   audit now hold on every door, and the live-items panel offers Snooze, Done
   and Dismiss-with-a-reason, because one shared per-item state is now read by
-  the feed, the catalogue, Reports (live and stored) and the rails.]
+  the feed, the catalogue, Reports (live and stored) and the rails.] [**Round
+  3, 2026-09-21** (ADR 0191 "Round 3"): the live-items panel's Snooze asks
+  who it is for (staff: themselves alone), its dismiss list records "Already
+  handled" as done and "Not right now" as your own snooze, and it says how
+  many of the type are hidden just for you.]
 
 **The handoff to sketch 122 (lane `recs-sketch`).** The founder's sketch-120
 feedback (`founder-sketch-decisions-106-115.md:146-151`, batch 3

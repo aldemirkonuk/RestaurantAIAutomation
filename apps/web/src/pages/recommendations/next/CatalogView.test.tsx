@@ -243,7 +243,7 @@ describe('CatalogView — type on/off (ADR 0191)', () => {
     await drawAndExpand('overall.revenue.vs_same_weekday');
     fireEvent.click(await screen.findByRole('button', { name: 'On' }));
     fireEvent.click(
-      within(await screen.findByRole('group', { name: 'Why turn it off' })).getByText('Not right now'),
+      within(await screen.findByRole('group', { name: 'Why turn it off' })).getByText('I disagree'),
     );
     expect(await screen.findByRole('alert')).toHaveTextContent('Not saved');
     expect(await screen.findByRole('button', { name: 'On' })).toBeInTheDocument();
@@ -335,12 +335,12 @@ describe('CatalogView — open live items (ADR 0191)', () => {
       expect.objectContaining({ status: 'dismissed' }),
     );
     fireEvent.click(
-      within(screen.getByRole('group', { name: 'Why dismiss this item' })).getByText('Already handled'),
+      within(screen.getByRole('group', { name: 'Why dismiss this item' })).getByText('I disagree'),
     );
     expect(api.post).toHaveBeenCalledWith('/analytics/recommendations/r1/action', {
       ruleKey: 'insight:overall.revenue.vs_same_weekday#tuesday#d:2026-09-16',
       status: 'dismissed',
-      reason: 'already_handled',
+      reason: 'disagree',
       snapshot: expect.objectContaining({ category: 'sales' }),
     });
     expect(screen.queryByText('Tuesday sales were 12% below average Tuesdays.')).not.toBeInTheDocument();
@@ -450,12 +450,16 @@ describe('CatalogView — absence is not health (ADR 0191, last-call fixes)', ()
     api.post.mockResolvedValue({ data: {} });
     fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Snooze' }));
+    // An owner (this fixture) is offered both audiences (ADR 0191 round 3).
     fireEvent.click(
-      within(screen.getByRole('group', { name: 'Snooze this item' })).getByText('Until next week'),
+      within(screen.getByRole('group', { name: 'Snooze this item' })).getByRole('button', {
+        name: 'Until next week, for everyone',
+      }),
     );
     expect(api.post).toHaveBeenCalledWith('/analytics/recommendations/r1/action', {
       ruleKey: LIVE.suppression.key,
       status: 'snoozed',
+      snoozeFor: 'house',
       snoozeUntil: expect.any(String),
       snapshot: expect.objectContaining({ category: 'sales' }),
     });
@@ -464,6 +468,90 @@ describe('CatalogView — absence is not health (ADR 0191, last-call fixes)', ()
     );
     expect(until).toBeGreaterThan(Date.now() + 6 * 86_400_000);
     expect(screen.queryByText(LIVE.sentence)).not.toBeInTheDocument();
+  });
+
+  it('round 3: staff snooze an item for themselves alone — never for everyone', async () => {
+    auth.role = 'staff';
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({ data: { insights: [LIVE], suppressionsReadable: true } }),
+    );
+    api.post.mockResolvedValue({ data: {} });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Snooze' }));
+    const group = screen.getByRole('group', { name: 'Snooze this item' });
+    expect(within(group).queryByRole('button', { name: /for everyone/ })).not.toBeInTheDocument();
+    expect(within(group).getByTestId('rc-live-snooze-for-you')).toHaveTextContent(
+      'only an owner or manager can snooze it for everyone',
+    );
+    fireEvent.click(within(group).getByRole('button', { name: 'Until tomorrow, just for you' }));
+    expect(api.post).toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({ ruleKey: LIVE.suppression.key, status: 'snoozed', snoozeFor: 'me' }),
+    );
+  });
+
+  it("round 3: 'Already handled' records done and 'Not right now' is your own snooze", async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({ data: { insights: [LIVE], suppressionsReadable: true } }),
+    );
+    api.post.mockResolvedValue({ data: {} });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Why dismiss this item' })).getByText('Already handled'),
+    );
+    expect(api.post).toHaveBeenCalledWith('/analytics/recommendations/r1/action', {
+      ruleKey: LIVE.suppression.key,
+      status: 'done',
+      snapshot: expect.objectContaining({ category: 'sales' }),
+    });
+    expect(api.post).not.toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({ reason: 'already_handled' }),
+    );
+  });
+
+  it("round 3: 'Not right now' posts a snooze for me, until tomorrow", async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({ data: { insights: [LIVE], suppressionsReadable: true } }),
+    );
+    api.post.mockResolvedValue({ data: {} });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Why dismiss this item' })).getByText('Not right now'),
+    );
+    expect(api.post).toHaveBeenCalledWith('/analytics/recommendations/r1/action', {
+      ruleKey: LIVE.suppression.key,
+      status: 'snoozed',
+      snoozeFor: 'me',
+      snoozeUntil: expect.any(String),
+      snapshot: expect.objectContaining({ category: 'sales' }),
+    });
+  });
+
+  it('round 3: says what this person hid for themselves, and when that could not be read', async () => {
+    await drawAndExpand('overall.revenue.vs_same_weekday');
+    api.get.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: {
+          insights: [LIVE],
+          suppressionsReadable: true,
+          hiddenForYou: 2,
+          personalSnoozesReadable: false,
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Open live items' }));
+    expect(await screen.findByTestId('rc-live-hidden-for-you')).toHaveTextContent(
+      '2 hidden just for you',
+    );
+    expect(screen.getByTestId('rc-live-personal-unread')).toHaveTextContent(
+      'What you snoozed for yourself could not be read',
+    );
   });
 
   it('marks one item done at its own key, with no reason — completion is no negative signal', async () => {

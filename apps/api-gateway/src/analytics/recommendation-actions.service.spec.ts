@@ -98,6 +98,12 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
           return builder;
         };
         builder.select = () => builder;
+        // The toggle reads what it lifts, for the append-only history
+        // (round 3): no row here, so it lifts nothing.
+        builder.eq = () => builder;
+        builder.in = () => builder;
+        builder.then = (resolve: any, reject: any) =>
+          Promise.resolve({ data: [], error: null }).then(resolve, reject);
         builder.single = async () => ({
           data: {
             rule_key: calls[calls.length - 1]?.payload?.rule_key,
@@ -155,6 +161,21 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
       },
     });
     expect(out.audit).toEqual({ recorded: true, reason: null });
+
+    // Round 3, "Keep every label": the toggle is kept in the append-only
+    // history too — a dismiss with its label, who, and what it lifted.
+    const kept = calls.find((c) => c.table === "recommendation_action_history");
+    expect(kept?.payload).toMatchObject({
+      restaurant_id: "r-1",
+      rule_key: `insight:${TYPE}`,
+      act: "dismiss",
+      status_from: null,
+      status_to: "dismissed",
+      reason: "not_relevant",
+      rule_wide: true,
+      actor_id: "u-actor",
+    });
+    expect(out.history).toEqual({ recorded: true, reason: null });
   });
 
   it("turning it back on is its own audit row, so the trail keeps who turned it off", async () => {
@@ -177,7 +198,7 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
       TYPE,
       false,
       "u-actor",
-      "not_now",
+      "disagree",
     );
     expect(out.audit).toEqual({ recorded: false, reason: "permission denied" });
   });
@@ -199,6 +220,15 @@ describe("RecommendationActionsService.setTypeEnabled (ADR 0191)", () => {
     ).rejects.toThrow(/needs a reason/);
     await expect(
       svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "because I said so"),
+    ).rejects.toThrow(/needs a reason/);
+    // Round 3: neither former label turns a whole type off — "Already
+    // handled" is done and "Not now" is one person's snooze, and a type is
+    // neither.
+    await expect(
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "already_handled"),
+    ).rejects.toThrow(/needs a reason/);
+    await expect(
+      svc.setTypeEnabled("r-1", TYPE, false, "u-actor", "not_now"),
     ).rejects.toThrow(/needs a reason/);
     expect(calls).toEqual([]);
   });

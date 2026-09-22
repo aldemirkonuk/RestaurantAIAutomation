@@ -10,12 +10,30 @@ import {
   RecommendationStatus,
 } from "./recommendation-actions.service";
 import {
+  FiringPeriod,
   SuppressionScope,
   buildSuppressionKey,
   effectiveScope,
   suppressionKeys,
+  withFiring,
 } from "./insights/suppression";
 import { resolveItemState, stateBookFrom } from "./insights/item-state";
+
+/**
+ * A rule's own firing period, from the horizon the rule itself declares
+ * (ADR 0191 round 3 — the founder, 2026-09-21: "Each firing is one card",
+ * keyed by the rule's own firing period, "e.g. its week"). A rule that says
+ * `now` speaks about today, `this_week` about this week, `this_month` about
+ * this month; its card, when it names no subject and no period, is that
+ * firing — dismissed or done, it returns when the rule fires in its next
+ * period. The mapping is the build's reading of "the rule's own period" and
+ * is put to the founder in the ADR.
+ */
+export function firingPeriodOf(urgency: Recommendation["urgency"]): FiringPeriod {
+  if (urgency === "now") return "day";
+  if (urgency === "this_month") return "month";
+  return "week";
+}
 
 export interface Recommendation {
   /** The observed number, restated ("Tuesday sales 12% below average Tuesdays"). */
@@ -85,7 +103,16 @@ export class RecommendationsService {
 
   async getRecommendations(
     restaurantId: string,
-    opts: { includeHidden?: boolean; surface?: string } = {},
+    opts: {
+      includeHidden?: boolean;
+      surface?: string;
+      /**
+       * The person looking (from the JWT). Their own snoozes (ADR 0191 round
+       * 3) are withheld from them alone; with no viewer — the digest — the
+       * answer is the house's.
+       */
+      viewerId?: string | null;
+    } = {},
   ): Promise<{
     recommendations: Recommendation[];
     rulesEvaluated: number;
@@ -93,6 +120,13 @@ export class RecommendationsService {
     stateCounts: Record<"active" | "snoozed" | "dismissed" | "done", number>;
     suppressed: number;
     suppressionsReadable: boolean;
+    /** Standing cards withheld because this viewer snoozed them for themselves. */
+    hiddenForYou: number;
+    /**
+     * False when this viewer's own snoozes could not be read (or there is no
+     * viewer): cards they snoozed for themselves may be showing.
+     */
+    personalSnoozesReadable: boolean;
   }> {
     const [
       financial,
@@ -382,6 +416,25 @@ export class RecommendationsService {
     // silenced every Wednesday, depending on which key was written.
     const book = stateBookFrom(stateMap.values());
 
+    // "Each firing is one card" (ADR 0191 round 3, founder 2026-09-21): a
+    // rule that names no subject and no period is keyed by the period it
+    // fired in, so a one-card dismiss or done hides this firing and the card
+    // returns when the rule fires in its next period. Before, its only key
+    // was the bare rule — a whole-rule act staff could not make at all.
+    const firedAt = new Date();
+    for (const r of recs) {
+      const keyed = withFiring(
+        {
+          ruleId: r.ruleKey,
+          subject: r.subject ?? null,
+          periodKey: r.periodKey ?? null,
+        },
+        firingPeriodOf(r.urgency),
+        firedAt,
+      );
+      r.periodKey = keyed.periodKey ?? null;
+    }
+
     // Every entry carries its own suppression keys, computed here because this
     // is the only place that knows what each rule is about. Attaching them
     // before the filter matters: the filter below uses the same target the UI
@@ -446,9 +499,30 @@ export class RecommendationsService {
       else if (s.status === "snoozed") stateCounts.snoozed++;
     }
 
-    const visible = opts.includeHidden
+    const houseVisible = opts.includeHidden
       ? recs
       : recs.filter((r) => (r.status ?? "active") === "active");
+
+    // The person's own snoozes (round 3, answer 4 — "Only them"): withheld
+    // from the viewer alone, after the house state, and never counted in the
+    // house's `stateCounts`. `includeHidden` shows them like any hidden card.
+    const mine = opts.viewerId
+      ? await this.actions.viewFor(
+          restaurantId,
+          opts.viewerId,
+          houseVisible,
+          (r) => ({
+            ruleId: r.ruleKey,
+            subject: r.subject ?? null,
+            periodKey: r.periodKey ?? null,
+          }),
+        )
+      : {
+          kept: houseVisible,
+          hiddenForYou: 0,
+          personalSnoozesReadable: false,
+        };
+    const visible = opts.includeHidden ? houseVisible : mine.kept;
 
     // Pinned float to the top; then by score.
     visible.sort((a, b) => {
@@ -486,6 +560,8 @@ export class RecommendationsService {
       // it as clean (ADR 0020).
       suppressed: suppressedCount,
       suppressionsReadable: dispositions.readable,
+      hiddenForYou: mine.hiddenForYou,
+      personalSnoozesReadable: mine.personalSnoozesReadable,
     };
   }
 

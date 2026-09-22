@@ -133,3 +133,72 @@ describe('ContextualInsights — a state it could not read is said', () => {
     expect(screen.queryByText(/could not be read just now/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * ADR 0191 round 3 (founder, 2026-09-21): the rail's dismiss list keeps its
+ * four choices, but "Already handled" records done and "Not right now" hides
+ * the item from this person alone — and Undo reverses the act it was.
+ */
+describe('ContextualInsights — round 3, what each choice records', () => {
+  it("'Already handled' posts done, with no label", async () => {
+    serve([ONE]);
+    api.post.mockResolvedValue({ data: {} });
+    render(<ContextualInsights host="inventory" />);
+    await screen.findByText(ONE.sentence);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Why dismiss it' })).getByText('Already handled'),
+    );
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        '/analytics/recommendations/r1/action',
+        expect.objectContaining({ ruleKey: ONE.suppression.key, status: 'done' }),
+      ),
+    );
+    expect(api.post.mock.calls[0][1]).not.toHaveProperty('reason');
+    expect(await screen.findByText('Recorded as done')).toBeInTheDocument();
+  });
+
+  it("'Not right now' is this person's own snooze, and Undo wakes it", async () => {
+    serve([ONE]);
+    api.post.mockResolvedValue({ data: {} });
+    render(<ContextualInsights host="inventory" />);
+    await screen.findByText(ONE.sentence);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Why dismiss it' })).getByText('Not right now'),
+    );
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        '/analytics/recommendations/r1/action',
+        expect.objectContaining({ ruleKey: ONE.suppression.key, status: 'snoozed', snoozeFor: 'me' }),
+      ),
+    );
+    expect(await screen.findByText('Hidden from you until tomorrow')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Undo'));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenLastCalledWith(
+        '/analytics/recommendations/r1/snoozed-for-me/wake',
+        { ruleKey: ONE.suppression.key },
+      ),
+    );
+  });
+
+  it("says so when this person's own snoozes could not be read", async () => {
+    api.get.mockImplementation((url: string) =>
+      url.includes('/actions?status=all')
+        ? Promise.resolve({ data: { items: [] } })
+        : Promise.resolve({
+            data: {
+              source: 'stored',
+              insights: [ONE],
+              suppressionsReadable: true,
+              personalSnoozesReadable: false,
+            },
+          }),
+    );
+    render(<ContextualInsights host="inventory" />);
+    await screen.findByText(ONE.sentence);
+    expect(screen.getByRole('status')).toHaveTextContent('could not be read just now');
+  });
+});
