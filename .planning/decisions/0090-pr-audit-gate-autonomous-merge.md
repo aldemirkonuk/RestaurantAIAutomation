@@ -244,7 +244,9 @@ limitation, not a verified guarantee.
   unattended. The adversarial pass and fail-closed error handling are the
   mitigations; they are not a proof of safety.
 - **What this does NOT yet do, as of the 2026-09-03 merge:** it does not add
-  `PR Audit Gate` to `main`'s required status contexts. That PATCH is a
+  `PR Audit Gate` to `main`'s required status contexts. [2026-09-22: while the no-credit bypass of "Amendment — 2026-09-22" exists,
+  this PATCH must not run. Remove the bypass first, or a required context reads
+  SUCCESS having audited nothing.] That PATCH is a
   persistent branch-protection change needing explicit founder permission per
   this session's operating rules — still not run, still open, tracked
   alongside this ADR in `SKILL.md`'s "Known limitations". Until it lands, the
@@ -874,8 +876,9 @@ un-anchored and 0 when restored.
 silence them and let them bypass for now"*.
 
 **Why.** Since the account behind `ANTHROPIC_API_KEY` ran out of credit, this job
-has been red on every PR with `COULD NOT RUN [no-credit]`, and a rerun cannot
-change that. It is advisory (not one of main's required contexts), so it blocked
+has gone red with `COULD NOT RUN [no-credit]` on every PR whose audit reached the
+API (measured 2026-09-22: 8 of the last 15 failed runs were no-credit; the other 7
+stopped earlier at `upstream_red`), and a rerun cannot change that. It is advisory (not one of main's required contexts), so it blocked
 nothing, but a red that no PR can fix trains everyone to ignore the colour: the
 same harm the 2026-09-12 Correction above fixed for a `NEUTRAL` CodeQL.
 
@@ -895,8 +898,26 @@ verdict, so a bypassed run can never merge anything. A PR still needs the
 session-side audit and the local hook's PASS marker, exactly as before.
 
 **How it ends.** By itself: once the account has credit, the SDK stops raising
-this error and every PR is audited again, with no code change. Removing the
-bypass for good means deleting `_BYPASSED_CAUSES` and its four self-test checks.
+this error, and each PR is audited again on its next push or reopen, with no code
+change. A run that was already bypassed is not replayed. Removing the bypass for
+good means deleting all of these together: `_BYPASSED_CAUSES`, `_BYPASS_SHAPE`,
+`_bypassed`, the `if _bypassed(...)` branch in `_fail_closed`, and the four
+self-test checks. After that the self-test is back to main's 50. Deleting only
+the set crashes the self-test with a `NameError` (measured by the #442 audit).
+
+**It must be removed before this check becomes required.** The bypass is harmless
+only because `PR Audit Gate` is not one of main's required contexts (measured
+2026-09-22: 5 contexts, strict, no rulesets). If the required-contexts PATCH
+under "What this does NOT yet do" ran while the bypass exists, a required check
+would read SUCCESS having audited nothing. That is the exact shape the 2026-09-12
+Correction removed.
+
+**Two scope questions, answered by the founder 2026-09-22.**
+- Asked whether a PR that changes the gate's own files should stay red while
+  credit is out, he picked *"Yes, bypass them too"*. So they bypass like every
+  other PR, and they still merge only on his word.
+- Asked whether a 402 billing error should also be let through, he picked
+  *"Only 'credit too low'"*. So a 402 stays red.
 
 **Tested.** `--self-test`: 54 invariants, 4 of them new. The new checks are:
 - the SDK's own no-credit error exits 0;

@@ -31,6 +31,10 @@ diff, ambiguous verdict) must exit non-zero and say why in the PR comment. A
 CI job that goes green because it couldn't check is the exact failure this repo's
 own absence-reported-as-health finding is about — see check_adr_numbers_unique.py
 and the other scripts/check_*.sh guards for the convention this follows.
+[ONE EXCEPTION, 2026-09-22, the founder's call (ADR 0090, "Amendment —
+2026-09-22"): the no-credit CANNOT CHECK in the SDK's exact 400 shape exits 0
+with a warning annotation and no PR comment. It is never a PASS and never
+merges. Every other failure mode above still exits non-zero with a comment.]
 """
 from __future__ import annotations
 
@@ -441,7 +445,9 @@ def run_audit(pr_number: str) -> int:
     failure this whole script exists to prevent, just one layer further in
     than the ANTHROPIC_API_KEY check already guarded. Every exception now
     reaches _fail_closed with the real message, so the PR always gets a
-    comment explaining why, never silence plus a red X."""
+    comment explaining why, never silence plus a red X. [Except the one
+    bypassed cause, 2026-09-22: the SDK's no-credit 400 posts no comment and
+    exits 0 with a warning annotation; see _bypassed.]"""
     try:
         return _run_audit_inner(pr_number)
     except Exception as exc:  # noqa: BLE001 - deliberately broad, see docstring
@@ -905,7 +911,8 @@ def _exception_reason(exc: BaseException) -> str:
 # closed. A bypass is not a pass: nothing is audited, nothing is merged (the
 # merge step runs only on a PASS verdict), no PR comment is posted, and the
 # job says so in a warning annotation. It ends by itself: once the account
-# has credit the SDK stops raising this, and every PR is audited again.
+# has credit the SDK stops raising this, and each PR is audited again on its
+# next push or reopen (a run already bypassed is not replayed).
 _BYPASSED_CAUSES = frozenset({"no-credit"})
 _BYPASS_SHAPE = "badrequesterror: error code: 400"
 
@@ -922,7 +929,7 @@ def _fail_closed(pr_number: str, sha7: str | None, reason: str) -> int:
     if _bypassed(tag, reason):
         (REPORT_DIR / name).write_text(
             f"# PR #{pr_number} audit\n\n**VERDICT: NOT RUN [{tag}], bypassed (ADR 0090, 2026-09-22)**\n\n"
-            f"{reason}\n\n{hint}\n\nNothing was audited and nothing was merged.\n"
+            f"{reason}\n\n{hint}\n\nThe audit did not complete, so nothing here counts as audited, and nothing was merged.\n"
         )
         print(f"::warning title=PR Audit Gate not run [{tag}]::{hint} "
               "Bypassed on the founder's 2026-09-22 call (ADR 0090): this green is NOT an audit "
@@ -1116,7 +1123,9 @@ def run_self_test() -> int:
           "may or may not help" in hint, True)
 
     # The property the classifier must never break: a CANNOT CHECK stays a
-    # non-zero exit whatever it is tagged. The first version of this invariant
+    # non-zero exit whatever it is tagged. [2026-09-22: except the SDK-shaped
+    # no-credit 400, which the bypass checks below pin to 0; every sample here
+    # is the bare term or another cause, so all of them still exit 1.] The first version of this invariant
     # compared the list of tag NAMES and never called _fail_closed, so changing
     # its `return 1` to `return 0` still passed -- a test that cannot fail. This
     # one drives the real function once per tag, with the two side effects
@@ -1143,7 +1152,7 @@ def run_self_test() -> int:
     check("no cause is keyed on a single bare word",
           all(len([w for w in re.split(r"[ _:]+", t.strip()) if w]) >= 2
               for _, terms, _ in _CANNOT_CHECK_CAUSES for t in terms), True)
-    check("_fail_closed returns 1 for every cause it can name, and for an unknown one",
+    check("_fail_closed returns 1 for every cause it can name (bar the SDK-shaped no-credit bypass), and for an unknown one",
           sorted(set(_exits)), [1])
 
     # The bypass (founder, 2026-09-22): only the SDK's own no-credit shape
