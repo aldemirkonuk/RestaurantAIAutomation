@@ -22,7 +22,7 @@ links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[sommelier]]", "[[services]]", "[[
 > **[Correction, 2026-09-18 — superseded, not rewritten]** Everything below documents
 > the **legacy** `Help.tsx` as it stood on 2026-08-26. That component is still on disk
 > and still mounted (`App.tsx:402`, `legacy={<Help />}`), but it no longer renders for
-> any house: `help` is in `useMudavymDesign.ts`'s `ALWAYS_ON_PAGES` (ADR 0160 §111), so
+> any house: `help` is in `useMudavymDesign.ts`'s `LIVE_PAGES` (ADR 0149 row 52 / ADR 0160 §111), so
 > `PageGate` resolves every house to `next={<HelpNext />}` —
 > `apps/web/src/pages/help/next/HelpNext.tsx` plus six pure modules and
 > `useHelpNextData.ts`, built on `feat/page-help` against ADR 0160 §111 / ADR 0149. A
