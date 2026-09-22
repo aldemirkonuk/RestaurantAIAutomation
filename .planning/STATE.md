@@ -36,7 +36,8 @@ Lanes run as parallel git worktrees (`wt-fin-*`), each owning a slice, none
 touching another's files or committing on its own. Detail and lane map:
 [handoff/PROGRESS.md](handoff/PROGRESS.md) §0c.
 
-**Live now, in flight (this lane's PR, not yet merged/deployed):** 16 of the 20
+**Live since 2026-09-22 (#421 `34c33a76a` merged 2026-09-21; served by production from
+`9cfc4e96d`, 2026-09-22T03:41:32Z; proof in LIVE-CHECKLIST "Deploy proof, 2026-09-22"):** 16 of the 20
 `MUDAVYM_PAGES` keys resolve to the Mudavym design for every house in code, no
 `restaurant_feature_flags` row needed — dashboard, orders, receiving_door,
 providers, communications, team, inventory, receipts, documents_reports,
