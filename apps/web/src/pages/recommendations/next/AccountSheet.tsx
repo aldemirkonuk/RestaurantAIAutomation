@@ -127,7 +127,12 @@ export default function AccountSheet({
       <div className="rc-sheet-block">
         <span className="rc-micro">Done</span>
         {done.length === 0 ? (
-          <p className="rc-plain">Nothing on this subject has been ruled off.</p>
+          <p className="rc-why">
+            Not read here when this sheet opens from the Standing leaf — that answer
+            lives on the Done leaf, which this gathering does not load. Open the entry
+            from Done to see what has been ruled off for{' '}
+            <span className="rc-num">{titleCase(subject)}</span>.
+          </p>
         ) : (
           <ul className="rc-excl">
             {done.map((s) => (
