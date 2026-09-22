@@ -561,6 +561,9 @@ jobs:
       - name: The collision helper still catches what it claims to
         run: python3 ./scripts/_od_collisions.py --self-test
 
+      - name: The claims parser rejects an embedded newline instead of silently splitting it
+        run: python3 ./scripts/_claims_parse.py --self-test
+
       - name: A merged-away id resolves, and prose alone still does not
         run: ./scripts/check_od_ids_exist.py --self-test
 
