@@ -872,7 +872,23 @@ settled:**
   offers them snooze for everyone, the whole-rule acts or the catalogue's
   on/off. It still offers them a card's Done and Dismiss: the gateway refuses
   these, and the page puts the card back with the gateway's sentence. The
-  history keeps a name two years.]
+  history keeps a name two years.] [**Round 5, 2026-09-22** (ADR 0191 "Round
+  5", the founder: three "Recommended" picks): a pin, a rating or an
+  assignment is now gated the same way an act is — the platform admin makes
+  none at all; staff change or clear only their own note; owners and
+  managers change or clear anyone's; every note change is audited
+  (`system_audit_log`, `recommendation_note_changed`, each field as
+  `{ from, to, from_by }` — what it replaced and whose note it was). A
+  refused note says the gateway's own sentence and is put back as it was —
+  on the legacy page too, which until the last call said the whole-house
+  dismiss sentence for a refused pin and toasted a refused assignment as
+  done. No page yet darkens a note control ahead of time the way it
+  darkens Restore. `recommendation_actions.created_by`
+  is now cleared on the same two-year sweep as the history's names;
+  `system_audit_log` keeps every name, "an audit trail that forgets who
+  acted is no longer an audit trail" (the founder, verbatim). Acts made
+  before the history existed still name nobody and are still owner/manager
+  only to return — kept as built, on the founder's word.]
 
 **The handoff to sketch 122 (lane `recs-sketch`).** The founder's sketch-120
 feedback (`founder-sketch-decisions-106-115.md:146-151`, batch 3

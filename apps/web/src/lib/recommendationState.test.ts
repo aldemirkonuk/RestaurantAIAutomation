@@ -3,9 +3,11 @@ import {
   DISMISS_CHOICES,
   DISMISS_REASONS,
   NOT_YOUR_ACT_SAID,
+  NOT_YOUR_NOTE_SAID,
   insightActKey,
   mayActForTheHouse,
   maySnoozeForEveryone,
+  noteRefusalOf,
   notYourActOf,
   paperMissOf,
   patchForChoice,
@@ -145,5 +147,30 @@ describe('paperMissOf', () => {
     expect(paperMissOf({ audit: { recorded: false, reason: 'x' }, history: { recorded: true } })).toBe(
       'not written to the house log (x)',
     );
+  });
+
+  it('a note change whose house-log row missed is said too (round 5, noteAudit)', () => {
+    expect(paperMissOf({ audit: null, history: null, noteAudit: { recorded: true, reason: null } })).toBeNull();
+    expect(paperMissOf({ audit: null, history: null, noteAudit: { recorded: false, reason: 'y' } })).toBe(
+      'not written to the house log (y)',
+    );
+  });
+});
+
+describe('noteRefusalOf', () => {
+  it('says the gateway’s own sentence — someone else’s note, or the platform admin’s', () => {
+    const said = 'Only the person who made this note, or an owner or manager, can change or clear it.';
+    expect(
+      noteRefusalOf({ response: { status: 403, data: { statusCode: 403, message: said, code: 'not_your_note' } } }),
+    ).toBe(said);
+    const admin = "A platform admin acts on a house's cards only as an owner or manager of that house.";
+    expect(
+      noteRefusalOf({ response: { status: 403, data: { statusCode: 403, message: admin } } }),
+    ).toBe(admin);
+  });
+
+  it('falls back to the note sentence, never a whole-house dismiss one', () => {
+    expect(noteRefusalOf({ response: { status: 403 } })).toBe(NOT_YOUR_NOTE_SAID);
+    expect(noteRefusalOf(null)).toBe(NOT_YOUR_NOTE_SAID);
   });
 });

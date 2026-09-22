@@ -288,6 +288,27 @@ export interface StateWriteIn {
   reason?: string | null;
   snoozeUntil?: string | null;
   snoozeFor?: string | null;
+  /**
+   * The note fields (round 5, founder 2026-09-22, answer 2 — "Gate like
+   * acts"). `planAct` only reads whether each is PRESENT, to refuse the
+   * platform admin the same as a status write; it does not decide who else
+   * may touch one — that needs the row's current note-authors, which `planAct`
+   * (pure, no DB) cannot read. `RecommendationActionsService` gates the rest.
+   */
+  pinned?: boolean;
+  feedback?: string | null;
+  assignedTo?: string | null;
+  assignedName?: string | null;
+}
+
+/** Whether a patch touches any note field — pin, rating or assignment. */
+export function touchesNotes(patch: StateWriteIn): boolean {
+  return (
+    patch.pinned !== undefined ||
+    patch.feedback !== undefined ||
+    patch.assignedTo !== undefined ||
+    patch.assignedName !== undefined
+  );
 }
 
 /** What one write is recorded as — said back to the client. */
@@ -339,8 +360,16 @@ export type ActRoute =
  * Round 4, answer 7: the platform `admin` role never acts for a house's
  * cards — a dismiss, done, restore or snooze for everyone that would land
  * on the house state is refused (403). Their own snooze hides a card from
- * them alone and acts for nobody else, so it stays; so do notes (pin,
- * rating, assignment), which round 3 already said are not acts.
+ * them alone and acts for nobody else, so it stays.
+ *
+ * Round 5, answer 2 (the founder, 2026-09-22, "Gate like acts"): a note (pin,
+ * rating, assignment) is no longer the exception round 3 and round 4 made it
+ * — the platform admin is refused those too, whole, the same as a status
+ * write. Who ELSE may touch a note they do not own is not decided here: that
+ * needs the row's current note-authors (`pinned_by`/`rated_by`/`assigned_by`,
+ * migration 20260922010000), which this function — pure, no DB — cannot
+ * read. `RecommendationActionsService.assertMayTouchNotes` gates that half,
+ * with `mayTouchNote` below.
  */
 export function planAct(
   patch: StateWriteIn,
@@ -351,7 +380,7 @@ export function planAct(
   const route = routeOf(patch, actor, cardAreas, now);
   if (
     route.to === "house" &&
-    route.status !== undefined &&
+    (route.status !== undefined || touchesNotes(patch)) &&
     isPlatformAdminRole(actor.role)
   )
     return { to: "refused", why: PLATFORM_ADMIN_REFUSAL, forbidden: true };
@@ -523,6 +552,54 @@ export function undoRefusal(unknownAuthor: boolean, n: number): string {
   return unknownAuthor
     ? "It is not recorded who did this, so only an owner or manager can undo it."
     : "Only the person who did this, or an owner or manager, can undo it.";
+}
+
+// ---- Touching someone's note (round 5, answer 2 — "Gate like acts") --------
+
+/** One note field a patch can touch. */
+export type NoteField = "pinned" | "feedback" | "assignment";
+
+/** Which note field(s) a patch touches, for the gate and the audit. */
+export function notesTouchedBy(patch: StateWriteIn): NoteField[] {
+  const out: NoteField[] = [];
+  if (patch.pinned !== undefined) out.push("pinned");
+  if (patch.feedback !== undefined) out.push("feedback");
+  if (patch.assignedTo !== undefined || patch.assignedName !== undefined)
+    out.push("assignment");
+  return out;
+}
+
+/**
+ * Round 5, answer 2 (the founder, 2026-09-22, "Gate like acts"): the platform
+ * admin makes no note at all (`planAct` refuses that whole, before this is
+ * asked); staff change or clear only their own note; owners and managers
+ * change or clear anyone's.
+ *
+ * `isSet` is whether the field CURRENTLY holds a value — an unpinned card, no
+ * rating, no assignee is nothing to protect, so anyone (not the admin) may
+ * make a first note there, whatever `owner` says (a row from before the
+ * author columns existed reads `owner: null` on a field that IS set, and that
+ * case goes to the line below, not this one).
+ *
+ * When the field is set, this is the acts' own rule, reused: `mayUndo`.
+ * `owner: null` on a set field — a note made before the author column
+ * existed, or the row's author was cleared — is not provably anyone's, the
+ * same reading round 4 gave an act with no history row (fails closed).
+ */
+export function mayTouchNote(
+  actor: { userId: string | null; role: string | null },
+  isSet: boolean,
+  owner: string | null,
+): boolean {
+  if (!isSet) return true;
+  return mayUndo(actor, owner);
+}
+
+/** What a refused note change says — the one refusal, per case. */
+export function noteRefusal(n: number): string {
+  return n > 1
+    ? `Only an owner or manager can change or clear someone else's note (${n} in this selection).`
+    : "Only the person who made this note, or an owner or manager, can change or clear it.";
 }
 
 /** One person's own snoozes — `recommendation_personal_snoozes` rows. */

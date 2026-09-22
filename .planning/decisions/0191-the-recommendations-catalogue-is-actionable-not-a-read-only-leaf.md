@@ -1,9 +1,9 @@
 # 0191 — The recommendations catalogue is actionable, not a read-only leaf
 
-- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below. The seven questions round 2 left open were answered the same day too — six answers, built in "Round 3" below. The seven round 3 left open (six here, the seventh — the platform `admin` — in the lane's report) were answered the same day with "Take all seven", built in "Round 4" below.
+- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below. The seven questions round 2 left open were answered the same day too — six answers, built in "Round 3" below. The seven round 3 left open (six here, the seventh — the platform `admin` — in the lane's report) were answered the same day with "Take all seven", built in "Round 4" below. Round 4 left three questions open; the founder answered all three on 2026-09-22 — built in "Round 5" below.
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
-- **Keywords:** recommendations, catalogue, insight catalog, candidate type, on/off, toggle, recommendation_actions, insight prefs, rule toggle, suppression, audited, owner/manager, one-tap acts, CatalogView, InsightCatalog, NEW-434, NEW-707, ADR 0149, firing, fire:week, append-only history, recommendation_action_history, snooze for me, recommendation_personal_snoozes, already handled, not now, area lead hook, undo own acts, not_your_act, platform admin, mayActForTheHouse, retention, two years, recommendation_action_history_forget_old_names, cardKeyOf
+- **Keywords:** recommendations, catalogue, insight catalog, candidate type, on/off, toggle, recommendation_actions, insight prefs, rule toggle, suppression, audited, owner/manager, one-tap acts, CatalogView, InsightCatalog, NEW-434, NEW-707, ADR 0149, firing, fire:week, append-only history, recommendation_action_history, snooze for me, recommendation_personal_snoozes, already handled, not now, area lead hook, undo own acts, not_your_act, platform admin, mayActForTheHouse, retention, two years, recommendation_action_history_forget_old_names, cardKeyOf, notes gated like acts, pinned_by, rated_by, assigned_by, not_your_note, mayTouchNote, recommendation_note_changed, recommendation_actions_forget_old_creators, created_by retention
 - **Links:** [[recommendations]] (page note, §"Forks built on a DEFAULT" — the fork this closes), [[recommendations-catalog]] (legacy page note, addended), `.planning/handoff/PROGRESS.md` §6 (struck), [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] (why the legacy `InsightCatalog.tsx` stays in the tree, untouched), `apps/web/src/pages/recommendations/next/CatalogView.tsx`, `apps/web/src/pages/recommendations/next/rec-catalog.ts`, `apps/api-gateway/src/analytics/analytics.controller.ts` (new `PUT insight-catalog/types/:restaurantId/:candidateKey/toggle`), `apps/api-gateway/src/analytics/recommendation-actions.service.ts`, `apps/api-gateway/src/analytics/insights/suppression.ts` (`insightRuleId`, rule-scope `buildSuppressionKey`). Referenced but not present in this worktree: ADR 0160 §108 (the founder's 2026-09-19 sketch-120 feedback batch, on `train/finish-2`).
 
 ## Context
@@ -481,7 +481,10 @@ chose):
   and returns its receipt (`history`), on the audit contract (never throws;
   the page says "not kept in the history" when it missed). A status write
   with no signed-in person is refused (403): the history names who. Pins,
-  ratings and assignments are notes, not acts, and file nothing. The
+  ratings and assignments are notes, not acts, and file nothing. [Round 5,
+  2026-09-22: still not acts and still no history row, but each note now
+  names its author, needs a signed-in person, and files a `system_audit_log`
+  row — "Gate like acts".] The
   `recommendation_actions` row keeps the latest state, as before.
 - **3 — "Already handled" is done.** `DISMISS_REASONS` is two labels
   (`not_relevant`, `disagree`). The gateway routes a dismissal labelled
@@ -736,7 +739,8 @@ relay's words:
   - `planAct` refuses the admin's dismiss, done, restore or snooze for
     everyone with a 403, before anything is read. Their own snooze and "Not
     now" hide a card from them alone, and a note (pin, rating, assignment)
-    stays a note.
+    stays a note. [Round 5, 2026-09-22: no longer — `planAct` refuses the
+    admin's notes too, a first note included.]
   - The catalogue toggle now takes the token's role and refuses anyone but
     an owner or manager inside the service (`setTypeEnabled`), because the
     route's `RolesGuard` still admits `admin`.
@@ -798,27 +802,280 @@ relay's words:
     (`actor_id`, written by `fileAudit` for both).
 
   Whether "the action history" in answer 6 covers these two as well is put
-  to the founder below. The build did not decide it.
+  to the founder below. The build did not decide it. [Answered 2026-09-22,
+  round 5, answer 3: `created_by` is now cleared on the same two-year sweep;
+  the `system_audit_log` rows keep the id, on the founder's word.]
 - `latestActs` reads a key's whole history newest-first in one request. A
   selection whose history passes 1000 rows before it reaches every key is
   refused (write) or shown as "could not tell" (tabs). It is never guessed.
 
-### Founder questions round 4 leaves open (not decided by the build)
+### Founder questions round 4 left open — all answered 2026-09-22 (round 5)
+
+Moved out of "open": the founder took the "Recommended" option on all three
+(round 6w). Each is answered in "Round 5" below. What each asked, and the
+answer that closed it:
 
 1. **Acts made before the history existed** (every row a house has today)
    name nobody. As built, only an owner or manager can return them. Keep
    that, or trust the state row's `created_by` for rows that have no history
-   row?
+   row? → **Round 5, answer 1: "Owner/manager only (Recommended)" — kept.**
 2. **The platform admin's notes.** As built, a pin, a rating or an assignment
    from the platform admin is still accepted: round 3 called these notes,
    not acts. Refuse them too? The same line decides answer 5 for notes: as
    built, staff may also change or clear a note someone else made (an
    unpin, a reassignment), because the undo gate reads status writes only.
+   → **Round 5, answer 2: "Gate like acts (Recommended)" — both closed; the
+   "as built" above no longer holds.**
 3. **What the two-year rule covers.** As built, it removes names from
    `recommendation_action_history` only. The state row's `created_by` and
    the `system_audit_log` rows of rule-wide acts and toggles keep the id with
    no end (Consequences above). Extend the rule to them, or keep it on the
-   history alone?
+   history alone? → **Round 5, answer 3: "History + created_by
+   (Recommended)" — `created_by` too; `system_audit_log` keeps its own.**
+
+## Round 5 — three of round 4's open questions answered (2026-09-22)
+
+Round 4 left three questions open. They went to the founder as three options,
+each with a "Recommended" pick. He took the recommended pick on all three,
+verbatim as relayed, and the picks are given here as the option labels he
+chose:
+
+1. **Acts made before the history existed name nobody.** "Owner/manager only
+   (Recommended)" — keep as built (round 4): only an owner or manager can
+   return one of them.
+2. **Notes (pin, rating, assignment).** "Gate like acts (Recommended)" — the
+   platform admin is refused; staff change or clear only their own note;
+   owners and managers change or clear anyone's; every note change is
+   audited like an act. Server-side, tested per role, mutation-tested.
+3. **The two-year name rule's reach.** "History + created_by (Recommended)"
+   — also clear `recommendation_actions.created_by` after two years, on the
+   same job and the same schedule as the history rule. `system_audit_log`
+   keeps its own retention: his words, verbatim — **"an audit trail that
+   forgets who acted is no longer an audit trail."**
+
+### What was built
+
+- **1 — kept as built, recorded with why.** No code changed for this answer.
+  Every `recommendation_actions` row a house had before migration
+  `20260921170400` landed (round 3) has no history row, so `authorOf` cannot
+  name who dismissed or completed it, and `mayUndo` falls to owner/manager
+  only (round 4, answer 5). The founder's pick keeps that.
+  - **Why, as he put it in the option and as the build reads it:** it
+    *fails closed* — a gate that cannot name an author defaults to the
+    narrower door, never the wider one, the same rule round 4 already gives
+    an act whose history row missed or whose name the two-year sweep
+    removed. And it is a **small one-time set**: only rows written before
+    round 3 landed are affected; every act made since carries its own
+    history row and its own author, so the gap does not grow. A staff
+    member who dismissed something before round 3 loses Restore on that one
+    old act; an owner or manager can still return it for them.
+- **2 — notes are gated like acts.**
+   - **The platform admin makes no note at all**, the same line round 4
+     drew for a status write. `item-state.ts`'s `planAct` now refuses the
+     admin whenever a patch touches a note field (`touchesNotes`) — pinned,
+     feedback, or an assignment — not only when it carries a status. This
+     closes round 4's open question 2 ("a pin, a rating or an assignment
+     from the platform admin is still accepted"): it no longer is, on a
+     first note or a changed one alike.
+   - **Each note field gets its own author column** —
+     `recommendation_actions.pinned_by`, `.rated_by`, `.assigned_by`
+     (migration `20260922010000`, each `uuid references
+     public.users(user_id) on delete set null`) — set on every write to
+     that field (`RecommendationActionsService.setAction`). This is
+     deliberately **not** `created_by`: round 4's own "Options considered"
+     (#1) rejected using that single shared column for act-authorship,
+     because one row holds many acts and every write overwrites it. The
+     same problem is sharper for notes — one row holds *three* notes plus
+     the status act, all sharing one column — so a rating from an owner
+     would silently take away a staff member's right to unpin their own
+     earlier pin. Proven directly: `recommendation-round5.spec.ts`, "each
+     note field has its own author — a rating from an owner does not make
+     staff's own pin someone else's".
+   - **The gate, `mayTouchNote`** (`item-state.ts`): an UNSET field (an
+     unpinned card, no rating, no assignee) is anyone's — not the admin's —
+     first note to make, whatever a stale author column says. A SET field
+     defers to the acts' own rule, reused: `mayUndo(actor, owner)` — their
+     own, or an owner's or manager's. A SET field with **no recorded
+     author** (a row from before this migration, or one whose author was
+     cleared) is not provably anyone's, so it fails closed to owner/manager
+     only — the same reading answer 1 gives a pre-history act, and for the
+     same reason. An assignment is SET when either half is — `assigned_to`
+     or `assigned_name` — because the pages show the name as the
+     assignment and the gateway takes a name alone (the last call found a
+     name-only assignment readable as unset, so anyone could change it).
+   - **`RecommendationActionsService.assertMayTouchNotes` /
+     `assertMayTouchNotesBulk`** read the row's (or rows') current note
+     authors and run the gate, after `assertMayUndo` and before any write.
+     A single write touching more than one note field is refused **whole**
+     when any one of them is someone else's — the same "half-applied write
+     leaves the page unable to say which half moved" reasoning round 4 gives
+     a bulk act. A bulk selection is refused whole the same way, across
+     every item and every field.
+   - **`assertNamedActor` now also requires a signed-in actor for a
+     note-only write** (previously only a status write needed one) — a note
+     with no actor can never be filed, and the note gate would have nothing
+     to check next time.
+   - **Every note change is audited.** `fileNoteAudit` files one
+     `system_audit_log` row per write (`action: "recommendation_note_changed"`,
+     naming which field(s) changed — each as `{ from, to, from_by }`, the
+     value it replaced, the value it became, and whose note it was before;
+     "like an act", whose rule-wide row says `status: { from, to }` — so an
+     owner clearing a staff member's pin reads back as exactly that; added
+     at the last call, when the row named only the to-values), the same
+     `fileAudit` a rule-wide toggle already uses — "audited" is a
+     `system_audit_log` row in this codebase's own vocabulary (round 2's
+     last call fixed that once already). The receipt returns as `noteAudit`
+     next to the existing `audit` and `history` receipts, on both the
+     single write and the bulk write.
+   - **Refused with a code**, the same pattern as `not_your_act`:
+     `ActRefused`'s `code` gains `"not_your_note"`, so a page can word this
+     one refusal as its own later, without a text match.
+- **3 — `created_by` is kept two years too.**
+   - Migration `20260922010001` adds
+     `recommendation_actions_forget_old_creators()`, which clears
+     `created_by` on every `recommendation_actions` row whose `updated_at`
+     is older than `recommendation_action_history_name_kept_for()` — the
+     **same function** `20260921171100` defined, read rather than restated,
+     so the period still lives in one place. Service role only, the same
+     grants as the history's sweep.
+   - **`RecommendationHistoryRetention.sweep()`** now calls both
+     `forgetOldNames()` and `forgetOldCreators()` on the same daily tick
+     (03:45 UTC), **each its own call, its own try/catch, its own count**
+     (`forgotten`/`error` and `creatorsForgotten`/`creatorsError` on
+     `HistoryRetentionTick`) — one failing must never read as the other's
+     answer, and neither stops the other running. Proven:
+     `recommendation-history-retention.spec.ts`, "one function failing
+     never reads as the other's answer, and does not stop it running".
+   - **`system_audit_log` is deliberately untouched.** The founder's own
+     words are the rationale, recorded verbatim above; the build did not
+     second-guess it. `system_audit_log` is a real audit trail — append-only,
+     purpose-built for who-did-what accountability — where
+     `recommendation_actions.created_by` is a mutable current-state pointer
+     that happens to name a person. The same distinction is why round 4's
+     retention reached the history table but not the audit log, and answer
+     3 extends it to `created_by` without moving that line.
+   - **The clock.** `recommendation_actions` is one row per key, upserted
+     — it has no per-event timestamp the way the history does, only
+     `updated_at`. `setAction` writes `updated_at` on every write and
+     `created_by` in the same upsert whenever the caller has a user id —
+     and every caller does: the write routes sit behind `JwtAuthGuard`,
+     whose `JwtStrategy.validate` always returns the user row's `user_id`,
+     so even an Act deep-link click (`acted: true` alone) names its
+     clicker. For every write the gateway makes today, `created_by` was set
+     exactly when `updated_at` was. Only a row whose `created_by` older code
+     set while bumping `updated_at` without it can be cleared **late** by
+     this clock — never early. [Corrected at the last call: the build first
+     said an Act click bumps `updated_at` without touching `created_by`,
+     and put a "set at" timestamp to the founder on that ground. It does
+     not, for any caller with a user id, so the question fell away.]
+   - **`pinned_by`, `rated_by` and `assigned_by` are NOT cleared by this
+     sweep.** The founder's answer named `created_by`, by that name; those
+     three columns did not exist when he was asked, because they are what
+     answer 2 of this same round introduced. See "Founder questions round 5
+     leaves open" below — not decided by this build.
+
+### Options considered in round 5
+
+1. **Trust `created_by` for a pre-history act's authorship** (answer 1, the
+   un-taken option). Rejected by the founder's pick, and for the reason
+   round 4 already gave rejecting it for acts generally (see round 4,
+   "Options considered", #1): it names the row's last writer, not who made
+   any one act on it.
+2. **Refuse the platform admin's notes only on a change, not a first note**
+   (answer 2, a narrower reading considered and rejected during the build).
+   The founder's option said "the platform admin is refused", not
+   "refused from someone else's note" — read as a blanket rule, matching how
+   round 4 refuses the admin's status writes whole, not only undos. Proven:
+   `recommendation-round5.spec.ts`, "the admin is refused even for a FIRST
+   note on a card nobody has touched".
+3. **One `pinned_by`-style column shared by all three notes** (answer 2).
+   Rejected for the exact reason `created_by` was rejected for acts: one
+   column, three note kinds, every write overwrites it.
+4. **A full `recommendation_note_history` table, mirroring
+   `recommendation_action_history`** (answer 2). Considered and set aside:
+   the acts' history table exists because one `status` column takes many
+   different values over a row's life and an owner/manager needs to see the
+   sequence (`listHistory`, the Dismissed/Done tabs). A note field's
+   *current* author is all the gate needs — the same fact `authorOf` reads
+   off the acts' history is, for a note, already sitting in a plain column.
+   A parallel table would answer a question ("who made this note, ever")
+   the product does not currently ask.
+5. **Clear `pinned_by`/`rated_by`/`assigned_by` on the same sweep as
+   `created_by`** (answer 3). Not done — see "Founder questions round 5
+   leaves open": the founder was not asked about these three, because they
+   did not exist yet when he answered. Building it anyway would be
+   deciding a retention-scope question in his place.
+6. **A single `recommendation_note_changed` audit action per note field**
+   (three actions instead of one) (answer 2). Rejected: a single write can
+   touch more than one field at once (a pin-and-rate in one call), and
+   `changes` already names which field(s) moved — three actions would only
+   split one audited event into several rows for no reader that needs it.
+
+### Consequences of round 5
+
+- **Every note made before this round names nobody**, the same shape as a
+  pre-history act (round 4). Every `pinned`, `feedback` or `assigned_to`
+  value already on a `recommendation_actions` row when migration
+  `20260922010000` lands has `pinned_by`/`rated_by`/`assigned_by` NULL —
+  the row exists, the value exists, but the gate cannot name who set it, so
+  only an owner or manager may change or clear it from here on. A staff
+  member who pinned a card before this round lands loses the ability to
+  unpin it themselves; an owner or manager still can.
+- **`recommendation_actions.created_by` is cleared two years after the
+  row's last write, never early.** Every write today names its caller in
+  the same upsert as `updated_at` (the clock, above); only a row written by
+  older code that bumped `updated_at` without `created_by` can be cleared
+  late. [The last call corrected this bullet: it first blamed Act
+  deep-link clicks, which name their clicker.] Note the clock is the ROW's
+  last write, and the name is its last writer's — `created_by` is not who
+  made any one act or note (round 4, "Options considered", #1).
+- **Three new actor-bearing columns exist with no stated retention.**
+  `pinned_by`, `rated_by`, `assigned_by` are personal data (a `user_id`) on
+  a table with no other end-date for them. Whether they should age out the
+  same way `created_by` now does, or are closer to `system_audit_log`'s
+  "kept, because this IS the accountability record" — is not decided here.
+  See "Founder questions round 5 leaves open".
+- **A note-only write now requires a signed-in actor.** Before this round,
+  `pinned`/`feedback`/`assignedTo` could be written with no `actor.userId`
+  (silently skipping `created_by`); that door is closed.
+- **A write mixing a note field with a status field is now gated on both.**
+  `{ status: "done", pinned: true }` in one call must pass the status gates
+  (rule-wide, undo) *and* the note gate; a refusal on either side refuses
+  the whole write, before anything is written — no half-applied state.
+- **The web surface changed only where the gate would have made it say
+  something false** (added at the last call). The legacy page — what a
+  house sees until the rebuilt one is live — said the whole-house DISMISS
+  sentence for a refused pin, kept the optimistic pin or rating on screen,
+  and toasted "Assigned to …" after a refused assignment. It now says the
+  gateway's own sentence (`noteRefusalOf`, `@/lib/recommendationState`),
+  puts the note back as it was, and says no success
+  (`Recommendations.test.tsx`, round 5). The rebuilt page already put a
+  refused write back with the gateway's sentence (`setDisposition`), and
+  now also says a missed note audit (`paperMissOf` reads `noteAudit`; its
+  bulk bar sends no note). The legacy page reads no receipt at all — not
+  for acts, not for notes — as before this round. Still not
+  built: no page darkens a note control ahead of time the way
+  `undoableByYou` darkens Restore — a `noteEditableByYou`-style flag.
+  Named, not built.
+
+### Founder questions round 5 leaves open (not decided by the build)
+
+1. **Do `pinned_by`, `rated_by` and `assigned_by` age out the same way
+   `created_by` now does?** They did not exist when the founder answered
+   "History + created_by", so his answer cannot be read either way for
+   them. The KVKK-minimisation reasoning behind clearing `created_by`
+   applies to them by the same logic — they are mutable current-state
+   columns, not an audit trail — but his stated rule named `created_by`
+   specifically, and the build did not extend it past what was asked.
+   Clear them on the same two-year sweep, or leave them — like
+   `system_audit_log` — because a note's authorship reads closer to an
+   accountability record than a status pointer does?
+2. [Withdrawn at the last call, 2026-09-22 — its premise was wrong. It
+   asked whether an Act deep-link click, "which needs no actor", holding
+   `created_by`'s clearing open called for a "set at" timestamp. Every
+   write route is `JwtAuthGuard`-only and `JwtStrategy.validate` always
+   returns a `user_id`, so that click names its clicker in the same upsert
+   that bumps `updated_at`: there is no gap for a founder to rule on.]
 
 ## Review trail
 
@@ -835,3 +1092,6 @@ relay's words:
 | 2026-09-21 | founder (relayed to lane `recs4`) | Answered round 3's seven questions, verbatim as relayed: "Take all seven" — (1) firing = the rule's own period, confirmed; (2) "Not now" = 1 day unless a time is picked, confirmed; (3) the legacy quick Dismiss, `d` key and bulk Dismiss are that personal Not now, confirmed; (4) legacy Done and "Already handled" act on the card's item key; (5) staff undo only their own acts, owners/managers anyone's; (6) names kept 2 years, then removed or pseudonymised, the act kept; (7) the platform `admin` never acts for a house's cards unless also its owner or manager. |
 | 2026-09-21 | — | Round 4 built in lane `recs4` (`wt-recs-cat`): the undo gate (`holdsAnAct`, `authorOf`, `mayUndo`, `assertMayUndo`, `undoableByYou`, `not_your_act`), `mayActForTheHouse` without `admin` (gateway, toggle, web), the legacy page's `cardKeyOf`, migration `20260921171100` + `RecommendationHistoryRetention`; round 4's two open questions written above [a third, what the two-year rule covers, was added at round 4's last call]. |
 | 2026-09-21 | last call (Opus), round 4 | Amended before merge, docs only: (1) the two-year rule clears `recommendation_action_history.actor_id` only; `recommendation_actions.created_by` and the `system_audit_log` rows of rule-wide acts and toggles keep the id with no end. This is now said under Consequences and put to the founder as question 3. (2) Question 2 now also says that, as built, staff may change a note someone else made, because the undo gate reads status writes only. (3) The page note's round-4 bracket said the admin "is offered no house act"; the new feed still offers a card's Done and Dismiss, which the gateway refuses, and the bracket now says so. Re-run on the staged tree: 5 gateway suites (121 tests) and 17 web files (313 tests) green. Two mutations, both killed: `authorOf` without its status match (2 tests), and the legacy Done on the rule key (1 test). |
+| 2026-09-22 | founder (relayed to lane `recs5`, round 6w) | Answered round 4's three open questions, each as a "Recommended" option, all three taken verbatim as relayed: (1) "Owner/manager only (Recommended)" — keep as built, record why (fails closed; a small one-time set); (2) "Gate like acts (Recommended)" — the platform admin is refused, staff change or clear only their own notes, owners/managers any, every note change audited like an act, server-side, tested per role, mutation-tested; (3) "History + created_by (Recommended)" — also clear `recommendation_actions.created_by` on the same two-year job as the history rule; `system_audit_log` keeps its own retention — "an audit trail that forgets who acted is no longer an audit trail." |
+| 2026-09-22 | — | Round 5 built in lane `recs5` (`wt-recs-cat`): `pinned_by`/`rated_by`/`assigned_by` + the note gate (`touchesNotes`, `mayTouchNote`, `noteRefusal`, `assertMayTouchNotes(Bulk)`, `not_your_note`, `recommendation_note_changed` → `noteAudit`), migrations `20260922010000` and `20260922010001`, `RecommendationHistoryRetention.forgetOldCreators()` on the same daily tick as `forgetOldNames()`; round 5's two open questions written above [the second withdrawn at the last call]. Two pre-existing CLAIMS rows (`ADR-0191-R3-EVERY-ACT-IS-KEPT`, `ADR-0191-R4-NAMES-KEPT-TWO-YEARS`) had their `verify` text repaired in place — a shared `assertNamedActor` condition and a `forgetOldNames` refactor (its count parsing moved into a shared `parseCount`; the RPC call itself stays literal) changed the literal code shape their greps matched; the claims they check were re-confirmed true, not reworded. |
+| 2026-09-22 | last call (Opus), round 5 | Amended before merge: (1) a name-only assignment (`assigned_name` set, `assigned_to` null) read as unset, so staff could change or clear someone else's — `noteOwnershipFrom` now reads either half as set; (2) the note audit named only the to-values — each field is now `{ from, to, from_by }`, like an act's row; (3) the legacy page, what houses see, worded a refused pin as the whole-house dismiss sentence, kept the refused note on screen and toasted a refused assignment as done — fixed, with `noteRefusalOf`; the rebuilt page now reads `noteAudit` for a missed house-log row (the legacy page reads no receipt, as before); (4) round 4's open questions and the round 3/4 sentences the answers made false are bracketed, not rewritten; (5) the "Act click bumps `updated_at` without `created_by`" clock gap was false — every write route is `JwtAuthGuard`-only and names its caller in the same upsert — so the migration comment, the ADR and round 5's question 2 are corrected and that question withdrawn. Fixes (1)-(3) mutation-tested: 8 mutations, all killed. |

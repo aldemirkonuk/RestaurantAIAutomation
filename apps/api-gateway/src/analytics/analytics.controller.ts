@@ -91,8 +91,9 @@ function parseHorizon(raw?: string): number | undefined {
 /**
  * A recommendation write that was not made (ADR 0191): 403 when the actor may
  * not make it, 400 when it is malformed. A refusal that carries a code — an
- * undo of someone else's act, round 4 — says it in the body next to the
- * sentence, so a page can word that one refusal as its own.
+ * undo of someone else's act (round 4, `not_your_act`), or a change or clear
+ * of someone else's note (round 5, `not_your_note`) — says it in the body
+ * next to the sentence, so a page can word that one refusal as its own.
  */
 function refusedAct(error: ActRefused): HttpException {
   const status = error.forbidden ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST;
@@ -1126,7 +1127,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Set a recommendation's disposition (NEW-284…NEW-298)",
     description:
-      "Body: { ruleKey, status?, reason?, snoozeUntil?, snoozeFor?, pinned?, acted?, feedback?, snapshot? }. Upserts the state of one item so it survives recompute and holds on every surface (ADR 0191). A dismissal needs a reason label (not_relevant|disagree); 'already_handled' is recorded as done and 'not_now' as the caller's own snooze (round 3). A snooze needs a future snoozeUntil; snoozeFor 'me' hides the card from the caller alone, 'house' from everyone (owner/manager only — 403 otherwise); absent, a staff snooze is the caller's own. A RULE-WIDE dismiss or restore (a key with no subject and no period) is owner/manager only — 403 otherwise — and files a system_audit_log row whose receipt comes back as `audit`. Every house status write is kept in the append-only history (receipt `history`); `recordedAs` says what the write became. Round 4: a status write over someone else's act (dismissed, done, or snoozed for everyone) is theirs or an owner's/manager's to make — 403 with code `not_your_act` otherwise; the platform admin makes no house act (403). The actor is the authenticated caller; a body `createdBy` is ignored.",
+      "Body: { ruleKey, status?, reason?, snoozeUntil?, snoozeFor?, pinned?, acted?, feedback?, assignedTo?, assignedName?, snapshot? }. Upserts the state of one item so it survives recompute and holds on every surface (ADR 0191). A dismissal needs a reason label (not_relevant|disagree); 'already_handled' is recorded as done and 'not_now' as the caller's own snooze (round 3). A snooze needs a future snoozeUntil; snoozeFor 'me' hides the card from the caller alone, 'house' from everyone (owner/manager only — 403 otherwise); absent, a staff snooze is the caller's own. A RULE-WIDE dismiss or restore (a key with no subject and no period) is owner/manager only — 403 otherwise — and files a system_audit_log row whose receipt comes back as `audit`. Every house status write is kept in the append-only history (receipt `history`); `recordedAs` says what the write became. Round 4: a status write over someone else's act (dismissed, done, or snoozed for everyone) is theirs or an owner's/manager's to make — 403 with code `not_your_act` otherwise; the platform admin makes no house act (403). Round 5: a note (pinned, feedback, assignedTo/assignedName) is gated the same way — the platform admin is refused, staff change or clear only their own note, owners/managers any (403 with code `not_your_note` otherwise), and every note change files its own system_audit_log row (receipt `noteAudit`). The actor is the authenticated caller; a body `createdBy` is ignored.",
   })
   async setRecommendationAction(
     @Param("restaurantId") restaurantId: string,
@@ -1178,6 +1179,7 @@ export class AnalyticsController {
         ...(out.row ?? { ruleKey: body.ruleKey }),
         audit: out.audit,
         history: out.history,
+        noteAudit: out.noteAudit,
         recordedAs: out.recordedAs,
         personal: out.personal,
       };
@@ -1196,7 +1198,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Bulk-set disposition on many cards (NEW-293)",
     description:
-      "Body: { items: [{ ruleKey, snapshot? }], status?, reason?, snoozeUntil?, snoozeFor?, pinned? }. Same rules as the single write; a selection holding any rule-wide dismiss or restore, or a snooze for everyone, is refused whole (403) for anyone but an owner/manager, before anything is written; so is one holding someone else's act for staff (code `not_your_act`, round 4). Returns { updated, audit: { recorded, missed }, history: { recorded, missed }, snoozedForYou }.",
+      "Body: { items: [{ ruleKey, snapshot? }], status?, reason?, snoozeUntil?, snoozeFor?, pinned? }. Same rules as the single write; a selection holding any rule-wide dismiss or restore, or a snooze for everyone, is refused whole (403) for anyone but an owner/manager, before anything is written; so is one holding someone else's act for staff (code `not_your_act`, round 4) or someone else's note (code `not_your_note`, round 5). Returns { updated, audit: { recorded, missed }, history: { recorded, missed }, noteAudit: { recorded, missed }, snoozedForYou }.",
   })
   async bulkRecommendationAction(
     @Param("restaurantId") restaurantId: string,

@@ -365,6 +365,10 @@ function db(
         data: { ...payload, updated_at: "2026-09-21T12:00:00.000Z" },
         error: null,
       });
+      // Round 5: no fixture here carries a note-author column, so every key
+      // reads as unowned (NO_NOTES) — correct for every round-3 case, none
+      // of which exercises a note someone else already made.
+      b.maybeSingle = async () => ({ data: null, error: null });
       b.insert = async (p: any) => {
         calls.push({ table, op: "insert", payload: p });
         return {
@@ -518,6 +522,7 @@ describe("answer 4 at the door: a staff snooze is 'Only them'", () => {
       updated: 2,
       audit: { recorded: 0, missed: 0 },
       history: { recorded: 0, missed: 0 },
+      noteAudit: { recorded: 0, missed: 0 },
       snoozedForYou: 2,
     });
     expect(house(calls)).toEqual([]);

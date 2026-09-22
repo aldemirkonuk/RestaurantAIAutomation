@@ -51,7 +51,7 @@ import { useToast } from "../contexts/ToastContext";
 import { Header } from "../components/layout/Header";
 import { getTeamMembers } from "../services/api/team";
 import { apiClient, getErrorMessage } from "../services/api/client";
-import { NOT_YOUR_ACT_SAID, notYourActOf } from "../lib/recommendationState";
+import { NOT_YOUR_ACT_SAID, noteRefusalOf, notYourActOf } from "../lib/recommendationState";
 
 type Urgency = "now" | "this_week" | "this_month";
 type Status = "active" | "dismissed" | "snoozed" | "done";
@@ -321,14 +321,16 @@ export default function Recommendations() {
   /**
    * One write. Resolves with what the gateway answered, or `ok: false` when
    * it did not land. A 403 is a permanent refusal, said as the founder's
-   * sentence (`refusal`), not as "try again" (ADR 0191 round 3, answer 5).
+   * sentence (`refuse`), not as "try again" (ADR 0191 round 3, answer 5).
    */
   const patchAction = useCallback(
     async (
       ruleKey: string,
       patch: Record<string, unknown>,
       snapshot?: unknown,
-      refusal: string = WHOLE_HOUSE_REFUSAL,
+      // A sentence, or — for a note (round 5) — a reader of the refusal, so a
+      // refused pin says the gateway's own words, never a dismiss sentence.
+      refuse: string | ((e: unknown) => string) = WHOLE_HOUSE_REFUSAL,
     ): Promise<{ ok: boolean; data?: unknown }> => {
       if (!restaurantId) return { ok: false };
       try {
@@ -342,6 +344,7 @@ export default function Recommendations() {
         const status = (e as { response?: { status?: number } } | null)?.response?.status;
         // Round 4, answer 5: an undo of someone else's act is its own refusal,
         // said in the gateway's sentence — not the whole-house one.
+        const refusal = typeof refuse === "function" ? refuse(e) : refuse;
         toast.error(
           status === 403 ? (notYourActOf(e) ?? refusal) : "Couldn't save that — try again",
         );
@@ -447,20 +450,25 @@ export default function Recommendations() {
     loadActive();
   };
 
+  // A note (pin, rating, assignment) is gated like an act since ADR 0191
+  // round 5: someone else's is refused (403, `not_your_note`), and so is any
+  // from the platform admin. A refused note is put back as it was — the page
+  // never shows a pin the gateway did not keep.
+  const putBack = (rec: Card, fields: Partial<Card>) =>
+    setRecs((prev) => prev.map((r) => (r.ruleKey === rec.ruleKey ? { ...r, ...fields } : r)));
+
   const doPin = async (rec: Card) => {
     const next = !rec.pinned;
-    setRecs((prev) =>
-      prev.map((r) => (r.ruleKey === rec.ruleKey ? { ...r, pinned: next } : r)),
-    );
-    await patchAction(rec.ruleKey, { pinned: next }, snapshotOf(rec));
+    putBack(rec, { pinned: next });
+    const { ok } = await patchAction(rec.ruleKey, { pinned: next }, snapshotOf(rec), noteRefusalOf);
+    if (!ok) putBack(rec, { pinned: rec.pinned });
   };
 
   const doFeedback = async (rec: Card, value: "helpful" | "not_helpful") => {
     const next = rec.feedback === value ? null : value;
-    setRecs((prev) =>
-      prev.map((r) => (r.ruleKey === rec.ruleKey ? { ...r, feedback: next } : r)),
-    );
-    await patchAction(rec.ruleKey, { feedback: next }, snapshotOf(rec));
+    putBack(rec, { feedback: next });
+    const { ok } = await patchAction(rec.ruleKey, { feedback: next }, snapshotOf(rec), noteRefusalOf);
+    if (!ok) putBack(rec, { feedback: rec.feedback });
   };
 
   const openAssign = useCallback(async (ruleKey: string) => {
@@ -486,11 +494,17 @@ export default function Recommendations() {
       ),
     );
     setAssignFor(null);
-    await patchAction(
+    const { ok } = await patchAction(
       rec.ruleKey,
       { assignedTo: member?.id ?? null, assignedName: member?.display_name ?? null },
       snapshotOf(rec),
+      noteRefusalOf,
     );
+    if (!ok) {
+      // Refused or failed: say nothing was assigned, and show what is kept.
+      putBack(rec, { assignedTo: rec.assignedTo, assignedName: rec.assignedName });
+      return;
+    }
     toast.success(member ? `Assigned to ${member.display_name}` : "Assignment cleared");
   };
 

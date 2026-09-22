@@ -328,3 +328,57 @@ describe('legacy /recommendations — round 4, answer 5: staff undo only their o
     expect(toast.error).not.toHaveBeenCalledWith(WHOLE_HOUSE_REFUSAL);
   });
 });
+
+/**
+ * ADR 0191 round 5 (the founder, 2026-09-22, "Gate like acts"): a pin, a
+ * rating or an assignment is gated the way an act is — someone else's is
+ * refused (403, `not_your_note`), and any from the platform admin. This page
+ * is what a house sees, so a refused note must say the gateway's words (never
+ * the whole-house dismiss sentence), be put back as it was, and never be
+ * followed by a success toast.
+ */
+describe('legacy /recommendations — round 5, answer 2: someone else’s note', () => {
+  const SAID = 'Only the person who made this note, or an owner or manager, can change or clear it.';
+  const refuse = () =>
+    api.post.mockRejectedValue({
+      response: { status: 403, data: { statusCode: 403, message: SAID, code: 'not_your_note' } },
+    });
+
+  it('a refused unpin says the gateway’s sentence and the card stays pinned', async () => {
+    refuse();
+    serve([{ ...REC, pinned: true }]);
+    mount();
+    await screen.findByText(REC.observation);
+    expect(screen.getByText('Pinned')).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('Pin to top'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(SAID));
+    expect(toast.error).not.toHaveBeenCalledWith(WHOLE_HOUSE_REFUSAL);
+    expect(actionPosts()[0][1]).toMatchObject({ pinned: false });
+    await waitFor(() => expect(screen.getByText('Pinned')).toBeInTheDocument());
+  });
+
+  it('a refused rating is put back as it was', async () => {
+    refuse();
+    serve([{ ...REC, feedback: 'helpful' }]);
+    mount();
+    await screen.findByText(REC.observation);
+    fireEvent.click(screen.getByTitle('Not helpful'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(SAID));
+    await waitFor(() => expect(screen.getByTitle('Helpful').className).toMatch(/text-emerald-600/));
+    expect(screen.getByTitle('Not helpful').className).not.toMatch(/text-rose-600/);
+  });
+
+  it('a refused clear of someone else’s assignment says so — no "Assignment cleared", the name stays', async () => {
+    refuse();
+    serve([{ ...REC, assignedTo: 'u-cook', assignedName: 'Cook' }]);
+    mount();
+    const card = await screen.findByText(REC.observation);
+    fireEvent.contextMenu(card, { clientX: 10, clientY: 10 });
+    fireEvent.click(await screen.findByRole('button', { name: /Assigned: Cook/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Clear assignment/ }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(SAID));
+    expect(actionPosts()[0][1]).toMatchObject({ assignedTo: null, assignedName: null });
+    expect(toast.success).not.toHaveBeenCalledWith('Assignment cleared');
+    expect(await screen.findByText('Cook')).toBeInTheDocument();
+  });
+});
