@@ -86,12 +86,12 @@ describe('AccountSheet', () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/analytics/insights/r1'));
   });
 
-  it('says "only this entry" and "nothing ruled off" when no sibling shares the subject', () => {
+  it('says "only this entry" and admits Done was not loaded when no sibling shares the subject', () => {
     api.get.mockResolvedValue({ data: { insights: [] } });
     const e = entry();
     renderSheet(<AccountSheet entry={e} siblings={[e]} onClose={vi.fn()} />);
     expect(screen.getByText('Only this entry, today.')).toBeInTheDocument();
-    expect(screen.getByText('Nothing on this subject has been ruled off.')).toBeInTheDocument();
+    expect(screen.getByText(/Not read here when this sheet opens from the Standing leaf/i)).toBeInTheDocument();
   });
 
   it('filters the stored feed to this subject and renders its sentences once read', async () => {
