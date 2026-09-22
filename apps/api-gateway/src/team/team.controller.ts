@@ -452,21 +452,27 @@ export class TeamController {
     const audience: "everyone" | "selected" = named ? "selected" : "everyone";
 
     /**
-     * AWAY: A MESSAGE TO A NAMED PERSON WAITS (ADR 0218, the founder's round-2
-     * answer 3, 2026-09-21: a message sent to a person who is Away waits until
-     * they are back, and the sender sees "away until <date>").
+     * AWAY: A MESSAGE — NAMED OR TO EVERYONE — WAITS (ADR 0218, the founder's
+     * round-2 answer 3, 2026-09-21, extended to a whole-crew send by round-3
+     * answer 1, 2026-09-22: *"Wait like named"* — a person who is Away gets
+     * nothing now, whichever audience the sender chose, and the sender sees
+     * "away until <date>").
      *
-     * Only a NAMED send is held. A send to everyone is already routed by the
-     * funnel, which skips an Away person's inbox row; its push leg is listed
-     * in ADR 0218 "Owed". A held person gets nothing now (no inbox row, no
-     * push); `AwayReleaseService` delivers it when they are back, outside
-     * their quiet hours. An unreadable Away register holds nothing and says
-     * so in `away.readable`; a hold that cannot be written is sent now instead
-     * of dropped, and `away.holdFailed` says that.
+     * BOTH audiences are held the same way, through the same table and the
+     * same `AwayReleaseService` sweep: an Away person included in "everyone"
+     * is no longer just skipped by the funnel (which drops them for good) —
+     * their copy of the message is written to `house_away_held` and delivered
+     * on their first day back, outside their quiet hours, exactly like a
+     * named send. A held person gets nothing now (no inbox row, no push). An
+     * unreadable Away register holds nothing and says so in `away.readable`
+     * (round-3 answer 2, 2026-09-22: *"Send now"* — unchanged, nothing lost or
+     * late, the same rule the alert funnel already uses); a hold that cannot
+     * be written is sent now instead of dropped, and `away.holdFailed` says
+     * that.
      */
     const heldChannels = (["inbox", "push"] as const).filter((c) => may(c));
     let awayUntil: Map<string, string> | null = new Map();
-    if (named && this.awayHold && heldChannels.length > 0) {
+    if (this.awayHold && heldChannels.length > 0) {
       awayUntil = await this.awayHold.awayToday(rid);
     }
     const split = splitForAway(targets, (m: any) => m.user_id, awayUntil ?? new Map());
@@ -510,9 +516,13 @@ export class TeamController {
       return !optOuts.optedOut[channel].has(m.user_id);
     };
 
-    // Always land in the in-app inbox — but ONLY the addressed members' inboxes
-    // when the caller named targets. A renewal request addressed to one person
-    // must never read as a restaurant-wide announcement (team-audit.md).
+    // Always land in the in-app inbox — but ONLY the people this send reaches
+    // NOW (`userIds`, from `reachNow`): the addressed members' inboxes when
+    // the caller named targets, and everyone reachable when they did not,
+    // MINUS whoever this round just held for their return (round-3 answer 1).
+    // A renewal request addressed to one person must never read as a
+    // restaurant-wide announcement (team-audit.md), and a held person's inbox
+    // row is written once, by the release, not twice.
     if (may("inbox"))
       await this.notifications.persistForRestaurant(
         rid,
@@ -524,7 +534,7 @@ export class TeamController {
           actionUrl: "/team",
           actionLabel: "Open Team",
         },
-        named ? { onlyUserIds: userIds } : {},
+        { onlyUserIds: userIds },
       );
 
     // `reachNow`, never `targets`: a person held for their return is pushed
@@ -643,10 +653,11 @@ export class TeamController {
       texted,
       inbox: may("inbox"),
       /**
-       * Who this message waits for (ADR 0218): each held person's last Away
-       * day and the sentence the sender reads. `readable: false` means Away
-       * could not be read and nothing was held; `holdFailed` means the hold
-       * could not be written and they were sent it now instead.
+       * Who this message waits for (ADR 0218, round 3: named or everyone,
+       * the same way): each held person's last Away day and the sentence the
+       * sender reads. `readable: false` means Away could not be read and
+       * nothing was held; `holdFailed` means the hold could not be written
+       * and they were sent it now instead.
        */
       away: {
         readable: awayUntil !== null,

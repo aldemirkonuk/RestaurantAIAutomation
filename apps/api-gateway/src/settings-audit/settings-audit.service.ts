@@ -122,6 +122,48 @@ export const READ_BACK_ACTIONS = [
   "away_ended_for_member",
 ] as const;
 
+/**
+ * ADR 0218 rows about a PERSON that a reader who is not an owner or manager of
+ * the house never receives from this trail. Each one names a colleague, and
+ * the rulings say staff do not read them:
+ *
+ * - `area_*`: staff see only their own area memberships (round 1);
+ * - `away_*`: staff are not told who set a colleague's Away dates (round 2
+ *   answer 5), and a colleague's Away reaches staff only once it is under
+ *   way, "enforced server-side in the API response" (round 3 answer 3,
+ *   2026-09-22, "Only once under way"). A row here carries the colleague's
+ *   name, their dates before they start, and who set them.
+ *
+ * `GET /settings-audit` is behind the token and the tenant only, with no role
+ * gate, so `GET /house/away` withholding an upcoming window would mean
+ * nothing if this trail handed the same dates to the same reader. No staff
+ * page reads the trail today (`/team` draws My shifts for staff), so this
+ * withholds nothing a staff surface shows. `house_area_changed` (a rename or
+ * a switch-off) names no person and stays, as before.
+ */
+export const STAFF_WITHHELD_ACTIONS = [
+  "area_member_added",
+  "area_member_removed",
+  "area_lead_granted",
+  "area_lead_removed",
+  "away_set_for_member",
+  "away_ended_for_member",
+] as const;
+
+/**
+ * The actions one reader may read back. The role is the token's role in the
+ * token's house (ADR 0162); anything but `owner` or `manager` — `admin`, an
+ * unknown value, none at all — reads as staff, the direction that cannot
+ * show a colleague's Away early (the same rule `areas/house-areas.controller`
+ * `actorOf` applies: `admin` does not widen an area gate).
+ */
+export function readBackActionsFor(role: unknown): string[] {
+  const r = typeof role === "string" ? role.toLowerCase() : "";
+  if (r === "owner" || r === "manager") return [...READ_BACK_ACTIONS];
+  const withheld = new Set<string>(STAFF_WITHHELD_ACTIONS);
+  return READ_BACK_ACTIONS.filter((a) => !withheld.has(a));
+}
+
 export type SettingsAuditAction = (typeof SETTINGS_AUDIT_ACTIONS)[number];
 
 /** `{ from, to }` for one field. `from` absent means the field had no value. */
@@ -282,11 +324,16 @@ export class SettingsAuditService {
    * because it lives inside the `changes` jsonb and a `->>` filter on a column
    * with no index would scan. The row cap is applied first either way, so the
    * filter narrows a page rather than searching the table.
+   *
+   * `readerRole` decides which actions are read at all (`readBackActionsFor`):
+   * the rows a staff reader may not see are left out of the QUERY, so the row
+   * cap counts only what they may read. Omitted, it reads as staff.
    */
   async list(
     restaurantId: string,
     limit = 50,
     register?: SettingsRegister,
+    readerRole?: unknown,
   ): Promise<SettingsAuditReadout> {
     const capped = Math.max(1, Math.min(200, Math.floor(limit) || 50));
     const empty: SettingsAuditReadout = {
@@ -304,7 +351,7 @@ export class SettingsAuditService {
         .from("system_audit_log")
         .select("id, actor_id, action, entity_type, entity_id, changes, created_at")
         .eq("restaurant_id", restaurantId)
-        .in("action", READ_BACK_ACTIONS as unknown as string[])
+        .in("action", readBackActionsFor(readerRole))
         .order("created_at", { ascending: false })
         .limit(capped);
       if (error) {

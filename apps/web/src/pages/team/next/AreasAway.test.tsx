@@ -381,26 +381,49 @@ describe('staff see a colleague’s quiet Away marker (round-2 answer 5)', () =>
     windows: [
       { userId: 'u-me', from: '2026-09-21', until: '2026-09-23', activeNow: true, setBySelf: true, name: 'Ayşe' },
       { userId: 'u2', from: '2026-09-21', until: '2026-09-28', activeNow: true, name: 'Mert' },
+      // A staff reader never meets this one at all (round-3 answer 3,
+      // 2026-09-22): it has not started. Present in the fixture to prove the
+      // card withholds it even if a future response ever carried it.
       { userId: 'u3', from: '2026-10-02', until: '2026-10-05', activeNow: false, name: 'Can' },
     ],
     ...over,
   });
 
-  it('draws each colleague’s marker with their name and dates, and leaves the reader’s own to their card', () => {
+  it('draws an under-way colleague’s marker with their name and dates, and leaves the reader’s own to their card', () => {
     render(wrap(<HouseAwayCard away={readout()} failed={false} selfId="u-me" />));
     expect(screen.getByText('Mert')).toBeTruthy();
     expect(screen.getByText(/Away until/)).toBeTruthy();
-    expect(screen.getByText('Can')).toBeTruthy();
-    expect(screen.getByText(/Away from/)).toBeTruthy();
     expect(screen.queryByText('Ayşe')).toBeNull();
-    expect(document.body.querySelectorAll('.mdv-away')).toHaveLength(2);
+    expect(document.body.querySelectorAll('.mdv-away')).toHaveLength(1);
     // Dates only: no reason and no "set by".
     expect(document.body.textContent).not.toMatch(/because|reason|sick|set by/i);
   });
 
-  it('draws nothing while nobody else is away', () => {
+  it('never draws a colleague’s window that has not started yet (round-3 answer 3, 2026-09-22)', () => {
+    render(wrap(<HouseAwayCard away={readout()} failed={false} selfId="u-me" />));
+    expect(screen.queryByText('Can')).toBeNull();
+    expect(screen.queryByText(/Away from/)).toBeNull();
+  });
+
+  it('draws an owner or manager’s upcoming colleague window too — only staff wait for it to start', () => {
+    render(
+      wrap(
+        <HouseAwayCard
+          away={readout({ role: 'manager', canManage: true })}
+          failed={false}
+          selfId="u-me"
+        />,
+      ),
+    );
+    expect(screen.getByText('Mert')).toBeTruthy();
+    expect(screen.getByText('Can')).toBeTruthy();
+    expect(screen.getByText(/Away from/)).toBeTruthy();
+    expect(document.body.querySelectorAll('.mdv-away')).toHaveLength(2);
+  });
+
+  it('draws nothing while no colleague’s window is one a staff reader may see', () => {
     const { container } = render(
-      wrap(<HouseAwayCard away={readout({ windows: [readout().windows[0]] })} failed={false} selfId="u-me" />),
+      wrap(<HouseAwayCard away={readout({ windows: [readout().windows[0], readout().windows[2]] })} failed={false} selfId="u-me" />),
     );
     expect(container.textContent).toBe('');
   });
@@ -410,7 +433,7 @@ describe('staff see a colleague’s quiet Away marker (round-2 answer 5)', () =>
     expect(screen.getByRole('alert').textContent).toMatch(/unknown/);
   });
 
-  it('says the names could not be read rather than drawing nameless markers', () => {
+  it('says the names could not be read rather than drawing nameless markers, counting only what a staff reader may see', () => {
     render(
       wrap(
         <HouseAwayCard
@@ -423,8 +446,29 @@ describe('staff see a colleague’s quiet Away marker (round-2 answer 5)', () =>
         />,
       ),
     );
-    expect(screen.getByRole('alert').textContent).toMatch(/2 colleagues .* names could not be read/);
+    // Only the one under-way colleague (u2) counts for a staff reader; u3
+    // (upcoming) is withheld before the count is taken, and never says
+    // "about to be" for staff.
+    expect(screen.getByRole('alert').textContent).toMatch(/One colleague is away, but the names could not be read/);
     expect(document.body.querySelector('.mdv-away')).toBeNull();
+  });
+
+  it('says "or about to be" for an owner or manager, whose count includes the upcoming window', () => {
+    render(
+      wrap(
+        <HouseAwayCard
+          away={readout({
+            role: 'manager',
+            canManage: true,
+            namesReadable: false,
+            windows: readout().windows.map((w) => ({ ...w, name: null })),
+          })}
+          failed={false}
+          selfId="u-me"
+        />,
+      ),
+    );
+    expect(screen.getByRole('alert').textContent).toMatch(/2 colleagues are away or about to be/);
   });
 });
 

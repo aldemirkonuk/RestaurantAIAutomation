@@ -210,6 +210,13 @@ export function AwayCard({
  * meets a colleague's name at all: one quiet line per person, the same marker
  * the roster draws. Nothing is drawn while nobody else is away. A failed read
  * says so — never an empty card that reads as "nobody is away".
+ *
+ * ONLY ONCE UNDER WAY (round-3 answer 3, 2026-09-22). Owners and managers
+ * still see a colleague's Away before it starts; staff see it only once it
+ * is under way. The gateway is what actually withholds an upcoming
+ * colleague's window from a staff reader (`house-areas.service.ts
+ * listAway`) — this filter mirrors that same rule, the way `mayChangeAway`
+ * is mirrored in `services/api/areas.ts`, never the only place it runs.
  */
 export function HouseAwayCard({
   away,
@@ -231,14 +238,21 @@ export function HouseAwayCard({
     );
   }
   if (away === null) return null;
-  const others = away.windows.filter((w) => w.userId !== selfId);
+  // Round-3 answer 3 (2026-09-22): a colleague's window that has not started
+  // yet is for owners and managers only. The gateway already withholds it
+  // from a staff reader; this mirrors the same rule rather than trusting
+  // that alone.
+  const others = away.windows.filter(
+    (w) => w.userId !== selfId && (away.canManage || w.activeNow),
+  );
   if (others.length === 0) return null;
   if (away.namesReadable === false) {
+    const soon = away.canManage ? ' or about to be' : '';
     return (
       <Card title="Away in the house">
         <p className="tm-alert" role="alert" style={{ margin: 0 }}>
-          {others.length === 1 ? 'One colleague is' : `${others.length} colleagues are`} away or
-          about to be, but the names could not be read.
+          {others.length === 1 ? 'One colleague is' : `${others.length} colleagues are`} away
+          {soon}, but the names could not be read.
         </p>
       </Card>
     );

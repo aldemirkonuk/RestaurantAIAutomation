@@ -1,6 +1,9 @@
 import { Logger } from "@nestjs/common";
 import {
+  READ_BACK_ACTIONS,
+  readBackActionsFor,
   SETTINGS_RECORDING_SINCE,
+  STAFF_WITHHELD_ACTIONS,
   SettingsAuditService,
 } from "./settings-audit.service";
 
@@ -220,5 +223,127 @@ describe("SettingsAuditService.list", () => {
     const out = await new SettingsAuditService(databaseService).list("rest-1", 50, "features");
     expect(out.entries).toHaveLength(1);
     expect(out.entries[0].register).toBe("features");
+  });
+});
+
+/**
+ * ADR 0218, round 3 answer 3 (2026-09-22, "Only once under way"): a
+ * colleague's Away reaches staff only while it is happening, enforced in the
+ * API response. `GET /settings-audit` has no role gate, so a manager setting
+ * a colleague Away from next week would hand staff the dates — and who set
+ * them — through this trail unless the query itself leaves those rows out.
+ * The fake below honours `.in("action", …)` the way Postgres does, so the
+ * test fails if the query ever asks for the withheld actions again.
+ */
+describe("SettingsAuditService.list — what a staff reader is never handed", () => {
+  const AWAY_ROW = {
+    id: "w1",
+    actor_id: "u-mgr",
+    action: "away_set_for_member",
+    entity_type: "restaurant_member",
+    entity_id: "u-colleague",
+    changes: {
+      subject: "Ece Demir",
+      fields: { away: { from: null, to: "2026-10-03 to 2026-10-10" } },
+    },
+    created_at: "2026-09-22T09:00:00Z",
+  };
+  const ROWS = [
+    AWAY_ROW,
+    { ...AWAY_ROW, id: "w2", action: "away_ended_for_member" },
+    { ...AWAY_ROW, id: "w3", action: "area_member_added", entity_type: "team_member" },
+    { ...AWAY_ROW, id: "w4", action: "area_member_removed", entity_type: "team_member" },
+    { ...AWAY_ROW, id: "w5", action: "area_lead_granted", entity_type: "team_member" },
+    { ...AWAY_ROW, id: "w6", action: "area_lead_removed", entity_type: "team_member" },
+    {
+      id: "h1",
+      actor_id: "u-mgr",
+      action: "house_area_changed",
+      entity_type: "house_area",
+      entity_id: "bar",
+      changes: { subject: "Bar", fields: { name: { from: "Bar", to: "Terrace bar" } } },
+      created_at: "2026-09-21T09:00:00Z",
+    },
+    {
+      id: "r1",
+      actor_id: "u-mgr",
+      action: "member_role_changed",
+      entity_type: "restaurant_member",
+      entity_id: "m-9",
+      changes: { role: { from: "manager", to: "staff" } },
+      created_at: "2026-09-20T09:00:00Z",
+    },
+  ];
+
+  function honouringDb() {
+    const asked: string[][] = [];
+    const client = {
+      from(table: string) {
+        let allow: Set<string> | null = null;
+        const chain: any = {
+          select: () => chain,
+          eq: () => chain,
+          in: (column: string, values: string[]) => {
+            if (table === "system_audit_log" && column === "action") {
+              asked.push([...values]);
+              allow = new Set(values);
+            }
+            return chain;
+          },
+          order: () => chain,
+          limit: () => chain,
+          then: (resolve: (v: unknown) => unknown) => {
+            const all = table === "system_audit_log" ? ROWS : [];
+            const data = allow ? all.filter((r: any) => allow!.has(r.action)) : all;
+            return Promise.resolve({ data, error: null }).then(resolve);
+          },
+        };
+        return chain;
+      },
+    };
+    return { asked, databaseService: { client } as any };
+  }
+
+  it.each(["staff", "admin", "STAFF", null, undefined])(
+    "a %p reader gets no row about a colleague's Away or area, and not even the query asks for one",
+    async (role) => {
+      const { asked, databaseService } = honouringDb();
+      const out = await new SettingsAuditService(databaseService).list("rest-1", 50, undefined, role);
+      const actions = out.entries.map((e) => e.action);
+      for (const withheld of STAFF_WITHHELD_ACTIONS) {
+        expect(actions).not.toContain(withheld);
+        expect(asked[0]).not.toContain(withheld);
+      }
+      expect(JSON.stringify(out)).not.toContain("2026-10-03");
+      // Everything that is not about a colleague is still read, as before.
+      expect(actions).toEqual(["house_area_changed", "member_role_changed"]);
+    },
+  );
+
+  it.each(["owner", "manager", "Manager"])(
+    "a %p reader still reads the whole trail, the upcoming Away included",
+    async (role) => {
+      const { databaseService } = honouringDb();
+      const out = await new SettingsAuditService(databaseService).list("rest-1", 50, undefined, role);
+      expect(out.entries.map((e) => e.id)).toEqual(ROWS.map((r) => r.id));
+      expect(out.entries[0].fields).toEqual({
+        away: { from: null, to: "2026-10-03 to 2026-10-10" },
+      });
+    },
+  );
+
+  it("withholds exactly the six ADR 0218 person rows, all of which the trail still reads back", () => {
+    expect([...STAFF_WITHHELD_ACTIONS].sort()).toEqual(
+      [
+        "area_lead_granted",
+        "area_lead_removed",
+        "area_member_added",
+        "area_member_removed",
+        "away_ended_for_member",
+        "away_set_for_member",
+      ].sort(),
+    );
+    for (const a of STAFF_WITHHELD_ACTIONS) expect(READ_BACK_ACTIONS).toContain(a);
+    expect(readBackActionsFor("manager")).toEqual([...READ_BACK_ACTIONS]);
   });
 });

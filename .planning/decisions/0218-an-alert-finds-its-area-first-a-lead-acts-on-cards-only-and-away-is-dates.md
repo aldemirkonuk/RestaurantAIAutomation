@@ -1,6 +1,6 @@
 # 0218 — An alert finds its area first, a lead acts on cards only, and Away is dates
 
-- **Status:** Locked 2026-09-21 (the three rulings below, the founder's) · round 2 locked 2026-09-21: the eight **Open** items answered with *"Take all seven"* (see **Round 2**) · two items went to counsel, not to a build (**The lawyer's list**)
+- **Status:** Locked 2026-09-21 (the three rulings below, the founder's) · round 2 locked 2026-09-21: the eight **Open** items answered with *"Take all seven"* (see **Round 2**) · two items went to counsel, not to a build (**The lawyer's list**) · round 3 locked 2026-09-22: four more questions, each with his pick as the option label (see **Round 3**)
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder)
 - **Keywords:** areas, area label, AreaLabel, AreaKind, house_areas, house_area_members, house_away, house_away_held, held_away, AwayReleaseService, area lead, Away, holiday, notification routing, persistForRestaurant, focus not filter, recommendations digest, KVKK, house log, system_audit_log
@@ -68,12 +68,14 @@ We recommended "their area first" (the judge's v1, which is what the founder's
 acts for everyone on their area's cards and nothing else; a person can be Away
 on dates, and the notification funnel and the alert producers skip them.**
 [Round 2, 2026-09-21: also, a note or message sent to them by name waits until
-they are back, and their recommendations email pauses — see **Round 2**.] The
-founder's rule is that *no* alert reaches a person on their Away days; the
-senders this build did not reach are listed under **Owed** below, and until the
-last of them is wired the Away note says "most alerts", not "no alerts". With
-nobody in any area and nobody Away, every audience is exactly what it was
-before this ADR.
+they are back, and their recommendations email pauses — see **Round 2**.]
+[Round 3, 2026-09-22: a message to **everyone** now waits for an Away person
+the same way a named one does, and a colleague's Away is shown to staff only
+once it is under way — see **Round 3**.] The founder's rule is that *no* alert
+reaches a person on their Away days; the senders this build did not reach are
+listed under **Owed** below, and until the last of them is wired the Away note
+says "most alerts", not "no alerts". With nobody in any area and nobody Away,
+every audience is exactly what it was before this ADR.
 
 ### The label (typed, for the catalogue lane)
 
@@ -152,7 +154,13 @@ marker (`components/mudavym/AwayMarker.tsx`) dims the name, says "Away until
 before → after fields. A person's own Away dates are **not** logged (judge
 §4.6). A lead is told when they gain or lose the mark; a person is told when
 someone else sets or ends their Away. The Team page's "What changed here" and
-`/settings`' trail read these back (`READ_BACK_ACTIONS`).
+`/settings`' trail read these back (`READ_BACK_ACTIONS`). [Last call, round 3,
+2026-09-22: to an owner or manager only. `GET /settings-audit` has no role
+gate, and until this call it handed a staff token the six person rows too —
+a colleague's name, their Away dates before they start, and who set them.
+The query now asks a staff reader's trail for `readBackActionsFor(role)`,
+which leaves out `STAFF_WITHHELD_ACTIONS` (every row above except
+`house_area_changed`). See **Round 3**, answer 3.]
 
 ### Who may do what
 
@@ -162,7 +170,7 @@ someone else sets or ends their Away. The Team page's "What changed here" and
 | Rename / switch an area; add or remove a person; set or clear a lead | owner, manager | yes |
 | Set or end your own Away | anyone | no |
 | Set or end someone else's Away | owner, manager — an **owner's** only by an owner (round 2 answer 7) | yes, and the person is told |
-| See Away windows | everyone in the house, dates only (round 2 answer 5); only owners, managers and the person see who set them | — |
+| See Away windows | everyone in the house, dates only (round 2 answer 5); owners and managers see a window before it starts, staff only once it is under way (round 3 answer 3); only owners, managers and the person see who set them | — |
 
 The house and the role come from the verified token (ADR 0162), never the URL
 or the body. The `admin` alias `RolesGuard` accepts does **not** widen an area
@@ -190,6 +198,30 @@ gate (judge §6 leaves its meaning open).
   `AWAY_HOLD_DELIVERY_FAILED` is logged on every sweep. v3.0-TECH-DEBT 44.1i
   says no such member exists in production once migration `20260918153000` has
   applied. This was found by reading the code; it was not measured.
+- [Round 3] A send to **everyone** now also reads Away before it sends (one
+  more read than before, on every crew message, not only a named one) and can
+  now hold — so the readers-disagree-about-membership consequence above
+  (round 2, last call) now also applies to a whole-crew message, not only a
+  named one: the same person, if they exist in production, would see
+  `AWAY_HOLD_DELIVERY_FAILED` on a held "everyone" send too. Not measured;
+  same production caveat as round 2 (v3.0-TECH-DEBT 44.1i).
+- [Round 3] `listAway`'s answer now depends on the reader's role in a second
+  way (who is filtered out, not only what `canManage`/`setBySelf` show) — a
+  cache keyed only by house, not by house-and-role, would leak an upcoming
+  colleague window to a staff viewer if one is ever added. None exists today
+  (`useHouseAreas.ts` keys its query by restaurant id, and the query result is
+  never shared across a role change without a refetch). [Last call,
+  2026-09-22: that last clause is too strong, and one such cache does exist
+  — the web's own. `useHouseAreas.ts` keys `/house/away` by restaurant id
+  alone; `AuthContext.logout` clears the tokens but not the React Query
+  cache, and `Login.tsx` moves on with `navigate`, not a reload. So on a
+  shared device, a staff sign-in to the same house after a manager's can be
+  drawn the manager's cached answer (`canManage: true`, upcoming windows
+  included) for as long as the refetch takes (`refetchOnMount: 'always'`
+  shows cached data while it refetches, `App.tsx`). Every gateway response
+  is right; the stale copy is the browser's. It is app-wide, every cached
+  query and not only Away, so it is not fixed in this lane. Found by
+  reading the code; not reproduced in a browser.]
 - **Revisit when:** a house asks for an area outside the six (custom kinds), or
   shifts carry real rows (then a shift may delay an alert, never hide one).
 
@@ -240,15 +272,27 @@ bundled — not his own words for each. What each one is, and where it is:
      rewriting its receipts), claims each row compare-and-set so two releases
      cannot both deliver it, and hands a failed delivery back for the next
      sweep. A person who left the house first is owed nothing: the hold is
-     deleted and a note's receipts say why.
+     deleted and a note's receipts say why. [Last call, round 3, 2026-09-22:
+     "cannot both deliver it" is true of two releases racing, not of one
+     release that fails after delivering. If the row's delete fails after
+     the delivery (`AWAY_HOLD_DELETE_FAILED`, logged, `away-hold.service.ts`
+     `done`), or the process stops between the two, the claim goes stale
+     after 30 minutes (`STALE_CLAIM_MS`) and the next sweep delivers it
+     again. So a held item is delivered at least once, never at most once:
+     a rare duplicate rather than a loss, the same side of the line as round
+     3 answer 2's "nothing lost or late". *Built, not ruled.* Since round 3
+     answer 1 this covers a held message to everyone too.]
    - *Failures.* An unreadable Away register holds nothing (the send goes to
      everyone now) and says so (`away.readable: false`); a hold that cannot be
      written is sent now instead of dropped (`away.holdFailed`); an unreadable
      Away, membership or quiet-hours read on release delays, never guesses.
-   - *Built, not ruled:* the quiet-hours wait on return, the 15-minute sweep,
-     and "back" meaning the first non-Away house-local day. [Last call: also
-     that an unreadable Away register sends the message now, to an Away person
-     too, rather than holding it for everyone named.]
+   - *Built, not ruled, then ruled 2026-09-22 (round 3, "Keep all four"):* the
+     quiet-hours wait on return, the 15-minute sweep, and "back" meaning the
+     first non-Away house-local day — kept exactly as built (round-3 answer
+     4). [Last call: also that an unreadable Away register sends the message
+     now, to an Away person too, rather than holding it for everyone named —
+     also kept, round-3 answer 2, "Send now", and now the rule for a send to
+     **everyone** too, not only a named one; see **Round 3**.]
 4. **The recommendations email digest pauses for a person while they are
    Away.** Built (`RecommendationDigestService`): judged on the day the letter
    **fell due**, not on the day it is swept, so a letter due on the last Away
@@ -263,13 +307,21 @@ bundled — not his own words for each. What each one is, and where it is:
    reason.** Built: `GET /house/away` answers every window in the house that has
    not ended [last call: under way **or still to come**, so staff also read a
    colleague's "Away from 3 Oct" before it starts, as managers already did —
-   *built, not ruled*] to everyone in it, with the roster's display name (so staff, who have no
+   *built, not ruled*; **overturned 2026-09-22, round 3 answer 3, "Only once
+   under way"**: owners and managers keep the window before it starts, but
+   `listAway` now withholds a colleague's (never the reader's own) upcoming
+   window from a staff reader, enforced in the response, not only by what a
+   page draws — see **Round 3**] to everyone the rule still admits, with the
+   roster's display name (so staff, who have no
    roster, can draw the marker; `namesReadable: false` when the names could not
    be read, never an empty list). Staff are not told who set a colleague's
    dates (`setBySelf` is absent for them). On the web, My shifts carries an
    "Away in the house" card with the same marker; it draws nothing while nobody
-   else is away. *Built, not ruled:* that card is where staff meet the marker,
-   because the staff surface draws no colleague names anywhere else today.
+   else is away. *Built, then ruled 2026-09-22 (round-3 answer 4, "Keep all
+   four," following answer 3):* that card is where staff meet the marker,
+   because the staff surface draws no colleague names anywhere else today —
+   and the card now mirrors answer 3's under-way-only rule for a colleague's
+   window (owners and managers still see it there before it starts).
 6. **Away lasts at most 366 days.** Confirmed built in the gateway, and now also
    in the table: `ck_house_away_at_most_366_days` (`away_until - away_from <=
    365`, both days inclusive), added in `20260921171000`.
@@ -282,6 +334,108 @@ bundled — not his own words for each. What each one is, and where it is:
    change them (`mayChangeAway` in `services/api/areas.ts`, a mirror; the
    gateway decides). CLAIMS `ADR-0218-ONLY-AN-OWNER-CHANGES-AN-OWNERS-AWAY`.
 
+## Round 3 — the founder's four answers (2026-09-22)
+
+Round 2's build left two of its own open questions ("For the founder" in the
+lane's report) and marked four behaviours *built, not ruled*. The lane put all
+six to the founder as four questions, his picks as the option labels below
+(2026-09-22):
+
+1. **A message to everyone while someone is Away.** *"Wait like named
+   (Recommended)"* — no push to the Away person while Away; the message waits
+   in their inbox and is released on their first day back, exactly like a
+   named message (same release job).
+
+   Before round 3, only a **named** send was held (round-2 answer 3); a send
+   to **everyone** was routed by the funnel, which dropped an Away person's
+   inbox row for good (never delivered) and — the "Owed" bug this closes —
+   still pushed them. Both defects are gone the same way: `TeamController
+   .broadcast` (`team.controller.ts`) now reads Away
+   (`AwayHoldService.awayToday`) and holds **whichever** audience the sender
+   chose, no `named &&` gate; the inbox write always addresses `reachNow` by
+   `onlyUserIds`, so a held person's row is written once, by the release, not
+   twice. An Away person swept up in "everyone" gets a `house_away_held` row
+   (`kind: "team_message"`, same shape as a named hold) and is delivered by
+   the same `AwayReleaseService` sweep, outside their quiet hours, on their
+   first house-local day back — nothing new to build there, because the
+   release never asked which audience a hold came from. CLAIMS
+   `ADR-0218-A-BROADCAST-TO-EVERYONE-HOLDS-AN-AWAY-PERSON-TOO`. Behaviour:
+   `team.controller.broadcast.spec.ts` "holds it for an Away person swept up
+   in a send to everyone too".
+2. **The Away list cannot be read, mid-send.** *"Send now (Recommended)"* —
+   keep as built: nothing lost or late, the same rule the alert funnel
+   already uses. Unchanged code, and now the SAME code path for both
+   audiences (per answer 1): `AwayHoldService.awayToday` throwing or
+   answering an error leaves `awayUntil: null`, nobody is held, and the send
+   goes to everyone it names, now (`away.readable: false` says so). Test:
+   `team.controller.broadcast.spec.ts` "sends to everyone now, and holds
+   nobody, when Away cannot be read".
+3. **Staff seeing a colleague's Away before it starts.** *"Only once under
+   way (Recommended)"* — owners and managers still see a colleague's Away
+   before it starts (unchanged); staff see it only once it is under way,
+   enforced **server-side, in the API response**, not only by what a page
+   chooses to draw — this overturns round 2's "last call" widening (built,
+   not ruled, then), which had staff reading an upcoming window too.
+
+   `HouseAreasService.listAway` now filters the rows it answers with before
+   naming or mapping them: a manager or owner reader, or the reader's own
+   window (whichever way it runs — this is a rule about a **colleague's**
+   Away, never about the reader's own dates), passes unfiltered; a
+   colleague's window otherwise passes only when `from <= today <= until`.
+   Names are looked up only for the rows that survive the filter, so a staff
+   reader's `GET /house/away` response never carries an upcoming colleague's
+   dates or name — a client cannot draw what the API never sent. The web
+   mirrors the same rule in `HouseAwayCard` (`AwayCard.tsx`), the way
+   `mayChangeAway` is mirrored in `services/api/areas.ts`: never the only
+   place it runs, but consistent with it. CLAIMS
+   `ADR-0218-STAFF-SEE-AWAY-ONLY-ONCE-UNDER-WAY`. Behaviour:
+   `house-areas.service.spec.ts` "lists every current-or-upcoming window for
+   owners/managers; staff never learn who set a colleague's";
+   `AreasAway.test.tsx` "never draws a colleague's window that has not
+   started yet" / "draws an owner or manager's upcoming colleague window
+   too".
+
+   [Last call, 2026-09-22: `GET /house/away` was not the only response that
+   carried an upcoming window. `GET /settings-audit` (the house log's read,
+   behind the token and the tenant, no role gate) returned
+   `away_set_for_member` to any member of the house: the colleague's name as
+   `subject`, the dates as the field's new value (the shape is
+   `"2026-10-03 to 2026-10-10"`) before the first day, and the manager who
+   set it as `actor`. Found by reading the code, then pinned by a unit test;
+   not exercised against a running gateway. That broke this
+   answer, and also round 2 answer 5 ("staff are not told who set a
+   colleague's dates") and round 1 ("staff see only their own
+   memberships") for the area rows. Fixed in the query, not after it:
+   `SettingsAuditService.list` takes the token's role
+   (`SettingsAuditController`, `@CurrentUser("role")`) and asks only for
+   `readBackActionsFor(role)`; anything but owner or manager, `admin` and
+   no role included, is read as staff. No staff page reads that trail
+   (`/team` draws My shifts for staff), so nothing a staff surface shows
+   changes. CLAIMS `ADR-0218-STAFF-READ-NO-COLLEAGUE-AWAY-IN-THE-HOUSE-LOG`.
+   Behaviour: `settings-audit.service.spec.ts` "what a staff reader is
+   never handed", on a fake that honours `.in("action", …)`. What is still
+   readable, and is not a window: the `/logs` timeline
+   (`logs-timeline.service.ts` `fetchAuditLog`, any member of the house)
+   lists `away_set_for_member on restaurant_member` with the colleague's
+   user id and the time it was set. It carries no dates and no name. It is
+   not changed here, because `/logs` reads every audit action for every
+   member and gating it is not this lane's call.]
+4. **The four behaviours built without a ruling.** *"Keep all four
+   (Recommended)"*, with this answer **following answer 3**:
+   - the held item may arrive outside quiet hours, but only after quiet hours
+     end — kept exactly as built (round-2 §3's release-verdict order);
+   - the release sweeps every 15 minutes — kept exactly as built;
+   - "back" means the first house-local day that is not an Away day for
+     them — kept exactly as built;
+   - staff meet a colleague's marker on My shifts' "Away in the house"
+     card — kept, but now narrowed by answer 3: the card draws a colleague's
+     window only once it is under way for a staff viewer, and still draws it
+     before it starts for an owner or manager viewer, because that is the
+     same rule the API already enforces.
+
+   No migration: none of the four needed a schema change. Migration band
+   reserved for this lane (`20260922011000`–`20260922011099`) went unused.
+
 ## The lawyer's list (recorded, not built)
 
 Put to counsel, not to a build, per the founder's round-2 pick:
@@ -291,7 +445,9 @@ Put to counsel, not to a build, per the founder's round-2 pick:
   what is deleted or anonymised after.
 - **The staff privacy notice** (KVKK aydınlatma metni) for Away and areas: what
   is kept (two dates and who set them; no reason), who sees it (since round 2,
-  everyone in the house sees a colleague's dates), and for how long.
+  everyone in the house sees a colleague's dates; since round 3, staff see a
+  colleague's only once it is under way, owners and managers see it before it
+  starts too), and for how long.
 - For the same review: a held message's title and body sit in
   `house_away_held` until it is delivered (at most the rest of an Away window,
   366 days), then are deleted.
@@ -316,7 +472,8 @@ list**. Kept as they were asked, so the record shows what was chosen from.]
 5. **Staff seeing a colleague's Away marker.** Built: only owners, managers and
    the person see Away (judge §4.5). The founder's "on its name" may mean
    everywhere a name appears. [Ruled: staff see it too, dates only, round 2
-   answer 5.]
+   answer 5. Narrowed 2026-09-22, round 3 answer 3: a colleague's only once
+   it is under way.]
 6. **The longest Away window**: 366 days, an input guard, built not ruled.
    [Ruled: 366 days, round 2 answer 6; now in the table too.]
 7. **Retention** of the log rows, and the KVKK notice text (judge §4.7) — still
@@ -333,11 +490,13 @@ Found at last call, 2026-09-21, by reading every sender that writes a
 notification row or a push outside `persistForRestaurant`'s broadcast path.
 Each still reaches a person on their Away days:
 
-- **A manager's team message to everyone** (`team.controller.ts`, the push
+- ~~**A manager's team message to everyone** (`team.controller.ts`, the push
   leg). Its inbox row goes through the funnel and now skips the Away person;
-  its push does not. The worse half is the one that still arrives. [Round 2
-  holds a message to **named** people; this send-to-everyone push leg is
-  still owed.]
+  its push does not. The worse half is the one that still arrives.~~
+  [Round 2 held a message to **named** people; **closed in round 3, answer 1,
+  2026-09-22, "Wait like named"**: a send to everyone now holds an Away
+  person the same way, through the same table and release job, so neither
+  half reaches them while they are Away — see **Round 3**.]
 - **Calendar reminders** (`calendar-reminders.service.ts`). They build their own
   audience and write with `onlyUserIds`, so the funnel does not route them.
   The job is behind its own flag and off by default.
@@ -355,13 +514,25 @@ scheduled tasks) carry uncommitted changes in another lane's worktree
 (`wt-fin-notify`) at the time of writing, so none of the four was edited here.
 [Round 2 did edit `team.controller.ts` — answer 3 lives in `broadcast` — so
 that lane's staged `team.controller.ts` and `team.controller.broadcast.spec.ts`
-will conflict with this one at merge.]
+will conflict with this one at merge. Round 3 edits the same method again
+(answer 1); not re-checked against `wt-fin-notify`'s current state from this
+lane — the conflict was last confirmed live at round 2's last call,
+2026-09-21.] [Last call, round 3, 2026-09-22, re-checked read-only: that
+worktree still stages `team.controller.ts` and its broadcast spec. Its
+change there is `channelOptOuts(userIds, rid)`: `TeamService.channelOptOuts`
+gains a required house argument. `AwayReleaseService.deliver` in this lane
+calls it with one argument, so whichever of the two merges second fails
+`tsc` until that call passes `row.restaurant_id`.]
 
 Also owed, though nothing reaches an Away person through it [last call,
 2026-09-21]: the legacy shift desk's one-person message
 (`pages/team/command/ManagerShiftDesk.tsx`, `doBroadcast`) toasts "Message
 sent" when the gateway held it, and never shows `away.held[]`. So on that
-page the sender does not see "away until <date>" (answer 3).
+page the sender does not see "away until <date>" (answer 3). [Last call,
+round 3, 2026-09-22: its crew message to everyone too. The same
+`doBroadcast` sends `audience: 'everyone'`, and since round 3 answer 1 that
+send can hold an Away person as well, so it toasts "Message sent" over a
+hold there too.]
 
 ## Evidence
 
@@ -405,6 +576,54 @@ page the sender does not see "away until <date>" (answer 3).
     origin/main;
   - 4 on the corrected `ADR-0218-AWAY-STORES-DATES-ONLY`, which had matched
     round 2's `ADD CONSTRAINT` as if it were a new column.
+- **Round 3 (2026-09-22), measured on the staged index tree**
+  (`p4-scratch/verify_index.sh`): `gw_tsc`, `gw_tsc_spec` and `web_tsc` clean;
+  gateway `jest src/team src/areas` — 10 suites, 173 tests passing; web
+  `vitest src/pages/team src/components/mudavym src/pages/settings` — 21
+  files, 375 tests passing; `gw_eslint` and `web_eslint` on the four changed
+  files, 0; `check_gateway_boots.sh` PASS; `check_decision_claims.sh` 413/413
+  holding (413 claims, one header row); no duplicate migration prefix.
+  `verify_index: ALL GREEN`. No new migration this round (see **Round 3**
+  answer 4).
+- Round 3 mutations, every one red, snapshot-restored with `cp -p` (never
+  `git checkout`, per [[unstaged-file-mutation-snapshot-first]]):
+  - two mutations on `team.controller.ts` — reintroducing the `named &&` gate
+    on the Away read, and reintroducing the `named ? {...} : {}` branch on
+    the inbox write — each turns `ADR-0218-A-BROADCAST-TO-EVERYONE-HOLDS-AN-AWAY-PERSON-TOO`'s
+    verify red;
+  - two mutations on `house-areas.service.ts` — dropping the reader's-own-window
+    exemption, and dropping the `activeNow` check entirely — each turns
+    `ADR-0218-STAFF-SEE-AWAY-ONLY-ONCE-UNDER-WAY`'s verify red; the first
+    attempt at this claim (checking for the bare substring
+    `manager || r.user_id === actor.userId` anywhere in the function) passed
+    on the mutated file because `listAway`'s `setBySelf` line carries the same
+    substring — the claim was rewritten to isolate the filter's own block
+    before either mutation was tried again, and both new claim rows fail
+    against `origin/main` (`house-areas.service.ts` does not exist there —
+    ADR 0218 is unmerged).
+- Guards run in the worktree, all exit 0: `check_adr_numbers_unique.py`,
+  `check_citation_pairing.py`, `check_no_conflict_markers.py`,
+  `check_od_ids_exist.py`, `check_migration_versions_unique.py` ("Checked
+  against origin/main + 57 other open PR(s)"), `check_flag_readby_anchors.py`
+  ("7 ACTIVE flag anchors all resolve to real gates" — unaffected; this round
+  touches no flag).
+- **Last call, round 3 (2026-09-22)**, on the staged index tree
+  (`verify_index.sh`): `gw_tsc`, `gw_tsc_spec` and `web_tsc` clean; gateway
+  jest over `src/team src/areas src/settings-audit src/settings
+  src/notifications` — 39 suites, 590 tests passing; web vitest over
+  `src/pages/team src/components/mudavym src/pages/settings` — 21 files,
+  367 passed and 8 skipped (375); `gw_eslint` on the changed gateway files,
+  0; boots PASS; claims 414/414 holding; no duplicate migration prefix.
+- Last-call mutations, snapshot-restored with `cp -p`:
+  - `readBackActionsFor` answering the whole trail to every role: 5
+    staff-reader cases red in `settings-audit.service.spec.ts`;
+  - `broadcast` pushing a send to everyone to `targets` instead of
+    `reachNow`, so the Away person is pushed: "holds it for an Away person
+    swept up in a send to everyone too" red;
+  - four mutations of the new CLAIMS row, each red: the owner/manager test
+    widened to every role, `away_set_for_member` dropped from
+    `STAFF_WITHHELD_ACTIONS`, the query back on `READ_BACK_ACTIONS`, and the
+    controller no longer passing the role.
 
 ## Review trail
 
@@ -417,3 +636,6 @@ page the sender does not see "away until <date>" (answer 3).
 | 2026-09-21 | founder | Round 2: *"Take all seven"* — the eight Open items answered; retention and the notice to counsel |
 | 2026-09-21 | areas lane, round 2 | Built answers 3, 4, 5, 7; confirmed 1, 2, 6 (6 now in the table too); the lawyer's list recorded; CLAIMS `ADR-0218-AWAY-STORES-DATES-ONLY` narrowed to columns (it read round 2's CHECK as a column) |
 | 2026-09-21 | last call, round 2 | Re-ran 7 suites (183 tests) and 3 fresh mutations (quiet-hours verdict, push opt-out on release, membership on release), all red. Prose made as narrow as the code: staff read upcoming windows too; the digest's and the named send's fail-open marked *built, not ruled*; the legacy desk's "Message sent" and the release/funnel membership split recorded |
+| 2026-09-22 | founder | Round 3: four questions, each answered *"(Recommended)"* — "Wait like named"; "Send now"; "Only once under way"; "Keep all four" (see **Round 3**) |
+| 2026-09-22 | areas lane, round 3 | Built answers 1 and 3 (`team.controller.ts` broadcast, `house-areas.service.ts` listAway, `AwayCard.tsx`); recorded answers 2 and 4 (no code change — both already matched what was built). Two CLAIMS rows added and mutation-tested; the **Owed** push-leg-to-everyone item closed in place |
+| 2026-09-22 | last call, round 3 | Found `GET /settings-audit` (no role gate) handing staff a colleague's `away_set_for_member` row, with the dates before they start and who set them, and the area rows: fixed in the query (`readBackActionsFor`, `STAFF_WITHHELD_ACTIONS`), CLAIMS `ADR-0218-STAFF-READ-NO-COLLEAGUE-AWAY-IN-THE-HOUSE-LOG`. Recorded, not changed: `/logs` still lists the action and the colleague's id, with no dates or name; the web's query cache outlives a sign-out; a release that fails after delivering delivers again (at least once); the legacy desk's crew message toasts over a hold too. Three code comments that still said "named only" corrected |

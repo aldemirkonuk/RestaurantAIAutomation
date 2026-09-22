@@ -1,6 +1,8 @@
 /**
  * A message to one person who is Away waits until they are back (ADR 0218,
- * the founder's round-2 answer 3, 2026-09-21) — the rules, as PURE functions.
+ * the founder's round-2 answer 3, 2026-09-21; a message to everyone waits for
+ * them the same way, round-3 answer 1, 2026-09-22) — the rules, as PURE
+ * functions.
  *
  * `AwayHoldService` reads and writes the hold table and `AwayReleaseService`
  * delivers; everything they DECIDE is here, so each rule is tested and

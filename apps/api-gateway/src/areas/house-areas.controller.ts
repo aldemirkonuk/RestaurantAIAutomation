@@ -83,7 +83,7 @@ export class HouseAreasController {
     return this.areas.removeMembership(actorOf(req), kind, memberId);
   }
 
-  /** Every Away window not yet over, for everyone in the house: dates only (staff are not told who set a colleague's). */
+  /** Every Away window not yet over, dates only: owners and managers read all of them; staff read their own and a colleague's only once it is under way (ADR 0218 round 3), and are not told who set a colleague's. */
   @Get("away")
   listAway(@Req() req: any) {
     return this.areas.listAway(actorOf(req));

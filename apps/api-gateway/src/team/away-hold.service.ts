@@ -24,7 +24,8 @@ const HELD_COLUMNS =
  * The hold table, `house_away_held` (ADR 0218, the founder's round-2 answer 3:
  * a message sent to one person who is Away waits until they are back).
  *
- * The senders (`TeamController.broadcast` to named people, `NotesService`)
+ * The senders (`TeamController.broadcast`, named or to everyone since round-3
+ * answer 1, 2026-09-22; `NotesService`)
  * ask `awayToday` who is Away and `hold` what they will not deliver now;
  * `AwayReleaseService` claims, delivers and deletes. Every read binds its
  * error: an unreadable hold table is never an empty one.

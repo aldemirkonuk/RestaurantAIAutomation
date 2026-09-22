@@ -101,10 +101,18 @@ export interface AwayReadout {
   role: HouseRole;
   canManage: boolean;
   /**
-   * Every window in this house that has not ended, for everyone in it — the
-   * founder's round-2 answer 5 (2026-09-21): staff see a colleague's quiet
-   * Away marker too. Dates only: there is nothing else to show, because
-   * nothing else is kept, and staff are not told who set a colleague's dates.
+   * Every window in this house that has not ended — the founder's round-2
+   * answer 5 (2026-09-21): staff see a colleague's quiet Away marker too.
+   * Dates only: there is nothing else to show, because nothing else is kept,
+   * and staff are not told who set a colleague's dates.
+   *
+   * WHO SEES A COLLEAGUE'S WINDOW BEFORE IT STARTS: owners and managers,
+   * always (unchanged). Staff, never — the founder's round-3 answer 3
+   * (2026-09-22): *"Only once under way"*. A staff reader still sees their
+   * OWN window whichever way it runs (this is a rule about colleagues, not
+   * about the reader's own dates), and still sees a colleague's window once
+   * `activeNow` is true. Enforced here, in the rows the query answers with —
+   * never only by what a page chooses to draw.
    */
   windows: AwayView[];
   /**
@@ -499,7 +507,22 @@ export class HouseAreasService {
       .gte("away_until", today);
     if (error) this.unreadable("Away dates", error.message);
     const manager = isManager(actor.role);
-    const rows = (data ?? []) as any[];
+    const all = (data ?? []) as any[];
+
+    // ROUND 3, ANSWER 3 (2026-09-22, the founder's "Only once under way"):
+    // owners and managers still read every window that has not ended, as
+    // before. Staff read a colleague's window only once it is under way —
+    // never one that has not started yet — but always read their OWN window,
+    // whichever way it runs: this is a rule about what a colleague's Away
+    // looks like to staff, not about a person's own dates. Enforced here, on
+    // the rows this read answers with, so a client cannot see what the API
+    // never sends.
+    const rows = all.filter((r) => {
+      if (manager || r.user_id === actor.userId) return true;
+      const from = String(r.away_from).slice(0, 10);
+      const until = String(r.away_until).slice(0, 10);
+      return from <= today && today <= until;
+    });
 
     // The names a marker is drawn on (round-2 answer 5: staff see a
     // colleague's quiet Away marker, and staff have no roster). The roster's

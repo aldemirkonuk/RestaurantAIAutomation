@@ -323,40 +323,61 @@ describe("Away", () => {
     expect(db.tables.house_away).toEqual([]);
   });
 
-  it("lists every current window in this house for everyone; staff never learn who set a colleague's", async () => {
+  it("lists every current-or-upcoming window for owners/managers; staff never learn who set a colleague's", async () => {
     const db = seed({
       house_away: [
-        { restaurant_id: HOUSE, user_id: STAFF, away_from: TODAY, away_until: plus(5), set_by: STAFF },
+        { restaurant_id: HOUSE, user_id: STAFF, away_from: plus(2), away_until: plus(5), set_by: STAFF },
         { restaurant_id: HOUSE, user_id: COLLEAGUE, away_from: plus(2), away_until: plus(5), set_by: OWNER },
+        { restaurant_id: HOUSE, user_id: MANAGER, away_from: TODAY, away_until: plus(1), set_by: MANAGER },
         { restaurant_id: HOUSE, user_id: OWNER, away_from: plus(-9), away_until: plus(-2), set_by: OWNER },
         { restaurant_id: OTHER_HOUSE, user_id: STRANGER, away_from: TODAY, away_until: plus(1), set_by: STRANGER },
       ],
     });
+    // MANAGER needs a roster row to be named on the marker, same as any
+    // other colleague (the base seed only names STAFF and COLLEAGUE).
+    db.tables.team_members.push({
+      id: "bbbbbbbb-0000-0000-0000-000000000004",
+      restaurant_id: HOUSE,
+      user_id: MANAGER,
+      display_name: "Selin",
+    });
     const svc = service(db);
     const forOwner = await svc.listAway(owner);
-    expect(forOwner.windows.map((w) => w.userId).sort()).toEqual([COLLEAGUE, STAFF].sort());
+    // Owners and managers still see every window that has not ended, upcoming
+    // ones included — round-3 answer 3 (2026-09-22) changes nothing for them.
+    expect(forOwner.windows.map((w) => w.userId).sort()).toEqual([COLLEAGUE, MANAGER, STAFF].sort());
     expect(forOwner.windows.find((w) => w.userId === COLLEAGUE)).toMatchObject({
       activeNow: false,
       setBySelf: false,
     });
-    // Round-2 answer 5: staff see a colleague's quiet Away marker too —
-    // this house only, dates only.
+
+    // Round-3 answer 3 (2026-09-22, the founder's "Only once under way"):
+    // staff meet a COLLEAGUE'S Away only once it is under way. COLLEAGUE's
+    // window has not started yet, so staff do not see it at all — not even
+    // dates.
     const forStaff = await svc.listAway(staff);
     expect(forStaff.role).toBe("staff");
-    expect(forStaff.windows.map((w) => w.userId).sort()).toEqual([COLLEAGUE, STAFF].sort());
-    const colleague = forStaff.windows.find((w) => w.userId === COLLEAGUE)!;
+    expect(forStaff.windows.map((w) => w.userId).sort()).toEqual([MANAGER, STAFF].sort());
+    expect(forStaff.windows.find((w) => w.userId === COLLEAGUE)).toBeUndefined();
+
+    // A colleague's window staff DO meet, because it is under way today.
+    const colleague = forStaff.windows.find((w) => w.userId === MANAGER)!;
     expect(Object.keys(colleague).sort()).toEqual(["activeNow", "from", "name", "until", "userId"]);
-    // The roster's name, so a staff member with no roster can draw the marker.
     expect(colleague).toEqual({
-      userId: COLLEAGUE,
-      from: plus(2),
-      until: plus(5),
-      activeNow: false,
-      name: "Mert",
+      userId: MANAGER,
+      from: TODAY,
+      until: plus(1),
+      activeNow: true,
+      name: "Selin",
     });
     expect(forStaff.namesReadable).toBe(true);
-    // Their own window still says who set it.
-    expect(forStaff.windows.find((w) => w.userId === STAFF)).toMatchObject({ setBySelf: true });
+    // Round-2 answer 5, unchanged by round 3: a staff reader still sees their
+    // OWN window whichever way it runs — upcoming here — and it still says
+    // who set it. This is a rule about a COLLEAGUE'S Away, not the reader's.
+    expect(forStaff.windows.find((w) => w.userId === STAFF)).toMatchObject({
+      activeNow: false,
+      setBySelf: true,
+    });
   });
 
   it("names a colleague from this house's roster only, and says so when the names cannot be read", async () => {
