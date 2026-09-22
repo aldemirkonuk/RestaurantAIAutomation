@@ -125,6 +125,40 @@ describe('before the first read lands', () => {
   });
 });
 
+/**
+ * "Count what's built" — the founder, 2026-09-21, on the day line. The head is
+ * "N of 3": the three registers this build reads, with no placeholder row and
+ * no bigger denominator for the sketch's other three (deliveries expected,
+ * shifts, the market), which are not built.
+ */
+describe("count what's built", () => {
+  const REMINDERS_UP: DayRegister = {
+    key: 'reminders',
+    state: 'answered',
+    readAt: T,
+    ms: 5,
+    count: 0,
+    complete: true,
+    ticks: [],
+  };
+
+  it('the three built registers read "3 of 3", and nothing unbuilt is drawn', () => {
+    dayState.current = { ...dayState.current, last: read([DELIVERY, CALENDAR, REMINDERS_UP]) };
+    const { container } = mount();
+    expect(screen.getByText(/3 of 3 registers/)).toBeTruthy();
+    const text = container.textContent ?? '';
+    expect(text).not.toMatch(/of 6/);
+    expect(text).not.toMatch(/not built/i);
+    expect(text).not.toMatch(/market|shifts|expected/i);
+  });
+
+  it('one of the three down reads "2 of 3 · 1 not read" — still out of three', () => {
+    dayState.current = { ...dayState.current, last: read([DELIVERY, CALENDAR, REMINDERS_DOWN]) };
+    mount();
+    expect(screen.getByText(/2 of 3 registers · 1 not read/)).toBeTruthy();
+  });
+});
+
 describe('a landed read', () => {
   it('draws every tick, oldest first, and the head counts registers not acts', () => {
     dayState.current = { ...dayState.current, last: read([CALENDAR, DELIVERY]) };

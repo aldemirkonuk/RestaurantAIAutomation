@@ -311,6 +311,30 @@ describe("hours — the band, never a register in the N-of-3", () => {
   });
 });
 
+/**
+ * "Count what's built" — the founder, 2026-09-21, on the day line. The read
+ * returns exactly the three registers this build reads, in order, and nothing
+ * for the sketch's other three: no `not_built` row, no market, no shifts, no
+ * deliveries-expected. The web head counts out of what comes back, so this is
+ * what makes it "N of 3".
+ */
+describe("count what's built", () => {
+  it("returns exactly the three built registers, and no placeholder", async () => {
+    const { svc } = build();
+    const res = await svc.read(HOUSE, USER);
+    expect(res.registers.map((r) => r.key)).toEqual([
+      "deliveryArrived",
+      "calendar",
+      "reminders",
+    ]);
+    for (const r of res.registers) {
+      expect(["answered", "refused", "unreadable"]).toContain(r.state);
+    }
+    const body = JSON.stringify(res);
+    expect(body).not.toMatch(/not_built|"market"|"shifts"|"deliveryExpected"/);
+  });
+});
+
 describe("no total, ever", () => {
   it("the response has no top-level count/total field", async () => {
     const { svc } = build();

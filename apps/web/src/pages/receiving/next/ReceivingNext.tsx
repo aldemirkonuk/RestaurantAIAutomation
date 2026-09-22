@@ -14,7 +14,11 @@
  *            hold-to-approve die beside each — the platform drafts, a person
  *            sends. Line-item editing hands off to /receipts, deliberately.
  *   OWNER    the recovered-money figure with its real trend and the honest
- *            denominator. Only credit memos count.
+ *            denominator (only credit memos count) PLUS the same decision
+ *            queue as manager — ADR 0149 row 44 (2026-09-18): production has
+ *            owner and manager rows (6 of 10 restaurants are owner-only; a
+ *            single staff row exists too, Sim Bistro, re-measured 2026-09-19),
+ *            so the owner is often the only person who can act on it.
  *
  * Shared under all three: the door outbox rail — what is queued on phones
  * right now, and every receipt the outbox permanently dropped, pinned by
@@ -29,6 +33,7 @@
  */
 
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Wordmark } from '@/components/mudavym';
 import { DayLine } from '@/components/mudavym/DayLine';
 import { ink } from '@/lib/mudavym/motion';
@@ -52,7 +57,7 @@ type Rendering = 'staff' | 'manager' | 'owner';
 const RENDERING_SENTENCE: Record<Rendering, string> = {
   staff: 'Which delivery are you receiving?',
   manager: 'What needs a decision — worst money first.',
-  owner: 'What actually came back.',
+  owner: 'What actually came back — and what needs a decision.',
 };
 
 function renderingForRole(role: string): Rendering {
@@ -140,20 +145,73 @@ function StaffBody() {
   return <RcStaffLane data={staff} />;
 }
 
-function ManagerBody() {
+/**
+ * The decision queue itself — shared by the manager and owner renderings
+ * (ADR 0149 row 44, 2026-09-18: the queue now opens for owner too, since
+ * production is majority owner-only (6 of 10 restaurants;
+ * production-tenant-shape, re-measured live 2026-09-19) — so an owner is
+ * often the only person who can act on it). Kept
+ * as one component so the two renderings cannot drift on what "the decision
+ * queue" actually shows.
+ */
+function DecisionQueue({ highlightOrderId }: { highlightOrderId: string | null }) {
   const queue = useManagerQueue();
   const drafts = useCreditDrafts();
   return (
     <div className="grid gap-7 xl:grid-cols-[minmax(0,1fr)_300px]" style={{ alignItems: 'start' }}>
-      <RcManagerQueue data={queue} />
+      <RcManagerQueue data={queue} highlightOrderId={highlightOrderId} />
       <RcCreditDrafts data={drafts} />
     </div>
   );
 }
 
-function OwnerBody() {
+function ManagerBody({ highlightOrderId }: { highlightOrderId: string | null }) {
+  return <DecisionQueue highlightOrderId={highlightOrderId} />;
+}
+
+function OwnerBody({ highlightOrderId }: { highlightOrderId: string | null }) {
   const recovery = useOwnerRecovery();
-  return <RcOwnerLedger data={recovery} />;
+  return (
+    <div className="grid gap-8">
+      <RcOwnerLedger data={recovery} />
+      <DecisionQueue highlightOrderId={highlightOrderId} />
+    </div>
+  );
+}
+
+/**
+ * `?order=` (`/deliveries/:id`, DeliveryRedirect.tsx) names a delivery the
+ * founder's "worst money first" decision queue is where it gets acted on.
+ * ADR 0149 row 44 (2026-09-18) opened that queue to the
+ * owner rendering too — production is majority owner-only (6 of 10
+ * restaurants; production-tenant-shape, re-measured live 2026-09-19) — so
+ * only the staff rendering still lacks it and needs pointing elsewhere.
+ * Without this, the person most likely to actually tap "Open the delivery"
+ * from a notification landed on a page that said
+ * nothing about why they were there at all. The staff
+ * rendering has no per-delivery read to confirm or deny anything about this
+ * specific order, so — same honesty rule as `OrdersNext.tsx`'s
+ * `targetMissing` — this says only what IS known: a hand-off arrived, and
+ * where the actual decision lives.
+ */
+function HighlightElsewhereNote({ orderId }: { orderId: string }) {
+  return (
+    <div
+      role="status"
+      data-testid="highlight-elsewhere-note"
+      className="mb-4 rounded-xl px-4 py-3"
+      style={{
+        fontFamily: SANS,
+        fontSize: 12.5,
+        color: 'var(--ink-2, #4F473C)',
+        border: '1px solid var(--paper-2, #EAE4D8)',
+        background: 'var(--paper-1, #F3EFE6)',
+      }}
+    >
+      A delivery hand-off pointed here at order {orderId} — that decision lives in the decision
+      queue on the manager or owner view. Ask a manager or owner to open it from Receiving.
+    </div>
+  );
 }
 
 export default function ReceivingNext() {
@@ -162,6 +220,19 @@ export default function ReceivingNext() {
   const [preview, setPreview] = useState<Rendering | null>(null);
   const rendering = preview ?? actual;
   const outbox = useDoorOutbox();
+  /**
+   * One order asked for from OUTSIDE the page — `/deliveries/:id`
+   * (DeliveryRedirect.tsx) resolves a delivery to its order and lands here
+   * with it, because the decision queue is where the founder's "worst money
+   * first" verdicts on an unresolved delivery live. Read once; the queue
+   * opens for both manager and owner (ADR 0149 row 44), so only the staff
+   * rendering has no queue to highlight it IN — it still says so by name
+   * (`HighlightElsewhereNote`) rather than the silence this used to be, since
+   * the majority of production is owner-only (6 of 10 restaurants;
+   * production-tenant-shape, re-measured live 2026-09-19).
+   */
+  const [searchParams] = useSearchParams();
+  const highlightOrderId = searchParams.get('order');
 
   return (
     <div
@@ -218,9 +289,12 @@ export default function ReceivingNext() {
           style={{ alignItems: 'start' }}
         >
           <main>
+            {highlightOrderId && rendering === 'staff' && (
+              <HighlightElsewhereNote orderId={highlightOrderId} />
+            )}
             {rendering === 'staff' && <StaffBody />}
-            {rendering === 'manager' && <ManagerBody />}
-            {rendering === 'owner' && <OwnerBody />}
+            {rendering === 'manager' && <ManagerBody highlightOrderId={highlightOrderId} />}
+            {rendering === 'owner' && <OwnerBody highlightOrderId={highlightOrderId} />}
           </main>
           <aside>
             <RcOutboxRail data={outbox} />

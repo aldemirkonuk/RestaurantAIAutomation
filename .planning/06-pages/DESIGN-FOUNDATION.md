@@ -407,6 +407,12 @@ studio — plus deliberate chrome-free escapes (door receipt, SimPOS terminal,
      return* offline, and carries a working *Read again* on a register that
      did not answer; (6) the proposal sheet says "from the counter": the Ask
      panel's `ProposalCard` still applies with the unsealed `confirm`.
+     **[superseded 2026-09-21, round 2 — the founder: "Never without the
+     seal". The Ask panel's card now applies only through `HoldToApprove`
+     bound to its own seal, minted after any edits; the unsealed
+     `POST /ask-ai/actions/:id/confirm` answers 410 and names the sealed
+     routes; the sheet's "from the counter" scoping is removed. ADR 0160
+     review trail, 2026-09-21.]**
    - **Gone everywhere, regardless of the gate** — the floating Wine Agent
      button (ADR 0149 row 33, ADR 0145): deleted outright (second pass,
      2026-09-21), not merely unmounted under the shell — a static guard

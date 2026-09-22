@@ -3,7 +3,12 @@
  * Includes: Order Approval, Delivery Notification
  */
 
-import { EMAIL_CONFIG, formatCurrency, formatDate } from "./template-config";
+import {
+  EMAIL_CONFIG,
+  formatCurrency,
+  formatDate,
+  frontendUrl,
+} from "./template-config";
 import { baseTemplate, tableRow, alertBox } from "./base-template";
 
 // ============================================================================
@@ -120,7 +125,7 @@ export function orderApprovalTemplate(data: OrderApprovalData): string {
     content,
     ctaButton: {
       text: "Review Order",
-      url: "#",
+      url: `${frontendUrl()}/orders/${data.orderId}`,
       color: colors.primary,
     },
   });
@@ -246,7 +251,7 @@ export function deliveryNotificationTemplate(
     content,
     ctaButton: {
       text: "View Order Details",
-      url: "#",
+      url: `${frontendUrl()}/orders/${data.orderId}`,
       color: colors.primary,
     },
   });

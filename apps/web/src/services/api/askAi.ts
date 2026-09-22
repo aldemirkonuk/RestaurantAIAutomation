@@ -113,7 +113,7 @@ export interface AskAiConfirmResult {
 }
 
 /**
- * Why a confirm/discard failed, classified for the UI.
+ * Why a seal, an apply or a discard failed, classified for the UI.
  *
  *  `gone`     — the compare-and-swap lost. A double tap, a second tab, a
  *               retry over flaky signal. NOT an error banner: exactly one
@@ -121,10 +121,13 @@ export interface AskAiConfirmResult {
  *  `rejected` — the operator's edit did not pass the allowlist or the
  *               grounding check. The gateway rolls the row back to
  *               `proposed`, so the card stays usable and shows the reason.
+ *  `refused`  — the seal said no (403): spent, expired, someone else's, minted
+ *               on a different edit — or this role may not apply at all.
+ *               Nothing was written, so the card stays usable and says why.
  *  `failed`   — the executor threw. The row is `failed` and will not appear
  *               in the open list again.
  */
-export type AskAiFailureKind = 'gone' | 'rejected' | 'failed'
+export type AskAiFailureKind = 'gone' | 'rejected' | 'refused' | 'failed'
 
 export class AskAiActionError extends Error {
   readonly kind: AskAiFailureKind
@@ -144,6 +147,7 @@ function classify(error: unknown): AskAiActionError {
   const message = getErrorMessage(error)
   if (code === 404) return new AskAiActionError('gone', message)
   if (code === 400) return new AskAiActionError('rejected', message)
+  if (code === 403) return new AskAiActionError('refused', message)
   return new AskAiActionError('failed', message)
 }
 
@@ -221,39 +225,33 @@ export async function listCandidates(): Promise<AskAiCandidates> {
   }
 }
 
-/**
- * Confirm — the gate.
- *
- * Omit `payload` to confirm exactly what was proposed. Supply it and the
- * gateway re-runs the FULL allowlist and grounding check on it, so a partial
- * patch is not a thing that exists: send the complete payload or none.
+/*
+ * There is no unsealed confirm here any more. "Never without the seal" (the
+ * founder, 2026-09-21, on /ask): `POST /ask-ai/actions/:id/confirm` answers 410
+ * and a proposal is applied only through the two calls below — the seal minted
+ * when the hold BEGINS (after any edits, which it binds), then the apply that
+ * carries it back with the same edit.
  */
-export async function confirmAction(
-  actionId: string,
-  payload?: AskAiPayload,
-): Promise<AskAiConfirmResult> {
-  try {
-    const { data } = await apiClient.post<AskAiConfirmResult>(
-      `/ask-ai/actions/${actionId}/confirm`,
-      payload ? { payload } : {},
-    )
-    return data
-  } catch (error) {
-    throw classify(error)
-  }
-}
 
 /**
  * Mint the one-time seal a proposal is applied with — called when the hold
  * BEGINS (`HoldToApprove`'s `onChallenge`), never at the moment of applying.
- * The house counter's sheet is the caller (sketch 119 D: a proposal is
- * "applied only by the seal"). A refusal rejects with the gateway's sentence.
+ * Callers: the house counter's sheet and the Ask panel's proposal card.
+ *
+ * `payload` is the operator's edit, if there is one — the COMPLETE payload,
+ * never a partial patch. The gateway checks it through the same allowlist and
+ * grounding an apply runs and binds it into the seal, so the apply below must
+ * send the very same object. Omit it to seal the proposal exactly as proposed.
+ * A refusal rejects with the gateway's sentence, classified like an apply's.
  */
-export async function mintProposalSeal(actionId: string): Promise<string | null> {
+export async function mintProposalSeal(
+  actionId: string,
+  payload?: AskAiPayload,
+): Promise<string | null> {
   try {
     const { data } = await apiClient.post<{ challenge?: string }>(
       `/ask-ai/actions/${actionId}/seal-challenge`,
-      {},
+      payload ? { payload } : {},
     )
     return data?.challenge ?? null
   } catch (error) {
@@ -263,17 +261,19 @@ export async function mintProposalSeal(actionId: string): Promise<string | null>
 
 /**
  * Apply a proposal behind the seal minted when the hold began. The seal
- * travels in a header, as an order approval's does; the proposal is applied
- * untouched — a sealed application carries no edits.
+ * travels in a header, as an order approval's does. `payload` must be the edit
+ * the seal was minted on (or absent for both): an edit that differs from the
+ * one held is refused by the gateway as "changed after the seal was issued".
  */
 export async function applyProposalSealed(
   actionId: string,
   challenge: string,
+  payload?: AskAiPayload,
 ): Promise<AskAiConfirmResult> {
   try {
     const { data } = await apiClient.post<AskAiConfirmResult>(
       `/ask-ai/actions/${actionId}/sealed-confirm`,
-      {},
+      payload ? { payload } : {},
       { headers: { 'x-seal-challenge': challenge } },
     )
     return data
@@ -295,7 +295,6 @@ export const askAiApi = {
   propose: proposeAction,
   listOpen: listOpenProposals,
   listCandidates,
-  confirm: confirmAction,
   mintSeal: mintProposalSeal,
   applySealed: applyProposalSealed,
   discard: discardAction,

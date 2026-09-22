@@ -1,0 +1,135 @@
+{
+  "source": "LIVE-CHECKLIST.md, section 'Isolated-mount sweep — wave 5 (2026-09-18)'",
+  "generated_by": "scripts/extract_wave5_sweep.py against the checked-in table -- regenerate, do not hand-edit",
+  "note": "Mirrors the summary table only. The underlying harness (apps/web/sweep.html, apps/web/src/__sweep__/) was deleted after use; per-element measurements behind these cells are not recoverable (corrected 2026-09-19, CLAUDE.md §5b).",
+  "rows": [
+    {
+      "Route": "`/`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — honest prose, every tile em dash",
+      "Low-contrast text (1440)": "0",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/inventory`",
+      "h1 legible": "Yes (legacy light page, correctly dark-on-white)",
+      "Failure stated": "Yes — banner now names all three failed reads (inventory/summary/low-stock), was inventory-only",
+      "Low-contrast text (1440)": "0 (15 pre-existing legacy slate-400 labels at 2.87:1, unrelated to this PR, not touched)",
+      "390 overflow": "No",
+      "Notes": "**2 more zero-figure sites found and fixed this pass**: the page-header subtitle (\"N wines, N bottles on hand\") and the table footer (\"Showing N of N wines\") both read raw `stats`/`rows` and printed literal zeros under a failed read; both now route through the same `fig()` em-dash helper as the KPI strip. Covered by `InventoryCommandPage.test.tsx` (new, 6 cases)."
+    },
+    {
+      "Route": "`/orders`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — `role=\"alert\"`",
+      "Low-contrast text (1440)": "0",
+      "390 overflow": "**Yes, 24px** (`scrollW` 414 vs `clientW` 390) — a tab-strip button (\"Recurring\") and a toast/`sonner` container both sit past the viewport edge. Pre-existing, not touched by this PR; not fixed this pass.",
+      "Notes": ""
+    },
+    {
+      "Route": "`/receiving/:orderId/door`",
+      "h1 legible": "Yes",
+      "Failure stated": "N/A by design — camera-first, no read on mount",
+      "Low-contrast text (1440)": "0",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/providers`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — `role=\"alert\"`",
+      "Low-contrast text (1440)": "**0, was 1 at 2.68:1** (the `--alarm` token fix, below)",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/communications`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — `role=\"alert\"`",
+      "Low-contrast text (1440)": "**0, was 9 at 2.19–2.31:1** (the `--alarm-deep` token fix, below)",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/team`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — 6 alerts",
+      "Low-contrast text (1440)": "0",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/reports`",
+      "h1 legible": "Yes",
+      "Failure stated": "**Yes — 21 failure phrases at both widths, see correction below**",
+      "Low-contrast text (1440)": "0 (not separately re-broken-out this pass; live-confirm.md §6's \"every page's h1 4.5:1 or better\" covers it)",
+      "390 overflow": "**No** (the row-40 pass's \"1296\" was a `.rp-skel` skeleton read before layout, not overflow — see correction)",
+      "Notes": "**CORRECTED 2026-09-19** (wave5/live-confirm.md §6, re-measured, not carried forward per CLAUDE.md §5b — the two cells and the finding above are struck, not deleted): both symptoms were harness artefacts, not product defects, and the founder question they raised is **withdrawn**. (1) The \"stuck on Reading the registers…\" state happens only with **no active restaurant set** — `useReportsNextData.ts:253` has `enabled: !!rid` on every query, so a harness that never set an active restaurant (this page's data hook is the one of the 16 that needs one to enable its reads at all) leaves every query permanently disabled, which is indistinguishable from \"never settles\" by symptom alone. With `rid` set and every read rejecting, `/reports` states failure exactly like its siblings: \"The insight register could not be read … Nothing below is claimed.\" (2) The 1296px width at 390 came from `react-grid-layout`'s `WidthProvider`, which needs one rendered frame for its `ResizeObserver` to fire — reading `scrollWidth` before that frame catches the skeleton's pre-layout width, not the settled one; one frame later the items are 358px and the overflow is 0. Both are exactly the class of gap the fidelity statement's three limits above now name (hidden-pane timing)."
+    },
+    {
+      "Route": "`/calendar`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — `role=\"alert\"`",
+      "Low-contrast text (1440)": "0",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/documents-reports`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — `role=\"alert\"`",
+      "Low-contrast text (1440)": "0",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/documents/:id`",
+      "h1 legible": "Yes (CSS rule + a belt-and-suspenders inline style, wave4)",
+      "Failure stated": "Yes — `role=\"alert\"`, the h1 itself states the failure",
+      "Low-contrast text (1440)": "**0, was 2 at 2.35:1** (the `.mudavym p` rule fix, below)",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/logs`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — `role=\"alert\"`",
+      "Low-contrast text (1440)": "**0, was 4 at 2.35–2.47:1** (the `.mudavym p` rule fix, below)",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/notifications`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — `role=\"alert\"`",
+      "Low-contrast text (1440)": "0",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/profile`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — honest prose (18 could-not/unknown statements, wave4 count, reconfirmed present)",
+      "Low-contrast text (1440)": "0",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/connections`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — honest prose",
+      "Low-contrast text (1440)": "**0, was 2 at 2.47:1** (the `.mudavym p` rule fix, below)",
+      "390 overflow": "No",
+      "Notes": ""
+    },
+    {
+      "Route": "`/receipts`",
+      "h1 legible": "Yes",
+      "Failure stated": "Yes — `role=\"alert\"`",
+      "Low-contrast text (1440)": "0",
+      "390 overflow": "No",
+      "Notes": ""
+    }
+  ]
+}

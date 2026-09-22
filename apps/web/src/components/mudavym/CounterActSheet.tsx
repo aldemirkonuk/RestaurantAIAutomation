@@ -19,11 +19,12 @@
  * proposal's sheet carries `HoldToApprove` bound to a server seal of its own
  * (`POST /ask-ai/actions/:id/seal-challenge` when the hold begins, then
  * `sealed-confirm` carrying it — ADR 0116's challenge-and-redeem, subject kind
- * `ai_proposed_action`). There is no click-to-apply control here. The copy
- * says "from the counter" on purpose: the Ask Mudavym panel's `ProposalCard`
- * still applies a proposal with the unsealed `POST /ask-ai/actions/:id/confirm`
- * (with edits), so "a proposal is applied only by the seal" is true of this
- * sheet and not yet of the house.
+ * `ai_proposed_action`). There is no click-to-apply control here. Since the
+ * founder's "Never without the seal" (2026-09-21, on /ask) this is true of the
+ * whole house, not only of this sheet: the Ask panel's `ProposalCard` applies
+ * through the same two calls (with any edits bound into the seal), and the
+ * unsealed `POST /ask-ai/actions/:id/confirm` answers 410. So the copy below
+ * no longer scopes the rule to "from the counter".
  *
  * WHAT IS NOT COMPLETED HERE, AND SAYS SO
  * ---------------------------------------
@@ -207,11 +208,11 @@ export function CounterActSheet({ target, read, onClose, onChanged }: CounterAct
     foot =
       register.act === 'yours' ? (
         <div className="mdv-actsheet__foot">
-          <p className="mdv-note">From the counter, a proposal is applied only by the seal. Holding applies it as proposed, unedited.</p>
+          <p className="mdv-note">A proposal is applied only by the seal. Holding here applies it as proposed, unedited; to change it first, open it in Ask.</p>
           <ProposalSealFoot proposal={row as CounterProposalRow} onDone={onChanged} />
         </div>
       ) : (
-        <p className="mdv-note">This proposal waits on an owner or a manager; from the counter it is applied only by their seal.</p>
+        <p className="mdv-note">This proposal waits on an owner or a manager; it is applied only by their seal.</p>
       );
   } else {
     foot = (
