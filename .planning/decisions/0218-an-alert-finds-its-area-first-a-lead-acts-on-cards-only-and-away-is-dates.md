@@ -75,7 +75,14 @@ once it is under way — see **Round 3**.] The founder's rule is that *no* alert
 reaches a person on their Away days; the senders this build did not reach are
 listed under **Owed** below, and until the last of them is wired the Away note
 says "most alerts", not "no alerts". With nobody in any area and nobody Away,
-every audience is exactly what it was before this ADR.
+every audience is exactly what it was before this ADR. [Second last call,
+round 3, 2026-09-22: one exception, *built, not ruled*. Round 3 answer 1
+writes the inbox copy of a manager's message to **everyone** by
+`onlyUserIds` (the people the send counts as `recipients.targeted`: the
+roster's `active`, account-linked rows), where before it went through the
+funnel to every active member of the house. So a member whose roster row is
+`trial` or `inactive` no longer gets that inbox row, or the funnel's push
+that came with it, even when nobody is Away. See **Round 3**, answer 1.]
 
 ### The label (typed, for the catalogue lane)
 
@@ -248,7 +255,9 @@ bundled — not his own words for each. What each one is, and where it is:
      each named person who is Away **today** (house-local day). They get
      nothing now — no inbox row, no push, no text. A window that starts later
      holds nothing sent today. A message to **everyone** is not held: the
-     funnel routes it (see **Owed** for its push leg).
+     funnel routes it (see **Owed** for its push leg). [Superseded
+     2026-09-22 by round 3 answer 1, "Wait like named": a message to
+     everyone now holds an Away person the same way; see **Round 3**.]
    - *Where it waits.* `house_away_held` (migration `20260921171000`, RLS on,
      service_role only). A note's words stay on `team_notes`; a message has no
      record of its own, so its title and body are kept in the hold **only
@@ -362,6 +371,20 @@ six to the founder as four questions, his picks as the option labels below
    `ADR-0218-A-BROADCAST-TO-EVERYONE-HOLDS-AN-AWAY-PERSON-TOO`. Behaviour:
    `team.controller.broadcast.spec.ts` "holds it for an Away person swept up
    in a send to everyone too".
+
+   [Second last call, 2026-09-22: `onlyUserIds` also changes who "everyone"
+   is for the inbox. Before, the funnel wrote the row to every active member
+   of the house (`DatabaseService.getRestaurantMemberIds`), and the funnel's
+   own push went with it. Now the row and that push go only to `reachNow`:
+   the roster rows the controller already pushed and counted, those with
+   `status` `active` and a linked account. A member whose roster row is
+   `trial` or `inactive` gets neither, whether or not anyone is Away. This
+   matches how the live `/team` page reads "the whole active crew": its crew
+   note names exactly those rows (`TeamOverlays.tsx`, `CrewNoteSheet`). `/team`
+   has no send to everyone of its own. `team` is in `LIVE_PAGES`, so the one
+   web caller of `audience: "everyone"`, the legacy desk, is reached only
+   through a QA override. Found by reading the code; not measured in
+   production. *Built, not ruled*; put to the founder.]
 2. **The Away list cannot be read, mid-send.** *"Send now (Recommended)"* —
    keep as built: nothing lost or late, the same rule the alert funnel
    already uses. Unchanged code, and now the SAME code path for both
@@ -624,6 +647,15 @@ hold there too.]
     widened to every role, `away_set_for_member` dropped from
     `STAFF_WITHHELD_ACTIONS`, the query back on `READ_BACK_ACTIONS`, and the
     controller no longer passing the role.
+- **Second last call, round 3 (2026-09-22)**, on the committed tree: jest
+  over `team.controller.broadcast.spec.ts`, `house-areas.service.spec.ts`,
+  `away-release.service.spec.ts` and `settings-audit.service.spec.ts`, 4
+  suites and 92 tests passing. One fresh mutation, snapshot-restored with
+  `cp -p` and checked with `cmp`: `listAway`'s staff filter letting through a
+  colleague's window that has not started (`from <= today` dropped). It
+  turned "lists every current-or-upcoming window for owners/managers; staff
+  never learn who set a colleague's" red, and the verify of
+  `ADR-0218-STAFF-SEE-AWAY-ONLY-ONCE-UNDER-WAY` exited 1.
 
 ## Review trail
 
@@ -639,3 +671,4 @@ hold there too.]
 | 2026-09-22 | founder | Round 3: four questions, each answered *"(Recommended)"* — "Wait like named"; "Send now"; "Only once under way"; "Keep all four" (see **Round 3**) |
 | 2026-09-22 | areas lane, round 3 | Built answers 1 and 3 (`team.controller.ts` broadcast, `house-areas.service.ts` listAway, `AwayCard.tsx`); recorded answers 2 and 4 (no code change — both already matched what was built). Two CLAIMS rows added and mutation-tested; the **Owed** push-leg-to-everyone item closed in place |
 | 2026-09-22 | last call, round 3 | Found `GET /settings-audit` (no role gate) handing staff a colleague's `away_set_for_member` row, with the dates before they start and who set them, and the area rows: fixed in the query (`readBackActionsFor`, `STAFF_WITHHELD_ACTIONS`), CLAIMS `ADR-0218-STAFF-READ-NO-COLLEAGUE-AWAY-IN-THE-HOUSE-LOG`. Recorded, not changed: `/logs` still lists the action and the colleague's id, with no dates or name; the web's query cache outlives a sign-out; a release that fails after delivering delivers again (at least once); the legacy desk's crew message toasts over a hold too. Three code comments that still said "named only" corrected |
+| 2026-09-22 | second last call, round 3 | Two records made true again, no code change. Round 2 §3 still said a message to everyone is not held: marked superseded by round 3 answer 1. "With nobody Away, every audience is exactly what it was" was no longer true: the crew message to everyone now writes its inbox row by `onlyUserIds`, so a `trial` or `inactive` roster member no longer gets it. Recorded as *built, not ruled* and put to the founder. Attacks that held: no push to an Away person on a send to everyone (controller push and funnel push both follow `reachNow`), no loss or duplicate on release beyond the recorded at-least-once, no upcoming colleague window for staff in `/house/away` or `/settings-audit`, and an unreadable Away list sends now. No migration |
