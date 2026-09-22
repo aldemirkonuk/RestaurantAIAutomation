@@ -52,22 +52,23 @@ describe('useMudavymDesign precedence', () => {
 
   // These four exercise the FLAG path (step 3 of precedence), so — since
   // ADR 0149 row 36 (2026-09-17) resolves 'dashboard' via LIVE_PAGES without
-  // ever spending a request — they run against 'settings', a held-back page
-  // that still reads restaurant_feature_flags. LIVE_PAGES' own behaviour is
-  // asserted in the LIVE_PAGES describe block below.
+  // ever spending a request, and settings joined LIVE_PAGES in PR #419 —
+  // they run against 'cellar', a held-back page that still reads
+  // restaurant_feature_flags. LIVE_PAGES' own behaviour is asserted in the
+  // LIVE_PAGES describe block below.
   it('without an override, an active+enabled server flag turns the page on', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockResolvedValue(checkResult(true, true));
-    const { result } = renderHook(() => useMudavymDesign('settings'));
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
     expect(result.current).toBe(false); // legacy while the check is in flight
     await waitFor(() => expect(result.current).toBe(true));
-    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_settings');
+    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_cellar');
   });
 
   it('an inactive flag (unregistered in the gateway) stays legacy', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockResolvedValue(checkResult(true, false));
-    const { result } = renderHook(() => useMudavymDesign('settings'));
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
     await act(async () => {});
     expect(result.current).toBe(false);
   });
@@ -75,13 +76,13 @@ describe('useMudavymDesign precedence', () => {
   it('an API failure stays legacy rather than breaking the page', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockRejectedValue(new Error('network down'));
-    const { result } = renderHook(() => useMudavymDesign('settings'));
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
     await act(async () => {});
     expect(result.current).toBe(false);
   });
 
   it('no active restaurant → legacy, no request', async () => {
-    const { result } = renderHook(() => useMudavymDesign('settings'));
+    const { result } = renderHook(() => useMudavymDesign('cellar'));
     await act(async () => {});
     expect(result.current).toBe(false);
     expect(checkFlag).not.toHaveBeenCalled();

@@ -70,7 +70,7 @@ import { Plug } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import { animate, ink, prefersReducedMotion, settle } from '@/lib/mudavym';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
-import { ensureFraunces } from './fonts';
+import { SERIF } from './fonts';
 import {
   CONNECTIONS_ANCHOR, INTERVIEW_GROUPS, KEPT_NOTE, MONO, SANS, SERIF,
   TAB_TO_ANCHOR, isCollapsedSection, isSectionId, keptTally, sectionsFor,
@@ -157,8 +157,6 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
    */
   const connectionsOn = useMudavymDesign('connections');
   const collapsed = connectionsOn && isCollapsedSection(tabParam);
-
-  useEffect(() => { ensureFraunces(); }, []);
 
   const data = useSettingsNextData();
   const live = useMemo(() => sectionsFor(connectionsOn), [connectionsOn]);
