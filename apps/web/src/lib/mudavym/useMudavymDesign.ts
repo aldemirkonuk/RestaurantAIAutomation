@@ -72,6 +72,12 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // Not a page: the app SHELL (sketch 119 direction D, the founder's pick of
+  // 2026-09-21; ADR 0149 row 5). `DashboardLayout` reads this gate and renders
+  // `HouseShell` — rooms rail, house header, counter, the phone's four doors —
+  // around whatever page is routed, legacy or rebuilt. Off, the legacy
+  // Sidebar layout renders byte-for-byte. Column added by 20260921114300.
+  'shell',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
@@ -82,9 +88,9 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * read and no database write. `receiving` is the receiving DESK (the flagged
  * list/history page, route `/receiving`) — distinct from `receiving_door`,
  * which IS live. Held back, still flag-gated: `settings`, `cellar`,
- * `recommendations`, `receiving`.
+ * `recommendations`, `receiving`, and `shell` (the house shell, default off).
  *
- * `MUDAVYM_PAGES.length` is 20; this is deliberately not "the rest" spelled
+ * `MUDAVYM_PAGES.length` is 21; this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.

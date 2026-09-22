@@ -29,12 +29,18 @@ export class ProposeDto {
   utterance!: string;
 }
 
+/**
+ * The body of both sealed routes — `seal-challenge` (the edit the seal is
+ * minted on) and `sealed-confirm` (the same edit, carried back). Absent means
+ * "apply exactly what was proposed".
+ */
 export class ConfirmDto {
   @ApiPropertyOptional({
     description:
-      "The operator's edits to the proposal. Re-validated through the same " +
-      "allowlist and grounding check as a model proposal — an editable field " +
-      "is an id-injection hole the moment it is trusted.",
+      "The operator's edits to the proposal, bound into the seal when it is " +
+      "minted and carried back unchanged on the apply. Re-validated through the " +
+      "same allowlist and grounding check as a model proposal — an editable " +
+      "field is an id-injection hole the moment it is trusted.",
   })
   @IsOptional()
   @IsObject()

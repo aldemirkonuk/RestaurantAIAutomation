@@ -72,19 +72,19 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:147",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:147",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
   },
   {
     key: "mudavym_design_settings",
     // OFF by default: the Mudavym redesign of `/settings` (ADR 0044 p4 wave, KEEP Editorial + "there should be more").
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:147",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
   },
   {
     key: "enable_house_inbox_read",
@@ -101,7 +101,19 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_cellar",
     // OFF by default: the Mudavym `/cellar` parent surface and its `/wines` `/beer` `/whiskey` `/cocktails` children (ADR 0044 p4 wave; IA decided 2026-08-30, the crowded redesign rejected — "more character", keep "see everything").
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:147",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
+  },
+  {
+    key: "mudavym_design_shell",
+    // OFF by default: the Mudavym app shell — the rooms rail, the house
+    // header, the counter and the phone's four doors (sketch 119 direction D,
+    // the founder's pick of 2026-09-21; ADR 0149 row 5). Unlike the page
+    // flags this one swaps the LAYOUT every signed-in route renders inside
+    // (DashboardLayout reads `useMudavymDesign("shell")`); off, the legacy
+    // Sidebar layout is the path. Held back from LIVE_PAGES. Column added by
+    // 20260921114300.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
   },
 ];
 

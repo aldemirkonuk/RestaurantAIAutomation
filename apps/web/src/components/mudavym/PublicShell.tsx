@@ -10,7 +10,7 @@
  *
  * `login` and `register` are NOT in that set and this component is not for
  * them: the founder rejected their redrawn versions and asked for today's
- * pages improved instead, so their treatment is still open.
+ * pages improved instead, so their in-place treatment remains separate from this shell.
  *
  * WHAT THE SEVEN ACTUALLY CONTAIN (read 2026-09-12, not idealised)
  * ---------------------------------------------------------------
@@ -47,17 +47,12 @@
  * The one import from `lib/` is `import type { MudavymGround }`, which is
  * erased at compile time: one vocabulary for the ground, zero runtime coupling.
  *
- * BOTH GROUNDS, THE ADR 0042 WAY
- * ------------------------------
- * Every colour is a `.mudavym` token (`styles/mudavym.css`); `public-shell.css`
- * contains no hex literal, no `prefers-color-scheme` block and no
- * `[data-theme]` block, and the test asserts all three. The ground turns by the
- * three routes ADR 0042 already defines — the app's `.dark` class, an explicit
- * `data-ground="charcoal"`, and the pre-hydration media query in `mudavym.css`.
- * When a page forces charcoal, `data-ground` goes on the SAME element that
- * carries `.mudavym`: a custom property declared on a descendant beats one
- * inherited from an ancestor, which is the trap `PageGate.tsx:10-21` documents
- * at length. There is exactly one `.mudavym` node here, and it carries both.
+ * GROUNDS FOLLOW THE CURRENT SHARED TOKEN CONTRACT
+ * ------------------------------------------------
+ * `mudavym.css` now defaults to the founder-decided Warm Charcoal, independent
+ * of the legacy app theme. An explicit paper prop puts data-ground="paper" on
+ * the SAME .mudavym node so the shared paper exception can take effect. This
+ * shell defines no competing palette or media-query override.
  *
  * THE VOCABULARY IS `sheet.css`'s, NOT A SECOND ONE
  * -------------------------------------------------
@@ -70,7 +65,7 @@
  * present even when no overlay has ever opened.
  */
 
-import { useEffect, useId, type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { Seal } from './Seal';
 import { Wordmark } from './Wordmark';
 import type { MudavymGround } from '../../lib/mudavym/shellGround';
@@ -81,25 +76,10 @@ import '../../styles/mudavym.css';
 import './sheet.css';
 import './public-shell.css';
 
-/* ── Fraunces ─────────────────────────────────────────────────────────────
-   index.html loads DM Sans / Plus Jakarta Sans / JetBrains Mono but not the
-   house serif, and the title is set in it. The id is the one `Sheet.tsx:71`,
-   `HouseHeader.tsx:106` and `pages/dashboard/next/fonts.ts:10` use, so all four
-   injectors add at most one link between them. A fourth copy of six lines is
-   worse than one shared helper and better than a component reaching up into a
-   page tree for it; consolidating the four is a follow-up, not this task. */
-const FRAUNCES_LINK_ID = 'mudavym-fraunces';
-
-function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FRAUNCES_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FRAUNCES_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
+/* Fraunces is self-hosted — `@font-face` in `styles/mudavym.css` (decision
+   0149 row 9). No runtime Google Fonts link; `index.html`'s own Fraunces/
+   JetBrains Mono `<link>` is a separate follow-up (that file is owned by
+   another session — see `Privacy.tsx`'s font paragraph). */
 
 /**
  * How wide the column is, chosen by what the page IS — not by taste.
@@ -135,8 +115,8 @@ export interface PublicShellProps {
   /** Default `door`. See {@link PublicShellMeasure}. */
   measure?: PublicShellMeasure;
   /**
-   * Force a ground. Left off, the shell follows the app's theme and the
-   * pre-hydration media query — which is what six of the seven want.
+   * Force a ground. Left off, the shared charcoal default applies.
+   * An explicit paper value uses the shared token stylesheet’s paper exception.
    */
   ground?: MudavymGround;
   /**
@@ -179,10 +159,6 @@ export function PublicShell({
   // to know that. Stripped, it is still unique per instance.
   const mainId = `mdv-pub-main-${useId().replace(/:/g, '')}`;
 
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
-
   /* The skip link exists only when there is something to skip. With no
      `homeHref` the masthead is the seal, the name, a heading and a sentence —
      all inert — so the first Tab already lands on the first control inside
@@ -204,7 +180,7 @@ export function PublicShell({
   return (
     <div
       className={`mudavym mdv-pub${className ? ` ${className}` : ''}`}
-      data-ground={ground === 'charcoal' ? 'charcoal' : undefined}
+      data-ground={ground}
       data-measure={measure}
     >
       {signatureTakesFocus ? (

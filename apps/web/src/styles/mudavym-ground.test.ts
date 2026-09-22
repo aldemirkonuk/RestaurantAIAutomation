@@ -11,12 +11,23 @@
  * It asserts the whole token SET, not just the ground: charcoal behind
  * light-mode ink is unreadable, so the ink tokens must move with it.
  *
+ * [2026-09-19, ADR 0169: the founder reversed which column is "the decided
+ * ground" — "I realized all pages will be charcoal however I don't want it,
+ * I prefer the white look to be honest. People should have the option to
+ * choose." The bare `.mudavym` selector now resolves PAPER, and a person's
+ * own choice of charcoal (`lib/mudavym/groundChoice.ts`) is a THIRD route
+ * into the charcoal column below the two that already existed (a surface's
+ * own `data-ground="charcoal"`, and the paper escape). The suite below is
+ * corrected to match: the "app theme is irrelevant" claim is unchanged and
+ * still tested; which token SET is the default is not.]
+ *
  * What it cannot cover — stated so nobody reads a green here as more than it
  * is: jsdom resolves the cascade but paints nothing, so this proves the
  * VALUES, never the pixels. Author-order ties between separately-injected
  * Vite chunks are also out of reach; the rules are written to win on
- * specificity instead, and the paper-escape case below is the assertion of
- * that (0,2,0 over 0,1,0).
+ * specificity instead, and the escape cases below are the assertion of that
+ * (0,2,0 over 0,1,0 for a declared ground; 0,3,1 over 0,1,0 for a person's
+ * choice reaching an undeclared one).
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -27,7 +38,11 @@ const ROOT = join(__dirname, '..');
 const MUDAVYM_CSS = join(ROOT, 'styles/mudavym.css');
 const PAPER_ESCAPE_CSS = join(ROOT, 'pages/documents/next/canonical-document.css');
 
-/** The ADR 0042 Warm Charcoal column — the decided ground and its companions. */
+/**
+ * The ADR 0042 Warm Charcoal column. Since ADR 0169 (2026-09-19) this is no
+ * longer the default — it is what an explicit `data-ground="charcoal"` OR a
+ * person's own choice (`groundChoice.ts`) resolves to.
+ */
 const CHARCOAL = {
   '--paper-0': '#15130F',
   '--paper-1': '#1D1813',
@@ -37,6 +52,24 @@ const CHARCOAL = {
   '--ink-3': '#8E8576',
   '--ink-4': '#ABA294',
   '--seal': '#5FB0BC',
+} as const;
+
+/**
+ * The full ADR 0042 light column — ADR 0169's default, what a bare `.mudavym`
+ * with no declared ground and no charcoal choice resolves to. Same values the
+ * `[data-ground="paper"]` escape below has always used; this is only a wider
+ * set (the escape tests need just three keys, the default-ground tests below
+ * want the whole set, the same way the pre-0169 CHARCOAL block did).
+ */
+const PAPER_FULL = {
+  '--paper-0': '#fffdf8',
+  '--paper-1': '#f3efe6',
+  '--paper-2': '#eae4d8',
+  '--ink-1': '#211c16',
+  '--ink-2': '#4f473c',
+  '--ink-3': '#7c7365',
+  '--ink-4': '#665d50',
+  '--seal': '#1a5e6b',
 } as const;
 
 /** The one escape: ADR 0104 D9, the sheet of paper. */
@@ -85,19 +118,26 @@ function setAppTheme(theme: 'light' | 'dark'): void {
   document.documentElement.classList.add(theme);
 }
 
+/** ADR 0169 — the DOM fact a person's ground choice leaves on `<html>`. */
+function setGroundChoice(choice: 'paper' | 'charcoal' | null): void {
+  if (choice) document.documentElement.setAttribute('data-mudavym-ground', choice);
+  else document.documentElement.removeAttribute('data-mudavym-ground');
+}
+
 beforeAll(install);
 
 afterEach(() => {
   document.body.innerHTML = '';
   document.documentElement.classList.remove('light', 'dark');
+  document.documentElement.removeAttribute('data-mudavym-ground');
 });
 
-describe('the .mudavym scope paints the decided ground', () => {
+describe('ADR 0169 — the default ground is paper', () => {
   for (const theme of ['light', 'dark'] as const) {
-    it(`resolves the full Warm Charcoal token set under the ${theme} app theme`, () => {
+    it(`an undeclared root resolves the full paper token set under the ${theme} app theme`, () => {
       setAppTheme(theme);
       const page = mount('<div class="mudavym"></div>');
-      expect(tokens(page, Object.keys(CHARCOAL))).toEqual(CHARCOAL);
+      expect(tokens(page, Object.keys(PAPER_FULL))).toEqual(PAPER_FULL);
     });
 
     it(`resolves charcoal for an explicit data-ground under the ${theme} app theme`, () => {
@@ -108,7 +148,7 @@ describe('the .mudavym scope paints the decided ground', () => {
   }
 
   it('is identical in both themes — the toggle does not reach into the scope', () => {
-    const names = Object.keys(CHARCOAL);
+    const names = Object.keys(PAPER_FULL);
     setAppTheme('light');
     const inLight = tokens(mount('<div class="mudavym"></div>'), names);
     document.body.innerHTML = '';
@@ -117,14 +157,57 @@ describe('the .mudavym scope paints the decided ground', () => {
     expect(inLight).toEqual(inDark);
   });
 
-  it('leaves the ink legible: the companions moved with the ground', () => {
+  it('leaves the ink legible: the companions are the paper set together', () => {
     setAppTheme('light');
     const page = mount('<div class="mudavym"></div>');
     const t = tokens(page, ['--paper-0', '--ink-1']);
-    // Pin the pair, so this cannot pass by both tokens staying light together.
-    expect(t['--paper-0']).toBe(CHARCOAL['--paper-0']);
-    // 15.11:1 — the old light ink (#211C16) on this ground would be 1.05:1.
+    // Pin the pair, so this cannot pass by both tokens moving off-set together.
+    expect(t['--paper-0']).toBe(PAPER_FULL['--paper-0']);
     expect(contrast(t['--ink-1'], t['--paper-0'])).toBeGreaterThan(7);
+  });
+});
+
+describe('ADR 0169 — a person can choose charcoal', () => {
+  it('an undeclared root follows the person\'s choice of charcoal', () => {
+    setGroundChoice('charcoal');
+    const page = mount('<div class="mudavym"></div>');
+    expect(tokens(page, Object.keys(CHARCOAL))).toEqual(CHARCOAL);
+  });
+
+  it('an undeclared root stays paper when the choice is explicitly paper', () => {
+    setGroundChoice('paper');
+    const page = mount('<div class="mudavym"></div>');
+    expect(tokens(page, Object.keys(PAPER_FULL))).toEqual(PAPER_FULL);
+  });
+
+  it('the choice is irrelevant to a page that hardcodes charcoal for itself', () => {
+    setGroundChoice('paper'); // even the OPPOSITE of what this surface wants
+    const page = mount('<div class="mudavym" data-ground="charcoal"></div>');
+    expect(tokens(page, Object.keys(CHARCOAL))).toEqual(CHARCOAL);
+  });
+
+  it('the choice is irrelevant to a page that hardcodes paper for itself', () => {
+    setGroundChoice('charcoal'); // even the OPPOSITE of what this surface wants
+    const page = mount('<div class="mudavym" data-ground="paper"></div>');
+    expect(tokens(page, Object.keys(PAPER))).toEqual(PAPER);
+  });
+
+  it('reaches a header/sidebar-shaped root the same as a page root — both are just undeclared .mudavym', () => {
+    setGroundChoice('charcoal');
+    const header = mount('<header class="mudavym mdv-hdr"></header>');
+    expect(tokens(header, Object.keys(CHARCOAL))).toEqual(CHARCOAL);
+  });
+
+  it('is identical in both app themes — independent of the OLD light/dark toggle', () => {
+    const names = Object.keys(CHARCOAL);
+    setAppTheme('light');
+    setGroundChoice('charcoal');
+    const inLight = tokens(mount('<div class="mudavym"></div>'), names);
+    document.body.innerHTML = '';
+    setAppTheme('dark');
+    setGroundChoice('charcoal');
+    const inDark = tokens(mount('<div class="mudavym"></div>'), names);
+    expect(inLight).toEqual(inDark);
   });
 });
 
@@ -159,6 +242,25 @@ describe('the one escape still escapes', () => {
     );
     const sheet = document.querySelector('.cd-sheet') as HTMLElement;
     expect(tokens(sheet, Object.keys(PAPER))).toEqual(PAPER);
+  });
+
+  it('ADR 0169 — escapes even when the PARENT went charcoal from a person\'s choice, not a declaration', () => {
+    setGroundChoice('charcoal');
+    try {
+      mount(
+        // The outer div declares nothing — it is charcoal only because the
+        // person chose it (`html[data-mudavym-ground="charcoal"] .mudavym:not([data-ground])`).
+        '<div class="mudavym">' +
+          '<article class="mudavym cd-sheet" data-ground="paper"></article>' +
+          '</div>'
+      );
+      const outer = document.querySelector('.mudavym') as HTMLElement;
+      expect(tokens(outer, Object.keys(CHARCOAL))).toEqual(CHARCOAL);
+      const sheet = document.querySelector('.cd-sheet') as HTMLElement;
+      expect(tokens(sheet, Object.keys(PAPER))).toEqual(PAPER);
+    } finally {
+      setGroundChoice(null);
+    }
   });
 });
 

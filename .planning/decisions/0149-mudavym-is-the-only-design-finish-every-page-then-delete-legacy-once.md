@@ -1,6 +1,6 @@
 # 0149 — Mudavym is the only design: finish every page, then delete legacy once
 
-- **Status:** Locked 2026-09-16 — the founder's goal for the session and his answers to nine rounds of forks in session (his typed words in italics, chosen options named, below). The deletion itself is a gated stop inside this record: the deletion manifest goes to him file group by file group, and nothing is deleted without his word on that manifest.
+- **Status:** Locked 2026-09-16 — the founder's goal for the session and his answers to nine rounds of forks in session (his typed words in italics, chosen options named, below). The deletion itself is a gated stop inside this record: the deletion manifest goes to him file group by file group, and nothing is deleted without his word on that manifest. **[2026-09-19: row 6 revised by [[0169-the-ground-is-white-by-default-and-each-person-chooses]] — "declared paper surfaces only" is no longer the shape; paper is the default everywhere and a person chooses charcoal for themselves. Answered, not fully built for every page — see that record's measurement.]**
 - **Date:** 2026-09-16
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** cutover, legacy deletion, dark launch superseded, mudavym_design flags, PageGate, useMudavymDesign, VITE_MUDAVYM_PUBLIC, deletion manifest, Codex adoption, theme toggle, SimPOS, Studio, app shell, finish
@@ -85,7 +85,7 @@ the current restaurants or users, or tables, dbs or such"*. So:
 | 3 | When legacy is deleted | Build all, then one cutover, with his approval of the deletion manifest (quoted above) | this record |
 | 4 | Studio and SimPOS | *"/studio was getting another update I'm not sure tho, check codex convos but imPOS keep-asis"* — SimPOS stays an internal tool outside the design and the deletion; Studio waits on the Codex-conversation check | this record; ADR 0143 §5 |
 | 5 | App shell (sidebar, header, toasts, error, loader, offline banner, 404, floating agent button) | Rebuild as house chrome after a Fable 5.1 sketch and his review — *"only if it s not already done"* | this record |
-| 6 | Light/dark toggle | Retired: charcoal everywhere, declared paper surfaces only | ADR 0138 |
+| 6 | Light/dark toggle | Retired: charcoal everywhere, declared paper surfaces only. **[2026-09-19: reversed by [[0169-the-ground-is-white-by-default-and-each-person-chooses]] — the founder found all-charcoal not to his taste and asked for a per-person choice, default paper.]** | ADR 0138; ADR 0169 |
 | 7 | Public doors built by Codex | Ratify its treatment: readable `/privacy`, vendor board at `/v/:slug`, sign in before resending verification, today's invite preview fields, publisher attribution with no Mudavym seal | ADR 0133, 0143 §1 |
 | 8 | Contact address | `support@mudavym.com` everywhere (privacy, help, auth-email footers) | ADR 0143 |
 | 9 | Fonts on public pages | Self-host every face; no Google Fonts request | ADR 0133 |
