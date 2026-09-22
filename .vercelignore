@@ -98,6 +98,17 @@ services/agent-orchestrator/logs/
 # root cause already fixed twice in .gitignore (apps/api-gateway/src/logs/,
 # apps/web/src/pages/logs/) — same fix here.
 #
+# [NOTE added 2026-09-21, round 3, correctness angle: that parenthesis names the
+# two PATHS correctly but is over-precise about the MECHANISM for the web one.
+# This file's CHALLENGED-AND-UPHELD note below credits "anchoring in
+# apps/web/.gitignore" — but the root .gitignore ALSO carries
+# `!apps/web/src/pages/logs/`, and its own comment claims that negation is the
+# one doing the work. Two mechanisms, one named. The OUTCOME is settled either
+# way (`git check-ignore -v apps/web/src/pages/logs/next/NEWFILE.tsx` exits 1,
+# not ignored), and this file's actual subject is the Vercel uploader, not git.
+# Recorded rather than resolved, because guessing which of the two is load-
+# bearing is exactly the over-precision that has blocked this PR three times.]
+#
 # [This sentence was CHALLENGED and UPHELD, 2026-09-21, round 2 of this PR's
 # audit. The correctness angle reported it false — "it was fixed once; there is
 # no negation for the web path, and apps/web/.gitignore's bare `logs` still
@@ -117,13 +128,23 @@ services/agent-orchestrator/logs/
 # has no negation and behaved identically under the old file — both directories
 # were pruned by the bare `logs` pattern before the uploader ever looked inside,
 # so there was nothing left for a negation to re-include. ANCHORING is what fixes
-# this. Removing the negation is a MEASURED no-op: the full simulated upload
-# walk with and without it is byte-identical under both the old and the new file
-# (3229 and 3232 entries), and 0 of 8 interaction probes change verdict. It is
-# kept only to hold this PR to one operation. It is deader than it looks, too —
-# ignore@4.0.6 compiles it to a regex whose lookahead requires a trailing slash,
-# and path.relative() never emits one, so it matches nothing the uploader can
-# ever test. That also means the
+# this. Removing the negation is a no-op, and the reason is mechanical rather
+# than statistical, so check the mechanism and not my arithmetic:
+#
+#   node -e "const ig=require('<repo>/node_modules/.pnpm/ignore@5.3.2/node_modules/ignore');
+#            console.log(String(ig().add('!apps/web/src/pages/logs/')._rules[0].regex))"
+#   ->  /^apps\/web\/src\/pages\/logs\/$/i
+#
+# The compiled pattern requires a LITERAL TRAILING SLASH. The uploader tests
+# paths produced by path.relative(), which never emits one, so this rule matches
+# nothing it can ever be handed. The CLI bundles ignore@4.0.6, not 5.3.2 (see
+# vercel/dist/chunks/chunk-SPXTKMOV.js:38861); its compilation differs in form —
+# a lookahead rather than a bare anchor — but requires the trailing slash just
+# the same. A full simulated upload walk with and without the line agreed with
+# that (identical entry sets, ~3.2k entries each, under both the old and the new
+# file), but treat the regex above as the evidence: it is one command, and the
+# walk was a same-day script that is not in the repo. The line is kept only to
+# hold this PR to one operation. That also means the
 # 2026-09-12 fix recorded above never worked, and this PR silently repairs a
 # second instance (apps/api-gateway/src/logs, 5 files) nobody had diagnosed.]
 !apps/web/src/pages/logs/
