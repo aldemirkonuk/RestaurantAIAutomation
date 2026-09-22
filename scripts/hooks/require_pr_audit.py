@@ -447,6 +447,21 @@ _STATEMENT_SEP_TOKENS = frozenset({";", "&&", "||", "\n"})
 # distinct from "not set at all" (also left unresolved, by the .get default
 # below, but for a different reason).
 _UNRESOLVED = object()
+# gate8d (round 6z, 2026-09-22). Of the six default/alternate-value operators
+# `_PARAM_DEFAULT_RE` already reads the TEXT of (`:-`, `-`, `:=`, `=`, `:+`,
+# `+`), only two -- `:=` and `=` -- ALSO assign that text to NAME as a side
+# effect, bash's own rule (`:-`/`-`/`:+`/`+` never assign). Founder's word,
+# verbatim, as relayed: "track := / = assignments inside ${...} as
+# assignments" -- the gate-r6 residual "a value set any way but a plain or
+# exported `NAME=value` ... cannot be weighed here at all" reaches this one
+# shape now. `: ${G:=git push}; $G origin HEAD` -- measured moving a bare
+# origin's main, unfixed -- assigns G no visible `NAME=value` token
+# `_collect_assignments()` read before this round, so the later `$G` was
+# never resolved and the push behind it was never seen. Read wherever the
+# form appears in the token stream, not only at a statement's own start (the
+# founder's example runs it as `:`'s own argument), through the same
+# not-a-literal rule an ordinary assignment's value already gets.
+_PARAM_ASSIGN_RE = re.compile(r"\$\{(\w+)(?::=|=)([^{}]*)\}")
 
 
 def _collect_assignments(toks: list[str]) -> dict[str, list[tuple[int, object]]]:
@@ -509,6 +524,13 @@ def _collect_assignments(toks: list[str]) -> dict[str, list[tuple[int, object]]]
     i, n = 0, len(toks)
     while i < n:
         tok = toks[i]
+        # gate8d: a `${NAME:=text}`/`${NAME=text}` assignment-by-expansion,
+        # wherever it appears in this token -- not gated on `at_start`, since
+        # it is not itself a statement, only ever one command's own argument.
+        for _pm in _PARAM_ASSIGN_RE.finditer(tok):
+            _pname, _ptext = _pm.group(1), _pm.group(2)
+            _pvalue: object = _UNRESOLVED if re.search(r"[$`(]", _ptext) else _ptext
+            assigned.setdefault(_pname, []).append((i, _pvalue))
         if tok in _STATEMENT_SEP_TOKENS:
             at_start = True
             i += 1
@@ -742,7 +764,19 @@ def _push_reason(seg: list[str], env: dict[str, str] | None = None) -> str | Non
 # drops comment text, as it did before); a program outside both lists that
 # runs a QUOTED string itself is not read, since this hook cannot tell it from
 # a quoted argument such as `gh pr create --body '...'`.
-_PUSH_WRAPPER_PROGRAMS = frozenset({"nohup", "env", "command", "time", "exec", "sudo", "xargs"})
+# gate8d: `builtin` forces bash to run the builtin of that name rather than a
+# function or alias shadowing it -- transparent the same way `command` and
+# `exec` (already here) are, and `eval` is a special builtin bash always runs
+# as itself regardless. `builtin eval 'git push origin HEAD'` -- measured
+# moving a bare origin's main, unfixed -- named no program `eval`'s own
+# handling below is reached through: `command eval '...'` and `exec eval
+# '...'` were already stripped by this set and refused correctly; `builtin`
+# was the one gap, a program on neither this list nor `_STRING_RUNNING_
+# PROGRAMS`, so it fell to `_unrecognised_wrapper_push_reason()`, whose scan
+# does not re-read a LATER `eval`'s own string the way the wrapper-stripping
+# loop does. Founder's word, verbatim, as relayed: "treat builtin/command/
+# exec prefixes as transparent before eval."
+_PUSH_WRAPPER_PROGRAMS = frozenset({"nohup", "env", "command", "time", "exec", "sudo", "xargs", "builtin"})
 _PUSH_SHELL_PROGRAMS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish"})
 # What runs a heredoc body as a script (gate-r8 last call, _heredoc_runs_as_script()).
 _SCRIPT_RUNNERS = _PUSH_SHELL_PROGRAMS | {"source", "."}
@@ -863,22 +897,52 @@ _WHOLE_SUBSTITUTION_RE = re.compile(r"(?s)\$\(.*\)|`.*`")
 # blank inside `text`, so this only ever matches through the `_lex()` reading
 # -- exactly the asymmetry `_WHOLE_SUBSTITUTION_RE` already has for `$(...)`.
 _PARAM_DEFAULT_RE = re.compile(r"^\$\{\w+(?::-|-|:=|=|:\+|\+)(.*)\}$", re.S)
+# gate8d (round 6z, 2026-09-22). A word that is one whole `${NAME/pattern/
+# string}` (first match), `${NAME//pattern/string}` (every match), `${NAME/
+# #pattern/string}` (anchored at the start) or `${NAME/%pattern/string}`
+# (anchored at the end) pattern-substitution expansion -- the founder's named
+# shape, `G=x; ${G/x/git push} origin HEAD` (measured moving a bare origin's
+# main, unfixed). This hook does not attempt real glob matching (bash's own
+# `pattern` semantics), so it does not try to compute the substituted result
+# -- it fails closed on `pattern/string` together, the same restraint
+# `_PARAM_DEFAULT_RE`'s text already has for the six operators it reads, and
+# for the same reason: text this hook cannot fully evaluate is read for
+# "push", never silently passed as safe.
+_PARAM_PATTERN_SUB_RE = re.compile(r"^\$\{\w+/(?:/|#|%)?(.*)\}$", re.S)
+# gate8d: `${!NAME}` -- bash's indirect expansion, NAME's value used as the
+# name of a SECOND variable whose value this expands to. The founder's named
+# shape, `P='git push'; G=P; ${!G} origin HEAD` (measured moving a bare
+# origin's main, unfixed): `G` holds the literal text "P", not `$P`'s value,
+# so no assignment this hook reads ever puts the word "push" anywhere in the
+# command's own text -- `_whole_word_holds_push()`'s other two readings above
+# work by finding "push" in a word's visible text once every expansion this
+# hook already resolves is applied, and there is no such text here to find,
+# by construction. Resolving two levels of indirection is not attempted;
+# every `${!NAME}` in a position this hook checks is read the same way an
+# unresolved word followed by literal push already is -- refused, since it
+# may be git, rather than passed as unrelated to push for want of visible
+# text.
+_INDIRECT_PARAM_RE = re.compile(r"^\$\{!\w+\}$")
 
 
 def _whole_word_holds_push(tok: str, env: dict[str, object]) -> bool:
     """True if `tok` is one whole word this hook cannot resolve to a program
     name, but whose own text may still run push once the shell expands it: a
     `$(...)`/backtick substitution holding the word as written
-    (_WHOLE_SUBSTITUTION_RE), or a `${NAME<op>text}` default/alternate-value
+    (_WHOLE_SUBSTITUTION_RE), a `${NAME<op>text}` default/alternate-value
     expansion (gate8c) whose TEXT -- split the way an unquoted expansion is
     split, so a same-command IFS applies to it too (_expansion_words(), the
     same reading a resolved `$NAME` already gets) -- holds "push" as one of
-    its words. Read as unresolved text when the same-command assignments
-    cannot split it either, the plain word-boundary check `$(...)` already
-    has."""
+    its words, or (gate8d) a `${NAME/pattern/string}` pattern-substitution
+    expansion read the same way, or a `${!NAME}` indirect expansion, always
+    treated as unresolved since its result carries no visible text at all.
+    Read as unresolved text when the same-command assignments cannot split it
+    either, the plain word-boundary check `$(...)` already has."""
     if _WHOLE_SUBSTITUTION_RE.fullmatch(tok):
         return bool(re.search(r"(?i)\bpush\b", tok))
-    m = _PARAM_DEFAULT_RE.match(tok)
+    if _INDIRECT_PARAM_RE.fullmatch(tok):
+        return True
+    m = _PARAM_DEFAULT_RE.match(tok) or _PARAM_PATTERN_SUB_RE.match(tok)
     if not m:
         return False
     words = _expansion_words(m.group(1), env)

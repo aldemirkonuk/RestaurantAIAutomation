@@ -2328,6 +2328,111 @@ def test_gate8c_last_call_eval_shapes_are_real_pushes_the_hook_now_stops(tmp_pat
 
 
 # --------------------------------------------------------------------------- #
+# gate8d (round 6z, 2026-09-22). Founder's word, verbatim, as relayed (his
+# pick on the fork the gate8c last call put to him -- "Close all four", not
+# the recommended two-and-two): close the four real pushes it found outside
+# the founder's 2026-09-22 word (round 6y), each measured moving a bare
+# origin's main under bash, allowed by gate8c's finished hook:
+#   (a) `G=x; ${G/x/git push} origin HEAD` -- a pattern-substitution
+#       replacement text (_PARAM_PATTERN_SUB_RE, _whole_word_holds_push()).
+#   (b) `P='git push'; G=P; ${!G} origin HEAD` -- an indirect expansion
+#       (_INDIRECT_PARAM_RE, _whole_word_holds_push()); always read as
+#       unresolved, since its result carries no visible "push" text for a
+#       text-scanning check to find, unlike (a) and gate8c's default-text
+#       reading.
+#   (c) `: ${G:=git push}; $G origin HEAD` -- a value assigned by a `${...}`
+#       default/alternate-value expansion's OWN side effect (bash's rule:
+#       `:=` and `=` assign; `:-`, `-`, `:+`, `+` never do), tracked the same
+#       as an ordinary `NAME=value` (_PARAM_ASSIGN_RE, _collect_assignments()) --
+#       the gate-r6 "value set any way but a plain NAME=value ... cannot be
+#       weighed here at all" residual, closed for this one shape.
+#   (d) `builtin eval 'git push origin HEAD'` -- `builtin` named transparent
+#       before `eval`, the way `command` and `exec` (already wrappers) already
+#       are (_PUSH_WRAPPER_PROGRAMS).
+# Kept refused on the founder's word ("Keep refused (Recommended)", the other
+# side of the same fork): an `eval` string naming push as a word stays
+# refused whatever it does -- `builtin eval 'git push origin feat/x'` among
+# them, pinned below as a twin that stays refused, not allowed.
+# --------------------------------------------------------------------------- #
+
+_GATE8D_BASH = [
+    "G=x; ${G/x/git push} origin HEAD",
+    "P='git push'; G=P; ${!G} origin HEAD",
+    ": ${G:=git push}; $G origin HEAD",
+    "builtin eval 'git push origin HEAD'",
+]
+
+# Reconstructs the gate8c-finished hook (this round's four fixes reverted, one
+# replacement per shape above, in the same order): the pattern-substitution
+# and indirect-expansion readings dropped from _whole_word_holds_push(), the
+# `${NAME:=...}`/`${NAME=...}` side-effect scan in _collect_assignments()
+# turned into a no-op, and `builtin` dropped from _PUSH_WRAPPER_PROGRAMS.
+_GATE8D_FIRST_BUILD = (
+    ("    m = _PARAM_DEFAULT_RE.match(tok) or _PARAM_PATTERN_SUB_RE.match(tok)\n",
+     "    m = _PARAM_DEFAULT_RE.match(tok)\n"),
+    ("    if _INDIRECT_PARAM_RE.fullmatch(tok):\n        return True\n", ""),
+    ("            assigned.setdefault(_pname, []).append((i, _pvalue))\n", "            pass\n"),
+    ('_PUSH_WRAPPER_PROGRAMS = frozenset({"nohup", "env", "command", "time", "exec", "sudo", "xargs", "builtin"})\n',
+     '_PUSH_WRAPPER_PROGRAMS = frozenset({"nohup", "env", "command", "time", "exec", "sudo", "xargs"})\n'),
+)
+
+
+@pytest.mark.parametrize("command", _GATE8D_BASH)
+def test_gate8d_last_call_shapes_are_real_pushes_the_hook_now_stops(tmp_path, command):
+    """Each shape, run with no hook, moves the bare origin's main from a
+    checkout of main; the gate8c-finished hook, reconstructed by
+    `_GATE8D_FIRST_BUILD`, allows it and main moves (recorded in ADR 0090's
+    gate-r8 section, "found by the same last call and NOT closed"); this
+    hook refuses it and main does not move."""
+    first_build = HOOK.read_text()
+    for old, new in _GATE8D_FIRST_BUILD:
+        assert first_build.count(old) == 1, old
+        first_build = first_build.replace(old, new, 1)
+    assert _ungated_push_moves_main(tmp_path / "ungated", command), command
+    assert _gated_push_moves_main(tmp_path / "first", first_build, command) == (0, True), command
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+
+
+@pytest.mark.parametrize("command", [
+    # (a) the pattern's own text holds no "push" as a word: not resolved to
+    # anything by this hook (it does not run bash's glob matching), read as
+    # unresolved text and found clean, the same fallback a $(...) with no
+    # "push" already gets.
+    "G=x; ${G/x/git status} origin HEAD",
+    "G=git; ${G/git/git} status",
+    # (b) an indirect expansion this hook never resolves stays unrelated to
+    # push wherever the command otherwise has no push/git in it at all -- the
+    # prefilter itself passes it through, as it already does for any command
+    # naming neither word.
+    "echo ${!X}",
+    "G=git; $G status ${!X}",
+    # (c) `${NAME:=text}` assigning a value that is not push, then read back:
+    # a bare no-op (the existing gate8c twin, `${Z:=build}`, now also
+    # referenced afterward) and a push to a named branch, not main.
+    ": ${Z:=build}; $Z",
+    ": ${B:=feat/x}; git push origin HEAD:$B",
+    # (d) `builtin` wrapping an ordinary command, and `builtin eval` running
+    # one: neither is a push.
+    "builtin echo hi",
+    "builtin eval 'git status'",
+])
+def test_gate8d_allowed_twins(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+def test_gate8d_eval_string_naming_push_stays_refused(two):
+    """The other side of the founder's round-6z fork, kept as answered before
+    ("Keep refused (Recommended)"): an `eval` string naming push as a word is
+    refused whatever it does, `builtin`-wrapped exactly as bare `eval` already
+    is -- not an allowed twin, pinned here so it is not read as one."""
+    clone, _h, env = two
+    out = run_hook(clone, env, "builtin eval 'git push origin feat/x'")
+    assert out.returncode == 2, out.stderr
+
+
+# --------------------------------------------------------------------------- #
 # Mutations of the hook: each must turn at least one scenario above red.
 # (name, text that must occur exactly once, replacement, scenario)
 # --------------------------------------------------------------------------- #
@@ -2773,7 +2878,7 @@ HOOK_MUTATIONS = [
     # (Recommended)" -- the five real pushes gate-r8's last call found.
     # --------------------------------------------------------------------- #
     ("gate8c: a whole `${...}` default/alternate-value word not matched at all",
-     "    m = _PARAM_DEFAULT_RE.match(tok)\n    if not m:\n        return False\n",
+     "    m = _PARAM_DEFAULT_RE.match(tok) or _PARAM_PATTERN_SUB_RE.match(tok)\n    if not m:\n        return False\n",
      "    m = None\n    if not m:\n        return False\n", "g8c_param_default"),
     ("gate8c: its resolved default-text words not checked for push",
      '    return any(w.lower() == "push" for w in words)\n', "    return False\n", "g8c_param_default_split"),
@@ -2799,6 +2904,22 @@ HOOK_MUTATIONS = [
      "                    or None)\n", "g8c_eval_alias"),
     ("gate8c: eval's arguments not joined before re-reading them (the first alone holds no push)",
      '    joined = " ".join(rest)\n', "    joined = rest[0]\n", "g8c_eval_joined"),
+    # --------------------------------------------------------------------- #
+    # gate8d (round 6z, 2026-09-22). Founder's word: "Close all four" -- the
+    # four real pushes the gate8c last call found outside his round-6y word.
+    # --------------------------------------------------------------------- #
+    ("gate8d: a pattern-substitution word's replacement text not read for push",
+     "    m = _PARAM_DEFAULT_RE.match(tok) or _PARAM_PATTERN_SUB_RE.match(tok)\n",
+     "    m = _PARAM_DEFAULT_RE.match(tok)\n", "g8d_pattern_sub"),
+    ("gate8d: an indirect expansion no longer read as unresolved",
+     "    if _INDIRECT_PARAM_RE.fullmatch(tok):\n        return True\n", "", "g8d_indirect"),
+    ("gate8d: a `${NAME:=...}`/`${NAME=...}` side-effect assignment dropped",
+     "            assigned.setdefault(_pname, []).append((i, _pvalue))\n", "            pass\n",
+     "g8d_param_assign"),
+    ("gate8d: `builtin` no longer transparent before `eval`",
+     '_PUSH_WRAPPER_PROGRAMS = frozenset({"nohup", "env", "command", "time", "exec", "sudo", "xargs", "builtin"})\n',
+     '_PUSH_WRAPPER_PROGRAMS = frozenset({"nohup", "env", "command", "time", "exec", "sudo", "xargs"})\n',
+     "g8d_builtin"),
 ]
 
 # (command, exit the unmutated hook gives, tool, extra environment)
@@ -3089,6 +3210,11 @@ SCENARIOS = {
     # The string-runner reading eval had before gate8c, still applied: the
     # re-read alone reads a git alias the command defines as not a push.
     "g8c_eval_alias": lambda h: ("eval 'git -c alias.p=push p origin HEAD'", 2, None, {}),
+    # gate8d (round 6z, 2026-09-22). Founder's word: "Close all four".
+    "g8d_pattern_sub": lambda h: ("G=x; ${G/x/git push} origin HEAD", 2, None, {}),
+    "g8d_indirect": lambda h: ("P='git push'; G=P; ${!G} origin HEAD", 2, None, {}),
+    "g8d_param_assign": lambda h: (": ${G:=git push}; $G origin HEAD", 2, None, {}),
+    "g8d_builtin": lambda h: ("builtin eval 'git push origin HEAD'", 2, None, {}),
 }
 
 
