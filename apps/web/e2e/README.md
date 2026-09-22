@@ -200,6 +200,12 @@ the pages reported in words:
 4. If the page was listed in `pending_pages`, remove it from there.
 5. Run `python3 scripts/check_nightly_manifest.py`.
 
+**Chrome is not a page.** An enrolled slug that gates something wrapping every
+route (today only `shell`, the house shell) still gets an entry, with
+`"chrome": true`. Both walks pin its override off and record it `absent`, and
+`extract_design_verdicts.py` skips it. Forced on, its own `.mudavym` root would
+make every page and every pending page read as rebuilt.
+
 The guard runs in CI (job `decision-claims`) and fails, naming the entry, when:
 
 - `manifest.pages` and `MUDAVYM_PAGES` differ, in either direction;

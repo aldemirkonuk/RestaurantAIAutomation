@@ -8,18 +8,34 @@
    components/mudavym/PageGate.tsx for why the gate does not add a second one).
 
    THE GROUND IS DECIDED, NOT PREFERRED — founder, 2026-09-12.
+   [2026-09-19, ADR 0169: reversed. The founder, having lived with it: "I
+   realized all pages will be charcoal however I don't want it, I prefer the
+   white look to be honest. People should have the option to choose." The
+   base below is now PAPER, not charcoal, and `.mudavym[data-ground="charcoal"]`
+   is how a PERSON's own choice reaches a page that has not itself declared a
+   ground — see `lib/mudavym/groundChoice.ts`, which is the third selector in
+   that rule's list. Everything this comment says about the base/escape
+   MECHANISM (why the base selector, why the escape wins on specificity) is
+   still true; only which column sits on which selector changed.]
 
-   Inside `.mudavym` the tokens resolve to the Warm Charcoal column in EVERY
-   app theme. The light/dark toggle does not reach into this scope: the brand
-   decision holds on the pages that were designed for it. Outside the scope
-   nothing changed — the legacy app still follows the user's theme exactly as
-   it did before, because these variables are inert there.
+   Inside `.mudavym` the tokens resolve to ONE column, chosen by (in order):
+   a surface's own explicit `data-ground` (unchanged since 2026-09-12 — a
+   page that states its ground out loud always wins, e.g. the canonical
+   document's `data-ground="paper"` or DoorNext's `data-ground="charcoal"`),
+   else the person's own choice (`groundChoice.ts`, per device, ADR 0169),
+   else paper. The app's separate light/dark toggle (`ThemeContext`) still
+   does not reach into this scope — the two have been independent since
+   2026-09-12, and ADR 0169 keeps that: choosing charcoal here does not touch
+   `ThemeContext`, and the legacy app outside `.mudavym` is still exactly as
+   inert to this file as it always was.
 
-   What this replaced, and why: the charcoal column used to hang off
-   `.dark .mudavym` plus a `prefers-color-scheme` block. ThemeContext
+   What ADR 0138 (2026-09-12) replaced, and why: the charcoal column used to
+   hang off `.dark .mudavym` plus a `prefers-color-scheme` block. ThemeContext
    force-migrates every first-time browser to `light`
    (contexts/ThemeContext.tsx:40-44), so `.dark` was never on <html> for a new
-   user and the decided ground had never rendered for anyone.
+   user and the decided ground had never rendered for anyone. Putting a column
+   on the bare `.mudavym` selector fixed that, and ADR 0169 keeps the fix —
+   it only swaps which column is the one every page gets for free.
 
    Why the base selector rather than an override rule: a custom property
    declared directly on an element always wins over one inherited from an
@@ -28,18 +44,21 @@
    every element that opts in carries it itself — nested or not — with no
    ancestor race to lose.
 
-   One escape remains, and it is explicit: `[data-ground="paper"]`, a surface
-   that is a sheet of paper by decision (the canonical document, ADR 0104 D9;
-   the legacy vendor panel inside providers/next/TwinSheet). It takes the light
-   column back on the ONE element that carries it, and it is declared at the
-   bottom of THIS file — it used to live in the canonical document's own
-   stylesheet, which is imported by a lazily-loaded page, so the escape did not
-   exist on any other route. At (0,2,0) it outranks this file's (0,1,0) base on
-   specificity, not on source order.
+   Two escapes now sit below the base, both explicit, both by specificity
+   (0,2,0) over the base's (0,1,0):
 
-   `[data-ground="charcoal"]` is kept as a synonym of the base so that a page
-   may still state its ground out loud (DoorNext does, and hangs input rules
-   off it). It no longer changes anything on its own.
+   - `[data-ground="paper"]` — a surface that is a sheet of paper BY DECISION,
+     independent of anyone's preference (the canonical document, ADR 0104 D9;
+     the legacy vendor panel inside providers/next/TwinSheet). It is declared
+     at the bottom of THIS file — it used to live in the canonical document's
+     own stylesheet, which is imported by a lazily-loaded page, so the escape
+     did not exist on any other route.
+   - `[data-ground="charcoal"]` — a surface that forces charcoal for itself
+     (DoorNext, which hangs its own input rules off it) OR, since ADR 0169, a
+     page that carries no ground of its own and is standing under a person's
+     charcoal choice (`html[data-mudavym-ground="charcoal"] .mudavym:not([data-ground])`,
+     the third selector below). Both read identically because they resolve to
+     the same column; the file does not need to tell them apart.
 */
 
 /* ── self-hosted faces — decision 0149 row 9, "self-host every face; no
@@ -118,54 +137,105 @@
 }
 
 .mudavym,
-.mudavym[data-ground="charcoal"] {
-  /* seal — İznik, the dark-ground pair */
-  --seal: #5FB0BC;
-  --seal-deep: #7DC3CD;
-  --seal-tint: rgba(95, 176, 188, 0.14);
-  --seal-ring: rgba(95, 176, 188, 0.38);
-
-  /* grounds — Warm Charcoal (ADR 0042: #15130F overrides sketch 083's #16120E) */
-  --paper-0: #15130F;
-  --paper-1: #1D1813;
-  --paper-2: #262019;
-
-  /* ink — the companions of the charcoal ground; they move as one set */
-  --ink-1: #EFE7D9;
-  --ink-2: #C0B6A5;
-  --ink-3: #8E8576;
-  --ink-4: #ABA294;
-
-  color-scheme: dark;
-}
-
-/* THE ONE ESCAPE — ADR 0104 D9, the sheet of paper.
-
-   It lives here, in the globally-imported token file, and NOT in the page that
-   first needed it. It used to sit in pages/documents/next/canonical-document.css,
-   which only CanonicalDocumentPage imports and App.tsx lazy-loads: the rule was
-   therefore absent from every other route, so a surface elsewhere that carried
-   `data-ground="paper"` rendered charcoal while its markup said paper. The
-   escape has to be reachable wherever `.mudavym` is.
-
-   It beats the base on specificity, not source order — (0,2,0) over (0,1,0) —
-   which matters because Vite decides when a chunk's CSS is injected. */
 .mudavym[data-ground="paper"] {
+  /* seal — İznik, the light-ground pair */
   --seal: #1a5e6b;
   --seal-deep: #14515c;
   --seal-tint: rgba(26, 94, 107, 0.1);
   --seal-ring: rgba(26, 94, 107, 0.32);
 
+  /* alarm — the paper-ground pair. No call site measured on this ground
+     today (every `var(--alarm…)` read found 2026-09-18 sits on a page whose
+     nearest `.mudavym` stays on the charcoal default), but the escape above
+     is declared for every other token, and an undeclared pair here would be
+     the next silent-fallback landmine the moment an error message lands on
+     a paper surface (TwinSheet, the canonical document). [2026-09-22, ADR
+     0169: the first sentence is now history, not a live reading. Paper is
+     the default column from this change onward, so those same ~22 call
+     sites land HERE unless the person chose charcoal — this pair went from
+     the unused half to the common one, which is why it is kept and why its
+     contrast figures below are the ones that matter most.] These are the
+     original fallback values themselves: dark-on-near-white already clears
+     4.5:1 by a wide margin (7.01:1 for `--alarm-deep` against `--paper-1`,
+     6.46:1 for `--alarm` against `--paper-0`), so no re-tint was needed here
+     — only `--seal`'s already-established rule applies, that "deep" is the
+     light ground's darker companion. */
+  --alarm: #A33A2B;
+  --alarm-deep: #8C3322;
+  --alarm-tint: rgba(163, 58, 43, 0.1);
+  --alarm-ring: rgba(163, 58, 43, 0.3);
+
+  /* grounds — the paper column (ADR 0042's light column; ADR 0169 default) */
   --paper-0: #fffdf8;
   --paper-1: #f3efe6;
   --paper-2: #eae4d8;
 
+  /* ink — the companions of the paper ground; they move as one set */
   --ink-1: #211c16;
   --ink-2: #4f473c;
   --ink-3: #7c7365;
   --ink-4: #665d50;
 
   color-scheme: light;
+}
+
+/* THE CHARCOAL GROUND — ADR 0042's dark column. Two ways in, one result:
+
+   1. A surface states it for itself: `data-ground="charcoal"` on its own
+      root (DoorNext.tsx:454 — unchanged since 2026-09-12).
+   2. A PERSON chose it (ADR 0169). `groundChoice.ts` writes
+      `data-mudavym-ground="charcoal"` on `<html>` (once, via a blocking
+      script in index.html so it is there before first paint) and every
+      `.mudavym` element that has NOT declared its own `data-ground` — the
+      header, the sidebar, a page's own root, an overlay portalled to
+      <body> — picks the column up from here. `:not([data-ground])` is the
+      whole mechanism: it is what keeps this rule from ever overriding a
+      surface's OWN declared ground (case 1 above, or the paper escape
+      above) — a per-surface decision still outranks a person's general
+      preference, exactly as it outranked the OLD charcoal-everywhere
+      default. Specificity (0,3,1) beats the base's (0,1,0) for an
+      undeclared `.mudavym`, so file order does not matter here. */
+.mudavym[data-ground="charcoal"],
+html[data-mudavym-ground="charcoal"] .mudavym:not([data-ground]) {
+  --seal: #5FB0BC;
+  --seal-deep: #7DC3CD;
+  --seal-tint: rgba(95, 176, 188, 0.14);
+  --seal-ring: rgba(95, 176, 188, 0.38);
+
+  /* alarm — failed-read / error red, the dark-ground pair.
+     MEASURED 2026-09-18 (wave5/live-fix.md, live-confirm.md §6): ~22 call
+     sites across communications, providers and orders read `var(--alarm,
+     #A33A2B)` / `var(--alarm-deep, #8C3322)` for error text, but neither
+     custom property was ever declared anywhere in this file — every one of
+     those sites was silently rendering its CSS fallback. On this ground the
+     fallbacks measured 2.68:1 (`--alarm`, ProvidersNext error span on
+     `#1D1813`) and 2.31:1 (`--alarm-deep`, CommunicationsNext KPI labels on
+     `#15130F`), both short of the 4.5:1 body-text minimum. Declaring the
+     tokens here fixes every call site at once, the same lever `--seal` uses.
+     Same hue (~9.6°) and saturation (~61%) as the old fallbacks, lightened
+     until `--alarm` clears 4.5:1 against BOTH grounds it is used on:
+     `--alarm` measures 4.77:1 on paper-0 and 4.52:1 on paper-1; `--alarm-deep`
+     measures 5.94:1 and 5.64:1 respectively — deeper
+     reads BRIGHTER here, matching `--seal-deep` on this same ground, because
+     "deep" means "the more emphasized companion," and emphasis on a dark
+     ground means lighter, not darker (the opposite holds on the paper column
+     above, where deep is measurably darker for the same reason). */
+  --alarm: #D25D46;
+  --alarm-deep: #D97663;
+  --alarm-tint: rgba(210, 93, 70, 0.14);
+  --alarm-ring: rgba(210, 93, 70, 0.38);
+
+  /* ADR 0042: #15130F overrides sketch 083's #16120E */
+  --paper-0: #15130F;
+  --paper-1: #1D1813;
+  --paper-2: #262019;
+
+  --ink-1: #EFE7D9;
+  --ink-2: #C0B6A5;
+  --ink-3: #8E8576;
+  --ink-4: #ABA294;
+
+  color-scheme: dark;
 }
 
 /* ============================================================
@@ -205,11 +275,15 @@
 
    `color-scheme: inherit` rather than a literal: the ground above already
    declares `light` or `dark`, and inheriting it means the picker indicator and
-   the dropped calendar turn with the page through BOTH routes into charcoal —
-   the app's `.dark` class and a surface's own `data-ground="charcoal"` — with
-   one rule instead of two that can drift apart. globals.css pins every input to
-   `color-scheme: light !important`, which is why the second route needs saying
-   at all. */
+   the dropped calendar turn with the page through every route into charcoal —
+   a surface's own `data-ground="charcoal"`, and since ADR 0169 a person's own
+   choice reaching an undeclared root — with one rule instead of one per route
+   that can drift apart. globals.css pins every input to `color-scheme: light
+   !important`, which is why saying it here at all is necessary. [2026-09-19,
+   ADR 0169: this paragraph originally also named "the app's `.dark` class" as
+   a route into charcoal; no `.dark .mudavym` rule exists in this file (ADR
+   0138 moved the column off it on 2026-09-12), so that clause was already
+   stale and is removed here rather than carried forward.] */
 
 html .mudavym input[type="date"],
 html .mudavym input[type="time"],
@@ -251,3 +325,78 @@ html .mudavym input[type]::-webkit-datetime-edit-text {
    black calendar on a black field: the exact defect this block exists to fix,
    re-created one line lower. It is left alone because it was measured, not
    because nobody thought about it. */
+
+/* ============================================================
+   Bare `<h1>`, `<h2>`, `<h3>`, `<h4>` and `<p>` carry the house ink, not
+   globals.css's slate-9xx/slate-6xx
+   ============================================================
+
+   MEASURED 2026-09-17, go-live sweep (wave4/live-fix.md), isolated mounts of
+   the 16 row-36 pages: `globals.css`'s `@layer base { h1 { ... text-slate-900
+   } }` targets the bare tag with no dark counterpart. Any Mudavym `<h1>` that
+   does not itself set `color` — the page-title h1 on Team, Receipts, Logs,
+   Reports, Calendar, Connections, and the error-state h1 on the canonical
+   document page — inherited `rgb(28,26,24)` against this file's charcoal
+   ground `rgb(21,19,15)` (TeamNext, measured): a contrast ratio near 1:1,
+   effectively invisible text carrying the one heading every one of those
+   pages leads with.
+
+   RE-MEASURED 2026-09-18, wave-5 fix pass (this file's `h1` rule alone left
+   the same leak open one level down): `globals.css` also sets a bare `p`
+   (`text-slate-600`, `.dark` counterpart `text-slate-300`) and bare `h2`
+   (`text-slate-900`), `h3`/`h4` (`text-slate-800`), none of which have a
+   Mudavym-scoped override. Measured on the charcoal ground:
+     - `/connections`, the two 900px intro paragraphs: `rgb(92,83,77)` on
+       `#15130F`, 2.47:1.
+     - `/documents/:id` error state, the explanation `<p>` and error detail:
+       2.35:1 on `#1D1813`.
+     - `/logs` error state ("The timeline could not be read", explanation,
+       error span) and the footer disclaimer: 2.35–2.47:1.
+   All four cleared to ink-3 (~4.9:1) or better once the bare tag stopped
+   winning.
+
+   CORRECTED 2026-09-19 (wave-5 verify + repair pass, CLAUDE.md §5b — the
+   text above stands as measured; only the paragraph that followed it, and
+   the rule that lived here, were wrong and are struck below rather than
+   silently deleted):
+
+   The struck claim was "`.mudavym h1` (and now `h2`/`h3`/`h4`/`p`) at (0,1,1)
+   ... does not touch `.mudavym .cl-h1` / `.mdv-pub__title` (single-class
+   selectors already ahead of any bare-tag rule)". That is false. Specificity
+   compares (id, class, type) in that order: a single class alone is (0,1,0);
+   `.mudavym h1` is (0,1,1); (0,1,1) > (0,1,0) regardless of which class it
+   is being compared to, so the rule that lived here outranked every
+   single-class colour on those tags — it was never "behind" them.
+
+   Measured on the real `TwinSheet`/`ProviderIntelligencePanel` mount on
+   `/providers`: text that should have read 17.35:1 and 4.88:1 read 1.23:1
+   instead. A sweep of the 16 pages at 1440/390 found 106 h1–h4/p elements
+   whose colour changed with the rule on vs off; only 18 were the intended
+   fixes measured above, the other 88 were legible text that lost its
+   designed ink-2/ink-3/ink-4 or seal colour — `DashboardNext.tsx:133`,
+   `TeamNext.tsx:423,482`, `CalendarNext.tsx:359,364`,
+   `rp-registers-goals.tsx:563`, the house header bell, the user menu, the
+   sidebar hint, and the public doors' own `.mdv-pub__title`, the exact class
+   this comment had named safe. 504 single-class `<p>`/`<h1-4>` sites across
+   the app carry a colour this rule could reach the same way.
+
+   The fix moved to `globals.css`'s own `@layer base`, immediately after its
+   bare `h1`–`p` and `.dark` rules, as `:where(.mudavym) h1, ... p { color:
+   inherit }` — see the comment there for why `:where()` plus living in that
+   file (not this one) closes both the specificity hole and a dev/prod
+   build-order difference measured in the same pass (this file landed at dev
+   index 2311/2312 vs prod offset 22868, on either side of `globals.css`'s
+   own rules depending on the build). This file no longer carries a
+   `.mudavym h1..p` rule at all — do not re-add one here at class+type
+   specificity; that is the exact defect this correction fixes.
+
+   CORRECTED 2026-09-19 (lane verification pass, CLAUDE.md §5b): the
+   comment this paragraph points to originally attributed that close to
+   CSS cascade layers. It doesn't ship one — apps/web's tailwindcss 3.4.19
+   compiles `@layer base` away, confirmed as 0 `@layer` occurrences in the
+   built CSS. The specificity hole closes on a same-specificity tie broken
+   by source order inside Tailwind's hoisted base block. The dev/prod
+   build-order difference closes because the rule no longer lives in this
+   file: the fix and the rules it must beat now share globals.css's one
+   hoisted base block, so this file's placement is irrelevant to it.
+   See globals.css's own comment for the corrected mechanism in full. */

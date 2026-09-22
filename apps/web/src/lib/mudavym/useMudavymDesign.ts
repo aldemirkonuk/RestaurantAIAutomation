@@ -3,20 +3,30 @@
  *
  * Precedence, checked in order:
  *
- * 1. `localStorage["mudavym.design.<page>"]` — per-browser dev override so a
- *    designer can flip one page on this machine only. `"1" | "true" | "on"`
- *    forces the new design, `"0" | "false" | "off"` forces legacy. Anything
- *    else (or absence) falls through.
- * 2. The per-restaurant feature flag `mudavym_design_<page>` via the existing
+ * 1. `localStorage["mudavym.design.<page>"]` — per-browser dev/QA override so
+ *    a designer can flip one page on this machine only. `"1" | "true" | "on"`
+ *    forces the new design, `"0" | "false" | "off"` forces legacy — this is
+ *    the ONLY way to see legacy on a `LIVE_PAGES` page, and it stays QA-only:
+ *    it never reaches another browser or another house. Anything else (or
+ *    absence) falls through.
+ * 2. `LIVE_PAGES` — ADR 0149 row 36 (2026-09-17, "16 locked pages"). These
+ *    keys resolve to the Mudavym design for every house, in code, regardless
+ *    of the `restaurant_feature_flags` row: no flag request is spent, a
+ *    missing row and an explicit `false` column both mean the same thing.
+ *    This is a go-live, not a redesign of the precedence — the flag columns
+ *    are untouched and unread for these pages; nothing here writes to the
+ *    database.
+ * 3. The per-restaurant feature flag `mudavym_design_<page>` via the existing
  *    flag API (`settingsApi.checkFeatureFlag` → POST
- *    `/settings/feature-flags/check`). The gateway's registry
+ *    `/settings/feature-flags/check`), for every page NOT in `LIVE_PAGES`.
+ *    The gateway's registry
  *    (apps/api-gateway/src/settings/feature-flag-registry.ts) returns
  *    `{ enabled: false, active: false }` for any flag no code reads, so an
  *    unregistered page is safely OFF — a page team turns its flag real by
  *    adding it to ACTIVE_FEATURE_FLAGS with a `readBy` pointing at their
  *    PageGate call site. Registering the switch in Settings is the page
  *    team's job, not this hook's.
- * 3. Default: `false` — legacy renders while the check is in flight or when
+ * 4. Default: `false` — legacy renders while the check is in flight or when
  *    no restaurant is active. The gate must never flash the new design at
  *    someone who is not meant to see it.
  */
@@ -62,9 +72,47 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // Not a page: the app SHELL (sketch 119 direction D, the founder's pick of
+  // 2026-09-21; ADR 0149 row 5). `DashboardLayout` reads this gate and renders
+  // `HouseShell` — rooms rail, house header, counter, the phone's four doors —
+  // around whatever page is routed, legacy or rebuilt. Off, the legacy
+  // Sidebar layout renders byte-for-byte. Column added by 20260921114300.
+  'shell',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
+
+/**
+ * ADR 0149 row 36 (founder, 2026-09-17): "16 locked pages" — resolves to the
+ * Mudavym design for every house, in code, with no `restaurant_feature_flags`
+ * read and no database write. `receiving` is the receiving DESK (the flagged
+ * list/history page, route `/receiving`) — distinct from `receiving_door`,
+ * which IS live. Held back, still flag-gated: `settings`, `cellar`,
+ * `recommendations`, `receiving`, and `shell` (the house shell, default off).
+ *
+ * `MUDAVYM_PAGES.length` is 21; this is deliberately not "the rest" spelled
+ * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
+ * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
+ * test rather than silently mis-routing a house.
+ */
+export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
+  'dashboard',
+  'orders',
+  'receiving_door',
+  'providers',
+  'communications',
+  'team',
+  'inventory',
+  'receipts',
+  'documents_reports',
+  'document',
+  'reports',
+  'calendar',
+  'profile',
+  'connections',
+  'notifications',
+  'logs',
+]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */
 const ACTIVE_RESTAURANT_KEY = 'activeRestaurantId';
@@ -121,17 +169,20 @@ export function clearMudavymDesignCache(): void {
  */
 export function useMudavymDesign(page: MudavymPage): boolean {
   const override = typeof window === 'undefined' ? null : readOverride(page);
+  const live = LIVE_PAGES.has(page);
   // Reactive restaurant identity: a switch happens while gated pages stay
   // mounted, and reading localStorage inside the effect alone would leave the
   // previous restaurant's flag verdict rendering for the new one (Opus
   // review 2026-08-31). The context is consumed optionally — a gate must
   // degrade to the localStorage fallback outside an AuthProvider (tests,
-  // isolated mounts), never crash the page it wraps.
+  // isolated mounts), never crash the page it wraps. Read unconditionally
+  // (not only for held-back pages) so hook order never depends on `live`.
   const activeRestaurantId = useContext(AuthContext)?.activeRestaurantId ?? null;
   const [remote, setRemote] = useState(false);
 
   useEffect(() => {
     if (override !== null) return; // overridden — don't spend the request
+    if (live) return; // LIVE_PAGES resolves in code — no flag row to fetch
     let cancelled = false;
     setRemote(false); // never carry one restaurant's verdict into another's
     let restaurantId: string | null = activeRestaurantId ?? null;
@@ -151,7 +202,8 @@ export function useMudavymDesign(page: MudavymPage): boolean {
     return () => {
       cancelled = true;
     };
-  }, [page, override, activeRestaurantId]);
+  }, [page, override, live, activeRestaurantId]);
 
-  return override !== null ? override : remote;
+  if (override !== null) return override;
+  return live || remote;
 }

@@ -120,8 +120,7 @@ export default function Help() {
           <div className="flex-1">
             <h2 className="font-semibold text-gray-900">Learn & page tours</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Open Learn & Help in the sidebar to replay page tours, reset tips, or show the
-              Wine Agent button again.
+              Open Learn & Help in the sidebar to replay page tours or reset tips.
             </p>
           </div>
         </div>
@@ -169,13 +168,12 @@ export default function Help() {
           <div className="flex-1">
             <h2 className="font-semibold text-gray-900">Wine Agent</h2>
             <p className="text-sm text-gray-500 mt-1 mb-3">
-              Inventory & ordering help entry. After activation, a small circle appears
-              bottom-right — or open it here.
+              Sommelier AI helps with inventory & ordering questions — open it here.
             </p>
             <Button
               variant="outline"
               onClick={() => {
-                trackGuidance('wine_agent_fab_clicked', { source: 'help' })
+                trackGuidance('guide_card_clicked', { cardId: 'help-wine-agent' })
                 // Sommelier AI is the inventory & ordering help surface. The
                 // old `/wineagent` placeholder route is retired (ADR 0019 §B).
                 navigate('/sommelier')

@@ -1,6 +1,7 @@
 /**
- * ReportsNext — the Mudavym redesign of `/reports`, behind
- * `mudavym_design_reports` (ADR 0044 p4 wave). Verdict: **MERGE**.
+ * ReportsNext — the Mudavym redesign of `/reports` (ADR 0044 p4 wave).
+ * Verdict: **MERGE**. Live in code for every house since ADR 0149 row 36
+ * (2026-09-17) — `mudavym_design_reports` is no longer read.
  *
  *   "Used to like today's drag-to-rearrange canvas — where we can just swipe
  *    and change everything to its place." The new version is "more modern."

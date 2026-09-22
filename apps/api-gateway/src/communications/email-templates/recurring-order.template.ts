@@ -2,7 +2,12 @@
  * Recurring Order Reminder Email Template
  */
 
-import { EMAIL_CONFIG, formatCurrency, formatDate } from "./template-config";
+import {
+  EMAIL_CONFIG,
+  formatCurrency,
+  formatDate,
+  frontendUrl,
+} from "./template-config";
 import { baseTemplate, tableRow, alertBox } from "./base-template";
 
 export interface RecurringOrderReminderData {
@@ -108,8 +113,12 @@ export function recurringOrderReminderTemplate(
     preheader: `Your ${data.frequency} order from ${data.providerName} is scheduled for ${formatDate(data.scheduledDate)}`,
     content,
     ctaButton: {
+      // No order id on this reminder (RecurringOrderReminderData has no
+      // field for the specific occurrence) -- `?station=recurring` opens the
+      // ledger already filtered to the recurring lane rather than a bare
+      // `/orders` that leaves the reader to find it (OrdersNext.tsx).
       text: "Review Order",
-      url: "#",
+      url: `${frontendUrl()}/orders?station=recurring`,
       color: colors.primary,
     },
   });

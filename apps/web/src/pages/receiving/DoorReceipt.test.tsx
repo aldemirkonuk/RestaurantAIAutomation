@@ -4,9 +4,11 @@ import { MemoryRouter } from 'react-router-dom'
 import DoorReceipt from './DoorReceipt'
 
 /**
- * The legacy door page — still the one most porters hit: the rebuilt DoorNext
- * sits behind `mudavym_design_receiving_door`, and as of 2026-09-12 exactly one
- * house in production has that row switched on.
+ * The legacy door page — no longer what most porters hit: the rebuilt
+ * DoorNext (`receiving_door`) has been live in code for every house since
+ * ADR 0149 row 36 (2026-09-17); `mudavym_design_receiving_door` is no longer
+ * read. This component stays on main until the founder approves its deletion,
+ * so its own defects (below) still matter until then.
  *
  * It used to read the pending count and nothing else. `flushDoorOutbox` deletes
  * a receipt it gives up on (a 4xx, or eight failed attempts), so that count

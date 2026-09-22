@@ -10,9 +10,13 @@
  *  - honest empty states everywhere, em dash for every unknown, and figures
  *    that are labelled as what they are (vendor spend, never "revenue").
  *
- * Reachable only when `mudavym.design.dashboard` / the feature flag is on —
- * the root here carries the `.mudavym` token scope itself, so the page stands
- * alone in tests and sandboxes (PageGate adds no second scope).
+ * Live for every house since ADR 0149 row 36 (2026-09-17, "16 locked
+ * pages"): `dashboard` is in `LIVE_PAGES`, so `useMudavymDesign` resolves this
+ * page in code and `mudavym_design_dashboard` is no longer read (the QA
+ * `localStorage["mudavym.design.dashboard"]` override still forces legacy on
+ * one browser, for comparison). The root here carries the `.mudavym` token
+ * scope itself, so the page stands alone in tests and sandboxes (PageGate
+ * adds no second scope).
  *
  * The ground is Warm Charcoal in EVERY app theme (founder, 2026-09-12): the
  * `.mudavym` scope paints the decided ground and the light/dark toggle does
@@ -23,6 +27,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Wordmark } from '@/components/mudavym';
+import { DayLine } from '@/components/mudavym/DayLine';
 import { animate, settle } from '@/lib/mudavym';
 import { useDashboardSpine } from './useDashboardNextData';
 import { SERIF } from './fonts';
@@ -137,6 +142,12 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
             {standing}
           </p>
         </header>
+
+        {/* ── the day line (sketch 119 §E) ──────────────────────────────── */}
+        {/* A PAGE element, self-gated by the shell flag — renders nothing
+            when the shell is off. The page's own first line, above the KPI
+            row, per the founder's 2026-09-21 pick. */}
+        <DayLine />
 
         {/* ── the KPI row ───────────────────────────────────────────────── */}
         <KpiRow stats={spine.stats} pendingCount={pendingCount} lowStockCount={lowStockCount} />
