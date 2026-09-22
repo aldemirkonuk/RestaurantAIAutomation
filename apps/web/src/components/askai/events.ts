@@ -6,3 +6,8 @@
  * the bar, its API client, or anything else Ask AI drags in.
  */
 export const ASK_AI_OPEN_EVENT = 'wineops:askai-open'
+
+/** Open the Ask AI bar from anywhere — the shell's rail row and the phone's Ask door. */
+export function openAskAi(): void {
+  window.dispatchEvent(new CustomEvent(ASK_AI_OPEN_EVENT))
+}

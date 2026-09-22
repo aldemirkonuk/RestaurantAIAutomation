@@ -27,7 +27,12 @@
  * up cannot reintroduce either fault silently.
  */
 
-import { EMAIL_CONFIG, formatCurrency, formatDate } from "./template-config";
+import {
+  EMAIL_CONFIG,
+  formatCurrency,
+  formatDate,
+  frontendUrl,
+} from "./template-config";
 import { baseTemplate, metricBox, tableRow, alertBox } from "./base-template";
 
 export interface PaymentDueData {
@@ -163,8 +168,11 @@ export function paymentDueTemplate(data: PaymentDueData): string {
     preheader: `Invoice #${data.invoiceNumber} - ${formatCurrency(data.amount)} due ${formatDate(data.dueDate)}`,
     content,
     ctaButton: {
+      // No order/document id on this data shape (`invoiceNumber` is a
+      // vendor-facing string, not a row id) -- `/receipts` is the desk where
+      // an invoice is actually acted on.
       text: "Process Payment",
-      url: "#",
+      url: `${frontendUrl()}/receipts`,
       color: urgencyColor,
     },
   });

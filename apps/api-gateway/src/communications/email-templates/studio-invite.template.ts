@@ -16,7 +16,7 @@ export function studioInviteEmailTemplate(data: StudioInviteEmailData): string {
 
   const content = `
     <h2 style="margin: 0 0 8px; color: #111827; font-size: 22px; font-weight: 700;">
-      You've been invited to Mudavym Studio 🍷
+      You've been invited to Mudavym Studio
     </h2>
     <p style="margin: 0 0 24px; color: #6b7280; font-size: 15px; line-height: 1.6;">
       Studio is where our wine data is built and reviewed. You're being given the

@@ -7,19 +7,37 @@ import { AskAiSurface } from '../askai/AskAiSurface'
 import { GuidanceProvider } from '../../guidance/GuidanceProvider'
 import { PageTipStrip } from '../../guidance/components/PageTipStrip'
 import { SetupNudgeBanner } from '../../guidance/components/SetupNudgeBanner'
-import { WineAgentFab } from '../../guidance/components/WineAgentFab'
 import { GuidanceLiveRegion } from '../../guidance/announce'
 import { useUIStore } from '../../stores/uiStore'
 import { cn } from '../../lib/utils'
 import { BrandMark } from '../brand/BrandMark'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
+import { HouseShell } from '../mudavym/HouseShell'
 import '../mudavym/sheet.css'
 
 interface DashboardLayoutProps {
   children?: React.ReactNode
 }
 
+/**
+ * The layout every signed-in route renders inside.
+ *
+ * Gated (the founder's pick of 2026-09-21, sketch 119 direction D): with the
+ * `shell` gate on — the browser override `mudavym.design.shell`, else the
+ * house flag `mudavym_design_shell`, else off — the Mudavym app shell renders
+ * (`HouseShell`: the rooms rail, the house header, the counter, the phone's
+ * four doors). Off, the legacy layout below renders exactly as it always has,
+ * including while the flag check is in flight: the gate never flashes the new
+ * shell at someone who is not meant to see it (useMudavymDesign.ts).
+ */
 export function DashboardLayout({ children }: DashboardLayoutProps) {
+  const shellOn = useMudavymDesign('shell')
+  if (shellOn) return <HouseShell>{children}</HouseShell>
+  return <LegacyDashboardLayout>{children}</LegacyDashboardLayout>
+}
+
+function LegacyDashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation()
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
@@ -97,7 +115,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <main className="min-h-screen pb-safe">{children || <Outlet />}</main>
           </div>
 
-          <WineAgentFab />
           {/* Ask AI (P3.C) — opened by ⌘⇧K, which CommandProvider registers. */}
           <AskAiSurface />
         </div>

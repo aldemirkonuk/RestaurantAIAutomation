@@ -3,7 +3,7 @@
  * Supports: custom free-text, wine tasting, license renewal, and general reminders
  */
 
-import { EMAIL_CONFIG, formatDate } from "./template-config";
+import { EMAIL_CONFIG, formatDate, frontendUrl } from "./template-config";
 import { baseTemplate, tableRow, alertBox } from "./base-template";
 
 export interface CustomReminderData {
@@ -122,8 +122,11 @@ export function customReminderTemplate(data: CustomReminderData): string {
     preheader: `${data.title}${data.scheduledDate ? ` - ${formatDate(data.scheduledDate)}` : ""} | ${data.restaurantName}`,
     content,
     ctaButton: {
+      // Nothing on this reminder identifies a single record to deep-link —
+      // `/calendar` is where a scheduled reminder of any kind (wine tasting,
+      // license renewal, staff task) actually lives.
       text: "View Details",
-      url: "#",
+      url: `${frontendUrl()}/calendar`,
       color: colors.primary,
     },
   });

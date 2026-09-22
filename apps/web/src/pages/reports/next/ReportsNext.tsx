@@ -1,6 +1,7 @@
 /**
- * ReportsNext — the Mudavym redesign of `/reports`, behind
- * `mudavym_design_reports` (ADR 0044 p4 wave). Verdict: **MERGE**.
+ * ReportsNext — the Mudavym redesign of `/reports` (ADR 0044 p4 wave).
+ * Verdict: **MERGE**. Live in code for every house since ADR 0149 row 36
+ * (2026-09-17) — `mudavym_design_reports` is no longer read.
  *
  *   "Used to like today's drag-to-rearrange canvas — where we can just swipe
  *    and change everything to its place." The new version is "more modern."
@@ -57,7 +58,7 @@ import Cutting from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
-import { ensureFraunces, failureLine } from './rp-format';
+import { failureLine } from './rp-format';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
@@ -123,10 +124,6 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
   const headRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
   useEffect(() => {

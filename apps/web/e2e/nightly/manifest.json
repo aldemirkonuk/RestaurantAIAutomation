@@ -341,6 +341,15 @@
       ]
     },
     {
+      "$comment": "CHROME, not a page (sketch 119 D, PR #437). The house shell wraps every signed-in route behind its own gate. It is enrolled in MUDAVYM_PAGES only because that is how the gate is keyed, and it is listed here so this manifest stays equal to MUDAVYM_PAGES. The walk does not open it as a page. Forcing it on would put the shell's own .mudavym root and its counter's sentences on every page, and hide what each page said. So both walks pin its override OFF and record it absent (nightly.spec.ts), and the verdict extractor skips it. Walking the shell itself is not built yet.",
+      "slug": "shell",
+      "flag": "mudavym_design_shell",
+      "route": "/",
+      "legacy": "page",
+      "chrome": true,
+      "source": "apps/web/src/components/mudavym"
+    },
+    {
       "slug": "logs",
       "flag": "mudavym_design_logs",
       "route": "/logs",
@@ -359,6 +368,22 @@
         "One register could not be read",
         "registers could not be read",
         "No house is selected, so there is no timeline to read"
+      ]
+    },
+    {
+      "slug": "help",
+      "flag": "mudavym_design_help",
+      "route": "/help",
+      "legacy": "page",
+      "source": "apps/web/src/pages/help/next",
+      "static_text": [
+        "What to do next"
+      ],
+      "failed_read": [
+        "Could not be read"
+      ],
+      "empty": [
+        "Everything reads clear right now."
       ]
     }
   ],
@@ -379,13 +404,13 @@
       "slug": "forgot_password",
       "route": "/forgot-password",
       "file": "apps/web/src/pages/ForgotPassword.tsx",
-      "switch": "none"
+      "switch": "public"
     },
     {
       "slug": "reset_password",
       "route": "/reset-password",
       "file": "apps/web/src/pages/ResetPassword.tsx",
-      "switch": "none",
+      "switch": "public",
       "honest": [
         "missing its reset token",
         "missing its token"
@@ -395,13 +420,13 @@
       "slug": "verify_email",
       "route": "/verify-email",
       "file": "apps/web/src/pages/VerifyEmail.tsx",
-      "switch": "none"
+      "switch": "public"
     },
     {
       "slug": "invite",
       "route": "/invite/nightly-not-a-code",
       "file": "apps/web/src/pages/InviteLanding.tsx",
-      "switch": "none",
+      "switch": "public",
       "honest": [
         "This invite has expired"
       ]
@@ -410,19 +435,19 @@
       "slug": "no_access",
       "route": "/no-access",
       "file": "apps/web/src/pages/NoAccess.tsx",
-      "switch": "none"
+      "switch": "public"
     },
     {
       "slug": "privacy",
       "route": "/privacy",
       "file": "apps/web/src/pages/Privacy.tsx",
-      "switch": "none"
+      "switch": "public"
     },
     {
       "slug": "vendor_portal",
       "route": "/v/nightly-not-a-vendor",
       "file": "apps/web/src/pages/VendorPortal.tsx",
-      "switch": "none",
+      "switch": "public",
       "honest": [
         "This vendor page does not exist or has not been published yet",
         "Could not load this catalogue"
@@ -465,12 +490,6 @@
       "slug": "recommendations_catalog",
       "route": "/recommendations/catalog",
       "file": "apps/web/src/pages/InsightCatalog.tsx",
-      "held_by": "ADR 0143 (open fork)"
-    },
-    {
-      "slug": "help",
-      "route": "/help",
-      "file": "apps/web/src/pages/Help.tsx",
       "held_by": "ADR 0143 (open fork)"
     },
     {

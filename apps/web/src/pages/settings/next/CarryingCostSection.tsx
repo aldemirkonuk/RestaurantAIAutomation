@@ -39,6 +39,7 @@
 import { useEffect, useState } from 'react';
 import { Action, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
 import { EM, MONO, SANS } from './st-format';
+import { carryingCostCert } from './certaintyTally';
 import type { HouseCarryingCostRegister, SettingsNextData } from './useSettingsNextData';
 
 /** Exactly the bounds `restaurants_carrying_cost_is_a_plausible_percent` holds. */
@@ -149,7 +150,8 @@ function CarryingCostBody({
       </Note>
 
       <Row
-        label="Carrying cost"
+        label="What does a month of holding stock cost it?"
+        cert={carryingCostCert(reg)}
         consequence={
           reg.percentPerMonth !== null ? (
             <>
@@ -160,7 +162,8 @@ function CarryingCostBody({
             <>
               {EM} <strong>No saving is shown anywhere.</strong> Until somebody types this, a commodity alert says its
               saving is UNMEASURED and which number is missing, rather than pricing a stock-up off a figure nobody
-              chose.
+              chose. The assistant will not propose this one — nothing in the books says what the house's money costs
+              it.
             </>
           )
         }
@@ -169,6 +172,7 @@ function CarryingCostBody({
           when: reg.statedAt,
           whenUnknown: NO_DATE,
           verb: 'typed',
+          readBy: <>every commodity alert's saving line — <code style={{ fontFamily: MONO }}>settings/house-carrying-cost.service.ts</code></>,
         }}
         control={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -189,7 +193,7 @@ function CarryingCostBody({
               className="st-ink st-focus"
               style={{ ...fieldStyle, opacity: canManage ? 1 : 0.45, width: 110, textAlign: 'right' }}
             />
-            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+            <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
               % a month
             </span>
             <Action disabled={!canManage || busy || !read.canRecord} onClick={() => void save(read.value as number, basis.trim() === '' ? null : basis.trim())}>
@@ -198,11 +202,11 @@ function CarryingCostBody({
           </span>
         }
       >
-        <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+        <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
           {read.sentence}
         </p>
         <span style={{ display: 'block', marginTop: 8 }}>
-          <label htmlFor="st-carrying-basis" style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+          <label htmlFor="st-carrying-basis" style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
             what you counted — optional
           </label>
           <input
@@ -218,17 +222,17 @@ function CarryingCostBody({
           />
         </span>
         {reg.statedBy?.name && (
-          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '6px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '6px 0 0' }}>
             typed by · {reg.statedBy.name}
           </p>
         )}
         {reg.basis && (
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '3px 0 0' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '3px 0 0' }}>
             Counted as: {reg.basis}
           </p>
         )}
         {!canManage && (
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
             Only managers and owners can state what holding stock costs this restaurant. The field is left legible so
             you can read the rule you may not change, and the gateway refuses it independently of this page.
           </p>
@@ -246,7 +250,7 @@ function CarryingCostBody({
         what="Nothing was recorded; the number on the row is unchanged."
       />
 
-      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '14px 0 0' }}>
+      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '14px 0 0' }}>
         Why this is asked at all: buying ahead of a price rise only pays if holding the goods costs less than the rise
         saves. Measured over 440 months of the FAO food price index, a commodity alert’s whole gain is spent by a
         carrying cost of about one percent a month — so the same alert is worth having at 0.5 and worth ignoring at 1.0,
