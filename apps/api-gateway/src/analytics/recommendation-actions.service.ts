@@ -291,11 +291,12 @@ export class RecommendationActionsService {
    * "this week or sooner" — the exact collapse ADR 0020 forbids, one column
    * default at a time.
    *
-   * `stated` (added 2026-09-17, settings page sketch 109A honesty pass) is
-   * additive and does not change any existing field: `true` when a row exists
-   * for this restaurant, `false` when `data` is null and every value above is
-   * the service's own default rather than something a person chose. A caller
-   * that ignores the field sees the same response it always has.
+   * `stated` (added 2026-09-17, settings page sketch 109A honesty pass) and
+   * `set` (recommendations page name, PR #420) are the same boolean under two
+   * names: `true` when a row exists for this restaurant, `false` when `data`
+   * is null and every value above is the service's own default rather than
+   * something a person chose. Additive either way — a caller that ignores
+   * both fields sees the same response it always has.
    */
   async getDigestPref(restaurantId: string) {
     // A failed read throws. Until 2026-09-16 it returned the defaults below —
@@ -313,6 +314,14 @@ export class RecommendationActionsService {
         `recommendation_digest_prefs could not be read: ${error.message}`,
       );
     return {
+      // `false` when no row exists for this house at all — the caller must
+      // not read the defaults below (`digestEnabled: false, digestHour: 7`)
+      // as a fact about what the house chose. See sketch 120's read-shape
+      // note: a house that never touched this setting must never be shown
+      // as "armed the post, then turned it off, at 07:00".
+      // `set` is the recommendations page's name (PR #420); `stated` is the
+      // settings honesty field (sketch 109A / main). Same boolean both ways.
+      set: !!data,
       stated: !!data,
       digestEnabled: !!data?.digest_enabled,
       digestHour: data?.digest_hour ?? 7,
