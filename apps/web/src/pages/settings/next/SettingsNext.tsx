@@ -70,7 +70,6 @@ import { Plug } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import { animate, ink, prefersReducedMotion, settle } from '@/lib/mudavym';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
-import { SERIF } from './fonts';
 import {
   CONNECTIONS_ANCHOR, INTERVIEW_GROUPS, KEPT_NOTE, MONO, SANS, SERIF,
   TAB_TO_ANCHOR, isCollapsedSection, isSectionId, keptTally, sectionsFor,
