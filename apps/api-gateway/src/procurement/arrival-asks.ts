@@ -19,7 +19,8 @@
  *   not_yet   `POST /procurement/orders/:id/arrival-answers` — a row in
  *             `procurement_order_arrival_answers`, for this expected date;
  *   cancel    the sealed cancellation — `POST orders/:id/cancel-seal-challenge`,
- *             then `DELETE orders/:id` with the seal and a reason.
+ *             then `DELETE orders/:id` with the seal, a reason and
+ *             `reasonCode=never_arrived` (ADR 0207 round 4).
  */
 
 import type { OverdueStanding } from "./overdue-order";
@@ -54,6 +55,13 @@ export type ArrivalChoice =
       sealEndpoint: string;
       method: "DELETE";
       endpoint: string;
+      /**
+       * ADR 0207 round 4 — the category this cancel carries (`reasonCode`
+       * query parameter on `DELETE orders/:id`, beside `reason`). An ask is
+       * raised only for a CONFIRMED/IN_TRANSIT order past its deadline, so it
+       * is always `never_arrived`; the gateway refuses a cancel without one.
+       */
+      reasonCode: "never_arrived";
     };
 
 export interface ArrivalAsk {
@@ -105,6 +113,7 @@ export function choicesFor(orderId: string): ArrivalChoice[] {
       sealEndpoint: `/procurement/orders/${id}/cancel-seal-challenge`,
       method: "DELETE",
       endpoint: `/procurement/orders/${id}`,
+      reasonCode: "never_arrived",
     },
   ];
 }

@@ -38,6 +38,8 @@
  * a house whose names cannot be read sends nothing that run.
  */
 
+import { maskSensitiveShapes, maskSensitiveTopics } from "./sensitive-mask";
+
 export const MASK = {
   email: "[email]",
   phone: "[phone]",
@@ -48,6 +50,16 @@ export interface MaskCounts {
   emails: number;
   phones: number;
   names: number;
+  /**
+   * ADR 0207 round 4 — `sensitive-mask.ts`'s counts, folded in here so every
+   * caller of `maskForEgress` still reads ONE `masked` object. Present with
+   * zeros when nothing of that kind was found; never omitted, so a reader
+   * cannot mistake "zero found" for "not checked".
+   */
+  accounts: number;
+  ids: number;
+  credentials: number;
+  private: number;
 }
 
 export interface MaskResult {
@@ -338,16 +350,33 @@ export function maskForEgress(
 ): MaskResult {
   const source = typeof text === "string" ? text : "";
   const e = maskEmails(source);
-  const p = maskPhones(e.text);
+  // ADR 0207 round 4 — the shapes pass (IBAN, card, TCKN/SSN, a credential
+  // line) runs BEFORE phones: a valid IBAN or card number is a run of digits
+  // the phone regex would otherwise take first.
+  const shapes = maskSensitiveShapes(e.text);
+  const p = maskPhones(shapes.text);
   const k = maskKnownNames(p.text, nameVariants(knownNames));
   const placed = maskPlacedNames(k.text);
   // A name found where mail places it ("Best,\nDeniz") is the same person
   // everywhere else in the message ("Deniz here from Kestrel"), so it is
   // removed from the whole text too — not only from the sentences cut later.
   const again = maskKnownNames(placed.text, nameVariants(placed.found));
+  // The topics pass runs LAST — after every name, email, phone and shape is
+  // already gone, so a sentence's private/not-private decision is never
+  // second-guessed by a later pass, and a mask token already in the
+  // sentence (none of TOPIC_TERMS matches one) is inert to it.
+  const topics = maskSensitiveTopics(again.text);
   return {
-    text: again.text,
-    masked: { emails: e.n, phones: p.n, names: k.n + placed.n + again.n },
+    text: topics.text,
+    masked: {
+      emails: e.n,
+      phones: p.n,
+      names: k.n + placed.n + again.n,
+      accounts: shapes.counts.accounts,
+      ids: shapes.counts.ids,
+      credentials: shapes.counts.credentials,
+      private: topics.counts.private,
+    },
     found: placed.found,
   };
 }

@@ -17,7 +17,15 @@ import { useActiveRestaurantId } from './useReceivingNextData';
 export type ArrivalChoice =
   | { key: 'receive'; label: string; route: string }
   | { key: 'not_yet'; label: string; method: 'POST'; endpoint: string }
-  | { key: 'cancel'; label: string; sealEndpoint: string; method: 'DELETE'; endpoint: string };
+  | {
+      key: 'cancel';
+      label: string;
+      sealEndpoint: string;
+      method: 'DELETE';
+      endpoint: string;
+      /** ADR 0207 round 4 — the category the gateway requires; always never_arrived here. */
+      reasonCode?: 'never_arrived';
+    };
 
 export interface ArrivalAsk {
   kind: 'did_it_arrive';

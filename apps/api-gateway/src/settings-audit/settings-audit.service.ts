@@ -86,7 +86,15 @@ export type SettingsRegister =
    * on sends masked vendor mail to a third party (ADR 0207). The founder,
    * 2026-09-21: *"this feature can also be disabled."*
    */
-  | "tone-scoring";
+  | "tone-scoring"
+  /**
+   * An owner's acceptance of the house's complete data-and-privacy terms —
+   * which is what turns Jev on (ADR 0207 round 4). Its own register, distinct
+   * from "tone-scoring": this one records WHAT was agreed to and by whom,
+   * not only that the switch moved. The founder, 2026-09-22, round 6y:
+   * *"they have to accept that, and when they do they'd accept the jev too."*
+   */
+  | "data-terms";
 
 /**
  * The action strings this service writes, and the ones it reads back.
@@ -124,6 +132,15 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * 2026-09-21 (ADR 0207); off by default.
    */
   "vendor_tone_scoring_changed",
+  /**
+   * An owner accepted the house's data-and-privacy terms — which is what
+   * turns Jev on (ADR 0207 round 4, 2026-09-22). Distinct from
+   * `vendor_tone_scoring_changed`: this row is the acceptance itself
+   * (`house_data_terms_acceptances`'s own append-only record is the primary
+   * one; this is the settings-audit mirror the read-back list already shows
+   * every other change through).
+   */
+  "house_data_terms_accepted",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

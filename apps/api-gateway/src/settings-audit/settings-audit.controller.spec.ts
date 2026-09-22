@@ -53,6 +53,7 @@ const EVERY: Record<SettingsRegister, true> = {
   "carrying-cost": true,
   "time-zone": true,
   "tone-scoring": true,
+  "data-terms": true,
 };
 
 describe("the ?register= allow-list holds every register the type admits", () => {

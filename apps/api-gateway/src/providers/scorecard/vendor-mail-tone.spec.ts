@@ -252,6 +252,27 @@ describe("one message's reading", () => {
     });
   });
 
+  // [Last call, 2026-09-22] The language gate is Jev's: it says why Jev did
+  // not read a message, and never hides the inbound model's reading while Jev
+  // is off — which is every house until an owner accepts the data terms.
+  it("with the switch off, an Italian message keeps the inbound model's word; with it on, says Jev did not read it", () => {
+    const it_ = inbound(day(1), {
+      detected_sentiment: "positive",
+      message_text:
+        "Grazie per il vostro ordine, la consegna sarà confermata per martedì prossimo con corriere espresso.",
+    });
+    expect(readingOf(it_, false, undefined)).toMatchObject({
+      word: "warm",
+      readBy: "inbound_model",
+    });
+    expect(readingOf(it_, true, score(it_.id))).toMatchObject({
+      word: null,
+      notAssessed:
+        "not read by Jev — written in a language its private-topic pass does not cover",
+      readBy: null,
+    });
+  });
+
   it("reads a Jev failure as not assessed — never the inbound model's word in its place", () => {
     const m = inbound(day(1), { detected_sentiment: "positive" });
     const r = readingOf(

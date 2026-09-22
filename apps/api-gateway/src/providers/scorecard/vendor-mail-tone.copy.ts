@@ -34,6 +34,8 @@ export const MAIL_COPY = {
   notAssessed: {
     automated: "not assessed — automated mail",
     noReading: "not assessed — no reading was kept for this one",
+    language:
+      "not read by Jev — written in a language its private-topic pass does not cover",
     jevFailed: (reason: string | null): string =>
       `not assessed — Jev could not read it${reason ? ` (${reason})` : ""}`,
     unsure: (floor: number): string =>

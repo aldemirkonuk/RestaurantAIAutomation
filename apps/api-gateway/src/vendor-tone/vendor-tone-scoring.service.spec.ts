@@ -259,15 +259,33 @@ function seed(db: FakeDb) {
   db.tables.vendor_message_tone_scores = [];
 }
 
-function make(scorer = new RecordingScorer()) {
+/**
+ * A double for `HouseDataTermsService`, matching only the one method the
+ * sweep reads (`effectiveAcceptance`). Defaults every house to "accepted,
+ * current version" so the existing switch-driven scenarios below are
+ * unaffected by ADR 0207 round 4's acceptance gate; `notCurrent`/`failing`
+ * let a case opt a house OUT explicitly.
+ */
+class StubDataTerms {
+  notCurrent = new Set<string>();
+  failing = new Map<string, string>();
+  async effectiveAcceptance(house: string) {
+    if (this.failing.has(house))
+      return { ok: false as const, reason: this.failing.get(house)! };
+    return { ok: true as const, current: !this.notCurrent.has(house) };
+  }
+}
+
+function make(scorer = new RecordingScorer(), dataTerms = new StubDataTerms()) {
   const db = new FakeDb();
   seed(db);
   const svc = new VendorToneScoringService(
     { getClient: () => db } as never,
     scorer,
+    dataTerms as never,
   );
   svc.clock = () => NOW;
-  return { db, svc, scorer };
+  return { db, svc, scorer, dataTerms };
 }
 
 describe("the Jev sweep", () => {
@@ -341,6 +359,13 @@ describe("the Jev sweep", () => {
       emails: 0,
       phones: 1,
       names: expect.any(Number),
+      // ADR 0207 round 4 — sensitive-mask.ts counts and the list version,
+      // folded into the same stored object.
+      accounts: 0,
+      ids: 0,
+      credentials: 0,
+      private: 0,
+      version: "sensitive-terms/1",
     });
     expect(row.masked.names).toBeGreaterThanOrEqual(4);
     expect(JSON.stringify(row)).not.toMatch(/Sorry|Deniz|call you/);
@@ -383,5 +408,61 @@ describe("the Jev sweep", () => {
     const s = await keyless.svc.sweep();
     expect(s.houses).toBe(0);
     expect(keyless.scorer.sent).toHaveLength(0);
+  });
+});
+
+describe("ADR 0207 round 4 — the data terms acceptance gate", () => {
+  it("sends nothing for a house whose acceptance is not the current version, even with the switch on", async () => {
+    const dataTerms = new StubDataTerms();
+    dataTerms.notCurrent.add(ON);
+    const { svc, scorer, db } = make(new RecordingScorer(), dataTerms);
+    const s = await svc.sweep();
+    expect(s.houses).toBe(1); // still counted as a house whose switch is on
+    expect(s.scored).toBe(0);
+    expect(scorer.sent).toHaveLength(0);
+    expect(db.tables.vendor_message_tone_scores).toHaveLength(0);
+  });
+
+  it("refuses (not silently skips) a house whose acceptance could not be read", async () => {
+    const dataTerms = new StubDataTerms();
+    dataTerms.failing.set(ON, "acceptance store timed out");
+    const { svc, scorer, db } = make(new RecordingScorer(), dataTerms);
+    const s = await svc.sweep();
+    expect(s.housesRefused).toEqual([
+      { house: ON, reason: expect.stringContaining("acceptance store timed out") },
+    ]);
+    expect(scorer.sent).toHaveLength(0);
+    expect(db.tables.vendor_message_tone_scores).toHaveLength(0);
+  });
+
+  it("stops the NEXT call once the acceptance lapses mid-run, without failing the calls already made", async () => {
+    const dataTerms = new StubDataTerms();
+    const scorer = new RecordingScorer();
+    const { svc, db } = make(scorer, dataTerms);
+    // Two messages for ON: m-1 and (after the first call) flip the acceptance
+    // so the second in-flight message is refused, same shape as the
+    // switch-off mid-run case this mirrors.
+    db.tables.procurement_conversations.push({
+      id: "m-2",
+      restaurant_id: ON,
+      provider_id: "p-on",
+      direction: "inbound",
+      received_at: "2026-09-20T11:00:00Z",
+      message_text: "Second message, also fine to read.",
+      content: null,
+      conversation_context: {},
+    });
+    // Call 1 = the house-level check (before any message is read); call 2 =
+    // the first per-message re-check (m-2, read newest-first); call 3 = the
+    // second per-message re-check (m-1) — made to see the lapse.
+    const realAcceptance = dataTerms.effectiveAcceptance.bind(dataTerms);
+    let calls = 0;
+    dataTerms.effectiveAcceptance = async (house: string) => {
+      calls += 1;
+      if (calls > 2) dataTerms.notCurrent.add(ON);
+      return realAcceptance(house);
+    };
+    await svc.sweep();
+    expect(scorer.sent).toHaveLength(1);
   });
 });

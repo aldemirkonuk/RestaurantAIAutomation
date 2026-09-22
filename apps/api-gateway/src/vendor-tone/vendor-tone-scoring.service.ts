@@ -4,7 +4,9 @@ import { DatabaseService } from "../database/database.service";
 import { TONE_SCORER, ToneScorer } from "./jev-tone.client";
 import { egressFor } from "./tone-egress";
 import { displayNameOf } from "./pii-mask";
-import { JEV_MODEL, TONE_SCALE_VERSION } from "./tone-scale";
+import { SENSITIVE_TERMS_VERSION, languageCovered } from "./sensitive-mask";
+import { HouseDataTermsService } from "../settings/data-terms/house-data-terms.service";
+import { JEV_MODEL, TONE_SCALE_VERSION, latestPart } from "./tone-scale";
 
 /**
  * Scores each inbound vendor message with Jev, for houses that turned it on
@@ -51,6 +53,14 @@ export interface SweepSummary {
   failed: number;
   skippedAutomated: number;
   skippedEmpty: number;
+  /**
+   * ADR 0207 round 4 — "sensitive topics redacted" can only be true of a
+   * language the private-topic pass reads (Turkish, English). A message in
+   * another language fails closed here rather than being sent unread for
+   * that pass: the founder's condition cannot be met for it, so it is not
+   * sent at all (`sensitive-mask.ts` `languageCovered`).
+   */
+  skippedLanguage: number;
   housesRefused: { house: string; reason: string }[];
 }
 
@@ -89,6 +99,7 @@ export class VendorToneScoringService {
   constructor(
     private readonly db: DatabaseService,
     @Inject(TONE_SCORER) private readonly scorer: ToneScorer,
+    private readonly dataTerms: HouseDataTermsService,
   ) {}
 
   private client() {
@@ -123,6 +134,7 @@ export class VendorToneScoringService {
       failed: 0,
       skippedAutomated: 0,
       skippedEmpty: 0,
+      skippedLanguage: 0,
       housesRefused: [],
     };
     if (!this.scorer.available()) return summary;
@@ -139,8 +151,51 @@ export class VendorToneScoringService {
     return summary;
   }
 
+  /**
+   * The house's own switch AND its data-terms acceptance — both must hold for
+   * this run to send anything (ADR 0207 round 4). A failed acceptance read
+   * refuses the house the same way a failed names or messages read does.
+   */
+  private async effectivelyOn(
+    house: string,
+  ): Promise<{ ok: true; on: boolean } | { ok: false; reason: string }> {
+    const acceptance = await this.dataTerms.effectiveAcceptance(house);
+    if (!acceptance.ok)
+      return { ok: false, reason: `data terms: ${acceptance.reason}` };
+    if (!acceptance.current) return { ok: true, on: false };
+    const sw = await this.client()
+      .from("restaurants")
+      .select("vendor_tone_scoring_enabled")
+      .eq("id", house)
+      .maybeSingle();
+    if (sw.error) return { ok: false, reason: `switch: ${reasonOf(sw.error)}` };
+    return {
+      ok: true,
+      on:
+        (sw.data as { vendor_tone_scoring_enabled?: unknown } | null)
+          ?.vendor_tone_scoring_enabled === true,
+    };
+  }
+
   /** One house. Exported through `sweep`; public for the spec. */
   async sweepHouse(house: string, summary: SweepSummary): Promise<void> {
+    // ADR 0207 round 4 — no acceptance of the CURRENT data terms, no send.
+    // Checked here (once per house, before any message is read) as well as
+    // per-message below (the per-call re-read the round-3 last call named):
+    // this first check keeps a house with a stale acceptance from starting a
+    // run at all, and stays out of `housesRefused` for the ordinary case
+    // (acceptance simply absent or stale) — that is not a FAILURE to
+    // distinguish from a real "refused" read.
+    const acceptance = await this.dataTerms.effectiveAcceptance(house);
+    if (!acceptance.ok) {
+      summary.housesRefused.push({
+        house,
+        reason: `data terms: ${acceptance.reason}`,
+      });
+      return;
+    }
+    if (!acceptance.current) return; // not accepted (yet, or under a stale version) — nothing to score
+
     const since = new Date(
       this.clock().getTime() - LOOKBACK_DAYS * DAY_MS,
     ).toISOString();
@@ -198,9 +253,31 @@ export class VendorToneScoringService {
     }
 
     for (const r of todo) {
+      // ADR 0207 round 4 — re-read the effective state before EVERY call, not
+      // only once at the top of the run: an owner turning Jev off, or a data-
+      // terms version bump pausing every house, mid-run must stop the NEXT
+      // call, not wait for the next scheduled sweep (the round-3 last call's
+      // named gap, closed here for both gates at once).
+      const stillOn = await this.effectivelyOn(house);
+      if (!stillOn.ok) {
+        summary.housesRefused.push({ house, reason: stillOn.reason });
+        return;
+      }
+      if (!stillOn.on) return; // turned off (or its acceptance lapsed) mid-run
+
+      const raw = String(r.message_text ?? r.content ?? "");
+      // ADR 0207 round 4 — fail closed on a language the private-topic pass
+      // does not read, judged on the LATEST part (the part that would leave;
+      // egressFor refuses it too). Checked here as well so the run counts it
+      // as a language skip rather than an empty one. [Last call, 2026-09-22:
+      // this read the raw message, quoted thread included.]
+      if (!languageCovered(latestPart(raw))) {
+        summary.skippedLanguage += 1;
+        continue;
+      }
       // The sender signs the message: their own display name is masked as a
       // name the house knows, whether or not the house's records hold it.
-      const payload = egressFor(String(r.message_text ?? r.content ?? ""), [
+      const payload = egressFor(raw, [
         ...names.all,
         displayNameOf(r.email_headers?.from),
       ]);
@@ -217,7 +294,11 @@ export class VendorToneScoringService {
         message_id: r.id,
         scale_version: TONE_SCALE_VERSION,
         model_requested: JEV_MODEL,
-        masked: payload.masked,
+        // ADR 0207 round 4 — the sensitive-mask counts already ride inside
+        // `payload.masked` (pii-mask.ts folds them in); `version` names which
+        // SENSITIVE_TERMS list produced them, so a later change to the list
+        // is visible on every row scored under the old one.
+        masked: { ...payload.masked, version: SENSITIVE_TERMS_VERSION },
         attempts,
         scored_at: this.clock().toISOString(),
       };

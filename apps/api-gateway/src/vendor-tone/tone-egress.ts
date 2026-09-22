@@ -16,10 +16,12 @@
  *      business, and a signature line is where a name the masker was never
  *      told is likeliest to sit.
  *
- * Nothing leaves when the text is empty after masking.
+ * Nothing leaves when the text is empty after masking, or when its latest part
+ * is not in a language the private-topic pass reads (ADR 0207 round 4).
  */
 
 import { MaskCounts, MASK, maskForEgress } from "./pii-mask";
+import { SENSITIVE_MASK, languageCovered } from "./sensitive-mask";
 import {
   QUOTE_MAX_CANDIDATES,
   QuoteCandidate,
@@ -59,7 +61,17 @@ export function egressFor(
   knownNames: readonly (string | null | undefined)[],
 ): EgressPayload | null {
   const latest = latestPart(text);
+  // ADR 0207 round 4 — the private-topic pass reads Turkish and English only,
+  // so a latest part it cannot read is not sent (choice 30, fail closed).
+  // Checked HERE, on the part that leaves, so no caller can send around it.
+  // [Last call, 2026-09-22: the gate lived only in the sweep, on the raw
+  // message — an Italian reply above an English quoted thread passed on the
+  // thread's words.]
+  if (!languageCovered(latest)) return null;
   const whole = maskForEgress(latest, knownNames);
+  // ADR 0207 round 4 — the sensitive-mask tokens join the emptiness check
+  // too: a message that was nothing BUT an account number, an id or a
+  // private-topic sentence must not be sent as an empty-looking shell.
   const stripped = whole.text
     .split(MASK.email)
     .join("")
@@ -67,14 +79,37 @@ export function egressFor(
     .join("")
     .split(MASK.name)
     .join("")
+    .split(SENSITIVE_MASK.account)
+    .join("")
+    .split(SENSITIVE_MASK.id)
+    .join("")
+    .split(SENSITIVE_MASK.credential)
+    .join("")
+    .split(SENSITIVE_MASK.private)
+    .join("")
     .trim();
   if (stripped.length < 2) return null;
 
   const names = [...knownNames, ...whole.found];
+  // A candidate is offered only if it is, word for word, in the masked body
+  // that leaves. A sentence the whole-text pass removed — a private sentence
+  // wrapped across lines, whose line-cut halves each look harmless on their
+  // own — is therefore never offered as a quote. [Last call, 2026-09-22.]
+  const flat = (t: string) => t.replace(/\s+/g, " ").trim();
+  const sentBody = flat(whole.text);
   const candidates: QuoteCandidate[] = [];
   splitSentences(text).forEach((s, index) => {
     if (candidates.length >= QUOTE_MAX_CANDIDATES) return;
     const masked = maskForEgress(s, names).text;
+    if (!sentBody.includes(flat(masked))) return;
+    // A sentence the topics pass replaced whole is dropped explicitly — not
+    // by isSignatureLike's accident, which was built to catch openers and
+    // signatures, not a sentence a person actually wrote about the business
+    // that happened to be private. Offering "[private]" as though it were a
+    // quote would tell Jev (and, on the sheet, the reader) that this is the
+    // line the score rests on, which is exactly the disclosure this pass
+    // exists to prevent.
+    if (masked.trim() === SENSITIVE_MASK.private) return;
     if (isSignatureLike(masked)) return;
     candidates.push({ index, text: masked });
   });

@@ -8,6 +8,7 @@ import { DatabaseService } from "../../database/database.service";
 import { HouseFrame, houseFrame } from "../../common/house-frame";
 import { DAY_MS } from "../../procurement/delivery-deadline";
 import { ORDER_OPEN_WITH_VENDOR_STATUSES } from "../../procurement/order-status";
+import { ProcurementOrderStatus } from "../../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../../procurement/overdue-order-reads";
 import {
   AgreedLineRow,
@@ -324,6 +325,25 @@ export class VendorScorecardService {
       outstanding.rows.map((r) => r.id),
     );
     if (!context.ok) return context;
+    // CANCELLED orders that carry a category (ADR 0207 round 4,
+    // cancel-reason.ts): a never-arrived cancel must not erase the vendor's
+    // failure, so it is read as a third source rather than dropped with every
+    // other cancelled order. Same date floor as the outstanding read — a
+    // cancel's deadline can fall the day before the window's own start.
+    const cancelled = await this.readAll<OrderArrivalRow>(() => {
+      let q = this.client()
+        .from("procurement_orders")
+        .select(
+          "id, order_number, provider_id, status, expected_delivery_date, delivered_at, cancel_reason_code, cancelled_from_status, cancelled_at",
+        )
+        .eq("restaurant_id", house)
+        .eq("status", ProcurementOrderStatus.CANCELLED)
+        .not("cancel_reason_code", "is", null)
+        .gte("expected_delivery_date", earliestDate);
+      if (providerId) q = q.eq("provider_id", providerId);
+      return q.order("id", { ascending: true });
+    });
+    if (!cancelled.ok) return cancelled;
     const merged = new Map<string, OrderArrivalRow>();
     for (const r of rows.rows) merged.set(r.id, r);
     for (const r of outstanding.rows)
@@ -332,6 +352,7 @@ export class VendorScorecardService {
         arrival_answers: context.answers.get(r.id) ?? [],
         closed_with_credit: context.closedWithCredit.has(r.id),
       });
+    for (const r of cancelled.rows) merged.set(r.id, r);
     const collected = await this.anyRow(() =>
       this.client()
         .from("procurement_orders")

@@ -13,6 +13,7 @@ import { AuthModule } from "../auth/auth.module";
 import { EventsModule } from "../events/events.module";
 import { ProcurementModule } from "../procurement/procurement.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
+import { SettingsModule } from "../settings/settings.module";
 
 /**
  * ProcurementModule is imported for `createRetroactiveOrder`, which records an
@@ -36,6 +37,16 @@ import { OrganizationsModule } from "../organizations/organizations.module";
  * proves that, because Nest resolves a genuine cycle by injecting `undefined`
  * at runtime rather than failing the build.
  */
+/**
+ * `SettingsModule` is imported for `HouseDataTermsService`, which the Jev
+ * sweep (`VendorToneScoringService`, ADR 0207 round 4) reads before it will
+ * send anything for a house: no acceptance of the current data terms, no
+ * send. `ProcurementModule` already imports `SettingsModule`
+ * (`ApprovalThresholdsService`) and `SettingsModule` imports nothing that
+ * reaches back here, so this edge creates no NEW cycle either — direct
+ * rather than leaned on through the existing transitive edge, for the same
+ * reason `OrganizationsModule` above is direct.
+ */
 @Module({
   imports: [
     DatabaseModule,
@@ -43,6 +54,7 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     EventsModule,
     ProcurementModule,
     OrganizationsModule,
+    SettingsModule,
   ],
   controllers: [
     ProvidersController,

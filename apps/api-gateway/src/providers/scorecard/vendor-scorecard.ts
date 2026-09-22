@@ -83,6 +83,7 @@ import {
   agreedPricePerBottleForDoor,
   readStatedPriceUnit,
 } from "../../procurement/agreed-price";
+import { ProcurementOrderStatus } from "../../procurement/dto/procurement.dto";
 import { COPY, Fmt, makeFmt } from "./vendor-scorecard.copy";
 
 // ---------------------------------------------------------------------------
@@ -150,6 +151,16 @@ export interface OrderArrivalRow {
   arrival_answers?: ArrivalAnswerRow[] | null;
   /** A credit on this order was settled `credited`: closed with a credit. */
   closed_with_credit?: boolean | null;
+  /**
+   * Whose failure a cancellation was (ADR 0207 round 4, `cancel-reason.ts`):
+   * `never_arrived` | `vendor_cannot_supply` | `house_decision`, or null on a
+   * non-cancelled row and on a CANCELLED row written before this column
+   * existed.
+   */
+  cancel_reason_code?: string | null;
+  /** The status this order held the instant its cancellation was written. */
+  cancelled_from_status?: string | null;
+  cancelled_at?: string | null;
 }
 
 export interface ReceiptEventRow {
@@ -476,6 +487,11 @@ export function onTimeEntries(
 ): DocketEntry[] {
   const out: DocketEntry[] = [];
   for (const o of rows) {
+    if (o.status === ProcurementOrderStatus.CANCELLED) {
+      const c = cancelledEntry(o, b, zone, fmt);
+      if (c) out.push(c);
+      continue;
+    }
     if (!hasStatus(o.status, ORDER_ARRIVED_STATUSES)) {
       const due = overdueEntry(o, b, zone, fmt);
       if (due) out.push(due);
@@ -611,6 +627,115 @@ function overdueEntry(
     excludedBecause: COPY.entry.unconfirmed,
     overdue: "unconfirmed",
     detail: COPY.entry.unconfirmedDetail(date, standing.days),
+  };
+}
+
+/**
+ * A CANCELLED order that had been placed with a vendor (ADR 0207 round 4,
+ * `procurement/cancel-reason.ts`). Cancelling must not erase the vendor's
+ * failure:
+ *
+ *   never_arrived          counted, a MISS, dated at its deadline like a
+ *                           confirmed-overdue order — the same reasoning
+ *                           question 8's ruling already applied to an order
+ *                           nobody cancelled.
+ *   vendor_cannot_supply    listed, never counted — the vendor said so, which
+ *                           is not lateness.
+ *   house_decision          listed, never counted — never the vendor's fault.
+ *   no code (a legacy row)  listed, never counted, and says so plainly.
+ *
+ * A cancel out of a PRE-PLACEMENT state (PENDING, APPROVAL_NEEDED — an order
+ * the vendor never saw) is not a vendor event at all and is not listed.
+ */
+function cancelledEntry(
+  o: OrderArrivalRow,
+  b: Bounds,
+  zone: string | null,
+  fmt: Fmt,
+): DocketEntry | null {
+  const from = o.cancelled_from_status;
+  if (
+    from === ProcurementOrderStatus.PENDING ||
+    from === ProcurementOrderStatus.APPROVAL_NEEDED
+  ) {
+    return null;
+  }
+  const code = o.cancel_reason_code ?? null;
+  const cancelledAtMs = ms(o.cancelled_at);
+  const deadline = deadlineOf(o.expected_delivery_date, zone);
+  const base = {
+    title: o.order_number || COPY.entry.order(o.id),
+    source: { table: "procurement_orders", id: o.id, orderId: o.id },
+  };
+
+  if (code === "never_arrived") {
+    // The write path (cancel-reason.ts `verdictFor`) refuses this category
+    // without a deadline already past, so the no-deadline arm here is a
+    // never-should-happen guard, not a live path — but a read must never
+    // guess a date for a miss it is about to count.
+    if (!deadline) {
+      const at = cancelledAtMs ?? b.to;
+      const w = whichWindow(at, b);
+      if (!w) return null;
+      return {
+        ...base,
+        id: `onTime:${o.id}`,
+        measure: "onTime",
+        at: new Date(at).toISOString(),
+        window: w,
+        open: false,
+        counted: false,
+        hit: null,
+        excludedBecause: COPY.entry.noExpectedDate,
+        detail: COPY.entry.cancelledNeverArrivedNoDate,
+        daysLate: null,
+      };
+    }
+    const w = whichWindow(deadline.latest, b);
+    if (!w) return null;
+    const date = fmt.date(deadline.date);
+    const days = Math.max(daysPast(cancelledAtMs ?? deadline.latest, deadline), 0);
+    return {
+      ...base,
+      id: `onTime:${o.id}`,
+      measure: "onTime",
+      at: new Date(deadline.latest).toISOString(),
+      window: w,
+      open: false,
+      counted: true,
+      hit: false,
+      excludedBecause: null,
+      detail: COPY.entry.cancelledNeverArrived(date, days),
+      daysLate: days,
+    };
+  }
+
+  // vendor_cannot_supply, house_decision, or no code (legacy): listed, never
+  // counted. Dated at the cancellation when it is known, else the order's own
+  // deadline; an order with neither cannot be placed in a window and is left
+  // off the list rather than dated by a guess.
+  const at = cancelledAtMs ?? deadline?.latest ?? null;
+  if (at === null) return null;
+  const w = whichWindow(at, b);
+  if (!w) return null;
+  const detail =
+    code === "vendor_cannot_supply"
+      ? COPY.entry.cancelledVendorCannotSupply
+      : code === "house_decision"
+        ? COPY.entry.cancelledHouseDecision
+        : COPY.entry.cancelledNoReason;
+  return {
+    ...base,
+    id: `onTime:${o.id}`,
+    measure: "onTime",
+    at: new Date(at).toISOString(),
+    window: w,
+    open: false,
+    counted: false,
+    hit: null,
+    excludedBecause: detail,
+    detail,
+    daysLate: null,
   };
 }
 

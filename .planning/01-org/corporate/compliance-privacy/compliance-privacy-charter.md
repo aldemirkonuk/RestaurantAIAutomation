@@ -201,6 +201,10 @@ a substring collision, not a privacy statute. Obligation coverage is genuinely 0
 
 There is **no policy, no DPA, no BAA, no data-processing record, no subprocessor
 register, and no privacy programme document anywhere in this repository.**
+[Bracket, 2026-09-22 (ADR 0207 round 4): a subprocessor register now exists —
+`.planning/foundation/EXTERNAL_CONNECTIONS.md` §2, one row per outbound service. It is
+a connections census, not a DPA/data-processing record; this paragraph's other claims
+stand unchanged, and the register itself was not re-measured beyond adding TypeSafe's row.]
 
 ### 🔴 The finding that reframes everything above: the schema has no callers
 

@@ -47,6 +47,7 @@ export const REGISTERS: SettingsRegister[] = [
   "carrying-cost",
   "time-zone",
   "tone-scoring",
+  "data-terms",
 ];
 
 /**

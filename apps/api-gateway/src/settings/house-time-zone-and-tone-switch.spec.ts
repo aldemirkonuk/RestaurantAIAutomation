@@ -13,6 +13,7 @@ import {
   BadRequestException,
   ForbiddenException,
   HttpException,
+  HttpStatus,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { SettingsController } from "./settings.controller";
@@ -30,6 +31,13 @@ import {
   SettingsAuditService,
   SETTINGS_AUDIT_ACTIONS,
 } from "../settings-audit/settings-audit.service";
+import { HouseDataTermsService } from "./data-terms/house-data-terms.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
+import {
+  TERMS_VERSION,
+  digest as termsDigest,
+  snapshot as termsSnapshot,
+} from "./data-terms/house-data-terms";
 
 type Row = Record<string, any>;
 
@@ -215,18 +223,51 @@ function make() {
   ];
   db.tables.users = [{ user_id: "owner-a", name: "Owner A" }];
   db.tables.system_audit_log = [];
+  db.tables.house_data_terms_acceptances = [];
   const dbs = { client: db, supabase: db, getClient: () => db } as never;
   const audit = new SettingsAuditService(dbs);
+  const organizations = new OrganizationsService(dbs);
+  const dataTerms = new HouseDataTermsService(
+    dbs,
+    audit,
+    new SealChallengeService(dbs),
+    organizations,
+  );
   const controller = new SettingsController(
     {} as never,
     {} as never,
-    new OrganizationsService(dbs),
+    organizations,
     {} as never,
     {} as never,
     new HouseTimeZoneService(dbs, audit),
     new HouseToneScoringService(dbs, audit),
+    dataTerms,
   );
-  return { db, controller };
+  return { db, controller, dataTerms };
+}
+
+/**
+ * Seed a CURRENT-version data-terms acceptance for a house, as if an owner
+ * had already accepted them (ADR 0207 round 4) — the precondition
+ * `setHouseToneScoring({enabled: true})` now checks before it will turn Jev
+ * on. `acceptedBy` defaults to the house's own owner fixture.
+ */
+function seedAcceptance(
+  db: FakeDb,
+  restaurantId: string,
+  acceptedBy = "owner-a",
+) {
+  db.tables.house_data_terms_acceptances.push({
+    id: `acc-${restaurantId}`,
+    restaurant_id: restaurantId,
+    terms_version: TERMS_VERSION,
+    terms_digest: termsDigest(),
+    terms_snapshot: termsSnapshot(),
+    accepted_by: acceptedBy,
+    accepted_by_role: "owner",
+    seal_id: `seal-${restaurantId}`,
+    accepted_at: new Date().toISOString(),
+  });
 }
 
 const houseA = (db: FakeDb) => db.tables.restaurants.find((r) => r.id === A)!;
@@ -330,8 +371,9 @@ describe("GET /settings/time-zone", () => {
 });
 
 describe("the Jev switch", () => {
-  it("is off by default, and an owner turns it on for THIS house, audited", async () => {
+  it("is off by default, and an owner turns it on for THIS house once the data terms are accepted, audited", async () => {
     const { db, controller } = make();
+    seedAcceptance(db, A);
     expect(await controller.getHouseToneScoring(A)).toMatchObject({
       enabled: false,
       readable: true,
@@ -347,15 +389,44 @@ describe("the Jev switch", () => {
       action: TONE_SCORING_AUDIT_ACTION,
       actor_id: "owner-a",
     });
-    await controller.setHouseToneScoring(A, { enabled: false }, "manager-a");
+    // ADR 0207 round 4: owner only (was owner or manager) — a manager can no
+    // longer turn it off either.
+    await expect(
+      controller.setHouseToneScoring(A, { enabled: false }, "manager-a"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(houseA(db).vendor_tone_scoring_enabled).toBe(true);
+    await controller.setHouseToneScoring(A, { enabled: false }, "owner-a");
     expect(houseA(db).vendor_tone_scoring_enabled).toBe(false);
     expect(houseB(db).vendor_tone_scoring_enabled).toBe(true);
   });
 
-  it("refuses staff, and a body that is not a boolean", async () => {
+  it("refuses enabled: true with 409 when no owner has accepted the current data terms — never silently on", async () => {
     const { db, controller } = make();
     await expect(
+      controller.setHouseToneScoring(A, { enabled: true }, "owner-a"),
+    ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+    expect(houseA(db).vendor_tone_scoring_enabled).toBe(false);
+    expect(db.tables.system_audit_log).toHaveLength(0);
+  });
+
+  it("turning off needs no acceptance — an owner may always turn it off", async () => {
+    const { db, controller } = make();
+    seedAcceptance(db, A);
+    await controller.setHouseToneScoring(A, { enabled: true }, "owner-a");
+    // A stale acceptance (an old version) does not block turning OFF.
+    db.tables.house_data_terms_acceptances[0].terms_version = 0;
+    await controller.setHouseToneScoring(A, { enabled: false }, "owner-a");
+    expect(houseA(db).vendor_tone_scoring_enabled).toBe(false);
+  });
+
+  it("refuses staff and a manager (owner only, ADR 0207 round 4), and a body that is not a boolean", async () => {
+    const { db, controller } = make();
+    seedAcceptance(db, A);
+    await expect(
       controller.setHouseToneScoring(A, { enabled: true }, "staff-a"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      controller.setHouseToneScoring(A, { enabled: true }, "manager-a"),
     ).rejects.toBeInstanceOf(ForbiddenException);
     await expect(
       controller.setHouseToneScoring(
@@ -374,6 +445,16 @@ describe("the Jev switch", () => {
       enabled: null,
       readable: false,
     });
+  });
+
+  it("a failed acceptance read refuses enabled: true with 503, never a silent on", async () => {
+    const { db, controller } = make();
+    seedAcceptance(db, A);
+    db.failures.house_data_terms_acceptances = "statement timeout";
+    await expect(
+      controller.setHouseToneScoring(A, { enabled: true }, "owner-a"),
+    ).rejects.toMatchObject({ status: HttpStatus.SERVICE_UNAVAILABLE });
+    expect(houseA(db).vendor_tone_scoring_enabled).toBe(false);
   });
 
   it("files both actions in the settings trail's allow-list", () => {

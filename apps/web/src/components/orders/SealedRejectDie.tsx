@@ -93,6 +93,14 @@ export function reasonIsGiven(reason: string): boolean {
   return reason.trim().length > 0;
 }
 
+export type CancelReasonCode = 'never_arrived' | 'vendor_cannot_supply' | 'house_decision';
+
+const CANCEL_REASON_CODE_CHOICES: readonly { value: CancelReasonCode; text: string }[] = [
+  { value: 'never_arrived', text: 'Never arrived' },
+  { value: 'vendor_cannot_supply', text: 'Vendor could not supply it' },
+  { value: 'house_decision', text: "House's decision" },
+];
+
 export interface SealedRejectDieProps {
   orderId: string;
   label?: string;
@@ -100,6 +108,15 @@ export interface SealedRejectDieProps {
   className?: string;
   /** Called only after the gateway confirmed the cancellation. */
   onRejected?: (orderId: string) => void;
+  /**
+   * ADR 0207 round 4. When given, the category is FIXED and no chooser is
+   * drawn — for a caller whose context already says which one it is (the
+   * "Did it arrive?" ask's in-place cancel always means `never_arrived`, for
+   * instance). Omitted, the three-choice picker is shown, defaulting to
+   * `house_decision`, and the gateway refuses a cancel with no category at
+   * all (400) or one that does not fit this order's state (422).
+   */
+  reasonCode?: CancelReasonCode;
 }
 
 export function SealedRejectDie({
@@ -108,12 +125,15 @@ export function SealedRejectDie({
   disabled = false,
   className,
   onRejected,
+  reasonCode: fixedReasonCode,
 }: SealedRejectDieProps) {
   const cancel = useCancelOrder();
   const { activeRole } = useAuth();
   const reasonId = useId();
   const [reason, setReason] = useState('');
   const [reasonTouched, setReasonTouched] = useState(false);
+  const [pickedReasonCode, setPickedReasonCode] = useState<CancelReasonCode>('house_decision');
+  const reasonCode = fixedReasonCode ?? pickedReasonCode;
   /** Bumped after any refusal so the die remounts armed rather than sealed. */
   const [attempt, setAttempt] = useState(0);
   const [running, setRunning] = useState(false);
@@ -184,7 +204,7 @@ export function SealedRejectDie({
     }
     setRunning(true);
     try {
-      await cancel.mutateAsync({ orderId, reason: reason.trim(), challenge: seal });
+      await cancel.mutateAsync({ orderId, reasonCode, reason: reason.trim(), challenge: seal });
       onRejected?.(orderId);
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -228,6 +248,37 @@ export function SealedRejectDie({
       >
         Reject — say why
       </label>
+      {!fixedReasonCode && (
+        <div
+          role="radiogroup"
+          aria-label="Whose failure this is"
+          data-testid="reject-reason-code"
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}
+        >
+          {CANCEL_REASON_CODE_CHOICES.map((opt) => (
+            <label
+              key={opt.value}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 11.5,
+                color: 'var(--ink-2, #4F473C)',
+              }}
+            >
+              <input
+                type="radio"
+                name={`sealed-reject-reason-code-${orderId}`}
+                value={opt.value}
+                checked={pickedReasonCode === opt.value}
+                disabled={disabled || running || !mayCancel}
+                onChange={() => setPickedReasonCode(opt.value)}
+              />
+              {opt.text}
+            </label>
+          ))}
+        </div>
+      )}
       <textarea
         id={reasonId}
         data-testid="legacy-reject-reason"

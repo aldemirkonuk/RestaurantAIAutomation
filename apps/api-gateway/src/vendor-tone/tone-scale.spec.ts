@@ -181,7 +181,17 @@ describe("the egress — only masked text leaves", () => {
     expect(wire).toContain(MASK.name);
     expect(wire).toContain(MASK.phone);
     expect(wire).toContain(MASK.email);
-    expect(p!.masked).toEqual({ emails: 1, phones: 1, names: 2 });
+    expect(p!.masked).toEqual({
+      emails: 1,
+      phones: 1,
+      names: 2,
+      // ADR 0207 round 4 — sensitive-mask.ts found nothing of its own kinds
+      // in this fixture.
+      accounts: 0,
+      ids: 0,
+      credentials: 0,
+      private: 0,
+    });
   });
 
   it("offers the vendor's sentences as quotes, by their index in the ORIGINAL message, and no greeting, sign-off or signature line", () => {
@@ -208,5 +218,27 @@ describe("the egress — only masked text leaves", () => {
       (body.questions.valence as { criteria: string[] }).criteria,
     ).toHaveLength(VALENCE_LEVELS.length);
     expect(egressFor("Deniz\nderya@x.com", ["Deniz"])).toBeNull();
+  });
+
+  // [Last call, 2026-09-22] Two ways a private sentence left before this.
+  it("sends no half of a private sentence wrapped across lines — not in the body, not as a quote", () => {
+    const p = egressFor(
+      "Hi,\nSorry for the delay, our driver was diagnosed\nwith cancer last week so the delivery moves to Friday.\nWe can still send the Barolo on Monday.\nBest,\nCan",
+      [],
+    )!;
+    expect(p).not.toBeNull();
+    const wire = JSON.stringify(p.body);
+    for (const leak of ["diagnosed", "cancer", "driver"])
+      expect(wire).not.toContain(leak);
+    expect(p.candidates.map((c) => c.text)).toEqual([
+      "We can still send the Barolo on Monday.",
+    ]);
+  });
+
+  it("sends nothing when the latest part is in a language the private-topic pass does not read, whatever the quoted thread below it is written in", () => {
+    const reply =
+      "Buongiorno, il nostro autista è in ospedale per un intervento, la consegna slitta a venerdì prossimo.\n\nOn Mon, 21 Sep 2026 at 10:00, Harbor <h@x.com> wrote:\n> Hello, where is the order? Please tell us when the delivery will arrive, thanks for your help with this order.";
+    expect(egressFor(reply, [])).toBeNull();
+    expect(egressFor("Marco è in ospedale, consegna domani.", [])).toBeNull();
   });
 });

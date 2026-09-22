@@ -839,11 +839,27 @@ class ProcurementAgent(BaseAgent):
                 current_provider_id = order.get("provider_id")
 
                 # 1. Mark order CANCELLED (out-of-stock = effectively cancelled)
+                #
+                # ADR 0207 round 4: this is the vendor SAYING it cannot supply
+                # the order, so the category is vendor_cannot_supply — listed,
+                # not counted, in the on-time figure, and counted in analytics'
+                # fill counts (cancel-reason.ts). cancelled_from_status is the
+                # status this row held before this same UPDATE, read from the
+                # `order` fetched above rather than re-queried, so the two
+                # columns land in one write like every other cancel path.
+                #
+                # Still bypasses order-transitions.ts and system_audit_log
+                # (named, not fixed here — ADR 0207 §5, the procurement-agent
+                # owner's follow-up).
+                _cancel_at_iso = datetime.utcnow().isoformat()
                 await self.database.supabase.table("procurement_orders").update(
                     {
                         "status": "CANCELLED",
                         "rejection_reason": "Out of stock — provider email confirmation",
-                        "updated_at": datetime.utcnow().isoformat(),
+                        "cancel_reason_code": "vendor_cannot_supply",
+                        "cancelled_from_status": order.get("status"),
+                        "cancelled_at": _cancel_at_iso,
+                        "updated_at": _cancel_at_iso,
                     }
                 ).eq("id", order_id).execute()
 

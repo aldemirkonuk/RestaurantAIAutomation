@@ -19,6 +19,7 @@ import {
 } from "../procurement/order-status";
 import { deadlineOf, landedVerdict } from "../procurement/delivery-deadline";
 import { overdueStanding } from "../procurement/overdue-order";
+import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../procurement/overdue-order-reads";
 import { HouseFrame, houseFrame } from "../common/house-frame";
 
@@ -165,7 +166,7 @@ export class AdvancedAnalyticsService {
       .getClient()
       .from("procurement_orders")
       .select(
-        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status",
+        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
       )
       .eq("restaurant_id", restaurantId)
       .gte("created_at", since);
@@ -375,8 +376,43 @@ export class AdvancedAnalyticsService {
         incomplete: 0,
         unread: 0,
         undecided: 0,
+        // ADR 0207 round 4 — a never-arrived cancel counts the same as a
+        // confirmed-overdue order: late, and named separately so a reader can
+        // tell a vendor that missed a live order from one that was cancelled
+        // out of a never-arrived state. couldNotSupply/houseDecision/
+        // uncategorised are informational only (cancel-reason.ts): they never
+        // add to `late`, the same as they are only "listed" in the scorecard.
+        neverArrived: 0,
+        couldNotSupply: 0,
+        houseDecisionCancels: 0,
+        uncategorisedCancels: 0,
       };
       for (const o of os) {
+        if (o.status === ProcurementOrderStatus.CANCELLED) {
+          const from = o.cancelled_from_status as ProcurementOrderStatus | null;
+          if (
+            from === ProcurementOrderStatus.PENDING ||
+            from === ProcurementOrderStatus.APPROVAL_NEEDED
+          ) {
+            continue; // never placed with the vendor — not a vendor event
+          }
+          const code = o.cancel_reason_code as string | null;
+          if (code === "never_arrived") {
+            counts.late += 1;
+            counts.neverArrived += 1;
+          } else if (code === "vendor_cannot_supply") {
+            counts.couldNotSupply += 1;
+          } else if (code === "house_decision") {
+            counts.houseDecisionCancels += 1;
+          } else if (from) {
+            // A CANCELLED row that was once placed with the vendor but
+            // carries no category — a cancel written before this column
+            // existed, or by a path that has not yet been taught it
+            // (ADR 0207 §5, the procurement-agent owner's follow-up).
+            counts.uncategorisedCancels += 1;
+          }
+          continue;
+        }
         const d = deadlineOf(o.expected_delivery_date, house.zone);
         if (!d) continue;
         if (hasStatus(o.status, ORDER_ARRIVED_STATUSES)) {

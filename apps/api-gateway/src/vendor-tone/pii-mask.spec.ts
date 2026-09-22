@@ -100,7 +100,17 @@ describe("person names leave as [name]", () => {
   it("does not treat a part of an email as a name twice, and counts what it removed", () => {
     const r = maskForEgress("Deniz here — deniz@kestrel.com", ["Deniz"]);
     expect(r.text).toBe(`${MASK.name} here — ${MASK.email}`);
-    expect(r.masked).toEqual({ emails: 1, phones: 0, names: 1 });
+    expect(r.masked).toEqual({
+      emails: 1,
+      phones: 0,
+      names: 1,
+      // ADR 0207 round 4 — sensitive-mask.ts found nothing of its own kinds
+      // in this text.
+      accounts: 0,
+      ids: 0,
+      credentials: 0,
+      private: 0,
+    });
   });
 
   it("masks a name found at a sign-off everywhere else in the message too", () => {

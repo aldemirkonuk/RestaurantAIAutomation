@@ -131,6 +131,13 @@ import {
 } from "./order-transitions";
 import { toPostgrestInList } from "./order-status";
 import {
+  CANCEL_REASON_REFUSAL_WORDS,
+  CancelReasonCode,
+  verdictFor as cancelReasonVerdictFor,
+} from "./cancel-reason";
+import { deadlineOf } from "./delivery-deadline";
+import { houseFrame } from "../common/house-frame";
+import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
   DELIVERY_REFUSED_STATE_UNREADABLE,
   earlierDeliveryOf,
@@ -2650,7 +2657,9 @@ export class ProcurementService {
   ): Promise<{ from: ProcurementOrderStatus; row: Record<string, any> }> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("id, status, total_cost, provider_id, inventory_id, quantity")
+      .select(
+        "id, status, total_cost, provider_id, inventory_id, quantity, expected_delivery_date",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .maybeSingle();
@@ -2690,7 +2699,17 @@ export class ProcurementService {
      * caller that sets it without having checked is writing an unchecked state
      * change, and there is exactly one such caller, named here.
      */
-    opts?: { statusTransitionAlreadyChecked?: boolean },
+    opts?: {
+      statusTransitionAlreadyChecked?: boolean;
+      /**
+       * ADR 0207 round 4. Set only by `cancelOrder`, which has already run
+       * `cancel-reason.ts`'s `verdictFor` against this order's real state and
+       * deadline — never accepted from a request body.
+       */
+      cancelReasonCode?: CancelReasonCode;
+      cancelledFromStatus?: ProcurementOrderStatus;
+      cancelledAt?: string;
+    },
   ): Promise<OrderResponseDto> {
     // ADR 0125 — the state change is the one field on this DTO that is not a
     // note about the order but a claim about where the order IS. Until this,
@@ -2699,6 +2718,23 @@ export class ProcurementService {
     // from any other: a DELIVERED order back to PENDING, a COMPLETED one to
     // CANCELLED, an order to IN_TRANSIT or FAILED which nothing in this
     // codebase ever writes.
+    // ADR 0207 round 4 — a cancellation says whose failure it was, and that
+    // category is proven by `cancelOrder` (the sealed act, `DELETE
+    // orders/:id`) against the order's real state and deadline. `PATCH
+    // orders/:id` carrying `status: CANCELLED` wrote the status with no seal,
+    // no role check and no category, so a never-arrived order cancelled that
+    // way vanished from every vendor figure. It is refused here; the one
+    // caller that sets the category is `cancelOrder`. [Last call, 2026-09-22.]
+    if (
+      dto.status === ProcurementOrderStatus.CANCELLED &&
+      !opts?.cancelReasonCode
+    ) {
+      throw new UnprocessableEntityException({
+        reason: "cancel_through_the_sealed_act",
+        message:
+          "An order is cancelled through its own act, which asks whose failure it was and is held to confirm — not by editing its status. Nothing was changed.",
+      });
+    }
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
       await this.assertStatusTransition(restaurantId, orderId, dto.status);
     }
@@ -2754,6 +2790,15 @@ export class ProcurementService {
       invoice_image_url: dto.invoiceImageUrl ?? undefined,
       discrepancy_notes: dto.discrepancyNotes ?? undefined,
       location_id: dto.locationId ?? undefined,
+      // Whose failure a cancellation was (ADR 0207 round 4). NOT on
+      // UpdateOrderDto: that class is bound to the public `PATCH orders/:id`
+      // body, and these three columns are proven, not asserted — a client
+      // sending them there could write a category the order-transition and
+      // deadline rules never checked. They travel only through `opts`, which
+      // only `cancelOrder` (this file) sets, in the SAME UPDATE as the status.
+      cancel_reason_code: opts?.cancelReasonCode ?? undefined,
+      cancelled_from_status: opts?.cancelledFromStatus ?? undefined,
+      cancelled_at: opts?.cancelledAt ?? undefined,
     };
 
     const { data, error } = await this.databaseService.supabase
@@ -2979,12 +3024,12 @@ export class ProcurementService {
     userId: string,
     reason?: string,
     challenge?: string | null,
+    reasonCode?: string,
   ): Promise<OrderResponseDto> {
     const spokenReason = (reason ?? "").trim();
     if (spokenReason === "") {
       throw new BadRequestException(ProcurementService.CANCEL_NEEDS_A_REASON);
     }
-
     // Checked again here, not only at the mint (ADR 0125 Q1). A seal minted
     // while the person was a manager must not be spendable after they stop
     // being one.
@@ -2992,11 +3037,46 @@ export class ProcurementService {
 
     // The state, read once and refused here rather than inside `updateOrder`:
     // this caller needs `from` for the shadow-stock decision and the audit row.
-    const { from: preStatus } = await this.assertStatusTransition(
+    const { from: preStatus, row: preRow } = await this.assertStatusTransition(
       restaurantId,
       orderId,
       ProcurementOrderStatus.CANCELLED,
     );
+
+    // The category rule (ADR 0207 round 4, cancel-reason.ts): which category
+    // this cancel may carry, from this order's current state and — for
+    // never_arrived — only once its deadline has passed on the house's clock.
+    // Checked BEFORE the seal is redeemed, same reasoning as the transition
+    // check above: a refusal must not burn a one-time token.
+    const houseZone = await this.readHouseZoneForCancel(restaurantId);
+    const deadline = deadlineOf(
+      (preRow as { expected_delivery_date?: string | null })
+        .expected_delivery_date,
+      houseZone,
+    );
+    const verdict = cancelReasonVerdictFor(
+      reasonCode ?? "",
+      preStatus,
+      deadline,
+      Date.now(),
+    );
+    if (!verdict.ok) {
+      // A missing or unknown category is a 400 (the caller sent nothing
+      // usable, like the bare-reason check above); a category that does not
+      // fit THIS order's state or deadline is a 422, the same status the
+      // transition check above answers with — it names the state, not the
+      // request shape.
+      if (verdict.reason === "unknown_code") {
+        throw new BadRequestException(
+          CANCEL_REASON_REFUSAL_WORDS[verdict.reason],
+        );
+      }
+      throw new UnprocessableEntityException({
+        reason: "cancel_needs_a_category",
+        message: CANCEL_REASON_REFUSAL_WORDS[verdict.reason],
+      });
+    }
+    const cancelReasonCode = reasonCode as CancelReasonCode;
 
     // AFTER the transition check, so a person whose order cannot be cancelled
     // at all is told that rather than having their seal burned by a request
@@ -3004,6 +3084,7 @@ export class ProcurementService {
     // written on an unproven seal.
     await this.redeemOrderCancelSeal(restaurantId, orderId, userId, challenge);
 
+    const cancelledAtIso = new Date().toISOString();
     const order = await this.updateOrder(
       restaurantId,
       orderId,
@@ -3011,7 +3092,12 @@ export class ProcurementService {
         status: ProcurementOrderStatus.CANCELLED,
         rejectionReason: spokenReason,
       },
-      { statusTransitionAlreadyChecked: true },
+      {
+        statusTransitionAlreadyChecked: true,
+        cancelReasonCode,
+        cancelledFromStatus: preStatus,
+        cancelledAt: cancelledAtIso,
+      },
     );
 
     // D-10: Cascade PENDING_APPROVAL conversations to CANCELLED so they don't
@@ -3083,12 +3169,33 @@ export class ProcurementService {
       actorUserId: userId,
       from: preStatus,
       reason: spokenReason,
+      reasonCode: cancelReasonCode,
     });
 
     // Emit order_change event for cross-page sync
     await this.emitOrderChangeEvent(restaurantId, userId, order, "cancelled");
 
     return order;
+  }
+
+  /**
+   * The house's time zone, for the `never_arrived` category's past-due check
+   * only. A failed or missing read degrades to `null` (the span rule,
+   * `delivery-deadline.ts`) rather than refusing the cancel outright — the
+   * category rule already requires the span to have closed at BOTH ends, so a
+   * house with no zone on record is not blocked from cancelling, only held to
+   * the more conservative (later) instant.
+   */
+  private async readHouseZoneForCancel(
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return houseFrame(data as { timezone?: string; country?: string }).zone;
   }
 
   /** Spend the cancellation seal. Throws with the whole sentence on refusal. */
@@ -3132,6 +3239,7 @@ export class ProcurementService {
     actorUserId: string;
     from: ProcurementOrderStatus;
     reason: string;
+    reasonCode: CancelReasonCode;
   }): Promise<void> {
     try {
       const { error } = await this.databaseService.supabase
@@ -3150,6 +3258,7 @@ export class ProcurementService {
             act: ORDER_CANCEL_ACT,
             sealed: true,
             reason: record.reason,
+            reason_code: record.reasonCode,
           },
           restaurant_id: record.restaurantId,
           reason: record.reason,

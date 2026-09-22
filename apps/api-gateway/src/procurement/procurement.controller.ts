@@ -300,7 +300,7 @@ export class ProcurementController {
   @ApiResponse({
     status: 400,
     description:
-      "No reason was given. A cancellation has to say why; the reason is written to `rejection_reason` and is the only account of why this wine was not bought.",
+      "No reason was given, or `reasonCode` is missing or not one of never_arrived, vendor_cannot_supply, house_decision (ADR 0207 round 4). The reason is written to `rejection_reason`; the code says whose failure it was and drives the vendor scorecard.",
   })
   @ApiResponse({
     status: 403,
@@ -315,6 +315,7 @@ export class ProcurementController {
   async cancelOrder(
     @Param("id") orderId: string,
     @Query("reason") reason: string | undefined,
+    @Query("reasonCode") reasonCode: string | undefined,
     @CurrentUser() user: { userId: string; restaurantId: string },
     // The seal travels in the SAME header as the approval's, so a caller has
     // one thing to learn and the two acts cannot be confused by shape — only
@@ -328,6 +329,7 @@ export class ProcurementController {
         user.userId,
         reason,
         challenge ?? null,
+        reasonCode,
       );
     } catch (error) {
       // A refusal is not a server fault. Every throw here used to be re-wrapped

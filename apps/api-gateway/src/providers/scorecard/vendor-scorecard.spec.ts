@@ -285,7 +285,10 @@ describe("on time — before the house's midnight, with its denominator", () => 
       out("2026-09-16", "CONFIRMED"), // 1 day past, unanswered
       out("2026-09-17", "CONFIRMED"), // due today: not late yet
       out("2026-09-01", "PENDING"), // never placed with the vendor: not theirs
-      out("2026-09-02", "CANCELLED"), // closed: not outstanding
+      // Cancelled with no cancel_reason_code and no cancelled_from_status on
+      // record (a row from before ADR 0207 round 4's columns existed): listed,
+      // never counted, and says so — cancelledEntry's "no code (legacy)" arm.
+      out("2026-09-02", "CANCELLED"),
     ];
     const built = build(regs({ arrivals: ok(rows) }));
     const m = measure(built.card, "onTime");
@@ -294,12 +297,20 @@ describe("on time — before the house's midnight, with its denominator", () => 
       sample: 5,
       hits: 5,
       open: 2,
-      rows: 7,
+      rows: 8,
       overdue: { confirmed: 0, unconfirmed: 2, incomplete: 0 },
     });
     expect(m.sentence).toContain(
       "2 orders are past the expected date and nobody here has said whether they arrived — unconfirmed, not counted.",
     );
+    const cancelledLegacy = built.entries.find(
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-02-CANCELLED",
+    );
+    expect(cancelledLegacy).toMatchObject({
+      counted: false,
+      hit: null,
+      excludedBecause: "cancelled before a reason was kept",
+    });
     expect(built.card.fact.text).toBe(
       "100% on time · 5 of 5 · 2 unconfirmed, not counted",
     );
@@ -313,6 +324,80 @@ describe("on time — before the house's midnight, with its denominator", () => 
     expect(open[1].detail).toContain(
       'waiting on the question "Did it arrive?"',
     );
+  });
+
+  it("ADR 0207 round 4 — a never_arrived cancel counts a miss, dated at its deadline; vendor_cannot_supply and house_decision are listed, never counted; a pre-placement cancel is not listed at all", () => {
+    const rows = [
+      ...fiveOnTime(),
+      out("2026-09-06", "CANCELLED", {
+        cancel_reason_code: "never_arrived",
+        cancelled_from_status: "IN_TRANSIT",
+        cancelled_at: "2026-09-09T00:00:00Z",
+      }),
+      out("2026-09-10", "CANCELLED", {
+        cancel_reason_code: "vendor_cannot_supply",
+        cancelled_from_status: "CONFIRMED",
+        cancelled_at: "2026-09-08T00:00:00Z",
+      }),
+      out("2026-09-11", "CANCELLED", {
+        cancel_reason_code: "house_decision",
+        cancelled_from_status: "CONFIRMED",
+        cancelled_at: "2026-09-09T00:00:00Z",
+      }),
+      // Never placed with the vendor at all: not a vendor event, not listed.
+      out("2026-09-12", "CANCELLED", {
+        cancel_reason_code: "house_decision",
+        cancelled_from_status: "PENDING",
+        cancelled_at: "2026-09-09T00:00:00Z",
+      }),
+    ];
+    const built = build(regs({ arrivals: ok(rows) }));
+    const m = measure(built.card, "onTime");
+    // 5 on-time arrivals + 1 never_arrived miss = 6 sample, 5 hits.
+    expect(m).toMatchObject({ outcome: "answered", sample: 6, hits: 5 });
+    const neverArrived = built.entries.find(
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-06-CANCELLED",
+    );
+    expect(neverArrived).toMatchObject({ counted: true, hit: false, open: false });
+    expect(neverArrived?.detail).toContain("never arrived, and cancelled");
+    const couldNotSupply = built.entries.find(
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-10-CANCELLED",
+    );
+    expect(couldNotSupply).toMatchObject({
+      counted: false,
+      hit: null,
+      excludedBecause: "cancelled — the vendor said it could not supply this order",
+    });
+    const houseDecision = built.entries.find(
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-11-CANCELLED",
+    );
+    expect(houseDecision).toMatchObject({
+      counted: false,
+      hit: null,
+      excludedBecause: "cancelled by the house",
+    });
+    const prePlacement = built.entries.find(
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-12-CANCELLED",
+    );
+    expect(prePlacement).toBeUndefined();
+  });
+
+  it("refuses to count a never_arrived cancel that predates its own deadline (never-should-happen, but a read must not guess)", () => {
+    const rows = [
+      ...fiveOnTime(),
+      out("2026-09-06", "CANCELLED", {
+        expected_delivery_date: null,
+        cancel_reason_code: "never_arrived",
+        cancelled_from_status: "IN_TRANSIT",
+        cancelled_at: "2026-09-09T00:00:00Z",
+      }),
+    ];
+    const built = build(regs({ arrivals: ok(rows) }));
+    const entry = built.entries.find(
+      (e) => e.measure === "onTime" && e.source.id === "out-2026-09-06-CANCELLED",
+    );
+    expect(entry).toMatchObject({ counted: false, hit: null });
+    expect(entry?.excludedBecause).toBe("no expected date");
   });
 
   it("counts an order late once someone here answered Not yet for THAT expected date, in the window its deadline fell in (question 8)", () => {

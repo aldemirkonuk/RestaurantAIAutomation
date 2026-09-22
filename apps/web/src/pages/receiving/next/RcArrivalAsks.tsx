@@ -18,8 +18,10 @@
  * what empty means. Motion: `ink` on the acts only (ADR 0134's token).
  */
 
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ink } from '@/lib/mudavym/motion';
+import { SealedRejectDie } from '@/components/orders/SealedRejectDie';
 import { MONO, SANS, SERIF, capStyle } from './rc-format';
 import { useAnswerNotYet, useArrivalAsks } from './useArrivalAsks';
 import type { ArrivalAsk } from './useArrivalAsks';
@@ -48,6 +50,11 @@ function Ask({ a }: { a: ArrivalAsk }) {
   const name = a.orderNumber ?? 'This order';
   const receive = a.choices.find((c) => c.key === 'receive');
   const canSayNotYet = a.choices.some((c) => c.key === 'not_yet');
+  // ADR 0207 round 4 — "It never arrived — cancel", in place, replacing the
+  // link to Orders (the rebuilt page had no act for a CONFIRMED/IN_TRANSIT
+  // order at all). reasonCode is locked: this ask exists only for an order
+  // already past its deadline, so never_arrived is always the true category.
+  const [cancelling, setCancelling] = useState(false);
   return (
     <li data-testid="arrival-ask" style={{ listStyle: 'none', padding: '10px 0', borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
       <p style={{ margin: 0, fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
@@ -79,14 +86,31 @@ function Ask({ a }: { a: ArrivalAsk }) {
             {notYet.isPending ? 'Recording…' : 'Not yet'}
           </button>
         )}
-        <Link to="/orders" className="rc-ask-act" style={{ ...act, color: 'var(--ink-2, #4F473C)', borderColor: 'var(--paper-2, #EAE4D8)' }}>
-          Cancel on Orders ›
-        </Link>
+        {!cancelling && (
+          <button
+            type="button"
+            className="rc-ask-act"
+            style={{ ...act, color: 'var(--ink-2, #4F473C)', borderColor: 'var(--paper-2, #EAE4D8)' }}
+            onClick={() => setCancelling(true)}
+          >
+            It never arrived — cancel
+          </button>
+        )}
       </div>
       {notYet.isError && (
         <p role="alert" style={{ margin: '6px 0 0', fontFamily: SANS, fontSize: 11.5, color: 'var(--alarm, #A33A2B)' }}>
           {message(notYet.error, 'The answer could not be recorded. Nothing was changed.')}
         </p>
+      )}
+      {cancelling && (
+        <div style={{ marginTop: 8 }}>
+          <SealedRejectDie
+            orderId={a.orderId}
+            reasonCode="never_arrived"
+            label="Hold to cancel"
+            onRejected={() => setCancelling(false)}
+          />
+        </div>
       )}
     </li>
   );

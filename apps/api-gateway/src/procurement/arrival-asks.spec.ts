@@ -281,6 +281,13 @@ describe("GET /procurement/arrival-asks", () => {
     expect(r.asks[0].choices[0]).toMatchObject({
       route: "/receiving/late-silent/door",
     });
+    // ADR 0207 round 4 — the typed cancel carries the category the gateway
+    // requires, so a reader following it is not refused with a 400.
+    expect(r.asks[0].choices[2]).toMatchObject({
+      key: "cancel",
+      method: "DELETE",
+      reasonCode: "never_arrived",
+    });
     // A "Not yet" already given is not asked again.
     expect(r.asks[1].choices.map((c) => c.key)).toEqual(["receive", "cancel"]);
   });

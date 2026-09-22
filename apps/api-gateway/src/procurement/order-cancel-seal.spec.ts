@@ -267,6 +267,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
       MANAGER,
       "Vendor cannot deliver before the weekend",
       token,
+      "house_decision",
     );
     expect(cancelled.status).toBe(ProcurementOrderStatus.CANCELLED);
     expect(h.order.rejection_reason).toBe(
@@ -276,7 +277,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
 
     // A replay is a second cancellation, not a retry.
     const err = await refusal(() =>
-      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "again", token),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "again", token, "house_decision"),
     );
     expect(String(err.message)).toMatch(/already been spent|already cancelled/);
   });
@@ -284,7 +285,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
   it("refuses a cancel with no seal at all, and writes nothing", async () => {
     const h = await makeService();
     const err = await refusal(() =>
-      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "changed our mind", null),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "changed our mind", null, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(String(err.message)).toMatch(/must be proven rather than asserted/);
@@ -314,7 +315,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
     const h = await makeService(undefined, [approvalSeal]);
 
     const err = await refusal(() =>
-      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "not needed", token),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "not needed", token, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(String(err.message)).toMatch(/different act on this order/);
@@ -327,7 +328,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
     const h = await makeService();
     const token = await mint(h, OTHER_MANAGER);
     const err = await refusal(() =>
-      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "mine now", token),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "mine now", token, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(String(err.message)).toMatch(/issued to somebody else/);
@@ -339,7 +340,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
     const token = await mint(h);
     h.order.total_cost = "20000.00";
     const err = await refusal(() =>
-      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "too expensive", token),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "too expensive", token, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(String(err.message)).toMatch(/changed after the seal was issued/);
@@ -353,7 +354,7 @@ describe("a cancellation redeems a seal, and a refused seal changes nothing", ()
     const token = await mint(h);
     h.order.status = ProcurementOrderStatus.DELIVERED;
     const err = await refusal(() =>
-      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "too late", token),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "too late", token, "house_decision"),
     );
     // The transition check runs first and refuses with the louder sentence.
     expect(err.getStatus()).toBe(422);
@@ -397,6 +398,7 @@ describe("a cancellation leaves paper", () => {
       MANAGER,
       "Wine is corked across the whole lot",
       token,
+      "house_decision",
     );
 
     const row = h.audits.find((a) => a.action === "order_cancelled");
@@ -418,7 +420,7 @@ describe("a cancelled order does not email its vendor", () => {
   it("cascades AUTO_SEND_SCHEDULED as well as PENDING_APPROVAL", async () => {
     const h = await makeService();
     const token = await mint(h);
-    await h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "no longer needed", token);
+    await h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "no longer needed", token, "house_decision");
 
     const cascade = h.updates.find(
       (u) => u.table === "procurement_conversations",
@@ -449,6 +451,22 @@ describe("the PATCH route is held to the same table", () => {
     await h.service.updateOrder(HOUSE, ORDER_ID, {
       status: ProcurementOrderStatus.CONFIRMED,
     } as any);
+    expect(h.order.status).toBe(ProcurementOrderStatus.CONFIRMED);
+  });
+
+  // ADR 0207 round 4 (last call, 2026-09-22): a cancel by PATCH skipped the
+  // seal, the role check and the category the vendor figures read.
+  it("refuses a cancel by PATCH, and writes nothing", async () => {
+    const h = await makeService({ status: ProcurementOrderStatus.CONFIRMED });
+    const err = await refusal(() =>
+      h.service.updateOrder(HOUSE, ORDER_ID, {
+        status: ProcurementOrderStatus.CANCELLED,
+      } as any),
+    );
+    expect(err.getStatus()).toBe(422);
+    expect(String(err.message?.message ?? err.message)).toMatch(
+      /cancelled through its own act/,
+    );
     expect(h.order.status).toBe(ProcurementOrderStatus.CONFIRMED);
   });
 
@@ -496,7 +514,7 @@ describe("ending an order is a manager's or an owner's act", () => {
     // The manager is demoted between the hold and the write.
     roleGate.allow = false;
     const err = await refusal(() =>
-      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "no longer needed", token),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "no longer needed", token, "house_decision"),
     );
     expect(err.getStatus()).toBe(403);
     expect(h.order.status).toBe(ProcurementOrderStatus.APPROVED);
@@ -523,7 +541,7 @@ describe("ending an order is a manager's or an owner's act", () => {
     const h = await makeService();
     (h.service as any).organizations = undefined;
     const err = await refusal(() =>
-      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "because", "anything"),
+      h.service.cancelOrder(HOUSE, ORDER_ID, MANAGER, "because", "anything", "house_decision"),
     );
     expect(err.getStatus()).toBe(500);
     expect(String(err.message)).toMatch(/could not be established/);

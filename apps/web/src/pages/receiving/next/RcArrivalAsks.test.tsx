@@ -58,7 +58,11 @@ describe('Did it arrive?', () => {
     expect(asks[0]).toHaveTextContent('not counted against the vendor yet');
     expect(within(asks[0]).getByRole('link', { name: 'Yes — receive it' })).toHaveAttribute('href', '/receiving/o1/door');
     expect(within(asks[0]).getByRole('button', { name: 'Not yet' })).toBeInTheDocument();
-    expect(within(asks[0]).getByRole('link', { name: 'Cancel on Orders ›' })).toHaveAttribute('href', '/orders');
+    // ADR 0207 round 4 — the "Cancel on Orders ›" link is gone; the cancel
+    // act is in place, reasonCode locked to never_arrived.
+    expect(
+      within(asks[0]).getByRole('button', { name: 'It never arrived — cancel' }),
+    ).toBeInTheDocument();
     expect(asks[1]).toHaveTextContent('Someone here said not yet on 2026-09-17 — it counts as late.');
     expect(within(asks[1]).queryByRole('button', { name: 'Not yet' })).not.toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith('/procurement/arrival-asks');

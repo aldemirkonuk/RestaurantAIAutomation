@@ -12,9 +12,11 @@
  * sentence, not as an empty list.
  */
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiClient } from '@/services/api/client';
+import { SealedRejectDie } from '@/components/orders/SealedRejectDie';
 import { useAuth } from '../../../contexts/AuthContext';
 import { MONO, SANS } from './so-format';
 
@@ -47,6 +49,59 @@ const drawerStyle = {
   borderRadius: 12,
   padding: '12px 15px',
 } as const;
+
+/**
+ * ADR 0207 round 4 — "It never arrived — cancel", in place, replacing the
+ * link to Orders (the rebuilt page has no cancel act for a CONFIRMED/
+ * IN_TRANSIT order at all). reasonCode is locked to never_arrived: an order
+ * only reaches Incomplete orders once it is 30 days past a deadline it never
+ * met, so that category is always the true one here.
+ */
+function IncompleteOrderRow({ o }: { o: IncompleteOrder }) {
+  const receive = o.choices.find((c) => c.key === 'receive');
+  const [cancelling, setCancelling] = useState(false);
+  return (
+    <li
+      data-testid="incomplete-order"
+      style={{ listStyle: 'none', padding: '7px 0', borderTop: '1px solid var(--paper-2, #EAE4D8)', fontSize: 12.5 }}
+    >
+      <div className="flex flex-wrap items-baseline gap-3">
+        <span style={{ fontWeight: 600 }}>{o.orderNumber ?? 'Order'}</span>
+        <span style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>
+          {o.providerName ?? 'vendor not named'} · expected {o.expectedDate} · {o.daysPast} days ·{' '}
+          {o.confirmed ? 'someone said not yet' : 'never answered'}
+        </span>
+        <span className="ml-auto" style={{ display: 'inline-flex', gap: 10 }}>
+          {receive?.route && (
+            <Link to={receive.route} className="so-link" style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}>
+              Receive it
+            </Link>
+          )}
+          {!cancelling && (
+            <button
+              type="button"
+              className="so-link"
+              style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-2, #4F473C)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+              onClick={() => setCancelling(true)}
+            >
+              It never arrived — cancel
+            </button>
+          )}
+        </span>
+      </div>
+      {cancelling && (
+        <div style={{ marginTop: 8 }}>
+          <SealedRejectDie
+            orderId={o.orderId}
+            reasonCode="never_arrived"
+            label="Hold to cancel"
+            onRejected={() => setCancelling(false)}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
 
 export function IncompleteOrders() {
   const { activeRestaurantId } = useAuth();
@@ -94,33 +149,9 @@ export function IncompleteOrders() {
             received — then counted late, with its true dates — cancelled, or closed with a credit.
           </p>
           <ul style={{ margin: 0, padding: 0 }}>
-            {q.data.orders.map((o) => {
-              const receive = o.choices.find((c) => c.key === 'receive');
-              return (
-                <li
-                  key={o.orderId}
-                  data-testid="incomplete-order"
-                  className="flex flex-wrap items-baseline gap-3"
-                  style={{ listStyle: 'none', padding: '7px 0', borderTop: '1px solid var(--paper-2, #EAE4D8)', fontSize: 12.5 }}
-                >
-                  <span style={{ fontWeight: 600 }}>{o.orderNumber ?? 'Order'}</span>
-                  <span style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>
-                    {o.providerName ?? 'vendor not named'} · expected {o.expectedDate} · {o.daysPast} days ·{' '}
-                    {o.confirmed ? 'someone said not yet' : 'never answered'}
-                  </span>
-                  <span className="ml-auto" style={{ display: 'inline-flex', gap: 10 }}>
-                    {receive?.route && (
-                      <Link to={receive.route} className="so-link" style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}>
-                        Receive it
-                      </Link>
-                    )}
-                    <Link to="/orders" className="so-link" style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--ink-2, #4F473C)' }}>
-                      Cancel on Orders
-                    </Link>
-                  </span>
-                </li>
-              );
-            })}
+            {q.data.orders.map((o) => (
+              <IncompleteOrderRow key={o.orderId} o={o} />
+            ))}
           </ul>
         </>
       )}

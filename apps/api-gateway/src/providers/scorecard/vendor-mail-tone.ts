@@ -41,10 +41,12 @@ import {
   THRESHOLDS,
   ToneWord,
   clip,
+  latestPart,
   splitSentences,
   wordOfLabel,
   wordOfScore,
 } from "../../vendor-tone/tone-scale";
+import { languageCovered } from "../../vendor-tone/sensitive-mask";
 import { MAIL_COPY } from "./vendor-mail-tone.copy";
 
 /** Read messages each window needs before C's sentence is written. */
@@ -181,6 +183,22 @@ export function readingOf(
     return {
       word: null,
       notAssessed: MAIL_COPY.notAssessed.automated,
+      quote: null,
+      quoteMissing: null,
+      readBy: null,
+    };
+  // ADR 0207 round 4 — "sensitive topics redacted" can only be true of a
+  // language the private-topic pass reads, so while Jev is on, a message in
+  // any other language was not sent and says so (no new MailState). While Jev
+  // is off nothing is sent at all and the inbound model's own reading shows,
+  // whatever the language. [Last call, 2026-09-22: this ran whatever the
+  // switch said, so every house — Jev is off for all of them — lost the
+  // inbound reading of its Italian and French vendor mail; and it read the
+  // raw message, quoted thread included, not the part that would leave.]
+  if (jevOn && !languageCovered(latestPart(textOf(r))))
+    return {
+      word: null,
+      notAssessed: MAIL_COPY.notAssessed.language,
       quote: null,
       quoteMissing: null,
       readBy: null,

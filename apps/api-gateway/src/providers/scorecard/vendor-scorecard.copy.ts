@@ -340,7 +340,19 @@ export const COPY = {
       `Expected by ${date}; ${plural(days, "day", "days")} past it and not booked in. Nobody here has said whether it arrived, so it is unconfirmed and not counted. It is waiting on the question "Did it arrive?".`,
     incomplete: `${INCOMPLETE_DAYS} days past its expected date and not arrived — in Incomplete orders`,
     incompleteDetail: (date: string, days: number): string =>
-      `Expected by ${date}; ${plural(days, "day", "days")} past it and still not arrived. It is in Incomplete orders under Documents & Reports and out of these figures until it is received (then counted late, with its true dates), cancelled, or closed with a credit.`,
+      `Expected by ${date}; ${plural(days, "day", "days")} past it and still not arrived. It is in Incomplete orders under Documents & Reports and out of these figures until it is received (then counted late, with its true dates), cancelled as never arrived (then counted late at this date), or closed with a credit.`,
+
+    // ADR 0207 round 4 — a never-arrived order that was cancelled. Dated at
+    // its deadline, like a confirmed-overdue order, and counted a miss for
+    // the same reason: cancelling must not erase the vendor's failure.
+    cancelledNeverArrived: (date: string, days: number): string =>
+      `Expected by ${date}; ${plural(days, "day", "days")} past it, never arrived, and cancelled — counted as late.`,
+    cancelledNeverArrivedNoDate:
+      "Cancelled as never arrived, with no expected date on record — not counted.",
+    cancelledVendorCannotSupply:
+      "cancelled — the vendor said it could not supply this order",
+    cancelledHouseDecision: "cancelled by the house",
+    cancelledNoReason: "cancelled before a reason was kept",
 
     noVerdict: "counted at the door with no verdict recorded",
     noVerdictDetail:

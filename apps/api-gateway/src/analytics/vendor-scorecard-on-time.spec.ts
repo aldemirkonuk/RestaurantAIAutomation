@@ -161,6 +161,11 @@ describe("getVendorScorecard reads the one on-time rule", () => {
       incomplete: 0,
       unread: 0,
       undecided: 0,
+      // ADR 0207 round 4 — no cancellation in this fixture set.
+      neverArrived: 0,
+      couldNotSupply: 0,
+      houseDecisionCancels: 0,
+      uncategorisedCancels: 0,
     });
     expect(out.vendors[0].onTimeRate).toBeCloseTo(1 / 2);
   });
@@ -211,5 +216,104 @@ describe("getVendorScorecard reads the one on-time rule", () => {
       undecided: 1,
     });
     expect(out.vendors[0].onTimeRate).toBeCloseTo(1 / 2);
+  });
+});
+
+describe("getVendorScorecard — ADR 0207 round 4, cancel-reason.ts", () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: NOW });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const istanbulHouses = [
+    { id: HOUSE, timezone: "Europe/Istanbul", country: "Türkiye" },
+  ];
+
+  it("a never_arrived cancel counts late, is named separately, and adds nothing to spend", async () => {
+    const rows = [
+      order({
+        id: "o1",
+        status: "DELIVERED",
+        expected_delivery_date: "2026-09-10",
+        delivered_at: "2026-09-10T09:00:00Z",
+      }),
+      order({
+        id: "o2",
+        status: "CANCELLED",
+        expected_delivery_date: "2026-09-05",
+        delivered_at: null,
+        cancel_reason_code: "never_arrived",
+        cancelled_from_status: "CONFIRMED",
+        // total_cost/final_price are set by the `order()` fixture to 100 each —
+        // proving they are NOT read into spend for a cancelled row.
+      }),
+    ];
+    const svc = service(istanbulHouses, rows);
+    const out: any = await svc.getVendorScorecard(HOUSE);
+    expect(out.vendors[0].onTimeCounts).toMatchObject({
+      onTime: 1,
+      late: 1,
+      neverArrived: 1,
+      couldNotSupply: 0,
+      houseDecisionCancels: 0,
+      uncategorisedCancels: 0,
+    });
+    expect(out.vendors[0].onTimeRate).toBeCloseTo(1 / 2);
+    // CANCELLED is not in ORDER_SPEND_STATUSES whatever its reason — unchanged
+    // by this round.
+    expect(out.vendors[0].spend).toBe(100);
+  });
+
+  it("vendor_cannot_supply and house_decision cancels are listed but never counted late", async () => {
+    const rows = [
+      order({
+        id: "o1",
+        status: "CANCELLED",
+        expected_delivery_date: "2026-09-05",
+        delivered_at: null,
+        cancel_reason_code: "vendor_cannot_supply",
+        cancelled_from_status: "CONFIRMED",
+      }),
+      order({
+        id: "o2",
+        status: "CANCELLED",
+        expected_delivery_date: "2026-09-05",
+        delivered_at: null,
+        cancel_reason_code: "house_decision",
+        cancelled_from_status: "CONFIRMED",
+      }),
+    ];
+    const svc = service(istanbulHouses, rows);
+    const out: any = await svc.getVendorScorecard(HOUSE);
+    expect(out.vendors[0].onTimeCounts).toMatchObject({
+      onTime: 0,
+      late: 0,
+      couldNotSupply: 1,
+      houseDecisionCancels: 1,
+    });
+    expect(out.vendors[0].onTimeRate).toBeNull();
+  });
+
+  it("a cancel out of a pre-placement state is not a vendor event at all", async () => {
+    const rows = [
+      order({
+        id: "o1",
+        status: "CANCELLED",
+        expected_delivery_date: "2026-09-05",
+        delivered_at: null,
+        cancel_reason_code: "house_decision",
+        cancelled_from_status: "PENDING",
+      }),
+    ];
+    const svc = service(istanbulHouses, rows);
+    const out: any = await svc.getVendorScorecard(HOUSE);
+    expect(out.vendors[0].onTimeCounts).toMatchObject({
+      onTime: 0,
+      late: 0,
+      houseDecisionCancels: 0,
+      uncategorisedCancels: 0,
+    });
   });
 });

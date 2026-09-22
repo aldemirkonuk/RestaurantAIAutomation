@@ -254,8 +254,17 @@ export async function approveOrder(
  * The note that used to sit on the responses sheet saying this act was recorded
  * rather than proven is retired with this change.
  */
+/**
+ * ADR 0207 round 4. `reasonCode` is REQUIRED — never optional — so `tsc`
+ * finds every call site: never_arrived (the vendor's failure — counts late),
+ * vendor_cannot_supply (the vendor said so — listed, not counted),
+ * house_decision (the house's own choice — never counted). The gateway
+ * refuses a missing or unknown code with 400, and a code that does not fit
+ * this order's state or deadline with 422 (`cancel-reason.ts`).
+ */
 export async function cancelOrder(
   orderId: string,
+  reasonCode: 'never_arrived' | 'vendor_cannot_supply' | 'house_decision',
   reason?: string,
   restaurantId?: string,
   challenge?: string | null
@@ -265,7 +274,7 @@ export async function cancelOrder(
 
   try {
     const response = await apiClient.delete<Order>(`${ORDERS_PATH}/${orderId}`, {
-      params: reason ? { reason } : undefined,
+      params: reason ? { reason, reasonCode } : { reasonCode },
       // The same header the approval carries, so a caller has one thing to
       // learn. What separates the two acts is the act the token names, which
       // the gateway compares — not the shape of the request.

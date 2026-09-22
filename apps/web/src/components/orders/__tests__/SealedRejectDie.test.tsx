@@ -24,7 +24,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-type CancelInput = { orderId: string; reason?: string; challenge?: string | null };
+type CancelInput = {
+  orderId: string;
+  reasonCode: 'never_arrived' | 'vendor_cannot_supply' | 'house_decision';
+  reason?: string;
+  challenge?: string | null;
+};
 const cancelMock = vi.hoisted(() => ({
   mutate: vi.fn(),
   mutateAsync: vi.fn<(input: CancelInput) => Promise<unknown>>(async () => ({})),
@@ -182,6 +187,9 @@ describe('the seal is minted when the gesture begins', () => {
     expect(mintMock).toHaveBeenCalledWith('ord-1');
     expect(cancelMock.mutateAsync).toHaveBeenCalledWith({
       orderId: 'ord-1',
+      // ADR 0207 round 4: no reasonCode prop was given, so the picker's
+      // default (house_decision) travels with the write.
+      reasonCode: 'house_decision',
       reason: 'Price is 18% over what we last paid.',
       challenge: 'cancel-seal-token',
     });

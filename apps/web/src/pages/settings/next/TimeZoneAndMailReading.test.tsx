@@ -89,7 +89,8 @@ function toneReg(over: Record<string, unknown> = {}) {
 function mountTone(over: Record<string, unknown> = {}) {
   const saveToneScoring = vi.fn(() => Promise.resolve(true));
   const data = {
-    canManage: true,
+    // ADR 0207 round 4 — owner only (was owner or manager).
+    isOwner: true,
     saveToneScoring,
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     houseToneScoring: remote(toneReg()),
@@ -104,9 +105,17 @@ describe('the Mail reading register', () => {
     const { saveToneScoring } = mountTone();
     expect(screen.getByText('Off')).toBeInTheDocument();
     expect(screen.getByText(/— nothing is sent\./)).toBeInTheDocument();
-    expect(screen.getByText(/people’s names taken out before it leaves/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/people’s names, account and government-id numbers, credentials and sensitive private topics/),
+    ).toBeInTheDocument();
     // The masker is a rule-based pass: the note says what it cannot promise.
-    expect(screen.getByText(/A name written anywhere else in a message may not be caught\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(/A name or topic written in a way this pass does not recognise may not be caught\./),
+    ).toBeInTheDocument();
+    // Last call, 2026-09-22: the note says where acceptance is — not yet on
+    // this page — rather than pointing at a Settings section that does not exist.
+    expect(screen.getByText(/accepting them is not on this page yet — so for now Jev stays off\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Settings → Data terms/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(saveToneScoring).toHaveBeenCalledWith(true);
   });
@@ -117,9 +126,10 @@ describe('the Mail reading register', () => {
     expect(saveToneScoring).toHaveBeenCalledWith(false);
   });
 
-  it('keeps the switch closed for staff, and never reads a failed read as off', () => {
-    mountTone({ canManage: false });
+  it('keeps the switch closed for a manager (ADR 0207 round 4: owner only), and never reads a failed read as off', () => {
+    mountTone({ isOwner: false });
     expect(screen.getByRole('button', { name: 'Turn on' })).toBeDisabled();
+    expect(screen.getByText(/Only an owner can decide/)).toBeInTheDocument();
   });
 
   it('says a failed read is not off', () => {
