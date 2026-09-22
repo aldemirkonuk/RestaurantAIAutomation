@@ -6,6 +6,10 @@
   **[2026-09-21, round 6: §4, §5, §7's SC 3.3.8 bullet, §8, §9, fork 14 and sketch 116's founder
   question 6 (`ResponsesSheet`'s `wide`) are now locked too, with his words — see "Round 6
   answers — locked 2026-09-21" below. Nothing this ADR drafted is still Proposed.]**
+  **[2026-09-22, round 6y: the three residues round 6 put back to the founder — §4's flag-off
+  reach, §5(c)'s reduced-motion reach over the rail collapse, and where fork 14's two stores
+  land — are now answered too, docs-only (the tree already matched both motion answers). See
+  "Round 6y answers — locked 2026-09-22" below.]**
 - **Date:** 2026-09-06 (drafted) · **Locked:** 2026-09-21
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** motion, tokens, overlays, ceremony, wax, ration, reduced motion, WCAG, sidebar, guard, census
@@ -196,6 +200,8 @@ Status: **Locked, and built.**
   scrim `motion-safe:animate-[fadeIn…]` (`CommandPalette.tsx:384`, `AskAiBar.tsx:309`) **[the scrim
   half added 2026-09-21, lane last call — the first pass named only the popIn]**; removing them
   would be a removal of motion for flag-off tenants, which §4's text does not name either way.
+  **[Answered 2026-09-22, round 6y: "Leave legacy alone (Recommended)" — they stay, and go with
+  the legacy branch at the cutover. See "Round 6y answers" below.]**
   Flag-off Recently viewed and Keyboard shortcuts carry no entrance animation to remove.
 - **§5.** (a) The rail's reduced-motion guard, on every route and ungated, in three halves keyed
   on one `useReducedMotion()` read (`components/layout/Sidebar.tsx:421-428`): the rail carries
@@ -214,6 +220,8 @@ Status: **Locked, and built.**
   to the founder:** (a)'s guard does reach (c) under reduced motion — the width lands with no
   frames. "Left alone" was read against its own rejected alternative (migrating it to `settle`),
   not as "exempt from the guard"; a founder question asks whether he meant untouched even then.
+  **[Answered 2026-09-22, round 6y: "Reduced motion wins (Recommended)" — the reading stands; the
+  guard reaches the collapse. See "Round 6y answers" below.]**
   The false "Tokens only (ADR 0112)" comment is corrected in place, bracketed
   (`Sidebar.tsx:254-265`).
 - **§8.** `/inventory`'s guard, inside the component (`pages/inventory/command/
@@ -285,6 +293,8 @@ product reads (0 hits for an ask-training opt-out or a Jev setting under `apps/`
 (open, `feat/finish-authorize-consent`) carries 0 hits for `opt.out` / `opt_out` / `optOut`, and its
 own ADR 0145 amendment lists training consent as still open — so this lane waits on whichever
 change lands that store, and the discrepancy is reported back rather than resolved here.
+**[Answered 2026-09-22, round 6y: #430's head now carries the opt-out store, and the Jev switch
+is #435's — see "Round 6y answers" below, fork 14's stores.]**
 
 **4. "Stays 640, it's letters (Recommended)" — sketch 116's founder question 6, under rule 9 /
 fork 13.** Status: **Locked.** `pages/orders/next/ResponsesSheet.tsx:359`'s `wide` stays at 640,
@@ -319,6 +329,85 @@ them, and no builder should read the Status line above as covering them:
   Founder question 4 — rule 5's arm window — is now answered; see "Rule 5's arm window — locked"
   above, not here. **[Answered 2026-09-21: "Stays 640, it's letters (Recommended)". The prop now
   sits at `:359`.]**
+
+### Round 6y answers — locked 2026-09-22
+
+The three residues round 6 put back to the founder (its own review-trail row: "whether §4 reaches
+the flag-off palette and Ask AI, whether §5(a)'s guard may reach the collapse under reduced
+motion, and where the opt-out store PR #430 was named for actually lands") were put to him by the
+orchestrating session as two picks; fork 14's stores came back to this lane (`wt-motions` /
+`feat/motion-rules-locked`, PR #433) as facts to cite, not as a pick. His picks, verbatim — each
+is the label of the option he chose; what each meant is the orchestrating session's brief
+relaying it, not his words, per this record's own discipline:
+
+> Leave legacy alone (Recommended)
+
+> Reduced motion wins (Recommended)
+
+**1. "Leave legacy alone (Recommended)" — §4's flag-off residue.** Status: **Locked; no code
+change.** The palette's and Ask AI's legacy (flag-off) entrance stays exactly as round 6 found it,
+because the legacy branch is deleted whole at the cutover rather than migrated piece by piece —
+removing its entrance now would be work thrown away with the branch it sits in. Re-verified in this
+lane, 2026-09-22, byte-identical to round 6's own citations: the scrim `motion-safe:animate-
+[fadeIn_120ms_ease-out]` at `CommandPalette.tsx:384` / `AskAiBar.tsx:309`, the surface
+`motion-safe:animate-[popIn_120ms_ease-out]` at `CommandPalette.tsx:387` / `AskAiBar.tsx:312`.
+§4's Locked road (the four `instant` house-branch surfaces) is untouched by this answer.
+
+**2. "Reduced motion wins (Recommended)" — §5(a)'s residue over §5(c)'s collapse.** Status:
+**Locked; already built, now confirmed rather than changed.** Round 6 disclosed a reading it had
+not settled: "(a)'s guard does reach (c) under reduced motion — the width lands with no frames,"
+against "left alone" possibly meaning untouched even then. The founder's pick keeps the guard's
+reach: re-measured in this lane, 2026-09-22, at the same line, the rail's 260-to-72 width collapse
+(`Sidebar.tsx:556`) still reads `transition={reduced ? NO_MOTION : { duration: 0.2, ease: [0.4, 0,
+0.2, 1] }}` — instant under `prefers-reduced-motion`, the 200 ms Material curve at full motion,
+exactly the "as built" state this answer names. Nothing in code changes; "left alone" in §Decision
+5 is now settled to mean "exempt from migrating to `settle`," never "exempt from the
+reduced-motion guard."
+
+**3. Fork 14's stores — reported as facts, not decided as a fork.** Round 6 measured neither
+switch had a store the product read (2026-09-21: "0 hits for an ask-training opt-out or a Jev
+setting under `apps/` or `supabase/migrations/`"). Each now has an owning branch, open, which this
+lane does not own and did not build; the rebuilt consent panel reads both:
+
+- **The ask-training opt-out store — PR #430** (`feat/finish-authorize-consent`, OPEN, head
+  `a04aaa4e1`, checked 2026-09-22): `ask_training_opt_outs` (migration
+  `20260921171200_ask_training_opt_out_and_reask_labels.sql`), one row per house, RLS on,
+  `set_by_role` constrained to `owner` by a CHECK, written through `PUT /settings/ask-training`
+  (`house-ask-training.controller.ts`, owner only) and audited (`ask_training_opt_out_changed`).
+  Built at that head; this confirms round 6's own citation of PR #430 for this store.
+- **The owner's acceptance that turns Jev on — PR #435** (`feat/vendor-scorecard`, OPEN, ADR
+  0207), not #430. The founder ruled it in the same round, on ADR 0207, which owns the answer; his
+  words, verbatim as relayed to that lane:
+
+  > owner only, but also we're going to use this as complete data and privacy usage, they have to accept that, and when they do they'd accept the jev too with their names and sensitive topics redacted
+
+  So the switch is the **owner's** acceptance of the house's complete data and privacy usage
+  terms; accepting them is what turns Jev on, with names and sensitive topics redacted before
+  anything leaves. That matches fork 14's own locked line above — **owner only; every flip
+  audited**. Where the acceptance is kept, how it is versioned, and what withdrawing it does are
+  ADR 0207's to decide and are not restated here. **Not built at #435's pushed head yet:** measured
+  2026-09-22 at `a7898464c`, that head still carries the switch the ruling replaces —
+  `restaurants.vendor_tone_scoring_enabled` (default `false`, set by owner **or manager**, audited
+  `vendor_tone_scoring_changed`), with ADR 0207's question 13 still asking "owner only, or owner
+  and manager (built: both, the house-settings rule)?". Read this bullet against #435 after its
+  round-6y build lands, never against `a7898464c`. The retention of what Jev receives here stays on
+  **OD-133**, which the same round widens to name TypeSafe (ADR 0207's lane, not this one).
+
+No consent panel reads either store yet (#430's is read by its own training export,
+`ask_folio_training_export`, in the same migration, and by the settings service): the rebuilt
+consent panel fork 14 locked in round 6 ("Bring back, real switches") is still that round's "named
+later lane, not built here." What this round changes is only that the panel, once built, has two
+stores with owners to read and write — #430's, built, and #435's, being built — rather than none;
+the panel itself is not this lane's to build and stays unbuilt here.
+
+**4. Docs only — the tree agreed with the founder before anything was written.** Both motion
+answers were checked against the tree first, and §4 and §5(c) already matched their "as built"
+claims verbatim, so nothing in this branch's code changes. Fork 14's stores are facts about two
+other branches, recorded above with the head each was read at; neither is this lane's to build, so
+neither is a must_fix here.
+
+**5. Migration band for this lane: none.** No file under `supabase/` is touched here — fork 14's
+stores belong to their own lanes (PR #430, PR #435), not this one.
 
 ## Context
 
@@ -415,7 +504,9 @@ the shipped bulk bar is a dry emboss — and must be amended to say what this ru
 ### 4. A keyboard-opened overlay does not animate — per surface, not per opener
 
 **Decided: the command palette, Ask AI, Recently viewed and Keyboard shortcuts render with no enter
-animation at all, always, whatever the motion setting.** One boolean on the component. And **the
+animation at all, always, whatever the motion setting.** **[2026-09-22, round 6y, "Leave legacy
+alone (Recommended)": in the house branch. The flag-off palette and Ask AI keep their 120 ms
+entrance until the cutover deletes the legacy branch.]** One boolean on the component. And **the
 palette does not animate its filtering either**: a FLIP on survivors with every keystroke is the
 textbook case the source rule names ("never animate keyboard initiated actions… repeated sometimes
 hundreds of times a day").
@@ -431,7 +522,9 @@ goes in now, ungated**, because it only ever removes motion; (b) the **hover hin
 (`Sidebar.tsx:256-260` and `:275-280`) takes `ink` 160 in CSS **inside the `.mudavym` branch only** —
 the branch already exists at `:254` for colour and only the motion was left behind; (c) the
 **260-to-72 width collapse** (`Sidebar.tsx:512-515`) is **left alone** and recorded as the last
-unmigrated chrome, to die with the legacy pages.
+unmigrated chrome, to die with the legacy pages. **[2026-09-22, round 6y, "Reduced motion wins
+(Recommended)": "left alone" means not migrated to `settle`; (a)'s guard still reaches the
+collapse, which lands with no frames under reduced motion (now at `Sidebar.tsx:556`).]**
 *Rejected:* animating `width` on `settle` 320 — a layout property, 60 % longer than today, on every
 legacy page. The comment at `Sidebar.tsx:250-251` claiming the hint is "Tokens only (ADR 0112)" is
 false about the motion in both branches and is corrected in the same commit.
@@ -643,3 +736,4 @@ _(Written 2026-09-06, alongside the original ten decisions; kept as-written. As 
 | 2026-09-21 | Aldemir (founder), round 2 + lane last call (Opus) | Three answers built: *"Waiver, drop screenshots"* (ADR 0032's PR #433 row; sketch 116's three captures removed from the branch); *"Motion token check"* - yes (one `ci.yml` step); rule 5's arm window, *"Until Esc or click away"* (no timer, built in `HoldToApprove`). Last call corrected rule 5's table row, which still called the arm window unsettled; made Escape disarm wherever focus is and the click-away listener capture-phase; and made the guard exit 2 on an empty `MUDAVYM_PAGES` or a missing scan root, where it had printed PASS over the two shared roots alone |
 | 2026-09-21 | Aldemir (founder), round 6 + lane motions3b (Opus) | Four answers, his picks verbatim: *"Lock all four (Recommended)"* — §4, §5, §8, §9 built (`instant` on the primitive and the four keyboard surfaces, the palette's still list; the rail's and `/inventory`'s reduced-motion guards in CSS plus a shared `ReducedMotionScope` for their framer-motion, the house hint on `ink` in CSS, the chip's own line-height, measured 24.5 px with no adjacent chip in the product); *"Passkey + paste (Recommended)"* — no passcode field exists and nothing blocks paste, so nothing to remove, two CLAIMS rows hold the rule, the passkey recorded as a named later lane; *"Bring back, real switches (Recommended)"* — fork 14 recorded as a named later lane waiting on a switch store that does not exist yet; *"Stays 640, it's letters (Recommended)"* — `ResponsesSheet` keeps `wide`, recorded at the call site. 24 source mutations, none a no-op. Three things put back to the founder rather than decided: whether §4 reaches the flag-off palette and Ask AI, whether §5(a)'s guard may reach the collapse under reduced motion, and where the opt-out store PR #430 was named for actually lands |
 | 2026-09-21 | round 6 last call (Opus) | Three records corrected and three `CLAIMS.jsonl` verifies tightened before merge. Records: the model-context credential fields are three, not two (`McpRegister.tsx:196` added); "no test reads" `wide` was false (`Sheet.test.tsx` does, of the primitive — no test checks its callers); §4's flag-off residue names the legacy scrim's 120 ms `fadeIn` beside the `popIn`. Verifies: `ADR-0134-ROUND6-KEYBOARD-GUARDS-CHIP` now pins the two `data-reduced-motion` attributes, the legacy hint's reduced start, the house hint's CSS and the guard stylesheet's body, which its sentence claimed and it did not check (8 mutations, 8 caught); `ADR-0134-SC338-NOTHING-BLOCKS-PASTE` also refuses a native `paste` listener (3 plants, 3 caught); `ADR-0134-SC338-MANAGER-PASSCODE-UNBUILT` trips on any `passcode` / `pass_code` / `pass-code`, not only a "manager passcode" phrase (4 plants, 4 trip). All on a scratch copy of the tree. |
+| 2026-09-22 | Aldemir (founder), round 6y + lane motions4 (Sonnet) + last call (Opus) | Answered round 6's three residues, his picks verbatim: *"Leave legacy alone (Recommended)"* — §4's flag-off palette and Ask AI keep their 120 ms popIn and scrim fadeIn, gone with the legacy branch at the cutover; *"Reduced motion wins (Recommended)"* — §5(a)'s guard reaches the rail's 260-to-72 collapse, as already built (instant under reduced motion, the 200 ms curve at full motion). Fork 14's stores recorded as facts, with the head each was read at: PR #430 (`feat/finish-authorize-consent`, `a04aaa4e1`) carries the ask-training opt-out store; PR #435 (`feat/vendor-scorecard`, ADR 0207) owns the switch that turns Jev on, which the founder ruled the same round to be the owner's acceptance of the complete data and privacy usage terms, owner only, quoted verbatim in the section — not yet built at #435's pushed head `a7898464c`, which still carries the owner-or-manager `vendor_tone_scoring_enabled` toggle the ruling replaces. Last call withdrew the first pass's reading of that head as the answer (it had recorded the switch as owner-or-manager and "not a privacy-acceptance flow", against his words and fork 14's own "Owner only"), renamed the section from "Round 7" to the founder round's name, 6y, and bracketed the five sentences these answers close (§4 and §5(c) in round 6, fork 14's #430 discrepancy, §Decision 4's "always", §Decision 5's "left alone"). Docs only: no source, test, `CLAIMS.jsonl` or migration changed (band: none). |
