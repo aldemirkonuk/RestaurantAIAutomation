@@ -140,10 +140,18 @@ export class CreateTimeOffDto {
   @IsDateString() startDate: string;
   @IsDateString() endDate: string;
   @IsOptional() @IsString() reason?: string;
+  /** Whether the days are paid (ADR 0215). Omitted = 'unknown'. */
+  @IsOptional()
+  @IsIn(["unknown", "paid", "unpaid"])
+  leaveType?: "unknown" | "paid" | "unpaid";
 }
 
 export class ReviewRequestDto {
   @IsIn(["approved", "denied"]) status: "approved" | "denied";
+  /** The reviewer says whether the days are paid (ADR 0215). */
+  @IsOptional()
+  @IsIn(["unknown", "paid", "unpaid"])
+  leaveType?: "unknown" | "paid" | "unpaid";
 }
 
 // ── Coverage template ──────────────────────────────────────────────────────
@@ -222,6 +230,10 @@ export class CreateTeamNoteDto {
 // ── Settings ───────────────────────────────────────────────────────────────
 export class UpdateTeamSettingsDto {
   @IsOptional() @IsBoolean() laborTrackingEnabled?: boolean;
+  /**
+   * RETIRED (ADR 0215). Kept in the DTO only so a client that still sends it is
+   * refused in words (`updateSettings`), not silently stripped by the pipe.
+   */
   @IsOptional() @IsBoolean() wageVisible?: boolean;
   @IsOptional()
   @Type(() => Number)

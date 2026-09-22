@@ -29,6 +29,7 @@ import {
   deleteTeamMember,
   updateTeamMember,
   type Certification,
+  type HouseMoney,
   type Shift,
   type TeamMember,
 } from '../../../services/api/team';
@@ -36,10 +37,11 @@ import {
   EM,
   fmtDayShort,
   fmtHours,
+  fmtMoneyExact,
   fmtTime,
   fmtWeekday,
   resolveName,
-  shiftHours,
+  workedHours,
 } from './tm-format';
 import { Card, Fact, KV, Mark, MutationError, Tag } from './tm-bits';
 import { PerformanceCard } from './PerformanceCard';
@@ -58,8 +60,9 @@ const STATUSES: ReadonlyArray<[string, string]> = [
   ['inactive', 'Inactive'],
 ];
 
-function money(v: number | null | undefined): string {
-  return typeof v === 'number' && Number.isFinite(v) ? `$${v.toFixed(2)}` : EM;
+/** Paid, unpaid, or not said — a leave row's type in words (ADR 0215). */
+function leaveWords(t: string | null | undefined): string {
+  return t === 'paid' ? 'paid' : t === 'unpaid' ? 'unpaid' : 'paid or unpaid not said';
 }
 
 /* ── the expanded row ────────────────────────────────────────────────────── */
@@ -69,7 +72,8 @@ function MemberDetail({
   shifts,
   certs,
   timeOff,
-  wageVisible,
+  moneyVisible,
+  money,
   onEdit,
 }: {
   member: TeamMember;
@@ -77,12 +81,17 @@ function MemberDetail({
   shifts: Shift[] | null;
   certs: Certification[] | null;
   timeOff: TimeOffRow[] | null;
-  wageVisible: boolean;
+  /** The owner only (ADR 0215). */
+  moneyVisible: boolean;
+  money: HouseMoney | null;
   onEdit: () => void;
 }) {
   const name = resolveName(member);
   const mine = (shifts ?? []).filter((s) => s.member_id === member.id);
-  const hours = mine.reduce((sum, s) => sum + shiftHours(s.start_time, s.end_time), 0);
+  // Worked hours: breaks out, a called-out shift out — as the gateway counts.
+  const hours = mine
+    .filter((s) => s.state !== 'callout')
+    .reduce((sum, s) => sum + workedHours(s.start_time, s.end_time, s.shift_breaks), 0);
   const myCerts = (certs ?? []).filter((c) => c.member_id === member.id);
   const myLeave = (timeOff ?? []).filter((r) => r.member_id === member.id);
 
@@ -96,7 +105,7 @@ function MemberDetail({
           k="This week"
           v={shifts === null ? `${EM} not read` : `${mine.length} shifts · ${fmtHours(hours)}`}
         />
-        {wageVisible && <Fact k="Wage" v={money(member.hourly_wage)} />}
+        {moneyVisible && <Fact k="Hourly wage" v={fmtMoneyExact(member.hourly_wage, money)} />}
       </div>
 
       {!name.known && (
@@ -157,7 +166,7 @@ function MemberDetail({
               <KV
                 key={r.id}
                 k={`${fmtDayShort(r.start_date)} – ${fmtDayShort(r.end_date)}`}
-                v={r.status}
+                v={r.status === 'approved' ? `approved · ${leaveWords(r.leave_type)}` : r.status}
               />
             ))
           )}
@@ -183,7 +192,8 @@ export function RosterSheet({
   shifts,
   certs,
   timeOff,
-  wageVisible,
+  moneyVisible,
+  money,
   onClose,
   onEdit,
   onAdd,
@@ -193,7 +203,8 @@ export function RosterSheet({
   shifts: Shift[] | null;
   certs: Certification[] | null;
   timeOff: TimeOffRow[] | null;
-  wageVisible: boolean;
+  moneyVisible: boolean;
+  money: HouseMoney | null;
   onClose: () => void;
   onEdit: (m: TeamMember) => void;
   onAdd: () => void;
@@ -202,8 +213,11 @@ export function RosterSheet({
   const hoursById = useMemo(() => {
     const m = new Map<string, number>();
     for (const s of shifts ?? []) {
-      if (!s.member_id) continue;
-      m.set(s.member_id, (m.get(s.member_id) ?? 0) + shiftHours(s.start_time, s.end_time));
+      if (!s.member_id || s.state === 'callout') continue;
+      m.set(
+        s.member_id,
+        (m.get(s.member_id) ?? 0) + workedHours(s.start_time, s.end_time, s.shift_breaks),
+      );
     }
     return m;
   }, [shifts]);
@@ -293,7 +307,8 @@ export function RosterSheet({
                   shifts={shifts}
                   certs={certs}
                   timeOff={timeOff}
-                  wageVisible={wageVisible}
+                  moneyVisible={moneyVisible}
+                  money={money}
                   onEdit={() => onEdit(m)}
                 />
               )}
@@ -320,14 +335,19 @@ export function RosterSheet({
  */
 export function MemberSheet({
   member,
-  wageVisible,
+  moneyVisible,
   ownerCount,
   onClose,
   onChanged,
 }: {
   /** `null` for a new member. */
   member: TeamMember | null;
-  wageVisible: boolean;
+  /**
+   * The owner only (ADR 0215): only an owner may set a wage, and the gateway
+   * refuses anyone else. So the field is the owner's, and nobody else is shown
+   * a control that would be refused.
+   */
+  moneyVisible: boolean;
   /** `null` when the roster has not answered — the sole-owner rule then abstains. */
   ownerCount: number | null;
   onClose: () => void;
@@ -361,8 +381,10 @@ export function MemberSheet({
         employmentType: form.employmentType,
         homeLocation: form.homeLocation.trim() || undefined,
         // A wage nobody typed stays unknown. `Number('')` is 0, and a 0 here
-        // would be a priced hour that costs nothing (ADR 0088).
-        hourlyWage: form.hourlyWage.trim() === '' ? undefined : Number(form.hourlyWage),
+        // would be a priced hour that costs nothing (ADR 0088). Only an owner
+        // sends one at all (ADR 0215).
+        hourlyWage:
+          !moneyVisible || form.hourlyWage.trim() === '' ? undefined : Number(form.hourlyWage),
         skills: form.skills
           .split(',')
           .map((s) => s.trim())
@@ -475,7 +497,7 @@ export function MemberSheet({
               onChange={(e) => setForm({ ...form, homeLocation: e.target.value })}
             />
           </label>
-          {wageVisible ? (
+          {moneyVisible ? (
             <label>
               <span className="tm-label">Hourly wage</span>
               <input
@@ -490,14 +512,15 @@ export function MemberSheet({
               <p className="tm-hint">
                 Blank stays unknown. Every hour this person works is uncosted until a
                 real figure is here — the week total says so rather than showing a zero.
+                Each change is kept: who, when, the old and the new figure.
               </p>
             </label>
           ) : (
             <div>
               <span className="tm-label">Hourly wage</span>
               <p className="tm-hint">
-                Wages are hidden for this restaurant, so this field is withheld rather
-                than blank. Change it in team settings.
+                Wages are the owner&apos;s to see and to set, so this field is withheld
+                rather than blank.
               </p>
             </div>
           )}

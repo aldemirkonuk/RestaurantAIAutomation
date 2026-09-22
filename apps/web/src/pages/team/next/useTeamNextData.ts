@@ -45,6 +45,7 @@ import {
   getTimeOff,
   getWeek,
   type Certification,
+  type HouseMoney,
   type Shift,
   type TeamNotesReadout,
   type TeamMember,
@@ -231,6 +232,8 @@ export interface TimeOffRow {
   end_date: string;
   reason: string | null;
   status: string;
+  /** Whether the days are paid (ADR 0215). Absent from an older gateway. */
+  leave_type?: 'unknown' | 'paid' | 'unpaid';
   reviewed_by: string | null;
   created_at: string;
 }
@@ -248,12 +251,29 @@ export interface TimeOffRow {
  */
 export interface LaborVM {
   enabled: boolean;
+  /**
+   * The owner's alone (ADR 0215, founder 2026-09-21: "Owner only"). False for
+   * anyone else, and for an older gateway that does not say — money is shown
+   * only when the server says this viewer may see it.
+   */
+  moneyVisible: boolean;
+  /** WORKED hours: span minus breaks (4857 Art. 68). */
   totalHours: number;
+  /** Break time taken out of `totalHours`; `null` when the gateway did not say. */
+  breakHours: number | null;
+  /** The weekly review line (45). */
+  weeklyReviewHours: number | null;
   totalCost: number | null;
   targetPct: number | null;
   costComplete: boolean | null;
   pricedShifts: number | null;
   unpricedShifts: number | null;
+  /** Approved leave in the week, by type — owner only, `null` when not sent. */
+  leave: {
+    readable: boolean;
+    paidDays: number | null;
+    unknownTypeDays: number | null;
+  } | null;
 }
 
 /**
@@ -304,8 +324,14 @@ export interface TeamNextData {
   timeOffFailed: boolean;
   /** Labour, with the reason a cost is unknown. `null` until the week answers. */
   labor: LaborVM | null;
-  /** Wage columns are hidden when the restaurant says so (`team_settings`). */
-  wageVisible: boolean;
+  /**
+   * Whether this viewer may see money — wages, shift cost, totals. The owner
+   * only, by role (ADR 0215); it replaced the `wage_visible` switch, which the
+   * gateway no longer reads.
+   */
+  moneyVisible: boolean;
+  /** The house's currency and country, sent with the money. `null` without it. */
+  money: HouseMoney | null;
   /** How many people have opened the published week; `null` when unknown. */
   receiptsSeen: number | null;
   published: boolean;
@@ -555,10 +581,25 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
   const settingsRaw = weekQ.data?.settings as
     | (WeekPayload['settings'] & { configured?: boolean; updated_at?: string })
     | undefined;
+  const moneyVisible = laborRaw?.moneyVisible === true;
   const labor: LaborVM | null = laborRaw
     ? {
         enabled: laborRaw.enabled,
+        moneyVisible,
         totalHours: laborRaw.totalHours,
+        breakHours: typeof laborRaw.breakHours === 'number' ? laborRaw.breakHours : null,
+        weeklyReviewHours:
+          typeof laborRaw.weeklyReviewHours === 'number' ? laborRaw.weeklyReviewHours : null,
+        leave: laborRaw.leave
+          ? {
+              readable: laborRaw.leave.readable === true,
+              paidDays: typeof laborRaw.leave.paidDays === 'number' ? laborRaw.leave.paidDays : null,
+              unknownTypeDays:
+                typeof laborRaw.leave.unknownTypeDays === 'number'
+                  ? laborRaw.leave.unknownTypeDays
+                  : null,
+            }
+          : null,
         totalCost: typeof laborRaw.totalCost === 'number' ? laborRaw.totalCost : null,
         targetPct: typeof laborRaw.targetPct === 'number' ? laborRaw.targetPct : null,
         costComplete:
@@ -593,9 +634,10 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
     timeOff: timeOffQ.data === undefined ? null : timeOffQ.data,
     timeOffFailed: timeOffQ.isError,
     labor,
-    // A restaurant with no settings row is `wage_visible: true`
-    // (`team.service.ts` getSettings) — the gateway's answer, not a guess here.
-    wageVisible: weekQ.data?.settings?.wage_visible !== false,
+    // The gateway's answer, not a guess here: it removes money for anyone who
+    // is not the owner and says so in `labor.moneyVisible` (ADR 0215).
+    moneyVisible,
+    money: moneyVisible ? (weekQ.data?.money ?? null) : null,
     receiptsSeen: weekQ.data === undefined ? null : weekQ.data.receipts.length,
     published: weekQ.data?.schedule?.status === 'published',
     gaps,

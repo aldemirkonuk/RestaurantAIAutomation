@@ -1,6 +1,10 @@
 /**
- * Team labor & wage visibility preferences (Settings → Team).
+ * Team labor preferences (Settings → Team).
  * Persists to Supabase `team_settings` via PATCH /team/:rid/settings.
+ *
+ * The "Show hourly wages" switch is gone (ADR 0215). Wages and labour cost are
+ * the owner's by role — founder, 2026-09-21: "Owner only" — so there is nothing
+ * to switch, and the gateway refuses the old field in words.
  */
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -97,14 +101,12 @@ export function TeamLaborSettings() {
         on={data.labor_tracking_enabled}
         onChange={(v) => save.mutate({ laborTrackingEnabled: v })}
         label="Labor cost tracking"
-        hint="Show labor $ and the labor lens on the schedule. Off = hours only."
+        hint="Show the week's labour cost and the labour lens to the owner. Off = hours only."
       />
-      <Toggle
-        on={data.wage_visible}
-        onChange={(v) => save.mutate({ wageVisible: v })}
-        label="Show hourly wages"
-        hint="Display wages in member profiles (owner/manager only)."
-      />
+      <div className="py-2.5 text-xs text-gray-500">
+        Wages and labour cost are shown to the owner only, and only an owner can change a
+        wage. Managers see hours.
+      </div>
       {data.labor_tracking_enabled && (
         <div className="flex items-center justify-between gap-4 py-2.5 border-t border-gray-100 mt-1">
           <div>

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -7,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { recordAccessChange } from "./access-audit";
+import { LeaveType, memberForViewer, seesMoney } from "./pay-rules";
 import {
   ChannelPreferences,
   loadChannelOptOuts,
@@ -133,8 +135,9 @@ export class TeamService {
   }
 
   async listMembers(userId: string, restaurantId: string): Promise<any[]> {
-    // Manager-gated: the roster exposes wages + linked accounts.
-    await this.assertAccess(userId, restaurantId, "manager");
+    // Manager-gated: the roster exposes linked accounts. Its wages are the
+    // owner's alone (ADR 0215).
+    const { role } = await this.assertAccess(userId, restaurantId, "manager");
 
     // Ensure every active URA membership has a team_members ops profile.
     await this.ensureRosterFromAccess(restaurantId);
@@ -152,8 +155,14 @@ export class TeamService {
 
     await this.autoLinkByEmail(restaurantId, members ?? []);
 
-    const settings = await this.getSettings(userId, restaurantId);
-    const showWage = settings?.wage_visible !== false;
+    /*
+     * `team_settings.wage_visible` used to decide this, and it did not hold: it
+     * blanked the roster's wage and nothing else, so the week's `labor_cost`
+     * gave every wage back to any manager, and switching it off hid wages from
+     * the owner too. The founder's rule is a role (ADR 0215, 2026-09-21:
+     * "Owner only"), applied to every row by `memberForViewer`. The flag is no
+     * longer read.
+     */
 
     /**
      * Enrich with membership role + linked user profile.
@@ -201,16 +210,31 @@ export class TeamService {
     );
     const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
 
-    return (members ?? []).map((m: any) => {
-      const row = {
-        ...m,
-        role: m.user_id ? (roleMap.get(m.user_id) ?? null) : null,
-        linkedUser: m.user_id ? (userMap.get(m.user_id) ?? null) : null,
-        accountLinked: !!m.user_id,
-      };
-      if (!showWage) row.hourly_wage = null;
-      return row;
-    });
+    return (members ?? []).map((m: any) =>
+      memberForViewer(
+        {
+          ...m,
+          role: m.user_id ? (roleMap.get(m.user_id) ?? null) : null,
+          linkedUser: m.user_id ? (userMap.get(m.user_id) ?? null) : null,
+          accountLinked: !!m.user_id,
+        },
+        role,
+      ),
+    );
+  }
+
+  /**
+   * Only an owner writes a wage (ADR 0215). A manager could set anyone's wage,
+   * their own included, with no record; this refuses before anything is
+   * written, and it refuses in words — a wage silently dropped from a save
+   * would read as saved.
+   */
+  private assertMayWriteWage(role: "owner" | "manager" | "staff"): void {
+    if (!seesMoney(role)) {
+      throw new ForbiddenException(
+        "Only an owner of this house can set or change a wage. Nothing was saved.",
+      );
+    }
   }
 
   /**
@@ -368,7 +392,9 @@ export class TeamService {
     restaurantId: string,
     dto: CreateTeamMemberDto,
   ): Promise<any> {
-    await this.assertAccess(userId, restaurantId, "manager");
+    const { role } = await this.assertAccess(userId, restaurantId, "manager");
+    const setsWage = dto.hourlyWage !== undefined && dto.hourlyWage !== null;
+    if (setsWage) this.assertMayWriteWage(role);
     const { data, error } = await this.sb
       .from("team_members")
       .insert({
@@ -380,6 +406,9 @@ export class TeamService {
         employment_type: dto.employmentType ?? "full_time",
         home_location: dto.homeLocation ?? null,
         hourly_wage: dto.hourlyWage ?? null,
+        // Who set the wage, in the same statement: the database writes the
+        // `team_member_wage_changes` row from it and clears it (ADR 0215).
+        ...(setsWage ? { wage_changed_by: userId } : {}),
         skills: dto.skills ?? [],
         hire_date: dto.hireDate ?? null,
         notes: dto.notes ?? null,
@@ -391,7 +420,7 @@ export class TeamService {
       this.logger.error(`createMember failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to create team member");
     }
-    return data;
+    return memberForViewer(data, role);
   }
 
   async updateMember(
@@ -400,7 +429,10 @@ export class TeamService {
     memberId: string,
     dto: UpdateTeamMemberDto,
   ): Promise<any> {
-    await this.assertAccess(userId, restaurantId, "manager");
+    const { role } = await this.assertAccess(userId, restaurantId, "manager");
+    // Before any write: a manager may still edit everything else about a
+    // person, and nothing about their pay — their own included (ADR 0215).
+    if (dto.hourlyWage !== undefined) this.assertMayWriteWage(role);
     const patch: Record<string, any> = { updated_at: new Date().toISOString() };
     if (dto.displayName !== undefined) patch.display_name = dto.displayName;
     if (dto.email !== undefined) patch.email = dto.email || null;
@@ -414,7 +446,13 @@ export class TeamService {
     }
     if (dto.homeLocation !== undefined)
       patch.home_location = dto.homeLocation || null;
-    if (dto.hourlyWage !== undefined) patch.hourly_wage = dto.hourlyWage;
+    if (dto.hourlyWage !== undefined) {
+      patch.hourly_wage = dto.hourlyWage;
+      // The wage and the record of who changed it are ONE statement: the
+      // trigger writes the change row (old, new, who, when) from this and
+      // clears it, so they commit or fail together.
+      patch.wage_changed_by = userId;
+    }
     if (dto.skills !== undefined) patch.skills = dto.skills;
     if (dto.hireDate !== undefined) patch.hire_date = dto.hireDate || null;
     if (dto.status !== undefined) patch.status = dto.status;
@@ -432,7 +470,7 @@ export class TeamService {
       throw new InternalServerErrorException("Failed to update team member");
     }
     if (!data) throw new NotFoundException("Team member not found");
-    return data;
+    return memberForViewer(data, role);
   }
 
   /**
@@ -818,6 +856,9 @@ export class TeamService {
         start_date: dto.startDate,
         end_date: dto.endDate,
         reason: dto.reason ?? null,
+        // Whether the days are paid (ADR 0215). Omitted, the column's own
+        // default applies: 'unknown', because nobody said.
+        ...(dto.leaveType ? { leave_type: dto.leaveType } : {}),
       })
       .select()
       .single();
@@ -833,12 +874,16 @@ export class TeamService {
     dto: ReviewRequestDto,
   ): Promise<any> {
     await this.assertAccess(userId, restaurantId, "manager");
+    const leaveType: LeaveType | undefined = dto.leaveType;
     const { data, error } = await this.sb
       .from("time_off_requests")
       .update({
         status: dto.status,
         reviewed_by: userId,
         updated_at: new Date().toISOString(),
+        // The reviewer says whether the days are paid; omitted, it stays as
+        // it was (ADR 0215). A type is a classification of time, not money.
+        ...(leaveType ? { leave_type: leaveType } : {}),
       })
       .eq("id", requestId)
       .eq("restaurant_id", restaurantId)
@@ -930,7 +975,7 @@ export class TeamService {
    *
    * RESIDUAL, stated: `team_settings.labor_target_pct` is
    * `numeric(5,2) DEFAULT 28 NOT NULL` in the schema, so the first restaurant to
-   * toggle `wage_visible` gets a stored 28 it never chose. Making that column
+   * save a labour setting gets a stored 28 it never chose. Making that column
    * nullable is a separate migration against a table with no rows; it is named
    * in `.planning/06-pages/team.md` §9 rather than silently carried.
    */
@@ -941,12 +986,20 @@ export class TeamService {
       .select("*")
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
-    if (data) return { ...data, configured: true };
+    /*
+     * `wage_visible` is RETIRED (ADR 0215) and is not returned: a flag a caller
+     * could still read would read as the rule. Who sees money is a role, and
+     * `moneyVisibleTo` says which.
+     */
+    if (data) {
+      const { wage_visible: _retired, ...rest } = data;
+      return { ...rest, moneyVisibleTo: "owner", configured: true };
+    }
     return {
       restaurant_id: restaurantId,
       labor_tracking_enabled: true,
-      wage_visible: true,
       labor_target_pct: null,
+      moneyVisibleTo: "owner",
       configured: false,
     };
   }
@@ -957,13 +1010,21 @@ export class TeamService {
     dto: UpdateTeamSettingsDto,
   ): Promise<any> {
     await this.assertAccess(userId, restaurantId, "manager");
+    // Refused in words rather than dropped: the whitelist pipe would otherwise
+    // strip it and answer 200, and a switch that answers "saved" and does
+    // nothing is worse than no switch (ADR 0215).
+    if (dto.wageVisible !== undefined) {
+      throw new BadRequestException(
+        "Wage visibility is no longer a setting: wages and labour cost are " +
+          "shown to the owner only, and managers see hours. Nothing was saved.",
+      );
+    }
     const patch: Record<string, any> = {
       restaurant_id: restaurantId,
       updated_at: new Date().toISOString(),
     };
     if (dto.laborTrackingEnabled !== undefined)
       patch.labor_tracking_enabled = dto.laborTrackingEnabled;
-    if (dto.wageVisible !== undefined) patch.wage_visible = dto.wageVisible;
     if (dto.laborTargetPct !== undefined)
       patch.labor_target_pct = dto.laborTargetPct;
     const { data, error } = await this.sb
@@ -976,6 +1037,10 @@ export class TeamService {
         `Failed to update team settings: ${error.message}`,
       );
     }
-    return data;
+    // The save answers in the same shape as `getSettings`: the retired flag is
+    // not handed back, because a flag a caller can still read would read as the
+    // rule (ADR 0215). `.select()` returns every column, the retired one too.
+    const { wage_visible: _retired, ...rest } = data ?? {};
+    return { ...rest, moneyVisibleTo: "owner", configured: true };
   }
 }

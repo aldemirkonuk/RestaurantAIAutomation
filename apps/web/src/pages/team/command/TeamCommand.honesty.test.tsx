@@ -421,7 +421,8 @@ describe('P8 · a tonight figure is about tonight, and an unpriced week is unkno
     t.members = [member('m1', 'Ayşe Yılmaz')];
     t.week = weekPayload({
       shifts: [shift('m1', todayIso(), { labor_cost: null })],
-      labor: { enabled: true, totalHours: 6, overtime: [] },
+      // The owner's view: only the owner is shown a labour figure (ADR 0215).
+      labor: { enabled: true, moneyVisible: true, totalHours: 6, overtime: [] },
     });
     render(<ManagerShiftDesk />, { wrapper });
     await screen.findByText(/Tonight labor/i);

@@ -14,7 +14,7 @@
  *    `labor_target_pct` is `numeric(5,2) DEFAULT 28 NOT NULL` (baseline
  *    `:5656`) — exactly the shape of `providers.lead_time_days DEFAULT 7` that
  *    the vendor-terms register exists to catch. A stored 28 with no provenance
- *    is NOT a target: the first house to toggle `wage_visible` acquires it
+ *    is NOT a target: the first house to save a labour setting acquires it
  *    without choosing it, and nothing on the page could tell that apart from a
  *    target somebody set. It renders as unknown, with the default named, and
  *    the week is never measured against it. The migration that drops the
@@ -131,7 +131,7 @@ function Record({
 
 export function TeamRecordSection({
   labourEnabled,
-  wageVisible,
+  moneyVisible,
   target,
   settingsUpdatedAt,
   settingsConfigured,
@@ -141,7 +141,8 @@ export function TeamRecordSection({
 }: {
   /** `null` when the week has not answered. */
   labourEnabled: boolean | null;
-  wageVisible: boolean;
+  /** Whether this viewer sees money — the owner only (ADR 0215). */
+  moneyVisible: boolean;
   target: TargetReading;
   settingsUpdatedAt: string | null;
   settingsConfigured: boolean;
@@ -178,16 +179,20 @@ export function TeamRecordSection({
       />
 
       <Record
-        label="Wages visible"
-        value={wageVisible ? 'yes' : 'no'}
-        consequence="When wages are hidden the gateway blanks hourly_wage on every roster row before it leaves the server, so this page could not show one even if it wanted to."
+        label="Wages and labour cost"
+        value={moneyVisible ? 'owner only · you' : 'owner only'}
+        consequence={
+          moneyVisible
+            ? 'Only an owner sees wages, shift cost and totals, and only an owner can change a wage. Managers see hours. Every wage change is kept: who, when, the old and the new figure.'
+            : 'Only an owner sees wages, shift cost and totals, so this page shows you hours. The gateway leaves the money out before it is sent, so nothing here could show it.'
+        }
         provenance={
-          <Provenance
-            kept="this restaurant, in team_settings"
-            when={writtenAt}
-            whenUnknown={whenUnknown}
-            whoUnknown="team_settings has no author column"
-          />
+          <p
+            className="tm-fact__k"
+            style={{ marginTop: 5, letterSpacing: '0.1em', fontWeight: 500, textTransform: 'none' }}
+          >
+            {`kept · the gateway, by role — not a setting ${EM} decided by the owner of Mudavym on 2026-09-21 (ADR 0215)`}
+          </p>
         }
       />
 

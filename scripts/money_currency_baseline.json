@@ -44,12 +44,8 @@
     "apps/web/src/pages/receiving/next/rc-format.ts": 2,
     "apps/web/src/pages/recommendations/next/Ribbon.tsx": 1,
     "apps/web/src/pages/simpos/SimposScenariosPage.tsx": 1,
-    "apps/web/src/pages/team/command/ManagerShiftDesk.tsx": 2,
     "apps/web/src/pages/team/command/PerformancePanel.tsx": 2,
     "apps/web/src/pages/team/next/PerformanceCard.tsx": 2,
-    "apps/web/src/pages/team/next/RosterSheet.tsx": 1,
-    "apps/web/src/pages/team/next/WeekGrid.tsx": 2,
-    "apps/web/src/pages/team/next/tm-format.ts": 1,
     "apps/web/src/utils/wineLibraryExport.ts": 2
   }
 }
