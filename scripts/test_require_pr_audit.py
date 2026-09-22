@@ -456,16 +456,23 @@ def test_h15d_a_crash_in_the_word_reader_blocks_rather_than_fails_open(tmp_path)
     """An uncaught exception exits 1, which Claude Code treats as a non-blocking
     error: the merge would run unchecked. No input is known to crash the reader,
     so the crash is injected. A command that names neither gh nor pr never
-    reaches the reader and still passes."""
+    reaches the reader and still passes.
+
+    gate-r8: the push check now reads every command naming git or push with
+    the same reader, so a crash there refuses such a command too (fail
+    closed) -- `git status` is refused under the injected crash, and the
+    control that still passes names none of gh, pr, git or push."""
     source = HOOK.read_text()
-    head = "def _lex(s: str, i: int, closer: str | None, depth: int):\n"
+    head = "def _lex(s: str, i: int, closer: str | None, depth: int, report: dict | None = None):\n"
     assert source.count(head) == 1
     crashing = source.replace(head, head + "    raise RuntimeError('injected')\n", 1)
     clone, h, env = build(tmp_path, {"2": OWNED}, hook_source=crashing)
     for command in (f"{M} 2 --squash --match-head-commit {h['2']}", "gh pr view 2"):
         out = run_hook(clone, env, command)
         assert out.returncode == 2 and "CANNOT CHECK" in out.stderr, (command, out.returncode, out.stderr)
-    assert run_hook(clone, env, "git status").returncode == 0
+    out = run_hook(clone, env, "git status")
+    assert out.returncode == 2 and "cannot be read word by word" in out.stderr, out.stderr
+    assert run_hook(clone, env, "ls -la").returncode == 0
 
 
 # ADR 0090's "Not seen" list, each example exactly as the ADR gives it. These pin the
@@ -1070,16 +1077,17 @@ def test_r4_a_reader_that_cannot_read_the_command_refuses_rather_than_passes(tmp
     """The word reader failing must not read as "not gh api": a crash injected
     into _lex, and a command nested past its limit, both refuse a merge surface
     (the command is built so no regex reading recognises it first). A command
-    naming neither gh nor pr never reaches the reader and still passes."""
+    naming neither gh nor pr never reaches the reader and still passes (gate-r8:
+    nor git nor push, which the push check now reads with the same reader)."""
     source = HOOK.read_text()
-    head = "def _lex(s: str, i: int, closer: str | None, depth: int):\n"
+    head = "def _lex(s: str, i: int, closer: str | None, depth: int, report: dict | None = None):\n"
     assert source.count(head) == 1
     crashing = source.replace(head, head + "    raise RuntimeError('injected')\n", 1)
     clone, _h, env = build(tmp_path, {"2": OWNED}, hook_source=crashing)
     args, reason = API_SURFACES["graphql"]
     out = run_hook(clone, env, f"S=api; gh $S {args}")
     assert out.returncode == 2 and reason in out.stderr and "cannot confirm is gh" in out.stderr, out.stderr
-    assert run_hook(clone, env, "git status").returncode == 0
+    assert run_hook(clone, env, "ls -la").returncode == 0
     deep = "S=api; " + "$(" * 22 + f"$P $S {args}" + ")" * 22  # no gh/pr word: only this reader can refuse it
     sub = tmp_path / "real"
     sub.mkdir()
@@ -1444,8 +1452,10 @@ def test_r6_an_assignment_the_push_may_see_is_read_in_the_safe_direction(two, co
     "readonly B=main; git push origin feat:$B",
     "B=ma; B+=in; git push origin feat:$B",
     "export B=develop; eval B=main; git push origin HEAD:$B",
-    # An assignment after a punctuation run the tokenizer fuses (`);`) is not collected.
-    "f() ( git push origin feat:$B ); B=main; f",
+    # gate-r8 closed the fifth, an assignment after a punctuation run the
+    # tokenizer fuses (`f() ( git push origin feat:$B ); B=main; f`): the word
+    # reader splits `)` from `;`, collects B=main, and it is now refused --
+    # see test_r8_closed_by_the_word_reading.
 ])
 def test_r6_the_named_residuals_are_still_not_seen(two, command):
     """Pins what ADR 0090's gate-r6 section names as not closed, so none is
@@ -1573,13 +1583,12 @@ def test_r7_env_prefix_and_wrapper_pushes_are_now_blocked(two, command):
     # ... and a quoted string handed to a program on neither list is not read:
     # this hook cannot tell it from a quoted argument such as a PR body.
     "gh pr create --title t --body 'nohup git push origin HEAD'",
-    # Named residual, found by the last call and left for the founder: a
-    # word the tokenizer cannot close (bash's $'...' quoting) makes the whole
-    # push check read nothing, as it did before this round.
-    "git push origin HEAD; echo $'\\''",
-    # Named residual, same: a git whose own name comes from an expansion.
-    "G=git; $G push origin HEAD",
-    "$(echo git) push origin HEAD",
+    # The last call's two found-not-fixed residuals (a word shlex cannot
+    # close, `git push origin HEAD; echo $'\''`, and a git named by an
+    # expansion, `G=git; $G push origin HEAD`, `$(echo git) push origin
+    # HEAD`) were closed by gate-r8, on the founder's round-6 answer, and
+    # moved to test_r8_git_named_by_an_expansion_is_resolved_or_refused and
+    # test_r8_an_unreadable_word_is_read_again_not_let_through.
 ])
 def test_r7_the_named_residuals_are_still_not_seen(two, command):
     """Pins what gate-r7 names but does not close, so it is not silently
@@ -1706,6 +1715,477 @@ def test_r7_unrecognised_wrapper_shapes_are_refused_live_against_a_local_bare_or
 
 
 # --------------------------------------------------------------------------- #
+# gate-r8, 2026-09-21, round 6 -- founder's answer to the gate-r7 last call,
+# verbatim: "Take all four". (1) a word shlex cannot close: road (b), re-read
+# with the heredoc-aware word reader, refuse only if that fails too; (2) git
+# named by an expansion: road (a), resolve through the same-command
+# assignments, refuse an unresolved $-built command word followed by push;
+# (3) text naming a push after another word is refused and the refusal says
+# to pass it with -F; (4) a quoted string handed to a program on neither list
+# stays a named residual (pinned above, in test_r7_the_named_residuals_...).
+# Every refused shape below was exit 0 on gate-r7's hook.
+# --------------------------------------------------------------------------- #
+
+_ODD = "Don't break it"  # one apostrophe: shlex cannot close it
+_EVEN = "it's the founder's rule"  # two: shlex pairs them
+
+
+@pytest.mark.parametrize("command", [
+    # The founder's two examples, verbatim.
+    "G=git; $G push origin HEAD",
+    "$(echo git) push origin HEAD",
+    "`echo git` push origin HEAD",
+    # Unresolved: refused whatever the destination, as the answer says.
+    '"$G" push origin feat/x',
+    "${G} push origin feat/x",
+    "G=$(which git); $G push origin feat/x",
+    "sudo $G push origin feat/x",
+    "X=1 $(echo git) push origin feat/x",
+    # "followed by push" past git's own global flags, and `subtree push`.
+    "$(echo git) -C . push origin HEAD",
+    "$(echo git) subtree push --prefix=x origin HEAD",
+    # Resolved, and split on blanks as the shell splits an unquoted expansion.
+    'G="git push origin HEAD"; $G',
+    # Unresolved, one whole substitution holding push: the shell splits it too.
+    "$(printf 'git push') origin HEAD",
+    # A same-command IFS is honoured when the word is split; an unknown one
+    # leaves the word unresolved.
+    "IFS=x; W=gitxpush; $W origin HEAD",
+    "IFS=$X; G=git; $G push origin feat/x",
+    # Behind an unrecognised shape, as a later literal git already is.
+    "timeout 10 $G push origin feat/x",
+    "G=git; timeout 10 $G push origin feat/x",
+    # git's own subcommand built from an expansion (the sibling position).
+    "P=push; git $P origin HEAD",
+    "git $(echo push) origin HEAD",
+    "git $P origin feat/x",
+    "git ${P} origin feat/x",
+])
+def test_r8_git_named_by_an_expansion_is_resolved_or_refused(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 2, (command, out.stderr)
+    assert "BLOCKED by ADR 0090" in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # Resolved to git, read exactly like a bare push: a non-main push passes.
+    "G=git; $G push origin feat/x",
+    "P=push; git $P origin feat/x",
+    "IFS=x; G=git; $G push origin feat/x",
+    "G=git; $G status",
+    "git push origin feat/x",
+    # An unresolved command word NOT followed by push is not refused.
+    "$(which python3) scripts/check.py; git status",
+    'git -C "$DIR" status',
+    # Resolved to something that is not git.
+    "D=docker; $D push myimage",
+    # r4's own controls, unchanged.
+    "B=develop; git push origin HEAD:$B",
+    "git push origin feature:$UNRELATED",
+])
+def test_r8_git_named_by_an_expansion_allowed_twins(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    # The founder's example, verbatim.
+    "git push origin HEAD; echo $'\\''",
+    # An odd apostrophe in a heredoc body, then a push: the body is skipped by
+    # the word reader, and the push after it is read.
+    f"git commit -F - <<'EOF'\n{_ODD}\nEOF\ngit push origin HEAD",
+    # Heredoc bodies keep the current reading: their lines are read as commands.
+    f"git commit -F - <<'EOF'\n{_ODD}\ngit push origin HEAD\nEOF",
+    "echo $'\\''\ncat <<EOF\n$(git push origin HEAD)\nEOF",
+    # Refused because the word reader cannot read the command either: it
+    # leaves a quote, a substitution, a `${` or a parenthesis open ...
+    'git status; echo "unclosed',
+    "git status; echo 'unclosed",
+    "git status; echo $(unclosed",
+    "git status; echo ${X; echo $'\\''",
+    "git status; x=(a; echo $'\\''",
+    # ... or meets a construct it reads differently from the shell.
+    "echo $'\\''; echo ${X:-\"}\"}\ngit push origin HEAD\necho \"",
+    # Both readings misread at once.
+    "echo $'\\''; x=(')')\ngit push origin HEAD\necho ')''",
+    'echo "$(case a in a) git push origin HEAD;; esac)"',
+    # The word reader cannot read it at all (nested past its limit), and the
+    # push sits inside a double-quoted substitution shlex never reads.
+    'echo "' + "$(" * 22 + "git push origin HEAD" + ")" * 22 + '"',
+])
+def test_r8_an_unreadable_word_is_read_again_not_let_through(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 2, (command, out.stderr)
+    assert "BLOCKED by ADR 0090" in out.stderr, out.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # A plain commit heredoc that does not push passes, with an odd and with
+    # an even apostrophe count (the founder's named twins).
+    f"git commit -F - <<'EOF'\n{_ODD}\nEOF",
+    f"git commit -F - <<'EOF'\n{_EVEN}\nEOF",
+    f"git commit -m \"$(cat <<'EOF'\n{_ODD}\nEOF\n)\"",
+    f"git commit -m \"$(cat <<'EOF'\n{_EVEN}\nEOF\n)\"",
+    # A body line of code the word reader misreads is text, not a command.
+    f"git commit -F - <<'EOF'\n{_ODD}\nlog.push(`${{x}}`)\nEOF",
+    # A normal push, behaviour unchanged, with and without an unreadable word.
+    "git push origin feat/x",
+    "git push origin feat/x; echo $'\\''",
+    "git push -u origin feat/x",
+])
+def test_r8_an_unreadable_word_allowed_twins(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    # A push inside a double-quoted substitution: one quoted word to shlex,
+    # never read; the word reader reads the words inside it.
+    'echo "$(git push origin HEAD)"',
+    'OUT="$(git push origin HEAD 2>&1)"',
+    'echo "`git push origin HEAD`"',
+    # A value that is itself an expansion or an array is not a literal.
+    "X=main; B=$X; git push origin HEAD:$B",
+    "B=$UNKNOWN; git push origin HEAD:$B",
+    "B=(main); git push origin HEAD:$B",
+    # An r6 named residual the word reader closes: it splits `)` from `;`.
+    "f() ( git push origin feat:$B ); B=main; f",
+])
+def test_r8_closed_by_the_word_reading(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 2, (command, out.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    'echo "$(git push origin feat/x)"',
+    'echo "$(git status)"',
+])
+def test_r8_closed_by_the_word_reading_allowed_twins(two, command):
+    clone, _h, env = two
+    assert run_hook(clone, env, command).returncode == 0
+
+
+_TEXT_SHAPES = [
+    "echo git push origin HEAD",
+    f"git commit -F - <<'EOF'\nWe checked that git push origin HEAD is refused, {_EVEN}\nEOF",
+    "git commit -F - <<'EOF'\nWe don't run git push origin HEAD here\nEOF",
+    'echo "git push origin main"',
+]
+
+
+@pytest.mark.parametrize("command", _TEXT_SHAPES)
+def test_r8_text_naming_a_push_is_refused_and_told_to_use_a_file(two, command):
+    """Founder, round 6: accept that a heredoc body line naming git push after
+    another word, or `echo git push origin HEAD`, is refused -- text goes
+    through a file with -F -- and make sure the refusal message says so."""
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 2, (command, out.stderr)
+    for words in ("heredoc body line", "`echo git push origin HEAD`", "-F <file>"):
+        assert words in out.stderr, (command, words, out.stderr)
+
+
+def test_r8_the_text_hint_is_load_bearing(tmp_path):
+    """The message mutation the exit-code harness below cannot see: with the
+    hint emptied, every text shape above is still refused but no longer says
+    what to do."""
+    source = HOOK.read_text()
+    old = "PUSH_TEXT_HINT = (\n"
+    assert source.count(old) == 1
+    clone, _h, env = build(tmp_path, {"1": CLEAN}, hook_source=source.replace(old, 'PUSH_TEXT_HINT = "" and (\n', 1))
+    for command in _TEXT_SHAPES:
+        out = run_hook(clone, env, command)
+        assert out.returncode == 2 and "-F <file>" not in out.stderr, (command, out.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    # A git and its subcommand both built by expansion: nothing literal follows
+    # (the push-side twin of the merge side's `G=gh; $G p$()r merge 2`).
+    "$G $P origin HEAD",
+    # A command word built by brace or glob expansion (twin of `{gh,pr,merge} 2`).
+    "{git,push,origin,HEAD}",
+    # Behind an unrecognised shape, a substitution word holding blanks is read
+    # as a string, not as a command word.
+    "timeout 5 $(printf 'git push') origin HEAD",
+    # A git alias the command defines for itself: gate-r3 reads only
+    # `git config --get alias.<name>`. Left for the founder.
+    "git -c alias.p=push p origin HEAD",
+    "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p origin HEAD",
+    # An unresolvable destination from a named source stays allowed, as r4's
+    # `feature:$UNRELATED` does, now also when the value is itself an expansion.
+    "X=main; B=$X; git push origin feat:$B",
+    # Older than gate-r8, found while testing it: the push-side twins of the
+    # merge side's "Not seen" `echo merge 2 | xargs gh pr` and
+    # `alias g=gh; g pr merge 2` (the first measured moving main).
+    "echo push origin HEAD | xargs git",
+    "shopt -s expand_aliases\nalias g=git\ng push origin HEAD",
+])
+def test_r8_the_named_residuals_are_still_not_seen(two, command):
+    """Pins what ADR 0090's gate-r8 section names as not closed."""
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+def test_r8_the_named_cost_is_still_refused(two):
+    """ADR 0090 gate-r8, a cost left for the founder: behind an unrecognised
+    program, an unresolved single word followed by the word push is refused
+    whatever the program is -- it may be git."""
+    clone, _h, env = two
+    out = run_hook(clone, env, "docker --config $DIR push myimage")
+    assert out.returncode == 2, out.stderr
+
+
+def _ungated_push_moves_main(tmp_path: pathlib.Path, command: str, shell: str = "bash") -> bool:
+    """Whether `command`, run for real from a checkout of main with no hook in
+    the way, moves the local bare origin's main -- proof the shape is a push."""
+    tmp_path.mkdir()
+    clone, _h, env = build(tmp_path, {"1": CLEAN})
+    git(clone, "checkout", "-q", "-B", "main", "origin/main")
+    (clone / "proof.txt").write_text("gate-r8 push proof\n")
+    git(clone, "add", "-A")
+    git(clone, "commit", "-qm", "main-checkout commit")
+    before = git(clone, "ls-remote", "origin", "refs/heads/main")
+    subprocess.run([shell, "-c", command], cwd=clone, env=env, capture_output=True, text=True, timeout=60)
+    return git(clone, "ls-remote", "origin", "refs/heads/main") != before
+
+
+@pytest.mark.parametrize("command", [
+    "git push origin HEAD; echo $'\\''",
+    "G=git; $G push origin HEAD",
+    "$(echo git) push origin HEAD",
+    "git $(echo push) origin HEAD",
+    "X=main; B=$X; git push origin HEAD:$B",
+    'echo "$(git push origin HEAD)"',
+    "echo $'\\''; echo ${X:-\"}\"}\ngit push origin HEAD\necho \"",
+    "echo $'\\''; x=(')')\ngit push origin HEAD\necho ')''",
+    'echo "$(case a in a) git push origin HEAD;; esac)"',
+])
+def test_r8_each_closed_shape_is_a_real_push_the_hook_now_stops(tmp_path, command):
+    """Each shape, run with no hook, moves the bare origin's main from a
+    checkout of main; gated by the hook the way a Bash call is, it is refused
+    and main does not move. (gate-r7's hook allowed every one: measured,
+    exit 0, recorded in ADR 0090's gate-r8 section.)"""
+    assert _ungated_push_moves_main(tmp_path / "ungated", command), command
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+
+
+# gate-r8 last call: five fail-opens in the two roads as first built, each a
+# real push the staged gate-r8 hook allowed (exit 0, measured).
+_R8_LAST_CALL_BASH = [
+    # (2) A same-command prefix does not give the command's own words their
+    # value: bash expands them first. `declare` stays a named residual; the
+    # prefix was what hid the push.
+    "declare G=git; G=true $G push origin HEAD",
+    "declare P=push; P=status git $P origin HEAD",
+    "declare B=main; B=feat git push origin HEAD:$B",
+    # (2) The shell resets `$_` after every command: no `_=value` is trusted.
+    "_=x; echo git; $_ push origin HEAD",
+    "echo git; _=x $_ push origin HEAD",
+    "_=feat; echo main; git push origin HEAD:$_",
+    # (1) The word reader decodes `$'...'` escapes as the shell does.
+    "git push origin $'\\x6dain'; echo $'\\''",
+    "$'\\x67it' push origin HEAD; echo $'\\''",
+    "git $'\\x70ush' origin HEAD; echo $'\\''",
+    "g$'\\151't push origin HEAD; echo $'\\''",
+    "$'\\u0067it' push origin HEAD; echo $'\\''",
+    "$'git\\0x' push origin HEAD; echo $'\\''",
+    # (1) A heredoc body a shell runs is read whole, as its script ...
+    "bash <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''",
+    "bash <<'EOF'\nW=\"git push\"\n$W origin HEAD\nEOF\necho $'\\''",
+    "cat <<'EOF' | bash\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''",
+    # ... also inside a double-quoted substitution, which shlex reads as one
+    # word; and an unquoted-delimiter body's own substitutions are read.
+    "x=\"$(bash <<'EOF'\ngit push origin HEAD\nEOF\n)\"",
+    "echo \"$(cat <<EOF\n$(git push origin HEAD)\nEOF\n)\"",
+    "echo \"$(cat <<EOF\n`git push origin HEAD`\nEOF\n)\"",
+]
+# zsh, the shell the Bash tool runs here: `=git` is git's path, and an escape
+# zsh does not know loses its backslash (`$'\git'` is git).
+_R8_LAST_CALL_ZSH = [
+    "=git push origin HEAD",
+    "nohup =git push origin HEAD",
+    "$'\\git' push origin HEAD; echo $'\\''",
+]
+
+
+@pytest.mark.parametrize("command", _R8_LAST_CALL_BASH)
+def test_r8_last_call_shapes_are_real_pushes_the_hook_now_stops(tmp_path, command):
+    assert _ungated_push_moves_main(tmp_path / "ungated", command), command
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+
+
+@pytest.mark.parametrize("command", _R8_LAST_CALL_ZSH)
+def test_r8_last_call_zsh_shapes_are_refused(tmp_path, command):
+    """The hook's verdict always; the real push under zsh where zsh is
+    installed (the hook harness in CI may not have it)."""
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+    if shutil.which("zsh"):
+        assert _ungated_push_moves_main(tmp_path / "ungated", command, shell="zsh"), command
+
+
+@pytest.mark.parametrize("command", [
+    # A prefix gives its own command's words nothing either way: `$G` is the
+    # caller's (unset here), so this runs no push and is allowed.
+    "G='git push' $G origin HEAD",
+    # A spliced word reads the assignments made before its command, exactly:
+    # this pushes HEAD to feat.
+    'W="nohup nohup nohup git push origin"; B=feat; $W HEAD:$B',
+    # Escapes that spell no main, and a script body that does not push.
+    "git push origin $'feat\\x2fx'; echo $'\\''",
+    "$'\\cgit' push origin HEAD; echo $'\\''",
+    "bash <<'EOF'\n# it's a script\ngit status\nEOF\necho $'\\''",
+    # Text: a body no shell runs, and a text body under a quoted delimiter in a
+    # double-quoted substitution (the common PR/commit shape) are not scripts.
+    "cat > notes.md <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''",
+    "bash -c true && cat > msg.txt <<'EOF'\nIt's a git thing\nEOF",
+    "gh pr create --title t --body \"$(cat <<'EOF'\nIt's done; we don't git push origin HEAD here.\nEOF\n)\"",
+    "git commit -m \"$(cat <<EOF\nIt's $(date)\nEOF\n)\"",
+    "echo \"$(cat <<EOF\n\\$(git push origin HEAD)\nEOF\n)\"",
+    "=git status",
+])
+def test_r8_last_call_allowed_twins(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+# gate-r8 last call, finished: pushes the unstaged fix still allowed (exit 0,
+# measured in-process), each moving a local bare origin's main when run.
+_R8_FINISH_BASH = [
+    # Heredoc bodies a shell runs, reached past the heredoc's own line: a pipe
+    # that ends the line, with or without a blank line after the body ...
+    "cat <<'EOF' |\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\nbash\necho $'\\''",
+    "cat <<'EOF' |\n\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n\nbash\necho $'\\''",
+    "x=\"$(cat <<'EOF' |\ngit push origin HEAD\nEOF\nbash\n)\"",
+    # ... `.` (the unstaged fix stripped `.` to an empty name) ...
+    ". /dev/stdin <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''",
+    # ... a group piped to a shell: a subshell, braces, a keyword compound ...
+    "x=\"$( (cat <<'EOF'\ngit push origin HEAD\nEOF\n) | bash)\"",
+    "x=\"$({ cat <<'EOF'\ngit push origin HEAD\nEOF\n} | bash)\"",
+    "(cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n) | bash\necho $'\\''",
+    "{ cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n} | bash\necho $'\\''",
+    "if true; then cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\nfi | bash\necho $'\\''",
+    "for i in 1; do cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\ndone | bash\necho $'\\''",
+    "while true; do cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\nbreak; done | bash\necho $'\\''",
+    "case a in a) cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n;; esac | bash\necho $'\\''",
+    "case b in a) true;; b) cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n;; esac | bash\necho $'\\''",
+    # ... a substitution whose word a shell runs or reads ...
+    "echo \"$(bash <(cat <<'EOF'\ngit push origin HEAD\nEOF\n))\"",
+    "source <(cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n)\necho $'\\''",
+    "echo \"$(cat <<'EOF'\ngit push origin HEAD\nEOF\n)\" | bash",
+    # ... a shell named by an expansion ...
+    "echo bash; $_ <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''",
+    "echo bash; nohup $_ <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''",
+    # ... and a heredoc inside an unquoted body's own substitution.
+    "echo \"$(cat <<EOF\n$(bash <<'X'\ngit push origin HEAD\nX\n)\nEOF\n)\"",
+    "echo $'\\''\ncat <<EOF\n$(bash <<'X'\nIFS=x\nW=gitxpush; $W origin HEAD\nX\n)\nEOF",
+    # A crash of the push check (22 nested `$(` in an unquoted body) exited 1,
+    # which the harness lets run, before the file-route push after it was read.
+    "echo $'\\''\ncat <<EOF\n" + "$(" * 22 + "true" + ")" * 22
+    + "\nEOF\ncat > p.sh <<'X'\ngit push origin HEAD\nX\nbash p.sh",
+    # Quoting inside both words hid the command from the prefilter, so it was
+    # never read at all (gate-r7's hook let these through the same way).
+    "\"g\"it \"p\"ush origin HEAD",
+    "g\\it p\\ush origin HEAD",
+    "g''it p''ush origin HEAD",
+    "$'\\x67it' $'\\x70ush' origin HEAD",
+]
+# zsh's `=name` on the shell and string-runner lists, not only for git.
+_R8_FINISH_ZSH = [
+    "=bash -c 'git push origin HEAD'",
+    "=sh -c 'git push origin HEAD'",
+    "=python3 -c 'import os; os.system(\"git push origin HEAD\")'",
+    "=bash <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''",
+    # zsh's split flags: `$=G`/`${=G}` resolve through G's assignment; a flag
+    # this hook does not evaluate is refused when G's value holds push.
+    'G="git push"; ${=G} origin HEAD',
+    'G="git push"; $=G origin HEAD',
+    'G="git push"; nice $=G origin HEAD',
+    'G="git push origin HEAD"; ${(z)G}',
+    'G="git push origin HEAD"; ${(s: :)G}',
+    'G="git push origin HEAD"; nice ${(z)G}',
+    "G=gitxpushxoriginxHEAD; ${(s:x:)G}",
+]
+
+
+@pytest.mark.parametrize("command", _R8_FINISH_BASH)
+def test_r8_finishing_pass_shapes_are_real_pushes_the_hook_now_stops(tmp_path, command):
+    assert _ungated_push_moves_main(tmp_path / "ungated", command), command
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+
+
+@pytest.mark.parametrize("command", _R8_FINISH_ZSH)
+def test_r8_finishing_pass_zsh_shapes_are_refused(tmp_path, command):
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+    if shutil.which("zsh"):
+        assert _ungated_push_moves_main(tmp_path / "ungated", command, shell="zsh"), command
+
+
+def test_r8_only_the_line_reading_stops_a_push_through_a_file(tmp_path):
+    """The re-pinned `r8_fallback_body` scenario is a real push: a quoted body
+    no shell runs where it stands, written to a file a shell runs later, seen
+    only by the unreadable-word fallback's line reading."""
+    command = SCENARIOS["r8_fallback_body"]({})[0]
+    assert _ungated_push_moves_main(tmp_path / "ungated", command), command
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+
+
+@pytest.mark.parametrize("command", [
+    # A `.` that is an argument, not the command, runs nothing.
+    "git -C . commit -F - <<'EOF'\nIt's a git thing\nEOF",
+    # A quoted delimiter's `$(...)` is text; an unquoted body's substitution
+    # that does not push is read and allowed.
+    "gh pr create --title t --body \"$(cat <<'EOF'\nrun $(git push origin HEAD) later\nEOF\n)\"",
+    "echo \"$(cat <<EOF\n$(git log -1 --format=%s)\nEOF\n)\"",
+    # A group no shell reads, and a shell past a separator.
+    "( cat <<'EOF'\nIt's a git thing\nEOF\n) > notes.md; bash -c true",
+    "cat <<'EOF' | tee notes.md\nIt's a git thing\nEOF",
+    # zsh's `=bash` running a string that does not push.
+    "=bash -c 'git status'",
+    # zsh's `${=G}` resolved: a push to a named branch that is not main.
+    'G="git push"; ${=G} origin feat/x',
+    # Quoting that splits the words opens the reading; what it reads decides.
+    '"g"it status',
+    'echo "p"ush it',
+])
+def test_r8_finishing_pass_allowed_twins(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    # A body carried through a variable, then piped to a shell.
+    "x=\"$(cat <<'EOF'\ngit push origin HEAD\nEOF\n)\"; echo \"$x\" | bash",
+    # A script file (point 23), when shlex cannot close a word: the body's
+    # lines are read one at a time, so a script's earlier lines are lost.
+    "cat > p.sh <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\nbash p.sh; echo $'\\''",
+    # stdin that is not a heredoc (point 23).
+    "bash <<< 'git push origin HEAD'",
+    "echo 'git push origin HEAD' | bash",
+    # A heredoc body a program that is not a shell runs: its quoted string is
+    # one word (the heredoc twin of gate-r7's string-running reading).
+    "python3 - <<'EOF'\nimport os; os.system('git push origin HEAD')\nEOF",
+    "x=\"$(perl <<'EOF'\nsystem(\"git push origin HEAD\");\nEOF\n)\"",
+    # Both words split by an expansion (gate-r8's named residual "a git and
+    # its subcommand both built by expansion").
+    "g$()it p$()ush origin HEAD",
+])
+def test_r8_finishing_pass_named_residuals_are_still_not_seen(two, command):
+    """Pins what ADR 0090's gate-r8 section names as still not seen after the
+    last call's fix; each is a real push (measured moving a bare origin's main)."""
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+# --------------------------------------------------------------------------- #
 # Mutations of the hook: each must turn at least one scenario above red.
 # (name, text that must occur exactly once, replacement, scenario)
 # --------------------------------------------------------------------------- #
@@ -1782,9 +2262,13 @@ HOOK_MUTATIONS = [
     # caught the same way either version of this code handles it).
     ("force-push marker not stripped before the HEAD/@ comparison",
      '        if spec.startswith("+"):\n            spec = spec[1:]\n', "", "r5_push_plus_head"),
+    # gate-r8 re-pinned this one: a value holding `$`/backtick/`(` is now
+    # unresolved on its own, and the word reader keeps `$(...)` whole, so
+    # r4_push_var_cmdsub is refused twice over; `B=<(...)` is the fragment
+    # shlex splits off that only this check still reads as unresolved.
     ("command-substitution assignment fragment trusted as a literal (self-adversarial fix)",
      "        if nxt is not None and nxt not in _STATEMENT_SEP_TOKENS and _is_punctuation(nxt):\n",
-     "        if False:\n", "r4_push_var_cmdsub"),
+     "        if False:\n", "r8_push_var_fragment"),
     # gate-r4 residual closed (2026-09-19): a respelled `gh api`. Each scenario is
     # one no OTHER check in the hook also refuses, so removing the reading under
     # test is what changes the exit (the symlink reading needs a symlink and has
@@ -1869,7 +2353,9 @@ HOOK_MUTATIONS = [
      "from a shell expansion no longer fails closed (re-opens the opaque -c hole)",
      "        if re.search(r\"[$`]\", arg):\n", "        if False:\n", "r7_shell_c_unrecognised"),
     ("the -c recursion depth bound removed (re-opens unbounded nested -c reading)",
-     "        if _depth >= _MAX_PUSH_WRAP_DEPTH:\n", "        if False:\n", "r7_bound_depth"),
+     "        if _depth >= _MAX_PUSH_WRAP_DEPTH:\n            return (f\"runs `{seg[i]}` on a command string nested past the depth \"\n",
+     "        if False:\n            return (f\"runs `{seg[i]}` on a command string nested past the depth \"\n",
+     "r7_bound_depth"),
     ("last call: an unrecognised wrapper shape read as not a push (the first cut)",
      "        return _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned, wrapped, _depth)\n",
      "        return None\n", "r7_unrecognised_shape"),
@@ -1891,6 +2377,255 @@ HOOK_MUTATIONS = [
      "    reads_strings = wrapped\n", "r7_string_runner"),
     ("last call: a shell string behind an unrecognised shape read like a bare push, not refused",
      "            reads_strings = True\n", "            pass\n", "r7_shell_behind_unrecognised"),
+    # --------------------------------------------------------------------- #
+    # gate-r8 (2026-09-21, round 6), founder: "Take all four".
+    # --------------------------------------------------------------------- #
+    # (2) git named by an expansion, road (a).
+    ("r8: a command word built from an expansion not resolved",
+     '        if re.search(r"[$`]", tok):\n            # gate-r8 (2), road (a)',
+     "        if False:\n            # gate-r8 (2), road (a)", "r8_word_resolved"),
+    ("r8: an unresolved command word followed by push not refused",
+     "                if _push_follows(seg, i) or (_WHOLE_SUBSTITUTION_RE.fullmatch(tok)\n",
+     "                if False or (_WHOLE_SUBSTITUTION_RE.fullmatch(tok)\n", "r8_word_unresolved"),
+    ("r8: an unresolved command word that is one substitution holding push not refused",
+     "                if _push_follows(seg, i) or (_WHOLE_SUBSTITUTION_RE.fullmatch(tok)\n",
+     "                if _push_follows(seg, i) or (False\n", "r8_word_substitution_push"),
+    ("r8: an unresolved command word not followed by push no longer read as an unrecognised shape",
+     "                return _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned,\n"
+     "                                                         wrapped, _depth)\n",
+     "                return None\n", "r8_word_unrecognised"),
+    ("r8: a same-command IFS not honoured when a resolved word is split",
+     "    if isinstance(ifs, str):\n", "    if False:\n", "r8_word_ifs"),
+    ("r8: an unknown same-command IFS trusted as the default",
+     "    if re.search(r\"[$`]\", resolved) or ifs is _UNRESOLVED:\n",
+     "    if re.search(r\"[$`]\", resolved):\n", "r8_word_ifs_unknown"),
+    ("r8: a command setting IFS not read when it names neither git nor push",
+     '_PREFILTER_RE = re.compile(r"(?i)\\b(?:push|git)\\b|\\bIFS=|\\$\\{\\(")\n',
+     '_PREFILTER_RE = re.compile(r"(?i)\\b(?:push|git)\\b|\\$\\{\\(")\n', "r8_word_ifs"),
+    ("r8: a resolved expansion not split on blanks",
+     "    return resolved.split()\n", "    return [resolved]\n", "r8_word_split"),
+    ("r8: push not looked for past git's global flags",
+     "    j = _skip_git_global_flags(seg, k + 1)\n", "    j = k + 1\n", "r8_push_follows_flags"),
+    ("r8: `subtree push` not counted as push following",
+     '    return sub == "push" or (sub == "subtree" and j + 1 < len(seg) and seg[j + 1].lower() == "push")\n',
+     '    return sub == "push"\n', "r8_push_follows_subtree"),
+    ("r8: a later expansion-built word behind an unrecognised shape not resolved",
+     '        if re.search(r"[$`]", tok) and not re.search(r"\\s", tok):\n            # gate-r8 (2): any later single',
+     "        if False:\n            # gate-r8 (2): any later single", "r8_scan_resolved"),
+    ("r8: a later string holding blanks read as a command word, not as a string",
+     '        if re.search(r"[$`]", tok) and not re.search(r"\\s", tok):\n',
+     '        if re.search(r"[$`]", tok):\n', "r8_scan_string"),
+    ("r8: an unresolved later word followed by push not refused",
+     "                if _push_follows(seg, k):\n", "                if False:\n", "r8_scan_unresolved"),
+    ("r8: git's own subcommand built from an expansion not resolved",
+     '    while j < len(seg) and re.search(r"[$`]", seg[j]):\n', "    while False:\n", "r8_subcommand_resolved"),
+    ("r8: an unresolved git subcommand not refused",
+     '            return (f"runs git with a subcommand (`{seg[j]}`) built from a shell expansion "\n',
+     '            return None and (f"runs git with a subcommand (`{seg[j]}`) built from a shell expansion "\n',
+     "r8_subcommand_unresolved"),
+    ("r8: a value that is itself an expansion trusted as a literal",
+     '        elif re.search(r"[$`(]", m.group(2)):\n', "        elif False:\n", "r8_value_expansion"),
+    ("r8: an array value trusted as a literal",
+     '        elif re.search(r"[$`(]", m.group(2)):\n', '        elif re.search(r"[$`]", m.group(2)):\n',
+     "r8_value_array"),
+    # The word reading, which also closes a push inside a double-quoted substitution.
+    ("r8: the word reading removed",
+     "        lexed = _lex_push_reason(command, report, _depth)\n", "        lexed = None\n", "r8_lex_reading"),
+    ("r8: a word reader that raised trusted when shlex read the command",
+     '        if "failed" in report:\n', "        if False:\n", "r8_lex_failed"),
+    ("r8: a command both readings may misread let through",
+     "        if doubt and not _text and _SHLEX_MISREADS_RE.search(command):\n", "        if False:\n", "r8_both_misread"),
+    ("r8: a heredoc body line held to the command's misread rule",
+     "        if doubt and not _text and _SHLEX_MISREADS_RE.search(command):\n",
+     "        if doubt and _SHLEX_MISREADS_RE.search(command):\n", "r8_text_not_doubted"),
+    ("r8: a `case` inside a substitution not counted as a misread",
+     '        if index and "case" in toks:\n', "        if False:\n", "r8_both_misread"),
+    # (1) a word shlex cannot close, road (b).
+    ("r8: the word reading's verdict ignored when shlex fails",
+     "    if lexed:\n        return lexed\n", "", "r8_fallback_lexed"),
+    ("r8: an unreadable heredoc body line read as nothing rather than without its quotes",
+     "    if _text:\n        return _token_push_reason(_tokens(re.sub(r\"[\\\"'\\\\]\", \"\", command)), _depth)\n",
+     "    if _text:\n        return None\n", "r8_fallback_text"),
+    ("r8: a word reader that also fails not refused",
+     '    if problem:\n        return (f"shlex cannot close a word',
+     '    if False:\n        return (f"shlex cannot close a word', "r8_fallback_misread"),
+    ("r8: an open quote or substitution not counted as the word reader failing",
+     '    problem = report.get("failed") or report.get("open") or report.get("misread")\n',
+     '    problem = report.get("failed") or report.get("misread")\n', "r8_open_dquote"),
+    ("r8: heredoc bodies not read when shlex fails",
+     "            reason = _direct_push_problem(line, _depth, _text=True)\n", "            reason = None\n",
+     "r8_fallback_body"),
+    ("r8: an unclosed single quote not reported",
+     '            if j >= n:\n                note("open", "a quote runs to the end unclosed")\n',
+     "            if j >= n:\n                pass\n", "r8_open_squote"),
+    ("r8: an unclosed double quote not reported",
+     '            if i >= n:\n                note("open", "a quote runs to the end unclosed")\n',
+     "            if i >= n:\n                pass\n", "r8_open_dquote"),
+    ("r8: an unclosed substitution not reported",
+     '        if j >= n:\n            note("open", "a substitution runs to the end unclosed")\n',
+     "        if j >= n:\n            pass\n", "r8_open_substitution"),
+    ("r8: an unclosed `${` not reported",
+     '                note("open", "a `${` runs to the end unclosed")\n', "                pass\n", "r8_open_param"),
+    ("r8: quoting inside `${...}` not reported as a misread",
+     '            elif re.search(r"[\\"\'`{]|\\$\\(", s[i + 2:j]):\n', "            elif False:\n",
+     "r8_fallback_misread"),
+    ("r8: an unclosed in-word parenthesis not reported",
+     '                note("open", "a parenthesis inside a word runs to the end unclosed")\n',
+     "                pass\n", "r8_open_paren"),
+    ("r8: quoting inside an in-word parenthesis not reported as a misread",
+     '            elif re.search(r"[\\"\'`\\\\]", s[i:j + 1]):\n', "            elif False:\n", "r8_both_misread_paren"),
+    ("r8: skipped heredoc bodies not collected",
+     '                    if report is not None:\n                        report.setdefault("bodies", []).append(s[body_start:i])\n',
+     "", "r8_fallback_body"),
+    ("r8: what a substitution's reading finds not reported back",
+     "        inner, nested, j = nested_lex(body, close, report)\n",
+     "        inner, nested, j = nested_lex(body, close, None)\n", "r8_fallback_body_in_substitution"),
+    ("r8: what a double-quoted substitution's reading finds not reported back",
+     '                    inner, nested, j = nested_lex(body, ")" if s[i] == "$" else "`", report)\n',
+     '                    inner, nested, j = nested_lex(body, ")" if s[i] == "$" else "`", None)\n',
+     "r8_fallback_body_in_quoted_substitution"),
+    # gate-r8 last call: five fail-opens in the two roads as first built.
+    ("r8 last call: a same-command prefix gives the command's own words their value",
+     '    assigned = {name: [(k if k < seg_start else float("inf"), v) for k, v in entries]\n'
+     "                for name, entries in assigned.items()}\n",
+     "    assigned = assigned\n", "r8lc_prefix"),
+    ("r8 last call: a `_=value` trusted as what a later `$_` holds",
+     '        elif m.group(1) == "_":\n', "        elif False:\n", "r8lc_underscore"),
+    ("r8 last call: `$'...'` escapes read as the escaped letter (the first cut)",
+     "            cooked.append(body if ch == \"'\" else _ansi_c(body))\n",
+     "            cooked.append(body if ch == \"'\" else re.sub(r\"\\\\(.)\", r\"\\1\", body, flags=re.S))\n",
+     "r8lc_ansi_hex"),
+    ("r8 last call: a `\\xHH` escape not decoded",
+     "            return chr(int(hex2, 16))\n", "            return m.group(0)\n", "r8lc_ansi_hex"),
+    ("r8 last call: an octal escape not decoded",
+     "            return chr(int(octal, 8) & 0xFF)\n", "            return m.group(0)\n", "r8lc_ansi_octal"),
+    ("r8 last call: a `\\u` escape not decoded",
+     "            return chr(point) if point <= 0x10FFFF else m.group(0)\n",
+     "            return m.group(0)\n", "r8lc_ansi_unicode"),
+    ("r8 last call: a `\\c` escape read as its letter",
+     "            return chr(ord(control) & 0x1F)\n", "            return control\n", "r8lc_ansi_control"),
+    ("r8 last call: an escape neither shell knows keeps its backslash (bash's reading, not zsh's)",
+     "        return _ANSI_C_NAMED.get(other, other)\n", "        return _ANSI_C_NAMED.get(other, m.group(0))\n",
+     "r8lc_ansi_unknown"),
+    ("r8 last call: a `$'...'` string not ended at a NUL",
+     '    return _ANSI_C_ESCAPE_RE.sub(decode, body).split("\\0", 1)[0]',
+     "    return _ANSI_C_ESCAPE_RE.sub(decode, body)", "r8lc_ansi_nul"),
+    ("r8 last call: zsh's `=name` not read as the program",
+     '    if len(word) > 1 and word.startswith("="):\n        word = word[1:]\n', "", "r8lc_equals"),
+    ("r8 last call: a script body not read whole",
+     '    for body in report.get("scripts", []):\n', "    for body in []:\n", "r8lc_script"),
+    ("r8 last call: heredoc bodies not read when shlex reads the command",
+     "        return _heredoc_push_reason(report, _depth)\n", "        return None\n", "r8lc_script_quoted"),
+    ("r8 last call: heredoc bodies not read in the unreadable-word fallback",
+     "    reason = _heredoc_push_reason(report, _depth)\n    if reason:\n        return reason\n", "",
+     "r8lc_script"),
+    ("r8 last call: no heredoc read as a shell's script",
+     "            if _heredoc_runs_as_script(words, at):\n", "            if False:\n", "r8lc_script"),
+    ("r8 last call: a shell later in the heredoc's pipeline not counted",
+     "    hi, depth, j, after_pipe = last, 0, last + 1, False\n    while j < len(words):\n",
+     "    hi, depth, j, after_pipe = last, 0, last + 1, False\n    while False:\n", "r8lc_script_piped"),
+    ("r8 last call: a shell anywhere on the line counted, not only in the heredoc's pipeline",
+     '            if not (set(raw) == {"\\n"} and j > 0 and _is_pipe_word(words[j - 1][1])):\n                break\n',
+     "            pass\n", "r8lc_script_text"),
+    ("r8 last call: an unquoted-delimiter body's substitutions not read",
+     '    for body in report.get("expanding", []):\n', "    for body in []:\n", "r8lc_expanding"),
+    ("r8 last call: a backtick in an unquoted-delimiter body not read",
+     '            elif body[i] == "`":\n', "            elif False:\n", "r8lc_expanding_backtick"),
+    ("r8 last call: an escaped `$(` in a body read as a substitution",
+     '                i += 2 if body[i] == "\\\\" else 1  # an escaped', "                i += 1  # an escaped",
+     "r8lc_expanding_escaped"),
+    # gate-r8 last call, finished: what the unstaged fix still let through.
+    ("r8 finish: no pending heredoc body weighed as a script",
+     "                        pending.append((at, s[body_start:i]))\n", "                        pass\n", "r8lc_script"),
+    ("r8 finish: a level's bodies not settled when the level ends at its closer",
+     "            end_word()\n            settle()\n            return words, subs, i\n",
+     "            end_word()\n            return words, subs, i\n", "r8lc_script_quoted"),
+    ("r8 finish: the command's own bodies not settled at its end",
+     "    end_word()\n    settle()\n    return words, subs, n\n",
+     "    end_word()\n    return words, subs, n\n", "r8lc_script"),
+    ("r8 finish: a body carried up from a substitution not weighed at the word holding it",
+     '            pending.extend((len(words), carried) for carried in rep["carried"][mark:])\n',
+     "            pass\n", "r8f_psub"),
+    ("r8 finish: a pipe that ends its line read as ending the pipeline",
+     '    return _is_operator_word(raw) and raw.rstrip("\\n") in ("|", "|&")\n',
+     '    return raw in ("|", "|&")\n', "r8f_pipe_continued"),
+    ("r8 finish: a blank line after a trailing pipe read as ending the pipeline",
+     '            elif not (after_pipe and set(raw) == {"\\n"}):\n', "            elif True:\n", "r8f_pipe_blank_line"),
+    ("r8 finish: the group holding a heredoc not widened to its own pipeline",
+     "        opener = _group_opener(words, first)\n", "        opener = None\n", "r8f_subshell"),
+    ("r8 finish: a keyword or brace does not open a group",
+     '    return raw == "(" or (raw == cooked and cooked in _GROUP_OPENERS and _starts_command(words, k))\n',
+     '    return raw == "("\n', "r8f_keyword_group"),
+    ("r8 finish: a keyword or brace does not close a group",
+     '    return raw == ")" or (raw == cooked and cooked in _GROUP_CLOSERS and _starts_command(words, k))\n',
+     '    return raw == ")"\n', "r8f_keyword_group"),
+    ("r8 finish: a keyword or brace opens a group wherever it stands, not only as a command",
+     '    return raw == "(" or (raw == cooked and cooked in _GROUP_OPENERS and _starts_command(words, k))\n',
+     '    return raw == "(" or (raw == cooked and cooked in _GROUP_OPENERS)\n', "r8f_opener_as_argument"),
+    ("r8 finish: a keyword or brace closes a group wherever it stands, not only as a command",
+     '    return raw == ")" or (raw == cooked and cooked in _GROUP_CLOSERS and _starts_command(words, k))\n',
+     '    return raw == ")" or (raw == cooked and cooked in _GROUP_CLOSERS)\n', "r8f_closer_as_argument"),
+    ("r8 finish: `.` and `source` not read as running a heredoc (the unstaged fix's `.`, stripped to nothing)",
+     "    if name in _SCRIPT_RUNNERS:  # `.` or `source`", "    if False:  # `.` or `source`", "r8f_dot"),
+    ("r8 finish: `.` read as running a heredoc wherever it stands, not only as the command",
+     "`git -C . commit -F - <<'EOF'`\n        return _runs_as_command(words, k)\n",
+     "`git -C . commit -F - <<'EOF'`\n        return True\n", "r8f_dot_as_argument"),
+    ("r8 finish: a command word built from an expansion not read as a possible shell",
+     '    if re.search(r"[$`]", cooked):\n        return _runs_as_command(words, k)\n',
+     '    if False:\n        return _runs_as_command(words, k)\n', "r8f_expansion_runner"),
+    ("r8 finish: a command word past a named wrapper not read as the command",
+     "    j = k\n    while j > 0:\n", "    j = k\n    while False:\n", "r8f_expansion_runner_wrapped"),
+    ("r8 finish: a quoted delimiter's body read as expanding",
+     'delim_strip, bool(re.search(r"[\\"\'\\\\]", "".join(raw))),', "delim_strip, False,", "r8f_quoted_text"),
+    ("r8 finish: zsh's `=name` not read as the program on the wrapper, shell and runner lists",
+     '    return os.path.basename(word[1:] if len(word) > 1 and word.startswith("=") else word).lower()\n',
+     "    return os.path.basename(word).lower()\n", "r8f_zsh_shell"),
+    ("r8 finish: a crash in the push check fails open (exit 1: the harness runs the command)",
+     "    except Exception as exc:  # noqa: BLE001 -- a crash here must not fail open\n        # gate-r8 last call, completed:",
+     "    except ZeroDivisionError as exc:  # noqa: BLE001 -- a crash here must not fail open\n        # gate-r8 last call, completed:",
+     "r8f_crash"),
+    ("r8 finish: heredoc scripts read past the depth bound",
+     "        if _depth >= _MAX_PUSH_WRAP_DEPTH:\n            return (\"runs a heredoc body as a shell's script",
+     "        if False:\n            return (\"runs a heredoc body as a shell's script", "r8f_script_depth"),
+    ("r8 finish: an unquoted body's substitutions read past the depth bound",
+     "            if _depth >= _MAX_PUSH_WRAP_DEPTH:\n                return (\"runs a substitution in a heredoc body",
+     "            if False:\n                return (\"runs a substitution in a heredoc body", "r8f_substitution_depth"),
+    ("r8 finish: an unquoted body's substitution read word by word, its own heredocs skipped",
+     "            reason = _direct_push_problem(body[start:i], _depth + 1)\n",
+     "            reason = _token_push_reason(_group_tokens(_words), _depth)\n", "r8f_expanding_heredoc"),
+    ("r8 finish: a `case` pattern's `)` read as closing a group",
+     "    words = _without_case_patterns(words)\n", "    words = list(words)\n", "r8f_case"),
+    ("r8 finish: a later `case` branch's pattern read as a group's `)`",
+     '        elif states[-1] == "body" and _is_operator_word(raw) and re.search(r";;|;&", raw):\n',
+     "        elif False:\n", "r8f_case_second_branch"),
+    ("r8 finish: quoting inside git and push hides the command from the prefilter",
+     "    if not (_PREFILTER_RE.search(command) or _PREFILTER_RE.search(_unquoted(command))):\n",
+     "    if not _PREFILTER_RE.search(command):\n", "r8f_quoted_words"),
+    ("r8 finish: the prefilter does not decode `$'...'`",
+     "    decoded = re.sub(r\"\\$'((?:[^'\\\\]|\\\\.)*)'\", lambda m: _ansi_c(m.group(1)), command, flags=re.S)\n",
+     "    decoded = command\n", "r8f_ansi_words"),
+    ("r8 finish: a zsh parameter flag does not open the reading",
+     '_PREFILTER_RE = re.compile(r"(?i)\\b(?:push|git)\\b|\\bIFS=|\\$\\{\\(")\n',
+     '_PREFILTER_RE = re.compile(r"(?i)\\b(?:push|git)\\b|\\bIFS=")\n', "r8f_zsh_flag_separator"),
+    ("r8 finish: zsh's `$=NAME`/`${=NAME}` not resolved as NAME",
+     '_VAR_REF_RE = re.compile(r"\\$\\{[=~^]*(\\w+)\\}|\\$[=~^]*(\\w+)")\n',
+     '_VAR_REF_RE = re.compile(r"\\$\\{(\\w+)\\}|\\$(\\w+)")\n', "r8f_zsh_split_resolved"),
+    ("r8 finish: a command word whose same-command value holds push not refused",
+     "                if _value_holds_push(tok, assigned, seg_start + i):\n                    return _unresolved_git_reason(tok)\n",
+     "                if False:\n                    return _unresolved_git_reason(tok)\n", "r8f_zsh_flags"),
+    ("r8 finish: a later word whose same-command value holds push not refused",
+     "                if _value_holds_push(tok, assigned, seg_start + k):\n                    return _unresolved_git_reason(tok)\n",
+     "                if False:\n                    return _unresolved_git_reason(tok)\n", "r8f_zsh_flags_wrapped"),
+    ("r8 finish: a value holding push only as its own word",
+     '        if any(index < start and isinstance(v, str) and re.search(r"(?i)push", v)\n',
+     '        if any(index < start and isinstance(v, str) and re.search(r"(?i)\\bpush\\b", v)\n',
+     "r8f_zsh_flag_separator"),
+    ("r8 finish: a prefix or later value read as what an unresolved word holds",
+     '        if any(index < start and isinstance(v, str) and re.search(r"(?i)push", v)\n',
+     '        if any(isinstance(v, str) and re.search(r"(?i)push", v)\n', "r8f_prefix_value"),
+    ("r8 finish: a name under a zsh flag in parentheses not found",
+     '_PARAM_NAME_RE = re.compile(r"\\$\\{(?:\\([^)]*\\))?[=~^]*(\\w+)|\\$[=~^]*(\\w+)")\n',
+     '_PARAM_NAME_RE = re.compile(r"\\$\\{[=~^]*(\\w+)|\\$[=~^]*(\\w+)")\n', "r8f_zsh_flags"),
 ]
 
 # (command, exit the unmutated hook gives, tool, extra environment)
@@ -2022,6 +2757,136 @@ SCENARIOS = {
     "r7_wrapped_string": lambda h: ("env -S 'git push origin HEAD'", 2, None, {}),
     "r7_string_runner": lambda h: ("eval 'git push origin HEAD'", 2, None, {}),
     "r7_shell_behind_unrecognised": lambda h: ("timeout 5 bash -c 'git push origin feature'", 2, None, {}),
+    # gate-r8 (2026-09-21, round 6).
+    "r8_push_var_fragment": lambda h: ("B=<(echo main); git push origin HEAD:$B", 2, None, {}),
+    "r8_word_resolved": lambda h: ("G=git; $G push origin HEAD", 2, None, {}),
+    "r8_word_unresolved": lambda h: ("$(echo git) push origin HEAD", 2, None, {}),
+    # Refused before gate-r8 too (an unrecognised shape); the branch keeps it so.
+    "r8_word_unrecognised": lambda h: ("$SUDO git push origin feat/x", 2, None, {}),
+    "r8_word_substitution_push": lambda h: ("$(printf 'git push') origin HEAD", 2, None, {}),
+    "r8_word_ifs": lambda h: ("IFS=x; W=gitxpush; $W origin HEAD", 2, None, {}),
+    "r8_word_ifs_unknown": lambda h: ("IFS=$X; G=git; $G push origin feat/x", 2, None, {}),
+    "r8_word_split": lambda h: ('G="git push origin HEAD"; $G', 2, None, {}),
+    # Seven words spliced in for one: the push still reads B's later
+    # assignment as made after it (the gate-r8 last call dropped the index
+    # shift these once pinned: every word of a segment now reads only the
+    # assignments made before the segment, so a splice cannot move it).
+    "r8_word_index": lambda h: ('W="nohup nohup nohup nohup nohup nohup nohup"; '
+                                "$W git push origin HEAD:$B; B=develop", 2, None, {}),
+    "r8_push_follows_flags": lambda h: ("$(echo git) -C . push origin HEAD", 2, None, {}),
+    "r8_push_follows_subtree": lambda h: ("$(echo git) subtree push --prefix=x origin HEAD", 2, None, {}),
+    "r8_scan_resolved": lambda h: ("G=git; timeout 10 $G push origin feat/x", 2, None, {}),
+    "r8_scan_unresolved": lambda h: ("timeout 10 $G push origin feat/x", 2, None, {}),
+    # A string handed to a program known to run strings is read as a string
+    # (gate-r7), even when it holds `$`: the replay found 14 such r7 refusals
+    # (`node -e '...${x}...push...'`) that a first cut of gate-r8 let through.
+    "r8_scan_string": lambda h: ("node -e 'const x = $y; git push origin HEAD'", 2, None, {}),
+    # The same behind an unrecognised shape: `$G` does not read its later
+    # `G=docker` as set before it, so the push is not read as `docker push`.
+    "r8_scan_index": lambda h: ('W="a a a a a a a"; timeout 5 $W $G push origin HEAD; G=docker', 2, None, {}),
+    "r8_subcommand_resolved": lambda h: ("P=push; git $P origin HEAD", 2, None, {}),
+    "r8_subcommand_unresolved": lambda h: ("git $(echo push) origin HEAD", 2, None, {}),
+    "r8_value_expansion": lambda h: ("X=main; B=$X; git push origin HEAD:$B", 2, None, {}),
+    # Only the word reading can read it (shlex cannot close `$'\''`), and it
+    # keeps `B=(main)` whole: only the `(` in the value makes it unresolved.
+    "r8_value_array": lambda h: ("B=(main); git push origin HEAD:$B; echo $'\\''", 2, None, {}),
+    "r8_lex_reading": lambda h: ('echo "$(git push origin HEAD)"', 2, None, {}),
+    "r8_lex_failed": lambda h: ('echo "' + "$(" * 22 + "git push origin HEAD" + ")" * 22 + '"', 2, None, {}),
+    "r8_both_misread": lambda h: ('echo "$(case a in a) git push origin HEAD;; esac)"', 2, None, {}),
+    "r8_both_misread_paren": lambda h: ("echo $'\\''; x=(')')\ngit push origin HEAD\necho ')''", 2, None, {}),
+    "r8_fallback_lexed": lambda h: ("git push origin HEAD; echo $'\\''", 2, None, {}),
+    "r8_fallback_text": lambda h: ("git commit -F - <<'EOF'\nWe don't run git push origin HEAD here\nEOF", 2, None, {}),
+    # A heredoc body line is text: the both-readings rule is the command's, not
+    # the text's (the replay found 37 body lines of JS it refused otherwise).
+    "r8_text_not_doubted": lambda h: ("git commit -F - <<'EOF'\nDon't break it\nlog.push(`${x}`)\nEOF", 0, None, {}),
+    "r8_fallback_misread": lambda h: ("echo $'\\''; echo ${X:-\"}\"}\ngit push origin HEAD\necho \"", 2, None, {}),
+    "r8_open_dquote": lambda h: ('git status; echo "unclosed', 2, None, {}),
+    "r8_open_squote": lambda h: ("git status; echo 'unclosed", 2, None, {}),
+    "r8_open_substitution": lambda h: ("git status; echo $(unclosed", 2, None, {}),
+    "r8_open_param": lambda h: ("git status; echo ${X; echo $'\\''", 2, None, {}),
+    "r8_open_paren": lambda h: ("git status; x=(a; echo $'\\''", 2, None, {}),
+    # Re-pinned by the gate-r8 last call's finishing pass: an unquoted body's
+    # `$(git push ...)` is now also read by the expanding reading, so it no
+    # longer isolates the line reading. Only the line reading sees a push in a
+    # quoted body that goes to a file a shell runs later (a real push, pinned
+    # by test_r8_only_the_line_reading_stops_a_push_through_a_file).
+    "r8_fallback_body": lambda h: ("echo $'\\''\ncat > p.sh <<'EOF'\ngit push origin HEAD\nEOF\nbash p.sh",
+                                   2, None, {}),
+    "r8_fallback_body_in_substitution": lambda h: (
+        "echo $'\\''; x=$(cat <<EOF\n$(git push origin HEAD)\nEOF\n)", 2, None, {}),
+    "r8_fallback_body_in_quoted_substitution": lambda h: (
+        "echo $'\\''; x=\"$(cat <<EOF\n$(git push origin HEAD)\nEOF\n)\"", 2, None, {}),
+    # gate-r8 last call.
+    "r8lc_prefix": lambda h: ("declare G=git; G=true $G push origin HEAD", 2, None, {}),
+    "r8lc_underscore": lambda h: ("_=x; echo git; $_ push origin HEAD", 2, None, {}),
+    "r8lc_ansi_hex": lambda h: ("git push origin $'\\x6dain'; echo $'\\''", 2, None, {}),
+    "r8lc_ansi_octal": lambda h: ("g$'\\151't push origin HEAD; echo $'\\''", 2, None, {}),
+    "r8lc_ansi_unicode": lambda h: ("$'\\u0067it' push origin HEAD; echo $'\\''", 2, None, {}),
+    # Read as its letter, `\c` would spell git: the control character does not.
+    "r8lc_ansi_control": lambda h: ("$'\\cgit' push origin HEAD; echo $'\\''", 0, None, {}),
+    "r8lc_ansi_unknown": lambda h: ("$'\\git' push origin HEAD; echo $'\\''", 2, None, {}),
+    "r8lc_ansi_nul": lambda h: ("$'git\\0x' push origin HEAD; echo $'\\''", 2, None, {}),
+    "r8lc_equals": lambda h: ("=git push origin HEAD", 2, None, {}),
+    "r8lc_script": lambda h: ("bash <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''", 2, None, {}),
+    "r8lc_script_quoted": lambda h: ("x=\"$(bash <<'EOF'\ngit push origin HEAD\nEOF\n)\"", 2, None, {}),
+    "r8lc_script_piped": lambda h: (
+        "cat <<'EOF' | bash\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''", 2, None, {}),
+    # A shell earlier on the line, past `&&`, does not make a message a script.
+    "r8lc_script_text": lambda h: ("bash -c true && cat > msg.txt <<'EOF'\nIt's a git thing\nEOF", 0, None, {}),
+    "r8lc_expanding": lambda h: ("echo \"$(cat <<EOF\n$(git push origin HEAD)\nEOF\n)\"", 2, None, {}),
+    "r8lc_expanding_backtick": lambda h: ("echo \"$(cat <<EOF\n`git push origin HEAD`\nEOF\n)\"", 2, None, {}),
+    # An escaped `$(` in a body is text: nothing runs.
+    "r8lc_expanding_escaped": lambda h: ("echo \"$(cat <<EOF\n\\$(git push origin HEAD)\nEOF\n)\"", 0, None, {}),
+    # gate-r8 last call, finished.
+    "r8f_psub": lambda h: ("echo \"$(bash <(cat <<'EOF'\ngit push origin HEAD\nEOF\n))\"", 2, None, {}),
+    "r8f_pipe_continued": lambda h: (
+        "cat <<'EOF' |\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\nbash\necho $'\\''", 2, None, {}),
+    "r8f_pipe_blank_line": lambda h: (
+        "cat <<'EOF' |\n\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n\nbash\necho $'\\''", 2, None, {}),
+    "r8f_subshell": lambda h: ("x=\"$( (cat <<'EOF'\ngit push origin HEAD\nEOF\n) | bash)\"", 2, None, {}),
+    "r8f_keyword_group": lambda h: (
+        "if true; then cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\nfi | bash\necho $'\\''", 2, None, {}),
+    # A brace or keyword that is an argument opens and closes nothing: the
+    # heredoc goes to cat and no shell reads it.
+    "r8f_opener_as_argument": lambda h: ("echo {; cat <<'EOF'\nIt's a git thing\nEOF\n} | bash", 0, None, {}),
+    "r8f_closer_as_argument": lambda h: ("{ cat <<'EOF'\nIt's a git thing\nEOF\necho } | bash", 0, None, {}),
+    "r8f_dot": lambda h: (". /dev/stdin <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''", 2, None, {}),
+    "r8f_dot_as_argument": lambda h: ("git -C . commit -F - <<'EOF'\nIt's a git thing\nEOF", 0, None, {}),
+    "r8f_expansion_runner": lambda h: (
+        "echo bash; $_ <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''", 2, None, {}),
+    "r8f_expansion_runner_wrapped": lambda h: (
+        "echo bash; nohup $_ <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\necho $'\\''", 2, None, {}),
+    # A quoted delimiter's `$(...)` is text inside a PR body: nothing runs.
+    "r8f_quoted_text": lambda h: (
+        "gh pr create --title t --body \"$(cat <<'EOF'\nrun $(git push origin HEAD) later\nEOF\n)\"", 0, None, {}),
+    "r8f_zsh_shell": lambda h: ("=bash -c 'git push origin HEAD'", 2, None, {}),
+    # 22 nested `$(` in an unquoted body: the word reader raises, and the hook
+    # refuses rather than exit 1 (which the harness lets run).
+    "r8f_crash": lambda h: ("cat <<EOF\n" + "$(" * 22 + "true" + ")" * 22 + "\nEOF\ngit push origin feat/x",
+                            2, None, {}),
+    # Four heredoc scripts deep: refused at the bound, as a fourth `bash -c` is.
+    "r8f_script_depth": lambda h: ("bash <<'E1'\nbash <<'E2'\nbash <<'E3'\nbash <<'E4'\ngit status\nE4\nE3\nE2\nE1",
+                                   2, None, {}),
+    "r8f_substitution_depth": lambda h: (
+        "cat <<A\n$(cat <<B\n$(cat <<C\n$(cat <<D\n$(git status)\nD\n)\nC\n)\nB\n)\nA", 2, None, {}),
+    "r8f_expanding_heredoc": lambda h: (
+        "echo \"$(cat <<EOF\n$(bash <<'X'\ngit push origin HEAD\nX\n)\nEOF\n)\"", 2, None, {}),
+    "r8f_case": lambda h: (
+        "case a in a) cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n;; esac | bash\necho $'\\''", 2, None, {}),
+    "r8f_case_second_branch": lambda h: (
+        "case b in a) true;; b) cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n;; esac | bash\necho $'\\''",
+        2, None, {}),
+    "r8f_quoted_words": lambda h: ('"g"it "p"ush origin HEAD', 2, None, {}),
+    "r8f_ansi_words": lambda h: ("$'\\x67it' $'\\x70ush' origin HEAD", 2, None, {}),
+    "r8f_zsh_flag_separator": lambda h: ("G=gitxpushxoriginxHEAD; ${(s:x:)G}", 2, None, {}),
+    # Resolved, `${=G}` is a push to a named branch: allowed, not refused as
+    # an unresolved word whose value holds push.
+    "r8f_zsh_split_resolved": lambda h: ('G="git push"; ${=G} origin feat/x', 0, None, {}),
+    "r8f_zsh_flags": lambda h: ('G="git push origin HEAD"; ${(z)G}', 2, None, {}),
+    "r8f_zsh_flags_wrapped": lambda h: ('G="git push origin HEAD"; nice ${(z)G}', 2, None, {}),
+    # A prefix gives the command's own words nothing: `${(z)G}` is the
+    # caller's G (unset here), so this runs no push.
+    "r8f_prefix_value": lambda h: ('G="git push origin HEAD" ${(z)G}', 0, None, {}),
 }
 
 

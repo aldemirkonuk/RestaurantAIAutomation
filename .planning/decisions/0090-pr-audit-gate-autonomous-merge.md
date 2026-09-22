@@ -913,7 +913,8 @@ below.
   program (`curl -X PUT <url> gh api`); a value set any way but a plain or
   exported `NAME=value` (`declare`, `typeset`, `readonly`, `local`, `read`,
   `eval`, `NAME+=`, or after a punctuation run the tokenizer fuses, `);
-  B=main`) -- reading `export` as the bare form reads it brings export to
+  B=main` [closed by gate-r8's word reading, which splits `)` from `;`]) --
+  reading `export` as the bare form reads it brings export to
   the same gaps, so `export B=develop; eval B=main; git push origin HEAD:$B`,
   refused at HEAD only because an exported name was never read, now exits
   0 as its bare twin already did; and, older than this round and found by
@@ -975,7 +976,11 @@ bare push; an unrecognised wrapper shape is refused.
     its own nested-quote reading. A word built from `$`/backtick, or nesting
     past the bound, is REFUSED: this hook cannot resolve either without
     running a shell. A shell with no `c` option runs a script file or stdin
-    (`bash deploy.sh`), point 23's residual, unchanged.
+    (`bash deploy.sh`), point 23's residual, unchanged. [gate-r8 last call,
+    finished: a heredoc body a shell runs -- a shell in the pipeline holding
+    the heredoc, widened through the groups and substitutions holding it --
+    is now read whole as that shell's script; a script file, a here-string
+    and a pipe into a shell stay this residual.]
   - *Unrecognised, refused.* `_unrecognised_wrapper_push_reason()`: once the
     chain stops at anything else — a recognised wrapper's own flag (`sudo -u
     root`, `env -i`, `env -C dir`, `xargs -I{}`, `time -p`, `nohup --`), a
@@ -1028,7 +1033,8 @@ bare push; an unrecognised wrapper shape is refused.
   last call and left for the founder: a git whose own NAME comes from an
   expansion (`G=git; $G push origin HEAD`, `$(echo git) push origin HEAD`)
   is not seen, as before this round — the push-side twin of the `G=gh; $G
-  ...` merge shape in the "Not seen" list.
+  ...` merge shape in the "Not seen" list. [Both CLOSED by gate-r8, below,
+  on the founder's round-6 answer; the quoted-string residual stays named.]
 
 Re-measured on this round's own tree: `test_require_pr_audit.py` alone 366
 passed (286 at gate-r6's HEAD, 321 at the first cut); 59
@@ -1042,6 +1048,355 @@ as every prior round; the `-c` depth bound is exercised by mutation and by
 a synthetic non-main push nested past it, not by a real push at that depth;
 `sudo`-prefixed shapes are proven by the hook's verdict only, since the
 harness cannot run `sudo`.
+
+**gate-r8 — 2026-09-21, round 6.** The gate-r7 last call put four
+recommendations to the founder, each with its roads. His answer, as relayed
+by the orchestrating session (see this ADR's Review trail): *"Take all
+four"*. Built in `scripts/hooks/require_pr_audit.py` (the gate-r8 comment
+block above `_expansion_words()`, and `_direct_push_problem()`):
+
+- **(1) A word shlex cannot close — road (b).** When `_tokens()` raised, the
+  whole push check returned "not a push": `git push origin HEAD; echo
+  $'\''` exited 0 and, run from a checkout of `main`, moved a local bare
+  origin's `main`. Now the command is re-read with the heredoc-aware
+  `_lex()` reader, which reads bash `$'...'` quoting and skips heredoc
+  bodies, and is refused only if that reading also fails: it raises, leaves
+  a quote, a substitution, a `${` or an in-word parenthesis open, or meets a
+  construct it reads differently from the shell (quoting, a brace or a
+  substitution inside `${...}`; quoting inside an in-word parenthesis; a
+  `case` pattern inside a substitution). Measured: bash reads `echo
+  ${X:-"}"}` as one word and `_lex()` ended it at the first `}`, hiding a
+  push on the next line that moved `main`. Heredoc bodies keep the current
+  reading: each line is read as a command, and a line no reader can close
+  is read with its quotes and backslashes removed, never refused only for
+  being unreadable. The founder's twins hold: a commit heredoc that does not
+  push passes with an odd and with an even apostrophe count, and `git push
+  origin feat/x` is unchanged, with or without `$'\''` beside it.
+- **(2) Git named by an expansion — road (a).** A command word built from
+  `$` or a backtick is resolved through the same-command assignments
+  `_collect_assignments()` already collects (`_expansion_words()`), split on
+  blanks as the shell splits an unquoted expansion, and read as what it
+  resolves to: `G=git; $G push origin feat/x` passes like a bare push, and
+  `G=git; $G push origin HEAD` is refused like one. One this hook cannot
+  resolve is refused when push follows it, past git's own global flags or
+  as `subtree push` (`$(echo git) push origin HEAD`, `"$G" push origin
+  feat/x`), or when it is one whole substitution holding push (`$(printf
+  'git push') origin HEAD`); otherwise it is read as an unrecognised
+  wrapper shape, as gate-r7 already read `$SUDO git push ...`. The same
+  reading applies to any later single word behind an unrecognised shape
+  (`timeout 10 $G push origin feat/x`), and to git's own subcommand, the
+  sibling position: `P=push; git $P origin HEAD` and `git $(echo push) origin
+  HEAD` were read as unknown, non-alias subcommands and allowed, each
+  measured moving `main`. A same-command `IFS` is honoured when a resolved
+  word is split (`IFS=x; W=gitxpush; $W origin HEAD` is `git push`, measured
+  moving `main`; a command setting `IFS=` now opens the reading even when it
+  names neither git nor push), and an `IFS` this hook cannot resolve leaves
+  the word unresolved.
+- **(3) Text that names a push.** Accepted as the cost of refusing an
+  unrecognised shape, as he answered: a heredoc body line that names `git
+  push` after another word, and `echo git push origin HEAD`, are refused.
+  Both push refusals in `main()` now end with `PUSH_TEXT_HINT`, which says
+  exactly that and names `-F <file>` (`git commit -F`, `gh pr create -F`).
+  Pinned by `test_r8_text_naming_a_push_is_refused_and_told_to_use_a_file`,
+  and the hint itself by `test_r8_the_text_hint_is_load_bearing`, since the
+  exit-code mutation harness cannot see a message.
+- **(4)** Unchanged, as he answered: a quoted string handed to a program on
+  neither list stays a named residual (gate-r7's bullet above), pinned at
+  exit 0 by `test_r7_the_named_residuals_are_still_not_seen`.
+- **Found while building, closed under rules already recorded here.** Each
+  is a shape an existing rule refuses wherever the hook can read it, so none
+  is a new decision:
+  - A push inside a double-quoted substitution (`echo "$(git push origin
+    HEAD)"`, `OUT="$(git push origin HEAD 2>&1)"`) was one quoted shlex
+    word, never read, and moved `main`. The `_lex()` reading that roads (a)
+    and (b) need runs beside shlex on every command naming git or push and
+    reads the words inside every substitution: the push-side twin of the
+    "Refused" list's merge inside a double-quoted substitution.
+  - A same-command value that is itself an expansion (`X=main; B=$X; git
+    push origin HEAD:$B`) or an array (`B=(main)`) was trusted as a literal
+    and allowed; now unresolved, which gate-r4's rule refuses for a HEAD/@
+    source. From a named source (`feat:$B`) it stays allowed, like gate-r4's
+    `feature:$UNRELATED`.
+  - Each reading covers the other's misreads, so a push stayed hidden only
+    where both misread at once: `echo $'\''; x=(')')` with a push on the
+    next line, and `echo "$(case a in a) git push origin HEAD;; esac)"`,
+    each measured moving `main`. When shlex reads the command, the word
+    reader reports a misread or an open construct, and the command holds
+    something shlex reads differently from the shell (`$'`, a heredoc, a `#`
+    inside a word, a substitution), it is refused.
+  - gate-r6's named residual "an assignment after a punctuation run the
+    tokenizer fuses" is closed as a side effect: the word reader splits `)`
+    from `;`, so `f() ( git push origin feat:$B ); B=main; f` is refused.
+- **Measured through the entry point.** Fourteen shapes gave exit 0 on
+  gate-r7's hook and exit 2 on gate-r8's; the five twins above gave 0 on
+  both. `test_r8_each_closed_shape_is_a_real_push_the_hook_now_stops` runs
+  nine of them for real from a checkout of `main` against a local bare
+  origin: with no hook, `main` moves; gated by the hook the way a Bash call
+  is, each is refused and `main` does not move.
+- **Cost, measured by replay.** Every distinct Bash command recorded in this
+  project's local session transcripts, 79,404, was read by gate-r7's and
+  gate-r8's final push checks (`DIRECT_PUSH_PATTERN` and
+  `_direct_push_problem()`, in-process). 54 are refused now that were
+  allowed; none is allowed now that was refused. 52 of the 54 meet a rule
+  older than this round that passed them only because an apostrophe or
+  `$'...'` made shlex fail: 32 a bare `git push` (no remote or refspec,
+  refused since gate-r3; 31 in the command itself, 1 in heredoc prose); 9 a
+  push to a `$`-built destination or to `HEAD` (gate-r4; 7 in the command, 2
+  in a heredoc body that writes a script; each split measured by re-reading
+  the command with its heredoc bodies blanked); 2 a push behind `then`
+  (gate-r7); 9 a shell running a string built from an expansion in a command
+  naming git (gate-r7; 2 of them this build's own probe commands). The other
+  2 are commands bash itself cannot parse (an unclosed backtick inside
+  double quotes; a nested heredoc whose inner delimiter line ends the outer
+  one), refused by this round's both-readings rule. The commonest new
+  refusal is `git commit -F - <<'EOF' ... EOF && git push` with an
+  apostrophe in the message: name the branch. The
+  replay found two faults in the first cut, both fixed before this record:
+  14 `node -e '...'`/`python3 -c '...'` strings gate-r7 refused were let
+  through (a string holding `$` was read as a command word; it now goes on
+  to gate-r7's string reading), and 37 heredoc body lines of code were
+  refused by the both-readings rule (a body line is text; the rule is the
+  command's).
+- **Last call, same day: five fail-opens in the two roads as first built.**
+  Each was allowed (exit 0) by the hook this section first described and,
+  run for real, moved a local bare origin's `main`; each is closed where it
+  lived, as part of building the roads he chose, not as a new rule:
+  - *(2) A same-command prefix read as giving the command's own words their
+    value.* The shell expands a simple command's words before its own
+    `NAME=value` prefix takes effect, so `declare G=git; G=true $G push
+    origin HEAD` runs git while road (a) resolved `$G` to `true`; so did
+    `declare P=push; P=status git $P origin HEAD`, and, older than this
+    round, `declare B=main; B=feat git push origin HEAD:$B`. A prefix now
+    counts as assigned after the command, as a later statement's assignment
+    already did (`_wrapper_stripped_push_reason()`), so every word of a
+    command reads only what was assigned before it and the index shift the
+    first cut kept for a spliced word, with its two mutation cases, is gone:
+    it could no longer change a verdict. The same reading now allows `G='git
+    push' $G origin HEAD`, which runs no push.
+  - *(2) `$_` resolved through `_=value`.* The shell resets `$_` after every
+    command, so `_=x; echo git; $_ push origin HEAD` runs git; no `_=value`
+    is trusted now (`_collect_assignments()`).
+  - *(1) `$'...'` escapes read as the escaped letter.* The word reader
+    dropped each backslash, so with shlex unable to close `$'\''` later in
+    the command, `git push origin $'\x6dain'` read as a push to `x6dain`, and
+    `$'\x67it' push origin HEAD` as a program `x67it`. `_ansi_c()` now
+    decodes `\xHH`, octal, `\u`/`\U`, `\c` and the named escapes as bash does,
+    ends the string at a NUL as bash does, and drops the backslash of an
+    escape neither shell knows as zsh does (`$'\git'` is git under zsh, the
+    Bash tool's shell here), since a word that keeps its backslash never
+    spells one this hook looks for.
+  - *(2) zsh's `=git`.* zsh expands a command word `=name` to the path
+    `name` resolves to, so `=git push origin HEAD` is git (measured under
+    zsh). Closed under gate-r3's rule that a word resolving to git's own file
+    is git (`_is_program()`).
+  - *(1) Heredoc bodies a shell runs or expands.* The fallback read each body
+    one line at a time as text, which lost a script's earlier lines: `bash
+    <<'EOF'` with `IFS=x` then `W=gitxpush; $W origin HEAD`, or `W="git
+    push"` then `$W origin HEAD`, followed by `echo $'\''`. And inside a
+    double-quoted substitution, which shlex reads as one word, no body was
+    read at all: `x="$(bash <<'EOF'` + `git push origin HEAD` + `EOF` +
+    `)"`, and `echo "$(cat <<EOF` + `$(git push origin HEAD)` + `EOF` +
+    `)"`. Now, in both readings, a body a shell runs (`bash <<'EOF'`, `cat
+    <<'EOF' | sh`, and the shapes the finishing pass below adds) is read
+    whole as that shell's script, and a body under an unquoted delimiter has
+    its substitutions read, as the shell runs them (`_heredoc_push_reason()`).
+    A body that is only text under a quoted delimiter is not read there: `gh
+    pr create --body "$(cat <<'EOF' ... EOF)"`, the common PR and commit
+    shape, reads as before, and nothing in it runs. gate-r7's residual "a
+    shell with no `c` option runs a script file or stdin" narrows to a script
+    file, a here-string and a pipe into a shell.
+
+  Pinned: `test_r8_last_call_shapes_are_real_pushes_the_hook_now_stops` runs
+  18 bash shapes for real, each moving `main` ungated and refused gated with
+  `main` unmoved; `test_r8_last_call_zsh_shapes_are_refused` asserts the
+  verdict for the three zsh shapes and, where zsh is installed, their real
+  push; `test_r8_last_call_allowed_twins` pins 11 twins at exit 0; 19
+  mutation cases, re-measured by the finishing pass, each flipping its
+  scenario's exit (0 to 2 or 2 to 0) rather than crashing -- three of them
+  re-targeted at the reading that replaced `_pipeline_runs_script()`.
+  Measured through the entry point: the hook this section first described
+  allowed 20 of these 21 shapes, gate-r7's all 21.
+
+  That fix was left unfinished, and was not staged: with it the suite gave
+  531 passed and 2 failed, the two gate-r8 mutation cases `r8: heredoc
+  bodies not read when shlex fails` and `r8: skipped heredoc bodies not
+  collected`, whose scenario (an unquoted body's `$(git push origin HEAD)`)
+  its new expanding reading also covered. A last call on it named the fork
+  (finish here, or merge with the five kinds named as residuals and close
+  them in a gate-r9); the founder's word, 2026-09-22, as relayed by the
+  orchestrating session (Review trail): *"check claude cli,
+  0dc07485-0b74-4712-aa1f-c43ab67f6dbc, make sure it din't do anything
+  different. if not finish in this PR"*. The orchestrating session checked
+  that session (the merge train) and found no gate edits, so it is
+  finished here.
+- **Finished, same PR.** Measured before finishing it, the unfinished fix
+  still let 36 more real pushes through (35 at exit 0, one by crashing),
+  each moving a local bare origin's `main` when run -- 25 under bash, 11
+  under zsh; the hook this section first described let 35 of them through,
+  gate-r7's all 36. Each is closed where it lived, inside the roads he
+  chose or under a rule already recorded here:
+  - *Which heredoc bodies a shell runs (road (b)'s heredoc reading).* The
+    fix read a body as a script only when a shell stood in the heredoc's
+    pipeline on its own line, and its `.` never matched: a trailing-version
+    strip turned the name `.` into nothing. `_heredoc_runs_as_script()`
+    now decides once every word of the level holding the heredoc is read
+    (`_lex()`'s `settle()`), and again at each level holding that one. The
+    pipeline runs past a pipe that ends its line, blank lines after the
+    body included (`cat <<'EOF' |` + body + `bash`); it is widened through
+    every group holding the heredoc -- `( ... )`, `{ ...; }`, and `if`,
+    `while`, `until`, `for`, `select` and `case` as commands, not as
+    arguments, with a `case` pattern's `)` closing nothing
+    (`_without_case_patterns()`) -- and through every substitution holding
+    it, where the word the substitution is part of decides (`bash <(cat
+    <<'EOF' ...)`, `source <(...)`, `echo "$(cat <<'EOF' ...)" | bash`). A
+    runner is a shell named anywhere in that pipeline, `.` or `source` as
+    the command (not the `.` of `git -C . commit -F - <<'EOF'`), or a
+    command word built from an expansion this reading does not resolve
+    (`$_ <<'EOF'`, `nohup $_ <<'EOF'`). The pipeline still ends at `&&`, `;`
+    and a newline, so `bash check.sh && cat > msg.txt <<'EOF'` keeps its
+    body text.
+  - *A heredoc inside an unquoted body's substitution.* Each substitution
+    in an unquoted body is now read as the command it is, heredocs
+    included, not word by word: `echo "$(cat <<EOF` + `$(bash <<'X'` +
+    `git push origin HEAD` + `X` + `)` + `EOF` + `)"` was allowed.
+  - *A push check that crashed.* 22 nested `$(` in an unquoted body made the
+    word reader raise inside the fix's new body reading; the hook exited 1,
+    which Claude Code treats as a non-blocking error, so the command ran --
+    with a push written to a file and run after it, a shape the hook first
+    described here refused. `main()` now refuses when the push check raises
+    ("the push check could not read the command"), the product rule that a
+    failed read is an error, and a heredoc script or an unquoted body's
+    substitution nested past `_MAX_PUSH_WRAP_DEPTH` is refused, as a fourth
+    nested `bash -c` is.
+  - *zsh's `=name`, past git (the last call's fourth kind).* `=bash -c
+    '<push>'`, `=sh -c '<push>'`, `=python3 -c '...<push>...'` and `=bash
+    <<'EOF'` ran their strings and scripts unread; `_program_name()` drops
+    zsh's `=` wherever the wrapper, shell, string-runner and heredoc-runner
+    lists are read, as `_is_program()` already did for git.
+  - *zsh's parameter splitting (road (a)).* zsh does not split an unquoted
+    `$G`, but `$=G` and `${=G}` split it, and so do the flags `${(z)G}` and
+    `${(s:x:)G}`: with `G="git push origin HEAD"` each ran a push. `$=G`,
+    `${=G}`, `$~G` and `$^G` now resolve as G's value (`G="git push";
+    ${=G} origin feat/x` passes like a bare push); a word under a flag this
+    hook does not evaluate is refused, as a command word or a later word
+    behind an unrecognised shape, when an assignment before the command
+    gives G a value holding `push` (`_value_holds_push()`), as one whole
+    substitution holding push already was. A prefix gives the word nothing:
+    `G="git push origin HEAD" ${(z)G}` runs no push and is allowed. A flag
+    (`${(`) opens the reading, as `IFS=` does.
+  - *Quoting inside both words (road (b), older than this round).* The
+    prefilter that opens the push reading looked for the words `git` or
+    `push` as written, so `"g"it "p"ush origin HEAD`, `g\it p\ush origin
+    HEAD`, `g''it p''ush origin HEAD` and `$'\x67it' $'\x70ush' origin HEAD`
+    were never read at all; gate-r7's hook let each through the same way.
+    The prefilter now also reads the command with `$'...'` decoded and
+    quotes and backslashes dropped (`_unquoted()`); what the reading then
+    finds decides (`"g"it status` passes).
+  - *The two surviving mutation cases are re-pinned, not retired.* Their
+    scenario `r8_fallback_body` is now `echo $'\''`, then a quoted body
+    holding `git push origin HEAD` written to `p.sh`, then `bash p.sh`: a
+    real push, pinned by `test_r8_only_the_line_reading_stops_a_push_through_a_file`,
+    that only the unreadable-word fallback's line reading sees. The index
+    shift the first cut kept for a spliced word, and its two mutation
+    cases, stay retired as the last call left them: with a prefix read as
+    assigned after its command, every word of a command reads the same
+    assignments, so the shift could not change a verdict; both scenarios
+    stay in the control set, still refused.
+
+  Pinned: `test_r8_finishing_pass_shapes_are_real_pushes_the_hook_now_stops`
+  (25 bash shapes) and `test_r8_finishing_pass_zsh_shapes_are_refused` (11,
+  run for real under zsh where it is installed), each moving `main` ungated
+  and refused gated with `main` unmoved; `test_r8_finishing_pass_allowed_twins`
+  pins 9 twins at exit 0, and the founder's twins hold (a commit heredoc
+  that does not push, with an odd and with an even apostrophe count, and
+  `git push origin feat/x`); 32 new mutation cases, each checked in-process
+  to flip its scenario's exit, except the crash guard's, whose mutant exits
+  1 by design -- the fail-open it guards against. Not pinned by a mutation:
+  the command-position checks inside `_without_case_patterns()`, and the
+  hygiene `del` of carried bodies in `_lex()`'s `nested_lex()` (its mutant
+  changes no verdict). The transcript replay was re-run on every distinct
+  Bash command recorded by then, 80,100: the verdicts of the hook this
+  section first described, of the unfinished fix and of this one are
+  identical on every command (389 refused); against gate-r7's hook, 55 are
+  refused now that were allowed and none is allowed that was refused -- the
+  54 above, plus one command recorded after that replay that bash itself
+  cannot parse (an unclosed quote, `bash -n` exit 2), refused by the
+  unreadable-word rule.
+- **Named residuals, gate-r8,** each pinned at exit 0 by
+  `test_r8_the_named_residuals_are_still_not_seen`: a git and its subcommand
+  both built by expansion (`$G $P origin HEAD`), the push-side twin of `G=gh;
+  $G p$()r merge 2`; a command word built by brace or glob expansion
+  (`{git,push,origin,HEAD}`, measured moving `main`), the twin of `{gh,pr,merge}
+  2`; behind an unrecognised shape, a substitution word holding blanks, read
+  as a string and not as a command word (`timeout 5 $(printf 'git push')
+  origin HEAD`); an unresolvable destination from a named source, now also
+  when the value is itself an expansion (`X=main; B=$X; git push origin
+  feat:$B`), as gate-r4 decided for `feature:$UNRELATED`; a command both
+  readings misread through a construct the word reader does not flag; and,
+  older than this round and found while testing it, the push-side twins of
+  the merge side's "Not seen" `echo merge 2 | xargs gh pr` and `alias g=gh;
+  g pr merge 2`: `echo push origin HEAD | xargs git` (measured moving
+  `main`) and a shell alias for git defined on an earlier line. Left
+  for the founder, found while building: a git alias the command defines
+  for itself (`git -c alias.p=push p origin HEAD`, `GIT_CONFIG_COUNT=1
+  GIT_CONFIG_KEY_0=alias.p GIT_CONFIG_VALUE_0=push git p origin HEAD`, each
+  measured moving `main`) — gate-r3 reads only `git config --get
+  alias.<name>`, and which config sources to distrust (`-c`,
+  `--config-env`, `GIT_CONFIG_*`, `HOME`, `-c include.path`) is a fork. A
+  cost, pinned refused by `test_r8_the_named_cost_is_still_refused`: behind
+  an unrecognised program, an unresolved single word followed by the word
+  push is refused whatever the program (`docker --config $DIR push
+  myimage`), since it may be git.
+- **Named residuals after the last call, finished,** each a real push
+  (measured moving a bare origin's `main`) pinned at exit 0 by
+  `test_r8_finishing_pass_named_residuals_are_still_not_seen`: a heredoc
+  body carried through a variable to a shell (`x="$(cat <<'EOF' ...)";
+  echo "$x" | bash`); a script written to a file and run later, whose
+  earlier lines the unreadable-word fallback loses by reading a body one
+  line at a time (point 23's script file); a here-string and a pipe into a
+  shell (`bash <<< '...'`, `echo '...' | bash`, point 23's stdin); git and
+  push both split by an expansion (`g$()it p$()ush origin HEAD`, under "a
+  git and its subcommand both built by expansion"); and, left for the
+  founder, a heredoc body a program that is not a shell runs, with the push
+  inside that program's own quoted string (`python3 - <<'EOF'` with
+  `os.system('git push origin HEAD')`, `perl <<'EOF'`) -- the heredoc twin
+  of gate-r7's string-running reading, which reads `python3 -c '...push...'`
+  but no heredoc. Costs, pinned refused: a command word under a zsh flag
+  whose value holds push is refused whatever its destination (`G="git push
+  origin feat/x"; ${(z)G}`); a command word built from an expansion in a
+  heredoc's pipeline makes its body a script, so an unreadable line there
+  is refused (`"$PY" - <<'EOF'` with a body naming git and an odd
+  apostrophe). Neither occurs in the 80,100 recorded commands.
+
+Re-measured on this round's own tree: `test_require_pr_audit.py` alone 484
+passed (366 at gate-r7); 98 `test_hook_mutations_are_killed` cases, every
+mutant killed, 39 of them gate-r8's, each checked to flip its scenario's
+exit rather than crash, plus gate-r4's command-substitution fragment check
+re-pinned to `B=<(echo main)`, the one fragment only it still reads as
+unresolved; the full `ci.yml` scripts/ step 815 passed (697 at gate-r7);
+`test_pr_audit_gate.py` 103, unchanged. Two tests re-anchored, not
+weakened: `test_h15d` and `test_r4_a_reader_that_cannot_read...` inject a
+crash at `_lex()`'s new signature, and their control is now `ls -la`,
+because the push check reads a git command with the same reader and a crash
+there refuses it (asserted). Not done, stated plainly: no branch-protection
+or live-repo verification; the shells measured are bash 5.3 and, for one
+shape, zsh (the Bash tool here runs zsh, where an unquoted `$G` is not
+split, so the split reading can refuse a command zsh would not run as a
+push); `timeout` is not installed on this machine, so the shapes behind it
+are proven by the hook's verdict only.
+
+Re-measured after the last call, finished, on this PR's own tree:
+`test_require_pr_audit.py` 618 tests, all passing in the step run below
+(484 at the first cut, 531 passed and 2 failed with the unfinished fix); 147
+`test_hook_mutations_are_killed` cases, every mutant killed, 88 of them
+gate-r8's (37 of the first cut's, the last call's 19, the finishing pass's
+32); the full `ci.yml` scripts/ step 949 passed (815 at the first cut);
+`test_pr_audit_gate.py` 103, unchanged. The CLAIMS row
+`ADR-0090-GATE-R8-UNREADABLE-AND-EXPANDED-PUSH` holds on this hook and
+exits 1 on `origin/main`'s, on the first cut's, on the unfinished fix's,
+and on 31 of the last call's and finishing pass's 51 hook mutations. Not
+done, as before: no branch-protection or live-repo verification; the shells
+measured are bash 5.3 and zsh 5.9.
 
 ### Amendment — 2026-09-17, founder pipeline redesign
 
@@ -1913,3 +2268,5 @@ un-anchored and 0 when restored.
 | 2026-09-18 | Aldemir (via `AskUserQuestion`, relayed by the orchestrating session) | Chose the option labelled exactly *"Accept the widening (Recommended)"* on the question about widening the owned set: the whole `.github/workflows/` folder, `.github/actions/`, the deploy-check scripts, the gate's own tests, and `.claude/` at any depth. Recorded in the amendment's widening paragraph, which no longer asks for his word on it. `scripts/check_test_scripts_are_real.py` and `.mcp.json` at any depth were not named in the acceptance as relayed; they ride on this PR's own escalation. |
 | 2026-09-21 | Aldemir (chat, gate lane review-trail round, gate-r6) | Closed the two residuals gate-r5 had only named (bullet above, "Named, not code-changed"), verbatim: **(1)** *"Bind it to the segment"* -- the literal-PR `gh api` exemption in `_github_api_merge_reason()` was granted on a gh-api reading of the WHOLE command, so `gh api user >/dev/null; curl -X PUT .../pulls/2/merge` was exempted by an unrelated `gh api` call; it is now granted only when `_merge_call_outside_gh_api()` finds no segment (top-level, in a substitution, or in a quoted string another shell runs) that names the endpoint without itself being the recognised `gh api` call. **(2)** *"Teach it export"* -- `_collect_assignments()` read a leading `export` as the command starting and skipped the `NAME=value` after it, so `export B=main; git push origin feat:$B` reached main; `export`, `export -n` and `export --` now assign as the bare form does. The last call found the first cut of each opened what HEAD refused -- surfaces in a heredoc body (a base Merges POST, a GraphQL auto-merge mutation, a non-literal-PR merge, a curl merge) and two `export` shapes resolved to a value the push never sees -- and corrected both (bracket on the gate-r5 bullet, above, with the residuals still named). Re-measured on this branch, not copied forward: `test_require_pr_audit.py` 286 passed; the full `ci.yml` scripts/ step (9 files, `scripts/jev/prompt_gate_test.py` folded in by this branch's merge with `origin/main`) 617 passed; `test_pr_audit_gate.py` 103, unchanged; `--self-test` 98 invariants held, unchanged; every `r6_*` HOOK_MUTATIONS mutant exits 0 on its scenario where the fix exits 2. Not done, stated plainly: no branch-protection or live-repo verification, same restriction as every prior round; the `gh api` finding is the hook's own verdict in the test harness, and only the export fix was also shown with a real push, against a local bare origin. |
 | 2026-09-21 | Aldemir (chat, relayed by the orchestrating session, gate lane review-trail round, gate-r7) | Closed the residual gate-r6 could only name (this ADR's own text, not his words: *"a push behind an env prefix or a wrapper (`X=1 git push origin HEAD`, `nohup git push origin HEAD`), which `_direct_push_problem()` skips because the segment's first word is not git."*). His answer, as relayed: *"CLOSE the env-prefix / wrapper push hole, fail closed - a push behind leading assignments or a wrapper (nohup, env, command, time, exec, sudo, xargs, a shell -c with a literal string) run from a main checkout is read like a bare push; an unrecognised wrapper shape is refused."* Disposition of the two shapes named with it, as relayed: other assignment forms (`declare`, `typeset`, `readonly`, `local`, `read`, `eval`, `NAME+=`) -- **keep trusting them** (named residual, not widened); heredoc/comment text -- **keep the current reading**. Built as three readings (recognised: read like a bare push; a shell running a string: re-read, expansion refused; unrecognised: refused whatever the destination) in the gate-r7 bracket above. The last call found the first cut had read only a bare named wrapper and an exact `shell -c`, and had recorded four open shapes (`sudo -u root`, `env -i`, `xargs -I{}`, `bash --norc -c`) as residuals he had not named; corrected, and five shapes proven with a real push against a local bare origin, first cut allowed and moved main, fix refused and main stayed. `test_require_pr_audit.py` 366 passed (286 at gate-r6); the full `ci.yml` scripts/ step 697 passed (617 at gate-r6); `test_pr_audit_gate.py` 103, unchanged. |
+| 2026-09-21 | Aldemir (chat, relayed by the orchestrating session, round 6, gate-r8) | His answer to the gate-r7 last call's four recommendations, verbatim: *"Take all four"*. As relayed, that is: (1) a word shlex cannot close -- road (b), re-read with the heredoc-aware `_lex` reader and refuse only if that also fails; (2) git named by an expansion -- road (a), resolve a command word through the same-command assignments `_collect_assignments()` collects and refuse an unresolved `$`-built command word followed by push; (3) accept that a heredoc body line naming `git push` after another word, or `echo git push origin HEAD`, is refused, the text going through a file with `-F`, and make the refusal say so; (4) keep "a quoted string handed to a program on neither list" as a named residual, unchanged. Built in the gate-r8 section above, with three shapes found while building and closed under rules already recorded (a push inside a double-quoted substitution, a value that is itself an expansion or an array, a command both readings misread). Fourteen shapes exit 0 on gate-r7's hook and exit 2 on gate-r8's; a replay of 79,404 recorded Bash commands refuses 54 more and allows none it refused. Left for him: a git alias the command defines for itself, and the `docker --config $DIR push` cost. `test_require_pr_audit.py` 484 passed (366 at gate-r7), 98 mutation cases all killed; the full `ci.yml` scripts/ step 815 passed (697 at gate-r7); `test_pr_audit_gate.py` 103, unchanged. [Finished in the 2026-09-22 row below: its last call found more pushes in the same two roads.] |
+| 2026-09-22 | Aldemir (chat, relayed by the orchestrating session, gate-r8 last call) | On the fork the gate-r8 last call put to him (finish its unstaged fix in this PR, or merge with its five kinds named as residuals), verbatim: *"check claude cli, 0dc07485-0b74-4712-aa1f-c43ab67f6dbc, make sure it din't do anything different. if not finish in this PR"*. The orchestrating session checked that session (the merge train): no gate edits. Finished here (gate-r8 section, "Finished, same PR"): the last call's 21 shapes and 36 more the unfinished fix still let through, each a real push, are refused; the two surviving mutation cases re-pinned to a real push only the line reading sees; the replay of 80,100 recorded commands gives verdicts identical to the first cut's. Left for him: a heredoc body a program that is not a shell runs (`python3 - <<'EOF'`). `test_require_pr_audit.py` 618 passed, 147 mutation cases all killed; the full `ci.yml` scripts/ step 949 passed. |

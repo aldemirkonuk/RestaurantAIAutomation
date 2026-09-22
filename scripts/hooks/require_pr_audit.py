@@ -436,7 +436,12 @@ def _git_alias_definition(name: str) -> str | None:
 # `NAME=value` counts, the same restraint this file applies everywhere else
 # it declines to build a general shell evaluator.
 _SIMPLE_ASSIGNMENT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.DOTALL)
-_VAR_REF_RE = re.compile(r"\$\{(\w+)\}|\$(\w+)")
+# gate-r8 last call, finished: zsh's `$=NAME`, `${=NAME}` (split), `$~NAME`
+# (glob) and `$^NAME` are NAME's value too; the Bash tool runs zsh here.
+_VAR_REF_RE = re.compile(r"\$\{[=~^]*(\w+)\}|\$[=~^]*(\w+)")
+# Any reference to a name, including a zsh parameter flag this hook does not
+# evaluate (`${(z)G}`, `${(s: :)G}`, which split G's value into words).
+_PARAM_NAME_RE = re.compile(r"\$\{(?:\([^)]*\))?[=~^]*(\w+)|\$[=~^]*(\w+)")
 _STATEMENT_SEP_TOKENS = frozenset({";", "&&", "||", "\n"})
 # A value this hook must never trust as literal, however it was produced --
 # distinct from "not set at all" (also left unresolved, by the .get default
@@ -530,6 +535,20 @@ def _collect_assignments(toks: list[str]) -> dict[str, list[tuple[int, object]]]
         nxt = toks[i + 1] if i + 1 < n else None
         if nxt is not None and nxt not in _STATEMENT_SEP_TOKENS and _is_punctuation(nxt):
             value: object = _UNRESOLVED
+        elif re.search(r"[$`(]", m.group(2)):
+            # gate-r8: a value that is itself an expansion (`B=$X`, and every
+            # `B=$(...)` the word reader keeps whole) or an array (`B=(main)`,
+            # whose `$B` is main) is not a literal. Read as one, `X=main; B=$X;
+            # git push origin HEAD:$B` resolved to `$X`, "plainly not main",
+            # and was allowed; measured moving a bare origin's main.
+            value = _UNRESOLVED
+        elif m.group(1) == "_":
+            # gate-r8 last call: the shell itself resets `$_` after every
+            # command (to its last argument), so no `_=value` is ever what a
+            # later `$_` holds. Trusted, `_=x; echo git; $_ push origin HEAD`
+            # resolved `$_` to `x` and was allowed; measured moving a bare
+            # origin's main.
+            value = _UNRESOLVED
         else:
             value = m.group(2)
         assigned.setdefault(m.group(1), []).append((i, value))
@@ -550,8 +569,10 @@ def _env_before(assigned: dict[str, list[tuple[int, object]]], start: int) -> di
     or exported `NAME=value` the collector sees -- `declare`, `typeset`,
     `readonly`, `local`, `read`, `eval`, `NAME+=`, or an assignment after a
     punctuation run the tokenizer fuses (`); B=main`) -- cannot be weighed
-    here at all. Reading `export` as the bare form reads it brings export to
-    the same gaps: `export B=develop; eval B=main; git push origin HEAD:$B`
+    here at all. [gate-r8: the fused-punctuation case is now read -- the
+    word reading splits `)` from `;` and collects `B=main`.] Reading
+    `export` as the bare form reads it brings export to the same gaps:
+    `export B=develop; eval B=main; git push origin HEAD:$B`
     was refused before gate-r6 only because an exported name was never read."""
     env: dict[str, object] = {}
     for name, entries in assigned.items():
@@ -587,6 +608,20 @@ def _push_reason(seg: list[str], env: dict[str, str] | None = None) -> str | Non
     `env`: what same-command NAME=value assignments give (see _env_before)."""
     env = env or {}
     j = _skip_git_global_flags(seg, 1)
+    while j < len(seg) and re.search(r"[$`]", seg[j]):
+        # gate-r8: a subcommand built from an expansion is resolved through the
+        # same-command assignments, as a command word is (_expansion_words);
+        # one this hook cannot resolve may be push. Before, `P=push; git $P
+        # origin HEAD` and `git $(echo push) origin HEAD` were read as an
+        # unknown, not alias-shaped subcommand and allowed; each measured
+        # moving a bare origin's main.
+        words = _expansion_words(seg[j], env)
+        if words is None:
+            return (f"runs git with a subcommand (`{seg[j]}`) built from a shell expansion "
+                    "this hook cannot resolve through the command's own assignments, "
+                    "which may be push")
+        seg = seg[:j] + words + seg[j + 1:]
+        j = _skip_git_global_flags(seg, j)
     if j >= len(seg):
         return None
     sub = seg[j].lower()
@@ -709,6 +744,8 @@ def _push_reason(seg: list[str], env: dict[str, str] | None = None) -> str | Non
 # a quoted argument such as `gh pr create --body '...'`.
 _PUSH_WRAPPER_PROGRAMS = frozenset({"nohup", "env", "command", "time", "exec", "sudo", "xargs"})
 _PUSH_SHELL_PROGRAMS = frozenset({"sh", "bash", "zsh", "dash", "ksh", "fish"})
+# What runs a heredoc body as a script (gate-r8 last call, _heredoc_runs_as_script()).
+_SCRIPT_RUNNERS = _PUSH_SHELL_PROGRAMS | {"source", "."}
 _MAX_PUSH_WRAP_DEPTH = 3
 # A shell option cluster that makes the shell run a command string: `-c`
 # itself, or `c` among other single-letter options (`-lc`, `-ec`, `-xc`).
@@ -729,6 +766,106 @@ def _git_invokes_push(seg: list[str], env: dict[str, object]) -> bool:
         if sub == "push" or (sub == "subtree" and j + 1 < len(seg) and seg[j + 1].lower() == "push"):
             return True
     return _push_reason(seg, env) is not None
+
+
+# gate-r8, 2026-09-21, round 6. The founder's answer to the gate-r7 last call,
+# verbatim: "Take all four" of its recommendations. Two of them are code here:
+#   GIT NAMED BY AN EXPANSION (road (a)): `G=git; $G push origin HEAD` and
+#     `$(echo git) push origin HEAD` were not seen -- a command word built from
+#     `$` or a backtick matched neither git nor a wrapper, and nothing after it
+#     was git. Now a command word built that way is resolved through the
+#     same-command assignments `_collect_assignments()` already collects
+#     (`_expansion_words()`), split on blanks the way the shell splits an
+#     unquoted expansion, and read as what it resolves to; one this hook cannot
+#     resolve is REFUSED when push follows it (`_push_follows()`), past git's
+#     own global flags, or when it is one whole substitution holding push.
+#     The same applies to a later single word behind an unrecognised wrapper
+#     shape, and to git's own subcommand (`git $P`, `_push_reason()`).
+#   AN UNREADABLE WORD (road (b), in `_direct_push_problem()`): when shlex
+#     cannot close a word (bash `$'...'` quoting, an odd apostrophe in a
+#     heredoc body), the command is re-read with the heredoc-aware `_lex()`
+#     reader; it is refused only if that reading also fails.
+# Named residuals (ADR 0090, gate-r8): a git and its subcommand BOTH built by
+# expansion (`$G $P origin HEAD`, nothing literal to follow), a command word
+# built by brace or glob expansion (`{git,push,origin,HEAD}`), behind an
+# unrecognised shape a substitution word holding blanks (read as a string),
+# a git alias the command defines for itself (`git -c alias.p=push p`), and a
+# command both readings misread through a construct the word reader does
+# not flag.
+# Last call (ADR 0090, gate-r8), five fail-opens in the two roads, each
+# measured moving a bare origin's main and closed where it lived: a
+# same-command prefix read as giving the command's own words their value
+# (_wrapper_stripped_push_reason), a `_=value` trusted (_collect_assignments),
+# `$'...'` escapes read as the escaped letter (_ansi_c), zsh's `=git`
+# (_is_program), and heredoc bodies a shell runs or expands
+# (_heredoc_push_reason).
+# The same last call, finished (the fix above, as first written, still let
+# pushes through, each measured moving a bare origin's main): a body a shell
+# reaches past the heredoc's own line -- after a trailing pipe, through a
+# group, keyword compound or `case` branch piped to a shell, through a
+# substitution whose word a shell runs, by `.`/`source` (the fix stripped `.`
+# to an empty name), or by a shell named by an expansion
+# (_heredoc_runs_as_script); a heredoc inside an unquoted body's
+# substitution (read now as the command it is); zsh's `=bash`, `=sh` and
+# `=python3` (_program_name); zsh's `$=G`, `${=G}`, `${(z)G}` and
+# `${(s:x:)G}` (_VAR_REF_RE, _value_holds_push); quoting inside both git and
+# push, which hid the command from the prefilter (_unquoted); and a push
+# check that raised, which exited 1 and so let the command run (caught in
+# main(), refused). A heredoc script or an unquoted body's substitution
+# nested past _MAX_PUSH_WRAP_DEPTH is refused, as a shell's command string is.
+
+# A word that is one whole `$(...)` or backtick substitution (the word reader
+# keeps one whole; shlex never does).
+_WHOLE_SUBSTITUTION_RE = re.compile(r"(?s)\$\(.*\)|`.*`")
+
+
+def _expansion_words(tok: str, env: dict[str, object]) -> list[str] | None:
+    """The words `tok`, built from `$` or a backtick, becomes once resolved
+    through the same-command assignments (`env`, from _env_before()), split
+    on blanks the way the shell splits an unquoted expansion; None when any
+    part of it is still an expansion this hook cannot resolve. A same-command
+    IFS is honoured: `IFS=x; W=gitxpush; $W origin HEAD` is `git push`,
+    measured moving a bare origin's main."""
+    resolved = _resolve_simple_var(tok, env)
+    ifs = env.get("IFS")
+    if re.search(r"[$`]", resolved) or ifs is _UNRESOLVED:
+        return None
+    if isinstance(ifs, str):
+        return [w for w in re.split(f"[{re.escape(ifs)}]+", resolved) if w] if ifs else [resolved]
+    return resolved.split()
+
+
+def _value_holds_push(tok: str, assigned: dict[str, list[tuple[int, object]]], start: int) -> bool:
+    """True when `tok` names a variable an assignment before token `start`
+    gives a value holding `push`. gate-r8 last call, finished: under zsh,
+    `${(z)G}` and `${(s: :)G}` split G's value into words, so with `G="git
+    push origin HEAD"` each runs a push nothing after it names; measured
+    moving a bare origin's main. The flags are not evaluated here: an
+    unresolved word whose value holds push is refused, as one whole
+    substitution holding push is. A prefix or a later assignment gives the
+    word nothing (`G='git push' $G origin HEAD` runs no push)."""
+    for m in _PARAM_NAME_RE.finditer(tok):
+        name = m.group(1) or m.group(2)
+        if any(index < start and isinstance(v, str) and re.search(r"(?i)push", v)
+               for index, v in assigned.get(name, [])):
+            return True
+    return False
+
+
+def _push_follows(seg: list[str], k: int) -> bool:
+    """True if what follows `seg[k]`, past git's own global flags, is `push`
+    or `subtree push`."""
+    j = _skip_git_global_flags(seg, k + 1)
+    if j >= len(seg):
+        return False
+    sub = seg[j].lower()
+    return sub == "push" or (sub == "subtree" and j + 1 < len(seg) and seg[j + 1].lower() == "push")
+
+
+def _unresolved_git_reason(tok: str) -> str:
+    return (f"runs `{tok}` as a command, a word built from a shell expansion this "
+            "hook cannot resolve through the command's own assignments, and push "
+            "follows it -- it may be git, so it is refused rather than read")
 
 
 def _shell_string_push_reason(seg: list[str], i: int, _depth: int) -> str | None:
@@ -766,22 +903,41 @@ def _unrecognised_wrapper_push_reason(seg: list[str], i: int, seg_start: int,
     refusal = (f"runs a git push behind `{seg[i]}`, a wrapper shape this hook "
                "does not recognise -- refused rather than read, whatever its "
                "destination")
-    runner = re.sub(r"[0-9.]+$", "", os.path.basename(seg[i]).lower())
+    runner = re.sub(r"[0-9.]+$", "", _program_name(seg[i]))
     reads_strings = wrapped or runner in _STRING_RUNNING_PROGRAMS
-    for k in range(i + 1, len(seg)):
+    k = i + 1
+    while k < len(seg):
         tok = seg[k]
+        if re.search(r"[$`]", tok) and not re.search(r"\s", tok):
+            # gate-r8 (2): any later single word may be the command this shape
+            # runs, as a later git already is: resolve it, and refuse one that
+            # cannot be resolved when push follows it. A word holding blanks
+            # is a string, and goes on to the string reading below.
+            words = _expansion_words(tok, _env_before(assigned, seg_start + k))
+            if words is None:
+                if _push_follows(seg, k):
+                    return _unresolved_git_reason(tok)
+                if _value_holds_push(tok, assigned, seg_start + k):
+                    return _unresolved_git_reason(tok)
+                k += 1
+                continue
+            seg = seg[:k] + words + seg[k + 1:]
+            continue
         if _is_program(tok, "git"):
             if _git_invokes_push(seg[k:], _env_before(assigned, seg_start + k)):
                 return refusal
+            k += 1
             continue
-        if os.path.basename(tok).lower() in _PUSH_SHELL_PROGRAMS:
+        if _program_name(tok) in _PUSH_SHELL_PROGRAMS:
             reason = _shell_string_push_reason(seg, k, _depth)
             if reason:
                 return reason
             reads_strings = True
+            k += 1
             continue
         if reads_strings and re.search(r"\s", tok) and re.search(r"(?i)\bpush\b", tok):
             return refusal
+        k += 1
     return None
 
 
@@ -796,6 +952,19 @@ def _wrapper_stripped_push_reason(seg: list[str], seg_start: int,
     sees exactly the same same-command assignments an un-wrapped push at
     that position would. `assigned` is `_direct_push_problem()`'s own
     `_collect_assignments()` map, built once for the whole command."""
+    # gate-r8 last call: the shell expands every word of a simple command
+    # before that command's own NAME=value prefix takes effect, so a prefix
+    # never gives this command's words their value; it counts as assigned
+    # after them, as a later statement's assignment already does. Read as
+    # given, `declare G=git; G=true $G push origin HEAD` resolved `$G` to
+    # `true` and was allowed where `declare G=git; $G push origin HEAD` is
+    # refused (so was `declare P=push; P=status git $P origin HEAD`, and,
+    # older than this round, `declare B=main; B=feat git push origin HEAD:$B`);
+    # each measured moving a bare origin's main. Every word of this segment
+    # therefore reads the same assignments -- those made before the segment
+    # -- so a word spliced in by an expansion needs no index of its own.
+    assigned = {name: [(k if k < seg_start else float("inf"), v) for k, v in entries]
+                for name, entries in assigned.items()}
     i, n = 0, len(seg)
     wrapped = False
     while i < n:
@@ -803,9 +972,28 @@ def _wrapper_stripped_push_reason(seg: list[str], seg_start: int,
         if _SIMPLE_ASSIGNMENT_RE.match(tok):
             i += 1
             continue
+        if re.search(r"[$`]", tok):
+            # gate-r8 (2), road (a): a command word built from an expansion is
+            # resolved through the same-command assignments and read as what
+            # it resolves to; one this hook cannot resolve is refused when
+            # push follows it, and read as an unrecognised shape otherwise.
+            words = _expansion_words(tok, _env_before(assigned, seg_start + i))
+            if words is None:
+                # Push after it, or inside a word that is one whole substitution:
+                # `$(printf 'git push') origin HEAD` is split into `git push`.
+                if _push_follows(seg, i) or (_WHOLE_SUBSTITUTION_RE.fullmatch(tok)
+                                             and re.search(r"(?i)\bpush\b", tok)):
+                    return _unresolved_git_reason(tok)
+                if _value_holds_push(tok, assigned, seg_start + i):
+                    return _unresolved_git_reason(tok)
+                return _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned,
+                                                         wrapped, _depth)
+            seg = seg[:i] + words + seg[i + 1:]
+            n = len(seg)
+            continue
         if _is_program(tok, "git"):
             return _push_reason(seg[i:], _env_before(assigned, seg_start + i))
-        name = os.path.basename(tok).lower()
+        name = _program_name(tok)
         if name in _PUSH_WRAPPER_PROGRAMS:
             wrapped = True
             i += 1
@@ -816,7 +1004,30 @@ def _wrapper_stripped_push_reason(seg: list[str], seg_start: int,
     return None  # ran out of tokens (only assignments/wrappers, nothing after): not a push
 
 
-def _direct_push_problem(command: str, _depth: int = 0) -> str | None:
+# gate-r8 last call, finished: what opens the push reading. A zsh parameter
+# flag (`${(s:x:)G}`) splits a value on any separator, as a same-command IFS
+# does, so it opens the reading too.
+_PREFILTER_RE = re.compile(r"(?i)\b(?:push|git)\b|\bIFS=|\$\{\(")
+
+
+def _unquoted(command: str) -> str:
+    """The command's text with `$'...'` decoded and every quote and backslash
+    dropped, for the prefilter only. gate-r8 last call, finished: quoting
+    inside both words hid the whole command from the reading -- `"g"it "p"ush
+    origin HEAD`, `g\\it p\\ush origin HEAD`, `g''it p''ush origin HEAD` and
+    `$'\\x67it' $'\\x70ush' origin HEAD` were never read, and each moved a
+    bare origin's main (measured; gate-r7's hook let them through the same
+    way). A word split by an expansion (`g$()it p$()ush`) stays the named
+    residual "a git and its subcommand both built by expansion"."""
+    decoded = re.sub(r"\$'((?:[^'\\]|\\.)*)'", lambda m: _ansi_c(m.group(1)), command, flags=re.S)
+    return re.sub(r"[\"'\\]", "", decoded)
+
+
+def _direct_push_problem(command: str, _depth: int = 0, _text: bool = False) -> str | None:
+    """Why `command` is a push this hook must refuse, or None. `_text` marks one
+    line of a heredoc body read in the unreadable-word fallback below: text
+    that may never run, so a line no reader can close is read with quotes and
+    backslashes removed rather than refused."""
     # Cheap pre-filter: "push" covers a literal invocation (including a
     # renamed/symlinked git, which still can't rename its own SUBCOMMAND
     # away) and "git" covers the alias case, where "push" is hidden inside an
@@ -825,13 +1036,152 @@ def _direct_push_problem(command: str, _depth: int = 0) -> str | None:
     # alias, with neither word present, is a compounding of two separate
     # evasions this hook does not attempt -- tokenizing every single Bash
     # command regardless of content is the cost of closing it, which is not
-    # taken here.
-    if not re.search(r"(?i)\b(?:push|git)\b", command):
+    # taken here. gate-r8: a same-command IFS can split one word into git and
+    # push (`IFS=x; W=gitxpush; $W origin HEAD`), so it opens the reading too.
+    if not (_PREFILTER_RE.search(command) or _PREFILTER_RE.search(_unquoted(command))):
         return None
+    # gate-r8: two readings. `_lex()` keeps `$(...)` and backticks whole, so a
+    # command word built by substitution (`$(echo git) push`) stays one word,
+    # and it reads the words inside every substitution, double-quoted ones
+    # too: `echo "$(git push origin HEAD)"` was one quoted shlex word, not
+    # seen, and moved a bare origin's main. shlex stays the first reading.
+    report: dict = {}
+    try:
+        lexed = _lex_push_reason(command, report, _depth)
+    except Exception as exc:  # noqa: BLE001 -- a reader that fails must not read as "not a push"
+        lexed = None
+        report["failed"] = type(exc).__name__
     try:
         toks = _tokens(command)
     except ValueError:
-        return None  # merge_invocations()/unplain_gh_word() already surface this
+        toks = None
+    if toks is not None:
+        reason = _token_push_reason(toks, _depth) or lexed
+        if reason:
+            return reason
+        if "failed" in report:
+            return (f"the command cannot be read word by word ({report['failed']}), so a "
+                    "push inside a substitution cannot be ruled out")
+        # Each reading covers the other's misreads, so a push stays hidden
+        # only where both misread at once. Measured, each moving a bare
+        # origin's main: `echo $'\''; x=(')')` then a push on the next line,
+        # and `echo "$(case a in a) git push origin HEAD;; esac)"`.
+        doubt = report.get("open") or report.get("misread")
+        if doubt and not _text and _SHLEX_MISREADS_RE.search(command):
+            return (f"both readings may misread this command: the word reader meets {doubt}, "
+                    "and shlex does not read `$'...'` quoting, a heredoc, a `#` inside a "
+                    "word or a double-quoted substitution the way the shell does")
+        return _heredoc_push_reason(report, _depth)
+    # gate-r8 (1), road (b): shlex cannot close a word -- bash `$'...'`
+    # quoting, an odd apostrophe in a heredoc body. Until now the whole push
+    # check returned "not a push" here, so `git push origin HEAD; echo $'\''`
+    # was allowed and moved a bare origin's main. The `_lex()` reading above
+    # stands in for shlex, and the command is refused only if it fails too:
+    # it raised, left a quote or substitution open, or met a construct it is
+    # known to read differently from the shell. Heredoc bodies, which `_lex()`
+    # skips, keep the current reading -- their lines are read as commands.
+    if lexed:
+        return lexed
+    if _text:
+        return _token_push_reason(_tokens(re.sub(r"[\"'\\]", "", command)), _depth)
+    problem = report.get("failed") or report.get("open") or report.get("misread")
+    if problem:
+        return (f"shlex cannot close a word, and the heredoc-aware word reader cannot "
+                f"read the command either ({problem}) -- refused rather than read as "
+                "not a push")
+    reason = _heredoc_push_reason(report, _depth)
+    if reason:
+        return reason
+    for body in report.get("bodies", []):
+        for line in body.split("\n"):
+            reason = _direct_push_problem(line, _depth, _text=True)
+            if reason:
+                return reason
+    return None
+
+
+def _heredoc_push_reason(report: dict, _depth: int) -> str | None:
+    """gate-r8 last call: what runs out of a heredoc body. A body on a line
+    that names a shell (`bash <<'EOF'`, `cat <<'EOF' | sh`) is that shell's
+    script, read whole as a command; a body under an unquoted delimiter has
+    its substitutions run by the shell, and each is read as a command. Read
+    one line at a time as text, the shlex fallback lost a script's earlier
+    lines: `bash <<'EOF'` with `IFS=x` then `W=gitxpush; $W origin HEAD`, or
+    `W="git push"` then `$W origin HEAD`, followed by `echo $'\\''`, was
+    allowed. Inside a double-quoted substitution, which shlex reads as one
+    word, no body was read at all: `x="$(bash <<'EOF'` + `git push origin
+    HEAD` + `EOF` + `)"`, and `echo "$(cat <<EOF` + `$(git push origin HEAD)`
+    + `EOF` + `)"`, were allowed. Each measured moving a bare origin's main.
+    Which bodies a shell runs is `_heredoc_runs_as_script()`'s reading, made
+    in `_lex()`. A body that is only text under a quoted delimiter (`gh pr
+    create --body "$(cat <<'EOF' ...)"`) is not read here."""
+    for body in report.get("scripts", []):
+        if _depth >= _MAX_PUSH_WRAP_DEPTH:
+            return ("runs a heredoc body as a shell's script nested past the depth this "
+                    "hook re-reads, which may push directly to main")
+        reason = _direct_push_problem(body, _depth + 1)
+        if reason:
+            return reason
+    for body in report.get("expanding", []):
+        i = 0
+        while i < len(body):
+            if body.startswith("$(", i):
+                start, close = i + 2, ")"
+            elif body[i] == "`":
+                start, close = i + 1, "`"
+            else:
+                i += 2 if body[i] == "\\" else 1  # an escaped `$` or backtick substitutes nothing
+                continue
+            _words, _subs, i = _lex(body, start, close, 1)
+            # The substitution is a command of its own, read the way the whole
+            # command is, heredocs included: read only word by word, `$(bash
+            # <<'X'` + `<push>` + `X` + `)` in an unquoted body was allowed
+            # (its own body skipped), measured moving a bare origin's main.
+            if _depth >= _MAX_PUSH_WRAP_DEPTH:
+                return ("runs a substitution in a heredoc body nested past the depth this "
+                        "hook re-reads, which may push directly to main")
+            reason = _direct_push_problem(body[start:i], _depth + 1)
+            i += 1
+            if reason:
+                return reason
+    return None
+
+
+# Where shlex's reading cannot stand in for the word reader's: bash's `$'...'`
+# quoting (shlex ends it at an escaped `\'`), a heredoc (shlex reads its body
+# as code, its apostrophes pairing with quotes outside it), a `#` inside a
+# word (shlex drops the rest of the line as a comment; the shell keeps `a#b`
+# one word), and a substitution (shlex never reads a double-quoted one).
+_SHLEX_MISREADS_RE = re.compile(r"\$'|<<|\S#|\$\(|`")
+
+
+def _lex_push_reason(command: str, report: dict, _depth: int) -> str | None:
+    """The push reading over `_lex()`'s words: the command's own words, then
+    the words inside each substitution, each group read as a command of its
+    own. `report` collects what `_lex()` could not read and the heredoc
+    bodies it skipped."""
+    words, subs, _end = _lex(command, 0, None, 0, report)
+    for index, group in enumerate((words, *subs)):
+        toks = _group_tokens(group)
+        if index and "case" in toks:
+            # `_lex()` ends a substitution at a case pattern's `)`.
+            report.setdefault("misread", "a `case` pattern inside a substitution")
+        reason = _token_push_reason(toks, _depth)
+        if reason:
+            return reason
+    return None
+
+
+def _group_tokens(group: list[tuple[str, str]]) -> list[str]:
+    """One `_lex()` word group as the flat token stream `_token_push_reason()`
+    reads: an operator run as written, any other word as the shell makes it."""
+    return [raw if raw and all(c in _OPERATOR_CHARS + "()" for c in raw) else cooked
+            for cooked, raw in group]
+
+
+def _token_push_reason(toks: list[str], _depth: int) -> str | None:
+    """Why the command whose flat token stream is `toks` (shlex's, or one
+    group of `_lex()`'s words) is a push this hook must refuse, or None."""
     segments: list[list[str]] = [[]]
     starts = [0]  # the token index each segment starts at, for _env_before()
     target = False
@@ -1175,6 +1525,18 @@ def _github_api_merge_reason(text: str) -> str | None:
     return f"runs a GraphQL mutation that merges a PR or arms auto-merge{unsure}"
 
 
+# gate-r8 (3), the founder's round-6 answer: a heredoc body line that names
+# `git push` after another word, and `echo git push origin HEAD`, are refused
+# -- accepted as the cost of refusing an unrecognised shape -- and such text
+# goes through a file with -F. Every push refusal says so.
+PUSH_TEXT_HINT = (
+    " If this command only carries text that names a push, it is refused too: a "
+    "heredoc body line naming `git push` after another word, or `echo git push "
+    "origin HEAD`, reads as a push here. Write that text to a file and pass it "
+    "with -F <file> (`git commit -F`, `gh pr create -F`)."
+)
+
+
 def _allow(note: str = "") -> None:
     if note:
         print(note)
@@ -1297,7 +1659,14 @@ def _is_program(word: str, canonical: str) -> bool:
     """True if `word` (quotes/backslashes already stripped by the caller) IS
     the program `canonical` ("gh" or "git"): spelled plainly, a path ending in
     /<canonical>, or -- the identity fallback above -- resolving on PATH to
-    the exact file `canonical` itself would resolve to."""
+    the exact file `canonical` itself would resolve to.
+
+    gate-r8 last call, under the rule above: zsh, the shell the Bash tool runs
+    here, expands a command word `=name` to the path `name` resolves to on
+    PATH, so `=git` IS git. Unread, `=git push origin HEAD` was allowed;
+    measured moving a bare origin's main under zsh."""
+    if len(word) > 1 and word.startswith("="):
+        word = word[1:]
     lw = word.lower()
     if lw == canonical or lw.endswith("/" + canonical):
         return True
@@ -1455,8 +1824,243 @@ _UNPLAIN_PROBE_RE = re.compile(
 _OPERATOR_CHARS = ";&|<>\n"
 _MAX_NESTING = 20
 
+# ANSI-C quoting, `$'...'`: the escapes bash and zsh decode.
+_ANSI_C_NAMED = {"a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "n": "\n",
+                 "r": "\r", "t": "\t", "v": "\v", "\\": "\\", "'": "'", '"': '"', "?": "?"}
+_ANSI_C_ESCAPE_RE = re.compile(
+    r"\\(?:([0-7]{1,3})|x([0-9A-Fa-f]{1,2})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|c(.)|(.))", re.S)
 
-def _lex(s: str, i: int, closer: str | None, depth: int):
+
+def _ansi_c(body: str) -> str:
+    """The text the shell makes of a `$'...'` body. gate-r8 last call:
+    `_lex()` dropped the backslash of every escape, so `$'\\x6dain'` read as
+    `x6dain`; with shlex unable to close `$'\\''` later in the command, `git
+    push origin $'\\x6dain'` was allowed as a push to `x6dain`, and `$'\\x67it'
+    push origin HEAD` as a program `x67it`; each measured moving a bare
+    origin's main. An escape neither shell knows keeps its backslash in bash
+    (`$'\\git'` is `\\git`) and loses it in zsh, the Bash tool's shell here,
+    where `$'\\git'` is git: it is read as zsh reads it, since a word that
+    keeps a backslash never spells one this hook looks for."""
+    def decode(m: "re.Match[str]") -> str:
+        octal, hex2, hex4, hex8, control, other = m.groups()
+        if octal is not None:
+            return chr(int(octal, 8) & 0xFF)
+        if hex2 is not None:
+            return chr(int(hex2, 16))
+        if hex4 is not None or hex8 is not None:
+            point = int(hex4 or hex8, 16)
+            return chr(point) if point <= 0x10FFFF else m.group(0)
+        if control is not None:
+            return chr(ord(control) & 0x1F)
+        return _ANSI_C_NAMED.get(other, other)
+    return _ANSI_C_ESCAPE_RE.sub(decode, body).split("\0", 1)[0]  # bash ends the string at a NUL
+
+
+def _program_name(word: str) -> str:
+    """The name a command word runs, as this hook compares it with its program
+    lists: the basename, lowercased. gate-r8 last call, completed: zsh, the
+    shell the Bash tool runs here, expands a command word `=name` to the path
+    `name` resolves to, so `=bash` IS bash wherever the lists are read, as
+    `_is_program()` already reads `=git` as git. Read as the word `=bash`,
+    `=bash -c '<push>'`, `=sh -c '<push>'` and `=python3 -c '...<push>...'`
+    ran their strings unread; each measured moving a bare origin's main under
+    zsh."""
+    return os.path.basename(word[1:] if len(word) > 1 and word.startswith("=") else word).lower()
+
+
+# gate-r8 last call, completed: which heredoc bodies a shell runs. A body is
+# that shell's script when a shell is named in the pipeline holding the
+# heredoc, widened through every group -- `( ... )`, `{ ...; }`, `if`/`while`/
+# `until`/`for`/`select`/`case` -- and every substitution that holds it.
+_GROUP_OPENERS = frozenset({"{", "if", "while", "until", "for", "select", "case"})
+_GROUP_CLOSERS = frozenset({"}", "fi", "done", "esac"})
+# Words after which the next word starts a command.
+_COMMAND_LEADERS = frozenset({"{", "then", "do", "else", "elif", "!", "if", "while", "until", "time"})
+
+
+def _is_operator_word(raw: str) -> bool:
+    return bool(raw) and all(c in _OPERATOR_CHARS + "()" for c in raw)
+
+
+def _is_redirection_word(raw: str) -> bool:
+    """A redirection operator (`<<`, `>`, `2>&1`'s `>&`): part of its command."""
+    return _is_operator_word(raw) and set(raw) <= set("<>&") and ("<" in raw or ">" in raw)
+
+
+def _is_pipe_word(raw: str) -> bool:
+    """`|` or `|&`, also when the line ends right after it (`|` then a
+    newline): bash reads the next command, past a heredoc body, as the
+    pipeline's next stage."""
+    return _is_operator_word(raw) and raw.rstrip("\n") in ("|", "|&")
+
+
+def _starts_command(words: list[tuple[str, str]], k: int) -> bool:
+    """True when `words[k]` stands where the shell reads a command word."""
+    if k == 0:
+        return True
+    cooked, raw = words[k - 1]
+    if _is_operator_word(raw):
+        return not _is_redirection_word(raw)
+    return raw == cooked and cooked in _COMMAND_LEADERS
+
+
+def _opens_group(words: list[tuple[str, str]], k: int) -> bool:
+    cooked, raw = words[k]
+    return raw == "(" or (raw == cooked and cooked in _GROUP_OPENERS and _starts_command(words, k))
+
+
+def _closes_group(words: list[tuple[str, str]], k: int) -> bool:
+    cooked, raw = words[k]
+    return raw == ")" or (raw == cooked and cooked in _GROUP_CLOSERS and _starts_command(words, k))
+
+
+def _pipeline_around(words: list[tuple[str, str]], first: int, last: int) -> tuple[int, int]:
+    """(lo, hi) for the pipeline holding `words[first..last]` (one element of
+    it: the word a heredoc's delimiter is, or a whole group). It ends at any
+    operator but a pipe or a redirection -- a newline right after a pipe does
+    not end it -- or at the group that holds it."""
+    lo, depth, j = first, 0, first - 1
+    while j >= 0:
+        raw = words[j][1]
+        if _closes_group(words, j):
+            depth += 1
+        elif _opens_group(words, j):
+            if depth == 0:
+                break
+            depth -= 1
+        elif depth == 0 and _is_operator_word(raw) and not (_is_redirection_word(raw) or _is_pipe_word(raw)):
+            if not (set(raw) == {"\n"} and j > 0 and _is_pipe_word(words[j - 1][1])):
+                break
+        lo = j
+        j -= 1
+    hi, depth, j, after_pipe = last, 0, last + 1, False
+    while j < len(words):
+        raw = words[j][1]
+        if _opens_group(words, j):
+            depth += 1
+        elif _closes_group(words, j):
+            if depth == 0:
+                break
+            depth -= 1
+        elif depth == 0 and _is_operator_word(raw) and not _is_redirection_word(raw):
+            if _is_pipe_word(raw):
+                after_pipe = True
+            elif not (after_pipe and set(raw) == {"\n"}):
+                break
+        elif depth == 0 and not _is_operator_word(raw):
+            after_pipe = False
+        hi = j
+        j += 1
+    return lo, hi
+
+
+def _group_opener(words: list[tuple[str, str]], first: int) -> int | None:
+    """The index of the word that opens the group holding `words[first]`,
+    past any separator (`if true; then cat <<'EOF'`)."""
+    depth = 0
+    for j in range(first - 1, -1, -1):
+        if _closes_group(words, j):
+            depth += 1
+        elif _opens_group(words, j):
+            if depth == 0:
+                return j
+            depth -= 1
+    return None
+
+
+def _group_closer(words: list[tuple[str, str]], opener: int) -> int | None:
+    """The index of the word that closes the group `words[opener]` opens."""
+    depth = 0
+    for j in range(opener + 1, len(words)):
+        if _opens_group(words, j):
+            depth += 1
+        elif _closes_group(words, j):
+            if depth == 0:
+                return j
+            depth -= 1
+    return None
+
+
+def _runs_as_command(words: list[tuple[str, str]], k: int) -> bool:
+    """True when `words[k]` is a command word: at a command's start, or past
+    only same-command assignments and named wrappers."""
+    j = k
+    while j > 0:
+        cooked, raw = words[j - 1]
+        if _is_operator_word(raw) or not (_SIMPLE_ASSIGNMENT_RE.match(cooked)
+                                          or _program_name(cooked) in _PUSH_WRAPPER_PROGRAMS):
+            break
+        j -= 1
+    return _starts_command(words, j)
+
+
+def _names_script_runner(words: list[tuple[str, str]], k: int) -> bool:
+    """True when `words[k]` may run a heredoc body as a script: a shell named
+    anywhere in the pipeline (`sudo bash`, `/bin/sh`, `bash5.2`, zsh's
+    `=bash`), `.` or `source` as the command, or a command word built from an
+    expansion this reading does not resolve (`$_ <<'EOF'`, `"$SHELL" <<'EOF'`)."""
+    cooked, raw = words[k]
+    if _is_operator_word(raw):
+        return False
+    name = _program_name(cooked)
+    if re.sub(r"[0-9.]+$", "", name) in _PUSH_SHELL_PROGRAMS:
+        return True
+    if name in _SCRIPT_RUNNERS:  # `.` or `source`, as the command only: not `git -C . commit -F - <<'EOF'`
+        return _runs_as_command(words, k)
+    if re.search(r"[$`]", cooked):
+        return _runs_as_command(words, k)
+    return False
+
+
+def _without_case_patterns(words: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """`words` with each `case` pattern's closing parenthesis (`a)`) read as a
+    plain word, so it closes no group: read as a group's, `case a
+    in a) cat <<'EOF' ... ;; esac | bash` paired the pattern's `)` with
+    nothing and its body was not a script (measured moving a bare origin's
+    main)."""
+    out = list(words)
+    states: list[str] = []  # per open `case`: "head", "pattern" or "body"
+    for k, (cooked, raw) in enumerate(words):
+        if raw == cooked == "case" and _starts_command(words, k):
+            states.append("head")
+        elif not states:
+            continue
+        elif states[-1] == "head" and raw == cooked == "in":
+            states[-1] = "pattern"
+        elif states[-1] == "pattern" and raw == cooked == "esac":
+            states.pop()
+        elif states[-1] == "pattern" and raw == ")":
+            out[k] = ("case-pattern)", "case-pattern)")
+            states[-1] = "body"
+        elif states[-1] == "body" and _is_operator_word(raw) and re.search(r";;|;&", raw):
+            states[-1] = "pattern"
+        elif states[-1] == "body" and raw == cooked == "esac" and _starts_command(words, k):
+            states.pop()
+    return out
+
+
+def _heredoc_runs_as_script(words: list[tuple[str, str]], at: int) -> bool:
+    """gate-r8 last call: True when the pipeline holding `words[at]` (a heredoc
+    delimiter, or a word holding the substitution a heredoc is in) names a
+    shell, so the body is that shell's script: `bash <<'EOF'`, `cat <<'EOF' |
+    sh`, `cat <<'EOF' |` with `bash` after the body, `( cat <<'EOF' ... ) |
+    bash`, `bash <(cat <<'EOF' ...)`. The pipeline ends at any operator but a
+    pipe or a redirection, so `bash check.sh && cat > msg.txt <<'EOF'` keeps
+    its body text (the transcript replay found one such commit message)."""
+    words = _without_case_patterns(words)
+    first = last = at
+    while True:
+        lo, hi = _pipeline_around(words, first, last)
+        if any(_names_script_runner(words, k) for k in range(lo, hi + 1) if not first <= k <= last):
+            return True
+        opener = _group_opener(words, first)
+        closer = None if opener is None else _group_closer(words, opener)
+        if closer is None:
+            return False
+        first, last = opener, closer
+
+
+def _lex(s: str, i: int, closer: str | None, depth: int, report: dict | None = None):
     """(words, substitutions, end) for the command text in `s` from `i` up to
     `closer` (an unmatched `)` or a backtick; None reads to the end).
 
@@ -1467,24 +2071,67 @@ def _lex(s: str, i: int, closer: str | None, depth: int):
     and a heredoc body are skipped, and a file descriptor before a redirection
     (the 2 of 2>&1) is dropped. Lenient: an unclosed quote runs to the end (the
     shell refuses such a command outright). Raises ValueError only past
-    _MAX_NESTING levels of substitution."""
+    _MAX_NESTING levels of substitution.
+
+    gate-r8: `report`, when given, is how the push check's unreadable-word
+    fallback learns what this lenient reading glossed over: "open" when a
+    quote, substitution, `${` or in-word parenthesis runs to the end
+    unclosed; "misread" when a `${...}` or in-word parenthesis holds quoting
+    this reader does not follow the way the shell does (the shell reads
+    `echo ${X:-"}"}` as one word; this reader ends it at the first `}`, and a
+    push on the next line was hidden from it, measured moving a bare origin's
+    main); "bodies", every heredoc body it skipped, delimiter line included;
+    [gate-r8 last call] "scripts", the bodies a shell runs
+    (`_heredoc_runs_as_script()`, decided once every word of the level holding
+    the heredoc is read, and again at each level holding that one, since a
+    shell after the body or around a group or substitution runs it too), and
+    "expanding", the bodies under an unquoted delimiter."""
     if depth > _MAX_NESTING:
         raise ValueError(f"substitutions nested more than {_MAX_NESTING} deep")
+
+    def note(key: str, what: str) -> None:
+        if report is not None:
+            report.setdefault(key, what)
     n = len(s)
     words: list[tuple[str, str]] = []
     subs: list[list[tuple[str, str]]] = []
-    heredocs: list[tuple[str, bool]] = []
+    heredocs: list[tuple[str, bool, bool, int]] = []  # (delimiter, strip tabs, quoted, its index in words)
+    pending: list[tuple[int, str]] = []  # (the word a body belongs to, the body): script or not, decided in settle()
     delim_strip: bool | None = None  # set after << : the next word is a heredoc delimiter
     cooked: list[str] = []
     raw: list[str] = []
     parens = 0
+
+    def settle() -> None:
+        """Now that every word of this level is read: each pending body a shell
+        in its pipeline runs is a script; the rest go up to the level holding
+        this one, as bodies of the word this level is part of."""
+        if report is None:
+            return
+        for at, body in pending:
+            if _heredoc_runs_as_script(words, at):
+                report.setdefault("scripts", []).append(body)
+            else:
+                report.setdefault("carried", []).append(body)
+        pending.clear()
+
+    def nested_lex(body: int, close: str, rep: dict | None):
+        """`_lex()` one level down, from `body` up to `close`, reporting to
+        `rep`; the bodies it carries up belong to the word being read now."""
+        mark = len(rep.setdefault("carried", [])) if rep is not None else 0
+        inner, nested, j = _lex(s, body, close, depth + 1, rep)
+        if rep is not None:
+            pending.extend((len(words), carried) for carried in rep["carried"][mark:])
+            del rep["carried"][mark:]
+        return inner, nested, j
 
     def end_word() -> None:
         nonlocal delim_strip
         if raw:
             words.append(("".join(cooked), "".join(raw)))
             if delim_strip is not None:
-                heredocs.append(("".join(cooked), delim_strip))
+                heredocs.append(("".join(cooked), delim_strip, bool(re.search(r"[\"'\\]", "".join(raw))),
+                                 len(words) - 1))
                 delim_strip = None
         cooked.clear()
         raw.clear()
@@ -1492,7 +2139,9 @@ def _lex(s: str, i: int, closer: str | None, depth: int):
     def substitution(start: int, body: int, close: str) -> int:
         """Read $(...), `...` or <(...) starting at `start` (its body at `body`)
         into the current word; return the index after it."""
-        inner, nested, j = _lex(s, body, close, depth + 1)
+        inner, nested, j = nested_lex(body, close, report)
+        if j >= n:
+            note("open", "a substitution runs to the end unclosed")
         subs.append(inner)
         subs.extend(nested)
         cooked.append(s[start:j + 1])
@@ -1503,6 +2152,7 @@ def _lex(s: str, i: int, closer: str | None, depth: int):
         ch = s[i]
         if ch == closer and (closer == "`" or parens == 0):
             end_word()
+            settle()
             return words, subs, i
         if ch in " \t\r":
             end_word()
@@ -1522,8 +2172,10 @@ def _lex(s: str, i: int, closer: str | None, depth: int):
             j = i + 1 if ch == "'" else i + 2
             while j < n and s[j] != "'":
                 j += 2 if ch == "$" and s[j] == "\\" else 1
+            if j >= n:
+                note("open", "a quote runs to the end unclosed")
             body = s[(i + 1 if ch == "'" else i + 2):j]
-            cooked.append(body if ch == "'" else re.sub(r"\\(.)", r"\1", body, flags=re.S))
+            cooked.append(body if ch == "'" else _ansi_c(body))
             raw.append(s[i:j + 1])
             i = j + 1
         elif ch == '"' or s.startswith('$"', i):
@@ -1536,7 +2188,7 @@ def _lex(s: str, i: int, closer: str | None, depth: int):
                     i += 2
                 elif s.startswith("$(", i) or s[i] == "`":
                     body = i + 2 if s[i] == "$" else i + 1
-                    inner, nested, j = _lex(s, body, ")" if s[i] == "$" else "`", depth + 1)
+                    inner, nested, j = nested_lex(body, ")" if s[i] == "$" else "`", report)
                     subs.append(inner)
                     subs.extend(nested)
                     text.append(s[i:j + 1])
@@ -1544,6 +2196,8 @@ def _lex(s: str, i: int, closer: str | None, depth: int):
                 else:
                     text.append(s[i])
                     i += 1
+            if i >= n:
+                note("open", "a quote runs to the end unclosed")
             cooked.append("".join(text))
             raw.append(s[start:i + 1])
             i += 1
@@ -1556,6 +2210,10 @@ def _lex(s: str, i: int, closer: str | None, depth: int):
             i = substitution(i, i + 2, ")")
         elif s.startswith("${", i):
             j = s.find("}", i)
+            if j < 0:
+                note("open", "a `${` runs to the end unclosed")
+            elif re.search(r"[\"'`{]|\$\(", s[i + 2:j]):
+                note("misread", "quoting, a brace or a substitution inside `${...}`")
             j = n if j < 0 else j
             cooked.append(s[i:j + 1])
             raw.append(s[i:j + 1])
@@ -1568,6 +2226,10 @@ def _lex(s: str, i: int, closer: str | None, depth: int):
                 if level == 0:
                     break
                 j += 1
+            if j >= n:
+                note("open", "a parenthesis inside a word runs to the end unclosed")
+            elif re.search(r"[\"'`\\]", s[i:j + 1]):
+                note("misread", "quoting inside a parenthesis within a word")
             cooked.append(s[i:j + 1])
             raw.append(s[i:j + 1])
             i = j + 1
@@ -1593,19 +2255,27 @@ def _lex(s: str, i: int, closer: str | None, depth: int):
                 delim_strip = s.startswith("-", i)
                 i += delim_strip
             if run.endswith("\n") and heredocs:
-                for delim, strip in heredocs:  # skip each body, up to its delimiter line
+                for delim, strip, quoted, at in heredocs:  # skip each body, up to its delimiter line
+                    body_start = i
                     while i < n:
                         j = s.find("\n", i)
                         line = s[i:] if j < 0 else s[i:j]
                         i = n if j < 0 else j + 1
                         if (line.lstrip("\t") if strip else line) == delim:
                             break
+                    if report is not None:
+                        report.setdefault("bodies", []).append(s[body_start:i])
+                    if report is not None:
+                        pending.append((at, s[body_start:i]))
+                    if report is not None and not quoted:
+                        report.setdefault("expanding", []).append(s[body_start:i])
                 heredocs.clear()
         else:
             cooked.append(ch)
             raw.append(ch)
             i += 1
     end_word()
+    settle()
     return words, subs, n
 
 
@@ -1884,14 +2554,22 @@ def main() -> int:
         _block(
             "BLOCKED by ADR 0090: direct pushes to main are not audited. Open a "
             "PR and let the pr-audit-gate skill carry it, so main's branch "
-            "protection and the audit both actually run against it."
+            "protection and the audit both actually run against it." + PUSH_TEXT_HINT
         )
-    push_problem = _direct_push_problem(command)
+    try:
+        push_problem = _direct_push_problem(command)
+    except Exception as exc:  # noqa: BLE001 -- a crash here must not fail open
+        # gate-r8 last call, completed: an uncaught exception exits 1, which
+        # Claude Code treats as a non-blocking error, so the command would run
+        # unchecked. Measured: an unquoted heredoc body holding 22 nested
+        # `$(` made `_heredoc_push_reason()` raise and the hook exit 1.
+        push_problem = (f"the push check could not read the command ({type(exc).__name__}), "
+                        "so a push inside it cannot be ruled out")
     if push_problem:
         _block(
             f"BLOCKED by ADR 0090: direct pushes to main are not audited ({push_problem}). "
             "Open a PR and let the pr-audit-gate skill carry it, so main's branch "
-            "protection and the audit both actually run against it."
+            "protection and the audit both actually run against it." + PUSH_TEXT_HINT
         )
 
     try:
