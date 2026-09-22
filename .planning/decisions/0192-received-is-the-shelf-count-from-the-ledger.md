@@ -264,13 +264,96 @@ fixed. **[Last call, 2026-09-21: a second residual, older than this answer (it i
 back; the order reads delivered, an `order_delivered` event is written for bottles that
 never moved, and the manager is told they were stocked in. The put-back covers a
 refused movement only; this path needs its own decision on whether such an item is
-booked or refused.]**
+booked or refused.]** **[Answered 2026-09-21 by the founder: book it, and send the
+wine for research — see the second amendment below.]**
 
 **Evidence.** `verify-receipt.spec.ts` (the event row, no sibling column, a failed
 event changes nothing), `shelf-received.spec.ts` (six sibling cases),
 `receiving-queue-backorder.spec.ts`, `delivered-once.spec.ts` (put back, retry,
 race), web receiving tests; PGlite probe for the new column and CHECK. CLAIMS rows
 `ADR-0192-SIBLINGS-ARE-THE-LEDGER` and `ADR-0192-REFUSED-BOOKING-REVERTS`.
+
+## Second amendment 2026-09-21 — an item with no master wine is booked, and researched by its id
+
+**Source.** The founder, 2026-09-21, on the residual under (9), verbatim (typing kept):
+
+> "book the stock anyway, and if it's not on the maser wine that means that wine needs
+> research treatment with fully in depth analysis to add to the master wine. If its
+> found that it s nowhere to be found, like wine 1 and wine 2 and such, then we skip it
+> and flag it. (then we create a little flag in users Ui saying if you were to specify
+> this wine, we could help you build better menus or such marketing move. Users are also
+> have features that they can edit their part of the menu and wine names. When making a
+> search in the db tho, while not the name but the UUID or the deeper id is being
+> searched(bith better for lookup times) not the name."
+
+**Built (lane E round 3):**
+
+1. **The stock is booked.** `markDelivered` books a house-declared item like any other,
+   keyed by the house item's id: `apply_stock_movement` books by `p_inventory_id`, and a
+   lot or ledger row carries a NULL master wine (20260903171000). PGlite probe
+   `E3-migrations.mjs` books one and reads it back: lot, ledger row and `stock_live`.
+2. **Delivered only when the booking succeeded.** The item row is read strictly before anything
+   is booked. A failed
+   or missing item row, anything the booking throws, a failed read of "did the door
+   already book this" (it used to throw a 503 *after* the delivered write) and a failed
+   read of "was this order booked before" are all refused bookings: the order is put back
+   exactly as answer (9) puts back a refused movement (422 `delivery_stock_not_booked`).
+3. **The notice says what happened.** `delivered-notice.ts` words the "Verify delivery"
+   notice from what this call did. "N bottles stocked in" is said only when bottles moved.
+   The other outcomes are the door's booking, an earlier booking, and "No stock was
+   booked: <why>". For an item the wine library lacks it adds the research sentence.
+4. **Research, by the item's id.** No existing queue can hold such an item:
+   - `enrichment_queue.wine_id` is NOT NULL.
+   - The research agent reads submissions only through `research_eligible_submissions()`,
+     which JOINs a library row (20260813170000:82).
+   - The submission chain (`haiku_enrich_task` then `web_verify_task`) is dispatched only
+     from onboarding imports, and it keys a submission by its payload, which is a name.
+
+   So `house_item_research` (20260921170500) holds one row per house item, keyed by
+   `restaurant_inventory.id`, with RLS on (service_role only) and a trigger that refuses an
+   item from another house. Its fields are `status` (`queued` | `matched` | `not_findable`),
+   `reason`, `queued_from` (`delivery` | `rename`), the source order, and `queued_by` on
+   `public.users(user_id)`. The name is read off the item, by id, only to classify it.
+5. **A name that cannot identify a wine is skipped and flagged.** `classifyHouseItemName`
+   (`house-item-research.ts`) is a narrow classifier, tested in
+   `house-item-research.spec.ts`. It treats these as placeholders: a blank; a generic noun
+   with at most a counter ("wine 1", "Wine #2", "item 14", "şarap 3"); a style with at most
+   "house" and a counter or year ("house red", "ev şarabı", "rosé 2021"). Such an item is
+   `not_findable` at once and never queued. Anything else is researchable. A false "not
+   findable" hides a real wine, so the rule stays narrow. **[Last call, 2026-09-21: a
+   counter glued to the noun ("Wine1", "wine01", "house red2") was researched as a wine;
+   it is now a placeholder. And a name in a script the fold does not read (Greek
+   "Ξινόμαυρο", Cyrillic "Саперави", Georgian, Japanese) read as "no words in it" and was
+   flagged; it is now always researchable.]**
+6. **The flag and the edit path.** `/inventory` shows, under the wine's name and in its
+   expansion: *"Tell us which wine this is and we can help you build better menus and
+   promotions"*. The expansion offers "Name this wine". It saves through the ordinary item
+   edit (`PATCH /inventory/:restaurantId/item/:itemId`, `wineName`, ADR 0124's one alias),
+   under the same gate that edit has today. A new name re-decides the row by the item's
+   id. A placeholder stays flagged, a real name is queued, and a `matched` row is never
+   moved back. A failed read of the list is said on the page. It is never shown as
+   "nothing to name".
+
+**Not built, stated.**
+- **Nothing consumes `queued` rows yet.** The table is the durable hand-off. Which research
+  consumer reads it is the founder's call (lane report, round 3).
+- **Orders with nothing to book.** An order that names no house item, or resolves to zero
+  bottles, still reads delivered with nothing booked. The notice now says so in words; it
+  no longer says "stocked in".
+- **[Last call, 2026-09-21] Stock the receiving door booked is not queued.** When the door
+  already booked the order (ADR 0103 A5), `markDelivered` books nothing and queues nothing;
+  the door's own booking (`canonical/delivery-stock.service.ts`) does not write
+  `house_item_research` either. Such an item reaches the queue only when the house renames
+  it.
+- **Unverified here.** No browser check and no production read. A failed shadow release is
+  logged, and the live booking does not depend on it.
+
+**Evidence.** `delivered-once.spec.ts` (booked with no master wine, placeholder flagged, one
+row per item, library wine not queued, the order put back when the item cannot be read, is
+not this house's, the booking throws, or the door's or an earlier booking cannot be read, queue-write failure said in
+the notice, no-item and door-booked wording), `house-item-research.spec.ts` (classifier,
+queue row, rename, the list), `NameThisWine.test.tsx`, the PGlite probe `E3-migrations.mjs`.
+CLAIMS rows `ADR-0192-UNMATCHED-ITEM-IS-BOOKED` and `ADR-0192-PLACEHOLDER-NAMES-ARE-FLAGGED`.
 
 ## Review trail
 
@@ -282,3 +365,6 @@ race), web receiving tests; PGlite probe for the new column and CHECK. CLAIMS ro
 | 2026-09-21 | Aldemir (founder), answers 8 and 9 (relayed in the round-2 lane brief) | The rule applies to the four sibling columns, in one stated unit, the guard extended; a refused booking reverts the order's status, the race guard kept |
 | 2026-09-21 | Claude (Opus 5), lane E round 2 | Built both (amendment above): the verification is a `reconciled` event in bottles, the shelf reading answers the siblings, the queue reads backorder from the ledger, the guard covers five names; markDelivered puts the order back on a refused booking |
 | 2026-09-21 | Claude (Opus 5), lane E round 2 last call | A residual stated under (9): an item with no `master_wine_id` (or an unreadable item row) is not booked by `markDelivered` and not put back either (pre-existing on `main`) |
+| 2026-09-21 | Aldemir (founder), on the residual under (9) | *"book the stock anyway"*; research an item the library lacks, by its id; skip and flag a placeholder name (second amendment, verbatim) |
+| 2026-09-21 | Claude (Opus 5), lane E round 3 | Built (second amendment): booked by the house item id, more refusals that put the order back, a true notice, `house_item_research` + the classifier + the /inventory flag and rename path; the consumer is a founder question |
+| 2026-09-21 | Claude (Opus 5), lane E round 3 last call | Classifier fixed both ways (a glued counter is a placeholder; an unread script is researchable), tests and mutants; the door-booked gap stated under "Not built" |

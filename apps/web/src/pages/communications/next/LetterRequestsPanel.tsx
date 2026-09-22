@@ -10,10 +10,16 @@
  *   the composer's undo window (answer 7) and can be released only once.
  * - Anyone else sees only their own waiting letters, and nothing to release.
  * - A failed read is "could not be read", never "nothing waiting".
+ * - Decline, withdraw, and an undone release (founder, 2026-09-21, verbatim:
+ *   "Decline/withdraw; undo re-waits"): an owner or a manager declines a
+ *   waiting letter with a reason the person who asked reads; that person may
+ *   withdraw their own. A manager who just released one can pull it back from
+ *   here while its undo window is open; a letter pulled back comes back here as
+ *   waiting, and says so.
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { apiClient } from '../../../services/api/client';
 import { errText, letterRequestKeys } from './Compose/useComposeData';
@@ -33,6 +39,14 @@ export interface LetterRequest {
     templateId?: string | null;
   };
   state: 'waiting' | 'released' | 'closed';
+  /** Times a manager released it and pulled it back inside the undo window. */
+  undoneCount?: number;
+}
+
+/** Who is reading the list (from the gateway): an owner or a manager may decline. */
+export interface LetterRequestsViewer {
+  userId: string | null;
+  mayDecline: boolean;
 }
 
 /** The letter a release sends: exactly what was asked for, named by its request. */
@@ -60,8 +74,13 @@ export function LetterRequestsPanel({
   const requests = useQuery({
     queryKey: letterRequestKeys.forHouse(restaurantId),
     queryFn: async () => {
-      const { data } = await apiClient.get<{ requests: LetterRequest[] }>('/communications/letters/requests');
-      return data.requests;
+      const { data } = await apiClient.get<{ requests: LetterRequest[]; viewer?: LetterRequestsViewer }>(
+        '/communications/letters/requests',
+      );
+      return {
+        requests: data.requests,
+        viewer: data.viewer ?? { userId: null, mayDecline: false },
+      };
     },
     enabled: Boolean(restaurantId),
     staleTime: 15_000,
@@ -69,6 +88,23 @@ export function LetterRequestsPanel({
   const [says, setSays] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [declining, setDeclining] = useState<string | null>(null);
+  const [why, setWhy] = useState('');
+  const [busy, setBusy] = useState(false);
+  // The letter a release just queued, while it can still be pulled back
+  // (founder, 2026-09-21: "undo re-waits"): pulling it back puts the request
+  // back to waiting, on the server, and the person who asked is told.
+  const [pullable, setPullable] = useState<{ letterId: string; until: number } | null>(null);
+  useEffect(() => {
+    if (!pullable) return;
+    const left = pullable.until - Date.now();
+    if (left <= 0) {
+      setPullable(null);
+      return;
+    }
+    const t = setTimeout(() => setPullable(null), left);
+    return () => clearTimeout(t);
+  }, [pullable]);
 
   const mint = (r: LetterRequest) => async (): Promise<string | null> => {
     setProblem(null);
@@ -89,16 +125,62 @@ export function LetterRequestsPanel({
     setProblem(null);
     setSays(null);
     try {
-      const { data } = await apiClient.post<{ says: string }>('/communications/letters', releaseBody(r), {
-        headers: { 'X-Seal-Challenge': challenge ?? '' },
-      });
+      const { data } = await apiClient.post<{ says: string; id?: string; dispatchAt?: string; undoMs?: number | null }>(
+        '/communications/letters',
+        releaseBody(r),
+        { headers: { 'X-Seal-Challenge': challenge ?? '' } },
+      );
       setSays(data?.says ?? 'Queued.');
+      const until = data?.dispatchAt ? Date.parse(data.dispatchAt) : NaN;
+      setPullable(data?.id && data?.undoMs && Number.isFinite(until) ? { letterId: data.id, until } : null);
       await qc.invalidateQueries({ queryKey: letterRequestKeys.forHouse(restaurantId) });
       await qc.invalidateQueries({ queryKey: ['house-letter-queued', restaurantId] });
     } catch (e) {
       setProblem(`Nothing was sent: ${errText(e)}`);
       setAttempt((a) => a + 1);
       throw e;
+    }
+  };
+
+  const close = async (r: LetterRequest, act: 'decline' | 'withdraw') => {
+    setProblem(null);
+    setSays(null);
+    if (act === 'decline' && !why.trim()) {
+      setProblem('Say why, so the person who asked can act on it. Nothing was declined.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data } = await apiClient.post<{ says: string }>(
+        `/communications/letters/requests/${r.id}/${act}`,
+        act === 'decline' ? { reason: why.trim() } : {},
+      );
+      setSays(data?.says ?? (act === 'decline' ? 'Declined.' : 'Withdrawn.'));
+      setDeclining(null);
+      setWhy('');
+      await qc.invalidateQueries({ queryKey: letterRequestKeys.forHouse(restaurantId) });
+    } catch (e) {
+      setProblem(`Nothing was changed: ${errText(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pullBack = async () => {
+    if (!pullable) return;
+    setProblem(null);
+    setBusy(true);
+    try {
+      const { data } = await apiClient.post<{ says: string }>(`/communications/letters/${pullable.letterId}/cancel`);
+      setSays(data?.says ?? 'Pulled back.');
+      setPullable(null);
+      await qc.invalidateQueries({ queryKey: letterRequestKeys.forHouse(restaurantId) });
+      await qc.invalidateQueries({ queryKey: ['house-letter-queued', restaurantId] });
+    } catch (e) {
+      // A failed pull-back never reads as a pulled-back letter: it may still leave.
+      setProblem(`It was NOT pulled back: ${errText(e)}`);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -111,7 +193,8 @@ export function LetterRequestsPanel({
       </p>
     );
   }
-  const waiting = requests.data ?? [];
+  const waiting = requests.data?.requests ?? [];
+  const viewer = requests.data?.viewer ?? { userId: null, mayDecline: false };
   if (waiting.length === 0 && !says) return null;
 
   return (
@@ -134,6 +217,11 @@ export function LetterRequestsPanel({
             <p style={{ margin: '4px 0 0', fontSize: 12, whiteSpace: 'pre-wrap', color: 'var(--ink-2, #4F473C)' }}>
               {r.payload.body ?? ''}
             </p>
+            {(r.undoneCount ?? 0) > 0 && (
+              <p data-testid="letter-request-undone" style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                It was released and then pulled back before it left, so it is waiting again. Nothing was sent.
+              </p>
+            )}
             {canRelease ? (
               <div style={{ maxWidth: 260, marginTop: 6 }}>
                 <HoldToApprove
@@ -149,6 +237,63 @@ export function LetterRequestsPanel({
                 Waiting for an owner or a manager. Nothing has been sent.
               </p>
             )}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 6 }}>
+              {viewer.mayDecline && declining !== r.id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeclining(r.id);
+                    setWhy('');
+                  }}
+                  style={quietButton}
+                >
+                  Decline
+                </button>
+              )}
+              {viewer.userId !== null && r.requestedBy.userId === viewer.userId && (
+                <button type="button" disabled={busy} onClick={() => void close(r, 'withdraw')} style={quietButton}>
+                  Withdraw my request
+                </button>
+              )}
+            </div>
+            {declining === r.id && (
+              <form
+                style={{ marginTop: 6 }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void close(r, 'decline');
+                }}
+              >
+                <label htmlFor={`decline-why-${r.id}`} style={{ display: 'block', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}>
+                  Why? {r.requestedBy.name ?? 'The person who asked'} reads this.
+                </label>
+                <textarea
+                  id={`decline-why-${r.id}`}
+                  value={why}
+                  onChange={(e) => setWhy(e.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    marginTop: 4,
+                    fontSize: 12,
+                    padding: 6,
+                    borderRadius: 6,
+                    border: '1px solid var(--paper-2, #EAE4D8)',
+                    background: 'var(--paper-0, #FBF9F4)',
+                    color: 'var(--ink-1, #211C16)',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                  <button type="submit" disabled={busy} style={quietButton}>
+                    Decline it
+                  </button>
+                  <button type="button" onClick={() => setDeclining(null)} style={quietButton}>
+                    Keep it waiting
+                  </button>
+                </div>
+              </form>
+            )}
           </li>
         ))}
       </ul>
@@ -156,6 +301,11 @@ export function LetterRequestsPanel({
         <p role="status" data-testid="letter-requests-says" style={{ margin: '8px 0 0', fontSize: 12 }}>
           {says}
         </p>
+      )}
+      {pullable && (
+        <button type="button" disabled={busy} onClick={() => void pullBack()} style={{ ...quietButton, marginTop: 6 }}>
+          Pull it back
+        </button>
       )}
       {problem && (
         <p role="alert" data-testid="letter-requests-problem" style={{ margin: '8px 0 0', fontSize: 12 }}>
@@ -165,5 +315,15 @@ export function LetterRequestsPanel({
     </section>
   );
 }
+
+const quietButton: CSSProperties = {
+  border: 'none',
+  background: 'transparent',
+  padding: 0,
+  fontSize: 12,
+  fontWeight: 600,
+  color: 'var(--seal-deep, #14515C)',
+  cursor: 'pointer',
+};
 
 export default LetterRequestsPanel;

@@ -78,6 +78,7 @@ import {
   type RowFlag,
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
+import { HouseItemResearchUnread, NameThisWineHint } from "./NameThisWine";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
 import { CellarMapView } from "./CellarMapView";
 
@@ -1339,6 +1340,7 @@ export function InventoryCommandPage() {
                             <span className="truncate">{item.name}</span>
                             <AbcBadge abc={item.abcClass} />
                           </div>
+                          <NameThisWineHint inventoryId={item.inventoryId} />
                           <div className="text-[11px] text-gray-400 mt-0.5 truncate">
                             {[item.producer, item.region]
                               .filter(Boolean)
@@ -1455,6 +1457,7 @@ export function InventoryCommandPage() {
               </div>
             </div>
           </div>
+          <HouseItemResearchUnread />
           <div className="flex items-center justify-between mt-2.5 text-xs text-gray-400">
             <span>
               Showing {fig(rows.length)} of {fig(stats.total)} wines

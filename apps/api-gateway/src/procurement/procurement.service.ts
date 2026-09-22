@@ -25,6 +25,11 @@ import { GmailService } from "../communications/gmail.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
+import {
+  enqueueHouseItemResearch,
+  type EnqueueOutcome,
+} from "../inventory/house-item-research";
+import { type DeliveryBooking, verifyNoticeMessage } from "./delivered-notice";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
@@ -4711,8 +4716,6 @@ export class ProcurementService {
       this.databaseService.supabase,
       orderId,
     );
-    if (!deliveryOwns.ok)
-      throw new ServiceUnavailableException(deliveryOwns.error);
 
     // Set when the live stock movement below is REFUSED. Before ADR 0192 its
     // result was never looked at, so a failed booking still recorded an
@@ -4723,46 +4726,99 @@ export class ProcurementService {
     // after the booking block); it used to stay DELIVERED with nothing on the
     // shelf, which no screen offered a way out of.
     let stockNotMoved: string | null = null;
+    // What this call did to the shelf. The verify notice says exactly this and
+    // nothing more (`delivered-notice.ts`): it used to say "N bottles stocked
+    // in" on every path, also when nothing moved.
+    let booking: DeliveryBooking;
+    // The item's place on the research queue, when the wine library does not
+    // have it (founder, 2026-09-21; below). Null for a library wine.
+    let research: EnqueueOutcome | null = null;
 
-    if (deliveryOwns.value.booked) {
+    if (!deliveryOwns.ok) {
+      // Whether the receiving door already booked this order could not be
+      // read. Booking without that answer can put one delivery on the shelf
+      // twice (ADR 0103 A5), so nothing is booked — and the order does not
+      // stay DELIVERED on nothing (founder, 2026-09-21: the order reads
+      // delivered only when its booking succeeded). It is put back below like
+      // any refused booking. This used to throw a 503 AFTER the delivered
+      // write, leaving the order delivered with nothing booked.
+      stockNotMoved = deliveryOwns.error;
+      booking = { kind: "nothing", why: deliveryOwns.error };
+    } else if (deliveryOwns.value.booked) {
       this.logger.log(
         `markDelivered: order ${orderId} stock is owned by delivery ` +
           `${deliveryOwns.value.deliveryIds.join(", ")} — not booked again`,
       );
-    } else if (order.inventoryId && resolvedQuantity > 0) {
+      booking = { kind: "booked_by_door" };
+    } else if (!order.inventoryId) {
+      booking = { kind: "nothing", why: "this order names no house item" };
+    } else if (!(resolvedQuantity > 0) || !(receivedBottles > 0)) {
+      booking = {
+        kind: "nothing",
+        why: `the delivered quantity is ${resolvedQuantity}`,
+      };
+    } else {
+      const inventoryId = order.inventoryId;
       const idempotencyKey = `order-delivered:${orderId}`;
-      const { data: existingEvent } = await this.databaseService.supabase
-        .from("inventory_events")
-        .select("id")
-        .eq("idempotency_key", idempotencyKey)
-        .maybeSingle();
+      const { data: existingEvent, error: existingEventError } =
+        await this.databaseService.supabase
+          .from("inventory_events")
+          .select("id")
+          .eq("idempotency_key", idempotencyKey)
+          .maybeSingle();
 
-      if (!existingEvent) {
+      if (existingEventError) {
+        // A failed read is an error, never "not booked before": it refuses the
+        // booking and the order is put back below (founder, 2026-09-21).
+        stockNotMoved = `whether this order's stock was already booked could not be read (${existingEventError.message})`;
+        booking = { kind: "nothing", why: stockNotMoved };
+      } else if (existingEvent) {
+        booking = { kind: "booked_before" };
+      } else {
+        // BOOK THE STOCK ANYWAY (founder, 2026-09-21, ADR 0192's amendment):
+        // *"book the stock anyway, and if it's not on the maser wine that
+        // means that wine needs research treatment"*. The ledger is keyed by
+        // the HOUSE ITEM's id — `apply_stock_movement` locks and books by
+        // `p_inventory_id`, and a lot or a ledger row carries a NULL master
+        // wine when the item has none (20260903171000 made both nullable;
+        // PGlite probe E3-migrations.mjs books one). This used to book
+        // nothing for an item with no `master_wine_id` and still say "stocked
+        // in"; it now books it like any other item.
+        //
+        // One read, strict: the item row answers both what to release from
+        // shadow and whether the library has it. A failed read, a missing row,
+        // or anything the booking throws is a REFUSED booking, so the order is
+        // put back below exactly as a refused movement is (answer 9) — never
+        // "delivered with nothing booked", which the old swallowing catch here
+        // allowed.
+        let masterWineId: string | null = null;
+        let itemName: string | null = null;
         try {
-          const { data: inventoryRow, error: inventoryError } =
+          const { data: item, error: itemError } =
             await this.databaseService.supabase
               .from("restaurant_inventory")
-              .select("master_wine_id")
+              .select(
+                "master_wine_id, wine_name, shadow_stock, in_transit_quantity",
+              )
               .eq("restaurant_id", restaurantId)
-              .eq("id", order.inventoryId)
-              .single();
+              .eq("id", inventoryId)
+              .maybeSingle();
 
-          const masterWineId = inventoryError
-            ? null
-            : inventoryRow?.master_wine_id;
-
-          if (masterWineId) {
-            // Move shadow -> live through the ledger RPC (lots = source of truth). Two idempotent
-            // movements: release the reserved shadow, then receive the physical lot at cost.
-            const { data: currentStock } = await this.databaseService.supabase
-              .from("restaurant_inventory")
-              .select("shadow_stock, in_transit_quantity")
-              .eq("restaurant_id", restaurantId)
-              .eq("id", order.inventoryId)
-              .single();
-
-            const currentShadow = currentStock?.shadow_stock ?? 0;
-            const currentInTransit = currentStock?.in_transit_quantity ?? 0;
+          if (itemError) {
+            stockNotMoved = `the order's item could not be read (${itemError.message})`;
+          } else if (!item) {
+            stockNotMoved = "the order's item is not an item of this house";
+          } else {
+            const itemRow = item as Record<string, any>;
+            masterWineId = itemRow.master_wine_id ?? null;
+            itemName =
+              typeof itemRow.wine_name === "string" &&
+              itemRow.wine_name.trim().length > 0
+                ? itemRow.wine_name.trim()
+                : null;
+            const currentShadow = Number(itemRow.shadow_stock ?? 0) || 0;
+            const currentInTransit =
+              Number(itemRow.in_transit_quantity ?? 0) || 0;
             const shadowRelease = Math.min(receivedBottles, currentShadow);
 
             // WHAT KIND OF PRICE THIS IS.
@@ -4792,9 +4848,12 @@ export class ProcurementService {
             const unitCost = deliveryPrice.ok ? deliveryPrice.perBottle : null;
             const costProvenance = unitCost == null ? null : "estimated";
 
+            // Move shadow -> live through the ledger RPC (lots = source of
+            // truth). Two idempotent movements: release the reserved shadow,
+            // then receive the physical lot at cost.
             if (shadowRelease > 0) {
-              await this.databaseService.supabase.rpc("apply_stock_movement", {
-                p_inventory_id: order.inventoryId,
+              const shadow = await this.databaseService.supabase.rpc("apply_stock_movement", {
+                p_inventory_id: inventoryId,
                 p_stock_state: "shadow",
                 p_delta: -shadowRelease,
                 p_transaction_type: "adjustment",
@@ -4808,11 +4867,17 @@ export class ProcurementService {
                 // item belong here.
                 p_restaurant_id: restaurantId,
               });
+              // The live booking below does not depend on it; a shadow figure
+              // left reserved is logged, not hidden.
+              if (shadow?.error)
+                this.logger.warn(
+                  `markDelivered: order ${orderId}'s reserved (shadow) stock was not released (${shadow.error.message ?? String(shadow.error)})`,
+                );
             }
             const live = await this.databaseService.supabase.rpc(
               "apply_stock_movement",
               {
-                p_inventory_id: order.inventoryId,
+                p_inventory_id: inventoryId,
                 p_stock_state: "live",
                 p_delta: receivedBottles,
                 p_transaction_type: "purchase",
@@ -4829,54 +4894,124 @@ export class ProcurementService {
 
             if (live?.error) {
               stockNotMoved = live.error.message ?? String(live.error);
-              this.logger.error(
-                `markDelivered: order ${orderId} is DELIVERED but its stock ` +
-                  `movement was refused (${stockNotMoved}) — nothing was booked`,
-              );
             } else {
               // in_transit_quantity is a separate denormalized display counter.
-              await this.databaseService.supabase
-                .from("restaurant_inventory")
-                .update({
-                  in_transit_quantity: Math.max(
-                    0,
-                    currentInTransit - receivedBottles,
-                  ),
-                })
-                .eq("restaurant_id", restaurantId)
-                .eq("id", order.inventoryId);
+              const { error: inTransitError } =
+                await this.databaseService.supabase
+                  .from("restaurant_inventory")
+                  .update({
+                    in_transit_quantity: Math.max(
+                      0,
+                      currentInTransit - receivedBottles,
+                    ),
+                  })
+                  .eq("restaurant_id", restaurantId)
+                  .eq("id", inventoryId);
+              if (inTransitError)
+                this.logger.warn(
+                  `markDelivered: order ${orderId} booked, but the in-transit display counter was not lowered (${inTransitError.message})`,
+                );
             }
           }
+        } catch (bookingError: any) {
+          stockNotMoved = `the booking failed (${bookingError?.message ?? String(bookingError)})`;
+        }
 
-          // The event records a quantity that MOVED. When the movement was
-          // refused there is no such quantity, and recording one is the lie
-          // this used to tell. [Last call, 2026-09-21: still told for an item
-          // with no master_wine_id, or whose row could not be read: no
-          // movement is attempted, this event is written and the manager is
-          // told the bottles were stocked in. A residual in ADR 0192 (9).]
-          if (!stockNotMoved) {
-            await this.databaseService.supabase.from("inventory_events").insert({
-              restaurant_id: restaurantId,
-              inventory_id: order.inventoryId,
-              master_wine_id: masterWineId ?? null,
-              event_type: "order_delivered",
-              quantity_change: receivedBottles,
-              source: "procurement",
-              idempotency_key: idempotencyKey,
-              metadata: {
-                orderId,
-                deliveredAt: order.deliveredAt,
-              },
-            });
-          }
-        } catch (eventError) {
-          this.logger.warn(
-            "Failed to record inventory event for delivered order",
-            {
-              orderId,
-              error: eventError?.message ?? eventError,
-            },
+        if (stockNotMoved) {
+          this.logger.error(
+            `markDelivered: order ${orderId}'s stock movement was refused (${stockNotMoved}) — nothing was booked`,
           );
+          // Unused: the refusal below throws before the notice is written.
+          booking = { kind: "nothing", why: stockNotMoved };
+        } else {
+          booking = { kind: "booked", bottles: receivedBottles };
+
+          // The event records a quantity that MOVED — only ever reached after
+          // the live movement succeeded.
+          try {
+            const { error: eventWriteError } = await this.databaseService.supabase
+              .from("inventory_events")
+              .insert({
+                restaurant_id: restaurantId,
+                inventory_id: inventoryId,
+                master_wine_id: masterWineId,
+                event_type: "order_delivered",
+                quantity_change: receivedBottles,
+                source: "procurement",
+                idempotency_key: idempotencyKey,
+                metadata: {
+                  orderId,
+                  deliveredAt: order.deliveredAt,
+                },
+              });
+            // The booking stands (the ledger row is the record); a missing
+            // event is logged, never read as written.
+            if (eventWriteError) throw eventWriteError;
+          } catch (eventError: any) {
+            this.logger.warn(
+              "Failed to record inventory event for delivered order",
+              {
+                orderId,
+                error: eventError?.message ?? eventError,
+              },
+            );
+          }
+
+          // NOT IN THE WINE LIBRARY: RESEARCH, BY THE ITEM'S ID (founder,
+          // 2026-09-21): *"that wine needs research treatment with fully in
+          // depth analysis to add to the master wine. If its found that it s
+          // nowhere to be found, like wine 1 and wine 2 and such, then we skip
+          // it and flag it."* The queue row is keyed by the house item's id;
+          // the name is read only to classify it. A placeholder name is
+          // `not_findable` and flagged on /inventory, never researched.
+          //
+          // After the booking, and never undoing it: the stock is on the shelf
+          // whether or not the queue can be written. A failed write is logged
+          // and said in the verify notice (`researchWords`), not swallowed.
+          if (!masterWineId) {
+            if (!itemName) {
+              // A house-declared item carries its name in display_name
+              // (20260903171000), a column that exists wherever an item may
+              // lack a master wine. Read only on this path, by id.
+              const { data: named, error: namedError } =
+                await this.databaseService.supabase
+                  .from("restaurant_inventory")
+                  .select("display_name")
+                  .eq("restaurant_id", restaurantId)
+                  .eq("id", inventoryId)
+                  .maybeSingle();
+              if (namedError) {
+                research = {
+                  ok: false,
+                  error: `the item's name could not be read (${namedError.message})`,
+                };
+              } else {
+                const dn = (named as Record<string, any> | null)?.display_name;
+                itemName =
+                  typeof dn === "string" && dn.trim().length > 0
+                    ? dn.trim()
+                    : null;
+              }
+            }
+            if (!research) {
+              research = await enqueueHouseItemResearch(
+                this.databaseService.supabase,
+                {
+                  restaurantId,
+                  inventoryId,
+                  name: itemName,
+                  queuedFrom: "delivery",
+                  sourceOrderId: orderId,
+                  queuedBy: userId,
+                },
+              );
+            }
+            if (!research.ok) {
+              this.logger.error(
+                `markDelivered: order ${orderId} booked, but its item ${inventoryId} (no wine-library row) was not queued for research: ${research.error}`,
+              );
+            }
+          }
         }
       }
     }
@@ -4886,6 +5021,9 @@ export class ProcurementService {
     // Conditional on exactly the write above — DELIVERED, this delivered_at,
     // this person — so it can never undo a different request's delivery; the
     // race guard on that write (the NOT-IN on arrived statuses) is untouched.
+    // Since the founder's answer of 2026-09-21 on items with no master wine,
+    // an item that could not be read (or is not this house's) is a refused
+    // booking too: it used to be skipped and the order left delivered.
     // Nothing else is undone because nothing else was written: the live
     // movement was refused whole, and no `order_delivered` event, no in-transit
     // change, no calendar change and no verify task happen for it. The shadow
@@ -4944,8 +5082,11 @@ export class ProcurementService {
           // this notice told the manager 5 bottles came in when 60 did
           // (ADR 0190 D6 — filed as 0168 before its renumbering).
           // A refused booking never reaches this line (it put the order back
-          // and threw, above), so this is only ever said of stock that moved.
-          message: `${receivedBottles} bottles stocked in. Confirm the physical count against the vendor invoice.`,
+          // and threw, above). What the notice says about the shelf is what
+          // THIS call did (`delivered-notice.ts`): "N bottles stocked in" only
+          // for a booking that moved them, and the research sentence for an
+          // item the wine library does not have (founder, 2026-09-21).
+          message: verifyNoticeMessage(booking, research),
           priority: "critical",
           actionUrl: `/inventory?verify=${orderId}`,
           actionLabel: "Verify receipt",
@@ -4956,6 +5097,13 @@ export class ProcurementService {
             wineName: order.wineName,
             quantity: resolvedQuantity,
             providerId: order.providerId,
+            // The research queue's answer for an item the wine library lacks
+            // (founder, 2026-09-21); null for a library wine.
+            researchStatus: research
+              ? research.ok
+                ? research.status
+                : "not_queued"
+              : null,
           },
         },
         { dedupeWithinMinutes: 24 * 60 },

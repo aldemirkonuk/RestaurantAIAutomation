@@ -80,8 +80,9 @@ export const DELIVERY_REFUSED_ALREADY_ARRIVED = "order_already_delivered";
 export const DELIVERY_REFUSED_STATE_UNREADABLE = "order_state_unreadable";
 
 /**
- * The `reason` code when the delivery's stock booking was REFUSED by the
- * ledger (founder, answer 9, 2026-09-21): the order is put back to the status
+ * The `reason` code when the delivery's stock booking was REFUSED — by the
+ * ledger, or because the order's item could not be read (founder, answer 9,
+ * and the answer on items with no master wine, 2026-09-21): the order is put back to the status
  * it had, so the delivery can be recorded again, and the 422 says whether the
  * put-back itself landed.
  */
@@ -95,8 +96,8 @@ export function refuseUnbookedDelivery(input: {
 }): string {
   const which = input.orderNumber ? `Order ${input.orderNumber}` : "This order";
   return input.revertedTo
-    ? `${which} was not marked delivered: the stock ledger refused the booking (${input.why}). Nothing is on the shelf for it, and the order is back to ${statusInWords(input.revertedTo as ProcurementOrderStatus)} so the delivery can be recorded again once the refusal is fixed.`
-    : `${which} reads as delivered, but the stock ledger refused the booking (${input.why}) and the order could not be put back. Nothing is on the shelf for it; book it at the receiving door and tell a manager.`;
+    ? `${which} was not marked delivered: the stock booking was refused (${input.why}). Nothing is on the shelf for it, and the order is back to ${statusInWords(input.revertedTo as ProcurementOrderStatus)} so the delivery can be recorded again once the refusal is fixed.`
+    : `${which} reads as delivered, but the stock booking was refused (${input.why}) and the order could not be put back. Nothing is on the shelf for it; book it at the receiving door and tell a manager.`;
 }
 
 /**

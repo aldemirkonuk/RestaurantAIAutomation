@@ -534,6 +534,25 @@ export async function fetchAuctionLotRecords(inventoryId: string): Promise<Aucti
   return response.data;
 }
 
+/**
+ * A house item the wine library does not have, and where it stands on the
+ * research queue (founder, 2026-09-21, ADR 0192's amendment). `flag` is set
+ * only for an item whose name cannot identify a wine.
+ */
+export interface HouseItemResearch {
+  inventoryId: string;
+  status: 'queued' | 'matched' | 'not_findable';
+  reason: string;
+  flag: string | null;
+  updatedAt: string;
+}
+
+/** This house's research rows; the house comes from the sign-in. A failed read throws. */
+export async function fetchHouseItemResearch(): Promise<HouseItemResearch[]> {
+  const response = await apiClient.get<{ items: HouseItemResearch[] }>(`${INVENTORY_PATH}/research`);
+  return response.data.items;
+}
+
 // ==================== Export all functions ====================
 
 export const inventoryApi = {

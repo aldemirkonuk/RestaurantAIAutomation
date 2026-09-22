@@ -17,6 +17,11 @@ import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
 import { mapStockCountResult } from "./stock-count-result";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import {
+  enqueueHouseItemResearch,
+  readHouseItemResearch,
+  type HouseItemResearchView,
+} from "./house-item-research";
 import { classifyStock } from "../common/stock-status";
 import {
   CreateInventoryItemDto,
@@ -1379,6 +1384,27 @@ export class InventoryService {
   }
 
   /**
+   * This house's items that the wine library does not have, and where each
+   * stands on the research queue (founder, 2026-09-21, ADR 0192's amendment).
+   * The /inventory flag reads it. A failed read is a 503 with the reason, never
+   * an empty list: "nothing to name" and "could not be read" are different.
+   */
+  async listHouseItemResearch(
+    restaurantId: string,
+  ): Promise<{ items: HouseItemResearchView[] }> {
+    try {
+      return {
+        items: await readHouseItemResearch(this.dbService.getClient(), restaurantId),
+      };
+    } catch (err: any) {
+      throw new HttpException(
+        err?.message ?? "Which wines wait for research could not be read.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
+
+  /**
    * Update an inventory item.
    * After DB update, publishes stock.manual_override event to RabbitMQ
    * so the Buffer Manager can evaluate threshold breaches.
@@ -1524,6 +1550,44 @@ export class InventoryService {
     if (error) {
       this.logger.error(`Failed to reload inventory item: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
+
+    // A RENAME RE-DECIDES THE RESEARCH QUEUE (founder, 2026-09-21, ADR 0192's
+    // amendment). For an item the wine library does not have, the house's name
+    // is the only thing research can go on, so a new name decides again: a
+    // placeholder ("wine 1", "house red") is `not_findable` and flagged, a real
+    // name is `queued`. Found by the item's id; a row research already
+    // `matched` is left alone. This is the edit path the /inventory flag
+    // ("Tell us which wine this is ...") points at — the same PATCH and the
+    // same gate as every other item edit.
+    if (dto.wineName !== undefined && !(data as any)?.master_wine_id) {
+      const reloaded = data as Record<string, any>;
+      const alias =
+        typeof reloaded.wine_name === "string" && reloaded.wine_name.trim()
+          ? reloaded.wine_name.trim()
+          : null;
+      const declared =
+        typeof reloaded.display_name === "string" &&
+        reloaded.display_name.trim()
+          ? reloaded.display_name.trim()
+          : null;
+      const research = await enqueueHouseItemResearch(client, {
+        restaurantId,
+        inventoryId: itemId,
+        name: alias ?? declared,
+        queuedFrom: "rename",
+        sourceOrderId: null,
+        queuedBy: performedBy ?? null,
+      });
+      if (!research.ok) {
+        this.logger.error(
+          `updateInventoryItem: item ${itemId} renamed, but the research queue was not updated: ${research.error}`,
+        );
+        throw new HttpException(
+          `The name was saved, but whether this wine can now be looked up was not recorded (${research.error}). Save the name again to retry.`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
     }
 
     this.logger.log({

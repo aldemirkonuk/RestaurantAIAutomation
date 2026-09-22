@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -45,7 +46,13 @@ export const SEND_REQUEST_PUSH_TEXT = "A letter is waiting for your approval";
 export type VendorSendRequestKind = "confirm_deal" | "house_letter";
 
 const REQUEST_COLUMNS =
-  "id, restaurant_id, kind, order_id, provider_id, requested_by, requested_at, payload, payload_sha256, state, released_by, released_at, released_as_written, closed_reason, conversation_id";
+  "id, restaurant_id, kind, order_id, provider_id, requested_by, requested_at, payload, payload_sha256, state, released_by, released_at, released_as_written, closed_reason, conversation_id, closed_how, closed_by, closed_at, undone_count, last_undone_at, last_undone_by";
+
+/** How a request was closed (20260921170510). */
+export type VendorSendRequestCloseHow = "declined" | "withdrawn" | "deal_dismissed";
+
+/** The longest reason a decline may carry; the requester reads it on the bell. */
+export const DECLINE_REASON_MAX = 500;
 
 export interface VendorSendRequestRow {
   id: string;
@@ -63,6 +70,13 @@ export interface VendorSendRequestRow {
   released_as_written: boolean | null;
   closed_reason: string | null;
   conversation_id: string | null;
+  // 20260921170510 (founder, 2026-09-21: "Decline/withdraw; undo re-waits").
+  closed_how?: VendorSendRequestCloseHow | null;
+  closed_by?: string | null;
+  closed_at?: string | null;
+  undone_count?: number | null;
+  last_undone_at?: string | null;
+  last_undone_by?: string | null;
 }
 
 export interface VendorSendRequestView {
@@ -79,6 +93,8 @@ export interface VendorSendRequestView {
   releasedAt: string | null;
   releasedAsWritten: boolean | null;
   conversationId: string | null;
+  /** Times a manager released it and then pulled the letter back inside the undo window. */
+  undoneCount: number;
 }
 
 /** The canonical hash of what was asked for — the same digest the seal takes over its args. */
@@ -293,7 +309,9 @@ export class VendorSendRequestsService {
   async closeWaitingDeal(restaurantId: string, orderId: string, reason: string): Promise<number> {
     const { data, error } = await this.db
       .from("vendor_send_requests")
-      .update({ state: "closed", closed_reason: reason })
+      // How and when are on the record since 20260921170510 (a CHECK); the
+      // dismissal path names nobody, so closed_by stays NULL here.
+      .update({ state: "closed", closed_reason: reason, closed_how: "deal_dismissed", closed_at: new Date().toISOString() })
       .eq("restaurant_id", restaurantId)
       .eq("kind", "confirm_deal")
       .eq("order_id", orderId)
@@ -305,6 +323,283 @@ export class VendorSendRequestsService {
       );
     }
     return Array.isArray(data) ? data.length : 0;
+  }
+
+  // ==========================================================================
+  // DECLINE, WITHDRAW, AND AN UNDONE RELEASE WAITS AGAIN
+  // --------------------------------------------------------------------------
+  // The founder, 2026-09-21, on ADR 0175's stated gap (verbatim): "Decline/
+  // withdraw; undo re-waits". An owner or a manager declines a waiting
+  // request with a reason; the person who asked withdraws their own; both
+  // close it on the record (how, by whom, when: 20260921170510) and tell the
+  // other side on the bell. A released letter pulled back inside the
+  // composer's undo window puts its request back to waiting, and the person
+  // who asked is told.
+  // ==========================================================================
+
+  /** Whether this person holds the owner or manager role in this house (strict: a failed read throws). */
+  async isOwnerOrManager(userId: string, restaurantId: string): Promise<boolean> {
+    const reading = await this.authority.standing(userId, restaurantId);
+    const role = (reading.role ?? "").trim().toLowerCase();
+    return role === "owner" || role === "manager";
+  }
+
+  /**
+   * An owner or a manager declines a waiting request, saying why. Conditional
+   * on `waiting`, so a request released a moment ago is not declined after
+   * the fact. The person who asked is told who declined it and why.
+   */
+  async decline(input: {
+    restaurantId: string;
+    requestId: string;
+    kind: VendorSendRequestKind;
+    userId: string;
+    reason: string;
+  }): Promise<VendorSendRequestRow> {
+    if (!input.userId?.trim()) throw new ForbiddenException("A named person is required to decline. Nothing was changed.");
+    const reason = (input.reason ?? "").trim();
+    if (!reason) {
+      throw new BadRequestException("A decline says why, so the person who asked can act on it. Nothing was changed.");
+    }
+    if (reason.length > DECLINE_REASON_MAX) {
+      throw new BadRequestException(`A reason is at most ${DECLINE_REASON_MAX} characters. Nothing was changed.`);
+    }
+    if (!(await this.isOwnerOrManager(input.userId, input.restaurantId))) {
+      throw new ForbiddenException("Only an owner or a manager may decline a request. Nothing was changed.");
+    }
+    const current = await this.one(input.restaurantId, input.requestId, input.kind);
+    this.assertStillWaiting(current, "declined");
+    const closed = await this.closeOne({
+      restaurantId: input.restaurantId,
+      requestId: input.requestId,
+      how: "declined",
+      reason,
+      by: input.userId,
+    });
+    await this.tellRequesterClosed({ restaurantId: input.restaurantId, row: closed, by: input.userId, how: "declined", reason });
+    return closed;
+  }
+
+  /**
+   * The person who asked withdraws their own waiting request. Nobody else may
+   * withdraw it (a manager declines instead). The owners and managers who were
+   * told it was waiting are told it was withdrawn.
+   */
+  async withdraw(input: {
+    restaurantId: string;
+    requestId: string;
+    kind: VendorSendRequestKind;
+    userId: string;
+  }): Promise<VendorSendRequestRow> {
+    if (!input.userId?.trim()) throw new ForbiddenException("A named person is required to withdraw. Nothing was changed.");
+    const current = await this.one(input.restaurantId, input.requestId, input.kind);
+    if (current.requested_by !== input.userId) {
+      throw new ForbiddenException(
+        "Only the person who asked may withdraw a request; an owner or a manager declines it instead. Nothing was changed.",
+      );
+    }
+    this.assertStillWaiting(current, "withdrawn");
+    const closed = await this.closeOne({
+      restaurantId: input.restaurantId,
+      requestId: input.requestId,
+      how: "withdrawn",
+      reason: "Withdrawn by the person who asked.",
+      by: input.userId,
+    });
+    await this.tellManagersWithdrawn({ restaurantId: input.restaurantId, row: closed, by: input.userId });
+    return closed;
+  }
+
+  private assertStillWaiting(row: VendorSendRequestRow, act: "declined" | "withdrawn"): void {
+    if (row.state === "waiting") return;
+    throw new ConflictException(
+      row.state === "released"
+        ? `That request was already released, so it was not ${act}. If the letter is still inside its undo window, pull it back first.`
+        : `That request is already closed, so nothing was changed.`,
+    );
+  }
+
+  /** Close one waiting request on the record. Conditional on `waiting`; a lost race is a 409, a failed write a 500. */
+  private async closeOne(input: {
+    restaurantId: string;
+    requestId: string;
+    how: Exclude<VendorSendRequestCloseHow, "deal_dismissed">;
+    reason: string;
+    by: string;
+  }): Promise<VendorSendRequestRow> {
+    const { data, error } = await this.db
+      .from("vendor_send_requests")
+      .update({
+        state: "closed",
+        closed_how: input.how,
+        closed_reason: input.reason,
+        closed_by: input.by,
+        closed_at: new Date().toISOString(),
+      })
+      .eq("id", input.requestId)
+      .eq("restaurant_id", input.restaurantId)
+      .eq("state", "waiting")
+      .select(REQUEST_COLUMNS);
+    if (error) {
+      throw new InternalServerErrorException(`The request could not be closed (${error.message}). Nothing was changed.`);
+    }
+    const rows = (data ?? []) as unknown as VendorSendRequestRow[];
+    if (rows.length === 0) {
+      throw new ConflictException("That request was released or closed by someone else a moment ago. Nothing was changed.");
+    }
+    return rows[0];
+  }
+
+  /**
+   * A released letter was pulled back inside its undo window: the request it
+   * released goes back to waiting (founder, 2026-09-21: "undo re-waits"), the
+   * pull-back is counted and named on the row, and the person who asked is
+   * told. Found by the request id the letter carries (`requestId`, stamped on
+   * the letter at release) — released, and linked to this letter or not linked
+   * at all (the link is best-effort) — or, for a letter queued before that
+   * stamp, by the cancelled letter's id. Returns null when no such request
+   * reads released. A failed read or write THROWS; the caller has already
+   * cancelled the letter and says so.
+   */
+  async rewaitAfterUndo(input: {
+    restaurantId: string;
+    conversationId: string;
+    /** The request id the letter itself records; null for an older letter. */
+    requestId?: string | null;
+    undoneBy: string | null;
+    vendorName?: string | null;
+  }): Promise<VendorSendRequestRow | null> {
+    // By the id the letter carries or, for a letter queued before that stamp,
+    // by the letter's own id. Whether the request is still released by THIS
+    // letter is decided once, on the write below. [Last call, 2026-09-21: the
+    // same test sat on this read too, a second copy no test could see; a
+    // mutant dropping it survived.]
+    let find = this.db
+      .from("vendor_send_requests")
+      .select(REQUEST_COLUMNS)
+      .eq("restaurant_id", input.restaurantId)
+      .eq("kind", "house_letter")
+      .eq("state", "released");
+    find = input.requestId
+      ? find.eq("id", input.requestId)
+      : find.eq("conversation_id", input.conversationId);
+    const { data: found, error: readError } = await find.maybeSingle();
+    if (readError) {
+      throw new InternalServerErrorException(
+        `Whether this letter released a staff request could not be read (${readError.message}).`,
+      );
+    }
+    if (!found) return null;
+    const row = found as unknown as VendorSendRequestRow;
+    let rewait = this.db
+      .from("vendor_send_requests")
+      .update({
+        state: "waiting",
+        released_by: null,
+        released_at: null,
+        released_as_written: null,
+        conversation_id: null,
+        undone_count: (Number(row.undone_count ?? 0) || 0) + 1,
+        last_undone_at: new Date().toISOString(),
+        last_undone_by: input.undoneBy,
+      })
+      .eq("id", row.id)
+      .eq("restaurant_id", input.restaurantId)
+      .eq("state", "released");
+    // Released by THIS letter: linked to it, or never linked (the link is
+    // best-effort) — never a request another letter now carries. The one guard.
+    rewait =
+      row.conversation_id == null
+        ? rewait.is("conversation_id", null)
+        : rewait.eq("conversation_id", input.conversationId);
+    const { data, error } = await rewait.select(REQUEST_COLUMNS);
+    if (error) {
+      throw new InternalServerErrorException(`The staff request could not be put back to waiting (${error.message}).`);
+    }
+    const rows = (data ?? []) as unknown as VendorSendRequestRow[];
+    if (rows.length === 0) return null;
+    await this.tellRequesterRewaits({
+      restaurantId: input.restaurantId,
+      row: rows[0],
+      by: input.undoneBy,
+      vendorName: input.vendorName ?? null,
+    });
+    return rows[0];
+  }
+
+  private async tellRequesterClosed(input: {
+    restaurantId: string;
+    row: VendorSendRequestRow;
+    by: string;
+    how: "declined";
+    reason: string;
+  }): Promise<void> {
+    const requester = input.row.requested_by;
+    if (!requester || requester === input.by) return;
+    try {
+      const who = (await this.authority.namesOf([input.by])).get(input.by) ?? "A manager";
+      const what = input.row.kind === "confirm_deal" ? "your request to confirm a deal" : "your letter";
+      await this.bell(input.restaurantId, [requester], {
+        type: input.row.kind === "confirm_deal" ? "vendor_deal_declined" : "vendor_letter_declined",
+        title: `${who} declined ${what}`,
+        message: `${who} declined ${what}. Why: ${input.reason} Nothing was sent.`,
+        actionUrl: input.row.kind === "confirm_deal" ? "/orders" : "/communications",
+        actionLabel: "See it",
+        metadata: { requestId: input.row.id, closedBy: input.by, closedHow: input.how },
+      });
+    } catch (e: any) {
+      this.logger.warn(`The requester could not be told their request was declined: ${e?.message}`);
+    }
+  }
+
+  private async tellManagersWithdrawn(input: {
+    restaurantId: string;
+    row: VendorSendRequestRow;
+    by: string;
+  }): Promise<void> {
+    try {
+      const { owners, managers } = await this.authority.ownersAndManagers(input.restaurantId);
+      const audience = [...new Set([...owners, ...managers])].filter((id) => id !== input.by);
+      if (audience.length === 0) return;
+      const who = (await this.authority.namesOf([input.by])).get(input.by) ?? "A member of the team";
+      const what = input.row.kind === "confirm_deal" ? "their request to confirm a deal" : "their letter";
+      await this.bell(input.restaurantId, audience, {
+        type: input.row.kind === "confirm_deal" ? "vendor_deal_withdrawn" : "vendor_letter_withdrawn",
+        title: `${who} withdrew ${what}`,
+        message: `${who} withdrew ${what}. It no longer waits for you, and nothing was sent.`,
+        actionUrl: input.row.kind === "confirm_deal" ? "/orders" : "/communications",
+        actionLabel: "See it",
+        metadata: { requestId: input.row.id, closedBy: input.by, closedHow: "withdrawn" },
+      });
+    } catch (e: any) {
+      this.logger.warn(`The managers could not be told a request was withdrawn: ${e?.message}`);
+    }
+  }
+
+  private async tellRequesterRewaits(input: {
+    restaurantId: string;
+    row: VendorSendRequestRow;
+    by: string | null;
+    vendorName: string | null;
+  }): Promise<void> {
+    const requester = input.row.requested_by;
+    if (!requester || requester === input.by) return;
+    try {
+      const who = input.by
+        ? ((await this.authority.namesOf([input.by])).get(input.by) ?? "Someone in the house")
+        : "Someone in the house";
+      const vendor = input.vendorName ?? "the vendor";
+      await this.bell(input.restaurantId, [requester], {
+        type: "vendor_letter_rewaiting",
+        title: `${who} pulled your letter back`,
+        message: `${who} pulled your letter to ${vendor} back before it left. It was not sent, and your request is waiting for an owner or a manager again.`,
+        actionUrl: "/communications",
+        actionLabel: "See it",
+        metadata: { requestId: input.row.id, undoneBy: input.by, undoneCount: input.row.undone_count ?? null },
+      });
+    } catch (e: any) {
+      this.logger.warn(`The requester could not be told their letter was pulled back: ${e?.message}`);
+    }
   }
 
   async present(rows: VendorSendRequestRow[]): Promise<VendorSendRequestView[]> {
@@ -325,6 +620,7 @@ export class VendorSendRequestsService {
       releasedAt: r.released_at,
       releasedAsWritten: r.released_as_written,
       conversationId: r.conversation_id,
+      undoneCount: Number(r.undone_count ?? 0) || 0,
     }));
   }
 

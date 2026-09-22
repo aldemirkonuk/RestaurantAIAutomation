@@ -280,7 +280,14 @@ export class HouseLettersService {
    * The letters waiting for a manager. An owner or a manager sees every one
    * waiting in the house (they release them); anyone else sees only their own.
    */
-  async requestsFor(userId: string, restaurantId: string): Promise<{ requests: VendorSendRequestView[] }> {
+  async requestsFor(
+    userId: string,
+    restaurantId: string,
+  ): Promise<{
+    requests: VendorSendRequestView[];
+    /** Who is reading: an owner or a manager may decline; anyone may withdraw their own (founder, 2026-09-21). */
+    viewer: { userId: string; mayDecline: boolean };
+  }> {
     if (!this.requests || !this.authority) {
       throw new InternalServerErrorException("The waiting letters could not be read (not wired into the composer).");
     }
@@ -289,6 +296,59 @@ export class HouseLettersService {
     const releaser = role === "owner" || role === "manager";
     return {
       requests: await this.requests.waiting(restaurantId, "house_letter", releaser ? {} : { requestedBy: userId }),
+      viewer: { userId, mayDecline: releaser },
+    };
+  }
+
+  /**
+   * An owner or a manager declines a waiting letter request, saying why; the
+   * person who asked is told (founder, 2026-09-21: *"Decline/withdraw; undo
+   * re-waits"*). Nothing is sent.
+   */
+  async declineRequest(params: {
+    restaurantId: string;
+    userId: string;
+    requestId: string;
+    reason: string;
+  }): Promise<{ id: string; state: string; says: string }> {
+    const userId = assertNamedActor(params.userId, "declined");
+    if (!this.requests) {
+      throw new InternalServerErrorException("Requests could not be changed (not wired into the composer). Nothing was changed.");
+    }
+    const row = await this.requests.decline({
+      restaurantId: params.restaurantId,
+      requestId: params.requestId,
+      kind: "house_letter",
+      userId,
+      reason: params.reason,
+    });
+    return {
+      id: row.id,
+      state: row.state,
+      says: "Declined. The person who asked was told why, and nothing was sent.",
+    };
+  }
+
+  /** The person who asked withdraws their own waiting letter request; the owners and managers are told. */
+  async withdrawRequest(params: {
+    restaurantId: string;
+    userId: string;
+    requestId: string;
+  }): Promise<{ id: string; state: string; says: string }> {
+    const userId = assertNamedActor(params.userId, "withdrawn");
+    if (!this.requests) {
+      throw new InternalServerErrorException("Requests could not be changed (not wired into the composer). Nothing was changed.");
+    }
+    const row = await this.requests.withdraw({
+      restaurantId: params.restaurantId,
+      requestId: params.requestId,
+      kind: "house_letter",
+      userId,
+    });
+    return {
+      id: row.id,
+      state: row.state,
+      says: "Withdrawn. It no longer waits for a manager, and nothing was sent.",
     };
   }
 
@@ -664,6 +724,13 @@ export class HouseLettersService {
           sender_kind: identity.kind,
           written_by: userId,
           template_id: dto.templateId ?? null,
+          // The staff request this release took, by its id, on the letter
+          // itself: a pull-back finds the request from here even when the
+          // best-effort `linkConversation` below did not land (founder,
+          // 2026-09-21: "undo re-waits"). [Last call, 2026-09-21: that request
+          // was found only through the link, so a failed link left it
+          // released, silently, after its letter was pulled back.]
+          request_id: claimed && dto.requestId ? dto.requestId : null,
         },
       })
       .select("id")
@@ -719,10 +786,12 @@ export class HouseLettersService {
   async cancel(params: {
     restaurantId: string;
     id: string;
-  }): Promise<{ id: string; status: string; says: string }> {
+    /** Who pulled it back — named on the staff request it re-opens, if any. */
+    userId?: string | null;
+  }): Promise<{ id: string; status: string; says: string; requestWaitsAgain?: boolean }> {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
-      .select("id, status, scheduled_send_at, restaurant_id")
+      .select("id, status, scheduled_send_at, restaurant_id, provider_id, email_headers")
       .eq("id", params.id)
       .eq("restaurant_id", params.restaurantId)
       .maybeSingle();
@@ -749,23 +818,94 @@ export class HouseLettersService {
       );
     }
 
-    const { error: updateError } = await this.db.client
+    const { data: cancelled, error: updateError } = await this.db.client
       .from("procurement_conversations")
       .update({ status: LETTER_STATUS.CANCELLED, scheduled_send_at: null })
       .eq("id", params.id)
-      .eq("status", LETTER_STATUS.QUEUED);
+      .eq("restaurant_id", params.restaurantId)
+      .eq("status", LETTER_STATUS.QUEUED)
+      .select("id");
 
     if (updateError) {
       throw new BadRequestException(
         `The letter was NOT cancelled (${updateError.message}). It is still queued.`,
       );
     }
+    // Conditional on QUEUED: when the dispatcher took the row between the read
+    // above and this write, nothing matched and nothing was cancelled. Saying
+    // "pulled back" then would be a claim about a letter that may have gone.
+    if (!Array.isArray(cancelled) || cancelled.length === 0) {
+      throw new ConflictException(
+        "That letter left the queue a moment ago (the dispatcher may hold it), so it was NOT cancelled. The conversation book will say what happened to it.",
+      );
+    }
+
+    // UNDO RE-WAITS (founder, 2026-09-21, verbatim: "Decline/withdraw; undo
+    // re-waits"). A letter a manager released from a staff member's request
+    // and then pulled back inside the undo window puts that request back to
+    // waiting, and the person who asked is told. After the cancel, never
+    // before: a request re-opened while its letter could still leave could be
+    // released twice. The letter is cancelled whatever happens here; a
+    // failure is said in the answer, not swallowed.
+    let requestWaitsAgain = false;
+    let requestNote = "";
+    // The request this letter's release took, as the letter records it (null
+    // for a letter queued before the id was stamped, or one no request asked for).
+    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+    const stampedRequestId =
+      typeof headers.request_id === "string" && headers.request_id.trim() ? headers.request_id.trim() : null;
+    if (this.requests) {
+      try {
+        const vendorName = await this.vendorNameOf(params.restaurantId, (row.provider_id as string | null) ?? null);
+        const rewaited = await this.requests.rewaitAfterUndo({
+          restaurantId: params.restaurantId,
+          conversationId: params.id,
+          requestId: stampedRequestId,
+          undoneBy: params.userId ?? null,
+          vendorName,
+        });
+        if (rewaited) {
+          requestWaitsAgain = true;
+          requestNote = " The staff request it released is waiting for an owner or a manager again, and the person who asked was told.";
+        } else if (stampedRequestId) {
+          // The letter says a request released it, and that request no longer
+          // reads as released by this letter: said, never a quiet "pulled back".
+          this.logger.error(
+            `Letter ${params.id} was pulled back, but its staff request ${stampedRequestId} no longer reads as released by it, so it was not put back to waiting.`,
+          );
+          requestNote =
+            " The staff request it released could not be put back to waiting (it no longer reads as released by this letter); ask the person who asked to send it again.";
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Letter ${params.id} was pulled back, but its staff request was not put back to waiting: ${message}`);
+        requestNote = ` If this letter came from a staff member's request, that request could not be put back to waiting (${message}); ask them to send it again.`;
+      }
+    }
 
     return {
       id: params.id,
       status: LETTER_STATUS.CANCELLED,
-      says: "Pulled back. It was never sent, and the book records it as cancelled rather than deleting it.",
+      says: `Pulled back. It was never sent, and the book records it as cancelled rather than deleting it.${requestNote}`,
+      requestWaitsAgain,
     };
+  }
+
+  /** A vendor's name for a notice; null (never a guess) when it cannot be read. */
+  private async vendorNameOf(restaurantId: string, providerId: string | null): Promise<string | null> {
+    if (!providerId) return null;
+    const { data, error } = await this.db.client
+      .from("providers")
+      .select("name")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", providerId)
+      .maybeSingle();
+    if (error) {
+      // Words only: the notice says "the vendor" instead. Logged, not hidden.
+      this.logger.warn(`The vendor's name for a notice could not be read (${error.message}).`);
+      return null;
+    }
+    return ((data as Record<string, unknown> | null)?.name as string | null) ?? null;
   }
 
   /** What is still inside its undo window for this house, newest first. */

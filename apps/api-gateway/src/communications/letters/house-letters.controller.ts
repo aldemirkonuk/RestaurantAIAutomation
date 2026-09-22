@@ -37,7 +37,7 @@ import { HouseSenderService } from "./house-sender.service";
 import { HouseLettersCron } from "./house-letters.cron";
 import { HouseInboxCron } from "../inbox/house-inbox.cron";
 import { HouseInboxService } from "../inbox/house-inbox.service";
-import { QueueLetterDto, UpsertLetterTemplateDto } from "./house-letters.dto";
+import { DeclineLetterRequestDto, QueueLetterDto, UpsertLetterTemplateDto } from "./house-letters.dto";
 import { houseActor, type TokenUser } from "./house-letters.actor";
 
 @ApiTags("Communications")
@@ -154,6 +154,39 @@ export class HouseLettersController {
     return this.letters.requestsFor(userId, restaurantId);
   }
 
+  /**
+   * An owner or a manager declines a waiting letter request, with a reason; the
+   * person who asked is told (founder, 2026-09-21: "Decline/withdraw; undo
+   * re-waits"). The role is read from the signed token's person, strictly.
+   */
+  @Post("requests/:id/decline")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Decline a waiting letter request, saying why; nothing is sent" })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or a manager" })
+  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  async declineRequest(
+    @CurrentUser() user: TokenUser,
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @Body() dto: DeclineLetterRequestDto,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.declineRequest({ restaurantId, userId, requestId: id, reason: dto.reason });
+  }
+
+  /** The person who asked withdraws their own waiting letter request; the owners and managers are told. */
+  @Post("requests/:id/withdraw")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Withdraw your own waiting letter request; nothing is sent" })
+  @ApiResponse({ status: 403, description: "The caller did not ask for it" })
+  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  async withdrawRequest(
+    @CurrentUser() user: TokenUser,
+    @Param("id", new ParseUUIDPipe()) id: string,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.withdrawRequest({ restaurantId, userId, requestId: id });
+  }
+
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
@@ -192,7 +225,9 @@ export class HouseLettersController {
     @CurrentUser() user: TokenUser,
     @Param("id", new ParseUUIDPipe()) id: string,
   ) {
-    const { restaurantId } = houseActor(user);
-    return this.letters.cancel({ restaurantId, id });
+    const { userId, restaurantId } = houseActor(user);
+    // Who pulled it back is named on a staff request it re-opens (founder,
+    // 2026-09-21: "undo re-waits").
+    return this.letters.cancel({ restaurantId, id, userId });
   }
 }

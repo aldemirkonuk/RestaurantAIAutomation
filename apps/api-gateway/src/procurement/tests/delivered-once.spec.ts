@@ -86,6 +86,7 @@ class FakeQuery {
     private readonly table: string,
     private readonly calls: Calls,
     private readonly readError: Record<string, any> | null,
+    private readonly writeError: Record<string, any> | null = null,
   ) {}
 
   select() {
@@ -147,6 +148,8 @@ class FakeQuery {
     await tick();
     if (this.readError && !this.isUpdate && !this.isInsert)
       return { data: [], error: this.readError };
+    if (this.writeError && (this.isUpdate || this.isInsert))
+      return { data: [], error: this.writeError };
     const rows = (this.store[this.table] ??= []);
     if (this.isInsert) {
       rows.push({ ...this.payload });
@@ -199,6 +202,10 @@ function makeDb(opts: {
   tableErrors?: Record<string, Record<string, any>>;
   /** The live `apply_stock_movement` answers this error instead of booking. */
   liveRpcError?: Record<string, any> | null;
+  /** Overrides on the order's house item (e.g. no master wine, its name). */
+  item?: Row;
+  /** A WRITE failure for one table (reads use `tableErrors`). */
+  writeErrors?: Record<string, Record<string, any>>;
 }) {
   const store: Record<string, Row[]> = {
     procurement_orders: [{ ...opts.order }],
@@ -210,8 +217,10 @@ function makeDb(opts: {
         shadow_stock: 0,
         in_transit_quantity: 0,
         uom: "bottle",
+        ...(opts.item ?? {}),
       },
     ],
+    house_item_research: [],
     inventory_transactions: (opts.ledger ?? []).map((r) => ({ ...r })),
     procurement_order_items: (opts.lines ?? []).map((r) => ({ ...r })),
     procurement_receipt_events: [],
@@ -236,6 +245,7 @@ function makeDb(opts: {
         table === "users" && opts.users === "unreadable"
           ? { code: "42501", message: "permission denied for table users" }
           : (opts.tableErrors?.[table] ?? opts.readError ?? null),
+        opts.writeErrors?.[table] ?? null,
       ),
     // The RPC books into the ledger the way `apply_stock_movement` does:
     // one row per idempotency key, carrying the order id. That is what the
@@ -909,5 +919,254 @@ describe("delivered-once — the sentence", () => {
       expect(s).toContain("ORD-2026-00042");
       expect(s).toMatch(/nothing was changed|Nothing was changed/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// An item the wine library does not have (founder, 2026-09-21, ADR 0192's
+// amendment): "book the stock anyway, and if it's not on the maser wine that
+// means that wine needs research treatment ... If its found that it s nowhere
+// to be found, like wine 1 and wine 2 and such, then we skip it and flag it."
+// ---------------------------------------------------------------------------
+describe("markDelivered — an item with no master wine is booked, and queued for research by its id", () => {
+  const withNotices = (db: DatabaseService) => {
+    const notifications = {
+      persistForRestaurant: jest.fn().mockResolvedValue({ inserted: 1 }),
+    };
+    const svc = new ProcurementService(
+      db,
+      events,
+      ledger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      notifications as any,
+    );
+    const notice = () => notifications.persistForRestaurant.mock.calls[0]?.[1];
+    return { svc, notifications, notice };
+  };
+
+  it("books the stock by the house item's id and queues a real name for research", async () => {
+    const { db, calls, store } = makeDb({
+      order: { ...baseOrder },
+      item: { master_wine_id: null, wine_name: "Kavaklıdere Yakut 2019" },
+    });
+    const { svc, notice } = withNotices(db);
+
+    const out = await svc.markDelivered(REST, ORDER, USER_A);
+
+    expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(liveMovements(calls)).toHaveLength(1);
+    expect(liveMovements(calls)[0].args).toMatchObject({
+      p_inventory_id: INVENTORY,
+      p_delta: 12,
+      p_restaurant_id: REST,
+    });
+    expect(out.received).toMatchObject({ readable: true, quantityInStockUom: 12 });
+    // The event records the movement, with no master wine to name.
+    expect(
+      store.inventory_events.filter((e) => e.event_type === "order_delivered"),
+    ).toEqual([expect.objectContaining({ inventory_id: INVENTORY, master_wine_id: null, quantity_change: 12 })]);
+    // Queued by the item's id and the house's id, never by the name.
+    expect(store.house_item_research).toEqual([
+      expect.objectContaining({
+        restaurant_id: REST,
+        inventory_id: INVENTORY,
+        status: "queued",
+        queued_from: "delivery",
+        source_order_id: ORDER,
+        queued_by: USER_A,
+      }),
+    ]);
+    expect("name" in store.house_item_research[0]).toBe(false);
+    expect(notice().message).toBe(
+      "12 bottles stocked in. This wine is not in the wine library yet, so it is queued for research. Confirm the physical count against the vendor invoice.",
+    );
+    expect(notice().metadata.researchStatus).toBe("queued");
+  });
+
+  it("a placeholder name is booked, skipped for research, and flagged", async () => {
+    const { db, calls, store } = makeDb({
+      order: { ...baseOrder },
+      item: { master_wine_id: null, wine_name: "Wine 2" },
+    });
+    const { svc, notice } = withNotices(db);
+
+    await svc.markDelivered(REST, ORDER, USER_A);
+
+    expect(liveMovements(calls)).toHaveLength(1);
+    expect(store.house_item_research).toEqual([
+      expect.objectContaining({ inventory_id: INVENTORY, status: "not_findable" }),
+    ]);
+    expect(store.house_item_research[0].reason).toMatch(/"Wine 2" is a placeholder/);
+    expect(notice().message).toMatch(/^12 bottles stocked in\. Its name does not say which wine it is/);
+    expect(notice().message).toContain(
+      "Tell us which wine this is and we can help you build better menus and promotions",
+    );
+  });
+
+  it("a house-declared item named only in display_name is classified by that name", async () => {
+    const { db, store } = makeDb({
+      order: { ...baseOrder },
+      item: { master_wine_id: null, wine_name: null, display_name: "wine 1" },
+    });
+    await withNotices(db).svc.markDelivered(REST, ORDER, USER_A);
+    expect(store.house_item_research[0]).toMatchObject({ status: "not_findable" });
+  });
+
+  it("a second delivery of the same item finds its row by id instead of queuing it twice", async () => {
+    const { db, store } = makeDb({
+      order: { ...baseOrder },
+      item: { master_wine_id: null, wine_name: "Kavaklıdere Yakut 2019" },
+    });
+    store.house_item_research.push({
+      id: "hir-1",
+      restaurant_id: REST,
+      inventory_id: INVENTORY,
+      status: "queued",
+      reason: "This wine is not in the wine library yet, so it waits for research by its item id.",
+      queued_from: "delivery",
+    });
+    await withNotices(db).svc.markDelivered(REST, ORDER, USER_A);
+    expect(store.house_item_research).toHaveLength(1);
+  });
+
+  it("a library wine is booked and not queued", async () => {
+    const { db, store } = makeDb({ order: { ...baseOrder } });
+    const { svc, notice } = withNotices(db);
+    await svc.markDelivered(REST, ORDER, USER_A);
+    expect(store.house_item_research).toHaveLength(0);
+    expect(notice().message).toBe(
+      "12 bottles stocked in. Confirm the physical count against the vendor invoice.",
+    );
+    expect(notice().metadata.researchStatus).toBeNull();
+  });
+
+  it("an item row that cannot be read refuses the booking and puts the order back", async () => {
+    // It used to read as "no master wine": nothing booked, the order left
+    // DELIVERED, and the manager told the bottles were stocked in.
+    const { db, calls, store } = makeDb({
+      order: { ...baseOrder },
+      tableErrors: { restaurant_inventory: { message: "connection reset" } },
+    });
+    const { svc, notifications } = withNotices(db);
+
+    const refusal = await svc.markDelivered(REST, ORDER, USER_A).then(() => null, (e) => e);
+
+    expect(refusal).toBeInstanceOf(UnprocessableEntityException);
+    expect(refusal.getResponse()).toMatchObject({
+      reason: DELIVERY_REFUSED_STOCK_NOT_BOOKED,
+      reverted: true,
+      status: ProcurementOrderStatus.APPROVED,
+    });
+    expect(refusal.getResponse().message).toMatch(/could not be read \(connection reset\)/);
+    expect(store.procurement_orders[0]).toMatchObject({ status: "APPROVED", delivered_at: null, received_by: null });
+    expect(liveMovements(calls)).toHaveLength(0);
+    expect(store.inventory_events).toHaveLength(0);
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+
+  it("whether the door already booked it cannot be read: nothing is booked and the order is put back", async () => {
+    // It used to throw a 503 AFTER the delivered write, so the order read
+    // delivered with nothing on the shelf.
+    const { db, calls, store } = makeDb({
+      order: { ...baseOrder },
+      tableErrors: { inventory_transactions: { message: "statement timeout" } },
+    });
+    const refusal = await withNotices(db).svc.markDelivered(REST, ORDER, USER_A).then(() => null, (e) => e);
+    expect(refusal).toBeInstanceOf(UnprocessableEntityException);
+    expect(refusal.getResponse()).toMatchObject({ reason: DELIVERY_REFUSED_STOCK_NOT_BOOKED, reverted: true });
+    expect(refusal.getResponse().message).toMatch(/statement timeout/);
+    expect(store.procurement_orders[0]).toMatchObject({ status: "APPROVED", delivered_at: null, received_by: null });
+    expect(liveMovements(calls)).toHaveLength(0);
+    expect(store.inventory_events).toHaveLength(0);
+  });
+
+  it("a booking that throws is a refused booking: the order is put back, nothing is said as stocked in", async () => {
+    // The old catch here logged a warning and left the order DELIVERED.
+    const { db, store } = makeDb({ order: { ...baseOrder }, item: { master_wine_id: null, wine_name: "Kavaklıdere Yakut 2019" } });
+    (db as any).supabase.rpc = async () => {
+      throw new Error("socket hang up");
+    };
+    const { svc, notifications } = withNotices(db);
+    const refusal = await svc.markDelivered(REST, ORDER, USER_A).then(() => null, (e) => e);
+    expect(refusal).toBeInstanceOf(UnprocessableEntityException);
+    expect(refusal.getResponse()).toMatchObject({ reason: DELIVERY_REFUSED_STOCK_NOT_BOOKED, reverted: true });
+    expect(refusal.getResponse().message).toMatch(/the booking failed \(socket hang up\)/);
+    expect(store.procurement_orders[0].status).toBe("APPROVED");
+    expect(store.house_item_research).toHaveLength(0);
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+
+  it("whether this order was booked before cannot be read: nothing is booked and the order is put back", async () => {
+    const { db, calls, store } = makeDb({
+      order: { ...baseOrder },
+      tableErrors: { inventory_events: { message: "connection reset" } },
+    });
+    const refusal = await withNotices(db).svc.markDelivered(REST, ORDER, USER_A).then(() => null, (e) => e);
+    expect(refusal).toBeInstanceOf(UnprocessableEntityException);
+    expect(refusal.getResponse()).toMatchObject({ reason: DELIVERY_REFUSED_STOCK_NOT_BOOKED, reverted: true });
+    expect(refusal.getResponse().message).toMatch(/already booked could not be read \(connection reset\)/);
+    expect(store.procurement_orders[0].status).toBe("APPROVED");
+    expect(liveMovements(calls)).toHaveLength(0);
+  });
+
+  it("an item that is not this house's refuses the booking and puts the order back", async () => {
+    const { db, calls, store } = makeDb({
+      order: { ...baseOrder },
+      item: { restaurant_id: "another-house" },
+    });
+    const refusal = await withNotices(db).svc.markDelivered(REST, ORDER, USER_A).then(() => null, (e) => e);
+    expect(refusal.getResponse()).toMatchObject({ reason: DELIVERY_REFUSED_STOCK_NOT_BOOKED, reverted: true });
+    expect(refusal.getResponse().message).toMatch(/not an item of this house/);
+    expect(store.procurement_orders[0].status).toBe("APPROVED");
+    expect(liveMovements(calls)).toHaveLength(0);
+  });
+
+  it("a research queue that cannot be written keeps the booking and says so in the notice", async () => {
+    const { db, calls, store } = makeDb({
+      order: { ...baseOrder },
+      item: { master_wine_id: null, wine_name: "Kavaklıdere Yakut 2019" },
+      writeErrors: { house_item_research: { message: "permission denied" } },
+    });
+    const { svc, notice } = withNotices(db);
+    const out = await svc.markDelivered(REST, ORDER, USER_A);
+    expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(liveMovements(calls)).toHaveLength(1);
+    expect(store.house_item_research).toHaveLength(0);
+    expect(notice().message).toMatch(/could not be queued for research: the item could not be queued for research \(permission denied\)/);
+    expect(notice().metadata.researchStatus).toBe("not_queued");
+  });
+
+  it("an order that names no item says no stock was booked, never 'stocked in'", async () => {
+    const { db, calls } = makeDb({ order: { ...baseOrder, inventory_id: null } });
+    const { svc, notice } = withNotices(db);
+    await svc.markDelivered(REST, ORDER, USER_A);
+    expect(liveMovements(calls)).toHaveLength(0);
+    expect(notice().message).toBe(
+      "No stock was booked: this order names no house item. Confirm the physical count against the vendor invoice.",
+    );
+    expect(notice().message).not.toMatch(/stocked in/);
+  });
+
+  it("stock the receiving door already booked is said as the door's, not as stocked in again", async () => {
+    const { db, calls, store } = makeDb({ order: { ...baseOrder } });
+    (store as any).inventory_transactions.push({
+      id: "door-1",
+      order_id: ORDER,
+      inventory_id: INVENTORY,
+      stock_type: "live",
+      quantity_change: 12,
+      delivery_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      idempotency_key: "door-receipt:1",
+    });
+    const { svc, notice } = withNotices(db);
+    await svc.markDelivered(REST, ORDER, USER_A);
+    expect(liveMovements(calls)).toHaveLength(0);
+    expect(notice().message).toBe(
+      "The receiving door already booked this order's stock; nothing was booked twice. Confirm the physical count against the vendor invoice.",
+    );
   });
 });

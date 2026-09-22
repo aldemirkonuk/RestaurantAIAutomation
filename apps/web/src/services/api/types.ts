@@ -93,6 +93,12 @@ export interface InventorySummary {
 }
 
 export interface UpdateInventoryItemRequest {
+  /**
+   * The house's own name for the item (ADR 0124's one alias; an empty string
+   * clears it). For an item the wine library does not have, a new name also
+   * re-decides its research (founder, 2026-09-21).
+   */
+  wineName?: string;
   providerId?: string;
   stockLive?: number;
   shadowStock?: number;

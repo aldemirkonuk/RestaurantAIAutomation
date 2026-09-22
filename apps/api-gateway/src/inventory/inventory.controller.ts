@@ -96,6 +96,30 @@ export class InventoryController {
     );
   }
 
+  // ==========================================================================
+  // RESEARCH — a house item the wine library does not have (founder,
+  // 2026-09-21, ADR 0192's amendment). Read by the /inventory flag. Tenant
+  // scope from the JWT, like the auction lots above, and declared before
+  // `:restaurantId` for the same routing reason.
+  // ==========================================================================
+
+  @Get("research")
+  @ApiOperation({
+    summary:
+      "This house's items the wine library does not have, and where each stands on the research queue",
+  })
+  async listHouseItemResearch(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    if (!user?.restaurantId) {
+      throw new HttpException(
+        "Your sign-in names no house, so there is nothing to read.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    return this.inventoryService.listHouseItemResearch(user.restaurantId);
+  }
+
   @Get(":restaurantId")
   @ApiOperation({ summary: "Get all inventory items for a restaurant" })
   @ApiResponse({ status: 200, description: "Returns all inventory items" })

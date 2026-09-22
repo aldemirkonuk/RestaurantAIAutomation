@@ -21,6 +21,7 @@ import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
 import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
+import { NameThisWine } from './NameThisWine'
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -161,6 +162,8 @@ export function RowExpansion({
 
   return (
     <div className="bg-gray-50/70 border-b border-gray-100 px-6 py-4">
+      {/* A wine whose name cannot say which wine it is (founder, 2026-09-21). */}
+      <NameThisWine inventoryId={item.inventoryId} currentName={item.name} />
       {/* info strip */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-3.5 mb-3.5 border-b border-gray-100">
         {[
