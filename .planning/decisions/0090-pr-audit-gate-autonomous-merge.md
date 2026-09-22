@@ -868,6 +868,49 @@ credit, no-key, rate-limit and unknown-cause rules each make the suite report
 the specific invariant it broke. The corrected CLAIMS row exits 1 with `429`
 un-anchored and 0 when restored.
 
+## Amendment — 2026-09-22, the no-credit CANNOT CHECK is let through, for now
+
+**The founder, 2026-09-22, verbatim:** *"change the scope of credit api errors to
+silence them and let them bypass for now"*.
+
+**Why.** Since the account behind `ANTHROPIC_API_KEY` ran out of credit, this job
+has been red on every PR with `COULD NOT RUN [no-credit]`, and a rerun cannot
+change that. It is advisory (not one of main's required contexts), so it blocked
+nothing, but a red that no PR can fix trains everyone to ignore the colour: the
+same harm the 2026-09-12 Correction above fixed for a `NEUTRAL` CodeQL.
+
+**What changed (`scripts/pr_audit_gate.py`, `_bypassed` inside `_fail_closed`).**
+- Only the `no-credit` cause, and only in the exact shape the Anthropic SDK raises
+  it (`BadRequestError: Error code: 400 ...`, measured 2026-09-12), now exits 0.
+- A bypass posts **no PR comment**. It writes the local report as `NOT RUN
+  [no-credit], bypassed`, and it prints a GitHub `::warning` annotation saying
+  the green is not an audit and nothing was merged.
+- Everything else still fails closed, exactly as before. That covers `no-key`,
+  `rate-limited`, `empty-diff`, an unrecognised cause, any other SDK 400, and a
+  reason that only *quotes* the credit sentence (a report text, a subprocess
+  argv).
+
+**What a bypass is not.** It is not a PASS. The merge step runs only on a PASS
+verdict, so a bypassed run can never merge anything. A PR still needs the
+session-side audit and the local hook's PASS marker, exactly as before.
+
+**How it ends.** By itself: once the account has credit, the SDK stops raising
+this error and every PR is audited again, with no code change. Removing the
+bypass for good means deleting `_BYPASSED_CAUSES` and its four self-test checks.
+
+**Tested.** `--self-test`: 54 invariants, 4 of them new. The new checks are:
+- the SDK's own no-credit error exits 0;
+- a reason that only quotes the credit sentence exits 1;
+- any other SDK 400 exits 1;
+- the bypass posts no comment.
+
+Five mutations each turn the self-test red:
+- the bypass returning 1;
+- the shape guard removed;
+- the bypass posting a comment;
+- the bypass widened to every cause;
+- the tag test dropped.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -890,3 +933,4 @@ un-anchored and 0 when restored.
 | 2026-09-12 | Live symptom across every open PR, not an audit round | `PR Audit Gate` red on every PR from a `NEUTRAL` `CodeQL` — a check that has never been required and cannot block a merge, reached only because branch protection is unreadable and the fallback waits for everything. Fixed by narrowing the FALLBACK wait list, never the state allow-list; `_fallback_names()` extracted so the self-test exercises the real selection; `--self-test` grown 35 → 39 and proven to fail on the pre-fix tuple. Touches `scripts/pr_audit_gate.py` and this ADR, so it escalates to the founder — same shape as PRs #297 and #299. |
 | 2026-09-12 | pr-merge-adversary (Opus subagent), second pass on `e59bf901` | **HOLDS** -- nothing changes a merge decision. Notes acted on the same day: "and never raises" was false (struck, bracketed); a timed-out `gh pr comment` classified by the report text in its argv (the reason now names the command, never its arguments); "Nothing was audited" was false when a merge or dispatch call timed out after a PASS (reworded); stderr noise from the stubbed invariant (silenced); `empty-diff` and the no-bare-word rule unpinned (pinned). `--self-test` 47 -> 50 |
 | 2026-09-17 | Aldemir (chat, main session, direct authorization) | Pipeline redesign, verbatim: *"change ADR 90 to be a better pipeline, 1 opus starts -> stops -> 2 sonnet handles opus's plan-> opus takes final say."* Replaces the 3-Opus-angle-plus-adversary fan-out with one Opus planner (stops after planning) -> two independent parallel Sonnet reviewers (correctness/regression/decision-compliance; security/adversarial) -> the same Opus planner resumed for final HOLDS/OVERTURNED judgment. `.claude/agents/pr-merge-auditor.md` and `pr-merge-adversary.md` re-scoped to `model: sonnet`; new `.claude/agents/pr-merge-planner.md` added (`model: opus`); `.claude/skills/pr-audit-gate/SKILL.md` steps 4-7 and 10 updated to match, `.planning/decisions/0050-*.md` added to the owned-paths list. Scope held to those files only — `CLAUDE.md`, `.github/workflows/`, and `scripts/pr_audit_gate.py` were explicitly left unchanged; the CI-side path still runs the old composition and has had no `ANTHROPIC_API_KEY` credit since 2026-09-12, unchanged by this amendment. See the "Amendment — 2026-09-17" subsection under Context above and ADR 0050's matching dated bracket |
+| 2026-09-22 | Aldemir (chat, main session effa5204, direct authorization) | No-credit bypass, verbatim: *"change the scope of credit api errors to silence them and let them bypass for now"*. The SDK's no-credit error, in its exact shape, exits 0 with a warning and no PR comment. Every other CANNOT CHECK still fails closed. Self-test 54 invariants, 5 mutations red. See "Amendment — 2026-09-22". |

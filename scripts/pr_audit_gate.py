@@ -894,11 +894,41 @@ def _exception_reason(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
+# The one COULD NOT RUN that is let through, and only for now. The founder,
+# 2026-09-22: "change the scope of credit api errors to silence them and let
+# them bypass for now". An out-of-credit key never clears on a rerun, so the
+# job was red on every PR for a reason no PR can fix, which trains people to
+# ignore the colour (the same harm scripts/vercel_should_build.sh names).
+# Scope, deliberately narrow: ONLY the no-credit cause, and ONLY in the exact
+# shape the Anthropic SDK raises it (measured 2026-09-12), so a reason that
+# merely QUOTES the credit sentence (a report, a subprocess argv) still fails
+# closed. A bypass is not a pass: nothing is audited, nothing is merged (the
+# merge step runs only on a PASS verdict), no PR comment is posted, and the
+# job says so in a warning annotation. It ends by itself: once the account
+# has credit the SDK stops raising this, and every PR is audited again.
+_BYPASSED_CAUSES = frozenset({"no-credit"})
+_BYPASS_SHAPE = "badrequesterror: error code: 400"
+
+
+def _bypassed(tag: str, reason: str) -> bool:
+    return tag in _BYPASSED_CAUSES and reason.lower().startswith(_BYPASS_SHAPE)
+
+
 def _fail_closed(pr_number: str, sha7: str | None, reason: str) -> int:
     reason = _redact(reason)
     tag, hint = classify_cannot_check(reason)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     name = f"{pr_number}-{sha7 or 'unknown'}.md"
+    if _bypassed(tag, reason):
+        (REPORT_DIR / name).write_text(
+            f"# PR #{pr_number} audit\n\n**VERDICT: NOT RUN [{tag}], bypassed (ADR 0090, 2026-09-22)**\n\n"
+            f"{reason}\n\n{hint}\n\nNothing was audited and nothing was merged.\n"
+        )
+        print(f"::warning title=PR Audit Gate not run [{tag}]::{hint} "
+              "Bypassed on the founder's 2026-09-22 call (ADR 0090): this green is NOT an audit "
+              "and nothing was merged. Audits resume by themselves once the account has credit.")
+        print(f"NOT RUN [{tag}], bypassed: {reason}", file=sys.stderr)
+        return 0
     (REPORT_DIR / name).write_text(
         f"# PR #{pr_number} audit\n\n**VERDICT: COULD NOT RUN [{tag}]**\n\n"
         f"{reason}\n\n{hint}\n"
@@ -1115,6 +1145,30 @@ def run_self_test() -> int:
               for _, terms, _ in _CANNOT_CHECK_CAUSES for t in terms), True)
     check("_fail_closed returns 1 for every cause it can name, and for an unknown one",
           sorted(set(_exits)), [1])
+
+    # The bypass (founder, 2026-09-22): only the SDK's own no-credit shape
+    # exits 0, and it posts no PR comment. A reason that merely quotes the
+    # credit sentence -- the bare term above, a subprocess argv, a report --
+    # is still a non-zero CANNOT CHECK (the check above pins that).
+    _calls = []
+    _saved_run, _saved_dir = globals()["_run"], globals()["REPORT_DIR"]
+    try:
+        with _tempfile.TemporaryDirectory() as _tmp:
+            globals()["_run"] = lambda *a, **k: _calls.append(a)
+            globals()["REPORT_DIR"] = pathlib.Path(_tmp)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                _sdk = _fail_closed("0", "selftst",
+                    "BadRequestError: Error code: 400 - Your credit balance is too low to access the Anthropic API")
+                _quoted = _fail_closed("0", "selftst",
+                    "ValueError: verdict unparseable: Your credit balance is too low to access the Anthropic API")
+                _other400 = _fail_closed("0", "selftst",
+                    "BadRequestError: Error code: 400 - prompt is too long: 250000 tokens > 200000 maximum")
+    finally:
+        globals()["_run"], globals()["REPORT_DIR"] = _saved_run, _saved_dir
+    check("the SDK's own no-credit error is bypassed with exit 0", _sdk, 0)
+    check("a reason that only quotes the credit sentence still fails closed", _quoted, 1)
+    check("any other 400 from the SDK still fails closed", _other400, 1)
+    check("the bypass posts no PR comment (only the two failures did)", len(_calls), 2)
 
     # Escalation logic (round 4): touches_own_gate and a still-truncated diff
     # must both force BLOCK even when every angle/adversary leaned PASS --
