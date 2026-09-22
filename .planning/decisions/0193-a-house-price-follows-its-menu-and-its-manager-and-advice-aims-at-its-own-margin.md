@@ -1,6 +1,6 @@
 # 0193 — A house's price follows its menu and its manager, and advice aims at its own margin
 
-- **Status:** Locked on the founder's pick, 2026-09-21 ("Advise to target margin"). Seven implementation forks recorded below for his confirmation (F1-F6 from the build, F7 from the last-call review). **[Answered 2026-09-21, round 2: his seven answers settle F1-F7 and add menu versions; built — see "Amendment, round 2" below.]** **[Round 3, 2026-09-21: his five round-6c answers settle the four open questions of round 2; the price lock he delegated ("so think verify validate your decision and build") was decided by the lane, attacked, and built — see "Amendment, round 3".]** **[Round 3, later the same day: he confirmed the one fork it put back to him, verbatim, *"The menu sets it, locks keep"*; built as recorded there.]**
+- **Status:** Locked on the founder's pick, 2026-09-21 ("Advise to target margin"). Seven implementation forks recorded below for his confirmation (F1-F6 from the build, F7 from the last-call review). **[Answered 2026-09-21, round 2: his seven answers settle F1-F7 and add menu versions; built — see "Amendment, round 2" below.]** **[Round 3, 2026-09-21: his five round-6c answers settle the four open questions of round 2; the price lock he delegated ("so think verify validate your decision and build") was decided by the lane, attacked, and built — see "Amendment, round 3".]** **[Round 3, later the same day: he confirmed the one fork it put back to him, verbatim, *"The menu sets it, locks keep"*; built as recorded there.]** **[Round 3, 2026-09-22, round 6w: the menu-read allowance's end date, left open, is answered -- *"Until I say (Recommended)"*, not a date or a spend figure; docs only, no code changed -- see "Amendment, round 3" §2.]**
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder). Decisions are locked by the founder, never by an agent.
 - **Keywords:** pricing, bottle price, glass price, menu_price_current, menu_price_versions, target margin, price advice, recommendations, menu import, tenant scope
@@ -271,7 +271,9 @@ verbatim phrase in it is quoted as his. What each became:
 round 6c; see "Amendment, round 3".]**
 1. **[Delegated, then decided and built as the price lock, round 3.]** When an OLDER menu is made current again, do its prices come back (dated by the choice),
    or does the newest scan's price stand (as built: dated by the scan)?
-2. **[Answered: never refuse a menu read for allowance, for now.]** Should a house that is OVER its AI allowance also be refused the menu read's first
+2. **[Answered: never refuse a menu read for allowance. Its end date was open; answered
+   2026-09-22, round 6w -- "Until I say (Recommended)", not a date or spend figure; see
+   "Amendment, round 3" §2.]** Should a house that is OVER its AI allowance also be refused the menu read's first
    request (`gateFirstAttempt`, daily window, as Ask AI is), or only when the ledger is
    unreadable (as built)?
 3. **[Answered: "Yes, confirmed per wine".]** Per-wine pour sizes: should a wine be able to state its own pour (overriding the house's
@@ -427,8 +429,23 @@ Round 2 already added no over-allowance refusal on the first attempt, but a RETR
 fail-closed menu read (after a 429/5xx) was still suppressed for a house over its allowance.
 Now the scan parser passes `allowance: "unlimited"`: being over the allowance refuses nothing on
 that path, first attempt or retry; every other path keeps its ceiling. An unreadable ledger still
-stops the read (his round-2 answer, "spend fail closed for uploads", stands). Tiers are a later
-decision.
+stops the read (his round-2 answer, "spend fail closed for uploads", stands). **[2026-09-22,
+round 6w: "Tiers are a later decision" is corrected -- the later decision is his word, not an
+engineering call, a date, or a spend figure. Put to him as three paths (unlimited until he says;
+a date; a spend figure that switches tiers back on), he picked, verbatim, "Until I say
+(Recommended)": the menu read stays unlimited for allowance until he gives the word. No date or
+spend trigger exists in code -- `allowance` is the two-value type `"enforced" | "unlimited"`
+(`model-client.service.ts:259`), set once, statically, at the menu read's one call site
+(`scan-parser.service.ts:342`), and tested as a plain `opts.allowance === "unlimited"`
+(`model-client.service.ts:342`, feeding the first-attempt gate and the retry ceiling); nothing
+reads a clock or a ledger total to flip it. What keeps that true is CLAIMS row
+`ADR-0193-A-MENU-READ-IS-NEVER-REFUSED-FOR-ALLOWANCE`: either line made conditional on a date
+fails it (both mutated 2026-09-22, both caught), while `scan-parser.ledger-waits.spec.ts` and
+`spend-ledger-fail-closed.spec.ts` stay green (17 of 17) under a future date. The refusal
+when the spend ledger itself cannot be read is unchanged and stays
+(`spendLedgerUnreadable: "closed"`, `scan-parser.service.ts:338`) -- that is a different gate
+from the allowance tier and his round-2 answer on it stands. Docs-only: the grep found no
+trigger to contradict the answer, so no code changed.]**
 
 ### 3. A wine's own pour, confirmed per wine (answer 3)
 
@@ -568,3 +585,6 @@ is the landing session's step, not this build's.
 | 2026-09-21 | Cellar lane (round 3 finish, after his L11 confirmation) | A price a person set after the menu was read is marked (`setAfterRead`) and listed first in the plan; the plan shows every line per kind; no Keep where there is nothing to hold; a saved price with a refused pour is said as both; the pour migration moved into the lane's band (`20260921170001`); a ninth CLAIMS row (`ADR-0193-A-PRICE-SET-AFTER-THE-READ-IS-LISTED-FIRST`); 75 of 75 mutations caught |
 | 2026-09-21 | Cellar lane (round 3 finish, the cellar surface) | The cellar's bottle leaf says each lock beside the house price, read-only, and says an unread lock list as unread (L8, L25, L26); L12 given its own spec (a wine the chosen menu does not list is not written; a blank kind is never named in the write; a priceless line is "no price", not a failure); the lock note's spec hook returned the mock, which vitest ran as a teardown, and was braced; two readings recorded (`no_current_menu` counted for review; the lock row is the lock acts' audit); 83 of 83 mutations caught on the finished tree |
 | 2026-09-21 | Last-call review (round 3) | Tried to break it: a price that changes silently, a lock staff can move, a dormant lock that vanishes or re-links the wrong wine, advice that overrides a lock, a menu read refused for allowance, a pour used before confirmation, a record now false, a migration outside the band. One break: with the current menu (or a lock's wine) unreadable, every lock was put under "On the current menu" on /menu, and the dormant group vanished; now such a lock is in neither group (`dormant: null`) and /menu shows it in a group of its own, and the feed's `price_locks_to_review` says a lock list read in part instead of reading as nothing to review. A second: /inventory's add form said "added to inventory" whatever the gateway's `priceChange` answered (round 2 already returned a failed price write there, and a removed wine added back with a price its lock holds now answers `locked`); the form now says a price that did not land (held by a lock, a newer price, a failed write). On the staged tree: gateway jest 1078 passed and 11 skipped (pricing, menus, model-client, analytics, inventory, settings-audit, cellar, wines), web vitest 922 passed and 14 skipped (48 files), claims 427 of 427, PGlite 80 of 80 on all 202 migrations; 12 mutations caught and restored byte-for-byte (the five fixes above, and seven of the lane's gates replayed: the lock read in `set_house_menu_price` -- caught by the HPL01 guard refusing the write, a second barrier -- the release gate, the accept pre-check, the unlimited menu read, the confirmed wine pour both ways, the never-priced flag). Still not verified in a browser or against production |
+| 2026-09-22 | Founder (round 6w) | The menu-read allowance's open end date answered (the last call's founder question: his round-6c words, *"for at the short period of time"*, named no end). Put to him as three paths -- (a) unlimited until he says, (b) a date, (c) a spend figure that switches tiers back on -- he picked, verbatim, *"Until I say (Recommended)"*: the menu read stays unlimited for allowance until he gives the word; the refusal when the spend ledger itself cannot be read stays |
+| 2026-09-22 | Cellar lane (docs, round 6w) | Recorded in "Amendment, round 3" §2 and bracket-corrected two now-false sentences: "Tiers are a later decision" (§2) and "for now" (the open-questions list). Verified by grep, not by code change: `allowance` is the static two-value type `"enforced" \| "unlimited"` (`model-client.service.ts:259`), set once at the menu read's one call site (`scan-parser.service.ts:342`) with no date or spend-total check anywhere in the gateway; `spendLedgerUnreadable: "closed"` (`scan-parser.service.ts:338`) is unchanged. No trigger contradicted the answer, so no code changed |
+| 2026-09-22 | Last-call review (round 6w) | Tried to break it: a sentence left calling the end open, a founder word paraphrased as his, a record now false, a trigger in code, a migration outside the band (none: docs only). The question and his pick read back from the session record: three options, "Until I say (Recommended)", "A set date", "A spend figure"; he picked the first. The code still matches: neither place `unlimited` is read (the first-attempt gate, `retryAllowedBySpendCeiling`) gates on a date or a spend total; the retry path reads the ledger only to refuse when it cannot be read. One gap, closed in the text: the jest specs do not pin "no trigger" -- a future-date condition on either line leaves `scan-parser.ledger-waits.spec.ts` and `spend-ledger-fail-closed.spec.ts` green (17 of 17), and only CLAIMS row `ADR-0193-A-MENU-READ-IS-NEVER-REFUSED-FOR-ALLOWANCE` fails (both mutations caught, restored byte-for-byte); §2 now cites it. The Founder row's quoted "no end was given" (the last call's words, not his) replaced by his round-6c words. Claims 427 of 427 |
