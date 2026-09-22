@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -19,6 +20,8 @@ import {
   type QuietHours,
 } from "../../calendar/reminder-window";
 import { RecommendationsService } from "../recommendations.service";
+import { AreaRoutingService } from "../../areas/area-routing.service";
+import { isAwayOn } from "../../areas/area-routing";
 import {
   DIGEST_LATE_LIMIT_MS,
   DIGEST_SEND_FLAG,
@@ -157,6 +160,12 @@ export class RecommendationDigestService {
     private readonly gmail: GmailService,
     private readonly tenants: ScheduledTenantsService,
     private readonly configService: ConfigService,
+    // ADR 0218, the founder's round-2 answer 4: the digest pauses for a
+    // person while they are Away. Optional so the specs that build this
+    // service by hand with five arguments keep their behaviour; the Nest
+    // provider always has it (RecommendationDigestModule imports
+    // AreaRoutingModule).
+    @Optional() private readonly areaRouting?: AreaRoutingService,
   ) {}
 
   private armed(): boolean {
@@ -263,11 +272,23 @@ export class RecommendationDigestService {
     }
     if (candidates.length === 0) return this.finish(tenant, tally);
 
-    const handled = await this.readHandled(tenant.id, candidates);
-    const open = candidates.filter(
+    // ── Away pauses the digest (ADR 0218, round-2 answer 4) ─────────────────
+    // Judged on the day the letter FELL DUE (`periodKey`, the house-local
+    // date), never on today: a letter due on the last Away day and swept just
+    // after midnight is still an Away letter, and it is neither sent on return
+    // nor recorded `expired` — `expired` would claim a miss for a letter the
+    // person had paused. No row is written, so a letter due on a day they are
+    // back is owed exactly as before.
+    const paused = await this.awayOnDueDay(tenant.id, candidates);
+    const owed = candidates.filter((c) => !paused.has(c));
+    tally.pausedAway = candidates.length - owed.length;
+    if (owed.length === 0) return this.finish(tenant, tally);
+
+    const handled = await this.readHandled(tenant.id, owed);
+    const open = owed.filter(
       (c) => !handled.has(periodOf(c.sub.userId, c.due.periodKey)),
     );
-    tally.alreadyHandled = candidates.length - open.length;
+    tally.alreadyHandled = owed.length - open.length;
 
     const pastLimit = open.filter(
       (c) => now.getTime() - c.due.dueAt.getTime() > DIGEST_LATE_LIMIT_MS,
@@ -501,9 +522,46 @@ export class RecommendationDigestService {
   }
 
   /**
+   * The candidates whose letter fell due on a day their person is Away.
+   *
+   * An unreadable Away register FAILS OPEN — nobody is paused on this sweep —
+   * and says so at error level, the same way the notification funnel and the
+   * producers treat it (ADR 0218): a register that only narrows an audience
+   * must never silence a letter the person asked for, and the log line names
+   * the fallback so it is loud, never quiet.
+   */
+  private async awayOnDueDay(
+    restaurantId: string,
+    candidates: Candidate[],
+  ): Promise<Set<Candidate>> {
+    const paused = new Set<Candidate>();
+    if (!this.areaRouting || candidates.length === 0) return paused;
+    const earliest = candidates
+      .map((c) => c.due.periodKey)
+      .reduce((a, b) => (a < b ? a : b));
+    let windows;
+    try {
+      windows = await this.areaRouting.awayWindowsSince(restaurantId, earliest);
+    } catch (e: any) {
+      this.logger.error(
+        `RECOMMENDATION_DIGEST_AWAY_UNREADABLE restaurant=${restaurantId} — ${e?.message}. ` +
+          "Nobody's digest is paused on this sweep.",
+      );
+      return paused;
+    }
+    for (const c of candidates) {
+      if (windows.some((w) => w.userId === c.sub.userId && isAwayOn(w, c.due.periodKey))) {
+        paused.add(c);
+      }
+    }
+    return paused;
+  }
+
+  /**
    * One line per house per sweep that DID something (sent, failed, expired,
-   * skipped, deferred, or lost a claim). A house with nothing due logs at debug:
-   * ninety-six identical lines a day per house would bury the ones that matter.
+   * skipped, deferred, lost a claim, or paused a letter for someone Away). A
+   * house with nothing due logs at debug: ninety-six identical lines a day per
+   * house would bury the ones that matter.
    */
   private finish(tenant: ScheduledTenant, tally: DigestTally): DigestTally {
     const line =
@@ -517,7 +575,8 @@ export class RecommendationDigestService {
         tally.expired +
         tally.skippedEmpty +
         tally.deferredQuietHours +
-        tally.claimedElsewhere >
+        tally.claimedElsewhere +
+        tally.pausedAway >
       0;
     if (acted) this.logger.log(line);
     else this.logger.debug(line);
@@ -1271,6 +1330,7 @@ function emptyTally(): DigestTally {
     claimedElsewhere: 0,
     sent: 0,
     failed: 0,
+    pausedAway: 0,
   };
 }
 
@@ -1323,6 +1383,11 @@ export interface DigestTally {
   claimedElsewhere: number;
   sent: number;
   failed: number;
+  /**
+   * Letters that fell due on a day their person is Away (ADR 0218): not sent,
+   * no row written, owed again from the first due day they are back.
+   */
+  pausedAway: number;
 }
 
 export type UnsubscribeLinkState =

@@ -281,6 +281,8 @@ function CertRow({ block }: { block: CertExposureVM }) {
       }),
   });
   const shifts = block.shiftsThisWeek;
+  // The one person asked is Away: the request waits for them (ADR 0218).
+  const held = renew.data?.away?.held[0] ?? null;
   return (
     <div
       className="flex flex-wrap items-center gap-3 py-2.5"
@@ -321,7 +323,11 @@ function CertRow({ block }: { block: CertExposureVM }) {
           {renew.isPending ? 'Sending…' : 'Request renewal'}
         </button>
       )}
-      {renew.isSuccess && (
+      {renew.isSuccess && held && (
+        // ADR 0218, round-2 answer 3: the sender sees "away until <date>".
+        <span style={{ fontSize: 11, color: 'var(--ink-3)', width: '100%' }}>{held.detail}</span>
+      )}
+      {renew.isSuccess && !held && (
         // NOT a latch. Nothing on the server records that a renewal was asked
         // for, so this page cannot know on the next load whether it was.
         // TODO(gateway, not this branch): record renewal requests against the
@@ -821,6 +827,8 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           only={overlay.only}
           weekStart={weekStart}
           scheduleId={data.scheduleId}
+          awayByUser={house.awayByUser}
+          awayToday={house.away?.today ?? null}
           onClose={() => setOverlay(null)}
           onSent={refreshWeek}
         />

@@ -1,9 +1,9 @@
 # 0218 — An alert finds its area first, a lead acts on cards only, and Away is dates
 
-- **Status:** Locked 2026-09-21 (the three rulings below, the founder's) · build details marked *built, not ruled* are the lane's and are listed under **Open** for his word
+- **Status:** Locked 2026-09-21 (the three rulings below, the founder's) · round 2 locked 2026-09-21: the eight **Open** items answered with *"Take all seven"* (see **Round 2**) · two items went to counsel, not to a build (**The lawyer's list**)
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder)
-- **Keywords:** areas, area label, AreaLabel, AreaKind, house_areas, house_area_members, house_away, area lead, Away, holiday, notification routing, persistForRestaurant, focus not filter, KVKK, house log, system_audit_log
+- **Keywords:** areas, area label, AreaLabel, AreaKind, house_areas, house_area_members, house_away, house_away_held, held_away, AwayReleaseService, area lead, Away, holiday, notification routing, persistForRestaurant, focus not filter, recommendations digest, KVKK, house log, system_audit_log
 - **Links:** judge `scratchpad/q921/areas-judge.md` (v1 §4, attacks A1–A11), research `areas-model.md` §A2–A6, `snooze-sota.md` §4–5; [[0088]] (access changes file themselves), [[0162]] (a role is the role in the token's house), [[0191]] (recommendation actions — the catalogue lane that will read the label), [[0134]] (motion tokens)
 
 ## Context
@@ -66,7 +66,9 @@ We recommended "their area first" (the judge's v1, which is what the founder's
 
 **An item can carry an area label; a broadcast finds its area first; a lead
 acts for everyone on their area's cards and nothing else; a person can be Away
-on dates, and the notification funnel and the alert producers skip them.** The
+on dates, and the notification funnel and the alert producers skip them.**
+[Round 2, 2026-09-21: also, a note or message sent to them by name waits until
+they are back, and their recommendations email pauses — see **Round 2**.] The
 founder's rule is that *no* alert reaches a person on their Away days; the
 senders this build did not reach are listed under **Owed** below, and until the
 last of them is wired the Away note says "most alerts", not "no alerts". With
@@ -89,10 +91,12 @@ catalogue (another lane) owns which rule carries which label.
    area's label → everyone who is not Away.
 1. The labelled area's members who are not Away. A lead is a member of the area
    they lead (the mark sits on the membership row), so "then its lead" is
-   reached inside this step.
+   reached inside this step. [Ruled 2026-09-21, round 2 answer 2: the lead is
+   alerted together with the members, never after a delay.]
 2. Otherwise the owners and managers who are not Away.
 3. Otherwise every owner (managers, in a house with no owner row), **inbox
-   only**: a row, no push, no live ping. *Built, not ruled* — see Open.
+   only**: a row, no push, no live ping. [Ruled 2026-09-21, round 2 answer 1:
+   it goes to the owners' inbox and never waits unseen.]
 
 When step 1 alerts the area, owners and managers who are not Away still get the
 row without the push: areas change who is **alerted**, never what an owner can
@@ -108,8 +112,9 @@ people who are Away today apart from both its halves. If the area registers
 cannot be read, the funnel writes to every member as before and logs
 `AREA_ROUTING_UNREADABLE`; the producers fail open the same way
 (`NOTIFICATION_PRODUCER_AWAY_UNREADABLE`) — a register that only narrows an
-audience must never silence a house. Nothing else reads Away yet (see
-**Owed**).
+audience must never silence a house. [Round 2 adds three readers: a named
+note or message holds for an Away person, the digest pauses, and staff read
+colleagues' windows. The senders still not wired are under **Owed**.]
 
 **Focus, not filter.** `splitForViewer` (gateway) and `splitByMyAreas` (web)
 split a staff list into "your areas" and "the rest of the house"; nothing is
@@ -130,8 +135,10 @@ changes no house role and writes no access row, wage or roster row (asserted in
 
 `house_away (restaurant_id, user_id, away_from, away_until, set_by, …)`, one
 window per person per house, both days inclusive, on the house's own calendar
-(`restaurants.timezone`). The person sets or ends their own; an owner or manager
-can set or end anyone's in the house. **No reason column, and nothing here reads
+(`restaurants.timezone`), at most 366 days (the gateway's `AWAY_MAX_DAYS` and,
+since round 2, the table's `ck_house_away_at_most_366_days`). The person sets or
+ends their own; an owner or manager can set or end someone's in the house
+[round 2 answer 7: but only an owner sets or ends an owner's]. **No reason column, and nothing here reads
 `time_off_requests`** (CLAIMS `ADR-0218-AWAY-STORES-DATES-ONLY`). The Away
 marker (`components/mudavym/AwayMarker.tsx`) dims the name, says "Away until
 28 Sep", and opens one sentence on tap; no motion, so no ADR 0134 token is used.
@@ -154,8 +161,8 @@ someone else sets or ends their Away. The Team page's "What changed here" and
 | Read areas | anyone in the house (staff see only their own memberships) | no |
 | Rename / switch an area; add or remove a person; set or clear a lead | owner, manager | yes |
 | Set or end your own Away | anyone | no |
-| Set or end someone else's Away | owner, manager | yes, and the person is told |
-| See Away windows | owners and managers: all; staff: their own | — |
+| Set or end someone else's Away | owner, manager — an **owner's** only by an owner (round 2 answer 7) | yes, and the person is told |
+| See Away windows | everyone in the house, dates only (round 2 answer 5); only owners, managers and the person see who set them | — |
 
 The house and the role come from the verified token (ADR 0162), never the URL
 or the body. The `admin` alias `RolesGuard` accepts does **not** widen an area
@@ -169,29 +176,156 @@ gate (judge §6 leaves its meaning open).
   rows, time zone, areas, memberships, Away). Measured cost was not taken.
 - The catalogue lane must pass `area` for anything to route; until it does,
   only Away changes what anyone receives.
+- [Round 2] A named note or message now reads Away before it is sent, and the
+  release sweep reads the whole hold table every 15 minutes (no page limit; one
+  real house today). Measured cost was not taken.
+- [Round 2] Staff now learn a colleague's Away dates and roster name — the
+  founder's answer 5 — which is why the privacy notice is on the lawyer's list.
+- [Round 2, last call] Two readers disagree about who belongs to a house. The
+  release (`AwayReleaseService.membersOf`) counts a person whose only tie is
+  the legacy `users.restaurant_id`. The inbox funnel
+  (`DatabaseService.getRestaurantMemberIds`) drops that person whenever the
+  house has any active access row. For such a person a held item is never
+  delivered: the strict inbox write finds 0 rows, the claim is handed back, and
+  `AWAY_HOLD_DELIVERY_FAILED` is logged on every sweep. v3.0-TECH-DEBT 44.1i
+  says no such member exists in production once migration `20260918153000` has
+  applied. This was found by reading the code; it was not measured.
 - **Revisit when:** a house asks for an area outside the six (custom kinds), or
   shifts carry real rows (then a shift may delay an alert, never hide one).
 
+## Round 2 — the founder's seven answers (2026-09-21)
+
+The lane put the eight **Open** items below to the founder as seven questions
+(item 7, retention and the notice, was put as one question about counsel). He
+answered, 2026-09-21: *"Take all seven"*. Those are the options he picked,
+bundled — not his own words for each. What each one is, and where it is:
+
+1. **Everyone who would be alerted is Away → the owners' inbox, never waits
+   unseen.** Confirmed built (step 3 of the ladder): `area-routing.spec.ts`
+   "lands in every owner's inbox, silently, when everyone who could be alerted
+   is Away".
+2. **The lead is alerted together with the members, not after a delay.**
+   Confirmed built (inside step 1): `area-routing.spec.ts` "alerts the lead
+   together with the members, in the same step", which also asserts the
+   decision has no second wave. The Away sentence now says "its lead included",
+   never "then its lead" (`awayWords.ts`).
+3. **A note or message sent to one person who is Away waits until they are
+   back, and the sender sees "away until <date>".** Built:
+   - *What holds.* A crew note (`NotesService.create`) and a manager's message
+     to named people (`TeamController.broadcast` with `memberIds`) set apart
+     each named person who is Away **today** (house-local day). They get
+     nothing now — no inbox row, no push, no text. A window that starts later
+     holds nothing sent today. A message to **everyone** is not held: the
+     funnel routes it (see **Owed** for its push leg).
+   - *Where it waits.* `house_away_held` (migration `20260921171000`, RLS on,
+     service_role only). A note's words stay on `team_notes`; a message has no
+     record of its own, so its title and body are kept in the hold **only
+     until it is delivered**, then the row is deleted.
+   - *What the sender sees.* Before sending, the note sheet marks each Away
+     recipient "Away until 28 Sep" and says the note waits; after sending, the
+     response's `away.held[]` carries the same sentence, a note's receipts are
+     written `held_away` with it ("Away until 28 Sep. It waits and is delivered
+     when they are back, outside their quiet hours."), and the certification
+     renewal row shows it instead of "Sent just now". [Last call, 2026-09-21:
+     the legacy shift desk (`pages/team/command/ManagerShiftDesk.tsx`, what
+     `/team` draws while `mudavym_design_team` is off) does not: its
+     one-person message still toasts "Message sent" when the gateway held it.
+     Listed under **Owed**.]
+   - *When "back" is.* `AwayReleaseService` sweeps every 15 minutes (not
+     flagged: holding is live wherever Away is, so releasing must be too) and
+     delivers on the first sweep of a house-local day that is not an Away day
+     for them, **outside their own quiet hours**; ending or moving someone's
+     Away off today releases at once under the same rule. It delivers exactly
+     as the original send would have (a note through the same `deliver` path,
+     rewriting its receipts), claims each row compare-and-set so two releases
+     cannot both deliver it, and hands a failed delivery back for the next
+     sweep. A person who left the house first is owed nothing: the hold is
+     deleted and a note's receipts say why.
+   - *Failures.* An unreadable Away register holds nothing (the send goes to
+     everyone now) and says so (`away.readable: false`); a hold that cannot be
+     written is sent now instead of dropped (`away.holdFailed`); an unreadable
+     Away, membership or quiet-hours read on release delays, never guesses.
+   - *Built, not ruled:* the quiet-hours wait on return, the 15-minute sweep,
+     and "back" meaning the first non-Away house-local day. [Last call: also
+     that an unreadable Away register sends the message now, to an Away person
+     too, rather than holding it for everyone named.]
+4. **The recommendations email digest pauses for a person while they are
+   Away.** Built (`RecommendationDigestService`): judged on the day the letter
+   **fell due**, not on the day it is swept, so a letter due on the last Away
+   day and swept after midnight is still paused, never `expired`. A paused
+   letter writes no row and is counted `pausedAway`; the first due day they are
+   back is owed as before. An unreadable Away register fails open, loudly
+   (`RECOMMENDATION_DIGEST_AWAY_UNREADABLE`), like the funnel. [Last call:
+   *built, not ruled* — on that sweep an Away person's letter is sent. The
+   other way is to defer every letter until the register reads again, which
+   `expired`s them once the 12-hour late limit passes.]
+5. **Staff also see a colleague's quiet Away marker — dates only, never a
+   reason.** Built: `GET /house/away` answers every window in the house that has
+   not ended [last call: under way **or still to come**, so staff also read a
+   colleague's "Away from 3 Oct" before it starts, as managers already did —
+   *built, not ruled*] to everyone in it, with the roster's display name (so staff, who have no
+   roster, can draw the marker; `namesReadable: false` when the names could not
+   be read, never an empty list). Staff are not told who set a colleague's
+   dates (`setBySelf` is absent for them). On the web, My shifts carries an
+   "Away in the house" card with the same marker; it draws nothing while nobody
+   else is away. *Built, not ruled:* that card is where staff meet the marker,
+   because the staff surface draws no colleague names anywhere else today.
+6. **Away lasts at most 366 days.** Confirmed built in the gateway, and now also
+   in the table: `ck_house_away_at_most_366_days` (`away_until - away_from <=
+   365`, both days inclusive), added in `20260921171000`.
+7. **Only an owner can set or end another owner's Away; a manager can no
+   longer.** Built: `mayChangeAway` in `house-areas.service.ts`, asked by both
+   `setAway` and `endAway` about the target's role **in this house** (read the
+   way the token reads one, `auth/house-role.ts`, so a legacy `users`-row owner
+   counts). An unreadable role is a 503, never "not an owner". The roster's Away
+   card shows a manager an owner's dates without the controls and says who can
+   change them (`mayChangeAway` in `services/api/areas.ts`, a mirror; the
+   gateway decides). CLAIMS `ADR-0218-ONLY-AN-OWNER-CHANGES-AN-OWNERS-AWAY`.
+
+## The lawyer's list (recorded, not built)
+
+Put to counsel, not to a build, per the founder's round-2 pick:
+
+- **Retention of the house-log rows** this ADR writes (`system_audit_log`:
+  `house_area_changed` … `away_ended_for_member`): how long they are kept, and
+  what is deleted or anonymised after.
+- **The staff privacy notice** (KVKK aydınlatma metni) for Away and areas: what
+  is kept (two dates and who set them; no reason), who sees it (since round 2,
+  everyone in the house sees a colleague's dates), and for how long.
+- For the same review: a held message's title and body sit in
+  `house_away_held` until it is delivered (at most the rest of an Away window,
+  366 days), then are deleted.
+
 ## Open (for the founder; not decided here)
+
+[All eight answered 2026-09-21 in round 2 — see **Round 2** and **The lawyer's
+list**. Kept as they were asked, so the record shows what was chosen from.]
 
 1. **Everyone Away → owners' inbox only** (step 3). Built so an alert always
    lands and no Away person is woken. Alternative: hold it until someone is back.
+   [Ruled: owners' inbox, round 2 answer 1.]
 2. **"Then its lead" as a time escalation** (members first, the lead after N
-   minutes unacted) rather than inside step 1. Not built.
+   minutes unacted) rather than inside step 1. Not built. [Ruled: together, not
+   after a delay, round 2 answer 2.]
 3. **Targeted messages during Away** (a manager's note or broadcast to one
-   person) still reach them. Mute those too?
+   person) still reach them. Mute those too? [Ruled: held, delivered on
+   return, and the sender sees "away until <date>", round 2 answer 3.]
 4. **The recommendations email digest** (`recommendation-digest.service.ts`, a
-   person's own subscription) still sends during Away. Pause it?
+   person's own subscription) still sends during Away. Pause it? [Ruled: it
+   pauses, round 2 answer 4.]
 5. **Staff seeing a colleague's Away marker.** Built: only owners, managers and
    the person see Away (judge §4.5). The founder's "on its name" may mean
-   everywhere a name appears.
+   everywhere a name appears. [Ruled: staff see it too, dates only, round 2
+   answer 5.]
 6. **The longest Away window**: 366 days, an input guard, built not ruled.
+   [Ruled: 366 days, round 2 answer 6; now in the table too.]
 7. **Retention** of the log rows, and the KVKK notice text (judge §4.7) — still
-   owed, with counsel.
+   owed, with counsel. [On the lawyer's list, not a build.]
 8. **A manager setting or ending an owner's Away.** Built: any owner or manager
    can set anyone's in the house, so a manager can quiet an owner's alerts for
    the dates. The owner is told at once and it is in the house log.
-   Alternative: owners' Away is set only by owners.
+   Alternative: owners' Away is set only by owners. [Ruled: only by owners,
+   round 2 answer 7.]
 
 ## Owed (the founder ruled it; this build did not reach it)
 
@@ -201,7 +335,9 @@ Each still reaches a person on their Away days:
 
 - **A manager's team message to everyone** (`team.controller.ts`, the push
   leg). Its inbox row goes through the funnel and now skips the Away person;
-  its push does not. The worse half is the one that still arrives.
+  its push does not. The worse half is the one that still arrives. [Round 2
+  holds a message to **named** people; this send-to-everyone push leg is
+  still owed.]
 - **Calendar reminders** (`calendar-reminders.service.ts`). They build their own
   audience and write with `onlyUserIds`, so the funnel does not route them.
   The job is behind its own flag and off by default.
@@ -211,10 +347,21 @@ Each still reaches a person on their Away days:
   push).
 - **The Away marker on names outside the roster, the Areas sheet and the Away
   card** — the week grid and the rest of the shell draw names without it.
+  [Round 2 adds it to the note sheet's recipients and My shifts' "Away in the
+  house" card; the week grid and the mobile app still draw names without it.]
 
 Three of those four gateway files (the team controller, calendar reminders,
 scheduled tasks) carry uncommitted changes in another lane's worktree
 (`wt-fin-notify`) at the time of writing, so none of the four was edited here.
+[Round 2 did edit `team.controller.ts` — answer 3 lives in `broadcast` — so
+that lane's staged `team.controller.ts` and `team.controller.broadcast.spec.ts`
+will conflict with this one at merge.]
+
+Also owed, though nothing reaches an Away person through it [last call,
+2026-09-21]: the legacy shift desk's one-person message
+(`pages/team/command/ManagerShiftDesk.tsx`, `doBroadcast`) toasts "Message
+sent" when the gateway held it, and never shows `away.held[]`. So on that
+page the sender does not see "away until <date>" (answer 3).
 
 ## Evidence
 
@@ -230,6 +377,34 @@ scheduled tasks) carry uncommitted changes in another lane's worktree
   PGlite 0.5.8 as superuser (memory `pglite-full-corpus-build`).
 - Mutations: 28 code mutations and 6 claim mutations, every one turned its
   test or verify red; 3 migration mutations each changed the PGlite probe.
+- **Round 2 (2026-09-21), measured on the staged index tree**
+  (`p4-scratch/verify_index.sh`):
+  - gateway `team`, `areas`, `analytics/digest`, `notifications`,
+    `settings-audit` and `calendar`: 44 suites, 732 tests passing;
+  - web `pages/team`, `components/mudavym` and `pages/settings`: 21 files, 364
+    passing, 8 skipped;
+  - gateway `tsc` (source and specs) and web `tsc` clean; eslint clean on every
+    changed file; `check_gateway_boots.sh` PASS.
+- Migration `20260921171000`, round 2 (probe
+  `p4-scratch/pglite-probe/AREAS2-held-for-away.mjs`): 194/194 migrations build
+  and the file re-runs cleanly. 27 checks pass:
+  - cross-house note or roster row → 23503; duplicate hold → 23505;
+  - a message with no or blank words, or a note carrying words → 23514;
+  - an `auth.users`-only person → 23503; deleting the note deletes its hold;
+  - RLS on, and no client grant;
+  - `held_away` admitted, the eight old states still admitted and `bogus`
+    refused;
+  - 366 days kept and 367 refused.
+  Not Supabase: PGlite 0.5.8 as superuser.
+- Round 2 mutations, every one red:
+  - 28 code mutations (gateway 22, web 6). The first pass killed 27; the held
+    note's strict inbox throw survived, so a test was added and it went red;
+  - 6 migration mutations (4 turned a probe check red; 2 stopped the build
+    through the file's own assertions);
+  - 7 claim mutations on the two new CLAIMS rows, and both rows fail against
+    origin/main;
+  - 4 on the corrected `ADR-0218-AWAY-STORES-DATES-ONLY`, which had matched
+    round 2's `ADD CONSTRAINT` as if it were a new column.
 
 ## Review trail
 
@@ -239,3 +414,6 @@ scheduled tasks) carry uncommitted changes in another lane's worktree
 | 2026-09-21 | founder | Areas "their area first" accepted; lead "Yes, cards only"; Away dates with override |
 | 2026-09-21 | areas lane | Built; Open items above left for the founder |
 | 2026-09-21 | last call | "nothing reaches them" was broader than the code: Away copy made "most alerts", **Owed** added; the Areas sheet no longer says an empty area's alerts go to owners and managers while nobody is in any area; a failed Away read now says so on the roster, the Areas sheet and My shifts |
+| 2026-09-21 | founder | Round 2: *"Take all seven"* — the eight Open items answered; retention and the notice to counsel |
+| 2026-09-21 | areas lane, round 2 | Built answers 3, 4, 5, 7; confirmed 1, 2, 6 (6 now in the table too); the lawyer's list recorded; CLAIMS `ADR-0218-AWAY-STORES-DATES-ONLY` narrowed to columns (it read round 2's CHECK as a column) |
+| 2026-09-21 | last call, round 2 | Re-ran 7 suites (183 tests) and 3 fresh mutations (quiet-hours verdict, push opt-out on release, membership on release), all red. Prose made as narrow as the code: staff read upcoming windows too; the digest's and the named send's fail-open marked *built, not ruled*; the legacy desk's "Message sent" and the release/funnel membership split recorded |

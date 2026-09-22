@@ -83,13 +83,13 @@ export class HouseAreasController {
     return this.areas.removeMembership(actorOf(req), kind, memberId);
   }
 
-  /** Owners and managers: every Away window not yet over. Staff: their own. */
+  /** Every Away window not yet over, for everyone in the house: dates only (staff are not told who set a colleague's). */
   @Get("away")
   listAway(@Req() req: any) {
     return this.areas.listAway(actorOf(req));
   }
 
-  /** Your own Away dates (anyone), or someone else's (owners and managers, logged). */
+  /** Your own Away dates (anyone), or someone else's (owners and managers, logged; an owner's only by an owner). */
   @Put("away/:userId")
   setAway(
     @Req() req: any,
@@ -99,7 +99,7 @@ export class HouseAreasController {
     return this.areas.setAway(actorOf(req), userId, dto);
   }
 
-  /** End Away early: your own (anyone), or someone else's (owners and managers, logged). */
+  /** End Away early: your own (anyone), or someone else's (owners and managers, logged; an owner's only by an owner). */
   @Delete("away/:userId")
   endAway(@Req() req: any, @Param("userId", new ParseUUIDPipe()) userId: string) {
     return this.areas.endAway(actorOf(req), userId);

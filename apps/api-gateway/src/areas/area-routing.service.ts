@@ -172,6 +172,41 @@ export class AreaRoutingService {
     return new Set(windows.filter((w) => isAwayOn(w, today)).map((w) => w.userId));
   }
 
+  /**
+   * Who is Away on the house-local day at `now`, with the last day of each
+   * window — what a sender is told ("away until 28 Sep") when a message to
+   * one person is held for their return (ADR 0218, the founder's round-2
+   * answer 3). Throws on an unreadable register or time zone; the caller
+   * decides what that costs.
+   */
+  async awayOn(
+    restaurantId: string,
+    now: Date,
+  ): Promise<{ today: string; zone: string; until: Map<string, string> }> {
+    const { data, error } = await this.sb
+      .from("restaurants")
+      .select("timezone")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) throw new Error(`restaurants could not be read: ${error.message}`);
+    const zone = this.zoneOf(restaurantId, data?.timezone);
+    const today = houseLocalDay(now, zone);
+    const until = new Map<string, string>();
+    for (const w of await this.readAway(restaurantId, today)) {
+      if (isAwayOn(w, today)) until.set(w.userId, w.until);
+    }
+    return { today, zone, until };
+  }
+
+  /**
+   * Every window in this house that ends on or after `sinceDay`. The digest
+   * asks about the day a letter FELL DUE, which can be yesterday, so it needs
+   * windows that today's read would already have dropped. Throws on error.
+   */
+  async awayWindowsSince(restaurantId: string, sinceDay: string): Promise<AwayWindow[]> {
+    return this.readAway(restaurantId, sinceDay);
+  }
+
   /** Every window that has not ended before `today`. */
   private async readAway(restaurantId: string, today: string): Promise<AwayWindow[]> {
     const { data, error } = await this.sb

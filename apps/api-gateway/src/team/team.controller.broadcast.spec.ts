@@ -3,6 +3,9 @@ import { BadRequestException } from "@nestjs/common";
 import { TeamController } from "./team.controller";
 import { TeamService } from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
+import { AreaRoutingService } from "../areas/area-routing.service";
+import { houseLocalDay } from "../areas/area-routing";
+import { AwayHoldService } from "./away-hold.service";
 
 /**
  * /team broadcast — ADR 0088.
@@ -326,6 +329,9 @@ describe("TeamController.broadcast — a crew message never emails", () => {
       "NotificationsService",
       "ExpoPushService",
       "NotesService",
+      // ADR 0218 round 2: holds a message for a person who is Away. It sends
+      // nothing itself; the release goes through the same inbox and push.
+      "AwayHoldService",
     ]);
   });
 
@@ -507,5 +513,99 @@ describe("TeamController.broadcast — the channel gate", () => {
     // `notified` counts pushes, so it must not report three when none was sent.
     expect(res.notified).toBe(0);
     expect(res.inbox).toBe(true);
+  });
+});
+
+/**
+ * A message to a named person who is Away waits for them (ADR 0218, the
+ * founder's round-2 answer 3, 2026-09-21), and the sender is told "Away until
+ * <date>". The hold service and the Away reader are the real ones.
+ */
+describe("TeamController.broadcast — a message to someone Away waits for them", () => {
+  const TODAY = houseLocalDay(new Date(), "UTC");
+  const UNTIL = new Date(Date.parse(`${TODAY}T00:00:00Z`) + 3 * 86_400_000).toISOString().slice(0, 10);
+
+  function awayHarness(errors: Record<string, { message: string }> = {}) {
+    const db = seed(errors);
+    db.tables.restaurants = [{ id: RID, timezone: "UTC" }];
+    db.tables.house_away = [{ restaurant_id: RID, user_id: SAM, away_from: TODAY, away_until: UNTIL }];
+    db.tables.house_away_held = [];
+    const base = harness(db);
+    const hold = new AwayHoldService(asDatabaseService(db), new AreaRoutingService(asDatabaseService(db)));
+    const controller = new TeamController(
+      new TeamService(asDatabaseService(db)),
+      {} as any,
+      {} as any,
+      base.notifications,
+      base.push,
+      base.notes,
+      hold,
+    );
+    return { db, controller, notifications: base.notifications, push: base.push };
+  }
+
+  it("holds it for the named person who is Away: no inbox row, no push now, and the sender is told", async () => {
+    const { db, controller, notifications, push } = awayHarness();
+    const res: any = await controller.broadcast(req, RID, {
+      title: "Card",
+      message: "Your food handler card expires on Friday.",
+      memberIds: ["m-sam", "m-ray"],
+    } as any);
+
+    expect(res.recipients.targeted).toBe(2);
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [RAY] });
+    expect(push.sendToUsers).toHaveBeenCalledWith([RAY], expect.anything());
+    expect(db.tables.house_away_held).toHaveLength(1);
+    expect(db.tables.house_away_held[0]).toMatchObject({
+      restaurant_id: RID,
+      user_id: SAM,
+      kind: "team_message",
+      title: "Card",
+      body: "Your food handler card expires on Friday.",
+      channels: ["inbox", "push"],
+      sent_by: MANAGER,
+      away_until: UNTIL,
+    });
+    expect(res.away).toEqual({
+      readable: true,
+      holdFailed: false,
+      held: [{ memberId: "m-sam", until: UNTIL, detail: expect.stringMatching(/^Away until /) }],
+    });
+    // A held person is not a person who declined push.
+    expect(res.suppressed.push).toBe(0);
+  });
+
+  it("keeps only the channels the sender asked for", async () => {
+    const { db, controller } = awayHarness();
+    await controller.broadcast(req, RID, {
+      message: "For the record.",
+      memberIds: ["m-sam"],
+      channels: ["inbox"],
+    } as any);
+    expect(db.tables.house_away_held[0].channels).toEqual(["inbox"]);
+  });
+
+  it("does not hold a send to everyone — the funnel routes that one", async () => {
+    const { db, controller, notifications } = awayHarness();
+    const res: any = await controller.broadcast(req, RID, { message: "Doors at 5.", audience: "everyone" } as any);
+    expect(db.tables.house_away_held).toEqual([]);
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({});
+    expect(res.away.held).toEqual([]);
+  });
+
+  it("holds nothing and says so when Away cannot be read", async () => {
+    const { db, controller, notifications } = awayHarness({ "house_away:select": { message: "down" } });
+    const res: any = await controller.broadcast(req, RID, { message: "x", memberIds: ["m-sam"] } as any);
+    expect(res.away).toEqual({ readable: false, holdFailed: false, held: [] });
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [SAM] });
+    expect(db.tables.house_away_held).toEqual([]);
+  });
+
+  it("sends it now, and says so, when the hold cannot be written", async () => {
+    const { controller, notifications, push } = awayHarness({ "house_away_held:insert": { message: "down" } });
+    const res: any = await controller.broadcast(req, RID, { message: "x", memberIds: ["m-sam"] } as any);
+    expect(res.away).toEqual({ readable: true, holdFailed: true, held: [] });
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [SAM] });
+    expect(push.sendToUsers).toHaveBeenCalledWith([SAM], expect.anything());
   });
 });

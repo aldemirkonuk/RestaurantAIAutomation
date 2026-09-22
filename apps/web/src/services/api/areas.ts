@@ -44,13 +44,48 @@ export interface AwayView {
   from: string
   until: string
   activeNow: boolean
-  setBySelf: boolean
+  /**
+   * The person set it themselves. Absent on a colleague's window when the
+   * reader is staff: who set someone's dates is not theirs to know.
+   */
+  setBySelf?: boolean
+  /**
+   * This house's roster name for them, so a reader with no roster (staff) can
+   * draw a colleague's marker. `null` when no roster row names them or the
+   * names could not be read (`AwayReadout.namesReadable`).
+   */
+  name?: string | null
 }
 
 export interface AwayReadout {
   today: string
+  /** The reader's role in this house (older gateways omit it). */
+  role?: HouseRole
   canManage: boolean
+  /**
+   * Every Away window in the house that has not ended — staff see a
+   * colleague's too (the founder's round-2 answer 5, 2026-09-21), dates only.
+   */
   windows: AwayView[]
+  /** `false`: the names could not be read, so every `name` is unknown — not absent. */
+  namesReadable?: boolean
+}
+
+/**
+ * May the reader set or end this person's Away? The gateway decides
+ * (`house-areas.service.ts` `mayChangeAway`); this only keeps a control off a
+ * row the gateway would refuse. The person themselves always; owners anyone;
+ * managers anyone but an owner (only an owner sets or ends an owner's Away,
+ * the founder's round-2 answer 7); staff nobody else.
+ */
+export function mayChangeAway(
+  reader: { role: HouseRole | null | undefined; self: boolean },
+  targetRole: string | null | undefined,
+): boolean {
+  if (reader.self) return true
+  if (reader.role === 'owner') return true
+  if (reader.role === 'manager') return String(targetRole ?? '').toLowerCase() !== 'owner'
+  return false
 }
 
 /** The house log's receipt for a change: was it filed, was the person told. */

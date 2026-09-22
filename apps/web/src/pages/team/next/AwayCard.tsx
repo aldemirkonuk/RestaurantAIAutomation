@@ -5,14 +5,16 @@
  * The founder, 2026-09-21: *"they set away dates ... with override possible,
  * via either owner/manager account or staff member's account(personal only to
  * that person)"*. So: the person sets or ends their own; an owner or manager
- * can set or end anyone's, and that one is written in the house log and the
- * person is told. Dates only — there is no field for a reason, on purpose.
+ * can set or end someone's, and that one is written in the house log and the
+ * person is told — except an owner's, which only an owner can set or end (his
+ * round-2 answer 7, 2026-09-21). Dates only — there is no field for a reason,
+ * on purpose.
  */
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
 import { awayExplanation } from '@/components/mudavym/awayWords';
-import { endAway, setAway, type AwayView } from '../../../services/api/areas';
+import { endAway, setAway, type AwayReadout, type AwayView } from '../../../services/api/areas';
 import { getErrorMessage } from '../../../services/api/client';
 import { awayKey } from './useHouseAreas';
 import { useActiveRestaurantId } from './useTeamNextData';
@@ -25,6 +27,7 @@ export function AwayCard({
   today,
   failed,
   self,
+  canChange = true,
 }: {
   /** `public.users.user_id`; null for a roster row with no account. */
   userId: string | null;
@@ -34,6 +37,12 @@ export function AwayCard({
   today: string | null;
   failed: boolean;
   self: boolean;
+  /**
+   * The reader may set or end these dates (`mayChangeAway`). False on an
+   * owner's row read by a manager: the dates show, the controls do not, and
+   * the card says who can change them. The gateway refuses it either way.
+   */
+  canChange?: boolean;
 }) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
@@ -109,7 +118,9 @@ export function AwayCard({
         </p>
       )}
 
-      {editing ? (
+      {!self && !canChange ? (
+        <p className="tm-hint">Only an owner can set or end an owner&apos;s Away dates.</p>
+      ) : editing ? (
         <form
           className="tm-form"
           style={{ padding: '8px 0 0' }}
@@ -187,6 +198,64 @@ export function AwayCard({
       <MutationError when={end.isError}>
         Away was not ended: {getErrorMessage(end.error)}
       </MutationError>
+    </Card>
+  );
+}
+
+/**
+ * Who else in the house is Away — the founder's round-2 answer 5 (2026-09-21):
+ * staff also see a colleague's quiet Away marker, dates only, never a reason.
+ *
+ * Staff have no roster (it carries wages), so this is where a staff member
+ * meets a colleague's name at all: one quiet line per person, the same marker
+ * the roster draws. Nothing is drawn while nobody else is away. A failed read
+ * says so — never an empty card that reads as "nobody is away".
+ */
+export function HouseAwayCard({
+  away,
+  failed,
+  selfId,
+}: {
+  away: AwayReadout | null;
+  failed: boolean;
+  /** The reader's own `public.users.user_id`: their own window is on their own card. */
+  selfId: string | null;
+}) {
+  if (failed) {
+    return (
+      <Card title="Away in the house">
+        <p className="tm-alert" role="alert" style={{ margin: 0 }}>
+          Away dates could not be read, so who else is away is unknown — not &quot;nobody&quot;.
+        </p>
+      </Card>
+    );
+  }
+  if (away === null) return null;
+  const others = away.windows.filter((w) => w.userId !== selfId);
+  if (others.length === 0) return null;
+  if (away.namesReadable === false) {
+    return (
+      <Card title="Away in the house">
+        <p className="tm-alert" role="alert" style={{ margin: 0 }}>
+          {others.length === 1 ? 'One colleague is' : `${others.length} colleagues are`} away or
+          about to be, but the names could not be read.
+        </p>
+      </Card>
+    );
+  }
+  return (
+    <Card title="Away in the house">
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
+        {others.map((w) => {
+          const label = w.name ?? 'Someone with no name on the roster';
+          return (
+            <li key={w.userId} className="tm-note" style={{ margin: 0 }}>
+              <AwayMarker name={label} personLabel={label} window={w} today={away.today} />
+            </li>
+          );
+        })}
+      </ul>
+      <p className="tm-hint">Only the dates are kept.</p>
     </Card>
   );
 }

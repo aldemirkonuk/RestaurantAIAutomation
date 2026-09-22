@@ -3,6 +3,7 @@ import { DatabaseModule } from "../../database/database.module";
 import { AuthModule } from "../../auth/auth.module";
 import { CommunicationsModule } from "../../communications/communications.module";
 import { AnalyticsModule } from "../analytics.module";
+import { AreaRoutingModule } from "../../areas/area-routing.module";
 import { RecommendationDigestController } from "./recommendation-digest.controller";
 import { RecommendationDigestService } from "./recommendation-digest.service";
 
@@ -19,7 +20,9 @@ import { RecommendationDigestService } from "./recommendation-digest.service";
 @Module({
   // AuthModule supplies TokenBlacklistService, which JwtAuthGuard injects in
   // this module's context.
-  imports: [DatabaseModule, AuthModule, AnalyticsModule, CommunicationsModule],
+  // AreaRoutingModule (ADR 0218): the digest pauses for a person while they
+  // are Away. It depends on the database alone, so it adds no ring.
+  imports: [DatabaseModule, AuthModule, AnalyticsModule, CommunicationsModule, AreaRoutingModule],
   controllers: [RecommendationDigestController],
   providers: [RecommendationDigestService],
 })

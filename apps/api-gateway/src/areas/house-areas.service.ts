@@ -5,9 +5,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { roleInHouse } from "../auth/house-role";
+import { AwayReleaseService } from "../team/away-release.service";
 import { isKnownTimeZone } from "../calendar/reminder-window";
 import {
   type AccessChange,
@@ -79,18 +82,37 @@ export interface AwayView {
   until: string;
   /** Today (house-local) falls inside the window. */
   activeNow: boolean;
-  /** The person set it themselves. */
-  setBySelf: boolean;
+  /**
+   * The person set it themselves. Absent on a colleague's window read by
+   * staff: who set someone's dates is not theirs to know (KVKK: the minimum).
+   */
+  setBySelf?: boolean;
+  /**
+   * The name this house's roster gives them, so a staff member (who has no
+   * roster) can draw a colleague's marker. `null`: no roster row names them,
+   * or the names could not be read (`AwayReadout.namesReadable`).
+   */
+  name: string | null;
 }
 
 export interface AwayReadout {
   today: string;
+  /** The reader's role in this house, from the token (ADR 0162). */
+  role: HouseRole;
   canManage: boolean;
   /**
-   * Owners and managers: every window that has not ended. Staff: their own.
-   * Dates only — there is nothing else to show, because nothing else is kept.
+   * Every window in this house that has not ended, for everyone in it — the
+   * founder's round-2 answer 5 (2026-09-21): staff see a colleague's quiet
+   * Away marker too. Dates only: there is nothing else to show, because
+   * nothing else is kept, and staff are not told who set a colleague's dates.
    */
   windows: AwayView[];
+  /**
+   * `false` when the roster names could not be read: every `name` is then
+   * null because of this system, not because nobody is named. The dates are
+   * still true, so they are still answered.
+   */
+  namesReadable: boolean;
 }
 
 /** The longest Away window accepted in one go, in days (inclusive). */
@@ -98,6 +120,33 @@ export const AWAY_MAX_DAYS = 366;
 
 function isManager(role: HouseRole): boolean {
   return role === "owner" || role === "manager";
+}
+
+/**
+ * May `actor` set or end `target`'s Away? (ADR 0218.)
+ *
+ * The person themselves, always. Owners and managers, for anyone in the house
+ * — except that ONLY AN OWNER sets or ends an OWNER's (the founder's round-2
+ * answer 7, 2026-09-21): a manager can no longer quiet an owner's alerts.
+ * Staff, only their own. `targetRole` is the target's role in THIS house, read
+ * the way the token reads one (`auth/house-role.ts`); null is no role.
+ */
+export function mayChangeAway(
+  actor: { userId: string; role: HouseRole },
+  target: { userId: string; role: string | null },
+): boolean {
+  if (actor.userId === target.userId) return true;
+  if (!isManager(actor.role)) return false;
+  if (String(target.role ?? "").toLowerCase() === "owner") return actor.role === "owner";
+  return true;
+}
+
+/** The sentence a refused Away change answers with. */
+export function awayRefusal(actorRole: HouseRole, targetIsOwner: boolean): string {
+  if (isManager(actorRole) && targetIsOwner) {
+    return "Only an owner can set or end an owner's Away dates.";
+  }
+  return "Away dates are personal: you can change your own, and owners and managers can change them for someone.";
 }
 
 function dayDiff(from: string, until: string): number {
@@ -110,7 +159,16 @@ function dayDiff(from: string, until: string): number {
 export class HouseAreasService {
   private readonly logger = new Logger(HouseAreasService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    /**
+     * Ending or moving someone's Away releases what waited for them (ADR
+     * 0218, round-2 answer 3). Optional so the specs that build this service
+     * with one argument keep their behaviour; the Nest provider always has it
+     * (HouseAreasModule imports TeamModule).
+     */
+    @Optional() private readonly awayRelease?: AwayReleaseService,
+  ) {}
 
   private get sb(): any {
     return this.db.getClient();
@@ -434,27 +492,57 @@ export class HouseAreasService {
   async listAway(actor: HouseActor): Promise<AwayReadout> {
     const rid = actor.restaurantId;
     const today = await this.today(rid);
-    let q = this.sb
+    const { data, error } = await this.sb
       .from("house_away")
       .select("user_id, away_from, away_until, set_by")
       .eq("restaurant_id", rid)
       .gte("away_until", today);
-    if (!isManager(actor.role)) q = q.eq("user_id", actor.userId);
-    const { data, error } = await q;
     if (error) this.unreadable("Away dates", error.message);
+    const manager = isManager(actor.role);
+    const rows = (data ?? []) as any[];
+
+    // The names a marker is drawn on (round-2 answer 5: staff see a
+    // colleague's quiet Away marker, and staff have no roster). The roster's
+    // display name only — never a wage, a role or a reason. A failed read is
+    // said out loud, never drawn as "nobody named".
+    const nameOf = new Map<string, string>();
+    let namesReadable = true;
+    const ids = [...new Set(rows.map((r) => r.user_id as string))];
+    if (ids.length > 0) {
+      const roster = await this.sb
+        .from("team_members")
+        .select("user_id, display_name")
+        .eq("restaurant_id", rid)
+        .in("user_id", ids);
+      if (roster.error) {
+        namesReadable = false;
+        this.logger.error(`HOUSE_AREAS_UNREADABLE Away names: ${roster.error.message}`);
+      } else {
+        for (const m of (roster.data ?? []) as any[]) {
+          const n = typeof m.display_name === "string" ? m.display_name.trim() : "";
+          if (m.user_id && n) nameOf.set(m.user_id, n);
+        }
+      }
+    }
+
     return {
       today,
-      canManage: isManager(actor.role),
-      windows: ((data ?? []) as any[]).map((r) => {
+      role: actor.role,
+      canManage: manager,
+      namesReadable,
+      windows: rows.map((r) => {
         const from = String(r.away_from).slice(0, 10);
         const until = String(r.away_until).slice(0, 10);
-        return {
+        const view: AwayView = {
           userId: r.user_id,
           from,
           until,
           activeNow: from <= today && today <= until,
-          setBySelf: r.set_by === r.user_id,
+          name: nameOf.get(r.user_id) ?? null,
         };
+        // Staff read a colleague's dates, never who set them.
+        if (manager || r.user_id === actor.userId) view.setBySelf = r.set_by === r.user_id;
+        return view;
       }),
     };
   }
@@ -467,9 +555,7 @@ export class HouseAreasService {
     const rid = actor.restaurantId;
     const self = targetUserId === actor.userId;
     if (!self && !isManager(actor.role)) {
-      throw new ForbiddenException(
-        "Away dates are personal: you can set your own, and owners and managers can set them for someone.",
-      );
+      throw new ForbiddenException(awayRefusal(actor.role, false));
     }
     const { from, until } = body;
     if (!isIsoDay(from) || !isIsoDay(until)) {
@@ -482,7 +568,13 @@ export class HouseAreasService {
     const today = await this.today(rid);
     if (until < today) throw new BadRequestException("Those dates are already over.");
 
-    const targetName = self ? actor.name : await this.assertHouseMember(rid, targetUserId);
+    // Membership AND role in this house, before anything is written: only an
+    // owner sets an owner's dates (round-2 answer 7).
+    const target = self ? null : await this.assertHouseMember(rid, targetUserId);
+    if (target && !mayChangeAway(actor, { userId: targetUserId, role: target.role })) {
+      throw new ForbiddenException(awayRefusal(actor.role, true));
+    }
+    const targetName = self ? actor.name : (target?.name ?? null);
 
     const { data: existing, error } = await this.sb
       .from("house_away")
@@ -533,10 +625,15 @@ export class HouseAreasService {
           title: "Away dates set for you",
           message:
             `${actor.name ?? "An owner or manager"} set you Away from ${from} to ${until}. ` +
-            "Most alerts will skip you on those days. You can change or end it from Team.",
+            "Most alerts will skip you on those days, and a note or message sent to you waits until you are back. " +
+            "You can change or end it from Team.",
         },
       });
     }
+
+    // Moved off today (or into the future): what waited for them is theirs
+    // now. `releaseFor` checks the dates itself and never throws.
+    if (!(from <= today && today <= until)) await this.releaseHeld(rid, targetUserId);
 
     return {
       window: {
@@ -545,6 +642,7 @@ export class HouseAreasService {
         until,
         activeNow: from <= today && today <= until,
         setBySelf: self,
+        name: targetName,
       },
       receipt,
     };
@@ -557,9 +655,13 @@ export class HouseAreasService {
     const rid = actor.restaurantId;
     const self = targetUserId === actor.userId;
     if (!self && !isManager(actor.role)) {
-      throw new ForbiddenException(
-        "Away dates are personal: you can end your own, and owners and managers can end someone's.",
-      );
+      throw new ForbiddenException(awayRefusal(actor.role, false));
+    }
+    if (!self) {
+      const role = await this.roleOf(rid, targetUserId);
+      if (!mayChangeAway(actor, { userId: targetUserId, role })) {
+        throw new ForbiddenException(awayRefusal(actor.role, true));
+      }
     }
     const { data: existing, error } = await this.sb
       .from("house_away")
@@ -598,11 +700,26 @@ export class HouseAreasService {
         },
         notice: {
           title: "Your Away dates were ended",
-          message: `${actor.name ?? "An owner or manager"} ended your Away. Alerts reach you again.`,
+          message: `${actor.name ?? "An owner or manager"} ended your Away. Alerts reach you again, and anything that waited for you is delivered.`,
         },
       });
     }
+    // Back now: what waited for them is delivered (outside their quiet hours;
+    // the release sweep is the backstop).
+    await this.releaseHeld(rid, targetUserId);
     return { ended: true, receipt };
+  }
+
+  /** Never throws: the Away change has happened, and the sweep delivers later. */
+  private async releaseHeld(restaurantId: string, userId: string): Promise<void> {
+    if (!this.awayRelease) return;
+    try {
+      await this.awayRelease.releaseFor(restaurantId, userId);
+    } catch (e: any) {
+      this.logger.error(
+        `AWAY_HOLD_RELEASE_AFTER_CHANGE_FAILED restaurant=${restaurantId} — ${e?.message}. The next sweep delivers it.`,
+      );
+    }
   }
 
   // ==========================================================================
@@ -648,24 +765,50 @@ export class HouseAreasService {
   /**
    * The target is an active member of THIS house (the same test
    * `TeamService.assertAccess` uses: an active access row, or the legacy
-   * `users.restaurant_id`). Returns their name for the log line.
+   * `users.restaurant_id`). Returns their name for the log line and their
+   * role in this house (`roleInHouse`, the token's own rule).
    */
-  private async assertHouseMember(restaurantId: string, userId: string): Promise<string | null> {
+  private async assertHouseMember(
+    restaurantId: string,
+    userId: string,
+  ): Promise<{ name: string | null; role: string | null }> {
+    const { access, user } = await this.readMembership(restaurantId, userId);
+    const member = !!access || user?.restaurant_id === restaurantId;
+    if (!member) throw new NotFoundException("That person is not a member of this house.");
+    return { name: user?.name ?? null, role: roleInHouse(access, user, restaurantId) };
+  }
+
+  /**
+   * The target's role in THIS house, or null for none. An unreadable register
+   * is a 503, never "not an owner" — that guess would let a manager end an
+   * owner's Away.
+   */
+  private async roleOf(restaurantId: string, userId: string): Promise<string | null> {
+    const { access, user } = await this.readMembership(restaurantId, userId);
+    return roleInHouse(access, user, restaurantId);
+  }
+
+  private async readMembership(
+    restaurantId: string,
+    userId: string,
+  ): Promise<{ access: { role?: string | null } | null; user: any | null }> {
     const [access, user] = await Promise.all([
       this.sb
         .from("user_restaurant_access")
-        .select("user_id")
+        .select("user_id, role")
         .eq("user_id", userId)
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true)
         .maybeSingle(),
-      this.sb.from("users").select("user_id, name, restaurant_id").eq("user_id", userId).maybeSingle(),
+      this.sb
+        .from("users")
+        .select("user_id, name, restaurant_id, role")
+        .eq("user_id", userId)
+        .maybeSingle(),
     ]);
     if (access.error) this.unreadable("House membership", access.error.message);
     if (user.error) this.unreadable("The person's account", user.error.message);
-    const member = !!access.data || user.data?.restaurant_id === restaurantId;
-    if (!member) throw new NotFoundException("That person is not a member of this house.");
-    return user.data?.name ?? null;
+    return { access: access.data ?? null, user: user.data ?? null };
   }
 
   /**

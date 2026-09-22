@@ -10,7 +10,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { asDatabaseService, makeStubDb, type StubDb } from "../team/testing/supabase-stub";
-import { HouseAreasService, type HouseActor } from "./house-areas.service";
+import { HouseAreasService, mayChangeAway, type HouseActor } from "./house-areas.service";
 import { actorOf } from "./house-areas.controller";
 import { houseLocalDay } from "./area-routing";
 
@@ -20,12 +20,18 @@ const OWNER = "aaaaaaaa-0000-0000-0000-000000000001";
 const STAFF = "aaaaaaaa-0000-0000-0000-000000000002";
 const COLLEAGUE = "aaaaaaaa-0000-0000-0000-000000000003";
 const STRANGER = "aaaaaaaa-0000-0000-0000-000000000009";
+const MANAGER = "aaaaaaaa-0000-0000-0000-000000000004";
+const CO_OWNER = "aaaaaaaa-0000-0000-0000-000000000005";
+// An owner known only through the legacy `users` row (no access row): the
+// token reads them as an owner (`roleInHouse`), so the Away gate must too.
+const LEGACY_OWNER = "aaaaaaaa-0000-0000-0000-000000000006";
 const M_STAFF = "bbbbbbbb-0000-0000-0000-000000000002";
 const M_COLLEAGUE = "bbbbbbbb-0000-0000-0000-000000000003";
 const M_ELSEWHERE = "bbbbbbbb-0000-0000-0000-000000000009";
 
 const owner: HouseActor = { userId: OWNER, restaurantId: HOUSE, role: "owner", name: "Deniz" };
 const staff: HouseActor = { userId: STAFF, restaurantId: HOUSE, role: "staff", name: "Ayşe" };
+const manager: HouseActor = { userId: MANAGER, restaurantId: HOUSE, role: "manager", name: "Selin" };
 
 const TODAY = houseLocalDay(new Date(), "UTC");
 const plus = (days: number) =>
@@ -42,12 +48,17 @@ function seed(extra: Partial<Record<string, any[]>> = {}): StubDb {
       { user_id: STAFF, restaurant_id: HOUSE, role: "staff", is_active: true },
       { user_id: COLLEAGUE, restaurant_id: HOUSE, role: "staff", is_active: true },
       { user_id: STRANGER, restaurant_id: OTHER_HOUSE, role: "staff", is_active: true },
+      { user_id: MANAGER, restaurant_id: HOUSE, role: "manager", is_active: true },
+      { user_id: CO_OWNER, restaurant_id: HOUSE, role: "owner", is_active: true },
     ],
     users: [
       { user_id: OWNER, name: "Deniz", restaurant_id: HOUSE },
       { user_id: STAFF, name: "Ayşe", restaurant_id: HOUSE },
       { user_id: COLLEAGUE, name: "Mert", restaurant_id: HOUSE },
       { user_id: STRANGER, name: "Kim", restaurant_id: OTHER_HOUSE },
+      { user_id: MANAGER, name: "Selin", restaurant_id: HOUSE, role: "manager" },
+      { user_id: CO_OWNER, name: "Cem", restaurant_id: HOUSE, role: "owner" },
+      { user_id: LEGACY_OWNER, name: "Nur", restaurant_id: HOUSE, role: "owner" },
     ],
     team_members: [
       { id: M_STAFF, restaurant_id: HOUSE, user_id: STAFF, display_name: "Ayşe", hourly_wage: 21 },
@@ -312,7 +323,7 @@ describe("Away", () => {
     expect(db.tables.house_away).toEqual([]);
   });
 
-  it("lists every current window for an owner and only your own for staff", async () => {
+  it("lists every current window in this house for everyone; staff never learn who set a colleague's", async () => {
     const db = seed({
       house_away: [
         { restaurant_id: HOUSE, user_id: STAFF, away_from: TODAY, away_until: plus(5), set_by: STAFF },
@@ -328,8 +339,183 @@ describe("Away", () => {
       activeNow: false,
       setBySelf: false,
     });
+    // Round-2 answer 5: staff see a colleague's quiet Away marker too —
+    // this house only, dates only.
     const forStaff = await svc.listAway(staff);
-    expect(forStaff.windows.map((w) => w.userId)).toEqual([STAFF]);
+    expect(forStaff.role).toBe("staff");
+    expect(forStaff.windows.map((w) => w.userId).sort()).toEqual([COLLEAGUE, STAFF].sort());
+    const colleague = forStaff.windows.find((w) => w.userId === COLLEAGUE)!;
+    expect(Object.keys(colleague).sort()).toEqual(["activeNow", "from", "name", "until", "userId"]);
+    // The roster's name, so a staff member with no roster can draw the marker.
+    expect(colleague).toEqual({
+      userId: COLLEAGUE,
+      from: plus(2),
+      until: plus(5),
+      activeNow: false,
+      name: "Mert",
+    });
+    expect(forStaff.namesReadable).toBe(true);
+    // Their own window still says who set it.
+    expect(forStaff.windows.find((w) => w.userId === STAFF)).toMatchObject({ setBySelf: true });
+  });
+
+  it("names a colleague from this house's roster only, and says so when the names cannot be read", async () => {
+    const away = [
+      { restaurant_id: HOUSE, user_id: COLLEAGUE, away_from: TODAY, away_until: plus(3), set_by: COLLEAGUE },
+      { restaurant_id: HOUSE, user_id: MANAGER, away_from: TODAY, away_until: plus(3), set_by: MANAGER },
+    ];
+    // MANAGER has a roster row only in ANOTHER house: that name is not this house's.
+    const elsewhere = {
+      id: "bbbbbbbb-0000-0000-0000-000000000004",
+      restaurant_id: OTHER_HOUSE,
+      user_id: MANAGER,
+      display_name: "Selin at the other house",
+    };
+    const db = seed({ house_away: away });
+    db.tables.team_members.push(elsewhere);
+    const out = await service(db).listAway(staff);
+    expect(out.windows.find((w) => w.userId === COLLEAGUE)!.name).toBe("Mert");
+    expect(out.windows.find((w) => w.userId === MANAGER)!.name).toBeNull();
+    expect(out.namesReadable).toBe(true);
+
+    const broken = seed({ house_away: away });
+    broken.errors["team_members:select"] = { message: "boom" };
+    const failed = await service(broken).listAway(staff);
+    // The dates are still answered; the names are unknown, and it says so.
+    expect(failed.windows).toHaveLength(2);
+    expect(failed.namesReadable).toBe(false);
+    expect(failed.windows.every((w) => w.name === null)).toBe(true);
+  });
+
+  it("accepts a window of exactly 366 days and refuses 367", async () => {
+    const svc = service(seed());
+    await expect(svc.setAway(staff, STAFF, { from: TODAY, until: plus(365) })).resolves.toBeTruthy();
+    await expect(
+      svc.setAway(staff, STAFF, { from: TODAY, until: plus(366) }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe("only an owner sets or ends an owner's Away (round-2 answer 7)", () => {
+  const ownerAway = (userId: string) => ({
+    restaurant_id: HOUSE,
+    user_id: userId,
+    away_from: TODAY,
+    away_until: plus(3),
+    set_by: userId,
+  });
+
+  it("is the whole matrix: self always; owners anyone; managers anyone but an owner; staff nobody else", () => {
+    const who = (role: "owner" | "manager" | "staff") => ({ userId: `actor-${role}`, role });
+    const target = (role: string | null) => ({ userId: "target", role });
+    expect(mayChangeAway(who("staff"), { userId: "actor-staff", role: "staff" })).toBe(true);
+    expect(mayChangeAway(who("manager"), { userId: "actor-manager", role: "manager" })).toBe(true);
+    for (const t of ["owner", "Owner", "manager", "staff", null]) {
+      expect(mayChangeAway(who("owner"), target(t))).toBe(true);
+      expect(mayChangeAway(who("staff"), target(t))).toBe(false);
+    }
+    expect(mayChangeAway(who("manager"), target("owner"))).toBe(false);
+    expect(mayChangeAway(who("manager"), target("OWNER"))).toBe(false);
+    expect(mayChangeAway(who("manager"), target("manager"))).toBe(true);
+    expect(mayChangeAway(who("manager"), target("staff"))).toBe(true);
+    expect(mayChangeAway(who("manager"), target(null))).toBe(true);
+  });
+
+  it("refuses a manager setting an owner's Away, and writes and logs nothing", async () => {
+    const db = seed();
+    const err = await service(db)
+      .setAway(manager, OWNER, { from: TODAY, until: plus(3) })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.message).toBe("Only an owner can set or end an owner's Away dates.");
+    expect(db.tables.house_away).toEqual([]);
+    expect(db.tables.system_audit_log).toEqual([]);
+    expect(db.tables.notifications).toEqual([]);
+  });
+
+  it("refuses a manager ending an owner's Away, and the dates stay", async () => {
+    const db = seed({ house_away: [ownerAway(OWNER)] });
+    await expect(service(db).endAway(manager, OWNER)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.tables.house_away).toHaveLength(1);
+    expect(db.tables.system_audit_log).toEqual([]);
+  });
+
+  it("reads an owner known only by the legacy users row as an owner", async () => {
+    const db = seed({ house_away: [ownerAway(LEGACY_OWNER)] });
+    const svc = service(db);
+    await expect(
+      svc.setAway(manager, LEGACY_OWNER, { from: TODAY, until: plus(2) }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.endAway(manager, LEGACY_OWNER)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.tables.house_away).toHaveLength(1);
+  });
+
+  it("lets another owner set and end an owner's Away, logged", async () => {
+    const db = seed();
+    const svc = service(db);
+    const out = await svc.setAway(owner, CO_OWNER, { from: TODAY, until: plus(2) });
+    expect(out.receipt).toEqual({ audited: true, notified: true });
+    const ended = await svc.endAway(owner, CO_OWNER);
+    expect(ended.receipt?.audited).toBe(true);
+    expect(db.tables.system_audit_log.map((r: any) => r.action)).toEqual([
+      "away_set_for_member",
+      "away_ended_for_member",
+    ]);
+  });
+
+  it("still lets a manager set and end a staff member's or another manager's Away", async () => {
+    const db = seed();
+    const svc = service(db);
+    await expect(svc.setAway(manager, COLLEAGUE, { from: TODAY, until: plus(2) })).resolves.toBeTruthy();
+    await expect(svc.endAway(manager, COLLEAGUE)).resolves.toMatchObject({ ended: true });
+  });
+
+  it("lets a manager and an owner set their own", async () => {
+    const svc = service(seed());
+    await expect(svc.setAway(manager, MANAGER, { from: TODAY, until: plus(1) })).resolves.toBeTruthy();
+    await expect(svc.setAway(owner, OWNER, { from: TODAY, until: plus(1) })).resolves.toBeTruthy();
+  });
+
+  it("answers 503 when the owner's role cannot be read — never a guess that lets a manager in", async () => {
+    const db = seed({ house_away: [ownerAway(OWNER)] });
+    db.errors["user_restaurant_access:select"] = { message: "boom" };
+    await expect(service(db).endAway(manager, OWNER)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(db.tables.house_away).toHaveLength(1);
+  });
+});
+
+describe("a change to Away releases what waited (round-2 answer 3)", () => {
+  function withRelease(db: StubDb) {
+    const release = { releaseFor: jest.fn(async () => ({})) } as any;
+    return { svc: new HouseAreasService(asDatabaseService(db), release), release };
+  }
+
+  it("releases on End Away now, for that person in this house", async () => {
+    const db = seed({
+      house_away: [{ restaurant_id: HOUSE, user_id: STAFF, away_from: TODAY, away_until: plus(5) }],
+    });
+    const { svc, release } = withRelease(db);
+    await svc.endAway(staff, STAFF);
+    expect(release.releaseFor).toHaveBeenCalledWith(HOUSE, STAFF);
+  });
+
+  it("releases when the dates move off today, and not while today is still inside them", async () => {
+    const db = seed();
+    const { svc, release } = withRelease(db);
+    await svc.setAway(staff, STAFF, { from: TODAY, until: plus(5) });
+    expect(release.releaseFor).not.toHaveBeenCalled();
+    await svc.setAway(staff, STAFF, { from: plus(3), until: plus(5) });
+    expect(release.releaseFor).toHaveBeenCalledWith(HOUSE, STAFF);
+  });
+
+  it("keeps the Away change when the release throws", async () => {
+    const db = seed({
+      house_away: [{ restaurant_id: HOUSE, user_id: STAFF, away_from: TODAY, away_until: plus(5) }],
+    });
+    const release = { releaseFor: jest.fn(async () => { throw new Error("down"); }) } as any;
+    const svc = new HouseAreasService(asDatabaseService(db), release);
+    await expect(svc.endAway(staff, STAFF)).resolves.toMatchObject({ ended: true });
+    expect(db.tables.house_away).toEqual([]);
   });
 });
 

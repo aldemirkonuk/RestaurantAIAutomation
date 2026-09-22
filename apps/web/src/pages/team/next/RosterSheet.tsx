@@ -47,6 +47,7 @@ import type { TimeOffRow } from './useTeamNextData';
 import { AwayMarker } from '@/components/mudavym/AwayMarker';
 import { AwayCard } from './AwayCard';
 import type { HouseAreasData } from './useHouseAreas';
+import { mayChangeAway } from '../../../services/api/areas';
 import { useAuth } from '../../../contexts/AuthContext';
 
 const EMPLOYMENT: ReadonlyArray<[string, string]> = [
@@ -201,6 +202,11 @@ function MemberDetail({
           today={house.away?.today ?? null}
           failed={house.awayFailed}
           self={isSelf}
+          // Only an owner sets or ends an owner's Away (round-2 answer 7).
+          canChange={mayChangeAway(
+            { role: house.away?.role ?? house.areas?.role, self: isSelf },
+            member.role,
+          )}
         />
 
         <PerformanceCard memberId={member.id} memberName={name.text} />

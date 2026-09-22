@@ -71,6 +71,18 @@ describe('AwayMarker', () => {
 
   it('speaks to the person themselves as "you"', () => {
     expect(awayExplanation(W, { self: true, locale: 'en-GB' })).toMatch(/skip you on these days; your area/);
+    expect(awayExplanation(W, { self: true, locale: 'en-GB' })).toMatch(
+      /A note or message sent to you waits until you are back, and your recommendations email pauses\./,
+    );
+  });
+
+  it('says the lead is alerted with the area, never after it (round-2 answer 2)', () => {
+    const words = awayExplanation(W, { personLabel: 'Ayşe', locale: 'en-GB' });
+    expect(words).toMatch(/rest of the area, its lead included, then the owners and managers/);
+    expect(words).not.toMatch(/then its lead/);
+    expect(words).toMatch(/sent to them waits until they are back, and their recommendations email pauses/);
+    // Dates only: no reason, ever.
+    expect(words).not.toMatch(/because|reason|sick|holiday/i);
   });
 });
 

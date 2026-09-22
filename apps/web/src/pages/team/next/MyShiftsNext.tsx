@@ -28,7 +28,7 @@ import {
 } from '../../../services/api/team';
 import { useActiveRestaurantId } from './useTeamNextData';
 import { useAuth } from '../../../contexts/AuthContext';
-import { AwayCard } from './AwayCard';
+import { AwayCard, HouseAwayCard } from './AwayCard';
 import { useHouseAreas } from './useHouseAreas';
 import {
   DOW,
@@ -313,6 +313,11 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             today={house.away?.today ?? null}
             failed={house.awayFailed}
             self
+          />
+          <HouseAwayCard
+            away={house.away}
+            failed={house.awayFailed}
+            selfId={user?.userId ?? null}
           />
           {house.areasFailed && (
             // A failed read must not look like "you are in no area".

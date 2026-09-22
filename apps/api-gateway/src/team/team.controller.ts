@@ -5,6 +5,7 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Optional,
   Param,
   Patch,
   Post,
@@ -22,6 +23,8 @@ import { NotesService } from "./notes.service";
 import { TeamService } from "./team.service";
 import { ScheduleService } from "./schedule.service";
 import { PerformanceService } from "./performance.service";
+import { AwayHoldService } from "./away-hold.service";
+import { heldDetail, splitForAway } from "./away-hold";
 import {
   AssignCoverDto,
   BroadcastDto,
@@ -61,6 +64,13 @@ export class TeamController {
     private readonly notifications: NotificationsService,
     private readonly push: ExpoPushService,
     private readonly notes: NotesService,
+    /**
+     * A message to a named person who is Away waits until they are back (ADR
+     * 0218, the founder's round-2 answer 3). Optional so the specs that build
+     * this controller with six arguments keep their behaviour; the Nest
+     * provider always has it (TeamModule provides it).
+     */
+    @Optional() private readonly awayHold?: AwayHoldService,
   ) {}
 
   private uid(req: Request & { user: AuthedUser }): string {
@@ -440,7 +450,50 @@ export class TeamController {
       ? roster.filter((m: any) => dto.memberIds!.includes(m.id))
       : roster.filter((m: any) => m.status === "active" && m.accountLinked);
     const audience: "everyone" | "selected" = named ? "selected" : "everyone";
-    const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
+
+    /**
+     * AWAY: A MESSAGE TO A NAMED PERSON WAITS (ADR 0218, the founder's round-2
+     * answer 3, 2026-09-21: a message sent to a person who is Away waits until
+     * they are back, and the sender sees "away until <date>").
+     *
+     * Only a NAMED send is held. A send to everyone is already routed by the
+     * funnel, which skips an Away person's inbox row; its push leg is listed
+     * in ADR 0218 "Owed". A held person gets nothing now (no inbox row, no
+     * push); `AwayReleaseService` delivers it when they are back, outside
+     * their quiet hours. An unreadable Away register holds nothing and says
+     * so in `away.readable`; a hold that cannot be written is sent now instead
+     * of dropped, and `away.holdFailed` says that.
+     */
+    const heldChannels = (["inbox", "push"] as const).filter((c) => may(c));
+    let awayUntil: Map<string, string> | null = new Map();
+    if (named && this.awayHold && heldChannels.length > 0) {
+      awayUntil = await this.awayHold.awayToday(rid);
+    }
+    const split = splitForAway(targets, (m: any) => m.user_id, awayUntil ?? new Map());
+    let held = split.held;
+    let holdFailed = false;
+    if (held.length > 0) {
+      const ok = await this.awayHold!.hold(
+        held.map(({ person, until }) => ({
+          restaurant_id: rid,
+          user_id: person.user_id,
+          kind: "team_message" as const,
+          title: dto.title ?? null,
+          body: dto.message,
+          channels: [...heldChannels],
+          sent_by: userId,
+          away_until: until,
+        })),
+      );
+      if (!ok) {
+        holdFailed = true;
+        held = [];
+      }
+    }
+    // Everyone this send reaches NOW. `targets` stays the whole audience, so
+    // `recipients.targeted` still counts the people who are waiting for it.
+    const reachNow: any[] = holdFailed ? targets : split.now;
+    const userIds = reachNow.map((m: any) => m.user_id).filter(Boolean);
 
     // Read BEFORE anything is sent, because push is now governed by it. `null`
     // means the read FAILED, which is not the same as "nobody opted out" — the
@@ -474,8 +527,10 @@ export class TeamController {
         named ? { onlyUserIds: userIds } : {},
       );
 
+    // `reachNow`, never `targets`: a person held for their return is pushed
+    // when they are back, and their opt-out is read then.
     const pushable = may("push")
-      ? targets.filter((m: any) => m.user_id && wants(m, "push"))
+      ? reachNow.filter((m: any) => m.user_id && wants(m, "push"))
       : [];
     const pushIds = pushable.map((m: any) => m.user_id);
     /**
@@ -587,6 +642,21 @@ export class TeamController {
       emailed,
       texted,
       inbox: may("inbox"),
+      /**
+       * Who this message waits for (ADR 0218): each held person's last Away
+       * day and the sentence the sender reads. `readable: false` means Away
+       * could not be read and nothing was held; `holdFailed` means the hold
+       * could not be written and they were sent it now instead.
+       */
+      away: {
+        readable: awayUntil !== null,
+        holdFailed,
+        held: held.map(({ person, until }) => ({
+          memberId: person.id,
+          until,
+          detail: heldDetail(until),
+        })),
+      },
     };
   }
 

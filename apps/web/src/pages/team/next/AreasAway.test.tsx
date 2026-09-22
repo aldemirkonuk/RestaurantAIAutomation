@@ -26,9 +26,10 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 
 import { AreasSheet } from './AreasSheet';
-import { AwayCard } from './AwayCard';
+import { AwayCard, HouseAwayCard } from './AwayCard';
 import { RosterSheet } from './RosterSheet';
-import type { AreasReadout, AwayView } from '../../../services/api/areas';
+import { CrewNoteSheet } from './TeamOverlays';
+import { mayChangeAway, type AreasReadout, type AwayReadout, type AwayView } from '../../../services/api/areas';
 import type { TeamMember } from '../../../services/api/team';
 
 function wrap(children: ReactNode) {
@@ -284,5 +285,183 @@ describe('the roster list', () => {
     sheet(house({ awayFailed: true }));
     expect(document.body.querySelector('.mdv-away')).toBeNull();
     expect(screen.getByRole('alert').textContent).toMatch(/Away dates could not be read/);
+  });
+});
+
+/* ── round 2 (the founder's "Take all seven", 2026-09-21) ─────────────── */
+
+describe('only an owner sets or ends an owner’s Away (round-2 answer 7)', () => {
+  it('is the whole matrix: self always; owners anyone; managers anyone but an owner; staff nobody else', () => {
+    expect(mayChangeAway({ role: 'staff', self: true }, 'staff')).toBe(true);
+    expect(mayChangeAway({ role: 'manager', self: true }, 'manager')).toBe(true);
+    expect(mayChangeAway({ role: 'owner', self: false }, 'owner')).toBe(true);
+    expect(mayChangeAway({ role: 'owner', self: false }, 'staff')).toBe(true);
+    expect(mayChangeAway({ role: 'manager', self: false }, 'staff')).toBe(true);
+    expect(mayChangeAway({ role: 'manager', self: false }, 'manager')).toBe(true);
+    expect(mayChangeAway({ role: 'manager', self: false }, 'owner')).toBe(false);
+    expect(mayChangeAway({ role: 'manager', self: false }, 'Owner')).toBe(false);
+    expect(mayChangeAway({ role: 'staff', self: false }, 'staff')).toBe(false);
+    expect(mayChangeAway({ role: undefined, self: false }, 'staff')).toBe(false);
+  });
+
+  it('shows an owner’s dates to a manager with no control to change them, and says who can', () => {
+    render(
+      wrap(
+        <AwayCard
+          userId="u-own"
+          personLabel="Deniz"
+          window={{ ...AWAY, userId: 'u-own' }}
+          today="2026-09-22"
+          failed={false}
+          self={false}
+          canChange={false}
+        />,
+      ),
+    );
+    expect(screen.getByText(/Only an owner can set or end an owner’s Away dates|Only an owner can set or end an owner's Away dates/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Change dates' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'End Away now' })).toBeNull();
+  });
+
+  it('on the roster, a manager opening an owner’s row gets the dates and no control; an owner gets the control', () => {
+    const OWNER_AWAY: AwayView = { userId: 'u-own', from: '2026-09-21', until: '2026-09-28', activeNow: true, name: 'Deniz' };
+    const ownerRow = { ...member('m-own', 'Deniz', 'u-own'), role: 'owner' } as TeamMember;
+    const open = (readerRole: 'manager' | 'owner') => {
+      const view = render(
+        wrap(
+          <RosterSheet
+            members={[ownerRow]}
+            membersFailed={false}
+            shifts={[]}
+            certs={[]}
+            timeOff={[]}
+            wageVisible={false}
+            house={{
+              areas: { ...READOUT, role: readerRole },
+              areasFailed: false,
+              away: { today: '2026-09-22', role: readerRole, canManage: true, windows: [OWNER_AWAY] },
+              awayFailed: false,
+              awayByUser: new Map([['u-own', OWNER_AWAY]]),
+            }}
+            onClose={() => undefined}
+            onEdit={() => undefined}
+            onAdd={() => undefined}
+          />,
+        ),
+      );
+      const row = document.body.querySelector('.tm-rrow__btn') as HTMLButtonElement;
+      fireEvent.click(row);
+      return view;
+    };
+    const asManager = open('manager');
+    expect(screen.getByText(/Only an owner can set or end an owner.s Away dates/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Change dates' })).toBeNull();
+    asManager.unmount();
+    open('owner');
+    expect(screen.queryByText(/Only an owner can set or end an owner.s Away dates/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Change dates' })).toBeTruthy();
+  });
+
+  it('keeps the controls on a manager’s own card', () => {
+    render(
+      wrap(
+        <AwayCard userId="u1" personLabel="Ayşe" window={AWAY} today="2026-09-22" failed={false} self canChange={false} />,
+      ),
+    );
+    expect(screen.getByRole('button', { name: 'End Away now' })).toBeTruthy();
+  });
+});
+
+describe('staff see a colleague’s quiet Away marker (round-2 answer 5)', () => {
+  const readout = (over: Partial<AwayReadout> = {}): AwayReadout => ({
+    today: '2026-09-22',
+    role: 'staff',
+    canManage: false,
+    namesReadable: true,
+    windows: [
+      { userId: 'u-me', from: '2026-09-21', until: '2026-09-23', activeNow: true, setBySelf: true, name: 'Ayşe' },
+      { userId: 'u2', from: '2026-09-21', until: '2026-09-28', activeNow: true, name: 'Mert' },
+      { userId: 'u3', from: '2026-10-02', until: '2026-10-05', activeNow: false, name: 'Can' },
+    ],
+    ...over,
+  });
+
+  it('draws each colleague’s marker with their name and dates, and leaves the reader’s own to their card', () => {
+    render(wrap(<HouseAwayCard away={readout()} failed={false} selfId="u-me" />));
+    expect(screen.getByText('Mert')).toBeTruthy();
+    expect(screen.getByText(/Away until/)).toBeTruthy();
+    expect(screen.getByText('Can')).toBeTruthy();
+    expect(screen.getByText(/Away from/)).toBeTruthy();
+    expect(screen.queryByText('Ayşe')).toBeNull();
+    expect(document.body.querySelectorAll('.mdv-away')).toHaveLength(2);
+    // Dates only: no reason and no "set by".
+    expect(document.body.textContent).not.toMatch(/because|reason|sick|set by/i);
+  });
+
+  it('draws nothing while nobody else is away', () => {
+    const { container } = render(
+      wrap(<HouseAwayCard away={readout({ windows: [readout().windows[0]] })} failed={false} selfId="u-me" />),
+    );
+    expect(container.textContent).toBe('');
+  });
+
+  it('says a failed read is unknown, never "nobody is away"', () => {
+    render(wrap(<HouseAwayCard away={null} failed selfId="u-me" />));
+    expect(screen.getByRole('alert').textContent).toMatch(/unknown/);
+  });
+
+  it('says the names could not be read rather than drawing nameless markers', () => {
+    render(
+      wrap(
+        <HouseAwayCard
+          away={readout({
+            namesReadable: false,
+            windows: readout().windows.map((w) => ({ ...w, name: null })),
+          })}
+          failed={false}
+          selfId="u-me"
+        />,
+      ),
+    );
+    expect(screen.getByRole('alert').textContent).toMatch(/2 colleagues .* names could not be read/);
+    expect(document.body.querySelector('.mdv-away')).toBeNull();
+  });
+});
+
+describe('a note to someone Away tells the sender before it is sent (round-2 answer 3)', () => {
+  const note = (awayByUser?: Map<string, AwayView>, awayToday: string | null = '2026-09-22') =>
+    render(
+      wrap(
+        <CrewNoteSheet
+          members={ROSTER}
+          membersFailed={false}
+          only={null}
+          weekStart="2026-09-21"
+          scheduleId={null}
+          awayByUser={awayByUser}
+          awayToday={awayToday}
+          onClose={() => undefined}
+          onSent={() => undefined}
+        />,
+      ),
+    );
+
+  it('names who is away until when, and says the note waits for them', () => {
+    note(new Map([['u1', AWAY]]));
+    const hint = screen.getByTestId('note-waits-for-away');
+    // The reader's own locale words the day ("28 Sep" or "Sep 28").
+    expect(hint.textContent).toMatch(/Ayşe is away until (28 Sep|Sep 28)\./);
+    expect(hint.textContent).toMatch(/waits and reaches them when they are back/);
+    expect(hint.textContent).not.toMatch(/Mert/);
+  });
+
+  it('says nothing for a window that has not begun: a note sent now is not held for it', () => {
+    note(new Map([['u1', { ...AWAY, from: '2026-09-25', activeNow: false }]]));
+    expect(screen.queryByTestId('note-waits-for-away')).toBeNull();
+  });
+
+  it('says nothing while Away has not answered', () => {
+    note(new Map([['u1', AWAY]]), null);
+    expect(screen.queryByTestId('note-waits-for-away')).toBeNull();
   });
 });

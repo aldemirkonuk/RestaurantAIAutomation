@@ -133,6 +133,16 @@ describe("the ladder", () => {
     expect(d.alert).toEqual([COOK]);
   });
 
+  it("alerts the lead together with the members, in the same step — never after a delay (round-2 answer 2)", () => {
+    const lead = { memberId: "m-lead", userId: WAITER, kind: "kitchen" as const, isLead: true };
+    const cook = { memberId: "m-cook2", userId: COOK, kind: "kitchen" as const, isLead: false };
+    const d = routeAlert("kitchen", house({ memberships: [cook, lead] }));
+    expect(d.step).toBe("area");
+    expect(sorted(d.alert)).toEqual(sorted([COOK, WAITER]));
+    // The decision has no second wave: nothing in it can hold the lead back.
+    expect(Object.keys(d).sort()).toEqual(["alert", "heldAway", "inboxOnly", "label", "step"]);
+  });
+
   it("goes to owners and managers when nobody is in the labelled area", () => {
     const d = routeAlert("cellar", house({ memberships: [IN_BAR] }));
     expect(d.step).toBe("owners_managers");
