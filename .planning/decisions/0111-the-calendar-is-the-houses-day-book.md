@@ -596,6 +596,33 @@ citations across ~89 files — see the register-row memo); the parent files them
 
 ## Review trail
 
+- 2026-09-22 (round 6y) — **the lapsed-`valid_until` fork, closed.** The
+  founder, 2026-09-22, verbatim: *"Feed stays stricter (Recommended)"*. The
+  calendar feed keeps reading a lapsed `valid_until` as the end of
+  membership: once it has passed, the link serves only the expired notice,
+  and the first fetch after it stops the link for good (as `system`,
+  `revoke_reason = 'left_house'`; a stop that fails is logged and tried
+  again on the next fetch, and the notice is served either way). The app's
+  role reads (`house-role.ts` `roleInHouse`,
+  `OrganizationsService.resolveRestaurantRole`) do not yet honour it, so
+  such a person keeps the app and loses the calendar link.
+  - No code changed this round; the pick and the build already agree.
+    `feedRoleOf` (`feed-scope.ts:117-135`) filters on `valid_until`,
+    `CalendarLinksService.roleOf` (`calendar-links.service.ts:172-178`)
+    selects it into that check, and `renderFor`
+    (`calendar-links.service.ts:631-634`) stops a live link when the role
+    comes back empty.
+  - Pinned by `feed-scope.spec.ts` and `calendar-links.service.spec.ts`.
+    Last-call mutation, 2026-09-22: dropping the `valid_until` filter from
+    `feedRoleOf` fails 3 cases across both files (86 run); restored, the
+    calendar suites pass, 12 suites and 264 tests.
+  - The app catching up is **not built here**: teaching `roleInHouse` and
+    `resolveRestaurantRole` to read `valid_until` the way the feed does is
+    another lane's work. The digest's recipient read
+    (`RecommendationDigestService.readMemberIds`) already honours it. It is
+    not filed as a new open decision, because no gateway code writes
+    `valid_until` (measured 2026-09-22), so the gap is latent, not live.
+
 - 2026-09-21 (round 6t) — **the five forks the personal links left open,
   answered and built.** The founder, 2026-09-21, verbatim, one pick per fork:
   1. On a person who leaves: *"Yes, revoke on leaving (Recommended)"*.
@@ -634,7 +661,16 @@ citations across ~89 files — see the register-row memo); the parent files them
       `OrganizationsService.resolveRestaurantRole`) do not read
       `valid_until`, so such a person would keep the app and lose the link.
       No gateway code writes `valid_until` (measured). Put to the founder,
-      not decided here.]*
+      not decided here.]* *[Closed 2026-09-22, round 6y — the founder,
+      verbatim: "Feed stays stricter (Recommended)". The calendar feed stops
+      the link once `valid_until` has passed, even though the app's role
+      reads do not yet honour it (`feedRoleOf` unchanged by this round — code
+      already matched the pick, confirmed by re-reading
+      `feed-scope.ts:117-135` and `stop-links-on-leaving.ts:29-32`). The app
+      catching up — `house-role.ts` `roleInHouse` and
+      `OrganizationsService.resolveRestaurantRole` reading `valid_until` the
+      same way — is not built here; it is another lane's work. See the review
+      trail entry of that date.]*
     - A returning person connects again. The old address never serves again.
     - Migration `20260921170700_a_person_who_leaves_loses_their_calendar_link.sql`
       widens the revoke-reason CHECK to allow `left_house`. It is additive and
