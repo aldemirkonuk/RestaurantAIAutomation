@@ -612,8 +612,8 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 - **Drawings owed before their builds can start:** the wine detail surface (110, Owed
   #4), the bundle shape (113), the guide collection for `/help` (111, must-have), B's
   sized boxes at C's 10+ density (113), and — if it wins — sketch 119's shell.
-- **Two of his notes are deliberately not built now:** the non-alcoholic heat map (110,
-  Owed #9) and A's register itself under live data (113).
+- **Two of his notes are deliberately not built now:** ~~the non-alcoholic heat map (110,
+  Owed #9)~~ **[built 2026-09-22, Q9]** and A's register itself under live data (113).
 - **Open items — the founder's call, not decided here (CLAUDE.md §0.1):**
   1. 110 — the two hold-to-order modes' exact meaning (does "auto-approve" still stop for
      one tap, or send with no human hold at all), and who may switch a house into auto.
@@ -662,7 +662,12 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
      15: sketch 115 had zero mentions anywhere in this ADR.]**
   7. 110 — the non-alcoholic heat map: does "make sure the pipeline to go there is good"
      mean checking the sales pipeline for instant-sale lines now, or only keeping it
-     unblocked for later?
+     unblocked for later? **[answered 2026-09-22, founder Q9 via page-gap questions:
+     wire live sales NOW, before #434 merges. Built on this PR: `readTillLines` mines
+     `pos_checks.items` in addition to `pos_unresolved_lines`, because non-wine lines
+     never enter the unresolved queue (`PosHubService.applyStockEffects` skips
+     `!is_wine`). RowExpander's "When it sells" heat map already derives from those
+     till lines via `rowSeries.whenItSells`.]**
   8. 113 — the projected-worth box-size mechanism: not decided; a research pass on its
      scalability and quality is owed and running (2026-09-18) — direction B stays the
      pick for looks in the meantime. **[answered 2026-09-18: money worth to the house,

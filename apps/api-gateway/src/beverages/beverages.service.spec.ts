@@ -420,3 +420,155 @@ describe("BeveragesService cocktail writes", () => {
     expect(rows[1]).toMatchObject({ free_text: "fresh lime juice", sort_order: 5 });
   });
 });
+
+/**
+ * Q9 (founder 2026-09-22): the non-alcoholic register heat map must read LIVE
+ * sales. Non-wine lines never enter `pos_unresolved_lines` (pos-hub skips
+ * `!is_wine` before that queue), so a till book that only reads unresolved
+ * lines leaves Turkish coffee / tea / water with an empty heat map forever.
+ * This pin fails if `readTillLines` stops mining `pos_checks.items`.
+ */
+describe("BeveragesService.readRowRecord — live non-wine till lines (Q9)", () => {
+  it("surfaces a non-alcoholic sale from pos_checks.items even when the unresolved queue is empty", async () => {
+    const { service } = await richService({
+      tables: {
+        menu_items: [{ data: [] }],
+        procurement_document_lines: [{ data: [] }],
+        procurement_order_items: [{ data: [] }],
+        vendor_price_observations: [{ data: [] }],
+        pos_unresolved_lines: [{ data: [] }],
+        pos_checks: [
+          {
+            data: [
+              {
+                id: "chk-1",
+                external_check_id: "toast-99",
+                opened_at: "2026-09-20T09:00:00.000Z",
+                closed_at: "2026-09-20T09:12:00.000Z",
+                voided: false,
+                items: [
+                  { name: "Turkish Coffee", qty: 2, price: 4.5, is_wine: false },
+                  { name: "House Cabernet", qty: 1, price: 14, is_wine: true },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const out = await service.readRowRecord(RID, "Turkish Coffee");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(true);
+    expect(pos?.source).toContain("pos_checks.items");
+    expect(pos?.rows).toBe(1);
+    expect(pos?.ledger).toEqual([
+      expect.objectContaining({
+        label: "Turkish Coffee",
+        qty: 2,
+        unitPrice: 4.5,
+        at: "2026-09-20T09:12:00.000Z",
+        note: "toast-99",
+      }),
+    ]);
+    // Instant + qty are what rowSeries.whenItSells buckets into the heat map.
+    expect(pos?.ledger[0].at).toBeTruthy();
+    expect(pos?.ledger[0].qty).toBeGreaterThan(0);
+  });
+
+  it("does not invent a till series when pos_checks has no matching non-wine line", async () => {
+    const { service } = await richService({
+      tables: {
+        menu_items: [{ data: [] }],
+        procurement_document_lines: [{ data: [] }],
+        procurement_order_items: [{ data: [] }],
+        vendor_price_observations: [{ data: [] }],
+        pos_unresolved_lines: [{ data: [] }],
+        pos_checks: [
+          {
+            data: [
+              {
+                id: "chk-2",
+                external_check_id: "toast-100",
+                closed_at: "2026-09-20T18:00:00.000Z",
+                voided: false,
+                items: [{ name: "House Cabernet", qty: 1, price: 14, is_wine: true }],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const out = await service.readRowRecord(RID, "Turkish Coffee");
+    const pos = out.books.find((b) => b.book === "pos");
+    expect(pos?.readable).toBe(true);
+    expect(pos?.rows).toBe(0);
+    expect(pos?.ledger).toEqual([]);
+  });
+
+  it("skips voided checks and does not double-count wine already on the unresolved queue", async () => {
+    const { service } = await richService({
+      tables: {
+        menu_items: [{ data: [] }],
+        procurement_document_lines: [{ data: [] }],
+        procurement_order_items: [{ data: [] }],
+        vendor_price_observations: [{ data: [] }],
+        pos_unresolved_lines: [
+          {
+            data: [
+              {
+                id: "u-1",
+                item_name: "House Cabernet",
+                qty: 1,
+                price: 14,
+                created_at: "2026-09-20T18:00:00.000Z",
+                external_check_id: "toast-101",
+              },
+            ],
+          },
+        ],
+        pos_checks: [
+          {
+            data: [
+              {
+                id: "chk-void",
+                external_check_id: "toast-void",
+                closed_at: "2026-09-20T10:00:00.000Z",
+                voided: true,
+                items: [
+                  { name: "Turkish Coffee", qty: 9, price: 4.5, is_wine: false },
+                ],
+              },
+              {
+                id: "chk-wine",
+                external_check_id: "toast-101",
+                closed_at: "2026-09-20T18:00:00.000Z",
+                voided: false,
+                items: [
+                  { name: "House Cabernet", qty: 1, price: 14, is_wine: true },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const coffee = await service.readRowRecord(RID, "Turkish Coffee");
+    const coffeePos = coffee.books.find((b) => b.book === "pos");
+    expect(coffeePos?.rows).toBe(0);
+    expect(coffeePos?.ledger).toEqual([]);
+
+    const wine = await service.readRowRecord(RID, "House Cabernet");
+    const winePos = wine.books.find((b) => b.book === "pos");
+    expect(winePos?.rows).toBe(1);
+    expect(winePos?.ledger).toEqual([
+      expect.objectContaining({
+        label: "House Cabernet",
+        qty: 1,
+        note: "toast-101",
+      }),
+    ]);
+  });
+});

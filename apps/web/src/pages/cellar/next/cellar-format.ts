@@ -619,7 +619,7 @@ export const BOOK_SOURCE: Record<HouseBookId, string> = {
   invoice: 'procurement_document_lines, on documents of type invoice',
   order: 'procurement_order_items',
   quote: 'vendor_price_observations, this restaurant’s rows only',
-  pos: 'pos_unresolved_lines — the till lines the POS bridge could not map to a wine',
+  pos: 'pos_unresolved_lines + pos_checks.items — unresolved wine lines, and live non-wine sales (Q9)',
 };
 
 /**
