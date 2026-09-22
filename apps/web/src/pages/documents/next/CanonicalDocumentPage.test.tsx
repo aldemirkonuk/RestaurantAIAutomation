@@ -187,6 +187,22 @@ describe('CanonicalDocumentPage', () => {
     mintVerifyMock.mockResolvedValue('seal-tick')
   })
 
+  it('draws the given document inside a sheet, without the page’s own chrome (the /orders receipt)', async () => {
+    documentMock.mockResolvedValue(response())
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/orders']}>
+          <CanonicalDocumentPage documentId="doc-syn" embedded />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+    expect(documentMock).toHaveBeenCalledWith('doc-syn')
+    expect(screen.queryByText(/Back to the documents/)).toBeNull()
+    expect(container.querySelector('.cd-page')?.getAttribute('data-embedded')).toBe('true')
+  })
+
   it('renders the verdict, the sheet and the not-counted words', async () => {
     documentMock.mockResolvedValue(response())
     const { container } = mount()
