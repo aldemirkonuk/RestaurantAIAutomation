@@ -12,11 +12,15 @@
  *   issue time, is a citable observation about the future. Our covers number
  *   derived from it and drawn without its error is the guess.
  *
- * So: the issuer's name and issue time are on the title of every mark, the
- * numbers are the issuer's own in the issuer's own unit, and a cell with no
- * reading prints a reason instead of nothing. A blank sky column would be
- * indistinguishable from a week of clear weather — the absence-reported-as-
- * health fault, on a grid.
+ * So: the issuer's name and issue time are on the title of every mark, and the
+ * numbers are the issuer's own in the issuer's own unit.
+ *
+ * [OVERRULED 2026-09-22 by the founder after the preview review — "remove the
+ *  'no reading' sign, leave blank". He chose blank knowing this rule. A cell
+ *  with no reading now draws nothing; the reason stays on the page's sky line.
+ *  The rule as it stood: "a cell with no reading prints a reason instead of
+ *  nothing. A blank sky column would be indistinguishable from a week of clear
+ *  weather — the absence-reported-as-health fault, on a grid."]
  *
  * Icons are lucide (`lucide-react`, already a dependency), chosen from the
  * issuer's own `shortForecast` words and sized by the house tokens. Ink only;
@@ -117,24 +121,11 @@ function RainBar({ probability }: { probability: number | null }) {
 
 export interface SkyMarkProps {
   reading: WeatherReading | null;
-  /**
-   * Why there is no reading, when there is none. One of the gateway's own
-   * sentences, shortened for a cell; the full one is on the page's notice.
-   */
-  absence: string | null;
 }
 
-/** The forecast mark on a future or current day. */
-export function SkyMark({ reading, absence }: SkyMarkProps) {
-  if (!reading) {
-    // Never an empty node. A cell that simply omits the sky reads as fair
-    // weather to anyone scanning the column.
-    return absence ? (
-      <span className="cn-sky" data-dark="true" title={absence}>
-        {EM} no reading
-      </span>
-    ) : null;
-  }
+/** The forecast mark on a future or current day; nothing when there is no reading. */
+export function SkyMark({ reading }: SkyMarkProps) {
+  if (!reading) return null;
 
   const Icon = skyIcon(reading.shortForecast);
   return (

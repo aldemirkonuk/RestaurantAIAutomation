@@ -243,7 +243,11 @@ enforced against.
 - **The maths.** None. It is transcription. Everything read is stamped with the issuer,
   the issue time and the forecast horizon, and **kept**, so §2b can be scored later.
 - **Honest state when absent.** No coordinate ⇒ the weather line reads *"No location set
-  for this house"* with a link to set it — never a blank, never a default city. Provider
+  for this house"* with a link to set it — never a blank, never a default city.
+  **[AMENDED 2026-09-22 by the founder after the preview review — "remove the 'no
+  reading' sign, leave blank". The page-level weather line still says why; a DAY CELL
+  with no reading is now blank, which this ADR (and `SkyMark.tsx`) had forbidden as
+  reading like fair weather. He chose blank knowing that.]** Provider
   unreachable ⇒ *"Weather could not be read at 06:14"*, and the last successful read stays
   visible with its age.
 - **Day cell.** Icon + high/low in tabular mono, a six-bar hourly precipitation
