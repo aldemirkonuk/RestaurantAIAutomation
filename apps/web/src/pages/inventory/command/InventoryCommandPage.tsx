@@ -399,6 +399,24 @@ export function InventoryCommandPage() {
     if (match) setVerifyOrder(match);
   }, [searchParams, toVerify, verifyOrder]);
 
+  /**
+   * Deep-link: /inventory?wine=<name> (low-stock-alert.template.ts's email
+   * CTA, sw.js's push action) — reuses the same substring search the search
+   * box already runs (useInventoryPage.ts) so the named wine is what is
+   * actually visible, once, rather than an unfiltered page.
+   * `?action=reorder` is deliberately NOT read here: there is no distinct
+   * reorder flow on this page to open, so that promise goes no further than
+   * "the item is now visible" — stated plainly rather than built on a guess
+   * at what a reorder flow should do.
+   */
+  const appliedWineParam = useRef(false);
+  useEffect(() => {
+    const wine = searchParams.get("wine");
+    if (!wine || appliedWineParam.current) return;
+    appliedWineParam.current = true;
+    setSearchQuery(wine);
+  }, [searchParams, setSearchQuery]);
+
   const closeVerify = () => {
     setVerifyOrder(null);
     if (searchParams.has("verify")) {

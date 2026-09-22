@@ -14,22 +14,15 @@ export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = '"Plus Jakarta Sans", "DM Sans", system-ui, sans-serif';
 
+/** Fraunces — self-hosted; `@font-face` lives in `styles/mudavym.css`
+ * (decision 0149 row 9). Georgia is the fallback until it loads. */
+
 /**
- * Fraunces — the house serif, injected once (copied from the dashboard's
- * fonts.ts on purpose: pages do not import each other's helpers). Georgia
- * carries the text until the webfont lands, so this can never break the page.
+ * No-op retained so CatalogView's mount effect still compiles after the
+ * Google-Fonts loader was retired for the self-hosted face. Safe to delete
+ * once every caller stops importing it.
  */
-const FONT_LINK_ID = 'mudavym-fraunces';
-export function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FONT_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FONT_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
+export function ensureFraunces(): void {}
 
 /** A finite number or null. Guards NaN and the API's occasional string. */
 export function num(v: unknown): number | null {
@@ -276,6 +269,59 @@ export function dismissalSentence(storedKey: string): string {
   if (subject)
     return `Silenced: every ${subject} this rule finds. Other subjects still report.`;
   return `Silenced: the rule ${ruleId}, entirely — every subject, every day.`;
+}
+
+/**
+ * The receipt under an entry — sketch 120 item 3: "the built page already
+ * writes a one-line note with Undo; this makes it a RULED RECEIPT under the
+ * entry it belongs to, saying exactly what was stored and what was not."
+ *
+ * Deliberately derived from the entry's own STORED state, not from a
+ * transient "last action" cache: a receipt is a permanent record, and one
+ * built from `status`/`pinned`/`snoozeUntil` reads true after a reload, not
+ * only in the second after the click. The page-level toast (`data.note` /
+ * `data.undo`) still exists for the immediate announcement; this is what
+ * stays after it clears.
+ *
+ * Returns zero or more lines — never a single string — because "watched" and
+ * "pinned" are independent of the disposition and of each other; an entry can
+ * carry any combination.
+ *
+ * Deliberately silent on `status === 'dismissed'`: that leaf's own fuller
+ * sentence (`dismissalSentence`, rendered directly in `Entry.tsx` from the
+ * row's real stored key) already covers it, and `e.ruleKey` here is not
+ * guaranteed to be that composite key outside the dismissed/history leaves.
+ * A prior version called `dismissalSentence(e.ruleKey)` here too; it was
+ * unreachable only because the render site happens to gate on the same leaf
+ * check, and would have misreported a narrowly-scoped dismissal as silencing
+ * the whole rule if that gating were ever loosened. See
+ * `rec-format.test.ts` for the case that would fail without this.
+ */
+export function receiptFor(
+  e: {
+    ruleKey: string;
+    status: 'active' | 'dismissed' | 'snoozed' | 'done';
+    acted: boolean;
+    pinned: boolean;
+    snoozeUntil?: string | null;
+  },
+  watching: boolean,
+): string[] {
+  const lines: string[] = [];
+  if (e.status === 'snoozed') {
+    lines.push(`Snoozed — ${fmtWakes(e.snoozeUntil)}. Marked on the ribbon's strip.`);
+  } else if (e.status === 'done') {
+    lines.push('Sealed as ruled off. No outcome is measured yet — 094c’s roadmap.');
+  } else if (e.acted) {
+    lines.push('Recorded as acted. Still standing — acting does not remove it from the book.');
+  }
+  if (watching) lines.push('Watched by a goal.');
+  if (e.pinned) {
+    lines.push(
+      'Pinned. It leads the post too — the digest carries pinned entries first.',
+    );
+  }
+  return lines;
 }
 
 /* ── Time, said only where it is known ───────────────────────────────────── */

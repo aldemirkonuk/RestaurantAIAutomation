@@ -72,19 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:161",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:172",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:161",
-  },
-  {
-    key: "mudavym_design_settings",
-    // OFF by default: the Mudavym redesign of `/settings` (ADR 0044 p4 wave, KEEP Editorial + "there should be more").
-    defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:161",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:172",
   },
   {
     key: "enable_house_inbox_read",
@@ -97,6 +91,18 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     defaultValue: false,
     readBy: "communications/inbox/house-inbox.service.ts:339",
   },
+  {
+    key: "mudavym_design_shell",
+    // OFF by default: the Mudavym app shell — the rooms rail, the house
+    // header, the counter and the phone's four doors (sketch 119 direction D,
+    // the founder's pick of 2026-09-21; ADR 0149 row 5). Unlike the page
+    // flags this one swaps the LAYOUT every signed-in route renders inside
+    // (DashboardLayout reads `useMudavymDesign("shell")`); off, the legacy
+    // Sidebar layout is the path. Held back from LIVE_PAGES. Column added by
+    // 20260921114300.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:172",
+  },
 ];
 
 export const ACTIVE_FEATURE_FLAG_KEYS: readonly string[] =
@@ -108,13 +114,17 @@ export function isActiveFeatureFlag(name: string): boolean {
 
 /**
  * LIVE IN CODE, 2026-09-17 (live-review.md defect 2; ADR 0149 row 36, "16
- * locked pages"). These sixteen `mudavym_design_*` keys used to be ACTIVE —
- * real columns AND real gating code — but `useMudavymDesign.ts`'s `LIVE_PAGES`
- * now resolves every one of these pages for every house before `fetchFlag`
- * (the `.checkFeatureFlag` call these entries used to cite) ever runs. The
- * cited line still exists and still says `checkFeatureFlag`, but it is
- * UNREACHABLE for these sixteen keys, so the ACTIVE contract — "a real column
- * AND real code that branches on it" — no longer holds for them.
+ * locked pages"; `settings` joined 2026-09-19 / PR #419 after its sketch
+ * review; `help` joined 2026-09-21 / PR #413 / ADR 0149 row 52). These
+ * twenty `mudavym_design_*` keys used to be ACTIVE — real columns AND real
+ * gating code — but `useMudavymDesign.ts`'s `LIVE_PAGES` now resolves every
+ * one of these pages for every house before `fetchFlag` (the
+ * `.checkFeatureFlag` call these entries used to cite) ever runs. The cited
+ * line still exists and still says `checkFeatureFlag`, but it is UNREACHABLE
+ * for these eighteen keys, so the ACTIVE contract — "a real column AND real
+ * code that branches on it" — no longer holds for them. (`help` never had a
+ * column; it is listed here so the LIVE_PAGES ↔ LIVE_IN_CODE_FLAGS guard
+ * stays exact.)
  *
  * Deliberately NOT in ACTIVE_FEATURE_FLAGS:
  *  - `GET /settings/feature-flags` returns only ACTIVE_FEATURE_FLAG_KEYS
@@ -137,15 +147,6 @@ export function isActiveFeatureFlag(name: string): boolean {
  * `scripts/flip_mudavym_design_flags.py` treats every key here as a no-op: it
  * refuses to plan a write for one and says why, rather than reporting success
  * on a column nothing reads.
- *
- * The last two joined after row 36, when the cellar lane merged. The
- * founder's 2026-09-19 blocking answer was to build the sketch-121
- * beside-the-list layout first, then go live for every house
- * (.planning/06-pages/wines.md, Seventh pass, quotes it). That layout is
- * built, so the cellar key is here and its column stays on the row, unread,
- * like the sixteen. The menu key names `/menu` (ADR 0160 sec110 item 7), a
- * NEW route with no legacy page that never had a column: it is listed only
- * so this list and LIVE_PAGES pair exactly (check_flag_readby_anchors.py).
  */
 export const LIVE_IN_CODE_FLAGS: readonly string[] = [
   "mudavym_design_dashboard",
@@ -164,6 +165,8 @@ export const LIVE_IN_CODE_FLAGS: readonly string[] = [
   "mudavym_design_connections",
   "mudavym_design_notifications",
   "mudavym_design_logs",
+  "mudavym_design_settings",
+  "mudavym_design_help",
   "mudavym_design_cellar",
   "mudavym_design_menu",
 ];

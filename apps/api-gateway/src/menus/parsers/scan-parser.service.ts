@@ -12,7 +12,10 @@ import {
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 import { PARSE_YIELD_BASIS } from "../../common/model-client/verdict-bases";
 import { menuScanVerdict } from "./menu-scan-verdict";
-import { WineExtractItem } from "../wine-extract-item.interface";
+import {
+  MENU_CATEGORY_VOCABULARY,
+  WineExtractItem,
+} from "../wine-extract-item.interface";
 
 /**
  * The menu read is WAITING, not broken: the house's AI spend record could not
@@ -50,13 +53,37 @@ export class MenuReadWaitingException extends ServiceUnavailableException {}
  * time. name feeds master_wine_library.normalized_name, which is a match key,
  * so a coin-flip there means the same wine fails to match itself across two
  * imports.
+ *
+ * `category` is a CLOSED vocabulary, and is the only field on a menu line that
+ * decides what kind of drink it is. It reaches
+ * master_wine_library.data_enrichment.menu_category, which is precedence rule 2
+ * of wine_classify_beverage_kind() — so a beer line whose category says "beer"
+ * becomes beverage_kind='beer' and lights the Beer register, and one whose
+ * category is absent or free-text becomes 'unknown' and lights nothing. See
+ * MENU_CATEGORY_VOCABULARY for why the member, not the printed heading.
  */
+const CATEGORY_VOCABULARY_CLAUSE =
+  "category MUST be exactly one of: " +
+  MENU_CATEGORY_VOCABULARY.join(", ") +
+  ". Choose it from the menu's own section heading where there is one " +
+  "(a line under 'Draft Beer' is beer; under 'Reds by the Glass' is red), " +
+  "otherwise from the item itself. Use the singular lowercase form listed " +
+  "above, never the heading as printed, and never a word outside the list. " +
+  "Omit category only when the line gives no basis at all for choosing one. ";
+
 const WINE_EXTRACTION_PROMPT =
-  "You are analyzing a restaurant wine list or beverage menu image. " +
-  "Extract all wine and beverage items you can identify. For each item return JSON: " +
+  "You are analyzing a restaurant beverage menu image. " +
+  "Extract EVERY drink listed, not only the wines — beer, cider, sake, " +
+  "spirits, whiskey, cocktails, soft drinks and non-alcoholic listings all " +
+  "count, and a menu that prints them in their own sections still prints " +
+  "them. For each item return JSON: " +
   "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price }. " +
-  "producer is the winery/estate/château name. " +
-  "name is the wine's cuvée or label designation ONLY — do NOT repeat the producer in it, " +
+  CATEGORY_VOCABULARY_CLAUSE +
+  "producer is the winery/estate/château name, or the brewery/distillery for " +
+  "a beer or a spirit. " +
+  "vintage, region and grape_variety describe wine — omit all three on a " +
+  "line that is not wine rather than inventing them. " +
+  "name is the drink's cuvée or label designation ONLY — do NOT repeat the producer in it, " +
   "and do NOT include the vintage, region, country or price " +
   "(e.g. for '2019 Duckhorn Merlot, Napa Valley 120', producer is 'Duckhorn', name is 'Merlot', " +
   "vintage is '2019', region is 'Napa Valley', bottle_price is 120). " +
@@ -84,7 +111,8 @@ const WINE_EXTRACTION_PROMPT =
   "wrong one propagates. " +
   "Return ONLY a JSON array with no surrounding text. " +
   "If a field is not visible, omit it. " +
-  'Example: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120}]';
+  'Examples: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120},' +
+  '{"name":"Pale Ale","producer":"Sierra Nevada","category":"beer","by_glass_price":9}]';
 
 @Injectable()
 export class ScanParserService {

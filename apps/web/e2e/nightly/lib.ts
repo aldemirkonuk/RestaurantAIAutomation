@@ -58,6 +58,13 @@ export interface PageEntry {
   provenance_required?: boolean
   /** Sentences the page ALWAYS renders that contain a shared phrase; removed before matching. */
   static_text?: string[]
+  /**
+   * Chrome, not a page: the entry gates something that wraps EVERY route (the
+   * house shell, sketch 119 D). Both walks pin its override OFF, so its own
+   * `.mudavym` root and sentences never stand in for a page's, and the walk
+   * records it `absent` instead of opening it as a page.
+   */
+  chrome?: boolean
 }
 
 /** A signed-out door behind ADR 0133's one switch (VITE_MUDAVYM_PUBLIC). */

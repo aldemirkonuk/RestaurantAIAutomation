@@ -148,7 +148,7 @@ const USE_CARDS = [
     id: 'wine-agent',
     title: 'Wine Agent',
     description:
-      'After setup, a small Wine Agent button appears bottom-right and opens Sommelier AI for inventory & ordering help. It does not access your email.',
+      'Sommelier AI helps with inventory & ordering questions. It does not access your email.',
     icon: Bot,
     href: '/sommelier',
     label: 'Open',

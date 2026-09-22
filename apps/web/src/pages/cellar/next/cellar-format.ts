@@ -25,25 +25,8 @@ export const EM = '—';
  */
 export const SANS = '"Plus Jakarta Sans", "DM Sans", system-ui, sans-serif';
 
-/**
- * Fraunces — the house serif. index.html loads the sans and the mono but not
- * Fraunces, and index.html is a shared file this page may not touch, so the
- * page injects the stylesheet itself, once. Georgia carries the text until (or
- * if) the webfont lands, so nothing here can break the page. (Copied from
- * dashboard/next/fonts.ts by the wave rule — pages do not import each other.)
- */
-const FRAUNCES_LINK_ID = 'mudavym-fraunces';
-
-export function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FRAUNCES_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FRAUNCES_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
+/** Fraunces — self-hosted; `@font-face` lives in `styles/mudavym.css`
+ * (decision 0149 row 9). Georgia is the fallback until it loads. */
 
 /** A finite number, or null. Guards NaN and the API's occasional string. */
 export function num(v: unknown): number | null {

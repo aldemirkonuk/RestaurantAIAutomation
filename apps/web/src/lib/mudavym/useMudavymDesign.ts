@@ -72,6 +72,18 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // Not a page: the app SHELL (sketch 119 direction D, the founder's pick of
+  // 2026-09-21; ADR 0149 row 5). `DashboardLayout` reads this gate and renders
+  // `HouseShell` — rooms rail, house header, counter, the phone's four doors —
+  // around whatever page is routed, legacy or rebuilt. Off, the legacy
+  // Sidebar layout renders byte-for-byte. Column added by 20260921114300.
+  'shell',
+  // ADR 0160 §111 / ADR 0149 row 52 (2026-09-21). `/help` resolves on for
+  // every house in code — see LIVE_PAGES below — so it carries no
+  // `mudavym_design_help` ACTIVE registry entry; enrolling it here is still
+  // required, since MUDAVYM_PAGES is the source of the `MudavymPage` type
+  // PageGate, HouseHeader and PAGE_NAMES all key off.
+  'help',
   // ADR 0160 sec110 item 7 (2026-09-17). A NEW route with no legacy
   // counterpart, same posture as `connections` above: `legacy` is a redirect
   // to `/cellar`, never a real fallback page. Live with the cellar (below);
@@ -86,17 +98,14 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * Mudavym design for every house, in code, with no `restaurant_feature_flags`
  * read and no database write. `receiving` is the receiving DESK (the flagged
  * list/history page, route `/receiving`) — distinct from `receiving_door`,
- * which IS live. Held back, still flag-gated: `settings`,
- * `recommendations`, `receiving`.
+ * which IS live. `settings` joined 2026-09-19 after its sketch review cleared
+ * (ADR 0160 "109 — settings · A, the interview"; PR #419) — same code-side
+ * always-on as the original sixteen, still no database write. `help` joined
+ * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. Held back, still
+ * flag-gated: `cellar`, `recommendations`, `receiving`, and `shell`
+ * (the house shell; production may have flipped its column independently).
  *
- * `cellar` and `menu` joined after row 36, when the cellar lane merged: the
- * founder's 2026-09-19 blocking answer, "cellar = build the sketch-121
- * beside-the-list layout FIRST, then go live for every house"
- * (.planning/06-pages/wines.md, Seventh pass). That layout is built, so the
- * cellar resolves here like the sixteen; `/menu` is the cellar's new menu
- * register (no legacy page, never a column) and goes live with it.
- *
- * `MUDAVYM_PAGES.length` is 21; this is deliberately not "the rest" spelled
+ * `MUDAVYM_PAGES.length` is 22; this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.
@@ -118,6 +127,8 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'connections',
   'notifications',
   'logs',
+  'settings',
+  'help',
   'cellar',
   'menu',
 ]);
