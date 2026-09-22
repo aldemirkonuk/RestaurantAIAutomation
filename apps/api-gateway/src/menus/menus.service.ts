@@ -107,18 +107,38 @@ export class MenusService {
     };
   }
 
-  /** Adds one manager-entered wine to an existing menu during the review step. */
+  /**
+   * Adds one manager-entered wine to an existing menu during the review step.
+   *
+   * TENANT CHECK (fix/menu-item-house-scope, 2026-09-21): the lookup used to
+   * run on `dto.menuId` alone — a caller authenticated for ANY restaurant
+   * could add a line to a DIFFERENT restaurant's menu by supplying its
+   * menu id (a uuid, not a secret), because nothing compared
+   * `menu.restaurant_id` against the caller's own. `callerRestaurantId`
+   * comes from the verified JWT (never the body) and is part of the lookup
+   * itself, so a foreign or unknown menu id gets the identical 404 — the
+   * route cannot be used to confirm another house's menu id exists.
+   */
   async addMenuItem(
     dto: AddMenuItemDto,
     userId: string,
+    callerRestaurantId: string | null,
   ): Promise<MenuImportReviewItem> {
+    if (!callerRestaurantId) {
+      throw new NotFoundException("Menu not found");
+    }
+
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
       .select("id, restaurant_id")
       .eq("id", dto.menuId)
+      .eq("restaurant_id", callerRestaurantId)
       .maybeSingle();
 
-    if (menuErr || !menu) {
+    if (menuErr) {
+      throw new Error(`Failed to read menu ${dto.menuId}: ${menuErr.message}`);
+    }
+    if (!menu) {
       throw new NotFoundException("Menu not found");
     }
 
@@ -173,19 +193,39 @@ export class MenusService {
    * override_events row against the item's submission for global governance
    * review — it does NOT mutate the shared master_wine_library row, since
    * other restaurants may be matched to the same provisional wine.
+   *
+   * TENANT CHECK (fix/menu-item-house-scope, 2026-09-21): `PATCH
+   * /menus/items/:id` names no restaurant in its path or body, so
+   * `JwtAuthGuard`'s tenant comparison (assert-tenant-match.ts) has nothing
+   * to compare — it used to load the row by id ALONE, so any signed-in user
+   * of ANY house who had a line id could edit it. `callerRestaurantId` comes
+   * from the verified JWT and is now part of the lookup itself: a foreign or
+   * unknown id gets the identical 404, never a 403, so the route cannot be
+   * used to confirm another house's line ids exist.
    */
   async reviewMenuItem(
     menuItemId: string,
     userId: string,
+    callerRestaurantId: string | null,
     dto: ReviewMenuItemDto,
   ): Promise<{ menuItemId: string; fieldName: string; newValue: string }> {
+    if (!callerRestaurantId) {
+      throw new NotFoundException("Menu item not found");
+    }
+
     const { data: menuItem, error } = await this.dbService.supabase
       .from("menu_items")
       .select("*")
       .eq("id", menuItemId)
+      .eq("restaurant_id", callerRestaurantId)
       .maybeSingle();
 
-    if (error || !menuItem) {
+    if (error) {
+      throw new Error(
+        `Failed to read menu_item ${menuItemId}: ${error.message}`,
+      );
+    }
+    if (!menuItem) {
       throw new NotFoundException("Menu item not found");
     }
 
@@ -208,7 +248,8 @@ export class MenusService {
         status: "flagged",
         review_notes: `Manager corrected ${dto.fieldName}`,
       })
-      .eq("id", menuItemId);
+      .eq("id", menuItemId)
+      .eq("restaurant_id", callerRestaurantId);
 
     if (updateErr) {
       throw new Error(`Failed to update menu_item: ${updateErr.message}`);
@@ -219,7 +260,8 @@ export class MenusService {
       await this.dbService.supabase
         .from("restaurant_inventory")
         .update({ wine_name: dto.newValue })
-        .eq("id", menuItem.inventory_item_id);
+        .eq("id", menuItem.inventory_item_id)
+        .eq("restaurant_id", callerRestaurantId);
     }
 
     if (menuItem.submission_id) {

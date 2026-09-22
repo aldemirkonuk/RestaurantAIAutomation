@@ -46,9 +46,15 @@ export class MenusController {
   @ApiOperation({ summary: "Add one wine to a menu during the review step" })
   async addMenuItem(
     @Body() dto: AddMenuItemDto,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: { userId: string; restaurantId?: string },
   ) {
-    return this.menusService.addMenuItem(dto, user.userId);
+    // The caller's house comes from the verified token, never from
+    // `dto.menuId` — see menus.service.ts#addMenuItem.
+    return this.menusService.addMenuItem(
+      dto,
+      user.userId,
+      user.restaurantId ?? null,
+    );
   }
 
   @Patch("items/:id")
@@ -58,9 +64,16 @@ export class MenusController {
   async reviewMenuItem(
     @Param("id") id: string,
     @Body() dto: ReviewMenuItemDto,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: { userId: string; restaurantId?: string },
   ) {
-    return this.menusService.reviewMenuItem(id, user.userId, dto);
+    // This route names no restaurant, so the caller's house comes from the
+    // verified token — see menus.service.ts#reviewMenuItem.
+    return this.menusService.reviewMenuItem(
+      id,
+      user.userId,
+      user.restaurantId ?? null,
+      dto,
+    );
   }
 }
 
