@@ -53,6 +53,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { HousePageLoader } from './components/mudavym/HousePageLoader'
+import { RouteHead } from './lib/seo/RouteHead'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
 
@@ -181,6 +182,7 @@ function App() {
               <WebSocketProvider>
                 <RealtimeProvider>
                   <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <RouteHead />
             <Suspense fallback={<HousePageLoader />}>
               <Routes>
                 {/* Public Routes */}

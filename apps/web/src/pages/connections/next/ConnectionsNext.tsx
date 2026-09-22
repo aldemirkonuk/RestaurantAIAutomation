@@ -103,7 +103,6 @@ import {
   Smartphone,
   Store,
 } from 'lucide-react';
-import { ensureFraunces } from './fonts';
 import {
   useConnectionsNextData,
   type McpAnnotationsVM,
@@ -170,10 +169,6 @@ export const REGISTER_ANCHORS = [
 export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   const d = useConnectionsNextData();
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   /**
    * Bring the fragment's register into view once its register has answered.

@@ -104,10 +104,13 @@ describe('ADR 0169 — the pre-paint script is shaped to avoid a flash', () => {
     const headIdx = src.indexOf('<head>');
     const scriptIdx = src.indexOf('data-mudavym-ground');
     const seoIdx = src.indexOf('seo:head:start');
-    const fontsIdx = src.indexOf('fonts.googleapis.com');
+    // Faces are self-hosted (ADR 0149 / 0158) — no fonts.googleapis.com host.
+    // The first font work in <head> is a preload of a /fonts/*.woff2 file.
+    const fontsIdx = src.indexOf('rel="preload" as="font"');
     expect(headIdx).toBeGreaterThan(-1);
     expect(scriptIdx).toBeGreaterThan(headIdx);
     expect(scriptIdx).toBeLessThan(seoIdx);
+    expect(fontsIdx).toBeGreaterThan(-1);
     expect(scriptIdx).toBeLessThan(fontsIdx);
   });
 

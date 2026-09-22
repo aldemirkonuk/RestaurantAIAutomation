@@ -55,7 +55,6 @@ import { Plug } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import { animate, ink, turn } from '@/lib/mudavym';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
-import { ensureFraunces } from './fonts';
 import {
   CONNECTIONS_ANCHOR, KEPT_NOTE, MONO, SANS, SERIF,
   groupsFor, isCollapsedSection, isSectionId, keptTally, readingIndexFor,
@@ -116,8 +115,6 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
   const [active, setActive] = useState<SectionId>(isSectionId(tabParam) ? tabParam : 'team');
   const panelRef = useRef<HTMLElement | null>(null);
   const firstPaint = useRef(true);
-
-  useEffect(() => { ensureFraunces(); }, []);
 
   // The URL is the source of truth in one direction only: a deep link (or the
   // back button) moves the page. A scrollspy used to overwrite `?tab=` as the

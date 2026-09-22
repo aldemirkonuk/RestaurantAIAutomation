@@ -59,7 +59,6 @@ import {
   composeDoorNotes,
   creditDraft,
   doorFacts,
-  ensureDoorFraunces,
   matchLine,
   normalizeDoorOrder,
   readPaper,
@@ -178,10 +177,6 @@ export default function DoorNext() {
   // reuse it so a request that landed before the connection dropped cannot
   // book the stock twice (doorOutbox's whole design).
   const idem = useRef(newIdempotencyKey(orderId));
-
-  useEffect(() => {
-    ensureDoorFraunces();
-  }, []);
 
   // One quiet entrance for the header — settle, 6px, once.
   useEffect(() => {

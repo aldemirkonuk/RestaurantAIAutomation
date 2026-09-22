@@ -30,7 +30,7 @@ import { Wordmark } from '@/components/mudavym';
 import { DayLine } from '@/components/mudavym/DayLine';
 import { animate, settle } from '@/lib/mudavym';
 import { useDashboardSpine } from './useDashboardNextData';
-import { ensureFraunces, SERIF } from './fonts';
+import { SERIF } from './fonts';
 import KpiRow from './KpiRow';
 import SalesCalendar from './SalesCalendar';
 import WaitingOnYou from './WaitingOnYou';
@@ -64,10 +64,6 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
   const noteReport = useNoteCloseReport(activeRestaurantId);
   const reportLine = noteCloseReportLine(noteReport);
   const headRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   // One quiet entrance for the opening line — settle, 6px, once.
   useEffect(() => {

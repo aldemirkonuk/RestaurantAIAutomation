@@ -72,6 +72,7 @@ import { AuthContext } from '../../contexts/AuthContext';
 import type { MudavymGround } from '../../lib/mudavym/shellGround';
 import type { MudavymPage } from '../../lib/mudavym/useMudavymDesign';
 import { NO_CHROME, pageNameFor } from '../../lib/mudavym/pageNames';
+import { useDocumentTitle } from '../../lib/seo/RouteHead';
 import { HouseBell } from './HouseBell';
 import { HouseUserMenu } from './HouseUserMenu';
 // `.mdv-kbd`, `.mdv-item`, `.mdv-link`, `.mdv-quiet` and `.mdv-note` are the
@@ -83,23 +84,8 @@ import './house-header.css';
 
 const EM = '—';
 
-/* ── Fraunces ─────────────────────────────────────────────────────────────
-   index.html loads DM Sans / Plus Jakarta Sans / JetBrains Mono but not the
-   house serif, and the page's name is set in it. The id is the one
-   `Sheet.tsx:71` and `pages/dashboard/next/fonts.ts:10` use, so all three
-   injectors add at most one link between them. */
-const FRAUNCES_LINK_ID = 'mudavym-fraunces';
-
-function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FRAUNCES_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FRAUNCES_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
+/* Fraunces is self-hosted — `@font-face` in `styles/mudavym.css` (decision
+   0149 row 9). No runtime Google Fonts link. */
 
 /**
  * The palette is opened by the same window event the legacy header dispatches
@@ -186,12 +172,14 @@ export function HouseHeader({ page, ground, name, trailing, shell = false }: Hou
   const [keys] = useState(chord);
   const [stuck, setStuck] = useState(false);
 
+  // The one place a signed-in page's tab title is set (ADR 0158 "Integration
+  // at cutover" item 1) — pages themselves never call document.title.
+  // `page` is optional when the APP SHELL mounts this header (sketch 119 D);
+  // then the room `name` is the title, same rule as the visible eyebrow below.
+  useDocumentTitle(page ? pageNameFor(page, pathname) : (name ?? null));
+
   /* The hairline hardens once the page has scrolled under the header — the
      only state this bar has, and it is a fact about the page, not a flourish. */
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
-
   useEffect(() => {
     const onScroll = () => setStuck(window.scrollY > 4);
     onScroll();

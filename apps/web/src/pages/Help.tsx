@@ -16,8 +16,11 @@ import { trackGuidance } from '../guidance/analytics'
 import { cn } from '../lib/utils'
 
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@mudavym.com'
-const SUPPORT_SLACK_URL =
-  import.meta.env.VITE_SUPPORT_SLACK_URL || 'mailto:support@mudavym.com'
+// No fallback URL: unlike the support address, there is no known Mudavym Slack
+// workspace to default to, and a wrong-but-live link (the old fallback pointed
+// at wineops.slack.com) is worse than no Slack card at all. The card below
+// renders only when this env var is actually set.
+const SUPPORT_SLACK_URL = import.meta.env.VITE_SUPPORT_SLACK_URL || ''
 
 const FAQS = [
   {
@@ -67,18 +70,20 @@ export default function Help() {
                 <p className="text-sm text-gray-500 break-all">{SUPPORT_EMAIL}</p>
               </div>
             </a>
-            <a
-              href={SUPPORT_SLACK_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-start gap-3 rounded-xl border border-gray-100 p-4 hover:bg-gray-50 transition-colors"
-            >
-              <MessageSquare className="w-5 h-5 text-wine-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-gray-900">Slack</p>
-                <p className="text-sm text-gray-500">Join the Mudavym support channel</p>
-              </div>
-            </a>
+            {SUPPORT_SLACK_URL && (
+              <a
+                href={SUPPORT_SLACK_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-start gap-3 rounded-xl border border-gray-100 p-4 hover:bg-gray-50 transition-colors"
+              >
+                <MessageSquare className="w-5 h-5 text-wine-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Slack</p>
+                  <p className="text-sm text-gray-500">Join the Mudavym support channel</p>
+                </div>
+              </a>
+            )}
           </div>
         </section>
 
