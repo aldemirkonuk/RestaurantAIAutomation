@@ -904,8 +904,9 @@ good means deleting all of these together: `_BYPASSED_CAUSES`, `_BYPASS_SHAPE`,
 `_bypassed`, the `if _bypassed(...)` branch in `_fail_closed`, and the four
 self-test checks. After that the self-test is back to main's 50. Deleting only
 the set crashes the self-test with a `NameError` (measured by the #442 audit). Revert the
-four `[2026-09-22]` brackets in `scripts/pr_audit_gate.py` (at :34,
-:449, :1126 and :1158) in the same change, or they describe a bypass that is gone.
+four notes the bypass added to `scripts/pr_audit_gate.py` in the same change,
+or they describe a bypass that is gone: the dated brackets at :34, :449 and
+:1126, and the check label's "(bar the SDK-shaped no-credit bypass)" at :1155.
 
 **It must be removed before this check becomes required.** The bypass is harmless
 only because `PR Audit Gate` is not one of main's required contexts (measured
