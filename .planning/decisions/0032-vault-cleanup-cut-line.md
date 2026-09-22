@@ -133,6 +133,56 @@ it: it is live.
 
 Vault: 1,677 → 1,152 files. Top level: 35 → 30.
 
+## Retire-to-write waiver — the 2026-09-21 research judges (2026-09-22)
+
+**Founder call, 2026-09-21 (evening, local time; 2026-09-22 UTC), his pick
+verbatim: "Judges only, into repo (Recommended)"**, to the question of whether
+any of the night's research should enter the repo before a reboot clears the
+scratch folder it lived in. The option he picked said a one-time retire-to-write
+waiver would come with it, for the six files the question named: the fine-tuning
+judge, the Jev experiment and its judge, areas, labor, and the price lock.
+
+**Session effa5204 added five more in the same PR (#443), the same night:**
+`ask-judge.md`, `ask-layout-judge.md`, `price-judge.md`, `qty-judge.md`,
+`seal-judge.md`. These are the same kind of file — judged summaries from the
+same evening's earlier rounds — and would have been lost the same way when the
+scratch folder cleared, so the session judged them to fall under the same
+reasoning as his pick. That was the session's inference, not his decision, when
+it was made.
+
+**Founder call, 2026-09-22, his pick verbatim: "Keep all eleven
+(Recommended)"** (round 6x, session memory
+`founder-answers-2026-09-21-round5.md:303`), answering that inference directly:
+the five extra judges get the same one-time waiver as the six he named on
+2026-09-21. All eleven now carry his word.
+
+So eleven judged research summaries land under
+`.planning/07-reference/research/2026-09-21/` with no retirement:
+
+- `ft-judge.md`, `jev-exp.md`, `jev-judge.md` (ADR 0163) — his pick, 2026-09-21
+- `areas-judge.md` (ADR 0218) — his pick, 2026-09-21
+- `labor-judge.md` (ADR 0215) — his pick, 2026-09-21
+- `lock-decision.md` (ADR 0193) — his pick, 2026-09-21
+- `ask-judge.md`, `ask-layout-judge.md` (ADR 0145, ADR 0112) — added by the session; his pick "Keep all eleven (Recommended)", 2026-09-22
+- `price-judge.md` (ADR 0193) — added by the session; his pick "Keep all eleven (Recommended)", 2026-09-22
+- `qty-judge.md` (lane E) — added by the session; his pick "Keep all eleven (Recommended)", 2026-09-22
+- `seal-judge.md` (ADR 0175) — added by the session; his pick "Keep all eleven (Recommended)", 2026-09-22
+
+**Scope, stated rather than hidden:** six of the eleven are his 2026-09-21 pick;
+the other five are the session's addition, covered by his own separate pick on
+2026-09-22 (both verbatim quotes above). The raw experiment files (4.5 MB of
+logs and menus) and the un-judged finder reports stay out and expire, as the
+option said. That includes every input file the judges cite as "this folder".
+
+Each copy was masked before it entered this public repo: local paths, one API
+request id and scratch paths were rewritten. Every mask is listed in the PR body.
+Public product names, public sources and the synthetic experiment menus' producer
+names were kept on purpose.
+
+None of the eleven duplicates or supersedes an existing doc, so there is nothing
+honest to retire. This is a one-time waiver for these eleven files, not a
+standing exemption. The next new doc still owes a real trade or its own row here.
+
 ## Consequences
 
 - Vault search, the Obsidian graph, and the unique-filename rule now operate on
@@ -174,3 +224,12 @@ Vault: 1,677 → 1,152 files. Top level: 35 → 30.
   `fix/md-sql-schema-debt`: production probes showed none of their DDL was ever
   applied and nothing queries it; guard inventory shrank 5 lines; both trees
   are now empty and gone.
+- 2026-09-21 — retire-to-write waived for six 2026-09-21 research judges, on the
+  founder's pick "Judges only, into repo (Recommended)" (relayed by session
+  effa5204). The same session added five more in the same PR (`ask-judge.md`,
+  `ask-layout-judge.md`, `price-judge.md`, `qty-judge.md`, `seal-judge.md`)
+  under the same reasoning; that was its inference, not yet his word.
+- 2026-09-22 — founder's pick, round 6x, verbatim "Keep all eleven
+  (Recommended)": the five get the same one-time waiver, and all eleven now
+  carry his word. See "Retire-to-write waiver — the 2026-09-21 research
+  judges".
