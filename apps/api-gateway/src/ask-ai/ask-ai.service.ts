@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -923,6 +924,27 @@ export class AskAiService {
    * on (see `sealArgsWithEdit`): the operator edits, THEN holds, and what runs
    * is what was held. The seal is spent even if the apply then refuses (a stale
    * id) — a seal is good for one attempt at one act, exactly as an order's is.
+   *
+   * WHY THE SEAL CHECK IS ITS OWN TRY/CATCH, AND `applyAfterSeal` IS NOT
+   * ----------------------------------------------------------------------
+   * `readProposalSealArgs()`, `requireSeal()` and `seals.redeem()` all run
+   * strictly before the only write (`applyAfterSeal`'s compare-and-swap) —
+   * that ordering is the whole point of this method, and
+   * `scripts/check_ask_ai_is_gated.py` holds it. So whatever any of them
+   * throws, the row is still `proposed`; a refusal (`ForbiddenException`:
+   * spent, expired, someone else's, minted on a different edit) or a
+   * legitimate "not waiting any more" (`NotFoundException`, which the web
+   * card classifies `gone`, not `failed`) already tell the web card that
+   * ("refused ... Nothing was written", `apps/web/src/services/api/askAi.ts`).
+   * An INTERNAL fault here — the seal service not wired into this module
+   * (the admitted gap: `@Optional() sealChallenges`), a redeem-side failure,
+   * or the proposal-row read itself erroring — carries the exact same
+   * "nothing was written" truth, but a raw 5xx reaching the web card is
+   * classified `failed`, whose own contract says the row is TERMINAL and
+   * "will not appear again" (`ProposalCard.tsx`) — false here. So an
+   * internal fault from this phase is re-shaped into the same refusal the
+   * card already treats as recoverable, with a fixed sentence rather than
+   * the internal error's own text.
    */
   async confirmSealed(
     restaurantId: string,
@@ -931,17 +953,30 @@ export class AskAiService {
     challenge: string | null | undefined,
     editedPayload?: Record<string, unknown>,
   ) {
-    const seals = this.requireSeal();
-    const stored = await this.readProposalSealArgs(restaurantId, actionId);
-    await seals.redeem({
-      restaurantId,
-      actorUserId: userId,
-      subjectKind: "ai_proposed_action",
-      subjectId: actionId,
-      action: PROPOSAL_SEAL_ACT,
-      args: this.sealArgsWithEdit(stored, editedPayload),
-      challenge: challenge ?? null,
-    });
+    try {
+      const stored = await this.readProposalSealArgs(restaurantId, actionId);
+      const seals = this.requireSeal();
+      await seals.redeem({
+        restaurantId,
+        actorUserId: userId,
+        subjectKind: "ai_proposed_action",
+        subjectId: actionId,
+        action: PROPOSAL_SEAL_ACT,
+        args: this.sealArgsWithEdit(stored, editedPayload),
+        challenge: challenge ?? null,
+      });
+    } catch (err) {
+      if (err instanceof ForbiddenException || err instanceof NotFoundException)
+        throw err;
+      this.logger.error(
+        `Seal check failed before any write (proposal ${actionId}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      throw new ForbiddenException(
+        "The seal could not be checked, so nothing was applied. Try again.",
+      );
+    }
     return this.applyAfterSeal(restaurantId, userId, actionId, editedPayload);
   }
 

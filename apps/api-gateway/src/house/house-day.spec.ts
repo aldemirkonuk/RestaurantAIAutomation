@@ -30,26 +30,22 @@ const NOW = "2026-09-21T12:00:00.000Z"; // 07:00 CDT — mid-morning, no boundar
 function sources(over: Partial<Record<string, jest.Mock>> = {}) {
   return {
     receiving: {
-      listUnverified:
-        over.listUnverified ??
-        jest.fn(async () => [
-          {
-            orderId: "o-today",
-            orderNumber: "ORD-1",
-            countedQtyBottles: 12,
-            countedAt: "2026-09-21T16:00:00.000Z", // 11:00 CDT today
-            ageHours: 1,
-            severity: "fresh",
-          },
-          {
-            orderId: "o-yesterday",
-            orderNumber: "ORD-0",
-            countedQtyBottles: 6,
-            countedAt: "2026-09-20T16:00:00.000Z", // yesterday
-            ageHours: 20,
-            severity: "fresh",
-          },
-        ]),
+      // `HouseDayService` passes the house-local today window straight
+      // through to `arrivedToday`, which does the date-range filtering — so
+      // this fake, unlike `listUnverified`'s old one, returns only what a
+      // real scoped read for that window would: no yesterday row to drop.
+      arrivedToday:
+        over.arrivedToday ??
+        jest.fn(async () => ({
+          rows: [
+            {
+              orderId: "o-today",
+              orderNumber: "ORD-1",
+              countedAt: "2026-09-21T16:00:00.000Z", // 11:00 CDT today
+            },
+          ],
+          capped: false,
+        })),
     },
     calendar: {
       listEvents:
@@ -138,8 +134,8 @@ describe("no house names no session", () => {
   });
 });
 
-describe("deliveryArrived — today only", () => {
-  it("keeps a delivery counted today, drops one from yesterday", async () => {
+describe("deliveryArrived — today only, and counts what its label says", () => {
+  it("draws a tick straight from arrivedToday's rows, house-local window and all", async () => {
     const { svc } = build();
     const res = await svc.read(HOUSE, USER);
     const r = reg(res, "deliveryArrived");
@@ -156,10 +152,86 @@ describe("deliveryArrived — today only", () => {
     ]);
   });
 
-  it("an empty house has an answered, empty register — not a refusal", async () => {
-    const { svc } = build(sources({ listUnverified: jest.fn(async () => []) }));
+  it("passes arrivedToday the house-local (not UTC) day window", async () => {
+    const arrivedToday = jest.fn(async () => ({ rows: [], capped: false }));
+    const { svc } = build(sources({ arrivedToday }));
+    await svc.read(HOUSE, USER);
+    expect(arrivedToday).toHaveBeenCalledWith(
+      HOUSE,
+      // Midnight-to-midnight for 2026-09-21 in the house's OWN zone, as
+      // instants — proves the window is computed in local time, not sliced
+      // at UTC midnight.
+      wallToInstant(TZ, 2026, 9, 21, 0, 0),
+      wallToInstant(TZ, 2026, 9, 22, 0, 0),
+    );
+  });
+
+  it("still counts a delivery that was ALSO bottle-verified today — arrived is not the same as unverified", async () => {
+    // The bug this fixes: the register used to read `listUnverified`, which
+    // drops an order the moment it is bottle-counted or reconciled — so a
+    // delivery checked the same day it arrived vanished from "Deliveries
+    // that arrived". `arrivedToday` carries no verified/unverified
+    // distinction at all (receiving.spec.ts pins that at the source); this
+    // test pins that the day line does not re-introduce a filter on top of
+    // whatever `arrivedToday` hands back.
+    const { svc } = build(
+      sources({
+        arrivedToday: jest.fn(async () => ({
+          rows: [
+            {
+              orderId: "o-checked-same-day",
+              orderNumber: "ORD-2",
+              countedAt: "2026-09-21T15:00:00.000Z",
+            },
+          ],
+          capped: false,
+        })),
+      }),
+    );
     const res = await svc.read(HOUSE, USER);
-    expect(reg(res, "deliveryArrived")).toMatchObject({ state: "answered", count: 0 });
+    const r = reg(res, "deliveryArrived");
+    expect(r.state).toBe("answered");
+    if (r.state !== "answered") throw new Error("unreachable");
+    expect(r.count).toBe(1);
+    expect(r.ticks[0].id).toBe("delivery-o-checked-same-day");
+  });
+
+  it("an empty house has an answered, empty register — not a refusal", async () => {
+    const { svc } = build(
+      sources({ arrivedToday: jest.fn(async () => ({ rows: [], capped: false })) }),
+    );
+    const res = await svc.read(HOUSE, USER);
+    expect(reg(res, "deliveryArrived")).toMatchObject({
+      state: "answered",
+      count: 0,
+      complete: true,
+    });
+  });
+
+  it("is a floor, not a total, when the day's read lands on its page cap", async () => {
+    // The same rule the counter's `deliveries` register follows: a read that
+    // stopped at its page size did not finish, so `complete` must say so. The
+    // day line used to print a literal `complete: true` here.
+    const { svc } = build(
+      sources({
+        arrivedToday: jest.fn(async () => ({
+          rows: [
+            {
+              orderId: "o-today",
+              orderNumber: "ORD-1",
+              countedAt: "2026-09-21T16:00:00.000Z",
+            },
+          ],
+          capped: true,
+        })),
+      }),
+    );
+    const res = await svc.read(HOUSE, USER);
+    expect(reg(res, "deliveryArrived")).toMatchObject({
+      state: "answered",
+      count: 1,
+      complete: false,
+    });
   });
 });
 

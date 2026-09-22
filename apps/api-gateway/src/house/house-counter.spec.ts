@@ -99,18 +99,21 @@ function sources(over: Partial<Record<string, jest.Mock>> = {}) {
         jest.fn(async () => [1, 2, 3, 4, 5, 6, 7].map(order)),
     },
     receiving: {
-      listUnverified:
-        over.listUnverified ??
-        jest.fn(async () => [
-          {
-            orderId: "o-9",
-            orderNumber: "ORD-9",
-            countedQtyBottles: 36,
-            countedAt: "2026-09-21T08:00:00Z",
-            ageHours: 6,
-            severity: "fresh",
-          },
-        ]),
+      listUnverifiedCapped:
+        over.listUnverifiedCapped ??
+        jest.fn(async () => ({
+          rows: [
+            {
+              orderId: "o-9",
+              orderNumber: "ORD-9",
+              countedQtyBottles: 36,
+              countedAt: "2026-09-21T08:00:00Z",
+              ageHours: 6,
+              severity: "fresh",
+            },
+          ],
+          capped: false,
+        })),
     },
     conversations: {
       getPendingConversations:
@@ -252,6 +255,43 @@ describe("the counter answers per register (answered)", () => {
     });
   });
 
+  it("deliveries is a floor, not a total, when its 500-event read is capped", async () => {
+    // The register's own contract (house-counter.types.ts): `complete` is
+    // false when the underlying read stopped at its page size. `deliveries`
+    // reads `listUnverifiedCapped`, whose `capped` this must derive
+    // `complete` from — not print `complete: true` unconditionally the way
+    // `orders`/`threads`/`invitations` correctly do for their own,
+    // genuinely-uncapped sources.
+    const rows500 = Array.from({ length: 500 }, (_, i) => ({
+      orderId: `o-${i}`,
+      orderNumber: `ORD-${i}`,
+      countedQtyBottles: 6,
+      countedAt: "2026-09-21T08:00:00Z",
+      ageHours: 1,
+      severity: "fresh",
+    }));
+    const { svc } = build(
+      sources({
+        listUnverifiedCapped: jest.fn(async () => ({
+          rows: rows500,
+          capped: true,
+        })),
+      }),
+    );
+    const deliveries = reg(await svc.read(HOUSE, USER, "owner"), "deliveries");
+    expect(deliveries).toMatchObject({
+      state: "answered",
+      count: 500,
+      complete: false,
+    });
+  });
+
+  it("deliveries is complete when its read did not hit the cap", async () => {
+    const { svc } = build();
+    const deliveries = reg(await svc.read(HOUSE, USER, "owner"), "deliveries");
+    expect(deliveries).toMatchObject({ state: "answered", complete: true });
+  });
+
   it("publishes no total across registers", async () => {
     const { svc } = build();
     const res = (await svc.read(HOUSE, USER, "owner")) as any;
@@ -267,7 +307,7 @@ describe("the counter answers per register (answered)", () => {
     const { svc, src, db } = build();
     await svc.read(HOUSE, USER, "owner");
     expect(src.procurement.listPendingOrders).toHaveBeenCalledWith(HOUSE);
-    expect(src.receiving.listUnverified).toHaveBeenCalledWith(HOUSE);
+    expect(src.receiving.listUnverifiedCapped).toHaveBeenCalledWith(HOUSE);
     expect(src.conversations.getPendingConversations).toHaveBeenCalledWith(
       HOUSE,
     );

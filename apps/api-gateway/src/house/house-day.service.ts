@@ -153,17 +153,27 @@ export class HouseDayService {
     > = {
       // The receiving routes carry no role gate (house-counter.service.ts's
       // own note) — every member reads this.
+      //
+      // Sourced from `arrivedToday`, not `listUnverified`: this line's label
+      // is "Deliveries that arrived", and `listUnverified` drops an order the
+      // moment it is bottle-counted or reconciled — so a delivery counted AND
+      // fully checked on the same day used to disappear from "arrived today"
+      // entirely, undercounting the better the door did its job. `arrivedToday`
+      // counts a `case_count` event in the house-local day regardless of what
+      // happened to the order since; pinned in house-day.spec.ts. Its read is
+      // capped (PostgREST's page), so `complete` comes from that read, never
+      // a literal `true`.
       deliveryArrived: async () => {
-        const all = await this.receiving.listUnverified(house);
         const zone = timezone ?? "UTC";
         const { start, end } = this.todayWindow(zone);
-        const today = all.filter((d) => {
-          const t = new Date(d.countedAt).getTime();
-          return t >= start.getTime() && t < end.getTime();
-        });
+        const { rows: today, capped } = await this.receiving.arrivedToday(
+          house,
+          start,
+          end,
+        );
         return {
           count: today.length,
-          complete: true,
+          complete: !capped,
           ticks: today.map((d) => ({
             id: `delivery-${d.orderId}`,
             at: d.countedAt,

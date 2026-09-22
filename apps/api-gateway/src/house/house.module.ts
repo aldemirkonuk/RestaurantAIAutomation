@@ -26,8 +26,10 @@ import { HouseDayService } from "./house-day.service";
  *
  * `CalendarModule` added for `GET /house/day` (sketch 119 §E, the day line):
  * `HouseDayService` reads `CalendarService.listEvents` for the calendar and
- * reminders registers, the same `ReceivingService.listUnverified` the counter
- * already reads for deliveries that arrived, and `OperatingHoursService`
+ * reminders registers, `ReceivingService.arrivedToday` — a sibling of
+ * `listUnverified`, the counter's own source for its `deliveries` register,
+ * scoped to today's door events instead of the still-open ones — for
+ * deliveries that arrived, and `OperatingHoursService`
  * (already available via `RestaurantsModule`, exported for the ADR 0093
  * verifier) for the band. `CalendarModule` forward-refs `NotificationsModule`
  * and `CommunicationsModule` for its OWN reasons (its module doc explains);

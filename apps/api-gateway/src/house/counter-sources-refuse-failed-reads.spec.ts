@@ -15,7 +15,8 @@ import { ReceivingService } from "../procurement/receiving.service";
  *
  * The house counter (sketch 119 D) reads both. Each case here fails against
  * the pre-fix file; the real-zero cases pin that the fix did not turn an empty
- * register into an error.
+ * register into an error. The day line's delivery source,
+ * `ReceivingService.arrivedToday`, is held to the same rule in the last block.
  */
 
 const HOUSE = "11111111-1111-4111-8111-111111111111";
@@ -25,6 +26,8 @@ function query(result: { data: unknown; error: { message: string } | null }) {
   const q: any = {
     select: () => q,
     eq: () => q,
+    gte: () => q,
+    lt: () => q,
     in: () => q,
     order: () => q,
     limit: () => q,
@@ -108,5 +111,65 @@ describe("unverified deliveries: a failed orders read is not 'none closed'", () 
       error: null,
     }).listUnverified(HOUSE);
     expect(out.map((d) => d.orderNumber)).toEqual(["ORD-1"]);
+  });
+});
+
+describe("deliveries that arrived: a failed read is not 'none arrived'", () => {
+  // The day line's source (`house-day.service.ts`). Either read failing must
+  // reach the day line as a throw, which its register wrapper turns into
+  // `unreadable` — never `{ rows: [] }`, which would print "0 arrived".
+  const START = new Date("2026-09-21T05:00:00.000Z");
+  const END = new Date("2026-09-22T05:00:00.000Z");
+  const EVENTS = {
+    data: [{ order_id: "o-1", occurred_at: "2026-09-21T16:00:00.000Z" }],
+    error: null,
+  };
+
+  function svc(
+    events: { data: unknown; error: { message: string } | null },
+    orders: { data: unknown; error: { message: string } | null },
+  ) {
+    const db = {
+      getClient: () => ({
+        from: (table: string) =>
+          query(table === "procurement_receipt_events" ? events : orders),
+      }),
+    };
+    return new ReceivingService(db as any);
+  }
+
+  it("rejects when the door-event read fails", async () => {
+    await expect(
+      svc({ data: null, error: { message: DB_TEXT } }, { data: [], error: null })
+        .arrivedToday(HOUSE, START, END),
+    ).rejects.toThrow(DB_TEXT);
+  });
+
+  it("rejects when the order-number read fails, rather than printing numberless ticks", async () => {
+    await expect(
+      svc(EVENTS, { data: null, error: { message: DB_TEXT } }).arrivedToday(
+        HOUSE,
+        START,
+        END,
+      ),
+    ).rejects.toThrow(DB_TEXT);
+  });
+
+  it("a day that WAS read and had no deliveries still answers an empty, uncapped read", async () => {
+    await expect(
+      svc({ data: [], error: null }, { data: [], error: null }).arrivedToday(
+        HOUSE,
+        START,
+        END,
+      ),
+    ).resolves.toEqual({ rows: [], capped: false });
+  });
+
+  it("still names the order when both reads succeed", async () => {
+    const out = await svc(EVENTS, {
+      data: [{ id: "o-1", order_number: "ORD-1" }],
+      error: null,
+    }).arrivedToday(HOUSE, START, END);
+    expect(out.rows.map((d) => d.orderNumber)).toEqual(["ORD-1"]);
   });
 });

@@ -197,7 +197,7 @@ today's fixed points as **ticks that open to their records**:
 | Tick | Register | Drawn as |
 |---|---|---|
 | a delivery expected | no source today — a new capability, not a re-key (see Costs below) | a seal-ring mark; the popover names the window as *the vendor's word* |
-| a delivery that arrived | `GET /procurement/receiving/unverified` | ruled off — the calendar page's double rule, reused |
+| a delivery that arrived | `GET /procurement/receiving/unverified` **[corrected 2026-09-22, PR #437 audit D3: that list drops a delivery once it is checked, so a delivery counted and checked the same day never showed as arrived; the built day line reads today's door counts directly — `procurement_receipt_events`, `stage = 'case_count'`, `ReceivingService.arrivedToday`]** | ruled off — the calendar page's double rule, reused |
 | a calendar event (the rep's tasting, a reservation) | `GET /calendar/today` (`calendar.controller.ts:575`) | an ink mark |
 | a shift boundary | `GET /restaurants/:id/team/week` / `my-week` | an ink mark |
 | the count due at close | a calendar reminder (`calendar/today`); no count schedule exists (`stock_counts` is a record, ADR 0078, not a schedule) | an ink mark; **not gated** — `calendar.controller.ts` carries only `JwtAuthGuard` and `getTodayEvents` (`:582-591`) applies no role filter, so this reads the same for every role; absent on the sim house only because none is scheduled today, not because staff are refused |

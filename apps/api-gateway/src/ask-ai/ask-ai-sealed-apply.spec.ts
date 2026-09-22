@@ -275,13 +275,108 @@ describe("applying behind the seal", () => {
     const { client, writes } = makeClient(proposal());
     const createOrder = jest.fn(async () => ({ id: "order-9" }));
     const svc = makeService(client, { createOrder });
+    // `confirmSealed`: `requireSeal()`'s internal fault happens strictly
+    // before the write (`applyAfterSeal`), so it is re-shaped into the same
+    // `ForbiddenException` a refused redemption throws — "nothing was
+    // written", not a terminal 5xx (see confirmSealed's own comment).
     await expect(
       svc.confirmSealed("r1", "u1", "act-1", "seal-token"),
-    ).rejects.toBeInstanceOf(InternalServerErrorException);
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    // `issueProposalSeal` (the MINT step) is unaffected: the web card's own
+    // mint-failure path (`ProposalCard.tsx`'s `onChallenge`) never sets a
+    // terminal phase for any mint error, so this one is left as the real
+    // status the gateway fault is.
     await expect(
       svc.issueProposalSeal("r1", "u1", "act-1"),
     ).rejects.toBeInstanceOf(InternalServerErrorException);
     expect(writes).toEqual([]);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("an internal seal-check fault never reaches the caller as a raw 5xx — the row is still `proposed`, not terminal", async () => {
+    // Distinct from the "no seal service wired" case above: here the seal
+    // service IS wired, but `redeem` itself throws something that is not a
+    // business refusal (`ForbiddenException`) — e.g. a bug in the seal
+    // service's own internals. `confirmSealed` must still re-shape it rather
+    // than let it pass through as the raw error, because the invariant
+    // ("redeem runs before any write") does not care WHY redeem threw.
+    const seals = makeSeals();
+    seals.redeem = jest.fn(async (_params: any) => {
+      throw new Error("unexpected seal-service fault");
+    });
+    const { client, writes } = makeClient(proposal());
+    const createOrder = jest.fn(async () => ({ id: "order-9" }));
+    const svc = makeService(client, { createOrder }, seals);
+    await expect(
+      svc.confirmSealed("r1", "u1", "act-1", "seal-token"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    // The raw error's own text never reaches the caller.
+    await expect(
+      svc.confirmSealed("r1", "u1", "act-1", "seal-token"),
+    ).rejects.not.toThrow("unexpected seal-service fault");
+    expect(writes).toEqual([]);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("a DB read fault fetching the proposal's own stored args never reaches the caller as a raw 5xx either", async () => {
+    // `readProposalSealArgs` runs before `requireSeal`/`redeem`, inside the
+    // same try/catch — also strictly before the only write, so a Supabase
+    // error here is the same "internal fault, not a decision" class as a
+    // redeem-side one, and must be re-shaped the same way, not left as the
+    // `ServiceUnavailableException` `readProposalSealArgs` itself throws.
+    const seals = makeSeals();
+    const writes: Row[] = [];
+    const client = {
+      from: (table: string) => ({
+        select: () => ({
+          eq: () => ({
+            eq: () => ({
+              maybeSingle: async () =>
+                table === "ai_proposed_actions"
+                  ? { data: null, error: { message: "connection reset" } }
+                  : { data: null, error: null },
+            }),
+          }),
+        }),
+      }),
+    };
+    const createOrder = jest.fn(async () => ({ id: "order-9" }));
+    const svc = makeService(client, { createOrder }, seals);
+    await expect(
+      svc.confirmSealed("r1", "u1", "act-1", "seal-token"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      svc.confirmSealed("r1", "u1", "act-1", "seal-token"),
+    ).rejects.not.toThrow("connection reset");
+    expect(seals.redeem).not.toHaveBeenCalled();
+    expect(writes).toEqual([]);
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("the re-shape leaves the two real answers alone: a proposal already handled is still 'gone' (404), a refusal keeps its own sentence", async () => {
+    // The catch re-shapes only an INTERNAL fault. A proposal another tab
+    // already applied must still answer 404, which the card shows as
+    // "already handled — nothing ran twice"; re-shaped into a 403 it would
+    // say "Try again" and offer a hold that can never work. And a refusal
+    // must still carry the seal's own words (spent, expired, changed), not
+    // the generic "could not be checked".
+    const seals = makeSeals();
+    const handled = makeClient(proposal({ status: "executed" }));
+    const createOrder = jest.fn(async () => ({ id: "order-9" }));
+    const svc = makeService(handled.client, { createOrder }, seals);
+    await expect(
+      svc.confirmSealed("r1", "u1", "act-1", "seal-token"),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(seals.redeem).not.toHaveBeenCalled();
+    expect(handled.writes).toEqual([]);
+
+    const refusing = makeSeals({ refuse: true });
+    const open = makeClient(proposal());
+    const svc2 = makeService(open.client, { createOrder }, refusing);
+    await expect(
+      svc2.confirmSealed("r1", "u1", "act-1", "spent"),
+    ).rejects.toThrow("That seal has already been spent.");
+    expect(open.writes).toEqual([]);
     expect(createOrder).not.toHaveBeenCalled();
   });
 });

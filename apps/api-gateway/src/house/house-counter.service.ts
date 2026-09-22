@@ -195,10 +195,15 @@ export class HouseCounterService {
       deliveries: {
         act: "yours",
         load: async () => {
-          const all = await this.receiving.listUnverified(house);
+          // `listUnverifiedCapped`, not `listUnverified`: the source is capped
+          // at 500 lifetime events (`receiving.service.ts`), so a read that
+          // hits that cap is a floor, not a total — `complete` must say so,
+          // the same rule `identities` and `proposals` already follow below.
+          const { rows: all, capped } =
+            await this.receiving.listUnverifiedCapped(house);
           return {
             count: all.length,
-            complete: true,
+            complete: !capped,
             rows: all.slice(0, COUNTER_ROWS).map((d) => ({ ...d })),
           };
         },
