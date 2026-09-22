@@ -43,6 +43,18 @@ vi.mock('./useSettingsNextData', async () => {
   return { ...actual, useSettingsNextData: () => mock.current };
 });
 
+// The staff gate now reads role from AuthContext BEFORE the data hook mounts
+// (PR #419). Mirror `mock.current.role` so existing fixtures keep driving it.
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    user: { userId: 'u1', role: (mock.current.role as string | null | undefined) ?? 'owner' },
+    activeRole: (mock.current.role as string | null | undefined) ?? 'owner',
+    activeRestaurantId: 'r1',
+    availableRestaurants: [],
+    refreshBranches: vi.fn(),
+  }),
+}));
+
 // Transient legacy modals — mounted by the team/locations registers, and not
 // under test here.
 vi.mock('@/components/team/InviteTeamDialog', () => ({ InviteTeamDialog: () => null }));

@@ -16,10 +16,14 @@
  *    until its section was the active one — opening /settings cost one fetch,
  *    not sixteen. Direction A is a single interview: every register is on
  *    screen together, so there is no "closed" register left to defer a fetch
- *    for. Every key below is live as soon as its tenant/account id is known.
- *    This is a real cost of the interview shape, stated once here rather than
- *    hidden: opening the page now issues on the order of fourteen requests
- *    instead of one.
+ *    for. Every key below is live as soon as its tenant/account id is known
+ *    — except when `role === 'staff'`: tenant keys stay `null` so
+ *    `GET /calendar/ical-token` (and the other house remotes) never fire for
+ *    a viewer who is gated out of this page. SettingsNext gates staff before
+ *    mounting this hook; the null keys are the belt if the hook is reached
+ *    anyway. This is a real cost of the interview shape, stated once here
+ *    rather than hidden: opening the page now issues on the order of fourteen
+ *    requests instead of one.
  *    [Corrected 2026-09-19: this point previously said "the tally strip at
  *    the top counts across all of them" — true of sketch 109A's DRAWING, not
  *    of what was ever built. The tally shipped (`certaintyTally.ts`,
@@ -513,8 +517,10 @@ export function useSettingsNextData() {
   const canManage = role === 'owner' || role === 'manager';
 
   const tenantKey = useCallback(
-    (section: string) => (rid ? `${rid}:${section}` : null),
-    [rid],
+    // Staff never manage house settings; a live rid must not mint tenant
+    // remotes (especially `/calendar/ical-token`) for them.
+    (section: string) => (rid && role !== 'staff' ? `${rid}:${section}` : null),
+    [rid, role],
   );
   const accountKey = useCallback(
     (sections: string[]) => (uid ? `${uid}:${sections[0]}` : null),

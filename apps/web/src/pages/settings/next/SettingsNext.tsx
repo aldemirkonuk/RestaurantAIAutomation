@@ -68,6 +68,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { Plug } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
+import { useAuth } from '@/contexts/AuthContext';
 import { animate, ink, prefersReducedMotion, settle } from '@/lib/mudavym';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
 import {
@@ -146,7 +147,43 @@ export interface SettingsNextProps {
   ground?: 'charcoal';
 }
 
+/**
+ * Staff never reach restaurant settings. The gate MUST sit above
+ * `useSettingsNextData()` — that hook eagerly hits tenant remotes including
+ * `GET /calendar/ical-token`, which can mint the house calendar-feed credential.
+ * Calling the hook and then branching on `data.role === 'staff'` still issued
+ * those fetches for every house a staff member opens (PR #419 audit BLOCK).
+ */
+function StaffAskManager({ ground }: { ground?: 'charcoal' }) {
+  return (
+    <div className="mudavym" data-ground={ground} style={{ minHeight: '100vh', background: 'var(--paper-0)', color: 'var(--ink-1)' }}>
+      <div style={{ maxWidth: 560, margin: '0 auto', padding: '64px 20px' }}>
+        <Wordmark size={13} />
+        <h1 style={{ fontFamily: SERIF, fontSize: 30, fontWeight: 600, letterSpacing: '-0.015em', margin: '6px 0 0' }}>
+          Ask a manager.
+        </h1>
+        <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 15, color: 'var(--ink-2)', margin: '8px 0 0' }}>
+          Team, locations, features and the rest belong to whoever runs the floor.
+        </p>
+        <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.6, color: 'var(--ink-2)', margin: '14px 0 0' }}>
+          Your own account is still yours: <Link to="/profile" style={{ color: 'var(--seal-deep)' }}>your profile</Link> and{' '}
+          <Link to="/help" style={{ color: 'var(--seal-deep)' }}>help</Link> are both open to you.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function SettingsNext({ ground }: SettingsNextProps) {
+  const { user, activeRole } = useAuth();
+  const role = (activeRole ?? user?.role ?? null) as 'owner' | 'manager' | 'staff' | null;
+  if (role === 'staff') {
+    return <StaffAskManager ground={ground} />;
+  }
+  return <SettingsNextLoaded ground={ground} />;
+}
+
+function SettingsNextLoaded({ ground }: SettingsNextProps) {
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   /**
@@ -205,29 +242,6 @@ export default function SettingsNext({ ground }: SettingsNextProps) {
   // on the till rather than at the top of a list it has to be found in again.
   if (collapsed && isCollapsedSection(tabParam)) {
     return <Navigate to={`/connections#${CONNECTIONS_ANCHOR[tabParam]}`} replace />;
-  }
-
-  // Staff never reach restaurant settings — client-side, exactly as before,
-  // and the gateway refuses independently (each register's 403 branch says
-  // so).
-  if (data.role === 'staff') {
-    return (
-      <div className="mudavym" data-ground={ground} style={{ minHeight: '100vh', background: 'var(--paper-0)', color: 'var(--ink-1)' }}>
-        <div style={{ maxWidth: 560, margin: '0 auto', padding: '64px 20px' }}>
-          <Wordmark size={13} />
-          <h1 style={{ fontFamily: SERIF, fontSize: 30, fontWeight: 600, letterSpacing: '-0.015em', margin: '6px 0 0' }}>
-            Ask a manager.
-          </h1>
-          <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 15, color: 'var(--ink-2)', margin: '8px 0 0' }}>
-            Team, locations, features and the rest belong to whoever runs the floor.
-          </p>
-          <p style={{ fontFamily: SANS, fontSize: 13, lineHeight: 1.6, color: 'var(--ink-2)', margin: '14px 0 0' }}>
-            Your own account is still yours: <Link to="/profile" style={{ color: 'var(--seal-deep)' }}>your profile</Link> and{' '}
-            <Link to="/help" style={{ color: 'var(--seal-deep)' }}>help</Link> are both open to you.
-          </p>
-        </div>
-      </div>
-    );
   }
 
   // The interview groups, each carrying the registers `TAB_TO_ANCHOR` maps to
