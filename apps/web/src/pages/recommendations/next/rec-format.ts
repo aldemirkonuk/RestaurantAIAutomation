@@ -17,6 +17,13 @@ export const SANS = '"Plus Jakarta Sans", "DM Sans", system-ui, sans-serif';
 /** Fraunces — self-hosted; `@font-face` lives in `styles/mudavym.css`
  * (decision 0149 row 9). Georgia is the fallback until it loads. */
 
+/**
+ * No-op retained so CatalogView's mount effect still compiles after the
+ * Google-Fonts loader was retired for the self-hosted face. Safe to delete
+ * once every caller stops importing it.
+ */
+export function ensureFraunces(): void {}
+
 /** A finite number or null. Guards NaN and the API's occasional string. */
 export function num(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v;
