@@ -859,7 +859,7 @@ export function ExportPopover({
     {
       header: 'Hours worked',
       value: (s) =>
-        Math.round(workedHours(s.start_time, s.end_time, s.shift_breaks) * 100) / 100,
+        Math.round(workedHours(s) * 100) / 100,
     },
     // The owner only, and in the house's own money: the header names the
     // currency, because a bare number in a spreadsheet has none.

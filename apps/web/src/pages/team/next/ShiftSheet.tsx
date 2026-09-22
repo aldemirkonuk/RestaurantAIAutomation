@@ -7,6 +7,12 @@
  * goes: the legacy editor reported every error through a toast, and the
  * redesigned half mounts no toaster, so a failed save says so inside the sheet
  * and the sheet stays open with the operator's values still in it.
+ *
+ * THE BREAK (ADR 0215; founder 2026-09-21, "Take all five"). Whoever edits the
+ * shift records the break taken, in minutes. Left empty, nothing is recorded,
+ * and a shift over 4 hours is counted with the Labour Law 4857 Art. 68 minimum
+ * and shown as assumed; the sheet says which minimum, live, as the times move.
+ * Emptying a recorded break clears the record rather than keeping it.
  */
 
 import { useState } from 'react';
@@ -19,7 +25,15 @@ import {
   type Shift,
   type TeamMember,
 } from '../../../services/api/team';
-import { resolveName, todayIso } from './tm-format';
+import {
+  art68BreakForWork,
+  breakCounted,
+  breakUnderMinimum,
+  fmtHours,
+  resolveName,
+  shiftHours,
+  todayIso,
+} from './tm-format';
 import { MutationError } from './tm-bits';
 
 /** The gateway's `shift_type` vocabulary (`dto/team.dto.ts`), said as service. */
@@ -53,6 +67,8 @@ export function ShiftSheet({
   onChanged: () => void;
 }) {
   const editing = Boolean(target.shift);
+  /** The break on record when the sheet opened; `null` = nothing recorded. */
+  const recordedAtOpen = target.shift?.recorded_break_min ?? null;
   const [form, setForm] = useState({
     memberId: target.shift?.member_id ?? target.memberId ?? '',
     shiftDate: target.shift?.shift_date ?? target.date ?? todayIso(),
@@ -61,8 +77,44 @@ export function ShiftSheet({
     role: target.shift?.role ?? '',
     shiftType: target.shift?.shift_type ?? 'pm',
     note: target.shift?.note ?? '',
+    /** Minutes, as typed. Empty = nothing recorded. */
+    breakMin: recordedAtOpen == null ? '' : String(recordedAtOpen),
   });
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const spanMin = Math.round(shiftHours(form.startTime, form.endTime) * 60);
+  const breakText = form.breakMin.trim();
+  const breakTyped = breakText === '' ? null : Number(breakText);
+  const breakValid =
+    breakTyped === null ||
+    (Number.isInteger(breakTyped) && breakTyped >= 0 && breakTyped < spanMin);
+  /**
+   * What the save sends for the break: a number records it; `null` clears a
+   * break that was on record; omitted leaves the record as it was (or, on a
+   * new shift, records nothing).
+   */
+  const breakForSave = (): { breakMinutes?: number | null } => {
+    if (breakTyped !== null) return { breakMinutes: breakTyped };
+    if (editing && recordedAtOpen !== null) return { breakMinutes: null };
+    return {};
+  };
+  const preview = {
+    start_time: form.startTime,
+    end_time: form.endTime,
+    shift_breaks: target.shift?.shift_breaks ?? null,
+    recorded_break_min: breakValid ? breakTyped : null,
+  };
+  const counted = breakCounted(preview);
+  const breakHint = !breakValid
+    ? `A break is a whole number of minutes, less than the shift's ${spanMin}.`
+    : counted.assumed
+      ? `Nothing recorded, so this shift is counted with a ${counted.minutes}-minute break: the legal minimum for it (Labour Law 4857 Art. 68), shown as assumed. Type the real break to replace it.`
+      : breakTyped === null && counted.minutes === 0
+        ? 'Nothing recorded. A shift of 4 hours or less is counted with no break.'
+        : breakTyped === 0
+          ? 'Recorded as no break taken: the whole shift counts as worked.'
+          : `Recorded: ${counted.minutes} minutes, not counted as work.`;
+  const underMinimum = breakValid && breakUnderMinimum(preview);
 
   const body = () => ({
     // camelCase: `forbidNonWhitelisted` (main.ts:54) 400s a snake_case body.
@@ -74,6 +126,7 @@ export function ShiftSheet({
     role: form.role.trim() || undefined,
     shiftType: form.shiftType,
     note: form.note.trim() || undefined,
+    ...breakForSave(),
   });
 
   const save = useMutation({
@@ -201,6 +254,32 @@ export function ShiftSheet({
         </div>
 
         <label>
+          <span className="tm-label">Break, in minutes</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            step={1}
+            className="tm-input"
+            value={form.breakMin}
+            placeholder="Not recorded"
+            aria-label="Break, in minutes"
+            aria-describedby="tm-break-hint"
+            aria-invalid={!breakValid}
+            onChange={(e) => setForm({ ...form, breakMin: e.target.value })}
+          />
+          <p className="tm-hint" id="tm-break-hint">
+            {breakHint}
+            {/* Owed for the work THIS break leaves, not "for this shift": an
+                8-hour shift complies with 30, but a 20-minute break leaves 7h40m
+                of work, which is owed 60 (Art. 68 counts working time). */}
+            {underMinimum && breakTyped !== null
+              ? ` That is under the legal minimum of ${art68BreakForWork(spanMin - breakTyped)} minutes for the ${fmtHours((spanMin - breakTyped) / 60)} of work it leaves (Art. 68).`
+              : ''}
+          </p>
+        </label>
+
+        <label>
           <span className="tm-label">Note</span>
           <input
             className="tm-input"
@@ -250,7 +329,7 @@ export function ShiftSheet({
           <button
             type="button"
             className="tm-ctl tm-ctl--seal"
-            disabled={save.isPending || !timesValid}
+            disabled={save.isPending || !timesValid || !breakValid}
             onClick={() => save.mutate()}
           >
             {save.isPending ? 'Saving…' : editing ? 'Save the shift' : 'Add the shift'}

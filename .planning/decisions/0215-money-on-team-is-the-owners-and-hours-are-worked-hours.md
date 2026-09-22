@@ -1,20 +1,28 @@
 # 0215 — Money on /team is the owner's, and hours are worked hours
 
-- **Status:** Locked (the founder's four picks, 2026-09-21). The design below
-  applies them; the forks it could not settle are listed under "Open, for the
-  founder" and are not decided here.
+- **Status:** Locked (the founder's four picks, 2026-09-21, and his answer the
+  same day to the five forks this record first left open: "Take all five"). The
+  design below applies them; what is still unsettled is listed under "Open, for
+  the founder" and is not decided here.
 - **Date:** 2026-09-21
-- **Decider:** Aldemir (founder) — four picks, quoted verbatim below
+- **Decider:** Aldemir (founder) — four picks and one answer to five forks,
+  quoted verbatim below
 - **Keywords:** team, wage, hourly_wage, labor_cost, wage_visible, owner only,
-  money rule, breaks, 4857 Art. 68, 45 hours, overtime review, copy week,
-  re-price, paid leave, leave_type, time_off_requests, team_member_wage_changes,
-  append-only, house currency, Intl, KVKK, labour page
+  money rule, breaks, 4857 Art. 68, assumed break, recorded_break_min, 45 hours,
+  overtime review, copy week, re-price, paid leave, leave_type,
+  time_off_requests, team_member_wage_changes, append-only, retention, five
+  years, team_member_departures, purge_expired_wage_records, labour settings,
+  owner only switch-off, house currency, Intl, KVKK, labour page
 - **Links:** [[0088-a-team-change-is-recorded-and-a-wage-is-not-invented]],
   [[0051-rebuilt-pages-show-live-data-only]], ADR 0117 (Q25, a house names its
   money), `supabase/migrations/20260921170200_a_wage_is_the_owners_and_every_change_is_kept.sql`,
+  `supabase/migrations/20260921170900_a_shift_over_four_hours_has_a_break.sql`,
+  `supabase/migrations/20260921170910_a_wage_record_is_kept_five_years_after_leaving.sql`,
   `apps/api-gateway/src/team/pay-rules.ts`,
+  `apps/api-gateway/src/team/wage-record-retention.service.ts`,
   `apps/api-gateway/src/team/team-pay.spec.ts`,
-  `apps/web/src/pages/team/next/TeamPay.test.tsx`
+  `apps/web/src/pages/team/next/TeamPay.test.tsx`,
+  `apps/web/src/pages/team/next/TeamBreaks.test.tsx`
 
 ## The founder's words
 
@@ -26,6 +34,22 @@ Asked on 2026-09-21 after the labour-page judge's pass, verbatim:
 | Who may see wages and labour cost? | **"Owner only"** (managers see hours but not money) |
 | Should Mudavym work out pay, or hand the month's hours to whoever runs payroll? | **"Hand hours over"** (no pay computed in Mudavym) |
 | Should the page handle monthly salaries, not just hourly pay? | **"Monthly and hourly"** (the labour page builds pay types; not here) |
+
+Asked later on 2026-09-21 the five questions this record first left open (they
+are kept, answered, under "Answered, 2026-09-21" below), he picked, verbatim:
+**"Take all five"**. The five options he took, as the orchestrator relayed them
+(the options' wording, not his):
+
+1. A shift over 4 h with no break recorded assumes the Labour Law 4857 Art. 68
+   minimum (15 min up to 4 h, 30 min over 4 h up to 7.5 h, 60 min over 7.5 h),
+   shown as "assumed break", editable by whoever edits the shift.
+2. A person's wage-change history is kept 5 years after they leave the roster,
+   then deleted.
+3. Only the owner can switch labour-cost tracking off or change the labour
+   target.
+4. Paid leave stays as days, not priced.
+5. Whoever approves leave marks it paid or unpaid, and staff may state it on
+   their own request.
 
 ## Context
 
@@ -113,9 +137,76 @@ from them, not a reason to wait.
 
 **Breaks.**
 1. *Assume the legal minimum (15 min / 30 min / 1 h by shift length) when none
-   is recorded.* Not taken here: it would invent a break the shift does not
-   carry. It is a founder question (below).
-2. **Subtract the breaks the shift carries.** Chosen.
+   is recorded.* First not taken: it would invent a break the shift does not
+   carry, so it went to the founder. **He took it ("Take all five", option 1),
+   with the assumption shown as assumed and the real break recordable** — see
+   the second half of the Decision.
+2. **Subtract the breaks the shift carries.** Chosen, and kept: a recorded
+   break always wins over the assumption.
+
+**Which minimum an unrecorded shift assumes.** The statute text, read
+2026-09-21 on a mirror of 4857 (`app.e-uyar.com`, Madde 68; `mevzuat.gov.tr`
+refused this session's fetch with a TLS certificate error): (a) *"Dört saat veya
+daha kısa süreli işlerde onbeş dakika"*, (b) over four hours up to and
+including seven and a half, half an hour, (c) over seven and a half, one hour;
+the breaks *"en az"* (minimums); and, last, the breaks are not counted as
+working time. The founder's thresholds match it. The fork is what "the length
+of the work" is measured on:
+1. *The shift's span.* Rejected: an 8-hour shift would assume 60 minutes and
+   count 7 hours, although 7.5 hours of work owes only 30 (item b). It also
+   counts the break as part of the work that sets the break, which the last
+   sentence of Art. 68 rules out. Labour-law commentary found by a web search
+   the same day (tahanci.av.tr) sets the break on the actual working time, not
+   the time between the start and the end; that reading was not checked
+   against a court decision, so it is also returned as a question.
+2. **The least statutory break the shift's remaining work allows** (chosen,
+   `art68MinimumBreak`): the first of 15, 30, 60 that is at least what Art. 68
+   owes for the span minus that break. A 4h01m–4h15m shift assumes 15, up to 8h
+   assumes 30, longer assumes 60. It is also the error on the safer side for
+   this figure: the span reading's larger assumed break (60 on an 8-hour
+   shift) would count fewer hours and less cost, so it would understate both.
+   The choice among the three statutory values only (not, say, 31 minutes on
+   an 8h01m shift, which would also comply) is this record's reading: it makes
+   an 8h01m shift count fewer worked hours than an 8h00m one (7h01m vs 7h30m),
+   the step the tiers of Art. 68 carry either way.
+3. *Also assume 15 minutes on a shift of 4 hours or less (item a).* Not built:
+   the pick names shifts over 4 hours only. Returned as a question.
+4. *Assume 1.5 hours on a day over 11 hours* (reported by the same search as
+   the Yargıtay's practice on long days; not verified against a decision). Not
+   built: it is not the statutory minimum the pick names.
+
+**Where a recorded break lives.** `shift_breaks` (baseline) holds planned
+breaks with a start time and a cover; no product path writes it. A new nullable
+`shifts.recorded_break_min` (migration `20260921170900`) is written in the same
+UPDATE as the re-priced cost, so the record and the price commit or fail
+together: `NULL` nothing recorded (assumed if over 4 hours), `0` recorded as no
+break taken, `n` minutes. Rejected: writing `shift_breaks` rows (a second
+statement, and a planned-break shape nobody fills in); a boolean "break taken"
+(it cannot say how long).
+
+**How long a wage record is kept, and how it is deleted.**
+1. *A foreign key from the record to `team_members` with `ON DELETE
+   CASCADE`.* Rejected: removing a person would take their pay record the same
+   second, which is the opposite of the pick.
+2. *A job in the gateway that works out who is due and deletes them.*
+   Rejected as the only guard: a bug in it could delete early.
+3. **The rule in the database, called by a nightly job** (chosen). When a
+   person with a wage record is removed from the roster, a trigger writes a
+   `team_member_departures` row stamped by the database (a writer cannot
+   backdate it). The append-only guard gains exactly one exception: a row whose
+   person left more than `wage_record_retention()` (5 years) ago and is not on
+   the roster now. `purge_expired_wage_records()` (SECURITY INVOKER,
+   service_role only) deletes those rows and then their departures; the gateway
+   calls it at 03:23 nightly (`WageRecordRetentionService`, `@nestjs/schedule`,
+   the scheduler the other gateway jobs use). A bug in the job can fail to
+   delete; it cannot delete early, because the table refuses.
+
+**Who may switch labour-cost tracking off or change the target.** A per-role
+setting (rejected, as for money) versus **a rule in code, `labourSettingsRefusal`
+(owner only), refused before any write, and every change the save makes
+recorded in `system_audit_log`** (chosen). Switching tracking ON is not named in
+the pick: it stays with whoever may save the settings, and is returned as a
+question rather than decided.
 
 **Leave type.**
 1. *A kind of leave (annual, sick, unpaid, …).* Rejected: "sick" is health data,
@@ -189,18 +280,72 @@ What changed, each with a test that fails on `origin/main` 9cfc4e96d:
 9. **Called-out shifts** are out of hours, cost and the review. **A failed week
    read** is a 500, not an empty week.
 
+And, from the founder's "Take all five" (the same day), each with a test and a
+killed mutation:
+
+10. **An assumed break.** A shift over 4 hours with no break on record is
+    counted with the Art. 68 minimum (`breakCounted`, `pay-rules.ts`, mirrored
+    in `tm-format.ts`): in its cost on every re-price, the week's hours, each
+    person's hours, the 45-hour review, the grid, the roster and the export. It
+    is always said as assumed: the week carries `assumedBreakHours` and
+    `assumedBreakShifts` and the page says "N shifts have no break recorded, so
+    each is counted with the legal minimum break (assumed, …)", to owner and
+    manager alike (it is hours); a shift's detail says "30 min · assumed"; the
+    compliance lens names "break assumed · not recorded", and a RECORDED break
+    shorter than the law asks for as "break under the legal minimum" (it
+    changes no figure).
+11. **Whoever edits the shift records the real one.** `createShift` and
+    `updateShift` take `breakMinutes` (whole minutes, `0` = no break taken,
+    `null` on an update clears the record back to the assumption, omitted
+    leaves it). A break as long as the shift is refused in words (400) before
+    anything is written, and so are new times that the break on record no
+    longer fits. The shift sheet has the field, says live which minimum an
+    empty field assumes, and says when a typed break is under it. A copied
+    week carries each source shift's break on record (planned `shift_breaks`
+    minutes included) and nothing on record stays nothing on record, and so
+    does the grid's "Duplicate onto the same day"; a call-out's cover slot
+    keeps the slot's break on record, and assigning a cover prices it on that
+    break (a failed read of the shift is a 500 in words and assigns nothing;
+    it used to write the cover as unpriced).
+12. **The wage record is kept five years after its person leaves the roster,
+    then deleted** — by the database's rule and a nightly call (Options,
+    above). "Leaves the roster" is read as the `team_members` row being
+    removed; a person marked inactive is still on the roster, and their record
+    is kept (a question below). A person already off the roster when this ships
+    is timed from the day it ships, so the error is on the side of keeping.
+13. **Only the owner switches labour-cost tracking off or changes the labour
+    target.** A manager's save that does either is a 403 in words before any
+    write; the settings reply carries `mayChange` and the settings page locks
+    what would be refused and says why. Every change a save makes (field, from,
+    to, the saver's role) is a `team_labour_settings_changed` row in
+    `system_audit_log`, and the reply's `audited` says whether the row was
+    written; a save that moved nothing records nothing. A failed read of the
+    current settings saves nothing.
+14. **Paid leave stays as days, not priced** (item 7, unchanged; the labour
+    page's plan below is corrected to match).
+15. **Leave type** (item 7, unchanged, now the founder's rule): whoever
+    approves marks it paid or unpaid; a staff member may state it on their own
+    request (My Shifts: "Paid or unpaid?", default "Leave it to my manager"),
+    and the approver's word replaces theirs. Staff cannot state it for someone
+    else or review their own.
+
 ## Consequences
 
 - A manager can no longer read or set a colleague's pay, and the owner can
   answer "who changed this wage, when, from what" from the day this ships.
 - The owner's figure now says what it covers: "Wages only, for the shifts on the
   schedule — not SGK, meals or bonuses", plus paid-leave days beside it.
-- **Residuals, stated.** (a) `copyWeek` still does not copy `shift_breaks` (it
-  never did), so a copied week is priced on its full span, which is what it
-  holds. (b) No product path writes `shift_breaks`; a break written out of band
-  after a shift was priced does not re-price it until the shift is next edited.
-  (c) Shifts priced before this change were priced on their span; the live
-  house held 0 shifts on 2026-09-02 (not re-measured). (d) The legacy desk
+- **Residuals, stated.** (a) `copyWeek` does not copy `shift_breaks` rows (it
+  never did); since item 11 it carries their minutes as the copy's recorded
+  break. (b) No product path writes `shift_breaks`; a break written there, or
+  into `recorded_break_min`, out of band after a shift was priced does not
+  re-price it until the shift is next edited. (c) Shifts priced before this
+  change were priced on their span, and before item 10 without an assumed
+  break: the week's hours are counted live, but a stored `labor_cost` is not,
+  so on such a shift the owner's cost and the hours disagree until the shift is
+  next edited or its week is copied. Nothing re-prices stored rows in bulk (it
+  would be a production write). The live house held 0 shifts on 2026-09-02 (not
+  re-measured). (d) The legacy desk
   (`pages/team/command/**`) was aligned (45 hours, worked hours, owner-only
   money, house currency) but not redesigned; its Tonight pulse
   (`ManagerShiftDesk.tsx:473-478`, `:569`) still counts a called-out shift
@@ -211,7 +356,23 @@ What changed, each with a test that fails on `origin/main` 9cfc4e96d:
   `PerformancePanel.tsx:217-218`) still print a literal `$`. They are sales,
   not pay, so this rule does not govern who sees them, and they stay on the
   money-currency baseline (4 sites) for a follow-up; the house currency is
-  sent only with the owner's money today.
+  sent only with the owner's money today. (g) The gateway now names
+  `shifts.recorded_break_min` in its shift reads: served before migration
+  `20260921170900` has applied, those reads fail and answer a 500 in words,
+  not a wrong figure. (h) Only the redesigned shift sheet has the break field;
+  the legacy desk (`pages/team/command/**`) saves shifts without one, which
+  leaves a recorded break as it was. (i) The retention job runs in every
+  gateway instance; the purge is idempotent, so two instances delete nothing
+  twice. (j) Found at the round-2 last call, not changed here: removing a
+  person still deletes their shifts, leave requests, availability and
+  credentials the same second (baseline foreign keys `shifts_member_id_fkey`,
+  `time_off_requests_member_id_fkey` and others, `ON DELETE CASCADE`,
+  `20260805000000_baseline_from_production.sql:13502`, `:13654`), so the
+  wage record kept five years outlives the hours it priced. Keeping those is
+  a founder question (below), not a default. (k) A departure is stamped once
+  (`ON CONFLICT DO NOTHING`): a roster row removed, re-inserted under the SAME
+  id and removed again would keep the first date. No product path re-inserts
+  an id (every insert takes a generated one), so this is noted, not guarded.
 - **Revisit when** the labour page lands (it will own pay basis and confirmed
   hours), or if a second role is ever meant to see pay.
 
@@ -230,8 +391,9 @@ founder's picks applied: **hours, handed over; no pay computed in Mudavym**
    attendance sheet (puantaj) without a clock.
 3. The owner's view: planned vs confirmed hours; hours over 45, the 11-hour day
    and the 270-hour year; wage cost only when both the wage side and the sales
-   side are complete for the period, always labelled "wages only"; paid leave as
-   cost with zero hours.
+   side are complete for the period, always labelled "wages only"; paid leave
+   as days beside the figure, not priced (founder 2026-09-21, "Take all five",
+   option 4 — this plan first said "as cost with zero hours").
 4. A month-end export of confirmed hours for whoever runs payroll — not a
    payslip, nothing shaped like one (4857 Art. 37).
 5. Staff see their own planned and confirmed hours and their leave. No money.
@@ -239,26 +401,47 @@ founder's picks applied: **hours, handed over; no pay computed in Mudavym**
 Not in it: payroll, SGK, tax, payslips, tips, clock hardware, IBAN, a
 declared-vs-actual split, labour cost by area.
 
+## Answered, 2026-09-21
+
+The five questions this record first returned, kept as asked; the founder
+answered all five with "Take all five" (quoted above), and Decision items
+10–15 build the answers:
+
+1. When a shift over 4 hours has no break on record, should Mudavym assume the
+   Art. 68 minimum (15 min / 30 min / 1 h) or keep counting only what is
+   recorded? — **Assume it, shown as assumed, editable** (items 10, 11).
+2. How long is a person's wage record kept after they leave the roster (a wage
+   claim can be brought for five years; KVKK asks for the minimum)? — **Five
+   years, then deleted** (item 12).
+3. May a manager still switch labour-cost tracking off or change the labour
+   target, now that the cost is shown only to the owner? — **No: the owner
+   only** (item 13).
+4. Paid leave is counted in days beside the figure. Should the labour page price
+   it, or keep it as days? — **Days, not priced** (item 14).
+5. Who may mark approved leave paid or unpaid? — **Whoever approves it; staff
+   may state it on their own request** (item 15).
+
 ## Open, for the founder
 
 Not decided here; returned to the orchestrator as questions, not filed as OD
 rows:
 
-1. When a shift over 4 hours has no break on record, should Mudavym assume the
-   Art. 68 minimum (15 min / 30 min / 1 h) or keep counting only what is
-   recorded (today)?
-2. How long is a person's wage record kept after they leave the roster (a wage
-   claim can be brought for five years; KVKK asks for the minimum)?
-3. May a manager still switch labour-cost tracking off or change the labour
-   target (today they can), now that the cost is shown only to the owner?
-4. Paid leave is counted in days beside the figure. Should the labour page price
-   it (a daily rate for monthly staff, hours × rate for hourly), or keep it as
-   days?
-5. Who may mark approved leave paid or unpaid? As built, whoever approves it (a
-   manager or an owner), and a staff member may state it on the request; the
-   type is a classification of time, not a figure, but it decides what the
-   owner's week says about cost. If it should be the owner's alone, it is a
-   one-line gate in `reviewTimeOff`.
+1. May a manager switch labour-cost tracking back ON? The pick names only
+   switching it off. As built, yes (whoever may save the settings).
+2. Should a shift of 4 hours or less also assume the Art. 68 (a) minimum of 15
+   minutes? The pick names shifts over 4 hours. As built, no.
+3. Is the Art. 68 minimum measured on the work the break leaves (as built: an
+   8-hour shift is 7.5 hours of work and a 30-minute break) or on the span
+   (an 8-hour shift would assume 60 minutes)? The statute keys it on the work
+   and says a break is not working time; no court decision was checked.
+4. Does "leaves the roster" include being marked inactive? As built, only the
+   removal of the person's roster row starts the five years, so an inactive
+   person's wage record is kept for as long as they stay on the roster.
+5. Removing a person deletes their shifts and leave requests at once
+   (residual (j)), so after a removal the kept wage record has no hours
+   beside it. Should the shifts and leave of a person who left be kept for
+   the same five years, or is the wage record alone what the pick meant?
+   As built, only the wage record is kept.
 
 ## Evidence
 
@@ -293,9 +476,72 @@ rows:
   `SECURITY DEFINER`. No browser pass was made; the page is covered by the
   component tests above.
 
+Round 2 ("Take all five", items 10–15), measured 2026-09-21 on the index tree
+(`p4-scratch/verify_index.sh`, every check exit 0):
+
+- Gateway: `team-pay.spec.ts` now 63 cases (B1, S1, L3, R1 added; one more
+  B1 case at the last call); the /team suites 132 of 132 (re-measured at the
+  last call). The round-2 cases were not counted against 48df6d91b one
+  by one: the file imports rules that tree lacks, so it does not compile
+  there. They are held instead by **42 of 42 killed mutations**: the 4 h line
+  (239, `>=`), each Art. 68 boundary (`<` for `<=` twice, 60 → 45), the
+  minimum keyed on the span, the recorded and the planned break each ignored,
+  the assumption unflagged or of zero minutes, worked hours without the break;
+  a break as long as the shift accepted, create and update not storing or not
+  pricing the break, a break change not re-pricing, the re-price forgetting the
+  break on record, the update's read error swallowed, new times the kept break
+  no longer fits accepted (twice), the copy and the cover slot dropping the
+  break, the copy ignoring planned breaks, the assumed counters inverted or
+  unsummed; the settings rule passing a manager, either refusal removed,
+  switching on refused, the refusal not thrown, the settings read error
+  swallowed, a no-op save audited, the audit's action or role lost, an
+  unchanged field recorded, `mayChange` offered to staff or always true; the
+  purge's name, null counts read as 0, the RPC error swallowed, the `@Cron`
+  removed, the scheduled run doing nothing.
+- Web: `TeamBreaks.test.tsx`, 15 cases; the team and settings suites 182 of
+  182 (12 files, re-measured at the last call). **23 of 23 killed mutations**
+  (the mirrored rule, the break's words, the sheet's send, clear, validation
+  and warnings, the week's assumed line and its hook mapping, the settings
+  locks, the leave type sent, the grid's two compliance flags, its Break fact,
+  and its duplicate dropping the break or sending nothing as a value; and, at
+  the last call, the under-minimum warning naming a minimum "for this shift"
+  that the shift does not have).
+- SQL: `p4-scratch/pglite-probe/teamfix-r2-break-and-retention.mjs`, the full
+  corpus (193 migrations, then these two) on PGlite, 34 checks pass on the
+  index tree: both apply and re-apply as no-ops; the break column is nullable
+  with no default and the CHECK refuses -1 and 1440; the backfill times a
+  person already gone from now; a removal writes a departure only with a wage
+  record; a supplied `left_at` is ignored; a departure is never edited,
+  truncated or deleted inside five years (with or without a wage record left);
+  nothing of a person still on the roster is deleted; the purge deletes exactly
+  the rows past five years (five years less a day: nothing; exactly five:
+  deleted), then their departures, and a second run finds nothing; only
+  service_role may run it, and it is SECURITY INVOKER; RLS on and grants
+  revoked, re-applied; a house deletion takes its records and writes no
+  departure at any point, in either cascade order. **16 of 16 migration
+  mutations killed**; two survived the first probe (a young departure with no
+  wage record, and the cascade order) and the probe gained the two checks that
+  kill them.
+- Register: the HOURS row's verify followed the moved `workedHours` line (it
+  failed on this tree until then), and three rows were added:
+  `ADR-0215-TEAM-AN-UNRECORDED-BREAK-IS-ASSUMED`,
+  `ADR-0215-TEAM-A-WAGE-RECORD-IS-KEPT-FIVE-YEARS`,
+  `ADR-0215-TEAM-LABOUR-SETTINGS-ARE-THE-OWNERS`. 414 of 414 claims hold; each
+  of the four fails on `origin/main` 9cfc4e96d and on 48df6d91b; 36 of 36
+  single-check mutations fail their row.
+- The statute: 4857 Art. 68 read on the `app.e-uyar.com` mirror (quoted under
+  Options); `mevzuat.gov.tr` refused the fetch (TLS certificate). No court
+  decision was read.
+- Not run, round 2: the two database-URL guards above (CANNOT CHECK, exit 2);
+  no browser pass; the gateway was not booted, so the nightly job was not seen
+  to fire (its `@Cron` registration is asserted by a test, the purge by the
+  probe).
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-21 | — | Created from the founder's four picks and the labour-page judge's §3.0 |
 | 2026-09-21 | Opus last call | The settings save still echoed `wage_visible` (fixed, test + mutation); the CLAIMS currency row's prose named every /team file while the per-server sales still print `$` (narrowed; residual (f)); the legacy Tonight pulse's called-out double count named as residual (d) |
+| 2026-09-21 | Round 2 build (founder: "Take all five") | Items 10–15 built; four questions returned (switching tracking on, shifts of 4 h or less, span vs work for the minimum, inactive as leaving); the HOURS claim row had gone red on the moved `workedHours` line and was re-pointed; two migration mutants survived the first probe and were killed by two added checks |
+| 2026-09-21 | Round 2 Opus last call | The sheet's under-minimum warning said "60 minutes for this shift" on an 8-hour shift whose minimum it also said was 30; it now names the minimum owed for the work the typed break leaves (fixed, test + killed mutation). The ADR's "safer side" sentence read as if the chosen break were the larger one (reworded). `assignCover`'s price read (`recomputeCostForMember`, whose select this round had widened) swallowed its error and wrote the cover as unpriced, which also made residual (g) untrue for that path (fixed: a 500 in words, nothing assigned; test + killed mutation). Found and recorded, not changed: a removal still cascades a person's shifts and leave (residual (j), question 5), and a departure is stamped once (residual (k)). Re-run: `team-pay.spec.ts` 63 of 63, one new mutation (an empty `shift_breaks` embed read as a recorded 0) killed by 4 cases, the PGlite probe ALL PASS |

@@ -59,6 +59,12 @@ export interface Shift {
   /** The owner's alone (ADR 0215): absent for anyone else, `null` = unpriced. */
   labor_cost?: number | null
   shift_breaks?: ShiftBreak[]
+  /**
+   * The break whoever edits the shift recorded, in minutes (ADR 0215): `0` =
+   * recorded as no break taken; `null` = nothing recorded, so a shift over 4
+   * hours is counted with the 4857 Art. 68 minimum and shown as assumed.
+   */
+  recorded_break_min?: number | null
 }
 
 export interface Schedule {
@@ -102,6 +108,12 @@ export interface WeekPayload {
     totalHours: number
     /** The break time taken out of `totalHours`. */
     breakHours?: number
+    /**
+     * How much of `breakHours` is ASSUMED, and on how many shifts: a shift over
+     * 4 hours with no break on record is counted with the Art. 68 minimum.
+     */
+    assumedBreakHours?: number
+    assumedBreakShifts?: number
     /** 45 — over it is a review, never a price. */
     weeklyReviewHours?: number
     /** People over `weeklyReviewHours` worked hours. The key is historical. */
@@ -154,6 +166,13 @@ export interface TeamSettings {
    */
   moneyVisibleTo?: 'owner'
   configured?: boolean
+  /**
+   * What this viewer may change (ADR 0215; founder 2026-09-21, "Take all
+   * five"): only the owner switches labour-cost tracking off or changes the
+   * target. Absent from an older gateway: the page then offers nothing it
+   * cannot promise.
+   */
+  mayChange?: { trackingOff: boolean; trackingOn: boolean; target: boolean }
 }
 
 export interface MemberPerformance {

@@ -414,6 +414,18 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
         {`No one is scheduled over ${WEEKLY_REVIEW_HOURS} worked hours.`}
       </p>
     );
+  /**
+   * The breaks the hours rest on (ADR 0215; founder 2026-09-21, "Take all
+   * five"): a shift over 4 hours with no break recorded is counted with the
+   * 4857 Art. 68 minimum, and the figure says so rather than passing an
+   * assumption off as a record. Hours, so owner and manager alike.
+   */
+  const assumedLine =
+    labor?.assumedBreak && labor.assumedBreak.shifts > 0 ? (
+      <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+        {`${labor.assumedBreak.shifts} shift${labor.assumedBreak.shifts === 1 ? ' has' : 's have'} no break recorded, so ${labor.assumedBreak.shifts === 1 ? 'it is' : 'each is'} counted with the legal minimum break (assumed, ${fmtHours(labor.assumedBreak.hours)} in all). Record the real break on the shift to replace it.`}
+      </p>
+    ) : null;
   const rules = data.coverageRules;
   // Three states, three sentences: the rule file has not answered, it is empty
   // (the engine has never been asked for anything), or it holds rules and the
@@ -561,6 +573,7 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
                 <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '6px 0 0' }}>
                   Wages and labour cost are shown to the owner only.
                 </p>
+                {assumedLine}
                 {reviewLine}
               </div>
             ) : !labor.enabled ? (
@@ -570,6 +583,7 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
                   withheld number, not a zero. Turn it on in team settings to see cost build
                   with the week.
                 </p>
+                {assumedLine}
                 {reviewLine}
               </div>
             ) : (
@@ -584,6 +598,7 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
                 <p style={{ fontSize: 11.5, color: 'var(--ink-3)', margin: '6px 0 0' }}>
                   Wages only, for the shifts on the schedule — not SGK, meals or bonuses.
                 </p>
+                {assumedLine}
                 {data.target.pct === null && (
                   <p style={{ fontSize: 11.5, color: 'var(--ink-3)', margin: '6px 0 0' }}>
                     {data.target.why}

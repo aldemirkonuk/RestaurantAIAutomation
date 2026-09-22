@@ -261,6 +261,12 @@ export interface LaborVM {
   totalHours: number;
   /** Break time taken out of `totalHours`; `null` when the gateway did not say. */
   breakHours: number | null;
+  /**
+   * The ASSUMED part of `breakHours` and the shifts it is on (ADR 0215): a
+   * shift over 4 hours with no break recorded is counted with the 4857 Art. 68
+   * minimum. `null` when the gateway did not say.
+   */
+  assumedBreak: { hours: number; shifts: number } | null;
   /** The weekly review line (45). */
   weeklyReviewHours: number | null;
   totalCost: number | null;
@@ -588,6 +594,11 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
         moneyVisible,
         totalHours: laborRaw.totalHours,
         breakHours: typeof laborRaw.breakHours === 'number' ? laborRaw.breakHours : null,
+        assumedBreak:
+          typeof laborRaw.assumedBreakHours === 'number' &&
+          typeof laborRaw.assumedBreakShifts === 'number'
+            ? { hours: laborRaw.assumedBreakHours, shifts: laborRaw.assumedBreakShifts }
+            : null,
         weeklyReviewHours:
           typeof laborRaw.weeklyReviewHours === 'number' ? laborRaw.weeklyReviewHours : null,
         leave: laborRaw.leave

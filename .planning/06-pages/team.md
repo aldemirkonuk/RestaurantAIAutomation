@@ -69,7 +69,7 @@ Mudavym redesign behind `mudavym_design_team` (OFF):
 - **Coverage gaps as the page's first object** — named countable rows ("2 unfilled · Saturday · line") with a real suggested cover and a one-tap Assign
 - **The page can start the staffing engine** — with `coverage_templates` empty (which is production) the panel says the engine is idle rather than claiming a staffed week, and carries the role/day/service/min-staff form that creates the first rule (ADR 0089)
 - **Role split on the redesigned half too** — a non-manager gets My Shifts, not the manager desk; previously `App.tsx:305` gated the whole route and `GET certifications` has no server-side role requirement (`team.service.ts:397`), so the credential file rendered to any member
-- **Labour cost as the week builds** — total vs target with overtime named before publish; withheld in words when tracking is off [2026-09-21, ADR 0215: the cost is the owner's alone; a manager sees worked hours, and the named people are those over 45 worked hours, a review with no price]
+- **Labour cost as the week builds** — total vs target with overtime named before publish; withheld in words when tracking is off [2026-09-21, ADR 0215: the cost is the owner's alone; a manager sees worked hours, and the named people are those over 45 worked hours, a review with no price; a shift over 4 hours with no break recorded is counted with the 4857 Art. 68 minimum and said as assumed, and whoever edits the shift records the real break (founder, "Take all five")]
 - **Credentials as exposure** — an expired card names the member, how many shifts they hold this week, and that *which* shifts require it is not recorded, with a one-tap renewal request (ADR 0089; `team_certifications` has no role or applies-to column, baseline `:5609-5620`, so the old "blocks N shifts / should not be published" line asserted a link the schema does not have)
 - Week-at-a-glance day chips (staffed / open / status) — now the week grid's own column headers
 
@@ -884,7 +884,7 @@ re-deriving it.
 
    | store | what it holds | provenance available today |
    |---|---|---|
-   | `team_settings` (`baseline:5653-5658`) | `labor_tracking_enabled`, `wage_visible` [retired 2026-09-21, ADR 0215: not read, a write refused], `labor_target_pct`, `updated_at` | a date, no author. **0 rows in production** (§9) |
+   | `team_settings` (`baseline:5653-5658`) | `labor_tracking_enabled`, `wage_visible` [retired 2026-09-21, ADR 0215: not read, a write refused], `labor_target_pct`, `updated_at` | a date, no author [2026-09-21, ADR 0215: each change a save makes is now a `team_labour_settings_changed` row in `system_audit_log` naming who, as what role, from and to; only the owner may switch tracking off or change the target]. **0 rows in production** (§9) |
    | `coverage_templates` | the staffing rules the engine runs on | **0 rows in production** — the engine is idle, and the redesign already says so |
    | `team_certifications` (`baseline:5609-5620`) | credentials per member | no role and no applies-to column (§13.2a) |
    | `user_restaurant_access` | who may do what | `created_at`, `valid_from`, no update column — a role change moves nothing on the row |

@@ -45,12 +45,15 @@ import {
 import {
   DOW,
   EM,
+  breakCounted,
+  breakUnderMinimum,
+  fmtBreak,
   fmtDayShort,
   fmtHours,
   fmtMoneyWhole,
   fmtTime,
+  recordedBreakMinutes,
   resolveName,
-  shiftHours,
   todayIso,
   WEEKLY_REVIEW_HOURS,
   weekDays,
@@ -129,7 +132,7 @@ export function WeekGrid({
       if (!s.member_id || s.state === 'callout') continue;
       m.set(
         s.member_id,
-        (m.get(s.member_id) ?? 0) + workedHours(s.start_time, s.end_time, s.shift_breaks),
+        (m.get(s.member_id) ?? 0) + workedHours(s),
       );
     }
     return m;
@@ -162,22 +165,27 @@ export function WeekGrid({
     const hours = id ? (hoursById.get(id) ?? 0) : 0;
     const closes = id ? (closesById.get(id) ?? 0) : 0;
     const fair = hours > WEEKLY_REVIEW_HOURS || closes >= 2;
-    const long = shiftHours(s.start_time, s.end_time) >= 6;
-    const noBreak = long && !(s.shift_breaks?.length ?? 0);
+    // A shift over 4 hours with no break recorded is counted with the Art. 68
+    // minimum (ADR 0215): the lens says the break is assumed, and a recorded
+    // break shorter than the law asks for says that instead.
+    const assumedBreak = breakCounted(s).assumed;
+    const shortBreak = breakUnderMinimum(s);
     const lapsed = id ? lapsedIds.has(id) : false;
-    const compliance = noBreak || lapsed || s.state === 'callout';
+    const compliance = assumedBreak || shortBreak || lapsed || s.state === 'callout';
     const why =
       s.state === 'callout'
         ? 'called out'
         : lapsed
           ? 'credential lapsed'
-          : noBreak
-            ? 'no break planned'
-            : hours > WEEKLY_REVIEW_HOURS
-              ? `over ${WEEKLY_REVIEW_HOURS}h · review`
-              : closes >= 2
-                ? `${closes} weekend closes`
-                : '';
+          : shortBreak
+            ? 'break under the legal minimum'
+            : assumedBreak
+              ? 'break assumed · not recorded'
+              : hours > WEEKLY_REVIEW_HOURS
+                ? `over ${WEEKLY_REVIEW_HOURS}h · review`
+                : closes >= 2
+                  ? `${closes} weekend closes`
+                  : '';
     return { fair, compliance, why };
   }
 
@@ -186,7 +194,7 @@ export function WeekGrid({
     const f = flagsFor(s);
     if (lens === 'labour') {
       // Hours for anyone who is not the owner: the cost is withheld, not unknown.
-      if (!moneyVisible) return fmtHours(workedHours(s.start_time, s.end_time, s.shift_breaks));
+      if (!moneyVisible) return fmtHours(workedHours(s));
       if (!labourEnabled) return 'labour off';
       // An unpriced shift is unknown, not free. `?? 0` here is exactly the
       // defect ADR 0089 found in the Tonight pulse.
@@ -209,6 +217,9 @@ export function WeekGrid({
         endTime: s.end_time,
         role: s.role ?? undefined,
         shiftType: s.shift_type,
+        // The copy keeps the break on record, as a copied week does (ADR
+        // 0215); nothing on record stays nothing on record, so it is assumed.
+        ...(recordedBreakMinutes(s) != null ? { breakMinutes: recordedBreakMinutes(s) } : {}),
       }),
     onSuccess: onChanged,
   });
@@ -565,8 +576,9 @@ function ShiftDetail({
         <Fact k="State" v={shift.state} />
         <Fact
           k="Hours"
-          v={fmtHours(workedHours(shift.start_time, shift.end_time, shift.shift_breaks))}
+          v={fmtHours(workedHours(shift))}
         />
+        <Fact k="Break" v={fmtBreak(shift)} />
         {moneyVisible && (
           <Fact
             k="Cost"

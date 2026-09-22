@@ -8,7 +8,13 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { recordAccessChange } from "./access-audit";
-import { LeaveType, memberForViewer, seesMoney } from "./pay-rules";
+import {
+  LeaveType,
+  labourSettingsRefusal,
+  memberForViewer,
+  seesMoney,
+  TeamRole,
+} from "./pay-rules";
 import {
   ChannelPreferences,
   loadChannelOptOuts,
@@ -980,7 +986,8 @@ export class TeamService {
    * in `.planning/06-pages/team.md` §9 rather than silently carried.
    */
   async getSettings(userId: string, restaurantId: string): Promise<any> {
-    await this.assertAccess(userId, restaurantId);
+    const { role } = await this.assertAccess(userId, restaurantId);
+    const mayChange = this.labourSettingsMayChange(role);
     const { data } = await this.sb
       .from("team_settings")
       .select("*")
@@ -993,14 +1000,38 @@ export class TeamService {
      */
     if (data) {
       const { wage_visible: _retired, ...rest } = data;
-      return { ...rest, moneyVisibleTo: "owner", configured: true };
+      return { ...rest, moneyVisibleTo: "owner", mayChange, configured: true };
     }
     return {
       restaurant_id: restaurantId,
       labor_tracking_enabled: true,
       labor_target_pct: null,
       moneyVisibleTo: "owner",
+      mayChange,
       configured: false,
+    };
+  }
+
+  /**
+   * What this viewer may change in the labour settings, so the page can say so
+   * instead of offering a switch the gateway will refuse. The rule itself is
+   * `labourSettingsRefusal` (pay-rules.ts); this only describes it per role.
+   */
+  private labourSettingsMayChange(role: TeamRole): {
+    trackingOff: boolean;
+    trackingOn: boolean;
+    target: boolean;
+  } {
+    const saves = role === "owner" || role === "manager";
+    return {
+      trackingOff:
+        saves &&
+        labourSettingsRefusal(role, { laborTrackingEnabled: false }) === null,
+      trackingOn:
+        saves &&
+        labourSettingsRefusal(role, { laborTrackingEnabled: true }) === null,
+      target:
+        saves && labourSettingsRefusal(role, { laborTargetPct: 1 }) === null,
     };
   }
 
@@ -1009,7 +1040,7 @@ export class TeamService {
     restaurantId: string,
     dto: UpdateTeamSettingsDto,
   ): Promise<any> {
-    await this.assertAccess(userId, restaurantId, "manager");
+    const { role } = await this.assertAccess(userId, restaurantId, "manager");
     // Refused in words rather than dropped: the whitelist pipe would otherwise
     // strip it and answer 200, and a switch that answers "saved" and does
     // nothing is worse than no switch (ADR 0215).
@@ -1017,6 +1048,27 @@ export class TeamService {
       throw new BadRequestException(
         "Wage visibility is no longer a setting: wages and labour cost are " +
           "shown to the owner only, and managers see hours. Nothing was saved.",
+      );
+    }
+    // Only the owner switches labour-cost tracking off or changes the labour
+    // target (founder, 2026-09-21, ADR 0215). Refused before any write.
+    const refusal = labourSettingsRefusal(role, dto);
+    if (refusal) throw new ForbiddenException(refusal);
+    // What the settings were, for the record below. A failed read is an
+    // error, not "no settings yet": the record would otherwise say the change
+    // started from nothing.
+    const { data: before, error: beforeErr } = await this.sb
+      .from("team_settings")
+      .select("labor_tracking_enabled, labor_target_pct")
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (beforeErr) {
+      this.logger.error(
+        `updateSettings: could not read the settings of ${restaurantId}: ` +
+          beforeErr.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the current team settings, so nothing was saved.",
       );
     }
     const patch: Record<string, any> = {
@@ -1041,6 +1093,78 @@ export class TeamService {
     // not handed back, because a flag a caller can still read would read as the
     // rule (ADR 0215). `.select()` returns every column, the retired one too.
     const { wage_visible: _retired, ...rest } = data ?? {};
-    return { ...rest, moneyVisibleTo: "owner", configured: true };
+    const audited = await this.recordSettingsChange(
+      userId,
+      restaurantId,
+      role,
+      before,
+      patch,
+    );
+    return {
+      ...rest,
+      moneyVisibleTo: "owner",
+      mayChange: this.labourSettingsMayChange(role),
+      configured: true,
+      audited,
+    };
+  }
+
+  /**
+   * Who changed the labour settings, when, as what role, and from what to what
+   * (ADR 0215: the owner's alone to switch off or re-target, so the record
+   * says who did). Only the fields the save wrote AND moved are recorded; a
+   * save that moved nothing records nothing. Never throws: the change has
+   * happened, and undoing it because the paper failed would be worse than
+   * saying so, which the reply's `audited: false` does.
+   */
+  private async recordSettingsChange(
+    userId: string,
+    restaurantId: string,
+    role: TeamRole,
+    before: Record<string, any> | null,
+    written: Record<string, any>,
+  ): Promise<boolean | null> {
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    for (const k of ["labor_tracking_enabled", "labor_target_pct"]) {
+      if (!(k in written)) continue;
+      const from = before?.[k] ?? null;
+      const to = written[k] ?? null;
+      // Compared as numbers when both are numeric: numeric(5,2) reads back
+      // as "30.00" or 30 depending on the client, and neither is a change.
+      const same =
+        from !== null &&
+        to !== null &&
+        !isNaN(Number(from)) &&
+        !isNaN(Number(to))
+          ? Number(from) === Number(to)
+          : from === to;
+      if (!same) changes[k] = { from, to };
+    }
+    // Nothing moved: nothing to record, and `null` says so (not "failed").
+    if (Object.keys(changes).length === 0) return null;
+    try {
+      const { error } = await this.sb.from("system_audit_log").insert({
+        actor_type: "user",
+        actor_id: userId,
+        action: "team_labour_settings_changed",
+        entity_type: "team_settings",
+        entity_id: restaurantId,
+        changes: { ...changes, role },
+        restaurant_id: restaurantId,
+        reason: null,
+      });
+      if (error) {
+        this.logger.error(
+          `team_labour_settings_changed happened but the audit row failed: ${error.message}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      this.logger.error(
+        `team_labour_settings_changed happened but the audit row threw: ${err?.message}`,
+      );
+      return false;
+    }
   }
 }

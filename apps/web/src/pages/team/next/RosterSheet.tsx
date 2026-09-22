@@ -91,7 +91,7 @@ function MemberDetail({
   // Worked hours: breaks out, a called-out shift out — as the gateway counts.
   const hours = mine
     .filter((s) => s.state !== 'callout')
-    .reduce((sum, s) => sum + workedHours(s.start_time, s.end_time, s.shift_breaks), 0);
+    .reduce((sum, s) => sum + workedHours(s), 0);
   const myCerts = (certs ?? []).filter((c) => c.member_id === member.id);
   const myLeave = (timeOff ?? []).filter((r) => r.member_id === member.id);
 
@@ -216,7 +216,7 @@ export function RosterSheet({
       if (!s.member_id || s.state === 'callout') continue;
       m.set(
         s.member_id,
-        (m.get(s.member_id) ?? 0) + workedHours(s.start_time, s.end_time, s.shift_breaks),
+        (m.get(s.member_id) ?? 0) + workedHours(s),
       );
     }
     return m;

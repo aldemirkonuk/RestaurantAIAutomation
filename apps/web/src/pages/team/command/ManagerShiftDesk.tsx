@@ -163,7 +163,7 @@ export function ManagerShiftDesk() {
     // gateway counts the same way (ADR 0215).
     for (const s of shifts) {
       if (!s.member_id || s.state === 'callout') continue
-      map.set(s.member_id, (map.get(s.member_id) ?? 0) + workedHours(s.start_time, s.end_time, s.shift_breaks))
+      map.set(s.member_id, (map.get(s.member_id) ?? 0) + workedHours(s))
     }
     return map
   }, [shifts])
@@ -566,7 +566,7 @@ export function ManagerShiftDesk() {
         />
         <PulseCell
           label={laborEnabled ? 'Tonight labor' : 'Tonight hours'}
-          value={laborEnabled ? tonightLabor : `${tonightShifts.reduce((sum, s) => sum + workedHours(s.start_time, s.end_time, s.shift_breaks), 0).toFixed(0)}h`}
+          value={laborEnabled ? tonightLabor : `${tonightShifts.reduce((sum, s) => sum + workedHours(s), 0).toFixed(0)}h`}
           sub={laborEnabled && tonightLabor === EM ? `${tonightShifts.length} shifts, not priced` : `${tonightShifts.length} shifts`}
         />
         {/* This cell sits under a heading that says "Tonight's board", so it

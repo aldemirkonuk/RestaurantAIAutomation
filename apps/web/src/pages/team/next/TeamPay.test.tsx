@@ -271,7 +271,9 @@ describe('a manager is shown hours and told the money is the owner’s', () => {
 
 describe('hours are worked hours, and over 45 is a review', () => {
   it('takes breaks out of a shift', () => {
-    expect(workedHours('09:00', '19:00', [{ duration_min: 60 }])).toBe(9);
+    expect(
+      workedHours({ start_time: '09:00', end_time: '19:00', shift_breaks: [{ duration_min: 60 }] }),
+    ).toBe(9);
   });
 
   it('draws the review line at the Turkish week', () => {

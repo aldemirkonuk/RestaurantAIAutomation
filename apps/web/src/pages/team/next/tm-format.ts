@@ -197,21 +197,94 @@ export function shiftHours(start: string, end: string): number {
   return diff / 60;
 }
 
+/* ── the break a shift is counted with (4857 Art. 68) ──────────────────────
+
+   The gateway's rule, mirrored (`apps/api-gateway/src/team/pay-rules.ts`), so
+   the grid and the week's figure agree. The founder, 2026-09-21, picked "Take
+   all five" (ADR 0215): a shift OVER 4 hours with no break on record is counted
+   with the Art. 68 minimum and shown as an ASSUMED break; whoever edits the
+   shift can record the real one. Art. 68 keys the break on working time, which
+   does not include the break, so an 8-hour shift is 7.5 hours of work and a
+   30-minute break. */
+
+/** A shift over this many minutes with nothing recorded assumes a break. */
+export const ASSUME_BREAK_OVER_MIN = 240;
+
+/** Art. 68 (a)-(c) on WORKING minutes: <= 4 h 15 min, <= 7.5 h 30 min, over it 60. */
+export function art68BreakForWork(workedMin: number): number {
+  if (workedMin <= 240) return 15;
+  if (workedMin <= 450) return 30;
+  return 60;
+}
+
+/** The least of 15 / 30 / 60 minutes a shift spanning `spanMin` complies with. */
+export function art68MinimumBreak(spanMin: number): number {
+  for (const b of [15, 30, 60]) {
+    if (b >= art68BreakForWork(spanMin - b)) return b;
+  }
+  return 60;
+}
+
+export interface ShiftBreakSource {
+  start_time: string;
+  end_time: string;
+  shift_breaks?: ReadonlyArray<{ duration_min?: number | null }> | null;
+  /** Recorded by whoever edits the shift; 0 = no break taken; null = nothing recorded. */
+  recorded_break_min?: number | null;
+}
+
+/** The break on record in minutes, or `null` when nothing is recorded. */
+export function recordedBreakMinutes(s: ShiftBreakSource): number | null {
+  if (s?.recorded_break_min != null) {
+    const n = Number(s.recorded_break_min);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  const rows = s?.shift_breaks ?? [];
+  if (rows.length > 0) {
+    return rows.reduce((n, b) => {
+      const d = Number(b?.duration_min);
+      return Number.isFinite(d) && d > 0 ? n + d : n;
+    }, 0);
+  }
+  return null;
+}
+
+/** The break a shift is counted with, and whether it is assumed. */
+export function breakCounted(s: ShiftBreakSource): { minutes: number; assumed: boolean } {
+  const recorded = recordedBreakMinutes(s);
+  if (recorded != null) return { minutes: recorded, assumed: false };
+  const span = Math.round(shiftHours(s.start_time, s.end_time) * 60);
+  if (span > ASSUME_BREAK_OVER_MIN) return { minutes: art68MinimumBreak(span), assumed: true };
+  return { minutes: 0, assumed: false };
+}
+
 /**
- * Hours WORKED on a shift: its span minus its breaks (4857 Art. 68 — a break is
- * not working time). The gateway counts the same way (`pay-rules.ts`), so the
- * grid and the week's figure agree.
+ * Hours WORKED on a shift: its span minus the break it is counted with (4857
+ * Art. 68 — a break is not working time), never below zero.
  */
-export function workedHours(
-  start: string,
-  end: string,
-  breaks: ReadonlyArray<{ duration_min?: number | null }> | null | undefined,
-): number {
-  const mins = (breaks ?? []).reduce((n, b) => {
-    const d = Number(b?.duration_min);
-    return Number.isFinite(d) && d > 0 ? n + d : n;
-  }, 0);
-  return Math.max(0, shiftHours(start, end) - mins / 60);
+export function workedHours(s: ShiftBreakSource): number {
+  return Math.max(0, shiftHours(s.start_time, s.end_time) - breakCounted(s).minutes / 60);
+}
+
+/** The break as a shift's fact: "30 min · assumed" / "45 min" / "none taken" / "none". */
+export function fmtBreak(s: ShiftBreakSource): string {
+  const b = breakCounted(s);
+  if (b.assumed) return `${b.minutes} min · assumed`;
+  if (recordedBreakMinutes(s) === 0) return 'none taken';
+  return b.minutes > 0 ? `${b.minutes} min` : 'none';
+}
+
+/**
+ * A RECORDED break shorter than Art. 68 asks for the work it leaves, on a shift
+ * over 4 hours (the same scope as the assumption). An assumed break is never
+ * under: it is the minimum. For the compliance lens; it changes no figure.
+ */
+export function breakUnderMinimum(s: ShiftBreakSource): boolean {
+  const recorded = recordedBreakMinutes(s);
+  if (recorded == null) return false;
+  const span = Math.round(shiftHours(s.start_time, s.end_time) * 60);
+  if (span <= ASSUME_BREAK_OVER_MIN) return false;
+  return recorded < art68BreakForWork(span - recorded);
 }
 
 /**

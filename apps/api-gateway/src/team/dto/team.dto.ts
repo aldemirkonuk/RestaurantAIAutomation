@@ -61,6 +61,12 @@ export class CreateShiftDto {
   @IsIn(["am", "pm", "double", "split", "training", "borrowed", "open"])
   shiftType?: string;
   @IsOptional() @IsString() note?: string;
+  /**
+   * The break taken on this shift, in whole minutes (0 = none taken). Omitted,
+   * nothing is recorded and a shift over 4 hours is counted with the Art. 68
+   * minimum, shown as assumed (ADR 0215).
+   */
+  @IsOptional() @IsInt() @Min(0) @Max(1439) breakMinutes?: number | null;
 }
 
 export class UpdateShiftDto {
@@ -76,6 +82,12 @@ export class UpdateShiftDto {
   @IsIn(["scheduled", "callout", "covered", "open"])
   state?: string;
   @IsOptional() @IsString() note?: string;
+  /**
+   * The break taken on this shift, in whole minutes (0 = none taken). `null`
+   * clears the record, so a shift over 4 hours is counted with the Art. 68
+   * minimum again and shown as assumed; omitted leaves it as it is (ADR 0215).
+   */
+  @IsOptional() @IsInt() @Min(0) @Max(1439) breakMinutes?: number | null;
 }
 
 export class CalloutDto {

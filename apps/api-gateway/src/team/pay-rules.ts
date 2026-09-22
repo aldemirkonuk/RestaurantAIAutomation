@@ -24,10 +24,20 @@
  * Labour Law 4857 Art. 68: a break is not working time. `hoursBetween` used to be
  * end minus start and was the only input to cost, to the week's hours and to the
  * over-the-week flag, so a 10-hour shift with a one-hour break counted as ten
- * hours of work and ten hours of pay. `workedHours` subtracts the breaks the
- * shift carries (`shift_breaks.duration_min`). It does not invent a break the
- * shift does not carry: whether the legal minimum should be assumed when none is
- * recorded is a question for the founder, not a default (ADR 0215).
+ * hours of work and ten hours of pay. `workedHours` subtracts the break the
+ * shift carries.
+ *
+ * AND A SHIFT OVER 4 HOURS WITH NO BREAK ON RECORD HAS THE LEGAL MINIMUM
+ * ----------------------------------------------------------------------
+ * The founder, 2026-09-21, picked "Take all five" (the options he picked, one
+ * of which was this): a shift over 4 hours with no break recorded assumes the
+ * Art. 68 minimum, shown as an ASSUMED break, and whoever edits the shift can
+ * record the real one. Art. 68 keys the break on the length of the WORK, and
+ * says in its last sentence "Ara dinlenmeleri çalışma süresinden sayılmaz" (a
+ * break is not counted as working time), so the minimum for a shift is the
+ * smallest of the three statutory breaks (15 / 30 / 60 min) that the shift's
+ * worked time, after that break, still allows. An 8-hour shift is
+ * 7.5 hours of work and a 30-minute break, not 60. See `art68MinimumBreak`.
  *
  * THE WEEK'S HOURS ARE A REVIEW, NOT OVERTIME PAY
  * -----------------------------------------------
@@ -47,6 +57,30 @@ export const WEEKLY_REVIEW_HOURS = 45;
 /** The one test. Every money-carrying /team response goes through it. */
 export function seesMoney(role: TeamRole): boolean {
   return role === "owner";
+}
+
+/**
+ * Who may change the labour settings. The founder, 2026-09-21, picked "Take
+ * all five" (ADR 0215; the options he picked): only the owner can switch
+ * labour-cost tracking OFF or change the labour target. A manager's write that
+ * does either is refused before anything is saved. Switching tracking ON is not
+ * named in the pick, so it stays with whoever may save the settings (a manager
+ * or the owner) and is returned to the founder as a question.
+ *
+ * Returns the refusal, in words, or `null` when the write may go ahead.
+ */
+export function labourSettingsRefusal(
+  role: TeamRole,
+  patch: { laborTrackingEnabled?: boolean; laborTargetPct?: number },
+): string | null {
+  if (role === "owner") return null;
+  if (patch.laborTrackingEnabled === false) {
+    return "Only the owner can switch labour-cost tracking off. Nothing was saved.";
+  }
+  if (patch.laborTargetPct !== undefined) {
+    return "Only the owner can change the labour target. Nothing was saved.";
+  }
+  return null;
 }
 
 /** The money fields a shift row carries. */
@@ -114,16 +148,98 @@ export function breakMinutes(breaks: BreakLike[] | null | undefined): number {
   return total;
 }
 
+// ── the break a shift is counted with (4857 Art. 68) ────────────────────────
+
 /**
- * Hours worked on a shift: its span minus its breaks (4857 Art. 68), never
- * below zero.
+ * Founder, 2026-09-21: a shift OVER 4 hours with no break recorded assumes the
+ * Art. 68 minimum. A shift of 4 hours or less assumes none (the pick names
+ * shifts over 4 hours only; ADR 0215 returns the shorter ones as a question).
  */
-export function workedHours(
-  start: string,
-  end: string,
-  breaks: BreakLike[] | null | undefined,
-): number {
-  return Math.max(0, hoursBetween(start, end) - breakMinutes(breaks) / 60);
+export const ASSUME_BREAK_OVER_MIN = 240;
+
+/**
+ * 4857 Art. 68 (a)-(c), keyed on WORKING minutes, which do not include the
+ * break (Art. 68, last sentence: "Ara dinlenmeleri çalışma süresinden
+ * sayılmaz"): (a) 4 hours or less, 15 minutes; (b) over 4 hours up to and
+ * including 7.5 hours, 30 minutes; (c) over 7.5 hours, one hour.
+ */
+export function art68BreakForWork(workedMin: number): number {
+  if (workedMin <= 240) return 15;
+  if (workedMin <= 450) return 30;
+  return 60;
+}
+
+/**
+ * The least of the three statutory breaks a shift spanning `spanMin` minutes
+ * complies with: the first `b` of 15, 30, 60 such that `b` is at least what
+ * Art. 68 owes for the `spanMin - b` minutes left to work. A 4h15m shift is
+ * 15 (4 hours of work); a 4h16m-8h shift is 30 (an 8-hour shift is 7.5 hours
+ * of work); longer is 60. Keyed on the span, the same 8-hour shift would be
+ * 60 — the reading Art. 68 does not support, because it counts working time.
+ */
+export function art68MinimumBreak(spanMin: number): number {
+  for (const b of [15, 30, 60]) {
+    if (b >= art68BreakForWork(spanMin - b)) return b;
+  }
+  return 60;
+}
+
+/** A shift as the hour rules read it. */
+export interface ShiftLike {
+  start_time: string;
+  end_time: string;
+  /** Planned breaks (baseline table; no product path writes it). */
+  shift_breaks?: BreakLike[] | null;
+  /**
+   * The break whoever edits the shift recorded, in minutes; `0` = recorded as
+   * no break taken; `null` = nothing recorded (ADR 0215).
+   */
+  recorded_break_min?: number | string | null;
+}
+
+/**
+ * The break on record, in minutes, or `null` when nothing is recorded. The
+ * editor's `recorded_break_min` is the latest word and wins; without it, the
+ * `shift_breaks` rows, when there are any.
+ */
+export function recordedBreakMinutes(s: ShiftLike): number | null {
+  if (s?.recorded_break_min != null) {
+    const n = Number(s.recorded_break_min);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  if (Array.isArray(s?.shift_breaks) && s.shift_breaks.length > 0) {
+    return breakMinutes(s.shift_breaks);
+  }
+  return null;
+}
+
+/**
+ * The break a shift is counted with, and whether it was assumed. Recorded
+ * wins; a shift over 4 hours with nothing recorded is counted with the Art. 68
+ * minimum and says so (`assumed: true`); anything else is counted with none.
+ */
+export function breakCounted(s: ShiftLike): {
+  minutes: number;
+  assumed: boolean;
+} {
+  const recorded = recordedBreakMinutes(s);
+  if (recorded != null) return { minutes: recorded, assumed: false };
+  const span = Math.round(hoursBetween(s.start_time, s.end_time) * 60);
+  if (span > ASSUME_BREAK_OVER_MIN) {
+    return { minutes: art68MinimumBreak(span), assumed: true };
+  }
+  return { minutes: 0, assumed: false };
+}
+
+/**
+ * Hours worked on a shift: its span minus the break it is counted with (4857
+ * Art. 68), never below zero.
+ */
+export function workedHours(s: ShiftLike): number {
+  return Math.max(
+    0,
+    hoursBetween(s.start_time, s.end_time) - breakCounted(s).minutes / 60,
+  );
 }
 
 /**
@@ -132,14 +248,12 @@ export function workedHours(
  */
 export function priceShift(
   wage: number | string | null | undefined,
-  start: string,
-  end: string,
-  breaks: BreakLike[] | null | undefined,
+  s: ShiftLike,
 ): number | null {
   if (wage == null) return null;
   const rate = Number(wage);
   if (!Number.isFinite(rate)) return null;
-  return Math.round(workedHours(start, end, breaks) * rate * 100) / 100;
+  return Math.round(workedHours(s) * rate * 100) / 100;
 }
 
 /** A called-out shift was not worked: its person is replaced by a cover shift. */
