@@ -1,6 +1,6 @@
 # jev-exp: did Jev help as the ADR 0163 P7(b) claim checker?
 
-Run on 2026-09-21, 15:15-15:27 UTC, from the founder's Mac. Two synthetic menus were written for this run, so no house data left the machine. Every raw request and response is in `jev-exp/raw/` (only the API key is redacted). Scripts and fixtures sit next to them.
+Run on 2026-09-21, 15:15-15:27 UTC, from the founder's Mac. Two synthetic menus were written for this run, so no house data left the machine. Every raw request and response is in `jev-exp/raw/` (only the API key is redacted). Scripts and fixtures sit next to them. [CORRECTED 2026-09-22: neither `jev-exp/raw/` nor the scripts and fixtures were kept in this repo. They stay in a local scratch folder that a reboot clears; ADR 0032's waiver for these judges brought in only the judged summaries.]
 
 ## Bottom line
 
