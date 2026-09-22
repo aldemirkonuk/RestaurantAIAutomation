@@ -72,19 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:157",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
-  },
-  {
-    key: "mudavym_design_settings",
-    // OFF by default: the Mudavym redesign of `/settings` (ADR 0044 p4 wave, KEEP Editorial + "there should be more").
-    defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:157",
   },
   {
     key: "enable_house_inbox_read",
@@ -101,7 +95,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_cellar",
     // OFF by default: the Mudavym `/cellar` parent surface and its `/wines` `/beer` `/whiskey` `/cocktails` children (ADR 0044 p4 wave; IA decided 2026-08-30, the crowded redesign rejected — "more character", keep "see everything").
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:157",
   },
   {
     key: "mudavym_design_shell",
@@ -113,7 +107,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Sidebar layout is the path. Held back from LIVE_PAGES. Column added by
     // 20260921114300.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:153",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:157",
   },
 ];
 
@@ -126,13 +120,14 @@ export function isActiveFeatureFlag(name: string): boolean {
 
 /**
  * LIVE IN CODE, 2026-09-17 (live-review.md defect 2; ADR 0149 row 36, "16
- * locked pages"). These sixteen `mudavym_design_*` keys used to be ACTIVE —
- * real columns AND real gating code — but `useMudavymDesign.ts`'s `LIVE_PAGES`
+ * locked pages"; `settings` joined 2026-09-19 / PR #419 after its sketch
+ * review). These seventeen `mudavym_design_*` keys used to be ACTIVE — real
+ * columns AND real gating code — but `useMudavymDesign.ts`'s `LIVE_PAGES`
  * now resolves every one of these pages for every house before `fetchFlag`
  * (the `.checkFeatureFlag` call these entries used to cite) ever runs. The
  * cited line still exists and still says `checkFeatureFlag`, but it is
- * UNREACHABLE for these sixteen keys, so the ACTIVE contract — "a real column
- * AND real code that branches on it" — no longer holds for them.
+ * UNREACHABLE for these seventeen keys, so the ACTIVE contract — "a real
+ * column AND real code that branches on it" — no longer holds for them.
  *
  * Deliberately NOT in ACTIVE_FEATURE_FLAGS:
  *  - `GET /settings/feature-flags` returns only ACTIVE_FEATURE_FLAG_KEYS
@@ -173,6 +168,7 @@ export const LIVE_IN_CODE_FLAGS: readonly string[] = [
   "mudavym_design_connections",
   "mudavym_design_notifications",
   "mudavym_design_logs",
+  "mudavym_design_settings",
 ];
 
 export function defaultActiveFlags(): Record<string, boolean> {
