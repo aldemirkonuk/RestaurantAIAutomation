@@ -814,9 +814,77 @@ def _git_invokes_push(seg: list[str], env: dict[str, object]) -> bool:
 # main(), refused). A heredoc script or an unquoted body's substitution
 # nested past _MAX_PUSH_WRAP_DEPTH is refused, as a shell's command string is.
 
+# gate8c (round 6y, 2026-09-22). Founder's word, as relayed, verbatim: "Close
+# them here (Recommended)" -- close the five real pushes the gate-r8 last
+# call found in the two roads above, each measured moving a bare origin's
+# main under bash, unfixed:
+#   (1) A WHOLE `${...}` COMMAND WORD whose default/alternate-value text
+#     holds push is now refused like a whole `$(...)` holding push already
+#     is (_whole_word_holds_push, `${G:-git push} origin HEAD`,
+#     `${G-git push} origin HEAD`), INCLUDING THE IFS-SPLIT VARIANT: the
+#     text is split the way an unquoted expansion is split, so a
+#     same-command IFS reaches it too, the same reading _expansion_words()
+#     already gives a resolved value (`IFS=x; ${W:-gitxpush} origin HEAD`).
+#     Neither form resolves NAME's own value first (this hook does not
+#     decide whether NAME is genuinely set, bash's own rule for `:-` vs
+#     `-`) -- it fails closed on the text every one of the six forms
+#     (`:-`, `-`, `:=`, `=`, `:+`, `+`) may still expand to.
+#   (2) EVAL'S JOINED ARGUMENTS are re-read as a command string, the way a
+#     `bash -c` string already is (_eval_string_push_reason), so the
+#     IFS and quoting closures above reach `eval` too: before this, eval
+#     only got a flat, un-split word-boundary check for a literal "push" in
+#     a later multi-word argument, which a same-command IFS split hid
+#     (`eval 'IFS=x; W=gitxpush; $W origin HEAD'`) and a heredoc carried
+#     through an unquoted substitution hid entirely (`eval "$(cat <<'EOF'`
+#     + `IFS=x` + `W=gitxpush; $W origin HEAD` + `EOF` + `)"`).
+#     Last call on this round, each measured moving a bare origin's main
+#     under bash: re-read ALONE, as first built, the string lost the
+#     command's own assignments, which `eval` (unlike a `bash -c` child)
+#     runs under, so `C='git push origin HEAD'; eval "$C"` -- refused
+#     before gate8c -- was allowed and `IFS=x; W=gitxpush; eval '$W origin
+#     HEAD'` was never split; it is now re-read after them
+#     (_eval_outer_statements). And it replaced eval's older string-runner
+#     reading instead of adding to it, so `eval 'git -c alias.p=push p
+#     origin HEAD'` -- refused before gate8c -- was allowed; both readings
+#     now apply, so gate8c refuses nothing less than before.
+# NOT this round's named residual (the founder's round-6 residual (4)): a
+# command word built by expansion holding ONLY `git`, with a literal `push`
+# as its own following word (`${G:-git} push origin HEAD`) -- that word
+# already reads as `git`, and the literal `push` after it is already seen;
+# it was refused before this round and stays refused, unchanged.
+
 # A word that is one whole `$(...)` or backtick substitution (the word reader
 # keeps one whole; shlex never does).
 _WHOLE_SUBSTITUTION_RE = re.compile(r"(?s)\$\(.*\)|`.*`")
+# A word that is one whole `${NAME<op>text}` parameter expansion using one of
+# the six default/alternate-value operators (gate8c, round 6y): `:-`, `-`,
+# `:=`, `=`, `:+`, `+`. `_lex()` keeps the whole `${...}` together as part of
+# one word (including any blank inside it); shlex splits it apart at any
+# blank inside `text`, so this only ever matches through the `_lex()` reading
+# -- exactly the asymmetry `_WHOLE_SUBSTITUTION_RE` already has for `$(...)`.
+_PARAM_DEFAULT_RE = re.compile(r"^\$\{\w+(?::-|-|:=|=|:\+|\+)(.*)\}$", re.S)
+
+
+def _whole_word_holds_push(tok: str, env: dict[str, object]) -> bool:
+    """True if `tok` is one whole word this hook cannot resolve to a program
+    name, but whose own text may still run push once the shell expands it: a
+    `$(...)`/backtick substitution holding the word as written
+    (_WHOLE_SUBSTITUTION_RE), or a `${NAME<op>text}` default/alternate-value
+    expansion (gate8c) whose TEXT -- split the way an unquoted expansion is
+    split, so a same-command IFS applies to it too (_expansion_words(), the
+    same reading a resolved `$NAME` already gets) -- holds "push" as one of
+    its words. Read as unresolved text when the same-command assignments
+    cannot split it either, the plain word-boundary check `$(...)` already
+    has."""
+    if _WHOLE_SUBSTITUTION_RE.fullmatch(tok):
+        return bool(re.search(r"(?i)\bpush\b", tok))
+    m = _PARAM_DEFAULT_RE.match(tok)
+    if not m:
+        return False
+    words = _expansion_words(m.group(1), env)
+    if words is None:
+        return bool(re.search(r"(?i)\bpush\b", m.group(1)))
+    return any(w.lower() == "push" for w in words)
 
 
 def _expansion_words(tok: str, env: dict[str, object]) -> list[str] | None:
@@ -892,6 +960,62 @@ def _shell_string_push_reason(seg: list[str], i: int, _depth: int) -> str | None
     return None
 
 
+def _eval_outer_statements(assigned: dict[str, list[tuple[int, object]]], start: int) -> str:
+    """The same-command assignments an `eval` at token `start` re-reads its
+    string under, written as statements to put before that string. gate8c
+    last call: a `bash -c` string runs in a child shell that sees none of the
+    command's own assignments, but `eval` re-reads its string in the SAME
+    shell, so every one of them is in scope -- and so is eval's own
+    `NAME=value` prefix, which a special builtin runs under. Read without
+    them, `C='git push origin HEAD'; eval "$C"` (refused before gate8c) was
+    allowed, and `IFS=x; W=gitxpush; eval '$W origin HEAD'` was never split;
+    each measured moving a bare origin's main under bash. `assigned` is the
+    whole command's `_collect_assignments()` map, before any prefix remap.
+    Every value of each name is given, in order, and a name first assigned at
+    or after `start` opens with a value this hook does not trust (`$_`, read
+    as unresolved), so the re-read weighs them exactly as _env_before()
+    already does for a command at `start`."""
+    statements: list[str] = []
+    for name, entries in assigned.items():
+        if entries[0][0] >= start:
+            statements.append(f"{name}=$_")
+        statements.extend(f"{name}={shlex.quote(value)}" if isinstance(value, str) else f"{name}=$_"
+                          for _index, value in entries)
+    return "".join(f"{statement}; " for statement in statements)
+
+
+def _eval_string_push_reason(seg: list[str], i: int, _depth: int, outer: str = "") -> str | None:
+    """`seg[i]` is `eval`. Why the command string its own arguments become is
+    a push this hook must refuse, or None -- including None when `eval` is
+    given no arguments at all. Real `eval` semantics, unlike `bash -c`'s
+    separate positional arguments: every argument after it is concatenated
+    into ONE string, with a blank between each, and THAT is re-read as a new
+    command. gate8c (round 6y, 2026-09-22), the founder's "Close them here":
+    the joined string is re-read through this same push check, recursively,
+    as `_shell_string_push_reason` already re-reads a `bash -c` string -- so
+    the same-command IFS split and quoting closures gate-r8 built for one
+    reach `eval` too (`eval 'IFS=x; W=gitxpush; $W origin HEAD'`, and, the
+    heredoc carried through an unquoted substitution inside it, `eval "$(cat
+    <<'EOF'` + `IFS=x` + `W=gitxpush; $W origin HEAD` + `EOF` + `)"`; both
+    measured moving a bare origin's main, unfixed). Unlike a `bash -c`
+    string, it is re-read AFTER `outer`, the command's own assignments in
+    the same shell (_eval_outer_statements()). Deliberately no early refusal
+    on an unresolved `$`/backtick anywhere in the joined string, unlike the
+    `bash -c` reading above: the recursive call resolves what IT can from
+    those assignments and from ones made INSIDE the joined string (as both
+    measured shapes need), and everything past that is exactly as
+    unresolved-expansion handling already reads it, refusing where refusing
+    is already correct."""
+    rest = seg[i + 1:]
+    if not rest:
+        return None
+    if _depth >= _MAX_PUSH_WRAP_DEPTH:
+        return ("runs `eval` on a command string nested past the depth this "
+                "hook re-reads, which may push directly to main")
+    joined = " ".join(rest)
+    return _direct_push_problem(outer + joined, _depth + 1)
+
+
 def _unrecognised_wrapper_push_reason(seg: list[str], i: int, seg_start: int,
                                       assigned: dict[str, list[tuple[int, object]]],
                                       wrapped: bool, _depth: int) -> str | None:
@@ -963,6 +1087,9 @@ def _wrapper_stripped_push_reason(seg: list[str], seg_start: int,
     # each measured moving a bare origin's main. Every word of this segment
     # therefore reads the same assignments -- those made before the segment
     # -- so a word spliced in by an expansion needs no index of its own.
+    # `eval` is the exception (gate8c last call): it re-reads its string in
+    # this same shell, under its own prefix, so it keeps the map as collected.
+    outer = assigned
     assigned = {name: [(k if k < seg_start else float("inf"), v) for k, v in entries]
                 for name, entries in assigned.items()}
     i, n = 0, len(seg)
@@ -977,12 +1104,15 @@ def _wrapper_stripped_push_reason(seg: list[str], seg_start: int,
             # resolved through the same-command assignments and read as what
             # it resolves to; one this hook cannot resolve is refused when
             # push follows it, and read as an unrecognised shape otherwise.
-            words = _expansion_words(tok, _env_before(assigned, seg_start + i))
+            env_here = _env_before(assigned, seg_start + i)
+            words = _expansion_words(tok, env_here)
             if words is None:
-                # Push after it, or inside a word that is one whole substitution:
-                # `$(printf 'git push') origin HEAD` is split into `git push`.
-                if _push_follows(seg, i) or (_WHOLE_SUBSTITUTION_RE.fullmatch(tok)
-                                             and re.search(r"(?i)\bpush\b", tok)):
+                # Push after it, or inside a word that is one whole
+                # substitution or `${...}` default/alternate-value expansion
+                # (gate8c): `$(printf 'git push') origin HEAD` is split into
+                # `git push`, and `${G:-git push} origin HEAD` reads its
+                # default text the same way.
+                if _push_follows(seg, i) or _whole_word_holds_push(tok, env_here):
                     return _unresolved_git_reason(tok)
                 if _value_holds_push(tok, assigned, seg_start + i):
                     return _unresolved_git_reason(tok)
@@ -1000,6 +1130,18 @@ def _wrapper_stripped_push_reason(seg: list[str], seg_start: int,
             continue
         if name in _PUSH_SHELL_PROGRAMS:
             return _shell_string_push_reason(seg, i, _depth)
+        if name == "eval":
+            # gate8c: eval's own joined arguments, re-read as a `bash -c`
+            # string is, above, after the command's own assignments. The
+            # string-runner reading eval had before gate8c still applies
+            # too (gate8c last call): re-read alone, a shape it refused was
+            # let through -- `eval 'git -c alias.p=push p origin HEAD'`,
+            # measured moving a bare origin's main -- and gate8c adds a
+            # reading, it removes none.
+            return (_eval_string_push_reason(seg, i, _depth,
+                                             _eval_outer_statements(outer, seg_start + i))
+                    or _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned,
+                                                         wrapped, _depth))
         return _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned, wrapped, _depth)
     return None  # ran out of tokens (only assignments/wrappers, nothing after): not a push
 

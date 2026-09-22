@@ -1398,6 +1398,161 @@ and on 31 of the last call's and finishing pass's 51 hook mutations. Not
 done, as before: no branch-protection or live-repo verification; the shells
 measured are bash 5.3 and zsh 5.9.
 
+- **Last call on the finished pass: five more real pushes in the same two
+  roads.** An Opus last call on the finishing pass (above) found the
+  finished hook still let five more real pushes through at exit 0, each
+  measured moving a local bare origin's `main` under bash, in the two roads
+  the founder chose:
+  - *(a) A whole `${...}` command word whose default/alternate-value text
+    holds push.* `_expansion_words()` only ever read a bare `$NAME` or
+    `$(...)`/backtick substitution; a parameter expansion using bash's
+    default/alternate-value operators (`:-`, `-`, `:=`, `=`, `:+`, `+`) was
+    never read at all, so `${G:-git push} origin HEAD` and `${G-git push}
+    origin HEAD` (`G` unset either way) ran a push neither reading saw --
+    and, the IFS-split variant, `IFS=x; ${W:-gitxpush} origin HEAD` moved
+    main the same way the same-command IFS already reaches a resolved
+    `$NAME`'s value.
+  - *(b) `eval`'s joined arguments, unread as a command string.* `eval` sat
+    on `_STRING_RUNNING_PROGRAMS` (read as an unrecognised wrapper, a flat
+    word-boundary check on a later multi-word argument, never re-parsed as
+    a command), so a same-command IFS split inside the string it evaluates
+    hid a push from that flat check (`eval 'IFS=x; W=gitxpush; $W origin
+    HEAD'`) exactly as it did before the IFS closures above existed, and a
+    heredoc carried through an unquoted substitution inside the eval'd
+    string was not read at all (`eval "$(cat <<'EOF'` + `IFS=x` +
+    `W=gitxpush; $W origin HEAD` + `EOF` + `)"`).
+  - Not the founder's round-6 named residual (4): a command word built by
+    expansion holding ONLY `git`, with a literal `push` as its own
+    following word (`${G:-git} push origin HEAD`) was already read as git
+    with push right after it, by `_push_follows()`, before either road
+    existed -- unrelated to both mechanisms above, and unchanged by them.
+  - His answer, as relayed by the orchestrating session (round 6y, this
+    ADR's Review trail): *"Close them here (Recommended)."*
+- **Closed on the founder's 2026-09-22 word, same PR (gate8c).** Both roads,
+  built in `scripts/hooks/require_pr_audit.py`'s gate8c comment block above
+  `_WHOLE_SUBSTITUTION_RE`:
+  - *(a)* `_PARAM_DEFAULT_RE` matches a whole `${NAME<op>text}` token (the
+    six operators above) the way `_lex()` keeps it -- one word, blanks
+    inside included, where shlex would split at the first blank in `text`.
+    `_whole_word_holds_push()` reads `text` through `_expansion_words()`,
+    the same same-command-IFS-aware splitting a resolved `$NAME` already
+    gets, and refuses when `push` is one of the resulting words; when `text`
+    itself holds an expansion this hook cannot resolve, it falls back to
+    the plain word-boundary check `$(...)` already has, rather than passing
+    silently. Neither form resolves whether `NAME` itself is actually set
+    (bash's own `:-` vs `-` distinction) -- it fails closed on the text
+    every one of the six operators may still expand to.
+    `_wrapper_stripped_push_reason()`'s unresolved-word branch now checks
+    `_whole_word_holds_push()` beside the existing `_push_follows()`; the
+    whole-`$(...)` check that branch had moved into `_whole_word_holds_push()`
+    unchanged.
+  - *(b)* `_eval_string_push_reason()`: when the command's stripped name is
+    `eval`, its own remaining arguments are joined with a single blank
+    between each -- real `eval` semantics, unlike `bash -c`'s separate
+    positional arguments -- and the joined string is re-read recursively
+    through `_direct_push_problem()` itself, as
+    `_shell_string_push_reason()` already re-reads a `bash -c` string, but
+    after the command's own assignments (`_eval_outer_statements()`, below:
+    corrected by the last call on this round). The generic
+    `_unrecognised_wrapper_push_reason()` reading `eval` had before still
+    applies beside it (also the last call's correction), and stays the only
+    reading for every other string-running program on that list.
+    Deliberately no early refusal on an unresolved `$`/backtick anywhere in
+    the joined string: the recursive call resolves what it can from those
+    assignments and from ones made *inside* the joined string, as both
+    measured shapes need, and everything past that reads exactly as
+    unresolved-expansion handling already does.
+  - The founder's named allowed twin holds: `eval "$(ssh-agent -s)"` -- a
+    substitution this hook does not resolve, with no `push` or `git`
+    anywhere in the joined string -- stays allowed.
+  - *Last call on this round, same day (Opus): the eval re-read as first
+    built opened what the hook before it refused.* Each shape below was
+    refused or unread as stated, allowed by the first build at exit 0, and
+    measured moving a local bare origin's `main` under bash 5.3:
+    - Re-read alone, the joined string lost the command's own assignments.
+      A `bash -c` string runs in a child shell that sees none of them, but
+      `eval` re-reads its string in the same shell, under every earlier
+      assignment and under its own `NAME=value` prefix (a special builtin
+      runs under its prefix). So `C='git push origin HEAD'; eval "$C"`,
+      `... eval '$C'` and `... eval eval '$C'`, each refused before gate8c,
+      were allowed; and the same-command IFS this round was meant to carry
+      into `eval` never reached it from outside the string: `IFS=x;
+      W=gitxpush; eval '$W origin HEAD'`, `W=gitxpush; IFS=x eval '$W
+      origin HEAD'` and `C='git push origin HEAD'; eval 'eval "$C"'` were
+      allowed before gate8c and after it. Fixed: `_eval_outer_statements()`
+      writes the command's assignments as statements the joined string is
+      re-read after -- every value of each name, in order, from the map as
+      collected (eval's own prefix counts as before it), and a name first
+      assigned at or after the `eval` opening with a value this hook does
+      not trust, so the re-read weighs each name as `_env_before()` does.
+    - The re-read replaced eval's older string-runner reading instead of
+      adding to it, so `eval 'git -c alias.p=push p origin HEAD'` -- the
+      founder's open git-alias fork at top level, but refused under `eval`
+      by that reading before gate8c -- was allowed. Fixed: both readings
+      apply, so gate8c refuses nothing the hook before it refused. The cost
+      of that is the older reading's own, unchanged by this round: an `eval`
+      string that names push as a word stays refused whatever it does
+      (`eval 'git push origin feat/x'`, `eval 'echo "do not push"'`) -- the
+      first build had allowed both, and pinned the first as an allowed twin;
+      that twin is withdrawn, and whether to allow such strings again (and
+      reopen the alias shape under `eval`) is left for the founder.
+    - Found by the same last call and NOT closed, since neither is the
+      default/alternate-value text the founder's word names, each measured
+      moving `main` and allowed before and after this round: a pattern-
+      substitution replacement holding push (`G=x; ${G/x/git push} origin
+      HEAD`), an indirect expansion (`P='git push'; G=P; ${!G} origin
+      HEAD`), a value assigned by `${G:=...}` in an earlier statement (`:
+      ${G:=git push}; $G origin HEAD`, the gate-r6 "value set any way but a
+      plain `NAME=value`" residual), and `builtin eval 'git push origin
+      HEAD'` (a program on neither list, the round-6 residual (4)). Left for
+      the founder.
+  - Pinned: `test_gate8c_last_call_shapes_are_real_pushes_the_hook_now_stops`
+    (5 bash shapes, real pushes against a local bare origin, refused gated
+    with main unmoved) and
+    `test_gate8c_eval_joins_its_arguments_before_re_reading_them` (the
+    two-argument join, proven the same way);
+    `test_gate8c_last_call_eval_shapes_are_real_pushes_the_hook_now_stops`
+    (the last call's 8 `eval` shapes: each moves `main` ungated, is allowed
+    and moves `main` under the first build, reconstructed by
+    `_GATE8C_FIRST_BUILD`, and is refused with `main` unmoved by this hook);
+    `test_gate8c_residual_four_boundary_still_refused` pins the round-6
+    residual (4) boundary case separately, still refused, not an allowed
+    twin; `test_gate8c_allowed_twins` pins 10 twins at exit 0, the founder's
+    named `ssh-agent` twin among them, alone and beside an assignment; 10
+    new `HOOK_MUTATIONS` cases (6 in the first build, 4 from the last call:
+    the re-read without the command's assignments, eval's own prefix read
+    as after it, a name first assigned after the `eval` trusted, and the
+    older reading dropped), each checked to flip its scenario's exit.
+    Reconstructing the gate-r7 "first
+    cut" for `test_r7_unrecognised_wrapper_shapes_are_refused_live_against_a_local_bare_origin`
+    now also strips gate8c's `eval` branch (`_R7_FIRST_CUT`), or the
+    reconstruction of a hook that predates gate8c by months would carry
+    gate8c's protection backwards and no longer reproduce the gap that
+    round's fix closed; two older r8 `HOOK_MUTATIONS` entries
+    (`r8_word_unresolved`, `r8_word_substitution_push`) are re-targeted at
+    `_whole_word_holds_push()`, the line they mutate having moved into it
+    by this round's refactor, with the same scenario commands, both
+    re-verified to still flip; one gate-r7 `HOOK_MUTATIONS` entry
+    (`r7_string_runner`) is re-targeted from `eval 'git push origin HEAD'`
+    to `watch 'git push origin HEAD'`, since eval's re-read refuses that
+    shape whatever the generic `reads_strings` code that entry mutates says
+    -- `watch` is read only by that code.
+  - Re-measured on this round's own tree, after the last call's
+    corrections: `test_require_pr_audit.py` 653 passed (618 before this
+    round, 639 at the first build), 157 `test_hook_mutations_are_killed`
+    cases all killed (147 before, 10 new); the full `ci.yml` scripts/ step
+    984 passed (949 before, 970 at the first build); `test_pr_audit_gate.py` 103,
+    unchanged. The CLAIMS row `ADR-0090-GATE-R8-UNREADABLE-AND-EXPANDED-PUSH`
+    re-measured with 14 more shapes (11 refused, 3 allowed): holds on this
+    hook, and exits 1 on the hook before this round and on the first build.
+    The transcript replay was re-run on the 80,100 recorded Bash commands
+    of gate-r8's replay: the hook before this round, the first build and
+    this one give identical verdicts on every command (389 refused), so
+    neither road changes a verdict on any command recorded here. Not done,
+    as before: no branch-protection or live-repo verification; this round's
+    shapes are measured under bash 5.3 only; `timeout` is not installed on
+    this machine.
+
 ### Amendment — 2026-09-17, founder pipeline redesign
 
 **Founder decision, verbatim, in the main session:** *"change ADR 90 to be a
@@ -2269,4 +2424,5 @@ un-anchored and 0 when restored.
 | 2026-09-21 | Aldemir (chat, gate lane review-trail round, gate-r6) | Closed the two residuals gate-r5 had only named (bullet above, "Named, not code-changed"), verbatim: **(1)** *"Bind it to the segment"* -- the literal-PR `gh api` exemption in `_github_api_merge_reason()` was granted on a gh-api reading of the WHOLE command, so `gh api user >/dev/null; curl -X PUT .../pulls/2/merge` was exempted by an unrelated `gh api` call; it is now granted only when `_merge_call_outside_gh_api()` finds no segment (top-level, in a substitution, or in a quoted string another shell runs) that names the endpoint without itself being the recognised `gh api` call. **(2)** *"Teach it export"* -- `_collect_assignments()` read a leading `export` as the command starting and skipped the `NAME=value` after it, so `export B=main; git push origin feat:$B` reached main; `export`, `export -n` and `export --` now assign as the bare form does. The last call found the first cut of each opened what HEAD refused -- surfaces in a heredoc body (a base Merges POST, a GraphQL auto-merge mutation, a non-literal-PR merge, a curl merge) and two `export` shapes resolved to a value the push never sees -- and corrected both (bracket on the gate-r5 bullet, above, with the residuals still named). Re-measured on this branch, not copied forward: `test_require_pr_audit.py` 286 passed; the full `ci.yml` scripts/ step (9 files, `scripts/jev/prompt_gate_test.py` folded in by this branch's merge with `origin/main`) 617 passed; `test_pr_audit_gate.py` 103, unchanged; `--self-test` 98 invariants held, unchanged; every `r6_*` HOOK_MUTATIONS mutant exits 0 on its scenario where the fix exits 2. Not done, stated plainly: no branch-protection or live-repo verification, same restriction as every prior round; the `gh api` finding is the hook's own verdict in the test harness, and only the export fix was also shown with a real push, against a local bare origin. |
 | 2026-09-21 | Aldemir (chat, relayed by the orchestrating session, gate lane review-trail round, gate-r7) | Closed the residual gate-r6 could only name (this ADR's own text, not his words: *"a push behind an env prefix or a wrapper (`X=1 git push origin HEAD`, `nohup git push origin HEAD`), which `_direct_push_problem()` skips because the segment's first word is not git."*). His answer, as relayed: *"CLOSE the env-prefix / wrapper push hole, fail closed - a push behind leading assignments or a wrapper (nohup, env, command, time, exec, sudo, xargs, a shell -c with a literal string) run from a main checkout is read like a bare push; an unrecognised wrapper shape is refused."* Disposition of the two shapes named with it, as relayed: other assignment forms (`declare`, `typeset`, `readonly`, `local`, `read`, `eval`, `NAME+=`) -- **keep trusting them** (named residual, not widened); heredoc/comment text -- **keep the current reading**. Built as three readings (recognised: read like a bare push; a shell running a string: re-read, expansion refused; unrecognised: refused whatever the destination) in the gate-r7 bracket above. The last call found the first cut had read only a bare named wrapper and an exact `shell -c`, and had recorded four open shapes (`sudo -u root`, `env -i`, `xargs -I{}`, `bash --norc -c`) as residuals he had not named; corrected, and five shapes proven with a real push against a local bare origin, first cut allowed and moved main, fix refused and main stayed. `test_require_pr_audit.py` 366 passed (286 at gate-r6); the full `ci.yml` scripts/ step 697 passed (617 at gate-r6); `test_pr_audit_gate.py` 103, unchanged. |
 | 2026-09-21 | Aldemir (chat, relayed by the orchestrating session, round 6, gate-r8) | His answer to the gate-r7 last call's four recommendations, verbatim: *"Take all four"*. As relayed, that is: (1) a word shlex cannot close -- road (b), re-read with the heredoc-aware `_lex` reader and refuse only if that also fails; (2) git named by an expansion -- road (a), resolve a command word through the same-command assignments `_collect_assignments()` collects and refuse an unresolved `$`-built command word followed by push; (3) accept that a heredoc body line naming `git push` after another word, or `echo git push origin HEAD`, is refused, the text going through a file with `-F`, and make the refusal say so; (4) keep "a quoted string handed to a program on neither list" as a named residual, unchanged. Built in the gate-r8 section above, with three shapes found while building and closed under rules already recorded (a push inside a double-quoted substitution, a value that is itself an expansion or an array, a command both readings misread). Fourteen shapes exit 0 on gate-r7's hook and exit 2 on gate-r8's; a replay of 79,404 recorded Bash commands refuses 54 more and allows none it refused. Left for him: a git alias the command defines for itself, and the `docker --config $DIR push` cost. `test_require_pr_audit.py` 484 passed (366 at gate-r7), 98 mutation cases all killed; the full `ci.yml` scripts/ step 815 passed (697 at gate-r7); `test_pr_audit_gate.py` 103, unchanged. [Finished in the 2026-09-22 row below: its last call found more pushes in the same two roads.] |
-| 2026-09-22 | Aldemir (chat, relayed by the orchestrating session, gate-r8 last call) | On the fork the gate-r8 last call put to him (finish its unstaged fix in this PR, or merge with its five kinds named as residuals), verbatim: *"check claude cli, 0dc07485-0b74-4712-aa1f-c43ab67f6dbc, make sure it din't do anything different. if not finish in this PR"*. The orchestrating session checked that session (the merge train): no gate edits. Finished here (gate-r8 section, "Finished, same PR"): the last call's 21 shapes and 36 more the unfinished fix still let through, each a real push, are refused; the two surviving mutation cases re-pinned to a real push only the line reading sees; the replay of 80,100 recorded commands gives verdicts identical to the first cut's. Left for him: a heredoc body a program that is not a shell runs (`python3 - <<'EOF'`). `test_require_pr_audit.py` 618 passed, 147 mutation cases all killed; the full `ci.yml` scripts/ step 949 passed. |
+| 2026-09-22 | Aldemir (chat, relayed by the orchestrating session, gate-r8 last call) | On the fork the gate-r8 last call put to him (finish its unstaged fix in this PR, or merge with its five kinds named as residuals), verbatim: *"check claude cli, 0dc07485-0b74-4712-aa1f-c43ab67f6dbc, make sure it din't do anything different. if not finish in this PR"*. The orchestrating session checked that session (the merge train): no gate edits. Finished here (gate-r8 section, "Finished, same PR"): the last call's 21 shapes and 36 more the unfinished fix still let through, each a real push, are refused; the two surviving mutation cases re-pinned to a real push only the line reading sees; the replay of 80,100 recorded commands gives verdicts identical to the first cut's. Left for him: a heredoc body a program that is not a shell runs (`python3 - <<'EOF'`). `test_require_pr_audit.py` 618 passed, 147 mutation cases all killed; the full `ci.yml` scripts/ step 949 passed. [Finished in the round-6y row below: an Opus last call on this finished pass found five more real pushes in the same two roads.] |
+| 2026-09-22 | Aldemir (chat, relayed by the orchestrating session, round 6y, gate8c) | On the fork an Opus last call on the finished gate-r8 pass put to him (finish the two remaining roads' five real pushes in this PR, or merge with them named as residuals), his pick, verbatim, as relayed: *"Close them here (Recommended)"* -- close the five real pushes the last call found: (1) a whole `${...}` command word whose default/alternate-value text holds push, refused like a whole `$(...)` holding push already is, including the IFS-split variant; (2) `eval`'s joined arguments re-read as a command string, the way a `bash -c` string already is, so the same IFS and quoting closures reach `eval` too. Built in the gate-r8 section above ("Closed on the founder's 2026-09-22 word, same PR (gate8c)"): both mechanisms, pinned with real-push tests against a local bare origin, allowed twins (his named `eval "$(ssh-agent -s)"` twin holds), and 10 new mutation cases; an Opus last call the same day found the `eval` re-read as first built let through what the hook before it refused (`C='git push origin HEAD'; eval "$C"`, `eval 'git -c alias.p=push p origin HEAD'`) and never read an IFS set before the `eval`, each measured moving a bare origin's main, and corrected it: the string is re-read after the command's own assignments, and eval's older string-runner reading still applies beside it; the round-6 named residual (4) boundary (`${G:-git} push origin HEAD`) is unaffected and stays refused, pinned separately so it is not mistaken for an allowed twin. ADR 0090's gate-r8 section and the CLAIMS row `ADR-0090-GATE-R8-UNREADABLE-AND-EXPANDED-PUSH` (14 more shapes: 11 refused, 3 allowed) both updated to match what is built. `test_require_pr_audit.py` 653 passed (618 at the last call), 157 mutation cases all killed (147 before, 10 new); the full `ci.yml` scripts/ step 984 passed (949 before, 970 at the first build); `test_pr_audit_gate.py` 103, unchanged; the 80,100-command transcript replay gives identical verdicts before and after. Left for him: whether `eval` strings naming push as a word (`eval 'git push origin feat/x'`) should be allowed again, and four more real pushes the last call found outside his word (a pattern-substitution replacement, an indirect expansion, a `${G:=...}` assignment, `builtin eval`). Not done, as before: no branch-protection or live-repo verification. |

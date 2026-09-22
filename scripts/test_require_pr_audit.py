@@ -1669,6 +1669,13 @@ _R7_FIRST_CUT = (
      "        return None\n"),
     ("    if not any(_SHELL_C_OPTION_RE.match(t) for t in rest):\n",
      "    if rest[:1] != [\"-c\"]:\n"),
+    # gate8c (round 6y, 2026-09-22) gave `eval` its own re-reading, added
+    # ABOVE the `_unrecognised_wrapper_push_reason` fallback the first patch
+    # above already neutralises for this reconstruction. Reconstructing the
+    # r7-era hook (long before gate8c existed) has to strip this branch too,
+    # or `eval '<push>'` still gets gate8c's protection here and the
+    # "first cut" no longer reproduces the r7-era gap it exists to prove.
+    ('        if name == "eval":\n', "        if False:\n"),
 )
 
 
@@ -2186,6 +2193,141 @@ def test_r8_finishing_pass_named_residuals_are_still_not_seen(two, command):
 
 
 # --------------------------------------------------------------------------- #
+# gate8c (round 6y, 2026-09-22). Founder's word, verbatim, as relayed: "Close
+# them here (Recommended)" -- close the five real pushes the gate-r8 last
+# call found and left NOT READY, each measured moving a bare origin's main
+# under bash, unfixed:
+#   (1) a whole `${...}` command word whose default/alternate-value text
+#       holds push, including the IFS-split variant (_whole_word_holds_push);
+#   (2) eval's joined arguments, re-read as a command string the way a
+#       `bash -c` string already is (_eval_string_push_reason).
+# --------------------------------------------------------------------------- #
+
+_GATE8C_BASH = [
+    # (1) A whole `${...}` command word's default/alternate-value text holds
+    # push, plain and with the `-` (no colon) operator.
+    "${G:-git push} origin HEAD",
+    "${G-git push} origin HEAD",
+    # (1) The same, with a same-command IFS splitting the default text itself
+    # -- the IFS-split variant named alongside it.
+    "IFS=x; ${W:-gitxpush} origin HEAD",
+    # (2) eval's argument is a plain quoted string, itself a multi-statement
+    # shell fragment: an IFS assignment, a value assignment, then an
+    # unquoted reference the same-command IFS splits into git and push.
+    "eval 'IFS=x; W=gitxpush; $W origin HEAD'",
+    # (2) The same, but eval's argument is a double-quoted substitution whose
+    # heredoc body -- carried straight through, unread before this round --
+    # is the string that actually holds the push.
+    "eval \"$(cat <<'EOF'\nIFS=x\nW=gitxpush; $W origin HEAD\nEOF\n)\"",
+]
+
+
+@pytest.mark.parametrize("command", _GATE8C_BASH)
+def test_gate8c_last_call_shapes_are_real_pushes_the_hook_now_stops(tmp_path, command):
+    """Each shape, run with no hook, moves the bare origin's main from a
+    checkout of main (gate-r8's staged hook allowed every one: measured, exit
+    0, recorded in ADR 0090's gate-r8 section, "Last call, NOT READY"); gated
+    by this hook the way a Bash call is, it is now refused and main does not
+    move."""
+    assert _ungated_push_moves_main(tmp_path / "ungated", command), command
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+
+
+def test_gate8c_eval_joins_its_arguments_before_re_reading_them(tmp_path):
+    """eval's real semantics: every argument is concatenated into ONE string
+    before it is re-read, unlike `bash -c`'s separate positional arguments.
+    Neither argument alone holds a push -- the first is two assignments with
+    nothing run after them, and the second has no literal "push" or "git" at
+    all -- only the two joined together, exactly as the shell joins them, do.
+    A real push (measured moving a bare origin's main), refused only because
+    the arguments are joined before this hook re-reads them."""
+    command = "eval 'IFS=x; W=gitxpush;' '$W origin HEAD'"
+    assert _ungated_push_moves_main(tmp_path / "ungated", command), command
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+
+
+def test_gate8c_residual_four_boundary_still_refused(two):
+    """Not the founder's round-6 residual (4), and not an allowed twin: a
+    command word built by expansion holding ONLY "git", with a literal
+    "push" as its own following word, was already read as git with push
+    right after it (`_push_follows`) -- refused before this round and
+    unchanged by it. Pinned here, separately from the allowed twins below,
+    because it stays refused, not allowed."""
+    clone, _h, env = two
+    out = run_hook(clone, env, "${G:-git} push origin HEAD")
+    assert out.returncode == 2, out.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # The founder's named allowed twin: eval's argument is a substitution
+    # this hook cannot resolve (it does not run ssh-agent), and the text has
+    # no "push" or "git" anywhere -- eval re-reads it and finds no push,
+    # exactly as it did before this round.
+    'eval "$(ssh-agent -s)"',
+    # A `${...}` default holding an ordinary git command, not a push.
+    "${G:-git status} origin HEAD",
+    "${G:-git fetch}",
+    # A default/alternate-value expansion wholly unrelated to git.
+    "X=1; ${Y:-echo done}",
+    "${Z:=build}",
+    # eval running an ordinary command is read exactly as a bare one already
+    # is -- not over-blocked by the new recursive reading.
+    "eval 'git status'",
+    "eval echo hello",
+    # Re-read after the command's own assignments (gate8c last call), the
+    # twin stays a twin: an assignment beside it gives the unresolved
+    # substitution nothing, a resolved git runs no push, and a value that
+    # names push but is only echoed runs none either.
+    'X=1; eval "$(ssh-agent -s)"',
+    "G=git; eval '$G status'",
+    "MSG='push notes'; eval 'echo $MSG'",
+])
+def test_gate8c_allowed_twins(two, command):
+    clone, _h, env = two
+    out = run_hook(clone, env, command)
+    assert out.returncode == 0, (command, out.stderr)
+
+
+# gate8c last call (2026-09-22): the eval re-read as first built opened what
+# HEAD refused and left the same-command IFS unread. Each shape, run with no
+# hook, moves the bare origin's main; the first build (reconstructed by the
+# two replacements below) allowed it and main moved; this hook refuses it.
+#   - Re-read ALONE, the string lost the command's own assignments, which
+#     `eval` -- unlike a `bash -c` child -- runs under: `$C` and `$W` were
+#     unset in the re-read (the first three were refused before gate8c).
+#   - It replaced eval's older string-runner reading instead of adding to
+#     it: the git alias shape was refused before gate8c by that reading.
+_GATE8C_FIRST_BUILD = (
+    ("    return _direct_push_problem(outer + joined, _depth + 1)\n",
+     "    return _direct_push_problem(joined, _depth + 1)\n"),
+    ("                    or _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned,\n"
+     "                                                         wrapped, _depth))\n",
+     "                    or None)\n"),
+)
+
+
+@pytest.mark.parametrize("command", [
+    "C='git push origin HEAD'; eval \"$C\"",
+    "C='git push origin HEAD'; eval '$C'",
+    "C='git push origin HEAD'; eval eval '$C'",
+    "C='git push origin HEAD'; eval 'eval \"$C\"'",
+    "IFS=x; W=gitxpush; eval '$W origin HEAD'",
+    # eval's own prefix is in force while it runs (a special builtin's).
+    "W=gitxpush; IFS=x eval '$W origin HEAD'",
+    "A=gitxpu; B=sh; IFS=x eval '$A$B origin HEAD'",
+    "eval 'git -c alias.p=push p origin HEAD'",
+])
+def test_gate8c_last_call_eval_shapes_are_real_pushes_the_hook_now_stops(tmp_path, command):
+    first_build = HOOK.read_text()
+    for old, new in _GATE8C_FIRST_BUILD:
+        assert first_build.count(old) == 1, old
+        first_build = first_build.replace(old, new, 1)
+    assert _ungated_push_moves_main(tmp_path / "ungated", command), command
+    assert _gated_push_moves_main(tmp_path / "first", first_build, command) == (0, True), command
+    assert _gated_push_moves_main(tmp_path / "gated", HOOK.read_text(), command) == (2, False), command
+
+
+# --------------------------------------------------------------------------- #
 # Mutations of the hook: each must turn at least one scenario above red.
 # (name, text that must occur exactly once, replacement, scenario)
 # --------------------------------------------------------------------------- #
@@ -2385,11 +2527,11 @@ HOOK_MUTATIONS = [
      '        if re.search(r"[$`]", tok):\n            # gate-r8 (2), road (a)',
      "        if False:\n            # gate-r8 (2), road (a)", "r8_word_resolved"),
     ("r8: an unresolved command word followed by push not refused",
-     "                if _push_follows(seg, i) or (_WHOLE_SUBSTITUTION_RE.fullmatch(tok)\n",
-     "                if False or (_WHOLE_SUBSTITUTION_RE.fullmatch(tok)\n", "r8_word_unresolved"),
+     "                if _push_follows(seg, i) or _whole_word_holds_push(tok, env_here):\n",
+     "                if False or _whole_word_holds_push(tok, env_here):\n", "r8_word_unresolved"),
     ("r8: an unresolved command word that is one substitution holding push not refused",
-     "                if _push_follows(seg, i) or (_WHOLE_SUBSTITUTION_RE.fullmatch(tok)\n",
-     "                if _push_follows(seg, i) or (False\n", "r8_word_substitution_push"),
+     "                if _push_follows(seg, i) or _whole_word_holds_push(tok, env_here):\n",
+     "                if _push_follows(seg, i) or False:\n", "r8_word_substitution_push"),
     ("r8: an unresolved command word not followed by push no longer read as an unrecognised shape",
      "                return _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned,\n"
      "                                                         wrapped, _depth)\n",
@@ -2626,6 +2768,37 @@ HOOK_MUTATIONS = [
     ("r8 finish: a name under a zsh flag in parentheses not found",
      '_PARAM_NAME_RE = re.compile(r"\\$\\{(?:\\([^)]*\\))?[=~^]*(\\w+)|\\$[=~^]*(\\w+)")\n',
      '_PARAM_NAME_RE = re.compile(r"\\$\\{[=~^]*(\\w+)|\\$[=~^]*(\\w+)")\n', "r8f_zsh_flags"),
+    # --------------------------------------------------------------------- #
+    # gate8c (round 6y, 2026-09-22). Founder's word: "Close them here
+    # (Recommended)" -- the five real pushes gate-r8's last call found.
+    # --------------------------------------------------------------------- #
+    ("gate8c: a whole `${...}` default/alternate-value word not matched at all",
+     "    m = _PARAM_DEFAULT_RE.match(tok)\n    if not m:\n        return False\n",
+     "    m = None\n    if not m:\n        return False\n", "g8c_param_default"),
+    ("gate8c: its resolved default-text words not checked for push",
+     '    return any(w.lower() == "push" for w in words)\n', "    return False\n", "g8c_param_default_split"),
+    ("gate8c: its unresolved default text not checked for push (the fallback the plain $(...) word-boundary check already has)",
+     '        return bool(re.search(r"(?i)\\bpush\\b", m.group(1)))\n', "        return False\n",
+     "g8c_param_default_unresolved"),
+    ("gate8c: eval no longer re-reads its arguments as a command string",
+     '        if name == "eval":\n', "        if False:\n", "g8c_eval"),
+    ("gate8c: eval's joined string not recursively re-read",
+     '    return _direct_push_problem(outer + joined, _depth + 1)\n', "    return None\n", "g8c_eval"),
+    ("gate8c last call: eval's string re-read without the command's own assignments",
+     '    return _direct_push_problem(outer + joined, _depth + 1)\n',
+     '    return _direct_push_problem(joined, _depth + 1)\n', "g8c_eval_outer_ifs"),
+    ("gate8c last call: eval's own prefix read as after it, the way an ordinary command's is",
+     "                                             _eval_outer_statements(outer, seg_start + i))\n",
+     "                                             _eval_outer_statements(assigned, seg_start + i))\n",
+     "g8c_eval_own_prefix"),
+    ("gate8c last call: a name eval may read before its first assignment trusted as that value",
+     '            statements.append(f"{name}=$_")\n', "            pass\n", "g8c_eval_outer_later"),
+    ("gate8c last call: eval's older string-runner reading dropped (the first build)",
+     "                    or _unrecognised_wrapper_push_reason(seg, i, seg_start, assigned,\n"
+     "                                                         wrapped, _depth))\n",
+     "                    or None)\n", "g8c_eval_alias"),
+    ("gate8c: eval's arguments not joined before re-reading them (the first alone holds no push)",
+     '    joined = " ".join(rest)\n', "    joined = rest[0]\n", "g8c_eval_joined"),
 ]
 
 # (command, exit the unmutated hook gives, tool, extra environment)
@@ -2755,7 +2928,11 @@ SCENARIOS = {
     "r7_unrecognised_any_destination": lambda h: ("timeout 60 git push -u origin feat/x", 2, None, {}),
     "r7_shell_option_cluster": lambda h: ("sh -ec 'git push origin HEAD'", 2, None, {}),
     "r7_wrapped_string": lambda h: ("env -S 'git push origin HEAD'", 2, None, {}),
-    "r7_string_runner": lambda h: ("eval 'git push origin HEAD'", 2, None, {}),
+    # gate8c gave `eval` its own dedicated re-reading (above), which now
+    # intercepts it before this generic reads_strings check is ever reached,
+    # so `eval` itself no longer distinguishes this mutation; `watch` is
+    # still read only through _STRING_RUNNING_PROGRAMS here.
+    "r7_string_runner": lambda h: ("watch 'git push origin HEAD'", 2, None, {}),
     "r7_shell_behind_unrecognised": lambda h: ("timeout 5 bash -c 'git push origin feature'", 2, None, {}),
     # gate-r8 (2026-09-21, round 6).
     "r8_push_var_fragment": lambda h: ("B=<(echo main); git push origin HEAD:$B", 2, None, {}),
@@ -2887,6 +3064,31 @@ SCENARIOS = {
     # A prefix gives the command's own words nothing: `${(z)G}` is the
     # caller's G (unset here), so this runs no push.
     "r8f_prefix_value": lambda h: ('G="git push origin HEAD" ${(z)G}', 0, None, {}),
+    # gate8c (round 6y, 2026-09-22). Founder's word: "Close them here
+    # (Recommended)" -- the five real pushes gate-r8's last call found.
+    "g8c_param_default": lambda h: ("${G:-git push} origin HEAD", 2, None, {}),
+    # The same-command IFS split reaching the default text itself.
+    "g8c_param_default_split": lambda h: ("IFS=x; ${W:-gitxpush} origin HEAD", 2, None, {}),
+    # The default text holds an unresolved `$X` alongside the literal
+    # "push": `_expansion_words` cannot resolve it (None), so only the
+    # unresolved-text fallback's word-boundary check sees the push.
+    "g8c_param_default_unresolved": lambda h: ("${G:-$X push} origin HEAD", 2, None, {}),
+    "g8c_eval": lambda h: ("eval 'IFS=x; W=gitxpush; $W origin HEAD'", 2, None, {}),
+    # eval's two arguments joined with a blank before re-reading: neither
+    # argument alone holds a push.
+    "g8c_eval_joined": lambda h: ("eval 'IFS=x; W=gitxpush;' '$W origin HEAD'", 2, None, {}),
+    # gate8c last call. eval re-reads its string in the same shell, under the
+    # command's own assignments: the IFS set before it splits `$W`.
+    "g8c_eval_outer_ifs": lambda h: ("IFS=x; W=gitxpush; eval '$W origin HEAD'", 2, None, {}),
+    # ... and under its own prefix (neither value names push, so only the
+    # split reading sees `$A$B` become git push).
+    "g8c_eval_own_prefix": lambda h: ("A=gitxpu; B=sh; IFS=x eval '$A$B origin HEAD'", 2, None, {}),
+    # B is assigned only after the eval, so the eval may see the caller's own
+    # B (main): read as `feat`, the push would pass.
+    "g8c_eval_outer_later": lambda h: ("IFS=x; W=gitxpush; eval '$W origin HEAD:$B'; B=feat", 2, None, {}),
+    # The string-runner reading eval had before gate8c, still applied: the
+    # re-read alone reads a git alias the command defines as not a push.
+    "g8c_eval_alias": lambda h: ("eval 'git -c alias.p=push p origin HEAD'", 2, None, {}),
 }
 
 
