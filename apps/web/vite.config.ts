@@ -2,13 +2,17 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { crawlSurface } from './src/lib/seo/vite-plugin'
+import { buildProvenancePlugin } from './src/lib/build-provenance'
 
 // https://vitejs.dev/config/
 // Using @vitejs/plugin-react (Babel) instead of react-swc due to SWC binary issues
 export default defineConfig({
-  // crawlSurface writes robots.txt, sitemaps, llms.txt and each public
-  // route's served head from the built shell (ADR 0158). Build only.
-  plugins: [react(), crawlSurface()],
+  // buildProvenancePlugin writes the <meta name="mudavym:commit"> tag every
+  // served page carries (ADR 0219); crawlSurface writes robots.txt, sitemaps,
+  // llms.txt and each public route's served head from the built shell (ADR
+  // 0158), reading dist/index.html AFTER Vite has already written it with the
+  // commit tag in place (see build-provenance.ts's own note on hook order).
+  plugins: [react(), buildProvenancePlugin(), crawlSurface()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
