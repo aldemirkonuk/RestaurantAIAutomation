@@ -41,10 +41,6 @@ export interface GuidanceState {
   global: {
     hide_all_tips: boolean
     tips_snoozed_until?: string
-    /** Preference: render FAB when unlocked/activated */
-    show_wine_agent_fab: boolean
-    /** Explicit unlock from Learn (invitees / skip-import) */
-    wine_agent_fab_unlocked?: boolean
   }
   pages: Partial<Record<PageTourId, PageGuidanceState>>
   guide: {
@@ -56,7 +52,6 @@ export interface GuidanceState {
 export const DEFAULT_GUIDANCE_STATE: GuidanceState = {
   global: {
     hide_all_tips: false,
-    show_wine_agent_fab: true,
   },
   pages: {},
   guide: {

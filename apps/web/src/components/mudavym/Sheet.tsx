@@ -74,22 +74,8 @@ import {
 } from './overlayState';
 import './sheet.css';
 
-/* ── Fraunces ─────────────────────────────────────────────────────────────
-   index.html loads DM Sans / Plus Jakarta Sans / JetBrains Mono but not the
-   house serif, and index.html is shared. The id matches the page-level helpers
-   (pages/dashboard/next/fonts.ts:10) so all three inject at most one link. */
-const FRAUNCES_LINK_ID = 'mudavym-fraunces';
-
-function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FRAUNCES_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FRAUNCES_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
+/* Fraunces is self-hosted — `@font-face` in `styles/mudavym.css` (decision
+   0149 row 9). No runtime Google Fonts link. */
 
 /* The document-level state — the counted scroll lock, the Escape stack, the
    page-width hooks and the label memo — lives in `overlayState.ts`, so this file
@@ -607,10 +593,6 @@ function OverlayRoot({
       readGroundFromDom(anchor) ?? (shell.on ? shell.ground : readShellGroundFromDom()),
     );
   }, [open, ground, ctxGround, anchorRef, shell.on, shell.ground]);
-
-  useEffect(() => {
-    if (open) ensureFraunces();
-  }, [open]);
 
   /* A label that reads like a title is the defect this pass fixed, arriving
      again through the caller. Dev only, once per distinct label, and only while

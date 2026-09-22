@@ -14,9 +14,9 @@ test.describe('Navigation Guards', () => {
   })
 
   test('public routes accessible without auth', async ({ page }) => {
-    // /login — should render without redirect
+    // /login — should render without redirect (endpaper door, ADR 0149 row 35)
     await page.goto('/login')
-    await expect(page.getByRole('heading', { name: 'Mudavym' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible()
     expect(page.url()).toContain('/login')
 
     // /register — should render without redirect
@@ -46,14 +46,13 @@ test.describe('Navigation Guards', () => {
 
   test('register page exposes account form fields', async ({ page }) => {
     await page.goto('/register')
-    // Register opens on a path selector ("Join Your Team" / "Open a Restaurant");
-    // the email/password inputs render only after choosing a flow. The
-    // "Open a Restaurant" (create) flow shows the account form (email + password)
-    // directly in step 1.
-    await expect(page.getByText('Open a Restaurant').first()).toBeVisible({
+    // Public design (ADR 0149 row 35 / sketch 118): two plain acts; create is
+    // "I'm opening a new house". Legacy copy "Open a Restaurant" is gone when
+    // the public switch is on (which it is in code per row 37).
+    await expect(page.getByRole('button', { name: "I'm opening a new house" })).toBeVisible({
       timeout: 10000,
     })
-    await page.getByText('Open a Restaurant').first().click()
+    await page.getByRole('button', { name: "I'm opening a new house" }).click()
     // Create flow step 1 ("Your Account") inputs are reachable through their
     // associated labels (htmlFor/id) — this test guards that association.
     await expect(page.getByLabel('Full Name')).toBeVisible({ timeout: 10000 })

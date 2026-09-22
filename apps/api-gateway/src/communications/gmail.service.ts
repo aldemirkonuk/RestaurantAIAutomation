@@ -5,6 +5,15 @@ import { OAuth2Client } from "google-auth-library";
 import * as nodemailer from "nodemailer";
 import { htmlToText } from "../common/html/html-to-text";
 import {
+  addressListHeader,
+  base64Body,
+  mailboxHeader,
+  messageIdHeader,
+  MimeHeaderError,
+  threadingHeader,
+  unstructuredHeader,
+} from "./mime-headers";
+import {
   lowStockAlertTemplate,
   lowStockDigestTemplate,
   type LowStockDigestData,
@@ -46,6 +55,59 @@ export interface EmailOptions {
   inReplyTo?: string;
   references?: string;
   messageIdHeader?: string;
+  /**
+   * Display name on the From line. Absent means "Mudavym", the name every
+   * existing caller sends since the one-pass rename (ADR 0149, round 11). Only
+   * the recommendations digest passes one today ("Mudavym"). CR, LF, quotes and angle brackets are
+   * stripped, so a name cannot open a second header.
+   */
+  fromName?: string;
+  /**
+   * RFC 2369 `List-Unsubscribe`, plus RFC 8058 `List-Unsubscribe-Post` when
+   * `oneClick` is set. Only an http(s) URL with no whitespace or angle brackets
+   * is emitted; anything else is dropped rather than half-written.
+   */
+  listUnsubscribe?: { url: string; oneClick?: boolean };
+}
+
+/** The display name, made safe to sit inside a quoted From header. */
+export function safeFromName(name: string | undefined): string {
+  const cleaned = (name ?? "").replace(/[\r\n"<>\\]+/g, " ").trim();
+  return cleaned || "Mudavym";
+}
+
+/**
+ * The display name as it may be written RAW into a MIME From header (the Gmail
+ * API path builds its own header block; nodemailer does this for the SMTP path).
+ *
+ *  - Plain atext and spaces ("Mudavym", "Meyhouse Palo Alto") are written bare,
+ *    so every existing caller's From line stays a plain name.
+ *  - Any other ASCII (an RFC 5322 special such as `,` `:` `;` `@` `.` `(`) is
+ *    quoted: bare, "Meyhouse, Palo Alto" would parse as two mailboxes.
+ *    `safeFromName` has already removed `"` and `\`, so the quoted form needs no
+ *    escaping.
+ *  - Non-ASCII is an RFC 2047 encoded-word, which must not sit inside quotes.
+ */
+export function fromDisplayName(name: string | undefined): string {
+  const safe = safeFromName(name);
+  if (/^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]+$/.test(safe)) return safe;
+  if (/^[\x20-\x7e]+$/.test(safe)) return `"${safe}"`;
+  return `=?UTF-8?B?${Buffer.from(safe, "utf8").toString("base64")}?=`;
+}
+
+/** The List-Unsubscribe headers for `options`, or [] when none may be written. */
+export function listUnsubscribeHeaders(
+  spec: EmailOptions["listUnsubscribe"],
+): Array<[string, string]> {
+  if (!spec || typeof spec.url !== "string") return [];
+  if (!/^https?:\/\/[^\s<>]+$/.test(spec.url)) return [];
+  const headers: Array<[string, string]> = [
+    ["List-Unsubscribe", `<${spec.url}>`],
+  ];
+  if (spec.oneClick) {
+    headers.push(["List-Unsubscribe-Post", "List-Unsubscribe=One-Click"]);
+  }
+  return headers;
 }
 
 export interface EmailResult {
@@ -54,6 +116,12 @@ export interface EmailResult {
   threadId?: string;
   rfc822MessageId?: string;
   error?: string;
+  /**
+   * true when mime-headers.ts refused to build the message (ADR 0172): Gmail
+   * was never called, so the recipient provably did not get it, and the cause
+   * is the data (an address or message id), never the Gmail credentials.
+   */
+  refusedBeforeSend?: boolean;
 }
 
 @Injectable()
@@ -77,7 +145,7 @@ export class GmailService implements OnModuleInit {
     const refreshToken = this.configService.get<string>("GMAIL_REFRESH_TOKEN");
     this.senderEmail =
       this.configService.get<string>("GMAIL_SENDER_EMAIL") ||
-      "notifications@wineops.ai";
+      "notifications@mudavym.com";
 
     if (!clientId || !clientSecret || !refreshToken) {
       this.logger.warn(
@@ -120,7 +188,7 @@ export class GmailService implements OnModuleInit {
 
       // Resolve the actual sender address from the Gmail profile so the From
       // header matches the OAuth2-authorized account. Using a mismatched From
-      // (e.g. notifications@wineops.ai when the account is a @gmail.com address)
+      // (e.g. notifications@mudavym.com when the account is a @gmail.com address)
       // fails SPF/DKIM alignment and lands in spam.
       try {
         const profile = await this.gmail.users.getProfile({ userId: "me" });
@@ -212,6 +280,7 @@ export class GmailService implements OnModuleInit {
       return {
         success: false,
         error: errorMessage,
+        ...(error instanceof MimeHeaderError && { refusedBeforeSend: true }),
       };
     }
   }
@@ -248,7 +317,7 @@ ${daysUntilStockout ? `Days Until Stockout: ~${daysUntilStockout} days` : ""}
 ${data.recommendedQty ? `Recommended Action: Order ${data.recommendedQty} bottles from ${data.preferredSupplier || "preferred supplier"}` : ""}
 ${data.estimatedDelivery ? `Estimated Delivery: ${data.estimatedDelivery}` : ""}
 
-This is an automated alert from WineOps AI.
+This is an automated alert from Mudavym.
     `.trim();
 
     return this.sendEmail({
@@ -287,7 +356,7 @@ This is an automated alert from WineOps AI.
           }`,
       ),
       "",
-      "This is an automated digest from WineOps AI.",
+      "This is an automated digest from Mudavym.",
     ].join("\n");
 
     return this.sendEmail({
@@ -446,6 +515,8 @@ This is an automated alert from WineOps AI.
     to: string[];
     restaurantName: string;
     orderId: string;
+    /** The order's row id, for the link; orderId is the display number. */
+    orderUuid?: string;
     providerName: string;
     expectedDate: Date | string;
     expectedTimeWindow?: string;
@@ -595,20 +666,39 @@ This is an automated alert from WineOps AI.
    */
   private createMimeMessage(options: EmailOptions): string {
     const boundary = `boundary_${Date.now()}`;
+    // The house's own name (ADR 0149 / PR #391) reaches the From header, and it
+    // is handed to ADR 0172's encoder RAW: mailboxPieces already collapses
+    // control characters and escapes `"` and `\` inside the quoted form, so a
+    // house actually called `Ops "Night" Desk` keeps its quotes. safeFromName
+    // would delete them; it stays for the nodemailer path, which builds its own
+    // header block.
+    const fromName = options.fromName?.trim() || "Mudavym";
     const generatedMessageId =
       options.messageIdHeader ||
       `<wineops-${Date.now()}-${Math.random().toString(36).slice(2)}@wineops.ai>`;
 
+    // Every value goes through mime-headers.ts (ADR 0172): free text is RFC 2047
+    // encoded with CR/LF collapsed, addresses and our own Message-ID are refused on a
+    // control character; the vendor's In-Reply-To/References are rebuilt from
+    // their <msg-id> tokens, never refused. A refusal throws inside sendEmail's try and comes back
+    // as { success: false } — nothing is sent with a half-built header block.
     const headers = [
-      `From: WineOps AI <${this.senderEmail}>`,
-      `To: ${options.to.join(", ")}`,
-      options.cc?.length ? `Cc: ${options.cc.join(", ")}` : "",
-      options.bcc?.length ? `Bcc: ${options.bcc.join(", ")}` : "",
-      options.replyTo ? `Reply-To: ${options.replyTo}` : "",
-      `Message-ID: ${generatedMessageId}`,
-      options.inReplyTo ? `In-Reply-To: ${options.inReplyTo}` : "",
-      options.references ? `References: ${options.references}` : "",
-      `Subject: ${options.subject}`,
+      mailboxHeader("From", fromName, this.senderEmail),
+      addressListHeader("To", options.to),
+      options.cc?.length ? addressListHeader("Cc", options.cc) : "",
+      options.bcc?.length ? addressListHeader("Bcc", options.bcc) : "",
+      options.replyTo ? addressListHeader("Reply-To", [options.replyTo]) : "",
+      messageIdHeader("Message-ID", generatedMessageId),
+      threadingHeader("In-Reply-To", options.inReplyTo),
+      threadingHeader("References", options.references),
+      unstructuredHeader("Subject", options.subject),
+      // List-Unsubscribe carries structured URIs, not free text: RFC 2047 must
+      // NOT touch them. listUnsubscribeHeaders already refuses anything that is
+      // not `https?://` with no whitespace or angle brackets, so no CR/LF can
+      // reach the header block through this path.
+      ...listUnsubscribeHeaders(options.listUnsubscribe).map(
+        ([name, value]) => `${name}: ${value}`,
+      ),
       "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ]
@@ -617,15 +707,20 @@ This is an automated alert from WineOps AI.
 
     const textPart = options.text || this.htmlToPlainText(options.html);
 
+    // base64, not 8bit: the parts carry ₺, —, and Turkish letters, and 7bit is
+    // the default when no Content-Transfer-Encoding is declared. The base64
+    // alphabet has no "_", so no part can contain the `boundary_…` delimiter.
     const body = [
       `--${boundary}`,
       'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
       "",
-      textPart,
+      base64Body(textPart),
       `--${boundary}`,
       'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
       "",
-      options.html,
+      base64Body(options.html),
       `--${boundary}--`,
     ].join("\r\n");
 
@@ -680,7 +775,10 @@ This is an automated alert from WineOps AI.
     });
 
     const info = await transporter.sendMail({
-      from: `"WineOps AI" <${this.senderEmail}>`,
+      from: `"${safeFromName(options.fromName)}" <${this.senderEmail}>`,
+      headers: Object.fromEntries(
+        listUnsubscribeHeaders(options.listUnsubscribe),
+      ),
       to: options.to.join(", "),
       cc: options.cc?.length ? options.cc.join(", ") : undefined,
       bcc: options.bcc?.length ? options.bcc.join(", ") : undefined,
@@ -713,20 +811,24 @@ This is an automated alert from WineOps AI.
     restaurantCity?: string;
     frontendBaseUrl?: string;
   }): Promise<EmailResult> {
-    const base =
-      data.frontendBaseUrl || "https://restaurant-ai-automation-web.vercel.app";
+    // Fallback only -- the caller (auth.service.ts) already passes
+    // `FRONTEND_URL`; this covers a call site that omits it. The pre-rebrand
+    // Vercel URL this replaced is still LIVE (curl -> 200), so it never
+    // errored, it just silently mailed out the wrong domain (ADR 0149 row 28).
+    const base = data.frontendBaseUrl || "https://mudavym.com";
     const html = onboardingEmailTemplate({
       ownerName: data.ownerName,
       restaurantName: data.restaurantName,
       restaurantCity: data.restaurantCity || "",
-      dashboardUrl: `${base}/dashboard`,
+      // `/dashboard` is not a route (App.tsx) -- the dashboard IS `/`.
+      dashboardUrl: `${base}/`,
       settingsUrl: `${base}/settings`,
       inviteUrl: `${base}/settings?tab=team`,
     });
 
     return this.sendEmail({
       to: [data.to],
-      subject: `Welcome to WineOps AI — ${data.restaurantName} is ready 🍷`,
+      subject: `Welcome to Mudavym — ${data.restaurantName} is ready 🍷`,
       html,
     });
   }
@@ -752,7 +854,7 @@ This is an automated alert from WineOps AI.
 
     return this.sendEmail({
       to: [data.to],
-      subject: `You've been invited to WineOps Studio as ${data.roleLabel}`,
+      subject: `You've been invited to Mudavym Studio as ${data.roleLabel}`,
       html,
     });
   }

@@ -395,6 +395,13 @@ export class MenusService {
           vintage: item.vintage,
           region: item.region,
           grapeVariety: item.grape_variety,
+          // Not a matching field — the resolver keeps it out of every
+          // signature hash. It is carried so the library row this creates
+          // arrives with something for wine_classify_beverage_kind() to read,
+          // which is what makes a beer line on an uploaded menu come back as
+          // beverage_kind='beer' instead of 'unknown' and light the Beer
+          // register (cellar/cellar-registers.ts, registerForKind).
+          menuCategory: item.category,
         })),
         // A menu prints "House White" and "Red — by the glass" as often as it
         // prints a producer. Those lines are this venue's own wines and never

@@ -44,7 +44,7 @@ const NO_SENDER = {
     'No house sender. This house has not connected a mailbox of its own, and a Mudavym address is a paid-tier option that is not provisioned yet. Connect a mailbox on /connections; nothing is sent until one exists.',
   missing: ['No connected Google account for this house has granted gmail.send.'],
   deployment: {
-    address: 'notifications@wineops.ai',
+    address: 'notifications@mudavym.com',
     refusedBecause: 'This mailbox belongs to the deployment, not to this house.',
   },
   subdomain: {
@@ -133,7 +133,7 @@ describe('the house composer', () => {
     expect(send).toBeDisabled();
     expect(screen.getByText(/Send is disabled: No house sender/)).toBeInTheDocument();
     // and it names what it is REFUSING, not merely what it lacks
-    expect(screen.getByText(/Not notifications@wineops\.ai/)).toBeInTheDocument();
+    expect(screen.getByText(/Not notifications@mudavym\.com/)).toBeInTheDocument();
   });
 
   it('says the paid tier in words and never a price', () => {

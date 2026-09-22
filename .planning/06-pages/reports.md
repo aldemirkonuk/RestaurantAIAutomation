@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 2
 maturity: partial
 status: documented
-updated: 2026-09-03
+updated: 2026-09-17
 links: ["[[PAGE-CONTRACT]]", "[[settings]]", "[[orders]]", "[[inventory]]", "[[team]]", "[[promotions]]", "[[recommendations]]", "[[recommendations-catalog]]"]
 ---
 
@@ -796,6 +796,7 @@ is stale; guarded at class level since 2026-08-24 (#31),
 | GET/POST | `/analytics/goals/:rid` | `EngineInsightsPanel.tsx:158,251` |
 | GET/POST | `/analytics/recommendations/:rid/actions`, `…/action` | `EngineInsightsPanel.tsx:159,281,309` (hide/pin disposition) |
 | GET | `/analytics/table-performance/:rid` | `SeatingDensityPanel.tsx:120` |
+| POST/GET | `/reports/exports`, `/reports/exports/:id`, `…/:id/retry`, `…/:id/download?format=csv\|html` | redesign only: `next/useReportExports.ts` → `services/api/reports.ts` (OD-81 export, added 2026-09-17 — see §13 item 2) |
 | GET/PATCH | `/users/:userId/preferences` | layout + block persistence, `Reports.tsx:187,466` → `hooks/useUserPreferences.ts:73,83` |
 | GET | `/inventory/:rid` family | `useInventoryData` (Reports.tsx:11) → `services/api/inventory.ts:66,118,129` |
 | GET | `/procurement/orders` | `useOrdersMetrics` (Reports.tsx:12) → `services/api/orders.ts:53` |
@@ -1130,11 +1131,77 @@ about it, with a visible line back to the data.
 1. ~~**Disable the AI Command Palette until it queries the engine.**~~ **Done**
    before this note was written; recorded 2026-09-02 (§10). It queries
    `/analytics/insights/:rid` and states that free-text answers do not exist.
-2. **Wire or remove the report generator.** Still open, and still the same
+2. ~~**Wire or remove the report generator.** Still open, and still the same
    blocker: `POST /reports/generate` inserts a `pending` row nothing fills
    (OD-81). The shipping page no longer offers the button; the redesign renders
    it disabled with the reason. **A real writer is the only thing that closes
-   this.**
+   this.**~~ **[2026-09-17 — BUILT, branch `feat/finish-reports`, ADR 0149
+   row 20: "Build a real export".]** A report is now an **export**: one cutting
+   of the sheet, read by `ReportCuttingReader` through the SAME analytics
+   service call the cutting's `path` makes (a spec builds `AnalyticsController`
+   on the same doubles and asserts identical answers per cutting), written by
+   the gateway to a CSV and an A4 print page (`reports/exports/`), stored on a
+   new `report_exports` row (migration `20260917010200`, RLS on, service_role
+   only; bytes on the row because the only bucket, `vendor-attachments`, holds
+   vendor mail and is not in the applied chain) whose status is
+   `queued → ready | failed (+ reason)`, each state a CHECK on its evidence.
+   A null figure is written `withheld` with its reason, never 0; a register
+   that throws fails the export with its message; a queued attempt older than
+   10 min is failed on the next read; retry re-queues the same row. Routes
+   (owner/manager, house from the token, foreign id → 404):
+   `POST /reports/exports`, `GET /reports/exports`, `GET /reports/exports/:id`,
+   `POST /reports/exports/:id/retry`, `GET /reports/exports/:id/download?format=csv|html`.
+   The page: **"Written up"** shelf under the sheet (`ExportsShelf.tsx`,
+   `useReportExports.ts`) — true status, downloads only when ready, the reason
+   and "Try again" when failed, polling while queued; the writing desk now
+   points at it instead of a disabled button. `POST /reports/generate` answers
+   **410**; `GET /reports` and `/reports/:id` no longer return a `pending` row
+   with no file (`WRITTEN_REPORT_FILTER`), so neither Documents page shows a
+   report that can never exist.
+   **[2026-09-17, review fixes]** The in-flight cap of 3 is a **soft** cap
+   (count then insert, two statements — two tabs at once can reach 4-5; not a
+   security property) and a **retry is now held to it** too (it was not: a
+   retry re-queued past 3). Specs added for the attempts guard on both the
+   failed and the ready write of a superseded attempt, and for the list/read
+   SELECT never naming `csv`/`html` (the fixture now records each statement's
+   columns). The download revokes its blob URL 1 s after the click, not in the
+   same tick (some Safari/Firefox versions abort). DocumentsPage's no-file
+   sentence no longer names `/reports` — the legacy page has no shelf.
+   **[2026-09-17, storage limits — BUILT, branch `feat/finish-reports`.]**
+   The founder's answer: *exports are deleted after 90 days, at most 50 are
+   kept per house, and the shelf pages past the newest 20 with a count of
+   what is stored.* All three, server-side, in `report-exports.service.ts`:
+   `enforceHouseCap` (`MAX_EXPORTS_PER_HOUSE = 50`) trims a house's oldest
+   rows right after every write — one read of the cap-boundary row's
+   `requested_at`, one `DELETE ... < that`, no `.in()` over a fetched id
+   list; and `sweepExpired` (`EXPORT_RETENTION_DAYS = 90`) runs daily off a
+   new `ReportExportRetentionCron` (`0 4 * * *`, registered in
+   `ReportsModule` — `ScheduleModule.forRoot()` is already global from
+   `app.module.ts`) and deletes every house's exports past the window in one
+   statement, so it is idempotent and safe from several gateway instances at
+   once (a second `DELETE` on the same cutoff finds nothing new). `GET
+   /reports/exports` takes `offset` alongside `limit` (still 20 default, 100
+   max) and still returns the exact `total` over the whole house, not the
+   page; `ExportsShelf.tsx` shows "Exports 21–40 of 63. Page 2 of 4." with
+   Previous/Next, and a page that emptied out between requests (the cap or
+   the sweep ran) reads as "the list changed since you turned to it", never
+   as an empty house. Each ready row still holds up to 10 MB (5 MB × 2
+   files) — that cap is unchanged and is a different limit from the count
+   and age caps above.
+
+   **Founder direction, not built (2026-09-17), for later:** *"after some
+   number of days exports and reports should be pushed out to the house's
+   own store through an MCP connector — Google Drive, Notion, Gmail,
+   Outlook, any other data holders store out there — or storage becomes a
+   charged feature; regulations need checking; we're going to make them as
+   they come."* Nothing here reads or writes toward any of those stores —
+   this is a founder direction for a future decision, not a built capability
+   or a research environment, and the founder was explicit that it should be
+   documented rather than spiked. See `.planning/08-softwares/mudavym-mcp.md`
+   — that document is Mudavym's own MCP *server* (the house's data offered
+   OUT to an assistant); this direction is the reverse shape, Mudavym as an
+   MCP *client* pushing an export INTO a house's chosen store, and is not
+   covered by that document as it stands.
 3. ~~Wire the palette for real against `/analytics/insights/:rid`~~ — **done**
    (item 1).
 4. ~~Page-level error surface for the analytics fetches~~ — **done on the

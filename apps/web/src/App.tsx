@@ -44,16 +44,18 @@ function lazyWithRefresh<T extends ComponentType<any>>(
 }
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Toaster } from 'sonner'
+import { AppToaster } from './components/mudavym/AppToaster'
 import { AuthProvider } from './contexts/AuthContext'
+import { GroundChoiceSync } from './lib/mudavym/GroundChoiceSync'
 import { RealtimeProvider } from './contexts/RealtimeContext'
 import { WebSocketProvider } from './lib/websocket'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
-import { PageLoader } from './components/ui/page-loader'
+import { HousePageLoader } from './components/mudavym/HousePageLoader'
+import { RouteHead } from './lib/seo/RouteHead'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
-import { OfflineBanner } from './components/ui/SyncStatus'
+import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
 
 // Layout
 import { DashboardLayout } from './components/layout/DashboardLayout'
@@ -71,6 +73,7 @@ import { NoAccess } from './pages/NoAccess'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
 import { Orders } from './pages/Orders'
 import { PageGate } from './components/mudavym'
+import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
 import { TeamCommandPage } from './pages/team/command/TeamCommandPage'
 
 // Onboarding pages (lazy loaded)
@@ -87,6 +90,7 @@ const DocumentsReportsNext = lazyWithRefresh(() => import('./pages/documents-rep
 const ReportsNext = lazyWithRefresh(() => import('./pages/reports/next/ReportsNext'))
 const NotificationsNext = lazyWithRefresh(() => import('./pages/notifications/next/NotificationsNext'))
 const RecommendationsNext = lazyWithRefresh(() => import('./pages/recommendations/next/RecommendationsNext'))
+const RecommendationsCatalogView = lazyWithRefresh(() => import('./pages/recommendations/next/CatalogView'))
 const CalendarNext = lazyWithRefresh(() => import('./pages/calendar/next/CalendarNext'))
 const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/SettingsNext'))
 const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
@@ -97,6 +101,7 @@ const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const Arrival = lazyWithRefresh(() => import('./pages/arrival/Arrival'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
+const DeliveryRedirect = lazyWithRefresh(() => import('./pages/receiving/DeliveryRedirect'))
 const SimposTerminalPage = lazyWithRefresh(() => import('./pages/simpos/SimposTerminalPage'))
 const SimposOrderLogPage = lazyWithRefresh(() => import('./pages/simpos/SimposOrderLogPage'))
 const SimposScenariosPage = lazyWithRefresh(() => import('./pages/simpos/SimposScenariosPage'))
@@ -122,6 +127,7 @@ const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
 const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
 const Help = lazyWithRefresh(() => import('./pages/Help'))
+const HelpNext = lazyWithRefresh(() => import('./pages/help/next/HelpNext'))
 const Profile = lazyWithRefresh(() => import('./pages/Profile'))
 const AuthorizeIntegration = lazyWithRefresh(() => import('./pages/AuthorizeIntegration'))
 const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
@@ -160,12 +166,26 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          <ToastProvider>
-            <AuthProvider>
+          <AuthProvider>
+            {/* ADR 0169 — the person's Mudavym ground follows their account,
+                not this browser. Renders nothing; it joins the synchronous
+                ground store to `/users/:userId/preferences`. Mounted here so
+                it is inside the QueryClientProvider and above every route,
+                public ones included (where it resolves to a signed-out
+                paper). */}
+            <GroundChoiceSync />
+            {/* Nested INSIDE AuthProvider (not outside it, as sonner's
+                Toaster/OfflineBanner below still are) so its gate
+                (`useMudavymDesign('shell')`, ToastContext.tsx) reads the
+                restaurant identity reactively from context rather than only
+                ever falling back to a localStorage snapshot — the same
+                identity DashboardLayout's copy of the gate reads. */}
+            <ToastProvider>
               <WebSocketProvider>
                 <RealtimeProvider>
                   <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            <Suspense fallback={<PageLoader />}>
+            <RouteHead />
+            <Suspense fallback={<HousePageLoader />}>
               <Routes>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
@@ -327,8 +347,30 @@ function App() {
                       landed on the Dashboard, which reads as a broken app. */}
                   <Route path="/inventory-legacy" element={<Navigate to="/inventory" replace />} />
                   <Route path="/orders" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
+                  {/* One order, asked for by id — an email/SMS/push deep link
+                      (notification_agent.py, email_composer_service.py) or a
+                      hand-off from another page. Same gate, same two trees as
+                      `/orders`: `Orders` (legacy) ignores the extra param and
+                      renders exactly as it does today; `OrdersNext` reads it
+                      and opens that order's row (OrdersNext.tsx). */}
+                  <Route path="/orders/:id" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
                   {/* One event, three renderings, chosen by role — see ReceivingHome. */}
                   <Route path="/receiving" element={<PageGate page="receiving" legacy={<ReceivingHome />} next={<ReceivingNext />} />} />
+                  {/* One delivery, asked for by id — the in-app notification
+                      actionUrls `delivery-clock.service.ts` and
+                      `delivery.service.ts` already build (`/deliveries/:id`),
+                      which had no route at all until now. A delivery has no
+                      page of its own once it is past the door — the manager
+                      decision queue on `/receiving` is where the founder's
+                      "worst money first" verdicts on it live (ReceivingNext's
+                      RcManagerQueue) — so this resolves the delivery to its
+                      order and hands off there. Not the door
+                      (`/receiving/:orderId/door`): that screen is the one-time
+                      box count at the truck, and every notification a delivery
+                      sends is about something AFTER that — a clock closing, a
+                      vendor's proposal, a paperwork mismatch — none of which
+                      the door screen has any control for. */}
+                  <Route path="/deliveries/:id" element={<DeliveryRedirect />} />
                   <Route path="/wines" element={<PageGate page="cellar" legacy={<WineLibrary />} next={<CellarNext category="wines" />} />} />
                   {/* `/cellar` is the parent surface (founder, 2026-08-29/30): what is in
                       the building, with /wines /beer /whiskey /cocktails as its children.
@@ -343,7 +385,16 @@ function App() {
                   <Route path="/soft-drinks" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="soft_drinks" />} />} />
                   <Route path="/reports" element={<PageGate page="reports" legacy={<Reports />} next={<ReportsNext />} />} />
                   <Route path="/recommendations" element={<PageGate page="recommendations" legacy={<Recommendations />} next={<RecommendationsNext />} />} />
-                  <Route path="/recommendations/catalog" element={<InsightCatalog />} />
+                  <Route
+                    path="/recommendations/catalog"
+                    element={
+                      <PageGate
+                        page="recommendations"
+                        legacy={<InsightCatalog />}
+                        next={<RecommendationsCatalogView />}
+                      />
+                    }
+                  />
                   <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
                   {/* Vendor price comparison. Role gate is enforced server-side
                       too (owner/manager on /vendor-intel/*) — a hidden route is
@@ -380,9 +431,11 @@ function App() {
                   <Route path="/receipts" element={<PageGate page="receipts" legacy={<ReceiptsPage />} next={<ReceiptsNext />} />} />
                   <Route path="/credits" element={<Navigate to="/receipts?tab=credits" replace />} />
                   {/* ADR 0104 D12 slice 2 — one incoming document as the canonical
-                      Mudavym document. Gated OFF by default (OD-106); the legacy
-                      branch is a redirect to /receipts rather than a second page,
-                      because /receipts already IS this view's other face. */}
+                      Mudavym document. Live in code for every house since ADR
+                      0149 row 36 (2026-09-17, mudavym_design_document no longer
+                      read); the legacy branch is a redirect to /receipts rather
+                      than a second page, because /receipts already IS this
+                      view's other face. */}
                   <Route
                     path="/documents/:id"
                     element={
@@ -404,7 +457,11 @@ function App() {
                       for a non-manager, and the two registers that would leak are
                       role-gated at the gateway as well (G19). */}
                   <Route path="/connections" element={<PageGate page="connections" legacy={<Navigate to="/profile" replace />} next={<ConnectionsNext />} />} />
-                  <Route path="/help" element={<Help />} />
+                  {/* ADR 0160 §111 / ADR 0149 row 52: resolves to the Mudavym
+                      redesign for every house in code (LIVE_PAGES) — no
+                      `mudavym_design_help` ACTIVE flag. `legacy` stays mounted,
+                      untouched, until the founder approves its deletion. */}
+                  <Route path="/help" element={<PageGate page="help" legacy={<Help />} next={<HelpNext />} />} />
                   {/* Gated: the sidebar link is owner-only, but the URL was not —
                       any authenticated staff member could open the admin UI. */}
                   <Route path="/admin" element={<ProtectedRoute requiredRole="owner"><AdminPanel /></ProtectedRoute>} />
@@ -421,49 +478,39 @@ function App() {
                   
                   {/* Dev/Test Pages */}
                   <Route path="/dev-sandbox" element={<ProtectedRoute requiredRole="owner"><DevSandbox /></ProtectedRoute>} />
-                </Route>
 
-                {/* Catch all */}
-                <Route path="*" element={<Navigate to="/" replace />} />
+                  {/*
+                    Catch-all, NESTED under DashboardLayout on purpose (sketch
+                    119, the shared pieces): `DashboardLayout` has already made
+                    the shell/legacy choice for the whole page before this
+                    renders, so the in-app 404 (shell on) or the silent
+                    `Navigate` home (shell off, today's behaviour) is never a
+                    separate race against the flag check. A path outside the
+                    host's own crawlable-prefix allow-list never reaches this —
+                    the host answers its own real 404 first (ADR 0158).
+                  */}
+                  <Route path="*" element={<ShellCatchAll />} />
+                </Route>
               </Routes>
             </Suspense>
                   </Router>
                 </RealtimeProvider>
 
-                {/* Toast Notifications */}
-                <Toaster
-                position="top-right"
-                gap={12}
-                toastOptions={{
-                  unstyled: true,
-                  classNames: {
-                    toast:
-                      'flex items-center gap-3 w-full max-w-sm p-4 bg-white rounded-xl border border-slate-200 shadow-lg',
-                    title: 'text-sm font-semibold text-slate-900',
-                    description: 'text-sm text-slate-500',
-                    success: 'border-emerald-200 bg-emerald-50',
-                    error: 'border-rose-200 bg-rose-50',
-                    warning: 'border-amber-200 bg-amber-50',
-                    info: 'border-blue-200 bg-blue-50',
-                    actionButton:
-                      'px-3 py-1.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800',
-                    cancelButton: 'px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900',
-                    closeButton: 'text-slate-400 hover:text-slate-600',
-                  },
-                }}
-                closeButton
-                richColors
-                expand={false}
-              />
-                {/* Offline Banner - shows at top when offline */}
-                <OfflineBanner />
+                {/* Toast Notifications — ONE Toaster, house-styled when the
+                    shell gate is on, legacy otherwise (AppToaster.tsx). */}
+                <AppToaster />
+                {/* Offline Banner - legacy: in flow here, after the router,
+                    when offline. House-styled with the shell gate on: fixed
+                    to the foot of the window (house-offline-banner.css says
+                    why), whenever a queued change is not yet confirmed. */}
+                <AppOfflineBanner />
                 
                 {/* Sync Status Indicator - disabled (was floating bottom-right)
                 <SyncStatus position="bottom-right" />
                 */}
               </WebSocketProvider>
-            </AuthProvider>
-          </ToastProvider>
+            </ToastProvider>
+          </AuthProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </ErrorBoundary>

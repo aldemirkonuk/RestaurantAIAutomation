@@ -1,6 +1,7 @@
 /**
- * ReportsNext — the Mudavym redesign of `/reports`, behind
- * `mudavym_design_reports` (ADR 0044 p4 wave). Verdict: **MERGE**.
+ * ReportsNext — the Mudavym redesign of `/reports` (ADR 0044 p4 wave).
+ * Verdict: **MERGE**. Live in code for every house since ADR 0149 row 36
+ * (2026-09-17) — `mudavym_design_reports` is no longer read.
  *
  *   "Used to like today's drag-to-rearrange canvas — where we can just swipe
  *    and change everything to its place." The new version is "more modern."
@@ -57,7 +58,7 @@ import Cutting from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
-import { ensureFraunces, failureLine } from './rp-format';
+import { failureLine } from './rp-format';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
@@ -73,6 +74,7 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
+import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import './reports-next.css';
@@ -122,10 +124,6 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
   const headRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
   useEffect(() => {
@@ -443,6 +441,16 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             onMove={onMove}
             containerRef={holdSheetEl}
             ghost={arrange.origin}
+          />
+        )}
+
+        {/* OD-81: the written-up cuttings. Not while arranging — a layout in
+            progress is not yet what the reader is exporting. */}
+        {data.restaurantId !== null && !arranging && (
+          <ExportsShelf
+            desk={data.exportDesk}
+            onSheet={view.cuttings.map((c) => c.id)}
+            tillDays={tillDays}
           />
         )}
 

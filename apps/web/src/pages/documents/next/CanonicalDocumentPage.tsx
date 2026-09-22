@@ -33,10 +33,11 @@
  * the same disagreement between page and gateway, running the other way, that
  * every other screen in this corridor is written to avoid.
  *
- * BEHIND THE GATE, OFF BY DEFAULT. `/documents/:id` renders through PageGate on
- * the `document` page name; a restaurant without `mudavym_design_document` is
- * sent to `/receipts`, which is where this view's second face already lives
- * (OD-106 keeps production brand builds gated).
+ * LIVE FOR EVERY HOUSE since ADR 0149 row 36 (2026-09-17). `/documents/:id`
+ * still renders through PageGate on the `document` page name, but `document`
+ * is in `LIVE_PAGES` now: `mudavym_design_document` is no longer read, so
+ * every restaurant reaches this page rather than the `/receipts` redirect
+ * (which remains this view's second face for `?tab=credits`, unaffected).
  *
  * WHAT A FAILURE LOOKS LIKE. A failed fetch renders an error, never an empty
  * sheet. `deliveries: null` renders as "the delivery could not be read", never
@@ -359,7 +360,16 @@ export function CanonicalDocumentPage() {
           padding: '12px 14px',
         }}
       >
-        <h1 style={{ margin: 0, fontFamily: SERIF, fontSize: 17, fontWeight: 600 }}>
+        {/* globals.css's base-layer `h1 { @apply ... text-slate-900 }` rule
+            targets the bare tag and wins over inherited `color` — on this
+            page's dark ground that renders the near-black light-theme ink,
+            invisible against `.cd-page`'s dark background (measured: h1
+            #1c1a18 on a #1d1813 ground). `color: inherit` opts this one back
+            into the ink-1 token the rest of the section already uses.
+            go-live sweep 2026-09-17, wave4/live-fix.md. */}
+        <h1
+          style={{ margin: 0, fontFamily: SERIF, fontSize: 17, fontWeight: 600, color: 'inherit' }}
+        >
           This document could not be read.
         </h1>
         <p style={{ margin: '4px 0 0', fontSize: 11.5 }}>

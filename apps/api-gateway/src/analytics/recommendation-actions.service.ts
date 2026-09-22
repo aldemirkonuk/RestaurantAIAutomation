@@ -282,14 +282,47 @@ export class RecommendationActionsService {
 
   // ---- Digest preferences (NEW-303) ---------------------------------------
 
+  /**
+   * `digest_hour ?? 7` and `digest_min_urgency ?? "this_week"` are the
+   * COLUMN'S OWN defaults, applied here so a never-written house still gets a
+   * usable value if something schedules off this read. They are not an
+   * answer: a house that has never opened `recommendation_digest_prefs` looks,
+   * from this shape alone, identical to one that explicitly chose 07:00 and
+   * "this week or sooner" — the exact collapse ADR 0020 forbids, one column
+   * default at a time.
+   *
+   * `stated` (added 2026-09-17, settings page sketch 109A honesty pass) and
+   * `set` (recommendations page name, PR #420) are the same boolean under two
+   * names: `true` when a row exists for this restaurant, `false` when `data`
+   * is null and every value above is the service's own default rather than
+   * something a person chose. Additive either way — a caller that ignores
+   * both fields sees the same response it always has.
+   */
   async getDigestPref(restaurantId: string) {
-    const { data } = await this.dbService
+    // A failed read throws. Until 2026-09-16 it returned the defaults below —
+    // "digest off, 07:00" — for a preference that could not be read, which was
+    // harmless while nothing sent the digest and is not now that the sender
+    // reads this row (analytics/digest/recommendation-digest.service.ts).
+    const { data, error } = await this.dbService
       .getClient()
       .from("recommendation_digest_prefs")
       .select("*")
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    if (error)
+      throw new Error(
+        `recommendation_digest_prefs could not be read: ${error.message}`,
+      );
     return {
+      // `false` when no row exists for this house at all — the caller must
+      // not read the defaults below (`digestEnabled: false, digestHour: 7`)
+      // as a fact about what the house chose. See sketch 120's read-shape
+      // note: a house that never touched this setting must never be shown
+      // as "armed the post, then turned it off, at 07:00".
+      // `set` is the recommendations page's name (PR #420); `stated` is the
+      // settings honesty field (sketch 109A / main). Same boolean both ways.
+      set: !!data,
+      stated: !!data,
       digestEnabled: !!data?.digest_enabled,
       digestHour: data?.digest_hour ?? 7,
       digestMinUrgency: data?.digest_min_urgency ?? "this_week",

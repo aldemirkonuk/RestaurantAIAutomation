@@ -106,6 +106,18 @@ export interface SenderIdentityVM {
 }
 
 /**
+ * Receive-half status from `GET /communications/letters/sender` (`reader`).
+ * Used only for the persistent reconnect banner when mail reading is ON and
+ * no live grant backs it (founder Q8 / HELP-ALERT research 2026-09-22).
+ */
+export interface MailReaderStatusVM {
+  granted: boolean | 'unknown';
+  enabled: boolean;
+  lastReadAt: string | null;
+  lastError: string | null;
+}
+
+/**
  * The house's TEXT sender — the mail row's sibling (ADR 0121).
  *
  * `state` is the whole story and there are six of it, because "we asked", "they
@@ -165,7 +177,15 @@ export interface TextSendersVM {
   catalogue: Record<'whatsapp_business' | 'sms_sender', TextSenderDefinitionVM>;
   surveyedMarkets: { whatsapp: string[]; sms: string[] };
   /** The server's own statement that nothing can leave yet. */
-  transport: { built: boolean; words: string };
+  /**
+   * MEASURED BY THE GATEWAY FOR THIS HOUSE, not a constant about the
+   * deployment. `built` says a dispatch exists in this build at all; `wired`
+   * says whether THIS house has a live provider credential behind its sender,
+   * and it is `null` when that could not be read — never `false`, which would
+   * claim the house has no provider account when the truth is that we could not
+   * tell (ADR 0121 P1).
+   */
+  transport: { built: boolean; wired: boolean | null; words: string };
   myConsent: {
     consent: { phone: string; channel: string; consentedAt: string } | null;
     readable: boolean;
@@ -564,6 +584,22 @@ export function useConnectionsNextData() {
     },
     enabled: on,
     staleTime: 300_000,
+  });
+
+  /* read 3c — whether vendor-mail reading still has a live grant. Separate
+     from sender-identity on purpose: that route is the send half; this is the
+     receive half (`HouseInboxService.statusFor`) and a failure of one must
+     not blank the other. Powers the reconnect banner only. */
+  const mailReaderQ = useQuery({
+    queryKey: ['connections-next-mail-reader', rid],
+    queryFn: async (): Promise<MailReaderStatusVM> => {
+      const { data } = await apiClient.get<{ reader: MailReaderStatusVM }>(
+        '/communications/letters/sender',
+      );
+      return data.reader;
+    },
+    enabled: on,
+    staleTime: 60_000,
   });
 
   /* read 3b — the TEXT senders, and what each registrar would require.
@@ -1237,7 +1273,17 @@ export function useConnectionsNextData() {
     provider: toRegister(providerQ),
     payments: toRegister(paymentsQ),
     sender: toRegister(senderQ),
+    /** Receive-half grant status — see MailReaderStatusVM. */
+    mailReader: toRegister(mailReaderQ),
     textSenders: toRegister(textQ),
+    /**
+     * Re-read the text-sender register after a manager stops a sender.
+     * Exposed as its own function rather than added to every `Register` because
+     * this is the only row on the page with a write behind it, and a `reload`
+     * on all fourteen would suggest thirteen more that do nothing.
+     */
+    reloadTextSenders: () =>
+      void qc.invalidateQueries({ queryKey: ['connections-next-text-senders'] }),
     ical: toRegister(icalQ),
     mcp: toRegister(mcpQ),
     mcpRuntime: toRegister(mcpRuntimeQ),

@@ -78,6 +78,12 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // /get-started, outside DashboardLayout (like receiving_door below) — see
   // NO_CHROME. Named for the exhaustiveness check, not printed by any header.
   arrival: 'Arrival',
+  // The app shell, not a page (sketch 119 D). Named because the map is
+  // exhaustive; never printed in the header — under the shell the header
+  // prints the ROOM's own name from `rooms.ts`, the table the rail reads.
+  shell: 'The house',
+  // Sidebar.tsx — the entry that links here (ADR 0160 §111 / PR #413).
+  help: 'Help & Support',
 };
 
 /**

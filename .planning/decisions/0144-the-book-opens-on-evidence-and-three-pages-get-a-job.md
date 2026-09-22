@@ -148,7 +148,7 @@ the page would stay the least finished surface in the product indefinitely.
   that writer lands, "offered and skipped" cannot be told from "never opened".
   That is the first build task under item 1, not a detail.
   [CORRECTED 2026-09-19: this was never true of the code that shipped —
-  `arrival_record_folio` (`supabase/migrations/20260913190500_arrival_configuration_book.sql:49`)
+  `arrival_record_folio` (`supabase/migrations/20260922190000_arrival_configuration_book.sql:49`)
   already writes `configuration_step_skipped` vs `configuration_folio_recorded`
   by `p_state`, present since the lane's first commit-tree on 2026-09-13. Not
   a build task; a stale sentence.]

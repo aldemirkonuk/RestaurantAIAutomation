@@ -147,6 +147,11 @@ export const SEAL_SUBJECT_KINDS = [
   "commodity_exposure",
   "procurement_document",
   "configuration_batch",
+  // An assistant proposal (`ai_proposed_actions`), applied from the house
+  // counter — "applied only by the seal" (the founder's pick of 2026-09-21,
+  // sketch 119 D). One act, `apply`, bound to the proposal's stored arguments.
+  // Admitted in SQL by 20260921114400.
+  "ai_proposed_action",
 ] as const;
 
 export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
@@ -203,6 +208,11 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // a refusal that said "a different proposal" would name the assistant's
       // side of it, not the thing the seal is over.
       return "batch";
+    case "ai_proposed_action":
+      // "proposal", not "action": until it is applied it is only a proposal,
+      // and a refusal reading "a different action" would name the act the seal
+      // exists to gate as if it had already happened.
+      return "proposal";
   }
 }
 
