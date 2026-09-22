@@ -103,7 +103,6 @@ import {
   Smartphone,
   Store,
 } from 'lucide-react';
-import { ensureFraunces } from './fonts';
 import {
   useConnectionsNextData,
   type McpAnnotationsVM,
@@ -170,10 +169,6 @@ export const REGISTER_ANCHORS = [
 export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   const d = useConnectionsNextData();
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   /**
    * Bring the fragment's register into view once its register has answered.
@@ -308,6 +303,26 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
         </h1>
         <p className="cx-lede">What acts for this house.</p>
         <div className="cx-rule" />
+
+        {/* Persistent reconnect banner — founder Q8 (HELP-ALERT research
+            2026-09-22): routine tone, on this page, stays until a live grant
+            returns. Shown only when Settings has mail reading ON and no live
+            grant backs it. Phone push is a separate channel (MailGrantAbsentProducer). */}
+        {d.mailReader.data?.enabled === true &&
+        d.mailReader.data.granted === false ? (
+          <div className="cx-mail-banner" role="status" data-testid="mail-reconnect-banner">
+            <p>
+              Mail connection needs to be reconnected — vendor replies will not
+              reach this house until someone reconnects Gmail read access.
+            </p>
+            <a
+              className="cx-mail-banner-action"
+              href={`/authorize/gmail_read?returnPath=${encodeURIComponent('/connections')}`}
+            >
+              Reconnect
+            </a>
+          </div>
+        ) : null}
 
         {/* ══ THE LEDGER SENTENCE ═══════════════════════════════════════ */}
         <div className="cx-ledger">

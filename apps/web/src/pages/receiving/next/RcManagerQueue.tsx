@@ -15,7 +15,7 @@
  *   the one that turns into unexplained shrinkage.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ink, settle } from '@/lib/mudavym/motion';
 import type { UnverifiedDelivery } from '@/services/api/receiving';
@@ -440,14 +440,54 @@ function QueueRow({
 
 /* ── the queue ──────────────────────────────────────────────────────────── */
 
-export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
+export function RcManagerQueue({
+  data,
+  highlightOrderId = null,
+}: {
+  data: ManagerQueueData;
+  /** From `/deliveries/:id` → `/receiving?order=…` (DeliveryRedirect.tsx). */
+  highlightOrderId?: string | null;
+}) {
   const [lane, setLane] = useState<OutcomeLane | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const handledHighlightRef = useRef<string | null>(null);
 
   const visible = useMemo(
     () => (lane === null ? data.items : data.items.filter((i) => i.lane === lane)),
     [data.items, lane],
   );
+
+  const highlightItem = useMemo(
+    () =>
+      highlightOrderId
+        ? (data.items.find((i) => i.orderId === highlightOrderId) ?? null)
+        : null,
+    [data.items, highlightOrderId],
+  );
+  /** A read that came back and does not have it — not "still loading". */
+  const highlightMissing = Boolean(highlightOrderId) && data.hasData && !data.isError && !highlightItem;
+
+  useEffect(() => {
+    if (!highlightOrderId || !highlightItem) return;
+    if (handledHighlightRef.current === highlightOrderId) return;
+    handledHighlightRef.current = highlightOrderId;
+    // The lane it lives in may not be the one selected (or none was) — clear
+    // the filter so the highlighted row is actually visible rather than
+    // opened off-screen behind a tab it did not match.
+    if (lane !== null && lane !== highlightItem.lane) setLane(null);
+    setExpandedId(highlightItem.orderId);
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(`receiving-queue-row-${highlightItem.orderId}`);
+      // `scrollIntoView` is not universal (jsdom's test DOM has none of it) —
+      // a page that scrolls nowhere is a much smaller honesty gap than one
+      // that throws.
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }, 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightOrderId, highlightItem]);
 
   return (
     <section aria-label="Deliveries needing a decision" style={{ fontFamily: SANS }}>
@@ -501,6 +541,29 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
       {data.unverified !== null && data.unverified.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <UnverifiedStrip items={data.unverified} atFloor={data.unverifiedAtFloor} />
+        </div>
+      )}
+
+      {/* A delivery hand-off (`/deliveries/:id`) named an order this queue
+          does not have — not "still loading", the read came back clean.
+          Deliberately one sentence for every cause: already resolved, on no
+          delivery this house holds, or the id does not exist at all. */}
+      {highlightMissing && (
+        <div
+          role="status"
+          data-testid="highlight-order-missing"
+          style={{
+            marginBottom: 12,
+            border: '1px solid var(--paper-2, #EAE4D8)',
+            borderRadius: 12,
+            background: 'var(--paper-1, #F3EFE6)',
+            padding: '10px 14px',
+            fontSize: 12.5,
+            color: 'var(--ink-2, #4F473C)',
+          }}
+        >
+          Order {highlightOrderId} is not in today's decision queue — it may already be resolved,
+          or it does not belong to this house.
         </div>
       )}
 
@@ -591,14 +654,19 @@ export function RcManagerQueue({ data }: { data: ManagerQueueData }) {
       {visible.length > 0 && (
         <div style={{ borderTop: 'none' }}>
           {visible.map((item) => (
-            <QueueRow
+            <div
               key={item.orderId}
-              item={item}
-              expanded={expandedId === item.orderId}
-              onToggle={() =>
-                setExpandedId((cur) => (cur === item.orderId ? null : item.orderId))
-              }
-            />
+              id={`receiving-queue-row-${item.orderId}`}
+              data-testid={`receiving-queue-row-${item.orderId}`}
+            >
+              <QueueRow
+                item={item}
+                expanded={expandedId === item.orderId}
+                onToggle={() =>
+                  setExpandedId((cur) => (cur === item.orderId ? null : item.orderId))
+                }
+              />
+            </div>
           ))}
         </div>
       )}

@@ -70,7 +70,11 @@ individually while what they don't cover reaches production — this gate exists
    `.github/workflows/deploy.yml` (the post-merge production-deploy-
    verification workflow ADR 0097 built — a PR that weakens what it checks
    would otherwise be evaluated as ordinary and could self-merge; found by
-   PR #291's security audit, 2026-09-03, see ADR 0090's eighth Correction).
+   PR #291's security audit, 2026-09-03, see ADR 0090's eighth Correction), or
+   `supabase/migration-order-exceptions.txt` (ADR 0212 — a version listed here
+   skips `check_migration_order.py`'s order check outright, so a PR could
+   otherwise exempt its own out-of-order migration in the same diff that adds
+   it, with no human audit forcing anyone to notice).
    Keep this list in sync with `_GATE_OWNED_PATHS` in `scripts/pr_audit_gate.py` — a
    third real audit (2026-09-03, compliance angle) found the CI side had
    `CLAUDE.md` in its owned-paths list and this step didn't, so a

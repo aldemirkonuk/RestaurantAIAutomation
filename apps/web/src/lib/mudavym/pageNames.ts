@@ -22,7 +22,6 @@
  *   Profile                Sidebar.tsx:196
  *   Settings               Sidebar.tsx:202
  *   Connections            Sidebar.tsx:208
- *   Help & Support         Sidebar.tsx:216
  *
  * Two slugs have no sidebar entry, so their name is taken from the page's own
  * head instead and cited there: `recommendations`
@@ -76,7 +75,11 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // The canonical document at /documents/:id (ADR 0104 slice 2, merged from main 2026-09-05).
   document: 'Document',
   logs: 'Logs',
-  // Sidebar.tsx:216 — the entry that links here.
+  // The app shell, not a page (sketch 119 D). Named because the map is
+  // exhaustive; never printed in the header — under the shell the header
+  // prints the ROOM's own name from `rooms.ts`, the table the rail reads.
+  shell: 'The house',
+  // Sidebar.tsx — the entry that links here (ADR 0160 §111 / PR #413).
   help: 'Help & Support',
 };
 

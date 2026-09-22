@@ -33,25 +33,16 @@
  *   V    Ways back in             — the existing guide, the Sommelier, your
  *        profile.
  *
- * THE STANDING MAIL-GRANT ALERT, AND WHY THERE IS NO SEPARATE BANNER HERE
- * -------------------------------------------------------------------
- * The founder asked for a standing alert when the house's mail grant is
- * absent or revoked, "pop up a notification for mobile. For web ... maybe
- * not" — ADR 0160 §111 lists the web half as OPEN ITEM 5, still undecided
- * ("maybe not" ×3, "I'm not sure"). The mobile half is built:
- * `MailGrantAbsentProducer`
- * (`apps/api-gateway/src/notifications/producers/mail-grant-absent.producer.ts`)
- * writes an ordinary `notifications` row, gated on the same
- * `HouseInboxService.statusFor` this page reads below — see that file's own
- * header for what the row actually does on web today (it reaches the bell
- * unconditionally; that producer's header records this truthfully as open
- * item 5, not as a decision). What THIS page does NOT do is invent a second,
- * page-level web banner for the same fact — that would be deciding open item
- * 5 from a page header, which is not this page's call. Section I's "Mail
- * reading" connection item already states the identical fact in words (tone
- * `attention`, a Reconnect action) because it reads the SAME `statusFor`, so
- * the house's own state is visible on web today without this page adding a
- * second, competing answer to the open question.
+ * THE STANDING MAIL-GRANT ALERT
+ * -----------------------------
+ * Mobile: `MailGrantAbsentProducer` writes an ordinary `notifications` row
+ * gated on `HouseInboxService.statusFor`. Web (founder Q8, HELP-ALERT
+ * research 2026-09-22): a persistent routine-tone banner on `/connections`
+ * reads the same `statusFor` via `GET /communications/letters/sender`. This
+ * page does NOT invent a second page-level banner — Section I's "Mail
+ * reading" item already states the fact (tone `attention`, Reconnect →
+ * `/connections`), so the house sees the cue here and the durable fix on
+ * `/connections`.
  *
  * B'S TWO GRAFTS: WHAT TO DO NEXT, AND THE WRITE-TO-SUPPORT PANEL
  * ------------------------------------------------------------------

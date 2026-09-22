@@ -1,0 +1,79 @@
+/* The page loader's ladder — tokens only. A skeleton, not a spinner: nothing
+   here spins or counts, matching the shell's own rule that nothing counts
+   itself (house-shell.css). */
+
+.mdv-pageloader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  min-height: 100vh;
+  padding: 80px 24px 40px;
+  font-family: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  /* Paints the house ground over the whole window (it is App.tsx's one
+     Suspense fallback, drawn before any page or shell exists). It used to be
+     transparent, and a .mudavym root's light ink on whatever the body painted
+     is unreadable — the same fault measured on the 404 and the day line. */
+  background: var(--paper-0);
+}
+
+.mdv-pageloader__mark {
+  margin: 0;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.mdv-skel {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mdv-skel__line,
+.mdv-skel__block {
+  border-radius: 6px;
+  background: var(--paper-1);
+  animation: mdv-skel-pulse 1.6s ease-in-out infinite;
+}
+
+.mdv-skel__line {
+  height: 11px;
+}
+
+.mdv-skel__line--wide {
+  width: 70%;
+}
+
+.mdv-skel__line--mid {
+  width: 55%;
+}
+
+.mdv-skel__line--narrow {
+  width: 35%;
+}
+
+.mdv-skel__block {
+  height: 64px;
+  margin: 6px 0;
+}
+
+@keyframes mdv-skel-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-skel__line,
+  .mdv-skel__block {
+    animation: none;
+  }
+}

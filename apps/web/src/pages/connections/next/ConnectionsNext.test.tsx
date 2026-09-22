@@ -120,6 +120,8 @@ interface Fixture {
   provider: Reg;
   payments: Reg;
   sender: Reg;
+  /** Receive-half grant status — drives the reconnect banner. */
+  mailReader: Reg;
   /** The house's WhatsApp and SMS senders (ADR 0121). */
   textSenders: Reg;
   /** Re-read the text-sender register after a manager stops a sender. */
@@ -180,6 +182,13 @@ function base(): Fixture {
       configuredBy: 'GMAIL_SENDER_EMAIL',
       resolvedFromProfile: false,
       perHouse: { supported: false, reason: 'No per-restaurant sender exists.' },
+    }),
+    /** Default: reading off — no reconnect banner. Tests that need the banner set this. */
+    mailReader: reg({
+      granted: false,
+      enabled: false,
+      lastReadAt: null,
+      lastError: null,
     }),
     /**
      * The measured state of every house on this deployment: no text sender of
@@ -473,6 +482,45 @@ describe('who may look', () => {
     // The distinction that matters: not merely a hidden page.
     expect(screen.getByText(/refused at the server/i)).toBeInTheDocument();
     expect(screen.queryByText(/what the house pays with/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('mail reconnect banner (founder Q8)', () => {
+  it('stays silent when mail reading is off', () => {
+    render(<ConnectionsNext />);
+    expect(screen.queryByTestId('mail-reconnect-banner')).not.toBeInTheDocument();
+  });
+
+  it('shows a routine reconnect banner when reading is on and no live grant backs it', () => {
+    const d = base();
+    d.mailReader = reg({
+      granted: false,
+      enabled: true,
+      lastReadAt: null,
+      lastError: null,
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const banner = screen.getByTestId('mail-reconnect-banner');
+    expect(banner).toHaveTextContent(/mail connection needs to be reconnected/i);
+    expect(within(banner).getByRole('link', { name: /reconnect/i })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/authorize/gmail_read'),
+    );
+  });
+
+  it('does not invent a banner when the grant status is unknown', () => {
+    const d = base();
+    d.mailReader = reg({
+      granted: 'unknown',
+      enabled: true,
+      lastReadAt: null,
+      lastError: null,
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    expect(screen.queryByTestId('mail-reconnect-banner')).not.toBeInTheDocument();
   });
 });
 

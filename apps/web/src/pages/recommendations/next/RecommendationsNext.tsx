@@ -116,7 +116,6 @@ import {
   STAKE_LABEL,
   STAKE_ORDER,
   URGENCY_RANK,
-  ensureFraunces,
   failureSentence,
   fmtDay,
   fmtReadAt,
@@ -200,10 +199,6 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
   const [sheetFor, setSheetFor] = useState<string | null>(null);
   const docketRef = useRef<HTMLElement | null>(null);
   const { leaf, setLeaf } = data;
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   // Changing leaf clears what belonged to the old one: no selection survives
   // into rows it was never made against.

@@ -1,6 +1,7 @@
 /**
- * CalendarNext — the Mudavym redesign of `/calendar`, behind
- * `mudavym_design_calendar` (ADR 0044 p4 wave).
+ * CalendarNext — the Mudavym redesign of `/calendar` (ADR 0044 p4 wave).
+ * Live in code for every house since ADR 0149 row 36 (2026-09-17) —
+ * `mudavym_design_calendar` is no longer read.
  *
  * The founder's verdict, quoted from 06-pages/MAKEOVER-VERDICTS.md:
  *
@@ -42,7 +43,6 @@ import {
   addMonths,
   countPhrase,
   dayKey,
-  ensureFraunces,
   parseDayKey,
   periodLabel,
   sinceOrUntil,
@@ -195,10 +195,6 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     }
     return null;
   })();
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
   useEffect(() => {
