@@ -347,9 +347,11 @@ jobs:
         run: git fetch origin '+refs/heads/*:refs/remotes/origin/*' --quiet
 
       - name: The guard still fires on the shape it exists to catch
+        id: uniqueness-selftest
         run: ./scripts/check_migration_versions_unique.py --self-test
 
       - name: This branch's migration versions are not claimed elsewhere
+        id: uniqueness-check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/check_migration_versions_unique.py
@@ -374,13 +376,27 @@ jobs:
       # with main, and bringing it up to date re-runs this step against the new
       # tip. No migration can land between this check passing and the merge
       # without making the PR stale and forcing a fresh run against the new
-      # ceiling. The push arm is the backstop for whatever reaches main without
-      # that run (an admin merge, relaxed protection) -- loud, but after the fact.
+      # ceiling. The push arm is the backstop for a merge that reached main
+      # without that run (an admin merge, relaxed protection) -- loud, but after
+      # the fact. A merge `pr_audit_gate.py` makes with GITHUB_TOKEN starts no
+      # push run; only its `workflow_dispatch`, comparing HEAD to its first
+      # parent, re-checks it. If a second merge lands before that dispatch
+      # checks out, the first merge is never re-checked. That needs two faults
+      # at once -- protection relaxed so the PR run was skipped, AND that race
+      # -- since a GITHUB_TOKEN merge cannot itself skip the required checks.
+      # ADR 0212, "Still not caught".
+      #
+      # A version listed in supabase/migration-order-exceptions.txt (ADR 0212,
+      # founder 2026-09-22: "Exceptions list, your word (Recommended)") passes
+      # regardless of the ceiling; an unlisted one fails exactly as before.
       #
       # The guard prints its own diagnosis and fix; the notices below describe
-      # the uniqueness step. Exit 2 is CANNOT CHECK (base ref missing, shallow
-      # clone, no merge base, zero `before`), a failure and never a skip.
+      # the uniqueness step, and the one after describes this step. Exit 2 is
+      # CANNOT CHECK (base ref missing, shallow clone, no merge base, zero
+      # `before`, an exceptions line that is malformed or names no migration),
+      # a failure and never a skip.
       - name: A migration this change adds sorts after every version already on its base
+        id: order-check
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
@@ -390,11 +406,18 @@ jobs:
           ./scripts/check_migration_order.py --event "$EVENT_NAME" --base-ref "$BASE_REF" --before "$BEFORE_SHA"
 
       - name: Explain a failure
-        if: failure()
+        if: failure() && (steps.uniqueness-selftest.outcome == 'failure' || steps.uniqueness-check.outcome == 'failure')
         run: |
           echo "::notice::COLLISION means two migrations wear one version. Supabase keys history on the version, so the second merge fails or is silently skipped. Rename the file on THIS branch to an unused timestamp (date -u +%Y%m%d%H%M%S) and update anything citing it."
           echo "::notice::Only the versions THIS branch introduces are checked, against origin/main plus every OTHER open PR."
           echo "::notice::Exit 2 means CANNOT CHECK: gh could not enumerate the open PRs, so a clean verdict would be a guess. That is a failure, not a skip -- fix GH_TOKEN or the fetch, do not disable the step."
+
+      - name: Explain an order failure
+        if: failure() && steps.order-check.outcome == 'failure'
+        run: |
+          echo "::notice::OUT OF ORDER means a migration THIS branch adds is dated behind (or equal to) the newest version its base already holds -- the guard's own output above names the file, the ceiling and the fix (rename to a version past it, date -u +%Y%m%d%H%M%S)."
+          echo "::notice::A ledger-reconciliation rename or a restore of a deleted, already-applied migration is not a new migration. List its version with a reason in supabase/migration-order-exceptions.txt (ADR 0212) instead of renaming it forward -- that file is gate-owned, so the audit gate hands the PR to a human rather than merging it."
+          echo "::notice::Exit 2 here means CANNOT CHECK for a different reason than the uniqueness step above: the base ref or merge base could not be resolved, before was empty or all-zero, the base holds no migrations, or supabase/migration-order-exceptions.txt has a malformed line or one naming no migration file. This is unrelated to GH_TOKEN or the open-PR enumeration."
 
   # ADR 0051: a surface shows live data or says it does not know. Analytics did
   # neither. Both cost loaders resolved a unit cost as

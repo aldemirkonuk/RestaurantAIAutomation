@@ -72,11 +72,28 @@ Strict branch protection (`strict: true` on main, measured 2026-09-21 with
 pull_request arm sufficient on its own: a PR merges only when its head is up to
 date with main, and updating it re-runs this check against the new tip.
 
+EXCEPTIONS (ADR 0212, founder 2026-09-22: "Exceptions list, your word
+(Recommended)")
+------------------------------------------------------------------------------
+`supabase/migration-order-exceptions.txt`, one `<14-digit version> <reason>`
+per line, lists versions the founder has approved to land behind the ceiling --
+a ledger-reconciliation rename onto production's already-applied version, or a
+revert that restores a deleted migration. A listed version passes the order
+check; an unlisted one fails exactly as before. The file is read from HEAD's
+checkout (so the exception ships in the same commit as the migration it
+covers), and it is gate-owned (`scripts/pr_audit_gate.py::_GATE_OWNED_PATHS`):
+adding an entry is not the guard weakening itself unaudited. A line that is not
+`<version> <reason>` is CANNOT CHECK, never a silent pass -- an unreadable
+allowlist is not the same as an empty one. So is a line whose version no
+migration file in the checkout carries: an exception lands with the file it
+covers, never ahead of it as a standing pre-approval.
+
 NEVER VACUOUS
 -------------
 Exit 2 -- not 0 -- whenever the guard cannot see what it claims to check: the
 base ref does not resolve, a shallow clone holds no merge base, `before` is
-missing or all zeros, the base holds zero migrations, or git itself fails.
+missing or all zeros, the base holds zero migrations, the exceptions file has
+a malformed line or one naming no migration, or git itself fails.
 
 EXIT CODES
 ----------
@@ -102,6 +119,10 @@ MIGRATION_RE = re.compile(r"^supabase/migrations/(\d{14})_([^/]+)\.sql$")
 TOP_LEVEL_SQL_RE = re.compile(r"^supabase/migrations/[^/]+\.sql$")
 ZERO_SHA_RE = re.compile(r"^0+$")
 LOCAL_DEFAULT_BASE = "origin/main"
+
+# ADR 0212, founder 2026-09-22: "Exceptions list, your word (Recommended)".
+EXCEPTIONS_PATH = "supabase/migration-order-exceptions.txt"
+EXCEPTION_LINE_RE = re.compile(r"^(\d{14})\s+(\S.*)$")
 
 
 class CannotCheck(Exception):
@@ -171,6 +192,57 @@ def is_after(version: str, ceiling: str) -> bool:
     return version > ceiling
 
 
+def load_exceptions() -> dict[str, str]:
+    """version -> reason, from HEAD's checkout (never the base).
+
+    A version listed here passes the order check even if it is EQUAL TO or
+    BEHIND the ceiling (ADR 0212, founder 2026-09-22: "Exceptions list, your
+    word (Recommended)"). No file at all means no exceptions -- that is a
+    real empty set, not CANNOT CHECK. A file that exists but has a line that
+    is not `<14-digit version> <reason>` IS CannotCheck: a malformed
+    allowlist must never be read as an empty, permissive one.
+
+    Every listed version must also name a migration file in the checkout's
+    MIGRATIONS_DIR. A line naming no file is CannotCheck too: it would
+    otherwise sit in the list as a standing pre-approval for whatever file
+    later takes that version, approved before anyone saw the file. The
+    exception and the file it covers land together or not at all.
+    """
+    if not os.path.exists(EXCEPTIONS_PATH):
+        return {}
+    reasons: dict[str, str] = {}
+    with open(EXCEPTIONS_PATH, encoding="utf-8") as fh:
+        for n, raw in enumerate(fh, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = EXCEPTION_LINE_RE.match(line)
+            if not m:
+                raise CannotCheck(
+                    f"{EXCEPTIONS_PATH}:{n} is not `<14-digit version> <reason>`: "
+                    f"{line!r}. Fix or remove the line -- a malformed exceptions "
+                    "file is a failure, never a silent empty one."
+                )
+            reasons[m.group(1)] = m.group(2)
+    if reasons:
+        names = os.listdir(MIGRATIONS_DIR) if os.path.isdir(MIGRATIONS_DIR) else []
+        present = {
+            m.group(1)
+            for n in names
+            if (m := MIGRATION_RE.match(f"{MIGRATIONS_DIR}/{n}"))
+        }
+        stale = sorted(set(reasons) - present)
+        if stale:
+            raise CannotCheck(
+                f"{EXCEPTIONS_PATH} lists {', '.join(stale)}, but no "
+                f"{MIGRATIONS_DIR}/<version>_*.sql in this checkout carries "
+                f"{'that version' if len(stale) == 1 else 'those versions'}. "
+                "An exception names a file that exists: remove the line, or fix "
+                "its version to the file it was meant to cover."
+            )
+    return reasons
+
+
 def added_paths(old: str, new: str | None) -> list[str]:
     """Files ADDED between two trees; `new=None` means the index.
 
@@ -188,9 +260,13 @@ def added_paths(old: str, new: str | None) -> list[str]:
 
 
 def evaluate(
-    added: list[str], base_tree: dict[str, str], base_label: str
+    added: list[str],
+    base_tree: dict[str, str],
+    base_label: str,
+    exceptions: dict[str, str] | None = None,
 ) -> tuple[list[str], list[str], tuple[str, str]]:
     """-> (failures, checked, ceiling). Pure: no git."""
+    exceptions = exceptions or {}
     ceiling, ceiling_name = ceiling_of(base_tree, base_label)
     on_base = set(base_tree.values())
     failures: list[str] = []
@@ -212,13 +288,17 @@ def evaluate(
             continue  # already on the base tip under this exact name: not new to it
         version = m.group(1)
         checked.append(name)
+        if version in exceptions:
+            continue  # ADR 0212 exceptions list: the founder already approved this one
         if not is_after(version, ceiling):
             relation = "EQUAL TO" if version == ceiling else "BEHIND"
             failures.append(
                 f"OUT OF ORDER: {path}\n"
                 f"  version {version} is {relation} the newest version already on "
                 f"{base_label}:\n"
-                f"  {ceiling} ({MIGRATIONS_DIR}/{ceiling_name})"
+                f"  {ceiling} ({MIGRATIONS_DIR}/{ceiling_name})\n"
+                f"  Or list it in {EXCEPTIONS_PATH} with a reason, if this is a "
+                f"ledger reconciliation or a restore the founder has approved."
             )
     return failures, checked, (ceiling, ceiling_name)
 
@@ -248,7 +328,7 @@ def run_range(before: str, after: str, label: str) -> int:
     after_c = resolve(after, "pushed commit")
     added = added_paths(before_c, after_c)
     failures, checked, (ceiling, name) = evaluate(
-        added, versions_at(before_c), f"{label} ({before_c[:9]})"
+        added, versions_at(before_c), f"{label} ({before_c[:9]})", load_exceptions()
     )
     if failures:
         report(failures, ceiling)
@@ -279,7 +359,7 @@ def run_base(base: str, include_index: bool) -> int:
     if include_index:
         added |= set(added_paths(mb, None))  # local run: a staged file counts too
     failures, checked, (ceiling, name) = evaluate(
-        sorted(added), versions_at(base_c), base
+        sorted(added), versions_at(base_c), base, load_exceptions()
     )
     if failures:
         report(failures, ceiling)
@@ -349,6 +429,14 @@ class _Fixture:
 
     def write(self, rel: str, text: str = "-- fixture\n", append: bool = False) -> None:
         path = os.path.join(self.repo, MIGRATIONS_DIR, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a" if append else "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def write_repo(self, rel: str, text: str, append: bool = False) -> None:
+        """Like `write`, but `rel` is repo-root-relative -- for files outside
+        MIGRATIONS_DIR, such as the exceptions list."""
+        path = os.path.join(self.repo, rel)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "a" if append else "w", encoding="utf-8") as fh:
             fh.write(text)
@@ -583,7 +671,97 @@ def run_self_test() -> int:
             fx.commit("parent PR's file, already merged on main")
             expect("file already on the base tip under the same name", fx.guard(*PR), 0)
 
-            # cannot-check arms: each must be exit 2, never 0.
+            # ADR 0212 exceptions list (founder 2026-09-22): a listed version
+            # passes even though it is behind the ceiling; an unlisted one
+            # still fails; a malformed line is CANNOT CHECK, never a silent
+            # pass.
+            case("exception_listed")
+            fx.write("20260910000100_backfill_from_the_old_system.sql")
+            fx.write_repo(
+                EXCEPTIONS_PATH,
+                "20260910000100  ledger reconciliation onto production's already-"
+                "applied version (ADR 0212)\n",
+            )
+            fx.commit("a behind-ceiling version the exceptions file allows")
+            expect("version listed in the exceptions file", fx.guard(*PR), 0)
+            # ...and on main after the merge: the push and workflow_dispatch
+            # arms read the same list, or an approved exception turns main red.
+            expect(
+                "listed version, push arm",
+                fx.guard("--event", "push", "--before", b0),
+                0,
+                "20260910000100_backfill_from_the_old_system.sql",
+            )
+            expect(
+                "listed version, workflow_dispatch arm",
+                fx.guard("--event", "workflow_dispatch"),
+                0,
+                "20260910000100_backfill_from_the_old_system.sql",
+            )
+
+            case("exception_unlisted")
+            fx.write("20260910000200_a_second_behind_ceiling_file.sql")
+            fx.write_repo(
+                EXCEPTIONS_PATH,
+                "20260910000000  unrelated entry (a file this branch holds), does "
+                "not cover the new one\n",
+            )
+            fx.commit("a behind-ceiling version NOT in the exceptions file")
+            expect(
+                "version absent from the exceptions file still fails",
+                fx.guard(*PR),
+                1,
+                "20260910000200_a_second_behind_ceiling_file.sql",
+            )
+
+            case("exception_malformed")
+            fx.write("20260910000300_another_behind_ceiling_file.sql")
+            fx.write_repo(EXCEPTIONS_PATH, "not a version at all\n")
+            fx.commit("a malformed exceptions file")
+            expect(
+                "malformed exceptions file line is CANNOT CHECK, not a pass",
+                fx.guard(*PR),
+                2,
+                EXCEPTIONS_PATH,
+            )
+
+            # Every exception carries its reason: a bare version is malformed.
+            case("exception_without_reason")
+            fx.write("20260910000400_listed_without_a_reason.sql")
+            fx.write_repo(EXCEPTIONS_PATH, "20260910000400\n")
+            fx.commit("an exceptions line with a version and no reason")
+            expect(
+                "exceptions line without a reason is CANNOT CHECK, not a pass",
+                fx.guard(*PR),
+                2,
+                f"{EXCEPTIONS_PATH}:1",
+            )
+
+            # A listed version with no file behind it is a standing pre-approval
+            # for whatever file later takes that version. CANNOT CHECK, even when
+            # everything this branch adds is in order on its own.
+            case("exception_names_no_file")
+            fx.write("20260921130000_in_order_on_its_own.sql")
+            fx.write_repo(
+                EXCEPTIONS_PATH,
+                "20260910000900  approved ahead of any file carrying it\n",
+            )
+            fx.commit("an exceptions line that names no migration")
+            expect(
+                "exceptions line naming no migration file is CANNOT CHECK",
+                fx.guard(*PR),
+                2,
+                "20260910000900",
+                "no supabase/migrations/<version>_*.sql",
+            )
+
+            # cannot-check arms: each must be exit 2, never 0, and for its OWN
+            # reason. They run from `stacked`, a tree that passes cleanly: left
+            # on the branch above, the exceptions line naming no file made every
+            # run exit 2 before these arms were reached, so an unknown event or
+            # a missing base that silently fell back to origin/main still "exited
+            # 2" (last call, 2026-09-22: both mutants survived until this line).
+            fx.sh("git", "checkout", "--quiet", "--force", "stacked")
             expect(
                 "pull_request with no base ref",
                 fx.guard("--event", "pull_request", "--base-ref", ""),
@@ -594,8 +772,14 @@ def run_self_test() -> int:
                 "base ref that does not exist",
                 fx.guard("--event", "pull_request", "--base-ref", "nope"),
                 2,
+                "`origin/nope` does not resolve",
             )
-            expect("unknown event", fx.guard("--event", "schedule"), 2)
+            expect(
+                "unknown event",
+                fx.guard("--event", "schedule"),
+                2,
+                "not one this guard knows how to scope",
+            )
 
             fx.sh("git", "checkout", "--quiet", "--orphan", "unrelated")
             fx.sh("git", "rm", "-r", "--quiet", "--cached", ".")
@@ -644,6 +828,34 @@ def run_self_test() -> int:
                 2,
                 "SHALLOW",
             )
+
+            # The real post-merge topology: every push/workflow_dispatch case
+            # above happens to run with origin/main still equal to
+            # `before`/HEAD^1, because origin/main is only ever pushed once,
+            # at b0, until here. A workflow_dispatch or
+            # push arm that mistakenly read origin/main instead of the
+            # explicit before/HEAD^1 arguments would pass every case above
+            # by coincidence. Only a fixture where origin/main IS HEAD --
+            # as it is the moment after a real merge lands -- tells the two
+            # apart.
+            fx.sh("git", "checkout", "--quiet", "--force", "-B", "main", "origin/main")
+            premerge = fx.sh("git", "rev-parse", "HEAD")
+            fx.write("20260913190700_post_merge_straggler.sql")
+            fx.commit("an out-of-order file lands directly on main")
+            fx.sh("git", "push", "--quiet", "origin", "main")
+            fx.sh("git", "fetch", "--quiet", "origin")
+            expect(
+                "push, post-merge topology: origin/main IS HEAD",
+                fx.guard("--event", "push", "--before", premerge),
+                1,
+                "20260913190700_post_merge_straggler.sql",
+            )
+            expect(
+                "workflow_dispatch, post-merge topology: origin/main IS HEAD",
+                fx.guard("--event", "workflow_dispatch"),
+                1,
+                "20260913190700_post_merge_straggler.sql",
+            )
     except RuntimeError as exc:
         print(f"SELF-TEST CANNOT RUN: fixture step failed: {exc}", file=sys.stderr)
         return 2
@@ -652,15 +864,19 @@ def run_self_test() -> int:
         for f in failures:
             print(f"SELF-TEST FAILED: {f}")
         return 1
-    if len(ran) < 24:
-        print(f"SELF-TEST FAILED: only {len(ran)} of 24 fixture cases ran")
+    if len(ran) < 33:
+        print(f"SELF-TEST FAILED: only {len(ran)} of 33 fixture cases ran")
         return 1
     print(
         f"SELF-TEST OK -- {len(ran)} fixture cases + 3 rule checks: newer passes; older, equal, renamed-to-older, "
         "non-14-digit, staged-older and committed-older-behind-an-empty-index "
         "fail; a modified merged file and seed/ are "
         "ignored; the ceiling is the moved base tip; a stacked file already on the "
-        "tip passes; the push and workflow_dispatch arms fire; a missing, empty or "
+        "tip passes; an exceptions-listed version passes in every arm, an unlisted one still "
+        "fails, an exceptions line that is malformed, has no reason or names no "
+        "file is CANNOT CHECK; the push and "
+        "workflow_dispatch arms fire, including in the real post-merge topology "
+        "where origin/main IS HEAD; a missing, empty or "
         "unknown base, no merge base, a zero-migration base, a zero `before` and a "
         "shallow clone each exit 2."
     )
