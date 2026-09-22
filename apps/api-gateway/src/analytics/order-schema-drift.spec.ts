@@ -83,19 +83,34 @@ function loadSchema(): Map<string, Set<string>> {
       schema.set(table, cols);
     }
 
-    // ALTER TABLE [ONLY] [public.]name ADD COLUMN [IF NOT EXISTS] col ...
-    const addRe =
-      /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?(?:public\.)?"?(\w+)"?\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/gi;
-    while ((m = addRe.exec(sql))) {
-      const cols = schema.get(m[1]) ?? new Set<string>();
-      cols.add(m[2]);
-      schema.set(m[1], cols);
+    // ALTER TABLE [ONLY] [public.]name <statement body up to ';'>
+    //
+    // One ALTER TABLE may ADD or DROP several columns as comma-separated
+    // clauses in a single statement, e.g.
+    //   ALTER TABLE t ADD COLUMN a text, ADD COLUMN b text, ADD COLUMN c text;
+    // Matching "ALTER TABLE ... ADD COLUMN" as one literal run (the previous
+    // shape) only ever found the FIRST clause — "b" and "c" above were
+    // silently invisible to this schema, which then reported a real column
+    // as 42703. Captures the table once, then walks every ADD/DROP COLUMN
+    // clause found anywhere inside that one statement's body.
+    const alterStmtRe =
+      /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?(?:public\.)?"?(\w+)"?\s+([\s\S]*?);/gi;
+    const addClauseRe =
+      /ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/gi;
+    const dropClauseRe =
+      /DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?"?(\w+)"?/gi;
+    while ((m = alterStmtRe.exec(sql))) {
+      const table = m[1];
+      const body = m[2];
+      const cols = schema.get(table) ?? new Set<string>();
+      let am: RegExpExecArray | null;
+      addClauseRe.lastIndex = 0;
+      while ((am = addClauseRe.exec(body))) cols.add(am[1]);
+      schema.set(table, cols);
+      let dm: RegExpExecArray | null;
+      dropClauseRe.lastIndex = 0;
+      while ((dm = dropClauseRe.exec(body))) cols.delete(dm[1]);
     }
-
-    // ALTER TABLE ... DROP COLUMN [IF EXISTS] col
-    const dropRe =
-      /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?(?:public\.)?"?(\w+)"?\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?"?(\w+)"?/gi;
-    while ((m = dropRe.exec(sql))) schema.get(m[1])?.delete(m[2]);
   }
   return schema;
 }
@@ -263,6 +278,28 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
     expect(cols.has("provider_name")).toBe(false);
     expect(cols.has("wine_name")).toBe(false);
     expect(SCHEMA.get("providers")!.has("name")).toBe(true);
+  });
+
+  it("[REVERT-FAILS] sees every column a single multi-column ALTER TABLE adds, not just the first", () => {
+    // supabase/migrations/20260805132000_counting_catalog_and_correlation_columns.sql:
+    //   ALTER TABLE public.pos_item_mappings
+    //       ADD COLUMN IF NOT EXISTS sale_unit character varying(10),
+    //       ADD COLUMN IF NOT EXISTS total_sales_count integer DEFAULT 0,
+    //       ADD COLUMN IF NOT EXISTS total_revenue numeric(12,2) DEFAULT 0,
+    //       ADD COLUMN IF NOT EXISTS last_sale_at timestamp with time zone;
+    // A regex matching "ALTER TABLE ... ADD COLUMN" as one literal run only
+    // ever finds "sale_unit" (adjacent to "ALTER TABLE"); the three columns
+    // after it have no "ALTER TABLE" of their own and were invisible to this
+    // schema, so a real select naming them would 42703 here even though
+    // PostgREST accepts it in production.
+    const cols = SCHEMA.get("pos_item_mappings")!;
+    expect(cols.has("sale_unit")).toBe(true);
+    expect(cols.has("total_sales_count")).toBe(true);
+    expect(cols.has("total_revenue")).toBe(true);
+    expect(cols.has("last_sale_at")).toBe(true);
+    // A genuinely nonexistent column must still be flagged — the fix must
+    // not have made the parser permissive to close this gap.
+    expect(cols.has("this_column_does_not_exist")).toBe(false);
   });
 
   describe("AdvancedAnalyticsService", () => {
