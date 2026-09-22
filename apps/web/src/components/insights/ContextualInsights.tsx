@@ -36,7 +36,14 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { apiClient, getErrorMessage } from "../../services/api/client";
-import { DISMISS_REASONS, insightActKey } from "../../lib/recommendationState";
+import {
+  DISMISS_CHOICES,
+  choiceSaid,
+  insightActKey,
+  patchForChoice,
+  undoOf,
+  type DismissChoiceId,
+} from "../../lib/recommendationState";
 
 export type InsightHost = "inventory" | "orders" | "providers";
 
@@ -121,7 +128,10 @@ export function ContextualInsights({
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(defaultOpen);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [undo, setUndo] = useState<string | null>(null);
+  // The last choice that landed, so Undo reverses the act it actually was
+  // (round 3: "Not right now" is this person's own snooze, woken — not a
+  // house restore).
+  const [undo, setUndo] = useState<{ key: string; choice: DismissChoiceId } | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   // Which item's reason row is open, and the last write that did not land.
   const [reasonFor, setReasonFor] = useState<string | null>(null);
@@ -168,7 +178,11 @@ export function ContextualInsights({
         const body = insRes.value.data ?? {};
         const rows: any[] = body.insights ?? [];
         setAvailable(rows.length > 0 || body.source === "stored");
-        setStateUnread(body.suppressionsReadable === false);
+        // House state or this person's own snoozes (round 3): either unread
+        // means some of these may be ones already put away.
+        setStateUnread(
+          body.suppressionsReadable === false || body.personalSnoozesReadable === false,
+        );
         let mapped = rows
           .map((r) => {
             const candidateKey = r.candidate_key ?? r.candidateKey ?? "";
@@ -242,24 +256,28 @@ export function ContextualInsights({
     [restaurantId],
   );
 
-  const dismiss = async (ins: Insight, reason: string) => {
+  /**
+   * One choice from the dismiss list (ADR 0191 round 3): a dismissal with its
+   * label, "Already handled" as done, or "Not right now" as this person's own
+   * snooze — `patchForChoice`, the same body every surface posts.
+   */
+  const dismiss = async (ins: Insight, choice: DismissChoiceId) => {
     if (!ins.actKey || ins.ruleWide) return;
     setReasonFor(null);
     setActError(null);
     setInsights((prev) => prev.filter((i) => i.ruleKey !== ins.ruleKey));
-    const landed = await action(ins, { status: "dismissed", reason });
-    if (landed) setUndo(ins.actKey);
+    const landed = await action(ins, patchForChoice(choice));
+    if (landed) setUndo({ key: ins.actKey, choice });
     else load();
   };
 
-  const restore = async (key: string) => {
+  const restore = async (last: { key: string; choice: DismissChoiceId }) => {
     setUndo(null);
     setActError(null);
+    if (!restaurantId) return;
     try {
-      await apiClient.post(`/analytics/recommendations/${restaurantId}/action`, {
-        ruleKey: key,
-        status: "active",
-      });
+      const { path, body } = undoOf(restaurantId, last.key, last.choice);
+      await apiClient.post(path, body);
     } catch (e) {
       setActError(getErrorMessage(e));
     }
@@ -416,9 +434,10 @@ export function ContextualInsights({
                               className="mt-1 flex flex-wrap items-center gap-1 text-[11px]"
                             >
                               <span className="text-gray-500">Why?</span>
-                              {DISMISS_REASONS.map((r) => (
+                              {DISMISS_CHOICES.map((r) => (
                                 <button
                                   key={r.id}
+                                  title={r.note}
                                   onClick={() => void dismiss(ins, r.id)}
                                   className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
                                 >
@@ -468,7 +487,7 @@ export function ContextualInsights({
 
           {undo && (
             <div className="mt-2 flex items-center justify-between gap-3 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs">
-              <span>Insight dismissed</span>
+              <span>{choiceSaid(undo.choice)}</span>
               <button onClick={() => restore(undo)} className="flex items-center gap-1 font-semibold text-amber-300 hover:text-amber-200">
                 <Undo2 className="w-3.5 h-3.5" /> Undo
               </button>

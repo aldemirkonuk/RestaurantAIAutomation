@@ -28,6 +28,7 @@ import {
   suppressionKeys,
   trendGrain,
   windowGrain,
+  withFiring,
 } from "./suppression";
 import {
   ItemState,
@@ -147,6 +148,10 @@ export const MIN_TREND_OBSERVED = 14;
  *       the stored read can resolve the shared per-item state. A version-2
  *       row has neither, so its state cannot be read at the scope it was
  *       written: it is withheld and recomputed, not served unfiltered.
+ *       Round 3 (same day, still version 3 — no version-3 row has ever been
+ *       served: `main` is at 2): a type that names no subject and no period
+ *       stores the week it fired in as its `period_key` ("Each firing is one
+ *       card").
  */
 export const INSIGHT_GENERATOR_VERSION = 3;
 
@@ -1658,12 +1663,22 @@ export class InsightGeneratorService {
     if (!sentence) return null;
     const subject =
       scoreParams.subject ?? scoreParams.entityLabel ?? evidence.entity ?? null;
-    const periodKey = scoreParams.periodKey ?? null;
-    const target = {
-      ruleId: insightRuleId(candidateKey),
-      subject,
-      periodKey,
-    };
+    // "Each firing is one card" (ADR 0191 round 3, founder 2026-09-21): a
+    // type that names no subject and no period is keyed by the week it fired
+    // in — the founder's own example of a firing period, and the grain the
+    // catalogue's types carry no other horizon for. A one-item dismiss or
+    // done then hides this firing, not the whole type (which is the
+    // catalogue's On/Off), and the item returns when it fires next week.
+    const target = withFiring(
+      {
+        ruleId: insightRuleId(candidateKey),
+        subject,
+        periodKey: scoreParams.periodKey ?? null,
+      },
+      "week",
+      new Date(),
+    );
+    const periodKey = target.periodKey ?? null;
     return {
       candidateKey,
       category,

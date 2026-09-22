@@ -24,7 +24,14 @@ import {
 import { useAuth } from "../../../contexts/AuthContext";
 import { useToast } from "../../../contexts/ToastContext";
 import { apiClient, getErrorMessage } from "../../../services/api/client";
-import { DISMISS_REASONS, insightActKey } from "../../../lib/recommendationState";
+import {
+  DISMISS_CHOICES,
+  choiceSaid,
+  insightActKey,
+  patchForChoice,
+  undoOf,
+  type DismissChoiceId,
+} from "../../../lib/recommendationState";
 
 interface EngineInsight {
   sentence: string;
@@ -112,7 +119,11 @@ export function EngineInsightsPanel({
   const restaurantId = user?.restaurantId;
   const [insights, setInsights] = useState<EngineInsight[]>([]);
   const [expandedInsight, setExpandedInsight] = useState<string | null>(null);
-  const [undo, setUndo] = useState<{ ruleKey: string } | null>(null);
+  // The last choice that landed, so Undo reverses the act it actually was
+  // (round 3: "Not right now" is this person's own snooze, woken).
+  const [undo, setUndo] = useState<{ ruleKey: string; choice: DismissChoiceId } | null>(
+    null,
+  );
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   // The gateway could not read what has been dismissed, snoozed or done, so
   // the list may hold items already put away (ADR 0191). Said, never clean.
@@ -193,7 +204,10 @@ export function EngineInsightsPanel({
         {
           const body = insRes.value.data ?? {};
           const rows: any[] = body.insights ?? [];
-          setStateUnread(body.suppressionsReadable === false);
+          // House state or this person's own snoozes (round 3).
+          setStateUnread(
+            body.suppressionsReadable === false || body.personalSnoozesReadable === false,
+          );
           const mapped = rows
             .map((r) => {
               const candidateKey = r.candidate_key ?? r.candidateKey ?? "";
@@ -310,23 +324,26 @@ export function EngineInsightsPanel({
     [restaurantId, base, toast],
   );
 
-  /** A one-item dismissal, with the reason the person picked (ADR 0191). */
-  const dismissInsight = async (ins: EngineInsight, reason: string) => {
+  /**
+   * One choice from the dismiss list (ADR 0191 round 3): a dismissal with its
+   * label, "Already handled" as done, or "Not right now" as this person's own
+   * snooze — `patchForChoice`, the same body every surface posts.
+   */
+  const dismissInsight = async (ins: EngineInsight, choice: DismissChoiceId) => {
     if (!ins.actKey || ins.ruleWide) return;
     setReasonFor(null);
     setInsights((prev) => prev.filter((i) => i.ruleKey !== ins.ruleKey));
-    const landed = await insightAction(ins, { status: "dismissed", reason });
-    if (landed) setUndo({ ruleKey: ins.actKey });
+    const landed = await insightAction(ins, patchForChoice(choice));
+    if (landed) setUndo({ ruleKey: ins.actKey, choice });
     else loadAll(); // put it back — the write did not land
   };
 
-  const restoreInsight = async (ruleKey: string) => {
+  const restoreInsight = async (last: { ruleKey: string; choice: DismissChoiceId }) => {
     setUndo(null);
+    if (!restaurantId) return;
     try {
-      await apiClient.post(`${base}/recommendations/${restaurantId}/action`, {
-        ruleKey,
-        status: "active",
-      });
+      const { path, body } = undoOf(restaurantId, last.ruleKey, last.choice);
+      await apiClient.post(path, body);
     } catch (e) {
       toast.error(`Couldn't restore it — ${getErrorMessage(e)}`);
     }
@@ -491,9 +508,10 @@ export function EngineInsightsPanel({
                           className="mt-1 flex flex-wrap items-center gap-1 text-[11px]"
                         >
                           <span className="text-gray-500">Why?</span>
-                          {DISMISS_REASONS.map((r) => (
+                          {DISMISS_CHOICES.map((r) => (
                             <button
                               key={r.id}
+                              title={r.note}
                               onClick={() => void dismissInsight(ins, r.id)}
                               className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
                             >
@@ -530,9 +548,9 @@ export function EngineInsightsPanel({
         {/* Undo snackbar for dismissed insights (NEW-434) */}
         {undo && (
           <div className="mt-3 flex items-center justify-between gap-3 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs">
-            <span>Insight dismissed</span>
+            <span>{choiceSaid(undo.choice)}</span>
             <button
-              onClick={() => restoreInsight(undo.ruleKey)}
+              onClick={() => restoreInsight(undo)}
               className="flex items-center gap-1 font-semibold text-amber-300 hover:text-amber-200"
             >
               <Undo2 className="w-3.5 h-3.5" /> Undo

@@ -1,4 +1,5 @@
 import {
+  ActRefused,
   RecommendationActionsService,
   RuleWideActForbidden,
   actorOf,
@@ -42,6 +43,8 @@ function gateDb(
         return b;
       };
       b.eq = () => b;
+      b.delete = () => b;
+      b.lte = () => b;
       b.in = (_col: string, keys: string[]) => {
         calls.push({ table, op: "read", payload: keys });
         return b;
@@ -122,7 +125,7 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
     const out = await svc.setActionAs(
       RID,
       FINDING,
-      { status: "dismissed", reason: "not_now" },
+      { status: "dismissed", reason: "disagree" },
       undefined,
       STAFF,
     );
@@ -130,7 +133,7 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
     expect(writes(calls)[0].payload).toMatchObject({
       rule_key: FINDING,
       status: "dismissed",
-      reason: "not_now",
+      reason: "disagree",
       created_by: "u-staff",
     });
     expect(audits(calls)).toEqual([]);
@@ -149,7 +152,7 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
     expect(writes(calls)).toHaveLength(1);
   });
 
-  it("staff may still snooze a live rule and pin it — neither is a dismiss or a restore", async () => {
+  it("staff may still snooze a live rule (for themselves, round 3) and pin it — neither is a dismiss or a restore", async () => {
     const { db, calls } = gateDb({ current: { [RULE]: "active" } });
     const svc = new RecommendationActionsService(db);
     await svc.setActionAs(
@@ -160,7 +163,13 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
       STAFF,
     );
     await svc.setActionAs(RID, RULE, { pinned: true }, undefined, STAFF);
-    expect(writes(calls)).toHaveLength(2);
+    // The pin is the house's; the snooze is theirs alone.
+    expect(writes(calls)).toHaveLength(1);
+    expect(
+      calls.filter(
+        (c) => c.table === "recommendation_personal_snoozes" && c.op === "upsert",
+      ),
+    ).toHaveLength(1);
     expect(audits(calls)).toEqual([]);
   });
 
@@ -206,7 +215,7 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
     const out = await svc.setActionAs(
       RID,
       RULE,
-      { status: "dismissed", reason: "not_now" },
+      { status: "dismissed", reason: "not_relevant" },
       undefined,
       MANAGER,
     );
@@ -218,22 +227,28 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
     const svc = new RecommendationActionsService(db);
     await expect(
       svc.setActionAs(RID, RULE, { status: "active" }, undefined, MANAGER),
-    ).rejects.toThrow(/Could not read the rule's current state/);
+    ).rejects.toThrow(/Could not read the item's current state/);
     expect(writes(calls)).toEqual([]);
   });
 
-  it("a whole-rule act with no signed-in person is refused — nobody to file", async () => {
+  it("a status write with no signed-in person is refused — nobody to keep in the history (round 3)", async () => {
     const { db, calls } = gateDb();
     const svc = new RecommendationActionsService(db);
     await expect(
       svc.setActionAs(
         RID,
         RULE,
-        { status: "dismissed", reason: "not_now" },
+        { status: "dismissed", reason: "not_relevant" },
         undefined,
         { userId: null, role: "owner" },
       ),
-    ).rejects.toBeInstanceOf(RuleWideActForbidden);
+    ).rejects.toBeInstanceOf(ActRefused);
+    await expect(
+      svc.setActionAs(RID, FINDING, { status: "done" }, undefined, {
+        userId: null,
+        role: "staff",
+      }),
+    ).rejects.toBeInstanceOf(ActRefused);
     expect(writes(calls)).toEqual([]);
   });
 
@@ -244,7 +259,7 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
       svc.bulkSetActionAs(
         RID,
         [{ ruleKey: FINDING }, { ruleKey: "stockout_imminent" }],
-        { status: "dismissed", reason: "not_now" },
+        { status: "dismissed", reason: "not_relevant" },
         STAFF,
       ),
     ).rejects.toBeInstanceOf(RuleWideActForbidden);
@@ -257,10 +272,15 @@ describe("rule-wide dismiss and restore are owner/manager only, and audited", ()
     const out = await svc.bulkSetActionAs(
       RID,
       [{ ruleKey: FINDING }, { ruleKey: "stockout_imminent" }],
-      { status: "dismissed", reason: "not_now" },
+      { status: "dismissed", reason: "not_relevant" },
       MANAGER,
     );
-    expect(out).toEqual({ updated: 2, audit: { recorded: 1, missed: 0 } });
+    expect(out).toEqual({
+      updated: 2,
+      audit: { recorded: 1, missed: 0 },
+      history: { recorded: 2, missed: 0 },
+      snoozedForYou: 0,
+    });
     expect(audits(calls).map((a: any) => a.payload.changes.rule_key)).toEqual([
       "stockout_imminent",
     ]);
@@ -329,7 +349,7 @@ describe("the shared state's own rules, at the write", () => {
       FINDING,
       { status: "snoozed", snoozeUntil: LATER, reason: "until next week" },
       undefined,
-      STAFF,
+      MANAGER,
     );
     expect(writes(calls)[0].payload).toMatchObject({
       status: "snoozed",
@@ -358,8 +378,13 @@ describe("the actor comes from the token, never the body", () => {
     expect(actorOf({ userId: "u-1", role: "staff" })).toEqual({
       userId: "u-1",
       role: "staff",
+      leadsAreas: [],
     });
-    expect(actorOf(undefined)).toEqual({ userId: null, role: null });
+    expect(actorOf(undefined)).toEqual({
+      userId: null,
+      role: null,
+      leadsAreas: [],
+    });
   });
 });
 
@@ -400,7 +425,11 @@ describe("the controller's door", () => {
       ),
     );
     expect(status).toBe(403);
-    expect(seen[0][4]).toEqual({ userId: "u-staff", role: "staff" });
+    expect(seen[0][4]).toEqual({
+      userId: "u-staff",
+      role: "staff",
+      leadsAreas: [],
+    });
   });
 
   it("any other refusal stays a 400", async () => {

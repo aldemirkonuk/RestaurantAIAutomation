@@ -26,9 +26,11 @@ import { RecommendationsService } from "./recommendations.service";
 import {
   RecommendationActionsService,
   RecommendationStatus,
+  ActRefused,
   RuleWideActForbidden,
   actorOf,
 } from "./recommendation-actions.service";
+import { insightRowTarget } from "./insights/item-state";
 import { TableAnalyticsService } from "./table-analytics.service";
 import { GoalsService } from "./goals.service";
 import { goalScenarioBook } from "./goal-scenarios";
@@ -335,7 +337,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Turn a catalogue type on or off for this house (owner/manager, audited)",
     description:
-      "Body: { enabled: boolean, reason?: not_relevant|already_handled|disagree|not_now }. 'Off' (reason required) suppresses every live instance of this type house-wide (feed, Reports, contextual rails) by writing recommendation_actions at rule scope — the same store and the same `insight:<candidate_key>` key NEW-434 already uses. 'On' restores it. The actor is the authenticated caller, not the body; each toggle files a system_audit_log row and returns its receipt as `audit`.",
+      "Body: { enabled: boolean, reason?: not_relevant|disagree }. 'Off' (reason required) suppresses every live instance of this type house-wide (feed, Reports, contextual rails) by writing recommendation_actions at rule scope — the same store and the same `insight:<candidate_key>` key NEW-434 already uses. 'On' restores it. The actor is the authenticated caller, not the body; each toggle files a system_audit_log row and returns its receipt as `audit`, and is kept in the append-only history (receipt `history`).",
   })
   async toggleCatalogType(
     @Param("restaurantId") restaurantId: string,
@@ -355,7 +357,7 @@ export class AnalyticsController {
       if (typeof body?.enabled !== "boolean")
         throw new Error("enabled (boolean) is required");
       if (!candidateKey?.trim()) throw new Error("candidateKey is required");
-      const { row, ruleKey, audit } =
+      const { row, ruleKey, audit, history } =
         await this.recommendationActions.setTypeEnabled(
           restaurantId,
           candidateKey,
@@ -369,6 +371,7 @@ export class AnalyticsController {
         enabled: body.enabled,
         updatedAt: row.updatedAt,
         audit,
+        history,
       };
     } catch (error) {
       throw new HttpException(
@@ -400,53 +403,103 @@ export class AnalyticsController {
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
     @Query("candidateKey") candidateKey?: string,
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
-      const categories = categoriesStr
-        ? (categoriesStr.split(",").map((c) => c.trim()) as any)
-        : undefined;
-      if (candidateKey?.trim()) {
-        // Live, never stored: a stored row carries no suppression key, so an
-        // act on it could not be written at the instance's own scope.
-        return await this.insightGenerator.generate(restaurantId, {
-          categories,
-          candidateKeys: [candidateKey.trim()],
-          persist: false,
-        });
-      }
-      if (refresh === "true") {
-        return await this.insightGenerator.generate(restaurantId, {
-          categories,
-          persist: true,
-        });
-      }
-      const stored = await this.insightGenerator.readStored(restaurantId, {
-        categories,
-        limit: limitStr ? parseInt(limitStr, 10) : undefined,
-      });
-      // Stored rows go out through the same shared per-item state as a live
-      // compute (ADR 0191): withheld counts and the readability flag travel
-      // with them, and a cache whose every row is withheld is an answer, not
-      // a cold start.
-      if (stored.read > 0)
-        return {
-          source: "stored",
-          insights: stored.rows,
-          suppressed: stored.withheld.dismissed,
-          withheld: stored.withheld,
-          suppressionsReadable: stored.suppressionsReadable,
-        };
-      // cold start: compute live once and persist
-      return await this.insightGenerator.generate(restaurantId, {
-        categories,
-        persist: true,
-      });
+      const answer = await this.readInsights(
+        restaurantId,
+        refresh,
+        categoriesStr,
+        limitStr,
+        candidateKey,
+      );
+      return await this.forViewer(restaurantId, user, answer);
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to fetch insights",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * The person's own snoozes, applied where a named person is looking (ADR
+   * 0191 round 3, answer 4: a staff snooze is "Only them"). Runs on this
+   * route's answer after the house state has been applied, never inside the
+   * generator: the stored cache, the digest and the MCP reader stay the
+   * house's one truth. `personalSnoozesReadable: false` means what this
+   * person snoozed for themselves could not be read, so some of it may be
+   * showing — the page says so.
+   */
+  private async forViewer<T extends { insights?: unknown }>(
+    restaurantId: string,
+    user: { userId?: string } | undefined,
+    answer: T,
+  ): Promise<
+    T & { hiddenForYou?: number; personalSnoozesReadable?: boolean }
+  > {
+    const list = (answer as { insights?: unknown }).insights;
+    if (!Array.isArray(list)) return answer;
+    const view = await this.recommendationActions.viewFor(
+      restaurantId,
+      actorOf(user).userId,
+      list as unknown[],
+      insightRowTarget,
+    );
+    return {
+      ...answer,
+      insights: view.kept,
+      hiddenForYou: view.hiddenForYou,
+      personalSnoozesReadable: view.personalSnoozesReadable,
+    };
+  }
+
+  private async readInsights(
+    restaurantId: string,
+    refresh?: string,
+    categoriesStr?: string,
+    limitStr?: string,
+    candidateKey?: string,
+  ) {
+    const categories = categoriesStr
+      ? (categoriesStr.split(",").map((c) => c.trim()) as any)
+      : undefined;
+    if (candidateKey?.trim()) {
+      // Live, never stored: a stored row carries no suppression key, so an
+      // act on it could not be written at the instance's own scope.
+      return await this.insightGenerator.generate(restaurantId, {
+        categories,
+        candidateKeys: [candidateKey.trim()],
+        persist: false,
+      });
+    }
+    if (refresh === "true") {
+      return await this.insightGenerator.generate(restaurantId, {
+        categories,
+        persist: true,
+      });
+    }
+    const stored = await this.insightGenerator.readStored(restaurantId, {
+      categories,
+      limit: limitStr ? parseInt(limitStr, 10) : undefined,
+    });
+    // Stored rows go out through the same shared per-item state as a live
+    // compute (ADR 0191): withheld counts and the readability flag travel
+    // with them, and a cache whose every row is withheld is an answer, not
+    // a cold start.
+    if (stored.read > 0)
+      return {
+        source: "stored",
+        insights: stored.rows,
+        suppressed: stored.withheld.dismissed,
+        withheld: stored.withheld,
+        suppressionsReadable: stored.suppressionsReadable,
+      };
+    // cold start: compute live once and persist
+    return await this.insightGenerator.generate(restaurantId, {
+      categories,
+      persist: true,
+    });
   }
 
   @Get("insight-prefs/:restaurantId")
@@ -1030,12 +1083,16 @@ export class AnalyticsController {
   async getRecommendations(
     @Param("restaurantId") restaurantId: string,
     @Query("includeHidden") includeHidden?: string,
+    @CurrentUser() user?: { userId?: string },
   ) {
     try {
       return await this.recommendationsService.getRecommendations(
         restaurantId,
         {
           includeHidden: includeHidden === "true",
+          // The person's own snoozes (ADR 0191 round 3) hide cards from them
+          // alone; the digest calls this service with no viewer.
+          viewerId: actorOf(user).userId,
         },
       );
     } catch (error) {
@@ -1050,7 +1107,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Set a recommendation's disposition (NEW-284…NEW-298)",
     description:
-      "Body: { ruleKey, status?, reason?, snoozeUntil?, pinned?, acted?, feedback?, snapshot? }. Upserts the state of one item so it survives recompute and holds on every surface (ADR 0191). A dismissal needs a reason label (not_relevant|already_handled|disagree|not_now); a snooze needs a future snoozeUntil. A RULE-WIDE dismiss or restore (a key with no subject and no period) is owner/manager only — 403 otherwise — and files a system_audit_log row whose receipt comes back as `audit`. The actor is the authenticated caller; a body `createdBy` is ignored.",
+      "Body: { ruleKey, status?, reason?, snoozeUntil?, snoozeFor?, pinned?, acted?, feedback?, snapshot? }. Upserts the state of one item so it survives recompute and holds on every surface (ADR 0191). A dismissal needs a reason label (not_relevant|disagree); 'already_handled' is recorded as done and 'not_now' as the caller's own snooze (round 3). A snooze needs a future snoozeUntil; snoozeFor 'me' hides the card from the caller alone, 'house' from everyone (owner/manager only — 403 otherwise); absent, a staff snooze is the caller's own. A RULE-WIDE dismiss or restore (a key with no subject and no period) is owner/manager only — 403 otherwise — and files a system_audit_log row whose receipt comes back as `audit`. Every house status write is kept in the append-only history (receipt `history`); `recordedAs` says what the write became. The actor is the authenticated caller; a body `createdBy` is ignored.",
   })
   async setRecommendationAction(
     @Param("restaurantId") restaurantId: string,
@@ -1060,6 +1117,7 @@ export class AnalyticsController {
       status?: RecommendationStatus;
       reason?: string | null;
       snoozeUntil?: string | null;
+      snoozeFor?: string | null;
       pinned?: boolean;
       acted?: boolean;
       feedback?: "helpful" | "not_helpful" | null;
@@ -1076,13 +1134,14 @@ export class AnalyticsController {
   ) {
     try {
       if (!body?.ruleKey) throw new Error("ruleKey is required");
-      const { row, audit } = await this.recommendationActions.setActionAs(
+      const out = await this.recommendationActions.setActionAs(
         restaurantId,
         body.ruleKey,
         {
           status: body.status,
           reason: body.reason,
           snoozeUntil: body.snoozeUntil,
+          snoozeFor: body.snoozeFor,
           pinned: body.pinned,
           acted: body.acted,
           feedback: body.feedback,
@@ -1093,11 +1152,24 @@ export class AnalyticsController {
         actorOf(user),
       );
       // The row's own fields at the top level, as before, plus the audit
-      // receipt when this was a rule-wide act (null otherwise).
-      return { ...row, audit };
+      // receipt when this was a rule-wide act (null otherwise), the history
+      // receipt, what the write was recorded as, and — when it became the
+      // caller's own snooze — that snooze instead of a house row.
+      return {
+        ...(out.row ?? { ruleKey: body.ruleKey }),
+        audit: out.audit,
+        history: out.history,
+        recordedAs: out.recordedAs,
+        personal: out.personal,
+      };
     } catch (error) {
       if (error instanceof RuleWideActForbidden)
         throw new HttpException(error.message, HttpStatus.FORBIDDEN);
+      if (error instanceof ActRefused)
+        throw new HttpException(
+          error.message,
+          error.forbidden ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST,
+        );
       throw new HttpException(
         error.message || "Failed to set recommendation action",
         HttpStatus.BAD_REQUEST,
@@ -1109,7 +1181,7 @@ export class AnalyticsController {
   @ApiOperation({
     summary: "Bulk-set disposition on many cards (NEW-293)",
     description:
-      "Body: { items: [{ ruleKey, snapshot? }], status?, reason?, snoozeUntil?, pinned? }. Same rules as the single write; a selection holding any rule-wide dismiss or restore is refused whole (403) for anyone but an owner/manager, before anything is written. Returns { updated, audit: { recorded, missed } }.",
+      "Body: { items: [{ ruleKey, snapshot? }], status?, reason?, snoozeUntil?, snoozeFor?, pinned? }. Same rules as the single write; a selection holding any rule-wide dismiss or restore, or a snooze for everyone, is refused whole (403) for anyone but an owner/manager, before anything is written. Returns { updated, audit: { recorded, missed }, history: { recorded, missed }, snoozedForYou }.",
   })
   async bulkRecommendationAction(
     @Param("restaurantId") restaurantId: string,
@@ -1127,6 +1199,7 @@ export class AnalyticsController {
       status?: RecommendationStatus;
       reason?: string | null;
       snoozeUntil?: string | null;
+      snoozeFor?: string | null;
       pinned?: boolean;
     },
     @CurrentUser() user?: { userId?: string; role?: string },
@@ -1141,6 +1214,7 @@ export class AnalyticsController {
           status: body.status,
           reason: body.reason,
           snoozeUntil: body.snoozeUntil,
+          snoozeFor: body.snoozeFor,
           pinned: body.pinned,
         },
         actorOf(user),
@@ -1148,6 +1222,11 @@ export class AnalyticsController {
     } catch (error) {
       if (error instanceof RuleWideActForbidden)
         throw new HttpException(error.message, HttpStatus.FORBIDDEN);
+      if (error instanceof ActRefused)
+        throw new HttpException(
+          error.message,
+          error.forbidden ? HttpStatus.FORBIDDEN : HttpStatus.BAD_REQUEST,
+        );
       throw new HttpException(
         error.message || "Failed to bulk-set recommendation actions",
         HttpStatus.BAD_REQUEST,
@@ -1173,6 +1252,60 @@ export class AnalyticsController {
       throw new HttpException(
         error.message || "Failed to list recommendation actions",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get("recommendations/:restaurantId/snoozed-for-me")
+  @ApiOperation({
+    summary: "The caller's own snoozes still in force (ADR 0191 round 3)",
+    description:
+      "Cards the signed-in person snoozed for themselves alone — hidden from them, shown to everyone else. Never another person's: the user is read from the JWT. A failed read is a 500, never an empty list.",
+  })
+  async listSnoozedForMe(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    try {
+      return {
+        items: await this.recommendationActions.listForMe(
+          restaurantId,
+          actorOf(user).userId ?? "",
+        ),
+      };
+    } catch (error) {
+      if (error instanceof ActRefused)
+        throw new HttpException(error.message, HttpStatus.FORBIDDEN);
+      throw new HttpException(
+        error.message || "Failed to read your snoozes",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post("recommendations/:restaurantId/snoozed-for-me/wake")
+  @ApiOperation({
+    summary: "End the caller's own snooze on one card now (ADR 0191 round 3)",
+    description:
+      "Body: { ruleKey }. Deletes the signed-in person's own snooze on that key; the card is back for them. Returns { woke } — false when there was none.",
+  })
+  async wakeForMe(
+    @Param("restaurantId") restaurantId: string,
+    @Body() body: { ruleKey?: string },
+    @CurrentUser() user?: { userId?: string },
+  ) {
+    try {
+      return await this.recommendationActions.wakeForMe(
+        restaurantId,
+        actorOf(user).userId ?? "",
+        String(body?.ruleKey ?? ""),
+      );
+    } catch (error) {
+      if (error instanceof ActRefused)
+        throw new HttpException(error.message, HttpStatus.FORBIDDEN);
+      throw new HttpException(
+        error.message || "Failed to wake the card",
+        HttpStatus.BAD_REQUEST,
       );
     }
   }

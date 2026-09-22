@@ -35,9 +35,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { Wordmark } from '@/components/mudavym';
 import {
+  DISMISS_CHOICES,
   DISMISS_REASONS,
   EM,
   SNOOZE_CHOICES,
+  maySnoozeForEveryone,
+  patchForChoice,
   ensureFraunces,
   failureOf,
   failureSentence,
@@ -81,6 +84,13 @@ interface LivePanelState {
    * on the feed, Reports and the rails too — the panel says how many.
    */
   withheld?: { dismissed: number; snoozed: number; done: number };
+  /**
+   * How many of this type's items THIS person snoozed for themselves (ADR
+   * 0191 round 3, "Only them") — hidden from them alone.
+   */
+  hiddenForYou?: number;
+  /** False when this person's own snoozes could not be read. */
+  personalSnoozesReadable?: boolean;
 }
 
 /** Which one-item sheet is open on a live item, if any. */
@@ -112,6 +122,8 @@ export default function CatalogView({ ground }: CatalogViewProps) {
   // Owner/manager only — a house policy, not a note on one card (ADR 0191).
   // The gateway's set (`RolesGuard`): owner, manager, admin.
   const canManage = ['owner', 'manager', 'admin'].includes(String(role ?? ''));
+  /** Snooze for everyone is owners and managers (round 3); anyone else's is theirs. */
+  const canSnoozeForEveryone = maySnoozeForEveryone(role);
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [payload, setPayload] = useState<CatalogPayload | null>(null);
@@ -275,6 +287,8 @@ export default function CatalogView({ ground }: CatalogViewProps) {
           insights?: unknown[];
           suppressionsReadable?: boolean;
           withheld?: { dismissed?: number; snoozed?: number; done?: number };
+          hiddenForYou?: number;
+          personalSnoozesReadable?: boolean;
         }>(
           `/analytics/insights/${rid}?categories=${encodeURIComponent(c.category)}&candidateKey=${encodeURIComponent(c.key)}&refresh=true`,
         )
@@ -297,6 +311,8 @@ export default function CatalogView({ ground }: CatalogViewProps) {
               withheld: w
                 ? { dismissed: w.dismissed ?? 0, snoozed: w.snoozed ?? 0, done: w.done ?? 0 }
                 : undefined,
+              hiddenForYou: typeof data.hiddenForYou === 'number' ? data.hiddenForYou : undefined,
+              personalSnoozesReadable: data.personalSnoozesReadable,
             },
           }));
         })
@@ -689,6 +705,19 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                         {' '}{EM} hidden on the feed, Reports and the rails as well.
                                       </p>
                                     )}
+                                  {live?.phase === 'ready' && live.personalSnoozesReadable === false && (
+                                    <p className="rc-why" role="alert" data-testid="rc-live-personal-unread">
+                                      What you snoozed for yourself could not be read — some of it
+                                      may be showing.
+                                    </p>
+                                  )}
+                                  {live?.phase === 'ready' && (live.hiddenForYou ?? 0) > 0 && (
+                                    <p className="rc-said" data-testid="rc-live-hidden-for-you">
+                                      {live.hiddenForYou} hidden just for you {EM} you snoozed{' '}
+                                      {live.hiddenForYou === 1 ? 'it' : 'them'}, everyone else still
+                                      sees {live.hiddenForYou === 1 ? 'it' : 'them'}.
+                                    </p>
+                                  )}
                                   {liveActFailure && liveActFailure.key === c.key && (
                                     <p className="rc-why" role="alert">
                                       Not saved ({liveActFailure.message}) — the item is back
@@ -780,23 +809,41 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                                 aria-label="Snooze this item"
                                               >
                                                 <span className="rc-micro">It comes back…</span>
-                                                {SNOOZE_CHOICES.map((o) => (
-                                                  <button
-                                                    key={o.id}
-                                                    type="button"
-                                                    className="rc-quiet"
-                                                    onClick={() =>
-                                                      actLive(c, item, {
-                                                        status: 'snoozed',
-                                                        snoozeUntil: new Date(
-                                                          Date.now() + o.value * 86_400_000,
-                                                        ).toISOString(),
-                                                      })
-                                                    }
-                                                  >
-                                                    {o.label}
-                                                  </button>
+                                                {(canSnoozeForEveryone
+                                                  ? (['me', 'house'] as const)
+                                                  : (['me'] as const)
+                                                ).map((forWhom) => (
+                                                  <span key={forWhom} className="rc-row">
+                                                    <span className="rc-micro">
+                                                      {forWhom === 'me' ? 'Just for you' : 'For everyone'}
+                                                    </span>
+                                                    {SNOOZE_CHOICES.map((o) => (
+                                                      <button
+                                                        key={o.id}
+                                                        type="button"
+                                                        className="rc-quiet"
+                                                        aria-label={`${o.label}, ${forWhom === 'me' ? 'just for you' : 'for everyone'}`}
+                                                        onClick={() =>
+                                                          actLive(c, item, {
+                                                            status: 'snoozed',
+                                                            snoozeFor: forWhom,
+                                                            snoozeUntil: new Date(
+                                                              Date.now() + o.value * 86_400_000,
+                                                            ).toISOString(),
+                                                          })
+                                                        }
+                                                      >
+                                                        {o.label}
+                                                      </button>
+                                                    ))}
+                                                  </span>
                                                 ))}
+                                                {!canSnoozeForEveryone && (
+                                                  <span className="rc-micro" data-testid="rc-live-snooze-for-you">
+                                                    Hidden from you alone {EM} only an owner or manager can
+                                                    snooze it for everyone.
+                                                  </span>
+                                                )}
                                               </div>
                                             )}
                                           {liveMenu?.key === item.suppressionKey &&
@@ -807,17 +854,15 @@ export default function CatalogView({ ground }: CatalogViewProps) {
                                                 aria-label="Why dismiss this item"
                                               >
                                                 <span className="rc-micro">Why?</span>
-                                                {DISMISS_REASONS.map((r) => (
+                                                {/* Round 3: "Already handled" records done and
+                                                    "Not right now" hides it from you alone. */}
+                                                {DISMISS_CHOICES.map((r) => (
                                                   <button
                                                     key={r.id}
                                                     type="button"
                                                     className="rc-quiet"
-                                                    onClick={() =>
-                                                      actLive(c, item, {
-                                                        status: 'dismissed',
-                                                        reason: r.id,
-                                                      })
-                                                    }
+                                                    title={r.note}
+                                                    onClick={() => actLive(c, item, patchForChoice(r.id))}
                                                   >
                                                     {r.label}
                                                   </button>
