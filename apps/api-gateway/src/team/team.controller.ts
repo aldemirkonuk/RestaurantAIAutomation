@@ -367,6 +367,15 @@ export class TeamController {
    * channel off. Same people, same channels, opposite answers. The opt-outs are
    * applied here now, and what they suppressed is reported rather than
    * disappearing into a smaller number.
+   *
+   * **T6 — the opt-outs above were real, and a second, unfiltered push still
+   * reached everyone.** `persistForRestaurant`'s own "Mobile fan-out" pushed
+   * every write audience at any priority above `"low"`, reading no
+   * preference — so every non-opted-out recipient got this route's `pushIds`
+   * push AND the funnel's push, and an opted-out or inbox-only recipient
+   * still got the funnel's. `persistForRestaurant` now takes
+   * `skipMobilePush`, set below, so this route's own opt-out-aware send is
+   * the only push path.
    */
   @Post("broadcast")
   async broadcast(
@@ -471,7 +480,12 @@ export class TeamController {
           actionUrl: "/team",
           actionLabel: "Open Team",
         },
-        named ? { onlyUserIds: userIds } : {},
+        // `skipMobilePush`: this route sends its own push below, filtered by
+        // `wants()` and `may("push")` — see T6. Without it the funnel pushed
+        // a second, unfiltered time.
+        named
+          ? { onlyUserIds: userIds, skipMobilePush: true }
+          : { skipMobilePush: true },
       );
 
     const pushable = may("push")
