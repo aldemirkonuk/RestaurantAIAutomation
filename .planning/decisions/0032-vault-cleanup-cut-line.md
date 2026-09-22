@@ -133,6 +133,40 @@ it: it is live.
 
 Vault: 1,677 → 1,152 files. Top level: 35 → 30.
 
+## Retire-to-write waiver — the 2026-09-21 research judges (2026-09-22)
+
+**Founder call 2026-09-22, his pick verbatim: "Judges only, into repo
+(Recommended)"**, to the question of whether any of the night's research should
+enter the repo before a reboot clears the scratch folder it lived in. The option
+he picked said a one-time retire-to-write waiver would come with it. So eleven
+judged research summaries land under `.planning/07-reference/research/2026-09-21/`
+with no retirement:
+
+- `ft-judge.md`, `jev-exp.md`, `jev-judge.md` (ADR 0163)
+- `areas-judge.md` (ADR 0218)
+- `labor-judge.md` (ADR 0215)
+- `lock-decision.md` (ADR 0193)
+- `ask-judge.md`, `ask-layout-judge.md` (ADR 0145, ADR 0112)
+- `price-judge.md` (ADR 0193)
+- `qty-judge.md` (lane E)
+- `seal-judge.md` (ADR 0175)
+
+**Scope, stated rather than hidden:** the question named six of these (the
+fine-tuning judge, the Jev experiment and its judge, areas, labor, the price
+lock). The other five are the same kind of file (judged summaries from the
+evening's earlier rounds), and they would have been lost the same way, so they
+came in under the same pick. The raw experiment files (4.5 MB of logs and
+menus) and the un-judged finder reports stay out and expire, as the option said.
+
+Each copy was masked before it entered this public repo: local paths, one API
+request id and scratch paths were rewritten. Every mask is listed in the PR body.
+Public product names, public sources and the synthetic experiment menus' producer
+names were kept on purpose.
+
+None of the eleven duplicates or supersedes an existing doc, so there is nothing
+honest to retire. This is a one-time waiver for these eleven files, not a
+standing exemption. The next new doc still owes a real trade or its own row here.
+
 ## Consequences
 
 - Vault search, the Obsidian graph, and the unique-filename rule now operate on
@@ -174,3 +208,6 @@ Vault: 1,677 → 1,152 files. Top level: 35 → 30.
   `fix/md-sql-schema-debt`: production probes showed none of their DDL was ever
   applied and nothing queries it; guard inventory shrank 5 lines; both trees
   are now empty and gone.
+- 2026-09-22 — retire-to-write waived for the eleven 2026-09-21 research judges,
+  on the founder's pick "Judges only, into repo (Recommended)" (relayed by
+  session effa5204); see "Retire-to-write waiver — the 2026-09-21 research judges".
