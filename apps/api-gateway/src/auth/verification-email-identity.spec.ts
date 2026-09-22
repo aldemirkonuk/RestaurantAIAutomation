@@ -79,7 +79,7 @@ describe("queueEmailVerification — account mail identity (ADR 0143)", () => {
 
     const call = sendEmail.mock.calls[0][0];
     expect(call.html).toContain(
-      "https://restaurant-ai-automation-web.vercel.app/verify-email?token=tok-xyz",
+      "https://mudavym.com/verify-email?token=tok-xyz",
     );
   });
 
