@@ -324,8 +324,7 @@ def test_scrubs_every_spans_own_data():
     }
     scrub_sentry_event(event)
     assert (
-        event["spans"][0]["data"]["http.url"]
-        == "https://mudavym.com/invite/<redacted>"
+        event["spans"][0]["data"]["http.url"] == "https://mudavym.com/invite/<redacted>"
     )
     assert "http.query" not in event["spans"][1]["data"]
     assert "SECRET" not in repr(event)
