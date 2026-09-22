@@ -353,7 +353,10 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     get.mockResolvedValue(queuePayload({ items, totalAtRisk: 12000 }))
     harness(ManagerBody)
 
-    expect(await screen.findByText('≥$12,000')).toBeInTheDocument()
+    // A full window is 100 rows, and the day line now mounts above them, so the
+    // first paint of this case is the heaviest in the file. On a loaded CI runner
+    // it crossed the 1000 ms default and the assertion read the pre-load em dash.
+    expect(await screen.findByText('≥$12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Short/ })).toHaveTextContent('≥100')
   })
 
