@@ -80,6 +80,15 @@ const cellar = vi.hoisted(() => ({
   },
 }));
 vi.mock('@/pages/cellar/next/useCellarNextData', () => ({
+  HOLD_CEREMONIES: ['hold', 'auto'] as const,
+  GAZETTEER_MEASURE_IDS: [
+    'bottles',
+    'titles',
+    'par',
+    'offbook',
+    'parUnset',
+    'registers',
+  ] as const,
   useCellarRegisters: () => cellar.current,
   useCellarSettings: () => ({
     data: {
