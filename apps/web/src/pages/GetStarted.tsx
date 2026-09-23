@@ -273,7 +273,7 @@ export default function GetStarted() {
           </p>
         )}
         <div className="mt-9 space-y-5">
-          <label className="block">
+          <label htmlFor="arrival-place" className="block">
             <span className="text-xs uppercase tracking-wider">Find your restaurant</span>
             <PlacesAutocomplete
               id="arrival-place"
