@@ -21,6 +21,6 @@ alter table public.menu_items
 
 comment on column public.menu_items.status is
   'approved/flagged/in_review: review states on the way onto the menu '
-  '(unchanged). discarded (added 20260921112100): a person removed the line '
+  '(unchanged). discarded (added 20260922230100): a person removed the line '
   'from /menu; getMenu filters these out (menus.service.ts) rather than '
   'deleting the row, so what it cost and who added it stays in the record.';

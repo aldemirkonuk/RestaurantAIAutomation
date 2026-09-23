@@ -59,7 +59,7 @@ const MEASURE_LABEL: Record<GazetteerMeasureId, string> = {
 /**
  * The order-hold ceremony and the "in the building tonight" measures — ADR
  * 0160 sec110 items 6 and 2. Both live on `restaurant_cellar_settings`
- * (migration 20260921112000) behind one hook, `useCellarSettings`, for the
+ * (migration 20260922230000) behind one hook, `useCellarSettings`, for the
  * same reason `CellarRegistersControl` is mounted rather than reimplemented
  * above: the cellar page owns this data and this read model, Settings owns
  * where it is changed.

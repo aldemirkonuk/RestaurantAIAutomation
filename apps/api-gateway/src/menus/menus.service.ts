@@ -612,7 +612,7 @@ export class MenusService {
 
   /**
    * Discards one line from the active menu (ADR 0160 sec110 item 7). A soft
-   * remove — `status = 'discarded'` (migration 20260921112100) — never a
+   * remove — `status = 'discarded'` (migration 20260922230100) — never a
    * DELETE: what it cost and who added it stays in the record, `getMenu`
    * just stops serving it as live. Tenant-scoped by `restaurantId`, taken
    * from the URL path (the controller's `:restaurantId`, matched against the
@@ -846,7 +846,7 @@ export class MenusService {
     if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
     if (!menu) return { menuId: null, name: null, status: null, items: [] };
 
-    // A discarded line (migration 20260921112100, ADR 0160 sec110 item 7) is
+    // A discarded line (migration 20260922230100, ADR 0160 sec110 item 7) is
     // a soft remove: the row stays for the record, but this read path must
     // not keep serving it as live. Read in pages: PostgREST stops at 1000
     // rows without saying so, and a long wine list is exactly that long.
@@ -1241,7 +1241,7 @@ export class MenusService {
    * of the plan it showed; the plan is recomputed here, before the switch, and
    * a missing fingerprint (400) or a different one (409) changes nothing.
    *
-   * `make_menu_current` (migrations 20260921115100, 20260921170000) does the
+   * `make_menu_current` (migrations 20260922230700, 20260922230800) does the
    * switch in one transaction under the house row's lock and returns the
    * moment of the choice. THEN every linked line reaches the house: its price
    * is written through set_house_menu_price DATED BY THE CHOICE

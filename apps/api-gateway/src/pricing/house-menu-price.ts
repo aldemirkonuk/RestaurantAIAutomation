@@ -12,7 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * The bottle price is `restaurant_inventory.menu_price_current` -- the column
  * every margin, valuation and POS path already reads -- and the glass price is
  * `menu_price_glass`. Both are written ONLY through the SQL function
- * `set_house_menu_price` (migration 20260921113200), which:
+ * `set_house_menu_price` (migration 20260922230400), which:
  *   - checks the item belongs to the house (P0002 otherwise, nothing written);
  *   - refuses a change dated before the price in effect ("stale"): the newest
  *     dated change wins, so a menu line scanned before a manager typed a price

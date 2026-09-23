@@ -66,7 +66,7 @@ menu AS (
   FROM public.menu_items mi
   WHERE mi.restaurant_id = p_restaurant_id
     AND btrim(coalesce(mi.name, '')) <> ''
-    -- ADDED 20260921112200: a discarded line is off the menu, not still on it.
+    -- ADDED 20260922230200: a discarded line is off the menu, not still on it.
     AND mi.status <> 'discarded'
 ),
 -- Invoices only. A purchase order is what we asked for; an invoice is what we
@@ -300,4 +300,4 @@ $function$;
 COMMENT ON FUNCTION public.house_beverage_ledger IS
   'The house''s own cross-book record for a non-wine product (menu, invoice, '
   'order, quote, pos), reconciled against the catalogue by house_key. '
-  '20260921112200: the menu CTE excludes status = ''discarded'' rows.';
+  '20260922230200: the menu CTE excludes status = ''discarded'' rows.';

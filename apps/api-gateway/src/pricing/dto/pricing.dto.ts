@@ -15,7 +15,7 @@ import {
  * The body of `PUT /pricing/target-margin` (ADR 0193).
  *
  * The bounds are the database's CHECKs verbatim
- * (`20260921113100_a_house_names_its_target_margin.sql`): a value this DTO
+ * (`20260922230300_a_house_names_its_target_margin.sql`): a value this DTO
  * admits is a value the database admits. They are a UNITS check as much as a
  * range: 0.65, the fraction spelling of a 65 percent margin, is refused with a
  * sentence rather than stored as a 0.65 percent target.
@@ -65,7 +65,7 @@ export class SetTargetMarginDto {
  * The body of `PUT /pricing/pour-size`: the pour this house serves, confirmed
  * once by an owner or manager (founder, 2026-09-21: glass advice appears only
  * after the house confirms its pour size). The bounds are the database
- * CHECK's (20260921115000).
+ * CHECK's (20260922230600).
  */
 export class ConfirmPourSizeDto {
   @ApiProperty({ description: "The pour this house serves, in ml. Between 10 and 500.", example: 125 })

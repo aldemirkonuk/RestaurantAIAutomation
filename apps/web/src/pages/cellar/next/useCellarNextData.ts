@@ -1084,7 +1084,7 @@ export function useCellarRegisters() {
  * The two per-house choices `GET/PUT /cellar/:restaurantId/settings` reads
  * and writes — the order-hold ceremony (ADR 0160 sec110 item 6) and which
  * "in the building tonight" tiles show (item 2). Both live on
- * `restaurant_cellar_settings` (migration 20260921112000). Mirrors
+ * `restaurant_cellar_settings` (migration 20260922230000). Mirrors
  * `CellarSettingsService`'s own `CellarSettingsReadout` shape and its
  * unread-default fallback on the gateway side (`cellar-settings.service.ts`)
  * exactly, so a read that has not resolved yet and a read that failed both

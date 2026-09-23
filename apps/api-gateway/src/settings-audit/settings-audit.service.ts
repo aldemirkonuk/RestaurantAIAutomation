@@ -82,7 +82,14 @@ export type SettingsRegister =
    * owner to increase decrease the prices so that the profit margin is where
    * it's needed."
    */
-  | "target-margin";
+  | "target-margin"
+  /**
+   * Whether this house's /ask questions may be used for training (ADR 0145,
+   * founder 2026-09-21, "Same as the wine pool (Recommended)": an owner
+   * opt-out per house). Its own register: it is the house's consent, not a
+   * preference, and only the owner may change it.
+   */
+  | "ask-training";
 
 /**
  * The action strings this service writes, and the ones it reads back.
@@ -122,6 +129,11 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * the "target-margin" register, where the page asks for it.
    */
   "pour_size_confirmed",
+  /**
+   * The owner opted the house out of, or back into, training use of its /ask
+   * questions. Added 2026-09-21 (ADR 0145, round 6r).
+   */
+  "ask_training_opt_out_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

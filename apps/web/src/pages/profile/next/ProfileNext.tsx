@@ -1,3 +1,4 @@
+import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice'
 /**
  * ProfileNext — the Mudavym redesign of `/profile` (ADR 0044 p4 wave). Live
  * in code for every house since ADR 0149 row 36 (2026-09-17) —
@@ -286,6 +287,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
     >
       <style>{PF_CSS}</style>
       <div style={{ margin: '0 auto', maxWidth: 860, padding: '24px 16px 40px' }}>
+        <IntegrationReturnNotice />
         {/* ── the opening — Fraunces speaks ───────────────────────────── */}
         <header ref={headRef}>
           <Wordmark size={13} />

@@ -405,7 +405,7 @@ export class CellarRegistersService {
       .select("category, name")
       .eq("restaurant_id", restaurantId)
       // A discarded line is off the menu; it should not still infer a
-      // register carried (migration 20260921112200, ADR 0160 sec110 item 7).
+      // register carried (migration 20260922230200, ADR 0160 sec110 item 7).
       .neq("status", "discarded");
 
     if (error) {

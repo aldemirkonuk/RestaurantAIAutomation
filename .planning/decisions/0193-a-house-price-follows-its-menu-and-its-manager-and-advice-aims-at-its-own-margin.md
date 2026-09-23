@@ -4,7 +4,7 @@
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder). Decisions are locked by the founder, never by an agent.
 - **Keywords:** pricing, bottle price, glass price, menu_price_current, menu_price_versions, target margin, price advice, recommendations, menu import, tenant scope
-- **Links:** [[0020-no-fabricated-answers]] (an unknown stays null), [[0051-rebuilt-pages-show-live-data-only]], [[0067-a-failed-read-is-never-an-empty-one]], ADR 0160 §110 (the cellar lane; not on this branch), `supabase/migrations/20260805123951_pricing_agility.sql`, `supabase/migrations/20260921113100_a_house_names_its_target_margin.sql`, `supabase/migrations/20260921113200_a_house_price_change_is_on_the_record.sql`, `supabase/migrations/20260921113300_an_accepted_price_advice_names_its_target.sql`, `supabase/migrations/20260921115000_a_house_confirms_its_pour_before_glass_advice.sql`, `supabase/migrations/20260921115100_a_house_keeps_every_menu_it_reads.sql`, `supabase/migrations/20260921170000_a_house_can_hold_a_price.sql`, `supabase/migrations/20260921170001_a_wine_can_state_its_own_pour.sql`, `apps/api-gateway/src/pricing/`, `apps/api-gateway/src/menus/`, [[0163-the-wine-library-is-a-ledger-of-cited-or-labelled-statements]] Q22 (on `r5/adr0163`)
+- **Links:** [[0020-no-fabricated-answers]] (an unknown stays null), [[0051-rebuilt-pages-show-live-data-only]], [[0067-a-failed-read-is-never-an-empty-one]], ADR 0160 §110 (the cellar lane; not on this branch), `supabase/migrations/20260805123951_pricing_agility.sql`, `supabase/migrations/20260922230300_a_house_names_its_target_margin.sql`, `supabase/migrations/20260922230400_a_house_price_change_is_on_the_record.sql`, `supabase/migrations/20260922230500_an_accepted_price_advice_names_its_target.sql`, `supabase/migrations/20260922230600_a_house_confirms_its_pour_before_glass_advice.sql`, `supabase/migrations/20260922230700_a_house_keeps_every_menu_it_reads.sql`, `supabase/migrations/20260922230800_a_house_can_hold_a_price.sql`, `supabase/migrations/20260922230900_a_wine_can_state_its_own_pour.sql`, `apps/api-gateway/src/pricing/`, `apps/api-gateway/src/menus/`, [[0163-the-wine-library-is-a-ledger-of-cited-or-labelled-statements]] Q22 (on `r5/adr0163`)
 
 ## Context
 
@@ -76,7 +76,7 @@ What that is, concretely:
 1. **One bottle-price column.** `menu_price_current` is the house bottle price and reaches
    the wire as `menuPriceBottle`. The lane's migration `20260921112300` is deleted before
    merge and every reader repointed (gateway mapper, create and bulk-create inserts, the
-   web normaliser). `20260921113200` fails if a `menu_price_bottle` column exists.
+   web normaliser). `20260922230400` fails if a `menu_price_bottle` column exists.
 2. **Every change is on the record.** An `AFTER INSERT OR UPDATE OF menu_price_current,
    menu_price_glass` trigger closes the open `menu_price_versions` row and opens a new one
    in the same transaction, so no writer can move a price without a row.
@@ -200,7 +200,7 @@ verbatim phrase in it is quoted as his. What each became:
    gap is `(price - advised) / advised x 100`; every raise/lower/on-target sentence states it
    as a percent, and the Settings register says "% of advised". The column is
    `restaurants.target_margin_band_pct` (and `pricing_analyses.band_pct`), 0-20, edited in
-   place in `20260921113100` / `20260921113300`, which have never been applied outside a
+   place in `20260922230300` / `20260922230500`, which have never been applied outside a
    proof build.
 3. **A blank price keeps the last known price, is flagged if unclear, and a manager can
    change it.** When a current menu's line leaves a kind blank for which the house HAS a
@@ -211,7 +211,7 @@ verbatim phrase in it is quoted as his. What each became:
    line's price clears the flag. A failed read of the house's own row for the wine is a
    failed line with the reason, never a guessed "no price, no flag".
 4. **Glass advice only after the house confirms its pour size, once; bottle advice
-   unaffected.** `restaurants.pour_size_confirmed_by/_at` (migration `20260921115000`, no
+   unaffected.** `restaurants.pour_size_confirmed_by/_at` (migration `20260922230600`, no
    default, no house confirmed by it); `PUT /pricing/pour-size` writes `default_pour_ml` and
    the person and moment in one update. The web's "default pour" had lived only in one
    browser's local store, so nothing had ever written `default_pour_ml`. A glass is costed on
@@ -362,7 +362,7 @@ as facts, never on a timer.
 | "Lock at all my houses" | Not asked; every key in this lane is per house |
 | "Apply the current menu's prices again" (re-choosing the current menu) | Changes the `already_current` behaviour the round-2 last call relied on, and nothing asked for it; after a release the difference is stated instead (L24) |
 
-**What was built.** Migration `20260921170000_a_house_can_hold_a_price.sql` (the table, RLS on
+**What was built.** Migration `20260922230800_a_house_can_hold_a_price.sql` (the table, RLS on
 with no policy, the append-only and own-house trigger, the guard, `set_house_menu_price` with
 13 arguments and the old form delegating, `menu_price_versions.menu_id`, `make_menu_current`
 returning its moment, the four acts `lock_house_menu_price`, `release_house_price_lock`,
@@ -383,8 +383,8 @@ nothing to hold, and the gateway would answer 409), and /inventory's "Your price
 price was saved; this wine's pour was not" when the second call fails (it had shown the pour
 call's "Nothing was changed" after a price had been saved), and offers the pour field only once
 the wine's own pour is known. The pour migration's version was moved from
-`20260921170100` to `20260921170001`, inside the band this lane was given
-(`20260921170000`-`20260921170099`); nothing had applied it.
+`20260921170100` to `20260922230900`, inside the band this lane was given
+(`20260922230800`-`20260921170099`); nothing had applied it.
 
 **The cellar surface (round 3 finish).** L8 says everyone of the house sees a lock, read-only,
 wherever they see the price. The cellar's bottle leaf shows the house's bottle and glass price
@@ -456,7 +456,7 @@ trigger to contradict the answer, so no code changed.]**
 
 ### 3. A wine's own pour, confirmed per wine (answer 3)
 
-Migration `20260921170001_a_wine_can_state_its_own_pour.sql` adds
+Migration `20260922230900_a_wine_can_state_its_own_pour.sql` adds
 `restaurant_inventory.pour_size_confirmed_by/_at` (FK `public.users`, no default, no wine
 confirmed by it). `PUT /pricing/wines/:inventoryId/pour` (owner or manager, audited as
 `pour_size_confirmed` on the wine) writes `pour_size_ml` with who and when in one update; `null`
@@ -587,9 +587,9 @@ is the landing session's step, not this build's.
 | 2026-09-21 | Last-call review (round 2) | Make-current reads the menu's lines BEFORE the switch (a failed read after it left the menu current with nothing carried, and a retry answered "already_current"); the house-row read that decides the blank-price flag now binds its error (read-error baseline 175 -> 174); the flag sentence is past tense; onboarding's make-current says a failed or flagged line and waits for Continue instead of moving on; onboarding's success page no longer says "your inventory is live" after a menu kept as a draft (it had become false when a read stopped reaching the inventory); a CLAIMS row pins make-current's read order |
 | 2026-09-21 | Founder (round 6c, five answers) | Verbatim: to an older menu chosen again, *"add a section to that where you can lock price, but wha f that menu item disappears? so think verify validate your decision and build"* (the design delegated, on condition it is researched, adversarially validated, then built); to over-allowance, *"Tier based but at the same time for at the short period of time we should make it unlimited right?, so never refuse a menu read"*; to per-wine pour, *"Yes, confirmed per wine"*; to a blank price on a never-priced wine, *"Flag it"*; to going live, *"live on merge"* |
 | 2026-09-21 | Cellar lane (round 3 decision) | The price lock decided on his delegation: a draft attacked case by case (16 attacks, 8 killed parts of it, 8 revised it), 27 rules and the decision's 17 rejected alternatives (merged into 14 rows) recorded in "Amendment, round 3"; the one fork that changes his answer 7 (a price typed after a read, before the choice) put back to him |
-| 2026-09-21 | Cellar lane (round 3 build) | Built: migrations `20260921170000` (locks, guard, plan dating, never-priced flag) and `20260921170001` (per-wine pour); lock routes, the plan and its fingerprint, the accept pre-check, the feed entry; /menu's Locked prices and the plan section (also in onboarding), the lock mark and pour field on /inventory; the menu read is never refused for allowance; eight CLAIMS rows added and the pour row amended |
+| 2026-09-21 | Cellar lane (round 3 build) | Built: migrations `20260922230800` (locks, guard, plan dating, never-priced flag) and `20260922230900` (per-wine pour); lock routes, the plan and its fingerprint, the accept pre-check, the feed entry; /menu's Locked prices and the plan section (also in onboarding), the lock mark and pour field on /inventory; the menu read is never refused for allowance; eight CLAIMS rows added and the pour row amended |
 | 2026-09-21 | Founder (L11 confirmation) | Verbatim: *"The menu sets it, locks keep"* -- the decision's recommended road for the one fork it put back to him (a price typed after a menu was read, before it was chosen, is replaced by the chosen menu unless kept; the plan lists it first with who and when, beside its Keep switch) |
-| 2026-09-21 | Cellar lane (round 3 finish, after his L11 confirmation) | A price a person set after the menu was read is marked (`setAfterRead`) and listed first in the plan; the plan shows every line per kind; no Keep where there is nothing to hold; a saved price with a refused pour is said as both; the pour migration moved into the lane's band (`20260921170001`); a ninth CLAIMS row (`ADR-0193-A-PRICE-SET-AFTER-THE-READ-IS-LISTED-FIRST`); 75 of 75 mutations caught |
+| 2026-09-21 | Cellar lane (round 3 finish, after his L11 confirmation) | A price a person set after the menu was read is marked (`setAfterRead`) and listed first in the plan; the plan shows every line per kind; no Keep where there is nothing to hold; a saved price with a refused pour is said as both; the pour migration moved into the lane's band (`20260922230900`); a ninth CLAIMS row (`ADR-0193-A-PRICE-SET-AFTER-THE-READ-IS-LISTED-FIRST`); 75 of 75 mutations caught |
 | 2026-09-21 | Cellar lane (round 3 finish, the cellar surface) | The cellar's bottle leaf says each lock beside the house price, read-only, and says an unread lock list as unread (L8, L25, L26); L12 given its own spec (a wine the chosen menu does not list is not written; a blank kind is never named in the write; a priceless line is "no price", not a failure); the lock note's spec hook returned the mock, which vitest ran as a teardown, and was braced; two readings recorded (`no_current_menu` counted for review; the lock row is the lock acts' audit); 83 of 83 mutations caught on the finished tree |
 | 2026-09-21 | Last-call review (round 3) | Tried to break it: a price that changes silently, a lock staff can move, a dormant lock that vanishes or re-links the wrong wine, advice that overrides a lock, a menu read refused for allowance, a pour used before confirmation, a record now false, a migration outside the band. One break: with the current menu (or a lock's wine) unreadable, every lock was put under "On the current menu" on /menu, and the dormant group vanished; now such a lock is in neither group (`dormant: null`) and /menu shows it in a group of its own, and the feed's `price_locks_to_review` says a lock list read in part instead of reading as nothing to review. A second: /inventory's add form said "added to inventory" whatever the gateway's `priceChange` answered (round 2 already returned a failed price write there, and a removed wine added back with a price its lock holds now answers `locked`); the form now says a price that did not land (held by a lock, a newer price, a failed write). On the staged tree: gateway jest 1078 passed and 11 skipped (pricing, menus, model-client, analytics, inventory, settings-audit, cellar, wines), web vitest 922 passed and 14 skipped (48 files), claims 427 of 427, PGlite 80 of 80 on all 202 migrations; 12 mutations caught and restored byte-for-byte (the five fixes above, and seven of the lane's gates replayed: the lock read in `set_house_menu_price` -- caught by the HPL01 guard refusing the write, a second barrier -- the release gate, the accept pre-check, the unlimited menu read, the confirmed wine pour both ways, the never-priced flag). Still not verified in a browser or against production |
 | 2026-09-22 | Founder (round 6w) | The menu-read allowance's open end date answered (the last call's founder question: his round-6c words, *"for at the short period of time"*, named no end). Put to him as three paths -- (a) unlimited until he says, (b) a date, (c) a spend figure that switches tiers back on -- he picked, verbatim, *"Until I say (Recommended)"*: the menu read stays unlimited for allowance until he gives the word; the refusal when the spend ledger itself cannot be read stays |

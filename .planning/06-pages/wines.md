@@ -231,7 +231,7 @@ until the founder approves its deletion separately (ADR 0149).**
   future register materially larger than the read cap should revisit this with
   real numbers rather than by assumption.
 - **Item 2, built.** `restaurant_cellar_settings.gazetteer_measures`
-  (migration `20260921112000`) — a per-house, ordered, additive list of tiles
+  (migration `20260922230000`) — a per-house, ordered, additive list of tiles
   for "In the building tonight," configured in Settings › Cellar
   (`CellarSection.tsx`) and read by `Registers.tsx`. Two new measures beyond
   the original four, both computed from data already on the page (no new
@@ -308,10 +308,10 @@ until the founder approves its deletion separately (ADR 0149).**
   currency (`check_money_states_its_currency.py`) rather than a hardcoded
   `$`. Discarding a line now also drops it from `house_beverage_ledger`,
   `cellar-registers.service.ts`'s register inference and
-  `beverages.service.ts`'s row record (migration `20260921112200`) — the
+  `beverages.service.ts`'s row record (migration `20260922230200`) — the
   first pass's discard only ever reached `getMenu` itself. Add
   (`POST /menus/items`, existing route) and discard
-  (`PATCH /menus/:restaurantId/items/:id/discard`, migration `20260921112100`,
+  (`PATCH /menus/:restaurantId/items/:id/discard`, migration `20260922230100`,
   soft-remove via `status = 'discarded'`) are both real writes. Building this
   surfaced and closed a real tenant-isolation gap in `addMenuItem`
   (`menus.service.ts`): it trusted `dto.menuId` alone with no comparison
@@ -1241,7 +1241,7 @@ draws (index-plus-record, side by side); that is Owed #11's still-open
   design it shipped alongside contradicted the OTHER half of the SAME
   correction. The three-value vocabulary this pass built and gated —
   `hold`/`confirm`/`auto` (`dto/hold-ceremony.ts`, migration
-  20260921112000) — was transcribed from the founder's PRE-correction
+  20260922230000) — was transcribed from the founder's PRE-correction
   dictation; item 6's own text says so ("the original line gave three modes
   ... his words give two"). None of the three shipped ceremonies matched
   either of his real two modes, and the shipped `auto` sent a real
@@ -1380,7 +1380,7 @@ verifier did not flag.
   established, now covering the extra question too). The old `confirm`
   ceremony (a click, "are you sure?", no hold at all) is deleted outright: it
   had no counterpart in the founder's corrected two modes. Migration
-  `20260921112000` had not merged past this lane, so its CHECK constraint and
+  `20260922230000` had not merged past this lane, so its CHECK constraint and
   comments are corrected in place rather than superseded by a second
   migration (`check_migration_versions_unique.py` confirms no collision).
   Copy that asserted the wrong thing is fixed alongside: `BottleLeaf.tsx`'s

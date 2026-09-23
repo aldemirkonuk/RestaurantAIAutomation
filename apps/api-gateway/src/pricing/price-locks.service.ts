@@ -16,7 +16,7 @@ import { type LockKind, lockFromRow, readOpenLocks, readPeople } from "./price-l
  * THE FOUNDER, 2026-09-21, verbatim: "add a section to that where you can lock
  * price, but wha f that menu item disappears? so think verify validate your
  * decision and build". The decision is ADR 0193's L1-L27; the SQL is
- * `20260921170000_a_house_can_hold_a_price.sql`.
+ * `20260922230800_a_house_can_hold_a_price.sql`.
  *
  * This service lists a house's open locks with what a person needs to judge
  * each one (L17, L23) and runs the four acts -- lock, release, change and keep

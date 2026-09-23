@@ -12,7 +12,7 @@
 -- read it since round 2. What makes a wine's pour usable is the same fact that
 -- made the house's usable: a person with the authority to state it, and when.
 --
--- WHAT THIS ADDS, mirroring 20260921115000 on the house row:
+-- WHAT THIS ADDS, mirroring 20260922230600 on the house row:
 --   pour_size_confirmed_by  public.users(user_id), never auth.users; RESTRICT
 --   pour_size_confirmed_at  when
 -- The act (PUT /pricing/wines/:inventoryId/pour, owner or manager) writes

@@ -72,13 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:172",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:172",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
   },
   {
     key: "enable_house_inbox_read",
@@ -101,7 +101,23 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Sidebar layout is the path. Held back from LIVE_PAGES. Column added by
     // 20260921114300.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:172",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
+  },
+  {
+    key: "mudavym_design_authorize_integration",
+    // OFF by default: the Mudavym redesign of `/authorize` (ADR 0144), the
+    // consent page an integration's OAuth hand-off lands on. Column added by
+    // 20260922220200.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
+  },
+  {
+    key: "mudavym_design_admin",
+    // OFF by default: the Mudavym admin desk (ADR 0143) — one surface for
+    // /admin and /admin/health, operator-gated receipted agent operations.
+    // Column added by 20260922210200.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
   },
 ];
 

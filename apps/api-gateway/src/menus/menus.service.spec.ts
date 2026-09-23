@@ -212,7 +212,7 @@ describe("MenusService.getMenu", () => {
     expect(result.items.map((i: any) => i.id).sort()).toEqual(["mi-1", "mi-2"]);
   });
 
-  it("excludes a discarded line from the read (migration 20260921112100)", async () => {
+  it("excludes a discarded line from the read (migration 20260922230100)", async () => {
     const service = makeService({
       restaurant_menus: [
         { id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" },

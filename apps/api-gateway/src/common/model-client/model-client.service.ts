@@ -776,6 +776,7 @@ export class ModelClientService {
   private async sumAgentSpend(
     restaurantId: string | null | undefined,
     since: string | null,
+    contextEquals: Record<string, string> = {},
   ): Promise<number | null> {
     let total = 0;
     let after: string | null = null;
@@ -785,6 +786,9 @@ export class ModelClientService {
         .select("id, cost_usd")
         .eq("subject_type", "agent");
       if (since) query = query.gte("occurred_at", since);
+      for (const [key, value] of Object.entries(contextEquals)) {
+        query = query.eq(`context->>${key}`, value);
+      }
       query = restaurantId
         ? query.eq("restaurant_id", restaurantId)
         : query.is("restaurant_id", null);
@@ -803,6 +807,43 @@ export class ModelClientService {
         `${SPEND_MAX_PAGES} pages; $${total.toFixed(4)} is a lower bound`,
     );
     return total;
+  }
+
+  /**
+   * Whether the rows whose NF `context` carries `contextKey = contextValue`
+   * have spent less than `share` of this house's DAILY allowance today (UTC)
+   * -- the same number, override included, that the first-attempt gate reads.
+   *
+   * Added 2026-09-21 for /ask's per-role share (ADR 0145's amendment of that
+   * date, founder's option "Rules in code, label rows"): a role's share of the
+   * house's daily ask allowance lives in a policy table, and this is its read.
+   *
+   * Unlike the house gate this FAILS CLOSED: `unreadable` when the ledger does
+   * not answer, which the caller refuses on. A share exists to stop one role
+   * spending another's allowance; reading an outage as "nothing spent" would
+   * disarm exactly that. A share of 0 admits nothing. A house whose gate is
+   * disabled (a limit of 0 or less) has no ceiling to take a share of.
+   */
+  async dailyShareOfAllowance(
+    restaurantId: string,
+    share: number,
+    contextKey: string,
+    contextValue: string,
+  ): Promise<"allowed" | "used" | "unreadable"> {
+    if (!/^[a-z_]{1,40}$/.test(contextKey)) throw new Error(`invalid context key ${contextKey}`);
+    if (!(share > 0)) return "used";
+    const allowance = allowanceForTier(await this.tierFor(restaurantId));
+    const override = Number(this.configService.get<string>("MODEL_DAILY_SPEND_CEILING_USD"));
+    const limit = Number.isFinite(override) ? override : allowance.limitUsd;
+    if (limit <= 0) return "allowed";
+    let spent: number | null;
+    try {
+      spent = await this.sumAgentSpend(restaurantId, windowStartIso("daily"), { [contextKey]: contextValue });
+    } catch {
+      spent = null;
+    }
+    if (spent === null) return "unreadable";
+    return spent >= share * limit ? "used" : "allowed";
   }
 
   /** Reads restaurants.subscription_tier. Unknown/unreadable resolves to core. */

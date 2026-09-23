@@ -96,6 +96,7 @@ import { CurrencySection } from './CurrencySection';
 import { CarryingCostSection } from './CarryingCostSection';
 import { HoursSection } from './HoursSection';
 import { DigestRow } from './DigestRow';
+import { AskTrainingSection } from './AskTrainingSection';
 
 const CSS = `
 .st-ink, .st-ink * { transition: border-color ${ink.ms}ms ${ink.easing}, background-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}, transform ${ink.ms}ms ${ink.easing} }
@@ -418,6 +419,18 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                       {KEPT_NOTE.restaurant}
                     </p>
                     <HoursSection data={data} />
+                  </div>
+                )}
+
+                {group.id === 'house' && (
+                  <div id="st-section-ask-training" data-testid="st-section-ask-training" style={{ margin: '0 0 28px' }}>
+                    <h3 style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, letterSpacing: '-0.005em', margin: 0 }}>
+                      Questions and training
+                    </h3>
+                    <p style={{ fontFamily: SANS, fontSize: 11, lineHeight: 1.5, color: 'var(--ink-4)', margin: '4px 0 14px' }}>
+                      {KEPT_NOTE.restaurant}
+                    </p>
+                    <AskTrainingSection data={data} />
                   </div>
                 )}
 

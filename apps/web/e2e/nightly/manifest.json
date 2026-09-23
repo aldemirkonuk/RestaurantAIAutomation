@@ -341,6 +341,23 @@
       ]
     },
     {
+      "slug": "authorize_integration",
+      "flag": "mudavym_design_authorize_integration",
+      "route": "/authorize/{integrationId}",
+      "legacy": "page",
+      "source": "apps/web/src/pages/authorize-integration",
+      "needs": {
+        "param": "integrationId",
+        "list": "/integrations/oauth/catalog",
+        "items_key": "integrations",
+        "id_key": "id"
+      },
+      "failed_read": [
+        "The permission could not be read",
+        "The retention facts are unavailable"
+      ]
+    },
+    {
       "$comment": "CHROME, not a page (sketch 119 D, PR #437). The house shell wraps every signed-in route behind its own gate. It is enrolled in MUDAVYM_PAGES only because that is how the gate is keyed, and it is listed here so this manifest stays equal to MUDAVYM_PAGES. The walk does not open it as a page. Forcing it on would put the shell's own .mudavym root and its counter's sentences on every page, and hide what each page said. So both walks pin its override OFF and record it absent (nightly.spec.ts), and the verdict extractor skips it. Walking the shell itself is not built yet.",
       "slug": "shell",
       "flag": "mudavym_design_shell",
@@ -403,6 +420,40 @@
       ],
       "empty": [
         "Everything reads clear right now."
+      ]
+    },
+    {
+      "slug": "admin",
+      "flag": "mudavym_design_admin",
+      "route": "/admin",
+      "legacy": "page",
+      "source": "apps/web/src/pages/admin/next",
+      "aliases": [
+        {
+          "route": "/admin/health",
+          "legacy": "redirect:/admin"
+        }
+      ],
+      "empty": [
+        "No reading yet",
+        "Awaiting a reading",
+        "The orchestrator answered. It reports no running agents.",
+        "No agent matches this filter.",
+        "No platform operation has been recorded."
+      ],
+      "failed_read": [
+        "Platform permission could not be verified",
+        "Platform permission could not be re-verified this time",
+        "Agent health is unavailable",
+        "The database reading could not be fetched",
+        "Provider configuration is unavailable",
+        "Provider re-read failed, showing the last reading",
+        "Operation receipts are unavailable",
+        "Receipt re-read failed, showing the last reading",
+        "This agent's counters could not be read",
+        "re-read failed, showing the last reading",
+        "The final receipt could not be saved",
+        "no record of this request any more"
       ]
     }
   ],
@@ -510,18 +561,6 @@
       "route": "/recommendations/catalog",
       "file": "apps/web/src/pages/InsightCatalog.tsx",
       "held_by": "ADR 0143 (open fork)"
-    },
-    {
-      "slug": "admin",
-      "route": "/admin",
-      "file": "apps/web/src/pages/AdminPanel.tsx",
-      "held_by": "ADR 0143 \u00a72 (/admin and /admin/health become one page)"
-    },
-    {
-      "slug": "admin_health",
-      "route": "/admin/health",
-      "file": "apps/web/src/pages/AdminHealth.tsx",
-      "held_by": "ADR 0143 \u00a72 (becomes a redirect to /admin)"
     },
     {
       "slug": "ask",

@@ -21,7 +21,7 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  * The rules are the carrying-cost register's (house-carrying-cost.service.ts):
  *   1. Explicit, never silent. Written only from numbers in the request body;
  *      nothing derived, nothing written on a read, no default anywhere
- *      (20260921113100 asserts the columns carry none).
+ *      (20260922230300 asserts the columns carry none).
  *   2. Shape checked here exactly as the database checks it: a target is a
  *      PERCENT between 5 and 95 (0.65, the fraction spelling, is refused with
  *      a sentence), the band is 0 to 20 PERCENT OF THE ADVISED PRICE and is
@@ -149,7 +149,7 @@ export interface WinePourRow {
  * database DEFAULT of 150 and any house member may write it, so the number is
  * used only with an owner's or a manager's confirmation beside it (who and
  * when). A pour changed after its confirmation loses it in the database
- * (20260921170001), so a confirmation here always describes this number.
+ * (20260922230900), so a confirmation here always describes this number.
  * Null means: use the house's confirmed pour.
  */
 export function confirmedWinePourFrom(row: WinePourRow | null | undefined): number | null {

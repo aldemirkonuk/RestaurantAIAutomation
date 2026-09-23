@@ -255,7 +255,7 @@ $$;
 COMMENT ON COLUMN public.menu_price_versions.menu_id IS
   'The menu whose choice (or whose line) set this price, when a menu did (ADR 0193 L11). NULL for a person''s edit, an accepted advice, a backfill, and every row written before menus were kept.';
 
--- The version trigger learns the menu (same body as 20260921113200, plus the
+-- The version trigger learns the menu (same body as 20260922230400, plus the
 -- menu id hand-over).
 CREATE OR REPLACE FUNCTION public.record_house_menu_price_version()
 RETURNS trigger
@@ -426,7 +426,7 @@ BEGIN
      AND effective_to IS NULL;
   v_has_open := FOUND;
 
-  -- THE NEWEST DATED CHANGE WINS (unchanged from 20260921113200).
+  -- THE NEWEST DATED CHANGE WINS (unchanged from 20260922230400).
   IF v_has_open AND v_from < v_open.effective_from THEN
     RETURN jsonb_build_object(
       'outcome', 'stale',
@@ -509,7 +509,7 @@ $$;
 COMMENT ON FUNCTION public.set_house_menu_price(uuid, uuid, boolean, numeric, boolean, numeric, text, uuid, timestamptz, text, numeric, uuid, uuid) IS
   'ADR 0193 (+ round 3): the one gateway writer of a house''s bottle and glass price. House-scoped; takes the wine row FOR UPDATE; writes nothing for a kind with an open lock (outcome locked when every named kind was held; `held` names each lock and `kinds` says per kind); refuses a change dated before the price in effect (stale); skips a no-op (unchanged); records the menu that set a price (menu_id).';
 
--- The 12-argument form (20260921113200) delegates, so an old caller cannot
+-- The 12-argument form (20260922230400) delegates, so an old caller cannot
 -- bypass a lock and gets the same answers.
 CREATE OR REPLACE FUNCTION public.set_house_menu_price(
   p_restaurant_id        uuid,
