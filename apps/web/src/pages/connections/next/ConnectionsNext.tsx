@@ -618,10 +618,9 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               subtitleIsSecret={Boolean(feed)}
               why={
                 <>
-                  A read-only iCal address. It is{' '}
-                  <em>unauthenticated by design</em> so Outlook and Apple
-                  Calendar can subscribe — which means anyone holding the URL
-                  reads this house&rsquo;s deliveries, deadlines and shifts.
+                  A read-only calendar address. Outlook and Apple Calendar can
+                  subscribe to it, which means anyone holding the address reads
+                  this house&rsquo;s deliveries, deadlines and shifts.
                 </>
               }
               permissionsLabel="Grants"
@@ -1060,7 +1059,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   </button>
                   <p className="cx-ctl-note">
                     {addCardReason ??
-                      'The card fields are Stripe’s own iframes, served from Stripe’s origin. The number never reaches this page or our servers.'}
+                      'The number is typed into Stripe’s own fields and never reaches this page.'}
                   </p>
                 </>
               ) : null}
@@ -1131,7 +1130,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                     g.scopes,
                     (d.catalog.data ?? []).find((c) => c.id === g.integrationId) ?? null,
                   )}
-                  lastLabel="Token expires"
+                  lastLabel="Sign-in expires"
                   last={g.tokenExpiresAt ? when(g.tokenExpiresAt) : null}
                   lastDetail="No per-use record is kept, so what this grant last did is not knowable from here."
                   controls={[
@@ -1147,7 +1146,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                         }),
                     },
                   ]}
-                  stopNote={`Only ${personName(g.ownerName)} can revoke the grant itself, from their own profile. This button stops the house asking for a token — the credential stays theirs.`}
+                  stopNote={`Only ${personName(g.ownerName)} can revoke the grant itself, from their own profile. This button stops the house using their sign-in — it stays theirs.`}
                 />
               ))}
 
@@ -1241,7 +1240,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                     belonging to people who work here carry no recorded
                     restaurant.
                   </b>{' '}
-                  They were made before a tenant reached the token, so they are
+                  They were made before a house was recorded on them, so they are
                   on nobody&rsquo;s house page and they still work. Counted here
                   rather than dropped, because a list that quietly omits them is
                   incomplete in exactly the way this page exists to prevent.
@@ -1725,7 +1724,7 @@ function declaredWords(a: McpAnnotationsVM | null): string {
       ? 'the server declares it changes things, additively'
       : 'the server declares it changes things';
   }
-  return 'the server sent no readOnlyHint, so it counts as a write';
+  return 'the server did not say whether it only reads, so it counts as a write';
 }
 
 /**

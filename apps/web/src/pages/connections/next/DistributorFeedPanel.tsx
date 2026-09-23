@@ -455,7 +455,7 @@ export function DistributorFeedPanel({
               'The house signs this on its own letterhead, with Mudavym named in it as the software that would receive the file.'}{' '}
             <em>This product never sends it.</em>{' '}
             {letter?.data?.neverSent ??
-              'There is no route on this gateway that could: no address field and no schedule.'}
+              'This product cannot send it: no address and no schedule.'}
           </>
         }
         permissionsLabel="You complete"
@@ -585,7 +585,7 @@ function PriceCodeRegister({
     if (!declareCode) {
       setFormNote({
         tone: 'refused',
-        text: 'This screen holds no route to state a price code, so nothing was sent.',
+        text: 'This screen cannot state a price code yet, so nothing was sent.',
       });
       return;
     }
@@ -632,7 +632,7 @@ function PriceCodeRegister({
     if (!withdrawCode) {
       setWithdrawNote({
         tone: 'refused',
-        text: 'This screen holds no route to withdraw a statement, so nothing was sent.',
+        text: 'This screen cannot withdraw a statement yet, so nothing was sent.',
       });
       return;
     }
@@ -902,7 +902,7 @@ function PriceCodeRegister({
               , which this browser holds as <b>{sessionName}</b>
             </>
           ) : null}
-          . The name is taken from your token by the gateway and never sent from
+          . The name is taken from your sign-in and never sent from
           this page, so nobody can sign a colleague&rsquo;s name to it; if your
           session resolves no name at all the statement is refused rather than
           written unsigned.

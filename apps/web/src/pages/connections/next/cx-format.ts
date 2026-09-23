@@ -137,7 +137,7 @@ export function probeWord(status: string | null | undefined): string {
     case 'refused':
       return 'Refused';
     case 'protocol_error':
-      return 'Not this protocol';
+      return 'Not readable';
     case 'unconfigured':
       return 'Not called';
     default:
