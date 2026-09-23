@@ -4,6 +4,7 @@ import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
 import { updateOnboardingProgress } from '../services/api/menus'
 import { pencilledCount, readProof } from '../lib/firstProof'
+import { readLastInvoiceLater, writeLastInvoiceLater } from '../lib/houseLater'
 
 export default function HouseContents() {
   const navigate = useNavigate()
@@ -13,6 +14,8 @@ export default function HouseContents() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [invoice, setInvoice] = useState(readLastInvoiceLater)
+  const [invoiceDropping, setInvoiceDropping] = useState(false)
 
   const saveSupplier = async () => {
     if (!supplier.trim()) return
@@ -27,6 +30,12 @@ export default function HouseContents() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const keepInvoice = (file?: File) => {
+    if (!file) return
+    writeLastInvoiceLater(file.name)
+    setInvoice({ name: file.name })
   }
 
   return (
@@ -88,7 +97,57 @@ export default function HouseContents() {
             </form>
           )}
 
-          <p className="py-6 font-serif text-2xl text-[#b7b2a8]">Last invoice · later</p>
+          <label
+            className={`block py-6 font-serif text-2xl text-[#b7b2a8] ${
+              invoiceDropping ? 'bg-white' : ''
+            }`}
+          >
+            <span className="text-xs uppercase tracking-[0.12em]">Later · not required</span>
+            <span className="mt-2 block">
+              {invoice
+                ? `Last invoice · kept for later — ${invoice.name}`
+                : 'Last invoice · later'}
+            </span>
+            <span className="mt-1 block font-sans text-sm">
+              Drop a file when you want. We will not read it yet.
+            </span>
+            <input
+              aria-label="Last invoice later"
+              type="file"
+              className="sr-only"
+              onChange={(event) => keepInvoice(event.target.files?.[0])}
+            />
+            <span
+              role="button"
+              tabIndex={0}
+              onDragEnter={() => setInvoiceDropping(true)}
+              onDragOver={(event) => {
+                event.preventDefault()
+                setInvoiceDropping(true)
+              }}
+              onDragLeave={() => setInvoiceDropping(false)}
+              onDrop={(event) => {
+                event.preventDefault()
+                setInvoiceDropping(false)
+                keepInvoice(event.dataTransfer.files?.[0])
+              }}
+              className="mt-3 block min-h-[72px] border border-dashed border-[#211f1b]/20 px-4 py-4 font-sans text-sm"
+            >
+              {invoiceDropping ? 'Drop it here' : 'Drop the last invoice here, or click to keep a file for later.'}
+            </span>
+          </label>
+
+          <p className="py-6 font-serif text-2xl text-[#b7b2a8]">
+            <span className="block text-xs uppercase tracking-[0.12em]">Later · not a first-run step</span>
+            <span className="mt-2 block">Cellar registers · later</span>
+            <button
+              type="button"
+              onClick={() => navigate('/settings?tab=cellar')}
+              className="mt-2 font-sans text-sm underline underline-offset-4"
+            >
+              Open later
+            </button>
+          </p>
         </div>
       </main>
     </div>

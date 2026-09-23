@@ -33,6 +33,16 @@ export interface MenuImportReviewItem {
   rawText: string | null
   matched: boolean
   needsReview: boolean
+  /** Present only when the extractor already returned a box. Never invented. */
+  bbox?: {
+    x: number
+    y: number
+    width: number
+    height: number
+    page?: number
+    pageWidth?: number
+    pageHeight?: number
+  } | null
 }
 
 export interface MenuImportResult {

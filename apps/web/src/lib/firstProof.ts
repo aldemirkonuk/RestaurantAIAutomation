@@ -68,3 +68,26 @@ export function writeProof(result: MenuImportResult, sourceImage?: string | null
     sessionStorage.removeItem(FIRST_PROOF_SOURCE_KEY)
   }
 }
+
+/** Pixel or page box the extractor already named. Never invented. */
+export type LineBox = {
+  x: number
+  y: number
+  width: number
+  height: number
+  page?: number
+  pageWidth?: number
+  pageHeight?: number
+}
+
+export function lineSourceCrop(
+  item: { bbox?: LineBox | null },
+  sourceImage?: string | null,
+): { image: string; box: LineBox } | null {
+  if (!sourceImage || !item.bbox) return null
+  const { x, y, width, height } = item.bbox
+  if (![x, y, width, height].every((n) => Number.isFinite(n)) || width <= 0 || height <= 0) {
+    return null
+  }
+  return { image: sourceImage, box: item.bbox }
+}

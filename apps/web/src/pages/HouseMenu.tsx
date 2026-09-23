@@ -6,7 +6,7 @@ import {
   reviewMenuItem,
   type MenuImportReviewItem,
 } from '../services/api/menus'
-import { isKitchenLine, lineNeedsPencil, readProof } from '../lib/firstProof'
+import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
 
 const sectionOrder = [
   'wine',
@@ -215,17 +215,25 @@ export default function HouseMenu() {
                         <div className="mb-5 ml-9 grid gap-5 border-l border-dashed border-[#1a5e6b] bg-white p-5 sm:grid-cols-2">
                           <div>
                             <p className="text-xs uppercase tracking-wider text-[#6d685f]">From the original</p>
-                            {sourceImage ? (
-                              <img
-                                src={sourceImage}
-                                alt="The page this line was read from"
-                                className="mt-2 max-h-48 w-full object-cover object-top"
-                              />
-                            ) : (
-                              <p className="mt-2 text-sm text-[#6d685f]">
-                                No crop of this line — the original page was not kept.
-                              </p>
-                            )}
+                            {(() => {
+                              const crop = lineSourceCrop(item, sourceImage)
+                              if (crop) {
+                                return (
+                                  <img
+                                    src={crop.image}
+                                    alt="Crop of this line from the original"
+                                    className="mt-2 max-h-48 w-full object-cover object-top"
+                                  />
+                                )
+                              }
+                              return (
+                                <p className="mt-2 text-sm text-[#6d685f]">
+                                  {sourceImage
+                                    ? 'No crop of this line — the reading did not return a box.'
+                                    : 'No crop of this line — the original page was not kept.'}
+                                </p>
+                              )
+                            })()}
                             <blockquote className="mt-2 font-serif text-lg">
                               {item.rawText || item.name}
                             </blockquote>

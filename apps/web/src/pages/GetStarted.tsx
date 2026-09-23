@@ -12,6 +12,7 @@ import { apiClient } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
 import { currencyForCountry } from '../lib/currency'
 import { writeProof } from '../lib/firstProof'
+import { isMapsConfigured } from '../lib/googleMaps'
 
 type Step = 'you' | 'restaurant' | 'menu' | 'reading'
 type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
@@ -266,6 +267,11 @@ export default function GetStarted() {
         <p className="mt-3 max-w-xl text-[#6d685f]">
           Find the exact place. Its address sets the house&apos;s timezone and reporting currency.
         </p>
+        {!isMapsConfigured() && (
+          <p role="status" className="mt-4 text-sm text-[#6d685f]">
+            Places search needs <code>VITE_GOOGLE_MAPS_API_KEY</code>. Type the address by hand until it is set.
+          </p>
+        )}
         <div className="mt-9 space-y-5">
           <label className="block">
             <span className="text-xs uppercase tracking-wider">Find your restaurant</span>
@@ -364,7 +370,11 @@ export default function GetStarted() {
           {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} />}
           {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} />}
         </div>
-        <div className="mt-8 border-t border-[#211f1b]/15 pt-5">
+        <div className="mt-8 border border-dashed border-[#211f1b]/20 px-4 py-3 text-sm text-[#b7b2a8]">
+          <p className="text-[11px] uppercase tracking-[0.12em]">Later</p>
+          <p>Your last invoice — read the same way, set beside the menu. Not a step now.</p>
+        </div>
+        <div className="mt-6 border-t border-[#211f1b]/15 pt-5">
           <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
             Skip for now — open the house
           </button>

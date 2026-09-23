@@ -1,5 +1,6 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
 import { countryCodeFor } from '../../lib/countries';
+import { placesSuggestionRequest } from '../../lib/placesRequest';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Building2, Loader2, MapPin, Search } from 'lucide-react';
 
@@ -185,23 +186,12 @@ export function PlacesAutocomplete({
         const lib = await ensurePlaces();
         const iso = countryCodeFor(countryName);
 
-        const { suggestions } = await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
-          input: trimmed,
-          // 'address' is a legacy type — not valid in the new Places API.
-          // Country filter already scopes results; omitting primaryTypes gives street + premise results.
-          ...(iso ? { includedRegionCodes: [iso] } : {}),
-          ...(locationBias
-            ? {
-                locationBias: {
-                  center: {
-                    lat: locationBias.latitude,
-                    lng: locationBias.longitude,
-                  },
-                  radius: 25_000,
-                },
-              }
-            : {}),
-        });
+        const { suggestions } = await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions(
+          placesSuggestionRequest(trimmed, {
+            countryIso: iso,
+            locationBias,
+          }),
+        );
 
         const next: SuggestionRow[] = suggestions
           .slice(0, 5)
@@ -235,7 +225,7 @@ export function PlacesAutocomplete({
         setLoading(false);
       }
     }, 220);
-  }, []);
+  }, [locationBias]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const q = e.target.value;

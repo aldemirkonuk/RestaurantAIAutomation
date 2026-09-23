@@ -34,27 +34,41 @@ vi.mock('../components/ui/CountryCombobox', () => ({
     <button type="button" onClick={() => onChange('Türkiye')}>Choose Türkiye</button>
   ),
 }))
+vi.mock('../lib/googleMaps', () => ({
+  isMapsConfigured: () => true,
+}))
 vi.mock('../components/ui/PlacesAutocomplete', () => ({
-  PlacesAutocomplete: ({ onPlaceSelect }: { onPlaceSelect: (place: any) => void }) => (
-    <button
-      type="button"
-      onClick={() =>
-        onPlaceSelect({
-          placeName: 'Meyhane',
-          streetAddress: '1 House Street',
-          city: 'Istanbul',
-          country: 'Türkiye',
-          stateProvince: 'Istanbul',
-          postalCode: '34000',
-          neighborhood: '',
-          latitude: 41,
-          longitude: 29,
-          googlePlaceId: 'place-1',
-        })
-      }
-    >
-      Pick Meyhane
-    </button>
+  PlacesAutocomplete: ({
+    onPlaceSelect,
+    locationBias,
+  }: {
+    onPlaceSelect: (place: any) => void
+    locationBias?: { latitude: number; longitude: number } | null
+  }) => (
+    <div>
+      <button
+        type="button"
+        onClick={() =>
+          onPlaceSelect({
+            placeName: 'Meyhane',
+            streetAddress: '1 House Street',
+            city: 'Istanbul',
+            country: 'Türkiye',
+            stateProvince: 'Istanbul',
+            postalCode: '34000',
+            neighborhood: '',
+            latitude: 41,
+            longitude: 29,
+            googlePlaceId: 'place-1',
+          })
+        }
+      >
+        Pick Meyhane
+      </button>
+      {locationBias && (
+        <p>{`Places biased to ${locationBias.latitude},${locationBias.longitude}`}</p>
+      )}
+    </div>
   ),
 }))
 vi.mock('../components/onboarding/MenuCsvUpload', () => ({ MenuCsvUpload: () => null }))
@@ -124,6 +138,7 @@ describe('approved arrival flow', () => {
     )
     expect(screen.getByText('Skip for now — open the house')).toBeInTheDocument()
     expect(screen.getByText('Drop the menu here')).toBeInTheDocument()
+    expect(screen.getByText(/Your last invoice — read the same way/)).toBeInTheDocument()
     expect(screen.queryByText('Photograph the menu')).not.toBeInTheDocument()
     expect(screen.queryByText(/certain/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/likely/i)).not.toBeInTheDocument()
@@ -137,6 +152,23 @@ describe('approved arrival flow', () => {
     fireEvent.change(screen.getByLabelText('Mobile'), { target: { value: '+90 532 000 00 00' } })
     expect(screen.getByText(/the account does not depend on it/i)).toBeInTheDocument()
     expect(screen.getByText('STOP')).toBeInTheDocument()
+  })
+
+  it('passes Use my location into Places as a search bias', async () => {
+    const getCurrentPosition = vi.fn((ok: (pos: { coords: { latitude: number; longitude: number } }) => void) => {
+      ok({ coords: { latitude: 41.01, longitude: 28.97 } })
+    })
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: { getCurrentPosition },
+    })
+    render(<MemoryRouter><GetStarted /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByRole('heading', { name: 'Your restaurant' })
+    fireEvent.click(screen.getByRole('button', { name: /Use my location/ }))
+    expect(getCurrentPosition).toHaveBeenCalled()
+    expect(await screen.findByText('Places biased to 41.01,28.97')).toBeInTheDocument()
+    expect(screen.getByText('Restaurant search is now centred near you.')).toBeInTheDocument()
   })
 
   it('prints the first proof and expands only a pencilled line inline', async () => {
@@ -307,7 +339,39 @@ describe('approved arrival flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show my original' }))
     expect(screen.getByAltText('Your original menu')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Smoky No. 4/ }))
-    expect(await screen.findByAltText('The page this line was read from')).toBeInTheDocument()
+    expect(await screen.findByText(/the reading did not return a box/)).toBeInTheDocument()
+    expect(screen.queryByAltText('Crop of this line from the original')).not.toBeInTheDocument()
+  })
+
+  it('crops a line only when the extractor already returned a box', async () => {
+    sessionStorage.setItem(
+      'mudavym:first-proof',
+      JSON.stringify({
+        menuId: 'menu',
+        itemsExtracted: 1,
+        submissionsCreated: 0,
+        sourceImage: 'data:image/png;base64,aaaa',
+        items: [{
+          menuItemId: 'pencil',
+          submissionId: null,
+          name: 'Smoky No. 4',
+          producer: null,
+          category: null,
+          vintage: null,
+          region: null,
+          grapeVariety: null,
+          byGlassPrice: null,
+          bottlePrice: 18,
+          rawText: 'Smoky No. 4 18',
+          matched: false,
+          needsReview: true,
+          bbox: { x: 10, y: 20, width: 80, height: 24, page: 1 },
+        }],
+      }),
+    )
+    render(<MemoryRouter><HouseMenu /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: /Smoky No. 4/ }))
+    expect(await screen.findByAltText('Crop of this line from the original')).toBeInTheDocument()
   })
 
   it('adds an absent section line from the footer', async () => {
@@ -372,11 +436,20 @@ describe('approved arrival flow', () => {
     expect(screen.getByText(/The one ask/)).toBeInTheDocument()
     expect(screen.getByLabelText('Supplier')).toBeInTheDocument()
     expect(screen.getByText(/Last invoice · later/)).toBeInTheDocument()
+    expect(screen.getByText(/Cellar registers · later/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open later' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Add this supplier/ })).toBeDisabled()
     fireEvent.change(screen.getByLabelText('Supplier'), { target: { value: 'Suvla' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add this supplier' }))
     await waitFor(() => expect(addCustomProvider).toHaveBeenCalledWith({ name: 'Suvla' }))
     expect(screen.queryByLabelText('Wines register')).toBeNull()
     expect(screen.queryByRole('checkbox')).toBeNull()
+    const file = new File(['x'], 'suvla-sept.pdf', { type: 'application/pdf' })
+    fireEvent.drop(screen.getByText(/Drop the last invoice here/), {
+      dataTransfer: { files: [file] },
+    })
+    expect(screen.getByText(/Last invoice · kept for later — suvla-sept.pdf/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open later' }))
+    expect(navigate).toHaveBeenCalledWith('/settings?tab=cellar')
   })
 })
