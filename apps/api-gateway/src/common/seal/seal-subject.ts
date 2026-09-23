@@ -126,6 +126,16 @@
  * back once it has landed. See `procurement/documents/document-seal.ts` for what
  * each act's arguments cover and why.
  */
+/**
+ * `configuration_batch` (added 2026-09-19, ADR 0113/0144, codex-audit/C2-adopt.md
+ * #2) is the seal on APPLYING an Arrival configuration batch — "the assistant
+ * proposes, the seal applies". Its subject is the BATCH, and its args carry
+ * the batch id and revision, so a hold begun over one draft cannot be spent
+ * after the draft changed underneath it. The seven-day UNDO that follows a
+ * sealed batch is a separate, unsealed control (ADR 0113 rule 4a); nothing in
+ * that record or the C2 audit asks for a second ceremony there. See
+ * `arrival/arrival-seal.ts` for the act and the arguments.
+ */
 export const SEAL_SUBJECT_KINDS = [
   "mcp_tool",
   "mcp_tool_grant",
@@ -136,6 +146,7 @@ export const SEAL_SUBJECT_KINDS = [
   "text_credit_purchase",
   "commodity_exposure",
   "procurement_document",
+  "configuration_batch",
   "integration_grant",
   // An assistant proposal (`ai_proposed_actions`), applied from the house
   // counter — "applied only by the seal" (the founder's pick of 2026-09-21,
@@ -194,6 +205,12 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // would name the row a correction touches rather than the record somebody
       // is standing behind.
       return "document";
+    case "configuration_batch":
+      // "batch", not "proposal" or "receipt": the act being sealed is APPLYING
+      // it, and the book's own UI already calls it "this batch" throughout —
+      // a refusal that said "a different proposal" would name the assistant's
+      // side of it, not the thing the seal is over.
+      return "batch";
     case "ai_proposed_action":
       // "proposal", not "action": until it is applied it is only a proposal,
       // and a refusal reading "a different action" would name the act the seal

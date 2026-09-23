@@ -71,6 +71,8 @@ const CATEGORY_STAKE: Record<string, StakeId> = {
   risk: 'vendors',
   staff: 'floor',
   efficiency: 'floor',
+  // ADR 0193: price advice toward the house's target margin moves money.
+  pricing: 'money',
 };
 
 export function stakeOf(category: string | null | undefined): StakeId {
@@ -127,6 +129,13 @@ export function handOf(ruleKey: string, category: string): Hand {
     spend_acceleration: { href: `/orders?${q}`, label: 'Audit open orders', where: 'Orders' },
     pairing_promotion: { href: `/promotions?${q}`, label: 'Promote the pairing', where: 'Promotions' },
     staff_spread: { href: `/team?${q}`, label: 'Open the roster', where: 'Team' },
+    // ADR 0193: each advised price is accepted with one tap on its own row,
+    // under "Your price" on Inventory; the target itself lives in Settings.
+    margin_to_target: { href: `/inventory?${q}`, label: 'Review your prices', where: 'Inventory' },
+    margin_advice_blind: { href: `/inventory?${q}`, label: 'See which wines', where: 'Inventory' },
+    margin_target_unset: { href: `/settings?tab=target-margin&${q}`, label: 'Set your target', where: 'Settings' },
+    // ADR 0193 round 3: the locks live on /menu, under Locked prices.
+    price_locks_to_review: { href: `/menu?${q}#locked-prices`, label: 'Look at the locks', where: 'Menu' },
   };
   const hit = byRule[ruleKey];
   if (hit) return hit;

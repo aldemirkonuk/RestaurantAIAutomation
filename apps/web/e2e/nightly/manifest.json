@@ -1,5 +1,5 @@
 {
-  "$comment": "The nightly page manifest (ADR 0135). ONE source for both walkers: apps/web/e2e/nightly/nightly.spec.ts (browser) and services/agent-orchestrator/tests/e2e_gateway/ (API). Every Mudavym page (MUDAVYM_PAGES in apps/web/src/lib/mudavym/useMudavymDesign.ts, enforced both ways by scripts/check_nightly_manifest.py) is listed whether or not the running build gates it yet — a page whose route is not gated on the build under test is reported as ABSENT, never as a pass and never silently dropped. Phrases are matched case-insensitively after curly apostrophes are straightened; they are the pages' own honest-state sentences (grep the page's next/ directory), never figures. `static_text` holds sentences a page ALWAYS renders that contain a shared phrase (logs' intro says 'could not be read'); they are removed from the page text before matching, so a page cannot read as a failed read by describing one. `public_pages` are the signed-out doors behind ADR 0133's one switch (VITE_MUDAVYM_PUBLIC, override localStorage 'mudavym.design.public'); `switch` says whether the page's own file reads it on the tree this manifest was written against, and the guard fails when that stops being true. `pending_pages` are signed-in routes the founder's new-pages list names that are NOT yet enrolled in MUDAVYM_PAGES (ADR 0143's open forks, ADR 0145's hold on /ask); the walk opens each and measures that no Mudavym root renders — absent — and the guard fails the day one enrols. The `walls` values are descriptions for the report, not phrases matched on the page. Founder's recorded design calls live in design-verdicts.json (generated), reported beside pages and never gating.",
+  "$comment": "The nightly page manifest (ADR 0135). ONE source for both walkers: apps/web/e2e/nightly/nightly.spec.ts (browser) and services/agent-orchestrator/tests/e2e_gateway/ (API). Every Mudavym page (MUDAVYM_PAGES in apps/web/src/lib/mudavym/useMudavymDesign.ts, enforced both ways by scripts/check_nightly_manifest.py) is listed whether or not the running build gates it yet \u2014 a page whose route is not gated on the build under test is reported as ABSENT, never as a pass and never silently dropped. Phrases are matched case-insensitively after curly apostrophes are straightened; they are the pages' own honest-state sentences (grep the page's next/ directory), never figures. `static_text` holds sentences a page ALWAYS renders that contain a shared phrase (logs' intro says 'could not be read'); they are removed from the page text before matching, so a page cannot read as a failed read by describing one. `public_pages` are the signed-out doors behind ADR 0133's one switch (VITE_MUDAVYM_PUBLIC, override localStorage 'mudavym.design.public'); `switch` says whether the page's own file reads it on the tree this manifest was written against, and the guard fails when that stops being true. `pending_pages` are signed-in routes the founder's new-pages list names that are NOT yet enrolled in MUDAVYM_PAGES (ADR 0143's open forks, ADR 0145's hold on /ask); the walk opens each and measures that no Mudavym root renders \u2014 absent \u2014 and the guard fails the day one enrols. The `walls` values are descriptions for the report, not phrases matched on the page. Founder's recorded design calls live in design-verdicts.json (generated), reported beside pages and never gating.",
   "manifest_version": "1.1.0",
   "flag_prefix": "mudavym_design_",
   "override_prefix": "mudavym.design.",
@@ -165,7 +165,7 @@
       "legacy": "page",
       "source": "apps/web/src/pages/receipts/next",
       "empty": [
-        "Nothing awaits review — the paper trail is caught up",
+        "Nothing awaits review \u2014 the paper trail is caught up",
         "No lines were extracted from this document"
       ],
       "failed_read": [
@@ -285,7 +285,7 @@
         "the order ledger could not be read"
       ],
       "provenance": [
-        "kept ·"
+        "kept \u00b7"
       ],
       "provenance_required": true
     },
@@ -388,6 +388,25 @@
       ]
     },
     {
+      "slug": "menu",
+      "flag": "mudavym_design_menu",
+      "route": "/menu",
+      "legacy": "redirect:/cellar",
+      "source": "apps/web/src/pages/menu/next",
+      "empty": [
+        "No current menu yet.",
+        "No menu has been read yet."
+      ],
+      "failed_read": [
+        "The menu could not be read",
+        "The menus this house has kept could not be read"
+      ],
+      "failed_read_testids": [
+        "menu-error",
+        "menu-versions-error"
+      ]
+    },
+    {
       "slug": "help",
       "flag": "mudavym_design_help",
       "route": "/help",
@@ -435,6 +454,21 @@
         "re-read failed, showing the last reading",
         "The final receipt could not be saved",
         "no record of this request any more"
+      ]
+    },
+    {
+      "slug": "arrival",
+      "flag": "mudavym_design_arrival",
+      "route": "/get-started",
+      "legacy": "page",
+      "source": "apps/web/src/pages/arrival",
+      "empty": [
+        "Nothing is written yet. Give the book a menu and it opens already written."
+      ],
+      "failed_read": [
+        "This part of the book could not be read.",
+        "The folio history could not be read.",
+        "failure to read, not an empty menu"
       ]
     }
   ],

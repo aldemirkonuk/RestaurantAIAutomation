@@ -96,7 +96,7 @@ const unresolvedLinesBody = {
  * the list" from "reject everything" apart. Classify first, then route by
  * the classification — every other endpoint below is unambiguous.
  */
-type Route = 'inventory-list' | 'inventory-summary' | 'inventory-low-stock' | 'orders' | 'pos-unresolved' | 'storage-locations' | 'other';
+type Route = 'inventory-list' | 'inventory-summary' | 'inventory-low-stock' | 'orders' | 'pos-unresolved' | 'storage-locations' | 'pricing-advice' | 'other';
 
 function classify(url: string): Route {
   if (url.includes('/inventory/')) {
@@ -107,6 +107,8 @@ function classify(url: string): Route {
   if (url.includes('/orders')) return 'orders';
   if (url.includes('/pos-hub/unresolved/')) return 'pos-unresolved';
   if (url.includes('/storage-locations/')) return 'storage-locations';
+  // ADR 0193 (the cellar lane): the page reads per-wine price advice too.
+  if (url.includes('/pricing/advice')) return 'pricing-advice';
   return 'other';
 }
 
@@ -133,6 +135,16 @@ function routeGets(overrides: Partial<Record<Route, 'reject' | unknown>> = {}) {
         return Promise.resolve({ data: unresolvedLinesBody });
       case 'storage-locations':
         return Promise.resolve({ data: [] });
+      case 'pricing-advice':
+        return Promise.resolve({
+          data: {
+            restaurantId: 'rest-A',
+            generatedAt: '2026-09-21T00:00:00Z',
+            target: { bottlePct: null, glassPct: null, bandPct: null, set: false, pourConfirmed: false, pourMl: null },
+            wines: [],
+            counts: {},
+          },
+        });
       default:
         // The page always mounts several modal/panel components with
         // `isOpen` props rather than gating their presence in the tree
@@ -193,6 +205,20 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
     await waitFor(() => expect(within(onHandCard).getByText('6')).toBeInTheDocument());
     expect(within(onHandCard).getByText('1 wines')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('a price-advice answer without its shape is said on the row, and the page still renders (ADR 0193)', async () => {
+    routeGets({
+      'inventory-list': [
+        { id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', stockLive: 6, shadowStock: 0, thresholdMin: 2 },
+      ],
+      // Not the advice's shape: before the guard, `data.wines.map` threw and
+      // took the whole page down with it.
+      'pricing-advice': [],
+    });
+    mount();
+    expect(await screen.findByText('advice unavailable')).toBeInTheDocument();
+    expect(await screen.findByText('On hand')).toBeInTheDocument();
   });
 
   it('raises the banner and shows an em dash, never a zero, when only the inventory list fails', async () => {

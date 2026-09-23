@@ -79,7 +79,39 @@ const cellar = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
 }));
-vi.mock('@/pages/cellar/next/useCellarNextData', () => ({ useCellarRegisters: () => cellar.current }));
+vi.mock('@/pages/cellar/next/useCellarNextData', () => ({
+  HOLD_CEREMONIES: ['hold', 'auto'] as const,
+  GAZETTEER_MEASURE_IDS: [
+    'bottles',
+    'titles',
+    'par',
+    'offbook',
+    'parUnset',
+    'registers',
+  ] as const,
+  useCellarRegisters: () => cellar.current,
+  useCellarSettings: () => ({
+    data: {
+      restaurantId: 'r1',
+      holdCeremony: 'hold',
+      holdCeremonyConfigured: false,
+      gazetteerMeasures: ['bottles', 'titles', 'par', 'offbook'],
+      gazetteerMeasuresConfigured: false,
+      setBy: null,
+      setAt: null,
+      readable: true,
+      readError: null,
+    },
+    loading: false,
+    save: {
+      mutate: vi.fn(),
+      mutateAsync: vi.fn(),
+      isPending: false,
+      isError: false,
+      error: null,
+    },
+  }),
+}));
 vi.mock('@/pages/cellar/next/cellar-next.css', () => ({}));
 
 /**
@@ -826,7 +858,9 @@ describe('SettingsNext — provenance and unknowns', () => {
     const alert = within(section).getByRole('alert');
     expect(alert).toHaveTextContent(/could not be read/i);
     expect(alert).toHaveTextContent(/it is\s*unread/i);
-    expect(within(section).queryByRole('switch')).not.toBeInTheDocument();
+    // Gazetteer-measure toggles still draw (including "Registers carried");
+    // the unread claim is the register switches, labelled "Wines register".
+    expect(within(section).queryByRole('switch', { name: / register$/i })).not.toBeInTheDocument();
   });
 
   it('stamps no client-side date on the POS connector', () => {

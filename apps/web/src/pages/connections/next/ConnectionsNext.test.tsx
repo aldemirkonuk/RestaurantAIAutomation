@@ -620,6 +620,85 @@ describe('a register that could not be read', () => {
   });
 });
 
+/**
+ * Founder, 2026-09-22, after the preview review: "remove technical secrets /
+ * webhooks / terms". The webhook stays wired; only its display goes.
+ */
+describe('no operator internals in front of a restaurant user', () => {
+  const catalogRow = (id: string, label: string, providerLabel: string) => ({
+    id,
+    provider: providerLabel.toLowerCase(),
+    label,
+    providerLabel,
+    description: `${label}.`,
+    available: false,
+    unavailableReason: `${providerLabel} OAuth is not configured on this deployment.`,
+    scopes: [{ scope: `https://www.googleapis.com/auth/${id}`, label: `Use ${label}` }],
+    notRequested: [],
+  });
+
+  it('prints no webhook URL, house id, key name, table name, raw scope or deployment register', () => {
+    const d = base();
+    d.restaurantId = 'house-7f3a91';
+    d.houseGrants = reg({
+      grants: [grant({ scopes: ['https://www.googleapis.com/auth/drive.file'] })],
+      unattributed: 0,
+    });
+    mockData.current = d;
+    const { container } = render(<ConnectionsNext />);
+    const text = container.textContent ?? '';
+
+    for (const leak of [
+      /pos-hub\/webhook/,
+      /webhook →/,
+      /house-7f3a91/,
+      /STRIPE_[A-Z_]+/,
+      /VITE_STRIPE/,
+      /ANTHROPIC_API_KEY/,
+      /INTEGRATION_TOKEN_ENCRYPTION_KEY/,
+      /MCP_CONNECTION_SECRET_KEY/,
+      /GMAIL_SENDER_EMAIL/,
+      /payment_methods/,
+      /vendor_portal_pages/,
+      /googleapis\.com/,
+      /Set once for every house/,
+      /invocation (on|off)/,
+    ]) {
+      expect(text).not.toMatch(leak);
+    }
+    expect(container.querySelector('#deployment')).toBeNull();
+    // The calendar feed address is the house's own subscribe link, and stays —
+    // marked as a credential so the nightly walk masks it (ADR 0135).
+    const feed = screen.getByText(/\/api\/v1\/calendar\/feed\//);
+    expect(feed.getAttribute('data-secret')).toBe('credential');
+    // The till row is still drawn: only its internals are hidden.
+    expect(screen.getByText('Point of sale')).toBeInTheDocument();
+  });
+
+  it('draws one Google heading with a row per service, and swaps an OAuth reason for plain words', () => {
+    const d = base();
+    d.catalog = reg([
+      catalogRow('google_drive', 'Google Drive', 'Google'),
+      catalogRow('gmail_send', 'Gmail — sending only', 'Google'),
+      catalogRow('gmail_read', 'Gmail — reading vendor replies only', 'Google'),
+      catalogRow('excel', 'Microsoft Excel', 'Microsoft'),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const google = screen.getByRole('region', { name: 'Google' });
+    expect(within(google).getByRole('heading', { name: 'Google' })).toBeInTheDocument();
+    for (const label of ['Google Drive', 'Gmail — sending only', 'Gmail — reading vendor replies only']) {
+      expect(within(google).getByText(label)).toBeInTheDocument();
+    }
+    expect(within(google).getAllByRole('button', { name: 'Connect yours' })).toHaveLength(3);
+    expect(within(google).queryByText('Microsoft Excel')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Microsoft' })).toBeInTheDocument();
+    expect(screen.queryByText(/OAuth/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('This connection is not available yet.').length).toBe(4);
+  });
+});
+
 describe('the one row, four columns and no fifth', () => {
   it('gives a row with no live control a sentence saying who can stop it', () => {
     render(<ConnectionsNext />);
@@ -628,14 +707,15 @@ describe('the one row, four columns and no fifth', () => {
     const disconnect = screen.getByRole('button', { name: 'Disconnect' });
     expect(disconnect).toBeDisabled();
     expect(
-      screen.getByText(/no disconnect endpoint exists/i),
+      screen.getByText(/The till cannot be disconnected from this page yet/),
     ).toBeInTheDocument();
   });
 
   it('states that no public page exists for a house rather than drawing one', () => {
     render(<ConnectionsNext />);
     expect(screen.getByText(/public page for this house/i)).toBeInTheDocument();
-    expect(screen.getByText(/its table has no restaurant column at all/i)).toBeInTheDocument();
+    expect(screen.getByText(/belongs to a/i)).toBeInTheDocument();
+    expect(screen.queryByText(/vendor_portal_pages/)).not.toBeInTheDocument();
   });
 
   it('offers the calendar feed as a real address and a real regenerate', () => {
@@ -1128,7 +1208,7 @@ describe('the collapse — anchors and the acts that moved', () => {
 
     // A fragment nothing answers to is a link that silently does nothing, so
     // each anchor must exist on the rendered page, not merely in the mapping.
-    for (const anchor of ['attached', 'till', 'sender', 'feed', 'servers', 'payment', 'grants', 'deployment']) {
+    for (const anchor of ['attached', 'till', 'sender', 'feed', 'servers', 'payment', 'grants']) {
       expect(container.querySelector(`#${anchor}`)).not.toBeNull();
     }
   });
@@ -1161,7 +1241,7 @@ describe('the collapse — anchors and the acts that moved', () => {
     expect(screen.getByRole('button', { name: 'Declare server' })).toBeEnabled();
   });
 
-  it('disables the credential field with the deployment’s own reason, never a blank one', () => {
+  it('disables the credential field with a plain reason, never a blank one and never a key name', () => {
     const d = base();
     d.mcp = reg([server()]);
     d.mcpRuntime = reg({
@@ -1176,10 +1256,12 @@ describe('the collapse — anchors and the acts that moved', () => {
     render(<ConnectionsNext />);
 
     fireEvent.click(screen.getByRole('button', { name: /declare a server/i }));
-    // Disabled AND carrying the server's own sentence — a field that accepted a
-    // secret the deployment would drop is worse than no field.
+    // Disabled AND carrying a reason — a field that accepted a secret the
+    // deployment would drop is worse than no field. The gateway's sentence
+    // names a key, so the page says it in plain words (founder, 2026-09-22).
     expect(screen.getByLabelText('Credential')).toBeDisabled();
-    expect(screen.getAllByText(/MCP_CONNECTION_SECRET_KEY is not set/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Mudavym cannot store a credential yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/MCP_CONNECTION_SECRET_KEY/)).not.toBeInTheDocument();
   });
 
   it('says nothing about storing a credential when the deployment did not report', () => {
@@ -1223,13 +1305,14 @@ describe('the collapse — anchors and the acts that moved', () => {
 
     expect(screen.getByRole('button', { name: 'Add a card' })).toBeDisabled();
     expect(
-      screen.getByText(/VITE_STRIPE_PUBLISHABLE_KEY is not set in this web bundle/),
-    ).toBeInTheDocument();
+      screen.getAllByText(/Card payments are not switched on yet, so no card can be added\./).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/VITE_STRIPE_PUBLISHABLE_KEY/)).not.toBeInTheDocument();
     expect(screen.queryByText(/has not been rebuilt here yet/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Adding a card happens on \/profile/)).not.toBeInTheDocument();
   });
 
-  it("prefers the gateway's own reason when the provider itself is unkeyed", () => {
+  it("replaces the gateway's key-naming reason with plain words when the provider is unkeyed", () => {
     const d = base();
     d.payments = reg({
       provider: {
@@ -1242,11 +1325,11 @@ describe('the collapse — anchors and the acts that moved', () => {
     render(<ConnectionsNext />);
 
     expect(screen.getByRole('button', { name: 'Add a card' })).toBeDisabled();
-    // The gateway's sentence, so the disabled control and the 503 the create
-    // path would answer with say the same thing.
+    // Founder, 2026-09-22: no key names in front of a restaurant user.
     expect(
-      screen.getByText(/STRIPE_SECRET_KEY is not set on this deployment\./),
-    ).toBeInTheDocument();
+      screen.getAllByText(/Card payments are not switched on yet/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/STRIPE_SECRET_KEY/)).not.toBeInTheDocument();
   });
 });
 

@@ -96,10 +96,17 @@ const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/Setting
 const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
 const ConnectionsNext = lazyWithRefresh(() => import('./pages/connections/next/ConnectionsNext'))
 const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
+// A NEW route (ADR 0160 sec110 item 7), not a redesign of a shipping page —
+// no `mudavym_design_*` flag (`LIVE_PAGES` in useMudavymDesign.ts makes
+// it on for every house with no per-house column). It still goes through
+// `PageGate` below, same as every other Mudavym page, so it gets the real
+// house header — bell, search, house switcher — rather than none at all.
+const MenuNext = lazyWithRefresh(() => import('./pages/menu/next/MenuNext'))
 const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/next/CanonicalDocumentPage'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const HouseContents = lazyWithRefresh(() => import('./pages/HouseContents'))
 const HouseMenu = lazyWithRefresh(() => import('./pages/HouseMenu'))
+const Arrival = lazyWithRefresh(() => import('./pages/arrival/Arrival'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
 const DeliveryRedirect = lazyWithRefresh(() => import('./pages/receiving/DeliveryRedirect'))
@@ -129,7 +136,6 @@ const LogsTimelinePage = lazyWithRefresh(() => import('./pages/LogsTimelinePage'
 const LogsNext = lazyWithRefresh(() => import('./pages/logs/next/LogsNext'))
 const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
 const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
-const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
 const Help = lazyWithRefresh(() => import('./pages/Help'))
 const HelpNext = lazyWithRefresh(() => import('./pages/help/next/HelpNext'))
@@ -206,12 +212,11 @@ function App() {
                 {/* Public vendor catalogue. No auth: this is what a vendor chose
                     to publish, and our own ingester reads it back as structured data. */}
                 <Route path="/v/:slug" element={<VendorPortal />} />
+                {/* Flag off: #455 first-proof GetStarted (ADR 0213). Flag on: #414 Skyleaf Arrival. */}
                 <Route
                   path="/get-started"
                   element={
-                    <ProtectedRoute>
-                      <GetStarted />
-                    </ProtectedRoute>
+                    <PageGate page="arrival" legacy={<GetStarted />} next={<Arrival />} />
                   }
                 />
                 <Route
@@ -230,7 +235,7 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                <Route path="/onboarding" element={<Onboarding />} />
+                <Route path="/onboarding" element={<Navigate to="/get-started" replace />} />
 
                 {/* Studio routes — separate layout with StudioLayout, outside DashboardLayout */}
                 <Route
@@ -405,6 +410,11 @@ function App() {
                   <Route path="/spirits" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="spirits" />} />} />
                   <Route path="/non-alcoholic" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="non_alcoholic" />} />} />
                   <Route path="/soft-drinks" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="soft_drinks" />} />} />
+                  {/* ADR 0160 sec110 item 7 — a NEW route with no legacy page, so
+                      `legacy` here is a redirect to /cellar (the surface it is
+                      linked from) rather than a real fallback — see the
+                      `MenuNext` import above for why the flag is always on. */}
+                  <Route path="/menu" element={<PageGate page="menu" legacy={<Navigate to="/cellar" replace />} next={<MenuNext />} />} />
                   <Route path="/reports" element={<PageGate page="reports" legacy={<Reports />} next={<ReportsNext />} />} />
                   <Route path="/recommendations" element={<PageGate page="recommendations" legacy={<Recommendations />} next={<RecommendationsNext />} />} />
                   <Route

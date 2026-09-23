@@ -173,3 +173,19 @@ export function readError(e: unknown): string {
   if (err?.message) return err.message;
   return 'This register could not be read, and the reason did not come back with the failure.';
 }
+
+/**
+ * A gateway sentence, or `fallback` when the sentence is written for an
+ * operator: an environment-variable name, an API path or a table name.
+ *
+ * Founder, 2026-09-22: a restaurant user is not shown webhook URLs, key names,
+ * table names or raw scopes on this page. The gateway's sentences stay as they
+ * are for the operator desk; this page swaps any that carry one for plain words.
+ */
+const OPERATOR_TERM =
+  /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\/api\/|\b[a-z]+_[a-z_]+\b|https?:\/\/|\bOAuth\b|\bwebhook/i;
+
+export function plainReason(reason: string | null | undefined, fallback: string): string {
+  if (!reason || OPERATOR_TERM.test(reason)) return fallback;
+  return reason;
+}

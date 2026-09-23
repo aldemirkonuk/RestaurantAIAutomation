@@ -30,6 +30,7 @@ import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
 import { LedgerRow } from './LedgerRow';
 import { RecurrenceSheet } from './RecurrenceSheet';
+import { ReceiptSheet } from './ReceiptSheet';
 import { ResponsesSheet } from './ResponsesSheet';
 import { StageSpine, type SpineStation } from './StageSpine';
 import { Tally } from './Tally';
@@ -146,6 +147,8 @@ export default function OrdersNext() {
   const [responsesFor, setResponsesFor] = useState<string | null>(null);
   /** Which order's recurrence is open. One sheet for the page, as above. */
   const [recurrenceFor, setRecurrenceFor] = useState<string | null>(null);
+  /** Which order's receipt is open. One sheet for the page, as above. */
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
 
   const visibleRows = useMemo(() => {
     const byDate = (a: OrderRowVM, b: OrderRowVM) =>
@@ -163,6 +166,11 @@ export default function OrdersNext() {
   const recurrenceRow = useMemo(
     () => (recurrenceFor === null ? null : (data.rows.find((r) => r.id === recurrenceFor) ?? null)),
     [data.rows, recurrenceFor],
+  );
+
+  const receiptRow = useMemo(
+    () => (receiptFor === null ? null : (data.rows.find((r) => r.id === receiptFor) ?? null)),
+    [data.rows, receiptFor],
   );
 
   const selectedRows = useMemo(
@@ -339,6 +347,10 @@ export default function OrdersNext() {
           />
         )}
 
+        {receiptRow && (
+          <ReceiptSheet open onClose={() => setReceiptFor(null)} row={receiptRow} />
+        )}
+
         {/* ── the gateway, when it cannot be reached, is said plainly ──── */}
         {data.isError && (
           <div
@@ -486,6 +498,7 @@ export default function OrdersNext() {
                       approval={data.approvalByOrder?.get(row.id)}
                       onOpenResponses={() => setResponsesFor(row.id)}
                       onOpenRecurrence={() => setRecurrenceFor(row.id)}
+                      onOpenReceipt={() => setReceiptFor(row.id)}
                       approvalGateError={data.approvalGateError}
                     />
                   </div>

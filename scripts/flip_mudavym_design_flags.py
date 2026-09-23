@@ -138,6 +138,11 @@ LIVE_IN_CODE: frozenset[str] = frozenset(
         "connections",
         "notifications",
         "logs",
+        # The cellar lane, after row 36: the founder's 2026-09-19 answer was
+        # to build the sketch-121 layout first, then go live for every house
+        # (.planning/06-pages/wines.md, Seventh pass). `/menu` has no column,
+        # so it is not a slug here at all.
+        "cellar",
     }
 )
 
@@ -303,10 +308,11 @@ def self_test() -> int:
             "dashboard", "orders", "receiving_door", "providers", "communications",
             "team", "inventory", "receipts", "documents_reports", "document",
             "reports", "calendar", "profile", "connections", "notifications", "logs",
+            "cellar",
         },
-        "LIVE_IN_CODE is exactly the sixteen ADR 0149 row 36 names",
+        "LIVE_IN_CODE is exactly the sixteen ADR 0149 row 36 names plus the cellar",
     )
-    check(len(LIVE_IN_CODE) == 16, "sixteen live-in-code pages")
+    check(len(LIVE_IN_CODE) == 17, "seventeen live-in-code pages")
     check(set(LIVE_IN_CODE) <= set(PAGES), "every live-in-code slug is a known page")
     check("receiving" not in LIVE_IN_CODE, "the receiving DESK is not live-in-code (only the door is)")
     if failures:

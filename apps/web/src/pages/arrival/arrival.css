@@ -1,0 +1,698 @@
+.ar-page {
+  --ink: var(--ink-1);
+  --accent: var(--seal);
+  --rule: color-mix(in srgb, var(--ink-3) 38%, transparent);
+  --sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  min-height: 100dvh;
+  background: var(--paper-0);
+  color: var(--ink);
+  font-family: var(--sans);
+  padding: 24px 32px 64px;
+}
+.ar-page * {
+  box-sizing: border-box;
+}
+.ar-header {
+  max-width: 1320px;
+  margin: auto;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding-bottom: 22px;
+  border-bottom: double 4px var(--rule);
+}
+.ar-header > span {
+  flex: 1;
+  font: 13px var(--mono);
+  color: var(--ink-3);
+}
+.ar-page a {
+  color: var(--accent);
+}
+.ar-page button {
+  font: 600 12px var(--mono);
+  background: var(--paper-2);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 12px 16px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.ar-page button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ar-page button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.ar-page :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.ar-page h1,
+.ar-page h2,
+.ar-page h3 {
+  font-family: var(--serif);
+  font-weight: 400;
+  line-height: 1.08;
+}
+.ar-page h1 {
+  font-size: clamp(36px, 4vw, 64px);
+  margin: 12px 0 24px;
+}
+.ar-page h2 {
+  font-size: 42px;
+}
+.ar-page h3 {
+  font-size: 27px;
+}
+.ar-page p {
+  line-height: 1.65;
+}
+.ar-meta {
+  font: 11px/1.6 var(--mono) !important;
+  letter-spacing: 0.075em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.ar-note {
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.7;
+}
+.ar-flyleaf {
+  max-width: 670px;
+  padding: 85px 24px;
+  margin: auto;
+  text-align: center;
+}
+.ar-flyleaf p {
+  margin: 20px 0 30px;
+}
+.ar-flyleaf > a {
+  display: block;
+  margin-top: 25px;
+  font-size: 13px;
+}
+/* ── the flyleaf's one act ──────────────────────────────────────────────
+   The upload is the inscription, so it is drawn as the leaf's own content.
+   Three ways in as RULED LINES, not cards: a card implies three equal
+   containers to choose between, and a line implies one list to read down. */
+.ar-inscribe {
+  max-width: 720px;
+  text-align: left;
+}
+.ar-inscribe .ar-lede {
+  max-width: 54ch;
+}
+.ar-ways {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 30px;
+}
+.ar-way {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: baseline;
+  gap: 16px;
+  padding: 17px 2px;
+  border-bottom: 1px solid var(--rule);
+}
+.ar-way:first-child {
+  border-top: 1px solid var(--rule);
+}
+.ar-way[data-primary] {
+  background: color-mix(in srgb, var(--seal) 14%, transparent);
+  margin: 0 -14px;
+  padding-inline: 14px;
+}
+.ar-way strong {
+  font: 400 21px var(--serif);
+}
+.ar-way small {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  margin-top: 3px;
+}
+.ar-numeral {
+  font: 12px var(--mono);
+  color: var(--ink-3);
+}
+.ar-way[data-primary] .ar-numeral {
+  color: var(--seal);
+}
+/* The way in is the whole ruled line, so its affordance is a phrase at the end
+   of it — not a browser file widget, which draws a box and reintroduces the
+   card this direction replaced. The input keeps its own accessible name and
+   stays in the tab order via the label. */
+.ar-way-control input.ar-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.ar-way-choose {
+  font: 12.5px var(--sans);
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ar-way-choose:hover,
+.ar-way-control input.ar-file:focus-visible + .ar-way-choose {
+  color: var(--seal);
+  border-bottom-color: var(--seal);
+}
+.ar-way[data-primary] .ar-way-choose {
+  color: var(--ink-1);
+}
+.ar-typed {
+  margin: 0 0 26px;
+}
+.ar-typed textarea {
+  width: 100%;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  border: 1px solid var(--rule);
+  font: 14px var(--sans);
+  padding: 12px;
+  margin: 8px 0 12px;
+}
+.ar-aside {
+  display: flex;
+  align-items: baseline;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+/* Visible, and secondary. The escape is not hidden — a read that will not
+   finish must never trap a house on this leaf — but it is not the act. */
+.ar-page button.ar-quiet {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  font: 13px var(--sans);
+  color: var(--ink-3);
+  padding: 2px 0;
+  min-height: 0;
+}
+.ar-page button.ar-quiet:hover:not(:disabled) {
+  color: var(--seal);
+  border-bottom-color: var(--seal);
+}
+.ar-aside .ar-note {
+  margin: 0;
+  flex: 1;
+  min-width: 220px;
+}
+
+/* ── the wait: facts landing, never a spinner ───────────────────────────
+   One `settle` per fact as it lands, then stasis. No token is a loop. */
+.ar-writing {
+  margin: 0 0 26px;
+}
+.ar-writing > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+  align-items: baseline;
+  padding: 13px 2px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+}
+.ar-writing > div:first-child {
+  border-top: 1px solid var(--rule);
+}
+.ar-writing > div[data-done] {
+  color: var(--ink-1);
+  animation: ar-turn var(--ar-turn-duration) var(--ar-turn-easing);
+}
+.ar-writing > div[data-waiting] {
+  color: var(--ink-3);
+}
+.ar-writing em {
+  font: 11px var(--mono);
+  font-style: normal;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ar-writing > div[data-done] em {
+  color: var(--seal);
+}
+
+/* ── the reveal: a reading count, not a capability claim ──────────────── */
+.ar-count {
+  display: flex;
+  gap: 0;
+  margin: 22px 0 8px;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+.ar-count > div {
+  padding: 14px 26px 13px 0;
+  margin-right: 26px;
+  animation: ar-turn var(--ar-turn-duration) var(--ar-turn-easing);
+}
+.ar-count > div + div {
+  border-left: 1px solid var(--rule);
+  padding-left: 26px;
+}
+.ar-count dt {
+  font: 11px var(--mono);
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ar-count dd {
+  margin: 4px 0 0;
+  font: 400 30px/1.2 var(--serif);
+  color: var(--ink-1);
+}
+.ar-count > div[data-open] dd {
+  color: var(--seal);
+}
+
+/* A register with evidence is READ BACK, not offered for a tick. Only the
+   un-evidenced ones carry a control, so nothing here can be rubber-stamped. */
+.ar-registers {
+  margin: 26px 0 0;
+}
+.ar-register {
+  display: grid;
+  grid-template-columns: 150px 1fr auto;
+  gap: 20px;
+  align-items: baseline;
+  padding: 15px 2px;
+  border-bottom: 1px solid var(--rule);
+}
+.ar-register:first-child {
+  border-top: 1px solid var(--rule);
+}
+.ar-register h3 {
+  font-size: 17px;
+  text-transform: capitalize;
+}
+.ar-register p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 62ch;
+}
+.mudavym.ar-page .ar-register p {
+  color: var(--ink-3);
+}
+.mudavym.ar-page .ar-register[data-silent] h3 {
+  color: var(--ink-3);
+}
+.ar-mark {
+  font: 11px var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--seal);
+  white-space: nowrap;
+}
+.ar-register[data-silent] .ar-mark {
+  color: var(--ink-3);
+}
+.ar-page button.ar-ask {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  font: 12px var(--mono);
+  color: var(--ink-3);
+  padding: 2px 0;
+  min-height: 0;
+  white-space: nowrap;
+}
+.ar-page button.ar-ask:hover:not(:disabled) {
+  color: var(--seal);
+  border-bottom-color: var(--seal);
+}
+
+/* Optional has to LOOK optional: on the contents line, on the folio, and on
+   the control. */
+.ar-optional {
+  display: inline-block;
+  margin-left: 8px;
+  font: 11px var(--mono);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--seal);
+  vertical-align: middle;
+}
+.ar-book aside button[data-asking] {
+  background: color-mix(in srgb, var(--seal) 14%, transparent);
+}
+.ar-book aside button[data-asking] small {
+  color: var(--seal);
+}
+
+.ar-book {
+  max-width: 1320px;
+  margin: 40px auto;
+  display: grid;
+  grid-template-columns: minmax(220px, 30%) minmax(0, 1fr);
+  border: 1px solid var(--rule);
+  background: var(--paper-1);
+}
+.ar-book aside {
+  padding: 36px 28px;
+  border-right: 1px solid var(--rule);
+}
+.ar-book ol {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 38px;
+}
+.ar-book li {
+  border-top: 1px solid var(--rule);
+}
+.ar-book aside li[data-state='posted'] {
+  border-bottom: double 4px var(--rule);
+}
+.ar-book aside li button {
+  width: 100%;
+  border: 0;
+  background: none;
+  display: flex;
+  text-align: left;
+  align-items: flex-start;
+  gap: 15px;
+  padding: 18px 0;
+  font: 20px var(--serif);
+}
+.ar-book aside button[aria-current] {
+  color: var(--accent);
+}
+.ar-book aside small {
+  display: block;
+  font: 11px/1.6 var(--mono);
+  color: var(--ink-3);
+  margin-top: 8px;
+}
+.ar-number {
+  font: 11px var(--mono);
+  padding-top: 5px;
+  color: var(--ink-3);
+}
+.ar-book article {
+  min-width: 0;
+  padding: 36px clamp(20px, 4vw, 58px);
+  animation: ar-turn var(--ar-turn-duration) var(--ar-turn-easing);
+}
+.ar-intro {
+  font-size: 16px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 22px;
+}
+.ar-field {
+  display: grid;
+  grid-template-columns: minmax(125px, 1fr) minmax(200px, 1.3fr);
+  gap: 24px;
+  padding: 23px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.ar-field label {
+  font: 21px var(--serif);
+}
+.ar-field .ar-value {
+  font-size: 14px;
+  margin: 5px 0;
+}
+.ar-field form {
+  display: flex;
+  gap: 8px;
+}
+.ar-field form input {
+  min-width: 0;
+  width: 100%;
+}
+.ar-page input:not([type='checkbox']),
+.ar-page select {
+  background: var(--paper-0) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--rule) !important;
+  border-radius: 0 !important;
+  font: 14px var(--sans);
+  padding: 12px;
+  max-width: 100%;
+  min-height: 44px;
+}
+.ar-page article > select,
+.ar-page article > input {
+  width: 100%;
+  margin: 8px 0 20px;
+}
+.ar-speech {
+  margin-top: 10px;
+}
+.ar-speech button {
+  font-size: 10px;
+  padding: 8px 10px;
+}
+.ar-speech small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  margin: 7px 0;
+}
+.ar-feedback {
+  font-size: 12px;
+  color: var(--accent);
+}
+.ar-message {
+  background: var(--paper-2);
+  border-left: 2px solid var(--accent);
+  padding: 16px;
+  margin: 18px 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.ar-posted {
+  border-bottom: double 4px var(--rule);
+  padding: 15px 0 35px;
+}
+.ar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 20px 0;
+}
+.ar-opening {
+  margin-top: 40px;
+  border-top: double 4px var(--rule);
+  padding-top: 12px;
+}
+.ar-legacy-evidence {
+  margin: 12px 0;
+  max-width: 100%;
+  overflow: auto;
+}
+.ar-batch {
+  margin: 26px 0;
+  border-top: double 4px var(--rule);
+  padding-top: 6px;
+}
+.ar-batch ul {
+  list-style: none;
+  padding: 0;
+}
+.ar-batch li {
+  padding: 16px 0;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.ar-batch li div {
+  min-width: 0;
+  flex: 1;
+}
+.ar-batch strong,
+.ar-batch span,
+.ar-batch small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.ar-batch strong {
+  font: 12px var(--mono);
+}
+.ar-batch span {
+  margin: 7px 0;
+  font: 22px var(--serif);
+}
+.ar-batch small {
+  font: 11px/1.6 var(--mono);
+  color: var(--ink-3);
+}
+.ar-threshold {
+  margin: 30px 0;
+  font-size: 14px;
+}
+.ar-threshold summary {
+  cursor: pointer;
+  padding: 14px 0;
+  border-top: 1px solid var(--rule);
+}
+.ar-folio-footer {
+  margin-top: 35px;
+  padding-top: 20px;
+  border-top: double 4px var(--rule);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.ar-folio-footer span {
+  font: 11px var(--mono);
+  color: var(--ink-3);
+}
+@keyframes ar-turn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 760px) {
+  .ar-page {
+    padding: 16px 14px 40px;
+  }
+  .ar-header {
+    gap: 12px;
+  }
+  .ar-header > span {
+    font-size: 10px;
+  }
+  .ar-book {
+    display: block;
+    margin-top: 20px;
+  }
+  .ar-book aside {
+    padding: 20px;
+    border-right: 0;
+    border-bottom: double 4px var(--rule);
+  }
+  .ar-book aside ol {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 18px;
+    margin-bottom: 20px;
+  }
+  .ar-book aside li button {
+    font-size: 16px;
+    gap: 8px;
+  }
+  .ar-book aside small {
+    font-size: 10px;
+  }
+  .ar-book article {
+    padding: 26px 20px;
+  }
+  .ar-field {
+    display: block;
+  }
+  .ar-field-entry {
+    margin-top: 14px;
+  }
+  .ar-flyleaf {
+    padding: 60px 10px;
+  }
+  /* The phone fold. The three ways lose their right-hand column and the whole
+     ruled line becomes the target; the counts stack label-left/number-right;
+     a register becomes one stacked entry and the 150px name column goes. */
+  .ar-way {
+    grid-template-columns: 20px 1fr;
+    gap: 12px;
+  }
+  .ar-way-control {
+    grid-column: 2;
+  }
+  .ar-aside {
+    display: block;
+  }
+  .ar-aside .ar-note {
+    margin-top: 10px;
+  }
+  .ar-count {
+    display: block;
+  }
+  .ar-count > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 12px 0;
+    margin: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .ar-count > div:last-child {
+    border-bottom: 0;
+  }
+  .ar-count > div + div {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .ar-count dd {
+    font-size: 24px;
+  }
+  .ar-register {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  .ar-register .ar-mark,
+  .ar-register .ar-ask {
+    justify-self: start;
+  }
+  .ar-batch li {
+    display: block;
+  }
+  .ar-batch li button {
+    margin-top: 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ar-book article {
+    animation: none;
+  }
+}
+
+.ar-page .ar-brand {
+  color: var(--ink-1);
+}
+.ar-page .ar-brand svg,
+.ar-page .ar-brand > span > span {
+  color: var(--seal);
+}
+
+/* The app's legacy global h/p colors do not follow data-ground. Keep every
+   Arrival text role on its own ground-aware ink, including the flyleaf. */
+.mudavym.ar-page h1,
+.mudavym.ar-page h2,
+.mudavym.ar-page h3,
+.mudavym.ar-page p,
+.mudavym.ar-page label {
+  color: var(--ink-1);
+}
+.mudavym.ar-page p.ar-meta,
+.mudavym.ar-page p.ar-note {
+  color: var(--ink-3);
+}
+.mudavym.ar-page p.ar-intro {
+  color: var(--ink-2);
+}
+.mudavym.ar-page p.ar-feedback {
+  color: var(--seal);
+}
