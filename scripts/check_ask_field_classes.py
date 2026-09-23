@@ -241,7 +241,9 @@ def runner_shows(src: str) -> dict[str, dict]:
         # `[["col", "Title"], ...].map(([field, title]) => s.field(e, row, field, ...))`
         mapped: dict[str, set[str]] = {}
         for m in re.finditer(
-            r'\[((?:\s*\[\s*"\w+"\s*,\s*"[^"]*"\s*\]\s*,?)+)\]\.map\(\(\[\s*(\w+)\s*,',
+            r'(\[\s*\[\s*"\w+"\s*,\s*"[^"\r\n]*"\s*\]'
+            r'(?:\s*,\s*\[\s*"\w+"\s*,\s*"[^"\r\n]*"\s*\])*\s*\])'
+            r'\.map\(\(\[\s*(\w+)\s*,',
             body,
         ):
             mapped.setdefault(m.group(2), set()).update(

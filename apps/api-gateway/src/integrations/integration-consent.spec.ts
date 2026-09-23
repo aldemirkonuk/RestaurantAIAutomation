@@ -73,7 +73,7 @@ function fixture() {
     GOOGLE_CLIENT_ID: 'google-id', GOOGLE_CLIENT_SECRET: 'google-secret',
     MICROSOFT_CLIENT_ID: 'microsoft-id', MICROSOFT_CLIENT_SECRET: 'microsoft-secret',
   };
-  const crypto = { isConfigured: true, encrypt: (text: string) => `enc:${text}`, decrypt: (text: string) => text.slice(4), tryDecrypt: () => null };
+  const crypto = { isConfigured: true, encrypt: jest.fn((text: string) => `enc:${text}`), decrypt: (text: string) => text.slice(4), tryDecrypt: () => null };
   const oauth = new IntegrationsOauthService(db as never, { get: (key: string) => settings[key] } as never, crypto as never);
   const row = {
     state: STATE, user_id: USER, restaurant_id: HOUSE, provider: 'google', integration_id: 'gmail_send',
@@ -81,7 +81,7 @@ function fixture() {
     consent_receipt_id: SEAL, browser_proof_hash: consent.browserProofHash, browser_request_id: REQUEST,
     pkce_verifier_encrypted: 'enc:verifier', expires_at: new Date(Date.now() + 60000).toISOString(),
   };
-  return { tables, faults, calls, oauth, settings, row };
+  return { tables, faults, calls, oauth, settings, row, crypto };
 }
 
 describe('a consent seal covers the displayed disclosure and the browser', () => {
@@ -138,8 +138,9 @@ describe('browser-bound OAuth continuation', () => {
   it.each(['google_drive', 'excel'] as const)('adds S256 PKCE and durable consent to %s without disclosing the browser proof', async integrationId => {
     const f = fixture(); const result = await f.oauth.createAuthorizationUrl({ userId: USER, restaurantId: HOUSE, integrationId, consent });
     const state = f.tables.integration_oauth_states[0]; const url = new URL(result.authorizationUrl);
+    const verifier = f.crypto.encrypt.mock.calls[0][0];
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
-    expect(url.searchParams.get('code_challenge')).toBe(createHash('sha256').update(state.pkce_verifier_encrypted.slice(4)).digest('base64url'));
+    expect(url.searchParams.get('code_challenge')).toBe(createHash('sha256').update(verifier).digest('base64url'));
     expect(result.authorizationUrl).not.toContain(PROOF);
     expect(result.authorizationUrl).not.toContain(consent.browserProofHash);
     expect(state.consent_receipt_id).toBe(SEAL);
