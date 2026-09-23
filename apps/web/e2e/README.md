@@ -102,7 +102,7 @@ the pages reported in words:
 
 | Page | What the page said | Measured cause |
 |---|---|---|
-| `/communications` | "Saved schedules could not be loaded" | `GET /reports/schedules` → 500: `public.scheduled_reports` does not exist in production. First seen 2026-09-11, still live. |
+| `/communications` | "Saved schedules could not be loaded" | `GET /reports/schedules` → 500: `public.scheduled_reports` does not exist in production. Measured 2026-09-17. The Mudavym page stopped rendering that sentence on 2026-09-22, when the schedules card left the house page. |
 | `/profile` | "Your own agreement could not be read" | `GET /communications/text-senders` returns `myConsent.reason` "invalid input syntax for type uuid: \"undefined\"". `text-senders.controller.ts` reads `user.id`, but the JWT user carries `userId`. |
 
 ## 4. The files

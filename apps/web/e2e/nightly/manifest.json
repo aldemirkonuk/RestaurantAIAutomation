@@ -128,8 +128,7 @@
       ],
       "failed_read": [
         "The conversation book could not be refreshed",
-        "The conversation book could not be reached",
-        "Saved schedules could not be loaded"
+        "The conversation book could not be reached"
       ]
     },
     {
