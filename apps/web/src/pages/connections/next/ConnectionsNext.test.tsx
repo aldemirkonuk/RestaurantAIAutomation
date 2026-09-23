@@ -810,6 +810,29 @@ describe('house declares, each person consents', () => {
     ).toBeInTheDocument();
   });
 
+  it('hides a stored reply that still names the wire', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: {
+          status: 'protocol_error',
+          detail:
+            'The endpoint answered, but its initialize result carried no protocolVersion, so it is not speaking this protocol.',
+          serverName: null,
+          serverVersion: null,
+          protocolVersion: null,
+          tools: null,
+          toolCount: null,
+        },
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/The reply could not be read/)).toBeInTheDocument();
+    expect(screen.queryByText(/protocol/i)).not.toBeInTheDocument();
+  });
+
   it('names a reply the house cannot read without using the protocol word', () => {
     const d = base();
     d.mcp = reg([

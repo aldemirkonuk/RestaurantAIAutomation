@@ -127,6 +127,7 @@ import {
   onDate,
   personName,
   probeWord,
+  houseProbeDetail,
   plainReason,
   readError,
   shortUrl,
@@ -761,8 +762,9 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   subtitle={shortUrl(s.url)}
                   why={
                     <>
-                      {s.probe?.detail ??
-                        'This server has never been called, so nothing is claimed about it either way.'}{' '}
+                      {s.probe?.detail
+                        ? houseProbeDetail(s.probe.detail)
+                        : 'This server has never been called, so nothing is claimed about it either way.'}{' '}
                       {s.consent.given ? (
                         <>
                           You have consented to it acting in your name;{' '}
