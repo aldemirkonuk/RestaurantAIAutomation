@@ -1230,7 +1230,7 @@ The Features section **was** the largest single block of dead controls in the
 product. It is not there any more, and the paragraph that described it was wrong
 about *why* it was dead.
 
-**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:106`).** This dossier claimed the
+**Corrected 2026-08-26 (OD-86, `OPEN-DECISIONS.md:108`).** This dossier claimed the
 page renders 22 toggles that "write a real row via `PUT /settings/feature-flags`",
 and that one of them, `enable_ai_negotiation`, "genuinely stops the autonomous
 responder". Both halves were false, and the audit found the failure to be a layer
@@ -2251,7 +2251,7 @@ those numbers had already drifted since §13.38 was written.
   recommended holding shipping or labelling the control provisional, is
   answered by this same citation and no longer stands — see its own
   "[ANSWERED …]" bracket rather than restating it here.
-* **Q — `--ink-3` vs `--ink-4` — ANSWERED.** OD-112 (`OPEN-DECISIONS.md:68`,
+* **Q — `--ink-3` vs `--ink-4` — ANSWERED.** OD-112 (`OPEN-DECISIONS.md:70`,
   amending ADR 0042, cited in ADR 0149 row 30): captions on the paper ground use
   `--ink-4`; `--ink-3` is decorative only (a border, an icon tint — anything that
   only needs WCAG's 3:1 non-text minimum, never a glyph a person reads). Applied:

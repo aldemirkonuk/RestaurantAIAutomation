@@ -1128,3 +1128,27 @@ for any confirmed order at all**. With the column, a line whose desk stated a
 currency writes one again — proved in `price-currency.spec.ts`, which asserts the
 sighting appears with `TRY` on it and still does not appear when the desk stated
 nothing.
+
+### An order's receipt opens in a right sheet — BUILT 2026-09-22 (founder ruling, preview review)
+
+The founder, 2026-09-22: clicking an order line (his example, a 2010 bottle) opens that
+order's receipt in a sheet on the right, using the canonical Mudavym document — ADR 0104
+D13, sketch 089 direction C, `/documents/:id` — not a new layout.
+
+- **Where the id comes from.** A procurement order carries no document id. The link is
+  `deliveries.order_id` (`20260905232000_delivery_agreement_and_timers.sql:49`) and the
+  delivery spine's documents. `GET /procurement/deliveries` gained an optional `orderId`
+  filter (the list was capped at the newest 200 with no order filter, so a client-side
+  scan could have called an older order's receipt missing). `deliveriesApi.receiptForOrder`
+  then reads each delivery's spine and takes the vendor's paper — invoice, then despatch
+  advice, credit memo, statement, other; never the house's own purchase order or door
+  count; latest `docDate` first.
+- **Three states, kept apart** (`ReceiptSheet.tsx`): the canonical document
+  (`CanonicalDocumentPage` with `documentId` + `embedded`), "No receipt has been attached
+  to this order yet.", or a failed read said as a failure.
+- **Not literally a row click.** A row click still expands the row, because the approve
+  hold and "Mark delivered" live in that expansion; the sheet opens from **"Open the
+  receipt"** in the expanded row, next to "The vendor's answers". Whether the row click
+  itself should open the sheet is his call — it would take the approve hold off the row.
+- Tests: `OrdersNext.receipt.test.tsx`, `services/api/deliveries.receipt.test.ts`, the
+  embedded case in `CanonicalDocumentPage.test.tsx`, `delivery.service.spec.ts` "list".

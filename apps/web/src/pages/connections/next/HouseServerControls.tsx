@@ -49,6 +49,7 @@ import { Plus, ShieldOff } from 'lucide-react';
 import { HoldToApprove } from '../../../components/mudavym';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
 import type { McpRuntimeVM, McpServerVM } from './useConnectionsNextData';
+import { plainReason } from './cx-format';
 
 const ICON = { width: 14, height: 14, strokeWidth: 1.8 } as const;
 
@@ -255,11 +256,13 @@ export function HouseServerControls({
             label="Credential"
             hint={
               runtime === null
-                ? 'This deployment did not report whether it can store a credential, so the field is disabled rather than accepting one it might drop.'
+                ? 'Mudavym did not report whether it can store a credential, so the field is disabled rather than accepting one it might drop.'
                 : canStoreSecret
                   ? 'Optional. Encrypted before it is stored and never returned by any route — a server that authenticates by network position needs none. Changing it afterwards is not built on this page: the route answers, the button does not exist yet.'
-                  : (runtime.secretStorage.reason ??
-                    'This deployment cannot store a credential, so the field is disabled.')
+                  : plainReason(
+                      runtime.secretStorage.reason,
+                      'Mudavym cannot store a credential yet, so the field is disabled.',
+                    )
             }
           >
             <input
