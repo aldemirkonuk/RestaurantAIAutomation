@@ -795,12 +795,9 @@ export class AuthService {
    */
   async registerAccount(dto: RegisterAccountDto): Promise<TokenPair> {
     const email = dto.email.toLowerCase().trim();
-    const { data: existing } = await this.databaseService.supabase
-      .from("users")
-      .select("email")
-      .eq("email", email)
-      .maybeSingle();
-    if (existing) throw new BadRequestException("Email already registered");
+    if (await this.emailAlreadyRegistered(email)) {
+      throw new BadRequestException("Email already registered");
+    }
 
     const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
     const { data: user, error } = await this.databaseService.supabase
@@ -837,12 +834,7 @@ export class AuthService {
   async registerAccountWithGoogle(googleToken: string): Promise<TokenPair> {
     const googleUser = await this.verifyGoogleToken(googleToken);
     const email = googleUser.email.toLowerCase().trim();
-    const { data: existing } = await this.databaseService.supabase
-      .from("users")
-      .select("user_id")
-      .eq("email", email)
-      .maybeSingle();
-    if (existing) {
+    if (await this.emailAlreadyRegistered(email)) {
       throw new ConflictException(
         "An account already uses this email. Sign in instead.",
       );
@@ -1013,12 +1005,9 @@ export class AuthService {
    * User starts with email_verified: false and must verify email.
    */
   async registerRestaurant(dto: RegisterRestaurantDto): Promise<TokenPair> {
-    const { data: existing } = await this.databaseService.supabase
-      .from("users")
-      .select("email")
-      .eq("email", dto.email)
-      .maybeSingle();
-    if (existing) throw new BadRequestException("Email already registered");
+    if (await this.emailAlreadyRegistered(dto.email)) {
+      throw new BadRequestException("Email already registered");
+    }
 
     let orgId: string | null = null;
     let restaurantId: string | null = null;
@@ -2172,12 +2161,21 @@ export class AuthService {
    * Returns true if email exists, false otherwise.
    */
   async checkEmailExists(email: string): Promise<boolean> {
-    const { data: existing } = await this.databaseService.supabase
+    return this.emailAlreadyRegistered(email.toLowerCase().trim());
+  }
+
+  /** A failed users read is not "email is free". */
+  private async emailAlreadyRegistered(email: string): Promise<boolean> {
+    const { data: existing, error } = await this.databaseService.supabase
       .from("users")
       .select("email")
-      .eq("email", email.toLowerCase().trim())
+      .eq("email", email)
       .maybeSingle();
-
+    if (error) {
+      throw new InternalServerErrorException(
+        "Could not check whether that email is already registered",
+      );
+    }
     return !!existing;
   }
 
