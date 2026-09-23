@@ -189,3 +189,20 @@ export function plainReason(reason: string | null | undefined, fallback: string)
   if (!reason || OPERATOR_TERM.test(reason)) return fallback;
   return reason;
 }
+
+/**
+ * The one old stored sentence that named the wire.
+ *
+ * New probes already say the reply could not be read. A redirect is also
+ * stored as `protocol_error`, and its sentence names the address to declare
+ * instead — including one that happens to contain "token" or "webhook". That
+ * sentence stays. Only this leftover is rewritten.
+ */
+const OLD_WIRE_SENTENCE = /not speaking this protocol|carried no protocolVersion/i;
+
+export function houseProbeDetail(status: string | null | undefined, detail: string): string {
+  if (status === 'protocol_error' && OLD_WIRE_SENTENCE.test(detail)) {
+    return 'The reply could not be read.';
+  }
+  return detail;
+}

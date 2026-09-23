@@ -51,11 +51,12 @@ describe("what the server declared", () => {
     expect(d.writes).toBe(true);
   });
 
-  it("treats a tool with NO annotations as a write, citing the protocol default", () => {
+  it("treats a tool with NO annotations as a write, without naming the wire", () => {
     const d = declaredClassification(tool("mystery", null));
     expect(d.writes).toBe(true);
     expect(d.declaredRead).toBe(false);
     expect(d.basis).toContain("default");
+    expect(d.basis).not.toMatch(/\b(protocol|webhook|iframe|token|route)\b/i);
   });
 
   it("treats annotations WITHOUT a readOnlyHint as a write", () => {
