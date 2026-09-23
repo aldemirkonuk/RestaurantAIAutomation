@@ -136,6 +136,7 @@ export const SEAL_SUBJECT_KINDS = [
   "text_credit_purchase",
   "commodity_exposure",
   "procurement_document",
+  "integration_grant",
   // An assistant proposal (`ai_proposed_actions`), applied from the house
   // counter — "applied only by the seal" (the founder's pick of 2026-09-21,
   // sketch 119 D). One act, `apply`, bound to the proposal's stored arguments.
@@ -148,6 +149,8 @@ export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
 /** How a refusal names the thing, in the operator's language rather than ours. */
 export function subjectNoun(kind: SealSubjectKind): string {
   switch (kind) {
+    case "integration_grant":
+      return "integration grant";
     case "procurement_order":
       return "order";
     case "payment_method":

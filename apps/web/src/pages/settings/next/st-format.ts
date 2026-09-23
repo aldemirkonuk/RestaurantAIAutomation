@@ -118,18 +118,15 @@ export const SECTION_IDS = [
   // position is not its identity, but a bookmark is, and `?tab=` is the id.
   'currency',
   'carrying-cost',
-  // 'hours' and 'digest' render outside `SECTIONS`/`group.members` — each is a
-  // special-cased block in `SettingsNext.tsx` keyed on `group.id`, with its own
-  // real `st-section-<id>` DOM id — so they were never added here even though
-  // that DOM id is exactly what the deep-link effect looks up. The result:
-  // `?tab=hours` and `?tab=digest` failed `isSectionId` and returned before
-  // ever calling `getElementById`, so neither one scrolled (found 2026-09-18).
-  // They do NOT belong in `SECTIONS` (that would make `renderRegister` and the
-  // generic `group.members` loop responsible for a register they do not know
-  // how to draw) — only here and in `TAB_TO_ANCHOR`, which is all the deep-link
-  // effect and the type checker require.
+  // 'hours', 'digest', and 'ask-training' render outside `SECTIONS`/
+  // `group.members` — each is a special-cased block in `SettingsNext.tsx`
+  // keyed on `group.id`, with its own real `st-section-<id>` DOM id — so they
+  // were never added to SECTIONS even though that DOM id is exactly what the
+  // deep-link effect looks up. They do NOT belong in `SECTIONS` — only here
+  // and in `TAB_TO_ANCHOR`.
   'hours',
   'digest',
+  'ask-training',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -197,6 +194,9 @@ export const SECTIONS: SectionSpec[] = [
   // product had ever asked a house for that number.
   { id: 'carrying-cost', label: 'Carrying cost', title: 'What holding stock costs', kind: 'restaurant', group: 'house', order: 6,
     description: 'What a month of holding stock costs this house, as a percent of its value. Until it is stated, no alert here prints a saving.' },
+  // The house's consent for its /ask questions (ADR 0145, founder 2026-09-21,
+  // "Same as the wine pool (Recommended)": an owner opt-out per house). Under
+  // The house because it is the house's answer, given by its owner.
 ];
 
 /* ── Sketch 109A — the interview, organised by certainty ──────────────────
@@ -292,12 +292,13 @@ export const TAB_TO_ANCHOR: Record<SectionId, string> = {
   currency: 'a-house',
   'carrying-cost': 'a-house',
   // Matches where `SettingsNext.tsx` actually mounts each special-cased block:
-  // `id="st-section-hours"` inside `group.id === 'house'`, `id="st-section-digest"`
+  // `id="st-section-hours"` / `id="st-section-ask-training"` inside `group.id === 'house'`, `id="st-section-digest"`
   // inside `group.id === 'own'`. Not consulted by the deep-link scroll effect
   // itself (that only needs `isSectionId` + the DOM id), but `Record<SectionId,
-  // string>` requires every key once 'hours'/'digest' join `SectionId`.
+  // string>` requires every key once 'hours'/'digest'/'ask-training' join `SectionId`.
   hours: 'a-house',
   digest: 'a-own',
+  'ask-training': 'a-house',
 };
 
 /* ── THE COLLAPSE (founder, 2026-09-04) ──────────────────────────────────

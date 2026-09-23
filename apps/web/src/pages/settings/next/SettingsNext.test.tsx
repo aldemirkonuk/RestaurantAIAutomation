@@ -170,6 +170,14 @@ function base(over: Record<string, unknown> = {}) {
     // `undefined.status` the moment a test mounted the page.
     hours: remote({ restaurantId: 'r1', timezone: 'Europe/Istanbul', operatingHours: null, updatedAt: null }),
     digest: remote({ stated: false, digestEnabled: false, digestHour: 7, digestMinUrgency: 'this_week', recipientEmail: null, lastSentAt: null }),
+    houseAskTraining: remote({
+      restaurantId: 'r1',
+      optedOut: false,
+      readable: true,
+      reason: null,
+      statedAt: null,
+      statedBy: null,
+    }),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     saveFlag, savePrefs, saveNotif,
     saveSender: vi.fn(), sendTestEmail: vi.fn(), regenerateIcal: vi.fn(),
@@ -178,6 +186,7 @@ function base(over: Record<string, unknown> = {}) {
     saveCarryingCost: vi.fn(() => Promise.resolve(true)),
     saveHours: vi.fn(() => Promise.resolve(true)),
     saveDigest: vi.fn(() => Promise.resolve(true)),
+    saveAskTraining: vi.fn(() => Promise.resolve(true)),
     ...over,
   };
 }
@@ -426,6 +435,7 @@ describe('SettingsNext — the editorial spine', () => {
     // Graft B and the digest sender get their own home too, not folded into
     // an existing register.
     expect(screen.getByRole('heading', { name: 'When is it open?' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Questions and training' })).toBeInTheDocument();
     expect(screen.getByText('Should it mail a recommendations digest?')).toBeInTheDocument();
     expect(screen.getByText(/twelve kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
     // The standing honesty statement, now that FOUR registers DO record an

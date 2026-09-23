@@ -400,6 +400,26 @@ export interface HouseCarryingCostRegister {
 }
 
 /**
+ * Whether this house's /ask questions may be used for training, as
+ * `GET /settings/ask-training` answers (ADR 0145, founder 2026-09-21, "Same as
+ * the wine pool (Recommended)"). Mirrors `HouseAskTrainingReadout`
+ * (`apps/api-gateway/src/settings/house-ask-training.service.ts`). Three
+ * states: `readable: false` is a failed READ; `statedAt: null` means nobody has
+ * answered and the default (not opted out) is in force; a date is an answer.
+ */
+export interface HouseAskTrainingRegister {
+  restaurantId: string;
+  optedOut: boolean;
+  readable: boolean;
+  reason: string | null;
+  statedAt: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+  /** Present on a write only. `false` = the change landed, the paper did not. */
+  audited?: boolean;
+  auditReason?: string | null;
+}
+
+/**
  * The recommendations digest sender's own preference row, as
  * `GET /analytics/recommendations/:restaurantId/digest` answers
  * (`analytics.controller.ts:1143`, `recommendation-actions.service.ts:285-297`).
@@ -610,6 +630,11 @@ export function useSettingsNextData() {
     },
   );
 
+  const houseAskTraining = useRemote<HouseAskTrainingRegister>(tenantKey('ask-training'), async () => {
+    const { data } = await apiClient.get<HouseAskTrainingRegister>('/settings/ask-training');
+    return data;
+  });
+
   const ledger = useRemote<LedgerRegister>(tenantKey('ledger'), async () => {
     const { data } = await apiClient.get<LedgerRegister>('/settings-audit?limit=100');
     return data;
@@ -813,6 +838,17 @@ export function useSettingsNextData() {
     [writer, houseCarryingCost, ledger],
   );
 
+  const saveAskTraining = useCallback(
+    (optedOut: boolean) =>
+      writer.run('ask-training', async () => {
+        const { data } = await apiClient.put<HouseAskTrainingRegister>('/settings/ask-training', { optedOut });
+        if (data) houseAskTraining.set(data);
+        else houseAskTraining.reload();
+        ledger.reload();
+      }),
+    [writer, houseAskTraining, ledger],
+  );
+
   /**
    * Save the week — or `null`, an explicit "we do not know these hours".
    *
@@ -861,12 +897,12 @@ export function useSettingsNextData() {
     locations,
     refreshBranches,
     team, flags, ical, sender, chains, pos, prefs, notif, integrations,
-    vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost,
+    vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost, houseAskTraining,
     hours, digest,
     writer,
     saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, regenerateIcal,
     setMemberRole, removeMember, revokeInvite, disconnectIntegration,
-    saveVendorTerms, saveThreshold, saveCurrency, saveCarryingCost,
+    saveVendorTerms, saveThreshold, saveCurrency, saveCarryingCost, saveAskTraining,
     saveHours, saveDigest,
   };
 }

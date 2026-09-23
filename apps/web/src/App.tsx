@@ -112,6 +112,8 @@ const InsightCatalog = lazyWithRefresh(() => import('./pages/InsightCatalog'))
 const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
 const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
 const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
+const AuthorizeIntegrationNext = lazyWithRefresh(() => import('./pages/authorize-integration/next/AuthorizeIntegrationNext'))
+const CompleteIntegrationConsent = lazyWithRefresh(() => import('./pages/authorize-integration/CompleteIntegrationConsent'))
 const AdminDesk = lazyWithRefresh(() => import('./pages/admin/next/AdminDesk'))
 const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 
@@ -306,10 +308,14 @@ function App() {
                   ways to wander off mid-grant.
                 */}
                 <Route
+                  path="/authorize/complete"
+                  element={<CompleteIntegrationConsent />}
+                />
+                <Route
                   path="/authorize/:integrationId"
                   element={
                     <ProtectedRoute>
-                      <AuthorizeIntegration />
+                      <PageGate page="authorize_integration" legacy={<AuthorizeIntegration />} next={<AuthorizeIntegrationNext />} />
                     </ProtectedRoute>
                   }
                 />
