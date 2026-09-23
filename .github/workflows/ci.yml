@@ -936,6 +936,23 @@ jobs:
         if: ${{ !cancelled() }}
         run: ./scripts/check_ask_ai_is_gated.py
 
+      # ADR 0145, 2026-09-21 amendment -- the founder chose "Rules in code,
+      # label rows": who may see what on /ask is a table, never the model.
+      # Sensitivity belongs to a FIELD, so every field a Reading shows carries
+      # a data class and a Reading's roles are derived from its fields. Gating
+      # by hand one Reading at a time failed twice in three days
+      # (orders.late_deliveries, goals.targets). This fails on a shown field
+      # with no class, a column the runner shows that its Reading does not
+      # declare, a stale tag, a malformed policy row, and -- through the
+      # CLAIMS row that passes --expect-restricted -- a moved restricted set.
+      - name: Every field /ask shows carries a data class
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_ask_field_classes.py
+
+      - name: Every field /ask shows carries a data class (self-test)
+        if: ${{ !cancelled() }}
+        run: ./scripts/check_ask_field_classes.py --self-test
+
       # ADR 0110's addendum. The seal on a card-on-file change was added to
       # `payment-methods/**` and stopped at that module's edge: an instrument is
       # actually attached through `billing/**`, which ran a role check and
@@ -1125,6 +1142,9 @@ jobs:
 
       - name: Boot the AppModule injector
         run: ./scripts/check_gateway_boots.sh
+
+      - name: Platform routes match the reviewed operator registry
+        run: node scripts/check_platform_operator_routes.cjs
 
       - name: Explain a failure
         if: failure()
