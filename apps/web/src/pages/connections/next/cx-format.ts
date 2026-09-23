@@ -191,17 +191,17 @@ export function plainReason(reason: string | null | undefined, fallback: string)
 }
 
 /**
- * A stored unreadable-reply sentence, in the house's words.
+ * The one old stored sentence that named the wire.
  *
- * Only `protocol_error` is "Not readable". A refused or answered detail keeps
- * its own sentence, even when that sentence names the wire: swapping it for
- * "could not be read" would claim a reply that never happened, or hide why a
- * call was refused.
+ * New probes already say the reply could not be read. A redirect is also
+ * stored as `protocol_error`, and its sentence names the address to declare
+ * instead — including one that happens to contain "token" or "webhook". That
+ * sentence stays. Only this leftover is rewritten.
  */
-const WIRE_WORD = /\b(protocol|webhook|iframe|token|route)\b/i;
+const OLD_WIRE_SENTENCE = /not speaking this protocol|carried no protocolVersion/i;
 
 export function houseProbeDetail(status: string | null | undefined, detail: string): string {
-  if (status === 'protocol_error' && WIRE_WORD.test(detail)) {
+  if (status === 'protocol_error' && OLD_WIRE_SENTENCE.test(detail)) {
     return 'The reply could not be read.';
   }
   return detail;

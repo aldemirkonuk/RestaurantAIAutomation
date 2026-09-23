@@ -856,6 +856,30 @@ describe('house declares, each person consents', () => {
     expect(screen.getAllByText('Refused').length).toBeGreaterThan(0);
   });
 
+  it('keeps a redirect refusal whose address contains a wire word', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: {
+          status: 'protocol_error',
+          detail:
+            'it redirected (HTTP 308 to https://host/webhook/mcp/); declare the final URL, so the credential is never sent somewhere this gateway did not check.',
+          serverName: null,
+          serverVersion: null,
+          protocolVersion: null,
+          tools: null,
+          toolCount: null,
+        },
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/declare the final URL/)).toBeInTheDocument();
+    expect(screen.getByText(/webhook\/mcp/)).toBeInTheDocument();
+    expect(screen.queryByText('The reply could not be read.')).not.toBeInTheDocument();
+  });
+
   it('names a reply the house cannot read without using the protocol word', () => {
     const d = base();
     d.mcp = reg([
