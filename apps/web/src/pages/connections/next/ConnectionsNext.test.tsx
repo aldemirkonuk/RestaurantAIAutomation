@@ -666,6 +666,13 @@ describe('no operator internals in front of a restaurant user', () => {
       /POST \/procurement/,
       /Bearer token/,
       /\bwebhook\b/i,
+      /\biCal\b/,
+      /unauthenticated/,
+      /Token expires/,
+      /asking for a token/,
+      /\biframe/i,
+      /readOnlyHint/,
+      /\bprotocol\b/i,
     ]) {
       expect(text).not.toMatch(leak);
     }
@@ -801,6 +808,46 @@ describe('house declares, each person consents', () => {
         'drop_table — the server declares it changes things · not granted',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('names a reply the house cannot read without using the protocol word', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: {
+          status: 'protocol_error',
+          detail: 'The reply could not be read.',
+          serverName: null,
+          serverVersion: null,
+          protocolVersion: null,
+          tools: null,
+          toolCount: null,
+        },
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getAllByText('Not readable').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/protocol/i)).not.toBeInTheDocument();
+  });
+
+  it('says a listed tool with no read-or-write answer counts as a write, in plain words', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: probeWith([listed('mystery_write', { readOnlyHint: null })]),
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(
+        /mystery_write — the server did not say whether it only reads, so it counts as a write/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/readOnlyHint/)).not.toBeInTheDocument();
   });
 
   it('says when a tool counts as a write because the server declared NOTHING', () => {
