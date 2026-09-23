@@ -171,6 +171,10 @@ describe('useCommsNextData — a permanent failure is not latency (P3)', () => {
     await waitFor(() => expect(result.current.failed.drafts).toBe(true));
     await waitFor(() => expect(result.current.failed.schedules).toBe(true));
     await waitFor(() => expect(result.current.failed.gmail).toBe(true));
-    expect(result.current.failedSources.length).toBe(5);
+    expect(result.current.failedSources).toEqual([
+      'the conversation book',
+      'the thread index',
+      'the drafts awaiting action',
+    ]);
   });
 });

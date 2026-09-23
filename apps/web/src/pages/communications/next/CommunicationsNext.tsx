@@ -4,7 +4,7 @@
  *
  * The verdict, enforced: today's page won on at-a-glance completeness ("shows
  * basically everything"); the redesign lost on "too much text". So the page
- * leads with a four-figure glance strip (all derived from live queries, each
+ * leads with a three-figure glance strip (all derived from live queries, each
  * an em dash until its query answers), the conversation book is a ledger of
  * short rows — prose lives inside the expansion, never on the row — and the
  * founder's two named additions are built in: the channels rail makes the
@@ -39,7 +39,6 @@ import {
   SANS,
   SERIF,
   draftChipText,
-  fmtCadence,
   fmtWhen,
   sendState,
   typeLabel,
@@ -362,22 +361,15 @@ export default function CommunicationsNext() {
               floorNote={`At least this many: the history endpoint serves at most ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} rows, and that window is full.`}
               failed={data.failed.history}
             />
-            <GlanceFigure
-              label="Report schedules"
-              value={data.glance.schedules}
-              failed={data.failed.schedules}
-            />
           </div>
         </header>
 
-        {/* The banner covers ALL FIVE sources, not just the conversation book.
-            Before this it read `historyQ.isError` alone, so a failed thread
-            index, drafts fetch, schedule list or Gmail status each rendered as
-            a bare em dash — the mark ADR 0051 reserves for "has not answered".
-            Extending the one banner rather than giving each figure its own
-            sentence keeps the strip scannable AND puts every failure in words
-            in one place; it also makes "Try again" reachable when something
-            other than the history failed, which it previously was not. */}
+        {/* The banner names the conversation book, the thread index, and the
+            drafts — the three sources this page is for. Report schedules and
+            the Gmail watch used to sit here too; both are operator facts that
+            fail or alarm on every house (`scheduled_reports` was never
+            migrated; the watch is a Pub/Sub subscription). Founder, 2026-09-22:
+            that was the error on this page. */}
         {data.failedSources.length > 0 && (
           <div
             role="alert"
@@ -462,15 +454,6 @@ export default function CommunicationsNext() {
               >
                 Channels & templates
               </h2>
-              <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
-                {data.failed.gmail
-                  ? `Gmail inbound watch: ${EM} — the status check failed, so whether vendor replies reach this page is unknown.`
-                  : data.gmailWatchConfigured === null
-                    ? `Gmail inbound watch: ${EM} — the gateway hasn't answered yet.`
-                    : data.gmailWatchConfigured
-                      ? 'Gmail inbound watch: configured — vendor replies reach this page.'
-                      : 'Gmail inbound watch: NOT configured — vendor replies will not arrive until it is.'}
-              </p>
               {/* P5, and its close-out on 2026-09-04. This paragraph used to
                   explain why the SMS template WORKSHOP was kept even though no
                   SMS sender is reachable: Save genuinely stored a `type='sms'`
@@ -498,62 +481,6 @@ export default function CommunicationsNext() {
                   The house's letter templates
                 </button>
               </div>
-            </div>
-
-            <div
-              className="rounded-xl p-4"
-              style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
-            >
-              <h2
-                style={{
-                  fontFamily: MONO,
-                  fontSize: 9.5,
-                  fontWeight: 600,
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  color: 'var(--ink-3, #7C7365)',
-                  margin: '0 0 8px',
-                }}
-              >
-                Scheduled reports
-              </h2>
-              {/* THREE states, never two. `schedulesKnown` alone made a
-                  permanent failure indistinguishable from a request in flight,
-                  so this rail printed "hasn't answered yet" FOREVER:
-                  `public.scheduled_reports` is created by no migration in
-                  supabase/migrations/ and `GET /reports/schedules` fails every
-                  time. The legacy page held this distinction
-                  (Communications.tsx:269, 293-299) with a 12-line comment
-                  explaining exactly this, and the rebuild deleted it. ADR 0051
-                  clause 3: a failure is said in words, and "could not be
-                  refreshed" and "nothing below is claimed" are different
-                  sentences that must not be interchanged. */}
-              {data.schedulesError ? (
-                <p style={{ fontSize: 11.5, color: 'var(--alarm-deep, #8C3322)', margin: 0 }}>
-                  Saved schedules could not be loaded, so this list is not a record of what exists
-                  ({data.schedulesError}).
-                </p>
-              ) : !data.schedulesKnown ? (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
-                  The schedule list hasn’t answered yet — {EM}.
-                </p>
-              ) : data.schedules.length === 0 ? (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
-                  No reports are scheduled.
-                </p>
-              ) : (
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
-                  {data.schedules.map((s) => (
-                    <li key={s.id} style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-                      <span style={{ fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>{s.title}</span>
-                      <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
-                        {fmtCadence(s.frequency, s.dayOfWeek, s.timeOfDay)}
-                        {s.nextRunAt ? ` · next ${fmtWhen(s.nextRunAt)}` : ''}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
           </aside>
         </div>

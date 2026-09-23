@@ -212,38 +212,22 @@ describe('CommunicationsNext', () => {
   });
 
   // ── P3: a permanent failure is not latency ────────────────────────────────
-  it('a failed schedule list is said as a failure, never as "hasn\'t answered yet"', () => {
+  it('does not paint the known-dead schedule register or Gmail watch as the page error', () => {
     mockData.current = {
       ...base,
       glance: { ...base.glance, schedules: null },
       schedulesKnown: false,
       schedulesError: 'Request failed with status code 500',
-      failed: { ...noFailures, schedules: true },
-      failedSources: ['the report schedules'],
+      gmailWatchConfigured: false,
+      failed: { ...noFailures, schedules: true, gmail: true },
+      failedSources: [],
     };
     render(<CommunicationsNext />);
-    expect(
-      screen.getByText(/could not be loaded, so this list is not a record of what exists/i),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/hasn’t answered yet/)).not.toBeInTheDocument();
-  });
-
-  it('an unanswered schedule list still says it has not answered', () => {
-    mockData.current = {
-      ...base,
-      glance: { ...base.glance, schedules: null },
-      schedulesKnown: false,
-      schedulesError: null,
-    };
-    render(<CommunicationsNext />);
-    expect(screen.getByText(/hasn’t answered yet/)).toBeInTheDocument();
-    expect(screen.queryByText(/could not be loaded/i)).not.toBeInTheDocument();
-  });
-
-  it('an empty schedule list is not confused with a failed one', () => {
-    mockData.current = { ...base, glance: { ...base.glance, schedules: 0 }, schedules: [] };
-    render(<CommunicationsNext />);
-    expect(screen.getByText('No reports are scheduled.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText(/Gmail inbound watch/i)).toBeNull();
+    expect(screen.queryByText(/NOT configured/i)).toBeNull();
+    expect(screen.queryByText(/Report schedules/i)).toBeNull();
+    expect(screen.queryByText(/could not be loaded, so this list is not a record/i)).toBeNull();
   });
 
   // ── P4: every figure can say it failed, not only the history ──────────────
@@ -261,19 +245,18 @@ describe('CommunicationsNext', () => {
     expect(screen.queryByLabelText(/Drafts waiting: could not be loaded/i)).toBeNull();
   });
 
-  it('the banner names every failed source, not only the conversation book', () => {
+  it('the banner names house-facing failures, not operator plumbing', () => {
     mockData.current = {
       ...base,
       glance: { threads: null, draftsPending: 1, sentLast30: 9, schedules: null },
       failed: { ...noFailures, threads: true, schedules: true, gmail: true },
-      failedSources: ['the thread index', 'the report schedules', 'the Gmail watch status'],
+      failedSources: ['the thread index'],
     };
     render(<CommunicationsNext />);
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('the thread index');
-    expect(alert).toHaveTextContent('the report schedules');
-    expect(alert).toHaveTextContent('the Gmail watch status');
-    // and the retry is reachable when something other than the history failed
+    expect(alert).not.toHaveTextContent('the report schedules');
+    expect(alert).not.toHaveTextContent('the Gmail watch status');
     expect(screen.getByText('Try again')).toBeInTheDocument();
   });
 

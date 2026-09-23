@@ -78,13 +78,17 @@ export interface CommsFailures {
   gmail: boolean;
 }
 
-/** Reader-facing names, in strip order, for the sentence the banner prints. */
-const SOURCE_LABELS: Array<[keyof CommsFailures, string]> = [
+/**
+ * House-facing names for the page banner. Schedules and Gmail watch stay in
+ * `failed` for the hook's own honesty, but they are not sources this page
+ * advertises: `scheduled_reports` was never migrated, so that fetch fails
+ * every time, and the Gmail watch line is operator plumbing (founder,
+ * 2026-09-22 — Communications has an error; same ruling as Connections).
+ */
+const PAGE_SOURCE_LABELS: Array<[keyof CommsFailures, string]> = [
   ['history', 'the conversation book'],
   ['threads', 'the thread index'],
   ['drafts', 'the drafts awaiting action'],
-  ['schedules', 'the report schedules'],
-  ['gmail', 'the Gmail watch status'],
 ];
 
 function errText(e: unknown): string {
@@ -159,7 +163,7 @@ export function useCommsNextData() {
     gmail: gmailQ.isError,
   };
 
-  const failedSources = SOURCE_LABELS.filter(([k]) => failed[k]).map(([, label]) => label);
+  const failedSources = PAGE_SOURCE_LABELS.filter(([k]) => failed[k]).map(([, label]) => label);
 
   return {
     rows,
