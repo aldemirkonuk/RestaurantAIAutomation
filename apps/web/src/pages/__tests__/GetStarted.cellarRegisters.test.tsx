@@ -46,10 +46,17 @@ vi.mock('../../components/onboarding/MenuScanUpload', () => ({
   ),
 }))
 vi.mock('../../components/onboarding/MenuReviewScreen', () => ({
-  MenuReviewScreen: ({ onConfirm }: { onConfirm: () => void }) => (
-    <button type="button" onClick={onConfirm}>
-      confirm-review
-    </button>
+  // ADR 0193 (menu versions): the review reports whether the menu was made
+  // current, and the success page says the inventory is live only then.
+  MenuReviewScreen: ({ onConfirm }: { onConfirm: (madeCurrent?: boolean) => void }) => (
+    <>
+      <button type="button" onClick={() => onConfirm(false)}>
+        confirm-review
+      </button>
+      <button type="button" onClick={() => onConfirm(true)}>
+        make-current-review
+      </button>
+    </>
   ),
 }))
 
@@ -165,6 +172,24 @@ describe('GetStarted — cellar registers, flag off', () => {
     expect(await screen.findByText(/We found 3 wines/)).toBeInTheDocument()
     expect(screen.queryByTestId('onboarding-cellar-registers')).toBeNull()
     expect(registers).not.toHaveBeenCalled()
+  })
+})
+
+describe('GetStarted — the success page says what reached the inventory (ADR 0193)', () => {
+  it('a menu kept as a draft is never called live', async () => {
+    renderPage()
+    await reachReview()
+    expect(await screen.findByText(/it is not the current menu yet, so nothing reached your inventory/)).toBeInTheDocument()
+    expect(screen.queryByText(/your inventory is live/)).toBeNull()
+  })
+
+  it('a menu made current at the review is', async () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Scan Photo'))
+    fireEvent.click(await screen.findByText('finish-scan'))
+    fireEvent.click(await screen.findByText('make-current-review'))
+    expect(await screen.findByText(/your inventory is live/)).toBeInTheDocument()
+    expect(screen.queryByText(/not the current menu yet/)).toBeNull()
   })
 })
 

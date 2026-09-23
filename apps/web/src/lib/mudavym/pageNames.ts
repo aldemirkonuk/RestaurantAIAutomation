@@ -83,6 +83,9 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   shell: 'The house',
   // Sidebar.tsx — the entry that links here (ADR 0160 §111 / PR #413).
   help: 'Help & Support',
+  // ADR 0160 sec110 item 7 — a new route with no sidebar entry yet; named
+  // directly, same footing as `recommendations` and `cellar` above.
+  menu: 'Menu',
 };
 
 /**

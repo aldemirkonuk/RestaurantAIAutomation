@@ -96,6 +96,12 @@ const SettingsNext = lazyWithRefresh(() => import('./pages/settings/next/Setting
 const ProfileNext = lazyWithRefresh(() => import('./pages/profile/next/ProfileNext'))
 const ConnectionsNext = lazyWithRefresh(() => import('./pages/connections/next/ConnectionsNext'))
 const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
+// A NEW route (ADR 0160 sec110 item 7), not a redesign of a shipping page —
+// no `mudavym_design_*` flag (`LIVE_PAGES` in useMudavymDesign.ts makes
+// it on for every house with no per-house column). It still goes through
+// `PageGate` below, same as every other Mudavym page, so it gets the real
+// house header — bell, search, house switcher — rather than none at all.
+const MenuNext = lazyWithRefresh(() => import('./pages/menu/next/MenuNext'))
 const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/next/CanonicalDocumentPage'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
@@ -380,6 +386,11 @@ function App() {
                   <Route path="/spirits" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="spirits" />} />} />
                   <Route path="/non-alcoholic" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="non_alcoholic" />} />} />
                   <Route path="/soft-drinks" element={<PageGate page="cellar" legacy={<Navigate to="/wines" replace />} next={<CellarNext category="soft_drinks" />} />} />
+                  {/* ADR 0160 sec110 item 7 — a NEW route with no legacy page, so
+                      `legacy` here is a redirect to /cellar (the surface it is
+                      linked from) rather than a real fallback — see the
+                      `MenuNext` import above for why the flag is always on. */}
+                  <Route path="/menu" element={<PageGate page="menu" legacy={<Navigate to="/cellar" replace />} next={<MenuNext />} />} />
                   <Route path="/reports" element={<PageGate page="reports" legacy={<Reports />} next={<ReportsNext />} />} />
                   <Route path="/recommendations" element={<PageGate page="recommendations" legacy={<Recommendations />} next={<RecommendationsNext />} />} />
                   <Route

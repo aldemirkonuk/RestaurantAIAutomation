@@ -86,6 +86,11 @@ export const MUDAVYM_PAGES = [
   // required, since MUDAVYM_PAGES is the source of the `MudavymPage` type
   // PageGate, HouseHeader and PAGE_NAMES all key off.
   'help',
+  // ADR 0160 sec110 item 7 (2026-09-17). A NEW route with no legacy
+  // counterpart, same posture as `connections` above: `legacy` is a redirect
+  // to `/cellar`, never a real fallback page. Live with the cellar (below);
+  // no `mudavym_design_menu` column exists or is needed.
+  'menu',
   // ADR 0144 -- the /authorize consent page. Enrolled after the 2026-09-17
   // go-live, so NOT in LIVE_PAGES: flag-gated, OFF by default (20260922220200).
   'authorize_integration',
@@ -102,10 +107,11 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * (ADR 0160 "109 — settings · A, the interview"; PR #419) — same code-side
  * always-on as the original sixteen, still no database write. `help` joined
  * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. Held back, still
- * flag-gated: `cellar`, `recommendations`, `receiving`, `admin`, and `shell`
+ * flag-gated: `recommendations`, `receiving`, `admin`, and `shell`
  * (the house shell; production may have flipped its column independently).
+ * `cellar` and `menu` go live on this merge (prior cellar ruling).
  *
- * `MUDAVYM_PAGES.length` is 24 (`authorize_integration` from #430 stays
+ * `MUDAVYM_PAGES.length` is 25 (`authorize_integration` from #430 stays
  * flag-gated); this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
@@ -130,6 +136,8 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'logs',
   'settings',
   'help',
+  'cellar',
+  'menu',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

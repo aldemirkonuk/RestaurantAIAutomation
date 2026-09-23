@@ -51,6 +51,7 @@ const EVERY: Record<SettingsRegister, true> = {
   preferences: true,
   currency: true,
   "carrying-cost": true,
+  "target-margin": true,
   "ask-training": true,
 };
 

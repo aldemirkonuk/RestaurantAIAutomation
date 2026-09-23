@@ -64,7 +64,7 @@ run on the result:
 | #415 | `20260920100000`, `…100100` | passes | **fails, 2** |
 | #422 | `20260921090000`..`…100000` | passes | **fails, 3** |
 | #430 | `20260921111000`..`…115310` | passes | **fails, 3** |
-| #434 | `20260921112000`..`…115100` | passes | **fails, 3** |
+| #434 | `20260922230000`..`…115100` | passes | **fails, 3** |
 | #429 | `20260921110000`, `…113000` | passes | n/a |
 
 The same day, one lane renamed its migration to one step past the ceiling. That was
