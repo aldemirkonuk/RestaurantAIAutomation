@@ -18,8 +18,20 @@
  *     a way to revoke it, and is never offered an approval.
  */
 
+import type { ReactElement } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+/**
+ * The manager view now renders IntegrationReturnNotice unconditionally too
+ * (KL audit J9/D9), and that component calls useSearchParams, which throws
+ * outside a Router. Every render in this file goes through one MemoryRouter
+ * wrapper rather than each call site adding its own.
+ */
+function render(ui: ReactElement) {
+  return rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -120,6 +132,8 @@ interface Fixture {
   provider: Reg;
   payments: Reg;
   sender: Reg;
+  /** Receive-half grant status — drives the reconnect banner. */
+  mailReader: Reg;
   /** The house's WhatsApp and SMS senders (ADR 0121). */
   textSenders: Reg;
   /** Re-read the text-sender register after a manager stops a sender. */
@@ -180,6 +194,13 @@ function base(): Fixture {
       configuredBy: 'GMAIL_SENDER_EMAIL',
       resolvedFromProfile: false,
       perHouse: { supported: false, reason: 'No per-restaurant sender exists.' },
+    }),
+    /** Default: reading off — no reconnect banner. Tests that need the banner set this. */
+    mailReader: reg({
+      granted: false,
+      enabled: false,
+      lastReadAt: null,
+      lastError: null,
     }),
     /**
      * The measured state of every house on this deployment: no text sender of
@@ -465,6 +486,7 @@ beforeEach(() => {
 describe('who may look', () => {
   it('refuses a non-manager in words, and says the server refuses as well', () => {
     mockData.current = { ...base(), isManager: false, role: 'staff' };
+    // The refused branch renders IntegrationReturnNotice, which reads the URL.
     render(<ConnectionsNext />);
 
     expect(
@@ -473,6 +495,58 @@ describe('who may look', () => {
     // The distinction that matters: not merely a hidden page.
     expect(screen.getByText(/refused at the server/i)).toBeInTheDocument();
     expect(screen.queryByText(/what the house pays with/i)).not.toBeInTheDocument();
+  });
+
+  // KL audit J9/D9: the notice rendered only in the refused (non-manager)
+  // branch, so a manager returning from /authorize never saw their own
+  // grant's outcome on this page.
+  it('shows a manager the outcome of a permission they just returned from, not only a non-manager', () => {
+    mockData.current = { ...base(), isManager: true };
+    rtlRender(
+      <MemoryRouter initialEntries={['/connections?integration_status=denied&integration_reason=denied']}>
+        <ConnectionsNext />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/provider returned a declined permission/i)).toBeInTheDocument();
+  });
+});
+
+describe('mail reconnect banner (founder Q8)', () => {
+  it('stays silent when mail reading is off', () => {
+    render(<ConnectionsNext />);
+    expect(screen.queryByTestId('mail-reconnect-banner')).not.toBeInTheDocument();
+  });
+
+  it('shows a routine reconnect banner when reading is on and no live grant backs it', () => {
+    const d = base();
+    d.mailReader = reg({
+      granted: false,
+      enabled: true,
+      lastReadAt: null,
+      lastError: null,
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const banner = screen.getByTestId('mail-reconnect-banner');
+    expect(banner).toHaveTextContent(/mail connection needs to be reconnected/i);
+    expect(within(banner).getByRole('link', { name: /reconnect/i })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/authorize/gmail_read'),
+    );
+  });
+
+  it('does not invent a banner when the grant status is unknown', () => {
+    const d = base();
+    d.mailReader = reg({
+      granted: 'unknown',
+      enabled: true,
+      lastReadAt: null,
+      lastError: null,
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    expect(screen.queryByTestId('mail-reconnect-banner')).not.toBeInTheDocument();
   });
 });
 

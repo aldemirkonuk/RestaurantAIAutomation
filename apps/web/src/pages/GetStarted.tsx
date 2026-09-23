@@ -43,11 +43,14 @@ type TabId = 'activate' | 'use'
 
 function SuccessScreen({
   result,
+  current,
   restaurantId,
   onContinueGuide,
   onInventory,
 }: {
   result: MenuImportResult
+  /** Whether the menu was made the current one at review (ADR 0193, menu versions). */
+  current: boolean
   restaurantId: string
   onContinueGuide: () => void
   onInventory: () => void
@@ -67,8 +70,13 @@ function SuccessScreen({
           We found {result.itemsExtracted} wine{result.itemsExtracted !== 1 ? 's' : ''}!
         </h1>
         <p className="text-gray-500 text-center max-w-sm mb-8">
-          Your wine list is uploaded and your inventory is live. Next, learn how to use Mudavym
-          day to day.
+          {/* ADR 0193 (menu versions): a read menu is kept as a draft, and only the
+              current menu reaches the inventory -- so "your inventory is live" is said
+              only when this menu was made current (last-call review, 2026-09-21). */}
+          {current
+            ? 'Your wine list is uploaded and your inventory is live.'
+            : 'Your wine list is read and kept, but it is not the current menu yet, so nothing reached your inventory. An owner or a manager makes it current on the Menu page.'}{' '}
+          Next, learn how to use Mudavym day to day.
         </p>
         <div className="flex gap-3">
           <Button variant="outline" onClick={onInventory}>
@@ -140,7 +148,7 @@ const USE_CARDS = [
     id: 'wine-agent',
     title: 'Wine Agent',
     description:
-      'After setup, a small Wine Agent button appears bottom-right and opens Sommelier AI for inventory & ordering help. It does not access your email.',
+      'Sommelier AI helps with inventory & ordering questions. It does not access your email.',
     icon: Bot,
     href: '/sommelier',
     label: 'Open',
@@ -164,6 +172,9 @@ export default function GetStarted() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [activeMethod, setActiveMethod] = useState<ImportMethod | null>(null)
   const [reviewResult, setReviewResult] = useState<MenuImportResult | null>(null)
+  // Whether the review made the read menu the current one (ADR 0193). Any other
+  // way past the review leaves it a kept draft.
+  const [madeCurrent, setMadeCurrent] = useState(false)
   const [pendingResult, setPendingResult] = useState<MenuImportResult | null>(null)
   const [result, setResult] = useState<MenuImportResult | null>(null)
   const { progress, isLoading } = useOnboardingProgress()
@@ -247,8 +258,14 @@ export default function GetStarted() {
     return (
       <MenuReviewScreen
         result={reviewResult}
-        onConfirm={() => afterReview(reviewResult)}
-        onSkip={() => afterReview(reviewResult)}
+        onConfirm={(made) => {
+          setMadeCurrent(made === true)
+          afterReview(reviewResult)
+        }}
+        onSkip={() => {
+          setMadeCurrent(false)
+          afterReview(reviewResult)
+        }}
       />
     )
   }
@@ -296,6 +313,7 @@ export default function GetStarted() {
     return (
       <SuccessScreen
         result={result}
+        current={madeCurrent}
         restaurantId={user?.restaurantId ?? ''}
         onContinueGuide={() => {
           setResult(null)

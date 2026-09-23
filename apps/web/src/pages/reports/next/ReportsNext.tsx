@@ -58,7 +58,7 @@ import Cutting from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
-import { ensureFraunces, failureLine } from './rp-format';
+import { failureLine } from './rp-format';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
@@ -124,10 +124,6 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
   const headRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
   useEffect(() => {

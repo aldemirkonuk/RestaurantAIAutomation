@@ -132,10 +132,16 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **170 as of 2026-09-23, on #434 after #430** (`check_read_errors_not_swallowed.py` on `serial-pr434-after-430`: two already-fixed baseline rows retired — `integrations-oauth.service.ts` `integration_oauth_connections/data` and `inventory.service.ts` `inventory_analytics/data`). Re-measure before citing.
+
+> **176 as of 2026-09-21, on `feat/shell-counter`** (`check_read_errors_not_swallowed.py` on that tree: 1545 files scanned, 176 sites, 176 baselined, 0 allowlisted). `ReceivingService.listUnverified` now binds and throws its `procurement_orders` read error instead of letting a failed read wave every closed order through the COMPLETED/CANCELLED filter, which retires receiving.service.ts procurement_orders/orders; the house counter (sketch 119 D) reads that register. Branches merge in any order, so re-measure before citing.
+
 > **182 as of 2026-09-18, on `fix/invite-role-ceiling`** (`check_read_errors_not_swallowed.py`: 1488 files scanned, 182 sites, 182 baselined, 0 allowlisted). `generateInvite` now answers 503 on a failed role read instead of reading it as "no row", which retires `auth.service.ts` user_restaurant_access/userAccess. Its `users`-row read now binds its error and answers 503 too, which retires one users/user (ADR 0162). **[Corrected 2026-09-18, PR #393's third round: this line said the `users`-row read was deleted outright. The third round restored it, capped by ADR 0162, with its error read; the count stays 182, re-measured by `check_read_errors_not_swallowed.py` on the round-3 tree: 1488 files, 182 sites, 182 baselined.]** The fourth round's `updateMemberRole` reads bind their errors; re-measured on that tree: 1488 files, 182 sites, 182 baselined. Re-measure before citing. **[Sixth round, 2026-09-18: 178. `removeMember`'s two target reads (user_restaurant_access/targetAccess, users/targetUser) and `TeamService.deleteMember`'s roster and access reads (team_members/member, and one of team.service.ts's four user_restaurant_access/access) now bind their errors and refuse on a failed read. Re-measured on the round-6 tree: 1489 files, 178 sites, 178 baselined, 0 allowlisted.]**
 
 > **184 as of 2026-09-18, on `fix/register-names-no-house`** (`check_read_errors_not_swallowed.py` on that tree: 1487 files scanned, 184 sites, 184 baselined, 0 allowlisted). Closing `POST /auth/register` deleted `AuthService.register`, and with it one of the two `auth.service.ts` users/existingUser sites. Branches merge in any order, so re-measure before citing.
 
+> **184 as of 2026-09-16, on the public-pages adoption tree (Codex lane C, base `60ed83a7`)** (`check_read_errors_not_swallowed.py` on that tree: 1465 files scanned, 184 sites, 184 baselined, 0 allowlisted). One row retired: `vendor-portal.service.ts` vendor_portal_listings/listings (a failed listings read now raises 503 instead of publishing an empty catalogue). The baseline file's `total_sites`/`total_files` header fields were already stale on `60ed83a7` (189/42 against 185 rows) and were not rewritten here. Re-measure before citing.
+>
 > **186 as of 2026-09-12, on `fix/page-endpoints-tenant-faults`** (`check_read_errors_not_swallowed.py` on that tree: 1449 files scanned, 186 sites, 186 baselined, 0 allowlisted). ADR 0147 retired four rows: `organizations.service.ts` restaurants/r and one of users/user (the branches read now throws), and `prospects.service.ts` providers/existing and providers/raced (promote no longer treats a failed read as empty). The figure below was measured on another tree and branches merge in any order, so re-measure before citing either.
 >
 > **192 as of 2026-09-12** (`check_read_errors_not_swallowed.py` on this tree:
@@ -228,6 +234,32 @@ row* — a 404 for a 503. Wrong, but not silent, and deliberately out of scope: 
 > rows summed to 192, so it was already three stale before this change; both
 > totals are now RECOMPUTED from the rows rather than decremented, which is why
 > 192 − 1 reads as 191.
+
+> **188 as of 2026-09-18, cellar fix pass** (`check_read_errors_not_swallowed.py`
+> on `wt-pg-cellar`: 1488 files scanned, 184 sites, 184 baselined, 0
+> allowlisted). ADR 0160 sec110 item 3(c): `inventory.service.ts`'s
+> `fetchAnalytics` now checks `error` on the `inventory_analytics` read and
+> reports `analyticsReadable: false` to callers instead of silently returning
+> an empty map, so `inventory.service.ts::inventory_analytics::data` drops
+> 189 → 188. Measured on this branch, not `main` — re-measure before citing.
+
+> **175 as of 2026-09-21, the cellar lane's merge of `origin/main` (ADR 0193 round 2)**
+> (`check_read_errors_not_swallowed.py` on `wt-r5-cellar`, staged tree: 1545 files
+> scanned, 175 sites, 175 baselined, 0 allowlisted). Main's own retirements and this
+> lane's `inventory_analytics` fix together left the rows summing to 176 (the stored
+> total had drifted to 188 against rows summing to 177 before the merge; it is now
+> recomputed from the rows). Menu versions then deleted `upsertMenu`, whose
+> `restaurant_menus` read was unchecked: `menus.service.ts::restaurant_menus::existing`
+> is retired, 176 → 175. Re-measure before citing.
+
+> **174 as of 2026-09-21, the cellar lane's last-call review (ADR 0193)**
+> (`check_read_errors_not_swallowed.py` on `wt-r5-cellar`, working tree: 1545 files
+> scanned, 174 sites, 174 baselined, 0 allowlisted). Make-current decides the
+> blank-price flag from `addToInventory`'s `restaurant_inventory` read, which
+> discarded its error: a failed read tried a duplicate row, counted the line
+> "not_linked" and flagged nothing. It now binds the error and reports the line
+> failed, so `menus.service.ts::restaurant_inventory::existing` is retired,
+> 175 → 174. Re-measure before citing.
 
 The 189 are recorded in `scripts/read_error_baseline.json` and held by
 `scripts/check_read_errors_not_swallowed.py`, a blocking CI job. A site outside the

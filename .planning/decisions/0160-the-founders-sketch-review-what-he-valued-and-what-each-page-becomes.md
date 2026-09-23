@@ -78,7 +78,10 @@ the builder's reading of "mimic that behavior," not his dictation — 106 README
 direction A only as "A quiet left rail of words, grouped by where the work happens in the
 house" (README:216). Flagged as proposed, not as something he itemized.]** Sketch 119
 draws two further directions at that bar; if one of them beats A on his review, it
-supersedes this row and nothing else in this record moves.
+supersedes this row and nothing else in this record moves. **[superseded 2026-09-21: his
+pick is sketch 119 direction D, "the counter", with direction E's day line as a page
+element on the dashboard and the receiving page, not chrome — see the review-trail row of
+that date. The rooms rail survives inside D in 106 A's grammar.]**
 
 **Owed:** the 404, the error screen, the loader, the offline banner and one toast system;
 the floating assistant button removed; internal tools never listed for a house.
@@ -90,7 +93,9 @@ market actions quant - give a note about that and create an endpoint(placeholder
 (2026-09-17 question round, re-verified against transcript `86b45107:2247` on
 2026-09-18.) Already
 drawn at sketch 119, README:303-304 and :361-384 — `GET /house/market-actions`, 501 until
-the quant lands.]**
+the quant lands.]** **[amended 2026-09-21: his shell pick overrides the placeholder — the
+Judge/market row appears ONLY once its register exists; no 501 placeholder row and no
+placeholder route are built. The note on the quant stays at sketch 119 README:301-416.]**
 
 ### 107 — receiving · B+ (the composed grid), with A's vendor boxes and its bolder figures
 
@@ -390,14 +395,15 @@ tasks and goals, a general overview (must-have; no direction draws it yet — al
 carry only an "Open the app guide" link, A:517, B:516, C:492 — so it needs its own
 drawing before or during the build); email contact only (`support@mudavym.com`), no Slack
 (README fork 5, answered); a standing alert when the house's mail grant is absent or
-revoked, pushed on mobile; keep "what to do next" and the write-to-support panel (both
-B's); promote the one-tap acts (must-have). **[verification 2026-09-18: the correction
+revoked, pushed on mobile **and** shown as a persistent routine-tone banner on
+`/connections` (Open item 5 — **answered 2026-09-22**, ADR 0149 row 53 / PR #413);
+keep "what to do next" and the write-to-support panel (both B's); promote the one-tap
+acts (must-have). **[verification 2026-09-18: the correction
 pass had dropped the guide collection's
 contents, "(using the assistant, moving between tasks, configuring tasks and goals, a
 general overview)," and cited it to "README fork 3," which is the WIP-base fork
 (`README:284-286`), not the guides; contents restored, citation replaced.]** **Open (see
-Consequences):** the web half of the mail-access alert ("maybe not" ×3, "I'm not sure";
-Open item 5); whether `/help` is reachable signed out (README fork 7, `README:295-297`,
+Consequences):** whether `/help` is reachable signed out (README fork 7, `README:295-297`,
 not embodied by any direction; listed with the unanswered README questions).
 
 ### 112 — vendor prices · A's ladder as the spine, C's chart and trail grafted; README's fork answers accepted, fork 6 moved to (a)
@@ -606,8 +612,8 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 - **Drawings owed before their builds can start:** the wine detail surface (110, Owed
   #4), the bundle shape (113), the guide collection for `/help` (111, must-have), B's
   sized boxes at C's 10+ density (113), and — if it wins — sketch 119's shell.
-- **Two of his notes are deliberately not built now:** the non-alcoholic heat map (110,
-  Owed #9) and A's register itself under live data (113).
+- **Two of his notes are deliberately not built now:** ~~the non-alcoholic heat map (110,
+  Owed #9)~~ **[built 2026-09-22, Q9]** and A's register itself under live data (113).
 - **Open items — the founder's call, not decided here (CLAUDE.md §0.1):**
   1. 110 — the two hold-to-order modes' exact meaning (does "auto-approve" still stop for
      one tap, or send with no human hold at all), and who may switch a house into auto.
@@ -646,15 +652,22 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
      founder's or lane's call.]**
   4. 107 — "too many operations for the record, what could happen": his risk, not yet
      his fix; paging or grouping is proposed, not decided.
-  5. 111 — the web half of the mail-access-revoked alert ("maybe not" ×3, "I'm not
-     sure").
+  5. 111 — the web half of the mail-access-revoked alert. **[answered 2026-09-22,
+     founder via the PR #413 merge queue: persistent routine-tone banner on
+     `/connections` in addition to the phone push. Recorded as ADR 0149 row 53.
+     Rejected: phone-only / no web alert.]**
   6. **115 — arrival action boxes.** Listed among the files he asked to open, and opened,
      but his dictation never reaches it — his spoken review stops at 113, so "we looked
      at everything" does not cover it. No verdict given. **[added 2026-09-18, correction
      15: sketch 115 had zero mentions anywhere in this ADR.]**
   7. 110 — the non-alcoholic heat map: does "make sure the pipeline to go there is good"
      mean checking the sales pipeline for instant-sale lines now, or only keeping it
-     unblocked for later?
+     unblocked for later? **[answered 2026-09-22, founder Q9 via page-gap questions:
+     wire live sales NOW, before #434 merges. Built on this PR: `readTillLines` mines
+     `pos_checks.items` in addition to `pos_unresolved_lines`, because non-wine lines
+     never enter the unresolved queue (`PosHubService.applyStockEffects` skips
+     `!is_wine`). RowExpander's "When it sells" heat map already derives from those
+     till lines via `rowSeries.whenItSells`.]**
   8. 113 — the projected-worth box-size mechanism: not decided; a research pass on its
      scalability and quality is owed and running (2026-09-18) — direction B stays the
      pick for looks in the meantime. **[answered 2026-09-18: money worth to the house,
@@ -676,3 +689,6 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 | 2026-09-18 | Aldemir (founder, sketch-095 book review) + Claude (`9c6387edd`) | Answered — the cellar keeps direction B as its base and carries three things from the old build: the one-place overview, the bottle list as a full-page view opened by a button, and the bottle leaf's "What the library knows" / "The wine's own detail" sections; his sketch-121 answers recorded under 110 item 11 |
 | 2026-09-18 | Verification pass (Opus; every quote re-measured word by word against the dictation and the question-round transcript, every cited sketch line re-read) | Corrected — quotes restored to his words (smoothing undone, typos kept raw with readings bracketed); a deleted 106 quote restored; the 113 §4c "grafted into B" and the 110 "binary" setting un-decided (both open); 107's graft marked proposed; correction numbers aligned to the critic's list; citations fixed (111 README:301, 112 README:410-416/:432-434, 106 README:216 wording) |
 | 2026-09-19 | Session (Sonnet 5; build and cut, tests and mutation runs cited in the two CLAIMS rows) | Built — Open item 3 delivered on two uncommitted branches; the flag-gating fork it exposed is answered there: flip the flag first |
+| 2026-09-21 | Aldemir (founder), picks relayed verbatim in the shell lane's brief (this session did not re-read the dictation transcript) + Claude (branch `feat/shell-counter`, uncommitted at this row) | Picked — the shell is sketch 119 direction D, **the counter**, with E's day line as a PAGE element on the dashboard and the receiving page, not chrome. Forks answered: (3) a SEALED act may be completed from the counter's sheet on ANY page, with the same HoldToApprove ceremony and server seal as the owning page, nothing weaker; (4) the counter holds the person's own acts (Seal, Verify, Reply, Decide) plus "Mudavym proposes" (`ai_proposed_actions`), applied only by the seal; (5/6) the Judge/market row appears only once its register exists — no 501 placeholder row or route; (10) width is "Open first, then remember": open on a person's first visits at normal widths, tucked below ~1280 px and on `/reports` and `/inventory` to a ~52 px strip that still shows each verb with its count, then each person's choice per page remembered (per-device localStorage keyed by the person in this first version — the server preference route takes its user id from the URL, see the build note); (9) the phone is D's four doors, Counter · Rooms · Search · Ask; (11) the counter's session log, "the house said", clears on reload. Standing: ADR 0149 row 5 (shell rebuilt as house chrome), row 33 / ADR 0145 (WineAgentFab removed; `/ask` and ⌘⇧K are the doors), row 8 (support@mudavym.com), internal tools never in the rooms. Built behind `mudavym_design_shell` (OFF; migration 20260921114300; browser override `mudavym.design.shell`); the day line as a page element is NOT built on this branch. Claims: SHELL-COUNTER-NEVER-PRINTS-A-FAILED-READ-AS-ZERO, SHELL-GATE-IS-OFF-BY-DEFAULT-AND-THREE-LAYERED, SHELL-PROPOSAL-IS-APPLIED-ONLY-BY-THE-SEAL |
+| 2026-09-21 | Session (Sonnet 5; second pass on the same branch, `feat/shell-counter`, uncommitted at this row) — the rest of ADR 0149 row 5's house chrome, and E's day line | Built — ONE house toast (`AppToaster.tsx` + `ToastContext.tsx`'s `HouseToastProvider` [corrected at the lane's last call, 2026-09-21: now the hook `useHouseToastApi` inside ONE `ToastProvider` whose tree shape does not change with the gate — the two-component swap remounted the whole app when the flag answered; and the undo toast added, which this row had not built]: every `useToast()` call forwards to `sonner` under the gate, landing on the same `<Toaster/>` its ~30 direct callers use; legacy unchanged); the error boundary's screen (`HouseErrorScreen.tsx`, via a new render-function `fallback` on `ErrorBoundary` — one class, not two); the page loader and skeletons (`HousePageLoader.tsx`, a 400 ms/12 s ladder replacing the App-level Suspense fallback under the gate); the offline banner (`AppOfflineBanner.tsx`, sketch 103's queued-is-never-confirmed rule at the aggregate level — the full per-record four-rung ladder still needs a richer `useSyncManager`, not built); the in-app 404 (`ShellCatchAll.tsx` + `HouseNotFound.tsx`, NESTED under `DashboardLayout`'s route — fixes the "still deciding" race the first pass's build note flagged). `WineAgentFab` deleted outright (not merely unmounted), regardless of the gate, per row 33 — a static guard holds it deleted. E's day line built at REDUCED scope, stated: `GET /house/day` (`house-day.service.ts`) answers 3 of the sketch's 6 registers (deliveries that arrived, today's calendar, today's reminders — one shared read); `deliveryExpected` (an uncosted new capture surface, the sketch's own words), `shifts` (real schema, needs a timezone-aware week pick and a role-based service choice — a bounded follow-up) and `market` (the same no-placeholder rule as the counter's Judge row) are not built, so the head counts "N of 3", never a bigger denominator. Drawn as a wrapping tick-chip row, not the sketch's pixel-timed band with DOM-measured no-overlap labels (`DayLine.tsx`; `dashboard.md` and `receiving.md` carry the full reasoning). Claims: SHELL-WINE-AGENT-FAB-IS-DELETED-NOT-GATED, SHELL-DAY-LINE-NEVER-COUNTS-A-REGISTER-THIS-BUILD-DOES-NOT-READ, SHELL-TOAST-IS-ONE-SYSTEM-UNDER-THE-GATE, SHELL-404-IS-NESTED-UNDER-THE-LAYOUT-ROUTE, SHELL-OFFLINE-BANNER-NEVER-SAYS-WILL-SYNC-WHEN-QUEUED |
+| 2026-09-21 | Aldemir (founder), round 6k answers relayed verbatim in the shell lane's round-2 brief (this session did not re-read the question-round transcript) + Claude (Opus 5; branch `feat/shell-counter`, round 2, uncommitted at this row) | Answered and built — two forks this record's 2026-09-21 rows had left open. (a) On /ask, **"Never without the seal"**: the Ask panel's `ProposalCard` no longer applies a proposal with a click on the unsealed `POST /ask-ai/actions/:id/confirm`. It applies only through `HoldToApprove` bound to a server seal minted when the hold begins, after any edits: `POST /ask-ai/actions/:id/seal-challenge` now takes the operator's edited `payload`, checks it through the same allowlist and grounding an apply runs, and binds it into the seal (`args.edit`); `sealed-confirm` carries the same payload back and redeems before anything is written, so an edit made after the hold began, an untouched seal spent on an edit, or an edited seal spent untouched are all refused as "changed after the seal was issued" (the card also refuses the first case locally, before any request). The unsealed route answers **410** with a sentence naming both sealed routes and calls nothing; the service's public `confirm` is now the private `applyAfterSeal`, reached only from `confirmSealed`. Callers swept: the web client's `confirmAction` is deleted, `CounterActSheet` already used the seal (its "from the counter" copy scoping is removed), no other caller exists in `apps/`, `services/` or `scripts/`. Held by `scripts/check_ask_ai_is_gated.py` section 4 (rewritten; 10 guard mutations killed, one of which, a cast-spelled `(this.askAi as any).confirm(`, first survived and the guard was hardened for it) and the rewritten CLAIMS row SHELL-PROPOSAL-IS-APPLIED-ONLY-BY-THE-SEAL (13 of 13 mutations killed). (b) On the day line, **"Count what's built"**: the head stays "N of 3", the three registers this build reads, with no placeholder row for deliveries expected, shifts or the market; `house-day.spec.ts` and `DayLine.test.tsx` now pin it (a fourth register and a six denominator each fail a test). Merge note: `'shell'` joins the held-back list of `useMudavymDesign.test.tsx` beside settings, cellar, recommendations and receiving, never `LIVE_PAGES`; the shell stays flag-gated, default off. |

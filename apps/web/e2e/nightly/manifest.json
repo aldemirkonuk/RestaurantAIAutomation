@@ -1,5 +1,5 @@
 {
-  "$comment": "The nightly page manifest (ADR 0135). ONE source for both walkers: apps/web/e2e/nightly/nightly.spec.ts (browser) and services/agent-orchestrator/tests/e2e_gateway/ (API). Every Mudavym page (MUDAVYM_PAGES in apps/web/src/lib/mudavym/useMudavymDesign.ts, enforced both ways by scripts/check_nightly_manifest.py) is listed whether or not the running build gates it yet — a page whose route is not gated on the build under test is reported as ABSENT, never as a pass and never silently dropped. Phrases are matched case-insensitively after curly apostrophes are straightened; they are the pages' own honest-state sentences (grep the page's next/ directory), never figures. `static_text` holds sentences a page ALWAYS renders that contain a shared phrase (logs' intro says 'could not be read'); they are removed from the page text before matching, so a page cannot read as a failed read by describing one. `public_pages` are the signed-out doors behind ADR 0133's one switch (VITE_MUDAVYM_PUBLIC, override localStorage 'mudavym.design.public'); `switch` says whether the page's own file reads it on the tree this manifest was written against, and the guard fails when that stops being true. `pending_pages` are signed-in routes the founder's new-pages list names that are NOT yet enrolled in MUDAVYM_PAGES (ADR 0143's open forks, ADR 0145's hold on /ask); the walk opens each and measures that no Mudavym root renders — absent — and the guard fails the day one enrols. The `walls` values are descriptions for the report, not phrases matched on the page. Founder's recorded design calls live in design-verdicts.json (generated), reported beside pages and never gating.",
+  "$comment": "The nightly page manifest (ADR 0135). ONE source for both walkers: apps/web/e2e/nightly/nightly.spec.ts (browser) and services/agent-orchestrator/tests/e2e_gateway/ (API). Every Mudavym page (MUDAVYM_PAGES in apps/web/src/lib/mudavym/useMudavymDesign.ts, enforced both ways by scripts/check_nightly_manifest.py) is listed whether or not the running build gates it yet \u2014 a page whose route is not gated on the build under test is reported as ABSENT, never as a pass and never silently dropped. Phrases are matched case-insensitively after curly apostrophes are straightened; they are the pages' own honest-state sentences (grep the page's next/ directory), never figures. `static_text` holds sentences a page ALWAYS renders that contain a shared phrase (logs' intro says 'could not be read'); they are removed from the page text before matching, so a page cannot read as a failed read by describing one. `public_pages` are the signed-out doors behind ADR 0133's one switch (VITE_MUDAVYM_PUBLIC, override localStorage 'mudavym.design.public'); `switch` says whether the page's own file reads it on the tree this manifest was written against, and the guard fails when that stops being true. `pending_pages` are signed-in routes the founder's new-pages list names that are NOT yet enrolled in MUDAVYM_PAGES (ADR 0143's open forks, ADR 0145's hold on /ask); the walk opens each and measures that no Mudavym root renders \u2014 absent \u2014 and the guard fails the day one enrols. The `walls` values are descriptions for the report, not phrases matched on the page. Founder's recorded design calls live in design-verdicts.json (generated), reported beside pages and never gating.",
   "manifest_version": "1.1.0",
   "flag_prefix": "mudavym_design_",
   "override_prefix": "mudavym.design.",
@@ -165,7 +165,7 @@
       "legacy": "page",
       "source": "apps/web/src/pages/receipts/next",
       "empty": [
-        "Nothing awaits review — the paper trail is caught up",
+        "Nothing awaits review \u2014 the paper trail is caught up",
         "No lines were extracted from this document"
       ],
       "failed_read": [
@@ -285,7 +285,7 @@
         "the order ledger could not be read"
       ],
       "provenance": [
-        "kept ·"
+        "kept \u00b7"
       ],
       "provenance_required": true
     },
@@ -341,6 +341,32 @@
       ]
     },
     {
+      "slug": "authorize_integration",
+      "flag": "mudavym_design_authorize_integration",
+      "route": "/authorize/{integrationId}",
+      "legacy": "page",
+      "source": "apps/web/src/pages/authorize-integration",
+      "needs": {
+        "param": "integrationId",
+        "list": "/integrations/oauth/catalog",
+        "items_key": "integrations",
+        "id_key": "id"
+      },
+      "failed_read": [
+        "The permission could not be read",
+        "The retention facts are unavailable"
+      ]
+    },
+    {
+      "$comment": "CHROME, not a page (sketch 119 D, PR #437). The house shell wraps every signed-in route behind its own gate. It is enrolled in MUDAVYM_PAGES only because that is how the gate is keyed, and it is listed here so this manifest stays equal to MUDAVYM_PAGES. The walk does not open it as a page. Forcing it on would put the shell's own .mudavym root and its counter's sentences on every page, and hide what each page said. So both walks pin its override OFF and record it absent (nightly.spec.ts), and the verdict extractor skips it. Walking the shell itself is not built yet.",
+      "slug": "shell",
+      "flag": "mudavym_design_shell",
+      "route": "/",
+      "legacy": "page",
+      "chrome": true,
+      "source": "apps/web/src/components/mudavym"
+    },
+    {
       "slug": "logs",
       "flag": "mudavym_design_logs",
       "route": "/logs",
@@ -359,6 +385,75 @@
         "One register could not be read",
         "registers could not be read",
         "No house is selected, so there is no timeline to read"
+      ]
+    },
+    {
+      "slug": "menu",
+      "flag": "mudavym_design_menu",
+      "route": "/menu",
+      "legacy": "redirect:/cellar",
+      "source": "apps/web/src/pages/menu/next",
+      "empty": [
+        "No current menu yet.",
+        "No menu has been read yet."
+      ],
+      "failed_read": [
+        "The menu could not be read",
+        "The menus this house has kept could not be read"
+      ],
+      "failed_read_testids": [
+        "menu-error",
+        "menu-versions-error"
+      ]
+    },
+    {
+      "slug": "help",
+      "flag": "mudavym_design_help",
+      "route": "/help",
+      "legacy": "page",
+      "source": "apps/web/src/pages/help/next",
+      "static_text": [
+        "What to do next"
+      ],
+      "failed_read": [
+        "Could not be read"
+      ],
+      "empty": [
+        "Everything reads clear right now."
+      ]
+    },
+    {
+      "slug": "admin",
+      "flag": "mudavym_design_admin",
+      "route": "/admin",
+      "legacy": "page",
+      "source": "apps/web/src/pages/admin/next",
+      "aliases": [
+        {
+          "route": "/admin/health",
+          "legacy": "redirect:/admin"
+        }
+      ],
+      "empty": [
+        "No reading yet",
+        "Awaiting a reading",
+        "The orchestrator answered. It reports no running agents.",
+        "No agent matches this filter.",
+        "No platform operation has been recorded."
+      ],
+      "failed_read": [
+        "Platform permission could not be verified",
+        "Platform permission could not be re-verified this time",
+        "Agent health is unavailable",
+        "The database reading could not be fetched",
+        "Provider configuration is unavailable",
+        "Provider re-read failed, showing the last reading",
+        "Operation receipts are unavailable",
+        "Receipt re-read failed, showing the last reading",
+        "This agent's counters could not be read",
+        "re-read failed, showing the last reading",
+        "The final receipt could not be saved",
+        "no record of this request any more"
       ]
     }
   ],
@@ -379,13 +474,13 @@
       "slug": "forgot_password",
       "route": "/forgot-password",
       "file": "apps/web/src/pages/ForgotPassword.tsx",
-      "switch": "none"
+      "switch": "public"
     },
     {
       "slug": "reset_password",
       "route": "/reset-password",
       "file": "apps/web/src/pages/ResetPassword.tsx",
-      "switch": "none",
+      "switch": "public",
       "honest": [
         "missing its reset token",
         "missing its token"
@@ -395,13 +490,13 @@
       "slug": "verify_email",
       "route": "/verify-email",
       "file": "apps/web/src/pages/VerifyEmail.tsx",
-      "switch": "none"
+      "switch": "public"
     },
     {
       "slug": "invite",
       "route": "/invite/nightly-not-a-code",
       "file": "apps/web/src/pages/InviteLanding.tsx",
-      "switch": "none",
+      "switch": "public",
       "honest": [
         "This invite has expired"
       ]
@@ -410,19 +505,19 @@
       "slug": "no_access",
       "route": "/no-access",
       "file": "apps/web/src/pages/NoAccess.tsx",
-      "switch": "none"
+      "switch": "public"
     },
     {
       "slug": "privacy",
       "route": "/privacy",
       "file": "apps/web/src/pages/Privacy.tsx",
-      "switch": "none"
+      "switch": "public"
     },
     {
       "slug": "vendor_portal",
       "route": "/v/nightly-not-a-vendor",
       "file": "apps/web/src/pages/VendorPortal.tsx",
-      "switch": "none",
+      "switch": "public",
       "honest": [
         "This vendor page does not exist or has not been published yet",
         "Could not load this catalogue"
@@ -466,24 +561,6 @@
       "route": "/recommendations/catalog",
       "file": "apps/web/src/pages/InsightCatalog.tsx",
       "held_by": "ADR 0143 (open fork)"
-    },
-    {
-      "slug": "help",
-      "route": "/help",
-      "file": "apps/web/src/pages/Help.tsx",
-      "held_by": "ADR 0143 (open fork)"
-    },
-    {
-      "slug": "admin",
-      "route": "/admin",
-      "file": "apps/web/src/pages/AdminPanel.tsx",
-      "held_by": "ADR 0143 §2 (/admin and /admin/health become one page)"
-    },
-    {
-      "slug": "admin_health",
-      "route": "/admin/health",
-      "file": "apps/web/src/pages/AdminHealth.tsx",
-      "held_by": "ADR 0143 §2 (becomes a redirect to /admin)"
     },
     {
       "slug": "ask",

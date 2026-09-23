@@ -428,7 +428,7 @@ def self_test() -> int:
         "an enrolled page with no entry",
         edit_manifest(lambda m: m["pages"].pop()),
         1,
-        "[1] MUDAVYM_PAGES enrols 'logs'",
+        "[1] MUDAVYM_PAGES enrols 'admin'",
     )
     mutate(
         "a pending page that has enrolled",

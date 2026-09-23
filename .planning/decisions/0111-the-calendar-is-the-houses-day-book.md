@@ -378,7 +378,10 @@ vendor"* with the one control that records one.
 ### 4. ⌘K — the day's assistant, and the line it may not cross
 
 The machinery exists and is proven; this extends it rather than inventing it.
-`POST /ask-ai/propose` → a human looks → `POST /ask-ai/confirm` → execute, with a
+`POST /ask-ai/propose` → a human looks → `POST /ask-ai/confirm` → execute **[amended
+2026-09-21: the confirm step is now a sealed hold — `seal-challenge` then `sealed-confirm`
+under `/ask-ai/actions/:id/`; the unsealed confirm answers 410 (the founder's "Never
+without the seal", ADR 0160's review trail of that date)]**, with a
 validated allowlist, grounding against candidate ids, and a status lifecycle
 `proposed → confirmed → executed | failed | discarded`
 (`apps/api-gateway/src/ask-ai/ask-ai.service.ts:305,429-444,525,653,700`;

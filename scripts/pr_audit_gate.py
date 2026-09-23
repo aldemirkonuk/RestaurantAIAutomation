@@ -524,6 +524,13 @@ def _run_audit_inner(pr_number: str) -> int:
                                            # that verifies production got what main says it got
                                            # (found by PR #291's security audit, 2026-09-03; see
                                            # ADR 0090's eighth Correction).
+        "supabase/migration-order-exceptions.txt",  # ADR 0212, founder 2026-09-22:
+                                           # a version listed here skips
+                                           # check_migration_order.py's order check
+                                           # outright. Without this entry a PR could
+                                           # exempt its own out-of-order migration by
+                                           # adding a line here in the same diff, with
+                                           # no human audit forcing anyone to notice.
     )
     # CONFIRMED live (gate's own third audit, security angle): the returncode
     # here was unchecked -- a failed `gh` call yields empty stdout exactly
