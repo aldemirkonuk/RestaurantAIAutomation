@@ -341,6 +341,23 @@
       ]
     },
     {
+      "slug": "authorize_integration",
+      "flag": "mudavym_design_authorize_integration",
+      "route": "/authorize/{integrationId}",
+      "legacy": "page",
+      "source": "apps/web/src/pages/authorize-integration",
+      "needs": {
+        "param": "integrationId",
+        "list": "/integrations/oauth/catalog",
+        "items_key": "integrations",
+        "id_key": "id"
+      },
+      "failed_read": [
+        "The permission could not be read",
+        "The retention facts are unavailable"
+      ]
+    },
+    {
       "$comment": "CHROME, not a page (sketch 119 D, PR #437). The house shell wraps every signed-in route behind its own gate. It is enrolled in MUDAVYM_PAGES only because that is how the gate is keyed, and it is listed here so this manifest stays equal to MUDAVYM_PAGES. The walk does not open it as a page. Forcing it on would put the shell's own .mudavym root and its counter's sentences on every page, and hide what each page said. So both walks pin its override OFF and record it absent (nightly.spec.ts), and the verdict extractor skips it. Walking the shell itself is not built yet.",
       "slug": "shell",
       "flag": "mudavym_design_shell",

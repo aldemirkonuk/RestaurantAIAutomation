@@ -128,6 +128,7 @@ export class AskAiController {
       limit: 10,
       windowSeconds: 60,
       scope: "user",
+      bucket: "mudavym-ask",
       message:
         "That is a lot of questions at once. Give it a minute and ask again.",
     },
@@ -135,6 +136,7 @@ export class AskAiController {
       limit: 200,
       windowSeconds: 3600,
       scope: "restaurant",
+      bucket: "mudavym-ask",
       message:
         "This restaurant has asked a great deal in the last hour. It clears on its own.",
     },

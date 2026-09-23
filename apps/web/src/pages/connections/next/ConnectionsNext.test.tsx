@@ -18,8 +18,20 @@
  *     a way to revoke it, and is never offered an approval.
  */
 
+import type { ReactElement } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+/**
+ * The manager view now renders IntegrationReturnNotice unconditionally too
+ * (KL audit J9/D9), and that component calls useSearchParams, which throws
+ * outside a Router. Every render in this file goes through one MemoryRouter
+ * wrapper rather than each call site adding its own.
+ */
+function render(ui: ReactElement) {
+  return rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -474,6 +486,7 @@ beforeEach(() => {
 describe('who may look', () => {
   it('refuses a non-manager in words, and says the server refuses as well', () => {
     mockData.current = { ...base(), isManager: false, role: 'staff' };
+    // The refused branch renders IntegrationReturnNotice, which reads the URL.
     render(<ConnectionsNext />);
 
     expect(
@@ -482,6 +495,19 @@ describe('who may look', () => {
     // The distinction that matters: not merely a hidden page.
     expect(screen.getByText(/refused at the server/i)).toBeInTheDocument();
     expect(screen.queryByText(/what the house pays with/i)).not.toBeInTheDocument();
+  });
+
+  // KL audit J9/D9: the notice rendered only in the refused (non-manager)
+  // branch, so a manager returning from /authorize never saw their own
+  // grant's outcome on this page.
+  it('shows a manager the outcome of a permission they just returned from, not only a non-manager', () => {
+    mockData.current = { ...base(), isManager: true };
+    rtlRender(
+      <MemoryRouter initialEntries={['/connections?integration_status=denied&integration_reason=denied']}>
+        <ConnectionsNext />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/provider returned a declined permission/i)).toBeInTheDocument();
   });
 });
 

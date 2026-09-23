@@ -105,16 +105,20 @@ describe('useMudavymDesign precedence', () => {
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
   const HELD_BACK = ['cellar', 'recommendations', 'receiving', 'admin', 'shell'] as const;
+  // Enrolled AFTER the 2026-09-17 go-live and not part of it: the /authorize
+  // consent page (ADR 0144), flag-gated and OFF by default (migration
+  // 20260922220200). Making it live is a separate founder call.
+  const ENROLLED_AFTER_GO_LIVE = ['authorize_integration'] as const;
 
-  it('is exactly MUDAVYM_PAGES minus the five held-back pages', () => {
-    const held = new Set(HELD_BACK);
-    const expected = MUDAVYM_PAGES.filter((p) => !held.has(p as (typeof HELD_BACK)[number]));
+  it('is exactly MUDAVYM_PAGES minus the five held-back pages and the pages enrolled after go-live', () => {
+    const held = new Set<string>([...HELD_BACK, ...ENROLLED_AFTER_GO_LIVE]);
+    const expected = MUDAVYM_PAGES.filter((p) => !held.has(p));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
     expect(LIVE_PAGES.size).toBe(18);
   });
 
-  it('holds back exactly cellar, recommendations, receiving, admin, shell', () => {
-    for (const page of HELD_BACK) {
+  it('holds back exactly cellar, recommendations, receiving, admin, shell -- and pages enrolled after go-live stay gated', () => {
+    for (const page of [...HELD_BACK, ...ENROLLED_AFTER_GO_LIVE]) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated
     }

@@ -86,6 +86,9 @@ export const MUDAVYM_PAGES = [
   // required, since MUDAVYM_PAGES is the source of the `MudavymPage` type
   // PageGate, HouseHeader and PAGE_NAMES all key off.
   'help',
+  // ADR 0144 -- the /authorize consent page. Enrolled after the 2026-09-17
+  // go-live, so NOT in LIVE_PAGES: flag-gated, OFF by default (20260922220200).
+  'authorize_integration',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
@@ -102,7 +105,8 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * flag-gated: `cellar`, `recommendations`, `receiving`, `admin`, and `shell`
  * (the house shell; production may have flipped its column independently).
  *
- * `MUDAVYM_PAGES.length` is 23; this is deliberately not "the rest" spelled
+ * `MUDAVYM_PAGES.length` is 24 (`authorize_integration` from #430 stays
+ * flag-gated); this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.
