@@ -14,7 +14,7 @@
 - **Date:** 2026-09-17 (dictation); corrected 2026-09-18
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** sketch review, app shell, receiving, cellar, help, vendor prices, promotions, recommendations, picks, grafts, Stripe, Toast, quant, bundles, label reader, heat map
-- **Links:** [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] (rows 21, 23, 38 and the gallery this reviews) · [[0144-the-book-opens-on-evidence-and-three-pages-get-a-job]] · [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] · [[0112-one-modal-policy-three-shapes-one-primitive]] · sketches `.planning/sketches/106-app-shell`, `107-receiving-structure`, `108-recommendations-directions-3`, `109-settings-directions-2`, `110-cellar-directions-2`, `111-help-directions`, `112-vendor-prices-directions`, `113-promotions-directions`, `115-arrival-action-boxes` (opened, no verdict — see Consequences), `119-app-shell-sota`, `120-recommendations-round-4` · gallery artifact `4aFbY744aZv1GR2YmytzdQ` · corrections: 21, each bracketed inline below and numbered as in the Opus critic's list (`adr0160-corrections.json`, 2026-09-18 — a session scratch file, not committed; the brackets are the record)
+- **Links:** [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] (rows 21, 23, 38 and the gallery this reviews) · [[0144-the-book-opens-on-evidence-and-three-pages-get-a-job]] · [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] · [[0112-one-modal-policy-three-shapes-one-primitive]] · sketches `.planning/sketches/106-app-shell`, `107-receiving-structure`, `108-recommendations-directions-3`, `109-settings-directions-2`, `110-cellar-directions-2`, `111-help-directions`, `112-vendor-prices-directions`, `113-promotions-directions`, `115-arrival-action-boxes` (retired 2026-09-22 — no A/B/C winner; sketch 121 is the direction, ADR 0144 addendum), `119-app-shell-sota`, `120-recommendations-round-4` · gallery artifact `4aFbY744aZv1GR2YmytzdQ` · corrections: 21, each bracketed inline below and numbered as in the Opus critic's list (`adr0160-corrections.json`, 2026-09-18 — a session scratch file, not committed; the brackets are the record)
 
 ## Context
 
@@ -656,10 +656,10 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
      founder via the PR #413 merge queue: persistent routine-tone banner on
      `/connections` in addition to the phone push. Recorded as ADR 0149 row 53.
      Rejected: phone-only / no web alert.]**
-  6. **115 — arrival action boxes.** Listed among the files he asked to open, and opened,
-     but his dictation never reaches it — his spoken review stops at 113, so "we looked
-     at everything" does not cover it. No verdict given. **[added 2026-09-18, correction
-     15: sketch 115 had zero mentions anywhere in this ADR.]**
+  6. **115 — arrival action boxes.** **Retired 2026-09-22** without an A/B/C
+     winner; the founder picked sketch 121 as the arrival direction (ADR 0144
+     addendum of the same day). The 2026-09-18 note that his spoken review
+     never reached 115 still stands as history, not as an open item.
   7. 110 — the non-alcoholic heat map: does "make sure the pipeline to go there is good"
      mean checking the sales pipeline for instant-sale lines now, or only keeping it
      unblocked for later? **[answered 2026-09-22, founder Q9 via page-gap questions:

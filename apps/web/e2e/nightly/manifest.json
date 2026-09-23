@@ -455,6 +455,21 @@
         "The final receipt could not be saved",
         "no record of this request any more"
       ]
+    },
+    {
+      "slug": "arrival",
+      "flag": "mudavym_design_arrival",
+      "route": "/get-started",
+      "legacy": "page",
+      "source": "apps/web/src/pages/arrival",
+      "empty": [
+        "Nothing is written yet. Give the book a menu and it opens already written."
+      ],
+      "failed_read": [
+        "This part of the book could not be read.",
+        "The folio history could not be read.",
+        "failure to read, not an empty menu"
+      ]
     }
   ],
   "public_pages": [

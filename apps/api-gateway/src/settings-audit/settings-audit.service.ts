@@ -140,6 +140,9 @@ export const READ_BACK_ACTIONS = [
   ...SETTINGS_AUDIT_ACTIONS,
   "member_role_changed",
   "team_member_removed",
+  "configuration_step_skipped",
+  "configuration_folio_recorded",
+  "configuration_batch_undone",
 ] as const;
 
 export type SettingsAuditAction = (typeof SETTINGS_AUDIT_ACTIONS)[number];

@@ -72,6 +72,11 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // ADR 0113/0143/0144 + sketch 121. `/get-started`'s flyleaf-and-contents
+  // book. Flag off, `legacy` is today's GetStarted — unchanged, not a
+  // redirect, because it is still the real onboarding path for every house
+  // until this one is turned on. Held back from LIVE_PAGES.
+  'arrival',
   // ADR 0143: one desk and one switch, including the old health bookmark.
   'admin',
   // Not a page: the app SHELL (sketch 119 direction D, the founder's pick of
@@ -107,11 +112,11 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * (ADR 0160 "109 — settings · A, the interview"; PR #419) — same code-side
  * always-on as the original sixteen, still no database write. `help` joined
  * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. Held back, still
- * flag-gated: `recommendations`, `receiving`, `admin`, and `shell`
- * (the house shell; production may have flipped its column independently).
+ * flag-gated: `recommendations`, `receiving`, `admin`, `shell`, and `arrival`
+ * (the /get-started book; OFF until deliberately flipped).
  * `cellar` and `menu` go live on this merge (prior cellar ruling).
  *
- * `MUDAVYM_PAGES.length` is 25 (`authorize_integration` from #430 stays
+ * `MUDAVYM_PAGES.length` is 26 (`authorize_integration` from #430 stays
  * flag-gated); this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a

@@ -121,6 +121,19 @@ the page would stay the least finished surface in the product indefinitely.
   folio 0 as the last invoice, spoken input landing as rows with a provenance,
   one held seal on the batch. Nothing about `/get-started` or `/onboarding` is
   waiting on a founder call any more.
+  [BUILD STATUS 2026-09-19: adopted from Codex lane C2 (full audit at
+  codex-audit/C2-adopt.md, HOLD verdict — "a good base... not adoptable as a
+  page"). Landed at `/get-started` behind `mudavym_design_arrival`
+  (OFF by default; `/onboarding` now redirects here permanently, ADR 0149
+  row 11); the batch's apply is sealed per this record's "one held seal"
+  (`common/seal/seal-subject.ts`'s `configuration_batch` kind); a crashed
+  apply/undo can now be resumed by the same actor instead of staying stuck;
+  the batch header (`applied`/`undone` vs `..._with_issues`) now agrees with
+  its own rows; the notifications-undo cross-house delete the audit measured
+  is fixed at the row's own id. Not done: the folio-0 gaps §1 already named
+  (payment-terms extraction, vendor name matching, item-only register
+  inference) and isolated in-browser visual QA (the page had no route to
+  render at when the audit ran).]
   [ADDED 2026-09-16, ADR 0149 row 11: the house-wide low-stock threshold is one line on
   folio 2; `/onboarding` redirects permanently to `/get-started`; and, in the founder's
   words, *"+ improve the UI for tutorial action boxes"* — drawn as sketch 115 for his
@@ -134,6 +147,11 @@ the page would stay the least finished surface in the product indefinitely.
   a recorded fact by this decision and an unwritten row in the code, and until
   that writer lands, "offered and skipped" cannot be told from "never opened".
   That is the first build task under item 1, not a detail.
+  [CORRECTED 2026-09-19: this was never true of the code that shipped —
+  `arrival_record_folio` (`supabase/migrations/20260922231000_arrival_configuration_book.sql:49`)
+  already writes `configuration_step_skipped` vs `configuration_folio_recorded`
+  by `p_state`, present since the lane's first commit-tree on 2026-09-13. Not
+  a build task; a stale sentence.]
 
 ## What this decision does NOT settle
 
@@ -397,10 +415,28 @@ tab scope OK", "consent receipts = delete with the account", and the
 quote — is this session's own paraphrase of what he confirmed, not something
 he said in those words. Relabelled in place; no answer changes.
 
+## Addendum — 2026-09-22: flyleaf upload, three counts, sketch 115 retired
+
+The founder closed the remaining arrival-guidance forks on 2026-09-22 (recorded
+in `.planning/07-reference/deploy/SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md` from
+`memory/founder-answers-2026-09-22-page-gap.md`):
+
+1. **The flyleaf upload is a strong default, not a hard gate** (closes sketch
+   121 §7.1).
+2. **Keep all three counts** — lines read, lines placed, lines not placed
+   (closes sketch 121 §7.3).
+3. **Sketch 115 is retired** without an A/B/C winner; sketch 121 is the
+   direction. Struck from ADR 0160's open-items list the same day.
+
+How loud the un-evidenced registers should be (sketch 121 §7.2) stays open and
+was not defaulted. Whether the not-placed *lines* (not only their number) are
+returned is OD-140.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-22 | Aldemir (founder) | Flyleaf upload is a strong default; keep all three counts; sketch 115 retired in favour of sketch 121. Recorded as the addendum above |
 | 2026-09-21 | Aldemir (founder), same round, later — styled by KL lane same day | Asked whether the identity line built earlier this round should stay bare; his words, verbatim: "style it I trust you, do not show me. Just say done, keep it simple, use anthropic's or other tech co's approach." Built as a clean OAuth-consent-style pill (`authorize-shell.css`, new file, tokens only) — an avatar mark on the house seal colour, the person's name, the house granting for. Scoped to the identity line only; who may open `/ask` is untouched (a different record, ADR 0145). See the bracket at the `/authorize` frame bullet above |
 | 2026-09-21 | KL lane, round 5 (fixing a round-4 review's must-fix list) | Corrected a regression the 2026-09-19 row below shipped: `/authorize/:integrationId` had no masthead at all with the design flag on, because `PageGate` never mounts a working `HouseHeader` for a `NO_CHROME` page. `AuthorizeShell`'s `chrome="own"`/`chrome="ambient"` split is deleted; one frame now states who is granting and for which house when `AuthContext` knows one, with no navigation, and falls back to a plain Wordmark signature otherwise. Also relabelled three paraphrases that had been recorded as the founder's verbatim words as the recorded answers they actually are (see the paraphrase note above). Brackets and the code both changed this round — see AuthorizeShell.tsx's own file header for the full correction |
 | 2026-09-19 | Aldemir (founder, batch 4), built same day by KL lane | Answered three of the four residue items: tab-scope binding confirmed as built (no change); consent-receipt cascade confirmed as intended (no change); `/authorize` + `/authorize/complete` given a proper signed-in frame (`AuthorizeShell`) honouring the design flag and the ADR 0133 public-door switch, replacing `PublicShell`. The WineOps-copy item stays open, unscoped. Brackets only, nothing rewritten |

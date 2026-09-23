@@ -104,6 +104,7 @@ const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'
 const MenuNext = lazyWithRefresh(() => import('./pages/menu/next/MenuNext'))
 const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/next/CanonicalDocumentPage'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
+const Arrival = lazyWithRefresh(() => import('./pages/arrival/Arrival'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
 const DeliveryRedirect = lazyWithRefresh(() => import('./pages/receiving/DeliveryRedirect'))
@@ -133,7 +134,6 @@ const LogsTimelinePage = lazyWithRefresh(() => import('./pages/LogsTimelinePage'
 const LogsNext = lazyWithRefresh(() => import('./pages/logs/next/LogsNext'))
 const Notifications = lazyWithRefresh(() => import('./pages/Notifications'))
 const CalendarModular = lazyWithRefresh(() => import('./pages/CalendarModular'))
-const Onboarding = lazyWithRefresh(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })))
 const Settings = lazyWithRefresh(() => import('./pages/Settings'))
 const Help = lazyWithRefresh(() => import('./pages/Help'))
 const HelpNext = lazyWithRefresh(() => import('./pages/help/next/HelpNext'))
@@ -210,8 +210,18 @@ function App() {
                 {/* Public vendor catalogue. No auth: this is what a vendor chose
                     to publish, and our own ingester reads it back as structured data. */}
                 <Route path="/v/:slug" element={<VendorPortal />} />
-                <Route path="/get-started" element={<GetStarted />} />
-                <Route path="/onboarding" element={<Onboarding />} />
+                {/* The Arrival book (ADR 0113/0143/0144; Codex lane C2, adopted
+                    2026-09-19). Flag off, `legacy` is today's GetStarted,
+                    unchanged. `/onboarding` is a permanent redirect here
+                    (ADR 0149 row 11) — it used to render its own Onboarding
+                    component, which is now unreachable by any route. */}
+                <Route
+                  path="/get-started"
+                  element={
+                    <PageGate page="arrival" legacy={<GetStarted />} next={<Arrival />} />
+                  }
+                />
+                <Route path="/onboarding" element={<Navigate to="/get-started" replace />} />
 
                 {/* Studio routes — separate layout with StudioLayout, outside DashboardLayout */}
                 <Route

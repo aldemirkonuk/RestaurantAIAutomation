@@ -72,13 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
   },
   {
     key: "enable_house_inbox_read",
@@ -101,7 +101,18 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Sidebar layout is the path. Held back from LIVE_PAGES. Column added by
     // 20260921114300.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
+  },
+  {
+    key: "mudavym_design_arrival",
+    // OFF by default: the Arrival book at /get-started (ADR 0113/0143/0144;
+    // sketch 121). Held back from LIVE_PAGES so every house keeps today's
+    // GetStarted until this column is deliberately turned on. Column added by
+    // 20260922231300 — ships in the same change as this registry entry so the
+    // Settings `.select()` of every ACTIVE key cannot 42703 before the
+    // migration has applied (the failure mode that blocked PR #414).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
   },
   {
     key: "mudavym_design_authorize_integration",
@@ -109,7 +120,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // consent page an integration's OAuth hand-off lands on. Column added by
     // 20260922220200.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
   },
   {
     key: "mudavym_design_admin",
@@ -117,7 +128,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // /admin and /admin/health, operator-gated receipted agent operations.
     // Column added by 20260922210200.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:179",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
   },
 ];
 

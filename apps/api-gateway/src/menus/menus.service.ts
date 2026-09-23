@@ -1,3 +1,4 @@
+import { restoreArrivalEntry } from "../arrival/restore-entry";
 import * as crypto from "crypto";
 import {
   Injectable,
@@ -325,6 +326,8 @@ interface PriceSyncEntry {
 
 export interface MenuImportReviewItem {
   menuItemId: string;
+  inventoryItemId?: string | null;
+  inventoryCreated?: boolean;
   submissionId: string | null;
   name: string;
   producer: string | null;
@@ -348,6 +351,39 @@ export interface MenuImportReviewItem {
 
 @Injectable()
 export class MenusService {
+  restoreArrivalThreshold(
+    restaurantId: string,
+    actorId: string,
+    batchId: string,
+    rowId: string,
+  ) {
+    return restoreArrivalEntry(
+      this.dbService,
+      "threshold",
+      restaurantId,
+      actorId,
+      batchId,
+      rowId,
+    );
+  }
+
+  /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
+  restoreArrival(
+    restaurantId: string,
+    actorId: string,
+    batchId: string,
+    rowId: string,
+  ) {
+    return restoreArrivalEntry(
+      this.dbService,
+      "menu_item",
+      restaurantId,
+      actorId,
+      batchId,
+      rowId,
+    );
+  }
+
   private readonly logger = new Logger(MenusService.name);
 
   constructor(
@@ -444,6 +480,63 @@ export class MenusService {
       submissionsCreated: reviewItems.filter((r) => r.submissionId).length,
       items: reviewItems,
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+    };
+  }
+
+  /** Arrival reads evidence without creating menu, library or inventory rows. */
+  async previewArrivalMenu(
+    method: "scan" | "csv",
+    content: string,
+    restaurantId: string,
+    binary = false,
+  ): Promise<WineExtractItem[]> {
+    const items =
+      method === "scan"
+        ? await this.scanParser.parse(content, restaurantId, true)
+        : binary
+          ? await this.csvParser.parseExcel(content)
+          : this.csvParser.parse(content);
+    if (!items.length)
+      throw new BadRequestException(
+        "No supported beverage items were extracted. Nothing was imported.",
+      );
+    if (items.length > 500)
+      throw new BadRequestException(
+        "This menu contains more than 500 entries. Divide the evidence into smaller files.",
+      );
+    return items.map(({ raw_text: _raw, ...item }) => item);
+  }
+
+  /** A kept version after Arrival's held seal — not made current (ADR 0193). */
+  async importParsedItems(
+    items: WineExtractItem[],
+    restaurantId: string,
+    userId: string,
+    method: "scan" | "csv" | "manual",
+  ) {
+    const dto = { restaurantId, method, data: { items } } as ImportMenuDto;
+    const menu = await this.createVersion(
+      restaurantId,
+      userId,
+      dto,
+      items,
+      null,
+      null,
+    );
+    const reviewItems = await this.resolveAndPersistItems(
+      items,
+      restaurantId,
+      menu.id,
+      userId,
+      method,
+      false,
+    );
+    return {
+      menuId: menu.id,
+      current: false,
+      itemsExtracted: items.length,
+      submissionsCreated: reviewItems.filter((r) => r.submissionId).length,
+      items: reviewItems,
     };
   }
 
@@ -1565,7 +1658,9 @@ export class MenusService {
     const { inventoryMap, priceSync } = current
       ? await this.addToInventory(insertedMenuItems, restaurantId, userId, { effectiveFrom: null, menuId })
       : {
-          inventoryMap: new Map<string, string>(),
+          inventoryMap: Object.assign(new Map<string, string>(), {
+            created: new Set<string>(),
+          }),
           priceSync: new Map<string, PriceSyncEntry>(
             insertedMenuItems.map((m) => [
               m.id,
@@ -1596,6 +1691,12 @@ export class MenusService {
       const menuItem = insertedMenuItems[idx];
       return {
         menuItemId: menuItem?.id,
+        inventoryItemId: menuItem
+          ? (inventoryMap.get(menuItem.id) ?? null)
+          : null,
+        inventoryCreated: menuItem
+          ? inventoryMap.created.has(menuItem.id)
+          : false,
         submissionId: menuItem
           ? (submissionMap.get(menuItem.id) ?? null)
           : null,
@@ -1703,10 +1804,12 @@ export class MenusService {
     userId: string,
     dating: CarryDating,
   ): Promise<{
-    inventoryMap: Map<string, string>;
+    inventoryMap: Map<string, string> & { created: Set<string> };
     priceSync: Map<string, PriceSyncEntry>;
   }> {
-    const result = new Map<string, string>();
+    const result = Object.assign(new Map<string, string>(), {
+      created: new Set<string>(),
+    });
     const priceSync = new Map<string, PriceSyncEntry>();
     const validItems = menuItems.filter((i) => i.wine_library_id);
     if (validItems.length === 0) return { inventoryMap: result, priceSync };
@@ -1761,6 +1864,7 @@ export class MenusService {
       }
       if (!inventoryId) continue;
       result.set(item.id, inventoryId);
+      if (!existing) result.created.add(item.id);
       const entry = await this.carryMenuPrice(
         item,
         restaurantId,

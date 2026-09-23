@@ -1,14 +1,18 @@
+import { restoreArrivalEntry } from "../arrival/restore-entry";
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
   applyAnswers,
   inferRegisters,
   isRegisterId,
+  placeMenuLine,
   registerForKind,
   registersForBeverageType,
   registersForLabel,
+  tallyMenuLines,
   type DecidedBy,
   type InferenceInput,
+  type MenuLineTally,
   type RegisterId,
   type RegisterReadout,
   type StoredAnswer,
@@ -53,6 +57,14 @@ export interface SourceStatus {
 export interface CellarRegistersReadout {
   restaurantId: string;
   registers: RegisterReadout[];
+  /**
+   * The reading count, per LINE rather than per register — the one figure a
+   * register-by-register readout cannot express (see `MenuLineTally`).
+   *
+   * `null` when the menu could not be read at all, which is not the same
+   * sentence as "no lines".
+   */
+  menuLines: MenuLineTally | null;
   /** Every register the house is known to carry, in vocabulary order. */
   carried: RegisterId[];
   /**
@@ -128,6 +140,11 @@ interface AnswerRow {
 
 @Injectable()
 export class CellarRegistersService {
+  /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
+  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
+    return restoreArrivalEntry(this.dbService, "cellar", restaurantId, actorId, batchId, rowId);
+  }
+
   private readonly logger = new Logger(CellarRegistersService.name);
 
   constructor(private readonly dbService: DatabaseService) {}
@@ -174,6 +191,7 @@ export class CellarRegistersService {
     return {
       restaurantId,
       registers,
+      menuLines: menu.lines,
       carried: registers.filter((r) => r.carried === true).map((r) => r.id),
       decidedBy,
       awaitingConfirmation: answers.status.readable
@@ -398,6 +416,7 @@ export class CellarRegistersService {
   private async readMenuLabels(restaurantId: string): Promise<{
     status: SourceStatus;
     counts: Map<RegisterId, number> | null;
+    lines: MenuLineTally | null;
   }> {
     const { data, error } = await this.dbService
       .getClient()
@@ -412,23 +431,28 @@ export class CellarRegistersService {
       return {
         status: { readable: false, reason: error.message, rows: null },
         counts: null,
+        // Null, never a row of zeroes. "We could not read the menu" printed as
+        // "0 lines read, 0 placed" is the exact absence-reported-as-health
+        // failure this file's header refuses everywhere else.
+        lines: null,
       };
     }
 
+    const rows = (data ?? []) as MenuItemRow[];
     const counts = new Map<RegisterId, number>();
-    for (const row of (data ?? []) as MenuItemRow[]) {
-      // The section header first — it is the restaurant's own words about what
-      // this part of the menu IS, which is exactly the signal
-      // wine_classify_beverage_kind() ranks second behind a real primary_type
-      // (20260817060000:30-35). The item name is a fallback, not an equal.
-      const hits = registersForLabel(row.category);
-      const use = hits.length > 0 ? hits : registersForLabel(row.name);
-      for (const id of use) counts.set(id, (counts.get(id) ?? 0) + 1);
+    for (const row of rows) {
+      for (const id of placeMenuLine(row)) {
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
     }
 
     return {
-      status: { readable: true, reason: null, rows: (data ?? []).length },
+      status: { readable: true, reason: null, rows: rows.length },
       counts,
+      // Same rows, same pass, same placement rule as the counts above. The
+      // tally is not a second reading of the menu — it is the first one,
+      // counted per line instead of per register.
+      lines: tallyMenuLines(rows),
     };
   }
 

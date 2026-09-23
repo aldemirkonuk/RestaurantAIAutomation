@@ -521,7 +521,14 @@ validated and tenant-scoped. Sources: `/Users/aldemirkonuk/Projects/p4-scratch/w
   - pooled prices vs price by class;
   - typed currency;
   - whether staff can read the log.
-- **Arrival:** where the threshold lives.
+- **Arrival:** where the threshold lives. [CORRECTED 2026-09-19: this was already
+  answered — ADR 0149 row 11 / ADR 0144's consequences: the threshold is one line
+  on folio 2 (the "pour" folio, alongside cellar). The C2 lane's build already
+  placed it there (`Arrival.tsx`'s "What we pour" section); codex-audit/C2-adopt.md
+  item 7 flagged this as an undecided fork implemented as if decided, but the
+  fork was closed on 2026-09-16, three days after the lane's code was written —
+  the audit was checking the placement against this file, which had not been
+  updated. Not open.]
 - **Vendor intel:** public-register rows with no house. Options A-D, recommendation C,
   in `p4-scratch/endpoint-faults/vendor-intel-identity.md`.
 - **OAuth:** who may disconnect an integration for a user with no tenant
