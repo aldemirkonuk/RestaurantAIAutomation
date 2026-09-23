@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Building2, Loader2, MapPin, Search } from 'lucide-react';
 
 export interface PlaceResult {
+  placeName: string;
   streetAddress: string;
   city: string;
   stateProvince: string;
@@ -50,6 +51,7 @@ interface PlacesAutocompleteProps {
   disabled?: boolean;
   country?: string;
   id?: string;
+  locationBias?: { latitude: number; longitude: number } | null;
 }
 
 // The name -> alpha-2 table that used to live here is RETIRED (ADR 0117 Q33,
@@ -96,6 +98,7 @@ function parseAddressComponents(
     latitude: null,
     longitude: null,
     googlePlaceId: null,
+    placeName: '',
     streetAddress: [streetNumber, route].filter(Boolean).join(' '),
     city:
       get('locality') ||
@@ -126,6 +129,7 @@ export function PlacesAutocomplete({
   disabled,
   country,
   id,
+  locationBias,
 }: PlacesAutocompleteProps) {
   const [query, setQuery] = useState(value);
   const [rows, setRows] = useState<SuggestionRow[]>([]);
@@ -162,7 +166,7 @@ export function PlacesAutocomplete({
     }
     document.addEventListener('mousedown', onOutside);
     return () => document.removeEventListener('mousedown', onOutside);
-  }, []);
+  }, [locationBias]);
 
   const search = useCallback((q: string, countryName?: string) => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -186,6 +190,17 @@ export function PlacesAutocomplete({
           // 'address' is a legacy type — not valid in the new Places API.
           // Country filter already scopes results; omitting primaryTypes gives street + premise results.
           ...(iso ? { includedRegionCodes: [iso] } : {}),
+          ...(locationBias
+            ? {
+                locationBias: {
+                  center: {
+                    lat: locationBias.latitude,
+                    lng: locationBias.longitude,
+                  },
+                  radius: 25_000,
+                },
+              }
+            : {}),
         });
 
         const next: SuggestionRow[] = suggestions
@@ -244,6 +259,7 @@ export function PlacesAutocomplete({
       if (!place.addressComponents) return;
 
       const result = parseAddressComponents(place.addressComponents);
+      result.placeName = row.main;
       if (!result.streetAddress && place.formattedAddress) {
         result.streetAddress = place.formattedAddress.split(',')[0].trim();
       }

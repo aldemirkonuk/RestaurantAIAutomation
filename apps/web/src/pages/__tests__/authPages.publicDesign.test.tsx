@@ -64,6 +64,8 @@ const h = vi.hoisted(() => {
       login: vi.fn(),
       clearError: vi.fn(),
       resolveSignInMethods: vi.fn(),
+      registerAccount: vi.fn(),
+      registerAccountWithGoogle: vi.fn(),
       registerRestaurant: vi.fn(),
       joinViaInvite: vi.fn(),
       error: null as string | null,
