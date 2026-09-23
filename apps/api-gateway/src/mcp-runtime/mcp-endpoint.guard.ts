@@ -64,7 +64,7 @@ const PRIVATE_V4: Array<[string, number, string]> = [
   ["127.0.0.0", 8, "this machine (loopback)"],
   ["169.254.0.0", 16, "link-local space, where cloud instance metadata lives"],
   ["172.16.0.0", 12, "a private network"],
-  ["192.0.0.0", 24, "IETF protocol assignments"],
+  ["192.0.0.0", 24, "addresses reserved by the IETF"],
   ["192.0.2.0", 24, "documentation space"],
   ["192.168.0.0", 16, "a private network"],
   ["198.18.0.0", 15, "benchmarking space"],

@@ -191,15 +191,18 @@ export function plainReason(reason: string | null | undefined, fallback: string)
 }
 
 /**
- * A stored probe sentence, in the house's words.
+ * A stored unreadable-reply sentence, in the house's words.
  *
- * The status chip already says "Not readable". A detail that still names the
- * wire — our own old sentence, or a server's "Unsupported protocol version" —
- * is the same fact, and the page does not print the wire word.
+ * Only `protocol_error` is "Not readable". A refused or answered detail keeps
+ * its own sentence, even when that sentence names the wire: swapping it for
+ * "could not be read" would claim a reply that never happened, or hide why a
+ * call was refused.
  */
 const WIRE_WORD = /\b(protocol|webhook|iframe|token|route)\b/i;
 
-export function houseProbeDetail(detail: string): string {
-  if (WIRE_WORD.test(detail)) return 'The reply could not be read.';
+export function houseProbeDetail(status: string | null | undefined, detail: string): string {
+  if (status === 'protocol_error' && WIRE_WORD.test(detail)) {
+    return 'The reply could not be read.';
+  }
   return detail;
 }

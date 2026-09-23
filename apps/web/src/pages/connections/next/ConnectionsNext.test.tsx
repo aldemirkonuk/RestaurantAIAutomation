@@ -833,6 +833,29 @@ describe('house declares, each person consents', () => {
     expect(screen.queryByText(/protocol/i)).not.toBeInTheDocument();
   });
 
+  it('keeps a refused reply that names a token, because that sentence is why it was refused', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: {
+          status: 'refused',
+          detail: 'HTTP 401 — the sign-in was refused: invalid token.',
+          serverName: null,
+          serverVersion: null,
+          protocolVersion: null,
+          tools: null,
+          toolCount: null,
+        },
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/invalid token/i)).toBeInTheDocument();
+    expect(screen.queryByText(/The reply could not be read/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Refused').length).toBeGreaterThan(0);
+  });
+
   it('names a reply the house cannot read without using the protocol word', () => {
     const d = base();
     d.mcp = reg([

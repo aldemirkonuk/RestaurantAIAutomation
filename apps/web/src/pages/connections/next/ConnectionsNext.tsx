@@ -763,7 +763,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   why={
                     <>
                       {s.probe?.detail
-                        ? houseProbeDetail(s.probe.detail)
+                        ? houseProbeDetail(s.probe.status, s.probe.detail)
                         : 'This server has never been called, so nothing is claimed about it either way.'}{' '}
                       {s.consent.given ? (
                         <>
