@@ -75,19 +75,18 @@ either it broke, or production is behind main.
 
 ### The pages, as of 2026-09-16
 
-- **20 gated pages** (`manifest.pages`). These are exactly `MUDAVYM_PAGES` in
-  `apps/web/src/lib/mudavym/useMudavymDesign.ts`, including `/logs`, the first page of
-  the new-pages wave.
+- **23 gated pages** (`manifest.pages`). These are exactly `MUDAVYM_PAGES` in
+  `apps/web/src/lib/mudavym/useMudavymDesign.ts`, including `/logs`, the first
+  page of the new-pages wave, and `/admin` (ADR 0143 desk).
 - **11 signed-out doors** (`manifest.public_pages`). On main, only `/login` and
   `/register` read the public switch (`VITE_MUDAVYM_PUBLIC`, overridden per
   browser by `localStorage["mudavym.design.public"]`). The other nine report
   `absent` until they are rebuilt. `/reset-password`, `/invite/:code` and
   `/v/:slug` are opened with a harmless invalid value and must say so in words.
-- **7 pending routes** (`manifest.pending_pages`): `/promotions`,
-  `/vendor-prices`, `/recommendations/catalog`, `/help`, `/admin`,
-  `/admin/health` and `/ask`. They are held by ADR 0143's open forks and ADR
-  0145. The walk measures that no Mudavym root renders on each one; it does not
-  take the manifest's word for it.
+- **4 pending routes** (`manifest.pending_pages`): `/promotions`,
+  `/vendor-prices`, `/recommendations/catalog`, and `/ask`. They are held by
+  ADR 0143's open forks and ADR 0145. The walk measures that no Mudavym root
+  renders on each one; it does not take the manifest's word for it.
 - `/authorize/:integrationId` must send a signed-out visitor to `/login`.
 
 **First full run against production** (2026-09-17, from a laptop as the Sim

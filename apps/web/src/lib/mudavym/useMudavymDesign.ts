@@ -72,6 +72,8 @@ export const MUDAVYM_PAGES = [
   // pages that ADR covers are not part of this addition; see the migration
   // 20260912080000's own note for why they arrive separately.
   'logs',
+  // ADR 0143: one desk and one switch, including the old health bookmark.
+  'admin',
   // Not a page: the app SHELL (sketch 119 direction D, the founder's pick of
   // 2026-09-21; ADR 0149 row 5). `DashboardLayout` reads this gate and renders
   // `HouseShell` — rooms rail, house header, counter, the phone's four doors —
@@ -100,11 +102,11 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * (ADR 0160 "109 — settings · A, the interview"; PR #419) — same code-side
  * always-on as the original sixteen, still no database write. `help` joined
  * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. Held back, still
- * flag-gated: `cellar`, `recommendations`, `receiving`, and `shell`
+ * flag-gated: `cellar`, `recommendations`, `receiving`, `admin`, and `shell`
  * (the house shell; production may have flipped its column independently).
  *
- * `MUDAVYM_PAGES.length` is 23 (`shell` + `help` from main, plus
- * `authorize_integration` from #430, which stays flag-gated); this is deliberately not "the rest" spelled
+ * `MUDAVYM_PAGES.length` is 24 (`authorize_integration` from #430 stays
+ * flag-gated); this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.

@@ -170,6 +170,14 @@ function base(over: Record<string, unknown> = {}) {
     // `undefined.status` the moment a test mounted the page.
     hours: remote({ restaurantId: 'r1', timezone: 'Europe/Istanbul', operatingHours: null, updatedAt: null }),
     digest: remote({ stated: false, digestEnabled: false, digestHour: 7, digestMinUrgency: 'this_week', recipientEmail: null, lastSentAt: null }),
+    houseAskTraining: remote({
+      restaurantId: 'r1',
+      optedOut: false,
+      readable: true,
+      reason: null,
+      statedAt: null,
+      statedBy: null,
+    }),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     saveFlag, savePrefs, saveNotif,
     saveSender: vi.fn(), sendTestEmail: vi.fn(), regenerateIcal: vi.fn(),
@@ -178,6 +186,7 @@ function base(over: Record<string, unknown> = {}) {
     saveCarryingCost: vi.fn(() => Promise.resolve(true)),
     saveHours: vi.fn(() => Promise.resolve(true)),
     saveDigest: vi.fn(() => Promise.resolve(true)),
+    saveAskTraining: vi.fn(() => Promise.resolve(true)),
     ...over,
   };
 }

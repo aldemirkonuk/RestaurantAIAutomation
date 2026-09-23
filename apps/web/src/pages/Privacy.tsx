@@ -105,6 +105,21 @@ export default function Privacy() {
             </p>
           </section>
           <section className="mdv-pub__plate">
+            <h2>Questions you ask Mudavym</h2>
+            <p>
+              When someone in your house asks Mudavym a question, we keep the
+              question, the answer, and how the answer was reached, so it can be
+              checked later. Your house&apos;s owner can turn training use off
+              for the whole house, in Settings → Training use — asking and
+              answering keep working the same either way. A question asked while
+              training is off is never used for training, even if the owner
+              turns it back on afterward. If we ever export questions to improve
+              Mudavym, that export carries no question text at all, only facts
+              such as which kind of question it was and when it was asked. No
+              training has started.
+            </p>
+          </section>
+          <section className="mdv-pub__plate">
             <h2>Tracking and advertising</h2>
             <p>
               Mudavym sets no tracking or advertising cookies. We do not sell

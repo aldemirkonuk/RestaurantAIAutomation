@@ -402,6 +402,40 @@
       "empty": [
         "Everything reads clear right now."
       ]
+    },
+    {
+      "slug": "admin",
+      "flag": "mudavym_design_admin",
+      "route": "/admin",
+      "legacy": "page",
+      "source": "apps/web/src/pages/admin/next",
+      "aliases": [
+        {
+          "route": "/admin/health",
+          "legacy": "redirect:/admin"
+        }
+      ],
+      "empty": [
+        "No reading yet",
+        "Awaiting a reading",
+        "The orchestrator answered. It reports no running agents.",
+        "No agent matches this filter.",
+        "No platform operation has been recorded."
+      ],
+      "failed_read": [
+        "Platform permission could not be verified",
+        "Platform permission could not be re-verified this time",
+        "Agent health is unavailable",
+        "The database reading could not be fetched",
+        "Provider configuration is unavailable",
+        "Provider re-read failed, showing the last reading",
+        "Operation receipts are unavailable",
+        "Receipt re-read failed, showing the last reading",
+        "This agent's counters could not be read",
+        "re-read failed, showing the last reading",
+        "The final receipt could not be saved",
+        "no record of this request any more"
+      ]
     }
   ],
   "public_pages": [
@@ -508,18 +542,6 @@
       "route": "/recommendations/catalog",
       "file": "apps/web/src/pages/InsightCatalog.tsx",
       "held_by": "ADR 0143 (open fork)"
-    },
-    {
-      "slug": "admin",
-      "route": "/admin",
-      "file": "apps/web/src/pages/AdminPanel.tsx",
-      "held_by": "ADR 0143 §2 (/admin and /admin/health become one page)"
-    },
-    {
-      "slug": "admin_health",
-      "route": "/admin/health",
-      "file": "apps/web/src/pages/AdminHealth.tsx",
-      "held_by": "ADR 0143 §2 (becomes a redirect to /admin)"
     },
     {
       "slug": "ask",

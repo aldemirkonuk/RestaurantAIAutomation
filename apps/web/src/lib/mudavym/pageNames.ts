@@ -75,6 +75,7 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // The canonical document at /documents/:id (ADR 0104 slice 2, merged from main 2026-09-05).
   document: 'Document',
   logs: 'Logs',
+  admin: 'Operations desk',
   authorize_integration: 'Permission to connect',
   // The app shell, not a page (sketch 119 D). Named because the map is
   // exhaustive; never printed in the header — under the shell the header
