@@ -40,7 +40,14 @@ export interface MenuImportResult {
   itemsExtracted: number
   submissionsCreated: number
   items: MenuImportReviewItem[]
+  /** Client-only: the page photo from this session, if we still have it. */
+  sourceImage?: string | null
 }
+
+export type MenuImportSuccess = (
+  result: MenuImportResult,
+  source?: { image?: string | null },
+) => void
 
 export type EditableMenuItemField =
   | 'name'

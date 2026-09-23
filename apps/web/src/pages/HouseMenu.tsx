@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import {
+  addMenuItem,
   reviewMenuItem,
-  type MenuImportResult,
   type MenuImportReviewItem,
 } from '../services/api/menus'
+import { isKitchenLine, lineNeedsPencil, readProof } from '../lib/firstProof'
 
 const sectionOrder = [
   'wine',
@@ -22,16 +23,9 @@ const sectionOrder = [
   'sake',
 ]
 
-const kitchenHints = ['food', 'kitchen', 'dish', 'starter', 'dessert', 'entree', 'entrée', 'pasta', 'salad']
-
-function isKitchenLine(item: MenuImportReviewItem) {
-  const hay = `${item.category ?? ''} ${item.rawText ?? ''}`.toLowerCase()
-  return kitchenHints.some((hint) => hay.includes(hint))
-}
-
 function markFor(item: MenuImportReviewItem): 'ink' | 'pencil' | 'ring' {
-  if (!item.needsReview) return 'ink'
-  return item.category ? 'pencil' : 'ring'
+  if (!lineNeedsPencil(item)) return 'ink'
+  return item.category && item.category.toLowerCase() !== 'unknown' ? 'pencil' : 'ring'
 }
 
 function sectionName(value: string) {
@@ -54,21 +48,17 @@ function price(item: MenuImportReviewItem) {
   return parts.join(' · ')
 }
 
-function readProof(): MenuImportResult | null {
-  try {
-    const value = sessionStorage.getItem('mudavym:first-proof')
-    return value ? (JSON.parse(value) as MenuImportResult) : null
-  } catch {
-    return null
-  }
-}
-
 export default function HouseMenu() {
   const navigate = useNavigate()
   const proof = useMemo(readProof, [])
   const [items, setItems] = useState(proof?.items ?? [])
   const [open, setOpen] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
+  const [showOriginal, setShowOriginal] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [addName, setAddName] = useState('')
+  const [addSection, setAddSection] = useState('')
+  const sourceImage = proof?.sourceImage ?? null
 
   const kitchen = items.filter(isKitchenLine)
   const drinkItems = items.filter((item) => !isKitchenLine(item))
@@ -115,7 +105,7 @@ export default function HouseMenu() {
     )
   }
 
-  const pencilled = drinkItems.filter((item) => item.needsReview).length
+  const pencilled = drinkItems.filter((item) => lineNeedsPencil(item)).length
   const absent = sectionOrder.filter(
     (section) => !drinkItems.some((item) => item.category?.toLowerCase().trim() === section),
   )
@@ -127,11 +117,28 @@ export default function HouseMenu() {
       setItems((current) =>
         current.map((row) =>
           row.menuItemId === item.menuItemId
-            ? { ...row, category, needsReview: false }
+            ? { ...row, category, needsReview: false, matched: true }
             : row,
         ),
       )
       setOpen(null)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const addAbsent = async () => {
+    const category = addSection || absent[0]
+    if (!addName.trim() || !category || !proof) return
+    setSaving('add')
+    try {
+      const created = await addMenuItem(proof.menuId, { name: addName.trim(), category })
+      setItems((current) => [
+        ...current,
+        { ...created, category, needsReview: false, matched: true },
+      ])
+      setAddName('')
+      setAdding(false)
     } finally {
       setSaving(null)
     }
@@ -143,12 +150,22 @@ export default function HouseMenu() {
         <BrandMark size={24} alt="Mudavym" />
         <span className="font-mono text-[11px] uppercase tracking-[0.18em]">The first proof</span>
       </header>
-      <main className="mx-auto max-w-4xl px-5 py-12 sm:py-16">
+      <main className={`mx-auto px-5 py-12 sm:py-16 ${showOriginal && sourceImage ? 'grid max-w-6xl gap-10 lg:grid-cols-2' : 'max-w-4xl'}`}>
+        <div>
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">House menu · first proof</p>
         <h1 className="mt-3 font-serif text-5xl">Your menu, set by Mudavym.</h1>
         <p className="mt-4 max-w-2xl text-[#6d685f]">
           It&apos;s a first proof — we&apos;ve pencilled the lines worth a second look.
         </p>
+        {sourceImage ? (
+          <button
+            type="button"
+            onClick={() => setShowOriginal((value) => !value)}
+            className="mt-4 text-sm text-[#1a5e6b] underline underline-offset-4"
+          >
+            {showOriginal ? 'Hide original' : 'Show my original'}
+          </button>
+        ) : null}
         <div role="group" aria-label="The reading count" className="mt-10 grid grid-cols-3 border-y border-[#211f1b]/20 py-5">
           <p><strong className="block font-serif text-3xl">{items.length}</strong><span className="text-xs uppercase tracking-wider">read</span></p>
           <p><strong className="block font-serif text-3xl">{items.length - pencilled}</strong><span className="text-xs uppercase tracking-wider">set</span></p>
@@ -166,7 +183,7 @@ export default function HouseMenu() {
                     <article key={item.menuItemId} className="border-b border-[#211f1b]/15">
                       <button
                         type="button"
-                        onClick={() => item.needsReview && setOpen(expanded ? null : item.menuItemId)}
+                        onClick={() => lineNeedsPencil(item) && setOpen(expanded ? null : item.menuItemId)}
                         className="grid w-full grid-cols-[24px_1fr_auto] items-start gap-3 py-5 text-left"
                       >
                         <span
@@ -198,6 +215,17 @@ export default function HouseMenu() {
                         <div className="mb-5 ml-9 grid gap-5 border-l border-dashed border-[#1a5e6b] bg-white p-5 sm:grid-cols-2">
                           <div>
                             <p className="text-xs uppercase tracking-wider text-[#6d685f]">From the original</p>
+                            {sourceImage ? (
+                              <img
+                                src={sourceImage}
+                                alt="The page this line was read from"
+                                className="mt-2 max-h-48 w-full object-cover object-top"
+                              />
+                            ) : (
+                              <p className="mt-2 text-sm text-[#6d685f]">
+                                No crop of this line — the original page was not kept.
+                              </p>
+                            )}
                             <blockquote className="mt-2 font-serif text-lg">
                               {item.rawText || item.name}
                             </blockquote>
@@ -238,14 +266,63 @@ export default function HouseMenu() {
           </p>
         )}
         {absent.length > 0 && (
-          <p className="mt-12 border-t border-[#211f1b]/20 pt-6 text-sm text-[#6d685f]">
-            Not on this menu: {absent.slice(0, 4).map(sectionName).join(', ')}. Pour any of these?{' '}
-            <button type="button" className="text-[#1a5e6b] underline">Add it.</button>
-          </p>
+          <div className="mt-12 border-t border-[#211f1b]/20 pt-6 text-sm text-[#6d685f]">
+            <p>
+              Not on this menu: {absent.slice(0, 4).map(sectionName).join(', ')}. Pour any of these?{' '}
+              <button type="button" onClick={() => {
+                setAdding((value) => !value)
+                setAddSection(absent[0] ?? '')
+              }} className="text-[#1a5e6b] underline">
+                Add it.
+              </button>
+            </p>
+            {adding && (
+              <form
+                className="mt-4 flex flex-wrap items-end gap-3"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void addAbsent()
+                }}
+              >
+                <label>
+                  <span className="block text-xs uppercase tracking-wider">Line</span>
+                  <input
+                    aria-label="New menu line"
+                    value={addName}
+                    onChange={(event) => setAddName(event.target.value)}
+                    className="mt-1 border-b border-[#211f1b]/25 bg-transparent pb-1 outline-none"
+                  />
+                </label>
+                <label>
+                  <span className="block text-xs uppercase tracking-wider">Section</span>
+                  <select
+                    aria-label="New line section"
+                    value={addSection || absent[0]}
+                    onChange={(event) => setAddSection(event.target.value)}
+                    className="mt-1 bg-transparent outline-none"
+                  >
+                    {absent.map((section) => (
+                      <option key={section} value={section}>{sectionName(section)}</option>
+                    ))}
+                  </select>
+                </label>
+                <button type="submit" disabled={!addName.trim() || saving === 'add'} className="bg-[#1a5e6b] px-3 py-1.5 text-white disabled:opacity-40">
+                  {saving === 'add' ? 'Adding…' : 'Add this line'}
+                </button>
+              </form>
+            )}
+          </div>
         )}
-        <button type="button" onClick={() => navigate('/')} className="mt-10 bg-[#1a5e6b] px-6 py-3 text-white">
+        <button type="button" onClick={() => navigate('/house')} className="mt-10 bg-[#1a5e6b] px-6 py-3 text-white">
           Open the house
         </button>
+        </div>
+        {showOriginal && sourceImage && (
+          <aside className="border-l border-[#211f1b]/15 pl-6">
+            <p className="text-xs uppercase tracking-wider text-[#6d685f]">Your original</p>
+            <img src={sourceImage} alt="Your original menu" className="mt-4 w-full" />
+          </aside>
+        )}
       </main>
     </div>
   )

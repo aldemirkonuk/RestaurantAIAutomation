@@ -13,6 +13,7 @@ import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { WineExtractItem } from "./wine-extract-item.interface";
+import { itemNeedsPencil } from "./pencil-rule";
 
 const FREE_TIER_MANUAL_LIMIT = 25;
 const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
@@ -445,7 +446,10 @@ export class MenusService {
         bottlePrice: r.item.bottle_price ?? null,
         rawText: r.item.raw_text ?? null,
         matched: r.matched,
-        needsReview: !r.matched,
+        needsReview: itemNeedsPencil({
+          matched: r.matched,
+          category: r.item.category,
+        }),
       };
     });
   }

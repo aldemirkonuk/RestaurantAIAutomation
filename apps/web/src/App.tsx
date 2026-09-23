@@ -98,6 +98,7 @@ const ConnectionsNext = lazyWithRefresh(() => import('./pages/connections/next/C
 const CellarNext = lazyWithRefresh(() => import('./pages/cellar/next/CellarNext'))
 const CanonicalDocumentPage = lazyWithRefresh(() => import('./pages/documents/next/CanonicalDocumentPage'))
 const GetStarted = lazyWithRefresh(() => import('./pages/GetStarted'))
+const HouseContents = lazyWithRefresh(() => import('./pages/HouseContents'))
 const HouseMenu = lazyWithRefresh(() => import('./pages/HouseMenu'))
 const DoorReceipt = lazyWithRefresh(() => import('./pages/receiving/DoorReceipt'))
 const ReceivingHome = lazyWithRefresh(() => import('./pages/receiving/ReceivingHome'))
@@ -208,6 +209,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <GetStarted />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/house"
+                  element={
+                    <ProtectedRoute>
+                      <HouseContents />
                     </ProtectedRoute>
                   }
                 />

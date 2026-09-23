@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapPin, PenLine, Upload } from 'lucide-react'
+import { MapPin, PenLine } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
 import { CountryCombobox } from '../components/ui/CountryCombobox'
@@ -9,8 +9,9 @@ import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { useAuth } from '../contexts/AuthContext'
 import { apiClient } from '../services/api/client'
-import type { MenuImportResult } from '../services/api/menus'
+import { importMenu, type MenuImportResult } from '../services/api/menus'
 import { currencyForCountry } from '../lib/currency'
+import { writeProof } from '../lib/firstProof'
 
 type Step = 'you' | 'restaurant' | 'menu' | 'reading'
 type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
@@ -70,8 +71,10 @@ export default function GetStarted() {
   const [locationStatus, setLocationStatus] = useState<string | null>(null)
   const [menuMethod, setMenuMethod] = useState<MenuMethod>(null)
   const [pendingResult, setPendingResult] = useState<MenuImportResult | null>(null)
+  const [sourceImage, setSourceImage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [dropping, setDropping] = useState(false)
 
   const currency = useMemo(() => currencyForCountry(country), [country])
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -79,11 +82,11 @@ export default function GetStarted() {
   useEffect(() => {
     if (step !== 'reading' || !pendingResult) return
     const timer = window.setTimeout(() => {
-      sessionStorage.setItem('mudavym:first-proof', JSON.stringify(pendingResult))
+      writeProof(pendingResult, sourceImage)
       navigate('/house/menu', { replace: true })
     }, 1200)
     return () => window.clearTimeout(timer)
-  }, [navigate, pendingResult, step])
+  }, [navigate, pendingResult, sourceImage, step])
 
   const saveYou = async () => {
     setSaving(true)
@@ -164,9 +167,33 @@ export default function GetStarted() {
     }
   }
 
-  const menuRead = (result: MenuImportResult) => {
+  const menuRead = (result: MenuImportResult, source?: { image?: string | null }) => {
     setPendingResult(result)
+    setSourceImage(source?.image ?? null)
     setStep('reading')
+  }
+
+  const ingestDroppedImage = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setMenuMethod('file')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(new Error('Could not read that photo.'))
+        reader.readAsDataURL(file)
+      })
+      const result = await importMenu('scan', { imageBase64: image })
+      menuRead(result, { image })
+    } catch (cause: any) {
+      setError(cause?.response?.data?.message || cause?.message || 'We could not read that photo.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (step === 'you') {
@@ -192,10 +219,16 @@ export default function GetStarted() {
               aria-label="Mobile"
               value={mobile}
               onChange={(event) => setMobile(event.target.value)}
-              placeholder="Only for urgent stock alerts. Never marketing."
+              placeholder="For urgent stock alerts. Never marketing."
               className="mt-2 block w-full bg-transparent text-base outline-none"
             />
           </label>
+          {mobile.trim() && (
+            <p className="text-sm text-[#6d685f]">
+              If you give a number, we may text urgent stock alerts only. Never marketing.
+              Reply <strong>STOP</strong> anytime. Optional — the account does not depend on it.
+            </p>
+          )}
           <fieldset>
             <legend className="text-xs uppercase tracking-wider">Role · optional</legend>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -294,22 +327,37 @@ export default function GetStarted() {
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The first inscription</p>
         <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
         <p className="mt-3 text-[#6d685f]">Drop the menu here. Mudavym will set it as the house&apos;s own list.</p>
-        <div className="mt-9 border-y border-[#211f1b]/20">
-          {([
-            ['photo', 'Photograph the menu', MapPin],
-            ['file', 'Send a file', Upload],
-            ['typed', 'Type a few lines', PenLine],
-          ] as const).map(([id, label, Icon]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setMenuMethod(menuMethod === id ? null : id)}
-              className="flex w-full items-center gap-3 border-b border-[#211f1b]/15 px-1 py-5 text-left last:border-0"
-            >
-              <Icon className="h-5 w-5 text-[#1a5e6b]" />
-              <span className="font-serif text-xl">{label}</span>
-            </button>
-          ))}
+        <button
+          type="button"
+          onClick={() => setMenuMethod(menuMethod === 'photo' ? null : 'photo')}
+          onDragEnter={() => setDropping(true)}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setDropping(true)
+          }}
+          onDragLeave={() => setDropping(false)}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDropping(false)
+            const file = event.dataTransfer.files?.[0]
+            if (file) void ingestDroppedImage(file)
+          }}
+          className={`mt-10 flex min-h-[220px] w-full flex-col items-center justify-center border border-dashed px-6 text-center ${
+            dropping ? 'border-[#1a5e6b] bg-white' : 'border-[#211f1b]/25 bg-[#fbfaf7]'
+          }`}
+        >
+          <span className="font-serif text-3xl">Drop the menu here</span>
+          <span className="mt-3 text-sm text-[#6d685f]">
+            {saving ? 'Reading…' : 'A photo, or click to photograph.'}
+          </span>
+        </button>
+        <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <button type="button" onClick={() => setMenuMethod(menuMethod === 'file' ? null : 'file')} className="text-[#1a5e6b] underline underline-offset-4">
+            Send a file
+          </button>
+          <button type="button" onClick={() => setMenuMethod(menuMethod === 'typed' ? null : 'typed')} className="flex items-center gap-1 text-[#1a5e6b] underline underline-offset-4">
+            <PenLine className="h-3.5 w-3.5" /> Type a few lines
+          </button>
         </div>
         <div className="mt-6">
           {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
@@ -317,7 +365,7 @@ export default function GetStarted() {
           {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} />}
         </div>
         <div className="mt-8 border-t border-[#211f1b]/15 pt-5">
-          <button type="button" onClick={() => navigate('/', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
+          <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
             Skip for now — open the house
           </button>
         </div>
