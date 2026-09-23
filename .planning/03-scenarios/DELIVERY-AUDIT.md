@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **168 as of 2026-09-23, on #455 after #414** (`check_read_errors_not_swallowed.py` on `feat/arrival-first-proof`: `auth.service.ts` `users/existing` actual=0 after account-only signup; retired, rows sum to 168). Re-measure before citing.
+
 > **170 as of 2026-09-23, on #434 after #430** (`check_read_errors_not_swallowed.py` on `serial-pr434-after-430`: two already-fixed baseline rows retired — `integrations-oauth.service.ts` `integration_oauth_connections/data` and `inventory.service.ts` `inventory_analytics/data`). Re-measure before citing.
 
 > **176 as of 2026-09-21, on `feat/shell-counter`** (`check_read_errors_not_swallowed.py` on that tree: 1545 files scanned, 176 sites, 176 baselined, 0 allowlisted). `ReceivingService.listUnverified` now binds and throws its `procurement_orders` read error instead of letting a failed read wave every closed order through the COMPLETED/CANCELLED filter, which retires receiving.service.ts procurement_orders/orders; the house counter (sketch 119 D) reads that register. Branches merge in any order, so re-measure before citing.

@@ -26,6 +26,11 @@ import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
+import {
+  RegisterAccountDto,
+  RegisterGoogleAccountDto,
+} from "./dto/register-account.dto";
+import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { UpdateProfileDto } from "./dto/update-profile.dto";
@@ -123,6 +128,36 @@ export class AuthController {
     throw new GoneException(
       "This sign-up route is closed. Open a house at /auth/register/restaurant, or join one through its invitation.",
     );
+  }
+
+  @Public()
+  @Post("register/account")
+  async registerAccount(@Body() dto: RegisterAccountDto) {
+    const tokens = await this.authService.registerAccount(dto);
+    return {
+      success: true,
+      ...tokens,
+      message: "Account created. Please verify your email.",
+    };
+  }
+
+  @Public()
+  @Post("register/google")
+  async registerAccountWithGoogle(@Body() body: RegisterGoogleAccountDto) {
+    const tokens = await this.authService.registerAccountWithGoogle(body.token);
+    return { success: true, ...tokens, message: "Google account created." };
+  }
+
+  @Post("register/house")
+  @UseGuards(JwtAuthGuard)
+  async createFirstHouse(
+    @Req() req: Request & { user: any },
+    @Body() dto: CreateFirstHouseDto,
+  ) {
+    return {
+      success: true,
+      ...(await this.authService.createFirstHouse(req.user.userId, dto)),
+    };
   }
 
   /**

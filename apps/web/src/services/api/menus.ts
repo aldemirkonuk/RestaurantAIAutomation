@@ -30,8 +30,19 @@ export interface MenuImportReviewItem {
   grapeVariety: string | null
   byGlassPrice: number | null
   bottlePrice: number | null
+  rawText: string | null
   matched: boolean
   needsReview: boolean
+  /** Present only when the extractor already returned a box. Never invented. */
+  bbox?: {
+    x: number
+    y: number
+    width: number
+    height: number
+    page?: number
+    pageWidth?: number
+    pageHeight?: number
+  } | null
   /**
    * What this line did to the house's own bottle/glass price (ADR 0193:
    * a menu update changes the house price). `failed` carries the reason in
@@ -61,6 +72,8 @@ export interface MenuImportResult {
   itemsExtracted: number
   submissionsCreated: number
   items: MenuImportReviewItem[]
+  /** Client-only: the page photo from this session, if we still have it. */
+  sourceImage?: string | null
   /** Whether the source file (photo, PDF, CSV) was kept, and why not when it was not. */
   source?: { kept: boolean; failure: string | null }
 }
@@ -74,6 +87,11 @@ export interface MenuReadLabels {
   /** A day (YYYY-MM-DD) or just a month (YYYY-MM). */
   menuDate?: string
 }
+
+export type MenuImportSuccess = (
+  result: MenuImportResult,
+  source?: { image?: string | null },
+) => void
 
 export type EditableMenuItemField =
   | 'name'

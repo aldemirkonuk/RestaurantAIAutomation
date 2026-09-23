@@ -18,6 +18,7 @@ import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { WineExtractItem } from "./wine-extract-item.interface";
+import { itemNeedsPencil } from "./pencil-rule";
 import {
   setHouseMenuPrice,
   type HeldKind,
@@ -337,6 +338,7 @@ export interface MenuImportReviewItem {
   grapeVariety: string | null;
   byGlassPrice: number | null;
   bottlePrice: number | null;
+  rawText: string | null;
   matched: boolean;
   needsReview: boolean;
   /** ADR 0193: what this line did to the house's own price. */
@@ -1708,8 +1710,12 @@ export class MenusService {
         grapeVariety: r.item.grape_variety ?? null,
         byGlassPrice: r.item.by_glass_price ?? null,
         bottlePrice: r.item.bottle_price ?? null,
+        rawText: r.item.raw_text ?? null,
         matched: r.matched,
-        needsReview: !r.matched,
+        needsReview: itemNeedsPencil({
+          matched: r.matched,
+          category: r.item.category,
+        }),
         priceSync: menuItem
           ? (priceSync.get(menuItem.id)?.outcome ?? "not_linked")
           : "not_linked",
