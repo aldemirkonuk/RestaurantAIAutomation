@@ -360,7 +360,6 @@ export class ScanParserService {
       // entirely this file's logic. The client's transport retry never
       // touches it (max_tokens arrives as HTTP 200).
       const payload: any = await this.modelClient.call({
-        gateFirstAttempt: arrival,
         body: {
           model: "claude-haiku-4-5",
           // A real wine list costs ~55-60 output tokens per wine, so 4096 —
