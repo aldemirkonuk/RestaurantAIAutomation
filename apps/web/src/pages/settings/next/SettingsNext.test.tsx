@@ -858,7 +858,9 @@ describe('SettingsNext — provenance and unknowns', () => {
     const alert = within(section).getByRole('alert');
     expect(alert).toHaveTextContent(/could not be read/i);
     expect(alert).toHaveTextContent(/it is\s*unread/i);
-    expect(within(section).queryByRole('switch')).not.toBeInTheDocument();
+    // Gazetteer-measure toggles still draw (including "Registers carried");
+    // the unread claim is the register switches, labelled "Wines register".
+    expect(within(section).queryByRole('switch', { name: / register$/i })).not.toBeInTheDocument();
   });
 
   it('stamps no client-side date on the POS connector', () => {
