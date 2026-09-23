@@ -10,7 +10,6 @@ import {
   Wine,
   Users,
   Settings,
-  User,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -191,13 +190,12 @@ const aiNavItems: NavItem[] = [
   },
 ]
 
-const bottomNavItems: NavItem[] = [
-  {
-    name: 'Profile',
-    href: '/profile',
-    icon: User,
-    description: 'Your account, security, and linked sign-in providers.',
-  },
+/**
+ * Preview ruling 2026-09-22: these used to sit in a pinned footer. They scroll
+ * with the rest of the rail. Profile is not a row — it is the name card
+ * ("Aldemir connect") at the bottom.
+ */
+const accountNavItems: NavItem[] = [
   {
     name: 'Settings',
     href: '/settings',
@@ -714,62 +712,105 @@ export function Sidebar() {
             </AnimatePresence>
           </div>
         )}
+
+        {/* Preview ruling 2026-09-22: Settings / Connections / Help scroll.
+            Profile is the name card below, not a fourth row. */}
+        <div className={cn('space-y-1', effectiveCollapsed ? 'mt-3 border-t border-gray-100 pt-3' : 'mt-8')}>
+          {!effectiveCollapsed && (
+            <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              Account
+            </p>
+          )}
+          {showLearn && (
+            <div className="relative">
+              <button
+                ref={checklistButtonRef}
+                data-guidance="learn-help"
+                onClick={() => {
+                  setShowChecklist(!showChecklist)
+                  if (!showChecklist) trackGuidance('learn_opened', { mode: 'learn' })
+                }}
+                className={cn(
+                  'flex items-center rounded-lg transition-colors text-left',
+                  effectiveCollapsed
+                    ? 'mx-auto h-10 w-10 justify-center'
+                    : 'min-h-[38px] w-full gap-2.5 px-2.5 py-2',
+                  showChecklist
+                    ? 'bg-wine-50 text-wine-700 border border-wine-100'
+                    : 'text-gray-600 hover:bg-gray-50',
+                )}
+              >
+                <BookOpen className={cn('flex-shrink-0', effectiveCollapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4')} />
+                {!effectiveCollapsed && (
+                  <span className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
+                    Learn & Help
+                  </span>
+                )}
+              </button>
+              <AnimatePresence>
+                {showChecklist && (
+                  <LearnPanel
+                    progress={progress}
+                    mode="learn"
+                    anchorRef={checklistButtonRef}
+                    onClose={() => setShowChecklist(false)}
+                  />
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+          {/* `minRole` filters here, and the `/connections` entry is additionally
+              hidden while its page flag is off — the route redirects to /profile
+              in that state, so a visible link would lead somewhere else. Both
+              conditions are cosmetic: the gateway refuses the reads regardless. */}
+          {accountNavItems
+            .filter((item) => {
+              if (item.href === '/connections' && !connectionsOn) return false
+              if (!item.minRole) return true
+              if (item.minRole === 'owner') return user?.role === 'owner'
+              return user?.role === 'owner' || user?.role === 'manager'
+            })
+            .map((item) => renderNavItem(item))}
+        </div>
       </nav>
 
-      {/* Bottom Section */}
-      <div className={cn('border-t border-gray-100 space-y-1', effectiveCollapsed ? 'p-1.5' : 'p-3')}>
-        {showLearn && (
-          <div className="relative">
-            <button
-              ref={checklistButtonRef}
-              data-guidance="learn-help"
-              onClick={() => {
-                setShowChecklist(!showChecklist)
-                if (!showChecklist) trackGuidance('learn_opened', { mode: 'learn' })
-              }}
-              className={cn(
-                'flex items-center rounded-lg transition-colors text-left',
-                effectiveCollapsed
-                  ? 'mx-auto h-10 w-10 justify-center'
-                  : 'min-h-[38px] w-full gap-2.5 px-2.5 py-2',
-                showChecklist
-                  ? 'bg-wine-50 text-wine-700 border border-wine-100'
-                  : 'text-gray-600 hover:bg-gray-50',
-              )}
-            >
-              <BookOpen className={cn('flex-shrink-0', effectiveCollapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4')} />
-              {!effectiveCollapsed && (
-                <span className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]">
-                  Learn & Help
-                </span>
-              )}
-            </button>
-            <AnimatePresence>
-              {showChecklist && (
-                <LearnPanel
-                  progress={progress}
-                  mode="learn"
-                  anchorRef={checklistButtonRef}
-                  onClose={() => setShowChecklist(false)}
-                />
-              )}
-            </AnimatePresence>
+      {/* Aldemir connect — the name is the profile door; logout sits with it. */}
+      <div
+        className={cn('border-t border-gray-100 space-y-1', effectiveCollapsed ? 'p-1.5' : 'p-3')}
+        data-account-cluster
+      >
+        <NavLink
+          to="/profile"
+          aria-label={user?.name ? `${user.name} — your account` : 'Your account'}
+          className={cn(
+            'flex items-center rounded-xl bg-gray-50 transition-colors hover:bg-gray-100',
+            effectiveCollapsed ? 'justify-center p-1.5' : 'gap-2 p-1.5',
+          )}
+        >
+          <div
+            className={cn(
+              'flex items-center justify-center rounded-full bg-gradient-to-br from-wine-400 to-wine-600 font-semibold text-white shadow-md',
+              effectiveCollapsed ? 'h-6 w-6 text-[10px]' : 'h-7 w-7 text-xs',
+            )}
+          >
+            {user?.name?.charAt(0) || 'U'}
           </div>
-        )}
-        {/* `minRole` filters here, and the `/connections` entry is additionally
-            hidden while its page flag is off — the route redirects to /profile
-            in that state, so a visible link would lead somewhere else. Both
-            conditions are cosmetic: the gateway refuses the reads regardless. */}
-        {bottomNavItems
-          .filter((item) => {
-            if (item.href === '/connections' && !connectionsOn) return false
-            if (!item.minRole) return true
-            if (item.minRole === 'owner') return user?.role === 'owner'
-            return user?.role === 'owner' || user?.role === 'manager'
-          })
-          .map((item) => renderNavItem(item))}
-
-        {/* Logout */}
+          <AnimatePresence>
+            {!effectiveCollapsed && (
+              <motion.div
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                className="flex-1 overflow-hidden"
+              >
+                <p className="text-[13px] font-medium text-gray-900 truncate">
+                  {user?.name || 'User'}
+                </p>
+                <p className="text-[11px] text-gray-500 truncate capitalize">{user?.role || 'Manager'}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </NavLink>
         <button
           onClick={logout}
           className={cn(
@@ -793,40 +834,6 @@ export function Sidebar() {
             )}
           </AnimatePresence>
         </button>
-      </div>
-
-      {/* User Profile */}
-      <div className={cn('border-t border-gray-100', effectiveCollapsed ? 'p-1.5' : 'p-3')}>
-        <div
-          className={cn(
-            'flex items-center rounded-xl bg-gray-50 transition-colors cursor-pointer hover:bg-gray-100',
-            effectiveCollapsed ? 'justify-center p-1.5' : 'gap-3 p-2',
-          )}
-        >
-          <div
-            className={cn(
-              'flex items-center justify-center rounded-full bg-gradient-to-br from-wine-400 to-wine-600 font-semibold text-white shadow-md',
-              effectiveCollapsed ? 'h-8 w-8 text-xs' : 'h-9 w-9 text-sm',
-            )}
-          >
-            {user?.name?.charAt(0) || 'U'}
-          </div>
-          <AnimatePresence>
-            {!effectiveCollapsed && (
-              <motion.div
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-                className="flex-1 overflow-hidden"
-              >
-                <p className="text-sm font-medium text-gray-900 truncate">
-                  {user?.name || 'User'}
-                </p>
-                <p className="text-xs text-gray-500 truncate capitalize">{user?.role || 'Manager'}</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
       </div>
 
       {/* Collapse Toggle — desktop only */}

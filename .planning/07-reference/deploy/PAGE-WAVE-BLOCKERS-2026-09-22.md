@@ -1,33 +1,40 @@
-# Page-wave blockers — why non-green design PRs cannot merge
+# Page-wave blockers — continuation
 
-Initial read-only census at **2026-09-22 ~16:00Z / ~12:00 ET**. The current
-refresh below supersedes its PR-state claims; the longer blocker analysis remains
-as provenance.
-
-**Measured main tip (refresh 2026-09-23):**
-GitHub `main` = `e2abd7844` (squash merge of #430). #415 is already on main as
-`cc73f9f66`. #434 remains open (do not start its 3-angle audit from this lane).
+**Measured main tip (refresh 2026-09-23, `gh pr view`):**
+GitHub `main` = `ddc5e094b` (squash merge of #455). All six held PRs are merged.
 
 ## Current continuation status
 
-| PR | Current head / state | Current blocker and next action |
+| PR | Merge SHA | State |
 |---|---|---|
-| **#414 get-started** | held — do not merge | Sketch/get-started lane. Founder hold remains. Do not touch. |
-| **#415 admin** | `9af065bf3`; **merged** 2026-09-22 23:53Z as `cc73f9f66` | Done. Audit: `pr-audits/415-9af065bf3.md`. |
-| **#430 ask + authorize** | `77117a109`; **merged** 2026-09-23 00:43Z as `e2abd7844` | Done. Audit: `pr-audits/430-77117a1.md`. |
-| **#434 cellar** | open; required CI not re-audited by this lane | Another lane. Do not merge from here. |
-| **#454 preview** | held — do not merge | Explicit PR-body hold. Do not touch. |
-| **#455 arrival / first proof** | `feat/arrival-first-proof`; open; **do not merge**; flag `mudavym_design_arrival` stays off | Third-pass BUILD. Merged `origin/main` (`e2abd7844`) cleanly. Wired: Places `locationBias` (Use my location) against existing `VITE_GOOGLE_MAPS_API_KEY`; Google sign-in already on `/register` via `VITE_GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_ID` (Register chrome left untouched — publicDesign snapshots). `/house` last-invoice line accepts an optional later drop (filename kept, not extracted, not required). Cellar registers is one later house line (`Open later` → Settings cellar), not a first-run step. R4: crop only if extractor already returned a box; otherwise honest empty. Still stubbed: live per-line extractor boxes (menu scan still returns none); `mudavym_design_arrival` remains off. Do not flip the flag. Do not touch #414 / #454. |
+| **#414 get-started** | `8ec925aa7` | **merged** 2026-09-23 01:59Z. Arrival book stays dark. |
+| **#415 admin** | `cc73f9f66` | **merged** 2026-09-22 23:53Z. |
+| **#430 ask + authorize** | `e2abd7844` | **merged** 2026-09-23 00:43Z. |
+| **#434 cellar** | `92ea9cecc` | **merged** 2026-09-23 01:29Z. |
+| **#454 preview** | `162f25ade` | **merged** 2026-09-23 01:42Z. |
+| **#455 arrival / first proof** | `ddc5e094b` | **merged** 2026-09-23 02:33Z. |
 
-**Quick task:** `.planning/quick/260922-qfq-prepare-prs-415-430-434-without-merging/`
-exists only in worktree branch `quick/260922-qfq-pr-415-430-434-prep`
-(`e3db1dd7c`+), not this shared checkout. PLAN status is `planned`; SUMMARY marks
-#434 Q9 prep complete @ `320d06736` (readTillLines ← pos_checks.items; 3/3 pins).
-#415 prep pushed @ `9af065bf3` (`415-prep.md`); #430 prep @ `7d734e3f5`.
-Founder authorized the serial merge. #415 is complete; #430 must now be updated
-onto `cc73f9f66`, rechecked, audited, and merged before #434 is updated.
+**Live `/get-started` on main:** `PageGate page="arrival"` — flag off → `#455` `GetStarted` (ADR 0213). Flag on → `#414` `Arrival`. `mudavym_design_arrival` is ACTIVE, default `false`, **not** in `LIVE_PAGES`. Do not flip it. `/register` is account-only (`Register`). `/onboarding` still redirects to `/get-started`.
 
-**Get-started post-122:** founder approved all 17 Opus recs as A on 2026-09-22. Locked in [ADR 0213](../../decisions/0213-get-started-is-account-then-house-then-first-proof.md) (OD-134–139, OD-141). Build is PR **#455** `feat/arrival-first-proof` — do **not** merge #414 or #454; do **not** flip `mudavym_design_arrival`. §5 Q2 is superseded by F7=A (one footer line). Third-pass residuals: menu-scan still returns no per-line boxes; flag stays off.
+**Founder word (2026-09-22 21:24 ET):** merge the held/blocked queue. Present only a remaining product/safety fork.
+
+## Preview leftovers vs main (`PREVIEW-NOTES-2026-09-22.md`)
+
+| Item | On `ddc5e094b`? | Next |
+|---|---|---|
+| Calendar blank (no “no reading”) | **Shipped** (#454) — `SkyMark` returns `null` | — |
+| Connections: no webhook URLs / Register IV secrets | **Shipped** (#454) | — |
+| Google / Drive / Gmail grouped by provider | **Shipped** (#454) — grants stay separate | — |
+| Orders receipt side sheet | **Shipped** (#454) — `ReceiptSheet` + “Open the receipt” | Row-click vs extra control is OD-152; do not invent |
+| Settings live design | **Shipped** — `settings` in `LIVE_PAGES` (#419) | — |
+| Wine library stay | **Stay** — cellar live as #434; no further redesign | — |
+| Inventory stay | **Stay** — same command page both gates | — |
+| First-proof crop | **Shipped** (#455) — crop only if extractor returned a box; no fake boxes | Menu scan still often returns no `bbox`; honest empty is correct |
+| Sidebar footer scroll / Aldemir connect | **Missing on main** | `feat/preview-sidebar-account`: Settings/Connections/Help scroll; name card is `/profile` |
+| Smaller logo | **Open** — ADR 0047 24px floor | Do not shrink the mark without an amendment |
+| Smaller account mark | **This leftover PR** | Avatar `h-9` → `h-7` (logo unchanged) |
+
+The longer census below this file's original measurement remains provenance only; the table above is the live merge-train status.
 
 **Three-gate sketch:** `THREE-GATE-OWNED-SKETCH-2026-09-22.md` still gives the
 right authorization boundary and serial order (#415 → rebase/re-audit #430 →
