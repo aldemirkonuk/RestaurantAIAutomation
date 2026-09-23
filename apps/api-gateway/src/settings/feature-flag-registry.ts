@@ -113,7 +113,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_authorize_integration",
     // OFF by default: the Mudavym redesign of `/authorize` (ADR 0144), the
     // consent page an integration's OAuth hand-off lands on. Column added by
-    // 20260922200200.
+    // 20260922220200.
     defaultValue: false,
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:171",
   },

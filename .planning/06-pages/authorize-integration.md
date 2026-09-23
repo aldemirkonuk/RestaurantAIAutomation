@@ -136,7 +136,7 @@ not restated.
 - `apps/web/src/pages/authorize-integration/AuthorizeShell.tsx` — [ADDED 2026-09-19] the signed-in-capable frame both of the above render through, replacing `PublicShell`; see the protocol note below
 - `apps/web/src/pages/authorize-integration/consent-browser.ts` — the tab-held proof (`sessionStorage`, never the delivery secret)
 - `apps/api-gateway/src/integrations/integration-consent.service.ts`, `integrations-oauth.service.ts`, `integrations-oauth.controller.ts`
-- `supabase/migrations/20260922200100_integration_consent_receipts.sql`, `20260922200200_mudavym_design_flag_authorize.sql`
+- `supabase/migrations/20260922220100_integration_consent_receipts.sql`, `20260922220200_mudavym_design_flag_authorize.sql`
 
 **Protocol, in sequence:**
 1. **Hold to seal** — the tab mints a 256-bit proof (kept in `sessionStorage`, never sent) and a request id; the server issues a challenge over the exact disclosure words, redeems it once the hold completes, and mints a single-use `integration_oauth_states` row bound to the user, house, browser-proof hash, and a receipt (`integration_consent_receipts`, append-only — `service_role` INSERT/SELECT only).

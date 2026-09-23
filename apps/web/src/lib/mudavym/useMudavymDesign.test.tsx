@@ -107,7 +107,7 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
   const HELD_BACK = ['cellar', 'recommendations', 'receiving', 'admin', 'shell'] as const;
   // Enrolled AFTER the 2026-09-17 go-live and not part of it: the /authorize
   // consent page (ADR 0144), flag-gated and OFF by default (migration
-  // 20260922200200). Making it live is a separate founder call.
+  // 20260922220200). Making it live is a separate founder call.
   const ENROLLED_AFTER_GO_LIVE = ['authorize_integration'] as const;
 
   it('is exactly MUDAVYM_PAGES minus the five held-back pages and the pages enrolled after go-live', () => {

@@ -187,7 +187,7 @@ each return page reads the outcome."*
   claiming the parked payload atomically (`consumed_at IS NULL`) before the
   PKCE-verified token exchange runs (`completeCallback`/`consumeBrowserState`).
 - PKCE S256 is used on both legs (`buildProviderUrl` / `exchangeCode`).
-- The receipt (`integration_consent_receipts`, migration `20260922200100`) is
+- The receipt (`integration_consent_receipts`, migration `20260922220100`) is
   append-only — `service_role` INSERT/SELECT only, no UPDATE/DELETE grantable
   to anyone, asserted by a DO block at the end of its own migration — and the
   connection row names it (`consent_receipt_id`).
@@ -210,7 +210,7 @@ the sealer as owner; `assertConsentMembership` checks the sealer, who is a
 genuine member, so it would have passed.
 
 The second fix round (2026-09-17) closed this with a second, independent
-secret: `browser_delivery_secret_hash` (migration `20260922200100`, column
+secret: `browser_delivery_secret_hash` (migration `20260922220100`, column
 added this round), minted fresh only when a callback actually parks a result,
 sent ONLY in that redirect's own fragment, and required alongside the sealing
 proof at `/authorize/complete`. The sealer's proof is chosen before any
@@ -241,7 +241,7 @@ can refuse an in-flight grant for as long as a state row stays alive, which
 is `STATE_TTL_MS` (`integrations-oauth.service.ts:35`) — 10 minutes.
 
 **Also fixed this round:**
-- Migrations `20260922200000` and `20260922200100` are now idempotent
+- Migrations `20260922220000` and `20260922220100` are now idempotent
   (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, and the DO-block
   guard idiom from `20260902210000` for the one `ADD CONSTRAINT`, which has no
   `IF NOT EXISTS` form of its own) — a re-application (a repeated
@@ -380,7 +380,7 @@ the first fix round's judge, unchanged this round):**
   **[CONFIRMED 2026-09-19, founder batch 4 — the recorded answer, not a
   quotation: consent receipts delete with the account. The existing
   `ON DELETE CASCADE`
-  (`supabase/migrations/20260922200100_integration_consent_receipts.sql`) is
+  (`supabase/migrations/20260922220100_integration_consent_receipts.sql`) is
   the intended behaviour; no migration change made.]**
 
 **Paraphrase note, added 2026-09-21 (round 5, KL must-fix 6).** Two of the
@@ -404,7 +404,7 @@ he said in those words. Relabelled in place; no answer changes.
 | 2026-09-21 | Aldemir (founder), same round, later — styled by KL lane same day | Asked whether the identity line built earlier this round should stay bare; his words, verbatim: "style it I trust you, do not show me. Just say done, keep it simple, use anthropic's or other tech co's approach." Built as a clean OAuth-consent-style pill (`authorize-shell.css`, new file, tokens only) — an avatar mark on the house seal colour, the person's name, the house granting for. Scoped to the identity line only; who may open `/ask` is untouched (a different record, ADR 0145). See the bracket at the `/authorize` frame bullet above |
 | 2026-09-21 | KL lane, round 5 (fixing a round-4 review's must-fix list) | Corrected a regression the 2026-09-19 row below shipped: `/authorize/:integrationId` had no masthead at all with the design flag on, because `PageGate` never mounts a working `HouseHeader` for a `NO_CHROME` page. `AuthorizeShell`'s `chrome="own"`/`chrome="ambient"` split is deleted; one frame now states who is granting and for which house when `AuthContext` knows one, with no navigation, and falls back to a plain Wordmark signature otherwise. Also relabelled three paraphrases that had been recorded as the founder's verbatim words as the recorded answers they actually are (see the paraphrase note above). Brackets and the code both changed this round — see AuthorizeShell.tsx's own file header for the full correction |
 | 2026-09-19 | Aldemir (founder, batch 4), built same day by KL lane | Answered three of the four residue items: tab-scope binding confirmed as built (no change); consent-receipt cascade confirmed as intended (no change); `/authorize` + `/authorize/complete` given a proper signed-in frame (`AuthorizeShell`) honouring the design flag and the ADR 0133 public-door switch, replacing `PublicShell`. The WineOps-copy item stays open, unscoped. Brackets only, nothing rewritten |
-| 2026-09-17 | KL lane (2 fix rounds) | Built `/authorize` per line 135 and row 16 of ADR 0149; closed D1 (account injection via a one-callback forwarded provider URL) with a second, delivery-secret binding; made migrations `20260922200000`/`200100` idempotent; fixed the error exit's dead-end link. See amendment above |
+| 2026-09-17 | KL lane (2 fix rounds) | Built `/authorize` per line 135 and row 16 of ADR 0149; closed D1 (account injection via a one-callback forwarded provider URL) with a second, delivery-secret binding; made migrations `20260922220000`/`200100` idempotent; fixed the error exit's dead-end link. See amendment above |
 | 2026-09-16 | Aldemir, via ADR 0149 | Rows 11, 13, 16: threshold on folio 2, `/onboarding` redirect, tutorial action boxes for review; "six locked ADRs" corrected to the measured statuses; `/authorize` serves and seals its disclosure and claims, keeps the seal id and words digest, and each return page reads the outcome. Brackets only, nothing rewritten |
 | 2026-09-12 | Aldemir | Four calls: folio 0 is the last invoice and is skippable; `/help` is the FAQ with the house's own state; `/vendor-prices` is the price register with identity as a drawer; `/promotions` is the money page and dismissal is house-wide |
 | 2026-09-12 | — | Created. Answers the one question [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] left open by design |

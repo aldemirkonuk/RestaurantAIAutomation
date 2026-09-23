@@ -20,7 +20,7 @@
  * [2026-09-22, round 6y, KL5 last call: the On and Off lines now say what
  * the founder's "Never (Recommended)" means for this switch -- a question
  * asked while it is off stays out of training even after it is turned back
- * on (asked_while_opted_out, migration 20260922200600). "The questions may
+ * on (asked_while_opted_out, migration 20260922220600). "The questions may
  * be used" alone was broader than the code.]
  *
  * What this register holds, and what it does not:

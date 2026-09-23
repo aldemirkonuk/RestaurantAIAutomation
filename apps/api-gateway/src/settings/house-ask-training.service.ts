@@ -32,7 +32,7 @@ import { SettingsAuditService } from "../settings-audit/settings-audit.service";
  *      files a `system_audit_log` row (`ask_training_opt_out_changed`) naming
  *      the actor and both values, and the receipt comes back as `audited`.
  *   4. **What it governs.** `ask_folio_training_export` leaves out every house
- *      whose row says `opted_out` (20260922200500). Answering the question and
+ *      whose row says `opted_out` (20260922220500). Answering the question and
  *      the folio book are not affected: an opted-out house's asks are still
  *      recorded, because that is how its own answers are kept and audited.
  */

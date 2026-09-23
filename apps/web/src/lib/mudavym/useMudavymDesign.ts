@@ -87,7 +87,7 @@ export const MUDAVYM_PAGES = [
   // PageGate, HouseHeader and PAGE_NAMES all key off.
   'help',
   // ADR 0144 -- the /authorize consent page. Enrolled after the 2026-09-17
-  // go-live, so NOT in LIVE_PAGES: flag-gated, OFF by default (20260922200200).
+  // go-live, so NOT in LIVE_PAGES: flag-gated, OFF by default (20260922220200).
   'authorize_integration',
 ] as const;
 

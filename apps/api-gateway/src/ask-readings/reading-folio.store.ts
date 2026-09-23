@@ -9,7 +9,7 @@ import { Finding, QuestionClass, ReadingArgs, ReadingId } from "./reading.types"
  * founder's option "Rules in code, label rows"). The snapshot half is known
  * before any model call and is inserted with the folio; the model half is
  * written by the one `finish` that moves the folio out of `pending`. A DB
- * trigger (20260922200400) refuses any later change to either half.
+ * trigger (20260922220400) refuses any later change to either half.
  */
 export interface FolioCapture {
   pickClass?: QuestionClass | null;
@@ -92,11 +92,11 @@ export class ReadingFolioStore {
     // A re-ask that names its Reading (previous_folio_id + a page-chosen
     // reading) becomes a pick label on the folio it follows. That label is
     // written by the database in THIS insert's transaction (trigger in
-    // 20260922200400), so it can neither be lost nor half-written.
+    // 20260922220400), so it can neither be lost nor half-written.
     // [2026-09-21, round 6r, "Two labels (Recommended)": the database also
     // derives the re-ask's kind -- `correction` for the same Reading,
     // `follow_up` for a different one -- and the derived label is that kind,
-    // never correct | incorrect (20260922200500). No client field sets it.]
+    // never correct | incorrect (20260922220500). No client field sets it.]
     const { data, error } = await this.db.getClient().from("ask_reading_folios").insert({
       id, restaurant_id: input.restaurantId, user_id: input.userId, request_id: input.requestId,
       correlation_id: id, utterance: input.utterance, origin: input.origin, status: "pending",

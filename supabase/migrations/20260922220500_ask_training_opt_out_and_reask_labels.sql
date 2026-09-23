@@ -105,7 +105,7 @@ create trigger ask_reading_folios_reask_kind_is_derived
   before insert on public.ask_reading_folios
   for each row execute function public.ask_reading_folios_reask_kind_is_derived();
 
--- Written once: reask_kind joins the ask-time snapshot half (20260922200400).
+-- Written once: reask_kind joins the ask-time snapshot half (20260922220400).
 create or replace function public.ask_reading_folios_capture_is_written_once()
 returns trigger
 language plpgsql
@@ -136,12 +136,12 @@ $$;
 revoke all on function public.ask_reading_folios_capture_is_written_once() from public, anon, authenticated;
 
 -- 3. Two labels ------------------------------------------------------------------
--- The re-ask rule of 20260922200400 wrote correct | incorrect: a different
+-- The re-ask rule of 20260922220400 wrote correct | incorrect: a different
 -- Reading said the pick was wrong. A follow-up to a different Reading is a new
 -- question, not a verdict on the last one, so it is now its own label; the
 -- same Reading is a correction, and its gold arguments are the ones the person
 -- re-ran with. A person's own label is unchanged: correct | incorrect.
--- The two CHECKs 20260922200400 wrote without names: the label column's
+-- The two CHECKs 20260922220400 wrote without names: the label column's
 -- (correct | incorrect) and the basis rule (a re-ask label names a gold class).
 do $$
 declare
@@ -161,7 +161,7 @@ begin
 end
 $$;
 -- Existing re-ask labels take the new words once the old CHECKs are gone.
--- 20260922200400 wrote a same-Reading re-ask as `correct` with NO gold
+-- 20260922220400 wrote a same-Reading re-ask as `correct` with NO gold
 -- arguments; a correction carries the arguments the person re-ran with, which
 -- are the re-ask folio's own (`from_folio_id`), so they are read from it here.
 -- Every right-hand side sees the row as it was, so `l.label` is the old label.

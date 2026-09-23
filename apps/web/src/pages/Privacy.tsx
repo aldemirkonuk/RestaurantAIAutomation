@@ -25,7 +25,7 @@ const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@mudavym.com
  * AskTrainingSection.tsx's Settings copy, updated for what round 6y itself
  * decided: a question asked while a house is opted out is never used for
  * training even after the house opts back in (asked_while_opted_out,
- * migration 20260922200600), and — round 6y's other answer, "Text-free until
+ * migration 20260922220600), and — round 6y's other answer, "Text-free until
  * lawyer" — any export carries no question text at all today, not names
  * removed from text that is exported.
 
