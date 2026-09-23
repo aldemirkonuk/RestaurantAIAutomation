@@ -30,6 +30,7 @@ export interface MenuImportReviewItem {
   grapeVariety: string | null
   byGlassPrice: number | null
   bottlePrice: number | null
+  rawText: string | null
   matched: boolean
   needsReview: boolean
 }

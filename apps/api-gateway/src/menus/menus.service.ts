@@ -44,6 +44,7 @@ export interface MenuImportReviewItem {
   grapeVariety: string | null;
   byGlassPrice: number | null;
   bottlePrice: number | null;
+  rawText: string | null;
   matched: boolean;
   needsReview: boolean;
 }
@@ -442,6 +443,7 @@ export class MenusService {
         grapeVariety: r.item.grape_variety ?? null,
         byGlassPrice: r.item.by_glass_price ?? null,
         bottlePrice: r.item.bottle_price ?? null,
+        rawText: r.item.raw_text ?? null,
         matched: r.matched,
         needsReview: !r.matched,
       };
