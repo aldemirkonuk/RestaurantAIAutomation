@@ -13,6 +13,7 @@ Abstract base for autonomous agents with:
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, TypeVar
@@ -37,6 +38,44 @@ from utils.logger import setup_logger, set_log_context
 
 
 T = TypeVar("T")
+
+
+# =============================================================================
+# SUBSCRIPTION QUEUE NAMES
+# =============================================================================
+
+# The characters pamqp, the frame codec under aio-pika/aiormq, accepts in a
+# queue name (pamqp/constants.py DOMAIN_REGEX["queue-name"], pamqp 3.3.0 as
+# pulled in by the aiormq==6.8.0 pin). Queue.Declare, Queue.Bind and
+# Basic.Consume are all checked against this set before a frame leaves the
+# client, and the first character outside it raises
+# ValueError("Invalid value for queue").
+_QUEUE_NAME_CHAR = re.compile(r"[a-zA-Z0-9\-_.:@#,/ ]")
+
+
+def subscription_queue_name(agent_name: str, routing_key: str) -> str:
+    """The durable queue one of an agent's subscriptions is consumed from.
+
+    Dots in the routing key become underscores, as they always have. Every
+    subscription queue this service has declared was named by that rule, and
+    every one is durable. A key that already produced a valid name must keep producing that
+    exact name: a renamed queue leaves the old one bound on the broker, filling
+    with no consumer.
+
+    The old rule stopped at dots. `*`, the topic-exchange wildcard for one
+    word, is a legal binding pattern but not a legal queue-name character.
+    provider_conversation_agent subscribes to `system.provider_conversation.*`,
+    so every boot died in the codec on that subscription and the agent never
+    ran in production. `*` is now written `star`. `#` is left alone: pamqp accepts it, and
+    `queue.state_invariant_enforcer.#` already exists under that name. Any other
+    character the codec refuses is written as `x` plus its hex code point, so
+    no routing key can produce a name the codec rejects.
+    """
+    word = routing_key.replace(".", "_").replace("*", "star")
+    safe = "".join(
+        ch if _QUEUE_NAME_CHAR.fullmatch(ch) else f"x{ord(ch):x}" for ch in word
+    )
+    return f"queue.{agent_name}.{safe}"
 
 
 # =============================================================================
@@ -533,7 +572,7 @@ class BaseAgent(ABC):
         subscriptions = self.get_subscribed_routing_keys()
 
         for exchange_name, routing_key in subscriptions:
-            queue_name = f"queue.{self.agent_name}.{routing_key.replace('.', '_')}"
+            queue_name = subscription_queue_name(self.agent_name, routing_key)
 
             # Declare queue
             await self.message_bus.declare_queue(

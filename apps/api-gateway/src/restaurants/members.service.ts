@@ -2,20 +2,36 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
 import { grantRefusal } from "../auth/role-grant";
+import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
+import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
+import { markMembershipLeft } from "../auth/membership-ended";
+import {
+  ORG_ROW_INSERT_ONLY,
+  orgRoleForHouseGrant,
+} from "../organizations/org-role";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
 
 @Injectable()
 export class MembersService {
   private readonly logger = new Logger(MembersService.name);
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    @Optional()
+    @Inject(forwardRef(() => WebsocketGateway))
+    private readonly websocketGateway?: WebsocketGateway,
+  ) {}
 
   /**
    * PUBLIC because it is the ONE membership check in this module (ADR 0093 A3
@@ -379,7 +395,15 @@ export class MembersService {
         }
       }
 
+      await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
       await this.clearUsersRowHouse(targetUserId, restaurantId);
+      this.websocketGateway?.evictFromHouse(targetUserId, restaurantId);
+      await cancelPendingInvitesFrom(
+        this.databaseService.supabase,
+        targetUserId,
+        restaurantId,
+        this.logger,
+      );
       return;
     }
 
@@ -402,6 +426,7 @@ export class MembersService {
     // person is still a member by their access row, which is the truth; the
     // other order could leave them a member by a `users` row nobody meant to
     // keep (v3.0-TECH-DEBT 44.1j).
+    await this.stopCalendarLinkOfLeaver(actorUserId, restaurantId, targetUserId);
     await this.clearUsersRowHouse(targetUserId, restaurantId);
 
     const { error } = await this.databaseService.supabase
@@ -414,6 +439,47 @@ export class MembersService {
       this.logger.error(`removeMember delete failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to remove member");
     }
+
+    // Removing oneself is leaving (ADR 0164, round 5, item 26): only people
+    // removed by someone else are sent to /no-access.
+    if (selfLeave)
+      await markMembershipLeft(
+        this.databaseService.supabase,
+        targetUserId,
+        restaurantId,
+        this.logger,
+      );
+
+    this.websocketGateway?.evictFromHouse(targetUserId, restaurantId);
+    await cancelPendingInvitesFrom(
+      this.databaseService.supabase,
+      targetUserId,
+      restaurantId,
+      this.logger,
+    );
+  }
+
+  /**
+   * The leaver's calendar link in this house stops for good, audited, before
+   * the first membership write (ADR 0111, 2026-09-21, round 6t: *"Yes, revoke
+   * on leaving (Recommended)"*). A stop that fails throws here, so nothing
+   * about the membership has changed; see `calendar/stop-links-on-leaving.ts`.
+   */
+  private async stopCalendarLinkOfLeaver(
+    actorUserId: string,
+    restaurantId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    await stopCalendarLinksOnLeaving(
+      this.databaseService.supabase,
+      this.logger,
+      {
+        restaurantId,
+        userId: targetUserId,
+        actorUserId,
+        via: "MembersService.removeMember",
+      },
+    );
   }
 
   /**
@@ -528,14 +594,25 @@ export class MembersService {
     }
 
     if (restaurant?.organization_id) {
-      await this.databaseService.supabase.from("organization_members").upsert(
-        {
-          organization_id: restaurant.organization_id,
-          user_id: targetUser.user_id,
-          role,
-        },
-        { onConflict: "organization_id,user_id" },
-      );
+      // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164):
+      // adding someone to a house must not make them an owner of the
+      // organisation, nor stop an existing owner being one.
+      const { error: orgRowError } = await this.databaseService.supabase
+        .from("organization_members")
+        .upsert(
+          {
+            organization_id: restaurant.organization_id,
+            user_id: targetUser.user_id,
+            role: orgRoleForHouseGrant(role),
+          },
+          ORG_ROW_INSERT_ONLY,
+        );
+      if (orgRowError) {
+        this.logger.error(
+          `addMember could not add ${targetUser.user_id} to organisation ` +
+            `${restaurant.organization_id}: ${orgRowError.message}`,
+        );
+      }
     }
   }
 

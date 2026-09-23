@@ -8,6 +8,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -25,20 +26,41 @@ vi.mock('./useCommsNextData', async (importOriginal) => ({
 // the house library; both are proved in their own files, and here they are
 // stubbed so this file stays a test of the PAGE.
 vi.mock('./Compose/ComposeSheet', () => ({
-  ComposeSheet: ({ open }: { open: boolean }) =>
-    open ? <div data-testid="composer" /> : null,
+  ComposeSheet: ({ open, prefill }: { open: boolean; prefill?: { draftId?: string } | null }) =>
+    open ? <div data-testid="composer" data-draft={prefill?.draftId ?? ''} /> : null,
+}));
+
+// ADR 0230 — the drafts list is its own module; only its hook is replaced, so
+// the list's own three states render for real.
+const mockDrafts = vi.hoisted(() => ({
+  current: { drafts: [] as unknown[] | null, failed: false, error: null as string | null, refetch: () => {} },
+}));
+vi.mock('./Compose/HouseDrafts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./Compose/HouseDrafts')>()),
+  useHouseDrafts: () => mockDrafts.current,
 }));
 vi.mock('./TemplateSheet', () => ({
   TemplateSheet: () => <div data-testid="letter-library" />,
+}));
+
+// ADR 0160 §113 Open item 3: senders and strangers live on this page now. The
+// section is proved in `WhoIsWriting.test.tsx`; here it is a stub so this file
+// stays a test of the PAGE and needs no auth context.
+vi.mock('./WhoIsWriting', () => ({
+  default: () => <section aria-label="Who is writing" data-testid="who-is-writing" />,
 }));
 
 import CommunicationsNext from './CommunicationsNext';
 
 // The template sheet persists through `useTemplates` (P1), so the page tree now
 // needs a query client. A fresh one per render keeps the tests independent.
-function render(ui: React.ReactElement) {
+function render(ui: React.ReactElement, at = '/communications') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return rtlRender(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+  return rtlRender(
+    <MemoryRouter initialEntries={[at]}>
+      <QueryClientProvider client={qc}>{ui}</QueryClientProvider>
+    </MemoryRouter>,
+  );
 }
 
 function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
@@ -55,6 +77,7 @@ function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
     draftContent: 'Dear Bodega, could you hold 6 at $18.40?',
     constraintFlags: null,
     rollingSummary: null,
+    relayRefusalReason: null,
     orderNumber: 'PO-014',
     quantity: 6,
     wineName: 'Albariño 2022',
@@ -67,16 +90,11 @@ const noFailures = {
   history: false,
   threads: false,
   drafts: false,
-  schedules: false,
-  gmail: false,
 };
 
 const base = {
   rows: [] as ProcurementHistoryItem[],
-  glance: { threads: 4, draftsPending: 1, sentLast30: 9, schedules: 2 },
-  schedules: [],
-  schedulesKnown: true,
-  schedulesError: null as string | null,
+  glance: { threads: 4, draftsPending: 1, sentLast30: 9 },
   hasData: true,
   isError: false,
   errorMessage: '',
@@ -93,7 +111,7 @@ describe('CommunicationsNext', () => {
   it('shows the glance strip from settled queries and EM for unanswered ones', () => {
     mockData.current = {
       ...base,
-      glance: { threads: null, draftsPending: 1, sentLast30: null, schedules: 2 },
+      glance: { threads: null, draftsPending: 1, sentLast30: null },
     };
     render(<CommunicationsNext />);
     expect(screen.getByText('Threads')).toBeInTheDocument();
@@ -118,6 +136,26 @@ describe('CommunicationsNext', () => {
     expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
   });
 
+  // ADR 0099, founder 2026-09-21: a 400/403/422 relay refusal CLOSES the
+  // draft ("Close, no retry") and the manager sees why on the draft. The chip
+  // says it did not leave; the gateway's sentence is on the chip as a tooltip
+  // AND printed in the opened row, since a tooltip never shows on touch.
+  it('a relay refusal says Not sent and shows the gateway\'s sentence', () => {
+    const said =
+      "gateway refused the send: HTTP 403 — Conversation c1 is not one of this house's conversations. Nothing was sent.";
+    mockData.current = {
+      ...base,
+      rows: [item({ status: 'RELAY_REFUSED', relayRefusalReason: said })],
+    };
+    render(<CommunicationsNext />);
+    const chip = screen.getByText('Not sent');
+    expect(chip).toHaveAttribute('title', said);
+    expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/the relay refused it/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByText(/Not sent — the relay refused it: gateway refused the send: HTTP 403/)).toBeInTheDocument();
+  });
+
   it('APPROVED is approval, never dispatch (the audit blocker case)', () => {
     mockData.current = { ...base, rows: [item({ status: 'APPROVED' })] };
     render(<CommunicationsNext />);
@@ -128,7 +166,7 @@ describe('CommunicationsNext', () => {
   it('a truncated history window renders the sent figure as a floor', () => {
     mockData.current = {
       ...base,
-      glance: { threads: 4, draftsPending: 1, sentLast30: 97, sentLast30Truncated: true, schedules: 2 },
+      glance: { threads: 4, draftsPending: 1, sentLast30: 97, sentLast30Truncated: true },
     };
     render(<CommunicationsNext />);
     expect(screen.getByText('≥97')).toBeInTheDocument();
@@ -198,6 +236,38 @@ describe('CommunicationsNext', () => {
     expect(offenders).toEqual([]);
   });
 
+  // ── ADR 0160 §113, Open item 3: senders and strangers moved here ──────────
+  it('mounts the who-is-writing section (trust and add-vendor moved here from /promotions)', () => {
+    render(<CommunicationsNext />);
+    expect(screen.getByTestId('who-is-writing')).toBeInTheDocument();
+  });
+
+  /**
+   * The sender and stranger reads must key their caches by house. The shared
+   * `usePromotionsQueries` hooks do not (`['sender-reputation']`, `['prospects']`
+   * are bare) and the house switcher does not clear the query cache — so a
+   * value import of them here would show one house's trust ledger under another,
+   * with a "Hold to trust" on it. Types may be imported; hooks may not.
+   */
+  it('no file here imports a HOOK from the un-keyed promotions queries', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const dir = join(process.cwd(), 'src', 'pages', 'communications', 'next');
+    const offenders: string[] = [];
+    const walk = (d: string) => {
+      for (const dirent of readdirSync(d, { withFileTypes: true })) {
+        const full = join(d, dirent.name);
+        if (dirent.isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(dirent.name) && !/\.test\.tsx?$/.test(dirent.name)) {
+          const source = readFileSync(full, 'utf8');
+          if (/import\s+(?!type\b)[^;]*from\s*['"][^'"]*usePromotionsQueries['"]/.test(source)) offenders.push(full);
+        }
+      }
+    };
+    walk(dir);
+    expect(offenders).toEqual([]);
+  });
+
   it('says a gateway failure in words', () => {
     mockData.current = {
       ...base,
@@ -211,46 +281,26 @@ describe('CommunicationsNext', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('could not be reached');
   });
 
-  // ── P3: a permanent failure is not latency ────────────────────────────────
-  it('a failed schedule list is said as a failure, never as "hasn\'t answered yet"', () => {
-    mockData.current = {
-      ...base,
-      glance: { ...base.glance, schedules: null },
-      schedulesKnown: false,
-      schedulesError: 'Request failed with status code 500',
-      failed: { ...noFailures, schedules: true },
-      failedSources: ['the report schedules'],
-    };
+  // ── ADR 0083, amended 2026-09-25 (founder: "amend ADR 0083") ─────────────
+  // The house page names the three sources it owns. The report schedules (a
+  // table no migration creates) and the Gmail watch (deployment plumbing, now
+  // on the admin desk) are not on it, so neither can raise its banner.
+  it('does not render the schedules card, the schedules figure or the Gmail watch line', () => {
     render(<CommunicationsNext />);
-    expect(
-      screen.getByText(/could not be loaded, so this list is not a record of what exists/i),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/hasn’t answered yet/)).not.toBeInTheDocument();
-  });
-
-  it('an unanswered schedule list still says it has not answered', () => {
-    mockData.current = {
-      ...base,
-      glance: { ...base.glance, schedules: null },
-      schedulesKnown: false,
-      schedulesError: null,
-    };
-    render(<CommunicationsNext />);
-    expect(screen.getByText(/hasn’t answered yet/)).toBeInTheDocument();
-    expect(screen.queryByText(/could not be loaded/i)).not.toBeInTheDocument();
-  });
-
-  it('an empty schedule list is not confused with a failed one', () => {
-    mockData.current = { ...base, glance: { ...base.glance, schedules: 0 }, schedules: [] };
-    render(<CommunicationsNext />);
-    expect(screen.getByText('No reports are scheduled.')).toBeInTheDocument();
+    expect(screen.queryByText(/Report schedules/i)).toBeNull();
+    expect(screen.queryByText(/Scheduled reports/i)).toBeNull();
+    expect(screen.queryByText(/Saved schedules could not be loaded/i)).toBeNull();
+    expect(screen.queryByText(/Gmail inbound watch/i)).toBeNull();
+    expect(screen.queryByText(/NOT configured/i)).toBeNull();
+    // healthy owned sources: no banner at all
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   // ── P4: every figure can say it failed, not only the history ──────────────
   it('a failed figure is distinguishable from an unanswered one', () => {
     mockData.current = {
       ...base,
-      glance: { threads: null, draftsPending: null, sentLast30: 9, schedules: 2 },
+      glance: { threads: null, draftsPending: null, sentLast30: 9 },
       failed: { ...noFailures, threads: true },
       failedSources: ['the thread index'],
     };
@@ -261,18 +311,17 @@ describe('CommunicationsNext', () => {
     expect(screen.queryByLabelText(/Drafts waiting: could not be loaded/i)).toBeNull();
   });
 
-  it('the banner names every failed source, not only the conversation book', () => {
+  it('the banner names every failed owned source, not only the conversation book', () => {
     mockData.current = {
       ...base,
-      glance: { threads: null, draftsPending: 1, sentLast30: 9, schedules: null },
-      failed: { ...noFailures, threads: true, schedules: true, gmail: true },
-      failedSources: ['the thread index', 'the report schedules', 'the Gmail watch status'],
+      glance: { threads: null, draftsPending: null, sentLast30: 9 },
+      failed: { ...noFailures, threads: true, drafts: true },
+      failedSources: ['the thread index', 'the drafts awaiting action'],
     };
     render(<CommunicationsNext />);
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent('the thread index');
-    expect(alert).toHaveTextContent('the report schedules');
-    expect(alert).toHaveTextContent('the Gmail watch status');
+    expect(alert).toHaveTextContent('the drafts awaiting action');
     // and the retry is reachable when something other than the history failed
     expect(screen.getByText('Try again')).toBeInTheDocument();
   });
@@ -327,5 +376,57 @@ describe('CommunicationsNext', () => {
     expect(screen.getByText('no status recorded')).toBeInTheDocument();
     expect(screen.queryByText(/^Sent$/)).toBeNull();
     expect(screen.queryByText('AI draft · not sent')).toBeNull();
+  });
+
+  it('a house draft in the book is "Drafted · not sent", never sent (ADR 0230)', () => {
+    mockData.current = { ...base, rows: [item({ status: 'HOUSE_DRAFT', emailType: 'HOUSE_LETTER' })] };
+    render(<CommunicationsNext />);
+    expect(screen.getByText('Drafted · not sent')).toBeInTheDocument();
+    expect(screen.queryByText(/^Sent$/)).toBeNull();
+    expect(screen.queryByText('AI draft · not sent')).toBeNull();
+  });
+});
+
+describe('drafted letters (ADR 0230)', () => {
+  const DRAFT = {
+    id: 'D1',
+    providerId: 'p1',
+    providerName: 'Bodega Álvaro',
+    orderId: null,
+    subject: 'Credit request — invoice INV-77',
+    to: 'orders@bodega.example',
+    category: 'invoice_mismatch',
+    creditId: 'c1',
+    body: 'We are asking for a credit.',
+    createdAt: '2026-09-25T09:00:00Z',
+  };
+  beforeEach(() => {
+    mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
+  });
+
+  it('lists a waiting draft and opens it in the composer', () => {
+    mockDrafts.current = { ...mockDrafts.current, drafts: [DRAFT] };
+    render(<CommunicationsNext />);
+    fireEvent.click(screen.getByText('Credit request — invoice INV-77'));
+    expect(screen.getByTestId('composer').getAttribute('data-draft')).toBe('D1');
+  });
+
+  it("the credit's link opens its draft", () => {
+    mockDrafts.current = { ...mockDrafts.current, drafts: [DRAFT] };
+    render(<CommunicationsNext />, '/communications?draft=D1');
+    expect(screen.getByTestId('composer').getAttribute('data-draft')).toBe('D1');
+  });
+
+  it('a link to a letter that is no longer a draft says so', () => {
+    render(<CommunicationsNext />, '/communications?draft=D1');
+    expect(screen.queryByTestId('composer')).toBeNull();
+    expect(screen.getByText(/no longer a draft/)).toBeInTheDocument();
+  });
+
+  it('a failed drafts read is unknown, not none', () => {
+    mockDrafts.current = { drafts: null, failed: true, error: 'The drafts could not be read (boom).', refetch: () => {} };
+    render(<CommunicationsNext />);
+    expect(screen.getByText(/The drafts could not be read \(boom\)\. Whether any letter is waiting is unknown, not none\./)).toBeInTheDocument();
+    expect(screen.queryByText('No drafted letters are waiting.')).toBeNull();
   });
 });

@@ -1,12 +1,19 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
+import { markMembershipLeft } from "../auth/membership-ended";
 import { recordAccessChange } from "./access-audit";
+import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
 import {
   ChannelPreferences,
   loadChannelOptOuts,
@@ -34,7 +41,12 @@ type Role = "owner" | "manager" | "staff";
 export class TeamService {
   private readonly logger = new Logger(TeamService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    @Optional()
+    @Inject(forwardRef(() => WebsocketGateway))
+    private readonly websocketGateway?: WebsocketGateway,
+  ) {}
 
   private get sb() {
     return this.db.supabase;
@@ -107,8 +119,11 @@ export class TeamService {
    * `broadcast-preferences.ts` for why the rule is restated rather than
    * imported from the resolver.
    */
-  async channelOptOuts(userIds: string[]): Promise<ChannelPreferences | null> {
-    return loadChannelOptOuts(this.sb, userIds);
+  async channelOptOuts(
+    userIds: string[],
+    restaurantId: string,
+  ): Promise<ChannelPreferences | null> {
+    return loadChannelOptOuts(this.sb, userIds, restaurantId);
   }
 
   // ── Members ────────────────────────────────────────────────────────────
@@ -543,6 +558,17 @@ export class TeamService {
         }
       }
 
+      // Their calendar link in this house stops for good, audited, before the
+      // first membership write (ADR 0111, 2026-09-21, round 6t: "Yes, revoke
+      // on leaving (Recommended)"). A stop that fails throws here, so nothing
+      // about the membership has changed (`calendar/stop-links-on-leaving.ts`).
+      await stopCalendarLinksOnLeaving(this.sb, this.logger, {
+        restaurantId,
+        userId: member.user_id,
+        actorUserId: userId,
+        via: "TeamService.deleteMember",
+      });
+
       // The `users` row stops naming this house (only this house) before the
       // access row goes; the reverse order could leave the person a member by
       // a `users` row nobody meant to keep (v3.0-TECH-DEBT 44.1j).
@@ -575,6 +601,17 @@ export class TeamService {
         throw new InternalServerErrorException("Failed to remove member");
       }
       accessRevoked = true;
+      // A manager deleting their own roster row is leaving (ADR 0164, round
+      // 5, item 26): only people removed by someone else see /no-access.
+      if (member.user_id === userId)
+        await markMembershipLeft(this.sb, userId, restaurantId, this.logger);
+      this.websocketGateway?.evictFromHouse(member.user_id, restaurantId);
+      await cancelPendingInvitesFrom(
+        this.sb,
+        member.user_id,
+        restaurantId,
+        this.logger,
+      );
     }
 
     // Remove from team_members roster.

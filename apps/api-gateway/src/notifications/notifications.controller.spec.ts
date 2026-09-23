@@ -423,8 +423,11 @@ describe("NotificationsController", () => {
       const result = await controller.getPreferences(mockQuery, REQ);
 
       expect(result).toEqual(expectedResponse);
+      // The house comes from the same token (ADR 0149 row 39): preferences
+      // are per person PER HOUSE.
       expect(mockNotificationsService.getPreferences).toHaveBeenCalledWith(
         mockQuery.userId,
+        "restaurant-456",
       );
     });
   });
@@ -468,6 +471,7 @@ describe("NotificationsController", () => {
       expect(result).toEqual(expectedResponse);
       expect(mockNotificationsService.updatePreferences).toHaveBeenCalledWith({
         userId: updateDto.userId,
+        restaurantId: "restaurant-456",
         email: updateDto.email,
         push: updateDto.push,
         sms: updateDto.sms,
@@ -494,6 +498,7 @@ describe("NotificationsController", () => {
       expect(mockNotificationsService.updatePreferences).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: mockQuery.userId,
+          restaurantId: "restaurant-456",
         }),
       );
     });

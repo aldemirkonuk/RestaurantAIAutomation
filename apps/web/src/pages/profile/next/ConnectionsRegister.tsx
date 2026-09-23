@@ -282,7 +282,7 @@ export function ConnectionsRegister({
                       </ul>
                     )}
                     {w.notRequested.length > 0 && (
-                      <p style={{ margin: '8px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>
+                      <p style={{ margin: '8px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>
                         Never asked for: {w.notRequested.join('; ')}.
                       </p>
                     )}

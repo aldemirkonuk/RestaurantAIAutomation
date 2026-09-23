@@ -624,6 +624,14 @@ export class MenusService {
    * against the caller's own. `callerRestaurantId` is optional only so a
    * legacy call site missing it is refused loudly (`ForbiddenException`)
    * rather than silently — never so the check can be skipped.
+   *
+   * 2026-09-25 (PR #446, merged over #434): the house is now part of the
+   * lookup itself, and another house's menu id is the SAME 404 as a missing
+   * one (ADR 0147: a row that is not the caller's is a 404). #434 answered it
+   * 403 "does not belong to the caller's restaurant", which told any
+   * signed-in caller that the id is a real menu. A failed read is an error
+   * (500), no longer folded into "not found". A session naming no house stays
+   * a 403, the refusal ADR 0193 item 6 gives the sibling PATCH route.
    */
   async addMenuItem(
     dto: AddMenuItemDto,
@@ -635,20 +643,23 @@ export class MenusService {
     // is an owner's or a manager's act (founder, 2026-09-21, answer 1).
     callerMayPrice = false,
   ): Promise<MenuImportReviewItem> {
+    if (!callerRestaurantId) {
+      throw new ForbiddenException(
+        "This session is not attached to a restaurant, so no line can be added to a menu.",
+      );
+    }
     const { data: menu, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
       .select("id, restaurant_id, status")
       .eq("id", dto.menuId)
+      .eq("restaurant_id", callerRestaurantId)
       .maybeSingle();
 
-    if (menuErr || !menu) {
-      throw new NotFoundException("Menu not found");
+    if (menuErr) {
+      throw new Error(`Could not read the menu ${dto.menuId}: ${menuErr.message}`);
     }
-
-    if (!callerRestaurantId || menu.restaurant_id !== callerRestaurantId) {
-      throw new ForbiddenException(
-        "This menu does not belong to the caller's restaurant",
-      );
+    if (!menu || menu.restaurant_id !== callerRestaurantId) {
+      throw new NotFoundException("Menu not found");
     }
 
     const isCurrent = menu.status === "active";
@@ -688,7 +699,8 @@ export class MenusService {
         status: "flagged",
         review_notes: "Manually added during review",
       })
-      .eq("id", reviewItem.menuItemId);
+      .eq("id", reviewItem.menuItemId)
+      .eq("restaurant_id", callerRestaurantId);
 
     if (reviewItem.submissionId) {
       await this.dbService.supabase.from("override_events").insert({
@@ -733,10 +745,13 @@ export class MenusService {
       throw new NotFoundException("No menu item of this restaurant");
     }
 
+    // The house again on the write, not only on the read above: the write is
+    // what must never land on another house's row.
     const { error: writeErr } = await this.dbService.supabase
       .from("menu_items")
       .update({ status: "discarded" })
-      .eq("id", menuItemId);
+      .eq("id", menuItemId)
+      .eq("restaurant_id", restaurantId);
 
     if (writeErr) {
       throw new Error(`The item was not discarded: ${writeErr.message}`);
@@ -953,6 +968,50 @@ export class MenusService {
       status: menu.status,
       items,
     };
+  }
+
+  /**
+   * The house's CURRENT menu(s) and every live line on them — the set
+   * `/promotions`' "On my menu" rung reads (founder item 36; research-filters
+   * adversarial pass F1/F2). Only `status = 'active'` versions: a draft (read,
+   * never chosen) or an archived menu (current once) is not "on my menu".
+   * Production can hold more than one active menu for a house (ADR 0193's
+   * migration adds no unique index), so this TOLERATES several and returns the
+   * union — `getMenu`'s `.maybeSingle()` would throw there — and says so in
+   * the log. Every line is read through `readLines` (keyset-paged; discarded
+   * lines excluded), so a list past PostgREST's 1000-row stop is read whole.
+   * `readAt` is when the menu became current, else when it was read, else its
+   * own date — never a draft's `created_at` (F8).
+   */
+  async readCurrentMenus(restaurantId: string): Promise<{
+    menus: Array<{ menuId: string; name: string | null; readAt: string | null }>;
+    lines: Array<Record<string, unknown> & { menu_id: string }>;
+  }> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, name, made_current_at, extracted_at, menu_date")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active");
+    if (error) throw new Error(`The current menu (restaurant_menus) could not be read: ${error.message}`);
+    const actives = (data ?? []) as Array<{
+      id: string;
+      name: string | null;
+      made_current_at: string | null;
+      extracted_at: string | null;
+      menu_date: string | null;
+    }>;
+    if (actives.length > 1) {
+      this.logger.warn(
+        `Restaurant ${restaurantId} has ${actives.length} active menus; reading their lines as one union`,
+      );
+    }
+    const menus: Array<{ menuId: string; name: string | null; readAt: string | null }> = [];
+    const lines: Array<Record<string, unknown> & { menu_id: string }> = [];
+    for (const m of actives) {
+      menus.push({ menuId: m.id, name: m.name ?? null, readAt: m.made_current_at ?? m.extracted_at ?? m.menu_date ?? null });
+      for (const line of await this.readLines(m.id, restaurantId)) lines.push({ ...line, menu_id: m.id });
+    }
+    return { menus, lines };
   }
 
   /**

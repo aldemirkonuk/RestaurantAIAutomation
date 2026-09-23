@@ -251,6 +251,8 @@ describe("priceTrend", () => {
     expect(t.previous).toBeCloseTo(20, 6);
     expect(t.pctChange).toBeCloseTo(0.1, 6);
     expect(t.note).toMatch(/up 10\.0%/i);
+    expect(t.currentCount).toBe(2);
+    expect(t.previousCount).toBe(2);
   });
 
   it("declines to invent a change with no prior window", () => {
@@ -259,6 +261,8 @@ describe("priceTrend", () => {
     expect(t.previous).toBeNull();
     expect(t.pctChange).toBeNull();
     expect(t.note).toMatch(/cannot be computed/i);
+    expect(t.currentCount).toBe(1);
+    expect(t.previousCount).toBe(0);
   });
 
   it("standardTrends returns the 7/30/90 set", () => {

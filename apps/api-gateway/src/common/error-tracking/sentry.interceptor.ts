@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import { Observable, throwError } from "rxjs";
 import { catchError } from "rxjs/operators";
-import { SentryService } from "./sentry.service";
+import { SentryService, scrubUrl } from "./sentry.service";
 
 /**
  * Sentry Interceptor
@@ -40,7 +40,9 @@ export class SentryInterceptor implements NestInterceptor {
         // an email nested inside a `query` object or embedded in a URL.
         const request = context.switchToHttp().getRequest();
         const requestContext = {
-          url: String(request.url ?? "").split("?")[0],
+          // scrubUrl, not just a `?` cut: the query was already dropped here,
+          // but a path-borne credential (/calendar/feed/<token>.ics) was not.
+          url: scrubUrl(String(request.url ?? "")),
           method: request.method,
           paramKeys: Object.keys(request.params ?? {}),
           queryKeys: Object.keys(request.query ?? {}),

@@ -80,12 +80,12 @@ html .mudavym.mdv-auth select option {
   background: var(--paper-0) !important;
 }
 
-/* The placeholder sits back the way a hint does: ink-3, which measures 4.37:1
-   on paper-0 and 5.09:1 on charcoal paper-0 (authpages-report.md). */
+/* The placeholder sits back the way a hint does: ink-4, which measures 6.36:1
+   on paper-0 and 7.36:1 on charcoal paper-0. */
 html .mudavym.mdv-auth input::placeholder,
 html .mudavym.mdv-auth textarea::placeholder {
-  color: var(--ink-3) !important;
-  -webkit-text-fill-color: var(--ink-3) !important;
+  color: var(--ink-4) !important;
+  -webkit-text-fill-color: var(--ink-4) !important;
 }
 
 /* The auth page root paints its own ground from the house tokens, so the

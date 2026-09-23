@@ -14,6 +14,7 @@ import { BrandMark } from '../brand/BrandMark'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
 import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import { HouseShell } from '../mudavym/HouseShell'
+import { DataTermsSignInGate } from '../settings/DataTermsSignInGate'
 import '../mudavym/sheet.css'
 
 interface DashboardLayoutProps {
@@ -30,8 +31,26 @@ interface DashboardLayoutProps {
  * four doors). Off, the legacy layout below renders exactly as it always has,
  * including while the flag check is in flight: the gate never flashes the new
  * shell at someone who is not meant to see it (useMudavymDesign.ts).
+ * [2026-09-25: `shell` is in `LIVE_PAGES` (ADR 0149 row 36's bracket, founder
+ * Q2/Q4 of 2026-09-22), so the gate is on for every house on the first render
+ * with no flag read; the legacy layout stays mounted below, reachable only
+ * through the browser override `mudavym.design.shell = 0`.]
  */
 export function DashboardLayout({ children }: DashboardLayoutProps) {
+  return (
+    <>
+      <ShellByGate>{children}</ShellByGate>
+      {/* ADR 0207 round 5 (question 19) — every owner, at their next
+          sign-in, meets the house's data-and-privacy terms. Mounted here,
+          outside both shells, so the Mudavym shell and the legacy layout
+          both carry it; the sheet is portalled (Panel), so its position is
+          only about mounting once per authenticated layout. */}
+      <DataTermsSignInGate />
+    </>
+  )
+}
+
+function ShellByGate({ children }: DashboardLayoutProps) {
   const shellOn = useMudavymDesign('shell')
   if (shellOn) return <HouseShell>{children}</HouseShell>
   return <LegacyDashboardLayout>{children}</LegacyDashboardLayout>

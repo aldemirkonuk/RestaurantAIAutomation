@@ -23,7 +23,7 @@ import { ToolPayload } from "./mcp-server.types";
  *
  * The cost, stated: these tools inherit their service's posture exactly,
  * including its defects. `getStored` swallows its own read error and returns
- * `[]` (`analytics/insights/insight-generator.service.ts:299-308`), so
+ * `[]` (`queryStored()` in `analytics/insights/insight-generator.service.ts`), so
  * `insights.list` CANNOT tell "nothing computed" from "the read failed". That
  * is said in the result rather than hidden by it — see `insights`.
  *
@@ -196,7 +196,7 @@ export class McpToolReadersService {
         value: null,
         reason:
           "No stored insights came back. This reader cannot tell 'none have been computed' from 'the read failed': the generator logs its own error and returns an empty list " +
-          "(analytics/insights/insight-generator.service.ts:299-308). Recomputing would spend, and this server does not spend on a read — ask on /recommendations in Mudavym.",
+          "(queryStored() in analytics/insights/insight-generator.service.ts). Recomputing would spend, and this server does not spend on a read — ask on /recommendations in Mudavym.",
         provenance: {
           readAt,
           rows: 0,
@@ -260,6 +260,12 @@ export class McpToolReadersService {
     // correlation-id lookup as a surface yet — that is a feature-scope
     // choice, not the security boundary. The house still comes from the
     // credential row and from nowhere else (ADR 0132).
+    //
+    // No `role` is passed either: a key is the house's, not a person's, so
+    // there is no reader's role to forward. `getTimeline` reads an omitted
+    // role as staff, so this tool and the day-book resource withhold a
+    // colleague's Away being set or ended (ADR 0218 round 4) from every key.
+    // Whether an assistant's key should read them is not ruled; see ADR 0218.
     const result = await this.timeline.getTimeline(restaurantId, {
       ...(args.limit ? { limit: Math.min(200, Math.max(1, args.limit)) } : {}),
     });

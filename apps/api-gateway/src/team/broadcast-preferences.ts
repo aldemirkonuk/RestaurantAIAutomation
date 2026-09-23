@@ -109,6 +109,7 @@ export function channelAllowed(prefs: any, channel: BroadcastChannel): boolean {
 export async function loadChannelOptOuts(
   sb: any,
   userIds: string[],
+  restaurantId: string,
 ): Promise<ChannelPreferences | null> {
   const result: ChannelPreferences = {
     optedOut: {
@@ -119,9 +120,13 @@ export async function loadChannelOptOuts(
   };
   if (!userIds.length) return result;
 
+  // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since ADR
+  // 0149 row 39 -- a broadcast to house A must not read a member's opt-outs
+  // from house B, which an unscoped `.in("user_id", ...)` did.
   const { data, error } = await sb
     .from("notification_preferences")
     .select("user_id, email_enabled, sms_enabled, push_enabled")
+    .eq("restaurant_id", restaurantId)
     .in("user_id", userIds);
 
   if (error) return null;

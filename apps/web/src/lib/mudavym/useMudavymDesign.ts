@@ -78,12 +78,15 @@ export const MUDAVYM_PAGES = [
   // until this one is turned on. Held back from LIVE_PAGES.
   'arrival',
   // ADR 0143: one desk and one switch, including the old health bookmark.
+  // [2026-09-25: live for every house in code — see LIVE_PAGES below.]
   'admin',
   // Not a page: the app SHELL (sketch 119 direction D, the founder's pick of
   // 2026-09-21; ADR 0149 row 5). `DashboardLayout` reads this gate and renders
   // `HouseShell` — rooms rail, house header, counter, the phone's four doors —
   // around whatever page is routed, legacy or rebuilt. Off, the legacy
   // Sidebar layout renders byte-for-byte. Column added by 20260921114300.
+  // [2026-09-25: live for every house in code — see LIVE_PAGES below; "off"
+  // is now reachable only through the browser's QA override.]
   'shell',
   // ADR 0160 §111 / ADR 0149 row 52 (2026-09-21). `/help` resolves on for
   // every house in code — see LIVE_PAGES below — so it carries no
@@ -98,7 +101,22 @@ export const MUDAVYM_PAGES = [
   'menu',
   // ADR 0144 -- the /authorize consent page. Enrolled after the 2026-09-17
   // go-live, so NOT in LIVE_PAGES: flag-gated, OFF by default (20260922220200).
+  // [2026-09-25: superseded — now in LIVE_PAGES, live for every house in
+  // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
+  // ADR 0160 §113 / ADR 0165 (2026-09-25). `/promotions`, sketch 113
+  // direction B with C's density. Held back from LIVE_PAGES: flag-gated on
+  // `mudavym_design_promotions`, OFF by default (20261015000000), `legacy`
+  // is today's three-tab Promotions page, unchanged. Dark until the founder
+  // turns it on — the two drawings ADR 0160 still owes (the bundle shape,
+  // B's sized boxes at C's 10+ density) are sketch 124, not built.
+  'promotions',
+  // ADR 0160 §112 (/vendor-prices). Flag-gated, OFF by default, NOT in
+  // LIVE_PAGES — the founder flips it per house (column: 20261022000000).
+  'vendor_prices',
+  // ADR 0145 `/ask` (2026-09-25 amendment): live in code from day one (Q2); no
+  // column exists. `legacy` is the retired /sommelier chat, until the cutover.
+  'ask',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
@@ -111,16 +129,45 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * which IS live. `settings` joined 2026-09-19 after its sketch review cleared
  * (ADR 0160 "109 — settings · A, the interview"; PR #419) — same code-side
  * always-on as the original sixteen, still no database write. `help` joined
- * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. Held back, still
- * flag-gated: `recommendations`, `receiving`, `admin`, `shell`, and `arrival`
- * (the /get-started book; OFF until deliberately flipped).
- * `cellar` and `menu` go live on this merge (prior cellar ruling).
+ * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. `cellar` and `menu`
+ * joined with the cellar lane's merge (prior cellar ruling).
  *
- * `MUDAVYM_PAGES.length` is 26 (`authorize_integration` from #430 stays
- * flag-gated); this is deliberately not "the rest" spelled
+ * [2026-09-25, ADR 0149 row 36's bracket: `shell`, `admin` and
+ * `authorize_integration` joined, on the founder's 2026-09-22 page-gap answers
+ * Q2 ("I want all locked pages to be live (production)") and Q4 ("turn on for
+ * every house the instant each PR merges — no staged single-house rollout").
+ * Before this, a 2026-09-25 production read found `shell` and `admin` ON for
+ * all 14 existing houses, but a house created later got the legacy shell and
+ * admin because both columns default to false; in code it no longer matters
+ * which row a house has, or whether it has one. Their three columns stay,
+ * unread (ADR 0149 never deletes a column).]
+ *
+ * [2026-09-25, ADR 0145's 2026-09-25 amendment: `ask` joined on the same Q2.]
+ *
+ * [2026-09-25, lane W3-recs, ADR 0160 §108's round-5 bracket:
+ * `recommendations` joined — 25 keys, with `ask`. §108 held it dark "pending
+ * sketch 122"; the founder picked sketch 122 direction B and answered its
+ * questions 2-10 the same day, so the same Q2/Q4 rule applies. Its column
+ * stays, unread.]
+ *
+ * [2026-09-26, lane W4-promos-filters, PR #474, ADR 0160 §113's round-6
+ * bracket: `promotions` stays held back, flag-gated on
+ * `mudavym_design_promotions` — dark until the founder turns it on.
+ * `MUDAVYM_PAGES.length` is 28.]
+ *
+ * 24 keys [25 since the first bracket above]. Held back, still flag-gated:
+ * `receiving`, `arrival` (the /get-started book, whose `legacy` slot is
+ * the ADR 0213 plan of record — OFF until deliberately flipped)
+ * [`recommendations` was the third until the first bracket above] and
+ * `promotions` (since the second bracket above).
+ * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.
+ *
+ * [merged 2026-09-27, PR #473 x main: `vendor_prices` (this PR) and `ask`
+ * (ADR 0145 amendment) were independent additions at the same list position;
+ * both are kept, so `MUDAVYM_PAGES.length` moves from 27 to 28.]
  */
 export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'dashboard',
@@ -143,6 +190,11 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'help',
   'cellar',
   'menu',
+  'shell',
+  'admin',
+  'authorize_integration',
+  'ask',
+  'recommendations',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

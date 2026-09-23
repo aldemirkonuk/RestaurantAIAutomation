@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { BadRequestException } from "@nestjs/common";
+import { ForbiddenException } from "@nestjs/common";
 import { ProviderIntelligenceController } from "./provider-intelligence.controller";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
 import { DatabaseService } from "../database/database.service";
@@ -11,6 +11,10 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
  * a real session. Reaching `.eq("restaurant_id", ...)` on a NOT NULL uuid
  * column with that value is a 500 carrying a Postgres cast error, not a
  * stated "no house" refusal. These two routes must refuse before the query.
+ *
+ * 2026-09-25 (PR #416 merge): the refusal is the controller-wide 403 from
+ * `houseOf`, the one every route on this controller gives (ADR 0147, ADR 0171's
+ * no-house shape), not the 400 #391 gave these two alone.
  */
 describe("ProviderIntelligenceController — refuses a tenantless session before querying", () => {
   let controller: ProviderIntelligenceController;
@@ -23,7 +27,10 @@ describe("ProviderIntelligenceController — refuses a tenantless session before
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProviderIntelligenceController],
       providers: [
-        { provide: ProviderIntelligenceService, useValue: mockIntelligenceService },
+        {
+          provide: ProviderIntelligenceService,
+          useValue: mockIntelligenceService,
+        },
         { provide: DatabaseService, useValue: {} },
       ],
     })
@@ -38,10 +45,10 @@ describe("ProviderIntelligenceController — refuses a tenantless session before
   });
 
   describe("getSentimentTrend", () => {
-    it("refuses with a 400 when the session carries no restaurant, never reaching the service", async () => {
+    it("refuses with a 403 when the session carries no restaurant, never reaching the service", async () => {
       await expect(
         controller.getSentimentTrend("prov-1", { restaurantId: "" }, undefined),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(ForbiddenException);
 
       expect(mockIntelligenceService.getSentimentTrend).not.toHaveBeenCalled();
     });
@@ -66,10 +73,10 @@ describe("ProviderIntelligenceController — refuses a tenantless session before
   });
 
   describe("compareProviders", () => {
-    it("refuses with a 400 when the session carries no restaurant, never reaching the service", async () => {
+    it("refuses with a 403 when the session carries no restaurant, never reaching the service", async () => {
       await expect(
         controller.compareProviders({ restaurantId: "" }, undefined),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(ForbiddenException);
 
       expect(mockIntelligenceService.compareProviders).not.toHaveBeenCalled();
     });

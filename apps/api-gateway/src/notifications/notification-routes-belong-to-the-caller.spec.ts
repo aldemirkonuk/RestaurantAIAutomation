@@ -149,6 +149,17 @@ describe("reads answer for the caller's user and house", () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(lowStock.listHeldCrossings).not.toHaveBeenCalled();
   });
+
+  it("[REVERT-FAILS] held low-stock crossings read the TOKEN's id, not the path's spelling", async () => {
+    // HOUSE is all digits, so its upper case is itself; this id has letters.
+    const LETTERED = "abcdef12-3456-4789-8abc-def012345678";
+    const { controller, lowStock } = makeController();
+    await controller.getHeldLowStock(
+      LETTERED.toUpperCase(),
+      req(OWN, LETTERED),
+    );
+    expect(lowStock.listHeldCrossings).toHaveBeenCalledWith(LETTERED);
+  });
 });
 
 describe("writes answer for the caller only", () => {

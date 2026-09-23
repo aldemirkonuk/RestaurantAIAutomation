@@ -45,6 +45,9 @@ export const REGISTERS: SettingsRegister[] = [
   "preferences",
   "currency",
   "carrying-cost",
+  "time-zone",
+  "tone-scoring",
+  "data-terms",
   "target-margin",
   "ask-training",
 ];
@@ -79,6 +82,10 @@ export class SettingsAuditController {
   @ApiResponse({ status: 200, description: "The trail, newest first" })
   async list(
     @CurrentUser("restaurantId") restaurantId: string,
+    // The token's role in the token's house (ADR 0162), never a parameter: it
+    // decides whether ADR 0218's rows about a colleague are read at all
+    // (`readBackActionsFor`, `STAFF_WITHHELD_ACTIONS`).
+    @CurrentUser("role") role: unknown,
     @Query("limit") limit?: string,
     @Query("register") register?: string,
   ): Promise<SettingsAuditReadout> {
@@ -103,7 +110,7 @@ export class SettingsAuditController {
       );
     }
     try {
-      return await this.audit.list(restaurantId, parsed, filter);
+      return await this.audit.list(restaurantId, parsed, filter, role);
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(

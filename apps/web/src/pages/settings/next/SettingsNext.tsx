@@ -94,6 +94,8 @@ import { ThresholdsSection } from './ThresholdsSection';
 import { LedgerSection } from './LedgerSection';
 import { CurrencySection } from './CurrencySection';
 import { CarryingCostSection } from './CarryingCostSection';
+import { TimeZoneSection } from './TimeZoneSection';
+import { MailReadingSection } from './MailReadingSection';
 import { HoursSection } from './HoursSection';
 import { DigestRow } from './DigestRow';
 import { AskTrainingSection } from './AskTrainingSection';
@@ -139,6 +141,8 @@ function renderRegister(id: SectionId, data: SettingsNextData) {
     case 'ledger': return <LedgerSection data={data} />;
     case 'currency': return <CurrencySection data={data} />;
     case 'carrying-cost': return <CarryingCostSection data={data} />;
+    case 'time-zone': return <TimeZoneSection data={data} />;
+    case 'mail-reading': return <MailReadingSection data={data} />;
     default: return null;
   }
 }
@@ -272,8 +276,8 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
             {capitalise(word(live.length))} registers — {keptTally(connectionsOn)}.
           </p>
           <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.6, color: 'var(--ink-4)', margin: '8px 0 0', maxWidth: 660 }}>
-            Four of these registers now record <em>who</em> changed a setting and what it was before — Features,
-            Vendor terms, Approval thresholds and Currency, read back under{' '}
+            Six of these registers now record <em>who</em> changed a setting and what it was before — Features,
+            Vendor terms, Approval thresholds, Currency, Time zone and Mail reading, read back under{' '}
             <button type="button" className="st-focus" onClick={() => scrollToAnchor('a-record')}
               style={{ font: 'inherit', color: 'var(--seal-deep)', background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>
               What changed here

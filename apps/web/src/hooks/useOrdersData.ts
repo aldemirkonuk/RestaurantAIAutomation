@@ -64,7 +64,11 @@ export interface UseOrdersResult {
    */
   mintOrderSeal: (orderId: string) => Promise<string | null>;
   approveOrder: (orderId: string, challenge?: string | null) => Promise<Order>;
-  cancelOrder: (orderId: string, reason?: string) => Promise<Order>;
+  cancelOrder: (
+    orderId: string,
+    reasonCode: 'never_arrived' | 'vendor_cannot_supply' | 'house_decision',
+    reason?: string,
+  ) => Promise<Order>;
   markDelivered: (orderId: string, notes?: string) => Promise<Order>;
 }
 
@@ -93,8 +97,12 @@ export function useOrdersData(options: UseOrdersOptions = {}): UseOrdersResult {
     return approveMutation.mutateAsync({ orderId, challenge: challenge ?? null });
   };
 
-  const cancelOrder = async (orderId: string, reason?: string): Promise<Order> => {
-    return cancelMutation.mutateAsync({ orderId, reason });
+  const cancelOrder = async (
+    orderId: string,
+    reasonCode: 'never_arrived' | 'vendor_cannot_supply' | 'house_decision',
+    reason?: string,
+  ): Promise<Order> => {
+    return cancelMutation.mutateAsync({ orderId, reasonCode, reason });
   };
 
   const markDelivered = async (orderId: string, notes?: string): Promise<Order> => {

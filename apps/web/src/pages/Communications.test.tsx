@@ -37,6 +37,7 @@ function item(over: Partial<ProcurementHistoryItem> = {}): ProcurementHistoryIte
     draftContent: 'Dear Bodega, could you hold 6 at $18.40?',
     constraintFlags: null,
     rollingSummary: null,
+    relayRefusalReason: null,
     orderNumber: 'PO-014',
     quantity: 6,
     wineName: 'Albariño 2022',
@@ -63,12 +64,12 @@ const inbound = () =>
     draftContent: 'Vendor reply number 0',
   });
 
-function renderHistory(items: ProcurementHistoryItem[]) {
+function renderHistory(items: ProcurementHistoryItem[], expandedRowId: string | null = null) {
   return render(
     <ProcurementSendHistory
       items={items}
       isLoading={false}
-      expandedRowId={null}
+      expandedRowId={expandedRowId}
       onExpandRow={vi.fn()}
       // The list filters on `sentAt >= dateFrom`; pin it so the fixture's date
       // cannot age out of the default 30-day window and make this vacuous.
@@ -110,5 +111,20 @@ describe('legacy /communications — the procurement send history', () => {
   it('says an absent status rather than inventing one', () => {
     renderHistory([item({ status: null })]);
     expect(screen.getByText('No status recorded')).toBeInTheDocument();
+  });
+
+  // ADR 0099, founder 2026-09-21: a relay refusal closes the draft, and the
+  // manager sees why. This page is what /communications serves while the
+  // Mudavym design flag is off, so it must say it too — not the raw token.
+  it('names a relay refusal and shows the gateway\'s sentence when opened', () => {
+    const said = 'gateway refused the send: HTTP 422 — A guardrail refused this content. Nothing was sent.';
+    const refused = item({ status: 'RELAY_REFUSED', relayRefusalReason: said });
+    const { unmount } = renderHistory([refused]);
+    expect(screen.getByText('Not sent · refused')).toBeInTheDocument();
+    expect(screen.queryByText('RELAY_REFUSED')).toBeNull();
+    unmount();
+    renderHistory([refused], refused.id);
+    expect(screen.getByText('Not sent — the relay refused it')).toBeInTheDocument();
+    expect(screen.getByText(said)).toBeInTheDocument();
   });
 });
