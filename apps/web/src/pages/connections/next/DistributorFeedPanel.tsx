@@ -328,7 +328,7 @@ export function DistributorFeedPanel({
         title="Hand over a file you already have"
         owner="the house's"
         chips={[{ label: 'Live', tone: 'on' }]}
-        subtitle="EDI 810 invoice or EDI 832 price catalogue · POST /procurement/documents"
+        subtitle="An invoice or a price list you already have"
         why={
           <>
             The same door your invoices go through, not a second one. An{' '}

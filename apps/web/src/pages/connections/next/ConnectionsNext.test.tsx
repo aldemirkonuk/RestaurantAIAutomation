@@ -663,6 +663,9 @@ describe('no operator internals in front of a restaurant user', () => {
       /googleapis\.com/,
       /Set once for every house/,
       /invocation (on|off)/,
+      /POST \/procurement/,
+      /Bearer token/,
+      /\bwebhook\b/i,
     ]) {
       expect(text).not.toMatch(leak);
     }
@@ -1233,11 +1236,11 @@ describe('the collapse — anchors and the acts that moved', () => {
     fireEvent.click(screen.getByRole('button', { name: /declare a server/i }));
     expect(screen.getByRole('button', { name: 'Declare server' })).toBeDisabled();
     expect(
-      screen.getByText(/A name of at least two characters and an http\(s\) endpoint are needed\./),
+      screen.getByText(/A name of at least two characters and the server.s address are needed\./),
     ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'House bridge' } });
-    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://mcp.example.test' } });
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'https://mcp.example.test' } });
     expect(screen.getByRole('button', { name: 'Declare server' })).toBeEnabled();
   });
 
@@ -1259,8 +1262,8 @@ describe('the collapse — anchors and the acts that moved', () => {
     // Disabled AND carrying a reason — a field that accepted a secret the
     // deployment would drop is worse than no field. The gateway's sentence
     // names a key, so the page says it in plain words (founder, 2026-09-22).
-    expect(screen.getByLabelText('Credential')).toBeDisabled();
-    expect(screen.getByText(/Mudavym cannot store a credential yet/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Sign-in')).toBeDisabled();
+    expect(screen.getByText(/Mudavym cannot store a sign-in yet/)).toBeInTheDocument();
     expect(screen.queryByText(/MCP_CONNECTION_SECRET_KEY/)).not.toBeInTheDocument();
   });
 
@@ -1272,9 +1275,9 @@ describe('the collapse — anchors and the acts that moved', () => {
     render(<ConnectionsNext />);
 
     fireEvent.click(screen.getByRole('button', { name: /declare a server/i }));
-    expect(screen.getByLabelText('Credential')).toBeDisabled();
+    expect(screen.getByLabelText('Sign-in')).toBeDisabled();
     expect(
-      screen.getByText(/did not report whether it can store a credential/),
+      screen.getByText(/did not report whether it can store a sign-in/),
     ).toBeInTheDocument();
   });
 
