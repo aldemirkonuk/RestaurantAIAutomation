@@ -149,6 +149,17 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
                 </Link>
               );
             })}
+            {/* ADR 0160 sec110 item 7 — /menu had no way in from the cellar
+                (or anywhere else). This is that link; the route itself is
+                on for every house (LIVE_PAGES). */}
+            <Link
+              to="/menu"
+              className="cl-btn cl-ink cl-focus"
+              data-on={pathname === '/menu'}
+              style={{ textDecoration: 'none', borderLeft: '1px solid var(--paper-2)', paddingLeft: 10, marginLeft: 4 }}
+            >
+              Menu
+            </Link>
           </nav>
         </header>
 

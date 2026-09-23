@@ -257,17 +257,24 @@ export default function AdminPanel() {
           { id: 'rabbitmq', name: 'Message Queue', desc: 'RabbitMQ', status: 'Active', healthy: true },
           { id: 'redis', name: 'Cache', desc: 'Redis', status: 'Running', healthy: true },
         ])
-      } catch {
+      } catch (error) {
+        // A manager without a platform-operator grant reads a 403 from this route too
+        // (OwnerOrPlatformOperatorGuard, the same guard fetchAgentMetrics's catch below
+        // already names) — showing every provider as "Unknown" reads as an outage, when
+        // the real cause is a permission this viewer does not hold (measured: wave-5 IJ
+        // confirm, R5).
+        const status = axios.isAxiosError(error) ? error.response?.status : undefined
+        const label = status === 403 ? 'Permission needed' : 'Unknown'
         setInfraProviders([
-          { id: 'supabase', name: 'Database', desc: 'Supabase PostgreSQL', status: 'Unknown', healthy: false },
-          { id: 'rabbitmq', name: 'Message Queue', desc: 'RabbitMQ', status: 'Unknown', healthy: false },
-          { id: 'redis', name: 'Cache', desc: 'Redis', status: 'Unknown', healthy: false },
-          { id: 'gemini', name: 'AI Engine', desc: 'Gemini Pro', status: 'Unknown', healthy: false },
+          { id: 'supabase', name: 'Database', desc: 'Supabase PostgreSQL', status: label, healthy: false },
+          { id: 'rabbitmq', name: 'Message Queue', desc: 'RabbitMQ', status: label, healthy: false },
+          { id: 'redis', name: 'Cache', desc: 'Redis', status: label, healthy: false },
+          { id: 'gemini', name: 'AI Engine', desc: 'Gemini Pro', status: label, healthy: false },
           {
             id: 'claude',
             name: 'Studio Vision',
             desc: 'Claude API (Haiku / Sonnet — /studio extract)',
-            status: 'Unknown',
+            status: label,
             healthy: false,
           },
         ])
@@ -352,11 +359,13 @@ export default function AdminPanel() {
         console.error('Failed to fetch agent metrics:', error)
         const status = axios.isAxiosError(error) ? error.response?.status : undefined
         setAgentStatusError(
-          status === 401 || status === 403
-            ? 'Sign in again — the gateway rejected this session when proxying agent health.'
-            : status === 404
-              ? 'The api-gateway has no /api/v1/health/agents proxy — it may be running an older build.'
-              : 'Could not reach the orchestrator through the api-gateway. Check that AGENT_ORCHESTRATOR_URL and ADMIN_API_KEY are set on the gateway and that the orchestrator is running.',
+          status === 403
+            ? 'This page needs a house owner, or a platform operator grant — ask an owner to add you.'
+            : status === 401
+              ? 'Sign in again — the gateway rejected this session when proxying agent health.'
+              : status === 404
+                ? 'The api-gateway has no /api/v1/health/agents proxy — it may be running an older build.'
+                : 'Could not reach the orchestrator through the api-gateway. Check that AGENT_ORCHESTRATOR_URL and ADMIN_API_KEY are set on the gateway and that the orchestrator is running.',
         )
         setAgentStatus({})
       } finally {

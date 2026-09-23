@@ -1,6 +1,6 @@
 # 0144 — The book opens on evidence, and three pages are given a job
 
-- **Status:** Locked on four founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 11, 13 and 16: the arrival's threshold, `/onboarding` redirect and tutorial action boxes; a correction to section 3's count of locked records; and the `/authorize` residue. Answered, not built. Each is a bracket at the sentence it touches.]**
+- **Status:** Locked on four founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 11, 13 and 16: the arrival's threshold, `/onboarding` redirect and tutorial action boxes; a correction to section 3's count of locked records; and the `/authorize` residue. Answered, not built. Each is a bracket at the sentence it touches.]** **[2026-09-19, founder batch 4, KL lane — three of the four residue items below answered and two built; see the Review trail and the bracket at each.]** **[2026-09-21, KL lane round 5 — the `/authorize` frame built 2026-09-19 was a regression (no masthead at all on `/authorize/:integrationId` with the flag on); corrected, one frame for both routes, plus three attribution relabels. See the Review trail and the bracket at each.]** **[2026-09-21, same round, later — the founder then styled the identity line that correction built: a clean OAuth-consent-style pill in the house tokens, his words quoted verbatim at the Review trail row and the bracket it points at.]**
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** mudavym, onboarding, folio zero, first evidence, help, vendor-prices, price register, promotions, offers, landed cost, design wave
@@ -148,7 +148,7 @@ the page would stay the least finished surface in the product indefinitely.
   that writer lands, "offered and skipped" cannot be told from "never opened".
   That is the first build task under item 1, not a detail.
   [CORRECTED 2026-09-19: this was never true of the code that shipped —
-  `arrival_record_folio` (`supabase/migrations/20260922190000_arrival_configuration_book.sql:49`)
+  `arrival_record_folio` (`supabase/migrations/20260922231000_arrival_configuration_book.sql:49`)
   already writes `configuration_step_skipped` vs `configuration_folio_recorded`
   by `p_state`, present since the lane's first commit-tree on 2026-09-13. Not
   a build task; a stale sentence.]
@@ -171,10 +171,276 @@ the page would stay the least finished surface in the product indefinitely.
 - Whether any surface other than the sommelier reads the database directly from
   the browser on the anon key. That measurement has still not been run.
 
+## Amendment, 2026-09-17 — what the `/authorize` lane actually built, and the defect a first fix round missed
+
+Two fix rounds on `feat/p1-readout` worktree `wt-fin-KL` built the seal
+ceremony this record specifies at line 135 above, and a second round closed a
+defect the first round's own tests did not cover. Recorded per CLAUDE.md
+§0.4/§4 — this is an amendment to an existing record, not a new document, so
+the retire-to-write rule does not apply.
+
+**Founder's row 16 answer** (ADR 0149's table, quoted verbatim): *"The
+disclosure and every factual claim the page makes are served by the gateway
+and sealed; the connection keeps the seal id and words digest as a receipt;
+each return page reads the outcome."*
+
+**What was built, matching the design at line 135 above:**
+- A seal challenge is minted when the hold starts and redeemed once by
+  `POST /integrations/oauth/:integrationId/authorize`
+  (`integration-consent.service.ts`), bound to the integration id, the house,
+  a digest of the exact disclosure words shown, and a browser-proof hash the
+  sealing tab alone holds the preimage of.
+- The provider callback (`GET /integrations/oauth/:provider/callback`,
+  `@Public()` by necessity — the provider calls it, not the user's session)
+  never exchanges a code. It only PARKS an encrypted `{code|error}` payload on
+  the single-use state row and redirects the browser to
+  `/authorize/complete#state=...&request=...&delivery=...` — the `delivery`
+  fragment is the round-2 delivery secret described below; a bullet showing
+  the pre-round-2 shape without it would describe a completed grant that no
+  longer completes
+  (`integrations-oauth.service.ts:handleCallback`).
+- Completion is a second, also-`@Public()` route,
+  `POST /integrations/oauth/complete`, requiring BOTH the tab-held proof and
+  the delivery secret from that same redirect fragment, and
+  claiming the parked payload atomically (`consumed_at IS NULL`) before the
+  PKCE-verified token exchange runs (`completeCallback`/`consumeBrowserState`).
+- PKCE S256 is used on both legs (`buildProviderUrl` / `exchangeCode`).
+- The receipt (`integration_consent_receipts`, migration `20260922220100`) is
+  append-only — `service_role` INSERT/SELECT only, no UPDATE/DELETE grantable
+  to anyone, asserted by a DO block at the end of its own migration — and the
+  connection row names it (`consent_receipt_id`).
+- `IntegrationReturnNotice` reads the outcome on the return page, for both the
+  manager and the non-manager branch (the manager branch was a gap the first
+  fix round closed).
+
+**D1, the defect this amendment exists to record.** The first fix round closed
+only the two-callback race — `poisonState` firing when a SECOND provider
+callback finds nothing left to park. It left open the ONE-callback attack that
+a naive reading of "bound to the browser that sealed it" does not close by
+itself: a dishonest sealer mints her own proof, never clicks Allow, and
+forwards the bare provider URL to someone else. Exactly one callback occurs,
+so the double-callback defence never fires. When the other person clicks
+Allow, their provider code parks under the sealer's state; the sealer — who
+never received that redirect — still holds her own original proof (it was
+never anything the OTHER person had) and can complete with it, binding a
+stranger's provider account into her own house. The connection would record
+the sealer as owner; `assertConsentMembership` checks the sealer, who is a
+genuine member, so it would have passed.
+
+The second fix round (2026-09-17) closed this with a second, independent
+secret: `browser_delivery_secret_hash` (migration `20260922220100`, column
+added this round), minted fresh only when a callback actually parks a result,
+sent ONLY in that redirect's own fragment, and required alongside the sealing
+proof at `/authorize/complete`. The sealer's proof is chosen before any
+redirect exists and can be forwarded; the delivery secret cannot, because it
+does not exist until a real provider round trip completes, and it travels
+only to whichever browser that round trip returns to. Completing now needs
+BOTH, from the SAME browser. A completion attempt holding only one of the two
+POISONS the state (`consumeBrowserState`), so a later, correct-looking retry
+by either party also fails. Proven in `integration-consent.spec.ts`'s describe
+block *"completing a grant needs the delivery secret from THIS callback, not
+just the sealing proof (KL audit D1, round 2)"*: a sealer holding only her
+proof is refused and cannot retry even with the real secret afterward; the
+browser that only received the callback, holding no proof, is refused the
+same way and poisons the state against the sealer too; and a legitimate
+single-browser completion is proven to bind only to the user/house recorded
+when the state was minted, never to anything the completing call supplies —
+the public `IntegrationConsentCompleteDto` carries no user or house field at
+all, by construction.
+
+**Deploy-window consequence of this fix (found by the round-2 confirmer,
+recorded here per CLAUDE.md 0.5 — not a shortcut, but a cost worth naming).**
+A state row parked by a gateway instance running BEFORE this round has no
+`browser_delivery_secret_hash` column value to check; completing it against
+an instance running AFTER this round is refused (missing delivery secret),
+cleanly — nothing is written, no token is exchanged, and the state is left
+unpoisoned so the person can restart the grant. During a rolling deploy this
+can refuse an in-flight grant for as long as a state row stays alive, which
+is `STATE_TTL_MS` (`integrations-oauth.service.ts:35`) — 10 minutes.
+
+**Also fixed this round:**
+- Migrations `20260922220000` and `20260922220100` are now idempotent
+  (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, and the DO-block
+  guard idiom from `20260902210000` for the one `ADD CONSTRAINT`, which has no
+  `IF NOT EXISTS` form of its own) — a re-application (a repeated
+  `supabase db push`, a rebuilt shadow database) is now a no-op rather than a
+  42P07/42701/42710. Proven at runtime, applying each migration twice, in a
+  fresh PGlite build (36/36 checks).
+- `CompleteIntegrationConsent.tsx`'s error exit pointed at `/connections`, a
+  managers-only page; a staff person refused there landed on a page they
+  cannot open. It now points at `/profile`, the same page `PublicShell`'s own
+  `homeHref` already uses.
+
+**Still open, not settled by row 16 or any other ADR 0149 row (carried from
+the first fix round's judge, unchanged this round):**
+- Consent copy still says "WineOps" in three places and one sentence carries
+  raw identifier backticks — a repo-wide rename question, not scoped to this
+  page, since three other lanes' tests pin the exact "WineOps" string today.
+- Tab vs. browser binding: this decision's words say "the browser that sealed
+  it"; the build binds to the TAB (`sessionStorage`), so a second tab of the
+  same browser is refused. The D1 fix above is orthogonal to this question —
+  it is about a second PERSON, not a second tab of one person.
+  **[CONFIRMED 2026-09-19, founder batch 4 — the recorded answer, not a
+  quotation (see the paraphrase note dated 2026-09-21 below the amendment
+  heading): provider grant stays tab-scoped. The build's narrower promise
+  stands as built; no change made.]**
+- `/authorize` and `/authorize/complete` render on `PublicShell`, built for
+  signed-OUT pages, for a signed-IN ceremony; `/authorize/complete` also
+  ignores the house's design flag and the ADR 0133 public-door switch.
+  **[ANSWERED AND BUILT 2026-09-19, founder batch 4, on `/authorize` and
+  `/authorize/complete` — his words, verbatim: "do what's needed, not short
+  term" -> give both pages a proper signed-in frame that honours the design
+  flag and the ADR 0133 public-door switch, instead of `PublicShell`. Built
+  this round as `AuthorizeShell`
+  (`apps/web/src/pages/authorize-integration/AuthorizeShell.tsx`): a house
+  known via `AuthContext` is gated on the per-house flag
+  (`useMudavymDesign('authorize_integration')`, the same flag
+  `/authorize/:integrationId` already carries via `PageGate`); no house known
+  (a lapsed session on the return leg) falls back to the ADR 0133 public-door
+  switch (`usePublicDesign`) rather than defaulting to legacy for an
+  unrelated reason. Flag/switch OFF still renders `PublicShell` unchanged --
+  byte for byte today's page. Flag ON renders a light, signed-in-capable
+  frame that never imports `DashboardLayout` or its sidebar nav, preserving
+  App.tsx's own reason for keeping this ceremony outside it ("a decision
+  point... sidebar navigation... would only offer ways to wander off
+  mid-grant"); `/authorize/:integrationId`'s Next component uses
+  `chrome="ambient"` (content only -- `PageGate` already mounts a
+  `HouseHeader` above it) so the redesign no longer draws two competing
+  signed-in mastheads on one screen, a defect this fix incidentally closes
+  along the way. No founder-reviewed sketch exists for this ceremony's
+  signed-in visual treatment, so no new chrome was invented beyond reusing
+  `PublicShell`'s own tokens and structural classes -- the same
+  delegate-the-shape split ADR 0144 §2 drew for `/help`. Tests:
+  `AuthorizeShell.test.tsx` (12 cases) plus the pre-existing
+  `consent-flow.test.tsx` (8 cases, unmodified, still green).]**
+  **[CORRECTED 2026-09-21 — the sentence above naming `chrome="ambient"` and
+  a `HouseHeader` `PageGate` mounts was FALSE, and it was a regression, not a
+  detail. `authorize_integration` is listed in `NO_CHROME`
+  (`apps/web/src/lib/mudavym/pageNames.ts`) precisely so this ceremony gets
+  no app-wide chrome, and `HouseHeader` returns `null` for any `NO_CHROME`
+  page (`apps/web/src/components/mudavym/HouseHeader.tsx`). So with the
+  design flag ON, `/authorize/:integrationId` had NO masthead at all — no
+  wordmark, no skip link, no exit link — while `/authorize/complete`'s
+  `chrome="own"` frame drew a Wordmark with no identity claim, indistinguishable
+  from `PublicShell`. Confirmed with a DOM probe mounting `PageGate` with the
+  flag on: 1 wordmark and 2 links before this build, 0 and 0 after. Round 5
+  (2026-09-21) fixed this: the `chrome` prop and its two-mode split are
+  deleted. `AuthorizeShell` now has exactly ONE design-ON frame, used
+  unconditionally by both call sites, which additionally states WHO is
+  granting (`AuthContext.user.name`) and FOR WHICH HOUSE (the matching
+  `AuthContext.availableRestaurants` entry) whenever a house is known — no
+  navigation accompanies it, only the shell's pre-existing single exit link —
+  and falls back to the plain Wordmark signature with no identity claim only
+  when no house is known. Tests: `AuthorizeShell.test.tsx` (14 cases,
+  replacing the `chrome="ambient"` describe block with one covering the
+  identity frame) plus `consent-flow.test.tsx` (10 cases — re-measured at 9
+  pre-existing and unmodified, correcting this same bracket's earlier "8"
+  above, plus 1 new: a `PageGate`-mounted regression test proving the exact
+  defect this correction describes, shown failing against the pre-round-5
+  code and passing after). Verified against a real browser too, not only
+  jsdom: a temporary, uncommitted Vite harness mounted the actual
+  `AuthorizeShell.tsx` through Playwright, confirming design OFF renders
+  literally `.mudavym.mdv-pub` (no `mdv-auth-shell` class — real
+  `PublicShell`), design ON with no house renders `.mdv-auth-shell` alone,
+  and design ON with a house renders `.mdv-auth-shell.mdv-auth-shell--identity`
+  with the identity text present and exactly two links (the skip link and
+  the `/profile` exit) — no navigation. `apps/web` `tsc --noEmit` clean.]**
+  **[STYLED 2026-09-21, same round, later — the identity line the correction
+  above built was deliberately left bare, with `AuthorizeShell.tsx`'s own
+  header at the time saying so explicitly: "there is no founder-reviewed
+  sketch for a signed-in treatment of this ceremony". A bare, unstyled
+  line is itself a visual choice, so per CLAUDE.md §0.1 that choice was
+  asked rather than left standing. Founder's answer, verbatim: "style it I
+  trust you, do not show me. Just say done, keep it simple, use anthropic's
+  or other tech co's approach" — recorded direction (this session's
+  paraphrase of what that meant, not a further quotation): a clean consent
+  screen in the house tokens like Anthropic's, Google's or GitHub's OAuth
+  consent — app name, what it can do, who is granting for which house, one
+  primary act, a quiet cancel — and no new sketch to review first. Built as
+  `apps/web/src/pages/authorize-integration/authorize-shell.css`
+  (new file, tokens only — no hex literal, no `prefers-color-scheme` or
+  `[data-theme]` block, no `box-shadow` colour, the same discipline
+  `public-shell.css`'s own header states), imported by `AuthorizeShell.tsx`:
+  the identity line is now a pill (`--paper-1` on `--paper-0`, a hairline
+  `--paper-2` border — the shell's existing plate-and-ground separation, no
+  new shadow) carrying a one-letter, `aria-hidden` avatar mark on the house
+  seal colour (`--seal`), the person's name in `--ink-1`, the house beside
+  it in `--ink-2`. Scoped to the identity line only: the app name (`title`),
+  what the permission allows (`next/AuthorizeIntegrationNext.tsx`'s scopes
+  section) and the primary act / quiet cancel (`HoldToApprove` and the
+  Cancel `.mdv-btn`) already existed and are unchanged. `who may open /ask`
+  is a different record ([[0145-mudavym-answers-out-of-a-reading]]) and is
+  untouched by this answer. Markup and class names
+  (`mdv-auth-shell__identity`, `mdv-auth-shell__person`,
+  `mdv-auth-shell__house`) are unchanged from the round-5 correction above,
+  so no existing test's class or text assertion needed to change; two new
+  elements were added (the avatar mark and a text-wrapping span) with their
+  own new classes. Tests: `AuthorizeShell.test.tsx`'s existing 14 cases pass
+  unmodified (re-run, not re-written); `consent-flow.test.tsx`'s 10 cases
+  likewise. `verify_index.sh` this round: `web_tsc` clean,
+  `AuthorizeShell.test.tsx` 14/14, `consent-flow.test.tsx` 10/10.
+  **Last call, same day:** the pill was first built `inline-flex`, which
+  shares a line box with the inline wordmark before it (`.mdv-pub__mast` is
+  a plain block), so it rendered glued to the wordmark's right side instead
+  of under it. It is now block-level and shrink-wrapped (`display: flex;
+  width: fit-content`), on its own line under the wordmark and centred on
+  the door measure. Checked on a static harness of the real stylesheets
+  (`mudavym.css`, `public-shell.css`, this file) at 800px and 375px, charcoal
+  and paper grounds, no horizontal overflow at 375px — not on the running
+  app. The mark's initial now takes a whole character (`Array.from`, not
+  `charAt(0)`, so a surrogate pair is never split), and one new case in
+  `AuthorizeShell.test.tsx` covers the mark: the trimmed initial,
+  `aria-hidden`, a whole astral character, and no mark when only the house
+  is known — 15 cases.]**
+- `integration_consent_receipts` is `ON DELETE CASCADE` with the user and the
+  house; whether a consent record should outlive the account it was made on
+  is undecided.
+  **[CONFIRMED 2026-09-19, founder batch 4 — the recorded answer, not a
+  quotation: consent receipts delete with the account. The existing
+  `ON DELETE CASCADE`
+  (`supabase/migrations/20260922220100_integration_consent_receipts.sql`) is
+  the intended behaviour; no migration change made.]**
+
+**Paraphrase note, added 2026-09-21 (round 5, KL must-fix 6).** Two of the
+three brackets above previously read "his words: \"...\"" around text the
+founder did not say verbatim. On this ceremony, across the whole 2026-09-19
+session, his only two
+verbatim sentences are quoted in full above: *"do what's needed, not short
+term"* (the frame question) and, on `/ask`'s roles (a different record —
+[[0145-mudavym-answers-out-of-a-reading]]), *"do not give money or sensitive
+incentives like sales etc to the staff, maybe we should exclude staff from
+this equation."* Everything else attributed to him above — "provider grant =
+tab scope OK", "consent receipts = delete with the account", and the
+"/authorize and /authorize/complete:" preamble that used to precede the real
+quote — is this session's own paraphrase of what he confirmed, not something
+he said in those words. Relabelled in place; no answer changes.
+
+## Addendum — 2026-09-22: flyleaf upload, three counts, sketch 115 retired
+
+The founder closed the remaining arrival-guidance forks on 2026-09-22 (recorded
+in `.planning/07-reference/deploy/SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md` from
+`memory/founder-answers-2026-09-22-page-gap.md`):
+
+1. **The flyleaf upload is a strong default, not a hard gate** (closes sketch
+   121 §7.1).
+2. **Keep all three counts** — lines read, lines placed, lines not placed
+   (closes sketch 121 §7.3).
+3. **Sketch 115 is retired** without an A/B/C winner; sketch 121 is the
+   direction. Struck from ADR 0160's open-items list the same day.
+
+How loud the un-evidenced registers should be (sketch 121 §7.2) stays open and
+was not defaulted. Whether the not-placed *lines* (not only their number) are
+returned is OD-140.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-09-22 | Aldemir (founder) | Flyleaf upload is a strong default; keep all three counts; sketch 115 retired in favour of sketch 121. Recorded as the addendum above |
+| 2026-09-21 | Aldemir (founder), same round, later — styled by KL lane same day | Asked whether the identity line built earlier this round should stay bare; his words, verbatim: "style it I trust you, do not show me. Just say done, keep it simple, use anthropic's or other tech co's approach." Built as a clean OAuth-consent-style pill (`authorize-shell.css`, new file, tokens only) — an avatar mark on the house seal colour, the person's name, the house granting for. Scoped to the identity line only; who may open `/ask` is untouched (a different record, ADR 0145). See the bracket at the `/authorize` frame bullet above |
+| 2026-09-21 | KL lane, round 5 (fixing a round-4 review's must-fix list) | Corrected a regression the 2026-09-19 row below shipped: `/authorize/:integrationId` had no masthead at all with the design flag on, because `PageGate` never mounts a working `HouseHeader` for a `NO_CHROME` page. `AuthorizeShell`'s `chrome="own"`/`chrome="ambient"` split is deleted; one frame now states who is granting and for which house when `AuthContext` knows one, with no navigation, and falls back to a plain Wordmark signature otherwise. Also relabelled three paraphrases that had been recorded as the founder's verbatim words as the recorded answers they actually are (see the paraphrase note above). Brackets and the code both changed this round — see AuthorizeShell.tsx's own file header for the full correction |
+| 2026-09-19 | Aldemir (founder, batch 4), built same day by KL lane | Answered three of the four residue items: tab-scope binding confirmed as built (no change); consent-receipt cascade confirmed as intended (no change); `/authorize` + `/authorize/complete` given a proper signed-in frame (`AuthorizeShell`) honouring the design flag and the ADR 0133 public-door switch, replacing `PublicShell`. The WineOps-copy item stays open, unscoped. Brackets only, nothing rewritten |
+| 2026-09-17 | KL lane (2 fix rounds) | Built `/authorize` per line 135 and row 16 of ADR 0149; closed D1 (account injection via a one-callback forwarded provider URL) with a second, delivery-secret binding; made migrations `20260922220000`/`200100` idempotent; fixed the error exit's dead-end link. See amendment above |
 | 2026-09-16 | Aldemir, via ADR 0149 | Rows 11, 13, 16: threshold on folio 2, `/onboarding` redirect, tutorial action boxes for review; "six locked ADRs" corrected to the measured statuses; `/authorize` serves and seals its disclosure and claims, keeps the seal id and words digest, and each return page reads the outcome. Brackets only, nothing rewritten |
 | 2026-09-12 | Aldemir | Four calls: folio 0 is the last invoice and is skippable; `/help` is the FAQ with the house's own state; `/vendor-prices` is the price register with identity as a drawer; `/promotions` is the money page and dismissal is house-wide |
 | 2026-09-12 | — | Created. Answers the one question [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] left open by design |

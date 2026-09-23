@@ -12,7 +12,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-09-04
+updated: 2026-09-19
 links: ["[[PAGE-CONTRACT]]", "[[TIER-MAP]]", "[[orders]]", "[[inventory]]", "[[providers]]"]
 ---
 
@@ -214,6 +214,123 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
 
 - Curation queue: a house's provisional bottle identity is promoted into the library by Mudavym alone; nothing a house does writes to `master_wine_library` (ADR 0124 Q3)
 - Two ways a bottle enters the register: search the recorded LWIN file and confirm a row, or nominate one by hand (which is provisional and curated) (ADR 0124 Q4)
+
+**Fifth pass, 2026-09-17/18 — the founder's sketch review (ADR 0160 sec110,
+`0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes.md`):
+A and B combined, C's wall rejected. `mudavym_design_cellar` flipped to ON by
+default this pass — every house now sees this component; the legacy
+`WineLibrary.tsx` stays in the tree, reachable only by flipping the flag back,
+until the founder approves its deletion separately (ADR 0149).**
+
+- **Item 1, kept as found.** The register (`WineRegister.tsx`) already renders
+  its full filtered/sorted set in one normal-flow table — no fixed-height
+  wrapper, no cutoff past any count. There never was a wall here; sketch 110c's
+  wall was a different component this build does not use. Not virtualised
+  (500 rows is `BOOK_READ_LIMIT`'s ceiling and the founder's own bar was "if we
+  can keep scrolling that will just work fine," not a frame budget), so a
+  future register materially larger than the read cap should revisit this with
+  real numbers rather than by assumption.
+- **Item 2, built.** `restaurant_cellar_settings.gazetteer_measures`
+  (migration `20260922230000`) — a per-house, ordered, additive list of tiles
+  for "In the building tonight," configured in Settings › Cellar
+  (`CellarSection.tsx`) and read by `Registers.tsx`. Two new measures beyond
+  the original four, both computed from data already on the page (no new
+  endpoint): `parUnset` (rows with no `threshold_min` at all — coverage, a
+  different fact from `belowPar`) and `registers` (how many of the seven this
+  house carries).
+- **Item 3, built — corrected 2026-09-18.** The first pass overstated this as
+  "the founder's own dictated fact set": he was reading sketch 110 B's peek
+  aloud (direction-b.html:274, "9 on hand · par 12 / $62 a bottle · $15 a
+  glass / 38 sold · 9 d of till"), and the build misheard "par 12" as "pack
+  size" and duplicated on-hand as "Bottles" (its own note admitted as much).
+  The fix pass corrected the primary fact set to On hand, Par (moved up from
+  further down the leaf rather than duplicated), List price and Glass price
+  — the last from `restaurant_inventory.menu_price_glass`, a real column a
+  manager sets, not the wine library's reference price — then a divider, then
+  the selling-pace line, now honest about a FAILED analytics read
+  (`analyticsReadable`) versus a row with genuinely nothing sold yet. Two
+  gaps remain and are open questions in that pass's `not_fixed`: there is
+  still no per-house BOTTLE price column in this schema, so List price
+  reuses the library's reference price rather than a true house figure; and
+  the sketch's own "N sold · 9 d of till" (till lines over a stated window)
+  is still the older velocity/days-since-sale figure, a different fact from
+  a different table. The Space-triggered non-modal peek sketch B also
+  describes (item 1c) is still not built anywhere on this page.
+- **Item 4, NOT built here — a named placeholder only.** The wine detail
+  surface (region, vintage, formats, taste notes, the model-derived features,
+  wines only) needs its own drawing per the founder's words. See §13's roadmap
+  entry and `not_fixed` on this build's report for the open question.
+- **Item 5, built — corrected 2026-09-18.** The first pass overstated its own
+  "(per-field confidence, low-confidence fields shown in italics)" as the
+  sketch's contract; direction-a.html's own `IsThisTheBottlePanel.tsx`
+  citation is a WORD and a percentage per field (sure / fairly sure / unsure)
+  or "not scored" when the reader carries no confidence at all, never an
+  italic on the value. The fix pass rebuilt the confirm step to that
+  contract — `sureness()`, "not scored" fields no longer drawn as if
+  certain, every field editable and reading in full ink once taken, "Not
+  this bottle" replacing "Retake the photo" — and fixed three confidence
+  keys that never matched anything real (`fieldConfidences.name`/
+  `.grapeVariety`/`.wineType` against a snake_case dict keyed `wine_name`/
+  `grape_variety`/`wine_type`), so three of six fields previously read "not
+  scored" regardless of what the reader actually returned. It also fixed
+  `scanWineLabel` conflating any 404 with "no wine could be read" — it now
+  reads the orchestrator's own `detail` first and treats a 404 with none as
+  the wrong service being reachable, not an unreadable label. Still built as
+  `PhotographLabel.tsx`, one `Panel` (ADR 0112's centered-ask shape) with two
+  steps: camera (over the shared `CameraCapture`, lazy-loaded — same
+  disclosed framer-motion exception already granted to the menu scanner
+  below) then "Is this the bottle?". Reads via `POST /api/v1/scan/wine`
+  (`source_type: "label"`, the orchestrator's single-wine pipeline —
+  `scanWineLabel`, `wineDetection.ts`); writes via `POST /wines/submissions`
+  (`submitWine`, `services/api/wines.ts`) only on confirm, which queues into
+  `master_wine_library_submissions` for the dedup pass and puts no bottle on a
+  shelf. A label with no readable producer can now be typed in directly
+  ("Fix a field") rather than only retaken. Not fixed in this pass: that
+  scan route still takes `restaurant_id` in an unauthenticated request body
+  — a pre-existing pattern shared with `scanMenuImage`/`researchWine`, not
+  something this build introduced, and a genuine open question for whoever
+  owns the orchestrator's auth boundary.
+- **Item 6, built.** `restaurant_cellar_settings.hold_ceremony`
+  (`hold` | `confirm` | `auto`, default `hold`) — the founder's three
+  ceremonies, configured in Settings › Cellar. `OrderCeremony.tsx` renders the
+  three shapes; `hold` still delegates to the existing `HoldToApprove`
+  primitive rather than reimplementing it.
+- **Item 7, built — corrected 2026-09-18.** `/menu` — a new route, no
+  legacy page, no `mudavym_design_*` column. The first pass also had no
+  house chrome (no header, bell or search — its "same posture as
+  /connections" claim was false: `/connections` DOES go through `PageGate`)
+  and no link from anywhere, so a person could not find it at all. The fix
+  pass wired `/menu` through `PageGate` too (`ALWAYS_ON_PAGES` in
+  `useMudavymDesign.ts` makes it on for every house without a stored column,
+  the same mechanism blocker 3 gave `cellar`) and added a link from the
+  cellar page's own register nav; a global sidebar entry is still an open
+  IA question, in `not_fixed`. Money on this page now states the house's own
+  currency (`check_money_states_its_currency.py`) rather than a hardcoded
+  `$`. Discarding a line now also drops it from `house_beverage_ledger`,
+  `cellar-registers.service.ts`'s register inference and
+  `beverages.service.ts`'s row record (migration `20260922230200`) — the
+  first pass's discard only ever reached `getMenu` itself. Add
+  (`POST /menus/items`, existing route) and discard
+  (`PATCH /menus/:restaurantId/items/:id/discard`, migration `20260922230100`,
+  soft-remove via `status = 'discarded'`) are both real writes. Building this
+  surfaced and closed a real tenant-isolation gap in `addMenuItem`
+  (`menus.service.ts`): it trusted `dto.menuId` alone with no comparison
+  against the caller's own restaurant. Not fixed in this pass, and in
+  `not_fixed`: discard still has no undo, and add still reuses the
+  onboarding review pipeline (forcing every new line to `status: 'flagged'`
+  with no way to approve it from `/menu` itself).
+- **Item 8, NOTE ONLY, not built.** The founder: the fast-moving
+  non-alcoholic lines (Turkish coffee, tea, American black coffee, water) need
+  their own analytics — the present heat map "looks blue as hell," unreadable.
+  Recorded here per his instruction. **Correction, cellar fix pass
+  2026-09-18:** a heat map DOES exist on this page today — `RowExpander.tsx`'s
+  "When it sells" card (`.cl-heat`, ~lines 360-390) — and that is the one he
+  found unreadable, not an absent one; the sentence above was wrong. The fast
+  non-alcoholic lines still reach that same card through the general path
+  every register reads (`house_beverage_ledger` / `pos_unresolved_lines`), so
+  nothing here blocks redrawing it later — only the earlier claim that
+  nothing existed to retire was false.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_cellar`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house
@@ -1052,6 +1169,616 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
+### Fifth pass, 2026-09-19 — direction B plus three grafts (sketch 121), and the confirmer's four fixes
+
+The founder, having seen this build (the "old build": register cards, this
+flat `/wines` table, the reading-stand `BottleLeaf`) beside sketch 110's
+direction B side by side, kept B as the base and asked for three of THIS
+build's own pieces grafted into it (ADR 0160 sec110 Owed #10, corrected):
+the one-place overview, the bottle list as a full-page view opened by a
+button, and the bottle leaf's "What the library knows" / "The wine's own
+detail". Sketch 121 (`cellar-121/sketch-121-cellar-b-plus.html`) drew how; his
+2026-09-18 answers on it are Owed #11. This pass is the confirmer's four
+review items plus the piece of #11 sketch 121 draws that this build did not
+yet have — **not** the direction-B/gazetteer rebuild sketch 121 also
+draws (index-plus-record, side by side); that is Owed #11's still-open
+"buttons" question restated below, filed rather than attempted this pass.
+
+**What changed:**
+
+- **The Load-500 wall, fixed (BLOCKER).** "Load 500 more" widened a single
+  request's `limit` by one page each press — 500, then 1000 — and `GET /wines`
+  validates `limit` against `WINE_SEARCH_MAX_LIMIT` (500, `wines.dto.ts`
+  `@Max`), so the second press asked for something the gateway refuses; the
+  book silently stopped growing past 500 titles, which is the exact wall
+  direction A's Owed #1 forbids. Now pages by `offset` at a fixed `limit`
+  (`useInfiniteQuery`, `useCellarNextData.ts`), appended; the read is also now
+  ordered by `id` as a tie-breaker (`wines.service.ts`) so paging cannot see a
+  row twice or miss one on a `name` tie. Test: `cellar-book.test.tsx`, against
+  a mocked `apiClient` (the real client contract), not the hook.
+- **The hold ceremony's state bug, fixed (MAJOR).** Under the default `hold`
+  ceremony the control showed "Order sent" the instant the hold GESTURE
+  finished — before the gateway had been asked anything — because
+  `BottleLeaf.tsx` passed `order.mutate(...)` (return value `undefined`) into
+  `OrderCeremony`'s `hold` branch, which forwarded it straight to
+  `HoldToApprove` with nothing to await. `HoldToApprove` is built to seal only
+  once a returned promise resolves and to refuse (never seal) on a rejection
+  (`HoldToApprove.tsx:242-253`) — `BottleLeaf.tsx` now passes
+  `order.mutateAsync(...)`, and `OrderCeremony` also now shows the failure
+  reason beside `hold` (it showed none before) and remounts the control on an
+  error as a second, independent guarantee that a retry starts clean. Tests:
+  `OrderCeremony.test.tsx`.
+- **`PhotographLabel`'s camera step, redrawn (MAJOR).** It mounted
+  `components/scanner/CameraCapture.tsx` — shipped, shared code (three other
+  callers) that draws its OWN chrome ("Scan Wine Menu", an indigo "Open
+  Camera" button, an "AI Detection Pipeline" card) — under this panel's
+  sketch-110A intro sentence, so two UIs disagreed on one panel. Replaced with
+  two buttons over native file inputs ("Take the photo" —
+  `capture="environment"` — and "Choose a photo instead"), reading to the same
+  raw-base64 shape and the same `handleCapture` the old wiring used. The
+  panel's content is also now padded 16px off the panel edge
+  (`.mdv-ovl__body` sets no padding of its own by design — see
+  `orders/next/AgreementSheet.tsx`'s own note on the same primitive — and this
+  panel had no content wrapper at all). Tests: `PhotographLabel.test.tsx`.
+- **The order-hold ceremony is now owner/manager only.** ADR 0160 sec110 item
+  6 was answered 2026-09-18: only an owner or a manager may change it; staff
+  see it but cannot. `PUT /cellar/:restaurantId/settings` had no role check at
+  all — the confirmer's own open question ("any signed-in member can switch
+  this house to 'auto' — one click spends money"). Gated on the ONE field the
+  founder actually restricted (`holdCeremony`), not the whole endpoint — a
+  `gazetteerMeasures`-only write from staff still succeeds, because nothing
+  restricted that. Client: `CellarSection.tsx` disables the control for
+  anyone else and names the rule, matching `UsualCurrencySection.tsx`'s own
+  `canManage` idiom. Tests: `cellar-settings.service.spec.ts` (gateway),
+  `SettingsNext.test.tsx` (client — this file had no `AuthContext` mock at all
+  before this pass; adding one to cover the new `useAuth()` call surfaced that
+  `cellar.settings`'s fixture was never reset between tests, unlike
+  `cellar.current`, so a later test could silently inherit an earlier one's
+  `readable: false` — fixed alongside).
+  **[CORRECTION, 2026-09-19 — an independent re-verification found this
+  bullet undisclosed, not merely incomplete: it named item 6 "answered" and
+  reported ONLY the permission-gate half of that answer, while the ceremony
+  design it shipped alongside contradicted the OTHER half of the SAME
+  correction. The three-value vocabulary this pass built and gated —
+  `hold`/`confirm`/`auto` (`dto/hold-ceremony.ts`, migration
+  20260922230000) — was transcribed from the founder's PRE-correction
+  dictation; item 6's own text says so ("the original line gave three modes
+  ... his words give two"). None of the three shipped ceremonies matched
+  either of his real two modes, and the shipped `auto` sent a real
+  procurement order from a plain, un-held `<button>` — `OrderCeremony.tsx`'s
+  old `ceremony === 'auto'` branch — which is the EXACT design his answer
+  rules out ("an order with no human hold at all, which would bypass ADR
+  0112's seal on a money act"). This was not caught before merge; it reached
+  an independent verifier, who returned NOT READY on it. See "Sixth pass"
+  below for the fix. Left in place rather than rewritten, per CLAUDE.md
+  §5b/§7 — the record says what this pass actually shipped, not what it
+  should have.]**
+- **"The wine's own detail" is drawn (Owed #4/#11, no longer a placeholder).**
+  Sketch 121 answered the question this note's Fourth pass left open (§1b
+  "Substituted or left out" era) with a real drawing, and the founder answered
+  its own questions 2026-09-18: "show, labelled honestly." `mapWine`
+  (`wines.service.ts`) now carries `wine_structure` (body/acidity/tannins/
+  sweetness — verified live against production 2026-09-19 that all four agree
+  with the separate top-level `acidity`/`tannins` columns on every sampled
+  row, so this reads the one jsonb source rather than mixing two), `primary_
+  aromas`, and the four handling fields (`serving_temp_celsius`, `glass_type`,
+  `decanting_recommended`, `aging_potential_years`) — the same
+  undefined-vs-null discipline `provenance` already established, typed on
+  `WireWine` rather than the shared `Wine`/`WineResponseDto` pair on purpose
+  (outside `check_web_reads_gateway_dto_keys.py`'s MIRRORS list, same as
+  `provenance`). `BottleLeaf.tsx` draws body/acidity/tannin as a word plus a
+  5-tick bar (`cellar-format.ts`'s `structureTicks`, checked against sketch
+  121's own three worked examples) and sweetness as a word alone; the serving
+  sentence is whole-or-not-at-all across all four handling fields, per the
+  founder's own words about this exact set. "What the library knows" now also
+  composes a plain, mechanical sentence from body/acidity/sweetness together
+  when the library holds no free-text note (never from two of three), labelled
+  as composed rather than passed off as a tasting, and shows typical aromas
+  when the library holds any. `ml_derived_features` is NOT drawn: null on
+  every one of the 95 wines the houses stock today
+  (`cellar-121/integration-sota-first.sql`), which is the founder's own rule
+  for exactly this case ("if the value is not shown there ... don't even
+  include them"); a features pipeline and the foundations document mapping
+  the library to every endpoint and insight type are separate, already-scoped
+  work (`docs/wine-ml-foundations`). Tests: `BottleLeaf.test.tsx` (new file —
+  none existed before this pass), `wines.service.spec.ts`, `cellar-format.
+  test.ts`.
+
+**Not done this pass — filed, not attempted:**
+
+- **Sketch 121's own IA change — a bottle opens BESIDE the register's list,
+  never over or above it.** The founder's answer to sketch 121's "buttons"
+  question was "Yes, as drawn": each register is a button in the page head
+  (already true here — `CellarNext.tsx`'s spine), pressing one opens that
+  register's full-page list (already true here — `/wines` IS a full page),
+  and a bottle chosen there opens **beside a narrowed list** (a two-column
+  `index | record` grid, sketch 110 direction B's own gazetteer layout).
+  Today `WineRegister.tsx` instead opens `BottleLeaf` in a `.cl-stand` ABOVE
+  the full, unnarrowed table (`cellar-next.css:24`, a vertical accordion) —
+  the founder's most recent, most specific answer on this exact interaction
+  is not yet built. This is the largest remaining gap between this build and
+  his approved sketch, and it is a real layout/interaction rework (a narrowed
+  side list, keyboard Space-peek/Enter/Esc against it, the record's own
+  container-query breakpoints) rather than a bounded bug fix — attempting it
+  in the same pass as four other fixes, on a page that carries a real,
+  hold-to-approve money action, was judged the wrong tradeoff. Next step:
+  a dedicated pass building sketch 121's `.gz` grid as `WineRegister`'s
+  open-bottle layout, reusing `BottleLeaf` as the record pane.
+  **[BUILT 2026-09-19 — Seventh pass, below. `.cl-split` (a narrowed index
+  beside `BottleLeaf`) replaces `.cl-stand` in `WineRegister.tsx` only;
+  `CatalogueRegister`/`CocktailRegister` keep `.cl-stand` unchanged. Space,
+  Enter and Esc are covered (not the finer Space-peek/Enter-promote
+  distinction — see the next bullet, still open); container-query
+  breakpoints at 620px/900px. `mudavym_design_cellar`'s ALWAYS_ON_PAGES /
+  `defaultValue: true` — the "go live for every house" half of the founder's
+  2026-09-19 answer — was already in this diff and is now the correct
+  end-state, this precondition having been met.]**
+- **The Space-peek** (Space opens a peek, Enter promotes it) — a confirmer
+  REVIEW ITEM, not built; its sold-line wording depends on a till-window
+  query this house's `wine_consumption_log` does not yet support at more than
+  one day per sim house (`cellar-121/integration-sota-first.sql` Q4).
+  **[STILL NOT BUILT, 2026-09-19 — Seventh pass. Space and Enter both fully
+  open the bottle (LiveRow's own pre-existing handler, unchanged); a lighter
+  "peek" distinct from a full open was not attempted, same backend gap as
+  before.]**
+- **`menu_price_bottle`** — genuinely open (confirmer's own question): should
+  `restaurant_inventory` gain a per-house bottle price column, or is the
+  library's reference price acceptable as "List price (bottle)"? This pass
+  reuses the library's reference price, unchanged from before.
+  **[BUILT 2026-09-19 — Seventh pass, below. Migration 20260921112300 adds
+  `restaurant_inventory.menu_price_bottle`, same shape as `menu_price_glass`;
+  set via `AddWineToInventoryModal.tsx` (mirroring the glass-price field,
+  gated on sale type including "bottle"), read in `BottleLeaf.tsx` as
+  "Bottle price (this house)". The library figure is kept, relabelled
+  "Market average" — the founder's own words, "our library price will be
+  just the average price" — never a fallback for the house figure. This is
+  the MANUAL field only: what "dynamic" should mean is the founder's own
+  open question, not decided here — see the Seventh pass's own report.]**
+  **[SUPERSEDED 2026-09-21 — ADR 0193, Eighth pass below. The founder answered
+  "dynamic" and picked "Advise to target margin". There is ONE bottle-price
+  column, `menu_price_current` (the one every margin already read);
+  `menu_price_bottle` and its migration were removed before merge.]**
+- **The register buttons' visual form** (a table of rows vs. a card grid) —
+  `Registers.tsx` already puts the registers and "in the building tonight" on
+  the SAME parent page with no click (graft #1's substance), as cards rather
+  than sketch 121's plain aligned rows; left as a cosmetic difference rather
+  than risked in this pass.
+
+### Sixth pass, 2026-09-19 — the re-verification's two blocking fixes
+
+An independent verifier reviewed the Fifth pass and returned NOT READY on
+two CONFIRMED, blocking findings plus one CONFIRMED, undisclosed finding
+(the bracketed correction on the Fifth pass's own ceremony bullet, above);
+every other item it checked — Load-500, the hold-ceremony sent-state fix,
+`PhotographLabel`, the role gate itself, "the wine's own detail" verified
+live against production, and all mechanical checks — re-verified HOLD and
+needed no further change. This pass fixes the two blocking findings plus one
+minor one the same verifier flagged; it does not touch anything the
+verifier did not flag.
+
+**What changed:**
+
+- **The order-hold ceremony is rebuilt to the founder's actual two modes
+  (BLOCKING × 2).** `HOLD_CEREMONIES` was `["hold", "confirm", "auto"]`
+  (`dto/hold-ceremony.ts`, and duplicated by hand in
+  `useCellarNextData.ts` — a web page cannot import gateway code) — the
+  PRE-correction vocabulary ADR 0160 sec110 item 6 itself names wrong. It is
+  now `["hold", "auto"]`, matching the founder's answered correction exactly:
+  the hold is the one deliberate act in BOTH modes, and they differ only in
+  what happens once it completes —
+  - `hold` (DEFAULT, unchanged column default): the press-and-hold gesture,
+    then one more question, "Send it?" — only "Yes, order" fires the write.
+  - `auto`: the SAME press-and-hold gesture, wired straight to the write —
+    no follow-up question.
+  `OrderCeremony.tsx` is rebuilt around this: `auto` is exactly the OLD
+  `hold` branch's own mechanics (a promise-aware `HoldToApprove`, unchanged
+  from the 2026-09-18 sent-state fix), and the NEW `hold` branch parks the
+  hold's own promise on a ref until "Yes, order" is clicked, which only then
+  calls the caller's real `onApprove` — so `HoldToApprove` still seals
+  exactly when the gateway has confirmed, never on the hold completing and
+  never on the "Yes" click itself (the same invariant the 2026-09-18 fix
+  established, now covering the extra question too). The old `confirm`
+  ceremony (a click, "are you sure?", no hold at all) is deleted outright: it
+  had no counterpart in the founder's corrected two modes. Migration
+  `20260922230000` had not merged past this lane, so its CHECK constraint and
+  comments are corrected in place rather than superseded by a second
+  migration (`check_migration_versions_unique.py` confirms no collision).
+  Copy that asserted the wrong thing is fixed alongside: `BottleLeaf.tsx`'s
+  order note said "This house sends an order on one click, no hold" for
+  `auto`, and `CellarSection.tsx`'s picker labelled it "Click sends it" —
+  both false once `auto` also holds; both now say the hold stays and only
+  the question after it is skipped. Tests: `OrderCeremony.test.tsx` rewritten
+  around driving the actual gesture (the keyboard arm-then-approve path,
+  chosen because it needs no fake timers) rather than only asserting on
+  props, so a regression back to a plain click has no path to green;
+  `cellar-settings.service.spec.ts`'s three `"confirm"` fixture values moved
+  to `"auto"` (removing the retired value from the suite, not just the
+  schema).
+- **The client-side ceremony gate now matches the server's (MINOR).** The
+  server (`cellar-settings.service.ts`) has always accepted owner, manager,
+  OR admin; `CellarSection.tsx`'s `canChangeCeremony` checked only owner and
+  manager, so an admin saw every option disabled but could still change the
+  ceremony through a direct API call — cosmetic (the server was always the
+  real gate and was never too permissive), but the client should say what
+  the server enforces. Fixed with the same `.toLowerCase()` type-widening
+  idiom `ReceivingHome.tsx`/`ReceivingNext.tsx` already use for this exact
+  gap: `AuthContext`'s own `Role` type is `"owner" | "manager" | "staff"` and
+  does not declare `admin` at all, even though it is a real value the gateway
+  (and this codebase's `RolesGuard`) has always accepted. Test:
+  `SettingsNext.test.tsx` gained an admin case beside the existing
+  owner/manager ones, and the readonly note's wording (now naming admin too)
+  is re-pinned.
+
+**On the Fifth pass's own record:** the bracketed correction above this
+section is the disclosure this pass owed — the Fifth pass's ceremony bullet
+was not merely incomplete, it presented item 6 as settled while shipping a
+ceremony that contradicted half of that same answer. Nothing else this pass
+touched needed a correction; the verifier's re-check of the other five
+Fifth-pass items (Load-500, sent-state, `PhotographLabel`, the wine detail
+band, the role gate's own existence) found each one HOLDS as documented.
+
+**Still not built — carried over from the Fifth pass, unchanged by this
+pass:** sketch 121's own IA change (a bottle opens beside a narrowed
+register list, not above the full table — see the Fifth pass's own bullet
+above), the Space-peek, `menu_price_bottle`, and the register buttons'
+visual form. **New context on the first of these:** the founder's own
+19-lane sequencing answer, 2026-09-19 ~09:20Z (`founder-sketch-decisions-
+106-115.md`, read-only in this lane), states "cellar = build the sketch-121
+beside-the-list layout FIRST, then go live for every house" — i.e. this is
+no longer only "the largest remaining gap," it is a stated precondition for
+this page going live at all, decided AFTER the Fifth pass was written. This
+pass did not attempt it: it is a real layout/interaction rework on a page
+that carries a real, hold-to-approve money action, the founder's sequencing
+answer does not change its size, and attempting it inside a repair pass
+scoped to a verifier's three specific findings was judged the wrong
+tradeoff. Flagged to whoever runs this lane's go-live decision — see this
+pass's own report.
+**[BUILT 2026-09-19 — Seventh pass, below, closing the go-live precondition:
+the layout AND `menu_price_bottle`. The Space-peek and the register buttons'
+visual form remain not built — see the bracket on each one's own bullet
+above.]**
+
+**Checks:** `apps/web`: `tsc --noEmit` clean; `vitest run` on
+`src/pages/cellar/next/` + `src/pages/settings/next/SettingsNext.test.tsx` +
+`src/pages/menu/next/` — 13 files, 299/299 (299, not 295: 4 new — 2 in
+`OrderCeremony.test.tsx`'s rebuilt suite, 1 admin case in
+`SettingsNext.test.tsx`, and the "sent short-circuits both ceremonies" case).
+`apps/api-gateway`: both tsconfigs clean; `jest` on `src/cellar/` +
+`wines.service.spec.ts` + `wines-search.spec.ts` — 6 files, 83/83 (same
+count — `"confirm"` fixture values were relabelled, not added to or removed
+from). `check_decision_claims.sh` 358/358,
+`check_no_conflict_markers.py`/`check_citation_pairing.py`/
+`check_adr_numbers_unique.py`/`check_migration_versions_unique.py` all PASS.
+
+### Seventh pass, 2026-09-19 — sketch 121's beside-the-list layout, and a house's own bottle price
+
+An independent verifier reviewed the state after the Sixth pass and returned
+NOT READY (`r4-lanes.json` entry `cellar`) on three must_fix items: (1) sketch
+121's own IA change — still open above and in the Fifth pass, and now also a
+stated go-live precondition (19-lane blocking round, 2026-09-19 ~09:20Z:
+"cellar = build the sketch-121 beside-the-list layout FIRST, then go live for
+every house") — plus a live defect the verdict named: `mudavym_design_cellar`
+had already been flipped to `ALWAYS_ON_PAGES`/`defaultValue: true` in this
+same diff, which would have put the OLD, ruled-out layout live for every
+house the moment this branch merged; (2) `CellarSection.tsx:127`'s Note said
+"Only an owner or a manager" to a set of people that has included admin since
+the Sixth pass; (3) a records-sync instruction — re-run the full check set,
+document this pass, hand the ADR 0160 §110 bracket to whoever owns
+`wt-finish-train2`. A fourth item, outside the verifier's own scope, was the
+founder's separate 2026-09-19 answer on the bottle price (batch 4 of the same
+blocking round, verbatim): *"Our library price will be just the average
+price that will be updating daily ... However, we're going to add a per
+house bottle price. That's a huge thing ... gotta be dynamic."*
+
+**What changed:**
+
+- **Sketch 121's beside-the-list layout, built (BLOCKER).**
+  `WineRegister.tsx` no longer opens `BottleLeaf` in `.cl-stand` above the
+  full table. Choosing a bottle (click, or Enter/Space on a table row — the
+  row's own pre-existing keyboard handler, unchanged) swaps the full
+  table/shelf for `.cl-split`: a narrowed index of the SAME filtered `shown`
+  list (name, style/vintage, on-hand-or-price — one line each) beside
+  `BottleLeaf`. Closing — the leaf's own Close button, or Esc from anywhere
+  in the split (bound on the outer `.cl-split` div, not the leaf alone: a
+  reader who just switched bottles from the narrowed index has focus on that
+  index row, a SIBLING of the leaf, not an ancestor, and an Esc handler
+  scoped only to the leaf misses that case — caught by
+  `WineRegister.test.tsx`'s own first run, fixed before this landed, see
+  below) — returns to the full table/shelf. Focus follows the record across
+  the closed↔open edge only, not on every bottle-to-bottle switch while it
+  stays open (`cl-leaf-turn`, unchanged, already shows the content changed;
+  see MOTIONS.md's Fifth pass for the full contract and the deliberate
+  non-motion on the split itself). Container queries (`@container`, not a
+  viewport media query — the first use of `@container` in `apps/web`) narrow
+  the split to one column under 620px and widen the index column again at
+  900px, on `.cl-split-grid` — a CHILD of the `.cl-split` div that actually
+  establishes the query container, not `.cl-split` itself. **This split was
+  forced by a real, measured bug, not written defensively:** the first
+  version put `container-type`/`container-name` AND the grid's own
+  `display: grid; grid-template-columns` on the SAME `.cl-split` element,
+  which `tsc`/`vitest` cannot catch (both are silent about a CSS rule that
+  parses fine and simply never matches) — a size container is never a valid
+  query subject of a query rooted at itself, because the container search
+  starts at the querying element's PARENT. Caught only by opening a
+  standalone harness with the exact CSS in a real browser (this session's own
+  scratchpad, not committed) and reading `getComputedStyle(...)
+  .gridTemplateColumns` across a swept range of widths: the breakpoints
+  silently never fired at ANY width with the self-referential version, and
+  fire exactly at 620px/900px once the grid moved to a child. This is the
+  concrete case for CLAUDE.md §9's "use the Browser pane, do not ask the
+  founder to check manually" — a type check and a passing test suite both
+  say nothing about whether a `@container` rule can ever match.
+  `CatalogueRegister.tsx`/`CocktailRegister.tsx` are untouched and
+  still use `.cl-stand` (MOTIONS.md's third pass) — this fix is
+  `WineRegister.tsx` only, per the must_fix's own scope. Docs:
+  `MOTIONS.md`'s Fifth pass (the retired token, the new non-motion, the
+  keyboard/focus contract, why container queries over a media query on a
+  page with one route today). Tests: `WineRegister.test.tsx` (new file, 11
+  cases — opening by click/Enter/Space, switching bottles by click and
+  keyboard, closing by the Close button and by Esc from both the leaf and
+  the index, the open bottle marked in the index and only that one, focus
+  moving into the leaf on a fresh open and NOT re-stealing focus on a
+  switch, focus returning to whichever control opened it — the table row or
+  the narrowed-index row — once dismissed); `CellarNext.test.tsx`'s existing
+  89 cases re-verified green unchanged (the split only replaces what renders
+  AFTER a bottle is chosen — the closed-state table/shelf and every filter
+  test run through it were untouched).
+  **On the live-exposure defect the verdict named:** `ALWAYS_ON_PAGES`
+  containing `'cellar'` and `mudavym_design_cellar`'s `defaultValue: true`
+  are UNCHANGED by this pass — they are not reverted, because the
+  precondition they were gated on ("build the layout first") is what this
+  pass just built and tested. Left in place rather than toggled off and back
+  on, per CLAUDE.md §5b: the record says what is actually true of the tree
+  now, not a round-trip through a state that was never separately committed.
+- **`restaurant_inventory.menu_price_bottle`, added (founder-requested).**
+  **[REMOVED 2026-09-21, before merge — ADR 0193: a second column for the
+  meaning `menu_price_current` already carried. The migration file is deleted
+  and every reader repointed; the account below is the record of what the
+  seventh pass did, not of what ships.]**
+  Migration `20260921112300_a_house_sets_its_own_bottle_price.sql`: additive,
+  nullable `numeric(10,2)`, no default, no backfill, no author/timestamp
+  columns — the exact shape `menu_price_glass` already has, mirrored rather
+  than upgraded (a half-parity column recording who/when for one sibling and
+  not the other would be a new, undiscussed decision). Verified on PGlite
+  against a minimal fixture (`p4-scratch/pglite-probe/
+  cellar-menu-price-bottle-probe.mjs`, same pattern as the precedent
+  `p4bf-carrying-cost.mjs`): applies, and applies a second time unchanged
+  (idempotent); admits $62.00, $61.99, $0.00 and a negative value (measuring
+  the gap, not asserting it should be refused — `menu_price_glass` has no
+  floor either, and this column mirrors it exactly rather than deciding a
+  new rule for only one of the two); the in-file `DO $$` assertions (no
+  default, zero rows backfilled, a probe write admitted then restored) all
+  ran and passed; the two sibling columns measure identically in
+  `information_schema.columns`. **Not run against the full 185-migration
+  chain** (Docker is down on this host; PGlite's own no-Docker recipe was
+  used instead, per project memory, but only for this one file against a
+  scratch `restaurant_inventory` stand-in — the fixture does not prove this
+  migration composes with every migration between it and the baseline, only
+  that its own logic is sound).
+  **[CORRECTED 2026-09-21 — round 5 must_fix. The "probe write admitted
+  then restored" this bullet describes — UPDATE a real row to $62.00, read
+  it back, UPDATE it back to whatever it held before — is REMOVED from the
+  migration. Its own comment called this "leaving no trace"; it did not.
+  `update_restaurant_inventory_updated_at`
+  (`20260805000000_baseline_from_production.sql:12286`, a BEFORE UPDATE
+  trigger calling `update_updated_at_column()`) moves `updated_at` on
+  every UPDATE regardless of which column changed, so both probe writes
+  moved `updated_at` on one real production row every time this migration
+  ran. Proved both directions with a fresh PGlite fixture (Docker still
+  down; this session's own isolated scratchpad, `@electric-sql/pglite`
+  installed outside any worktree so no shared `node_modules` was touched):
+  a minimal `restaurant_inventory` stand-in carrying only `id`,
+  `menu_price_glass`, `updated_at` plus the real trigger and function
+  bodies verbatim from the baseline citation above. Applying the ORIGINAL
+  migration (recovered via `git show HEAD` before this session's edits)
+  against a seeded row moved `updated_at` from the seeded value — CONFIRMED.
+  Applying the CORRECTED migration (this file, as it now stands) against
+  the same fixture did not move `updated_at`, on a first apply or a second
+  (idempotent) — column shape confirmed `numeric(10,2)`, no default, both
+  times. The three information_schema asserts (column exists, is
+  `numeric(10,2)`, carries no default) plus the backfill-count check are
+  UNCHANGED and still the migration's actual proof of type/default/backfill;
+  the write-probe never added coverage those four didn't already have —
+  admitting `62.00`/`61.99`/`0.00`/a negative value into a `NUMERIC(10,2)`
+  column proves NUMERIC accepts a NUMERIC, not anything about this
+  migration. `check_migration_probe_safety.py`, the targeted vitest set (16
+  files, 326/326 — two more than the 324 above, from must_fix #1's two new
+  cases), and `apps/web`'s `tsc --noEmit` were all re-run clean after this
+  change.]**
+  Gateway: `InventoryService.mapInventoryItem`
+  reads it (`menuPriceBottle`), and `createInventoryItem`
+  (single + bulk) and `updateInventoryItem` write it — all four sites mirror
+  `menuPriceGlass`'s own four call sites exactly (`inventory.dto.ts`'s four
+  DTOs, `inventory.service.ts`). Web: `services/api/types.ts` (4 interfaces)
+  and `inventory.ts` (raw row + normalizer) gain the same field
+  `menuPriceGlass` already carries; `useCellarNextData.ts`'s `CellarRow` gets
+  `menuPriceBottle`. Set by a manager via `AddWineToInventoryModal.tsx`'s new
+  "Bottle Menu Price" field, gated on `saleType` including `"bottle"`
+  (mirroring "Glass Menu Price"'s own gate on `saleType` including `"glass"`
+  exactly) — wired through `InventoryCommandPage.tsx`'s existing
+  `volumeFields` plumbing, the current `/inventory` page (legacy
+  `AddToInventoryFromLibraryModal.tsx`, mounted only from the retired
+  `WineLibrary.tsx` behind `ALWAYS_ON_PAGES`, was deliberately left
+  untouched — see "Not done" below). `BottleLeaf.tsx` shows it as "Bottle
+  price (this house)" beside the existing "Glass price", with the same
+  em-dash-plus-note treatment when unset; it is never the fallback for the
+  library figure and the library figure is never its fallback — the two
+  numbers are independent facts, in independent columns, and the fixture
+  library used a coincidentally-equal example value once, which the test
+  file's own first run caught (fixed before this landed by choosing a
+  deliberately different number). Tests:
+  `inventory.service.spec.ts` (+5 — the read mapping including a
+  `hasOwnProperty` check that a plain `toBeUndefined()` would not have caught
+  — a key never set and a key explicitly mapped to `undefined` are
+  indistinguishable by value alone — plus the create, bulk-omission and
+  update write paths); `AddWineToInventoryModal.bottlePrice.test.tsx` (new
+  file, 5 cases — field shown/hidden per sale type exactly like its glass
+  sibling, the typed value reaching the caller, the field genuinely absent
+  from the payload rather than merely empty when hidden);
+  `BottleLeaf.test.tsx` (+4). Every one of these was run failing before the
+  matching source line existed and passing after (shown in this pass's own
+  report, not restated here).
+  **[CORRECTED 2026-09-21 — round 5 must_fix. "the field genuinely absent
+  from the payload rather than merely empty when hidden" was true only when
+  `saleType` excluded "bottle" entirely. On the DEFAULT sale type
+  ("bottle"), the field was shown and left untouched, and still sent
+  `menuPriceBottle: 0` — state initialised at `0`
+  (`AddWineToInventoryModal.tsx:106`), coerced by `parseFloat(e.target.
+  value) || 0` (line 923) — the blocking defect the round-4 verdict
+  measured (probe:
+  `{"bottleSizeMl":750,"saleType":"bottle","menuPriceBottle":0}`), which
+  would have written $0.00 as this house's bottle price on `BottleLeaf`.
+  `menuPriceBottle` is now `number | null` in the modal's own state,
+  mirroring `costPerBottle`'s existing null handling in the same component:
+  the key is omitted unless a number was actually typed, and an explicitly
+  typed 0 still sends `menuPriceBottle: 0`. Two cases added to the same test
+  file (now 7 total, up from 5): the default-sale-type-and-blank case omits
+  the key; an explicitly-typed-0 case still sends 0. Both run
+  failing-before/passing-after — `npx vitest run
+  src/components/inventory/AddWineToInventoryModal.bottlePrice.test.tsx`:
+  1 failed / 6 passed against the pre-fix source, 7/7 passed after.]**
+- **The library figure relabelled "Market average" (founder-requested,
+  wording only).** `BottleLeaf.tsx`'s two `price_reference` facts — the
+  general "List price" and the in-cellar recap "List price (bottle)" — now
+  read "Market average" / "Market average (bottle)". No column changed.
+  Left DISTINCT from the neighbouring "Market price" fact
+  (`retail_price_avg`, still permanently `—`, still explained by its own
+  existing note) rather than merged or renamed to match — two different
+  columns, two different provenances, and collapsing them into one label
+  would have been the actual "invented figure" problem this whole pass is
+  about, aimed at the wrong field. "Dynamic" (updating daily, tracking a
+  formula) is NOT claimed anywhere in the new copy — that is the founder's
+  stated intent for a mechanism this pass does not build (see "Not done"),
+  and the UI does not assert a cadence nobody has verified.
+  **[CORRECTED 2026-09-21 — round 5 must_fix. This bullet originally said
+  the founder's words "describe what this figure has always structurally
+  been (a reference price the library computes across houses and
+  vendors)" — nothing in the tree computes that; it was an unverified
+  restatement, not a measured fact. `price_reference` is an imported
+  reference hint, passed straight through with no cross-house/vendor
+  computation: the JSONL import writes it unchanged
+  (`import_master_wine_library.py:149,168`,
+  `price_reference = EXCLUDED.price_reference`) and so does a submission
+  payload (`wines.service.ts:420`, `payload?.price_reference ??
+  payload?.price ?? null`). The sibling column on `beverages` names the
+  same fact plainly: "Market hint only, never a restaurant's actual price"
+  (`20260817070000_beverages_table.sql:230-232`). The founder's
+  daily-refreshed, cross-house/vendor average is real intent — restated
+  correctly two sentences up ("that is the founder's stated intent for a
+  mechanism this pass does not build") — but not built yet; this bracket
+  corrects only the false claim that it was already how the figure worked.
+  The "Market average" label is unchanged; `BottleLeaf.tsx`'s note and its
+  own comment block carry the same correction, dated the same day. The
+  migration header's parallel claim ("the one column that has always been
+  a market-wide figure") is corrected the same way in
+  `20260921112300_a_house_sets_its_own_bottle_price.sql`.]**
+- **`CellarSection.tsx:127`'s Note, corrected (must_fix #2).** "Only an
+  owner or a manager of this house can change this" is now "Only an owner, a
+  manager, or an admin" — the round-2 report had claimed this fix and it was
+  not made; it is now, with a direct assertion on the Note's own text added
+  to the existing `'lets an admin change it too'` case in
+  `SettingsNext.test.tsx` (which previously asserted only that the controls
+  were enabled, not what the explanatory copy said to the person looking at
+  them). Failing before / passing after shown in this pass's own report.
+
+**Checks (final tree):** `apps/web`: `tsc --noEmit` clean;
+`vitest run` on `src/pages/cellar/next/` (12 files, 248/248),
+`src/pages/settings/next/SettingsNext.test.tsx` (57/57),
+`src/components/inventory/AddWineToInventoryModal.{cost,bottlePrice}.
+test.tsx` (10/10). `apps/api-gateway`: both tsconfigs (`tsconfig.json`,
+`tsconfig.spec.json`) clean; `jest` on `src/inventory/` + `src/cellar/` +
+`wines.service.spec.ts` — 14 suites, 155/155 (re-measured three times after
+an initial run misread; this repo's own §5b rule — numbers are re-measured,
+never copied forward). `check_decision_claims.sh`
+358/358; `check_no_conflict_markers.py` / `check_citation_pairing.py` /
+`check_adr_numbers_unique.py` all PASS. **`check_migration_versions_unique.py`
+ran and reported OK, but did not see this pass's own new migration file** —
+it lists migrations via `git ls-files`, which is blind to an untracked file,
+and this lane stages nothing (the orchestrator commits through a verified
+index). Its "OK" is real for every migration already tracked on this branch;
+it is not evidence about `20260921112300` specifically. That file's own
+version was instead checked by hand: swept `origin/main` (max
+`20260919120000`) and every sibling `wt-*` worktree's
+`supabase/migrations/` (max observed `20260919150000`, `wt-pg-receiving`) —
+`20260921112300` sits past both. Re-run the guard once this pass's files are
+committed and visible to `git ls-files`.
+**[UPDATED 2026-09-21 — round 5. The round-4 work landed as a single
+snapshot commit (`e7afb2ce7`, "NOT READY, do not merge") on `r5/cellar`
+before this round started, so every file above — the new migration
+included — is tracked and `git ls-files`-visible now; the caveat above no
+longer applies to this tree. Re-measured after closing the three round-5
+must_fix items: `apps/web` `tsc --noEmit` clean; `vitest run` on the same
+four targets plus `src/pages/menu/next/` — 16 files, 326/326 (up from 324;
+`AddWineToInventoryModal.bottlePrice.test.tsx` alone is now 7/7, up from 5,
+two cases added by must_fix #1). `check_migration_versions_unique.py`:
+"OK — introduced by this branch: ...20260921112300..., checked against
+origin/main + 36 other open PR(s)" — it now sees and names the file
+directly, no hand-sweep needed. `check_migration_probe_safety.py`: PASS,
+re-run after must_fix #3 dropped the write-probe. `check_decision_claims.sh`
+358/358 (unchanged — no claim in `CLAIMS.jsonl` names this migration or
+either corrected fact). `check_flag_readby_anchors.py` PASS (23 anchors,
+unchanged). `check_web_reads_gateway_dto_keys.py` and
+`check_no_seeded_defaults.py` both PASS against the corrected modal.
+`check_migration_ledger.py` and `check_beverage_identity_parity.py` still
+cannot run in this environment — the first needs a database URL none of
+`SUPABASE_DB_URL`/`SUPABASE_POOLER_URL`/`SUPABASE_POOLER_CONNECTION_STRING`/
+`SUPABASE_DIRECT_CONNECTION_STRING` supplies, the second needs a `.env` file
+that does not exist in this worktree — both exit non-zero rather than
+false-passing, and neither is about anything must_fix #1-#3 touched.]**
+
+**Not done this pass — filed, not attempted:**
+
+- **The Space-peek and the register buttons' visual form** — unchanged from
+  the Fifth pass; see the bracket on each one's own bullet above. Neither
+  was in this pass's must_fix list or the founder's bottle-price answer.
+- **[ANSWERED 2026-09-21 — ADR 0193; built in the Eighth pass below.]**
+  **What "dynamic" means for the house's own bottle price is the founder's
+  own open question, not decided here** (CLAUDE.md §0.1 — an undecided fork
+  is not this lane's to default). His words name an intent ("gotta be
+  dynamic") but not a mechanism. Returned as a founder question, with
+  options and a recommendation, in this pass's own report — not filed as an
+  OPEN-DECISIONS row (this lane holds no OD allocation this round) and not
+  guessed at in the migration or the UI. Only the MANUAL field is built.
+- **`AddToInventoryFromLibraryModal.tsx`** (the OTHER add-wine modal, mounted
+  only from the legacy `WineLibrary.tsx`) was not given a matching bottle-
+  price field. `mudavym_design_cellar`'s `ALWAYS_ON_PAGES` entry means that
+  legacy page is not reachable in ordinary use (only via the per-browser
+  localStorage override), so extending it was judged out of proportion to
+  this pass — flagged here rather than silently left inconsistent.
+- **The ADR 0160 §110 bracket, handed off, not written.** This worktree
+  carries no `.planning/decisions/0160-*.md` at all (that ADR lives on
+  `feat/mudavym-finish` / `wt-finish-train2`, not yet merged to `main`, so
+  this lane cannot read or edit it — CLAUDE.md §7/houseRules: work stays
+  inside this lane's own worktree). The bracket text to add to its §110,
+  verbatim, is given in this pass's own report for whichever session owns
+  `wt-finish-train2` to paste in.
+
+### Eighth pass, 2026-09-21 — the price follows the menu and the manager; advice aims at the house's margin (ADR 0193)
+
+The founder, verbatim: *"Dynamic means two things 1. it could be changed every
+time a menu is updated and secondly it should be changed whenever the manager
+wants and also ... recommendations ... make sure that endpoint exists that we
+will ask or recommend or advise the manager or owner to increase decrease the
+prices so that the profit margin is where it's needed. We don't want market
+average because that will be already shown in another column"* — and he picked
+"Advise to target margin". Everything built is listed in
+[ADR 0193](../decisions/0193-a-house-price-follows-its-menu-and-its-manager-and-advice-aims-at-its-own-margin.md)
+§Decision; this page's share of it:
+
+- `BottleLeaf.tsx` "Bottle price (this house)" now reads `menu_price_current`
+  through the same `menuPriceBottle` wire field; its "set one in Inventory"
+  note is now true (`/inventory` → "Your price", owners and managers).
+- `/inventory` gains "Your price" (bottle · glass, edited in place) beside
+  "Market", with the advice under it ("Raise btl to $57.14", one tap).
+- Settings gains "Target margin" (bottle %, glass %, close-enough points; no
+  default).
+- `/menu` price corrections and added lines now write the house price
+  (`change_source = 'import'`); the menu-line PATCH is house-scoped.
+
+Forks F1-F7 (who may change a price, the band's units, menu dating, a priceless
+menu line, create-path attribution, the defaulted pour and bottle sizes under
+glass advice) are in the ADR for the founder to confirm.
+
 ## 2. Entry
 Sidebar item (`apps/web/src/components/layout/Sidebar.tsx:79`). PAGE_MAP records
 in-degree 1 (`.planning/foundation/PAGE_MAP.md:148`). Not an orphan route.
@@ -1217,6 +1944,32 @@ and the notice says on its face that dismissal is per-browser.
   exists (`useWineLibraryPage.ts:306-319`) and bulk selection exists
   (`WineLibrary.tsx:409-427`) (`v3.0-TECH-DEBT.md:391-393` — catalog reconciliation
   pending).
+
+### Ninth pass, 2026-09-21 — the founder's seven answers, menu versions, and the go-live (ADR 0193, round 2)
+
+The founder answered ADR 0193's seven forks and added menu versions the same day; the
+record, his one verbatim phrase (*"percent is always shown everywhere"*), and the four
+follow-up questions are in [ADR 0193](../decisions/0193-a-house-price-follows-its-menu-and-its-manager-and-advice-aims-at-its-own-margin.md)
+§"Amendment, round 2". This page's share:
+
+- **`/menu` keeps every menu** (`MenuVersions.tsx`): the current one and the last one
+  used named in a sentence, every kept menu with its date or cadence, who read it, its
+  line count, and its source (open the PDF/photo, or why it was not kept); a form to read
+  a new menu with an optional cadence and date; after a read, "Make this the current
+  menu" / "Keep it, not current" (owners and managers; staff are told who chooses). A
+  current menu's line whose price was blank for a price the house has shows the flag's
+  sentence under its status.
+- **The onboarding review screen** offers the same choice after a scan.
+- **Settings, Target margin**: "close enough" is typed as a percent of the advised price;
+  a new "Pour size" row confirms the house's pour once (glass advice waits for it).
+- **`/inventory` "Your price"**: a glass waiting for the pour says "glass waits for your
+  pour size"; a malformed advice answer is "advice unavailable" on the row instead of
+  crashing the page (a merge interaction with main's `InventoryCommandPage.test.tsx`).
+- **Add wine**: a blank glass price is no longer sent as 0.
+- **Go-live**: `cellar` and `menu` join `LIVE_PAGES` (18 keys), on the founder's
+  2026-09-19 answer quoted in the Seventh pass; `mudavym_design_cellar` moves to
+  `LIVE_IN_CODE_FLAGS` and the flip script's live set. `ALWAYS_ON_PAGES` is gone —
+  main's `LIVE_PAGES` is the one mechanism.
 
 ### Gaps outside this page's paths, found while building the cellar (2026-09-02)
 
@@ -1518,6 +2271,14 @@ builder's in-flight change — `communications.module.ts` now imports
 `IntegrationsModule` imports `AuthModule`. Their `forwardRef` fixes Nest's DI
 graph but not the ES-module load order, which is what this crash is. Not fixable
 from this page's paths.
+
+**9.32 · A bottle opens ABOVE the register's table, not BESIDE a narrowed
+list.** The founder's most recent, most specific answer on sketch 121
+("Yes, as drawn") wants a two-column `index | record` layout when a bottle is
+open; `WineRegister.tsx` opens `BottleLeaf` in a `.cl-stand` that expands
+above the full, still-unnarrowed table instead (`cellar-next.css:24`). Filed
+2026-09-19 rather than built this pass — see the Fifth-pass section above
+("Not done this pass") for why and the next step.
 
 ## 10. Maturity
 

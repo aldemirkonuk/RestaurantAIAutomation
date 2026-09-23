@@ -9,6 +9,7 @@ import { ConfigService } from "@nestjs/config";
 import {
   ModelClientService,
   ModelSpendCeilingError,
+  ModelSpendLedgerUnreadableError,
   NfEventRef,
 } from "../../common/model-client/model-client.service";
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
@@ -18,6 +19,15 @@ import {
   MENU_CATEGORY_VOCABULARY,
   WineExtractItem,
 } from "../wine-extract-item.interface";
+
+/**
+ * The menu read is WAITING, not broken: the house's AI spend record could not
+ * be read, so nothing was sent (founder, 2026-09-21, ADR 0163 Q22 re-answered:
+ * the ceiling fails closed for the menu-upload billed read, and the read
+ * "waits and says why"). A 503 whose message is the reason, and its own type
+ * so a multi-chunk read stops instead of reporting the chunk as a gap.
+ */
+export class MenuReadWaitingException extends ServiceUnavailableException {}
 
 /**
  * Two things in this prompt are load-bearing and were both set by measurement.
@@ -275,6 +285,8 @@ export class ScanParserService {
         );
       } catch (err: any) {
         if (err instanceof HttpException && err.getStatus() === 429) throw err;
+        // Not a gap in the menu: the whole read waits and says why.
+        if (err instanceof MenuReadWaitingException) throw err;
         failed.push(i + 1);
         this.logger.error(
           `Menu chunk ${i + 1}/${chunks.length} failed: ${err?.message}`,
@@ -385,6 +397,13 @@ export class ScanParserService {
         // stop_reason signal the split retry depends on. LOAD-BEARING
         // override of the client's 60s default; do not shrink it.
         timeoutMs: 180_000,
+        // The menu-upload billed read: if the house's spend ledger cannot be
+        // read, this call is not made (founder, 2026-09-21, ADR 0163 Q22).
+        spendLedgerUnreadable: "closed",
+        // ...and being OVER the allowance never refuses it, first attempt or
+        // retry (founder, 2026-09-21, round 6c: "never refuse a menu read";
+        // tiers later). ADR 0193 round 3, answer 2.
+        allowance: "unlimited",
         nf: {
           subjectId: "ScanParser",
           taskType: "menu_scan",
@@ -432,6 +451,10 @@ export class ScanParserService {
       // wording below; only arrival gets the more specific ceiling message.
       if (error instanceof ModelSpendCeilingError && arrival)
         throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
+      if (error instanceof ModelSpendLedgerUnreadableError) {
+        this.logger.warn(`Menu read waiting: ${error.message}`);
+        throw new MenuReadWaitingException(error.message);
+      }
       this.logger.error(`Scan parser LLM call failed: ${error.message}`);
       throw new ServiceUnavailableException(
         "Menu scan service temporarily unavailable",

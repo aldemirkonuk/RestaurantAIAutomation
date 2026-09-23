@@ -73,7 +73,23 @@ export type SettingsRegister =
    * The founder, 2026-09-05 batch 59: *"Twice a year, and the house types its
    * carrying cost."*
    */
-  | "carrying-cost";
+  | "carrying-cost"
+  /**
+   * The margin this house needs on a bottle and on a glass, and its "close
+   * enough" band (ADR 0193). A fact about the HOUSE that decides whether any
+   * price advice may be printed at all -- the same reason the carrying cost
+   * has its own register. The founder, 2026-09-21: "... advise the manager or
+   * owner to increase decrease the prices so that the profit margin is where
+   * it's needed."
+   */
+  | "target-margin"
+  /**
+   * Whether this house's /ask questions may be used for training (ADR 0145,
+   * founder 2026-09-21, "Same as the wine pool (Recommended)": an owner
+   * opt-out per house). Its own register: it is the house's consent, not a
+   * preference, and only the owner may change it.
+   */
+  | "ask-training";
 
 /**
  * The action strings this service writes, and the ones it reads back.
@@ -101,6 +117,23 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * clause is gated on the answer.
    */
   "carrying_cost_changed",
+  /**
+   * The house stated the margin it needs (ADR 0193). Added 2026-09-21: until
+   * then nothing held a house's target, so no price advice could be computed
+   * against one.
+   */
+  "target_margin_changed",
+  /**
+   * The house confirmed its pour size (ADR 0193, founder 2026-09-21: glass
+   * price advice appears only after this one-time confirmation). Filed under
+   * the "target-margin" register, where the page asks for it.
+   */
+  "pour_size_confirmed",
+  /**
+   * The owner opted the house out of, or back into, training use of its /ask
+   * questions. Added 2026-09-21 (ADR 0145, round 6r).
+   */
+  "ask_training_opt_out_changed",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

@@ -7,7 +7,7 @@
 -- just fail this one flag.
 --
 -- Version note (PR #414 BLOCK): earlier drafts shipped this file as
--- 20260919050000, behind main's applied ceiling. Renamed to 20260922190300
+-- 20260919050000, behind main's applied ceiling. Renamed to 20260922231300
 -- so the runner actually applies it; the registry entry in
 -- feature-flag-registry.ts ships in the same change.
 --

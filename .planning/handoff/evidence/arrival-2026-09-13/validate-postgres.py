@@ -2,7 +2,7 @@ from pathlib import Path
 import subprocess,time,json,datetime
 name='mudavym-arrival-validation-20260913'
 b=Path(__file__).resolve().parents[4]/'supabase/migrations'
-a=(b/'20260922190000_arrival_configuration_book.sql').read_text();undo=(b/'20260922190100_arrival_configuration_undo.sql').read_text()
+a=(b/'20260922231000_arrival_configuration_book.sql').read_text();undo=(b/'20260922231100_arrival_configuration_undo.sql').read_text()
 def run(args,**kw):return subprocess.run(args,capture_output=True,text=True,**kw)
 def rawsql(s):return run(['docker','exec','-i',name,'psql','-U','postgres','-v','ON_ERROR_STOP=1','-A','-t'],input=s)
 def sql(s):
