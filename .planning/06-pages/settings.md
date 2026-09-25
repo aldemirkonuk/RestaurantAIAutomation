@@ -2251,7 +2251,7 @@ those numbers had already drifted since §13.38 was written.
   recommended holding shipping or labelling the control provisional, is
   answered by this same citation and no longer stands — see its own
   "[ANSWERED …]" bracket rather than restating it here.
-* **Q — `--ink-3` vs `--ink-4` — ANSWERED.** OD-112 (`OPEN-DECISIONS.md:71`,
+* **Q — `--ink-3` vs `--ink-4` — ANSWERED.** OD-112 (`OPEN-DECISIONS.md:70`,
   amending ADR 0042, cited in ADR 0149 row 30): captions on the paper ground use
   `--ink-4`; `--ink-3` is decorative only (a border, an icon tint — anything that
   only needs WCAG's 3:1 non-text minimum, never a glyph a person reads). Applied:

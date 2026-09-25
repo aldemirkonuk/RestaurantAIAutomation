@@ -124,7 +124,7 @@ are `/authorize/complete`, `/deliveries/:id`, `/house`, `/house/menu`, `/menu` a
    answers they held are copied into §8.
 3. **Cursor PRs never audited.** #412 and #410 are open security fixes with no audit verdict (no comment on either mentions `pr-audit-gate` or a `verdict=`, `gh pr view --json comments`).
 4. **#457 is BLOCKed** on locked ADR 0083 (F1); its useful half moved to #458.
-5. **Codex #374** dropped the OD-123 filing; it was re-filed (`OPEN-DECISIONS.md:78`) and is
+5. **Codex #374** dropped the OD-123 filing; it was re-filed (`OPEN-DECISIONS.md:77`) and is
    now answered in place (Q10).
 
 ---
@@ -140,7 +140,7 @@ asked to review, and the deletion manifest, group by group. Web only this deploy
 
 **DONE =** every route in §1a on a Mudavym design at the full-purpose bar, *every surface on
 it* rebuilt (G8: a live route is not the same as a rebuilt route), live for every house
-including houses created later, captions at AA (OD-112 (OPEN-DECISIONS.md:71): 322
+including houses created later, captions at AA (OD-112 (OPEN-DECISIONS.md:70): 322
 `var(--ink-3)` uses against 183 `var(--ink-4)` in `apps/web/src` today), the manifest
 approved group by group, one cutover PR merged and deployed, production verified at that
 commit.
@@ -173,7 +173,7 @@ resolved by L2 at merge time. Flag files (`useMudavymDesign.ts` + test,
 | **L11** `/ask`, `/terms`, retire `/sommelier` | Record the 2026-09-21 `/ask` layout in ADR 0145 first (§8.2), then build the page, the non-modal quick ask and the `/admin` requests list; add a `/terms` route | **Unblocked**: ADR 0145:264 "all five forks this record named are answered"; sketch 114 is on `…/fin-sketches` | The layout decision is not on main (no "Reading Room" or "requests list" in ADR 0145) |
 | **L12** Sessions | ADR 0164 | **Base `origin/wip/2026-09-21/sessions` `900266b7c`** (contains `wt-sessions`) | Add passkey enrolment on `/profile` (ProfileNext says "Not built", round 6r §7) and the real-switch consent panel (round 6r fork 14; supersedes ADR 0149 row 14); "reset/change revokes sessions" (ADR 0173 lane) |
 | **L13** Audit of unlanded work | Classify each tree as landed, unique or abandoned, with a diff | Feeds L2, L16 | Add the 15 trees no census file classified (critic G4), `origin/test/nightly-e2e-modernised` `d84e86ba9` (likely superseded, one diff settles it) |
-| **L14** Pipeline | (a) `provider_conversation_agent` from the log line and #415's diff; (b) CLAIMS walkers scan tracked files only; (c) unshallow the shared clone; (d) Production E2E exits on named missing secrets; (e) CodeQL with L7; (f) #432 | | Push `wt-r5-gate`'s local `c59d8f71b` ("close the four remaining gate8c residuals") into #432 before its last call; `wt-gate-rule` is superseded (its 46 files equal `origin/wip/2026-09-19/gate`, an ancestor of #432's head `d45147f42`). Add OD-122 (OPEN-DECISIONS.md:77) |
+| **L14** Pipeline | (a) `provider_conversation_agent` from the log line and #415's diff; (b) CLAIMS walkers scan tracked files only; (c) unshallow the shared clone; (d) Production E2E exits on named missing secrets; (e) CodeQL with L7; (f) #432 | | Push `wt-r5-gate`'s local `c59d8f71b` ("close the four remaining gate8c residuals") into #432 before its last call; `wt-gate-rule` is superseded (its 46 files equal `origin/wip/2026-09-19/gate`, an ancestor of #432's head `d45147f42`). Add OD-122 (OPEN-DECISIONS.md:76) |
 | **L15** Jev | (a) Keep `check_jev_never_blocks.py` green; (b) measure subagent egress without contacting TypeSafe; (c) land #431 via L2; (d) #435's product egress fails open, with a never-blocks spec for `jev-tone.client`; (e) masking covers names and sensitive topics (round 6y) | F4 | Partial measurement: an Agent-SDK subagent context carried no Jev annotation (critic G7); Task-tool subagents unmeasured |
 | **L16** Worktree hygiene | Step 1 preserves only what no ref holds (next table); step 2 removes, on the founder's word | After L13 | The old preservation list protected trees already on origin (J6) |
 | **L17** Cutover | The manifest as file groups, each with an import-graph proof (a trial delete plus tsc/vitest), special-casing `/get-started` (R14) and `/inventory` | Last; his approval per group | `ReceiptsPage.tsx`, `Providers.tsx` and the provider intelligence/sentiment components stay off the manifest until G8's three surfaces are rebuilt |
@@ -196,15 +196,15 @@ has something to show, except F1, which is live.
 
 | # | Fork | Options and cost | Recommendation |
 |---|---|---|---|
-| F1 | `/communications` shows an error to every house because `public.scheduled_reports` is created by no migration (ADR 0083:58-68; production `to_regclass` is null). #457 removed the source and was BLOCKed on ADR 0083 | (a) Amend ADR 0083: the page names the three sources it owns; schedules leave until a table exists; the Gmail-watch line moves to `/admin`. (b) Build the table and feature. (c) Render the missing table as "not set up" | (a), matching his 2026-09-22 ruling to strip technical detail from the restaurant UI (§8.1, preview ruling 2). OD-91 (OPEN-DECISIONS.md:62) and OD-92 (OPEN-DECISIONS.md:63) bear on (b) |
-| F2 | OD-152 (OPEN-DECISIONS.md:25): what a bare click on an `/orders` row does | (A) opens the receipt sheet as ruled; (B) keep the expansion; (C) receipt when one exists, expansion while pending | (C) |
-| F3 | OD-140 (OPEN-DECISIONS.md:24): return the not-placed lines, not only their count | Yes: a gateway field plus the control sketch 121 draws. No: a count with no follow-through | Yes |
-| F4 | OD-133 (OPEN-DECISIONS.md:80): **only the retention and DPA terms** remain. Egress is decided (ADR 0182) and the register was widened to add TypeSafe as a subprocessor (round 6y, §8.2) | (a) DPA; (b) accept retention as-is, in writing; (c) scope the gate | (a) |
-| F5 | #414's dormant Arrival book (1413 lines) | (A) its own manifest group; (B) revert now; (C) keep as an alternative | (A), after confirming sketch 121 §7.3's binding three counts are carried by `/house/menu` or superseded by ADR 0213: `HouseMenu.tsx` shows no read/placed/not-placed counts today (critic G16) |
-| F6 | OD-151 (OPEN-DECISIONS.md:26): a Google Calendar grant | Build (new scope, consent copy, sync) or defer | Defer until L13 reports on the two calendar-push trees |
-| F7 | **Receiving history paging vs the verdict-ledger strip.** Q7's Approach 1 (2026-09-22) includes "a line's full verdict history … paged 10-at-a-time"; on 2026-09-21 he ruled the verdict ledger stripped because it was not bulletproof | (a) Approach 1 without per-line verdict history until a ledger passes his bar; (b) rebuild a bulletproof ledger first; (c) history from existing receipt rows only | Ask with L6's first draft |
+| F1 | `/communications` shows an error to every house because `public.scheduled_reports` is created by no migration (ADR 0083:58-68; production `to_regclass` is null). #457 removed the source and was BLOCKed on ADR 0083 | (a) Amend ADR 0083: the page names the three sources it owns; schedules leave until a table exists; the Gmail-watch line moves to `/admin`. (b) Build the table and feature. (c) Render the missing table as "not set up" | (a), matching his 2026-09-22 ruling to strip technical detail from the restaurant UI (§8.1, preview ruling 2). OD-91 (OPEN-DECISIONS.md:61) and OD-92 (OPEN-DECISIONS.md:62) bear on (b) **[ANSWERED 2026-09-25: (a), amend ADR 0083 (§11 item 1). The amendment is the comms lane's (W1 comms-a), not written here.]** |
+| F2 | OD-152 (OPEN-DECISIONS.md:84): what a bare click on an `/orders` row does | (A) opens the receipt sheet as ruled; (B) keep the expansion; (C) receipt when one exists, expansion while pending | (C) **[ANSWERED 2026-09-25: (C) (§11 item 3). OD-152 moved to Resolved.]** |
+| F3 | OD-140 (OPEN-DECISIONS.md:24): return the not-placed lines, not only their count | Yes: a gateway field plus the control sketch 121 draws. No: a count with no follow-through | Yes **[ANSWERED 2026-09-25: yes, as a separate list endpoint (OD-140's option (a); §11 item 5). OD-140 bracketed ANSWERED in place; it stays in the Open table until lane W1-orders-cellar's build merges.]** |
+| F4 | OD-133 (OPEN-DECISIONS.md:85): **only the retention and DPA terms** remain. Egress is decided (ADR 0182) and the register was widened to add TypeSafe as a subprocessor (round 6y, §8.2) | (a) DPA; (b) accept retention as-is, in writing; (c) scope the gate | (a) **[ANSWERED 2026-09-25: (a), by his word "TypeSafe is already done" (§11 item 8). OD-133 moved to Resolved. The DPA document itself was not seen by this lane.]** |
+| F5 | #414's dormant Arrival book (1413 lines) | (A) its own manifest group; (B) revert now; (C) keep as an alternative | (A), after confirming sketch 121 §7.3's binding three counts are carried by `/house/menu` or superseded by ADR 0213: `HouseMenu.tsx` shows no read/placed/not-placed counts today (critic G16) **[ANSWERED 2026-09-25: (A) (§11 item 4). Recorded as ADR 0149's deletion-manifest note. The sketch 121 §7.3 three-count check in this row's recommendation is still unmeasured.]** |
+| F6 | OD-151 (OPEN-DECISIONS.md:25): a Google Calendar grant | Build (new scope, consent copy, sync) or defer | Defer until L13 reports on the two calendar-push trees |
+| F7 | **Receiving history paging vs the verdict-ledger strip.** Q7's Approach 1 (2026-09-22) includes "a line's full verdict history … paged 10-at-a-time"; on 2026-09-21 he ruled the verdict ledger stripped because it was not bulletproof | (a) Approach 1 without per-line verdict history until a ledger passes his bar; (b) rebuild a bulletproof ledger first; (c) history from existing receipt rows only | Ask with L6's first draft **[ANSWERED 2026-09-25: (c), history from the door receipts already recorded; the ledger strip stands (§11 item 2). Recorded in ADR 0160 §107 / Open item 4.]** |
 | F8 | **The receiving desk's binding** (ADR 0104 D13: re-key on `deliveries`, or stay on `procurement_orders`; is the queue finished as B+). Filed on `origin/wip/2026-09-21/receiving` only | as filed there | Carry the row to main with L6 |
-| F9 | **#405's Gmail classification**: 5xx/429 kept ambiguous, 403/404 made definite — "a choice flagged to the founder in the PR, not locked" (memory `send-refusal-typed-classification-pr-405.md:12`) | as the PR states | Ask at #405's re-audit |
+| F9 | **#405's Gmail classification**: 5xx/429 kept ambiguous, 403/404 made definite — "a choice flagged to the founder in the PR, not locked" (memory `send-refusal-typed-classification-pr-405.md:12`) | as the PR states | Ask at #405's re-audit **[ANSWERED 2026-09-25: keep the split (§11 item 6). Recorded by #405's lane, not here.]** |
 | F10 | **ADR 0173 decision 3** stays proposed (`0173…:3`) | as the ADR states | Ask with L7's catalogue |
 
 **Answered, not forks** (each was listed open by the synthesis): #441 / ADR 0218's items
@@ -225,17 +225,17 @@ questions; ADR 0149 row 53's residual (expired or self-revoked vs revoked for ca
 
 ## 5. Founder-owed actions
 
-1. Answer F1–F10 as each lane reaches them (F1 now).
+1. Answer F1–F10 as each lane reaches them (F1 now). **[2026-09-25: F1, F2, F3, F4, F5, F7 and F9 answered (§11); F6, F8 and F10 remain.]**
 2. Review sketch 122 round 6 (`origin/wip/2026-09-21/recs-sketch`), which unlocks L10(c).
 3. Look at the two §113 drawings when L8 draws them.
 4. Set the four GitHub secrets Production E2E names as missing (`SUPABASE_SERVICE_ROLE_KEY`,
    `RABBITMQ_URL`, `SENTRY_DSN`, `E2E_LEGACY_RESTAURANT_ID`, run `36105466598`), or rule which
-   checks to drop.
-5. Anthropic credit for the CI PR Audit Gate, or knowingly keep #442's bypass.
-6. A Railway `JEV_API_KEY` for the gateway if #435's Jev path is to run (critic G7).
+   checks to drop. **[2026-09-25, his words (§11 item 8): "skip production e2e secret, and CI audit gate claude api. I'll add them" — later, his action; still owed.]**
+5. Anthropic credit for the CI PR Audit Gate, or knowingly keep #442's bypass. **[2026-09-25: he will add it (item 4's quote); still owed.]**
+6. A Railway `JEV_API_KEY` for the gateway if #435's Jev path is to run (critic G7). **[DONE by his word 2026-09-25: "Jev api key added, redeploying" (§11 item 8); the variable was not read by this lane.]**
 7. A yes to close #389, #390, #404, #456, #457 and #368 now, and #374 after L13; a yes to
-   remove the safe worktrees after L16 step 1.
-8. The TypeSafe DPA if F4 is (a).
+   remove the safe worktrees after L16 step 1. **[2026-09-25: granted for #456, #457, #389, #390 and #404 (§11 item 7), all five closed 21:21:22Z–21:21:30Z (`gh pr view --json closedAt`). #368 and #374 were not in the grant and are still open; the worktree removal is still owed.]**
+8. The TypeSafe DPA if F4 is (a). **[DONE by his word 2026-09-25: "TypeSafe is already done" (§11 item 8); OD-133 resolved.]**
 9. Who set shell and admin ON in the database, for the record (optional; the table cannot say).
 10. The deletion manifest, group by group, last.
 
@@ -540,7 +540,7 @@ The verdict-ledger strip ruling cited in §0 (L6(b)) is in memory
 ## 9. Still unverified
 
 - The orchestrator's `Invalid value for queue` at code level, and whether #415 caused or only
-  surfaced it (this lane did not read Railway logs).
+  surfaced it (this lane did not read Railway logs). **[Answered by Wave 0's L14a, 2026-09-25 (§12): the cause is the AMQP queue name of the wildcard subscription `("system.control", "system.provider_conversation.*")` (`services/agent-orchestrator/agents/provider_conversation_agent.py:364` at `059169a59`), fixed in #464 (open). #415 **surfaced** it: before #415, `start_all_agents` logged a failed start and never added the agent to `self.agents` (`git show cc73f9f66^1:services/agent-orchestrator/core/orchestrator.py:444-446`, re-read by this lane). That the running orchestrator still logs the failure on 2026-09-25 is L14a's Railway read, not re-read here.]**
 - The orchestrator's and mobile's running commits.
 - Whether Task-tool subagents trigger Jev's `UserPromptSubmit` hook.
 - Whether #443's claimed BLOCK fixes hold; whether `claims_merge3.py` resolves #435's conflict.
@@ -558,3 +558,95 @@ The verdict-ledger strip ruling cited in §0 (L6(b)) is in memory
 | Retired | Recover with | Why |
 |---|---|---|
 | `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:93), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
+
+---
+
+## 11. Founder answers, 2026-09-25
+
+Copied **verbatim** from project memory `founder-answers-2026-09-25-web-rebuild.md`, lines
+11-28, as it stood at 2026-09-25T21:16Z (its `modified` stamp). As in §8, quoted words inside
+are his; the surrounding text is the recording session's note. Item 13 was added to the memory
+after this lane's brief listed twelve; it is copied too.
+
+Asked via AskUserQuestion 2026-09-25 in session 6c6d8b93 (census forks F1, receiving, F2, F5). All four took the recommended option:
+
+1. **/communications error banner (F1): amend ADR 0083.** The house page names only its own three sources (book, threads, drafts). The schedules card leaves `/communications` until a real `scheduled_reports` table exists (tech-debt row for the dead feature). The Gmail-watch line moves to `/admin`. Supersedes #457's blocked attempt.
+2. **Receiving desk history: built from the door receipts already recorded — no separate verdict ledger table.** The 2026-09-21 strip (commit `8ea44f527`) stands. Approach 1 otherwise unchanged: one row per line grouped by vendor, 5 rows per vendor box, history 10 per page.
+3. **OD-152 /orders row click: depends on state.** Opens the receipt sheet when a receipt exists; expands the row while the order is pending (approve + Mark delivered live there).
+4. **#414 Skyleaf Arrival book: delete at cutover** — its own group on the ADR 0149 deletion manifest. Nothing changes now; `/get-started`'s `legacy` slot (ADR 0213 flow) is the plan of record.
+
+5. **OD-140 unplaced menu lines: separate list endpoint** (`GET /cellar/:id/registers/unplaced` shape) — "Show me the N" control; a test pins it to the same `placeMenuLine` rule so count and list cannot drift.
+6. **#405 Gmail send failures: keep the split** — 5xx/429 ambiguous (draft held, never auto-released), 403/404 definite refusal (draft reopens).
+7. **Close superseded PRs #456 #457 #389 #390 #404** with a pointer comment — granted.
+8. **Founder-owed pipeline items (his words):** "skip production e2e secret, and CI audit gate claude api. I'll add them" — later, his action. "TypeSafe is already done" (the DPA, OD-133) and "Jev api key added, redeploying" (JEV_API_KEY on Railway). So OD-133's retention/DPA fork is closed by his word 2026-09-25 — record it.
+
+**Round 3 (same day, after Wave 0):**
+9. **#464 production agent: gate, clear, then merge.** The urgency auto-send must obey the house's `enable_ai_autonomous_send`; the 14 queued backlogs are dealt with before it starts (implemented as a code guard: stale approved sends are not sent, they return to the manager to re-approve — no manual broker purge); then merge.
+10. **#427 Sentry: stop sending Python frame locals** (`include_local_variables=False` at both init sites).
+11. **Vendors — his words:** "Shared vendors exist. However … some people might just have different vendors, different distributions, names and numbers, even though it's the same vendor. So … we're gonna let each house decide on its own distribution and way of handling communication … when we have enough data, we're going to … start to gather enough information from vendors and make them shared vendors exist. And that's where we're gonna see those shared vendors appear on the world map in the /providers page. And if you can change it, change providers to vendors." Reading: NOW each house owns its own vendor rows (house-scoped reads, #416's `.eq` is right; houseless rows are orphans); LATER a shared/canonical vendor layer built from gathered data appears on the /providers world map; RENAME the user-facing word providers/distributors → **vendors** (route `/vendors`, old routes redirect).
+12. **#463 live in code for every house: yes, all three** (shell, admin desk, /authorize), no per-house switch, rollback = revert + redeploy.
+13. **#449 (touches gate-owned ci.yml): "Yes, merge after audit"** — founder word given 2026-09-25; still needs a real three-role PASS.
+
+### 11.1 Where each answer is recorded
+
+| # | Answer | Recorded in | By |
+|---|---|---|---|
+| 1 | Comms banner (F1): amend ADR 0083 | ADR 0083 amendment | Lane W1 comms-a (not this PR) |
+| 2 | Receiving history from door receipts; strip stands (F7) | ADR 0160 §107 and Open item 4, 2026-09-25 brackets | This PR |
+| 3 | OD-152: depends on state (F2) | `OPEN-DECISIONS.md` OD-152 → Resolved | This PR; build is lane W1-orders-cellar |
+| 4 | #414 Arrival book deleted at cutover (F5) | ADR 0149 deletion-manifest note | This PR |
+| 5 | OD-140: separate list endpoint (F3) | OD-140 bracketed ANSWERED in place (moves to Resolved when built) | This PR; build is lane W1-orders-cellar |
+| 6 | #405: keep the split (F9) | #405's ADR / PR body | #405's lane (not this PR) |
+| 7 | Close #456 #457 #389 #390 #404 | Done 2026-09-25T21:21Z (§5 item 7) | Orchestrating session |
+| 8 | TypeSafe DPA done; `JEV_API_KEY` set; e2e secrets and CI audit credit are his later action | OD-133 → Resolved; §5 items 4-6, 8 | This PR |
+| 9 | #464: gate the urgency auto-send on `enable_ai_autonomous_send`, handle the stale backlog, then merge | ADR 0172 / #464's body | #464's lane (not this PR; ADR 0172 not edited here) |
+| 10 | #427: stop sending Python frame locals | ADR 0040 / #427's body | #427's lane (not this PR; ADR 0040 not edited here) |
+| 11 | Vendors: house-scoped now, shared layer later, the word is "vendors" | [ADR 0221](../../decisions/0221-each-house-owns-its-vendors-now-a-shared-vendor-layer-comes-later-the-word-is-vendors.md) | This PR |
+| 12 | #463: all three live in code for every house | #463 (ADR 0149 row 36 bracket on its branch) | #463's lane |
+| 13 | #449: "Yes, merge after audit" | #449's merge record | Merge train (still needs a three-role PASS) |
+
+---
+
+## 12. Wave 0 outcome, 2026-09-25
+
+**PRs opened:** #463 (shell, admin and `/authorize` live in code; head `09c111cb3`), #464
+(the conversation agent's queue name; `7c1824454`; gated by §11 item 9), #465 (CLAIMS walkers
+read tracked files only, ADR 0220; `34386a476`), #466 (this records PR), #467 (recommendations
+catalogue round 6, ADR 0191; `85283ad0f`). **PRs brought up to date:** #427, #423, #395, #412,
+#416, #446, #449, #451, #450, #425, #394. **Merge train 1** is running over #463 #416 #412 #446
+#423 #395 #465 #451 #450 #425 #394 #467, in that order; at this section's writing none of them
+had merged (`gh pr view --json state`, all OPEN). Heads are from Wave 0's result file; a train
+merge moves them.
+
+### 12.1 Wave 0's notes for the records lane, verified
+
+Each Wave 0 lane returned notes for L1. Those still true are below, each re-checked by this
+lane on 2026-09-25 unless the Evidence cell says otherwise. Dropped as no longer true or
+already done: L4's "record authorize_integration as acted-on-pending-confirmation" (§11 item
+12 confirms it); L14b's "next free ADR is 0221" (0221 is this PR's).
+
+| From | Note | Evidence |
+|---|---|---|
+| L4 (#463) | On merge, `LIVE_PAGES` goes from 20 keys to 23 (shell, admin, authorize_integration); still flag-gated: recommendations, receiving desk, arrival. R17 closes on merge. STATE.md and LIVE-CHECKLIST.md's gated rows change then, not before | Counted in `apps/web/src/lib/mudavym/useMudavymDesign.ts`: 20 at `origin/main`, 23 at `origin/feat/live-shell-admin-authorize` |
+| L4 | Pre-existing defect #463 fixes: `scripts/flip_mudavym_design_flags.py`'s `LIVE_IN_CODE` lacks `settings` (live since #419), so a flip of settings writes an unread column and reports success | `scripts/flip_mudavym_design_flags.py:123-147` on `main`: sixteen row-36 names plus `cellar`, no `settings` |
+| L4 | With the shell live, an unmatched signed-in path renders the shell's in-app 404 at the same URL instead of redirecting to `/`; an e2e expecting the legacy redirect must set `localStorage['mudavym.design.shell']='0'` | L4's report; not re-run here |
+| L4 | CLAIMS rows `ADR-0149-LIVE-PAGES-16` and `SHELL-GATE-IS-OFF-BY-DEFAULT-AND-THREE-LAYERED` are amended in place in #463; compare by (id, verify) if another branch edits them | L4's report |
+| L14a (#464) | The failure is the wildcard subscription's AMQP queue name; #415 surfaced it, did not cause it. Unrelated to the dead HTTP dispatch at `v3.0-TECH-DEBT.md:778` | §9's bracket (both code reads re-done here); the Railway log read is L14a's |
+| L14a | OD-68's daily ERROR comes from a second site: the read in `_check_upcoming_events` (`calendar_agent.py:395-403`), not only the upsert at `:155-156`; PGRST205 on `provider_important_dates`, 00:05 UTC, seen 2026-09-24 and 2026-09-25 | Code sites re-read on `main`; the log dates are L14a's |
+| L14a | New memory `orchestrator-pytest-scratch-venv.md` (baseline 1423 passed / 55 skipped at `059169a59`) | File exists in project memory; the counts are L14a's |
+| L14b (#465) | L14(b) is done when #465 merges (ADR 0220) | #465 OPEN |
+| L3a | Three audit records exist **only** as untracked files in `.claude/worktrees/musing-sutherland-0d8f92`: `.planning/07-reference/pr-audits/417-17a5a3ca.md`, `417-7df8a336.md`, `423-07a67bdd.md`. A worktree clean loses them | Each file present and untracked; `git log --remotes -- <path>` empty for all three |
+| L3a | Stale local heads nobody should push from: `wt-sentry-url` (#427 at `6a31cf240`), `wt-promo-scope` (#416 at `9654df516`), `wt-menufix` (#446 at `b87f9d38b`) | `git -C <wt> rev-parse --short HEAD` |
+| L3a | #427's round 3 closed a breadcrumb / free-text / frame-locals leak the round-2 audit rated non-blocking; #423 also covers the repo-root `vercel.json` (#418 gave it the same trailing-slash gap) | L3a's report; §11 item 10 extends #427 |
+| L3a | #395 must precede the receiving lane | L3a's report |
+| L3b | `TD-2026-09-17-TEXT-SENDERS-USER-ID` (open) goes STALE when the second of #412 / #416 merges; that PR must flip it to resolved | `CLAIMS.jsonl:406`, status open on `main` |
+| L3b | Census correction: #446's overlap in `menus.service.ts` was with #434 (ADR 0193), not #453 | L3b's merge report |
+| L3b | The conversations by-order / by-provider read is unscoped on `main`: `getByOrder` takes no user or house (`conversations.controller.ts:289-295`). The uncommitted fix in `.claude/worktrees/admiring-stonebraker-c367d1` is incomplete (500 not 403 for a houseless session; `getStats` fails open; its CLAIMS and TECH-DEBT hunks do not apply; its new tripwire would be STALE) | Controller re-read on `main`; the patch analysis is L3b's |
+| L3b | #412 records "167 as of 2026-09-25" in `DELIVERY-AUDIT.md` §6; any other PR retiring `read_error_baseline.json` rows conflicts on that line | L3b's report |
+| L10a (#467) | When #467 lands, bracket `PROGRESS.md:518` ("Recommendations catalog: is it actionable?") as answered 2026-09-21 by ADR 0191; #467's seven migrations are renumbered into `20260925120000`-`120600`; the flag stays OFF until an L4/founder keystroke | `PROGRESS.md:518` unbracketed on `main`; the rest is L10a's |
+| L2-prep | `gh pr checks --watch --required` can exit before a required context that has not started yet (CI Complete) posts; name the required contexts and poll for them | L2-prep saw it on 5 of 5 PRs |
+| L13 | `wt-r5-gate`'s commit `c59d8f71b` (the gate8c / gate-r8 CI chain) is on no remote ref; push it into #432 before its last call | `git branch -r --contains c59d8f71b` empty |
+| L13 | CRITIC's "wt-e2e has no snapshot" is wrong: `origin/wip/2026-09-19/others/wt-e2e` exists | `git rev-parse` → `13df8e6b3` |
+| L13 | #368 is CONFLICTING and its WhatsApp-sender content shipped via #391; a close-as-superseded candidate (not in §11 item 7's grant) | `gh pr view 368 --json mergeable` |
+| L1 | Memory corrections owed (not edited by this PR): `founder-answers-2026-09-22-page-gap` (four report paths never existed; Q11 vs `Privacy.tsx:21-31`), `ci-audit-gate-out-of-credit` (#442 bypasses to success), `four-fixes-session-2026-09-22` (#448 CI red), `gate-r4-code-only-in-wt-gate-rule` (superseded by `origin/wip/2026-09-19/gate`, an ancestor of #432), `web-rebuild-goal-2026-09-25` (31 migrations across 7 PRs, not 26 across 5) | L1's report; the memory files exist |
+

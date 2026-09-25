@@ -76,6 +76,8 @@ the current restaurants or users, or tables, dbs or such"*. So:
 - **Never deleted:** any table, column, row, house, user or migration. The twenty
   `mudavym_design_*` columns stay in `restaurant_feature_flags`, unread.
 
+**[Deletion-manifest note, 2026-09-25 — the founder, `AskUserQuestion` in session 6c6d8b93 (census fork F5, option (A), the recommended one). The recording session's note, verbatim from project memory `founder-answers-2026-09-25-web-rebuild.md` item 4: *"#414 Skyleaf Arrival book: delete at cutover — its own group on the ADR 0149 deletion manifest. Nothing changes now; `/get-started`'s `legacy` slot (ADR 0213 flow) is the plan of record."* So, on the manifest: #414's Arrival book is **its own group**, deleted at cutover like every other group and only on his approval of that group. It is the one place where "delete the legacy slot" is backwards: at `/get-started` the gate reads `<PageGate page="arrival" legacy={<GetStarted />} next={<Arrival />} />` (`apps/web/src/App.tsx:215-220` at `059169a59`, whose comment says "Flag off: #455 first-proof GetStarted (ADR 0213). Flag on: #414 Skyleaf Arrival"), so the cutover keeps the `legacy` slot's `GetStarted` (ADR 0213's plan of record) and deletes the `next` slot's `Arrival`. Measured today, the group's page folder is `apps/web/src/pages/arrival/` (8 files, 3,888 lines; `Arrival.tsx` alone 1,413); its full extent (the `mudavym_design_arrival` flag wiring, any endpoint only it calls) is the cutover lane's import-graph proof, not this note's. Rejected: (B) revert #414 now; (C) keep it as an alternative arrival. Nothing changes before the cutover; production has `arrival` ON for 0 of 14 houses (census J1).]**
+
 ### Founder answers, 2026-09-16 and 2026-09-17 (in session; italics are his words, other cells paraphrase the option he chose; "Carried into" names the record that carries or will carry each answer, and "to carry" marks one not yet written there)
 
 | # | Fork | Answer | Carried into |
@@ -156,3 +158,4 @@ the current restaurants or users, or tables, dbs or such"*. So:
 | 2026-09-16 | Aldemir (founder), in session | Locked — goal plus six rounds of answers |
 | 2026-09-17 | Aldemir (founder), in session | Rows 27-34 added — two further rounds; the motion sketch renumbered 105 to 116 (105 was the rejected login redraw) |
 | 2026-09-17 | Aldemir (founder), in session | Rows 35-38 added — go-live of 16 locked pages, the public switch on, the flyleaf login, the sketch style |
+| 2026-09-25 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93) + records lane W1 (Opus 5.5) | Deletion-manifest note added — #414's Skyleaf Arrival book is its own manifest group, deleted at cutover; `/get-started`'s `legacy` slot (ADR 0213) is the plan of record and survives the cutover |
