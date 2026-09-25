@@ -1,3 +1,4 @@
+import { restoreArrivalEntry } from "../arrival/restore-entry";
 import {
   Injectable,
   Logger,
@@ -31,6 +32,11 @@ interface PushSubscription {
 
 @Injectable()
 export class NotificationsService {
+  /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
+  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
+    return restoreArrivalEntry(this.databaseService, "notifications", restaurantId, actorId, batchId, rowId);
+  }
+
   private readonly logger = new Logger(NotificationsService.name);
   private webPush: any = null;
 

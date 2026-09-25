@@ -81,6 +81,45 @@ describe("DeliveryService", () => {
   };
 
   // -------------------------------------------------------------------------
+  describe("list — the deliveries that fulfil one order", () => {
+    const recording = () => {
+      const eqs: [string, unknown][] = [];
+      const chain: Record<string, unknown> = {};
+      for (const v of ["select", "order", "limit"]) chain[v] = () => chain;
+      chain.eq = (col: string, val: unknown) => {
+        eqs.push([col, val]);
+        return chain;
+      };
+      chain.then = (resolve: (a: unknown) => void) =>
+        resolve({ data: [deliveryRow({ order_id: "ord-9" })], error: null });
+      const client = { getClient: () => ({ from: () => chain }) };
+      const svc = new DeliveryService(
+        client as unknown as DatabaseService,
+        {} as DeliveryClockService,
+        notifications as unknown as NotificationsService,
+        {} as DeliveryStockService,
+      );
+      return { eqs, svc };
+    };
+
+    it("filters by order_id when an orderId is given, inside the restaurant scope", async () => {
+      const { eqs, svc } = recording();
+      const res = await svc.list(REST, { orderId: "ord-9" });
+      expect(res.ok).toBe(true);
+      expect(eqs).toEqual([
+        ["restaurant_id", REST],
+        ["order_id", "ord-9"],
+      ]);
+    });
+
+    it("does not filter by order when none is given", async () => {
+      const { eqs, svc } = recording();
+      await svc.list(REST);
+      expect(eqs).toEqual([["restaurant_id", REST]]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   describe("create — provenance is decided once and is permanent (D5)", () => {
     it("marks a delivery with no order UNORDERED", async () => {
       db.insertAnswers.deliveries = {

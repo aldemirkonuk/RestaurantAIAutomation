@@ -1,3 +1,4 @@
+import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice';
 /**
  * `/connections` — what acts for this house.
  *
@@ -82,29 +83,30 @@
  * §9 is closed.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
+// The one write this page makes to a text sender: a manager ending the house's
+// use of it (ADR 0114 — the attachment is the house's, and a manager may stop
+// it). Declaring one is still disabled and still carries the server's reason.
+import { revokeTextSender } from '../../../services/api/textSenders';
+import { getErrorMessage } from '../../../services/api/client';
 import {
   CalendarDays,
   CreditCard,
   Cpu,
   Globe,
-  KeyRound,
   Link2,
   Mail,
   MessageCircle,
   MessageSquare,
   Network,
-  ShieldCheck,
   Smartphone,
   Store,
 } from 'lucide-react';
-import { ensureFraunces } from './fonts';
 import {
   useConnectionsNextData,
   type McpAnnotationsVM,
   type McpServerVM,
   type McpToolGrantVM,
-  type ProviderStateVM,
 } from './useConnectionsNextData';
 import {
   AttachmentRow,
@@ -125,6 +127,8 @@ import {
   onDate,
   personName,
   probeWord,
+  houseProbeDetail,
+  plainReason,
   readError,
   shortUrl,
   spelled,
@@ -159,16 +163,11 @@ export const REGISTER_ANCHORS = [
   'servers',
   'payment',
   'grants',
-  'deployment',
 ] as const;
 
 export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   const d = useConnectionsNextData();
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   /**
    * Bring the fragment's register into view once its register has answered.
@@ -219,11 +218,12 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
    * `provider.reason` is what `POST /billing/setup-intent` would answer 503
    * with, so the disabled control and the refused request say the same thing.
    */
-  const addCardReason: string | null = !providerConnected
-    ? (d.payments.data?.provider.reason ??
-        'No payment provider credential is configured on this deployment, so no SetupIntent can be minted and nothing could be stored.')
-    : publishable === null
-      ? 'VITE_STRIPE_PUBLISHABLE_KEY is not set in this web bundle, so Stripe’s own card fields cannot be rendered. The gateway is ready; the browser is not.'
+  const addCardReason: string | null =
+    !providerConnected || publishable === null
+      ? plainReason(
+          !providerConnected ? d.payments.data?.provider.reason : null,
+          'Card payments are not switched on yet, so no card can be added.',
+        )
       : null;
 
   /**
@@ -274,6 +274,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   if (!d.isManager) {
     return (
       <div className="mudavym cx" data-ground={ground}>
+      <IntegrationReturnNotice />
         <div className="cx-refused" role="status">
           <h1>This page is for managers and owners.</h1>
           <p>
@@ -296,6 +297,11 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
 
   return (
     <div className="mudavym cx" data-ground={ground}>
+      {/* A manager can return here from the SAME /authorize consent flow a
+       * non-manager does (KL audit J9/D9) — the outcome notice was rendered
+       * only in the refusal branch above, so a manager's own grant landed
+       * with no visible result. */}
+      <IntegrationReturnNotice />
       <div className="cx-wrap">
         <div className="cx-eyebrow">Mudavym</div>
         <h1 className="cx-title">
@@ -303,6 +309,26 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
         </h1>
         <p className="cx-lede">What acts for this house.</p>
         <div className="cx-rule" />
+
+        {/* Persistent reconnect banner — ADR 0149 row 53 (closes ADR 0160 §111
+            Open item 5 / PAGE-GAP Q8): routine tone, on this page, stays until a
+            live grant returns. Shown only when Settings has mail reading ON and
+            no live grant backs it. Phone push is separate (MailGrantAbsentProducer). */}
+        {d.mailReader.data?.enabled === true &&
+        d.mailReader.data.granted === false ? (
+          <div className="cx-mail-banner" role="status" data-testid="mail-reconnect-banner">
+            <p>
+              Mail connection needs to be reconnected — vendor replies will not
+              reach this house until someone reconnects Gmail read access.
+            </p>
+            <a
+              className="cx-mail-banner-action"
+              href={`/authorize/gmail_read?returnPath=${encodeURIComponent('/connections')}`}
+            >
+              Reconnect
+            </a>
+          </div>
+        ) : null}
 
         {/* ══ THE LEDGER SENTENCE ═══════════════════════════════════════ */}
         <div className="cx-ledger">
@@ -402,7 +428,6 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               title="Point of sale"
               owner="the house's"
               chips={posChips(d.pos.data)}
-              subtitle={`webhook → /api/v1/pos-hub/webhook/<provider>/${d.restaurantId ?? DASH}`}
               why={
                 <>
                   The till pushes closed checks here. It is the only attachment
@@ -433,7 +458,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 )
               }
               controls={[{ label: 'Disconnect', disabled: true }]}
-              stopNote="No disconnect endpoint exists. The feed stops when the provider's webhook secret is removed from this deployment."
+              stopNote="The till cannot be disconnected from this page yet. Ask Mudavym to stop the feed."
             />
           )}
 
@@ -454,17 +479,15 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               chips={[
                 d.provider.data?.connected
                   ? { label: d.provider.data.mode ?? 'Connected', tone: 'on' as const }
-                  : { label: 'Key missing', tone: 'warn' as const },
+                  : { label: 'Not switched on', tone: 'warn' as const },
               ]}
-              subtitle={secretList(d.provider.data, publishable)}
               why={
                 <>
-                  Everything except the credential exists: SetupIntent, Elements
-                  on Stripe&rsquo;s own origin, detach, reconcile and a signed
-                  webhook.{' '}
+                  Cards on file for this house are held by Stripe, not by
+                  Mudavym.{' '}
                   {d.provider.data?.connected ? null : (
                     <>
-                      Until the secrets are set, <em>no instrument can be
+                      Until card payments are switched on, <em>no card can be
                       recorded</em> — which is why the register below is empty
                       for a stated reason rather than because nobody added a
                       card.
@@ -478,23 +501,26 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 { text: 'Detach one at the provider', can: true },
                 { text: 'May not charge — pricing is undecided', can: false },
               ]}
-              lastLabel="Last signed delivery"
+              lastLabel="Last update from Stripe"
               last={
                 d.provider.data?.webhookLastReceivedAt
                   ? when(d.provider.data.webhookLastReceivedAt)
                   : null
               }
               lastDetail={
-                d.provider.data?.webhookReason ??
-                'No signed delivery has ever been authenticated here. That is not the same as healthy.'
+                d.provider.data?.webhookLastReceivedAt
+                  ? 'The last change Stripe reported for this house.'
+                  : 'Stripe has not reported a change yet. That is not the same as healthy.'
               }
               controls={[
                 { label: 'Connect', disabled: !d.provider.data?.connected },
               ]}
-              stopNote={
-                d.provider.data?.reason ??
-                'The provider did not say which secrets it holds.'
-              }
+              stopNote={plainReason(
+                d.provider.data?.reason,
+                d.provider.data?.connected
+                  ? 'Removing a card below removes it at Stripe too.'
+                  : 'Card payments are not switched on yet.',
+              )}
             />
           )}
 
@@ -512,13 +538,13 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             <AttachmentRow
               icon={<Mail {...ICON} />}
               title="Sender identity"
-              owner="the deployment's"
+              owner="Mudavym's"
               chips={[{ label: 'Shared, not yours', tone: 'warn' }]}
-              subtitle={`${d.sender.data?.address ?? DASH} · ${d.sender.data?.configuredBy ?? DASH}`}
+              subtitle={d.sender.data?.address ?? DASH}
               why={
                 <>
                   Every vendor letter this house sends leaves from{' '}
-                  <em>one mailbox the whole deployment shares</em>. The sign-off
+                  <em>one mailbox Mudavym restaurants share</em>. The sign-off
                   inside the letter carries this house&rsquo;s name; the
                   envelope does not. A vendor who replies is replying to a
                   mailbox other restaurants also send from.
@@ -529,18 +555,14 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 { text: "Receive the vendor's reply", can: true },
                 { text: 'Cannot be changed by this house', can: false },
               ]}
-              lastLabel="Resolved from"
-              last={
-                d.sender.data?.resolvedFromProfile
-                  ? "the mailbox's own profile"
-                  : 'the deployment variable'
-              }
+              lastLabel="Last sent"
+              last={null}
               lastDetail="No per-letter send record is kept against this address, so what it last sent is not on this row."
               controls={[{ label: 'Use our own address', disabled: true }]}
-              stopNote={
-                d.sender.data?.perHouse.reason ??
-                'No per-restaurant sender exists yet.'
-              }
+              stopNote={plainReason(
+                d.sender.data?.perHouse.reason,
+                'No per-restaurant sender exists yet.',
+              )}
             />
           )}
 
@@ -564,8 +586,16 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             />
           ) : (
             <>
-              <TextSenderRow channel="whatsapp" vm={d.textSenders.data} />
-              <TextSenderRow channel="sms" vm={d.textSenders.data} />
+              <TextSenderRow
+                channel="whatsapp"
+                vm={d.textSenders.data}
+                onStopped={d.reloadTextSenders}
+              />
+              <TextSenderRow
+                channel="sms"
+                vm={d.textSenders.data}
+                onStopped={d.reloadTextSenders}
+              />
             </>
           )}
 
@@ -586,12 +616,12 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               owner="public to anyone with the link"
               chips={[{ label: feed ? 'Published' : 'Not published', tone: feed ? 'on' : 'off' }]}
               subtitle={feed ?? DASH}
+              subtitleIsSecret={Boolean(feed)}
               why={
                 <>
-                  A read-only iCal address. It is{' '}
-                  <em>unauthenticated by design</em> so Outlook and Apple
-                  Calendar can subscribe — which means anyone holding the URL
-                  reads this house&rsquo;s deliveries, deadlines and shifts.
+                  A read-only calendar address. Outlook and Apple Calendar can
+                  subscribe to it, which means anyone holding the address reads
+                  this house&rsquo;s deliveries, deadlines and shifts.
                 </>
               }
               permissionsLabel="Grants"
@@ -634,14 +664,12 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             title="Public page for this house"
             owner="nobody's"
             chips={[{ label: 'None exists', tone: 'off' }]}
-            subtitle="vendor_portal_pages — keyed by vendor_catalogue_id / provider_id"
             why={
               <>
                 The public catalogue page in this product belongs to a{' '}
-                <em>vendor</em>, not to a restaurant: its table has no
-                restaurant column at all. This house therefore publishes
-                nothing, and the row is here so that fact is stated rather than
-                left to be assumed either way.
+                <em>vendor</em>, not to a restaurant. This house therefore
+                publishes nothing, and the row is here so that fact is stated
+                rather than left to be assumed either way.
               </>
             }
             permissionsLabel="Would show"
@@ -650,7 +678,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             last={null}
             lastDetail="No page has ever existed for a restaurant."
             controls={[{ label: 'Publish a page', disabled: true }]}
-            stopNote="Nothing to stop. Building this would need a restaurant-scoped page table and a route; neither exists."
+            stopNote="Nothing to stop. Restaurants cannot publish a page yet."
           />
 
           {/* — model-context servers — (`/profile`'s Register IV lands here) */}
@@ -670,11 +698,6 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 title={`Model-context servers · ${count(d.mcp.data?.length ?? 0)} declared`}
                 owner="the house's"
                 chips={mcpChips(d.mcp.data)}
-                subtitle={
-                  d.mcpRuntime.data
-                    ? `invocation ${d.mcpRuntime.data.invocation.enabled ? 'on' : 'off'} · secrets ${d.mcpRuntime.data.secretStorage.configured ? 'stored' : 'unavailable'}`
-                    : 'the deployment did not report what it can do with one'
-                }
                 why={
                   <>
                     Servers this house has declared. The house declares them and{' '}
@@ -685,7 +708,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                 }
                 permissionsLabel="Each row carries"
                 permissions={[
-                  { text: 'URL, scopes, encrypted secret', can: true },
+                  { text: 'Its address and its saved sign-in, kept encrypted', can: true },
                   { text: 'The tools it advertises', can: true },
                   { text: 'Which of them are granted', can: true },
                 ]}
@@ -700,10 +723,14 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                         ),
                       )} listed`
                 }
-                lastDetail={
-                  d.mcpRuntime.data?.invocation.reason ??
-                  'The deployment did not say whether a tool may be called.'
-                }
+                lastDetail={plainReason(
+                  d.mcpRuntime.data?.invocation.reason,
+                  !d.mcpRuntime.data
+                    ? 'Whether a tool may be called was not reported.'
+                    : d.mcpRuntime.data.invocation.enabled
+                      ? 'Granted tools may be called.'
+                      : 'Tools cannot be called yet.',
+                )}
                 controls={[]}
                 stopNote="Declaring one and revoking one are below, on this page. Both are refused by the gateway for anyone who is not a manager or an owner."
               />
@@ -735,8 +762,9 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   subtitle={shortUrl(s.url)}
                   why={
                     <>
-                      {s.probe?.detail ??
-                        'This server has never been called, so nothing is claimed about it either way.'}{' '}
+                      {s.probe?.detail
+                        ? houseProbeDetail(s.probe.status, s.probe.detail)
+                        : 'This server has never been called, so nothing is claimed about it either way.'}{' '}
                       {s.consent.given ? (
                         <>
                           You have consented to it acting in your name;{' '}
@@ -892,16 +920,14 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   ? { label: 'None added', tone: 'off' }
                   : { label: 'Provider not connected', tone: 'warn' },
               ]}
-              subtitle="payment_methods — 0 rows"
               why={
                 d.payments.data?.provider.connected ? (
                   <>Nobody has added one. The provider is connected, so one could be.</>
                 ) : (
                   <>
                     Not &ldquo;you have no cards&rdquo;.{' '}
-                    <em>No card could exist</em> — the provider has never been
-                    keyed, so the create path refuses with the same sentence
-                    this row carries.
+                    <em>No card could exist</em> — card payments have never
+                    been switched on for this house.
                   </>
                 )
               }
@@ -930,7 +956,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               ]}
               stopNote={
                 addCardReason ??
-                'A provider is connected and this bundle holds the publishable key, so the card fields open below this register. The number is typed into Stripe’s own iframes and never reaches this page.'
+                'Card payments are on, so the card fields open below this register. The number is typed into Stripe’s own fields and never reaches this page.'
               }
             />
           ) : (
@@ -1035,7 +1061,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                   </button>
                   <p className="cx-ctl-note">
                     {addCardReason ??
-                      'The card fields are Stripe’s own iframes, served from Stripe’s origin. The number never reaches this page or our servers.'}
+                      'The number is typed into Stripe’s own fields and never reaches this page.'}
                   </p>
                 </>
               ) : null}
@@ -1081,7 +1107,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                       ? { label: 'House let go', tone: 'off' }
                       : { label: 'Connected', tone: 'on' },
                   ]}
-                  subtitle={`${g.scopes.join(' · ') || DASH} — connected ${onDate(g.connectedAt)}`}
+                  subtitle={`connected ${onDate(g.connectedAt)}`}
                   why={
                     <>
                       This house&rsquo;s work is written into{' '}
@@ -1106,7 +1132,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                     g.scopes,
                     (d.catalog.data ?? []).find((c) => c.id === g.integrationId) ?? null,
                   )}
-                  lastLabel="Token expires"
+                  lastLabel="Sign-in expires"
                   last={g.tokenExpiresAt ? when(g.tokenExpiresAt) : null}
                   lastDetail="No per-use record is kept, so what this grant last did is not knowable from here."
                   controls={[
@@ -1122,7 +1148,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                         }),
                     },
                   ]}
-                  stopNote={`Only ${personName(g.ownerName)} can revoke the grant itself, from their own profile. This button stops the house asking for a token — the credential stays theirs.`}
+                  stopNote={`Only ${personName(g.ownerName)} can revoke the grant itself, from their own profile. This button stops the house using their sign-in — it stays theirs.`}
                 />
               ))}
 
@@ -1216,7 +1242,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                     belonging to people who work here carry no recorded
                     restaurant.
                   </b>{' '}
-                  They were made before a tenant reached the token, so they are
+                  They were made before a house was recorded on them, so they are
                   on nobody&rsquo;s house page and they still work. Counted here
                   rather than dropped, because a list that quietly omits them is
                   incomplete in exactly the way this page exists to prevent.
@@ -1224,21 +1250,23 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               ) : null}
 
               {/* The catalogue — the SAME route the other three surfaces read. */}
-              {(d.catalog.data ?? [])
-                .filter(
+              {byProvider(
+                (d.catalog.data ?? []).filter(
                   (c) =>
                     !(d.houseGrants.data?.grants ?? []).some(
                       (g) => g.integrationId === c.id,
                     ),
-                )
-                .map((c) => (
+                ),
+              ).map(([provider, rows]) => (
+                <section key={provider} aria-label={provider}>
+                  <h3 className="cx-col-h">{provider}</h3>
+                {rows.map((c) => (
                   <AttachmentRow
                     key={c.id}
                     icon={<Smartphone {...ICON} />}
                     title={c.label}
                     owner="would be a person's"
                     chips={[{ label: 'Not connected', tone: 'off' }]}
-                    subtitle={c.providerLabel}
                     why={
                       <>
                         {c.description} Drawn at the same weight as the live rows
@@ -1259,96 +1287,24 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                     stopNote={
                       c.available
                         ? 'Connecting happens on your own profile: the grant would be yours, not the house’s.'
-                        : (c.unavailableReason ??
-                          'This deployment cannot offer it, and did not say why.')
+                        : plainReason(c.unavailableReason, 'This connection is not available yet.')
                     }
                   />
                 ))}
+                </section>
+              ))}
             </>
           )}
         </section>
 
-        {/* ══ REGISTER IV ═══════════════════════════════════════════════ */}
-        <section className="cx-sec" id="deployment">
-          <div className="cx-sec-h">
-            <span className="cx-sec-n">Register IV</span>
-            <h2>Set once for every house on this deployment</h2>
-          </div>
-          <p className="cx-sec-d">
-            Keys nobody in this restaurant can change, listed because they act
-            here anyway. A page that shows only what a house controls is not a
-            list of what acts on its behalf.
-          </p>
-          <p className="cx-sec-k">
-            kept in the deployment&rsquo;s environment · read-only here · no
-            value is ever shown
-          </p>
-
-          <AttachmentRow
-            icon={<ShieldCheck {...ICON} />}
-            title="Token encryption"
-            owner="the deployment's"
-            chips={[
-              d.mcpRuntime.data
-                ? d.mcpRuntime.data.secretStorage.configured
-                  ? { label: 'Configured', tone: 'on' }
-                  : { label: 'Not configured', tone: 'warn' }
-                : { label: 'Did not report', tone: 'off' },
-            ]}
-            subtitle="INTEGRATION_TOKEN_ENCRYPTION_KEY · MCP_CONNECTION_SECRET_KEY"
-            why={
-              <>
-                Two keys, not one. The first encrypts Google and Microsoft
-                refresh tokens; the second encrypts model-context secrets.{' '}
-                <em>
-                  Without either, the connections it protects are disabled rather
-                  than stored in the clear
-                </em>{' '}
-                — the failure is a refusal, never a quiet downgrade.
-              </>
-            }
-            permissionsLabel="Protects"
-            permissions={[
-              { text: 'Refresh tokens at rest', can: true },
-              { text: 'Per-server model-context secrets', can: true },
-            ]}
-            lastLabel="Last rotated"
-            last={null}
-            lastDetail="No rotation has ever been recorded — there is no column for one."
-            controls={[{ label: 'Rotate', disabled: true }]}
-            stopNote={
-              d.mcpRuntime.data?.secretStorage.reason ??
-              'A deployment setting. Changing it is an operator action, not a page.'
-            }
-          />
-
-          <AttachmentRow
-            icon={<KeyRound {...ICON} />}
-            title="Model provider"
-            owner="the deployment's"
-            chips={[{ label: 'Not reported', tone: 'off' }]}
-            subtitle="ANTHROPIC_API_KEY"
-            why={
-              <>
-                The engine behind every drafted vendor letter, every extracted
-                invoice line and every insight sentence.{' '}
-                <em>It reads this house&rsquo;s data to write them.</em> No
-                endpoint reports its state, so this row names it and claims
-                nothing about it.
-              </>
-            }
-            permissionsLabel="Sees"
-            permissions={[
-              { text: 'Order and invoice text, catalogue rows', can: true },
-              { text: 'No card, no password, no token', can: false },
-            ]}
-            lastLabel="Last used"
-            last={null}
-            lastDetail="Nothing here reports model calls, so this is unknown rather than zero."
-            controls={[{ label: 'Change', disabled: true }]}
-            stopNote="A deployment setting, and one no route on this gateway exposes."
-          />
-        </section>
+        {/* [OVERRULED 2026-09-22 by the founder after the preview review —
+            "remove technical secrets / webhooks / terms". Register IV ("Set
+            once for every house on this deployment": the token-encryption keys
+            and the model-provider key, by name) is no longer drawn for a
+            restaurant user. The rule as it stood: "Keys nobody in this
+            restaurant can change, listed because they act here anyway. A page
+            that shows only what a house controls is not a list of what acts on
+            its behalf."] */}
 
         <div className="cx-foot">
           <p>
@@ -1408,16 +1364,38 @@ const STATE_WORDS: Record<
 function TextSenderRow({
   channel,
   vm,
+  onStopped,
 }: {
   channel: 'whatsapp' | 'sms';
   vm: import('./useConnectionsNextData').TextSendersVM | null;
+  /**
+   * Re-read the register after a stop. Optional because the row renders inside
+   * a page whose data hook is stubbed in tests; a stop with no re-read leaves
+   * the old state on screen, which is worse than a no-op but is not a lie.
+   */
+  onStopped?: () => void;
 }) {
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
+  // FOUNDER, 2026-09-17 (ADR 0121 review trail): stopping a sender now takes the
+  // same ceremony this page's other revokes use — `HoldToApprove`
+  // (`AttachmentRow.tsx:181`; also `HouseServerControls.tsx:332`) — plus a
+  // TYPED reason, kept on the record (`revoked_reason`, already persisted
+  // server-side by `text-sender.service.ts revoke()`; only the client sent a
+  // fixed string before this). The hold does not even arm until one is typed —
+  // see `disabled` below — so a placeholder can never reach the gateway.
+  const [stopReason, setStopReason] = useState('');
+  const stopReasonId = useId();
   const definition =
     channel === 'whatsapp'
       ? vm?.catalogue?.whatsapp_business ?? null
       : vm?.catalogue?.sms_sender ?? null;
   const sender = channel === 'whatsapp' ? vm?.senders.whatsapp ?? null : vm?.senders.sms ?? null;
   const readable = vm?.readable ?? false;
+  const senderLabel =
+    definition?.label ?? (channel === 'whatsapp' ? 'WhatsApp Business' : 'SMS sender');
+  const canStop = Boolean(sender && sender.state !== 'revoked');
+  const stopReasonGiven = stopReason.trim().length > 0;
 
   /**
    * SIX STATES AND AN UNREAD ONE, KEPT APART. "Not connected" and "we could not
@@ -1434,14 +1412,24 @@ function TextSenderRow({
           ? [{ label: 'Rejected', tone: 'warn' }]
           : [{ label: STATE_WORDS[sender.state], tone: 'off' }];
 
+  const transportWords = plainReason(
+    vm?.transport.words,
+    !vm
+      ? 'Mudavym did not say whether anything could be sent.'
+      : vm.transport.built
+        ? 'Messages can be sent through this channel.'
+        : 'Nothing can be sent through a house sender yet.',
+  );
+
   const oneWayMarkets = (definition?.markets ?? [])
     .filter((m) => !m.twoWay)
     .map((m) => m.marketLabel);
 
   return (
+    <>
     <AttachmentRow
       icon={channel === 'whatsapp' ? <MessageCircle {...ICON} /> : <MessageSquare {...ICON} />}
-      title={definition?.label ?? (channel === 'whatsapp' ? 'WhatsApp Business' : 'SMS sender')}
+      title={senderLabel}
       owner={sender ? "the house's" : "nobody's"}
       chips={chips}
       subtitle={
@@ -1489,13 +1477,130 @@ function TextSenderRow({
       controls={[
         { label: 'Bring our own', disabled: true },
         { label: 'Ask Mudavym to register one', disabled: true },
+        // ADR 0114: the attachment is the HOUSE's, and a manager may end it.
+        // Enabled only when there is a live sender to stop — a control that is
+        // always clickable would suggest an act that has nothing to act on.
+        //
+        // FOUNDER, 2026-09-17: this used to be one click with a fixed reason
+        // string. It is now `HoldToApprove` — the ceremony this page's other
+        // revokes already use (`AttachmentRow.tsx:181`; also
+        // `HouseServerControls.tsx:332`) — gated on a TYPED reason via
+        // `disabled` below, so the gesture cannot even begin on a blank one.
+        // `onChallenge` captures the reason at the moment the hold STARTS
+        // (the same rule every sealed control on this page follows) and
+        // refuses — same as a failed seal mint — if it somehow reads blank;
+        // that branch is unreachable through the UI while `disabled` holds,
+        // and is kept for the same reason `SealedRejectDie`'s does.
+        //
+        // The guard below is written out (not `canStop`) so TypeScript keeps
+        // narrowing `sender` as non-null inside the closures underneath —
+        // `canStop` is the same boolean, kept separately for the reason box.
+        ...(sender && sender.state !== 'revoked'
+          ? [
+              {
+                label: `Hold to stop ${senderLabel}`,
+                wrap: true,
+                busy: stopping,
+                disabled: !stopReasonGiven,
+                hold: {
+                  onChallenge: async () => {
+                    const reason = stopReason.trim();
+                    return reason.length > 0 ? reason : null;
+                  },
+                  onApprove: (typedReason?: string | null) => {
+                    if (stopping) return;
+                    const reason = typedReason ?? '';
+                    if (!reason) return;
+                    setStopping(true);
+                    setStopError(null);
+                    void revokeTextSender({ senderId: sender.id, reason })
+                      // Re-read rather than patch the row locally: the row's
+                      // state is the SERVER's, and a client that painted
+                      // 'Stopped' itself would be claiming a write it only asked
+                      // for (ADR 0083).
+                      //
+                      // The gateway resolves 200 even when nothing matched
+                      // (text-sender.service.ts revoke(): a stale senderId, or a
+                      // race with another revoke, both come back as
+                      // `{revoked: false, words: ...}`, not a thrown error), so
+                      // axios lands that case here too — check the body before
+                      // treating it as a success.
+                      .then((result) => {
+                        if (result?.revoked !== true) {
+                          setStopError(
+                            result?.words ?? 'The gateway did not say why.',
+                          );
+                          return;
+                        }
+                        setStopReason('');
+                        onStopped?.();
+                      })
+                      .catch((e) => setStopError(getErrorMessage(e)))
+                      .finally(() => setStopping(false));
+                  },
+                },
+              } as const,
+            ]
+          : []),
       ]}
       stopNote={
-        vm?.transport.words ??
-        'The deployment did not say whether anything could be sent.'
+        stopError
+          ? `This sender was NOT stopped, so the house can still send through it: ${stopError}`
+          : canStop && !stopReasonGiven
+            ? `${transportWords} Stopping it needs a reason typed below, then the hold to confirm.`
+            : transportWords
       }
     />
+    {/* The typed reason the hold above requires. A plain sibling block, not a
+        fifth AttachmentRow column — that row draws "whose it is · what it may
+        do · what it last did · how to stop it" and no fifth thing
+        (`AttachmentRow.tsx` header), the same reason `HouseServerControls.tsx`
+        keeps its own inline form fields outside that component rather than
+        inside it. */}
+    {canStop ? (
+      <div className="cx-row is-nested">
+        <div style={{ width: '100%' }}>
+          <label htmlFor={stopReasonId} className="cx-col-h">
+            Reason for stopping {senderLabel}
+          </label>
+          <textarea
+            id={stopReasonId}
+            data-testid={`text-sender-stop-reason-${channel}`}
+            rows={2}
+            value={stopReason}
+            onChange={(e) => setStopReason(e.target.value)}
+            disabled={stopping}
+            placeholder="Say why — it is written onto the record and is the only account anyone will have of it."
+            style={{
+              width: '100%',
+              maxWidth: 520,
+              marginTop: 4,
+              fontFamily: 'inherit',
+              fontSize: 12.5,
+              padding: '7px 9px',
+              borderRadius: 4,
+              border: '1px solid var(--paper-2)',
+              background: 'var(--paper-0)',
+              color: 'var(--ink-1)',
+              resize: 'vertical',
+            }}
+          />
+        </div>
+      </div>
+    ) : null}
+    </>
   );
+}
+
+/** One heading per provider; each service keeps its own row and its own grant. */
+function byProvider<T extends { providerLabel: string }>(rows: T[]): [string, T[]][] {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = groups.get(row.providerLabel);
+    if (list) list.push(row);
+    else groups.set(row.providerLabel, [row]);
+  }
+  return [...groups];
 }
 
 function Tally({ n, k, seal }: { n: number | null; k: string; seal?: boolean }) {
@@ -1528,31 +1633,6 @@ function posSources(
   return pos.sources
     .map((s) => `${s.providerName ?? s.source}: ${count(s.checks ?? null)}`)
     .join(' · ');
-}
-
-/**
- * Which of the three secrets this deployment holds.
- *
- * Two are the gateway's own answer; the third is baked into THIS bundle and the
- * gateway cannot see it, so it is read from `import.meta.env` here — the same
- * split `/profile` makes, and for the same reason. A field the gateway did not
- * send is reported as unknown rather than as unset: "we were not told" and "it
- * is not set" are different facts about a credential.
- */
-function secretList(p: ProviderStateVM | null, publishableKey: string | null): string {
-  if (!p) return 'the provider did not report its state';
-  const state = (v: boolean | undefined) =>
-    v === undefined ? 'not reported' : v ? 'set' : 'unset';
-  // Read through the hook (2026-09-05) rather than off `import.meta.env` twice.
-  // The card panel decides whether it can open from the same value, and two
-  // reads of one variable is how a page ends up printing "set" beside a control
-  // disabled for being unset.
-  const publishable = publishableKey ? 'set' : 'unset';
-  return [
-    `STRIPE_SECRET_KEY ${state(p.secretKeyPresent)}`,
-    `STRIPE_WEBHOOK_SECRET ${state(p.webhookSecretPresent)}`,
-    `VITE_STRIPE_PUBLISHABLE_KEY ${publishable}`,
-  ].join(' · ');
 }
 
 function mcpChips(
@@ -1646,7 +1726,7 @@ function declaredWords(a: McpAnnotationsVM | null): string {
       ? 'the server declares it changes things, additively'
       : 'the server declares it changes things';
   }
-  return 'the server sent no readOnlyHint, so it counts as a write';
+  return 'the server did not say whether it only reads, so it counts as a write';
 }
 
 /**

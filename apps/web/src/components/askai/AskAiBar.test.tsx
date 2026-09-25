@@ -5,15 +5,19 @@
  *  1. A refusal shows its REASON. `ask-ai-actions.ts` returns a reason on every
  *     branch specifically so the UI can; a card that says "could not do that"
  *     and stops is the dead end that teaches operators to stop asking.
- *  2. An untouched confirm sends NO payload — that is the difference between
- *     `edited: false` and `edited: true` in the ledger, and the ledger is what
- *     P3.0 grades the model on.
+ *  2. An untouched apply seals and sends NO payload — that is the difference
+ *     between `edited: false` and `edited: true` in the ledger, and the ledger
+ *     is what P3.0 grades the model on.
  *  3. A REJECTED EDIT keeps the card alive. The gateway rolls the row back to
  *     `proposed` on a failed `validateEdit`, so a card that unmounted itself
- *     would strand a still-confirmable action and throw away the typing.
- *  4. A lost compare-and-swap is an ORDINARY OUTCOME. Double-tapping Confirm
- *     must not look like a crash; exactly one order was created, which is what
- *     the CAS is for.
+ *     would strand a still-applicable action and throw away the typing.
+ *  4. A lost compare-and-swap is an ORDINARY OUTCOME. A second hold must not
+ *     look like a crash; exactly one order was created, which is what the CAS
+ *     is for.
+ *
+ * Applying is a HOLD bound to a server seal, never a click ("Never without
+ * the seal", the founder, 2026-09-21): the network under the ceremony is
+ * mocked (`mintProposalSeal`, `applyProposalSealed`), never the card.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -21,10 +25,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AskAiBar } from './AskAiBar'
+import { completeHold } from '../../__tests__/utils/seal'
 import {
   AskAiActionError,
-  confirmAction,
+  applyProposalSealed,
   discardAction,
+  mintProposalSeal,
   listCandidates,
   listOpenProposals,
   proposeAction,
@@ -40,7 +46,8 @@ vi.mock('../../services/api/askAi', async () => {
     proposeAction: vi.fn(),
     listOpenProposals: vi.fn(),
     listCandidates: vi.fn(),
-    confirmAction: vi.fn(),
+    mintProposalSeal: vi.fn(),
+    applyProposalSealed: vi.fn(),
     discardAction: vi.fn(),
   }
 })
@@ -49,9 +56,12 @@ const api = {
   propose: vi.mocked(proposeAction),
   list: vi.mocked(listOpenProposals),
   candidates: vi.mocked(listCandidates),
-  confirm: vi.mocked(confirmAction),
+  mint: vi.mocked(mintProposalSeal),
+  apply: vi.mocked(applyProposalSealed),
   discard: vi.mocked(discardAction),
 }
+
+const hold = (name: RegExp = /hold to apply/i) => screen.getByRole('button', { name })
 
 const INVENTORY = '11111111-1111-4111-8111-111111111111'
 const PROVIDER = '22222222-2222-4222-8222-222222222222'
@@ -106,6 +116,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   api.list.mockResolvedValue([])
   api.candidates.mockResolvedValue(CANDIDATES)
+  api.mint.mockResolvedValue('seal-1')
 })
 
 describe('asking', () => {
@@ -158,11 +169,10 @@ describe('asking', () => {
   })
 })
 
-describe('the confirm gate', () => {
-  it('confirms as proposed with NO payload when nothing was touched', async () => {
-    const user = userEvent.setup()
+describe('the seal gate', () => {
+  it('seals and applies as proposed with NO payload when nothing was touched', async () => {
     api.list.mockResolvedValue([reorder])
-    api.confirm.mockResolvedValue({
+    api.apply.mockResolvedValue({
       executed: true,
       actionId: reorder.actionId,
       executionRef: 'order-99',
@@ -171,19 +181,20 @@ describe('the confirm gate', () => {
     renderBar()
     await screen.findByTestId('askai-proposal-card')
 
-    await user.click(screen.getByRole('button', { name: /^confirm$/i }))
+    completeHold(hold(/^hold to apply$/i))
 
     await waitFor(() =>
-      expect(api.confirm).toHaveBeenCalledWith(reorder.actionId, undefined),
+      expect(api.apply).toHaveBeenCalledWith(reorder.actionId, 'seal-1', undefined),
     )
+    expect(api.mint).toHaveBeenCalledWith(reorder.actionId, undefined)
     // Both executors produce a DRAFT — the card must not imply a send.
     expect(await screen.findByText(/nothing has been sent/i)).toBeInTheDocument()
   })
 
-  it('sends the operator’s edited payload, whole, when a field changed', async () => {
+  it('seals the operator’s edited payload, whole, and applies that same payload', async () => {
     const user = userEvent.setup()
     api.list.mockResolvedValue([reorder])
-    api.confirm.mockResolvedValue({
+    api.apply.mockResolvedValue({
       executed: true,
       actionId: reorder.actionId,
       executionRef: 'order-99',
@@ -195,22 +206,18 @@ describe('the confirm gate', () => {
     const qty = screen.getByLabelText(/quantity/i)
     await user.clear(qty)
     await user.type(qty, '8')
-    await user.click(screen.getByRole('button', { name: /confirm edits/i }))
+    completeHold(hold(/hold to apply your edits/i))
 
-    await waitFor(() =>
-      expect(api.confirm).toHaveBeenCalledWith(reorder.actionId, {
-        inventoryId: INVENTORY,
-        providerId: PROVIDER,
-        quantity: 8,
-      }),
-    )
+    const whole = { inventoryId: INVENTORY, providerId: PROVIDER, quantity: 8 }
+    await waitFor(() => expect(api.apply).toHaveBeenCalledWith(reorder.actionId, 'seal-1', whole))
+    expect(api.mint).toHaveBeenCalledWith(reorder.actionId, whole)
     expect(await screen.findByText(/from your edits/i)).toBeInTheDocument()
   })
 
   it('keeps the card usable and says why when the gateway refuses an edit', async () => {
     const user = userEvent.setup()
     api.list.mockResolvedValue([vendorDraft])
-    api.confirm.mockRejectedValue(
+    api.apply.mockRejectedValue(
       new AskAiActionError(
         'rejected',
         'That referred to something I could not find in your inventory, vendors or open orders.',
@@ -222,26 +229,25 @@ describe('the confirm gate', () => {
     const instruction = screen.getByLabelText(/what the reply should say/i)
     await user.clear(instruction)
     await user.type(instruction, 'Ask for a credit note')
-    await user.click(screen.getByRole('button', { name: /confirm edits/i }))
+    completeHold(hold(/hold to apply your edits/i))
 
     // The row rolled back to `proposed` server-side, so the card must not vanish.
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not find/i)
     expect(screen.getByLabelText(/what the reply should say/i)).toHaveValue(
       'Ask for a credit note',
     )
-    expect(screen.getByRole('button', { name: /confirm edits/i })).toBeEnabled()
+    expect(hold(/hold to apply your edits/i)).toBeEnabled()
   })
 
   it('treats a lost compare-and-swap as an ordinary outcome, not an error', async () => {
-    const user = userEvent.setup()
     api.list.mockResolvedValue([reorder])
-    api.confirm.mockRejectedValue(
+    api.apply.mockRejectedValue(
       new AskAiActionError('gone', 'That action is no longer waiting for confirmation.'),
     )
     renderBar()
     await screen.findByTestId('askai-proposal-card')
 
-    await user.click(screen.getByRole('button', { name: /^confirm$/i }))
+    completeHold(hold(/^hold to apply$/i))
 
     const note = await screen.findByText(/nothing ran twice/i)
     expect(note).toBeInTheDocument()
@@ -249,7 +255,7 @@ describe('the confirm gate', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it('will not offer to confirm a locally impossible quantity', async () => {
+  it('will not offer to seal a locally impossible quantity', async () => {
     const user = userEvent.setup()
     api.list.mockResolvedValue([reorder])
     renderBar()
@@ -259,8 +265,9 @@ describe('the confirm gate', () => {
     await user.clear(qty)
     await user.type(qty, '0')
 
-    expect(screen.getByRole('button', { name: /confirm/i })).toBeDisabled()
-    expect(api.confirm).not.toHaveBeenCalled()
+    expect(hold()).toBeDisabled()
+    expect(api.mint).not.toHaveBeenCalled()
+    expect(api.apply).not.toHaveBeenCalled()
   })
 
   it('discards without executing anything', async () => {
@@ -273,7 +280,7 @@ describe('the confirm gate', () => {
     await user.click(screen.getByRole('button', { name: /discard/i }))
 
     await waitFor(() => expect(api.discard).toHaveBeenCalledWith(reorder.actionId))
-    expect(api.confirm).not.toHaveBeenCalled()
+    expect(api.apply).not.toHaveBeenCalled()
     expect(await screen.findByText(/discarded\. nothing ran\./i)).toBeInTheDocument()
   })
 })
@@ -307,14 +314,13 @@ describe('candidates', () => {
     expect(screen.getByLabelText('Order')).toBeTruthy()
   })
 
-  it('leaves the ask box and the confirm gate working when candidates fail', async () => {
+  it('leaves the ask box and the seal gate working when candidates fail', async () => {
     // A broken candidate query costs the pickers, nothing else. Degrading the
     // whole surface because a dropdown could not be filled would be worse than
     // the read-only ids this feature replaced.
-    const user = userEvent.setup()
     api.candidates.mockRejectedValue(new Error('down'))
     api.list.mockResolvedValue([reorder])
-    api.confirm.mockResolvedValue({
+    api.apply.mockResolvedValue({
       executed: true,
       actionId: reorder.actionId,
       executionRef: 'order-9',
@@ -325,9 +331,9 @@ describe('candidates', () => {
     await waitFor(() => expect(screen.getByTestId('askai-proposal-card')).toBeTruthy())
     expect(screen.queryByLabelText('Item')).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: /confirm/i }))
+    completeHold(hold())
     await waitFor(() =>
-      expect(api.confirm).toHaveBeenCalledWith(reorder.actionId, undefined),
+      expect(api.apply).toHaveBeenCalledWith(reorder.actionId, 'seal-1', undefined),
     )
   })
 })

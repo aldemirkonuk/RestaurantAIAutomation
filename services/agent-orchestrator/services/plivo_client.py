@@ -271,23 +271,31 @@ class PlivoSMSClient:
         self, to_number: str, message: str, approve_url: str, reject_url: str
     ) -> Dict[str, Any]:
         """
-        Send SMS with action button URLs
+        Send SMS with a deep link into the order.
 
-        Since SMS doesn't support real buttons, we include short URLs
-        in the message text.
+        SMS has no real buttons, and there is no real one-tap approve/reject
+        from outside the app either -- both acts happen behind the in-app
+        hold-to-approve ceremony (OrdersNext.tsx), so `approve_url` and
+        `reject_url` are always the same link today (notification_agent.py).
+        Printing it twice under two different labels ("Approve: <url>" /
+        "Reject: <url>") promised two distinct one-tap acts that both led to
+        the identical page -- one honest line replaces both.
 
         Args:
             to_number: Destination phone
             message: SMS body
-            approve_url: URL for approval action
-            reject_url: URL for rejection action
+            approve_url: Deep link into the order
+            reject_url: Same link as `approve_url` today; kept as a separate
+                parameter so a future caller can pass two real, different
+                links if a real one-tap scheme is ever built.
 
         Returns:
             Send result
         """
-        # Append action URLs to message
         full_message = (
-            f"{message}\n\n✅ Approve: {approve_url}\n❌ Reject: {reject_url}"
+            f"{message}\n\nOpen: {approve_url}"
+            if approve_url == reject_url
+            else f"{message}\n\n✅ Approve: {approve_url}\n❌ Reject: {reject_url}"
         )
 
         return await self.send_sms(to_number, full_message, priority="high")

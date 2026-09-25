@@ -507,6 +507,66 @@ export async function scanMenuImage(
 }
 
 /**
+ * Photograph one bottle's label and read it as a single wine — ADR 0160
+ * sec110 item 5 ("Photograph the label"). A DIFFERENT orchestrator route from
+ * `scanMenuImage`: `POST /api/v1/scan/wine` with `source_type: "label"` routes
+ * through the same field-parser + matcher pipeline but returns one
+ * `WineParsedResponse`, not an array — the right shape for "one bottle in
+ * frame", not "however many a menu page holds" (`scan_routes.py:350-397`).
+ *
+ * Unlike `scanMenuImage` above, a failed read THROWS rather than resolving to
+ * an empty result: this is a single deliberate act (aim, capture, read), so
+ * "nothing came back" and "the read failed" are different facts and the
+ * caller (`PhotographLabel.tsx`) shows a different sentence for each.
+ */
+export async function scanWineLabel(
+  imageBase64: string,
+  restaurantId?: string,
+): Promise<DetectedWine> {
+  const res = await fetch(`${ORCHESTRATOR_URL}/api/v1/scan/wine`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image_base64: imageBase64,
+      source_type: "label",
+      restaurant_id: restaurantId,
+    }),
+  });
+
+  if (!res.ok) {
+    if (res.status === 404) {
+      // The orchestrator's OWN "nothing in frame" answer is a FastAPI
+      // HTTPException (`scan_routes.py`'s `scan_wine`), which serialises as
+      // `{"detail": "..."}`. A 404 from the WRONG service — e.g. a
+      // misconfigured `VITE_AGENT_ORCHESTRATOR_URL` that falls back to the
+      // gateway's own URL, which serves no `/api/v1/scan/wine` route at all —
+      // carries no such `detail`, or an unrelated one. Reading it before
+      // claiming "no wine" is the difference between telling a person their
+      // label was unreadable and telling them the app is misconfigured.
+      let detail: string | null = null;
+      try {
+        const body = await res.json();
+        if (typeof body?.detail === "string" && body.detail.trim() !== "") {
+          detail = body.detail;
+        }
+      } catch {
+        detail = null;
+      }
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw new Error(
+        `The label reader could not be reached at ${ORCHESTRATOR_URL} (404, with no reason from the reader itself) — this looks like the wrong service is configured, not an unreadable label`,
+      );
+    }
+    throw new Error(`The label reader could not be reached (${res.status})`);
+  }
+
+  const data = await res.json();
+  return mapBackendWineToDetected(data, 0);
+}
+
+/**
  * Deep research an unknown wine via the backend.
  */
 export async function researchWine(

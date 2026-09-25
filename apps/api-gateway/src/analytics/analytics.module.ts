@@ -15,6 +15,9 @@ import { InsightSchedulerService } from "./insights/insight-scheduler.service";
 import { DayExclusionsService } from "./insights/day-exclusions.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
+// ADR 0193: the live recommendations feed reads price advice toward the
+// house's target margin. PricingModule imports nothing that imports this back.
+import { PricingModule } from "../pricing/pricing.module";
 
 /**
  * Analytics Module — the quantitative core of WineOps.
@@ -28,7 +31,7 @@ import { AuthModule } from "../auth/auth.module";
   // AuthModule supplies TokenBlacklistService, which JwtAuthGuard injects. The
   // guard resolves in *this* module's context, so without this import the whole
   // app fails to boot — not just this route. AuthModule is not @Global().
-  imports: [DatabaseModule, AuthModule],
+  imports: [DatabaseModule, AuthModule, PricingModule],
   // DevTruthController guards itself with a 404 in production rather than
   // being conditionally registered — a route that vanishes is indistinguishable
   // from one that never existed, which is the confusion these surfaces exist to
@@ -58,11 +61,22 @@ import { AuthModule } from "../auth/auth.module";
   // verifier asks table performance whether it can see the day's tables, and
   // an unexported provider would have forced a second, drifting copy of that
   // aggregation inside SimposModule.
+  //
+  // AdvancedAnalyticsService joined them for OD-81: a report export reads the
+  // cashflow, seasonality, menu-engineering and overview cuttings through the
+  // same service the /reports page's endpoints call
+  // (reports/exports/report-cutting-reader.service.ts), rather than a copy.
+  //
+  // RecommendationsService joined for ADR 0149 row 26: the digest sender quotes
+  // the SAME feed the page reads, and a second copy of the rule engine inside
+  // the digest module would be two engines that can disagree.
   exports: [
     AnalyticsService,
+    AdvancedAnalyticsService,
     InsightGeneratorService,
     GoalsService,
     TableAnalyticsService,
+    RecommendationsService,
   ],
 })
 export class AnalyticsModule {}

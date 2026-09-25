@@ -105,7 +105,7 @@ def _send_alert_email(
         return
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"[WineOps] API Spend Alert — {provider.capitalize()} {month}"
+        msg["Subject"] = f"[Mudavym] API Spend Alert — {provider.capitalize()} {month}"
         msg["From"] = settings.gmail_user
         msg["To"] = settings.manager_email
 

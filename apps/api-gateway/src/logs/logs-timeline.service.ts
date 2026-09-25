@@ -68,9 +68,15 @@ export interface TimelineResponse {
   /** Sources that errored. Non-empty means the counts below are a FLOOR. */
   failedSources: TimelineSource[];
   /** The clamp applied (`events` fills it); whether a row exists beyond this
-   *  page (EXACT — each source is read to `window + 1`); and the `before`
-   *  cursor for the next page (null: no next page, or no dated event to
-   *  advance from). See "The window, and walking it" at the foot of the file. */
+   *  page (EXACT — each source is read to `window + 1` — except event_store:
+   *  its window is applied on correlation_id alone, before the house proof
+   *  in filterEventsOwnedByHouse runs, so a foreign or unprovable row can
+   *  fill that source's window and a dated row further back that DOES
+   *  belong to this house is never fetched. event_store's contribution to
+   *  hasMore is therefore a FLOOR, not exact, whenever it withholds
+   *  anything); and the `before` cursor for the next page (null: no next
+   *  page, or no dated event to advance from). See "The window, and walking
+   *  it" at the foot of the file. */
   window: number;
   hasMore: boolean;
   nextCursor: string | null;
@@ -119,11 +125,18 @@ export class LogsTimelineService {
       this.fetchInventoryTxns(db, restaurantId, correlationId, cursor),
       this.fetchDocuments(db, restaurantId, correlationId, cursor),
       this.fetchAuditLog(db, restaurantId, correlationId, cursor),
-      // event_store is not restaurant-scoped, so it is read only when a
-      // correlation_id names the rows to read. `null` — not an empty result —
-      // is what says "not queried", so the skip is reported as a skip.
+      // event_store is not restaurant-scoped (the table itself carries no
+      // restaurant_id column), so it is read only when a correlation_id
+      // names the rows to read — that part is still true and still why the
+      // skip below exists. What changed: every row this now returns is
+      // proven against restaurantId through its aggregate before it reaches
+      // the caller (see filterEventsOwnedByHouse below), so a foreign
+      // house's row is withheld even though the table it came from has no
+      // scoping of its own. The table stays unscoped; the read is not.
+      // `null` — not an empty result — is what says "not queried", so the
+      // skip is reported as a skip.
       correlationId
-        ? this.fetchEventStore(db, correlationId, cursor)
+        ? this.fetchEventStore(db, correlationId, restaurantId, cursor)
         : Promise.resolve(null),
     ]);
 
@@ -336,10 +349,19 @@ export class LogsTimelineService {
    * a correlation_id names the rows to read; without one it would dump the
    * whole platform's event stream into every restaurant's timeline. The skip
    * is decided by the caller so that `sourcesQueried` can report it.
+   *
+   * A correlation_id is not a house boundary — it is an author's own
+   * bookkeeping value, and nothing stops two houses' work from sharing one
+   * (or a caller from guessing another house's). Filtering by correlation_id
+   * alone would hand back another restaurant's rows whenever that happened
+   * (2026-09-17 finding). Every row is proven to belong to `restaurantId`
+   * through its aggregate before it leaves this method; a row whose house
+   * cannot be proven is refused, never included on faith.
    */
   private fetchEventStore(
     db: any,
     correlationId: string,
+    restaurantId: string,
     cursor: Cursor,
   ): Promise<SourceResult> {
     return this.guard("event_store", async () => {
@@ -351,7 +373,27 @@ export class LogsTimelineService {
         .eq("correlation_id", correlationId);
       const { data, error } = await windowed(q, "created_at", cursor);
       if (error) throw error;
-      return (data || []).map((r: any) => ({
+      const rows = data || [];
+      const { owned, foreignCount, unprovableTypes } =
+        await this.filterEventsOwnedByHouse(db, rows, restaurantId);
+      // Two different reasons a row does not make it back, named separately:
+      // an operator reading "outside restaurant" for every withheld row would
+      // conclude a cross-house leak was attempted, when most of the time (any
+      // aggregate_type other than "inventory") it means a new event producer
+      // started writing and this method has no owning table to check it
+      // against yet — the signal that needs to reach someone is "a new
+      // aggregate_type appeared," not "a house tried to read another's data."
+      if (foreignCount > 0) {
+        this.logger.warn(
+          `event_store: correlation_id ${JSON.stringify(correlationId)} named ${foreignCount} row(s) withheld (foreign house, not restaurant ${restaurantId})`,
+        );
+      }
+      if (unprovableTypes.length > 0) {
+        this.logger.warn(
+          `event_store: correlation_id ${JSON.stringify(correlationId)} named row(s) withheld (house unprovable: aggregate_type=${unprovableTypes.join(",")})`,
+        );
+      }
+      return owned.map((r: any) => ({
         id: r.event_id,
         source: "event_store" as const,
         occurredAt: r.created_at ?? null,
@@ -364,6 +406,62 @@ export class LogsTimelineService {
         },
       }));
     });
+  }
+
+  /**
+   * Prove each event_store row's house through its aggregate, never through
+   * the row's own `payload.restaurant_id` (a value the writer stamped on
+   * itself, not a key another table can be joined against). Today the only
+   * producer is `BaseAgent.append_event`, and the only `aggregate_type` it
+   * writes is `"inventory"`, whose `aggregate_id` is `restaurant_inventory.id`
+   * (`services/agent-orchestrator/agents/inventory_engine.py`). Any other
+   * aggregate_type has no known owning table here, so it is refused rather
+   * than assumed safe — an unprovable row is exactly the shape a future
+   * cross-house leak would take.
+   *
+   * Returns the two withheld counts separately from the owned rows, so the
+   * caller can log "foreign house" and "house unprovable" as different
+   * conditions rather than one combined "outside restaurant" that blames an
+   * unprovable row (a new aggregate_type nobody taught this method about) on
+   * the same cause as an actual cross-house read.
+   */
+  private async filterEventsOwnedByHouse(
+    db: any,
+    rows: any[],
+    restaurantId: string,
+  ): Promise<{
+    owned: any[];
+    foreignCount: number;
+    unprovableTypes: string[];
+  }> {
+    const inventoryRows = rows.filter((r) => r.aggregate_type === "inventory");
+    const unprovableTypes = Array.from(
+      new Set(
+        rows
+          .filter((r) => r.aggregate_type !== "inventory")
+          .map((r) => r.aggregate_type),
+      ),
+    );
+    if (inventoryRows.length === 0) {
+      return { owned: [], foreignCount: 0, unprovableTypes };
+    }
+
+    const inventoryIds = Array.from(
+      new Set(inventoryRows.map((r) => r.aggregate_id)),
+    );
+    const { data, error } = await db
+      .from("restaurant_inventory")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .in("id", inventoryIds);
+    if (error) throw error;
+    const ownedIds = new Set((data || []).map((r: any) => r.id));
+    const owned = inventoryRows.filter((r) => ownedIds.has(r.aggregate_id));
+    return {
+      owned,
+      foreignCount: inventoryRows.length - owned.length,
+      unprovableTypes,
+    };
   }
 }
 

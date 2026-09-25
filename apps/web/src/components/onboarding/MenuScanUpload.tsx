@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { CameraCapture } from '../scanner/CameraCapture'
-import { importMenu, type MenuImportResult } from '../../services/api/menus'
+import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
 
 interface MenuScanUploadProps {
-  onSuccess: (result: MenuImportResult) => void
+  onSuccess: MenuImportSuccess
 }
 
 export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
@@ -16,7 +16,7 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
     setError(null)
     try {
       const result = await importMenu('scan', { imageBase64 })
-      onSuccess(result)
+      onSuccess(result, { image: imageBase64 })
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Failed to analyze menu. Please try again.')
     } finally {

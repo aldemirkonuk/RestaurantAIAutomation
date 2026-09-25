@@ -95,6 +95,20 @@ export class ModelSpendCeilingError extends Error {
   }
 }
 
+/**
+ * Thrown when a call site asked the spend ceiling to FAIL CLOSED
+ * (`spendLedgerUnreadable: "closed"`) and the ledger could not be read. Its own
+ * type for the same reason as the ceiling's: nothing reached the API, nothing
+ * was charged, and it is not an outage of the model. The message says why the
+ * read is waiting; the caller shows it.
+ */
+export class ModelSpendLedgerUnreadableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ModelSpendLedgerUnreadableError";
+  }
+}
+
 export class ModelClientError extends Error {
   constructor(
     message: string,
@@ -212,6 +226,37 @@ export interface ModelCallOptions {
    * rather than to nothing.
    */
   gateFirstAttempt?: boolean;
+  /**
+   * What the spend ceiling does when the ledger cannot be read. Default
+   * "open", unchanged for every existing path: an unreadable ledger admits the
+   * call and its retries, as documented above.
+   *
+   * "closed" is the menu-upload billed read's (founder, 2026-09-21, ADR 0163
+   * Q22 as re-answered, relayed: the per-house AI spend ceiling FAILS CLOSED
+   * for the menu-upload billed read; if the spend ledger cannot be read, the
+   * read waits and says why; other paths unchanged). With it, the ledger is
+   * read BEFORE the first attempt under the ceiling as it stands for this
+   * path (the tier's window), and an unreadable ledger throws
+   * `ModelSpendLedgerUnreadableError` with nothing sent; a retry whose ledger
+   * read fails is not made either. It does NOT add a refusal for a house that
+   * is over its allowance on the first attempt -- that is `gateFirstAttempt`,
+   * a separate choice this option does not make.
+   */
+  spendLedgerUnreadable?: "open" | "closed";
+  /**
+   * Whether being OVER the allowance may stop this call. Default "enforced":
+   * unchanged for every existing path (a retry is suppressed when over, and
+   * `gateFirstAttempt` refuses a first attempt when over).
+   *
+   * "unlimited" is the menu read's (founder, 2026-09-21, round 6c, verbatim:
+   * "Tier based but at the same time for at the short period of time we
+   * should make it unlimited right?, so never refuse a menu read"). Being
+   * over the allowance then refuses nothing -- neither a first attempt nor a
+   * retry. It does NOT touch `spendLedgerUnreadable`: a ledger that cannot be
+   * read still stops a "closed" call, because his earlier answer (the
+   * menu-upload spend ceiling fails closed) stands.
+   */
+  allowance?: "enforced" | "unlimited";
 }
 
 /**
@@ -292,12 +337,29 @@ export class ModelClientService {
     // resets, so a lifetime read here made the refusal permanent while its
     // message said it would pass. Reading today only is what makes "it resets
     // at midnight UTC" true.
+    // `allowance: "unlimited"` (the menu read, founder 2026-09-21) refuses
+    // nothing for being over the allowance, this gate included.
+    const unlimited = opts.allowance === "unlimited";
     if (opts.gateFirstAttempt === true) {
-      if (!(await this.allowedBySpendCeiling(opts.nf.restaurantId, "daily"))) {
+      if (!unlimited && !(await this.allowedBySpendCeiling(opts.nf.restaurantId, "daily"))) {
         throw new ModelSpendCeilingError(
           "This restaurant has used today's AI allowance. " +
             `It resets at midnight UTC, ${untilUtcMidnight()} from now; ` +
             "nothing was charged for this request.",
+        );
+      }
+    }
+
+    // Opt-in fail-closed ledger (menu-upload billed read). Like the gate above
+    // it throws before any NF row: nothing was sent, so nothing is recorded.
+    const failClosed = opts.spendLedgerUnreadable === "closed";
+    if (failClosed) {
+      const state = await this.spendCeilingState(opts.nf.restaurantId, "tier");
+      if (state.kind === "unreadable") {
+        throw new ModelSpendLedgerUnreadableError(
+          "This restaurant's AI spend record could not be read, so the menu read is waiting: " +
+            "nothing was sent to the model and nothing was charged. Try again in a few minutes. " +
+            `(${state.reason})`,
         );
       }
     }
@@ -334,7 +396,7 @@ export class ModelClientService {
         // load-bearing), and retrying after it multiplies the worst case by
         // the attempt count. Connection-level failures are cheap and retried.
         if (isTimeout || !retryEnabled) break;
-        if (!(await this.retryAllowedBySpendCeiling(opts.nf.restaurantId))) {
+        if (!(await this.retryAllowedBySpendCeiling(opts.nf.restaurantId, failClosed, unlimited))) {
           ceilingSuppressedRetry = true;
           break;
         }
@@ -378,7 +440,7 @@ export class ModelClientService {
       const retryable =
         res.status === 429 || res.status === 529 || res.status >= 500;
       if (!retryable || !retryEnabled) break;
-      if (!(await this.retryAllowedBySpendCeiling(opts.nf.restaurantId))) {
+      if (!(await this.retryAllowedBySpendCeiling(opts.nf.restaurantId, failClosed, unlimited))) {
         ceilingSuppressedRetry = true;
         break;
       }
@@ -606,8 +668,18 @@ export class ModelClientService {
    */
   private async retryAllowedBySpendCeiling(
     restaurantId?: string | null,
+    failClosed = false,
+    unlimited = false,
   ): Promise<boolean> {
-    return this.allowedBySpendCeiling(restaurantId);
+    if (unlimited) {
+      // Over the allowance refuses nothing on this path (the menu read,
+      // founder 2026-09-21: "never refuse a menu read"). Only a ledger that
+      // cannot be read stops a fail-closed retry.
+      if (!failClosed) return true;
+      return (await this.spendCeilingState(restaurantId, "tier")).kind !== "unreadable";
+    }
+    if (!failClosed) return this.allowedBySpendCeiling(restaurantId);
+    return (await this.spendCeilingState(restaurantId, "tier")).kind === "allowed";
   }
 
   /**
@@ -619,6 +691,24 @@ export class ModelClientService {
     restaurantId?: string | null,
     window: "tier" | "daily" = "tier",
   ): Promise<boolean> {
+    // Fails OPEN: an unreadable ledger admits (see the method doc above).
+    return (await this.spendCeilingState(restaurantId, window)).kind !== "over";
+  }
+
+  /**
+   * The ceiling's three answers, kept apart so each caller applies its own
+   * policy to the third: under the allowance, over it, or the ledger could
+   * not be read (with why). `allowedBySpendCeiling` reads "unreadable" as
+   * allowed (open); the menu-upload read reads it as wait (closed).
+   */
+  private async spendCeilingState(
+    restaurantId: string | null | undefined,
+    window: "tier" | "daily",
+  ): Promise<
+    | { kind: "allowed" }
+    | { kind: "over" }
+    | { kind: "unreadable"; reason: string }
+  > {
     const key = restaurantId ?? "__unattributed__";
     try {
       const allowance = allowanceForTier(await this.tierFor(restaurantId));
@@ -628,7 +718,7 @@ export class ModelClientService {
         this.configService.get<string>("MODEL_DAILY_SPEND_CEILING_USD"),
       );
       const limit = Number.isFinite(override) ? override : allowance.limitUsd;
-      if (limit <= 0) return true; // 0 or negative disables the gate
+      if (limit <= 0) return { kind: "allowed" }; // 0 or negative disables the gate
 
       // credit = lifetime sum (it depletes); daily = today only (it resets).
       // The first-attempt gate always asks the daily question (see call()).
@@ -645,7 +735,9 @@ export class ModelClientService {
         spendUsd = cached.spendUsd;
       } else {
         const read = await this.sumAgentSpend(restaurantId, since);
-        if (read === null) return true;
+        if (read === null) {
+          return { kind: "unreadable", reason: "a page of the spend ledger could not be read" };
+        }
         spendUsd = read;
         this.spendCache.set(cacheKey, { at: Date.now(), spendUsd });
       }
@@ -658,11 +750,14 @@ export class ModelClientService {
               ? "first attempt refused"
               : "transport retry suppressed"),
         );
-        return false;
+        return { kind: "over" };
       }
-      return true;
-    } catch {
-      return true;
+      return { kind: "allowed" };
+    } catch (err: any) {
+      return {
+        kind: "unreadable",
+        reason: `the spend ledger read failed (${err?.message ?? "unknown error"})`,
+      };
     }
   }
 
@@ -681,6 +776,7 @@ export class ModelClientService {
   private async sumAgentSpend(
     restaurantId: string | null | undefined,
     since: string | null,
+    contextEquals: Record<string, string> = {},
   ): Promise<number | null> {
     let total = 0;
     let after: string | null = null;
@@ -690,6 +786,9 @@ export class ModelClientService {
         .select("id, cost_usd")
         .eq("subject_type", "agent");
       if (since) query = query.gte("occurred_at", since);
+      for (const [key, value] of Object.entries(contextEquals)) {
+        query = query.eq(`context->>${key}`, value);
+      }
       query = restaurantId
         ? query.eq("restaurant_id", restaurantId)
         : query.is("restaurant_id", null);
@@ -708,6 +807,43 @@ export class ModelClientService {
         `${SPEND_MAX_PAGES} pages; $${total.toFixed(4)} is a lower bound`,
     );
     return total;
+  }
+
+  /**
+   * Whether the rows whose NF `context` carries `contextKey = contextValue`
+   * have spent less than `share` of this house's DAILY allowance today (UTC)
+   * -- the same number, override included, that the first-attempt gate reads.
+   *
+   * Added 2026-09-21 for /ask's per-role share (ADR 0145's amendment of that
+   * date, founder's option "Rules in code, label rows"): a role's share of the
+   * house's daily ask allowance lives in a policy table, and this is its read.
+   *
+   * Unlike the house gate this FAILS CLOSED: `unreadable` when the ledger does
+   * not answer, which the caller refuses on. A share exists to stop one role
+   * spending another's allowance; reading an outage as "nothing spent" would
+   * disarm exactly that. A share of 0 admits nothing. A house whose gate is
+   * disabled (a limit of 0 or less) has no ceiling to take a share of.
+   */
+  async dailyShareOfAllowance(
+    restaurantId: string,
+    share: number,
+    contextKey: string,
+    contextValue: string,
+  ): Promise<"allowed" | "used" | "unreadable"> {
+    if (!/^[a-z_]{1,40}$/.test(contextKey)) throw new Error(`invalid context key ${contextKey}`);
+    if (!(share > 0)) return "used";
+    const allowance = allowanceForTier(await this.tierFor(restaurantId));
+    const override = Number(this.configService.get<string>("MODEL_DAILY_SPEND_CEILING_USD"));
+    const limit = Number.isFinite(override) ? override : allowance.limitUsd;
+    if (limit <= 0) return "allowed";
+    let spent: number | null;
+    try {
+      spent = await this.sumAgentSpend(restaurantId, windowStartIso("daily"), { [contextKey]: contextValue });
+    } catch {
+      spent = null;
+    }
+    if (spent === null) return "unreadable";
+    return spent >= share * limit ? "used" : "allowed";
   }
 
   /** Reads restaurants.subscription_tier. Unknown/unreadable resolves to core. */

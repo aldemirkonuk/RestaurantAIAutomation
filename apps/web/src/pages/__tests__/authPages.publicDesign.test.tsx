@@ -52,8 +52,10 @@ const h = vi.hoisted(() => {
   // Module-level env reads happen at import time, so they are pinned here,
   // before any import below evaluates them. Empty means: no Google client id
   // (the Google button renders its "not configured" line and loads no
-  // script), no Maps key, and no deployment switch — the localStorage
-  // override is the only thing that turns the house on in this file.
+  // script), no Maps key, and `VITE_MUDAVYM_PUBLIC` unset — which no longer
+  // matters (decision 0149 row 37): the house design is on unconditionally,
+  // and the only thing this file's localStorage override can do is turn it
+  // back OFF for a QA comparison.
   vi.stubEnv('VITE_GOOGLE_CLIENT_ID', '')
   vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '')
   vi.stubEnv('VITE_MUDAVYM_PUBLIC', '')
@@ -62,6 +64,8 @@ const h = vi.hoisted(() => {
       login: vi.fn(),
       clearError: vi.fn(),
       resolveSignInMethods: vi.fn(),
+      registerAccount: vi.fn(),
+      registerAccountWithGoogle: vi.fn(),
       registerRestaurant: vi.fn(),
       joinViaInvite: vi.fn(),
       error: null as string | null,
@@ -183,11 +187,12 @@ const WAIT = { timeout: 3000 }
 /*
  * Where the endpaper (sketch 118 B, founder's build directions 2026-09-19)
  * words a state differently from today's page, a reach waits for either
- * wording: the state reached is the same one. Today's step bar says "Step 1
- * of 2"; the endpaper's folio says "Register · 1 of 2". Today's door shows
- * its cards; the endpaper's door is the sketch's two plain acts.
+ * wording: the state reached is the same one. Account-only create (ADR 0213)
+ * titles the leaf "Your Account" off the house path and "Who keeps this
+ * book?" on it. Today's door shows its cards; the endpaper's door is the
+ * sketch's two plain acts.
  */
-const STEP_ONE = /^(Step 1 of 2|Register · 1 of 2)$/
+const CREATE_ACCOUNT = /^(Your Account|Who keeps this book\?)$/
 const DOOR = /^(Join Your Team|I have an invite code)$/
 
 async function loginResolved(result: {
@@ -241,25 +246,12 @@ async function joinAccount(emailAvailable: boolean) {
   return r.container
 }
 
-async function createToSection(section: 1 | 2 | 3) {
-  gateway({ emailAvailable: true })
+async function createAccountTaken() {
+  gateway({ emailAvailable: false })
   const r = renderAt(createElement(Register), '/register?type=new')
-  await screen.findByText(STEP_ONE, undefined, WAIT)
-  type('Full Name *', 'Deniz Kaya')
-  type('Email *', 'deniz@house.test')
-  type('Password *', 'long-enough-1')
-  type('Confirm Password *', 'long-enough-1')
-  await screen.findByText('Email is available', undefined, WAIT)
-  fireEvent.click(screen.getByRole('button', { name: /next: restaurant details/i }))
-  await screen.findByText('Restaurant Identity', undefined, WAIT)
-  if (section >= 2) {
-    fireEvent.click(screen.getByRole('button', { name: /next: location/i }))
-    await screen.findByText('Where is your restaurant located?', undefined, WAIT)
-  }
-  if (section === 3) {
-    fireEvent.click(screen.getByRole('button', { name: /next: contact/i }))
-    await screen.findByText('Contact Details', undefined, WAIT)
-  }
+  await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
+  type('Email *', 'taken@house.test')
+  await screen.findByText(/already registered/, undefined, WAIT)
   return r.container
 }
 
@@ -348,24 +340,7 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
   {
     name: 'register-create-account-taken',
     page: 'register',
-    reach: async () => {
-      gateway({ emailAvailable: false })
-      const r = renderAt(createElement(Register), '/register?type=new')
-      await screen.findByText(STEP_ONE, undefined, WAIT)
-      type('Email *', 'taken@house.test')
-      await screen.findByText(/already registered/, undefined, WAIT)
-      return r.container
-    },
-  },
-  { name: 'register-create-identity', page: 'register', reach: () => createToSection(1) },
-  { name: 'register-create-location', page: 'register', reach: () => createToSection(2) },
-  {
-    name: 'register-create-contact-with-error',
-    page: 'register',
-    reach: async () => {
-      h.auth.error = 'Registration failed at the gateway.'
-      return createToSection(3)
-    },
+    reach: () => createAccountTaken(),
   },
 ]
 
@@ -473,12 +448,11 @@ describe('public switch OFF — today’s page', () => {
     expect([name, createHash('sha256').update(container.innerHTML).digest('hex')]).toEqual([name, OFF_FINGERPRINTS[name]])
   })
 
-  it('absence is off: with no override and no env, the page is today’s', async () => {
-    // No setSwitch() call at all — publicDesign.ts precedence step 3.
-    const r = renderAt(createElement(Register), '/register')
-    await screen.findByText('Join Your Team', undefined, WAIT)
-    expect(r.container.querySelector('.mudavym')).toBeNull()
-  })
+  // No "absence is off" test here: decision 0149 row 37 turned the house on
+  // unconditionally, so absence is ON — asserted in section 2 below. The
+  // origin/main copy of that test came back through a merge conflict on
+  // 2026-09-21 and was removed again, because it asserts the opposite of
+  // publicDesign.ts.
 })
 
 /* ── 2. ON wears the house ──────────────────────────────────────────────── */
@@ -498,6 +472,18 @@ describe('public switch ON — the house, from tokens', () => {
     // resolves to Warm Charcoal now, so paper needs the explicit escape.
     expect(scopes[0].getAttribute('data-ground')).toBe('paper')
     expect(scopes[0]).not.toHaveClass('bg-[#FAF7F5]')
+  })
+
+  it('absence is on: with no override and no env, the page wears the house', async () => {
+    // No setSwitch() call at all — publicDesign.ts now resolves true unless
+    // an explicit "off" override says otherwise (decision 0149 row 37).
+    // DOOR, not 'Join Your Team': the ON door is the endpaper's (sketch 118 B).
+    const r = renderAt(createElement(Register), '/register')
+    await screen.findByText(DOOR, undefined, WAIT)
+    const scopes = r.container.querySelectorAll('.mudavym')
+    expect(scopes).toHaveLength(1)
+    expect(scopes[0]).toBe(r.container.firstElementChild)
+    expect(scopes[0]).toHaveClass('mdv-auth')
   })
 
   it.each(STATES)('$name leaves no literal colour in any class or inline style', async ({ reach }) => {

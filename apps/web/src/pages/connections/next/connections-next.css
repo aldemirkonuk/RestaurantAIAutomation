@@ -77,6 +77,36 @@
   margin: 18px 0 0;
 }
 
+/* Routine reconnect banner (mail grant absent/revoked). Not a security alert —
+   paper ground, ink copy, seal accent on the action only. */
+.mudavym .cx-mail-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px 18px;
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ink-4, rgba(0, 0, 0, 0.12));
+  background: var(--paper-1, var(--paper-0));
+  color: var(--ink-2);
+}
+.mudavym .cx-mail-banner p {
+  margin: 0;
+  flex: 1 1 16rem;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.mudavym .cx-mail-banner-action {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--seal);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
 /* ── the ledger sentence ─────────────────────────────────────────────── */
 
 .mudavym .cx-ledger {

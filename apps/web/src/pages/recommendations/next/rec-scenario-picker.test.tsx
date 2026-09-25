@@ -164,6 +164,7 @@ function renderSheet(
       selected={false}
       expanded={false}
       team={[]}
+      siblings={[]}
       exclusions={undefined}
       openDismiss={false}
       onDismissOpened={vi.fn()}

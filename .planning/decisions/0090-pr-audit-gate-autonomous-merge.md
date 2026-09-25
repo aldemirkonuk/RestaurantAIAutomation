@@ -244,7 +244,9 @@ limitation, not a verified guarantee.
   unattended. The adversarial pass and fail-closed error handling are the
   mitigations; they are not a proof of safety.
 - **What this does NOT yet do, as of the 2026-09-03 merge:** it does not add
-  `PR Audit Gate` to `main`'s required status contexts. That PATCH is a
+  `PR Audit Gate` to `main`'s required status contexts. [2026-09-22: while the no-credit bypass of "Amendment — 2026-09-22" exists,
+  this PATCH must not run. Remove the bypass first, or a required context reads
+  SUCCESS having audited nothing.] That PATCH is a
   persistent branch-protection change needing explicit founder permission per
   this session's operating rules — still not run, still open, tracked
   alongside this ADR in `SKILL.md`'s "Known limitations". Until it lands, the
@@ -868,6 +870,71 @@ credit, no-key, rate-limit and unknown-cause rules each make the suite report
 the specific invariant it broke. The corrected CLAIMS row exits 1 with `429`
 un-anchored and 0 when restored.
 
+## Amendment — 2026-09-22, the no-credit CANNOT CHECK is let through, for now
+
+**The founder, 2026-09-22, verbatim:** *"change the scope of credit api errors to
+silence them and let them bypass for now"*.
+
+**Why.** Since the account behind `ANTHROPIC_API_KEY` ran out of credit, this job
+has gone red with `COULD NOT RUN [no-credit]` on every PR whose audit reached the
+API (measured 2026-09-22: 8 of the last 15 failed runs were no-credit; the other 7
+stopped earlier at `upstream_red`), and a rerun cannot change that. It is advisory (not one of main's required contexts), so it blocked
+nothing, but a red that no PR can fix trains everyone to ignore the colour: the
+same harm the 2026-09-12 Correction above fixed for a `NEUTRAL` CodeQL.
+
+**What changed (`scripts/pr_audit_gate.py`, `_bypassed` inside `_fail_closed`).**
+- Only the `no-credit` cause, and only in the exact shape the Anthropic SDK raises
+  it (`BadRequestError: Error code: 400 ...`, measured 2026-09-12), now exits 0.
+- A bypass posts **no PR comment**. It writes the local report as `NOT RUN
+  [no-credit], bypassed`, and it prints a GitHub `::warning` annotation saying
+  the green is not an audit and nothing was merged.
+- Everything else still fails closed, exactly as before. That covers `no-key`,
+  `rate-limited`, `empty-diff`, an unrecognised cause, any other SDK 400, and a
+  reason that only *quotes* the credit sentence (a report text, a subprocess
+  argv).
+
+**What a bypass is not.** It is not a PASS. The merge step runs only on a PASS
+verdict, so a bypassed run can never merge anything. A PR still needs the
+session-side audit and the local hook's PASS marker, exactly as before.
+
+**How it ends.** By itself: once the account has credit, the SDK stops raising
+this error, and each PR is audited again on its next push or reopen, with no code
+change. A run that was already bypassed is not replayed. Removing the bypass for
+good means deleting all of these together: `_BYPASSED_CAUSES`, `_BYPASS_SHAPE`,
+`_bypassed`, the `if _bypassed(...)` branch in `_fail_closed`, and the four
+self-test checks. After that the self-test is back to main's 50. Deleting only
+the set crashes the self-test with a `NameError` (measured by the #442 audit). Revert the
+four notes the bypass added to `scripts/pr_audit_gate.py` in the same change,
+or they describe a bypass that is gone: the dated brackets at :34, :449 and
+:1126, and the check label's "(bar the SDK-shaped no-credit bypass)" at :1155.
+
+**It must be removed before this check becomes required.** The bypass is harmless
+only because `PR Audit Gate` is not one of main's required contexts (measured
+2026-09-22: 5 contexts, strict, no rulesets). If the required-contexts PATCH
+under "What this does NOT yet do" ran while the bypass exists, a required check
+would read SUCCESS having audited nothing. That is the exact shape the sixth
+Correction (2026-09-03, the `wait_upstream` fix) removed.
+
+**Two scope questions, answered by the founder 2026-09-22.**
+- Asked whether a PR that changes the gate's own files should stay red while
+  credit is out, he picked *"Yes, bypass them too"*. So they bypass like every
+  other PR, and they still merge only on his word.
+- Asked whether a 402 billing error should also be let through, he picked
+  *"Only 'credit too low'"*. So a 402 stays red.
+
+**Tested.** `--self-test`: 54 invariants, 4 of them new. The new checks are:
+- the SDK's own no-credit error exits 0;
+- a reason that only quotes the credit sentence exits 1;
+- any other SDK 400 exits 1;
+- the bypass posts no comment.
+
+Five mutations each turn the self-test red:
+- the bypass returning 1;
+- the shape guard removed;
+- the bypass posting a comment;
+- the bypass widened to every cause;
+- the tag test dropped.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -890,3 +957,6 @@ un-anchored and 0 when restored.
 | 2026-09-12 | Live symptom across every open PR, not an audit round | `PR Audit Gate` red on every PR from a `NEUTRAL` `CodeQL` — a check that has never been required and cannot block a merge, reached only because branch protection is unreadable and the fallback waits for everything. Fixed by narrowing the FALLBACK wait list, never the state allow-list; `_fallback_names()` extracted so the self-test exercises the real selection; `--self-test` grown 35 → 39 and proven to fail on the pre-fix tuple. Touches `scripts/pr_audit_gate.py` and this ADR, so it escalates to the founder — same shape as PRs #297 and #299. |
 | 2026-09-12 | pr-merge-adversary (Opus subagent), second pass on `e59bf901` | **HOLDS** -- nothing changes a merge decision. Notes acted on the same day: "and never raises" was false (struck, bracketed); a timed-out `gh pr comment` classified by the report text in its argv (the reason now names the command, never its arguments); "Nothing was audited" was false when a merge or dispatch call timed out after a PASS (reworded); stderr noise from the stubbed invariant (silenced); `empty-diff` and the no-bare-word rule unpinned (pinned). `--self-test` 47 -> 50 |
 | 2026-09-17 | Aldemir (chat, main session, direct authorization) | Pipeline redesign, verbatim: *"change ADR 90 to be a better pipeline, 1 opus starts -> stops -> 2 sonnet handles opus's plan-> opus takes final say."* Replaces the 3-Opus-angle-plus-adversary fan-out with one Opus planner (stops after planning) -> two independent parallel Sonnet reviewers (correctness/regression/decision-compliance; security/adversarial) -> the same Opus planner resumed for final HOLDS/OVERTURNED judgment. `.claude/agents/pr-merge-auditor.md` and `pr-merge-adversary.md` re-scoped to `model: sonnet`; new `.claude/agents/pr-merge-planner.md` added (`model: opus`); `.claude/skills/pr-audit-gate/SKILL.md` steps 4-7 and 10 updated to match, `.planning/decisions/0050-*.md` added to the owned-paths list. Scope held to those files only — `CLAUDE.md`, `.github/workflows/`, and `scripts/pr_audit_gate.py` were explicitly left unchanged; the CI-side path still runs the old composition and has had no `ANTHROPIC_API_KEY` credit since 2026-09-12, unchanged by this amendment. See the "Amendment — 2026-09-17" subsection under Context above and ADR 0050's matching dated bracket |
+| 2026-09-22 | Aldemir (chat, main session effa5204, direct authorization) | No-credit bypass, verbatim: *"change the scope of credit api errors to silence them and let them bypass for now"*. The SDK's no-credit error, in its exact shape, exits 0 with a warning and no PR comment. Every other CANNOT CHECK still fails closed. Self-test 54 invariants, 5 mutations red. See "Amendment — 2026-09-22". |
+| 2026-09-22 | ADR 0090 pipeline on #442 `bfc19fcb7` (Opus plan, two Sonnet checkers, Opus final) | **BLOCK, text only.** The code held: the bypass fires only on the SDK's no-credit 400, and five mutations went red. Fixed in `de7c40a2b`: the gate's fail-closed docstring was bracketed, the removal recipe now works when applied, and the remove-before-required rule is stated. |
+| 2026-09-22 | Opus final say, delta `bfc19fcb7`..`de7c40a2b` | **BLOCK, one sentence.** "the 2026-09-12 Correction removed" named the wrong Correction: that one removed red-on-every-PR, while the sixth (2026-09-03, `wait_upstream`) removed a required SUCCESS that had audited nothing. The error came from the first audit's own verdict. Fixed in the next commit, together with the note to revert the four script brackets on removal. |

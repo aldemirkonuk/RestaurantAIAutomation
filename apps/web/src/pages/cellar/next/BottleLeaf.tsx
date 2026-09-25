@@ -27,14 +27,27 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { HoldToApprove } from '@/components/mudavym';
 import { apiClient } from '../../../services/api/client';
 import { useCreateInventoryItem } from '../../../hooks/queries/useInventoryQueries';
 import { useRecommendedProviders } from '../../../hooks/queries/useProviderQueries';
 import { queryKeys } from '../../../lib/query-keys';
 import type { Provider } from '../../../services/api/providers';
-import { EM, knowledgeLabel, knowledgeNote, money, volume, year } from './cellar-format';
-import type { BottleVM } from './useCellarNextData';
+import {
+  EM,
+  acidityTicks,
+  bodyTicks,
+  composedTastingSentence,
+  handlingSentence,
+  knowledgeLabel,
+  knowledgeNote,
+  money,
+  tanninTicks,
+  volume,
+  year,
+} from './cellar-format';
+import OrderCeremony from './OrderCeremony';
+import PriceLockNote from './PriceLockNote';
+import { useCellarSettings, type BottleVM, type WineStructureVM } from './useCellarNextData';
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -52,12 +65,31 @@ function Notes({ bottle }: { bottle: BottleVM }) {
     { id: 'pairing', label: 'Pairing', body: bottle.pairingNotes },
   ].filter((b) => b.body);
 
-  if (blocks.length === 0) {
+  // ADR 0160 sec110 Owed #11 — "the wine sentence": composed from the
+  // structured profile when the library holds no free-text note at all.
+  // Only reached when `blocks` is empty, so a real written note is never
+  // displaced by a composed one.
+  const composed =
+    blocks.length === 0 && bottle.structure
+      ? composedTastingSentence(bottle.structure.body, bottle.structure.acidity, bottle.structure.sweetness)
+      : null;
+
+  const aromas = bottle.structure?.primaryAromas ?? [];
+
+  if (blocks.length === 0 && !composed) {
     return (
-      <p className="cl-said cl-dim">
-        The library holds no notes for this bottle — nothing has been written down, and nothing has
-        been invented to fill the space.
-      </p>
+      <>
+        <p className="cl-said cl-dim">
+          The library holds no notes for this bottle — nothing has been written down, and nothing has
+          been invented to fill the space.
+        </p>
+        {aromas.length > 0 ? (
+          <p className="cl-said" style={{ marginTop: 8 }} data-testid="bottle-leaf-aromas">
+            <span className="cl-dim">Typical aromas: </span>
+            {aromas.join(' · ')}
+          </p>
+        ) : null}
+      </>
     );
   }
 
@@ -68,19 +100,79 @@ function Notes({ bottle }: { bottle: BottleVM }) {
           {knowledgeLabel(bottle.knowledge)}
         </span>{' '}
         <span className="cl-dim" style={{ fontSize: 11.5 }}>
-          {knowledgeNote(bottle.knowledge)}
+          {composed
+            ? 'Composed from this wine’s recorded structure (body, acidity, sweetness) — not a tasting.'
+            : knowledgeNote(bottle.knowledge)}
         </span>
       </p>
-      {blocks.map((b) => (
-        <div key={b.id} style={{ marginBottom: 10 }}>
-          <p className="cl-sec" style={{ margin: '0 0 2px' }}>
-            {b.label}
-          </p>
-          <p className="cl-serif" style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: 'var(--ink-2)' }}>
-            {b.body}
-          </p>
-        </div>
-      ))}
+      {composed ? (
+        <p className="cl-serif" style={{ margin: '0 0 10px', fontSize: 14, lineHeight: 1.55, color: 'var(--ink-2)' }}>
+          {composed}
+        </p>
+      ) : (
+        blocks.map((b) => (
+          <div key={b.id} style={{ marginBottom: 10 }}>
+            <p className="cl-sec" style={{ margin: '0 0 2px' }}>
+              {b.label}
+            </p>
+            <p className="cl-serif" style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: 'var(--ink-2)' }}>
+              {b.body}
+            </p>
+          </div>
+        ))
+      )}
+      {aromas.length > 0 ? (
+        <p className="cl-said" data-testid="bottle-leaf-aromas">
+          <span className="cl-dim">Typical aromas: </span>
+          {aromas.join(' · ')}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/** One row of "the wine's own detail" — a word, and a 5-tick bar when the
+ * word is on this page's known scale (`structureTicks`, `cellar-format.ts`).
+ * `null` ticks draws the word alone: a real word this house's library uses
+ * but that this page cannot rank is stated, never guessed into a position. */
+function StructureFact({ label, word, ticks }: { label: string; word: string | null; ticks: number | null }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>
+        {word ?? EM}
+        {word && ticks !== null ? (
+          <span className="cl-ticks" aria-label={`${ticks} of 5`}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <i key={i} data-on={i <= ticks ? 'true' : 'false'} />
+            ))}
+          </span>
+        ) : null}
+      </dd>
+    </div>
+  );
+}
+
+function WineStructureSection({ structure }: { structure: WineStructureVM | null }) {
+  if (!structure) {
+    return (
+      <p className="cl-said cl-dim" data-testid="wine-structure-none">
+        Not recorded for this bottle — the library holds no body, acidity, tannin or sweetness
+        reading here.
+      </p>
+    );
+  }
+  return (
+    <>
+      <dl className="cl-facts" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
+        <StructureFact label="Body" word={structure.body} ticks={bodyTicks(structure.body)} />
+        <StructureFact label="Acidity" word={structure.acidity} ticks={acidityTicks(structure.acidity)} />
+        <StructureFact label="Tannin" word={structure.tannins} ticks={tanninTicks(structure.tannins)} />
+        <Fact label="Sweetness">{structure.sweetness ?? EM}</Fact>
+      </dl>
+      <p className="cl-said" style={{ marginTop: 10 }} data-testid="wine-structure-handling">
+        {handlingSentence(structure.handling) ?? 'How to serve it is not recorded.'}
+      </p>
     </>
   );
 }
@@ -107,6 +199,7 @@ export default function BottleLeaf({
   const queryClient = useQueryClient();
   const bringIn = useCreateInventoryItem();
   const recs = useRecommendedProviders(restaurantId ?? '', bottle.id);
+  const settings = useCellarSettings();
 
   const recommendedIds = useMemo(() => {
     const s = new Set<string>();
@@ -162,7 +255,7 @@ export default function BottleLeaf({
         <Fact label="Format">
           <span className="cl-num">{volume(bottle.bottleSizeMl)}</span>
         </Fact>
-        <Fact label="List price">
+        <Fact label="Market average">
           <span className="cl-num">{money(bottle.listPrice)}</span>
         </Fact>
         <Fact label="Market price">
@@ -170,10 +263,41 @@ export default function BottleLeaf({
         </Fact>
       </dl>
 
+      {/* RELABELLED 2026-09-19 (founder, 19-lane blocking round, batch 4):
+          "our library price will be just the average price that will be
+          updating daily." This is a wording fix, not a data change — the
+          figure above is `price_reference`, unchanged. It was labelled "List
+          price", which reads as a fixed, definitive figure; "Market average"
+          is the founder's own name for it. This is a DIFFERENT column from
+          the "Market price" fact beside it (`retail_price_avg`), which the
+          note right below still explains on its own — two figures, two
+          provenances, kept distinct rather than merged into one because they
+          happen to share the word "market".
+
+          [CORRECTED 2026-09-21 — round 5 must_fix. This comment and the note
+          below it originally claimed `price_reference` "was always the
+          library's own reference across houses and vendors" — nothing in
+          the tree computes that. Today the column is an imported reference
+          hint, passed straight through with no cross-house/vendor
+          computation: the JSONL import writes it unchanged
+          (`import_master_wine_library.py:149,168`, `price_reference =
+          EXCLUDED.price_reference`) and so does a submission payload
+          (`wines.service.ts:420`, `payload?.price_reference ??
+          payload?.price ?? null`). The sibling column on `beverages` is
+          commented "Market hint only, never a restaurant's actual price"
+          (`20260817070000_beverages_table.sql:230-232`) — the same fact,
+          named plainly, on the neighbouring table. The founder's
+          daily-refreshed, cross-house/vendor average is real intent, not
+          built yet (see wines.md's Seventh pass, same dated bracket). The
+          "Market average" label he asked for is unchanged; only the claim
+          about what computes the number under it is corrected.] */}
       <p className="cl-note">
-        Market price is <span className="cl-num">{EM}</span> because nothing writes it: the scoring
-        job that fills <span className="cl-num">retail_price_avg</span> is scheduled but has no
-        deployed worker, so the column is null on every row in the library.
+        Market average, above, is a reference price imported with this wine — not something
+        Mudavym computes across houses or vendors today, and not this house's own price. A
+        daily, cross-house average is planned, not built yet. Market price is{' '}
+        <span className="cl-num">{EM}</span> because nothing writes it: the scoring job that
+        fills <span className="cl-num">retail_price_avg</span> is scheduled but has no deployed
+        worker, so the column is null on every row in the library.
       </p>
 
       <hr className="cl-rule-thin" style={{ margin: '16px 0' }} />
@@ -182,6 +306,32 @@ export default function BottleLeaf({
         <section>
           <h3 className="cl-sec">What the library knows</h3>
           <Notes bottle={bottle} />
+        </section>
+
+        {/* ADR 0160 sec110 Owed #4/#11 — the founder's own words: "it came
+            from this area, this vintage, formats, the taste notes ... the
+            machine learning side, the details, the features of those wines
+            ... it's only going to be for wines." Drawn now: he asked for a
+            new drawing before this was built, and got one (sketch 121,
+            `.band`/`.struct`), then answered its questions 2026-09-18 —
+            "show, labelled honestly". Region/vintage/format are already on
+            this leaf above (Style/Vintage/Origin/Format); this section is
+            body, acidity, tannin and sweetness (`wine_structure`, a word and
+            a 5-tick bar where the word is on a known scale) and the serving
+            handling sentence (temperature/glass/decanting/ageing), which
+            sketch 121 draws whole or not at all — see `handlingSentence`,
+            `cellar-format.ts`. `ml_derived_features` is not drawn: it is
+            null on every stocked wine this build could read (0 of 95,
+            `cellar-121/integration-sota-first.sql`), so a section for it
+            would be empty on every bottle in the building today — the
+            founder's own rule for exactly this ("if the value is not shown
+            there ... don't even include them"). A features pipeline, and the
+            foundations document mapping the library to every endpoint and
+            insight type, are a separate, already-scoped piece of work
+            (`docs/wine-ml-foundations`) — see this build's report. */}
+        <section data-testid="wine-structure">
+          <h3 className="cl-sec">The wine's own detail</h3>
+          <WineStructureSection structure={bottle.structure} />
         </section>
 
         <section>
@@ -227,24 +377,104 @@ export default function BottleLeaf({
               </div>
             </>
           ) : (
-            <dl className="cl-facts" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
-              <Fact label="On hand">
-                <span className="cl-num">{cellar.stockLive}</span>
-              </Fact>
-              <Fact label="Its own par">
-                <span className="cl-num">{cellar.thresholdMin ?? EM}</span>
-              </Fact>
-              <Fact label="Vendor on the row">{cellar.providerName ?? EM}</Fact>
-              <Fact label="Last counted">
-                {cellar.lastCountedAt
-                  ? new Date(cellar.lastCountedAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })
-                  : 'never counted'}
-              </Fact>
-            </dl>
+            <>
+              {/* ADR 0160 sec110 item 3 — corrected 2026-09-18. The founder was
+                  reading sketch 110 B's peek aloud (direction-b.html:274):
+                  "9 on hand · par 12 / $62 a bottle · $15 a glass / 38 sold ·
+                  9 d of till". The first pass misheard "par 12" as "pack
+                  size" and duplicated on-hand as "Bottles" (its own note
+                  admitted as much). On hand and Par are both real, already
+                  on this row (`cellar.stockLive`/`thresholdMin` — Par was
+                  previously only shown further down as "Its own par", now
+                  moved up rather than duplicated). Glass price is this
+                  house's own `menu_price_glass` — a real column a manager
+                  sets — never the wine library's reference price.
+
+                  CLOSED 2026-09-19, RE-POINTED 2026-09-21 (ADR 0193; founder:
+                  "we're going to add a per house bottle price"). "Bottle
+                  price" below is this house's own price, read from
+                  `menu_price_current` -- the column every margin and
+                  valuation already reads; the lane's short-lived second
+                  column was removed so there is one number. "Dynamic" is
+                  decided (ADR 0193): the price follows the menu (a menu
+                  import or correction writes it) and a manager changes it on
+                  Inventory at any time, every change on the record; advice
+                  toward the house's target margin is offered there, never
+                  applied on its own and never from the market. "Market average" (above)
+                  is the library's own reused reference figure, relabelled in
+                  this same pass; it is a different column from this one and
+                  is kept as the fallback nowhere below, so a reader can never
+                  mistake one house's price for the library's average. */}
+              <dl
+                className="cl-facts"
+                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}
+                data-testid="bottle-leaf-fact-set"
+              >
+                <Fact label="On hand">
+                  <span className="cl-num">{cellar.stockLive}</span> bottles
+                </Fact>
+                <Fact label="Par">
+                  <span className="cl-num">{cellar.thresholdMin ?? EM}</span>
+                </Fact>
+                <Fact label="Bottle price (this house)">
+                  {cellar.menuPriceBottle !== null ? (
+                    <span className="cl-num">{money(cellar.menuPriceBottle)}</span>
+                  ) : (
+                    EM
+                  )}
+                </Fact>
+                <Fact label="Glass price">
+                  {cellar.menuPriceGlass !== null ? (
+                    <span className="cl-num">{money(cellar.menuPriceGlass)}</span>
+                  ) : (
+                    EM
+                  )}
+                </Fact>
+                <Fact label="Market average (bottle)">
+                  <span className="cl-num">{money(bottle.listPrice)}</span>
+                </Fact>
+              </dl>
+              {/* ADR 0193 round 3, L8: a locked price is said wherever the price is shown. */}
+              <PriceLockNote inventoryId={cellar.inventoryId} />
+              {cellar.thresholdMin === null || cellar.menuPriceBottle === null || cellar.menuPriceGlass === null ? (
+                <p className="cl-note" style={{ marginTop: 4 }}>
+                  {cellar.thresholdMin === null ? 'No par recorded on this row. ' : ''}
+                  {cellar.menuPriceBottle === null
+                    ? 'No by-the-bottle price recorded on this row — set one in Inventory to show it here. '
+                    : ''}
+                  {cellar.menuPriceGlass === null
+                    ? 'No by-the-glass price recorded on this row — set one in Inventory to show it here.'
+                    : ''}
+                </p>
+              ) : null}
+
+              <hr className="cl-rule-thin" style={{ margin: '12px 0' }} />
+
+              <p className="cl-said" data-testid="bottle-leaf-sold-line" role={cellar.analyticsReadable ? undefined : 'alert'}>
+                {!cellar.analyticsReadable
+                  ? 'Selling pace could not be read — the analytics join failed for this batch. This is a read error, not a row with nothing sold.'
+                  : cellar.velocityPerDay === null
+                    ? 'Selling pace: unmeasured — the analytics join has nothing for this row yet.'
+                    : cellar.daysSinceSale === null
+                      ? `Selling ~${cellar.velocityPerDay.toFixed(1)}/day.`
+                      : `Selling ~${cellar.velocityPerDay.toFixed(1)}/day · last sold ${cellar.daysSinceSale} ${cellar.daysSinceSale === 1 ? 'day' : 'days'} ago.`}
+              </p>
+
+              <hr className="cl-rule-thin" style={{ margin: '12px 0' }} />
+
+              <dl className="cl-facts" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
+                <Fact label="Vendor on the row">{cellar.providerName ?? EM}</Fact>
+                <Fact label="Last counted">
+                  {cellar.lastCountedAt
+                    ? new Date(cellar.lastCountedAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })
+                    : 'never counted'}
+                </Fact>
+              </dl>
+            </>
           )}
         </section>
 
@@ -311,13 +541,27 @@ export default function BottleLeaf({
                 </p>
               </>
             ) : (
-              <HoldToApprove
+              <OrderCeremony
+                ceremony={settings.data.holdCeremony}
+                // Both ceremonies open with the physical hold now (ADR 0160
+                // sec110 item 6, corrected 2026-09-19) — `auto` only skips
+                // the follow-up question, it never skips the hold — so the
+                // label says "Hold to order" unconditionally.
                 label={`Hold to order ${qty} from ${
                   providers?.find((p) => p.id === vendorId)?.name ?? 'this vendor'
                 }`}
                 approvedLabel="Order sent"
+                pending={order.isPending}
+                sent={order.isSuccess}
+                errorMessage={order.isError ? (order.error instanceof Error ? order.error.message : 'the gateway refused it') : null}
+                // `mutateAsync`, not `mutate`: both of `OrderCeremony`'s
+                // ceremonies eventually hand this to `HoldToApprove` (`auto`
+                // straight away, `hold` only once "Yes, order" is pressed),
+                // which only seals on a promise that actually resolves (see
+                // OrderCeremony.tsx's fix note). `mutate`'s fire-and-forget
+                // return of `undefined` was the whole bug — nothing to await.
                 onApprove={() =>
-                  order.mutate({
+                  order.mutateAsync({
                     inventoryId: cellar!.inventoryId,
                     providerId: vendorId,
                     quantity: qty,
@@ -326,6 +570,20 @@ export default function BottleLeaf({
               />
             )}
           </div>
+          {!settings.loading && settings.data.holdCeremonyConfigured ? (
+            <p className="cl-note" style={{ marginTop: 6 }} data-testid="order-ceremony-note">
+              {
+                // FIXED 2026-09-19 (cellar re-verification, blocking): the
+                // `auto` line used to say "sends an order on one click, no
+                // hold" — the exact design ADR 0160 sec110 item 6's
+                // correction rules out. Both ceremonies hold; `auto` only
+                // skips the "are you sure?" that follows it.
+                settings.data.holdCeremony === 'hold'
+                  ? 'This house holds every order, then asks "are you sure?", before it sends — changed in Settings › Cellar.'
+                  : 'This house holds every order, then sends the moment the hold completes — no "are you sure?" — changed in Settings › Cellar.'
+              }
+            </p>
+          ) : null}
         </section>
       </div>
 

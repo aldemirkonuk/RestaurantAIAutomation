@@ -118,7 +118,10 @@ unchanged with the flag off):
   forecast office and grid (`MTR/91,89` for Palo Alto). This is the line DESIGN-FOUNDATION §6
   drew: a *published, attributed* forecast is a citable observation; our own covers number
   drawn without its error is the guess, and that is slice 9, still unbuilt
-- **A cell with no reading says why, and there are six different whys.** No coordinate on the
+- **[OVERRULED 2026-09-22 by the founder after the preview review — "remove the 'no
+  reading' sign, leave blank". A cell with no reading is now empty; the reason stays on the
+  page's sky line. Branch `fix/preview-notes-2026-09-22`.]** The rule as it stood: *A cell
+  with no reading says why, and there are six different whys.* No coordinate on the
   house · outside NWS coverage (it is US-only) · the issuer was unreachable, refused, or
   answered something unreadable · the register itself could not be read. Never a blank: a
   silently empty weather column is indistinguishable from a week of clear skies
@@ -609,7 +612,10 @@ Four directions, in the order ADR 0111 recommends building them:
 #### The ⌘K assistant, and the line it may not cross
 
 The machinery is built and proven: `POST /ask-ai/propose` → a human looks →
-`POST /ask-ai/confirm` → execute, with a validated allowlist, grounding against candidate
+`POST /ask-ai/confirm` → execute **[amended 2026-09-21: the confirm step is now a sealed
+hold — `seal-challenge` then `sealed-confirm` under `/ask-ai/actions/:id/`; the unsealed
+confirm answers 410 (the founder's "Never without the seal", ADR 0160's review trail of
+that date)]**, with a validated allowlist, grounding against candidate
 ids, and a `proposed → confirmed → executed | failed | discarded` lifecycle
 (`ask-ai.service.ts:305,525,653,700`). The web client's own header states the rule — *"this
 module never executes anything by itself"* (`services/api/askAi.ts`). The allowlist is two
