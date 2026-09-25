@@ -32,6 +32,9 @@ vi.mock('../mudavym/HouseShell', () => ({
   HouseShell: () => <div data-testid="house-shell" />,
 }));
 vi.mock('./Sidebar', () => ({ Sidebar: () => <nav data-testid="legacy-sidebar" /> }));
+// The data-terms gate (ADR 0207 q19) mounts beside both shells; it has its
+// own suites, and this one is about which shell renders.
+vi.mock('../settings/DataTermsSignInGate', () => ({ DataTermsSignInGate: () => null }));
 vi.mock('../command/CommandProvider', () => ({
   CommandProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));

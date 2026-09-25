@@ -158,9 +158,14 @@ function Body({
           readout={dataTerms.data}
           dismissable
           onClose={() => setShowAcceptSheet(false)}
-          onAccepted={() => {
+          onAccepted={(receipt) => {
             setShowAcceptSheet(false);
-            reload();
+            // This owner pressed "Turn on". The house's first acceptance turns
+            // Jev on by itself; a later one (another owner accepted before, or
+            // the terms changed) leaves the switch as it was, so the press
+            // still has to reach the switch.
+            if (receipt.switchTurnedOn) reload();
+            else void save(true);
           }}
         />
       )}

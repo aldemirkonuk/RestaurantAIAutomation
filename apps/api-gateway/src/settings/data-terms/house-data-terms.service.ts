@@ -56,14 +56,32 @@ export interface DataTermsReadout {
   subprocessors: typeof SUBPROCESSORS;
   changedSince: typeof CHANGED_SINCE;
   acceptance: DataTermsAcceptance | null;
+  /** The HOUSE's state: some owner has accepted the CURRENT version. Jev runs on this. */
   current: boolean;
+  /**
+   * The READER's own state (ADR 0207 question 19, the founder, 2026-09-22,
+   * round 6z: "Every owner, next sign-in"): whether the person reading has
+   * accepted the CURRENT version themselves. The sign-in gate reads this, not
+   * `current` — a co-owner's acceptance is not this owner's. `null` when the
+   * read names no person.
+   */
+  yours: { current: boolean } | null;
   jev: { enabled: boolean; effective: boolean; pausedBecause: string | null };
 }
 
 export interface AcceptanceReceipt {
   accepted: true;
   version: number;
+  /** True only when this acceptance turned the switch on (see `accept`). */
   switchTurnedOn: boolean;
+  /**
+   * `turned_on`: the house's first acceptance of any version, which is what
+   * turns Jev on. `left_as_it_was`: the house had accepted before, so an
+   * owner's own acceptance (or re-acceptance after a version change) does not
+   * override the switch another owner may have turned off. `failed`: the
+   * first acceptance was recorded but the switch could not be turned on.
+   */
+  switch: "turned_on" | "left_as_it_was" | "failed";
   audited: boolean;
   auditReason: string | null;
 }
@@ -154,13 +172,38 @@ export class HouseDataTermsService {
     };
   }
 
-  async read(restaurantId: string): Promise<DataTermsReadout> {
-    const [acceptance, sw] = await Promise.all([
+  /**
+   * Whether ONE owner has accepted the current version themselves (question
+   * 19). A failed read is `ok: false`, never "not accepted".
+   */
+  private async acceptedBy(
+    restaurantId: string,
+    userId: string,
+  ): Promise<{ ok: true; current: boolean } | { ok: false; reason: string }> {
+    const { data, error } = await this.client()
+      .from("house_data_terms_acceptances")
+      .select("terms_version")
+      .eq("restaurant_id", restaurantId)
+      .eq("terms_version", TERMS_VERSION)
+      .eq("accepted_by", userId)
+      .limit(1);
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true, current: (data ?? []).length > 0 };
+  }
+
+  async read(restaurantId: string, userId?: string | null): Promise<DataTermsReadout> {
+    const [acceptance, sw, mine] = await Promise.all([
       this.latestAcceptance(restaurantId),
       this.switchState(restaurantId),
+      userId ? this.acceptedBy(restaurantId, userId) : Promise.resolve(null),
     ]);
     if (!acceptance.ok) {
       return this.unreadable(acceptance.reason);
+    }
+    // Your own acceptance that could not be read is not "you have not
+    // accepted" — the gate must never be raised on an unreadable store.
+    if (mine && !mine.ok) {
+      return this.unreadable(`your own acceptance: ${mine.reason}`);
     }
     // A switch that could not be read is not "off" — the readout says it
     // could not be read. [Last call, 2026-09-22: a failed switch read was
@@ -187,6 +230,7 @@ export class HouseDataTermsService {
       changedSince: CHANGED_SINCE,
       acceptance: acceptance.row,
       current,
+      yours: mine ? { current: mine.current } : null,
       jev: {
         enabled,
         effective: enabled && current,
@@ -206,6 +250,7 @@ export class HouseDataTermsService {
       changedSince: CHANGED_SINCE,
       acceptance: null,
       current: false,
+      yours: null,
       jev: { enabled: false, effective: false, pausedBecause: null },
     };
   }
@@ -260,6 +305,16 @@ export class HouseDataTermsService {
       );
     }
 
+    // Read BEFORE the seal is spent: whether this house has ever accepted
+    // decides whether this acceptance turns the switch on. A failed read
+    // records nothing and spends nothing.
+    const prior = await this.latestAcceptance(restaurantId);
+    if (!prior.ok) {
+      throw new InternalServerErrorException(
+        "Whether this house has accepted its terms before could not be read, so nothing was recorded. The seal was not spent; try again.",
+      );
+    }
+
     const redeemed = await this.seals.redeem({
       restaurantId,
       actorUserId: userId,
@@ -281,10 +336,12 @@ export class HouseDataTermsService {
         accepted_by_role: "owner",
         seal_id: redeemed.sealId,
       });
+    const alreadyYours = insertError?.code === "23505";
     if (insertError) {
-      // A second owner accepting the same version lands here as a unique-
-      // constraint hit — treated as a no-op success, not a refusal: the
-      // version IS accepted, which is the only thing this act promises.
+      // The SAME owner accepting the same version again lands here as a
+      // unique-constraint hit — treated as a no-op success, not a refusal:
+      // they HAVE accepted it, which is the only thing this act promises. A
+      // second owner is a row of their own (question 19, every owner).
       if (insertError.code !== "23505") {
         this.logger.error(
           `house_data_terms_acceptances insert failed for ${restaurantId}: ${insertError.message}`,
@@ -295,13 +352,52 @@ export class HouseDataTermsService {
       }
     }
 
-    const flip = await this.turnSwitchOn(restaurantId, userId, version);
+    // Question 19 ("Every owner, next sign-in") puts this act in front of
+    // EVERY owner, so it can no longer be the Jev switch itself: a co-owner's
+    // acceptance, or anyone's re-acceptance after a version change, would
+    // otherwise turn Jev back on over an owner who switched it off ("this
+    // feature can also be disabled", round 3). The house's FIRST acceptance
+    // of any version turns it on, as the round-4 act did; every later one
+    // leaves the switch as it was. [Built 2026-09-25, not ruled: ADR 0207
+    // question 19's record.]
+    if (prior.row === null) {
+      const flip = await this.turnSwitchOn(restaurantId, userId, version);
+      return {
+        accepted: true,
+        version,
+        switchTurnedOn: flip.ok,
+        switch: flip.ok ? "turned_on" : "failed",
+        audited: flip.audited,
+        auditReason: flip.auditReason,
+      };
+    }
+    if (alreadyYours) {
+      return {
+        accepted: true,
+        version,
+        switchTurnedOn: false,
+        switch: "left_as_it_was",
+        audited: false,
+        auditReason: "already accepted by this owner; nothing new to record",
+      };
+    }
+    const receipt = await this.audit.record({
+      restaurantId,
+      actorUserId: userId,
+      action: "house_data_terms_accepted",
+      register: "data-terms",
+      entityType: "restaurant",
+      entityId: restaurantId,
+      subject: "Data terms accepted",
+      fields: { terms_version: { from: prior.row.version, to: version } },
+    });
     return {
       accepted: true,
       version,
-      switchTurnedOn: flip.ok,
-      audited: flip.audited,
-      auditReason: flip.auditReason,
+      switchTurnedOn: false,
+      switch: "left_as_it_was",
+      audited: receipt.recorded,
+      auditReason: receipt.reason,
     };
   }
 

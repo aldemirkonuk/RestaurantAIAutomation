@@ -10,6 +10,13 @@
  * that decides whether Jev ends up on for a house — see ADR 0207 §19 for
  * the record.
  *
+ * [2026-09-25, settings-b lane: "every owner" is read as EACH owner. The
+ * sheet shows until THIS owner has accepted the current version
+ * (`yours.current`). A co-owner's acceptance makes the house current, but it
+ * does not satisfy this owner's gate. Only the house's FIRST acceptance turns
+ * Jev on, and a later owner's acceptance leaves the switch where an owner put
+ * it. This was built, not ruled; see ADR 0207 question 19.]
+ *
  * WHAT "NEXT SIGN-IN" MEANS HERE: every authenticated page load, for as
  * long as the signed-in person is an owner and has not accepted the CURRENT
  * terms version. There is no per-session "seen it, go away" flag — the
@@ -38,7 +45,10 @@ import { useDataTerms } from '../../hooks/queries/useDataTerms';
 import { DataTermsAcceptSheet } from './DataTermsAcceptSheet';
 
 export function DataTermsSignInGate() {
-  const { activeRole } = useAuth();
+  // No session context (a signed-out render, or a test that mounts the
+  // layout alone) is not an owner: nothing is read and nothing shows.
+  const auth = useAuth() as { activeRole?: string | null } | null;
+  const activeRole = auth?.activeRole ?? null;
   const isOwner = activeRole === 'owner';
   const q = useDataTerms(isOwner);
 
@@ -50,7 +60,11 @@ export function DataTermsSignInGate() {
   // would turn a read failure into a gate the app cannot get past, which is
   // exactly the lockout the founder's answer rules out.
   if (!q.data.readable) return null;
-  if (q.data.current) return null;
+  // EVERY owner accepts for themselves (question 19): a co-owner's
+  // acceptance makes the HOUSE current, not this owner. A gateway older than
+  // the per-owner field only knows the house, and is read as that.
+  const acceptedByYou = q.data.yours ? q.data.yours.current : q.data.current;
+  if (acceptedByYou) return null;
 
   return <DataTermsAcceptSheet readout={q.data} dismissable={false} />;
 }

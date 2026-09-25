@@ -509,10 +509,11 @@ export class SettingsController {
   @ApiOperation({
     summary: "The house's data-and-privacy terms, and who last accepted them",
     description:
-      "Any member of the house may read this. `acceptance` is the latest one on record, of any version; `current` is true only when it is of the CURRENT version. A failed read is `readable: false` with its reason, never silently 'not accepted'.",
+      "Any member of the house may read this. `acceptance` is the latest one on record, of any version; `current` is true only when some owner has accepted the CURRENT version; `yours.current` is whether the reader has accepted it themselves (ADR 0207 question 19: every owner accepts at their next sign-in). A failed read is `readable: false` with its reason, never silently 'not accepted'.",
   })
   async getDataTerms(
     @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
   ): Promise<DataTermsReadout> {
     if (!restaurantId) {
       throw new HttpException(
@@ -520,7 +521,7 @@ export class SettingsController {
         HttpStatus.BAD_REQUEST,
       );
     }
-    return this.houseDataTerms.read(restaurantId);
+    return this.houseDataTerms.read(restaurantId, userId);
   }
 
   @Post("data-terms/seal-challenge")
@@ -543,7 +544,7 @@ export class SettingsController {
   @Post("data-terms/acceptances")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Accept the house's data terms — owner only, sealed. Turns Jev on.",
+    summary: "Accept the house's data terms — owner only, sealed, one row per owner. The house's first acceptance turns Jev on.",
   })
   @ApiResponse({
     status: 403,

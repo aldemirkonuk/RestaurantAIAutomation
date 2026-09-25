@@ -22,7 +22,8 @@
 SET local statement_timeout = '120s';
 
 -- ---------------------------------------------------------------------------
--- 1. The acceptance record — one row per accepted version, append-only.
+-- 1. The acceptance record — one row per owner per accepted version,
+--    append-only.
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS public.house_data_terms_acceptances (
@@ -51,9 +52,13 @@ CREATE TABLE IF NOT EXISTS public.house_data_terms_acceptances (
   -- version of this act; it is a different act the founder refused.
   CONSTRAINT house_data_terms_acceptances_role_check
     CHECK (accepted_by_role = 'owner'),
-  -- A second owner accepting the same version is a no-op, not a second row.
-  CONSTRAINT house_data_terms_acceptances_one_per_version
-    UNIQUE (restaurant_id, terms_version)
+  -- Every owner accepts for themselves (question 19, the founder, 2026-09-22,
+  -- round 6z: "Every owner, next sign-in"): a second owner accepting the same
+  -- version is a second row, their own; the SAME owner accepting it again is
+  -- a no-op. [2026-09-25: was UNIQUE (restaurant_id, terms_version), one row
+  -- per house per version, built for the round-4 "accept to turn Jev on" act.]
+  CONSTRAINT house_data_terms_acceptances_one_per_owner_per_version
+    UNIQUE (restaurant_id, terms_version, accepted_by)
 );
 
 CREATE INDEX IF NOT EXISTS idx_house_data_terms_acceptances_house
@@ -78,7 +83,7 @@ REVOKE ALL ON public.house_data_terms_acceptances FROM anon, authenticated;
 GRANT SELECT, INSERT ON public.house_data_terms_acceptances TO service_role;
 
 COMMENT ON TABLE public.house_data_terms_acceptances IS
-  'An owner accepting the house''s complete data-and-privacy terms (ADR 0207 round 4) — which is what turns Jev on. Append-only: SELECT/INSERT to service_role, no UPDATE, no DELETE. One row per (restaurant, terms_version).';
+  'An owner accepting the house''s complete data-and-privacy terms (ADR 0207 round 4) — which is what turns Jev on. Append-only: SELECT/INSERT to service_role, no UPDATE, no DELETE. One row per (restaurant, terms_version, accepted_by): every owner accepts for themselves (ADR 0207 question 19).';
 COMMENT ON COLUMN public.house_data_terms_acceptances.seal_id IS
   'The redeemed mcp_seal_challenges row that proved this was the owner''s own hold-to-accept gesture, bound to this house and this digest.';
 
@@ -222,8 +227,27 @@ BEGIN
       probe_house, 1, repeat('a', 64), '{"v":1}'::jsonb,
       probe_user, 'owner', probe_seal
     ) RETURNING id INTO probe_row;
+
+    -- Refusal: the SAME owner accepting the same version twice (question 19:
+    -- one row per owner per version, never two).
+    rejected := FALSE;
+    BEGIN
+      INSERT INTO public.house_data_terms_acceptances (
+        restaurant_id, terms_version, terms_digest, terms_snapshot,
+        accepted_by, accepted_by_role, seal_id
+      ) VALUES (
+        probe_house, 1, repeat('a', 64), '{"v":1}'::jsonb,
+        probe_user, 'owner', probe_seal
+      );
+    EXCEPTION WHEN unique_violation THEN
+      rejected := TRUE;
+    END;
     DELETE FROM public.house_data_terms_acceptances WHERE id = probe_row;
     DELETE FROM public.mcp_seal_challenges WHERE id = probe_seal;
+    IF NOT rejected THEN
+      RAISE EXCEPTION
+        'one owner accepted one version twice — house_data_terms_acceptances_one_per_owner_per_version is not biting';
+    END IF;
 
     -- Refusal: a manager's acceptance.
     INSERT INTO public.mcp_seal_challenges (

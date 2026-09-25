@@ -96,6 +96,41 @@ describe('when the sheet shows, and when it never does', () => {
     expect(screen.queryByRole('button', { name: /hold to accept/i })).toBeNull();
   });
 
+  it('[REVERT-FAILS] meets an owner whose CO-OWNER accepted, but who has not — every owner accepts for themselves (question 19)', () => {
+    dataTermsMock.data = readout({
+      current: true,
+      yours: { current: false },
+      acceptance: { version: 1, acceptedAt: '2026-09-22T00:00:00Z', acceptedBy: { userId: 'u2', name: 'Co-owner' } },
+      jev: { enabled: true, effective: true, pausedBecause: null },
+    });
+    mount();
+    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
+    // It does not promise to turn on what is already on.
+    expect(screen.getByText(/accepting records your own agreement/i)).toBeInTheDocument();
+  });
+
+  it('shows nothing once THIS owner has accepted the current version', () => {
+    dataTermsMock.data = readout({
+      current: true,
+      yours: { current: true },
+      acceptance: { version: 1, acceptedAt: '2026-09-22T00:00:00Z', acceptedBy: { userId: 'u', name: 'Aldemir' } },
+    });
+    mount();
+    expect(screen.queryByRole('button', { name: /hold to accept/i })).toBeNull();
+  });
+
+  it('never promises to turn Jev on over an owner who switched it off', () => {
+    dataTermsMock.data = readout({
+      current: true,
+      yours: { current: false },
+      acceptance: { version: 1, acceptedAt: '2026-09-22T00:00:00Z', acceptedBy: { userId: 'u2', name: 'Co-owner' } },
+      jev: { enabled: false, effective: false, pausedBecause: null },
+    });
+    mount();
+    expect(screen.getAllByText(/accepting does not turn it on/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/accepting turns Jev on/i)).toBeNull();
+  });
+
   it('meets the owner with a non-dismissable sheet when the current version is not accepted', () => {
     dataTermsMock.data = readout();
     mount();

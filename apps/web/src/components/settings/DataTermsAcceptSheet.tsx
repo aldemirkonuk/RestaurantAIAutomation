@@ -54,6 +54,7 @@ import { Panel, HoldToApprove } from '../mudavym';
 import {
   acceptDataTerms,
   issueDataTermsSealChallenge,
+  type DataTermsAcceptanceReceipt,
   type DataTermsReadout,
 } from '../../services/api/dataTerms';
 import { useInvalidateDataTerms } from '../../hooks/queries/useDataTerms';
@@ -71,8 +72,42 @@ export interface DataTermsAcceptSheetProps {
   readout: DataTermsReadout;
   dismissable: boolean;
   onClose?: () => void;
-  /** Fired once the gateway confirms the acceptance. */
-  onAccepted?: () => void;
+  /** Fired once the gateway confirms the acceptance, with its receipt. */
+  onAccepted?: (receipt: DataTermsAcceptanceReceipt) => void;
+}
+
+/**
+ * What accepting does to Jev, in this house, right now. The house's FIRST
+ * acceptance turns Jev on; after that an owner's own acceptance (question 19:
+ * every owner accepts for themselves) leaves the switch as it was — so the
+ * sheet must not promise to turn on what another owner may have turned off.
+ */
+export function jevConsequence(readout: DataTermsReadout): { short: string; long: string } {
+  if (readout.acceptance === null) {
+    return {
+      short: 'accepting turns Jev on for this house.',
+      long:
+        'Accepting turns on Jev (TypeSafe), which reads this house’s vendor mail with names and sensitive topics removed.',
+    };
+  }
+  if (readout.jev.enabled) {
+    return readout.current
+      ? {
+          short: 'Jev already reads this house’s vendor mail; accepting records your own agreement.',
+          long:
+            'Jev (TypeSafe) already reads this house’s vendor mail, with names and sensitive topics removed. Accepting records your own agreement to these terms.',
+        }
+      : {
+          short: 'accepting lets Jev read this house’s vendor mail again.',
+          long:
+            'Jev (TypeSafe) is switched on for this house but paused until these terms are accepted. Accepting lets it read the house’s vendor mail again, with names and sensitive topics removed.',
+        };
+  }
+  return {
+    short: 'Jev is switched off for this house; accepting does not turn it on.',
+    long:
+      'Jev (TypeSafe) is switched off for this house, and accepting does not turn it on — an owner can, under Settings → Mail reading.',
+  };
 }
 
 export function DataTermsAcceptSheet({
@@ -89,6 +124,7 @@ export function DataTermsAcceptSheet({
   const terms = readout.statements.filter((s) => s.kind === 'term');
   const changed = readout.changedSince[String(readout.version)] ?? [];
   const reaccepting = readout.acceptance !== null && !readout.current;
+  const jev = jevConsequence(readout);
 
   const onChallenge = async (): Promise<string | null> => {
     setRefusal(null);
@@ -107,9 +143,9 @@ export function DataTermsAcceptSheet({
 
   const onApprove = async (challenge?: string | null) => {
     try {
-      await acceptDataTerms(readout.version, readout.digest, challenge ?? null);
+      const receipt = await acceptDataTerms(readout.version, readout.digest, challenge ?? null);
       await invalidate();
-      onAccepted?.();
+      onAccepted?.(receipt);
     } catch (err) {
       setRefusal(spokenMessage(err));
       setAttempt((a) => a + 1);
@@ -127,20 +163,22 @@ export function DataTermsAcceptSheet({
       open
       onClose={handleClose}
       showClose={dismissable}
-      closeLabel="Put it down"
+      // Non-dismissable, the Panel primitive (main, 2026-09) names its scrim
+      // with this label as the way out. There is no way out here, so the
+      // scrim says so instead of offering "Put it down" and doing nothing.
+      closeLabel={dismissable ? 'Put it down' : 'These terms stay open until you accept them'}
       scrim
       label={
         reaccepting
-          ? "This house's data and privacy terms changed. Reading them asks nothing of you yet; accepting turns Jev back on for this house."
-          : "This house's data and privacy terms, including Jev (TypeSafe). Reading them asks nothing of you yet; accepting turns Jev on for this house."
+          ? `This house's data and privacy terms changed. Reading them asks nothing of you yet; ${jev.short}`
+          : `This house's data and privacy terms, including Jev (TypeSafe). Reading them asks nothing of you yet; ${jev.short}`
       }
       eyebrow="Data & privacy terms"
       title={reaccepting ? 'The terms changed — read them again' : 'This house’s data & privacy terms'}
       contract={
         <span>
-          Accepting turns on Jev (TypeSafe), which reads this house’s vendor mail with names and
-          sensitive topics removed. It changes nothing else — every other flow below already
-          happens whether or not you accept.
+          {jev.long} It changes nothing else — every other flow below already happens whether or
+          not you accept.
         </span>
       }
       footer={

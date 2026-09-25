@@ -39,8 +39,14 @@ export interface DataTermsReadout {
   subprocessors: DataTermsSubprocessor[];
   changedSince: Record<string, string[]>;
   acceptance: DataTermsAcceptance | null;
-  /** True only when `acceptance` is of THIS `version`. */
+  /** The HOUSE: true only when some owner has accepted THIS `version`. */
   current: boolean;
+  /**
+   * The READER: whether the person reading has accepted THIS `version`
+   * themselves (ADR 0207 question 19, "Every owner, next sign-in"). Absent
+   * from a gateway older than this field; `null` when the read names no one.
+   */
+  yours?: { current: boolean } | null;
   jev: { enabled: boolean; effective: boolean; pausedBecause: string | null };
 }
 
@@ -48,6 +54,12 @@ export interface DataTermsAcceptanceReceipt {
   accepted: true;
   version: number;
   switchTurnedOn: boolean;
+  /**
+   * `turned_on`: the house's first acceptance, which turns Jev on.
+   * `left_as_it_was`: the house had accepted before; the switch is unchanged.
+   * `failed`: recorded, but the switch could not be turned on.
+   */
+  switch?: 'turned_on' | 'left_as_it_was' | 'failed';
   audited: boolean;
   auditReason: string | null;
 }

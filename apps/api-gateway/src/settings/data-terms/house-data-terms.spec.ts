@@ -8,8 +8,8 @@
  * The real HouseDataTermsService, the real SealChallengeService, the real
  * OrganizationsService (the role read) and the real SettingsAuditService run
  * over an in-memory PostgREST double that honours its filters, spends a seal
- * once, and refuses a second acceptance of one version the way the table's
- * UNIQUE constraint does.
+ * once, and refuses one owner's second acceptance of one version the way the
+ * table's UNIQUE (restaurant_id, terms_version, accepted_by) constraint does.
  *
  * [Last call, 2026-09-22: the acceptance route had no spec at all — its owner
  * gate could be deleted with every test green. The `fact` statements' evidence
@@ -96,7 +96,8 @@ class FakeQuery {
         t.some(
           (r) =>
             r.restaurant_id === row.restaurant_id &&
-            r.terms_version === row.terms_version,
+            r.terms_version === row.terms_version &&
+            r.accepted_by === row.accepted_by,
         )
       )
         return {
@@ -241,10 +242,13 @@ describe("accepting the house's data terms turns Jev on — owner only, sealed",
     expect(on(db)).toBe(false);
   });
 
-  it("a second owner accepting the same version is a success with still one row", async () => {
+  it("[REVERT-FAILS] a second owner accepting the same version gets a row of their own (question 19, every owner)", async () => {
     const { db, terms } = make();
     const first = await terms.issueSealChallenge(A, "owner-a");
     await terms.accept(A, "owner-a", TERMS_VERSION, digest(), first.challenge);
+    // The house is current, but owner-a2 has not accepted: the gate is theirs.
+    const before = await terms.read(A, "owner-a2");
+    expect(before).toMatchObject({ current: true, yours: { current: false } });
     const second = await terms.issueSealChallenge(A, "owner-a2");
     const receipt = await terms.accept(
       A,
@@ -253,8 +257,70 @@ describe("accepting the house's data terms turns Jev on — owner only, sealed",
       digest(),
       second.challenge,
     );
-    expect(receipt).toMatchObject({ accepted: true });
+    expect(receipt).toMatchObject({ accepted: true, switch: "left_as_it_was", audited: true });
+    expect(
+      db.tables.house_data_terms_acceptances.map((r) => r.accepted_by).sort(),
+    ).toEqual(["owner-a", "owner-a2"]);
+    expect(await terms.read(A, "owner-a2")).toMatchObject({ yours: { current: true } });
+    expect(
+      db.tables.system_audit_log
+        .filter((r) => r.action === "house_data_terms_accepted")
+        .map((r) => r.actor_id)
+        .sort(),
+    ).toEqual(["owner-a", "owner-a2"]);
+  });
+
+  it("the same owner accepting the same version again is a no-op success, still one row", async () => {
+    const { db, terms } = make();
+    const first = await terms.issueSealChallenge(A, "owner-a");
+    await terms.accept(A, "owner-a", TERMS_VERSION, digest(), first.challenge);
+    const again = await terms.issueSealChallenge(A, "owner-a");
+    const receipt = await terms.accept(A, "owner-a", TERMS_VERSION, digest(), again.challenge);
+    expect(receipt).toMatchObject({ accepted: true, switch: "left_as_it_was", audited: false });
     expect(db.tables.house_data_terms_acceptances).toHaveLength(1);
+  });
+
+  it("[REVERT-FAILS] a co-owner's acceptance never turns Jev back on over an owner who turned it off", async () => {
+    const { db, terms } = make();
+    const first = await terms.issueSealChallenge(A, "owner-a");
+    const r1 = await terms.accept(A, "owner-a", TERMS_VERSION, digest(), first.challenge);
+    expect(r1).toMatchObject({ switchTurnedOn: true, switch: "turned_on" });
+    // owner-a switches Jev off (the round-3 disable switch).
+    db.tables.restaurants.find((r) => r.id === A)!.vendor_tone_scoring_enabled = false;
+    const second = await terms.issueSealChallenge(A, "owner-a2");
+    const r2 = await terms.accept(A, "owner-a2", TERMS_VERSION, digest(), second.challenge);
+    expect(r2).toMatchObject({ switchTurnedOn: false, switch: "left_as_it_was" });
+    expect(on(db)).toBe(false);
+  });
+
+  it("the reader's own acceptance that cannot be read is unreadable — never 'you have not accepted'", async () => {
+    const { db, terms } = make();
+    const first = await terms.issueSealChallenge(A, "owner-a");
+    await terms.accept(A, "owner-a", TERMS_VERSION, digest(), first.challenge);
+    // Fail only the per-owner read: the one query filtered by accepted_by.
+    const realFrom = db.from.bind(db);
+    (db as any).from = (table: string) => {
+      const q = realFrom(table) as any;
+      if (table !== "house_data_terms_acceptances") return q;
+      const realEq = q.eq.bind(q);
+      q.eq = (col: string, v: unknown) => {
+        if (col === "accepted_by")
+          return {
+            limit: () =>
+              Promise.resolve({ data: null, error: { message: "statement timeout" } }),
+          };
+        return realEq(col, v);
+      };
+      return q;
+    };
+    const r = await terms.read(A, "owner-a2");
+    expect(r.readable).toBe(false);
+    expect(r.yours).toBeNull();
+  });
+
+  it("a read that names no person carries no 'yours'", async () => {
+    const { terms } = make();
+    expect((await terms.read(A)).yours).toBeNull();
   });
 
   it("a readout whose switch cannot be read says so — never 'off'", async () => {

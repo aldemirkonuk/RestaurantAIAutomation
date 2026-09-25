@@ -33,14 +33,9 @@ interface DashboardLayoutProps {
  * shell at someone who is not meant to see it (useMudavymDesign.ts).
  */
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const shellOn = useMudavymDesign('shell')
   return (
     <>
-      {shellOn ? (
-        <HouseShell>{children}</HouseShell>
-      ) : (
-        <LegacyDashboardLayout>{children}</LegacyDashboardLayout>
-      )}
+      <ShellByGate>{children}</ShellByGate>
       {/* ADR 0207 round 5 (question 19) — every owner, at their next
           sign-in, meets the house's data-and-privacy terms. Mounted here,
           outside both shells, so the Mudavym shell and the legacy layout
@@ -49,6 +44,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <DataTermsSignInGate />
     </>
   )
+}
+
+function ShellByGate({ children }: DashboardLayoutProps) {
+  const shellOn = useMudavymDesign('shell')
+  if (shellOn) return <HouseShell>{children}</HouseShell>
+  return <LegacyDashboardLayout>{children}</LegacyDashboardLayout>
 }
 
 function LegacyDashboardLayout({ children }: DashboardLayoutProps) {
