@@ -46,6 +46,11 @@
     position: static;
     border-bottom-color: var(--paper-2);
   }
+  /* Under the app shell (sketch 119 D) the legacy mobile bar is deleted and
+     this header is the only bar, so it keeps its sticky. */
+  .mdv-hdr[data-shell='true'] {
+    position: sticky;
+  }
 }
 
 .mdv-hdr__in {

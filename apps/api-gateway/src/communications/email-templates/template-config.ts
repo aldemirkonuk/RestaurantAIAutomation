@@ -1,7 +1,7 @@
 /**
  * Email Template Configuration
  * Shared constants for all email templates
- * Supports hybrid branding: global WineOps defaults + per-restaurant overrides
+ * Supports hybrid branding: global Mudavym defaults + per-restaurant overrides
  */
 
 export const EMAIL_CONFIG = {
@@ -30,18 +30,18 @@ export const EMAIL_CONFIG = {
 
   // Brand Info
   brand: {
-    name: "WineOps AI",
+    name: "Mudavym",
     logo: "", // Add logo URL when available
-    website: "https://wineops.ai",
-    supportEmail: "support@wineops.ai",
+    website: "https://mudavym.com",
+    supportEmail: "support@mudavym.com",
   },
 
   // Footer Text
   footer: {
-    automated: "This is an automated message from WineOps AI.",
+    automated: "This is an automated message from Mudavym.",
     unsubscribe:
       "To manage your notification preferences, visit your account settings.",
-    copyright: `© ${new Date().getFullYear()} WineOps AI. All rights reserved.`,
+    copyright: `© ${new Date().getFullYear()} Mudavym. All rights reserved.`,
   },
 
   // Email Styles
@@ -52,6 +52,50 @@ export const EMAIL_CONFIG = {
     boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
   },
 };
+
+/**
+ * `FRONTEND_URL` is documented and used elsewhere in this codebase as a
+ * comma-separated CORS allow-list whose FIRST entry is the canonical origin
+ * (`cors-origins.ts:23`'s `.split(",")`, `integrations-oauth.service.ts:159-165`'s
+ * comment + split, `studio-invite.controller.ts:93`). A raw read of the env
+ * var — `process.env.FRONTEND_URL` or `configService.get("FRONTEND_URL")` —
+ * hands back the WHOLE list. With `FRONTEND_URL=` set to a comma-separated
+ * allow-list such as `"https://mudavym.com,https://www.mudavym.com"`, every
+ * raw read glued straight into a link produced
+ * `https://mudavym.com,https://www.mudavym.com/orders/<id>` — the exact dead-
+ * link class this file exists to fix, just moved one level up. Every site
+ * that turns `FRONTEND_URL` into a link must go through this.
+ *
+ * Also strips a trailing slash, so `"https://mudavym.com/"` and
+ * `"https://mudavym.com"` produce the same joined URL rather than a doubled
+ * slash.
+ */
+export function canonicalOrigin(raw: string | null | undefined): string | undefined {
+  const first = raw?.split(",")[0]?.trim();
+  if (!first) return undefined;
+  return first.replace(/\/+$/, "");
+}
+
+/**
+ * The frontend origin every template's CTA button links into.
+ *
+ * Ten of these templates carried a literal `url: "#"` — two with a
+ * `// Replace with actual URL` comment that was never acted on —
+ * because nothing in this directory had a way to reach
+ * `FRONTEND_URL` at all: these are plain functions, not Nest providers, so
+ * `gmail.service.ts`'s own `ConfigService` is not in scope here. Read
+ * directly, the same way `gmail.service.ts` itself falls back to
+ * `process.env` for `GMAIL_USER`/`GMAIL_APP_PASSWORD`. Defaults to
+ * `mudavym.com` rather than the pre-rebrand
+ * `restaurant-ai-automation-web.vercel.app` fallback used elsewhere in this
+ * package (ADR 0149 row 28) — a correct fallback should not depend on the
+ * env var always being set. Routed through `canonicalOrigin()` so a live
+ * comma-separated `FRONTEND_URL` (a comma-separated allow-list such as
+ * production's, `cors-origins.ts`) cannot leak into a CTA href.
+ */
+export function frontendUrl(): string {
+  return canonicalOrigin(process.env.FRONTEND_URL) || "https://mudavym.com";
+}
 
 /**
  * Restaurant branding override interface
@@ -66,7 +110,7 @@ export interface RestaurantBranding {
 
 /**
  * Get restaurant-specific branding from database.
- * Falls back to global WineOps branding if no override exists.
+ * Falls back to global Mudavym branding if no override exists.
  */
 export async function getRestaurantBranding(
   restaurantId: string,

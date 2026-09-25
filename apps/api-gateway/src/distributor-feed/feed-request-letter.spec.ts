@@ -61,7 +61,10 @@ describe("FEED_REQUEST_LETTER", () => {
     expect(doc).toContain(FEED_REQUEST_LETTER.body.trim());
   });
 
-  it("records that this product never sends it", () => {
-    expect(FEED_REQUEST_LETTER.neverSent).toContain("no route that sends");
+  it("records that this product never sends it, in the house's words", () => {
+    expect(FEED_REQUEST_LETTER.neverSent).toContain("cannot send this letter");
+    expect(FEED_REQUEST_LETTER.neverSent).not.toMatch(
+      /\b(protocol|webhook|iframe|token|route)\b/i,
+    );
   });
 });

@@ -294,9 +294,15 @@ export class ProviderIntelligenceController {
   @ApiQuery({ name: "limit", required: false })
   async getSentimentTrend(
     @Param("id") providerId: string,
-    @Query("limit") limit: string | undefined,
     @CurrentUser() user: AuthUser,
+    @Query("limit") limit?: string,
   ) {
+    // user.restaurantId falls back to the nullable users.restaurant_id column
+    // (jwt.strategy.ts:29-31) when the token carries none. `houseOf` refuses
+    // that session with the controller-wide 403 before the query, instead of
+    // letting an empty value reach `.eq("restaurant_id", ...)` as a Postgres
+    // cast error inside a 500 (2026-09-17 finding; #391 refused it with a 400,
+    // folded into the one refusal every route here gives on 2026-09-25).
     try {
       return await this.intelligenceService.getSentimentTrend(
         providerId,
@@ -382,8 +388,8 @@ export class ProviderIntelligenceController {
   })
   @ApiQuery({ name: "providerIds", required: false, type: String })
   async compareProviders(
-    @Query("providerIds") providerIdsStr: string | undefined,
     @CurrentUser() user: AuthUser,
+    @Query("providerIds") providerIdsStr?: string,
   ) {
     try {
       const providerIds = providerIdsStr

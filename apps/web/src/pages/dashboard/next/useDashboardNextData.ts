@@ -181,9 +181,13 @@ export function useMonthLedger(
       setState({ state: 'loading' });
       dashboardApi.getCalendarRevenue(year, month, restaurantId).then((res) => {
         if (mySeq !== seq.current) return; // a later month superseded this one
-        // The service swallows failures into { daily: [] }; a real month is
-        // never shorter than 28 days, so an empty array means "unreachable".
-        if (!res.daily || res.daily.length === 0) {
+        // The service swallows a thrown failure into { daily: [] } — but a 200
+        // with a null/empty body resolves the promise with `res` itself null,
+        // which `!res.daily` cannot see (reading `.daily` off null throws
+        // before the `!` ever runs). `res?.daily` covers both: no response
+        // object, and a response object with no days. A real month is never
+        // shorter than 28 days, so either case means "unreachable", not zero.
+        if (!res?.daily || res.daily.length === 0) {
           setState({ state: 'unknown' });
           return;
         }
@@ -214,6 +218,15 @@ export function useMonthLedger(
         };
         cache.current.set(key, ledger);
         setState({ state: 'ready', ledger });
+      }).catch(() => {
+        // `getCalendarRevenue` already catches a thrown request into a fallback
+        // object, so reaching here means something else broke (a bug in that
+        // catch, a rejection from `.then` itself) — an unhandled rejection is
+        // strictly worse than the honest 'unknown' the two branches above show,
+        // so this must land the same place they do, not stay in 'loading'
+        // forever (defect 6, live-review.md 2026-09-17).
+        if (mySeq !== seq.current) return;
+        setState({ state: 'unknown' });
       });
     },
     [restaurantId, year, month],

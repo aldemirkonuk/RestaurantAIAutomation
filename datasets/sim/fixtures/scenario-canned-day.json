@@ -1,0 +1,28 @@
+{
+  "fixture_version": "1.0.0",
+  "generated_by": "SCENARIO_CANNED_DAY_WRITE=1 python3 -m pytest scripts/test_simulate_scenarios.py -k canned_day",
+  "source": "scripts/simulate/scenarios.py::build_expectation via scripts/test_simulate_scenarios.py::build",
+  "params": {
+    "archetype": "bistro",
+    "scenario": "random",
+    "seed": 7,
+    "service_date": "2026-09-02",
+    "timezone": "America/Chicago",
+    "hours_source": "fixture",
+    "inventory_source": "archetype",
+    "base_covers": 80
+  },
+  "totals": {
+    "checks": 21,
+    "posted_checks": 21,
+    "wine_lines": 52,
+    "food_lines": 82,
+    "revenue": 5549.56,
+    "revenue_excludes_voided": true
+  },
+  "check_count": 21,
+  "low_stock_expected": [
+    "AMARONE"
+  ],
+  "content_hash": "5e5a40656d0b944f28bbeb6ac5e0ba56f9f8ca79386fbf8c6b37dfdcce6f333f"
+}

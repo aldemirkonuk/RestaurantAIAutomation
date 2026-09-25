@@ -22,6 +22,28 @@ export function isSafeStudioSubPath(subPath: string): boolean {
   return isSafeRelativePath(subPath);
 }
 
+/** Thrown before any request leaves the gateway, so nothing was dispatched. */
+export class OrchestratorNotConfiguredError extends Error {
+  constructor() {
+    super("Orchestrator not configured");
+    this.name = "OrchestratorNotConfiguredError";
+  }
+}
+
+/**
+ * Equals operateAgent's own worst-case drain exactly — task_timeout_seconds (30s)
+ * plus up to another 30s for a subclass cleanup() — with nothing left over for
+ * transport margin: 30 + 30 = 60. This sits AT the worst case, not safely past it
+ * (admin.md's phrasing), so a slow restart can still read "unknown" on a bad day.
+ * Raising it further is a smaller, separately-decidable follow-up (ADR 0143's
+ * 2026-09-18 addendum), not attempted here. The orchestrator enforces no wait
+ * budget of its own; see operateAgent's JSDoc below.
+ */
+export const AGENT_OPERATION_TIMEOUT_MS = 60_000;
+
+const UUID_V4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class OrchestratorService implements OnModuleDestroy {
   private readonly logger = new Logger(OrchestratorService.name);
@@ -96,6 +118,49 @@ export class OrchestratorService implements OnModuleDestroy {
   private getAdminHeaders(): Record<string, string> {
     const key = this.configService.get<string>("ADMIN_API_KEY", "");
     return { "X-Admin-Key": key };
+  }
+
+  /**
+   * One platform lifecycle operation (ADR 0143). `operate_agent` (api/health_routes.py)
+   * is synchronous: it awaits the whole restart/stop before answering 200, with no wait
+   * budget of its own and no 202/"running" path. So this waits at least as long as one
+   * agent's full drain can take (`task_timeout_seconds`, 30s, core/base_agent.py, plus
+   * up to another 30s for a subclass `cleanup()`) — the old 20s wait was shorter than
+   * that, so an ordinary restart routinely came back as "outcome unknown" even though
+   * the orchestrator would have answered given more time.
+   */
+  async operateAgent(
+    name: string,
+    action: "restart" | "stop",
+    requestId: string,
+  ): Promise<{ httpStatus: number; data: unknown }> {
+    if (!isSafePathSegment(name) || !["restart", "stop"].includes(action)) {
+      throw new BadRequestException("Unknown agent operation.");
+    }
+    if (!this.orchestratorConfigured) throw new OrchestratorNotConfiguredError();
+    const response = await this.httpClient.post(
+      `/api/v1/health/agents/${name}/${action}`,
+      { request_id: requestId },
+      { headers: this.getAdminHeaders(), timeout: AGENT_OPERATION_TIMEOUT_MS },
+    );
+    return { httpStatus: response.status, data: response.data };
+  }
+
+  /**
+   * What the running orchestrator recorded for one operation request id, for receipt
+   * reconciliation. The record lives in the orchestrator's memory, so a restarted
+   * orchestrator answers 404 for every earlier request.
+   */
+  async getAgentOperation(requestId: string): Promise<unknown> {
+    if (!UUID_V4.test(requestId)) {
+      throw new BadRequestException("Unknown operation request.");
+    }
+    if (!this.orchestratorConfigured) throw new OrchestratorNotConfiguredError();
+    const response = await this.httpClient.get(
+      `/api/v1/health/agent-operations/${requestId}`,
+      { headers: this.getAdminHeaders(), timeout: 5000 },
+    );
+    return response.data;
   }
 
   /**

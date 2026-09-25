@@ -439,6 +439,14 @@ export class ProviderIntelligenceService {
   // SENTIMENT
   // =========================================================================
 
+  /**
+   * `provider_sentiment_history` carries its own `restaurant_id` (NOT NULL,
+   * baseline `:4837`) — providers can be shared across houses via the
+   * nullable `providers.restaurant_id`, so a provider-only filter here would
+   * hand back another house's sentiment history for a shared provider
+   * (2026-09-17 finding). `restaurantId` scopes the read the same way every
+   * other provider route in this gateway scopes `providers` itself.
+   */
   async getSentimentTrend(
     providerId: string,
     restaurantId: string,
@@ -486,6 +494,22 @@ export class ProviderIntelligenceService {
   // =========================================================================
 
   /**
+   * Was unscoped: every active provider in every restaurant, with its
+   * reliability score, tier and (via the per-provider queries below) promotion,
+   * sentiment and knowledge counts. `restaurantId` scopes the provider list and
+   * all three per-provider aggregates, since each of those tables carries its
+   * own `restaurant_id` independent of the provider row.
+   *
+   * The provider list is a plain `.eq("restaurant_id", ...)`, NOT the
+   * shared-row idiom (`restaurant_id.is.null,restaurant_id.eq.<house>`) that
+   * main briefly used here (#391). A `providers` row with a NULL house is not a
+   * shared vendor anywhere else in this gateway — `ProvidersService.listProviders`
+   * and `getProvider` both filter with `.eq`, so no house can list, open or
+   * order from it. Those rows are orphans (bulk import wrote `restaurant_id`
+   * NULL for every imported vendor until PR #412), i.e. ONE house's vendors
+   * with the house dropped; admitting them here showed their names, tiers and
+   * minimum orders to every house (2026-09-25 merge, PR #416).
+   *
    * `providerIds` is a filter, not an assertion that each id exists. An id from
    * another house drops out of the result exactly the way an inactive or
    * soft-deleted id of this house already does — the endpoint has never told a

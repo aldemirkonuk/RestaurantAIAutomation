@@ -495,22 +495,22 @@ describe("provider intelligence answers only for the caller's house", () => {
   it("sentiment: house A's trend is built from house A's rows alone", async () => {
     const { controller } = setup();
 
-    const mine = await controller.getSentimentTrend(PROV_A, undefined, userA);
+    const mine = await controller.getSentimentTrend(PROV_A, userA, undefined);
     expect(mine.dataPoints).toHaveLength(1);
     expect(mine.averageScore).toBeCloseTo(0.4);
 
-    const theirs = await controller.getSentimentTrend(PROV_B, undefined, userA);
+    const theirs = await controller.getSentimentTrend(PROV_B, userA, undefined);
     expect(theirs.dataPoints).toEqual([]);
   });
 
   it("intelligence/compare: naming another house's provider id returns nothing", async () => {
     const { controller } = setup();
 
-    await expect(controller.compareProviders(PROV_B, userA)).resolves.toEqual(
+    await expect(controller.compareProviders(userA, PROV_B)).resolves.toEqual(
       [],
     );
 
-    const mine = await controller.compareProviders(undefined, userA);
+    const mine = await controller.compareProviders(userA, undefined);
     expect(mine.map((p: { id: string }) => p.id)).toEqual([PROV_A]);
     // The aggregates are counted per house too, not just the provider list.
     expect(mine[0].activePromoCount).toBe(1);
@@ -524,7 +524,7 @@ describe("provider intelligence answers only for the caller's house", () => {
     // though the provider list itself is correctly scoped.
     const { controller } = setup();
 
-    const [mine] = await controller.compareProviders(PROV_A, userA);
+    const [mine] = await controller.compareProviders(userA, PROV_A);
     expect(mine.activePromoCount).toBe(1);
     expect(mine.knowledgeEntries).toBe(2);
     expect(mine.avgSentiment).toBeCloseTo(0.4);
@@ -582,9 +582,9 @@ describe("a session that names no house is refused on every route", () => {
     ],
     [
       "GET :id/sentiment",
-      (c) => c.getSentimentTrend(PROV_A, undefined, noHouse),
+      (c) => c.getSentimentTrend(PROV_A, noHouse, undefined),
     ],
-    ["GET intelligence/compare", (c) => c.compareProviders(undefined, noHouse)],
+    ["GET intelligence/compare", (c) => c.compareProviders(noHouse, undefined)],
     ["GET intelligence/leverage", (c) => c.getLeverageSignals(noHouse)],
   ];
 

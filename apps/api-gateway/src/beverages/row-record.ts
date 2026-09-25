@@ -27,7 +27,10 @@
  *                                         only book that supports "paid".
  *   order    `procurement_order_items`    what we ASKED for. Not the same claim.
  *   quote    `vendor_price_observations`  who quoted it, off which source.
- *   pos      `pos_unresolved_lines`       what we actually SOLD, line by line.
+ *   pos      `pos_unresolved_lines` +     what we actually SOLD, line by line.
+ *            `pos_checks.items`          Unresolved wine lines in the queue;
+ *                                        non-wine (non-alcoholic) live sales
+ *                                        only in check items — Q9 / ADR 0160.
  *
  * MEASURED, 2026-09-03, against the live database this gateway is pointed at
  * (`exzueerziesmczwlhomd`): `procurement_document_lines` holds 0 rows in the

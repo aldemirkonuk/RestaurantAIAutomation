@@ -76,7 +76,7 @@ export function declaredClassification(
       declaredRead: false,
       writes: true,
       basis:
-        "The server lists this tool with no annotations, so it did not say whether it is read-only. The protocol's own default for an absent readOnlyHint is false, so it is classified as a write.",
+        "The server lists this tool with no annotations, so it did not say whether it is read-only. The default for an answer that was not given is that it counts as a write.",
     };
   }
   if (a.readOnlyHint === true) {

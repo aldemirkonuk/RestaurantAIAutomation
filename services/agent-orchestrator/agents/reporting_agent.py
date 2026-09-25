@@ -728,7 +728,7 @@ class ReportingAgent(BaseAgent):
   </style>
 </head>
 <body>
-  <h1>WineOps {report_type} Report</h1>
+  <h1>Mudavym {report_type} Report</h1>
   <div class="meta">
     <p>Restaurant: {restaurant_id}</p>
     <p>Generated: {generated_at}</p>
