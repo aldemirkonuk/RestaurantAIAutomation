@@ -380,3 +380,42 @@ beyond those now pinned (e.g. a new integration's own event extension) —
 round 3's wire tests found one more that no fixture held, so treat this list as
 open-ended; the frame-locals decision is made; or the trailing-slash referrer
 gap is closed (ADR 0158, PR #423).
+
+**[2026-09-25 — the frame-locals decision is made.]** Founder, in chat, on
+"the recommended option": **"stop sending locals"** ([[founder-answers-2026-09-25-web-rebuild.md]]
+#10). Closed the way this record anticipated: `include_local_variables=False`
+at both `sentry_sdk.init()` sites (`services/agent-orchestrator/main.py`,
+`services/agent-orchestrator/utils/sentry_client.py`) — the SDK now never
+attaches `frames[].vars`, so the bare-token gap above has nothing to scrub.
+The strict `xfail` this paragraph described is retired: PR #427 round 4 turns
+it into a passing wire test that drives the real SDK with
+`include_local_variables=False` and asserts the token never reaches the
+transport, paired with a mutation test that re-enables locals and asserts the
+same bare token *does* leak (`test_round3_frame_locals_disabled_a_bare_token_no_longer_leaves`
+/ `test_round3_frame_locals_enabled_the_bare_token_does_leave` in
+`services/agent-orchestrator/tests/test_sentry_pii_scope.py`). The
+local-carries-identity gap (an unredacted `email` local) is unaffected by
+this fix in the other direction — it is now moot for these two init sites,
+since no locals of any kind reach Sentry from them.
+
+**Gateway (Node) has the same class of leak, still open — not closed by this
+bracket.** `@sentry/node-core@10.36.0`'s `getDefaultIntegrations()` includes
+`localVariablesIntegration()` (`LocalVariablesAsync` on Node ≥19) unasked,
+and `SentryService.initialize()` in
+`apps/api-gateway/src/common/error-tracking/sentry.service.ts` passes
+`integrations: []` — an **array**, which `@sentry/core`'s
+`getIntegrationsToSetup` **merges** with `defaultIntegrations` rather than
+replacing them (`[...defaultIntegrations, ...userIntegrations]`,
+`@sentry/core/build/cjs/integration.js:51-52`), so the default local-variables
+integration is active, unfiltered, on the gateway today. There is no
+`includeLocalVariables` boolean on the Node SDK — the only lever is
+`integrations` as a *function* filtering `defaults` by the integration's
+`name` (`'LocalVariables'` / `'LocalVariablesAsync'`, undocumented-string
+match, version-fragile), and there is no wire test in
+`apps/api-gateway/src/common/error-tracking/sentry-wire.spec.ts` yet proving
+either the leak or a fix — unlike the Python side, which now has both.
+Founder's "stop sending locals" answer named the Python init sites (#10);
+this record treats the Node gap as **not yet ruled on** and files it as a
+candidate OD for L1 rather than fixing it inside PR #427, per §0.1: an
+unverified, untested, string-matched change to production Sentry
+configuration is not what "one line" was meant to license.

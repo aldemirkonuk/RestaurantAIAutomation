@@ -42,48 +42,50 @@ def literals(text: str, name: str) -> set[str]:
 
 
 def main() -> int:
-  try:
-    for f in (WEB, SEO):
-        if not f.exists():
-            print(f"CANNOT CHECK: {f} is missing")
+    try:
+        for f in (WEB, SEO):
+            if not f.exists():
+                print(f"CANNOT CHECK: {f} is missing")
+                return 2
+        scrub = literals(WEB.read_text(encoding="utf-8"), "TOKEN_PATH_PREFIXES")
+        seo = literals(SEO.read_text(encoding="utf-8"), "TOKEN_PREFIXES")
+        if not scrub or not seo:
+            print("CANNOT CHECK: one of the lists parsed empty")
             return 2
-    scrub = literals(WEB.read_text(encoding="utf-8"), "TOKEN_PATH_PREFIXES")
-    seo = literals(SEO.read_text(encoding="utf-8"), "TOKEN_PREFIXES")
-    if not scrub or not seo:
-        print("CANNOT CHECK: one of the lists parsed empty")
-        return 2
 
-    # A registry entry ending in "/" takes its credential as the NEXT segment;
-    # one without takes it in the query, which is stripped wholesale.
-    path_bearing = {p for p in seo if p.endswith("/")}
-    # Found by PR #427's compliance audit: dropping the trailing slashes from
-    # seo/routes.ts (a plausible "consistency" edit — publicRouteFor already
-    # strips them) made this derived set empty, and the guard printed
-    # "PASS — 0 path-bearing route(s)" and exited 0 while checking NOTHING.
-    # check_decision_claims.sh reads only the exit code, so the CLAIMS row
-    # would have stayed green forever. The sibling guard in
-    # check_sentry_pii_scope.py gets this right; this one did not.
-    if not path_bearing:
+        # A registry entry ending in "/" takes its credential as the NEXT segment;
+        # one without takes it in the query, which is stripped wholesale.
+        path_bearing = {p for p in seo if p.endswith("/")}
+        # Found by PR #427's compliance audit: dropping the trailing slashes from
+        # seo/routes.ts (a plausible "consistency" edit — publicRouteFor already
+        # strips them) made this derived set empty, and the guard printed
+        # "PASS — 0 path-bearing route(s)" and exited 0 while checking NOTHING.
+        # check_decision_claims.sh reads only the exit code, so the CLAIMS row
+        # would have stayed green forever. The sibling guard in
+        # check_sentry_pii_scope.py gets this right; this one did not.
+        if not path_bearing:
+            print(
+                "CANNOT CHECK: no path-bearing route in TOKEN_PREFIXES — every "
+                "entry lost its trailing slash, so this guard would verify nothing"
+            )
+            raise _CannotCheck()
+        missing = sorted(p for p in path_bearing if p not in scrub)
+        if missing:
+            print("FAIL: a path-token route is not redacted from Sentry event URLs:")
+            for p in missing:
+                print(
+                    f"  {p} is in seo/routes.ts TOKEN_PREFIXES but not in TOKEN_PATH_PREFIXES"
+                )
+            print("Add it to TOKEN_PATH_PREFIXES in ALL THREE runtimes (ADR 0040).")
+            return 1
         print(
-            "CANNOT CHECK: no path-bearing route in TOKEN_PREFIXES — every "
-            "entry lost its trailing slash, so this guard would verify nothing"
+            f"PASS — {len(path_bearing)} path-bearing registry route(s) are all "
+            f"redacted; {len(scrub)} prefix(es) scrubbed in total."
         )
-        raise _CannotCheck()
-    missing = sorted(p for p in path_bearing if p not in scrub)
-    if missing:
-        print("FAIL: a path-token route is not redacted from Sentry event URLs:")
-        for p in missing:
-            print(f"  {p} is in seo/routes.ts TOKEN_PREFIXES but not in TOKEN_PATH_PREFIXES")
-        print("Add it to TOKEN_PATH_PREFIXES in ALL THREE runtimes (ADR 0040).")
-        return 1
-    print(
-        f"PASS — {len(path_bearing)} path-bearing registry route(s) are all "
-        f"redacted; {len(scrub)} prefix(es) scrubbed in total."
-    )
-    return 0
-  except _CannotCheck:
-    print("Exiting 2 — a guard that cannot verify must not report success.")
-    return 2
+        return 0
+    except _CannotCheck:
+        print("Exiting 2 — a guard that cannot verify must not report success.")
+        return 2
 
 
 if __name__ == "__main__":

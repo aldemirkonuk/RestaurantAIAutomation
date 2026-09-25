@@ -42,6 +42,12 @@ else:
         # own. It does not cover anything set through set_user(), which is why
         # SentryClient.set_user takes opaque identifiers only.
         send_default_pii=False,
+        # Founder 2026-09-25 (PR #427 round 3): stop sending locals. scrub_text
+        # cannot catch a bare token quoted inside a frame local's repr (no URL
+        # around it, e.g. a request body model) -- the only fix is to never
+        # attach frame locals in the first place. This is the SDK's own knob,
+        # upstream of before_send, so no scrubber pass can substitute for it.
+        include_local_variables=False,
         integrations=[StarletteIntegration(), FastApiIntegration()],
         before_send=scrub_sentry_event,
         # sentry_sdk skips before_send for transaction events. With

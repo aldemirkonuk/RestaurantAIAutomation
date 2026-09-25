@@ -217,10 +217,15 @@ def _scrub_breadcrumbs(crumbs: Any) -> None:
 def _scrub_strings_deep(value: Any, depth: int = 0) -> Any:
     """
     Every string inside a frame's local variables, however deeply nested.
-    sentry_sdk attaches locals by default (include_local_variables), and PR
-    #427's round-3 wire test found an httpx Request repr and an error message --
-    both quoting the token-bearing URL -- in frames[].vars. Depth-capped: it runs
-    on an error path and must not recurse without bound.
+    sentry_sdk attaches locals by default (include_local_variables); PR #427's
+    round-3 wire test found an httpx Request repr and an error message -- both
+    quoting the token-bearing URL -- in frames[].vars, and a *bare* token with
+    no URL around it that scrub_text alone could not catch. As of round 3
+    (founder 2026-09-25) both sentry_sdk.init() call sites in this service set
+    include_local_variables=False, so `vars` should never arrive here in
+    production -- this stays as defense in depth for any call site or SDK
+    default drift that re-enables it. Depth-capped: it runs on an error path
+    and must not recurse without bound.
     """
     if isinstance(value, str):
         return scrub_text(value)
@@ -424,6 +429,11 @@ class SentryClient:
                     profiles_sample_rate if environment == "production" else 1.0
                 ),
                 send_default_pii=False,
+                # Founder 2026-09-25 (PR #427 round 3): stop sending locals. See
+                # the matching comment at the other sentry_sdk.init() site in
+                # main.py -- scrub_text cannot catch a bare token quoted inside a
+                # frame local's repr, so the SDK must never attach locals at all.
+                include_local_variables=False,
                 integrations=[
                     FastApiIntegration(transaction_style="endpoint"),
                     StarletteIntegration(transaction_style="endpoint"),

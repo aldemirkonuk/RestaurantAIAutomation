@@ -504,7 +504,7 @@ def test_round3_filesystem_frame_paths_are_left_alone():
 # ---------------------------------------------------------------------------
 
 
-def _wire_client():
+def _wire_client(include_local_variables=True):
     sentry_sdk = pytest.importorskip("sentry_sdk")
     from sentry_sdk.transport import Transport
 
@@ -522,6 +522,10 @@ def _wire_client():
         default_integrations=False,
         integrations=[],
         send_default_pii=False,
+        # Explicit, not just the SDK default, so a test that passes False here
+        # is actually exercising the same knob production sets in main.py and
+        # sentry_client.py -- not relying on whatever the SDK ships as default.
+        include_local_variables=include_local_variables,
         before_send=scrub_sentry_event,
         before_send_transaction=scrub_sentry_event,
     )
@@ -598,34 +602,55 @@ def test_round3_on_the_wire_without_the_scrubber_the_token_does_leave():
     assert token in "\n".join(client.transport.sent)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "OPEN (PR #427 round 3): a frame local whose repr holds a BARE token -- "
-        "no URL around it, e.g. a request body model -- is not URL-shaped, so "
-        "scrub_text cannot see it. Closing it means include_local_variables="
-        "False (a founder call: triage value vs. what the tracker may hold). "
-        "strict=True: this starts failing the day it is fixed, so the record "
-        "has to be updated with it."
-    ),
-)
-def test_round3_open_a_bare_token_in_a_frame_local_still_leaves():
-    event = {
-        "exception": {
-            "values": [
-                {
-                    "value": "boom",
-                    "stacktrace": {
-                        "frames": [
-                            {
-                                "vars": {
-                                    "body": f"AcceptStudioInvite(token='{REAL_TOKENS['studio']}')"
-                                }
-                            }
-                        ]
-                    },
-                }
-            ]
-        }
-    }
-    assert REAL_TOKENS["studio"] not in json.dumps(scrub_sentry_event(event))
+def test_round3_frame_locals_disabled_a_bare_token_no_longer_leaves():
+    """CLOSED (PR #427 round 3, founder 2026-09-25: "stop sending locals").
+
+    A frame local whose repr holds a BARE token -- no URL around it, e.g. a
+    request body model -- is not URL-shaped, so scrub_text alone cannot see
+    it (see the fixture-level proof this replaced, in git history at this
+    test's old name). The fix is not a smarter scrubber: it is
+    include_local_variables=False at both sentry_sdk.init() sites (main.py,
+    sentry_client.py), so the SDK never attaches `vars` to a frame at all.
+    This drives a real exception through the real SDK -- not a hand-built
+    event fixture -- so it proves the init option, not just scrub_text.
+    """
+    sentry_sdk, client = _wire_client(include_local_variables=False)
+    token = REAL_TOKENS["studio"]
+
+    with sentry_sdk.isolation_scope() as isolation:
+        isolation.set_client(client)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_client(client)
+            try:
+                body = f"AcceptStudioInvite(token='{token}')"  # noqa: F841 (captured as a frame local)
+                raise ValueError("boom")
+            except ValueError:
+                sentry_sdk.capture_exception()
+    client.flush(2)
+
+    wire = "\n".join(client.transport.sent)
+    assert token not in wire
+
+
+def test_round3_frame_locals_enabled_the_bare_token_does_leave():
+    """Mutation companion to the test above: flip include_local_variables back
+    to True (the SDK default) and the same bare-token scenario must leak --
+    proving the passing test above is actually pinned to the init option, and
+    not a no-op that would pass regardless of it (CLAUDE.md: 'a NO-OP mutation
+    is a failed test')."""
+    sentry_sdk, client = _wire_client(include_local_variables=True)
+    token = REAL_TOKENS["studio"]
+
+    with sentry_sdk.isolation_scope() as isolation:
+        isolation.set_client(client)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_client(client)
+            try:
+                body = f"AcceptStudioInvite(token='{token}')"  # noqa: F841 (captured as a frame local)
+                raise ValueError("boom")
+            except ValueError:
+                sentry_sdk.capture_exception()
+    client.flush(2)
+
+    wire = "\n".join(client.transport.sent)
+    assert token in wire
