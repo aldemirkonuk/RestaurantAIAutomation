@@ -80,6 +80,12 @@ CREATE POLICY house_data_terms_acceptances_service_role_insert
   ON public.house_data_terms_acceptances
   FOR INSERT TO service_role WITH CHECK (true);
 REVOKE ALL ON public.house_data_terms_acceptances FROM anon, authenticated;
+-- Supabase's default privileges hand service_role ALL on every new public
+-- table, and service_role bypasses RLS, so the policies above alone do not
+-- make this append-only. Revoke first, then grant back only the two verbs.
+-- [2026-09-25: CI's "Fresh database equals remote" failed on section 4's
+-- own assertion without this line; the PR had never run that context.]
+REVOKE ALL ON public.house_data_terms_acceptances FROM service_role;
 GRANT SELECT, INSERT ON public.house_data_terms_acceptances TO service_role;
 
 COMMENT ON TABLE public.house_data_terms_acceptances IS
