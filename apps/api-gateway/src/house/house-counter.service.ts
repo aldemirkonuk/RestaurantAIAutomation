@@ -191,7 +191,9 @@ export class HouseCounterService {
         },
       },
       // A bottle count carries no money, and the person at the door is the one
-      // who does it — the receiving routes carry no role gate.
+      // who does it — the door and unverified receiving routes carry no role
+      // gate (the decision queue, which carries dollars at risk, is owner or
+      // manager: ADR 0167).
       deliveries: {
         act: "yours",
         load: async () => {
