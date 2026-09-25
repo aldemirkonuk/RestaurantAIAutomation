@@ -29,7 +29,7 @@
 --    to admit one more value removes nothing that was allowed before.
 -- 3. `house_away` gains `ck_house_away_at_most_366_days`: both days inclusive,
 --    so `away_until - away_from` is at most 365. The table is new in this same
---    PR (20260921170300) and holds no rows anywhere, so the check is VALID.
+--    PR (20260925190000) and holds no rows anywhere, so the check is VALID.
 --
 -- ACTORS: `user_id` and `sent_by` point at `public.users(user_id)`, the id the
 -- JWT carries (`auth.users` is disjoint). THE HOUSE PROVES ITSELF IN THE KEY:
