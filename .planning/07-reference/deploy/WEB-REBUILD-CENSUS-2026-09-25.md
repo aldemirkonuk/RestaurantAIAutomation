@@ -294,7 +294,7 @@ go-live, which L4 now carries under Q2/Q4.
 | R14 | A mechanical "delete every legacy slot" deletes ADR 0213's `/get-started` | L17 special-case; F5 |
 | R15 | Parallel sessions write contradictory records (C1, C11) | L2 owns merges; L1 owns spine docs |
 | R16 | Dependabot majors mid-rebuild; 8 critical, 152 high Dependabot alerts on main (critic G5) | Hold majors; take the patch and security minors (L2) |
-| R17 | New houses fall back to the legacy shell and admin | L4 |
+| R17 | New houses fall back to the legacy shell and admin | L4 **[CLOSED 2026-09-25 by #463, `f7630c08b`]** |
 | R18 | G8's three surfaces would be deleted by a folder-list manifest | L17 import-graph proof |
 
 ---
@@ -614,8 +614,8 @@ Asked via AskUserQuestion 2026-09-25 in session 6c6d8b93 (census forks F1, recei
 read tracked files only, ADR 0220; `34386a476`), #466 (this records PR), #467 (recommendations
 catalogue round 6, ADR 0191; `85283ad0f`). **PRs brought up to date:** #427, #423, #395, #412,
 #416, #446, #449, #451, #450, #425, #394. **Merge train 1** is running over #463 #416 #412 #446
-#423 #395 #465 #451 #450 #425 #394 #467, in that order; at this section's writing none of them
-had merged (`gh pr view --json state`, all OPEN). Heads are from Wave 0's result file; a train
+#423 #395 #465 #451 #450 #425 #394 #467, in that order; at this section's last update #463 had
+merged (`f7630c08b`, 22:57Z) and the other eleven were OPEN (`gh pr view --json state`). Heads are from Wave 0's result file; a train
 merge moves them.
 
 ### 12.1 Wave 0's notes for the records lane, verified
@@ -627,7 +627,7 @@ already done: L4's "record authorize_integration as acted-on-pending-confirmatio
 
 | From | Note | Evidence |
 |---|---|---|
-| L4 (#463) | On merge, `LIVE_PAGES` goes from 20 keys to 23 (shell, admin, authorize_integration); still flag-gated: recommendations, receiving desk, arrival. R17 closes on merge. STATE.md and LIVE-CHECKLIST.md's gated rows change then, not before | Counted in `apps/web/src/lib/mudavym/useMudavymDesign.ts`: 20 at `origin/main`, 23 at `origin/feat/live-shell-admin-authorize` |
+| L4 (#463) | `LIVE_PAGES` went from 20 keys to 23 (shell, admin, authorize_integration) when #463 merged; still flag-gated: recommendations, receiving desk, arrival; R17 closed. **Done in this PR** (STATE.md, LIVE-CHECKLIST.md and ADR 0149 row 36 bracketed) | #463 merged `f7630c08b` 22:57Z; 23 keys counted in `useMudavymDesign.ts` on `main`; mudavym.com `assets/index-2txKbWJ0.js` carries the 23-key literal (22:59Z) |
 | L4 | Pre-existing defect #463 fixes: `scripts/flip_mudavym_design_flags.py`'s `LIVE_IN_CODE` lacks `settings` (live since #419), so a flip of settings writes an unread column and reports success | `scripts/flip_mudavym_design_flags.py:123-147` on `main`: sixteen row-36 names plus `cellar`, no `settings` |
 | L4 | With the shell live, an unmatched signed-in path renders the shell's in-app 404 at the same URL instead of redirecting to `/`; an e2e expecting the legacy redirect must set `localStorage['mudavym.design.shell']='0'` | L4's report; not re-run here |
 | L4 | CLAIMS rows `ADR-0149-LIVE-PAGES-16` and `SHELL-GATE-IS-OFF-BY-DEFAULT-AND-THREE-LAYERED` are amended in place in #463; compare by (id, verify) if another branch edits them | L4's report |
