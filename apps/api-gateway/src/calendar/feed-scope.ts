@@ -43,7 +43,7 @@ export type FeedRole = "owner" | "manager" | "staff";
 
 /**
  * The categories a member may pick to narrow their own link. The same list is
- * the CHECK on `calendar_feed_links.categories` (migration 20260921170600) —
+ * the CHECK on `calendar_feed_links.categories` (migration 20260925180300) —
  * change both.
  */
 export const FEED_CATEGORIES = [

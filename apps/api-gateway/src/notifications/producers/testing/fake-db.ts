@@ -74,7 +74,7 @@ const UNIQUE_KEYS: Record<string, string[]> = {
     "dedupe_key",
     "user_id",
   ],
-  // `uq_calendar_feed_links_token_hash` (migration 20260921170600).
+  // `uq_calendar_feed_links_token_hash` (migration 20260925180300).
   calendar_feed_links: ["token_hash"],
 };
 
@@ -95,7 +95,7 @@ const PARTIAL_UNIQUE_KEYS: Record<
     key: ["connection_id", "tool_name"],
     where: (r) => (r.gone_at ?? null) === null,
   },
-  // `uq_calendar_feed_links_live_person` (migration 20260921170600): one LIVE
+  // `uq_calendar_feed_links_live_person` (migration 20260925180300): one LIVE
   // link per person per house; revoked rows for the same person coexist.
   // Used by `calendar/calendar-links.service.spec.ts`.
   calendar_feed_links: {

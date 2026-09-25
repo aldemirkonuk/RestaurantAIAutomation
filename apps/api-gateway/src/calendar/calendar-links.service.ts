@@ -49,7 +49,7 @@ import { stopCalendarLinksOnLeaving } from "./stop-links-on-leaving";
  *     (`create`). Reading (`getMine`) never writes — a page view does not
  *     mint a credential (the defect this lane first closed).
  *  2. One live link per person per house (a partial unique index,
- *     migration 20260921170600). The secret is stored as a SHA-256 hash and
+ *     migration 20260925180300). The secret is stored as a SHA-256 hash and
  *     shown once, the way `mcp_server_credentials` keeps its keys.
  *  3. What a link serves is decided when the calendar app ASKS, from the
  *     person's role in the house at that moment (`feed-scope.ts`). A person
@@ -970,7 +970,7 @@ export class CalendarLinksService {
     };
   }
 
-  /** Whether migration 20260921170600 switched off this house's shared link. */
+  /** Whether migration 20260925180300 switched off this house's shared link. */
   private async houseLinkWasRetired(restaurantId: string): Promise<boolean> {
     const { data, error } = await this.db
       .from("system_audit_log")
