@@ -9,6 +9,10 @@
  * the browser override `mudavym.design.shell`, then the house flag
  * `mudavym_design_shell` (OFF by default, migration 20260921114300), then
  * false. Off, the legacy `Sidebar` layout renders exactly as it did.
+ * [2026-09-25: `shell` is in `LIVE_PAGES` (ADR 0149 row 36's bracket, founder
+ * Q2/Q4 of 2026-09-22) — on for every house in code, whatever its row says;
+ * the column is no longer read, and "off" is reachable only through the
+ * browser override.]
  *
  * WHAT THE SHELL KEEPS FROM THE LEGACY LAYOUT, AND WHAT IT DROPS
  * --------------------------------------------------------------
