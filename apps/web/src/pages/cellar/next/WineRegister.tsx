@@ -5,8 +5,17 @@
  * liked "where we could see everything". So the breadth is kept in full —
  * every title, every column, search, six filters, sortable headers, two view
  * modes — and the crowding is removed by moving *depth* off the row: a row
- * carries only facts of record, and everything learned about a bottle opens on
- * the reading stand above the register (BottleLeaf), one bottle at a time.
+ * carries only facts of record, and everything learned about a bottle opens
+ * one bottle at a time (BottleLeaf).
+ *
+ * WHERE it opens changed 2026-09-19 (sketch 121, founder-decided — his own
+ * words, "the register buttons open full-page lists, and a bottle opens
+ * beside the list"). It used to open in a reading stand ABOVE the full table
+ * (`.cl-stand`, still correct for `CatalogueRegister`/`CocktailRegister` —
+ * MOTIONS.md's third pass, out of this page's scope). Here it now opens
+ * BESIDE a narrowed index of the same filtered list — `.cl-split` below —
+ * so a reader can move between titles without losing the record they are
+ * reading. The full table/shelf returns the moment nothing is open.
  *
  * Every filter here is built from values that arrived in the data. The legacy
  * Body filter is gone on purpose: `body` was hard-coded to 'medium' for all 442
@@ -20,6 +29,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { animate, turn } from '../../../lib/mudavym/motion';
 import { queryKeys } from '../../../lib/query-keys';
 import BottleLeaf from './BottleLeaf';
+import PhotographLabel from './PhotographLabel';
 import {
   BOOK_READ_LIMIT,
   useInkOnChange,
@@ -123,6 +133,7 @@ function LiveRow({
     <tr
       ref={setEl}
       key={bottle.id}
+      id={rowElId(bottle.id)}
       data-selected={selected}
       data-live={stamp === undefined ? undefined : 'true'}
       tabIndex={0}
@@ -137,6 +148,16 @@ function LiveRow({
       {children}
     </tr>
   );
+}
+
+/**
+ * A stable DOM id for a bottle's row/card/index-entry, shared across every
+ * place one can be chosen from (table row, shelf card, sketch 121's narrowed
+ * index) so closing the leaf can return focus to whichever of them opened it
+ * — a keyboard reader should not lose their place in a 500-title book.
+ */
+function rowElId(id: string): string {
+  return `wr-row-${id}`;
 }
 
 function distinct(bottles: BottleVM[], pick: (b: BottleVM) => string | null): string[] {
@@ -193,13 +214,16 @@ export default function WineRegister({ data }: { data: CellarData }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanSaid, setScanSaid] = useState<string | null>(null);
+  const [photographing, setPhotographing] = useState(false);
 
   const queryClient = useQueryClient();
   const bottles = data.bottles;
   const leafRef = useRef<HTMLDivElement | null>(null);
 
-  // "The page turns" — the stand's contents change when another bottle is
-  // opened. The stand itself expands on `settle` (CSS, .cl-stand).
+  // "The page turns" — the leaf's own contents when a different bottle is
+  // chosen while one is already open. Unchanged by the sketch-121 move: the
+  // leaf still turns its own page, it is only positioned beside the index now
+  // instead of inside a stand above the table (CSS, `.cl-split-leaf`).
   useEffect(() => {
     if (openId && leafRef.current) {
       animate(
@@ -208,6 +232,29 @@ export default function WineRegister({ data }: { data: CellarData }) {
         turn,
       );
     }
+  }, [openId]);
+
+  // Focus follows the record, both ways, but only across the CLOSED↔OPEN
+  // edge — not on every switch between bottles while it stays open, which
+  // would wrench focus onto the leaf each time a mouse reader clicks through
+  // several rows (`cl-leaf-turn` above already shows the content changed).
+  // Opening from closed moves focus INTO the leaf (sketch 121's beside-the-
+  // list panel is not a modal, but it is new content a keyboard reader just
+  // revealed, and focus should land inside it, not stay on a row that may
+  // have scrolled or narrowed away under them). Closing — Esc, or the leaf's
+  // own Close button — returns focus to whichever control opened it, by the
+  // one id every opener shares (`rowElId`), so a keyboard user never loses
+  // their place in a 500-title book.
+  const wasOpenRef = useRef(false);
+  const lastOpenedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (openId) {
+      lastOpenedIdRef.current = openId;
+      if (!wasOpenRef.current) leafRef.current?.focus();
+    } else if (wasOpenRef.current && lastOpenedIdRef.current) {
+      document.getElementById(rowElId(lastOpenedIdRef.current))?.focus();
+    }
+    wasOpenRef.current = openId !== null;
   }, [openId]);
 
   const facets = useMemo(() => {
@@ -261,6 +308,9 @@ export default function WineRegister({ data }: { data: CellarData }) {
 
   const open = shown?.find((b) => b.id === openId) ?? null;
   const choose = (id: string) => setOpenId((cur) => (cur === id ? null : id));
+  // Non-toggling close, for the leaf's own Close button and Esc — both always
+  // dismiss, they never re-open the same bottle the way clicking its row does.
+  const closeLeaf = () => setOpenId(null);
   const toggleSort = (k: SortKey) => {
     if (k === sortKey) setAsc((v) => !v);
     else {
@@ -286,10 +336,19 @@ export default function WineRegister({ data }: { data: CellarData }) {
           {shown === null
             ? 'Opening the book…'
             : `${shown.length.toLocaleString('en-US')} of ${(bottles?.length ?? 0).toLocaleString('en-US')} titles`}
-          {data.bookTruncated
-            ? ` · this read is capped at ${BOOK_READ_LIMIT}, so a title past that is not on this page`
-            : ''}
+          {data.bookTruncated ? ` · this read is capped at ${data.bookLimit.toLocaleString('en-US')}` : ''}
         </p>
+        {data.bookTruncated ? (
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            disabled={data.loadingMoreBook}
+            onClick={data.loadMoreBook}
+            data-testid="wine-register-load-more"
+          >
+            {data.loadingMoreBook ? 'Reading more…' : `Load ${BOOK_READ_LIMIT} more`}
+          </button>
+        ) : null}
       </div>
 
       <hr className="cl-rule" style={{ margin: '14px 0' }} />
@@ -362,6 +421,9 @@ export default function WineRegister({ data }: { data: CellarData }) {
           <button type="button" className="cl-btn cl-focus" onClick={() => setScanning(true)}>
             Read a menu
           </button>
+          <button type="button" className="cl-btn cl-focus" onClick={() => setPhotographing(true)}>
+            Photograph the label
+          </button>
           <button type="button" className="cl-btn cl-focus" data-on={!shelf} onClick={() => setShelf(false)}>
             Register
           </button>
@@ -394,6 +456,12 @@ export default function WineRegister({ data }: { data: CellarData }) {
         </Suspense>
       ) : null}
 
+      <PhotographLabel
+        open={photographing}
+        onClose={() => setPhotographing(false)}
+        restaurantId={data.activeRestaurantId}
+      />
+
       {/* ── honesty notices ──────────────────────────────────────────────── */}
       {data.bookError ? (
         <div role="alert" className="cl-panel" style={{ marginTop: 12, padding: '10px 14px' }}>
@@ -416,140 +484,203 @@ export default function WineRegister({ data }: { data: CellarData }) {
         </p>
       ) : null}
 
-      {/* ── the reading stand ────────────────────────────────────────────── */}
-      <div className="cl-stand" data-open={open ? 'true' : 'false'} style={{ marginTop: open ? 14 : 0 }}>
-        <div>
-          <div ref={leafRef}>
-            {open ? (
+      {open ? (
+        /* ── sketch 121: the record opens BESIDE a narrowed index, never
+            above the full table. `.cl-stand` is unused here on purpose — it
+            is still the right shape for CatalogueRegister/CocktailRegister
+            (MOTIONS.md's third pass), which this fix does not touch. No
+            entrance motion on the split itself: the same "a structural fact,
+            not a transition" rule MOTIONS.md already gives a register
+            appearing or disappearing applies to a narrowed index appearing.
+            `cl-leaf-turn` still plays on the leaf's own contents when a
+            different bottle is chosen (the effect above, unchanged). Esc is
+            bound on this OUTER div, not the leaf alone: a reader who just
+            switched bottles from the narrowed index has focus on that index
+            row (a sibling of the leaf, not an ancestor), and Escape has to
+            back all the way out of the split from there too, not only from
+            inside the leaf itself. */
+        <div
+          className="cl-split"
+          data-testid="wine-split"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              closeLeaf();
+            }
+          }}
+        >
+          {/* `.cl-split-grid`, not the outer `.cl-split` div, is what the
+              `@container cl-split` rules above actually resize — a size
+              container cannot be a query subject of its own query (verified
+              live in a browser: a first attempt put the grid on `.cl-split`
+              itself and the breakpoints silently never fired at ANY width;
+              cellar-next.css's own comment on `.cl-split` has the full
+              account). This div carries no id/testid of its own on purpose:
+              nothing needs to address the grid layer separately from the
+              split it lives inside. */}
+          <div className="cl-split-grid">
+            <div
+              className="cl-split-index"
+              data-testid="wine-split-index"
+              aria-label={`${(shown ?? []).length} ${(shown ?? []).length === 1 ? 'title' : 'titles'}, narrowed to this reading`}
+            >
+              {(shown ?? []).map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  id={rowElId(b.id)}
+                  className="cl-index-row cl-ink cl-focus"
+                  data-selected={b.id === open.id}
+                  onClick={() => choose(b.id)}
+                >
+                  <span className="cl-serif cl-index-row-name">{b.name}</span>
+                  <span className="cl-dim cl-index-row-meta">
+                    <span>{[b.style, year(b.vintage)].filter(Boolean).join(' · ') || EM}</span>
+                    <span className="cl-num">
+                      {b.cellar ? `${b.cellar.stockLive} on hand` : money(b.listPrice)}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div
+              ref={leafRef}
+              className="cl-split-leaf cl-focus"
+              tabIndex={-1}
+              aria-label={`${open.name} record`}
+            >
               <BottleLeaf
                 bottle={open}
                 providers={data.providers}
                 vendorsError={data.vendorsError}
                 restaurantId={data.activeRestaurantId}
-                onClose={() => setOpenId(null)}
+                onClose={closeLeaf}
               />
-            ) : null}
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* ── the register itself ──────────────────────────────────────────── */}
-      <div style={{ marginTop: 14 }}>
-        {shown === null ? (
-          <p className="cl-said cl-dim">{data.bookError ? 'The register is unread.' : 'Opening the book…'}</p>
-        ) : shown.length === 0 ? (
-          <p className="cl-said cl-dim">
-            {(bottles?.length ?? 0) === 0
-              ? 'The book is open and empty — the library holds no titles.'
-              : 'No title in the book matches this reading. Widen the filters.'}
-          </p>
-        ) : shelf ? (
-          <div className="cl-shelf">
-            {shown.map((b) => (
-              <button
-                key={b.id}
-                type="button"
-                className="cl-bottle cl-ink cl-focus"
-                data-selected={b.id === openId}
-                onClick={() => choose(b.id)}
-              >
-                <span className="cl-serif" style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.25 }}>
-                  {b.name}
-                </span>
-                <span className="cl-dim" style={{ fontSize: 11 }}>
-                  {[b.producer, b.style].filter(Boolean).join(' · ') || 'unattributed'}
-                </span>
-                <span className="cl-num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                  <span>{year(b.vintage)}</span>
-                  <span>{money(b.listPrice)}</span>
-                  <span>{b.cellar ? `${b.cellar.stockLive} on hand` : EM}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
-            <table className="cl-table">
-              <thead>
-                <tr>
-                  {COLUMNS.map((c) => (
-                    <th key={c.id} style={{ textAlign: c.kind === 'figure' ? 'right' : 'left' }}>
-                      <button
-                        type="button"
-                        className="cl-focus"
-                        onClick={() => toggleSort(c.id)}
-                        aria-label={`Sort by ${c.label}`}
-                        style={{
-                          background: 'none',
-                          border: 0,
-                          padding: 0,
-                          font: 'inherit',
-                          cursor: 'pointer',
-                          color: sortKey === c.id ? 'var(--seal-deep)' : 'inherit',
-                        }}
-                      >
-                        {c.label}
-                        {sortKey === c.id ? (asc ? ' ▲' : ' ▼') : ''}
-                      </button>
-                    </th>
+      ) : (
+        /* ── the register itself ──────────────────────────────────────── */
+        <div style={{ marginTop: 14 }}>
+          {shown === null ? (
+            <p className="cl-said cl-dim">{data.bookError ? 'The register is unread.' : 'Opening the book…'}</p>
+          ) : shown.length === 0 ? (
+            <p className="cl-said cl-dim">
+              {(bottles?.length ?? 0) === 0
+                ? 'The book is open and empty — the library holds no titles.'
+                : 'No title in the book matches this reading. Widen the filters.'}
+            </p>
+          ) : shelf ? (
+            <div className="cl-shelf">
+              {shown.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  id={rowElId(b.id)}
+                  className="cl-bottle cl-ink cl-focus"
+                  data-selected={b.id === openId}
+                  onClick={() => choose(b.id)}
+                >
+                  <span className="cl-serif" style={{ fontSize: 14.5, fontWeight: 600, lineHeight: 1.25 }}>
+                    {b.name}
+                  </span>
+                  <span className="cl-dim" style={{ fontSize: 11 }}>
+                    {[b.producer, b.style].filter(Boolean).join(' · ') || 'unattributed'}
+                  </span>
+                  <span className="cl-num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                    <span>{year(b.vintage)}</span>
+                    <span>{money(b.listPrice)}</span>
+                    <span>{b.cellar ? `${b.cellar.stockLive} on hand` : EM}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto', border: '1px solid var(--paper-2)', borderRadius: 10 }}>
+              <table className="cl-table">
+                <thead>
+                  <tr>
+                    {COLUMNS.map((c) => (
+                      <th key={c.id} style={{ textAlign: c.kind === 'figure' ? 'right' : 'left' }}>
+                        <button
+                          type="button"
+                          className="cl-focus"
+                          onClick={() => toggleSort(c.id)}
+                          aria-label={`Sort by ${c.label}`}
+                          style={{
+                            background: 'none',
+                            border: 0,
+                            padding: 0,
+                            font: 'inherit',
+                            cursor: 'pointer',
+                            color: sortKey === c.id ? 'var(--seal-deep)' : 'inherit',
+                          }}
+                        >
+                          {c.label}
+                          {sortKey === c.id ? (asc ? ' ▲' : ' ▼') : ''}
+                        </button>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((b) => (
+                    <LiveRow
+                      key={b.id}
+                      bottle={b}
+                      selected={b.id === openId}
+                      stamp={
+                        b.cellar ? data.live.touched[b.cellar.inventoryId] : undefined
+                      }
+                      onChoose={() => choose(b.id)}
+                    >
+                      <td>
+                        <span style={{ display: 'block', fontWeight: 600 }}>{b.name}</span>
+                        <span className="cl-dim" style={{ fontSize: 11 }}>
+                          {[b.producer, b.grape].filter(Boolean).join(' · ') || 'unattributed'}
+                        </span>
+                      </td>
+                      <td>{b.style ?? <span className="cl-dim">{EM}</span>}</td>
+                      <td className="cl-num" style={{ textAlign: 'right' }}>
+                        {year(b.vintage)}
+                      </td>
+                      <td>{[b.region, b.country].filter(Boolean).join(', ') || <span className="cl-dim">{EM}</span>}</td>
+                      <td className="cl-num" style={{ textAlign: 'right' }}>
+                        {volume(b.bottleSizeMl)}
+                      </td>
+                      <td className="cl-num" style={{ textAlign: 'right' }}>
+                        {money(b.listPrice)}
+                      </td>
+                      <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
+                        {money(b.marketPrice)}
+                      </td>
+                      <td className="cl-num" style={{ textAlign: 'right' }}>
+                        {!data.cellarKnown ? (
+                          <span className="cl-dim">{EM}</span>
+                        ) : b.cellar ? (
+                          b.cellar.stockLive
+                        ) : (
+                          <span className="cl-dim">not in the cellar</span>
+                        )}
+                      </td>
+                    </LiveRow>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((b) => (
-                  <LiveRow
-                    key={b.id}
-                    bottle={b}
-                    selected={b.id === openId}
-                    stamp={
-                      b.cellar ? data.live.touched[b.cellar.inventoryId] : undefined
-                    }
-                    onChoose={() => choose(b.id)}
-                  >
-                    <td>
-                      <span style={{ display: 'block', fontWeight: 600 }}>{b.name}</span>
-                      <span className="cl-dim" style={{ fontSize: 11 }}>
-                        {[b.producer, b.grape].filter(Boolean).join(' · ') || 'unattributed'}
-                      </span>
-                    </td>
-                    <td>{b.style ?? <span className="cl-dim">{EM}</span>}</td>
-                    <td className="cl-num" style={{ textAlign: 'right' }}>
-                      {year(b.vintage)}
-                    </td>
-                    <td>{[b.region, b.country].filter(Boolean).join(', ') || <span className="cl-dim">{EM}</span>}</td>
-                    <td className="cl-num" style={{ textAlign: 'right' }}>
-                      {volume(b.bottleSizeMl)}
-                    </td>
-                    <td className="cl-num" style={{ textAlign: 'right' }}>
-                      {money(b.listPrice)}
-                    </td>
-                    <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
-                      {money(b.marketPrice)}
-                    </td>
-                    <td className="cl-num" style={{ textAlign: 'right' }}>
-                      {!data.cellarKnown ? (
-                        <span className="cl-dim">{EM}</span>
-                      ) : b.cellar ? (
-                        b.cellar.stockLive
-                      ) : (
-                        <span className="cl-dim">not in the cellar</span>
-                      )}
-                    </td>
-                  </LiveRow>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* The live path, said out loud. A page that claims to be realtime and
-            does not say what it measured is claiming, not reporting. */}
-        <p className="cl-note" data-testid="wine-live-note">
-          {data.live.lastApplyMs === null
-            ? 'Stock moves arrive on the socket (stock:updated → restaurant:<id>) and are written straight into the row that changed; the read behind them reconciles afterwards. Nothing has moved since this page opened, so no time has been measured.'
-            : `A stock move landed and was on screen ${data.live.lastApplyMs} ms later — measured in this tab, from the event to the painted frame. The transport leg is separate and is stated in MOTIONS.md.`}
-        </p>
-      </div>
+      {/* The live path, said out loud. A page that claims to be realtime and
+          does not say what it measured is claiming, not reporting. Always
+          shown, whichever of the two views above is open. */}
+      <p className="cl-note" data-testid="wine-live-note">
+        {data.live.lastApplyMs === null
+          ? 'Stock moves arrive on the socket (stock:updated → restaurant:<id>) and are written straight into the row that changed; the read behind them reconciles afterwards. Nothing has moved since this page opened, so no time has been measured.'
+          : `A stock move landed and was on screen ${data.live.lastApplyMs} ms later — measured in this tab, from the event to the painted frame. The transport leg is separate and is stated in MOTIONS.md.`}
+      </p>
     </div>
   );
 }

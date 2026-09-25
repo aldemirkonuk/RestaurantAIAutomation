@@ -15,6 +15,8 @@ export interface InventoryItem extends Wine {
   lastCounted: string | null;
   isActive: boolean;
   marketPrice?: number;
+  /** This house's own bottle price (ADR 0193). Undefined = not set. */
+  menuPriceBottle?: number;
   wac?: number;
   costProvenance?: "invoice" | "estimated";
   lotLocationCount?: number;
@@ -209,6 +211,9 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         saleType: item.saleType ?? fallback.saleType,
         pourSizeMl: item.pourSizeMl ?? fallback.pourSizeMl,
         menuPriceGlass: item.menuPriceGlass ?? fallback.menuPriceGlass,
+        // The house's own bottle price (ADR 0193: menu_price_current on the
+        // row, `menuPriceBottle` on the wire). Never the library's figure.
+        menuPriceBottle: item.menuPriceBottle ?? undefined,
         marketPrice: (item as any).retailPriceAvg ?? undefined,
         wac: (item as any).wac ?? undefined,
         costProvenance: (item as any).costProvenance ?? undefined,

@@ -1,0 +1,26 @@
+{
+  "checked_at_utc": "2026-09-13T21:11:41.835781+00:00",
+  "environment": "Disposable PostgreSQL17; network none; tmpfs only",
+  "grants": [
+    {
+      "role": "anon",
+      "record": false,
+      "undo": false,
+      "batches": false
+    },
+    {
+      "role": "authenticated",
+      "record": false,
+      "undo": false,
+      "batches": false
+    },
+    {
+      "role": "service_role",
+      "record": true,
+      "undo": true,
+      "batches": true
+    }
+  ],
+  "assertions": "Atomic skip/audit; failed audit rolls back folio; currency undo and newer-write conflict; absent-preference restore; reverse sibling preferences; menu/zero-stock undo; later inventory/menu/composite FK use refuses removal; separate undo audit correlation; actual service-role invoker call; expired/foreign-house undo refusal",
+  "limit": "Minimal schema matching referenced columns, not a full production-history replay. No production writes."
+}

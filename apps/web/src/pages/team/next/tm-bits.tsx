@@ -2,26 +2,12 @@
  * The small pieces the parity build shares. Presentational only — nothing here
  * fetches, so nothing here can be wrong about what was measured.
  *
- * The Fraunces loader is copied rather than imported across pages (the p4 rule:
- * a `next` directory stands alone), and shares the dashboard's link id so at
- * most one stylesheet link is ever added.
+ * Fraunces is self-hosted; `@font-face` lives in `styles/mudavym.css`
+ * (decision 0149 row 9).
  */
 
 import type { ReactNode } from 'react';
 import { EM, initialsOf, type ResolvedName } from './tm-format';
-
-const FRAUNCES_LINK_ID = 'mudavym-fraunces';
-
-export function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FRAUNCES_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FRAUNCES_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
 
 /** Initials, or an em dash when there is no name to shorten. */
 export function Mark({
