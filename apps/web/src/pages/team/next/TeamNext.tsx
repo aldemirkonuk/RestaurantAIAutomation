@@ -67,7 +67,7 @@ import {
   mondayOf,
   WEEKLY_REVIEW_HOURS,
 } from './tm-format';
-import { ensureFraunces, MutationError } from './tm-bits';
+import { MutationError } from './tm-bits';
 import { LENSES, WeekGrid, type Lens } from './WeekGrid';
 import { RosterSheet, MemberSheet } from './RosterSheet';
 import { ShiftSheet, type ShiftSheetTarget } from './ShiftSheet';
@@ -388,7 +388,6 @@ type Overlay =
   | { kind: 'export' };
 
 function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
-  ensureFraunces();
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));

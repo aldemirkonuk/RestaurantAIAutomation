@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 
 export interface PublicVendorListing {
@@ -62,18 +67,34 @@ export class VendorPortalService {
 
     // Unpublished and nonexistent both return 404. Distinguishing them would
     // let anyone enumerate which vendors have draft pages.
-    if (error || !page) {
+    if (error) {
+      this.logger.warn(`Published vendor page read failed: ${error.message}`);
+      throw new ServiceUnavailableException(
+        "Could not load this catalogue. Please try again.",
+      );
+    }
+    if (!page) {
       throw new NotFoundException("Vendor page not found");
     }
 
-    const { data: listings } = await this.databaseService.supabase
-      .from("vendor_portal_listings")
-      .select(
-        "id, product_name, producer, vintage, region, country, grape_varieties, price, currency, pack_size, volume_ml, unit_label, in_stock, min_order_quantity, lead_time_days, notes",
-      )
-      .eq("page_id", page.id)
-      .order("sort_order", { ascending: true })
-      .order("product_name", { ascending: true });
+    const { data: listings, error: listingsError } =
+      await this.databaseService.supabase
+        .from("vendor_portal_listings")
+        .select(
+          "id, product_name, producer, vintage, region, country, grape_varieties, price, currency, pack_size, volume_ml, unit_label, in_stock, min_order_quantity, lead_time_days, notes",
+        )
+        .eq("page_id", page.id)
+        .order("sort_order", { ascending: true })
+        .order("product_name", { ascending: true });
+
+    if (listingsError) {
+      this.logger.warn(
+        `Published vendor listings read failed: ${listingsError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not load this catalogue. Please try again.",
+      );
+    }
 
     return {
       slug: page.slug,
@@ -164,12 +185,13 @@ export class VendorPortalService {
                   },
                 }
               : {}),
-            availability:
-              l.inStock === null
-                ? "https://schema.org/InStock"
-                : l.inStock
-                  ? "https://schema.org/InStock"
-                  : "https://schema.org/OutOfStock",
+            ...(l.inStock === null
+              ? {}
+              : {
+                  availability: l.inStock
+                    ? "https://schema.org/InStock"
+                    : "https://schema.org/OutOfStock",
+                }),
             seller: { "@type": "Organization", name: page.displayName },
           };
         }

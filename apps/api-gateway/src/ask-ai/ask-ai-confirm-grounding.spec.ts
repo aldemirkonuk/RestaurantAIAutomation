@@ -5,6 +5,13 @@ import { ProcurementService } from "../procurement/procurement.service";
 /**
  * The confirm gate re-grounds EVERY payload, not just edited ones.
  *
+ * Since 2026-09-21 ("Never without the seal", the founder, on /ask) the only
+ * door to that gate is `confirmSealed`: the unsealed public `confirm` is gone
+ * and its executor, `applyAfterSeal`, is private. So every case here goes in
+ * through the seal. The seal service is a pass-through collaborator — its own
+ * suite (seal-challenge.service.spec.ts) and ask-ai-sealed-apply.spec.ts pin
+ * what it refuses; what is under test here is still the grounding behind it.
+ *
  * This behaviour was documented before it was true. `confirm()` said grounding
  * is "re-derived from the CURRENT candidate set", but the whole re-validation
  * sat inside `if (editedPayload)`, so an untouched confirm executed whatever was
@@ -35,6 +42,7 @@ function storedRow(providerId: string): Row {
     family: "procurement",
     action_type: "reorder",
     payload: { inventoryId: INV, providerId, quantity: 6 },
+    status: "proposed",
     nf_event_id: null,
   };
 }
@@ -104,6 +112,12 @@ function makeClient(
   return { client, updates };
 }
 
+/** A seal that always redeems — the grounding behind it is what is tested. */
+const passSeal = {
+  issue: async () => ({ challenge: "seal", expiresAt: "", action: "apply" }),
+  redeem: async () => ({ sealId: "seal-1" }),
+};
+
 function makeService(client: any, procurement: any): AskAiService {
   return new AskAiService(
     { getClient: () => client } as unknown as DatabaseService,
@@ -111,10 +125,20 @@ function makeService(client: any, procurement: any): AskAiService {
     {} as any,
     { record: () => {}, recordForEvent: () => {} } as any,
     procurement as unknown as ProcurementService,
+    passSeal as any,
   );
 }
 
-describe("AskAiService.confirm — grounding is not conditional on an edit", () => {
+/** The one door: a redeemed seal, then the apply. */
+function apply(
+  service: AskAiService,
+  actionId: string,
+  payload?: Record<string, unknown>,
+) {
+  return service.confirmSealed("r1", "u1", actionId, "seal", payload);
+}
+
+describe("AskAiService sealed apply — grounding is not conditional on an edit", () => {
   it("executes an untouched confirm whose ids are still real", async () => {
     const { client } = makeClient(storedRow(PROV), {
       providers: [{ id: PROV, name: "Acme" }],
@@ -122,7 +146,7 @@ describe("AskAiService.confirm — grounding is not conditional on an edit", () 
     const createOrder = jest.fn().mockResolvedValue({ id: "order-9" });
     const service = makeService(client, { createOrder });
 
-    const res = await service.confirm("r1", "u1", "act-1");
+    const res = await apply(service, "act-1");
 
     expect(createOrder).toHaveBeenCalledTimes(1);
     // No payload was supplied, so the ledger must NOT record a human edit.
@@ -138,7 +162,7 @@ describe("AskAiService.confirm — grounding is not conditional on an edit", () 
     const createOrder = jest.fn().mockResolvedValue({ id: "order-9" });
     const service = makeService(client, { createOrder });
 
-    await expect(service.confirm("r1", "u1", "act-1")).rejects.toThrow(
+    await expect(apply(service, "act-1")).rejects.toThrow(
       /vendor this refers to is no longer available/,
     );
 
@@ -167,7 +191,7 @@ describe("AskAiService.confirm — grounding is not conditional on an edit", () 
     const createOrder = jest.fn();
     const service = makeService(client, { createOrder });
 
-    await expect(service.confirm("r1", "u1", "act-1")).rejects.toThrow(
+    await expect(apply(service, "act-1")).rejects.toThrow(
       /Could not confirm that action/,
     );
 
@@ -193,6 +217,7 @@ describe("AskAiService.confirm — grounding is not conditional on an edit", () 
         family: "communications",
         action_type: "vendor_draft",
         payload: { orderId: ORDER, instruction: "Chase the delivery." },
+        status: "proposed",
         nf_event_id: null,
       },
       { providers: [] },
@@ -202,7 +227,7 @@ describe("AskAiService.confirm — grounding is not conditional on an edit", () 
       .mockResolvedValue({ triggered: true, draftId: "draft-3" });
     const service = makeService(client, { generateAiReply });
 
-    const res = await service.confirm("r1", "u1", "act-2");
+    const res = await apply(service, "act-2");
 
     expect(generateAiReply).toHaveBeenCalledTimes(1);
     expect(res).toMatchObject({ executed: true, edited: false });
@@ -231,7 +256,7 @@ describe("AskAiService.confirm — grounding is not conditional on an edit", () 
 
     // ...but the direct lookup does not, because it filters is_active.
     await expect(
-      service.confirm("r1", "u1", "act-1", {
+      apply(service, "act-1", {
         inventoryId: INV,
         providerId: DEAD_PROV,
         quantity: 4,

@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { FileSpreadsheet, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
-import { importMenu, type MenuImportResult } from '../../services/api/menus'
+import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
 import {
   DOCUMENT_ACCEPT,
   MAX_UPLOAD_BYTES,
@@ -14,7 +14,7 @@ import {
 } from '../../lib/uploadAccept'
 
 interface MenuCsvUploadProps {
-  onSuccess: (result: MenuImportResult) => void
+  onSuccess: MenuImportSuccess
 }
 
 interface PreviewRow {
@@ -215,7 +215,11 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
           `${failures.length} of ${total} file(s) failed — ${failures.join('; ')}`,
         )
       }
-      onSuccess(result)
+      const image =
+        isScanFile && fileBase64 && !/\.pdf$/i.test(fileName || '')
+          ? `data:image/jpeg;base64,${fileBase64}`
+          : null
+      onSuccess(result, { image })
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Import failed. Please try again.')
     } finally {

@@ -35,7 +35,18 @@ import {
   UserPlus,
 } from "lucide-react";
 
-export type CommandSection = "Navigation" | "Create" | "Insights" | "Recent";
+/**
+ * "On the counter" and "Rooms" are the app shell's (sketch 119 D) and appear
+ * only under it (`ShellPaletteContext`); outside the shell the palette's
+ * sections are the original four.
+ */
+export type CommandSection =
+  | "Navigation"
+  | "Create"
+  | "Insights"
+  | "Recent"
+  | "On the counter"
+  | "Rooms";
 
 export interface Command {
   id: string;

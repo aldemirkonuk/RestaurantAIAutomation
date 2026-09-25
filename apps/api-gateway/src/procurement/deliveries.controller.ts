@@ -63,15 +63,17 @@ export class DeliveriesController {
   @ApiOperation({
     summary: "The deliveries at this restaurant, newest first",
     description:
-      "Optionally filtered by state. A read that failed throws; it never comes back as a restaurant with no deliveries.",
+      "Optionally filtered by state, and by `orderId` — the deliveries that fulfil one purchase order, which is how /orders finds an order's receipt. A read that failed throws; it never comes back as a restaurant with no deliveries.",
   })
   async list(
     @CurrentUser() user: AuthedUser,
     @Query("state") state?: string,
     @Query("limit") limit?: string,
+    @Query("orderId") orderId?: string,
   ) {
     const res = await this.deliveries.list(user.restaurantId, {
       state,
+      orderId,
       limit: limit ? Number(limit) : undefined,
     });
     if (!res.ok)

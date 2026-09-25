@@ -263,6 +263,70 @@ export function registersForLabel(label: string | null | undefined): RegisterId[
   return REGISTER_IDS.filter((id) => hit.has(id));
 }
 
+/** One menu line, as the register reader sees it. */
+export interface MenuLine {
+  category: string | null;
+  name: string | null;
+}
+
+/**
+ * Which registers ONE menu line lands on.
+ *
+ * The section header first — it is the restaurant's own words about what this
+ * part of the menu IS, which is exactly the signal
+ * wine_classify_beverage_kind() ranks second behind a real primary_type
+ * (20260817060000:30-35). The item name is a fallback, not an equal.
+ *
+ * This rule used to live inline in `CellarRegistersService.readMenuLabels`,
+ * which made it unreachable from a test without a database and — worse — meant
+ * "did the reader place this line?" had no name. It has one now, and it is the
+ * single definition both the per-register counts and the per-line tally below
+ * are computed from, so the two cannot disagree about what "placed" means.
+ */
+export function placeMenuLine(line: MenuLine): RegisterId[] {
+  const bySection = registersForLabel(line.category);
+  return bySection.length > 0 ? bySection : registersForLabel(line.name);
+}
+
+/**
+ * The reading count: how many menu lines the register reader read, how many it
+ * could place on a register, and how many it read but could not place.
+ *
+ * WHAT THESE ARE NOT. `read` is not "lines in the uploaded file" and not
+ * `MenuImportResult.itemsExtracted`. It is the number of `menu_items` rows this
+ * house's book holds and the register inference actually looked at, on this
+ * read — the same rows, in the same pass, that produced every `menuRows` figure
+ * beside a register. Extraction dropping a line and the reader never seeing it
+ * are two different failures and this number is only the second one's
+ * denominator.
+ *
+ * WHY `notPlaced` IS A FIRST-CLASS FIGURE. A register-by-register readout can
+ * only say what it found; it is structurally incapable of saying what it read
+ * and did not understand. `placed + notPlaced === read` holds by construction
+ * here, so a thin harvest reports a real number instead of an empty page, and
+ * the lines nobody could classify stop being invisible.
+ */
+export interface MenuLineTally {
+  read: number;
+  placed: number;
+  notPlaced: number;
+}
+
+/**
+ * Tally lines by whether `placeMenuLine` could place them.
+ *
+ * A line that lands on three registers is ONE placed line, not three — the same
+ * rule the per-register counts already enforce in the other direction
+ * (`readInventoryKinds`: "two signals about one bottle are not two bottles").
+ */
+export function tallyMenuLines(lines: readonly MenuLine[]): MenuLineTally {
+  let placed = 0;
+  for (const line of lines) {
+    if (placeMenuLine(line).length > 0) placed += 1;
+  }
+  return { read: lines.length, placed, notPlaced: lines.length - placed };
+}
+
 /* ── the readout ───────────────────────────────────────────────────────── */
 
 export interface RegisterEvidence {

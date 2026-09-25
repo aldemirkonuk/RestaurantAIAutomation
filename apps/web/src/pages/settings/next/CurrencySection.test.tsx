@@ -108,6 +108,15 @@ describe('the Currency register — what it says', () => {
     mount({ houseCurrency: remote(null, 'denied') });
     expect(screen.getByText(/may not read the currency register/i)).toBeInTheDocument();
   });
+
+  // Graft C, sketch 109A: the honest answer to "did flipping this change
+  // anything, and for whom" — cited as file:line so the claim is checkable.
+  // No test asserted this line existed before this pass; this one would fail
+  // if the citation were ever removed.
+  it('carries graft C\'s "read by" line naming who actually consults this field', () => {
+    mount();
+    expect(screen.getByText(/every money figure the product prints/i)).toBeInTheDocument();
+  });
 });
 
 describe('the Currency register — what it writes', () => {

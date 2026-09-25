@@ -124,6 +124,28 @@ interface WineRow {
   field_confidences?: Record<string, number> | null;
   data_enrichment?: { knowledge?: string | null; [k: string]: unknown } | null;
   enrichment_observed_at?: string | null;
+  // ADR 0160 sec110 Owed #4/#11 ("the wine's own detail") — sketch 121's own
+  // column citations (`master_wine_library`, 20260805000000_baseline_
+  // from_production.sql:3482-3548). `wine_structure` mirrors `acidity`/
+  // `tannins` inside itself alongside body/sweetness/finish/texture/alcohol_*
+  // (verified live 2026-09-19, prod exzueerziesmczwlhomd: both copies agree
+  // on every sampled row), so all four structure words are read off the one
+  // jsonb column rather than mixing it with the separate top-level acidity/
+  // tannins text columns. Optional for the same reason the provenance block
+  // is: undefined means this query did not select these columns, and a
+  // narrower projection (search, suggestions) legitimately does not.
+  wine_structure?: {
+    body?: string | null;
+    acidity?: string | null;
+    tannins?: string | null;
+    sweetness?: string | null;
+    [k: string]: unknown;
+  } | null;
+  primary_aromas?: string[] | null;
+  serving_temp_celsius?: number | null;
+  glass_type?: string | null;
+  decanting_recommended?: boolean | null;
+  aging_potential_years?: number | null;
 }
 
 interface WineSubmissionRow {
@@ -207,6 +229,36 @@ export class WinesService {
               knowledge: row.data_enrichment?.knowledge ?? undefined,
               fieldConfidences: row.field_confidences ?? undefined,
               observedAt: row.enrichment_observed_at ?? undefined,
+            },
+          }
+        : {}),
+      // ADR 0160 sec110 Owed #4/#11 — "the wine's own detail". Present only
+      // when the row carried at least one of these columns, same
+      // undefined-vs-null discipline as `provenance` above: a narrower
+      // projection must not advertise a structure it never read, and a
+      // detail read must not lose what it actually has.
+      ...(row.wine_structure !== undefined ||
+      row.primary_aromas !== undefined ||
+      row.serving_temp_celsius !== undefined ||
+      row.glass_type !== undefined ||
+      row.decanting_recommended !== undefined ||
+      row.aging_potential_years !== undefined
+        ? {
+            structure: {
+              body: row.wine_structure?.body ?? undefined,
+              acidity: row.wine_structure?.acidity ?? undefined,
+              tannins: row.wine_structure?.tannins ?? undefined,
+              sweetness: row.wine_structure?.sweetness ?? undefined,
+              primaryAromas: row.primary_aromas ?? undefined,
+              // "Whole or not at all" (sketch 121, frame 2's own rule): these
+              // four are recorded together in the library or not at all, so
+              // they are carried here as the caller received them — the
+              // all-or-nothing READ decision belongs to the page that
+              // renders a sentence from them, not to this mapping.
+              servingTempCelsius: row.serving_temp_celsius ?? undefined,
+              glassType: row.glass_type ?? undefined,
+              decantingRecommended: row.decanting_recommended ?? undefined,
+              agingPotentialYears: row.aging_potential_years ?? undefined,
             },
           }
         : {}),
@@ -485,6 +537,18 @@ export class WinesService {
     } else {
       supa = supa.order("name", { ascending: true });
     }
+    // A tie-breaker on the primary key, always. Fixed 2026-09-19 (cellar
+    // confirmer BLOCKER, useCellarNextData.ts): a caller that pages by
+    // `offset`/`limit` (the cellar's own book read, below) needs the SAME
+    // row set split the SAME way on every request. `name` alone is not
+    // unique — several rows share a name across vintages and producers — so
+    // without a deterministic second key, Postgres is free to return ties
+    // in a different order page to page, which reads as a row skipped on
+    // one page and duplicated on the next. `id` is never null and never
+    // repeats, so ordering by it after the caller's own choice is free: it
+    // only breaks ties the first column left open, never reorders anything
+    // the first column already decided.
+    supa = supa.order("id", { ascending: true });
 
     if (query.limit) {
       supa = supa.limit(query.limit);

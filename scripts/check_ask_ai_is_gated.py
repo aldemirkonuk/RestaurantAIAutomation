@@ -39,6 +39,18 @@ DTO = GW / "ask-ai" / "dto" / "ask-ai.dto.ts"
 MODEL_CLIENT = GW / "common" / "model-client" / "model-client.service.ts"
 AUTHED_GUARD = GW / "common" / "rate-limit" / "authed-rate-limit.guard.ts"
 
+# /ask/folios (BoundAskService et al.) is a SECOND route that spends money on
+# demand, added after this guard was first written. It was not caught here
+# until the KL audit (2026-09-17, J6/D12): the CLAIMS row that certifies the
+# first-attempt gate stays opt-in counts call sites by a bare grep, and a PASS
+# from THIS guard was being read as if it said something about that route,
+# when it read only the three files above. Checked below by the same standard
+# as ask-ai itself: DTO metatype, guard order and order, per-person AND
+# per-house rate limits, and the first-attempt spend gate.
+BOUND_CONTROLLER = GW / "ask-ai" / "bound-ask.controller.ts"
+BOUND_SERVICE = GW / "ask-ai" / "bound-ask.service.ts"
+BOUND_DTO = GW / "ask-ai" / "dto" / "bound-ask.dto.ts"
+
 failures: list[str] = []
 
 
@@ -75,7 +87,7 @@ def want(condition: bool, message: str) -> None:
 
 
 def main() -> int:
-    for path in (CONTROLLER, SERVICE, DTO, MODEL_CLIENT, AUTHED_GUARD):
+    for path in (CONTROLLER, SERVICE, DTO, MODEL_CLIENT, AUTHED_GUARD, BOUND_CONTROLLER, BOUND_SERVICE, BOUND_DTO):
         if not path.exists():
             cannot_check(f"{path.relative_to(ROOT)} does not exist")
 
@@ -83,6 +95,9 @@ def main() -> int:
     service = source(SERVICE)
     dto = source(DTO)
     client = source(MODEL_CLIENT)
+    bound_controller = source(BOUND_CONTROLLER)
+    bound_service = source(BOUND_SERVICE)
+    bound_dto = source(BOUND_DTO)
 
     # --- 1. The bodies are classes, so ValidationPipe has a metatype -------
     #
@@ -95,8 +110,8 @@ def main() -> int:
         "runtime and ValidationPipe validates nothing",
     )
     want(
-        re.search(r"@Body\(\)\s+body:\s*ConfirmDto", controller) is not None,
-        "confirm does not take ConfirmDto",
+        len(re.findall(r"@Body\(\)\s+body:\s*ConfirmDto", controller)) >= 2,
+        "the sealed routes (seal-challenge, sealed-confirm) do not both take ConfirmDto",
     )
     want(
         re.search(r"@Body\(\)\s+\w+:\s*\{", controller) is None,
@@ -137,37 +152,109 @@ def main() -> int:
         )
         want("RolesGuard" in names, "RolesGuard is not on the controller")
 
-    # --- 4. Confirm is the act that writes, so it takes standing ----------
+    # --- 4. Applying is the act that writes: standing AND a redeemed seal ---
     #
-    # Checked per HANDLER, on every controller in the gateway, not on the one
-    # named route: the first version sliced the controller from the confirm
-    # route to END OF FILE, so an @Roles on any later handler satisfied it, and
-    # a second route calling confirm was never looked at. A handler here is the
-    # text from one route decorator to the next, which assumes @Roles sits
-    # below its route decorator, as every handler in this controller does.
-    want(
-        '@Post("actions/:id/confirm")' in controller,
-        "the confirm route is gone or renamed; this guard no longer describes the tree",
-    )
+    # "Never without the seal" (the founder, 2026-09-21, on /ask). A proposal
+    # is applied only through `confirmSealed`, which redeems the seal before it
+    # calls the private executor. Five things hold that, each read from code:
+    #
+    #   a. no handler on ANY controller calls an unsealed `askAi*.confirm(` --
+    #      the public method is gone, and a new route reintroducing one fails
+    #      here even if it carries @Roles;
+    #   b. every handler calling `confirmSealed(` or `issueProposalSeal(` takes
+    #      @Roles("owner", "manager") -- checked per HANDLER, on every
+    #      controller (the first version sliced from one route to END OF FILE,
+    #      so an @Roles on any later handler satisfied it);
+    #   c. the retired `@Post("actions/:id/confirm")`, if present, throws a
+    #      GoneException and calls NOTHING on the service;
+    #   d. the executor is `private async applyAfterSeal(` and the service has
+    #      no public `async confirm(`;
+    #   e. inside `confirmSealed`, `seals.redeem(` comes BEFORE
+    #      `this.applyAfterSeal(` -- a write before the redemption is the
+    #      assertion model with extra steps.
+    #
+    # A handler here is the text from one route decorator to the next, which
+    # assumes @Roles sits below its route decorator, as every handler in this
+    # controller does.
     route = re.compile(r"@(?:Get|Post|Put|Patch|Delete)\(")
     roles = re.compile(r'@Roles\(\s*"owner"\s*,\s*"manager"\s*\)')
-    callers = 0
+    sealed_callers = 0
     for ctrl in sorted(GW.rglob("*.controller.ts")):
         text = source(ctrl)
         starts = [m.start() for m in route.finditer(text)] + [len(text)]
         for a, b in zip(starts, starts[1:]):
             handler = text[a:b]
-            if re.search(r"\.confirm\(", handler) and re.search(r"askAi\w*\.confirm\(", handler):
-                callers += 1
+            # `askAi.confirm(` and the cast spelling `(this.askAi as any).confirm(`
+            # both count: a handler that names Ask AI and calls a `.confirm(` or
+            # the private executor is an unsealed apply, however it is typed.
+            if re.search(r"\baskAi\w*\b", handler) and re.search(
+                r"\.(?:confirm|applyAfterSeal)\(", handler
+            ):
+                failures.append(
+                    f"a handler in {ctrl.relative_to(ROOT)} applies a proposal through "
+                    "an unsealed askAi.confirm( -- a proposal is applied only behind a "
+                    "redeemed seal (confirmSealed)"
+                )
+            if re.search(r"askAi\w*\.(?:confirmSealed|issueProposalSeal)\(", handler):
+                sealed_callers += 1
                 want(
                     roles.search(handler) is not None,
-                    f"a handler in {ctrl.relative_to(ROOT)} calls Ask AI's confirm without "
-                    '@Roles("owner", "manager") -- confirming is what WRITES',
+                    f"a handler in {ctrl.relative_to(ROOT)} mints or redeems a proposal "
+                    'seal without @Roles("owner", "manager") -- applying is what WRITES',
                 )
+    # The private executor is called from exactly one place: confirmSealed.
+    for ts in sorted(GW.rglob("*.ts")):
+        if ts.name.endswith(".spec.ts") or ts == SERVICE:
+            continue
+        if ".applyAfterSeal(" in source(ts):
+            failures.append(
+                f"{ts.relative_to(ROOT)} calls applyAfterSeal -- the executor is "
+                "reached only from AskAiService.confirmSealed, after the redemption"
+            )
     want(
-        callers >= 1,
-        "no handler calls askAi.confirm( any more; this guard no longer describes the tree",
+        len(re.findall(r"\.applyAfterSeal\(", service)) == 1,
+        "AskAiService calls applyAfterSeal from more than one place (or none) -- "
+        "confirmSealed must be its only caller",
     )
+    want(
+        sealed_callers >= 2,
+        "fewer than two handlers mint (issueProposalSeal) or redeem (confirmSealed) "
+        "a proposal seal; this guard no longer describes the tree",
+    )
+    retired_at = controller.find('@Post("actions/:id/confirm")')
+    if retired_at != -1:
+        nxt = route.search(controller, retired_at + 1)
+        retired = controller[retired_at : nxt.start() if nxt else len(controller)]
+        want(
+            "throw new GoneException(" in retired,
+            'the retired @Post("actions/:id/confirm") no longer throws GoneException',
+        )
+        want(
+            re.search(r"this\.askAi\b", retired) is None,
+            'the retired @Post("actions/:id/confirm") reaches the service again',
+        )
+    want(
+        re.search(r"private\s+async\s+applyAfterSeal\(", service) is not None,
+        "the proposal executor is not `private async applyAfterSeal(` -- a public "
+        "executor is an unsealed apply one caller away",
+    )
+    want(
+        re.search(r"^\s+(?:public\s+)?async\s+confirm\(", service, flags=re.M) is None,
+        "AskAiService has a public `async confirm(` again -- the unsealed apply",
+    )
+    sealed_body = re.search(
+        r"async\s+confirmSealed\((.*?)\n  async\s+discard\(", service, flags=re.S
+    )
+    if sealed_body is None:
+        failures.append("confirmSealed not found before discard in ask-ai.service.ts")
+    else:
+        body = sealed_body.group(1)
+        redeem_at = body.find("seals.redeem(")
+        apply_at = body.find("this.applyAfterSeal(")
+        want(
+            redeem_at != -1 and apply_at != -1 and redeem_at < apply_at,
+            "confirmSealed does not redeem the seal BEFORE it calls applyAfterSeal",
+        )
 
     # --- 5. propose declares a per-person AND a per-house limit -----------
     #
@@ -313,6 +400,104 @@ def main() -> int:
         "for and then rejected (ADR 0145 build item 8)",
     )
 
+    # --- 9. /ask/folios (BoundAskService) is bounded the same way ----------
+    #
+    # A second money-spending route, added after this guard existed. Checked
+    # by SOURCE, same as ask-ai above, not by the CLAIMS row's bare grep --
+    # that grep can only count how many files opted in, never whether the one
+    # opted-in call site actually sits behind a DTO class, guard order, a
+    # rate limit, and a typed spend refusal.
+    #
+    # /ask has no caller (no page, no palette entry -- ADR 0145 row 33 defers
+    # the page itself). Every guard above still holds, but none of them stops
+    # a curl with a valid JWT, and every hit is a paid model call. The launch
+    # gate is the thing that does: it must be the FIRST statement `submit`
+    # can reach, before `this.folios.begin(` (KL audit D13, round 2). If this
+    # line moves below the folio write or is deleted, a refused-here request
+    # would instead write a folio row and spend a model call with no product
+    # surface ever having asked for it.
+    submit_body_start = bound_service.find("async submit(")
+    begin_at = bound_service.find("this.folios.begin(", submit_body_start)
+    # Anchored on the flag's own name, not the bare `!== "true"` comparison
+    # (D-d, KL2 confirm round): the old anchor stayed green through a rename
+    # of the env key, or a second, unrelated `!== "true"` landing ahead of
+    # it. This still does not require the specific comparison operator or
+    # value, only that the check reads ASK_LAUNCHED before any folio write --
+    # the CLAIMS row ADR-0145-ASK-FOLIOS-REFUSES-WITHOUT-LAUNCH-FLAG pins the
+    # exact literal as a second, independent line of defence.
+    gate_at = bound_service.find('"ASK_LAUNCHED"', submit_body_start)
+    want(
+        submit_body_start != -1 and gate_at != -1 and begin_at != -1 and gate_at < begin_at,
+        "BoundAskService.submit does not refuse before writing a folio when its launch "
+        "flag is unset -- /ask/folios has no page or palette caller yet, so a request "
+        "with nothing gating it would spend a model call for a route the product cannot "
+        "reach (KL audit D13, round 2)",
+    )
+    want(
+        "ServiceUnavailableException" in bound_service,
+        "BoundAskService no longer imports ServiceUnavailableException -- the launch "
+        "gate above depends on it",
+    )
+    want(
+        re.search(r"@Body\(\)\s+body:\s*BoundAskDto", bound_controller) is not None,
+        "bound-ask.controller.ts's submit does not take @Body() body: BoundAskDto -- "
+        "an inline @Body() type erases at runtime and ValidationPipe validates nothing",
+    )
+    want("@IsString()" in bound_dto, "BoundAskDto's utterance is not constrained to a string")
+    want(
+        re.search(r"@MaxLength\(\s*\d+\s*\)", bound_dto) is not None,
+        "BoundAskDto has no @MaxLength on the utterance -- an unbounded string reaches the model prompt",
+    )
+
+    bound_guards = re.search(r"@UseGuards\(([^)]*)\)", bound_controller)
+    if bound_guards is None:
+        failures.append("bound-ask.controller.ts declares no @UseGuards at all")
+    else:
+        names = [g.strip() for g in bound_guards.group(1).split(",") if g.strip()]
+        want(
+            names and names[0] == "JwtAuthGuard",
+            f"JwtAuthGuard is not first in bound-ask.controller.ts's @UseGuards (got {names})",
+        )
+        want(
+            "AuthedRateLimitGuard" in names,
+            "AuthedRateLimitGuard is not on bound-ask.controller.ts -- the route falls "
+            "through to the global IP-keyed default",
+        )
+        want("RolesGuard" in names, "RolesGuard is not on bound-ask.controller.ts")
+
+    want(
+        '@Post("folios")' in bound_controller,
+        "the /ask/folios route is gone or renamed; this guard no longer describes the tree",
+    )
+    submit_block = bound_controller[bound_controller.find('@Post("folios")') : bound_controller.find("submit(")]
+    want(
+        "@AuthedRateLimit(" in submit_block,
+        "POST /ask/folios declares no authenticated rate limit",
+    )
+    want('scope: "user"' in submit_block, "POST /ask/folios has no per-person limit")
+    want(
+        'scope: "restaurant"' in submit_block,
+        "POST /ask/folios has no per-house limit -- several members would each run at "
+        "their own per-person limit",
+    )
+
+    # Every model call this service makes must be metered on its FIRST attempt,
+    # not only a retry -- checked as the literal the spend ceiling reads, same
+    # test as ask-ai.service.ts above.
+    want(
+        re.search(
+            r"this\.modelClient\.call\(\s*\{[^;]{0,600}?\bgateFirstAttempt:\s*true\s*,", bound_service
+        )
+        is not None,
+        "bound-ask.service.ts does not pass the literal `gateFirstAttempt: true` on its "
+        "model call -- a caller who never retries would never be metered",
+    )
+    want(
+        re.search(r"\bretry:\s*false\b", bound_service) is not None,
+        "bound-ask.service.ts's model call does not disable transport retry -- a retried "
+        "call bypasses the first-attempt gate a second time for one user action",
+    )
+
     if failures:
         print("FAIL -- Ask AI is not bounded:", file=sys.stderr)
         for f in failures:
@@ -322,7 +507,8 @@ def main() -> int:
 
     print(
         "PASS -- Ask AI validates its bodies, bounds its rate per person and per "
-        "house, meters its first call, and takes standing to confirm."
+        "house, meters its first call, and applies a proposal only behind a "
+        "redeemed seal taken with standing."
     )
     return 0
 

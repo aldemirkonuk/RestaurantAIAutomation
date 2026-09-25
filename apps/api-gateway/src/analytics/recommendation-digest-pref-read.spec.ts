@@ -29,6 +29,8 @@ describe("RecommendationActionsService.getDigestPref", () => {
   it("a house with no row still reads as off at 07:00 — absence is not a failure", async () => {
     const { service } = build();
     await expect(service.getDigestPref("house-1")).resolves.toEqual({
+      set: false,
+      stated: false,
       digestEnabled: false,
       digestHour: 7,
       digestMinUrgency: "this_week",
@@ -50,6 +52,8 @@ describe("RecommendationActionsService.getDigestPref", () => {
       },
     ];
     await expect(service.getDigestPref("house-1")).resolves.toMatchObject({
+      set: true,
+      stated: true,
       digestEnabled: true,
       digestHour: 18,
       digestMinUrgency: "now",

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
-import { importMenu, type WineExtractItem, type MenuImportResult } from '../../services/api/menus'
+import { importMenu, type WineExtractItem, type MenuImportSuccess } from '../../services/api/menus'
 
 interface WineRow extends WineExtractItem {
   _id: number
@@ -22,7 +22,7 @@ function emptyRow(): WineRow {
 }
 
 interface MenuManualEntryProps {
-  onSuccess: (result: MenuImportResult) => void
+  onSuccess: MenuImportSuccess
 }
 
 export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
