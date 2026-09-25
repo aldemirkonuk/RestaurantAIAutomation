@@ -466,3 +466,52 @@ describe("ADR 0207 round 4 — the data terms acceptance gate", () => {
     expect(scorer.sent).toHaveLength(1);
   });
 });
+
+describe("one house's Jev failure does not stop the sweep (fail open, ADR 0207)", () => {
+  class ThrowingOnceScorer extends RecordingScorer {
+    thrown = 0;
+    async score(p: EgressPayload) {
+      if (this.thrown === 0) {
+        this.thrown += 1;
+        throw new Error("the scorer threw instead of answering");
+      }
+      return super.score(p);
+    }
+  }
+
+  function withSecondHouse(db: FakeDb) {
+    const ON2 = "house-on-2";
+    db.tables.restaurants.push({ id: ON2, vendor_tone_scoring_enabled: true });
+    db.tables.providers.push({ id: "p-on-2", restaurant_id: ON2, contact_first_name: "Can", contact_last_name: "Yurt" });
+    db.tables.procurement_conversations.push({
+      id: "m-2-1",
+      restaurant_id: ON2,
+      provider_id: "p-on-2",
+      direction: "inbound",
+      received_at: "2026-09-20T10:00:00Z",
+      message_text: "Thanks, the order ships on Friday.",
+      content: null,
+      conversation_context: {},
+    });
+    return ON2;
+  }
+
+  it("[REVERT-FAILS] a scorer that throws on the first house leaves the second house scored", async () => {
+    const scorer = new ThrowingOnceScorer();
+    const { svc, db } = make(scorer);
+    const ON2 = withSecondHouse(db);
+    const s = await svc.sweep();
+    expect(s.houses).toBe(2);
+    expect(s.housesRefused.map((r) => r.house)).toHaveLength(1);
+    expect(s.scored).toBe(1);
+    const scoredHouses = db.tables.vendor_message_tone_scores.map((r) => r.restaurant_id);
+    expect(scoredHouses).toHaveLength(1);
+    expect([ON, ON2]).toContain(scoredHouses[0]);
+  });
+
+  it("the scheduled run never rejects, even when the house list cannot be read", async () => {
+    const { svc, db } = make();
+    db.failures.restaurants = "statement timeout";
+    await expect(svc.scheduled()).resolves.toBeUndefined();
+  });
+});

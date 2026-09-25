@@ -146,7 +146,18 @@ export class VendorToneScoringService {
       throw new Error(`the house switches did not answer: ${reasonOf(error)}`);
     for (const h of (data ?? []) as { id: string }[]) {
       summary.houses += 1;
-      await this.sweepHouse(h.id, summary);
+      // One house's failure is that house's, never the next one's: anything
+      // that escapes a house (a scorer that throws instead of answering, a
+      // mask that trips on one message) refuses that house for this run and
+      // the sweep goes on. [2026-09-25, ADR 0207: Jev's product egress fails
+      // open — `jev-egress-never-blocks.spec.ts`.]
+      try {
+        await this.sweepHouse(h.id, summary);
+      } catch (err: unknown) {
+        const name = (err as { name?: string })?.name ?? "Error";
+        this.logger.error(`tone sweep: house ${h.id} failed (${name})`);
+        summary.housesRefused.push({ house: h.id, reason: `failed (${name})` });
+      }
     }
     return summary;
   }
