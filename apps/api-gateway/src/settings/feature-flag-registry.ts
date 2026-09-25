@@ -72,13 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
   },
   {
     key: "enable_house_inbox_read",
@@ -92,18 +92,6 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     readBy: "communications/inbox/house-inbox.service.ts:339",
   },
   {
-    key: "mudavym_design_shell",
-    // OFF by default: the Mudavym app shell — the rooms rail, the house
-    // header, the counter and the phone's four doors (sketch 119 direction D,
-    // the founder's pick of 2026-09-21; ADR 0149 row 5). Unlike the page
-    // flags this one swaps the LAYOUT every signed-in route renders inside
-    // (DashboardLayout reads `useMudavymDesign("shell")`); off, the legacy
-    // Sidebar layout is the path. Held back from LIVE_PAGES. Column added by
-    // 20260921114300.
-    defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
-  },
-  {
     key: "mudavym_design_arrival",
     // OFF by default: the Arrival book at /get-started (ADR 0113/0143/0144;
     // sketch 121). Held back from LIVE_PAGES so every house keeps today's
@@ -112,23 +100,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
-  },
-  {
-    key: "mudavym_design_authorize_integration",
-    // OFF by default: the Mudavym redesign of `/authorize` (ADR 0144), the
-    // consent page an integration's OAuth hand-off lands on. Column added by
-    // 20260922220200.
-    defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
-  },
-  {
-    key: "mudavym_design_admin",
-    // OFF by default: the Mudavym admin desk (ADR 0143) — one surface for
-    // /admin and /admin/health, operator-gated receipted agent operations.
-    // Column added by 20260922210200.
-    defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:184",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
   },
 ];
 
@@ -152,6 +124,16 @@ export function isActiveFeatureFlag(name: string): boolean {
  * code that branches on it" — no longer holds for them. (`help` never had a
  * column; it is listed here so the LIVE_PAGES ↔ LIVE_IN_CODE_FLAGS guard
  * stays exact.)
+ *
+ * [2026-09-25, ADR 0149 row 36's bracket: `mudavym_design_shell`,
+ * `mudavym_design_admin` and `mudavym_design_authorize_integration` moved here
+ * from ACTIVE_FEATURE_FLAGS, on the founder's 2026-09-22 page-gap answers Q2
+ * ("I want all locked pages to be live (production)") and Q4 ("turn on for
+ * every house the instant each PR merges — no staged single-house rollout").
+ * The list is now twenty-three keys; "twenty" above was counted before this
+ * move and "eighteen" before `cellar`/`menu`, both kept as written. `menu`,
+ * like `help`, never had a column. The three moved keys' columns
+ * (20260921114300, 20260922210200, 20260922220200) stay, unread.]
  *
  * Deliberately NOT in ACTIVE_FEATURE_FLAGS:
  *  - `GET /settings/feature-flags` returns only ACTIVE_FEATURE_FLAG_KEYS
@@ -196,6 +178,9 @@ export const LIVE_IN_CODE_FLAGS: readonly string[] = [
   "mudavym_design_help",
   "mudavym_design_cellar",
   "mudavym_design_menu",
+  "mudavym_design_shell",
+  "mudavym_design_admin",
+  "mudavym_design_authorize_integration",
 ];
 
 export function defaultActiveFlags(): Record<string, boolean> {
