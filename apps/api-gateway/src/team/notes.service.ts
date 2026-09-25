@@ -683,7 +683,16 @@ export class NotesService {
       if (!Array.isArray(data) || data.length === 0) {
         const { error: insErr } = await this.sb
           .from("team_note_deliveries")
-          .insert({ ...r, recorded_at: recordedAt });
+          // Spelled out, not spread: check_order_capture_contract.py reads the
+          // written columns off an inline literal, and a spread is blind to it.
+          .insert({
+            note_id: r.note_id,
+            member_id: r.member_id,
+            channel: r.channel,
+            state: r.state,
+            detail: r.detail,
+            recorded_at: recordedAt,
+          });
         if (insErr) {
           this.logger.error(
             `note ${noteId} release receipt not written for ${memberId}/${r.channel}: ${insErr.message}`,
