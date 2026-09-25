@@ -71,6 +71,12 @@ vi.mock('../../../services/api/receiving', () => ({
       api.unverifiedFails ? Promise.reject(api.unverifiedFails) : Promise.resolve(api.unverified),
   },
 }));
+vi.mock('../../documents/next/CanonicalDocumentPage', () => ({
+  CanonicalDocumentPage: ({ documentId, embedded }: { documentId?: string; embedded?: boolean }) => (
+    <div data-testid="formatted-document" data-id={documentId} data-embedded={embedded ? 'yes' : 'no'} />
+  ),
+}));
+
 vi.mock('../../../services/api/orders', () => ({
   getOrder: () =>
     Promise.resolve({
@@ -553,6 +559,17 @@ describe('ReceiptsNext — what money this invoice is in', () => {
  * a link that lands on the queue without opening the document names an act the
  * reader then has to go and find.
  */
+describe('ReceiptsNext — formatted sheet on the right', () => {
+  it('places the canonical document beside the selected receipt', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const sheet = await screen.findByTestId('formatted-document');
+    expect(sheet).toHaveAttribute('data-id', 'd1');
+    expect(sheet).toHaveAttribute('data-embedded', 'yes');
+    expect(screen.getByLabelText('Formatted document')).toBeInTheDocument();
+  });
+});
+
 describe('ReceiptsNext — ?doc=<id> opens that document', () => {
   it('opens the document named in the query string, without a click', async () => {
     render(<ReceiptsNext />, { wrapper: wrapperAt('/receipts?doc=d1') });

@@ -17,6 +17,8 @@ import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import axios from "axios";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
+import { RegisterAccountDto } from "./dto/register-account.dto";
+import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
@@ -758,7 +760,12 @@ export class AuthService {
    * assert that the row is tied to a Google place while carrying no location,
    * and the column has a UNIQUE index that a stray value would occupy.
    */
-  private coordinateColumns(dto: RegisterRestaurantDto): {
+  private coordinateColumns(
+    dto: Pick<
+      RegisterRestaurantDto,
+      "latitude" | "longitude" | "googlePlaceId"
+    >,
+  ): {
     latitude?: number;
     longitude?: number;
     google_place_id?: string;
@@ -783,16 +790,224 @@ export class AuthService {
   }
 
   /**
+   * Creates only an identity. The first restaurant is deliberately created
+   * after verification, from the restaurant screen in the arrival flow.
+   */
+  async registerAccount(dto: RegisterAccountDto): Promise<TokenPair> {
+    const email = dto.email.toLowerCase().trim();
+    if (await this.emailAlreadyRegistered(email)) {
+      throw new BadRequestException("Email already registered");
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
+    const { data: user, error } = await this.databaseService.supabase
+      .from("users")
+      .insert({
+        email,
+        password_hash: passwordHash,
+        name: dto.name.trim(),
+        restaurant_id: null,
+        role: "owner",
+        email_verified: false,
+      })
+      .select()
+      .single();
+    if (error || !user) {
+      throw new BadRequestException(
+        `Registration failed: ${error?.message ?? "account was not created"}`,
+      );
+    }
+
+    this.queueEmailVerification(user.user_id, email).catch((err) =>
+      this.logger.warn(
+        `queueEmailVerification failed (non-fatal): ${err.message}`,
+      ),
+    );
+    return this.generateTokens(user);
+  }
+
+  /**
+   * Google registration is separate from Google sign-in. It may create an
+   * account with no tenant, but it can never attach the caller to an existing
+   * restaurant; that remains invitation-only.
+   */
+  async registerAccountWithGoogle(googleToken: string): Promise<TokenPair> {
+    const googleUser = await this.verifyGoogleToken(googleToken);
+    const email = googleUser.email.toLowerCase().trim();
+    if (await this.emailAlreadyRegistered(email)) {
+      throw new ConflictException(
+        "An account already uses this email. Sign in instead.",
+      );
+    }
+
+    const { data: user, error } = await this.databaseService.supabase
+      .from("users")
+      .insert({
+        email,
+        password_hash: null,
+        name: googleUser.name,
+        restaurant_id: null,
+        role: "owner",
+        email_verified: true,
+        oauth_provider: "google",
+        oauth_id: googleUser.sub,
+      })
+      .select()
+      .single();
+    if (error || !user) {
+      throw new BadRequestException(
+        `Registration failed: ${error?.message ?? "account was not created"}`,
+      );
+    }
+
+    const { error: linkError } = await this.databaseService.supabase
+      .from("user_oauth_accounts")
+      .insert({
+        user_id: user.user_id,
+        provider: "google",
+        provider_user_id: googleUser.sub,
+      });
+    if (linkError) {
+      await this.databaseService.supabase
+        .from("users")
+        .delete()
+        .eq("user_id", user.user_id);
+      throw new BadRequestException(
+        `Registration failed: ${linkError.message}`,
+      );
+    }
+
+    return this.generateTokens(user);
+  }
+
+  /**
+   * Creates the verified owner's first house and returns a tenant-scoped token.
+   * It refuses accounts that already own a house so retries cannot create
+   * duplicate tenants.
+   */
+  async createFirstHouse(
+    userId: string,
+    dto: CreateFirstHouseDto,
+  ): Promise<TokenPair & { restaurantId: string }> {
+    const { data: user, error: userReadError } =
+      await this.databaseService.supabase
+        .from("users")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+    if (userReadError || !user)
+      throw new UnauthorizedException("User not found");
+    if (!user.email_verified)
+      throw new ForbiddenException("Verify your email before creating a house");
+    if (user.restaurant_id)
+      throw new ConflictException("This account already has a house");
+
+    let orgId: string | null = null;
+    let restaurantId: string | null = null;
+    try {
+      const { data: org, error: orgError } =
+        await this.databaseService.supabase
+          .from("organizations")
+          .insert({ name: `${dto.restaurantName} Group`, owner_id: userId })
+          .select()
+          .single();
+      if (orgError || !org)
+        throw new Error(orgError?.message ?? "organization was not created");
+      orgId = org.id;
+
+      const baseSlug = dto.restaurantName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      const coords = this.coordinateColumns(dto);
+      const { data: restaurant, error: restaurantError } =
+        await this.databaseService.supabase
+          .from("restaurants")
+          .insert({
+            name: dto.restaurantName,
+            slug: `${baseSlug}-${crypto.randomBytes(3).toString("hex")}`,
+            email: dto.restaurantEmail ?? user.email,
+            address: { street: dto.address },
+            city: dto.city,
+            country: dto.country,
+            state_province: dto.stateProvince,
+            postal_code: dto.postalCode,
+            neighborhood: dto.neighborhood,
+            phone: dto.restaurantPhone,
+            timezone: dto.timezone ?? null,
+            currency: dto.currency ?? null,
+            organization_id: orgId,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            google_place_id: coords.google_place_id,
+          })
+          .select()
+          .single();
+      if (restaurantError || !restaurant)
+        throw new Error(
+          restaurantError?.message ?? "restaurant was not created",
+        );
+      restaurantId = restaurant.id;
+
+      const writes = await Promise.all([
+        this.databaseService.supabase.from("organization_members").insert({
+          organization_id: orgId,
+          user_id: userId,
+          role: "owner",
+        }),
+        this.databaseService.supabase
+          .from("user_restaurant_access")
+          .insert({
+            user_id: userId,
+            restaurant_id: restaurantId,
+            role: "owner",
+            invited_via: null,
+            is_active: true,
+          }),
+        this.databaseService.supabase
+          .from("users")
+          .update({ restaurant_id: restaurantId, role: "owner" })
+          .eq("user_id", userId),
+        this.databaseService.supabase
+          .from("user_onboarding_progress")
+          .insert({ user_id: userId, restaurant_id: restaurantId }),
+      ]);
+      const failed = writes.find((write) => write.error);
+      if (failed?.error) throw new Error(failed.error.message);
+
+      const tokens = await this.generateTokens({
+        ...user,
+        restaurant_id: restaurantId,
+        role: "owner",
+      });
+      return { ...tokens, restaurantId: restaurantId as string };
+    } catch (error) {
+      if (restaurantId)
+        await this.databaseService.supabase
+          .from("restaurants")
+          .delete()
+          .eq("id", restaurantId);
+      if (orgId)
+        await this.databaseService.supabase
+          .from("organizations")
+          .delete()
+          .eq("id", orgId);
+      throw new BadRequestException(
+        `House creation failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /**
    * Path B: Register a new restaurant (creates org + restaurant + user atomically).
    * User starts with email_verified: false and must verify email.
    */
   async registerRestaurant(dto: RegisterRestaurantDto): Promise<TokenPair> {
-    const { data: existing } = await this.databaseService.supabase
-      .from("users")
-      .select("email")
-      .eq("email", dto.email)
-      .maybeSingle();
-    if (existing) throw new BadRequestException("Email already registered");
+    if (await this.emailAlreadyRegistered(dto.email)) {
+      throw new BadRequestException("Email already registered");
+    }
 
     let orgId: string | null = null;
     let restaurantId: string | null = null;
@@ -1946,12 +2161,21 @@ export class AuthService {
    * Returns true if email exists, false otherwise.
    */
   async checkEmailExists(email: string): Promise<boolean> {
-    const { data: existing } = await this.databaseService.supabase
+    return this.emailAlreadyRegistered(email.toLowerCase().trim());
+  }
+
+  /** A failed users read is not "email is free". */
+  private async emailAlreadyRegistered(email: string): Promise<boolean> {
+    const { data: existing, error } = await this.databaseService.supabase
       .from("users")
       .select("email")
-      .eq("email", email.toLowerCase().trim())
+      .eq("email", email)
       .maybeSingle();
-
+    if (error) {
+      throw new InternalServerErrorException(
+        "Could not check whether that email is already registered",
+      );
+    }
     return !!existing;
   }
 

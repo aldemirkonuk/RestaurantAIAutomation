@@ -46,12 +46,19 @@ vi.mock('react-router-dom', async () => {
 })
 
 const activeRestaurantId = vi.hoisted(() => ({ current: 'rest-A' }))
-vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    activeRestaurantId: activeRestaurantId.current,
-    user: { userId: 'u1', restaurantId: activeRestaurantId.current, role: 'manager' },
-  }),
-}))
+// `AuthContext` (the object, not just `useAuth`) is exported too — DayLine.tsx
+// and useMudavymDesign.ts both read it with `useContext(AuthContext)` directly
+// (see ReceivingHome.test.tsx's identical comment for the full reasoning).
+vi.mock('../../../contexts/AuthContext', async () => {
+  const { createContext } = await import('react')
+  return {
+    AuthContext: createContext<unknown>(null),
+    useAuth: () => ({
+      activeRestaurantId: activeRestaurantId.current,
+      user: { userId: 'u1', restaurantId: activeRestaurantId.current, role: 'manager' },
+    }),
+  }
+})
 
 const pendingByType = vi.hoisted(() => vi.fn())
 const flushDoorOutbox = vi.hoisted(() => vi.fn())
@@ -346,7 +353,10 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     get.mockResolvedValue(queuePayload({ items, totalAtRisk: 12000 }))
     harness(ManagerBody)
 
-    expect(await screen.findByText('≥$12,000')).toBeInTheDocument()
+    // A full window is 100 rows, and the day line now mounts above them, so the
+    // first paint of this case is the heaviest in the file. On a loaded CI runner
+    // it crossed the 1000 ms default and the assertion read the pre-load em dash.
+    expect(await screen.findByText('≥$12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Short/ })).toHaveTextContent('≥100')
   })
 

@@ -16,6 +16,10 @@ import { NfEventRef } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
 import { mapStockCountResult } from "./stock-count-result";
+import {
+  setHouseMenuPrice,
+  type HousePriceResult,
+} from "../pricing/house-menu-price";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { classifyStock } from "../common/stock-status";
 import {
@@ -125,6 +129,12 @@ export class InventoryService {
       // "any edit at all" (which is what row.updated_at would give it).
       lastCountedAt: row.last_counted_at ?? null,
       menuPriceGlass: row.menu_price_glass ?? undefined,
+      // This house's own bottle price -- never the wine library's reference
+      // price. ADR 0193: it IS `menu_price_current`, the column every margin,
+      // valuation and POS path already reads; the cellar lane's short-lived
+      // second column (`menu_price_bottle`) was removed before merge so there
+      // is one number. Same undefined-not-null idiom as menuPriceGlass above.
+      menuPriceBottle: row.menu_price_current ?? undefined,
       glassesPerBottleOverride: row.glasses_per_bottle_override ?? undefined,
       retailPriceAvg: retailPriceAvg ?? undefined,
       markupRatio: markupRatio ?? undefined,
@@ -195,24 +205,38 @@ export class InventoryService {
     return map;
   }
 
-  /** Phase 2 (2d/2e): per-inventory velocity, days-of-cover, reorder, ABC, dead-stock. */
+  /**
+   * Phase 2 (2d/2e): per-inventory velocity, days-of-cover, reorder, ABC,
+   * dead-stock.
+   *
+   * `ok: false` is a FAILED read, told apart from a real, empty result. This
+   * method still swallows the underlying error rather than throwing — the
+   * rest of the inventory list (stock, lots, locations) is real and useful
+   * even when this one join is down, and the other `fetch*` helpers beside it
+   * follow the same resilience pattern — but the caller needs to know WHICH
+   * case it is in, because "the join has nothing for this row" and "the join
+   * could not be read" are different sentences downstream (`BottleLeaf`'s
+   * sold line used to print the former for both, ADR 0160 sec110 item 3(c)).
+   */
   private async fetchAnalytics(
     restaurantId: string,
-  ): Promise<Map<string, any>> {
+  ): Promise<{ map: Map<string, any>; ok: boolean }> {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data } = await client
+      const { data, error } = await client
         .from("inventory_analytics")
         .select(
           "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
         )
         .eq("restaurant_id", restaurantId);
+      if (error) throw error;
       for (const r of data || []) map.set(r.inventory_id, r);
+      return { map, ok: true };
     } catch (err: any) {
       this.logger.warn(`fetchAnalytics failed: ${err?.message}`);
+      return { map, ok: false };
     }
-    return map;
   }
 
   async getRestaurantInventory(restaurantId: string) {
@@ -223,14 +247,18 @@ export class InventoryService {
       this.fetchLocationBreakdown(restaurantId),
       this.fetchAnalytics(restaurantId),
     ]);
-    return (data || []).map((row) =>
-      this.mapInventoryItem(
+    return (data || []).map((row) => ({
+      ...this.mapInventoryItem(
         row,
         rollup.get(row.id),
         locations.get(row.id),
-        analytics.get(row.id),
+        analytics.map.get(row.id),
       ),
-    );
+      // Additive: every existing reader that does not know this field simply
+      // ignores it. `false` means the analytics join itself could not be
+      // read for this batch — not that this row has no analytics row.
+      analyticsReadable: analytics.ok,
+    }));
   }
 
   /**
@@ -831,7 +859,15 @@ export class InventoryService {
   /**
    * Create a new inventory item
    */
-  async createInventoryItem(restaurantId: string, dto: CreateInventoryItemDto) {
+  async createInventoryItem(
+    restaurantId: string,
+    dto: CreateInventoryItemDto,
+    // ADR 0193, founder 2026-09-21 (answer 5): "pass the person through on
+    // add-wine ... so every price version names who set it". From the
+    // verified JWT; the controller has already refused a priced create by
+    // anyone but an owner or manager.
+    actorUserId: string | null = null,
+  ) {
     const client = this.dbService.getClient();
 
     // Look up the canonical wine name once; used in both the re-activation and INSERT paths.
@@ -908,6 +944,13 @@ export class InventoryService {
           wineId: dto.wineId,
           inventoryId: existing.id,
         });
+        const reactPrice = await this.priceOnAdd(
+          client,
+          restaurantId,
+          existing.id,
+          dto,
+          actorUserId,
+        );
         const { data: freshReact } = await client
           .from("restaurant_inventory")
           .select(
@@ -916,10 +959,11 @@ export class InventoryService {
           .eq("id", existing.id)
           .single();
         const reactRollup = await this.fetchLotRollup(restaurantId);
-        return this.mapInventoryItem(
+        const reactMapped = this.mapInventoryItem(
           freshReact ?? reactivated,
           reactRollup.get(existing.id),
         );
+        return reactPrice ? { ...reactMapped, priceChange: reactPrice } : reactMapped;
       }
 
       // Active item: return its ID so the caller can skip re-creation
@@ -946,8 +990,11 @@ export class InventoryService {
     };
     if (dto.saleType !== undefined) insertData.sale_type = dto.saleType;
     if (dto.pourSizeMl !== undefined) insertData.pour_size_ml = dto.pourSizeMl;
-    if (dto.menuPriceGlass !== undefined)
-      insertData.menu_price_glass = dto.menuPriceGlass;
+    // The house's own prices (ADR 0193: bottle = menu_price_current) are NOT
+    // in this insert. They go through set_house_menu_price right after it
+    // (priceOnAdd), so the wine's first menu_price_versions row names the
+    // person who set it (founder, 2026-09-21, answer 5) instead of the
+    // trigger's "no person was named".
     if (dto.bottleSizeMl !== undefined)
       insertData.bottle_size_ml = dto.bottleSizeMl;
     if (dto.glassesPerBottleOverride !== undefined)
@@ -1005,6 +1052,8 @@ export class InventoryService {
       inventoryId: data.id,
     });
 
+    const price = await this.priceOnAdd(client, restaurantId, data.id, dto, actorUserId);
+
     const { data: fresh } = await client
       .from("restaurant_inventory")
       .select(
@@ -1013,7 +1062,45 @@ export class InventoryService {
       .eq("id", data.id)
       .single();
     const rollup = await this.fetchLotRollup(restaurantId);
-    return this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
+    const mapped = this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
+    return price ? { ...mapped, priceChange: price } : mapped;
+  }
+
+  /**
+   * The price named when a wine is added, written through the one writer so
+   * its version row names the person (ADR 0193; founder 2026-09-21, answer 5).
+   * Null when no price was named. The wine itself is already saved when this
+   * runs, so a refused or failed price write is RETURNED, as
+   * `{ outcome: "failed", error }`, for the caller to say out loud -- never
+   * swallowed into a wine that looks priced.
+   */
+  private async priceOnAdd(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    inventoryId: string,
+    prices: { menuPriceBottle?: number; menuPriceGlass?: number },
+    actorUserId: string | null,
+  ): Promise<HousePriceResult | { outcome: "failed"; error: string } | null> {
+    if (prices.menuPriceBottle === undefined && prices.menuPriceGlass === undefined) {
+      return null;
+    }
+    try {
+      return await setHouseMenuPrice(client, {
+        restaurantId,
+        inventoryId,
+        ...(prices.menuPriceBottle !== undefined ? { bottle: prices.menuPriceBottle } : {}),
+        ...(prices.menuPriceGlass !== undefined ? { glass: prices.menuPriceGlass } : {}),
+        source: "manual",
+        changedBy: actorUserId,
+        reason: "set when the wine was added",
+      });
+    } catch (err: any) {
+      const error = err?.message ?? String(err);
+      this.logger.error(
+        `wine ${inventoryId} was added but its price was not saved: ${error}`,
+      );
+      return { outcome: "failed", error };
+    }
   }
 
   /**
@@ -1034,6 +1121,9 @@ export class InventoryService {
   async bulkCreateInventoryItems(
     restaurantId: string,
     dto: BulkCreateInventoryItemsDto,
+    // ADR 0193, founder 2026-09-21 (answer 5): the person on the token, so a
+    // price a new line carries is recorded under their name.
+    actorUserId: string | null = null,
   ) {
     const source = dto.source || "bulk_receive";
     const results: Array<Record<string, any>> = [];
@@ -1053,11 +1143,30 @@ export class InventoryService {
           source,
           dto.reason,
         );
+        // A NEW row's price goes through the one writer, by the person
+        // (receiveBulkLine no longer puts it in the insert). An existing
+        // row's price is left as it is, as before this build.
+        const price =
+          outcome.status === "created"
+            ? await this.priceOnAdd(
+                this.dbService.getClient(),
+                restaurantId,
+                outcome.inventoryId,
+                line,
+                actorUserId,
+              )
+            : null;
 
         results.push({
           index,
           status: outcome.status,
           inventoryId: outcome.inventoryId,
+          ...(price
+            ? {
+                priceSync: price.outcome,
+                ...("error" in price ? { priceError: price.error } : {}),
+              }
+            : {}),
           masterWineId: resolved.masterWineId,
           wineName: resolved.wineName || wineName,
           libraryMatched: resolved.matched,
@@ -1237,8 +1346,8 @@ export class InventoryService {
       if (line.saleType !== undefined) insertData.sale_type = line.saleType;
       if (line.pourSizeMl !== undefined)
         insertData.pour_size_ml = line.pourSizeMl;
-      if (line.menuPriceGlass !== undefined)
-        insertData.menu_price_glass = line.menuPriceGlass;
+      // ADR 0193: the line's prices are NOT in this insert -- the caller
+      // writes them through set_house_menu_price by the person (priceOnAdd).
       if (line.storageLocationId !== undefined)
         insertData.storage_location_id = line.storageLocationId;
 
@@ -1411,6 +1520,16 @@ export class InventoryService {
       this.logger,
     );
 
+    // ADR 0193: the house's own prices go FIRST, and only through the one
+    // writer (see writeHousePrices); a refusal applies nothing else here.
+    const priceChange = await this.writeHousePrices(
+      client,
+      restaurantId,
+      itemId,
+      dto,
+      performedBy ?? null,
+    );
+
     // Fetch old values for the event payload only (informational — the actual
     // stock delta is computed inside set_stock_absolute against a locked
     // read, not against this value).
@@ -1436,8 +1555,8 @@ export class InventoryService {
     if (dto.isActive !== undefined) updateData.is_active = dto.isActive;
     if (dto.saleType !== undefined) updateData.sale_type = dto.saleType;
     if (dto.pourSizeMl !== undefined) updateData.pour_size_ml = dto.pourSizeMl;
-    if (dto.menuPriceGlass !== undefined)
-      updateData.menu_price_glass = dto.menuPriceGlass;
+    // menuPriceGlass / menuPriceBottle are NOT here: they went through
+    // set_house_menu_price above, so they carry a version row and an actor.
     if (dto.bottleSizeMl !== undefined)
       updateData.bottle_size_ml = dto.bottleSizeMl;
     if (dto.glassesPerBottleOverride !== undefined)
@@ -1591,7 +1710,43 @@ export class InventoryService {
     }
 
     const rollup = await this.fetchLotRollup(restaurantId);
-    return this.mapInventoryItem(data, rollup.get(itemId));
+    const mapped = this.mapInventoryItem(data, rollup.get(itemId));
+    // Said, not implied: "unchanged" and "stale" are different answers from
+    // "changed", and the page tells the manager which one happened.
+    return priceChange ? { ...mapped, priceChange } : mapped;
+  }
+
+  /**
+   * THE HOUSE'S OWN PRICES on an inventory PATCH (ADR 0193, founder
+   * 2026-09-21: "it should be changed whenever the manager wants").
+   *
+   * Written only through set_house_menu_price: house-scoped again in SQL,
+   * changed_by from the JWT (a change naming nobody is refused, 400), and the
+   * trigger closes the open menu_price_versions row and opens a 'manual' one.
+   * Called before any other write in the PATCH, so a refused price change does
+   * not half-apply the fields beside it. Who may call it is the controller's
+   * check (owner or manager), not this method's. Null when the PATCH names
+   * neither price.
+   */
+  private async writeHousePrices(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    itemId: string,
+    dto: UpdateInventoryItemDto,
+    performedBy: string | null,
+  ): Promise<HousePriceResult | null> {
+    if (dto.menuPriceBottle === undefined && dto.menuPriceGlass === undefined) {
+      return null;
+    }
+    return setHouseMenuPrice(client, {
+      restaurantId,
+      inventoryId: itemId,
+      ...(dto.menuPriceBottle !== undefined ? { bottle: dto.menuPriceBottle } : {}),
+      ...(dto.menuPriceGlass !== undefined ? { glass: dto.menuPriceGlass } : {}),
+      source: "manual",
+      changedBy: performedBy,
+      reason: "typed on /inventory",
+    });
   }
 
   /**
