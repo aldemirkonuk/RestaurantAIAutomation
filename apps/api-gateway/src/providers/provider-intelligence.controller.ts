@@ -106,8 +106,8 @@ export class ProviderIntelligenceController {
   ) {
     try {
       // `userId`, not `id`. `JwtStrategy.validate` returns `userId` and never
-      // `id` (auth/strategies/jwt.strategy.ts), so the `user.id` that stood
-      // here wrote `verified_by: undefined` on every verification — ADR 0147's
+      // `id` (auth/strategies/jwt.strategy.ts), so reading `id` off the user,
+      // as this line used to, wrote `verified_by: undefined` on every verification — ADR 0147's
       // third fault shape, in the one handler on this controller that records
       // an actor.
       return await this.intelligenceService.verifyKnowledge(
@@ -323,15 +323,23 @@ export class ProviderIntelligenceController {
   async triggerOutreach(
     @Param("id") providerId: string,
     @Body() body: { outreachType?: string; topic?: string },
-    @CurrentUser() user: { restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ) {
     try {
+      const restaurantId = houseOf(user);
+      // The vendor must be this house's (ADR 0147). Without this, a house
+      // could open an outreach session — which the ProviderConversationAgent
+      // acts on — against ANOTHER house's vendor, stamped with its own house.
+      await this.intelligenceService.assertProviderInHouse(
+        providerId,
+        restaurantId,
+      );
       // This publishes an event that the ProviderConversationAgent picks up
       const { error } = await this.databaseService.supabase
         .from("provider_conversation_sessions")
         .insert({
           provider_id: providerId,
-          restaurant_id: user.restaurantId,
+          restaurant_id: restaurantId,
           session_type: body.outreachType || "relationship_building",
           status: "active",
           initiated_by: "manual_outreach",
@@ -342,10 +350,7 @@ export class ProviderIntelligenceController {
 
       return { success: true, message: "Outreach scheduled" };
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to trigger outreach",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to trigger outreach");
     }
   }
 
@@ -353,14 +358,20 @@ export class ProviderIntelligenceController {
   @ApiOperation({ summary: "Trigger structured onboarding conversation" })
   async triggerOnboarding(
     @Param("id") providerId: string,
-    @CurrentUser() user: { restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ) {
     try {
+      const restaurantId = houseOf(user);
+      // Same fence as outreach: another house's vendor is a 404 (ADR 0147).
+      await this.intelligenceService.assertProviderInHouse(
+        providerId,
+        restaurantId,
+      );
       const { error } = await this.databaseService.supabase
         .from("provider_conversation_sessions")
         .insert({
           provider_id: providerId,
-          restaurant_id: user.restaurantId,
+          restaurant_id: restaurantId,
           session_type: "onboarding",
           status: "active",
           initiated_by: "onboarding",
@@ -371,10 +382,7 @@ export class ProviderIntelligenceController {
 
       return { success: true, message: "Onboarding conversation initiated" };
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to trigger onboarding",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to trigger onboarding");
     }
   }
 

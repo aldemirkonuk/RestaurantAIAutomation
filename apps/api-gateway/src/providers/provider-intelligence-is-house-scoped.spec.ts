@@ -49,6 +49,7 @@ function makeSupabase(seed: Record<string, Row[]>) {
     tables[name] = rows.map((r) => ({ ...r }));
   }
   const queried: string[] = [];
+  const inserted: { table: string; row: Row }[] = [];
 
   const from = (table: string) => {
     queried.push(table);
@@ -96,6 +97,13 @@ function makeSupabase(seed: Record<string, Row[]>) {
       pendingUpdate = payload;
       return q;
     };
+    q.insert = (payload: Row) => {
+      const row = { id: `new-${table}`, ...payload };
+      (tables[table] = tables[table] ?? []).push(row);
+      inserted.push({ table, row });
+      rows = [row];
+      return q;
+    };
     const settleOne = () => {
       if (pendingUpdate) {
         for (const row of rows) Object.assign(row, pendingUpdate);
@@ -122,7 +130,7 @@ function makeSupabase(seed: Record<string, Row[]>) {
     return q;
   };
 
-  return { from, queried, tables };
+  return { from, queried, tables, inserted };
 }
 
 const seed = () => ({
@@ -214,7 +222,10 @@ const seed = () => ({
       label: "mis-stamped fact",
       attributes: {},
       is_active: true,
-      previous_value: null,
+      // Non-null so the contradictions read would return it without its
+      // house clause (the provider-ownership check cannot catch this row:
+      // its provider IS house A's).
+      previous_value: { was: 3 },
     },
   ],
   provider_promotions: [
@@ -277,6 +288,19 @@ const seed = () => ({
       language: "en",
       created_at: "2026-09-02",
     },
+    // Cross-linked, as above: house A's provider, a message stamped house B.
+    {
+      id: "msg-cross",
+      provider_id: PROV_A,
+      restaurant_id: HOUSE_B,
+      message_text: "Mis-stamped shipping terms",
+      role: "provider",
+      channel: "email",
+      importance_score: 1,
+      extracted_entities: {},
+      language: "en",
+      created_at: "2026-09-03",
+    },
   ],
   provider_conversation_sessions: [
     {
@@ -292,6 +316,13 @@ const seed = () => ({
       restaurant_id: HOUSE_B,
       status: "active",
       summary: "B talks",
+    },
+    {
+      id: "session-cross",
+      provider_id: PROV_A,
+      restaurant_id: HOUSE_B,
+      status: "active",
+      summary: "mis-stamped talks",
     },
   ],
   provider_sentiment_history: [
@@ -352,8 +383,11 @@ describe("provider intelligence answers only for the caller's house", () => {
       "A list price",
     ]);
 
-    const theirs = await controller.getKnowledge(PROV_B, undefined, userA);
-    expect(theirs).toEqual({});
+    // Another house's provider is the same 404 as a missing one (the
+    // ownership check), before its knowledge table is read.
+    await expect(
+      controller.getKnowledge(PROV_B, undefined, userA),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("contradictions: house B's provider yields nothing to house A", async () => {
@@ -362,9 +396,9 @@ describe("provider intelligence answers only for the caller's house", () => {
     await expect(
       controller.getContradictions(PROV_A, userA),
     ).resolves.toHaveLength(1);
-    await expect(controller.getContradictions(PROV_B, userA)).resolves.toEqual(
-      [],
-    );
+    await expect(
+      controller.getContradictions(PROV_B, userA),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("verify: house A cannot verify house B's fact, and does not change it", async () => {
@@ -405,7 +439,7 @@ describe("provider intelligence answers only for the caller's house", () => {
     ).resolves.toEqual([expect.objectContaining({ id: "promo-a" })]);
     await expect(
       controller.getPromotions(PROV_B, undefined, userA),
-    ).resolves.toEqual([]);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("promotions/active lists only this house's promotions", async () => {
@@ -445,7 +479,7 @@ describe("provider intelligence answers only for the caller's house", () => {
     ).resolves.toEqual([expect.objectContaining({ id: "msg-a" })]);
     await expect(
       controller.getConversationMemory(PROV_B, undefined, userA),
-    ).resolves.toEqual([]);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("conversation search: a term that matches both houses returns one house", async () => {
@@ -464,7 +498,7 @@ describe("provider intelligence answers only for the caller's house", () => {
         { query: "shipping terms" },
         userA,
       ),
-    ).resolves.toEqual([]);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("sessions: house B's sessions are invisible to house A", async () => {
@@ -475,7 +509,7 @@ describe("provider intelligence answers only for the caller's house", () => {
     ).resolves.toEqual([expect.objectContaining({ id: SESSION_A })]);
     await expect(
       controller.getSessions(PROV_B, undefined, userA),
-    ).resolves.toEqual([]);
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("session summary: another house's session id is 404, the same as a missing one", async () => {
@@ -499,8 +533,9 @@ describe("provider intelligence answers only for the caller's house", () => {
     expect(mine.dataPoints).toHaveLength(1);
     expect(mine.averageScore).toBeCloseTo(0.4);
 
-    const theirs = await controller.getSentimentTrend(PROV_B, userA, undefined);
-    expect(theirs.dataPoints).toEqual([]);
+    await expect(
+      controller.getSentimentTrend(PROV_B, userA, undefined),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("intelligence/compare: naming another house's provider id returns nothing", async () => {
@@ -528,6 +563,35 @@ describe("provider intelligence answers only for the caller's house", () => {
     expect(mine.activePromoCount).toBe(1);
     expect(mine.knowledgeEntries).toBe(2);
     expect(mine.avgSentiment).toBeCloseTo(0.4);
+  });
+
+  it("outreach and onboarding: another house's provider is 404 and no session is written", async () => {
+    const { controller, supabase } = setup();
+
+    await expect(
+      controller.triggerOutreach(PROV_B, { topic: "pricing" }, userA),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(
+      controller.triggerOnboarding(PROV_B, userA),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(supabase.inserted).toEqual([]);
+  });
+
+  it("outreach and onboarding: this house's provider opens a session stamped with this house", async () => {
+    const { controller, supabase } = setup();
+
+    await controller.triggerOutreach(PROV_A, { topic: "pricing" }, userA);
+    await controller.triggerOnboarding(PROV_A, userA);
+    expect(
+      supabase.inserted.map((i) => [
+        i.table,
+        i.row.provider_id,
+        i.row.restaurant_id,
+      ]),
+    ).toEqual([
+      ["provider_conversation_sessions", PROV_A, HOUSE_A],
+      ["provider_conversation_sessions", PROV_A, HOUSE_A],
+    ]);
   });
 
   it("intelligence/leverage returns only this house's signals", async () => {
@@ -586,10 +650,12 @@ describe("a session that names no house is refused on every route", () => {
     ],
     ["GET intelligence/compare", (c) => c.compareProviders(noHouse, undefined)],
     ["GET intelligence/leverage", (c) => c.getLeverageSignals(noHouse)],
+    ["POST :id/outreach", (c) => c.triggerOutreach(PROV_A, {}, noHouse)],
+    ["POST :id/onboard", (c) => c.triggerOnboarding(PROV_A, noHouse)],
   ];
 
-  it("covers all fifteen unscoped reads", () => {
-    expect(routes).toHaveLength(15);
+  it("covers all seventeen routes (the fifteen unscoped reads and the two session writes)", () => {
+    expect(routes).toHaveLength(17);
   });
 
   it.each(routes)("%s is 403 and touches no table", async (_name, call) => {

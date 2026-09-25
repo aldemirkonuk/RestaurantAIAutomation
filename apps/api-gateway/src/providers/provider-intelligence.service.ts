@@ -38,6 +38,7 @@ export class ProviderIntelligenceService {
     restaurantId: string,
     category?: string,
   ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     let query = this.databaseService.supabase
       .from("provider_knowledge")
       .select("*")
@@ -133,6 +134,7 @@ export class ProviderIntelligenceService {
   }
 
   async getContradictions(providerId: string, restaurantId: string) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_knowledge")
       .select("*")
@@ -177,6 +179,7 @@ export class ProviderIntelligenceService {
     restaurantId: string,
     status?: string,
   ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     let query = this.databaseService.supabase
       .from("provider_promotions")
       .select("*")
@@ -302,6 +305,7 @@ export class ProviderIntelligenceService {
     restaurantId: string,
     limit: number = 50,
   ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("conversation_embeddings")
       .select(
@@ -348,6 +352,7 @@ export class ProviderIntelligenceService {
     restaurantId: string,
     query: string,
   ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("conversation_embeddings")
       .select("id, message_text, role, channel, importance_score, created_at")
@@ -378,6 +383,7 @@ export class ProviderIntelligenceService {
     restaurantId: string,
     includeCompleted: boolean = false,
   ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     let query = this.databaseService.supabase
       .from("provider_conversation_sessions")
       .select("*")
@@ -435,6 +441,37 @@ export class ProviderIntelligenceService {
     return data;
   }
 
+  /**
+   * The vendor is this house's, or the caller gets the same 404 as for a
+   * missing id (ADR 0147). Used by the two routes that WRITE a conversation
+   * session against a provider id (`POST :id/outreach`, `POST :id/onboard`).
+   * A failed read throws; it is never reported as "not found".
+   */
+  async assertProviderInHouse(
+    providerId: string,
+    restaurantId: string,
+  ): Promise<void> {
+    const { data, error } = await this.databaseService.supabase
+      .from("providers")
+      .select("id")
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error("Failed to check the provider's house", {
+        providerId,
+        error: error.message,
+      });
+      throw error;
+    }
+    if (!data) {
+      throw new NotFoundException(
+        `No provider with id ${providerId} belongs to this restaurant.`,
+      );
+    }
+  }
+
   // =========================================================================
   // SENTIMENT
   // =========================================================================
@@ -452,6 +489,7 @@ export class ProviderIntelligenceService {
     restaurantId: string,
     limit: number = 30,
   ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_sentiment_history")
       .select(

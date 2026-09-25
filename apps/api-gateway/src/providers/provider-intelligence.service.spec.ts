@@ -41,7 +41,17 @@ describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () 
     eq = jest.fn().mockReturnValue(chain);
     chain.eq = eq;
     const select = jest.fn().mockReturnValue(chain);
-    from = jest.fn().mockReturnValue({ select });
+    // The provider-ownership read (ADR 0147) runs first and finds the house's
+    // own provider; it has its own chain so `eq` above still counts only the
+    // conversation_embeddings filters.
+    const owned: Record<string, unknown> = {};
+    owned.select = () => owned;
+    owned.eq = () => owned;
+    owned.maybeSingle = () =>
+      Promise.resolve({ data: { id: "prov-1" }, error: null });
+    from = jest.fn((table: string) =>
+      table === "providers" ? owned : { select },
+    );
     rpc = jest.fn();
     return { from, rpc };
   }
@@ -153,6 +163,13 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
           },
           order: () => api,
           limit: () => api,
+          maybeSingle() {
+            return new Promise((resolve) =>
+              api.then(({ data }: { data: Row[] }) =>
+                resolve({ data: data[0] ?? null, error: null }),
+              ),
+            );
+          },
           then(resolve: any) {
             let rows = tables[table] || [];
             rows = rows.filter((r) => eqFilters.every(([c, v]) => r[c] === v));
@@ -167,7 +184,8 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
                 group.split(",").some((clause) => {
                   const [col, op, val] = clause.split(".");
                   const actual = r[col] ?? null;
-                  if (op === "is") return actual === (val === "null" ? null : val);
+                  if (op === "is")
+                    return actual === (val === "null" ? null : val);
                   if (op === "eq") return actual === val;
                   return false;
                 }),
@@ -197,6 +215,9 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
   describe("getSentimentTrend", () => {
     it("returns only the caller house's sentiment rows for a provider shared across houses", async () => {
       const service = await makeScopedService({
+        // The provider is house r1's (the ownership read, ADR 0147); the r2
+        // row below is a cross-stamped row the house clause must drop.
+        providers: [{ id: "prov-shared", restaurant_id: "r1" }],
         provider_sentiment_history: [
           {
             provider_id: "prov-shared",
@@ -223,6 +244,9 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
 
     it("returns no data points for a foreign house, not another house's trend", async () => {
       const service = await makeScopedService({
+        // The provider is house r1's (the ownership read, ADR 0147); the r2
+        // row below is a cross-stamped row the house clause must drop.
+        providers: [{ id: "prov-shared", restaurant_id: "r1" }],
         provider_sentiment_history: [
           {
             provider_id: "prov-shared",
