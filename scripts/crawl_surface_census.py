@@ -24,8 +24,9 @@ WHAT IT CHECKS (each line of output is one check)
   token-route each link that carries a secret (/reset-password, /verify-email,
               /invite/*, /studio/invite/*), with and without a trailing slash,
               answers 200 with noindex and nofollow (exactly those two on
-              mudavym.com) and exactly Referrer-Policy: no-referrer. It probes
-              the base host only, not --duplicate-host (ADR 0158, Known limits)
+              mudavym.com) and exactly Referrer-Policy: no-referrer
+  dup-token   (--duplicate-host) the same token paths on the second Vercel
+              project, which #418 gave its own token rule (superset robots)
   vendor      the first published catalogue (if any) serves its title, one
               parseable JSON-LD block and a listing row; a bad slug is 404
   old-host    (--old-host) pages 308 to mudavym.com keeping path and query,
@@ -349,7 +350,7 @@ def check_old_host(c: Census, old: str) -> None:
     c.check("old-host", r.status != 308, f"/api/v1/health/live: {r.status} (must not redirect)")
 
 
-def check_token_routes(c: Census, exact_robots: bool = False) -> None:
+def check_token_routes(c: Census, exact_robots: bool = False, host: str | None = None) -> None:
     """A link that carries a secret is not indexed and does not leak in a Referer.
 
     The static guard in apps/web/src/lib/seo/crawl-surface.test.ts reads vercel.json, not what
@@ -357,15 +358,17 @@ def check_token_routes(c: Census, exact_robots: bool = False) -> None:
     Referrer-Policy must be exactly no-referrer. X-Robots-Tag must carry noindex and nofollow,
     and with exact_robots (used on mudavym.com, where one rule applies) nothing else: a live
     "noindex, nofollow, all" passes on any other host, where a second rule adds its own noindex.
+    With host, the paths are fetched from that origin instead of c.base and reported as
+    dup-token: the second Vercel project (repo-root vercel.json) has its own token rule.
     """
     for path in TOKEN_SAMPLES:
-        r = fetch(c.url(path))
+        r = fetch(c.url(path) if host is None else host.rstrip("/") + path)
         robots = r.headers.get("x-robots-tag", "")
         directives = {d.strip().lower() for d in robots.split(",") if d.strip()}
         policies = {p.strip().lower() for p in r.headers.get("referrer-policy", "").split(",") if p.strip()}
         robots_ok = directives == TOKEN_ROBOTS if exact_robots else TOKEN_ROBOTS <= directives
         ok = r.status == 200 and robots_ok and policies == {"no-referrer"}
-        c.check("token-route", ok,
+        c.check("token-route" if host is None else "dup-token", ok,
                 f"{path}: {r.status} x-robots-tag={robots!r} "
                 f"referrer-policy={r.headers.get('referrer-policy', '')!r}")
 
@@ -484,6 +487,7 @@ def main() -> int:
             check_old_host(c, args.old_host)
         if args.duplicate_host:
             check_duplicate(c, args.duplicate_host)
+            check_token_routes(c, host=args.duplicate_host)
     except CannotReach as err:
         print(f"CANNOT CHECK: lost the deployment mid-census: {err}", file=sys.stderr)
         return 2

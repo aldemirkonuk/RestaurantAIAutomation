@@ -57,7 +57,7 @@
       ]
     },
     {
-      "source": "/(reset-password|verify-email|invite/.*|studio/invite/.*)",
+      "source": "/(reset-password|reset-password/.*|verify-email|verify-email/.*|invite/.*|studio/invite/.*)",
       "headers": [
         {
           "key": "X-Robots-Tag",
