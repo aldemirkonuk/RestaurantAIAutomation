@@ -106,3 +106,96 @@ describe("WinesService.mapWine — beverage_kind on the wire", () => {
     expect(out.price).toBe(0);
   });
 });
+
+/**
+ * ADR 0160 sec110 Owed #4/#11 — "the wine's own detail". `wine_structure`,
+ * `primary_aromas`, `serving_temp_celsius`, `glass_type`,
+ * `decanting_recommended` and `aging_potential_years` arrive on every
+ * `select("*")` (verified live 2026-09-19, prod exzueerziesmczwlhomd) and
+ * were dropped the same way `beverage_kind` was before the fix above — same
+ * class of defect, same fix shape.
+ */
+describe("WinesService.mapWine — the wine's own detail on the wire", () => {
+  let service: WinesService;
+  const map = (row: Record<string, unknown>) => (service as any).mapWine(row);
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        WinesService,
+        { provide: DatabaseService, useValue: { supabase: {} } },
+      ],
+    }).compile();
+    service = moduleRef.get(WinesService);
+  });
+
+  it("carries body/acidity/tannins/sweetness off wine_structure, and the four handling fields, from a select('*') row", () => {
+    const out = map({
+      id: "w1",
+      name: "Château Lassègue",
+      producer: "Château Lassègue",
+      vintage: 2018,
+      price_reference: 55,
+      primary_type: "red",
+      grape_variety: "Merlot",
+      country: "France",
+      region: "Saint-Émilion",
+      appellation: null,
+      wine_structure: { body: "medium-full", acidity: "medium-high", tannins: "medium-high", sweetness: "dry" },
+      primary_aromas: ["dark cherry", "plum", "blackcurrant"],
+      serving_temp_celsius: 18,
+      glass_type: "Bordeaux",
+      decanting_recommended: true,
+      aging_potential_years: 20,
+    });
+    expect(out.structure).toEqual({
+      body: "medium-full",
+      acidity: "medium-high",
+      tannins: "medium-high",
+      sweetness: "dry",
+      primaryAromas: ["dark cherry", "plum", "blackcurrant"],
+      servingTempCelsius: 18,
+      glassType: "Bordeaux",
+      decantingRecommended: true,
+      agingPotentialYears: 20,
+    });
+  });
+
+  it("leaves the field undefined when the query never selected any of these columns — never an empty structure", () => {
+    const out = map({
+      id: "w2",
+      name: "Chablis",
+      producer: "Dauvissat",
+      vintage: 2020,
+      price_reference: 90,
+      primary_type: "white",
+      grape_variety: "Chardonnay",
+      country: "France",
+      region: "Burgundy",
+      appellation: "Chablis",
+    });
+    expect(out.structure).toBeUndefined();
+    expect("structure" in out).toBe(false);
+  });
+
+  it("carries a partial read (decanting_recommended: false) rather than folding it into 'unselected'", () => {
+    // `false` and `undefined` must never collapse to the same branch — a
+    // row that recorded "no decanting" is a real, present answer.
+    const out = map({
+      id: "w3",
+      name: "Cortese",
+      producer: "Someone",
+      vintage: null,
+      price_reference: null,
+      primary_type: "white",
+      grape_variety: "Cortese",
+      country: "Italy",
+      region: null,
+      appellation: null,
+      decanting_recommended: false,
+    });
+    expect(out.structure).toBeDefined();
+    expect(out.structure.decantingRecommended).toBe(false);
+    expect(out.structure.body).toBeUndefined();
+  });
+});

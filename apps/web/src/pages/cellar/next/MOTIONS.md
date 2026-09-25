@@ -164,3 +164,44 @@ on arrival and lets the read reconcile behind a row that is already correct.
   persists. The figure changed; the reader has been told; the page goes quiet
   again — which is the same rule `/notifications` follows when an item is
   handled.
+
+## Fifth pass, 2026-09-19 — sketch 121: the record moves beside the index
+
+**One motion retired from this page, zero added.** The founder's own answer
+(19-lane blocking round): *"the register buttons open full-page lists, and a
+bottle opens beside the list"* — WineRegister.tsx's own record no longer opens
+in the reading stand above the full table.
+
+| id | token | curve · ms | fires |
+|---|---|---|---|
+| ~~`cl-stand-settle` on WineRegister~~ | ~~`settle`~~ | — | **Retired for this page only.** `WineRegister.tsx` no longer renders `.cl-stand`; opening a bottle now swaps the full table/shelf for `.cl-split` (a narrowed index beside the leaf), an instant layout change with no transition — see the non-motion below. `CatalogueRegister` and `CocktailRegister` are untouched and still fire `cl-stand-settle` exactly as the third pass documented. |
+| `cl-leaf-turn` | `turn` | `cubic-bezier(.32,.72,0,1)` · 420ms | unchanged. Still fires on the leaf's own contents — `.cl-split-leaf` now, not a child of `.cl-stand` — when a different bottle is chosen while one is already open. |
+
+### New deliberate non-motion
+
+- **The split itself does not animate open or closed.** Choosing a bottle from
+  the full table/shelf swaps straight to `.cl-split`; closing it swaps straight
+  back. This is the same rule already given to a register appearing or
+  disappearing ("a structural fact, not a transition") — the read has changed,
+  not a state that is still settling. `cl-leaf-turn` is what tells the reader
+  the record itself changed; a second, competing motion on the frame around it
+  would be exactly the "so much crowded" verdict this whole page answers to.
+
+### Keyboard and focus, stated (no token — not a motion)
+
+Opening a bottle (Enter/Space on a table row, or a click) moves focus into the
+leaf; the leaf is `tabIndex={-1}` with its own `aria-label`, a landing target,
+not a new tab-stop. Esc, or the leaf's own Close button, closes it and returns
+focus to whichever control opened it (table row, shelf card, or the narrowed
+index row sharing its id) — never on a bottle-to-bottle switch while it stays
+open, which would wrench focus every click and is exactly what `cl-leaf-turn`
+already signals instead. Tests: `WineRegister.test.tsx`.
+
+### Container queries, not a new breakpoint system
+
+`.cl-split` is `container-type: inline-size`; the two thresholds (620px,
+900px) narrow the index column and its second line as the SPLIT's own box
+grows, independent of the viewport. This page has one route and one width
+today, but the rule is about what the component answers to, not what exists
+yet to ask it — the same reasoning `cl-table`'s `overflow-x: auto` already
+applies per-element rather than per-viewport.

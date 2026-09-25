@@ -4,6 +4,7 @@
 
 import {
   EMAIL_CONFIG,
+  frontendUrl,
   getSeverityColor,
   getSeverityLabel,
 } from "./template-config";
@@ -121,8 +122,12 @@ export function lowStockAlertTemplate(data: LowStockAlertData): string {
     preheader: `Only ${data.currentStock} bottles remaining - ${data.wineName}`,
     content,
     ctaButton: {
+      // Same shape `low-stock-digest.template.ts` already gets right for its
+      // caller-supplied `inventoryUrl` -- no wine id on this data shape, so
+      // the name is the query key, matching notification_agent.py's own
+      // `_get_reorder_url`.
       text: "View Inventory",
-      url: "#", // Replace with actual URL
+      url: `${frontendUrl()}/inventory?wine=${encodeURIComponent(data.wineName)}`,
       color: colors.primary,
     },
   });

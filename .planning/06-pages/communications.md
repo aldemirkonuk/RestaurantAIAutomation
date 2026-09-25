@@ -834,7 +834,7 @@ than trusting the grant captured at queue time, and sends through the same
 still-`HOUSE_QUEUED` row back before its window closes; a row already claimed,
 sent, failed or another house's is refused (409/404), never silently
 no-opped. New table `relay_email_queue`
-(`20260921110000_a_persons_mail_queues_like_the_houses_own.sql`) — a
+(`20260925160000_a_persons_mail_queues_like_the_houses_own.sql`) — a
 door-agnostic sibling of this page's own `HOUSE_QUEUED` rows on
 `procurement_conversations`, not the same table, because that table's
 `provider_id` is `NOT NULL` and the person door also reaches this house's own

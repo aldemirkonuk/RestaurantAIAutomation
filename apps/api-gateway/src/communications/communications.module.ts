@@ -144,6 +144,11 @@ import { OrganizationsService } from "../organizations/organizations.service";
     GmailWatchService,
     RecipientResolverService,
     ScheduledTenantsService,
+    // NotificationsModule's MailGrantAbsentProducer reads the same
+    // `statusFor` this module's own `GET /communications/letters/sender`
+    // uses, so the standing alert and the page's own reading of "is the
+    // house's mail grant live" can never disagree (help.md §111).
+    HouseInboxService,
   ],
 })
 export class CommunicationsModule {}

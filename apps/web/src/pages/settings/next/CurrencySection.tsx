@@ -43,6 +43,7 @@ import {
 } from '@/lib/currency';
 import { Action, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
 import { EM, MONO, SANS } from './st-format';
+import { currencyCert } from './certaintyTally';
 import type { HouseCurrencyRegister, SettingsNextData } from './useSettingsNextData';
 
 /**
@@ -113,11 +114,13 @@ function CurrencyBody({
       </Note>
 
       <Row
-        label="Currency"
+        label="What money does it count in?"
+        cert={currencyCert(reg)}
         consequence={
           reg.code ? (
             <>
-              Every total on this house’s screens is stated in <strong>{currencyLabel(reg.code)}</strong>.
+              Every total on this house’s screens is stated in <strong>{currencyLabel(reg.code)}</strong>. Nothing is
+              ever converted.
             </>
           ) : (
             <>
@@ -131,6 +134,7 @@ function CurrencyBody({
           when: reg.statedAt,
           whenUnknown: NO_DATE,
           verb: 'stated',
+          readBy: <>every money figure the product prints — <code style={{ fontFamily: MONO }}>fmtMoney</code>, <code style={{ fontFamily: MONO }}>formatCurrency</code></>,
         }}
         control={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -164,16 +168,16 @@ function CurrencyBody({
           </span>
         }
       >
-        <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+        <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
           {statement}
         </p>
         {reg.statedBy?.name && (
-          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '3px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '3px 0 0' }}>
             stated by · {reg.statedBy.name}
           </p>
         )}
         {!canManage && (
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
             Only managers and owners can state the currency this restaurant reports in. The choice is left legible so
             you can read the rule you may not change, and the gateway refuses it independently of this page.
           </p>
@@ -191,7 +195,7 @@ function CurrencyBody({
         what="Nothing was recorded; the code on the row is unchanged."
       />
 
-      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '14px 0 0' }}>
+      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '14px 0 0' }}>
         A house being created is asked this on the sign-up form, where the answer is defaulted from its address and
         confirmed by a person. This register is the same question for a house that already exists — the eleven that
         hold no currency today were never asked, because nothing ever asked: the column answered for them.

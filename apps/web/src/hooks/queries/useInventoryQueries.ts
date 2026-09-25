@@ -132,6 +132,12 @@ export function useUpdateInventoryItem() {
           thresholdMax: data.thresholdMax,
           toastItemGuid: data.toastItemGuid,
           isActive: data.isActive,
+          // ADR 0193: the house's own prices travel too. This hook used to
+          // hand-pick the fields above and drop everything else, so a price
+          // edit sent through it vanished before the request went out.
+          // `undefined` is omitted by JSON; `null` (clear) is sent.
+          menuPriceBottle: (data as { menuPriceBottle?: number | null }).menuPriceBottle,
+          menuPriceGlass: (data as { menuPriceGlass?: number | null }).menuPriceGlass,
         },
         activeRestaurantId,
       )

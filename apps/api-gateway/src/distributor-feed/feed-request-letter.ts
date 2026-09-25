@@ -42,7 +42,7 @@ export const FEED_REQUEST_LETTER = Object.freeze({
   firstAsk:
     "Southern Glazer's Wine & Spirits of Illinois — the one of the three Illinois distributors with a documented EDI programme (850, 856, 810 and 997 on two independent trading-partner pages, read 2026-09-05).",
   neverSent:
-    "This product has no route that sends this letter, no address field and no schedule. It is a document to print, complete and sign. The letter's own sentence — that no software of ours has ever accessed your systems — is true today and stops being true the moment anybody builds a mirror, so it goes before any build and not after.",
+    "This product cannot send this letter: no address and no schedule. It is a document to print, complete and sign. The letter's own sentence — that no software of ours has ever accessed your systems — is true today and stops being true the moment anybody builds a mirror, so it goes before any build and not after.",
   /** Every bracket a person must complete before this is worth sending. */
   brackets: Object.freeze([
     "[Sales Consultant name]",

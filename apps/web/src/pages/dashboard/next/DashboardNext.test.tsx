@@ -41,14 +41,20 @@ vi.mock('@/services/api/client', () => ({
   getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
 }));
 
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: { userId: 'user-1', name: 'Ada Konuk', email: 'ada@sim.test', role: 'owner' },
-    activeRestaurantId: 'rest-A',
-    activeRole: 'owner',
-    isAuthenticated: true,
-  }),
-}));
+vi.mock('@/contexts/AuthContext', async () => {
+  const React = await import('react');
+  return {
+    // The day line (sketch 119 E, a page element on this page) reads the
+    // context itself; with none, its shell gate resolves off — the default.
+    AuthContext: React.createContext(null),
+    useAuth: () => ({
+      user: { userId: 'user-1', name: 'Ada Konuk', email: 'ada@sim.test', role: 'owner' },
+      activeRestaurantId: 'rest-A',
+      activeRole: 'owner',
+      isAuthenticated: true,
+    }),
+  };
+});
 
 import DashboardNext from './DashboardNext';
 

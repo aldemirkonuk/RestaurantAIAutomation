@@ -812,10 +812,28 @@ class EmailComposerService:
 </html>"""
 
     def _build_manager_review_html(self, tags: Dict[str, Any]) -> str:
-        """Build manager review email HTML with action buttons."""
-        base_url = "https://app.wineops.ai"
+        """Build manager review email HTML with one honest CTA."""
+        # Was hardcoded to `https://app.wineops.ai`, which does not resolve at
+        # all -- this template IS live (the only caller
+        # of `compose_manager_review_email`, `provider_conversation_agent.py`,
+        # is wired into the real conversation flow), so every "Approve & Send"
+        # / "Edit" / "Reject" / "Ask for More" button below was dead the
+        # moment it reached an inbox.
+        #
+        # Fixing the domain was not enough: even pointed at
+        # a real, resolving origin, those four buttons all deep-linked to
+        # `/orders/{oid}?action=...&cid=...`, and nothing in apps/web reads
+        # `action` or `cid` (OrdersNext.tsx reads only `order`/`station`) --
+        # four distinct promises resolved to one identical, unfiltered order
+        # view. Nor can they: "Edit Message" and "Ask for More" were never
+        # rebuilt on ResponsesSheet.tsx's own account (its header comment)
+        # -- Edit ran `openCreateOrderFlow()` on an empty form, and Ask for
+        # More `alert()`ed a fabricated follow-up -- and Approve/Reject both
+        # require the in-app hold-to-approve gesture, which an email tap
+        # cannot perform. One honest link replaces all four: it opens the
+        # order, where the draft, and the real Confirm/Reject ceremony, live.
+        base_url = get_settings().frontend_url
         oid = tags.get("order_id", "")
-        cid = tags.get("conversation_id", "")
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -839,17 +857,8 @@ AI DRAFT — {tags.get('urgency','normal').upper()} PRIORITY
 </div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:25px 0;">
 <tr>
-<td width="25%" style="padding:5px;text-align:center;">
-<a href="{base_url}/orders/{oid}?action=approve_send&cid={cid}" style="display:block;padding:12px 8px;background:#10b981;color:#fff;text-decoration:none;font-weight:600;border-radius:6px;font-size:13px;">Approve &amp; Send</a>
-</td>
-<td width="25%" style="padding:5px;text-align:center;">
-<a href="{base_url}/orders/{oid}?action=edit&cid={cid}" style="display:block;padding:12px 8px;background:#3b82f6;color:#fff;text-decoration:none;font-weight:600;border-radius:6px;font-size:13px;">Edit Message</a>
-</td>
-<td width="25%" style="padding:5px;text-align:center;">
-<a href="{base_url}/orders/{oid}?action=reject&cid={cid}" style="display:block;padding:12px 8px;background:#dc2626;color:#fff;text-decoration:none;font-weight:600;border-radius:6px;font-size:13px;">Reject</a>
-</td>
-<td width="25%" style="padding:5px;text-align:center;">
-<a href="{base_url}/orders/{oid}?action=ask_more&cid={cid}" style="display:block;padding:12px 8px;background:#4b5563;color:#fff;text-decoration:none;font-weight:600;border-radius:6px;font-size:13px;">Ask for More</a>
+<td style="padding:5px;text-align:center;">
+<a href="{base_url}/orders/{oid}" style="display:block;padding:12px 8px;background:#7c2d12;color:#fff;text-decoration:none;font-weight:600;border-radius:6px;font-size:13px;">Open the Draft to Respond</a>
 </td>
 </tr>
 </table>

@@ -100,7 +100,8 @@ const letter: FeedLetterVM = {
   subject: 'Request to enable an electronic invoice feed for our account',
   signedBy: 'The house signs this, on the house’s own letterhead.',
   firstAsk: "Southern Glazer's Wine & Spirits of Illinois — a documented EDI programme.",
-  neverSent: 'This product has no route that sends this letter.',
+  neverSent:
+    'This product cannot send this letter: no address and no schedule.',
   brackets: ['[Sales Consultant name]', '[account number]'],
   body: 'Re: Request to enable an electronic invoice feed for our account',
 };
@@ -238,8 +239,9 @@ describe('the two ways in', () => {
     render(<DistributorFeedPanel distributors={reg(catalogue)} letter={reg(letter)} />);
     expect(screen.getByText(/This product never sends it/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/no route that sends this letter/i),
+      screen.getByText(/cannot send this letter: no address and no schedule/i),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/\broute\b/i)).not.toBeInTheDocument();
   });
 
   it('cannot offer the download when the letter could not be read, and names the failure', () => {

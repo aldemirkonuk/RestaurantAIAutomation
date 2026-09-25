@@ -6319,13 +6319,15 @@ export class ProcurementService {
       if (!claimed) continue;
 
       try {
-        const { data: order } = await this.databaseService.supabase
+        const { data: order, error: orderError } = await this.databaseService.supabase
           .from("procurement_orders")
           .select(
             "id, status, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
           )
           .eq("id", row.order_id)
+          .eq("restaurant_id", row.restaurant_id)
           .single();
+        if (orderError || !order) throw new Error("The scheduled reply's owned order could not be checked.");
         const providerEmail = (order as any)?.providers?.contact_email ?? null;
         const wineName =
           (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
@@ -7539,7 +7541,7 @@ export class ProcurementService {
       // founder 2026-09-21). Null for every other status — the column is
       // scoped to that status by
       // procurement_conversations_relay_refusal_reason_scoped (migration
-      // 20260921113000).
+      // 20260925160100).
       relayRefusalReason: row.relay_refusal_reason ?? null,
       orderNumber: row.procurement_orders?.order_number ?? null,
       quantity: row.procurement_orders?.quantity ?? null,

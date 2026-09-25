@@ -1,7 +1,7 @@
 ---
 type: reference
 title: Live Checklist
-updated: 2026-09-17
+updated: 2026-09-22
 ---
 
 # Live Checklist — every route in App.tsx, ticked against reality
@@ -32,7 +32,8 @@ updated: 2026-09-17
 > tick means every house sees it with no flag row; sixteen rows read **"live on
 > merge of this PR"** because that is what this record ships, and the parent
 > session ticks them for real after the merge is confirmed deployed (§9 needs a
-> deploy proof, not a claim). *legacy deleted?* is always "No" or "N/A" in this
+> deploy proof, not a claim) [2026-09-22: all sixteen ticked against the live build,
+> see "Deploy proof, 2026-09-22"]. *legacy deleted?* is always "No" or "N/A" in this
 > revision — ADR 0149 deletes nothing before the founder approves a manifest,
 > file group by file group.
 >
@@ -61,26 +62,26 @@ updated: 2026-09-17
 > session should either measure the query under real fan-out or treat this as
 > the standing, accepted cost of the go-live.
 
-## The 16, going live on this PR
+## The 16, live since 2026-09-22 (#421 merged 2026-09-21, deployed 2026-09-22)
 
 | Route | Page | Design | Design locked? | Built on main? | Live for every house? | Deployed proof | Legacy deleted? | Notes |
 |---|---|---|---|---|---|---|---|---|
-| `/` | dashboard | Mudavym | Yes — ADR 0149 row 36 | Yes (`DashboardNext.tsx`) | **live on merge of this PR** | pending — parent session verifies post-deploy | No | `PageGate page="dashboard"`, `App.tsx:304` |
-| `/inventory` | inventory | Mudavym | Yes — ADR 0149 row 36 | Yes (`InventoryCommandPage.tsx`, same component both branches) | **live on merge of this PR** | pending | No | Gate exists only to mount `HouseHeader`; legacy and next are the same component (`App.tsx:312`) |
-| `/orders` | orders | Mudavym | Yes — ADR 0149 row 36 | Yes (`OrdersNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:319` |
-| `/receiving/:orderId/door` | receiving_door | Mudavym | Yes — ADR 0149 row 36 | Yes (`DoorNext.tsx`) | **live on merge of this PR** | pending | No | Outside `DashboardLayout` on purpose (loading-dock, one-handed); `NO_CHROME` — no header even when live. `App.tsx:235-242` |
-| `/providers` | providers | Mudavym | Yes — ADR 0149 row 36 | Yes (`ProvidersNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:337` |
-| `/communications` | communications | Mudavym | Yes — ADR 0149 row 36 | Yes (`CommunicationsNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:368`; only page allowed a conversation list (ADR 0149 row 25) |
-| `/team` | team | Mudavym | Yes — ADR 0149 row 36 | Yes (`TeamNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:362` |
-| `/reports` | reports | Mudavym | Yes — ADR 0149 row 36 | Yes (`ReportsNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:334`; OD-81 export (CSV + print page) is a separate open item, not blocking this go-live |
-| `/calendar` | calendar | Mudavym | Yes — ADR 0149 row 36 | Yes (`CalendarNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:363` |
-| `/documents-reports` | documents_reports | Mudavym | Yes — ADR 0149 row 36 | Yes (`DocumentsReportsNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:369` |
-| `/receipts` | receipts | Mudavym | Yes — ADR 0149 row 36 | Yes (`ReceiptsNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:370`; `?tab=credits` still lazy-loads legacy `ReceiptsPage` internally (ADR 0149 context, item 22) — unaffected by this gate change |
-| `/documents/:id` | document | Mudavym | Yes — ADR 0149 row 36 | Yes (`CanonicalDocumentPage.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:378-387`; ADR 0104 D12 slice 2 |
-| `/logs` | logs | Mudavym | Yes — ADR 0149 row 36 | Yes (`LogsNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:388`; the only page already carrying a `check_windowed_figures.py` guard (CLAIMS `ADR-0086`) |
-| `/notifications` | notifications | Mudavym | Yes — ADR 0149 row 36 | Yes (`NotificationsNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:389` |
-| `/profile` | profile | Mudavym | Yes — ADR 0149 row 36 | Yes (`ProfileNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:391`. **Consequence of `connections` going live in the same merge:** Registers IV/V/VI (including the card-adding path, `StripeCardPanel.tsx`) leave `/profile` and move to `/connections` (`ProfileNext.tsx:344`; live-review.md minor 5) |
-| `/connections` | connections | Mudavym | Yes — ADR 0149 row 36 | Yes (`ConnectionsNext.tsx`) | **live on merge of this PR** | pending | No | `App.tsx:398`; a NEW surface (ADR 0114), not a redesign — legacy branch is a redirect to `/profile`, not a second design. **Consequence:** the sidebar now shows this entry to every role (`Sidebar.tsx:765`), but the route itself refuses anyone who is not a manager or owner (`ConnectionsNext.tsx:274-288`) — a member who taps it lands on a refusal page (live-review.md minor 5) |
+| `/` | dashboard | Mudavym | Yes — ADR 0149 row 36 | Yes (`DashboardNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `PageGate page="dashboard"`, `App.tsx:304` |
+| `/inventory` | inventory | Mudavym | Yes — ADR 0149 row 36 | Yes (`InventoryCommandPage.tsx`, same component both branches) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | Gate exists only to mount `HouseHeader`; legacy and next are the same component (`App.tsx:312`) |
+| `/orders` | orders | Mudavym | Yes — ADR 0149 row 36 | Yes (`OrdersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:319` |
+| `/receiving/:orderId/door` | receiving_door | Mudavym | Yes — ADR 0149 row 36 | Yes (`DoorNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | Outside `DashboardLayout` on purpose (loading-dock, one-handed); `NO_CHROME` — no header even when live. `App.tsx:235-242` |
+| `/providers` | providers | Mudavym | Yes — ADR 0149 row 36 | Yes (`ProvidersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:337` |
+| `/communications` | communications | Mudavym | Yes — ADR 0149 row 36 | Yes (`CommunicationsNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:368`; only page allowed a conversation list (ADR 0149 row 25) |
+| `/team` | team | Mudavym | Yes — ADR 0149 row 36 | Yes (`TeamNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:362` |
+| `/reports` | reports | Mudavym | Yes — ADR 0149 row 36 | Yes (`ReportsNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:334`; OD-81 export (CSV + print page) is a separate open item, not blocking this go-live |
+| `/calendar` | calendar | Mudavym | Yes — ADR 0149 row 36 | Yes (`CalendarNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:363` |
+| `/documents-reports` | documents_reports | Mudavym | Yes — ADR 0149 row 36 | Yes (`DocumentsReportsNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:369` |
+| `/receipts` | receipts | Mudavym | Yes — ADR 0149 row 36 | Yes (`ReceiptsNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:370`; `?tab=credits` still lazy-loads legacy `ReceiptsPage` internally (ADR 0149 context, item 22) — unaffected by this gate change |
+| `/documents/:id` | document | Mudavym | Yes — ADR 0149 row 36 | Yes (`CanonicalDocumentPage.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:378-387`; ADR 0104 D12 slice 2 |
+| `/logs` | logs | Mudavym | Yes — ADR 0149 row 36 | Yes (`LogsNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:388`; the only page already carrying a `check_windowed_figures.py` guard (CLAIMS `ADR-0086`) |
+| `/notifications` | notifications | Mudavym | Yes — ADR 0149 row 36 | Yes (`NotificationsNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:389` |
+| `/profile` | profile | Mudavym | Yes — ADR 0149 row 36 | Yes (`ProfileNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:391`. **Consequence of `connections` going live in the same merge:** Registers IV/V/VI (including the card-adding path, `StripeCardPanel.tsx`) leave `/profile` and move to `/connections` (`ProfileNext.tsx:344`; live-review.md minor 5) |
+| `/connections` | connections | Mudavym | Yes — ADR 0149 row 36 | Yes (`ConnectionsNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:398`; a NEW surface (ADR 0114), not a redesign — legacy branch is a redirect to `/profile`, not a second design. **Consequence:** the sidebar now shows this entry to every role (`Sidebar.tsx:765`), but the route itself refuses anyone who is not a manager or owner (`ConnectionsNext.tsx:274-288`) — a member who taps it lands on a refusal page (live-review.md minor 5) |
 
 ## Isolated-mount sweep — wave 5 (2026-09-18), the row-36 soak question
 
@@ -249,6 +250,42 @@ left running are stopped.
 ## Total
 
 61 routes = 16 live-on-merge + 11 held-back (4 page keys: `receiving`, `cellar` ×8, `recommendations`, `settings`) + 2 improved-in-place + 15 legacy + 11 internal tools + 6 redirects. Matches the route count ADR 0149 measured at `60ed83a7`.
+
+## Deploy proof, 2026-09-22
+
+Ticked by session effa5204 after it confirmed production is running a commit that contains
+#421 (`34c33a76a`, the commit that added `LIVE_PAGES`), per this file's own instructions below.
+The proof is not a liveness 200.
+
+- **Which build is live:** GitHub's `Production – restaurant-ai-automation-web` deployment for
+  `9cfc4e96d` (#424, then main's tip, a descendant of `34c33a76a`) was created at
+  2026-09-22T03:41:32Z UTC. At the time of this check, mudavym.com served
+  `assets/index-D5K27GuW.js`, replacing `index-d9AwRgRS.js`, #418's build. #428 (`f80754129`)
+  deployed at 2026-09-22T04:02:06Z UTC, and the same bundle was still being served afterwards.
+- **The grep:** the served `index-D5K27GuW.js` (2,137,835 bytes) contains the `LIVE_PAGES` key
+  list as one contiguous literal. Only #421 added it: `"dashboard","orders","receiving_door",
+  "providers","communications","team","inventory","receipts","documents_reports","document",
+  "reports","calendar","profile","connections","notifications","logs"`.
+- **Why it was late:** #421 merged 2026-09-21 UTC but never deployed. Vercel's status on
+  `34c33a76a` reads "Deployment rate limited — retry in 24 hours.", because the team was then on
+  the free plan. Production stayed on #418 until the deployment of main created at 03:41:32Z UTC.
+  That came after the founder upgraded the team to Pro, by his own report on 2026-09-22; we did
+  not see the billing change ourselves. The hosting decision is a draft ADR, not yet filed.
+- **Route smoke check (curl, 2026-09-22 UTC):** HTTP 200 on the sixteen routes' paths
+  (`/`, `/inventory`, `/orders`, `/receiving/<id>/door`, `/providers`, `/communications`,
+  `/team`, `/reports`, `/calendar`, `/documents-reports`, `/receipts`, `/documents/<id>`,
+  `/logs`, `/notifications`, `/profile`, `/connections`) and on `/login`; a real 404 on an
+  unknown path. A 200 proves only that the host serves the app for that path, not what the page
+  renders. `/login` renders "Sign in · Mudavym" in a browser.
+- **Not verified here:** what a signed-in house sees on each page. This session does not sign
+  in, and entering credentials is not an agent's job. The `HouseHeader.test.tsx:407` spec is the
+  in-code proof that a `LIVE_PAGES` page needs no flag row.
+- **Owed:** ADR 0149 row 51's production walk against all sixteen pages ("Ship, then sweep
+  production immediately"). The last Production E2E run before this deploy, 2026-09-21T07:31:26Z
+  UTC on `79dfea023`, predates the deploy and failed. A run against `f80754129` was dispatched
+  at 2026-09-22T04:20:07Z UTC (run 35686487962); its result is recorded where it lands, not here.
+- "Legacy deleted?" stays `No` (ADR 0149: nothing is deleted before the founder approves the
+  manifest, file group by file group).
 
 ## What "live for every house" ticks after this PR merges
 

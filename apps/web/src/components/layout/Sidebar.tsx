@@ -28,6 +28,7 @@ import {
   ScrollText,
   PackageCheck,
   Plug,
+  ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { cn } from '../../lib/utils'
@@ -397,7 +398,9 @@ export function Sidebar() {
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
   const [navTooltip, setNavTooltip] = useState<NavTooltipState | null>(null)
   const [showChecklist, setShowChecklist] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const checklistButtonRef = useRef<HTMLButtonElement>(null)
+  const accountRef = useRef<HTMLDivElement>(null)
   const location = useLocation()
   const { user, logout } = useAuth()
   // One flag read for the one gated entry (ADR 0114). The hook caches per
@@ -415,6 +418,15 @@ export function Sidebar() {
     return () => mq.removeEventListener('change', apply)
   }, [])
   const effectiveCollapsed = isMobile ? false : collapsed
+
+  useEffect(() => {
+    if (!accountOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!accountRef.current?.contains(e.target as Node)) setAccountOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [accountOpen])
 
   // Short delay so tooltips don't strobe while the cursor travels down the rail.
   // Keyboard focus skips the delay — it's a deliberate landing, not a fly-over.
@@ -546,7 +558,7 @@ export function Sidebar() {
                 <h1 className="leading-none whitespace-nowrap">
                   <BrandMark size={24} alt="Mudavym" />
                 </h1>
-                <p className="text-xs text-gray-500 mt-1">Inventory Intelligence</p>
+                <p className="text-[10px] text-gray-500 mt-0.5 tracking-wide">for restaurants</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -756,57 +768,84 @@ export function Sidebar() {
             </AnimatePresence>
           </div>
         )}
-        {/* `minRole` filters here, and the `/connections` entry is additionally
-            hidden while its page flag is off — the route redirects to /profile
-            in that state, so a visible link would lead somewhere else. Both
-            conditions are cosmetic: the gateway refuses the reads regardless. */}
-        {bottomNavItems
-          .filter((item) => {
-            if (item.href === '/connections' && !connectionsOn) return false
-            if (!item.minRole) return true
-            if (item.minRole === 'owner') return user?.role === 'owner'
-            return user?.role === 'owner' || user?.role === 'manager'
-          })
-          .map((item) => renderNavItem(item))}
-
-        {/* Logout */}
-        <button
-          onClick={logout}
-          className={cn(
-            'rounded-lg text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 flex items-center',
-            effectiveCollapsed
-              ? 'mx-auto h-10 w-10 justify-center'
-              : 'min-h-[38px] w-full gap-2.5 px-2.5 py-2',
-          )}
-        >
-          <LogOut className={cn('flex-shrink-0', effectiveCollapsed ? 'h-[18px] w-[18px]' : 'h-4 w-4')} />
-          <AnimatePresence>
-            {!effectiveCollapsed && (
-              <motion.span
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-                className="overflow-hidden whitespace-nowrap text-[13px] font-medium tracking-[-0.01em]"
-              >
-                Log Out
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </button>
       </div>
 
-      {/* User Profile */}
-      <div className={cn('border-t border-gray-100', effectiveCollapsed ? 'p-1.5' : 'p-3')}>
-        <div
+      {/* Account cluster — Profile / Settings / Connections / Help fold here
+          (founder, 2026-09-22). They used to pin below the rail forever. */}
+      <div
+        ref={accountRef}
+        className={cn('relative border-t border-gray-100', effectiveCollapsed ? 'p-1.5' : 'p-2.5')}
+      >
+        {accountOpen && (
+          <div
+            role="menu"
+            aria-label="Account"
+            className={cn(
+              'absolute z-50 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg',
+              effectiveCollapsed
+                ? 'bottom-full left-1.5 mb-1.5 w-48'
+                : 'bottom-full left-2.5 right-2.5 mb-1.5',
+            )}
+          >
+            {bottomNavItems
+              .filter((item) => {
+                if (item.href === '/connections' && !connectionsOn) return false
+                if (!item.minRole) return true
+                if (item.minRole === 'owner') return user?.role === 'owner'
+                return user?.role === 'owner' || user?.role === 'manager'
+              })
+              .map((item) => {
+                const Icon = item.icon
+                return (
+                  <NavLink
+                    key={item.href}
+                    to={item.href}
+                    role="menuitem"
+                    onClick={() => {
+                      setAccountOpen(false)
+                      closeMobileNav()
+                    }}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium',
+                        isActive ? 'bg-gray-50 text-gray-900' : 'text-gray-600 hover:bg-gray-50',
+                      )
+                    }
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    {item.name}
+                  </NavLink>
+                )
+              })}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setAccountOpen(false)
+                void logout()
+              }}
+              className="flex w-full items-center gap-2.5 border-t border-gray-100 px-3 py-2 text-left text-[13px] font-medium text-gray-600 hover:bg-red-50 hover:text-red-600"
+            >
+              <LogOut className="h-3.5 w-3.5 shrink-0" />
+              Log out
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setAccountOpen((o) => !o)}
+          aria-label="Account menu"
+          aria-expanded={accountOpen}
+          aria-haspopup="menu"
           className={cn(
-            'flex items-center rounded-xl bg-gray-50 transition-colors cursor-pointer hover:bg-gray-100',
-            effectiveCollapsed ? 'justify-center p-1.5' : 'gap-3 p-2',
+            'flex w-full items-center rounded-xl bg-gray-50 transition-colors hover:bg-gray-100',
+            effectiveCollapsed ? 'justify-center p-1.5' : 'gap-2.5 p-1.5',
           )}
         >
           <div
             className={cn(
-              'flex items-center justify-center rounded-full bg-gradient-to-br from-wine-400 to-wine-600 font-semibold text-white shadow-md',
-              effectiveCollapsed ? 'h-8 w-8 text-xs' : 'h-9 w-9 text-sm',
+              'flex items-center justify-center rounded-full bg-gradient-to-br from-wine-400 to-wine-600 font-semibold text-white',
+              'h-7 w-7 text-[11px]',
             )}
           >
             {user?.name?.charAt(0) || 'U'}
@@ -817,16 +856,22 @@ export function Sidebar() {
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
                 exit={{ opacity: 0, width: 0 }}
-                className="flex-1 overflow-hidden"
+                className="min-w-0 flex-1 overflow-hidden text-left"
               >
-                <p className="text-sm font-medium text-gray-900 truncate">
+                <p className="truncate text-[13px] font-medium text-gray-900">
                   {user?.name || 'User'}
                 </p>
-                <p className="text-xs text-gray-500 truncate capitalize">{user?.role || 'Manager'}</p>
+                <p className="truncate text-[10px] capitalize text-gray-500">{user?.role || 'Manager'}</p>
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+          {!effectiveCollapsed && (
+            <ChevronDown
+              className={cn('h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform', accountOpen && 'rotate-180')}
+              aria-hidden
+            />
+          )}
+        </button>
       </div>
 
       {/* Collapse Toggle — desktop only */}

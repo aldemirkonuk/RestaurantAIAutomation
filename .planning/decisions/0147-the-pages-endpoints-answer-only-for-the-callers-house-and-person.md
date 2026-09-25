@@ -131,7 +131,7 @@ already-signed body) and returns 202, not 200; `RelayEmailCron` ->
 identity from the row rather than trusting what was true at queue time;
 `POST /communications/email/:id/cancel` (`cancelQueued`) pulls a still-queued
 row back before then. Migration
-`20260921110000_a_persons_mail_queues_like_the_houses_own.sql`; ADR 0118 D2
+`20260925160000_a_persons_mail_queues_like_the_houses_own.sql`; ADR 0118 D2
 carries the same bracket. See `.planning/decisions/CLAIMS.jsonl`
 (`ADR-0149-MAILBOX-QUEUE`).] Every send writes `system_audit_log` rows (attempt before the
 provider call, then sent or failed; refusals too), actor `public.users.user_id` or
