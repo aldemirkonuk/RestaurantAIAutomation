@@ -47,7 +47,10 @@ import { OrganizationsService } from "../../organizations/organizations.service"
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import { GmailService } from "../gmail.service";
 import { HouseLettersService } from "../letters/house-letters.service";
-import { HouseSenderService, GMAIL_SEND_SCOPE } from "../letters/house-sender.service";
+import {
+  HouseSenderService,
+  GMAIL_SEND_SCOPE,
+} from "../letters/house-sender.service";
 import { RelayEmailController } from "./relay-email.controller";
 import {
   HOUSE_MAILBOX_NOT_CONNECTED,
@@ -93,34 +96,126 @@ type Row = Record<string, any>;
 function seed(): Record<string, Row[]> {
   return {
     users: [
-      { user_id: OWNER_A, email: "owner@house-a.example", role: "owner", restaurant_id: HOUSE_A, email_verified: true, name: "Owner A" },
-      { user_id: MANAGER_A, email: "manager@house-a.example", role: "manager", restaurant_id: HOUSE_A, email_verified: true, name: "Manager A" },
-      { user_id: STAFF_A, email: "staff@house-a.example", role: "staff", restaurant_id: HOUSE_A, email_verified: true, name: "Staff A" },
-      { user_id: OWNER_ELSEWHERE_STAFF_HERE, email: "roamer@house-b.example", role: "owner", restaurant_id: HOUSE_B, email_verified: true, name: "Roamer" },
+      {
+        user_id: OWNER_A,
+        email: "owner@house-a.example",
+        role: "owner",
+        restaurant_id: HOUSE_A,
+        email_verified: true,
+        name: "Owner A",
+      },
+      {
+        user_id: MANAGER_A,
+        email: "manager@house-a.example",
+        role: "manager",
+        restaurant_id: HOUSE_A,
+        email_verified: true,
+        name: "Manager A",
+      },
+      {
+        user_id: STAFF_A,
+        email: "staff@house-a.example",
+        role: "staff",
+        restaurant_id: HOUSE_A,
+        email_verified: true,
+        name: "Staff A",
+      },
+      {
+        user_id: OWNER_ELSEWHERE_STAFF_HERE,
+        email: "roamer@house-b.example",
+        role: "owner",
+        restaurant_id: HOUSE_B,
+        email_verified: true,
+        name: "Roamer",
+      },
     ],
     user_restaurant_access: [
-      { user_id: OWNER_A, restaurant_id: HOUSE_A, role: "owner", is_active: true },
-      { user_id: MANAGER_A, restaurant_id: HOUSE_A, role: "manager", is_active: true },
-      { user_id: STAFF_A, restaurant_id: HOUSE_A, role: "staff", is_active: true },
-      { user_id: OWNER_ELSEWHERE_STAFF_HERE, restaurant_id: HOUSE_A, role: "staff", is_active: true },
-      { user_id: OWNER_ELSEWHERE_STAFF_HERE, restaurant_id: HOUSE_B, role: "owner", is_active: true },
+      {
+        user_id: OWNER_A,
+        restaurant_id: HOUSE_A,
+        role: "owner",
+        is_active: true,
+      },
+      {
+        user_id: MANAGER_A,
+        restaurant_id: HOUSE_A,
+        role: "manager",
+        is_active: true,
+      },
+      {
+        user_id: STAFF_A,
+        restaurant_id: HOUSE_A,
+        role: "staff",
+        is_active: true,
+      },
+      {
+        user_id: OWNER_ELSEWHERE_STAFF_HERE,
+        restaurant_id: HOUSE_A,
+        role: "staff",
+        is_active: true,
+      },
+      {
+        user_id: OWNER_ELSEWHERE_STAFF_HERE,
+        restaurant_id: HOUSE_B,
+        role: "owner",
+        is_active: true,
+      },
     ],
     providers: [
-      { id: PROVIDER_A, name: "Vendor One", restaurant_id: HOUSE_A, deleted_at: null, contact_email: null, primary_contact: { name: "Ana", email: "orders@vendor-one.example" } },
-      { id: PROVIDER_B, name: "Vendor Two", restaurant_id: HOUSE_B, deleted_at: null, contact_email: "sales@vendor-two.example", primary_contact: {} },
-      { id: PROVIDER_A2, name: "Vendor Three", restaurant_id: HOUSE_A, deleted_at: null, contact_email: "hello@vendor-three.example", primary_contact: {} },
+      {
+        id: PROVIDER_A,
+        name: "Vendor One",
+        restaurant_id: HOUSE_A,
+        deleted_at: null,
+        contact_email: null,
+        primary_contact: { name: "Ana", email: "orders@vendor-one.example" },
+      },
+      {
+        id: PROVIDER_B,
+        name: "Vendor Two",
+        restaurant_id: HOUSE_B,
+        deleted_at: null,
+        contact_email: "sales@vendor-two.example",
+        primary_contact: {},
+      },
+      {
+        id: PROVIDER_A2,
+        name: "Vendor Three",
+        restaurant_id: HOUSE_A,
+        deleted_at: null,
+        contact_email: "hello@vendor-three.example",
+        primary_contact: {},
+      },
     ],
     provider_contacts: [
-      { provider_id: PROVIDER_A, name: "Billing", email: "billing@vendor-one.example" },
+      {
+        provider_id: PROVIDER_A,
+        name: "Billing",
+        email: "billing@vendor-one.example",
+      },
     ],
     procurement_conversations: [
-      { id: CONVO_A, restaurant_id: HOUSE_A, provider_id: PROVIDER_A, order_id: ORDER_A },
-      { id: CONVO_B, restaurant_id: HOUSE_B, provider_id: PROVIDER_B, order_id: ORDER_B },
+      {
+        id: CONVO_A,
+        restaurant_id: HOUSE_A,
+        provider_id: PROVIDER_A,
+        order_id: ORDER_A,
+      },
+      {
+        id: CONVO_B,
+        restaurant_id: HOUSE_B,
+        provider_id: PROVIDER_B,
+        order_id: ORDER_B,
+      },
     ],
     procurement_orders: [
       { id: ORDER_A, restaurant_id: HOUSE_A, provider_id: PROVIDER_A },
       { id: ORDER_B, restaurant_id: HOUSE_B, provider_id: PROVIDER_B },
-      { id: ORDER_A_OTHER_VENDOR, restaurant_id: HOUSE_A, provider_id: PROVIDER_A2 },
+      {
+        id: ORDER_A_OTHER_VENDOR,
+        restaurant_id: HOUSE_A,
+        provider_id: PROVIDER_A2,
+      },
     ],
     communication_templates: [],
     integration_oauth_connections: [],
@@ -139,7 +234,9 @@ function seed(): Record<string, Row[]> {
  */
 const knobs: {
   failRead: Record<string, string>;
-  failReadIf: ((table: string, columns: string | undefined) => string | null) | null;
+  failReadIf:
+    | ((table: string, columns: string | undefined) => string | null)
+    | null;
   failInsert: ((table: string, row: Row) => string | null) | null;
   failUpdate: ((table: string) => string | null) | null;
 } = { failRead: {}, failReadIf: null, failInsert: null, failUpdate: null };
@@ -155,7 +252,8 @@ function client() {
       let updateSelected = false;
       let patch: Row | null = null;
       let mutated: Row[] | null = null;
-      const rows = () => (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
+      const rows = () =>
+        (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
       const failure = () => {
         if (knobs.failRead[table]) return { message: knobs.failRead[table] };
         const message = knobs.failReadIf?.(table, selected) ?? null;
@@ -169,7 +267,10 @@ function client() {
         for (const r of mutated) Object.assign(r, patch);
         return mutated;
       };
-      const resolved = (): { data: Row[] | null; error: { message: string } | null } => {
+      const resolved = (): {
+        data: Row[] | null;
+        error: { message: string } | null;
+      } => {
         if (updating) {
           const message = knobs.failUpdate?.(table) ?? null;
           if (message) return { data: null, error: { message } };
@@ -208,7 +309,11 @@ function client() {
           return q;
         },
         lte: (col: string, v: unknown) => {
-          filters.push((r) => new Date(String(r[col])).getTime() <= new Date(String(v)).getTime());
+          filters.push(
+            (r) =>
+              new Date(String(r[col])).getTime() <=
+              new Date(String(v)).getTime(),
+          );
           return q;
         },
         update: (p: Row) => {
@@ -218,19 +323,27 @@ function client() {
         },
         maybeSingle: async () => {
           const { data, error } = resolved();
-          return error ? { data: null, error } : { data: (data ?? [])[0] ?? null, error: null };
+          return error
+            ? { data: null, error }
+            : { data: (data ?? [])[0] ?? null, error: null };
         },
         single: async () => {
           const { data, error } = resolved();
           if (error) return { data: null, error };
           const r = (data ?? [])[0];
-          return r ? { data: r, error: null } : { data: null, error: { message: "no row" } };
+          return r
+            ? { data: r, error: null }
+            : { data: null, error: { message: "no row" } };
         },
-        then: (resolve: any, reject: any) => Promise.resolve(resolved()).then(resolve, reject),
+        then: (resolve: any, reject: any) =>
+          Promise.resolve(resolved()).then(resolve, reject),
         insert: (row: Row) => {
           const message = knobs.failInsert?.(table, row) ?? null;
           if (!message) (tables[table] ??= []).push(row);
-          return Promise.resolve({ data: null, error: message ? { message } : null });
+          return Promise.resolve({
+            data: null,
+            error: message ? { message } : null,
+          });
         },
       };
       return q;
@@ -254,7 +367,9 @@ const db = {
  * is handed. Everything between the relay and that call — the MIME build and
  * its encoding — is the code that ships.
  */
-const transport: { sent: Array<{ raw: string; threadId?: string }> } = { sent: [] };
+const transport: { sent: Array<{ raw: string; threadId?: string }> } = {
+  sent: [],
+};
 const realGmail = new GmailService(new ConfigService({}));
 Object.assign(realGmail as any, {
   senderEmail: "letters@mudavym.example",
@@ -262,7 +377,11 @@ Object.assign(realGmail as any, {
   gmail: {
     users: {
       messages: {
-        send: async ({ requestBody }: { requestBody: { raw: string; threadId?: string } }) => {
+        send: async ({
+          requestBody,
+        }: {
+          requestBody: { raw: string; threadId?: string };
+        }) => {
           transport.sent.push(requestBody);
           return { data: { id: "gmail-msg-1", threadId: "gmail-thread-1" } };
         },
@@ -303,11 +422,18 @@ function stubGrantFetch(
     url: string,
     init: RequestInit,
   ) => {
-    if (typeof url === "string" && url.includes("gmail.googleapis.com")) {
+    // Matched on the parsed host, not a substring: "gmail.googleapis.com"
+    // inside a path or query must not route a test request to the stub.
+    if (
+      typeof url === "string" &&
+      new URL(url).hostname === "gmail.googleapis.com"
+    ) {
       grantSent.push({ url, init });
       return respond(url, init);
     }
-    return (realFetch as unknown as (u: string, i: RequestInit) => Promise<unknown>)(url, init);
+    return (
+      realFetch as unknown as (u: string, i: RequestInit) => Promise<unknown>
+    )(url, init);
   };
 }
 
@@ -324,12 +450,14 @@ function parseMime(raw: string) {
     const out: Record<string, string> = {};
     for (const line of block.replace(/\r\n[ \t]/g, " ").split("\r\n")) {
       const i = line.indexOf(":");
-      if (i > 0) out[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
+      if (i > 0)
+        out[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
     }
     return out;
   };
   const headers = headerMap(raw.slice(0, split));
-  const boundary = /boundary="([^"]+)"/.exec(headers["content-type"] ?? "")?.[1] ?? "";
+  const boundary =
+    /boundary="([^"]+)"/.exec(headers["content-type"] ?? "")?.[1] ?? "";
   const partsLines: string[][] = [];
   let current: string[] | null = null;
   for (const line of raw.slice(split + 4).split("\r\n")) {
@@ -357,7 +485,9 @@ function parseMime(raw: string) {
       encoding,
       bodyLines,
       decoded:
-        encoding === "base64" ? Buffer.from(bodyLines.join(""), "base64").toString("utf8") : body,
+        encoding === "base64"
+          ? Buffer.from(bodyLines.join(""), "base64").toString("utf8")
+          : body,
     };
   });
   return { headers, boundary, parts };
@@ -365,7 +495,9 @@ function parseMime(raw: string) {
 
 const lastMime = () => {
   expect(transport.sent).toHaveLength(1);
-  return parseMime(Buffer.from(transport.sent[0].raw, "base64url").toString("utf8"));
+  return parseMime(
+    Buffer.from(transport.sent[0].raw, "base64url").toString("utf8"),
+  );
 };
 
 let app: INestApplication;
@@ -473,12 +605,18 @@ beforeAll(async () => {
   }).compile();
 
   relay = moduleRef.get(RelayEmailService);
-  app = moduleRef.createNestApplication<NestExpressApplication>({ logger: false });
+  app = moduleRef.createNestApplication<NestExpressApplication>({
+    logger: false,
+  });
   // main.ts's body limit: without it express's 100 kB default answers 413 long
   // before the DTO's own limits could be seen.
   (app as NestExpressApplication).useBodyParser("json", { limit: "15mb" });
   app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
   );
   await app.listen(0, "127.0.0.1");
   const { port } = app.getHttpServer().address() as AddressInfo;
@@ -515,7 +653,9 @@ describe("the route's shape", () => {
   it("is decided by RelayDoorGuard: @Public() lets the class JwtAuthGuard stand aside, and the door guard is on the method", () => {
     const handler = (RelayEmailController.prototype as any).sendEmail;
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, handler)).toBe(true);
-    expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toContain(RelayDoorGuard);
+    expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toContain(
+      RelayDoorGuard,
+    );
   });
 });
 
@@ -590,7 +730,10 @@ describe("the orchestrator's door", () => {
       }),
     );
 
-    expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.ATTEMPTED, RELAY_AUDIT_ACTIONS.SENT]);
+    expect(actions()).toEqual([
+      RELAY_AUDIT_ACTIONS.ATTEMPTED,
+      RELAY_AUDIT_ACTIONS.SENT,
+    ]);
     const [attempt, sent] = audit();
     expect(attempt.correlation_id).toBe(res.body.audit.correlationId);
     expect(sent.correlation_id).toBe(attempt.correlation_id);
@@ -642,7 +785,9 @@ describe("the orchestrator's door", () => {
       expect.objectContaining({ replyTo: "manager@house-a.example" }),
     );
     expect(lastMime().headers["reply-to"]).toBe("manager@house-a.example");
-    expect(audit()[0].changes).toMatchObject({ replyTo: "manager@house-a.example" });
+    expect(audit()[0].changes).toMatchObject({
+      replyTo: "manager@house-a.example",
+    });
   });
 
   it("cannot be split by a body line that names the MIME boundary: what leaves is exactly the text and HTML the door checked", async () => {
@@ -678,23 +823,27 @@ describe("the orchestrator's door", () => {
     expect(mime.parts.some((p) => p.decoded.startsWith("<a href"))).toBe(false);
     // And no body line can ever be a delimiter, whatever the boundary is.
     for (const part of mime.parts) {
-      for (const line of part.bodyLines) expect(line).toMatch(/^[A-Za-z0-9+/=]*$/);
+      for (const line of part.bodyLines)
+        expect(line).toMatch(/^[A-Za-z0-9+/=]*$/);
     }
   });
 
   it.each([
     ["bodyText", SEND_EMAIL_BODY_TEXT_MAX],
     ["bodyHtml", SEND_EMAIL_BODY_HTML_MAX],
-  ])("is 400 — before any door — for a %s longer than its limit", async (field, max) => {
-    const res = await post(
-      { ...ORCHESTRATOR_SEND, [field]: "x".repeat(max + 1) },
-      asService,
-    );
-    expect(res.status).toBe(400);
-    expect(JSON.stringify(res.body)).toMatch(new RegExp(field));
-    expect(gmail.sendEmail).not.toHaveBeenCalled();
-    expect(audit()).toHaveLength(0);
-  });
+  ])(
+    "is 400 — before any door — for a %s longer than its limit",
+    async (field, max) => {
+      const res = await post(
+        { ...ORCHESTRATOR_SEND, [field]: "x".repeat(max + 1) },
+        asService,
+      );
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).toMatch(new RegExp(field));
+      expect(gmail.sendEmail).not.toHaveBeenCalled();
+      expect(audit()).toHaveLength(0);
+    },
+  );
 
   it("admits any of the vendor's addresses in the house's book, including a provider_contacts row", async () => {
     const res = await post(
@@ -718,7 +867,10 @@ describe("the orchestrator's door", () => {
       error: "invalid_grant: Token has been expired or revoked.",
       audit: { attemptRecorded: true, outcomeRecorded: true },
     });
-    expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.ATTEMPTED, RELAY_AUDIT_ACTIONS.FAILED]);
+    expect(actions()).toEqual([
+      RELAY_AUDIT_ACTIONS.ATTEMPTED,
+      RELAY_AUDIT_ACTIONS.FAILED,
+    ]);
     expect(audit()[1]).toMatchObject({
       reason: "invalid_grant: Token has been expired or revoked.",
       changes: expect.objectContaining({ outcome: "failed" }),
@@ -730,7 +882,10 @@ describe("the orchestrator's door", () => {
     const res = await post(ORCHESTRATOR_SEND, asService);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ success: false, error: "socket hang up" });
-    expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.ATTEMPTED, RELAY_AUDIT_ACTIONS.FAILED]);
+    expect(actions()).toEqual([
+      RELAY_AUDIT_ACTIONS.ATTEMPTED,
+      RELAY_AUDIT_ACTIONS.FAILED,
+    ]);
   });
 
   // ADR 0172 + ADR 0099, founder 2026-09-21: "a header refusal on the relay
@@ -751,7 +906,9 @@ describe("the orchestrator's door", () => {
     const res = await post(ORCHESTRATOR_SEND, asService);
 
     expect(res.status).toBe(422);
-    expect(String(res.body.message)).toMatch(/Could not fold the Subject header/);
+    expect(String(res.body.message)).toMatch(
+      /Could not fold the Subject header/,
+    );
     expect(String(res.body.message)).toMatch(/the provider was never called/);
     // The sentence is stored on the draft and shown to a manager verbatim, so
     // the encoder's own full stop must not double up with ours.
@@ -759,7 +916,10 @@ describe("the orchestrator's door", () => {
     // The audit trail still tells the whole story — ATTEMPTED then FAILED,
     // with refusedBeforeSend on the record — even though the HTTP answer is
     // now a definite refusal rather than a 200.
-    expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.ATTEMPTED, RELAY_AUDIT_ACTIONS.FAILED]);
+    expect(actions()).toEqual([
+      RELAY_AUDIT_ACTIONS.ATTEMPTED,
+      RELAY_AUDIT_ACTIONS.FAILED,
+    ]);
     expect(audit()[1]).toMatchObject({
       reason: "Could not fold the Subject header.",
       changes: expect.objectContaining({
@@ -784,7 +944,8 @@ describe("the orchestrator's door", () => {
 
   it("refuses 503 and sends nothing when the attempt row cannot be written", async () => {
     knobs.failInsert = (table, row) =>
-      table === "system_audit_log" && row.action === RELAY_AUDIT_ACTIONS.ATTEMPTED
+      table === "system_audit_log" &&
+      row.action === RELAY_AUDIT_ACTIONS.ATTEMPTED
         ? "permission denied for table system_audit_log"
         : null;
     const res = await post(ORCHESTRATOR_SEND, asService);
@@ -827,16 +988,26 @@ describe("the orchestrator's door", () => {
       asService,
     );
     expect(res.status).toBe(403);
-    expect(String(res.body.message)).toMatch(/not one of this house's conversations/);
+    expect(String(res.body.message)).toMatch(
+      /not one of this house's conversations/,
+    );
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.REFUSED]);
-    expect(audit()[0]).toMatchObject({ restaurant_id: HOUSE_A, actor_type: "service" });
+    expect(audit()[0]).toMatchObject({
+      restaurant_id: HOUSE_A,
+      actor_type: "service",
+    });
   });
 
   it("is 403 when the send names another house for this house's conversation, and files it under the house it named", async () => {
-    const res = await post({ ...ORCHESTRATOR_SEND, restaurantId: HOUSE_B }, asService);
+    const res = await post(
+      { ...ORCHESTRATOR_SEND, restaurantId: HOUSE_B },
+      asService,
+    );
     expect(res.status).toBe(403);
-    expect(String(res.body.message)).toMatch(/not one of this house's conversations/);
+    expect(String(res.body.message)).toMatch(
+      /not one of this house's conversations/,
+    );
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(audit()).toHaveLength(1);
     expect(audit()[0]).toMatchObject({
@@ -847,11 +1018,17 @@ describe("the orchestrator's door", () => {
 
   it("is 403 when an order-only send names an order of this house with a different vendor, and files it against no one's order", async () => {
     const res = await post(
-      { ...ORCHESTRATOR_SEND, conversationId: undefined, orderId: ORDER_A_OTHER_VENDOR },
+      {
+        ...ORCHESTRATOR_SEND,
+        conversationId: undefined,
+        orderId: ORDER_A_OTHER_VENDOR,
+      },
       asService,
     );
     expect(res.status).toBe(403);
-    expect(String(res.body.message)).toMatch(/with a different vendor from the one this mail names/);
+    expect(String(res.body.message)).toMatch(
+      /with a different vendor from the one this mail names/,
+    );
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.REFUSED]);
   });
@@ -886,7 +1063,9 @@ describe("the orchestrator's door", () => {
       tables = seed();
       const res = await post({ ...ORCHESTRATOR_SEND, ...patch }, asService);
       expect(res.status).toBe(403);
-      expect(String(res.body.message)).toMatch(/not among that vendor's addresses/);
+      expect(String(res.body.message)).toMatch(
+        /not among that vendor's addresses/,
+      );
       expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.REFUSED]);
     }
     expect(gmail.sendEmail).not.toHaveBeenCalled();
@@ -908,12 +1087,18 @@ describe("the orchestrator's door", () => {
     expect(String(res.body.message)).toMatch(/could not be read/);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.UNAVAILABLE]);
-    expect(audit()[0].changes).toMatchObject({ outcome: "unavailable", status: 503 });
+    expect(audit()[0].changes).toMatchObject({
+      outcome: "unavailable",
+      status: 503,
+    });
   });
 
   it("is 400 — before any door — for a line break in the subject, which would add a header", async () => {
     const res = await post(
-      { ...ORCHESTRATOR_SEND, subject: "Order\r\nBcc: someone@elsewhere.example" },
+      {
+        ...ORCHESTRATOR_SEND,
+        subject: "Order\r\nBcc: someone@elsewhere.example",
+      },
       asService,
     );
     expect(res.status).toBe(400);
@@ -934,9 +1119,16 @@ describe("the person's door", () => {
   /** A refusal row carrying nothing the caller typed. */
   const expectStatusOnly = (row: Row, status: number) => {
     expect(row).toMatchObject({ entity_type: "email", entity_id: null });
-    expect(Object.keys(row.changes).sort()).toEqual(["actor", "door", "outcome", "status"]);
+    expect(Object.keys(row.changes).sort()).toEqual([
+      "actor",
+      "door",
+      "outcome",
+      "status",
+    ]);
     expect(row.changes.status).toBe(status);
-    expect(JSON.stringify(row)).not.toMatch(/Delivery window|vendor-one|someone@elsewhere/);
+    expect(JSON.stringify(row)).not.toMatch(
+      /Delivery window|vendor-one|someone@elsewhere/,
+    );
   };
 
   it("refuses an owner's letter to a vendor 409 with a plain reason and a code, AFTER every lock held, when this house has no connected mailbox", async () => {
@@ -944,7 +1136,9 @@ describe("the person's door", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.code).toBe(HOUSE_MAILBOX_NOT_CONNECTED);
-    expect(String(res.body.message)).toMatch(/has not connected a mailbox of its own/);
+    expect(String(res.body.message)).toMatch(
+      /has not connected a mailbox of its own/,
+    );
     expect(String(res.body.message)).toMatch(/Nothing was sent\.$/);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(transport.sent).toHaveLength(0);
@@ -957,7 +1151,9 @@ describe("the person's door", () => {
       actor_id: OWNER_A,
       restaurant_id: HOUSE_A,
     });
-    expect(String(audit()[0].reason)).toMatch(/has not connected a mailbox of its own/);
+    expect(String(audit()[0].reason)).toMatch(
+      /has not connected a mailbox of its own/,
+    );
     // An owner's refusal keeps what they sent: the row is a manager's paper.
     expect(audit()[0].changes).toMatchObject({
       door: "person",
@@ -971,7 +1167,11 @@ describe("the person's door", () => {
 
   it("refuses a manager's mail to a member of the house with the same 409 and code, when this house has no connected mailbox", async () => {
     const res = await post(
-      { to: ["staff@house-a.example"], subject: "Rota", bodyText: "See you at six." },
+      {
+        to: ["staff@house-a.example"],
+        subject: "Rota",
+        bodyText: "See you at six.",
+      },
       asPerson(MANAGER_A),
     );
     expect(res.status).toBe(409);
@@ -996,7 +1196,11 @@ describe("the person's door", () => {
     expect(res.status).toBe(202);
     expect(res.body).toMatchObject({
       success: true,
-      sender: { kind: "house_mailbox", address: "owner@housea.gmail.example", authorName: "Owner A" },
+      sender: {
+        kind: "house_mailbox",
+        address: "owner@housea.gmail.example",
+        authorName: "Owner A",
+      },
     });
     expect(res.body.messageId).toBeUndefined();
     expect(res.body.queued).toMatchObject({ status: "HOUSE_QUEUED" });
@@ -1005,7 +1209,9 @@ describe("the person's door", () => {
     // The SAME sentence GET /communications/letters/sender already shows for
     // this mailbox — the response never promises a recall that sentence does
     // not, per the review that forced this build.
-    expect(res.body.queued.says).toMatch(/2-minute window in which it can still be pulled back/);
+    expect(res.body.queued.says).toMatch(
+      /2-minute window in which it can still be pulled back/,
+    );
     expect(res.body.queued.undoMs).toBeGreaterThan(0);
 
     // Nothing was sent — only queued. The provider is never touched here.
@@ -1014,13 +1220,24 @@ describe("the person's door", () => {
     expect(grantSent).toHaveLength(0);
     // The token IS fetched at queue time (to fail fast on an ADR 0114
     // cutoff), but nothing is sent with it.
-    expect(oauthMock.getAccessToken).toHaveBeenCalledWith(OWNER_A, HOUSE_A, "gmail_send");
+    expect(oauthMock.getAccessToken).toHaveBeenCalledWith(
+      OWNER_A,
+      HOUSE_A,
+      "gmail_send",
+    );
 
     expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.QUEUED]);
-    expect(audit()[0]).toMatchObject({ actor_id: OWNER_A, restaurant_id: HOUSE_A });
+    expect(audit()[0]).toMatchObject({
+      actor_id: OWNER_A,
+      restaurant_id: HOUSE_A,
+    });
     expect(audit()[0].changes).toMatchObject({
       outcome: "queued",
-      sender: { kind: "house_mailbox", address: "owner@housea.gmail.example", authorName: "Owner A" },
+      sender: {
+        kind: "house_mailbox",
+        address: "owner@housea.gmail.example",
+        authorName: "Owner A",
+      },
     });
 
     expect(tables.relay_email_queue).toHaveLength(1);
@@ -1039,7 +1256,9 @@ describe("the person's door", () => {
     expect(String(row.body_text)).toContain("Could Thursday work?");
     expect(String(row.body_text)).toContain("— Owner A");
     expect(row.correlation_id).toBe(audit()[0].correlation_id);
-    expect(new Date(String(row.scheduled_send_at)).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(String(row.scheduled_send_at)).getTime()).toBeGreaterThan(
+      Date.now(),
+    );
   });
 
   it("sends the queued mail once its window has closed, through the house's own grant, and cancels the claim to HOUSE_SENDING to SENT", async () => {
@@ -1066,7 +1285,13 @@ describe("the person's door", () => {
 
     // Before the window: a dispatcher tick this instant must not touch it.
     const early = await relay.dispatchQueued(Date.now());
-    expect(early).toEqual({ considered: 0, sent: 0, failed: 0, skipped: 0, statusUpdateErrors: 0 });
+    expect(early).toEqual({
+      considered: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      statusUpdateErrors: 0,
+    });
     expect(grantSent).toHaveLength(0);
     expect(tables.relay_email_queue[0].status).toBe("HOUSE_QUEUED");
 
@@ -1074,7 +1299,13 @@ describe("the person's door", () => {
     // grant transport, never GmailService.
     const dueAt = Date.now() + queued.body.queued.undoMs + 1000;
     const run = await relay.dispatchQueued(dueAt);
-    expect(run).toEqual({ considered: 1, sent: 1, failed: 0, skipped: 0, statusUpdateErrors: 0 });
+    expect(run).toEqual({
+      considered: 1,
+      sent: 1,
+      failed: 0,
+      skipped: 0,
+      statusUpdateErrors: 0,
+    });
 
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(grantSent).toHaveLength(1);
@@ -1110,11 +1341,20 @@ describe("the person's door", () => {
     const [queuedRow, attemptedRow, sentRow] = audit();
     expect(attemptedRow.correlation_id).toBe(queuedRow.correlation_id);
     expect(sentRow.correlation_id).toBe(queuedRow.correlation_id);
-    expect(sentRow.changes).toMatchObject({ outcome: "sent", messageId: "grant-msg-1" });
+    expect(sentRow.changes).toMatchObject({
+      outcome: "sent",
+      messageId: "grant-msg-1",
+    });
 
     // A second tick has nothing left to do.
     const again = await relay.dispatchQueued(dueAt);
-    expect(again).toEqual({ considered: 0, sent: 0, failed: 0, skipped: 0, statusUpdateErrors: 0 });
+    expect(again).toEqual({
+      considered: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      statusUpdateErrors: 0,
+    });
   });
 
   it("the undo cancels a queued send inside the window, and the dispatcher then leaves it alone", async () => {
@@ -1144,7 +1384,13 @@ describe("the person's door", () => {
     // The dispatcher, run well past the original window, must not send it.
     const dueAt = Date.now() + queued.body.queued.undoMs + 60_000;
     const run = await relay.dispatchQueued(dueAt);
-    expect(run).toEqual({ considered: 0, sent: 0, failed: 0, skipped: 0, statusUpdateErrors: 0 });
+    expect(run).toEqual({
+      considered: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      statusUpdateErrors: 0,
+    });
     expect(grantSent).toHaveLength(0);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(tables.relay_email_queue[0].status).toBe("HOUSE_CANCELLED");
@@ -1163,7 +1409,9 @@ describe("the person's door", () => {
     });
     const queued = await post(letter, asPerson(OWNER_A));
     const id = queued.body.queued.id as string;
-    tables.relay_email_queue[0].scheduled_send_at = new Date(Date.now() - 1000).toISOString();
+    tables.relay_email_queue[0].scheduled_send_at = new Date(
+      Date.now() - 1000,
+    ).toISOString();
 
     const res = await cancelQueued(id, asPerson(OWNER_A));
     expect(res.status).toBe(409);
@@ -1185,7 +1433,10 @@ describe("the person's door", () => {
     const queued = await post(letter, asPerson(OWNER_A));
     const id = queued.body.queued.id as string;
 
-    const res = await cancelQueued(id, asPerson(OWNER_ELSEWHERE_STAFF_HERE, HOUSE_B));
+    const res = await cancelQueued(
+      id,
+      asPerson(OWNER_ELSEWHERE_STAFF_HERE, HOUSE_B),
+    );
     expect(res.status).toBe(404);
     expect(tables.relay_email_queue[0].status).toBe("HOUSE_QUEUED");
   });
@@ -1209,7 +1460,9 @@ describe("the person's door", () => {
     // for a colleague's queued send.
     const res = await cancelQueued(id, asPerson(MANAGER_A));
     expect(res.status).toBe(403);
-    expect(String(res.body.message)).toMatch(/Only the person who queued this send/);
+    expect(String(res.body.message)).toMatch(
+      /Only the person who queued this send/,
+    );
     expect(tables.relay_email_queue[0].status).toBe("HOUSE_QUEUED");
 
     // The author themself still can.
@@ -1254,7 +1507,11 @@ describe("the person's door", () => {
     const raced = new RelayEmailService(raceDb, none, none, none, none, none);
 
     await expect(
-      raced.cancelQueued({ restaurantId: HOUSE_A, userId: OWNER_A, id: "row-1" }),
+      raced.cancelQueued({
+        restaurantId: HOUSE_A,
+        userId: OWNER_A,
+        id: "row-1",
+      }),
     ).rejects.toThrow(ConflictException);
     await raced
       .cancelQueued({ restaurantId: HOUSE_A, userId: OWNER_A, id: "row-1" })
@@ -1303,7 +1560,9 @@ describe("the person's door", () => {
     const row = tables.relay_email_queue[0];
     expect(row.status).toBe("HOUSE_FAILED");
     expect(row.scheduled_send_at).toBeNull();
-    expect(String(row.failure_reason)).toMatch(/has not connected a mailbox of its own/);
+    expect(String(row.failure_reason)).toMatch(
+      /has not connected a mailbox of its own/,
+    );
 
     expect(actions()).toEqual([
       RELAY_AUDIT_ACTIONS.QUEUED,
@@ -1452,13 +1711,18 @@ describe("the person's door", () => {
     const res = await post(letter, asPerson(OWNER_A));
 
     expect(res.status).toBe(503);
-    expect(String(res.body.message)).toMatch(/who this mail is from could not be read/i);
+    expect(String(res.body.message)).toMatch(
+      /who this mail is from could not be read/i,
+    );
     expect(String(res.body.message)).toMatch(/connection refused/);
     expect(String(res.body.message)).toMatch(/Nothing was sent\.$/);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(grantSent).toHaveLength(0);
     expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.UNAVAILABLE]);
-    expect(audit()[0].changes).toMatchObject({ outcome: "unavailable", status: 503 });
+    expect(audit()[0].changes).toMatchObject({
+      outcome: "unavailable",
+      status: 503,
+    });
   });
 
   it("still names the author when the mailbox is a different member's grant — queued and then dispatched", async () => {
@@ -1485,8 +1749,16 @@ describe("the person's door", () => {
     expect(queued.body.sender).toMatchObject({ authorName: "Owner A" });
     expect(grantSent).toHaveLength(0);
 
-    const run = await relay.dispatchQueued(Date.now() + queued.body.queued.undoMs + 1000);
-    expect(run).toEqual({ considered: 1, sent: 1, failed: 0, skipped: 0, statusUpdateErrors: 0 });
+    const run = await relay.dispatchQueued(
+      Date.now() + queued.body.queued.undoMs + 1000,
+    );
+    expect(run).toEqual({
+      considered: 1,
+      sent: 1,
+      failed: 0,
+      skipped: 0,
+      statusUpdateErrors: 0,
+    });
 
     const decoded = Buffer.from(
       JSON.parse(String(grantSent[0].init.body)).raw as string,
@@ -1538,7 +1810,10 @@ describe("the person's door", () => {
     expect(String(res.body.message)).toMatch(/owner or a manager/);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.REFUSED]);
-    expect(audit()[0]).toMatchObject({ actor_id: STAFF_A, restaurant_id: HOUSE_A });
+    expect(audit()[0]).toMatchObject({
+      actor_id: STAFF_A,
+      restaurant_id: HOUSE_A,
+    });
     expectStatusOnly(audit()[0], 403);
   });
 
@@ -1557,7 +1832,10 @@ describe("the person's door", () => {
   });
 
   it("reads the role for THIS house: an owner elsewhere is staff here, and is refused", async () => {
-    const res = await post(letter, asPerson(OWNER_ELSEWHERE_STAFF_HERE, HOUSE_A));
+    const res = await post(
+      letter,
+      asPerson(OWNER_ELSEWHERE_STAFF_HERE, HOUSE_A),
+    );
     expect(res.status).toBe(403);
     expect(String(res.body.message)).toMatch(/signed in as staff/);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
@@ -1585,17 +1863,25 @@ describe("the person's door", () => {
     knobs.failRead.user_restaurant_access = "connection refused";
     const res = await post(letter, asPerson(OWNER_A));
     expect(res.status).toBe(503);
-    expect(String(res.body.message)).toMatch(/role at this house could not be read/);
+    expect(String(res.body.message)).toMatch(
+      /role at this house could not be read/,
+    );
     expect(String(res.body.message)).toMatch(/connection refused/);
     expect(String(res.body.message)).not.toMatch(/owner or a manager/);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.UNAVAILABLE]);
-    expect(audit()[0].changes).toMatchObject({ outcome: "unavailable", status: 503 });
+    expect(audit()[0].changes).toMatchObject({
+      outcome: "unavailable",
+      status: 503,
+    });
     expectStatusOnly(audit()[0], 503);
   });
 
   it("is 403 when the body names another house than the session's", async () => {
-    const res = await post({ ...letter, restaurantId: HOUSE_B }, asPerson(OWNER_A));
+    const res = await post(
+      { ...letter, restaurantId: HOUSE_B },
+      asPerson(OWNER_A),
+    );
     expect(res.status).toBe(403);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
   });
@@ -1606,7 +1892,9 @@ describe("the person's door", () => {
       asPerson(OWNER_A),
     );
     expect(res.status).toBe(403);
-    expect(String(res.body.message)).toMatch(/someone@elsewhere\.example is not among this house's members and its vendors' contacts/);
+    expect(String(res.body.message)).toMatch(
+      /someone@elsewhere\.example is not among this house's members and its vendors' contacts/,
+    );
     expect(gmail.sendEmail).not.toHaveBeenCalled();
   });
 
@@ -1620,7 +1908,10 @@ describe("the person's door", () => {
   });
 
   it("is 403 for another house's conversation", async () => {
-    const res = await post({ ...letter, conversationId: CONVO_B }, asPerson(OWNER_A));
+    const res = await post(
+      { ...letter, conversationId: CONVO_B },
+      asPerson(OWNER_A),
+    );
     expect(res.status).toBe(403);
     expect(gmail.sendEmail).not.toHaveBeenCalled();
   });
@@ -1631,7 +1922,9 @@ describe("the person's door", () => {
       asPerson(OWNER_A),
     );
     expect(res.status).toBe(403);
-    expect(String(res.body.message)).toMatch(/Raw HTML is accepted only on the service door/);
+    expect(String(res.body.message)).toMatch(
+      /Raw HTML is accepted only on the service door/,
+    );
     expect(gmail.sendEmail).not.toHaveBeenCalled();
   });
 
@@ -1667,7 +1960,9 @@ describe("the person's door", () => {
       asPerson(OWNER_A),
     );
     expect(res.status).toBe(503);
-    expect(String(res.body.message)).toMatch(/members' addresses could not be read/);
+    expect(String(res.body.message)).toMatch(
+      /members' addresses could not be read/,
+    );
     expect(gmail.sendEmail).not.toHaveBeenCalled();
     expect(actions()).toEqual([RELAY_AUDIT_ACTIONS.UNAVAILABLE]);
   });

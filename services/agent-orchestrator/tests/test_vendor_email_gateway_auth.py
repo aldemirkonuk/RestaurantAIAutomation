@@ -25,6 +25,11 @@ import pytest
 from agents.provider_conversation_agent import ProviderConversationAgent
 from services.email_composer_service import EmailComposerService, EmailPayload
 
+# The composer's own aiohttp.ClientSession, patched by dotted path so this file
+# imports services.email_composer_service one way only (CodeQL
+# py/import-and-import-from).
+_CLIENT_SESSION = "services.email_composer_service.aiohttp.ClientSession"
+
 
 class _FakeResponse:
     def __init__(self, status: int, body: Dict[str, Any]):
@@ -78,10 +83,8 @@ def composer() -> EmailComposerService:
 
 @pytest.fixture(autouse=True)
 def _patch_session(monkeypatch: pytest.MonkeyPatch):
-    import services.email_composer_service as mod
-
     _FakeSession.calls = []
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _FakeSession)
+    monkeypatch.setattr(_CLIENT_SESSION, _FakeSession)
     yield
     _FakeSession.calls = []
 
@@ -207,14 +210,12 @@ async def test_a_refused_send_reports_the_status_not_unknown_error(
 ):
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     class _Refusing(_FakeSession):
         def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
             _FakeSession.calls.append({"url": url, **kw})
             return _FakeResponse(401, {"statusCode": 401, "message": "Unauthorized"})
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    monkeypatch.setattr(_CLIENT_SESSION, _Refusing)
 
     result = await composer.send_via_gateway(_payload())
 
@@ -331,8 +332,6 @@ async def test_a_gateway_refusal_names_the_door_s_sentence(
     relay can answer with."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     sentence = (
         "someone@elsewhere.example is not among that vendor's addresses in "
         "this house's book. Nothing was sent."
@@ -346,7 +345,7 @@ async def test_a_gateway_refusal_names_the_door_s_sentence(
                 {"statusCode": status, "message": sentence, "error": "Forbidden"},
             )
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    monkeypatch.setattr(_CLIENT_SESSION, _Refusing)
 
     result = await composer.send_via_gateway(_payload())
 
@@ -370,14 +369,12 @@ async def test_a_5xx_stays_ambiguous(
     conversation for a retry — a duplicate vendor mail."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     class _Failing(_FakeSession):
         def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
             _FakeSession.calls.append({"url": url, **kw})
             return _FakeResponse(status, {"statusCode": status, "message": "upstream"})
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Failing)
+    monkeypatch.setattr(_CLIENT_SESSION, _Failing)
 
     result = await composer.send_via_gateway(_payload())
 
@@ -402,8 +399,6 @@ async def test_a_relay_400_403_or_422_is_a_definite_refusal(
     same footing as the SMTP 5xx case above."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     class _Refusing(_FakeSession):
         def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
             _FakeSession.calls.append({"url": url, **kw})
@@ -411,7 +406,7 @@ async def test_a_relay_400_403_or_422_is_a_definite_refusal(
                 status, {"statusCode": status, "message": "refused", "error": "x"}
             )
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    monkeypatch.setattr(_CLIENT_SESSION, _Refusing)
 
     result = await composer.send_via_gateway(_payload())
 
@@ -468,11 +463,15 @@ def test_relay_final_refusal_code_is_none_for_non_relay_shaped_errors(text):
     [
         # A 5xx may follow an accepted send. Its detail is the gateway's (or an
         # upstream's) text, which can quote another refusal sentence.
-        "gateway refused the send: HTTP 503 — upstream said: "
-        "gateway refused the send: HTTP 422 — refused",
+        (
+            "gateway refused the send: HTTP 503 — upstream said: "
+            + "gateway refused the send: HTTP 422 — refused"
+        ),
         # A 200 `success: false` carries the provider's own error text.
-        "gateway refused the send: HTTP 200 — provider error quoting "
-        "gateway refused the send: HTTP 403 — refused",
+        (
+            "gateway refused the send: HTTP 200 — provider error quoting "
+            + "gateway refused the send: HTTP 403 — refused"
+        ),
     ],
 )
 def test_relay_final_refusal_code_reads_only_the_composer_s_own_status(text):
@@ -495,8 +494,6 @@ async def test_a_relay_401_stays_ambiguous_and_parks_for_a_person(
     on purpose and parks the conversation for a person."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     class _Refusing(_FakeSession):
         def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
             _FakeSession.calls.append({"url": url, **kw})
@@ -509,7 +506,7 @@ async def test_a_relay_401_stays_ambiguous_and_parks_for_a_person(
                 },
             )
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    monkeypatch.setattr(_CLIENT_SESSION, _Refusing)
 
     result = await composer.send_via_gateway(_payload())
 
@@ -528,8 +525,6 @@ async def test_a_relay_404_or_429_is_unchanged_and_still_ambiguous(
     own. Still genuinely open."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     class _Refusing(_FakeSession):
         def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
             _FakeSession.calls.append({"url": url, **kw})
@@ -537,7 +532,7 @@ async def test_a_relay_404_or_429_is_unchanged_and_still_ambiguous(
                 status, {"statusCode": status, "message": "refused", "error": "x"}
             )
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    monkeypatch.setattr(_CLIENT_SESSION, _Refusing)
 
     result = await composer.send_via_gateway(_payload())
 
@@ -559,8 +554,6 @@ async def test_a_relay_400_403_or_422_end_to_end_closes_with_no_retry(
     — "a 400/403/422 relay refusal is FINAL = 'Close, no retry'"."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     class _Refusing(_FakeSession):
         def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
             _FakeSession.calls.append({"url": url, **kw})
@@ -568,7 +561,7 @@ async def test_a_relay_400_403_or_422_end_to_end_closes_with_no_retry(
                 status, {"statusCode": status, "message": "refused", "error": "x"}
             )
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    monkeypatch.setattr(_CLIENT_SESSION, _Refusing)
     agent = _approved_agent(_approved_conversation())
 
     # No raise — closing is quiet, it never triggers a bus retry.
@@ -589,8 +582,6 @@ async def test_a_relay_401_end_to_end_parks_for_a_person(
     failure, and never a duplicate purchase order."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     class _Refusing(_FakeSession):
         def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
             _FakeSession.calls.append({"url": url, **kw})
@@ -603,7 +594,7 @@ async def test_a_relay_401_end_to_end_parks_for_a_person(
                 },
             )
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    monkeypatch.setattr(_CLIENT_SESSION, _Refusing)
     agent = _approved_agent(_approved_conversation())
 
     await agent._handle_conversation_approved({"conversation_id": CONVO_A})
@@ -619,8 +610,6 @@ async def test_a_provider_failure_behind_a_200_reports_the_provider_s_error(
     provider's words in `error`; that is what the caller must report."""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     class _ProviderFailed(_FakeSession):
         def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
             _FakeSession.calls.append({"url": url, **kw})
@@ -634,7 +623,7 @@ async def test_a_provider_failure_behind_a_200_reports_the_provider_s_error(
                 },
             )
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _ProviderFailed)
+    monkeypatch.setattr(_CLIENT_SESSION, _ProviderFailed)
 
     result = await composer.send_via_gateway(_payload())
 
@@ -815,8 +804,6 @@ async def test_a_door_refusal_is_never_recorded_as_sent_and_its_sentence_is_logg
     refused again).]"""
     monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
 
-    import services.email_composer_service as mod
-
     class _Refusing(_FakeSession):
         def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
             _FakeSession.calls.append({"url": url, **kw})
@@ -829,7 +816,7 @@ async def test_a_door_refusal_is_never_recorded_as_sent_and_its_sentence_is_logg
                 },
             )
 
-    monkeypatch.setattr(mod.aiohttp, "ClientSession", _Refusing)
+    monkeypatch.setattr(_CLIENT_SESSION, _Refusing)
     agent = _approved_agent(_approved_conversation())
 
     # No raise: a relay-final refusal closes quietly, it does not retry.
