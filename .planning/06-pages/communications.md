@@ -215,6 +215,10 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 - **RETIRED — the two legacy template workshops are gone from the rebuilt page** (ADR
   0118 D7). They are untouched and the legacy page still mounts them
 
+### Who is writing, 2026-09-19 (ADR 0160 §113 Open item 3 · sketch 113 direction A, frames 2a and 4c)
+
+Moved here from `/promotions` (founder, 2026-09-18: *"they move to /communications, and the hold-to-trust and add-vendor acts go with them; /promotions holds offers only"*). A section under the conversation book, two columns: **Trusted senders** (a ledger of the sender register — state, orders, injection and spam signals, updated; **Trust…** opens a centred panel that takes the `HoldToApprove`, **Untrust** is a plain button) and **Strangers** (mail from senders matching no vendor, with the reason it was kept; **Add as a vendor…** opens the plain-create ask and trusts nothing, **Put away** has an eight-second undo; a *this house / all houses* switch when the account has more than one). A trust is read back from the register before it is called saved; a failed read is a sentence, never an empty register; a full 100-row strangers window prints as a floor. **[2026-09-25: committed on `fix/comms-house-sources`. The flag gate this sentence described is moot — `communications` is in `LIVE_PAGES`, so every house renders the section.]** It sat, uncommitted, behind `mudavym_design_communications` when written.
+
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_communications`)
 
 > **Chrome (2026-09-04).** With the flag on, this page is framed by the house
@@ -420,6 +424,7 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
 - `apps/web/src/components/mudavym/Sheet.tsx` — extended with the `wide` prop (640px) this composer is the only user of
 - Gateway: `apps/api-gateway/src/communications/letters/` — `house-sender.service.ts`, `house-letters.service.ts`, `house-letters.controller.ts`, `house-letters.cron.ts`, `house-letters.dto.ts`, `house-letters.spec.ts`
 - Migration: `supabase/migrations/20260904150000_the_house_writes_its_own_mail.sql`
+- `apps/web/src/pages/communications/next/WhoIsWriting.tsx` · `SenderActs.tsx` · `useSendersDeskData.ts` · `senders-format.ts` — Trusted senders and Strangers with the hold-to-trust and add-vendor acts (ADR 0160 §113 Open item 3, 2026-09-19)
 
 ## 4. Endpoints
 
@@ -434,6 +439,10 @@ Atlas rows: [ENDPOINTS](../foundation/ENDPOINTS.md):495 (`reports`), :180
 | DELETE | `/reports/schedules/:id` | `Communications.tsx:325` → `reports.ts:84` |
 | GET | `/conversations/threads`, `/conversations/thread/:id`, `/conversations/stats/overview` | `ClassifiedConversationList` → `hooks/queries/useConversationQueries.ts:194,209,225` |
 | POST | `/conversations/:id/summarize` | `useRegenerateSummary` → `useConversationQueries.ts:240` |
+| GET | `/senders/reputation` | `useSendersDeskData.ts` (`useSenderRegister`) — owner/manager (`sender-trust.controller.ts`) |
+| POST | `/senders/trust` | `useSetSenderTrust` — owner/manager; the page reads the register back, the gateway ignores a failed upsert |
+| GET | `/prospects[?scope=all]` | `useStrangers` — any member; capped at 100 rows server-side |
+| POST | `/prospects/:id/promote` · `/dismiss` · `/restore` | `usePromoteStranger` (owner/manager) · `usePutAwayStranger` · `useRestoreStranger` |
 | GET | `/procurement/conversations/history` | `useProcurementConversationHistory` (Communications.tsx:28) → `useConversationQueries.ts:284` |
 
 **Behind the flag (ADR 0118), all JWT-guarded and tenant-scoped from the signed token:**

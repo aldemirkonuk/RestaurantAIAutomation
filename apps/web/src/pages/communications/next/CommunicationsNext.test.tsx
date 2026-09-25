@@ -32,6 +32,13 @@ vi.mock('./TemplateSheet', () => ({
   TemplateSheet: () => <div data-testid="letter-library" />,
 }));
 
+// ADR 0160 §113 Open item 3: senders and strangers live on this page now. The
+// section is proved in `WhoIsWriting.test.tsx`; here it is a stub so this file
+// stays a test of the PAGE and needs no auth context.
+vi.mock('./WhoIsWriting', () => ({
+  default: () => <section aria-label="Who is writing" data-testid="who-is-writing" />,
+}));
+
 import CommunicationsNext from './CommunicationsNext';
 
 // The template sheet persists through `useTemplates` (P1), so the page tree now
@@ -190,6 +197,38 @@ describe('CommunicationsNext', () => {
       }
     };
     walk(root, false);
+    expect(offenders).toEqual([]);
+  });
+
+  // ── ADR 0160 §113, Open item 3: senders and strangers moved here ──────────
+  it('mounts the who-is-writing section (trust and add-vendor moved here from /promotions)', () => {
+    render(<CommunicationsNext />);
+    expect(screen.getByTestId('who-is-writing')).toBeInTheDocument();
+  });
+
+  /**
+   * The sender and stranger reads must key their caches by house. The shared
+   * `usePromotionsQueries` hooks do not (`['sender-reputation']`, `['prospects']`
+   * are bare) and the house switcher does not clear the query cache — so a
+   * value import of them here would show one house's trust ledger under another,
+   * with a "Hold to trust" on it. Types may be imported; hooks may not.
+   */
+  it('no file here imports a HOOK from the un-keyed promotions queries', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const dir = join(process.cwd(), 'src', 'pages', 'communications', 'next');
+    const offenders: string[] = [];
+    const walk = (d: string) => {
+      for (const dirent of readdirSync(d, { withFileTypes: true })) {
+        const full = join(d, dirent.name);
+        if (dirent.isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(dirent.name) && !/\.test\.tsx?$/.test(dirent.name)) {
+          const source = readFileSync(full, 'utf8');
+          if (/import\s+(?!type\b)[^;]*from\s*['"][^'"]*usePromotionsQueries['"]/.test(source)) offenders.push(full);
+        }
+      }
+    };
+    walk(dir);
     expect(offenders).toEqual([]);
   });
 
