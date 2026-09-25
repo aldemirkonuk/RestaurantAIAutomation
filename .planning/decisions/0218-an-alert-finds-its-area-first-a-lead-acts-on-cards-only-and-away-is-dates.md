@@ -1,6 +1,6 @@
 # 0218 — An alert finds its area first, a lead acts on cards only, and Away is dates
 
-- **Status:** Locked 2026-09-21 (the three rulings below, the founder's) · round 2 locked 2026-09-21: the eight **Open** items answered with *"Take all seven"* (see **Round 2**) · two items went to counsel, not to a build (**The lawyer's list**) · round 3 locked 2026-09-22: four more questions, each with his pick as the option label (see **Round 3**)
+- **Status:** Locked 2026-09-21 (the three rulings below, the founder's) · round 2 locked 2026-09-21: the eight **Open** items answered with *"Take all seven"* (see **Round 2**) · two items went to counsel, not to a build (**The lawyer's list**) · round 3 locked 2026-09-22: four more questions, each with his pick as the option label (see **Round 3**) · round 4 locked 2026-09-22 (founder round 6z): three more answers, one of them a new build — a colleague's Away being set or ended is now withheld from staff on `/logs` too (see **Round 4**)
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder)
 - **Keywords:** areas, area label, AreaLabel, AreaKind, house_areas, house_area_members, house_away, house_away_held, held_away, AwayReleaseService, area lead, Away, holiday, notification routing, persistForRestaurant, focus not filter, recommendations digest, KVKK, house log, system_audit_log
@@ -82,7 +82,8 @@ writes the inbox copy of a manager's message to **everyone** by
 roster's `active`, account-linked rows), where before it went through the
 funnel to every active member of the house. So a member whose roster row is
 `trial` or `inactive` no longer gets that inbox row, or the funnel's push
-that came with it, even when nobody is Away. See **Round 3**, answer 1.]
+that came with it, even when nobody is Away. **Ruled 2026-09-22, round 4
+answer 3, "Active roster only":** kept exactly as built — see **Round 4**.]
 
 ### The label (typed, for the catalogue lane)
 
@@ -167,7 +168,23 @@ gate, and until this call it handed a staff token the six person rows too —
 a colleague's name, their Away dates before they start, and who set them.
 The query now asks a staff reader's trail for `readBackActionsFor(role)`,
 which leaves out `STAFF_WITHHELD_ACTIONS` (every row above except
-`house_area_changed`). See **Round 3**, answer 3.]
+`house_area_changed`). See **Round 3**, answer 3.] [Round 4, 2026-09-22,
+founder answer 2, "Hide Away events from staff": `/logs`
+(`logs-timeline.service.ts` `fetchAuditLog`) was the one surface round 3's
+last call left alone — it reads every `system_audit_log` action for every
+member, dated but with no colleague name, and round 3's last call recorded
+that as out of scope ("gating it is not this lane's call"). The founder's
+answer brings it in scope for exactly the two Away actions: `LogsController`
+now passes the caller's role, read off `MembersService.assertMembership`'s
+own membership row rather than a request parameter, and
+`LogsTimelineService` excludes `away_set_for_member` and
+`away_ended_for_member` from the query itself (not filtered after the
+`limit + 1` window, which would have made `hasMore` a lie for a staff page
+on a house with many Away changes) whenever that role is not owner or
+manager. Owners and managers are unaffected; every other `/logs` action stays
+open to staff. CLAIMS `ADR-0218-LOGS-WITHHOLD-AWAY-FROM-STAFF`. Behaviour:
+`logs-timeline.service.spec.ts` "a staff reader of /logs never sees a
+colleague's Away being set or ended".]
 
 ### Who may do what
 
@@ -258,7 +275,7 @@ bundled — not his own words for each. What each one is, and where it is:
      funnel routes it (see **Owed** for its push leg). [Superseded
      2026-09-22 by round 3 answer 1, "Wait like named": a message to
      everyone now holds an Away person the same way; see **Round 3**.]
-   - *Where it waits.* `house_away_held` (migration `20260921171000`, RLS on,
+   - *Where it waits.* `house_away_held` (migration `20260925190100` [renumbered 2026-09-25 from `20260921171000`, ADR 0212], RLS on,
      service_role only). A note's words stay on `team_notes`; a message has no
      record of its own, so its title and body are kept in the hold **only
      until it is delivered**, then the row is deleted.
@@ -289,8 +306,10 @@ bundled — not his own words for each. What each one is, and where it is:
      after 30 minutes (`STALE_CLAIM_MS`) and the next sweep delivers it
      again. So a held item is delivered at least once, never at most once:
      a rare duplicate rather than a loss, the same side of the line as round
-     3 answer 2's "nothing lost or late". *Built, not ruled.* Since round 3
-     answer 1 this covers a held message to everyone too.]
+     3 answer 2's "nothing lost or late". *Built, not ruled, then* **ruled
+     2026-09-22, round 4 answer 1, "At least once":** kept exactly as
+     built — a rare duplicate, never a lost message — see **Round 4**. Since
+     round 3 answer 1 this covers a held message to everyone too.]
    - *Failures.* An unreadable Away register holds nothing (the send goes to
      everyone now) and says so (`away.readable: false`); a hold that cannot be
      written is sent now instead of dropped (`away.holdFailed`); an unreadable
@@ -333,7 +352,7 @@ bundled — not his own words for each. What each one is, and where it is:
    window (owners and managers still see it there before it starts).
 6. **Away lasts at most 366 days.** Confirmed built in the gateway, and now also
    in the table: `ck_house_away_at_most_366_days` (`away_until - away_from <=
-   365`, both days inclusive), added in `20260921171000`.
+   365`, both days inclusive), added in `20260925190100` [renumbered 2026-09-25 from `20260921171000`, ADR 0212].
 7. **Only an owner can set or end another owner's Away; a manager can no
    longer.** Built: `mayChangeAway` in `house-areas.service.ts`, asked by both
    `setAway` and `endAway` about the target's role **in this house** (read the
@@ -384,7 +403,9 @@ six to the founder as four questions, his picks as the option labels below
    has no send to everyone of its own. `team` is in `LIVE_PAGES`, so the one
    web caller of `audience: "everyone"`, the legacy desk, is reached only
    through a QA override. Found by reading the code; not measured in
-   production. *Built, not ruled*; put to the founder.]
+   production. *Built, not ruled*; put to the founder. **Ruled 2026-09-22,
+   round 4 answer 3, "Active roster only":** kept exactly as built — see
+   **Round 4**.]
 2. **The Away list cannot be read, mid-send.** *"Send now (Recommended)"* —
    keep as built: nothing lost or late, the same rule the alert funnel
    already uses. Unchanged code, and now the SAME code path for both
@@ -436,13 +457,15 @@ six to the founder as four questions, his picks as the option labels below
    (`/team` draws My shifts for staff), so nothing a staff surface shows
    changes. CLAIMS `ADR-0218-STAFF-READ-NO-COLLEAGUE-AWAY-IN-THE-HOUSE-LOG`.
    Behaviour: `settings-audit.service.spec.ts` "what a staff reader is
-   never handed", on a fake that honours `.in("action", …)`. What is still
+   never handed", on a fake that honours `.in("action", …)`. What was still
    readable, and is not a window: the `/logs` timeline
    (`logs-timeline.service.ts` `fetchAuditLog`, any member of the house)
    lists `away_set_for_member on restaurant_member` with the colleague's
-   user id and the time it was set. It carries no dates and no name. It is
+   user id and the time it was set. It carries no dates and no name. It was
    not changed here, because `/logs` reads every audit action for every
-   member and gating it is not this lane's call.]
+   member and gating it was not this lane's call to make unasked —
+   **closed in round 4, answer 2, 2026-09-22, "Hide Away events from
+   staff"; see The house log and Round 4.**]
 4. **The four behaviours built without a ruling.** *"Keep all four
    (Recommended)"*, with this answer **following answer 3**:
    - the held item may arrive outside quiet hours, but only after quiet hours
@@ -458,6 +481,76 @@ six to the founder as four questions, his picks as the option labels below
 
    No migration: none of the four needed a schema change. Migration band
    reserved for this lane (`20260922011000`–`20260922011099`) went unused.
+
+## Round 4 — the founder's three answers (2026-09-22, round 6z)
+
+Round 3's last call left one behaviour *built, not ruled* twice over (the
+release's at-least-once delivery, and the "everyone" send's narrowed
+audience) and named one thing it found but did not close (`/logs` still
+showing staff that a colleague's Away was set or ended). The lane put all
+three to the founder, his picks as the option labels below (2026-09-22):
+
+1. **A release that fails after delivering delivers again.** *"At least
+   once (Recommended)"* — kept exactly as built: a rare duplicate, never a
+   lost message. No code change; the behaviour was already live (**Round
+   2**, answer 3, "When 'back' is", last call round 3, 2026-09-22 — the
+   `STALE_CLAIM_MS` path in `AwayReleaseService`). Recorded there.
+
+2. **`/logs` still names a colleague's Away being set or ended.** *"Hide
+   Away events from staff (Recommended)"* — staff no longer see
+   `away_set_for_member` or `away_ended_for_member` on `/logs`; owners and
+   managers still do; `/logs` stays open to staff for every other action.
+   Built:
+
+   - `LogsTimelineService.fetchAuditLog` (`logs-timeline.service.ts`) excludes
+     the two actions from the `system_audit_log` query itself — a
+     `.not("action", "in", …)` filter applied *before* `windowed()` reads
+     `limit + 1` rows, not a filter run on the rows afterward, which would
+     have made `hasMore` a false negative on a staff page whenever a house
+     had enough Away changes to fill the window with them. This is the same
+     hazard `settings-audit.service.ts` already avoids for its own
+     `STAFF_WITHHELD_ACTIONS` by filtering inside `.in("action", …)`.
+   - `withholdsAwayActions(role)`: anything but `owner` or `manager` — staff,
+     an unset role, a role nobody passed — withholds; the fail-closed
+     default `readBackActionsFor` already uses ("Omitted, it reads as
+     staff").
+   - `LogsController.getTimeline` passes the role off
+     `MembersService.assertMembership`'s own membership row (a call the
+     route already makes to gate `/logs` by tenant), never a
+     `@CurrentUser("role")` JWT claim and never a request parameter — so a
+     staff caller has no field to widen their own read with, and the role
+     cannot go stale the way a cross-house token can
+     (`auth/house-role.ts`).
+   - The withheld set is **deliberately narrower** than
+     `STAFF_WITHHELD_ACTIONS`: `/logs` is a raw feed of every action for
+     every member, not the closed `READ_BACK_ACTIONS` list `/settings-audit`
+     reads back, so only the two named actions are excluded — a house
+     rename, a lead grant, an area membership change stay visible to staff
+     on `/logs` exactly as before, per the founder's "stays open to staff
+     for everything else".
+
+   CLAIMS `ADR-0218-LOGS-WITHHOLD-AWAY-FROM-STAFF`. Behaviour:
+   `logs-timeline.service.spec.ts` "a staff reader of /logs never sees a
+   colleague's Away being set or ended" (5 cases: staff excludes both
+   actions; owner/manager/mixed-case role reads both; no role given
+   withholds, fail-closed; an unrelated role such as `admin` withholds;
+   every other action stays open to staff); `logs.controller.spec.ts`
+   "passes a staff caller's own membership role, never anything the caller
+   could supply". Two mutations, both red, snapshot-restored with `cp -p`:
+   `withholdsAwayActions` forced to `false` (3 cases red); the controller
+   hard-coding `role: "owner"` regardless of the membership read (1 case
+   red). No migration — no schema change was needed. See **The house log**.
+
+3. **A message to everyone: the narrowed inbox audience.** *"Active roster
+   only (Recommended)"* — kept exactly as built: the crew message to
+   everyone reaches the roster's `active`, account-linked rows
+   (`reachNow`), the same audience the send counts and the live `/team`
+   page's crew note names; a `trial` or `inactive` roster member no longer
+   gets that inbox row. No code change — recorded in the **Decision**
+   paragraph and **Round 3**, answer 1.
+
+No migration this round: none of the three needed a schema change. Migration
+band reserved for this lane (`20260922025000`–`20260922025099`) went unused.
 
 ## The lawyer's list (recorded, not built)
 
@@ -564,7 +657,7 @@ hold there too.]
   calendar suites 588 passing; `tsc` clean; `check_gateway_boots.sh` PASS.
 - Web: `AwayMarker.test.tsx` (9), `AreasAway.test.tsx` (8); team/mudavym/
   settings suites passing; `tsc` clean; eslint 0 errors on the changed files.
-- Migration `20260921170300`: all 193 migrations build in PGlite and the file
+- Migration `20260925190000` [renumbered 2026-09-25 from `20260921170300`, ADR 0212]: all 193 migrations build in PGlite and the file
   re-runs cleanly; cross-house membership → 23503, duplicate → 23505, unknown
   kind / blank name / backwards dates → 23514, an `auth.users`-only id → 23503,
   a roster delete cascades, anon/authenticated hold no grant. Not Supabase:
@@ -579,7 +672,7 @@ hold there too.]
     passing, 8 skipped;
   - gateway `tsc` (source and specs) and web `tsc` clean; eslint clean on every
     changed file; `check_gateway_boots.sh` PASS.
-- Migration `20260921171000`, round 2 (probe
+- Migration `20260925190100` [renumbered 2026-09-25 from `20260921171000`, ADR 0212], round 2 (probe
   `p4-scratch/pglite-probe/AREAS2-held-for-away.mjs`): 194/194 migrations build
   and the file re-runs cleanly. 27 checks pass:
   - cross-house note or roster row → 23503; duplicate hold → 23505;
@@ -656,6 +749,27 @@ hold there too.]
   turned "lists every current-or-upcoming window for owners/managers; staff
   never learn who set a colleague's" red, and the verify of
   `ADR-0218-STAFF-SEE-AWAY-ONLY-ONCE-UNDER-WAY` exited 1.
+- **Round 4 (2026-09-22)**: `gw_tsc_spec` (`tsc --noEmit -p tsconfig.spec.json`)
+  clean; jest `src/logs/logs-timeline.service.spec.ts` and
+  `src/logs/logs.controller.spec.ts` — 2 suites, 29 tests passing; the wider
+  `src/logs src/areas src/team src/settings-audit` — 14 suites, 225 tests
+  passing, confirming the new query-level filter changes nothing these
+  suites already asserted; `gw_eslint` on the four changed files, 0 errors
+  and 0 warnings after `--fix` reformatted pre-existing prettier-style
+  warnings the touched lines fell inside. Two mutations, both red,
+  snapshot-restored with `cp -p` and checked with `cmp`:
+  `withholdsAwayActions` forced to always return `false` (3 cases in
+  `logs-timeline.service.spec.ts` turned red); `LogsController` hard-coding
+  `role: "owner"` past the membership read (1 case in
+  `logs.controller.spec.ts` turned red, the staff-role case; the
+  pre-existing owner-role case stayed green, confirming the mutation was
+  caught by the right assertion and not a coincidental one). CLAIMS
+  `ADR-0218-LOGS-WITHHOLD-AWAY-FROM-STAFF` added and mutation-tested the
+  same way: its `verify` exits 1 against `origin/main` (the constant and
+  function do not exist there — ADR 0218 is unmerged) and against each of
+  the two code mutations above, and exits 0 on the built tree. No
+  migration — no schema change was needed for any of round 4's three
+  answers.
 
 ## Review trail
 
@@ -672,3 +786,6 @@ hold there too.]
 | 2026-09-22 | areas lane, round 3 | Built answers 1 and 3 (`team.controller.ts` broadcast, `house-areas.service.ts` listAway, `AwayCard.tsx`); recorded answers 2 and 4 (no code change — both already matched what was built). Two CLAIMS rows added and mutation-tested; the **Owed** push-leg-to-everyone item closed in place |
 | 2026-09-22 | last call, round 3 | Found `GET /settings-audit` (no role gate) handing staff a colleague's `away_set_for_member` row, with the dates before they start and who set them, and the area rows: fixed in the query (`readBackActionsFor`, `STAFF_WITHHELD_ACTIONS`), CLAIMS `ADR-0218-STAFF-READ-NO-COLLEAGUE-AWAY-IN-THE-HOUSE-LOG`. Recorded, not changed: `/logs` still lists the action and the colleague's id, with no dates or name; the web's query cache outlives a sign-out; a release that fails after delivering delivers again (at least once); the legacy desk's crew message toasts over a hold too. Three code comments that still said "named only" corrected |
 | 2026-09-22 | second last call, round 3 | Two records made true again, no code change. Round 2 §3 still said a message to everyone is not held: marked superseded by round 3 answer 1. "With nobody Away, every audience is exactly what it was" was no longer true: the crew message to everyone now writes its inbox row by `onlyUserIds`, so a `trial` or `inactive` roster member no longer gets it. Recorded as *built, not ruled* and put to the founder. Attacks that held: no push to an Away person on a send to everyone (controller push and funnel push both follow `reachNow`), no loss or duplicate on release beyond the recorded at-least-once, no upcoming colleague window for staff in `/house/away` or `/settings-audit`, and an unreadable Away list sends now. No migration |
+| 2026-09-22 | founder | Round 4 (round 6z): three answers, each *"(Recommended)"* — "At least once"; "Hide Away events from staff"; "Active roster only" (see **Round 4**) |
+| 2026-09-22 | areas lane, round 4 | Built answer 2: `/logs` now withholds `away_set_for_member` and `away_ended_for_member` from a staff reader, filtered in the `system_audit_log` query (`LogsTimelineService.fetchAuditLog`) before the window, role read off `LogsController`'s existing `MembersService.assertMembership` call. Recorded, no code change: answers 1 and 3 (both already matched what was built). CLAIMS `ADR-0218-LOGS-WITHHOLD-AWAY-FROM-STAFF` added and mutation-tested |
+| 2026-09-25 | settings-b lane (web-rebuild wave 1) | Merged origin/main (`059169a5`). Brought over the round-4 `/logs` build, which until now lived only uncommitted in the `wt-areas` worktree. Renumbered the two migrations past main's ceiling (ADR 0212): `20260921170300` became `20260925190000`, and `20260921171000` became `20260925190100`. `AwayReleaseService.deliver` now passes `skipMobilePush: true`. Before this, the funnel's own fan-out pushed a released message a second time at priority "high", ignored the person's push switch, and pushed an inbox-only message as well. This is the same defect #448 closed for `TeamController.broadcast`, and #448's funnel option is carried here verbatim. Three real-funnel tests are marked `[REVERT-FAILS]`; dropping the option turns four red |
