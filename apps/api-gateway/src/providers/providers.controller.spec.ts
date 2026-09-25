@@ -18,7 +18,7 @@ describe("ProvidersController", () => {
   let controller: ProvidersController;
   let providersService: ProvidersService;
 
-  const mockUser = { id: "user-123", restaurantId: "restaurant-123" };
+  const mockUser = { userId: "user-123", restaurantId: "restaurant-123" };
 
   const mockProvidersService = {
     getProviderContacts: jest.fn(),
@@ -477,13 +477,17 @@ describe("ProvidersController", () => {
         expectedResponse,
       );
 
-      const result = await controller.importProviders(bulkImportDto);
+      const result = await controller.importProviders(bulkImportDto, mockUser);
 
       expect(result).toEqual(expectedResponse);
       expect(result.imported).toBe(2);
       expect(result.failed).toBe(0);
+      // The house is the token's, never the body's (the body's copy is only
+      // compared by JwtAuthGuard); the import used to be called without one.
       expect(mockProvidersService.bulkImportProviders).toHaveBeenCalledWith(
         bulkImportDto,
+        "restaurant-123",
+        "user-123",
       );
     });
 
@@ -498,7 +502,7 @@ describe("ProvidersController", () => {
         expectedResponse,
       );
 
-      const result = await controller.importProviders(bulkImportDto);
+      const result = await controller.importProviders(bulkImportDto, mockUser);
 
       expect(result).toEqual(expectedResponse);
       expect(result.imported).toBe(1);
@@ -511,7 +515,7 @@ describe("ProvidersController", () => {
         new Error("Import failed"),
       );
 
-      await expect(controller.importProviders(bulkImportDto)).rejects.toThrow(
+      await expect(controller.importProviders(bulkImportDto, mockUser)).rejects.toThrow(
         HttpException,
       );
     });

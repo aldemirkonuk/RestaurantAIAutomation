@@ -5,7 +5,6 @@ import {
   Get,
   HttpException,
   HttpStatus,
-  NotFoundException,
   ForbiddenException,
   Param,
   Patch,
@@ -53,6 +52,18 @@ function houseOf(user: AuthUser | undefined): string {
     throw new ForbiddenException("This session names no restaurant.");
   }
   return user.restaurantId;
+}
+
+/**
+ * The caller's person, for the acts that are recorded against somebody. A
+ * verified token always carries `userId`; one that does not is refused
+ * rather than recorded as `undefined`.
+ */
+function actorOf(user: AuthUser | undefined): string {
+  if (!user?.userId) {
+    throw new ForbiddenException("This session names no person.");
+  }
+  return user.userId;
 }
 
 /** A status the service chose deliberately survives; anything else is a 500. */
@@ -104,16 +115,14 @@ export class ProvidersController {
     description:
       "A count and the names that are missing, for the providers page's prompt panel and the order sheet's empty currency field. It PRE-FILLS NOTHING and writes nothing: the repair for an unstated vendor is a person stating it on that vendor's profile, never a house-derived default recorded as somebody's choice. Live vendors only (is_active is not false and deleted_at is null) — the retired ones can take no order. A stored value that is not an ISO 4217 currency counts as unstated and is returned with the code it holds. A failed read is a 503 with the reason, never a coverage of zero.",
   })
-  async usualCurrencyCoverage(
-    @CurrentUser() user: { id: string; restaurantId: string },
-  ): Promise<{
+  async usualCurrencyCoverage(@CurrentUser() user: AuthUser): Promise<{
     stated: number;
     total: number;
     unstated: { id: string; name: string; recorded: string | null }[];
     sentence: string;
   }> {
     const counted = await this.providersService.usualCurrencyCoverage(
-      user.restaurantId,
+      houseOf(user),
     );
     return {
       ...counted,
@@ -131,7 +140,7 @@ export class ProvidersController {
   @ApiQuery({ name: "isActive", required: false })
   @ApiResponse({ status: 200, type: [ProviderResponseDto] })
   async searchProviders(
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
     @Query("q") q?: string,
     @Query("specialties") specialties?: string | string[],
     @Query("isActive") isActive?: string,
@@ -145,15 +154,12 @@ export class ProvidersController {
 
       return await this.providersService.searchProviders({
         q,
-        restaurantId: user.restaurantId,
+        restaurantId: houseOf(user),
         specialties: specialtiesArr,
         isActive: isActive !== undefined ? isActive === "true" : undefined,
       });
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to search providers",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to search providers");
     }
   }
 
@@ -162,20 +168,17 @@ export class ProvidersController {
   @ApiQuery({ name: "wineType", required: true })
   @ApiResponse({ status: 200, type: [ProviderResponseDto] })
   async searchByWineType(
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
     @Query("wineType") wineType: string,
   ): Promise<ProviderResponseDto[]> {
     try {
       return await this.providersService.searchProviders({
-        restaurantId: user.restaurantId,
+        restaurantId: houseOf(user),
         wineType,
         isActive: true,
       });
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to search providers by wine type",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to search providers by wine type");
     }
   }
 
@@ -214,22 +217,19 @@ export class ProvidersController {
   })
   @ApiResponse({ status: 200, description: "Ranked duplicate candidates" })
   async matchProviders(
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
     @Query("name") name?: string,
     @Query("address") address?: string,
     @Query("excludeId") excludeId?: string,
   ) {
     try {
-      return await this.providersService.matchProviders(user.restaurantId, {
+      return await this.providersService.matchProviders(houseOf(user), {
         name,
         address,
         excludeId,
       });
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to match providers",
-        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to match providers");
     }
   }
 
@@ -238,14 +238,20 @@ export class ProvidersController {
   @ApiResponse({ status: 201, type: BulkImportResultDto })
   async bulkImport(
     @Body() dto: BulkImportProvidersDto,
+    @CurrentUser() user: AuthUser,
   ): Promise<BulkImportResultDto> {
     try {
-      return await this.providersService.bulkImportProviders(dto);
-    } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to import providers",
-        HttpStatus.INTERNAL_SERVER_ERROR,
+      // The house comes from the token. The body's `restaurantId` is only
+      // compared against it (JwtAuthGuard's assertTenantMatch); before this,
+      // every imported row was written with restaurant_id NULL — a vendor no
+      // house could list, order from or delete.
+      return await this.providersService.bulkImportProviders(
+        dto,
+        houseOf(user),
+        user?.userId,
       );
+    } catch (error) {
+      rethrow(error, "Failed to import providers");
     }
   }
 
@@ -254,8 +260,9 @@ export class ProvidersController {
   @ApiResponse({ status: 201, type: BulkImportResultDto })
   async importProviders(
     @Body() dto: BulkImportProvidersDto,
+    @CurrentUser() user: AuthUser,
   ): Promise<BulkImportResultDto> {
-    return this.bulkImport(dto);
+    return this.bulkImport(dto, user);
   }
 
   // =========================================================================
@@ -267,13 +274,13 @@ export class ProvidersController {
   @ApiResponse({ status: 201, type: ProviderResponseDto })
   async createProvider(
     @Body() dto: CreateProviderDto,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
     try {
       return await this.providersService.createProvider(
         dto,
-        user.restaurantId,
-        user.id,
+        houseOf(user),
+        user?.userId,
       );
     } catch (error) {
       // Deliberate HTTP semantics from the service (409 for an already-added
@@ -293,15 +300,12 @@ export class ProvidersController {
   @ApiOperation({ summary: "List providers" })
   @ApiResponse({ status: 200, type: [ProviderResponseDto] })
   async listProviders(
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto[]> {
     try {
-      return await this.providersService.listProviders(user.restaurantId);
+      return await this.providersService.listProviders(houseOf(user));
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch providers",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to fetch providers");
     }
   }
 
@@ -323,11 +327,11 @@ export class ProvidersController {
   })
   async getUsualCurrency(
     @Param("id") providerId: string,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ) {
     const stated = await this.providersService.getUsualCurrency(
       providerId,
-      user.restaurantId,
+      houseOf(user),
     );
     return {
       providerId,
@@ -352,8 +356,9 @@ export class ProvidersController {
   async setUsualCurrency(
     @Param("id") providerId: string,
     @Body() body: { currency?: string },
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ) {
+    const restaurantId = houseOf(user);
     const typed = readVendorCurrency(body?.currency);
     if (!typed.ok)
       throw new HttpException(typed.because, HttpStatus.BAD_REQUEST);
@@ -361,9 +366,12 @@ export class ProvidersController {
     // WHO THIS PERSON IS HERE. `null` means "not proven to hold any role" — a
     // failed read and a person with no row are indistinguishable at this layer
     // and neither may pass (`procurement/order-approval-gate.ts`'s header).
+    // `userId`, never `id`: JwtStrategy.validate returns `userId` and no `id`
+    // (jwt.strategy.ts), so reading the missing field asked the role of
+    // `undefined` and every manager was refused as holding no role.
     const role = await this.organizations.resolveRestaurantRole(
-      user.id,
-      user.restaurantId,
+      actorOf(user),
+      restaurantId,
     );
     if (!roleSatisfies(role, "manager"))
       throw new HttpException(
@@ -374,9 +382,9 @@ export class ProvidersController {
 
     const written = await this.providersService.setUsualCurrency({
       providerId,
-      restaurantId: user.restaurantId,
+      restaurantId,
       code: typed.code,
-      userId: user.id,
+      userId: actorOf(user),
     });
 
     return {
@@ -396,13 +404,10 @@ export class ProvidersController {
   @ApiResponse({ status: 200, type: ProviderResponseDto })
   async getProvider(
     @Param("id") providerId: string,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
     try {
-      return await this.providersService.getProvider(
-        providerId,
-        user.restaurantId,
-      );
+      return await this.providersService.getProvider(providerId, houseOf(user));
     } catch (error) {
       // A status the service chose deliberately survives. Flattening everything
       // to 500 made "this id is not a provider" indistinguishable from "the
@@ -421,23 +426,17 @@ export class ProvidersController {
   async updateProvider(
     @Param("id") providerId: string,
     @Body() dto: UpdateProviderDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
     try {
       return await this.providersService.updateProvider(
         providerId,
         dto,
-        user.restaurantId,
-        user.userId,
+        houseOf(user),
+        user?.userId,
       );
     } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-      throw new HttpException(
-        error.message || "Failed to update provider",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to update provider");
     }
   }
 
@@ -446,20 +445,17 @@ export class ProvidersController {
   @ApiResponse({ status: 200, description: "Provider deleted" })
   async deleteProvider(
     @Param("id") providerId: string,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
     try {
       await this.providersService.softDeleteProvider(
         providerId,
-        user.restaurantId,
-        user.id,
+        houseOf(user),
+        user?.userId,
       );
       return { success: true };
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to delete provider",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to delete provider");
     }
   }
 
@@ -510,14 +506,10 @@ export class ProvidersController {
   async rateProvider(
     @Param("id") providerId: string,
     @Body() dto: ProviderRatingDto,
-    @CurrentUser() user: { restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
     try {
-      await this.providersService.rateProvider(
-        houseOf(user),
-        providerId,
-        dto,
-      );
+      await this.providersService.rateProvider(houseOf(user), providerId, dto);
       return { success: true };
     } catch (error) {
       rethrow(error, "Failed to rate provider");
@@ -615,19 +607,16 @@ export class ProvidersController {
   async updateContactDate(
     @Param("id") providerId: string,
     @Body() dto: UpdateContactDateDto,
-    @CurrentUser() user: { id: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
     try {
       return await this.providersService.updateLastContactDate(
         providerId,
         dto,
-        user.restaurantId,
+        houseOf(user),
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to update contact date",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to update contact date");
     }
   }
 
@@ -669,7 +658,7 @@ export class ProvidersController {
   })
   async getIntelligence(
     @Param("id") providerId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<{
     profile_foundational: Record<string, any>;
     profile_dynamic: Record<string, any>;
@@ -677,13 +666,10 @@ export class ProvidersController {
     try {
       return await this.providersService.getIntelligence(
         providerId,
-        user.restaurantId,
+        houseOf(user),
       );
-    } catch (error: any) {
-      throw new HttpException(
-        error.message || "Failed to get intelligence",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+    } catch (error) {
+      rethrow(error, "Failed to get intelligence");
     }
   }
 
@@ -696,19 +682,16 @@ export class ProvidersController {
   async updateIntelligence(
     @Param("id") providerId: string,
     @Body() dto: UpdateIntelligenceDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean }> {
     try {
       return await this.providersService.updateIntelligence(
         providerId,
-        user.restaurantId,
+        houseOf(user),
         dto,
       );
-    } catch (error: any) {
-      throw new HttpException(
-        error.message || "Failed to update intelligence",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+    } catch (error) {
+      rethrow(error, "Failed to update intelligence");
     }
   }
 
@@ -720,19 +703,16 @@ export class ProvidersController {
   @ApiResponse({ status: 200 })
   async getIntelligenceSummary(
     @Param("id") providerId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<Array<{ key: string; label: string; value: string }>> {
     try {
       const intel = await this.providersService.getIntelligence(
         providerId,
-        user.restaurantId,
+        houseOf(user),
       );
       return this.providersService.getProfileSummary(intel.profile_dynamic);
-    } catch (error: any) {
-      throw new HttpException(
-        error.message || "Failed to get intelligence summary",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+    } catch (error) {
+      rethrow(error, "Failed to get intelligence summary");
     }
   }
 
@@ -744,18 +724,15 @@ export class ProvidersController {
   @ApiOperation({ summary: "Get provider locations" })
   async getProviderLocations(
     @Param("id") providerId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ) {
     try {
       return await this.providersService.getProviderLocations(
         providerId,
-        user.restaurantId,
+        houseOf(user),
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to fetch provider locations",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to fetch provider locations");
     }
   }
 
@@ -764,19 +741,16 @@ export class ProvidersController {
   async createProviderLocation(
     @Param("id") providerId: string,
     @Body() dto: CreateProviderLocationDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ) {
     try {
       return await this.providersService.createProviderLocation(
         providerId,
-        user.restaurantId,
+        houseOf(user),
         dto,
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to create provider location",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to create provider location");
     }
   }
 
@@ -786,20 +760,17 @@ export class ProvidersController {
     @Param("id") providerId: string,
     @Param("locationId") locationId: string,
     @Body() dto: UpdateProviderLocationDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ) {
     try {
       return await this.providersService.updateProviderLocation(
         providerId,
         locationId,
-        user.restaurantId,
+        houseOf(user),
         dto,
       );
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to update provider location",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to update provider location");
     }
   }
 
@@ -808,20 +779,17 @@ export class ProvidersController {
   async deleteProviderLocation(
     @Param("id") providerId: string,
     @Param("locationId") locationId: string,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ) {
     try {
       await this.providersService.deleteProviderLocation(
         providerId,
         locationId,
-        user.restaurantId,
+        houseOf(user),
       );
       return { success: true };
     } catch (error) {
-      throw new HttpException(
-        error.message || "Failed to delete provider location",
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      rethrow(error, "Failed to delete provider location");
     }
   }
 
@@ -841,7 +809,7 @@ export class ProvidersController {
   async createRetroactiveOrder(
     @Param("id") providerId: string,
     @Body() dto: RetroactiveOrderDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: AuthUser,
   ): Promise<{
     orderId: string;
     orderNumber: string;
@@ -850,8 +818,8 @@ export class ProvidersController {
     try {
       return await this.providersService.createRetroactiveOrder(
         providerId,
-        user.restaurantId,
-        user.userId,
+        houseOf(user),
+        actorOf(user),
         dto,
       );
     } catch (error: any) {
