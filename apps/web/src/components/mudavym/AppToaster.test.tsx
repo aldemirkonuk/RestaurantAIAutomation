@@ -27,7 +27,9 @@ beforeEach(() => {
 });
 afterEach(() => window.localStorage.clear());
 
-describe('shell off (default)', () => {
+describe("shell off (the QA override '0' -- since 2026-09-25 the only way to legacy)", () => {
+  beforeEach(() => window.localStorage.setItem('mudavym.design.shell', '0'));
+
   it('mounts the legacy Toaster: richColors, no visibleToasts cap, slate classNames', () => {
     render(<AppToaster />);
     expect(toasterProps.current?.richColors).toBe(true);
@@ -37,8 +39,7 @@ describe('shell off (default)', () => {
   });
 });
 
-describe('shell on', () => {
-  beforeEach(() => window.localStorage.setItem('mudavym.design.shell', '1'));
+describe('shell on (the default: live in code since 2026-09-25, no override, no flag row)', () => {
 
   it('mounts the house Toaster: tokens only, capped at 3 visible, no richColors', () => {
     render(<AppToaster />);
