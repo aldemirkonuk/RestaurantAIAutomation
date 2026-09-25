@@ -1,6 +1,6 @@
 # 0191 — The recommendations catalogue is actionable, not a read-only leaf
 
-- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below. The seven questions round 2 left open were answered the same day too — six answers, built in "Round 3" below. The seven round 3 left open (six here, the seventh — the platform `admin` — in the lane's report) were answered the same day with "Take all seven", built in "Round 4" below. Round 4 left three questions open; the founder answered all three on 2026-09-22 — built in "Round 5" below.
+- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below. The seven questions round 2 left open were answered the same day too — six answers, built in "Round 3" below. The seven round 3 left open (six here, the seventh — the platform `admin` — in the lane's report) were answered the same day with "Take all seven", built in "Round 4" below. Round 4 left three questions open; the founder answered all three on 2026-09-22 — built in "Round 5" below. Round 5 left one question open; the founder answered it on 2026-09-22 — built in "Round 6" below. No open founder question remains.
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** recommendations, catalogue, insight catalog, candidate type, on/off, toggle, recommendation_actions, insight prefs, rule toggle, suppression, audited, owner/manager, one-tap acts, CatalogView, InsightCatalog, NEW-434, NEW-707, ADR 0149, firing, fire:week, append-only history, recommendation_action_history, snooze for me, recommendation_personal_snoozes, already handled, not now, area lead hook, undo own acts, not_your_act, platform admin, mayActForTheHouse, retention, two years, recommendation_action_history_forget_old_names, cardKeyOf, notes gated like acts, pinned_by, rated_by, assigned_by, not_your_note, mayTouchNote, recommendation_note_changed, recommendation_actions_forget_old_creators, created_by retention
@@ -972,7 +972,13 @@ chose:
      sweep.** The founder's answer named `created_by`, by that name; those
      three columns did not exist when he was asked, because they are what
      answer 2 of this same round introduced. See "Founder questions round 5
-     leaves open" below — not decided by this build.
+     leaves open" below — not decided by this build. [**SUPERSEDED
+     2026-09-22, round 6 — "Clear them too (Recommended)."** They now are:
+     migration 20260922021000 `CREATE OR REPLACE`s the SAME function
+     (`recommendation_actions_forget_old_creators()`, still that name, still
+     one daily call) to also null these three. `20260922010001` itself is
+     unchanged — see "Round 6" below and the corrected claim
+     `ADR-0191-R5-CREATED-BY-KEPT-TWO-YEARS`.]
 
 ### Options considered in round 5
 
@@ -1034,7 +1040,8 @@ chose:
   a table with no other end-date for them. Whether they should age out the
   same way `created_by` now does, or are closer to `system_audit_log`'s
   "kept, because this IS the accountability record" — is not decided here.
-  See "Founder questions round 5 leaves open".
+  See "Founder questions round 5 leaves open". [**ANSWERED 2026-09-22, round
+  6: they age out the same way, on the same sweep. See "Round 6" below.**]
 - **A note-only write now requires a signed-in actor.** Before this round,
   `pinned`/`feedback`/`assignedTo` could be written with no `actor.userId`
   (silently skipping `created_by`); that door is closed.
@@ -1069,13 +1076,122 @@ chose:
    specifically, and the build did not extend it past what was asked.
    Clear them on the same two-year sweep, or leave them — like
    `system_audit_log` — because a note's authorship reads closer to an
-   accountability record than a status pointer does?
+   accountability record than a status pointer does? [**ANSWERED
+   2026-09-22, round 6: "Clear them too (Recommended)."** See "Round 6"
+   below.]
 2. [Withdrawn at the last call, 2026-09-22 — its premise was wrong. It
    asked whether an Act deep-link click, "which needs no actor", holding
    `created_by`'s clearing open called for a "set at" timestamp. Every
    write route is `JwtAuthGuard`-only and `JwtStrategy.validate` always
    returns a `user_id`, so that click names its clicker in the same upsert
    that bumps `updated_at`: there is no gap for a founder to rule on.]
+
+## Round 6 — the founder's one answer (2026-09-22)
+
+Round 5 left one question open: whether `pinned_by`, `rated_by` and
+`assigned_by` — round 5's OWN "Gate like acts" answer introduced these three
+columns in the same round he was asked "History + created_by", so that
+answer could not have named them — age out on the same two-year sweep as
+`created_by`, or stay because a note's authorship reads closer to
+`system_audit_log`'s accountability record than to a mutable state pointer.
+Put to him as a recommended option, his pick, verbatim as relayed:
+
+> **"Clear them too (Recommended)"**: the two-year sweep that clears
+> `created_by` also clears `pinned_by`, `rated_by` and `assigned_by`; after
+> clearing, the note gate treats that note as owner/manager-only to change
+> (test it); `system_audit_log` keeps its own retention.
+
+### What was built
+
+- **One sweep, not two.** Migration `20260922021000` `CREATE OR REPLACE`s
+  the SAME function `recommendation_actions_forget_old_creators()`
+  (`20260922010001`) — same name, same daily call
+  (`RecommendationHistoryRetention.sweep()`, unchanged in this round) — so
+  its `set` clause also nulls `pinned_by`, `rated_by` and `assigned_by`, and
+  its `where` clause widens from "`created_by is not null`" to "any of the
+  four is not null". The widening matters on its own: a row whose
+  `created_by` a PREVIOUS run already cleared, but whose `pinned_by` still
+  names someone, would be silently skipped forever under the narrower
+  clause, because nothing else ever re-sets `created_by`. `20260922010001`
+  itself is untouched — the same move it made on `20260921171100`'s shared
+  period function, not a rewrite of history.
+- **No gateway code changed for "test it".** `mayTouchNote` (`item-state.ts`,
+  round 5) already reads a SET note field with no recorded author as not
+  provably anyone's and fails closed to owner/manager — the exact reading it
+  gives a note made before the author columns existed at all. It cannot
+  distinguish "never recorded" from "recorded, then cleared by this sweep":
+  both are `owner: null` on a set field. So the founder's "test it" is
+  satisfied by naming the connection explicitly and proving both halves:
+  the SQL clearing (`supabase/tests/20260922021000_..._test.sql`, T1-T12 —
+  T12 proving `system_audit_log` is left byte for byte, including a
+  three-year-old row naming a pinner the sweep just cleared — and the
+  mutation-tested PGlite probe
+  `p4-scratch/pglite-probe/RECS6-note-authors-kept-two-years.mjs`) and the
+  gate's reading of a cleared column
+  (`apps/api-gateway/src/analytics/recommendation-round6.spec.ts`).
+- **`system_audit_log` untouched**, as the founder's own words in round 5
+  already settled and this answer repeats: "an audit trail that forgets who
+  acted is no longer an audit trail."
+- **The claim `ADR-0191-R5-CREATED-BY-KEPT-TWO-YEARS` is corrected, not
+  rewritten.** Its text said these three columns "are deliberately NOT
+  cleared by this sweep" — true when written, now superseded. Its `verify`
+  is untouched, because it still greps migration `20260922010001`
+  specifically, and that file did not change. See CLAIMS.jsonl's bracketed
+  correction and the new row `ADR-0191-R6-NOTE-AUTHORS-KEPT-TWO-YEARS`.
+
+### Options considered in round 6
+
+1. **A second, separate sweep function for the three note columns**,
+   scheduled independently. Rejected: the founder's own words name ONE
+   sweep — "the two-year sweep that clears `created_by` ALSO clears" the
+   other three — and a second job doubles the failure surface
+   (`RecommendationHistoryRetention.sweep()` already isolates the history
+   sweep from the `created_by` sweep with independent try/catch; a third
+   independent call would need the same, for no benefit this answer asked
+   for).
+2. **Rename `recommendation_actions_forget_old_creators()`** to something
+   naming all four columns (e.g. `..._forget_old_authors`). Considered and
+   set aside: the gateway's `FORGET_OLD_CREATORS_RPC` constant, every test
+   that asserts it, and the CLAIMS verify scripts that grep the RPC name by
+   string would all need to move for a naming nicety with no behavioural
+   difference. The function's own `COMMENT ON FUNCTION` says what it now
+   does; that is where a reader looks.
+3. **Narrow the WHERE clause to `created_by is not null`, unchanged, and
+   null the other three only as a side effect of rows that clause already
+   matches.** Rejected: a row can reach two years old with `created_by`
+   already cleared (by a previous run) while a note-author column still
+   names someone — round 5's own build made this reachable the moment
+   `20260922010001` first ran. The widened clause (any of the four) is
+   proven necessary by the SQL test's T4/R2 fixture and the probe's `M1`
+   mutation.
+4. **Extend `mayTouchNote` or `assertMayTouchNotes` with an explicit
+   "cleared by retention" case**, distinct from "never recorded". Rejected:
+   nothing in the product needs to tell the two apart — both mean "not
+   provably anyone's", and the founder's own round-5 reasoning (fails
+   closed) already covers this exact shape. Adding a branch that behaves
+   identically to the existing one would be an untested distinction with no
+   caller.
+
+### Consequences of round 6
+
+- **A note made more than two years ago and never touched since is now
+  owner/manager-only to change, even if it was staff's own.** Same shape as
+  round 5's `created_by` consequence and round 4's pre-history act: a
+  small, one-time, backward-looking set — every note this reaches was
+  already at least two years old the day this migration lands, and the set
+  does not grow, because any write refreshes `updated_at` and so the row's
+  clock.
+- **The four author columns now share one clock (`updated_at`), not four.**
+  A write to ANY field on a `recommendation_actions` row — a status change,
+  a different note — bumps `updated_at` for the whole row, which resets the
+  two-year countdown for every column on it, author columns included. A
+  card whose status is touched occasionally but whose pin was set once,
+  long ago, keeps its `pinned_by` un-cleared for as long as the row itself
+  stays active. This was already true of `created_by` alone (round 5); it
+  now also governs the three note columns, together.
+- **Restated for clarity, not new:** the sweep still never throws a false
+  "removed none" — `parseCount` in `recommendation-history-retention.ts` is
+  unchanged by this round, and a failed call is still a failed run.
 
 ## Review trail
 
@@ -1095,3 +1211,5 @@ chose:
 | 2026-09-22 | founder (relayed to lane `recs5`, round 6w) | Answered round 4's three open questions, each as a "Recommended" option, all three taken verbatim as relayed: (1) "Owner/manager only (Recommended)" — keep as built, record why (fails closed; a small one-time set); (2) "Gate like acts (Recommended)" — the platform admin is refused, staff change or clear only their own notes, owners/managers any, every note change audited like an act, server-side, tested per role, mutation-tested; (3) "History + created_by (Recommended)" — also clear `recommendation_actions.created_by` on the same two-year job as the history rule; `system_audit_log` keeps its own retention — "an audit trail that forgets who acted is no longer an audit trail." |
 | 2026-09-22 | — | Round 5 built in lane `recs5` (`wt-recs-cat`): `pinned_by`/`rated_by`/`assigned_by` + the note gate (`touchesNotes`, `mayTouchNote`, `noteRefusal`, `assertMayTouchNotes(Bulk)`, `not_your_note`, `recommendation_note_changed` → `noteAudit`), migrations `20260922010000` and `20260922010001`, `RecommendationHistoryRetention.forgetOldCreators()` on the same daily tick as `forgetOldNames()`; round 5's two open questions written above [the second withdrawn at the last call]. Two pre-existing CLAIMS rows (`ADR-0191-R3-EVERY-ACT-IS-KEPT`, `ADR-0191-R4-NAMES-KEPT-TWO-YEARS`) had their `verify` text repaired in place — a shared `assertNamedActor` condition and a `forgetOldNames` refactor (its count parsing moved into a shared `parseCount`; the RPC call itself stays literal) changed the literal code shape their greps matched; the claims they check were re-confirmed true, not reworded. |
 | 2026-09-22 | last call (Opus), round 5 | Amended before merge: (1) a name-only assignment (`assigned_name` set, `assigned_to` null) read as unset, so staff could change or clear someone else's — `noteOwnershipFrom` now reads either half as set; (2) the note audit named only the to-values — each field is now `{ from, to, from_by }`, like an act's row; (3) the legacy page, what houses see, worded a refused pin as the whole-house dismiss sentence, kept the refused note on screen and toasted a refused assignment as done — fixed, with `noteRefusalOf`; the rebuilt page now reads `noteAudit` for a missed house-log row (the legacy page reads no receipt, as before); (4) round 4's open questions and the round 3/4 sentences the answers made false are bracketed, not rewritten; (5) the "Act click bumps `updated_at` without `created_by`" clock gap was false — every write route is `JwtAuthGuard`-only and names its caller in the same upsert — so the migration comment, the ADR and round 5's question 2 are corrected and that question withdrawn. Fixes (1)-(3) mutation-tested: 8 mutations, all killed. |
+| 2026-09-22 | founder (relayed to lane `recs6`, round 6z) | Answered round 5's one open question with the recommended option, verbatim as relayed: **"Clear them too (Recommended)"** — the two-year sweep that clears `created_by` also clears `pinned_by`, `rated_by` and `assigned_by`; after clearing, the note gate treats that note as owner/manager-only to change (test it); `system_audit_log` keeps its own retention. |
+| 2026-09-22 | — | Round 6 built in lane `recs6` (`wt-recs-cat`): migration `20260922021000` (in this lane's band, `20260922021000`–`20260922021099`) `CREATE OR REPLACE`s `recommendation_actions_forget_old_creators()` (unchanged name) to also null `pinned_by`/`rated_by`/`assigned_by`, widening its `WHERE` to any of the four author columns; `20260922010001` itself is untouched. No gateway code changed — `mayTouchNote` already fails closed on a cleared author. Proof: `supabase/tests/20260922021000_..._test.sql` (T1-T11, then T12 — `system_audit_log` untouched by two sweeps — added the same morning), the PGlite probe `RECS6-note-authors-kept-two-years.mjs` (control + 4 mutations, all caught), and `recommendation-round6.spec.ts` (the gate's reading of a cleared column). The claim `ADR-0191-R5-CREATED-BY-KEPT-TWO-YEARS` is corrected in place, bracketed — its text said these three columns "are deliberately NOT cleared"; its `verify` is untouched because it still greps `20260922010001` alone, which did not change. New claim: `ADR-0191-R6-NOTE-AUTHORS-KEPT-TWO-YEARS`. Round 5's open question 1 (the one this round answers) is bracketed, not rewritten. |

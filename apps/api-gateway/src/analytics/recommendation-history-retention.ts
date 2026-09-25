@@ -18,6 +18,20 @@
  * own count: one failing must never read as the other's answer, or as "ran
  * and removed nothing".
  *
+ * ROUND 6 (the founder, 2026-09-22, "Clear them too (Recommended)"): asked
+ * again now that `pinned_by`/`rated_by`/`assigned_by` exist (round 5's OTHER
+ * answer introduced them, so round 5's "History + created_by" could not have
+ * named them) — the SAME sweep, same function, same daily call, now ALSO
+ * clears those three note-author columns (migration 20260922021000's
+ * CREATE OR REPLACE of `recommendation_actions_forget_old_creators()`). No
+ * code here changed: `forgetOldCreators()` still calls the one RPC named by
+ * `FORGET_OLD_CREATORS_RPC`, which still returns one count — the SQL body it
+ * runs now touches four columns instead of one. The note gate
+ * (`item-state.ts` `mayTouchNote`) needed no change either — it already
+ * reads a cleared author the same as one that was never recorded, proven at
+ * `recommendation-round6.spec.ts` and `supabase/tests/20260922021000_..._
+ * test.sql`.
+ *
  * DAILY, not yearly: a name's two years end on its own date, so a sweep once
  * a year would keep some names nearly three years.
  *
@@ -39,7 +53,9 @@ export const FORGET_OLD_NAMES_RPC = "recommendation_action_history_forget_old_na
 
 /**
  * The SQL function that clears `recommendation_actions.created_by`
- * (migration 20260922010001, round 5, answer 3).
+ * (migration 20260922010001, round 5, answer 3) and, since round 6 (migration
+ * 20260922021000, founder 2026-09-22: "Clear them too"), `pinned_by`,
+ * `rated_by` and `assigned_by` too — one function, one call, unchanged name.
  */
 export const FORGET_OLD_CREATORS_RPC = "recommendation_actions_forget_old_creators";
 
@@ -50,11 +66,12 @@ export interface HistoryRetentionTick {
   /** The history call's failure, if it had one. */
   error: string | null;
   /**
-   * `recommendation_actions.created_by` cleared on this run (round 5); null
-   * when that call failed.
+   * `recommendation_actions` rows whose `created_by`, `pinned_by`,
+   * `rated_by` and/or `assigned_by` were cleared on this run (round 5, round
+   * 6); null when that call failed.
    */
   creatorsForgotten: number | null;
-  /** The created_by call's failure, if it had one — independent of `error`. */
+  /** The author-columns call's failure, if it had one — independent of `error`. */
   creatorsError: string | null;
 }
 
@@ -90,10 +107,11 @@ export class RecommendationHistoryRetention {
   }
 
   /**
-   * Clear `recommendation_actions.created_by` on every row older than two
-   * years (round 5, answer 3). Returns how many it cleared. A failed call
-   * throws, on the same contract as `forgetOldNames`. Same reason its RPC
-   * call stays literal, not shared.
+   * Clear `recommendation_actions.created_by` — and, since round 6,
+   * `pinned_by`, `rated_by` and `assigned_by` too — on every row older than
+   * two years (round 5, answer 3; round 6, "Clear them too"). Returns how
+   * many rows it touched. A failed call throws, on the same contract as
+   * `forgetOldNames`. Same reason its RPC call stays literal, not shared.
    */
   async forgetOldCreators(): Promise<number> {
     const { data, error } = await this.dbService
