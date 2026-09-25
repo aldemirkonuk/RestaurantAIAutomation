@@ -352,7 +352,8 @@ describe("OpenTelemetry's own copy of the URL (PR #427 round 2)", () => {
           trace_id: "def456",
           data: {
             url: "http://mudavym.com/api/v1/calendar/feed/SECRETTOKEN.ics",
-            "http.url": "http://mudavym.com/api/v1/calendar/feed/SECRETTOKEN.ics",
+            "http.url":
+              "http://mudavym.com/api/v1/calendar/feed/SECRETTOKEN.ics",
             "http.target": "/api/v1/calendar/feed/SECRETTOKEN.ics",
             "sentry.source": "url",
           },
@@ -421,5 +422,183 @@ describe("OpenTelemetry's own copy of the URL (PR #427 round 2)", () => {
   it("does not touch contexts.trace.data when there is no trace context", () => {
     const event: any = scrubSentryEvent({ request: { url: "/orders" } });
     expect(event.contexts).toBeUndefined();
+  });
+});
+
+/**
+ * PR #427 round 3 (2026-09-25): every token-bearing route, in every container
+ * an event can carry a URL in. Mirrors the web runtime's table on purpose (two
+ * copies of one rule; the guard proves they agree, these prove each one works).
+ * The assertion is on the WHOLE serialized event, so a container nobody named
+ * still fails the test if it carries the token.
+ */
+const REAL_TOKENS = {
+  reset: "pkce_e1f3a5c7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7",
+  verify:
+    "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2ZXJpZnkifQ.Zk3pQ7rT9vX1bD5fH8jL2nP4sU6wY0aC",
+  invite: "k7Qm2VxP9rTzL4nW",
+  studio: "3f9c2a7e-5b1d-4e8f-a6c0-9d2b7e4f1a3c",
+  feed: "9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e8a0c2e4f6a8b0d2f4e6a8c0b",
+  unsubscribe: "u5b1e0c8f2a4d6b9e3c7f1a5d8b2e6c0f",
+  device: "ExponentPushToken[xk8S2LmQ0pZr7Tn4Yv1WcA]",
+  oauth: "4/0AanRRrs8Hq2ZtX9pL4mKw7",
+  inbound: "whsec_3JfK8mQ2pL9vX5tR",
+};
+
+const API = "https://api.mudavym.com/api/v1";
+const TOKEN_ROUTES: Array<[string, string, string]> = [
+  [
+    "reset-password (query)",
+    `https://mudavym.com/reset-password?token=${REAL_TOKENS.reset}&type=recovery`,
+    REAL_TOKENS.reset,
+  ],
+  [
+    "verify-email (query)",
+    `${API}/auth/verify-email?token=${REAL_TOKENS.verify}`,
+    REAL_TOKENS.verify,
+  ],
+  [
+    "invite preview",
+    `${API}/auth/invite/${REAL_TOKENS.invite}`,
+    REAL_TOKENS.invite,
+  ],
+  [
+    "invite accept",
+    `${API}/auth/invite/${REAL_TOKENS.invite}/accept`,
+    REAL_TOKENS.invite,
+  ],
+  [
+    "invite revoke",
+    `${API}/restaurants/r1/invites/${REAL_TOKENS.invite}`,
+    REAL_TOKENS.invite,
+  ],
+  [
+    "studio invite",
+    `https://mudavym.com/studio/invite/${REAL_TOKENS.studio}`,
+    REAL_TOKENS.studio,
+  ],
+  [
+    "iCal feed bearer",
+    `${API}/calendar/feed/${REAL_TOKENS.feed}.ics`,
+    REAL_TOKENS.feed,
+  ],
+  [
+    "digest unsubscribe",
+    `${API}/analytics/digest/unsubscribe/${REAL_TOKENS.unsubscribe}`,
+    REAL_TOKENS.unsubscribe,
+  ],
+  [
+    "push device",
+    `${API}/mobile/devices/${REAL_TOKENS.device}`,
+    REAL_TOKENS.device,
+  ],
+  [
+    "OAuth callback code",
+    `${API}/integrations/oauth/google/callback?code=${REAL_TOKENS.oauth}&state=s1`,
+    REAL_TOKENS.oauth,
+  ],
+  [
+    "inbound webhook secret",
+    `${API}/inbound-email?secret=${REAL_TOKENS.inbound}`,
+    REAL_TOKENS.inbound,
+  ],
+];
+
+/** One event carrying `url` in every place the SDK (or our code) can put one. */
+function eventCarrying(url: string, token: string): any {
+  const path = url.replace(/^https?:\/\/[^/]+/, "");
+  const [bare, query = ""] = url.split("?");
+  return {
+    message: `failed at ${url}`,
+    transaction: `GET ${path}`,
+    request: {
+      url,
+      query_string: query,
+      headers: { referer: url, "user-agent": "ua" },
+    },
+    extra: { url },
+    breadcrumbs: [
+      {
+        category: "http",
+        type: "http",
+        data: {
+          status_code: 200,
+          url: bare,
+          "http.method": "GET",
+          "http.query": `?${query}`,
+          "http.fragment": `#access_token=${token}`,
+        },
+      },
+      {
+        category: "console",
+        message: `request to ${url} failed`,
+        data: {
+          arguments: [`request to ${url} failed`, 42],
+          logger: "console",
+        },
+      },
+    ],
+    logentry: {
+      message: "lookup failed for %s",
+      params: [url],
+      formatted: `lookup failed for ${url}`,
+    },
+    exception: {
+      values: [
+        {
+          type: "Error",
+          value: `Request failed for url '${url}'`,
+          stacktrace: { frames: [{ filename: url, abs_path: url, lineno: 1 }] },
+        },
+      ],
+    },
+    contexts: {
+      trace: { data: { url, "http.url": url, "http.target": path } },
+    },
+    spans: [{ data: { "url.full": url } }],
+  };
+}
+
+describe("PR #427 round 3 — every token route, every container", () => {
+  it.each(TOKEN_ROUTES)(
+    "%s: the token reaches no container",
+    (_label, url, token) => {
+      const scrubbed = scrubSentryEvent(eventCarrying(url, token));
+      expect(JSON.stringify(scrubbed)).not.toContain(token);
+    },
+  );
+
+  it("keeps what triage needs: path shape, referer, user-agent, non-string args", () => {
+    const url = `${API}/calendar/feed/${REAL_TOKENS.feed}.ics`;
+    const event = scrubSentryEvent(eventCarrying(url, REAL_TOKENS.feed));
+    expect(event.request.headers.referer).toBe(
+      `${API}/calendar/feed/<redacted>`,
+    );
+    expect(event.request.headers["user-agent"]).toBe("ua");
+    expect(event.breadcrumbs[0].data["http.query"]).toBeUndefined();
+    expect(event.breadcrumbs[0].data["http.fragment"]).toBeUndefined();
+    expect(event.breadcrumbs[1].data.arguments[1]).toBe(42);
+    expect(event.transaction).toBe("GET /api/v1/calendar/feed/<redacted>");
+  });
+
+  it("leaves a filesystem frame path alone, so issue grouping survives", () => {
+    const event: any = {
+      exception: {
+        values: [
+          {
+            value: "x",
+            stacktrace: {
+              frames: [
+                { filename: "/var/task/dist/mobile/devices/registry.js" },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    scrubSentryEvent(event);
+    expect(event.exception.values[0].stacktrace.frames[0].filename).toBe(
+      "/var/task/dist/mobile/devices/registry.js",
+    );
   });
 });

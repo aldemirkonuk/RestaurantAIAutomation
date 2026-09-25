@@ -84,7 +84,11 @@ function scrubPiiKeys(obj: Record<string, any> | undefined): void {
 // fixed. Query-only keys are dropped entirely, matching the founder's ruling
 // already applied to `request.query_string`; URL/path keys go through
 // scrubUrl, which redacts a path-borne token and drops any query it still has.
-const SPAN_DATA_QUERY_KEYS = ['url.query', 'http.query'] as const
+// `http.fragment` joined 2026-09-25 (PR #427 round 3): @sentry/node's outgoing
+// http and fetch breadcrumbs set it beside `http.query`, and a fragment is where
+// Supabase puts `#access_token=`. scrubUrl already cuts at `#`; this is the same
+// rule for the key that holds the fragment on its own.
+const SPAN_DATA_QUERY_KEYS = ['url.query', 'http.query', 'http.fragment'] as const
 const SPAN_DATA_URL_KEYS = ['url', 'url.full', 'url.path', 'http.url', 'http.target'] as const
 
 function scrubSpanData(data: Record<string, unknown> | undefined): void {
@@ -179,12 +183,141 @@ export function scrubUrl(raw: string): string {
   return path
 }
 
+/**
+ * Free text as Sentry may keep it: scrubUrl's two rules, applied where a URL
+ * sits INSIDE a sentence rather than being the whole field — a breadcrumb or
+ * log message (`HTTP Request: GET https://…/studio_invites?token=eq.<t>`), an
+ * exception's message (`… for url 'https://…?key=<api key>'`).
+ *
+ * - any query or fragment carrying a `key=value` is removed, wherever it sits.
+ *   A bare `?` or `#` is left alone so an ordinary sentence survives.
+ * - the one segment after every TOKEN_PATH_PREFIXES occurrence is replaced.
+ *
+ * Added 2026-09-25 (PR #427 round 3). Over-redaction is the safe direction and
+ * is accepted, as for scrubUrl. Never throws: it runs on an error path.
+ */
+const TEXT_QUERY_RE = /[?#][^\s'"<>`]*=[^\s'"<>`]*/g
+const TEXT_TOKEN_SEGMENT_RES = TOKEN_PATH_PREFIXES.map((prefix) => {
+  const literal = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return [prefix, new RegExp(`${literal}[^/\\s?#'"<>\`]+`, 'g')] as const
+})
+
+export function scrubText(raw: string): string {
+  let out = raw.replace(TEXT_QUERY_RE, '')
+  for (const [prefix, pattern] of TEXT_TOKEN_SEGMENT_RES) {
+    out = out.replace(pattern, `${prefix}<redacted>`)
+  }
+  return out
+}
+
+// A navigation breadcrumb keeps its URLs in `from`/`to`; an http/fetch one uses
+// the same keys as span data (`url`, `http.query`, `http.fragment`).
+const BREADCRUMB_URL_KEYS = ['from', 'to'] as const
+
+/**
+ * Breadcrumbs are merged onto the event BEFORE `beforeSend`, so a navigation
+ * away from `/reset-password?token=...` leaves the token in the buffer for the
+ * next hundred breadcrumbs even though `request.url` is clean. Round 3 (PR #427,
+ * 2026-09-25) widened this from `data.from/to/url` to the whole crumb: the
+ * `message` (console and logging crumbs), the console crumb's own copy of its
+ * `arguments`, and the span-data keys an outgoing http/fetch crumb carries —
+ * @sentry/node puts an outgoing request's query in `data['http.query']`, and a
+ * PostgREST lookup by token is exactly `?token=eq.<token>`.
+ */
+function scrubBreadcrumbs(crumbs: unknown): void {
+  if (!Array.isArray(crumbs)) return
+  for (const crumb of crumbs) {
+    if (!crumb || typeof crumb !== 'object') continue
+    const c = crumb as { message?: unknown; data?: unknown }
+    if (typeof c.message === 'string') c.message = scrubText(c.message)
+    if (!c.data || typeof c.data !== 'object') continue
+    const data = c.data as Record<string, unknown>
+    scrubSpanData(data)
+    for (const key of BREADCRUMB_URL_KEYS) {
+      if (typeof data[key] === 'string') data[key] = scrubUrl(data[key] as string)
+    }
+    if (Array.isArray(data.arguments)) {
+      data.arguments = data.arguments.map((arg: unknown) =>
+        typeof arg === 'string' ? scrubText(arg) : arg,
+      )
+    }
+  }
+}
+
+/**
+ * Every string inside a frame's local variables, however deeply nested. The
+ * Python SDK attaches locals by default (`include_local_variables`), and PR
+ * #427's round-3 wire test found an httpx `Request` repr and an error message
+ * — both quoting the token-bearing URL — in `frames[].vars`. Depth-capped: it
+ * runs on an error path and must not recurse without bound. Kept identical in
+ * all three runtimes although only Python populates `vars` today.
+ */
+function scrubStringsDeep(value: unknown, depth = 0): unknown {
+  if (typeof value === 'string') return scrubText(value)
+  if (depth > 8 || !value || typeof value !== 'object') return value
+  const bag = value as Record<string, unknown>
+  for (const key of Object.keys(bag)) {
+    bag[key] = scrubStringsDeep(bag[key], depth + 1)
+  }
+  return value
+}
+
+/**
+ * An exception's message can quote the URL it failed on, and a frame's file can
+ * BE the page URL — an error thrown by index.html's inline script names the
+ * document itself, token and all. Only frame paths that are http(s) URLs are
+ * touched, so a bundle or filesystem path (and with it source maps and
+ * grouping) is left exactly as the SDK produced it.
+ */
+function scrubExceptions(exception: unknown): void {
+  const values = (exception as { values?: unknown } | undefined)?.values
+  if (!Array.isArray(values)) return
+  for (const ex of values) {
+    if (!ex || typeof ex !== 'object') continue
+    const e = ex as { value?: unknown; stacktrace?: { frames?: unknown } }
+    if (typeof e.value === 'string') e.value = scrubText(e.value)
+    const frames = e.stacktrace?.frames
+    if (!Array.isArray(frames)) continue
+    for (const frame of frames) {
+      if (!frame || typeof frame !== 'object') continue
+      const f = frame as Record<string, unknown>
+      if (f.vars && typeof f.vars === 'object') scrubStringsDeep(f.vars)
+      for (const key of ['filename', 'abs_path']) {
+        const v = f[key]
+        if (typeof v === 'string' && /^https?:\/\//.test(v)) f[key] = scrubUrl(v)
+      }
+    }
+  }
+}
+
+/** `captureMessage` text and a log record's template, params and formatted form. */
+function scrubLogentry(logentry: unknown): void {
+  if (!logentry || typeof logentry !== 'object') return
+  const l = logentry as { message?: unknown; formatted?: unknown; params?: unknown }
+  if (typeof l.message === 'string') l.message = scrubText(l.message)
+  if (typeof l.formatted === 'string') l.formatted = scrubText(l.formatted)
+  if (Array.isArray(l.params)) {
+    l.params = l.params.map((p: unknown) => (typeof p === 'string' ? scrubText(p) : p))
+  }
+}
+
 export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
   if (event.request) {
     const headers = event.request.headers
     if (headers) {
       for (const key of Object.keys(headers)) {
-        if (SENSITIVE_HEADERS.has(key.toLowerCase())) delete headers[key]
+        const lower = key.toLowerCase()
+        if (SENSITIVE_HEADERS.has(lower)) {
+          delete headers[key]
+        } else if (lower === 'referer' && typeof headers[key] === 'string') {
+          // The previous page's full URL. The browser SDK copies
+          // `document.referrer` here, so a hard navigation off
+          // `/invite/<code>` or `/reset-password?token=` carries the credential
+          // unless ADR 0158's `no-referrer` header happened to apply to that
+          // exact spelling of the path. Scrubbed, not dropped: the origin and
+          // path still say where the person came from. PR #427 round 3.
+          headers[key] = scrubUrl(headers[key])
+        }
       }
     }
     delete event.request.cookies
@@ -197,18 +330,12 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
     // query goes, so it goes here too rather than being redacted key by key.
     delete (event.request as Record<string, unknown>).query_string
   }
-  // Breadcrumbs are merged onto the event BEFORE `beforeSend`, so a navigation
-  // away from `/reset-password?token=...` leaves the token in the buffer for the
-  // next hundred breadcrumbs even though `request.url` is now clean.
-  if (Array.isArray(event.breadcrumbs)) {
-    for (const crumb of event.breadcrumbs) {
-      const data = crumb?.data as Record<string, unknown> | undefined
-      if (!data) continue
-      for (const key of ['from', 'to', 'url']) {
-        if (typeof data[key] === 'string') data[key] = scrubUrl(data[key] as string)
-      }
-    }
-  }
+  scrubBreadcrumbs(event.breadcrumbs)
+  // Free text that can quote a URL: the event's own message, a log record, and
+  // each exception's message and frames. PR #427 round 3.
+  if (typeof event.message === 'string') event.message = scrubText(event.message)
+  scrubLogentry(event.logentry)
+  scrubExceptions(event.exception)
   if (event.user) {
     for (const key of PII_USER_KEYS) {
       delete (event.user as Record<string, any>)[key]

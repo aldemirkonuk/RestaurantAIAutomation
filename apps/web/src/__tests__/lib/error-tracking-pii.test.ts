@@ -346,3 +346,125 @@ describe("OpenTelemetry's own copy of the URL (PR #427 round 2)", () => {
     expect(JSON.stringify(event)).not.toContain('SECRETCODE')
   })
 })
+
+/**
+ * PR #427 round 3 (2026-09-25): every token-bearing route, in every container
+ * an event can carry a URL in — not one hand-picked field per test.
+ *
+ * The token values are shaped like the real ones (a 64-hex feed bearer, an
+ * Expo push token, a JWT-shaped verify token, a Google OAuth code), and the
+ * assertion is on the WHOLE serialized event: a container this file forgot to
+ * name still fails the test if it carries the token.
+ */
+const REAL_TOKENS = {
+  reset: 'pkce_e1f3a5c7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7',
+  verify: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2ZXJpZnkifQ.Zk3pQ7rT9vX1bD5fH8jL2nP4sU6wY0aC',
+  invite: 'k7Qm2VxP9rTzL4nW',
+  studio: '3f9c2a7e-5b1d-4e8f-a6c0-9d2b7e4f1a3c',
+  feed: '9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e8a0c2e4f6a8b0d2f4e6a8c0b',
+  unsubscribe: 'u5b1e0c8f2a4d6b9e3c7f1a5d8b2e6c0f',
+  device: 'ExponentPushToken[xk8S2LmQ0pZr7Tn4Yv1WcA]',
+  oauth: '4/0AanRRrs8Hq2ZtX9pL4mKw7',
+  inbound: 'whsec_3JfK8mQ2pL9vX5tR',
+}
+
+const TOKEN_ROUTES: Array<[string, string, string]> = [
+  ['reset-password (query)', `https://mudavym.com/reset-password?token=${REAL_TOKENS.reset}&type=recovery`, REAL_TOKENS.reset],
+  ['verify-email (query)', `https://mudavym.com/verify-email?token=${REAL_TOKENS.verify}`, REAL_TOKENS.verify],
+  ['web invite (path)', `https://mudavym.com/invite/${REAL_TOKENS.invite}`, REAL_TOKENS.invite],
+  ['studio invite (path)', `https://mudavym.com/studio/invite/${REAL_TOKENS.studio}`, REAL_TOKENS.studio],
+  ['gateway invite accept', `https://api.mudavym.com/api/v1/auth/invite/${REAL_TOKENS.invite}/accept`, REAL_TOKENS.invite],
+  ['invite revoke', `https://api.mudavym.com/api/v1/restaurants/r1/invites/${REAL_TOKENS.invite}`, REAL_TOKENS.invite],
+  ['iCal feed bearer', `https://api.mudavym.com/api/v1/calendar/feed/${REAL_TOKENS.feed}.ics`, REAL_TOKENS.feed],
+  ['digest unsubscribe', `https://api.mudavym.com/api/v1/analytics/digest/unsubscribe/${REAL_TOKENS.unsubscribe}`, REAL_TOKENS.unsubscribe],
+  ['push device', `https://api.mudavym.com/api/v1/mobile/devices/${REAL_TOKENS.device}`, REAL_TOKENS.device],
+  ['OAuth callback code', `https://api.mudavym.com/api/v1/integrations/oauth/google/callback?code=${REAL_TOKENS.oauth}&state=s1`, REAL_TOKENS.oauth],
+  ['inbound webhook secret', `https://api.mudavym.com/api/v1/inbound-email?secret=${REAL_TOKENS.inbound}`, REAL_TOKENS.inbound],
+]
+
+/** One event carrying `url` in every place the SDKs (or our code) can put one. */
+function eventCarrying(url: string, token: string): any {
+  const path = url.replace(/^https?:\/\/[^/]+/, '')
+  const [bare, query = ''] = url.split('?')
+  return {
+    message: `failed at ${url}`,
+    transaction: `GET ${path}`,
+    request: { url, query_string: query, headers: { Referer: url, 'User-Agent': 'ua' } },
+    breadcrumbs: [
+      { category: 'navigation', data: { from: path, to: '/dashboard' } },
+      { category: 'fetch', type: 'http', data: { method: 'GET', url, status_code: 500 } },
+      {
+        category: 'http',
+        type: 'http',
+        data: { url: bare, 'http.method': 'GET', 'http.query': `?${query}`, 'http.fragment': `#access_token=${token}` },
+      },
+      {
+        category: 'console',
+        level: 'error',
+        message: `request to ${url} failed`,
+        data: { arguments: [`request to ${url} failed`, 42], logger: 'console' },
+      },
+    ],
+    logentry: { message: 'lookup failed for %s', params: [url], formatted: `lookup failed for ${url}` },
+    exception: {
+      values: [
+        {
+          type: 'Error',
+          value: `Request failed for url '${url}'`,
+          stacktrace: { frames: [{ filename: url, abs_path: url, function: 'inline', lineno: 31 }] },
+        },
+      ],
+    },
+    contexts: { trace: { data: { url, 'http.url': url, 'http.target': path } } },
+    spans: [{ span_id: 's', trace_id: 't', start_timestamp: 0, data: { 'url.full': url } }],
+  }
+}
+
+describe('PR #427 round 3 — every token route, every container', () => {
+  it.each(TOKEN_ROUTES)('%s: the token reaches no container', async (_label, url, token) => {
+    const { scrubSentryEvent } = await freshModule()
+    const scrubbed = scrubSentryEvent(eventCarrying(url, token))
+    expect(JSON.stringify(scrubbed)).not.toContain(token)
+  })
+
+  it('keeps what triage needs: origin, path, route shape, Referer, and ordinary text', async () => {
+    const { scrubSentryEvent } = await freshModule()
+    const url = `https://mudavym.com/invite/${REAL_TOKENS.invite}`
+    const event = scrubSentryEvent(eventCarrying(url, REAL_TOKENS.invite))
+    expect(event.request.headers.Referer).toBe('https://mudavym.com/invite/<redacted>')
+    expect(event.request.headers['User-Agent']).toBe('ua')
+    expect(event.breadcrumbs[0].data.from).toBe('/invite/<redacted>')
+    expect(event.breadcrumbs[3].message).toBe('request to https://mudavym.com/invite/<redacted> failed')
+    expect(event.breadcrumbs[3].data.arguments[1]).toBe(42)
+    expect(event.exception.values[0].value).toBe("Request failed for url 'https://mudavym.com/invite/<redacted>'")
+    expect(event.logentry.params).toEqual(['https://mudavym.com/invite/<redacted>'])
+  })
+
+  it('scrubText leaves a sentence with no query and no token route untouched', async () => {
+    const { scrubText } = await freshModule()
+    const plain = "Cannot read properties of undefined (reading 'id') — why? #3 in /orders/42"
+    expect(scrubText(plain)).toBe(plain)
+  })
+
+  it('leaves a bundle or filesystem frame path alone, so source maps and grouping survive', async () => {
+    const { scrubSentryEvent } = await freshModule()
+    const event: any = {
+      exception: {
+        values: [
+          {
+            value: 'x',
+            stacktrace: {
+              frames: [
+                { filename: 'https://mudavym.com/assets/index-abc123.js', lineno: 1 },
+                { filename: '/app/src/mobile/devices/registry.ts', lineno: 2 },
+              ],
+            },
+          },
+        ],
+      },
+    }
+    scrubSentryEvent(event)
+    expect(event.exception.values[0].stacktrace.frames[0].filename).toBe('https://mudavym.com/assets/index-abc123.js')
+    expect(event.exception.values[0].stacktrace.frames[1].filename).toBe('/app/src/mobile/devices/registry.ts')
+  })
+})

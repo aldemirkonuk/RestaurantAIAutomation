@@ -196,6 +196,41 @@ CONTAINER_PATTERNS = {
         "ts": r"event\.spans\b",
         "py": r"""event\.(?:get|pop)\(\s*['"]spans['"]""",
     },
+    # Added by PR #427 round 3 (2026-09-25). Breadcrumbs are merged onto the
+    # event before `before_send`, and only the web runtime scrubbed them: the
+    # round-2 security angle named the asymmetry, and this guard could not see
+    # it because no entry required the container. On the gateway the leak was
+    # concrete -- @sentry/node's outgoing http/fetch crumb keeps the raw query
+    # in `data['http.query']`, and a PostgREST lookup by token is
+    # `?token=eq.<token>`. In Python, httpx's INFO log line becomes a crumb
+    # MESSAGE quoting the same URL.
+    "breadcrumbs": {
+        "ts": r"event\.breadcrumbs\b",
+        "py": r"""event\.(?:get|pop)\(\s*['"]breadcrumbs['"]""",
+    },
+    # Free text that can quote a URL (same round): an exception's message
+    # (httpx.HTTPStatusError quotes its full URL, query included), the
+    # event's own message, and a log record's template/params/formatted form.
+    "exception": {
+        "ts": r"event\.exception\b",
+        "py": r"""event\.(?:get|pop)\(\s*['"]exception['"]""",
+    },
+    "message": {
+        "ts": r"event\.message\b",
+        "py": r"""event\.(?:get|pop)\(\s*['"]message['"]""",
+    },
+    "logentry": {
+        "ts": r"event\.logentry\b",
+        "py": r"""event\.(?:get|pop)\(\s*['"]logentry['"]""",
+    },
+    # The previous page's full URL, in a header that is a description rather
+    # than a credential -- so SENSITIVE_HEADERS (which DELETES) is the wrong
+    # list for it. Scrubbed through scrubUrl instead. Was the ADR 0040
+    # amendment's own "still open" item until the same round.
+    "request.headers.referer": {
+        "ts": r"""['"]referer['"]""",
+        "py": r"""['"]referer['"]""",
+    },
 }
 REQUIRED_CONTAINERS = frozenset(CONTAINER_PATTERNS)
 
@@ -711,6 +746,11 @@ export function scrubSentryEvent(event) {
   if (typeof event.transaction === 'string') { event.transaction = scrubUrl(event.transaction) }
   scrubSpanData(event.contexts?.trace?.data)
   if (Array.isArray(event.spans)) { for (const span of event.spans) { scrubSpanData(span.data) } }
+  if (lower === 'referer') { headers[key] = scrubUrl(headers[key]) }
+  scrubBreadcrumbs(event.breadcrumbs)
+  if (typeof event.message === 'string') { event.message = scrubText(event.message) }
+  scrubLogentry(event.logentry)
+  scrubExceptions(event.exception)
   return event
 }
 """
@@ -758,6 +798,12 @@ def scrub_sentry_event(event, hint=None):
     if isinstance(spans, list):
         for span in spans:
             _scrub_span_data(span.get("data"))
+    if lower == "referer":
+        headers[name] = scrub_url(headers[name])
+    _scrub_breadcrumbs(event.get("breadcrumbs"))
+    message = event.get("message")
+    _scrub_logentry(event.get("logentry"))
+    _scrub_exceptions(event.get("exception"))
     return event
 """
 

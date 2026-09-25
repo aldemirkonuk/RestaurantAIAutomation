@@ -10,6 +10,7 @@ Provides centralized error tracking and monitoring:
 
 import os
 import logging
+import re
 from typing import Optional, Dict, Any
 from functools import wraps
 
@@ -85,7 +86,10 @@ def _scrub_pii_keys(obj: Any) -> None:
 # fixed. Query-only keys are dropped entirely, matching the founder's ruling
 # already applied to request["query_string"]; URL/path keys go through
 # scrub_url, which redacts a path-borne token and drops any query it still has.
-_SPAN_DATA_QUERY_KEYS = ("url.query", "http.query")
+# "http.fragment" joined 2026-09-25 (PR #427 round 3): sentry_sdk's httpx and
+# stdlib integrations set it beside "http.query" with sanitize=False, and the
+# http-client breadcrumb is built from the same span data.
+_SPAN_DATA_QUERY_KEYS = ("url.query", "http.query", "http.fragment")
 _SPAN_DATA_URL_KEYS = ("url", "url.full", "url.path", "http.url", "http.target")
 
 
@@ -147,6 +151,134 @@ def scrub_url(raw: str) -> str:
     return path
 
 
+# Free text as Sentry may keep it: scrub_url's two rules, applied where a URL
+# sits INSIDE a sentence rather than being the whole field. Any query or
+# fragment carrying a key=value is removed wherever it sits (a bare ?/# is left
+# alone), and the one segment after every TOKEN_PATH_PREFIXES occurrence is
+# replaced. PR #427 round 3 (2026-09-25). Kept identical in all three runtimes.
+#
+# The load-bearing case here is httpx's own INFO log line, which
+# LoggingIntegration(level=INFO) turns into a breadcrumb MESSAGE:
+#   HTTP Request: GET https://<ref>.supabase.co/rest/v1/studio_invites?select=*&token=eq.<token> ...
+# (api/studio_routes.py looks a studio invite up by its token), and an
+# httpx.HTTPStatusError's own message, which quotes the full URL with its query.
+_TEXT_QUERY_RE = re.compile(r"[?#][^\s'\"<>`]*=[^\s'\"<>`]*")
+_TEXT_TOKEN_SEGMENT_RES = tuple(
+    (prefix, re.compile(re.escape(prefix) + r"[^/\s?#'\"<>`]+"))
+    for prefix in TOKEN_PATH_PREFIXES
+)
+
+
+def scrub_text(raw: str) -> str:
+    """Redact a query and a path-borne credential wherever they sit in text."""
+    out = _TEXT_QUERY_RE.sub("", raw)
+    for prefix, pattern in _TEXT_TOKEN_SEGMENT_RES:
+        out = pattern.sub(prefix + "<redacted>", out)
+    return out
+
+
+# A navigation breadcrumb keeps its URLs in "from"/"to"; an http one uses the
+# same keys as span data ("url", "http.query", "http.fragment").
+_BREADCRUMB_URL_KEYS = ("from", "to")
+
+
+def _scrub_breadcrumbs(crumbs: Any) -> None:
+    """
+    Scrub every breadcrumb in place: its message, and its data the way span data
+    is scrubbed. sentry_sdk nests the list as {"values": [...]}; a hand-built
+    event may carry the bare list. Breadcrumbs were scrubbed in the web runtime
+    only until PR #427 round 3 (2026-09-25).
+    """
+    if isinstance(crumbs, dict):
+        crumbs = crumbs.get("values")
+    if not isinstance(crumbs, list):
+        return
+    for crumb in crumbs:
+        if not isinstance(crumb, dict):
+            continue
+        message = crumb.get("message")
+        if isinstance(message, str):
+            crumb["message"] = scrub_text(message)
+        data = crumb.get("data")
+        if not isinstance(data, dict):
+            continue
+        _scrub_span_data(data)
+        for key in _BREADCRUMB_URL_KEYS:
+            value = data.get(key)
+            if isinstance(value, str):
+                data[key] = scrub_url(value)
+        arguments = data.get("arguments")
+        if isinstance(arguments, list):
+            data["arguments"] = [
+                scrub_text(a) if isinstance(a, str) else a for a in arguments
+            ]
+
+
+def _scrub_strings_deep(value: Any, depth: int = 0) -> Any:
+    """
+    Every string inside a frame's local variables, however deeply nested.
+    sentry_sdk attaches locals by default (include_local_variables), and PR
+    #427's round-3 wire test found an httpx Request repr and an error message --
+    both quoting the token-bearing URL -- in frames[].vars. Depth-capped: it runs
+    on an error path and must not recurse without bound.
+    """
+    if isinstance(value, str):
+        return scrub_text(value)
+    if depth > 8:
+        return value
+    if isinstance(value, dict):
+        for key in list(value):
+            value[key] = _scrub_strings_deep(value[key], depth + 1)
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            value[index] = _scrub_strings_deep(item, depth + 1)
+    return value
+
+
+def _scrub_exceptions(exception: Any) -> None:
+    """
+    An exception's message can quote the URL it failed on. Frame paths are only
+    touched when they are http(s) URLs, so a filesystem path -- and with it
+    issue grouping -- is left exactly as the SDK produced it.
+    """
+    values = exception.get("values") if isinstance(exception, dict) else None
+    if not isinstance(values, list):
+        return
+    for ex in values:
+        if not isinstance(ex, dict):
+            continue
+        value = ex.get("value")
+        if isinstance(value, str):
+            ex["value"] = scrub_text(value)
+        stacktrace = ex.get("stacktrace")
+        frames = stacktrace.get("frames") if isinstance(stacktrace, dict) else None
+        if not isinstance(frames, list):
+            continue
+        for frame in frames:
+            if not isinstance(frame, dict):
+                continue
+            _scrub_strings_deep(frame.get("vars"))
+            for key in ("filename", "abs_path"):
+                path = frame.get(key)
+                if isinstance(path, str) and path.startswith(("http://", "https://")):
+                    frame[key] = scrub_url(path)
+
+
+def _scrub_logentry(logentry: Any) -> None:
+    """A log record's template, its params and its formatted form."""
+    if not isinstance(logentry, dict):
+        return
+    for key in ("message", "formatted"):
+        value = logentry.get(key)
+        if isinstance(value, str):
+            logentry[key] = scrub_text(value)
+    params = logentry.get("params")
+    if isinstance(params, list):
+        logentry["params"] = [
+            scrub_text(p) if isinstance(p, str) else p for p in params
+        ]
+
+
 def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dict]:
     """
     Strip credentials and identity from an event before it is transmitted.
@@ -171,8 +303,14 @@ def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dic
         headers = request.get("headers")
         if isinstance(headers, dict):
             for name in list(headers):
-                if name.lower() in SENSITIVE_HEADERS:
+                lower = name.lower()
+                if lower in SENSITIVE_HEADERS:
                     headers.pop(name, None)
+                elif lower == "referer" and isinstance(headers[name], str):
+                    # The calling page's full URL: a browser on /invite/<code>
+                    # or /reset-password?token= sends it with every call it
+                    # makes. Scrubbed, not dropped. PR #427 round 3.
+                    headers[name] = scrub_url(headers[name])
         request.pop("cookies", None)
         url = request.get("url")
         if isinstance(url, str):
@@ -211,6 +349,16 @@ def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dic
         for span in spans:
             if isinstance(span, dict):
                 _scrub_span_data(span.get("data"))
+
+    _scrub_breadcrumbs(event.get("breadcrumbs"))
+
+    # Free text that can quote a URL: the event's own message, a log record, and
+    # each exception's message and frames. PR #427 round 3.
+    message = event.get("message")
+    if isinstance(message, str):
+        event["message"] = scrub_text(message)
+    _scrub_logentry(event.get("logentry"))
+    _scrub_exceptions(event.get("exception"))
 
     return event
 

@@ -200,6 +200,7 @@ agreeing *constant* is the easy half to check and the half that matters least.
 | 2026-08-28 | audit | Scrubber symmetry gap found and closed; guard extended to containers (amendment above) |
 | 2026-09-21 | PR #427 (self-authored; its own security and compliance audits BLOCKED v1) | Amended — `before_send` never scrubbed `request.url`; `query_string`, a path-borne credential (`@Public()` `/calendar/feed/<token>.ics`) and breadcrumbs were all missed. See the amendment below the trail |
 | 2026-09-22 | PR #427 round 2 (self-authored; its own correctness and security audits independently reproduced the same leak via the real SDK and BLOCKED v2) | Amended — the `beforeSendTransaction`/`before_send_transaction` fix from the row above scrubbed `event.request` but not `event.transaction` or `contexts.trace.data`/`spans[].data`, an OpenTelemetry-populated copy of the same URL one level deeper than the existing `contexts` key-name pass reaches. Same two secrets (calendar feed token, inbound-webhook secret) leaked through the new field. See the fifth-gap paragraph below |
+| 2026-09-25 | PR #427 round 3 (lane L3a; closes the round-2 audit's non-blocking breadcrumb finding and this record's own "still open" list) | Amended — breadcrumbs, free text (message, log record, exception message, frame locals) and `Referer` now scrubbed in all three runtimes and pinned in the guard; a real-SDK wire test per runtime found `frames[].vars`. See the sixth-gap paragraph below |
 
 ---
 
@@ -315,7 +316,8 @@ shapes that mirror what the SDKs actually emit, not another hand-picked
 minimal literal — the exact gap that let this round's finding through CI
 clean in the first place.
 
-**Still open, filed not fixed:** breadcrumb URLs are scrubbed in the **web
+**Still open (as written 2026-09-22; the first two items are closed by the
+sixth gap below, 2026-09-25):** breadcrumb URLs are scrubbed in the **web
 runtime only**, which leaves the three runtimes asymmetric on a container — the
 exact condition the container check exists for, and the guard does not
 require breadcrumbs. `Referer` is not in `SENSITIVE_HEADERS`, which matters for
@@ -324,9 +326,57 @@ trailing-slash case, `ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH`, still
 `open`). And `scrubUrl` returns on the **first** matching prefix, so a path
 bearing two credentials would keep one; no route has that shape today.
 
+**A sixth gap, and the "still open" list above, closed in round 3 (2026-09-25,
+lane L3a).** Breadcrumbs are merged onto the event before `beforeSend`, and only
+the web runtime scrubbed them — and only their `from`/`to`/`url` keys. Measured
+against the installed SDKs rather than reasoned about: `@sentry/node-core`'s
+outgoing http and fetch instrumentation (`getBreadcrumbData`) puts an outgoing
+request's raw query in `data['http.query']` and its fragment in
+`data['http.fragment']`, and a PostgREST lookup by token is exactly
+`?token=eq.<token>`; `sentry_sdk`'s httpx and stdlib integrations do the same
+with `sanitize=False`, and `LoggingIntegration(level=INFO)` turns httpx's own
+`HTTP Request: GET <full URL>` line into a breadcrumb **message**
+(`api/studio_routes.py` looks a studio invite up by its token). The same URL,
+query included, reaches free text elsewhere: an `httpx.HTTPStatusError`'s
+message quotes it, a log record's params carry it, and — found only by the new
+real-SDK wire test, which no hand-built fixture would have — `sentry_sdk`
+attaches frame locals by default (`include_local_variables`), so an httpx
+`Request` repr and the formatted error message both sat in `frames[].vars`.
+
+Closed the same way in all three runtimes: every breadcrumb's `message`, its
+data (through the span-data rule, with `http.fragment` now dropped beside
+`http.query`), its `from`/`to`, and a console crumb's `arguments`; the event
+`message`; a log record's template, params and formatted form; each
+exception's message, the strings in its frames' locals, and a frame path only
+when it is an http(s) URL (a filesystem or bundle path, and with it source maps
+and grouping, is left as the SDK produced it). Free text goes through a new
+`scrubText`: any query or fragment carrying a `key=value` is removed wherever it
+sits (a bare `?` or `#` in a sentence survives), and the one segment after every
+`TOKEN_PATH_PREFIXES` occurrence is replaced. `Referer` is reduced through
+`scrubUrl` rather than added to `SENSITIVE_HEADERS`, which deletes: it
+describes where a person came from, and only its query and token segment are
+the credential. Pinned as five new required containers in `CONTAINER_PATTERNS`
+(`breadcrumbs`, `exception`, `message`, `logentry`, `request.headers.referer`),
+mutation-tested (dropping any one from one runtime exits 1; a comment-only
+control exits 0), and by the CLAIMS row
+`ADR-0040-SCRUBBER-COVERS-BREADCRUMBS-AND-FREE-TEXT`, which also fails if the
+guard stops pinning them. Each runtime now has a wire test that drives the real
+SDK client and asserts on the serialized envelope, with a control proving the
+Python one leaks when `before_send` is off.
+
+**Still open after round 3, filed not fixed:** a frame local whose repr holds a
+**bare** token with no URL around it (a request-body model, say) is invisible to
+URL-shaped scrubbing; closing it means `include_local_variables=False` on the
+Python init sites, which trades triage detail for what the tracker may hold and
+is the founder's call, not this record's. A strict `xfail` test pins it open
+and will fail the day it is closed. Frame locals can carry identity too (a local
+named `email`), which `sentry_sdk`'s default denylist does not cover — a gap in
+this record's own Decision, not only in the token work. `scrubUrl` still stops at
+the first matching prefix.
+
 **Revisit when:** a new `@Public()` route takes a credential in its path (the
 guard will say so); Sentry's SDK adds a further container carrying a URL
-beyond `contexts.trace.data`/`spans` (e.g. a new integration's own event
-extension) — the fourth gap's own version of this clause named exactly this
-one, so treat this list as open-ended rather than closed by two entries; the
-breadcrumb asymmetry is closed; or the trailing-slash referrer gap is closed.
+beyond those now pinned (e.g. a new integration's own event extension) —
+round 3's wire tests found one more that no fixture held, so treat this list as
+open-ended; the frame-locals decision is made; or the trailing-slash referrer
+gap is closed (ADR 0158, PR #423).

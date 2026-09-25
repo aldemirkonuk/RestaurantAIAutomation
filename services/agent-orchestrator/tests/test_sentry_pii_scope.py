@@ -8,6 +8,8 @@ with no shared module, and scripts/check_sentry_pii_scope.py fails the build if
 those copies drift. A single shared test would hide exactly that drift.
 """
 
+import json
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -18,6 +20,7 @@ from utils.sentry_client import (
     SENSITIVE_HEADERS,
     SentryClient,
     scrub_sentry_event,
+    scrub_text,
 )
 
 
@@ -336,3 +339,293 @@ def test_no_trace_context_does_not_raise():
     event = {"request": {"url": "/orders"}}
     scrub_sentry_event(event)
     assert "contexts" not in event
+
+
+# ---------------------------------------------------------------------------
+# PR #427 round 3 (2026-09-25): every token-bearing route, in every container
+# an event can carry a URL in. Mirrors the two TypeScript tables on purpose.
+# The assertion is on the WHOLE serialized event, so a container nobody named
+# still fails the test if it carries the token.
+# ---------------------------------------------------------------------------
+
+REAL_TOKENS = {
+    "reset": "pkce_e1f3a5c7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7",
+    "verify": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ2ZXJpZnkifQ.Zk3pQ7rT9vX1bD5fH8jL2nP4sU6wY0aC",
+    "invite": "k7Qm2VxP9rTzL4nW",
+    "studio": "3f9c2a7e-5b1d-4e8f-a6c0-9d2b7e4f1a3c",
+    "feed": "9f2c4e6a8b0d1f3e5a7c9b1d3f5e7a9c0b2d4f6e8a0c2e4f6a8b0d2f4e6a8c0b",
+    "unsubscribe": "u5b1e0c8f2a4d6b9e3c7f1a5d8b2e6c0f",
+    "device": "ExponentPushToken[xk8S2LmQ0pZr7Tn4Yv1WcA]",
+    "oauth": "4/0AanRRrs8Hq2ZtX9pL4mKw7",
+    "inbound": "whsec_3JfK8mQ2pL9vX5tR",
+}
+_API = "https://api.mudavym.com/api/v1"
+TOKEN_ROUTES = [
+    (
+        f"https://mudavym.com/reset-password?token={REAL_TOKENS['reset']}&type=recovery",
+        REAL_TOKENS["reset"],
+    ),
+    (f"{_API}/auth/verify-email?token={REAL_TOKENS['verify']}", REAL_TOKENS["verify"]),
+    (f"{_API}/auth/invite/{REAL_TOKENS['invite']}/accept", REAL_TOKENS["invite"]),
+    (f"{_API}/restaurants/r1/invites/{REAL_TOKENS['invite']}", REAL_TOKENS["invite"]),
+    (
+        f"https://mudavym.com/studio/invite/{REAL_TOKENS['studio']}",
+        REAL_TOKENS["studio"],
+    ),
+    (f"{_API}/calendar/feed/{REAL_TOKENS['feed']}.ics", REAL_TOKENS["feed"]),
+    (
+        f"{_API}/analytics/digest/unsubscribe/{REAL_TOKENS['unsubscribe']}",
+        REAL_TOKENS["unsubscribe"],
+    ),
+    (f"{_API}/mobile/devices/{REAL_TOKENS['device']}", REAL_TOKENS["device"]),
+    (
+        f"{_API}/integrations/oauth/google/callback?code={REAL_TOKENS['oauth']}&state=s1",
+        REAL_TOKENS["oauth"],
+    ),
+    (f"{_API}/inbound-email?secret={REAL_TOKENS['inbound']}", REAL_TOKENS["inbound"]),
+    # api/studio_routes.py looks a studio invite up BY its token, so supabase-py
+    # (httpx) puts it in an outgoing query -- the Python runtime's own vector.
+    (
+        f"https://ref.supabase.co/rest/v1/studio_invites?select=%2A&token=eq.{REAL_TOKENS['studio']}",
+        REAL_TOKENS["studio"],
+    ),
+]
+
+
+def _event_carrying(url, token):
+    path = url.split("://", 1)[1]
+    path = path[path.find("/") :]
+    bare, _, query = url.partition("?")
+    return {
+        "message": f"failed at {url}",
+        "transaction": f"GET {path}",
+        "request": {
+            "url": url,
+            "query_string": query,
+            "headers": {"Referer": url, "User-Agent": "ua"},
+        },
+        "breadcrumbs": {
+            "values": [
+                {
+                    "type": "http",
+                    "category": "httplib",
+                    "data": {
+                        "url": bare,
+                        "http.method": "GET",
+                        "http.query": query,
+                        "http.fragment": f"access_token={token}",
+                    },
+                },
+                {
+                    "type": "log",
+                    "category": "httpx",
+                    "message": f'HTTP Request: GET {url} "HTTP/1.1 200 OK"',
+                    "data": {},
+                },
+            ]
+        },
+        "logentry": {
+            "message": "lookup failed for %s",
+            "params": [url],
+            "formatted": f"lookup failed for {url}",
+        },
+        "exception": {
+            "values": [
+                {
+                    "type": "HTTPStatusError",
+                    "value": f"Client error '404 Not Found' for url '{url}'",
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "filename": url,
+                                "abs_path": url,
+                                "vars": {"request": f"<Request('GET', '{url}')>"},
+                            }
+                        ]
+                    },
+                }
+            ]
+        },
+        "contexts": {"trace": {"data": {"url": url, "http.url": url}}},
+        "spans": [{"data": {"url.full": url}}],
+    }
+
+
+@pytest.mark.parametrize("url,token", TOKEN_ROUTES)
+def test_round3_every_token_route_reaches_no_container(url, token):
+    scrubbed = scrub_sentry_event(_event_carrying(url, token))
+    assert token not in json.dumps(scrubbed)
+
+
+def test_round3_keeps_what_triage_needs():
+    url = f"{_API}/calendar/feed/{REAL_TOKENS['feed']}.ics"
+    event = scrub_sentry_event(_event_carrying(url, REAL_TOKENS["feed"]))
+    assert event["request"]["headers"]["Referer"] == f"{_API}/calendar/feed/<redacted>"
+    assert event["request"]["headers"]["User-Agent"] == "ua"
+    crumb = event["breadcrumbs"]["values"][0]["data"]
+    assert "http.query" not in crumb and "http.fragment" not in crumb
+    assert event["transaction"] == "GET /api/v1/calendar/feed/<redacted>"
+
+
+def test_round3_scrub_text_leaves_ordinary_text_alone():
+    plain = "Cannot read 'id' of None -- why? #3 in /orders/42"
+    assert scrub_text(plain) == plain
+
+
+def test_round3_filesystem_frame_paths_are_left_alone():
+    event = {
+        "exception": {
+            "values": [
+                {
+                    "value": "x",
+                    "stacktrace": {
+                        "frames": [
+                            {"abs_path": "/app/agents/mobile/devices/registry.py"}
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+    scrub_sentry_event(event)
+    frame = event["exception"]["values"][0]["stacktrace"]["frames"][0]
+    assert frame["abs_path"] == "/app/agents/mobile/devices/registry.py"
+
+
+# ---------------------------------------------------------------------------
+# On the WIRE, through the real sentry_sdk client and its own logging handlers.
+#
+# PR #427's round-2 audit found the leak in fields the SDK attaches that no
+# hand-built fixture held. Here sentry_sdk builds the breadcrumb (its own
+# BreadcrumbHandler, fed httpx's real INFO log line), the log event (its own
+# EventHandler), and the exception (a real httpx.HTTPStatusError, with the
+# frame locals include_local_variables attaches by default), and the assertion
+# is on the serialized envelope bytes. This test is what found frames[].vars.
+# ---------------------------------------------------------------------------
+
+
+def _wire_client():
+    sentry_sdk = pytest.importorskip("sentry_sdk")
+    from sentry_sdk.transport import Transport
+
+    class _Capture(Transport):
+        def __init__(self, options=None):
+            super().__init__(options)
+            self.sent = []
+
+        def capture_envelope(self, envelope):
+            self.sent.append(envelope.serialize().decode("utf-8", "replace"))
+
+    client = sentry_sdk.Client(
+        dsn="https://public@example.test/1",
+        transport=_Capture,
+        default_integrations=False,
+        integrations=[],
+        send_default_pii=False,
+        before_send=scrub_sentry_event,
+        before_send_transaction=scrub_sentry_event,
+    )
+    return sentry_sdk, client
+
+
+def test_round3_on_the_wire_no_token_leaves_through_the_real_sdk():
+    httpx = pytest.importorskip("httpx")
+    sentry_sdk, client = _wire_client()
+    from sentry_sdk.integrations.logging import BreadcrumbHandler, EventHandler
+
+    token = REAL_TOKENS["studio"]
+    url = f"https://ref.supabase.co/rest/v1/studio_invites?select=%2A&token=eq.{token}"
+    with sentry_sdk.isolation_scope() as isolation:
+        isolation.set_client(client)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_client(client)
+            # httpx's own INFO line, exactly as httpx._client logs it.
+            BreadcrumbHandler().handle(
+                logging.LogRecord(
+                    "httpx",
+                    logging.INFO,
+                    __file__,
+                    1,
+                    'HTTP Request: %s %s "%s %d %s"',
+                    ("GET", httpx.URL(url), "HTTP/1.1", 404, "Not Found"),
+                    None,
+                )
+            )
+            EventHandler().handle(
+                logging.LogRecord(
+                    "api.studio_routes",
+                    logging.ERROR,
+                    __file__,
+                    2,
+                    "studio invite lookup failed for %s",
+                    (url,),
+                    None,
+                )
+            )
+            try:
+                httpx.Response(
+                    404, request=httpx.Request("GET", url)
+                ).raise_for_status()
+            except httpx.HTTPStatusError:
+                sentry_sdk.capture_exception()
+    client.flush(2)
+
+    wire = "\n".join(client.transport.sent)
+    assert len(client.transport.sent) == 2
+    assert "studio_invites" in wire
+    assert token not in wire
+
+
+def test_round3_on_the_wire_without_the_scrubber_the_token_does_leave():
+    """The control: the same wire test with before_send disabled MUST leak, or
+    the test above proves nothing about the scrubber."""
+    httpx = pytest.importorskip("httpx")
+    sentry_sdk, client = _wire_client()
+    client.options["before_send"] = None
+    token = REAL_TOKENS["studio"]
+    url = f"https://ref.supabase.co/rest/v1/studio_invites?select=%2A&token=eq.{token}"
+    with sentry_sdk.isolation_scope() as isolation:
+        isolation.set_client(client)
+        with sentry_sdk.new_scope() as scope:
+            scope.set_client(client)
+            try:
+                httpx.Response(
+                    404, request=httpx.Request("GET", url)
+                ).raise_for_status()
+            except httpx.HTTPStatusError:
+                sentry_sdk.capture_exception()
+    client.flush(2)
+    assert token in "\n".join(client.transport.sent)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "OPEN (PR #427 round 3): a frame local whose repr holds a BARE token -- "
+        "no URL around it, e.g. a request body model -- is not URL-shaped, so "
+        "scrub_text cannot see it. Closing it means include_local_variables="
+        "False (a founder call: triage value vs. what the tracker may hold). "
+        "strict=True: this starts failing the day it is fixed, so the record "
+        "has to be updated with it."
+    ),
+)
+def test_round3_open_a_bare_token_in_a_frame_local_still_leaves():
+    event = {
+        "exception": {
+            "values": [
+                {
+                    "value": "boom",
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "vars": {
+                                    "body": f"AcceptStudioInvite(token='{REAL_TOKENS['studio']}')"
+                                }
+                            }
+                        ]
+                    },
+                }
+            ]
+        }
+    }
+    assert REAL_TOKENS["studio"] not in json.dumps(scrub_sentry_event(event))
