@@ -677,6 +677,16 @@ export class NotificationsService {
        * audience that has already set Away aside).
        */
       area?: AreaLabel;
+      /**
+       * Set by a caller that already sends its OWN push, with its own
+       * opt-out and audience filtering — team broadcast is the first
+       * (`team.controller.ts` T5). Without this, this funnel's own "Mobile
+       * fan-out" below fired a SECOND push at every non-`"low"` priority,
+       * to the full write audience, reading no preference at all: an
+       * inbox-only send still pushed, and a push opt-out was ignored.
+       * Two push paths for one message; this keeps it to one.
+       */
+      skipMobilePush?: boolean;
     } = {},
   ): Promise<{ inserted: number; ids: string[]; routing?: PersistRouting }> {
     const { broadcast = true, dedupeWithinMinutes } = opts;
@@ -808,9 +818,12 @@ export class NotificationsService {
       // members' phones too, except low priority which stays in-app only.
       // Batching happens upstream of this funnel, so a digest is one push.
       // Routed writes push only to the people routing ALERTED (ADR 0218).
+      // `skipMobilePush` opts a caller OUT of this leg entirely, for when it
+      // is running its own — see the option's doc comment.
       const pushTo = alertIds ?? userIds;
       if (
         this.expoPushService &&
+        !opts.skipMobilePush &&
         (payload.priority ?? "medium") !== "low" &&
         pushTo.length > 0
       ) {

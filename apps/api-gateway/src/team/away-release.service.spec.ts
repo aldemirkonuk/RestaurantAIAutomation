@@ -8,6 +8,7 @@
  * funnel (its own suites cover it) and the push service (it would reach Expo).
  */
 import { AreaRoutingService } from "../areas/area-routing.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { TextSenderService } from "../communications/text/text-sender.service";
 import { textCollaborators } from "../communications/text/testing/text-collaborators";
 import { AwayHoldService } from "./away-hold.service";
@@ -119,7 +120,7 @@ describe("AwayReleaseService — a held message arrives when they are back", () 
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
     const [rid, payload, o] = notifications.persistForRestaurant.mock.calls[0];
     expect(rid).toBe(HOUSE);
-    expect(o).toEqual({ onlyUserIds: [SAM] });
+    expect(o).toEqual({ onlyUserIds: [SAM], skipMobilePush: true });
     expect(payload).toMatchObject({ title: "Saturday", message: "Saturday moves to seven." });
     expect(push.sendToUsers).toHaveBeenCalledWith([SAM], expect.objectContaining({ body: "Saturday moves to seven." }));
     // KVKK: the words lived in the hold table only while they waited.
@@ -319,5 +320,89 @@ describe("AwayReleaseService — a held note arrives, and its receipts say what 
     const tally = await release.sweep(NOW);
     expect(tally).toMatchObject({ gone: 1, released: 0 });
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * One push path, against the REAL funnel (the #448 defect, mirrored here).
+ *
+ * Every test above hands the release a mocked `persistForRestaurant`, so none
+ * can see the funnel's own "Mobile fan-out", which pushes the write audience
+ * at any priority but "low" and reads no push switch. A released team message
+ * is written at priority "high" and then pushed by this service's own
+ * opt-out-aware leg — so without `skipMobilePush` the person was pushed twice,
+ * an inbox-only message was pushed anyway, and a push opt-out was ignored.
+ * Here the funnel is a real `NotificationsService` over the same stub, wired
+ * to the SAME push fake the release uses (one spy, as one real device).
+ */
+function realFunnelHarness(db: StubDb) {
+  const dbs = asDatabaseService(db);
+  const team = new TeamService(dbs);
+  const routing = new AreaRoutingService(dbs);
+  const hold = new AwayHoldService(dbs, routing);
+  const push = {
+    sendToUsers: jest.fn(async (ids: string[]) => ({
+      outcome: "accepted_by_service" as const,
+      tokens: ids.length,
+      detail: "Handed to Expo.",
+    })),
+    devicesByUser: jest.fn(async (ids: string[]) => new Map(ids.map((id) => [id, 1]))),
+  } as any;
+  const socket = { server: { to: () => ({ emit: () => undefined }) } };
+  const notifications = new NotificationsService(
+    socket as never,
+    { get: () => undefined } as never,
+    dbs,
+    undefined,
+    undefined,
+    push,
+    routing,
+  );
+  const co = textCollaborators(dbs);
+  const text = new TextSenderService(dbs, co.transports, co.usage);
+  const notes = new NotesService(dbs, team, notifications as any, push, text, hold);
+  const release = new AwayReleaseService(dbs, hold, routing, notes, notifications as any, push, team);
+  return { release, push };
+}
+
+describe("AwayReleaseService — one push path, against the real funnel", () => {
+  it("[REVERT-FAILS] pushes a released message to that person exactly once", async () => {
+    const db = seed({ house_away_held: [message(SAM)] });
+    const { release, push } = realFunnelHarness(db);
+
+    const tally = await release.sweep(NOW);
+
+    expect(tally).toMatchObject({ released: 1, failed: 0 });
+    expect(db.tables.notifications.map((r: any) => r.user_id)).toEqual([SAM]);
+    // Dropping `skipMobilePush` makes this 2: the funnel's fan-out and the
+    // release's own push leg each fire once.
+    expect(push.sendToUsers).toHaveBeenCalledTimes(1);
+    expect(push.sendToUsers.mock.calls[0][0]).toEqual([SAM]);
+  });
+
+  it("[REVERT-FAILS] never pushes an inbox-only held message", async () => {
+    const db = seed({ house_away_held: [message(SAM, { channels: ["inbox"] })] });
+    const { release, push } = realFunnelHarness(db);
+
+    const tally = await release.sweep(NOW);
+
+    expect(tally).toMatchObject({ released: 1, failed: 0 });
+    expect(db.tables.notifications.map((r: any) => r.user_id)).toEqual([SAM]);
+    expect(push.sendToUsers).not.toHaveBeenCalled();
+  });
+
+  it("[REVERT-FAILS] never pushes a person who switched push off", async () => {
+    const db = seed({
+      house_away_held: [message(SAM)],
+      notification_preferences: [
+        { user_id: SAM, restaurant_id: HOUSE, email_enabled: true, sms_enabled: true, push_enabled: false },
+      ],
+    });
+    const { release, push } = realFunnelHarness(db);
+
+    const tally = await release.sweep(NOW);
+
+    expect(tally).toMatchObject({ released: 1, failed: 0 });
+    expect(push.sendToUsers).not.toHaveBeenCalled();
   });
 });

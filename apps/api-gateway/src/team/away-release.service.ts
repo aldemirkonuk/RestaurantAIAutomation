@@ -235,7 +235,12 @@ export class AwayReleaseService {
           actionUrl: "/team",
           actionLabel: "Open Team",
         },
-        { onlyUserIds: [row.user_id] },
+        // `skipMobilePush`: the push leg below is this path's own, read against
+        // the person's push switch. Without it the funnel's own fan-out pushed
+        // a second time at priority "high", ignored a push opt-out, and pushed
+        // an inbox-only message too — the same defect #448 closed for
+        // `TeamController.broadcast`, which this delivery mirrors.
+        { onlyUserIds: [row.user_id], skipMobilePush: true },
       );
       // The funnel swallows its own failures and answers 0; for one person
       // who is a member, 0 is a failed write, never "nobody wanted it".
