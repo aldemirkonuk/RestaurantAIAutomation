@@ -72,6 +72,9 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
 vi.mock('../../../services/api/receiving', () => ({
   receivingApi: { listUnverified: () => Promise.resolve({ items: [] }) },
 }));
+vi.mock('../../documents/next/CanonicalDocumentPage', () => ({
+  CanonicalDocumentPage: () => <div data-testid="formatted-document" />,
+}));
 vi.mock('../../../services/api/orders', () => ({
   getOrder: () => Promise.resolve({ id: 'o1', orderNumber: 'PO-14' }),
 }));

@@ -177,17 +177,17 @@ describe("provider sub-resources belong to the caller's house", () => {
     const controller = controllerFor(supabase);
 
     const rows = await controller.getProviderContacts(PROV_A, userA);
+    // Only house A's person. The reach fields (ADR 0121 P0 item 2, merged
+    // from main) are that mapper's business, not this spec's.
     expect(rows).toEqual([
-      {
+      expect.objectContaining({
         id: "c-a",
         providerId: PROV_A,
         name: "A sales",
-        email: undefined,
-        phone: undefined,
-        role: undefined,
         isPrimary: true,
-      },
+      }),
     ]);
+    expect(rows).toHaveLength(1);
   });
 
   it("POST a contact onto another house's provider is 404 and inserts nothing", async () => {

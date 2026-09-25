@@ -1,6 +1,7 @@
 /**
- * LogsNext — the Mudavym redesign of `/logs`, behind `mudavym_design_logs`
- * (ADR 0133, the new-pages wave).
+ * LogsNext — the Mudavym redesign of `/logs` (ADR 0133, the new-pages wave).
+ * Live in code for every house since ADR 0149 row 36 (2026-09-17) —
+ * `mudavym_design_logs` is no longer read.
  *
  * The founder's verdict, verbatim (MAKEOVER-VERDICTS.md): KEEP — *"That's
  * fine, the new version. I like it."*
@@ -72,7 +73,6 @@ import {
   SERIF,
   describeOf,
   displaySources,
-  ensureFraunces,
   fmtClock,
   fmtStamp,
   groupByDay,
@@ -590,10 +590,6 @@ export default function LogsNext({ ground }: LogsNextProps) {
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   /** The reading `lg-turn` last landed on. See the effect below. */
   const turned = useRef<string | null>(correlationId);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   // lg-arrive — the opening, once.
   useEffect(() => {

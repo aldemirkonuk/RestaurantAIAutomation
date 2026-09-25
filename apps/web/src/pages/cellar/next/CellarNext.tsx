@@ -47,7 +47,6 @@
  * no source at all and say that instead of showing an empty table.
  */
 
-import { useEffect } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Wordmark } from '@/components/mudavym';
 import CatalogueRegister from './CatalogueRegister';
@@ -58,7 +57,6 @@ import {
   REGISTER_ORDER,
   REGISTER_TITLE,
   SANS,
-  ensureFraunces,
   houseNamingFor,
   parentView,
   registerHref,
@@ -124,10 +122,6 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
   // two can never disagree, and neither is recomputed per session.
   const view = parentView(data.registers);
 
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
-
   return (
     <div
       className="mudavym min-h-full"
@@ -155,6 +149,17 @@ export default function CellarNext({ ground, category }: CellarNextProps) {
                 </Link>
               );
             })}
+            {/* ADR 0160 sec110 item 7 — /menu had no way in from the cellar
+                (or anywhere else). This is that link; the route itself is
+                on for every house (LIVE_PAGES). */}
+            <Link
+              to="/menu"
+              className="cl-btn cl-ink cl-focus"
+              data-on={pathname === '/menu'}
+              style={{ textDecoration: 'none', borderLeft: '1px solid var(--paper-2)', paddingLeft: 10, marginLeft: 4 }}
+            >
+              Menu
+            </Link>
           </nav>
         </header>
 

@@ -77,6 +77,12 @@ export interface LedgerRowProps {
    * has approved rather than the row hiding the control and saying nothing.
    */
   onOpenRecurrence?: () => void;
+  /**
+   * Open this order's receipt — the canonical document — in a right sheet.
+   * Offered on every row: the order carries no document id, and the sheet
+   * asks the deliveries that fulfil it and says so when there is none.
+   */
+  onOpenReceipt?: () => void;
   /** Why the gate could not be read. Said in words above the ceremony. */
   approvalGateError?: string | null;
 }
@@ -106,6 +112,7 @@ export function LedgerRow({
   approval,
   onOpenResponses,
   onOpenRecurrence,
+  onOpenReceipt,
   approvalGateError,
 }: LedgerRowProps) {
   const approve = useApproveOrder();
@@ -448,6 +455,30 @@ export function LedgerRow({
                 acts the sheet carries (confirm, reject, step) declare their own
                 availability inside it.
               */}
+              {onOpenReceipt && (
+                <button
+                  type="button"
+                  data-testid="open-receipt"
+                  onClick={onOpenReceipt}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    marginBottom: 10,
+                    padding: '7px 12px',
+                    borderRadius: 9,
+                    border: '1px solid var(--paper-2, #EAE4D8)',
+                    background: 'transparent',
+                    color: 'var(--seal-deep, #14515C)',
+                    fontFamily: SANS,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: `border-color ${ink.ms}ms ${ink.easing}`,
+                  }}
+                >
+                  Open the receipt
+                </button>
+              )}
               {onOpenResponses && (
                 <button
                   type="button"
@@ -594,7 +625,7 @@ export function LedgerRow({
               )}
               {row.stage === 'delivered' && (
                 <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', marginTop: 18 }}>
-                  Delivered {fmtDate(row.deliveredAt)}. Verification lives on /receipts.
+                  Delivered {fmtDate(row.deliveredAt)}.
                 </p>
               )}
               {row.stage === 'cancelled' && (

@@ -443,7 +443,10 @@ describe("McpRuntimeService.probe — every failure is its own sentence", () => 
     });
     const outcome = await runtime().probe(stub.url, null);
     expect(outcome.status).toBe("protocol_error");
-    expect(outcome.detail).toMatch(/no protocolVersion/);
+    expect(outcome.detail).toBe(
+      "It answered, but the reply could not be read because it named no version.",
+    );
+    expect(outcome.detail).not.toMatch(/\bprotocol\b/i);
   });
 
   it("refuses to follow a redirect, so the credential cannot leave the checked host", async () => {

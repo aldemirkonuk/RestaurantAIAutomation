@@ -215,7 +215,7 @@ export const DISTRIBUTOR_FEED_CONNECTION = Object.freeze({
       id: "letter" as const,
       label: "Ask your Sales Consultant for an invoice feed",
       built: true,
-      how: "A letter the house signs on its own letterhead, addressed to its Sales Consultant, asking for an EDI 810 invoice feed or an order-guide equivalent for its own account. Southern Glazer's first: it is the one of the three Illinois distributors with a documented EDI programme. Mudavym is named in it as the software that would receive the file, and Mudavym does not send it — there is no route that could.",
+      how: "A letter the house signs on its own letterhead, addressed to its Sales Consultant, asking for an EDI 810 invoice feed or an order-guide equivalent for its own account. Southern Glazer's first: it is the one of the three Illinois distributors with a documented EDI programme. Mudavym is named in it as the software that would receive the file, and Mudavym does not send it and cannot.",
       route: "GET /distributor-feed/letter",
       needs:
         "The house's licence number, its account number and its consultant's name. Those are brackets in the letter; this product does not hold them and will not guess them.",

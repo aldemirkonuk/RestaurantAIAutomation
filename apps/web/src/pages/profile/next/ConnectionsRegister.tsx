@@ -208,78 +208,108 @@ export function ConnectionsRegister({
             means the same thing. The rows below say “unknown”, not “not connected”.
           </StatusLine>
         )}
-        {data.workspace.map((w) => (
-          <ConnectionRow
-            key={w.id}
-            title={w.label}
-            subtitle={
-              w.state === 'connected'
-                ? `${w.account ?? 'Account unnamed'} · connected ${fmtDay(w.connectedAt)}`
-                : w.description
-            }
-            state={w.state}
-            reason={w.blockedReason}
-            controls={
-              w.state === 'connected' ? (
-                <Btn onClick={() => void disconnect(w.id, w.label)}>Disconnect</Btn>
-              ) : w.state === 'available' ? (
-                <Link
-                  to={`/authorize/${w.id}?returnPath=/profile`}
-                  className="pf-btn pf-focus"
-                  style={{
-                    fontFamily: SANS,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    padding: '6px 12px',
-                    borderRadius: 8,
-                    border: '1px solid var(--seal-ring)',
-                    color: 'var(--seal-deep)',
-                    textDecoration: 'none',
-                  }}
-                >
-                  Connect {w.providerLabel}
-                </Link>
-              ) : (
-                <Btn disabled>Connect {w.providerLabel}</Btn>
-              )
-            }
-            detailOpen={open === w.id}
-            onToggleDetail={() => toggle(w.id)}
-            detailLabel={w.state === 'connected' ? 'What you granted' : 'What it would ask for'}
-            detail={
-              <div>
-                {w.state === 'connected' ? (
-                  w.grantedScopes.length > 0 ? (
-                    <ul style={{ margin: 0, paddingLeft: 18, fontFamily: SANS, fontSize: 12, color: 'var(--ink-2)' }}>
-                      {w.grantedScopes.map((s) => (
-                        <li key={s}>{s}</li>
-                      ))}
-                    </ul>
+        {groupByProvider(data.workspace).map(([provider, rows]) => (
+          <section key={provider} aria-label={provider} style={{ marginTop: 10 }}>
+            <h4
+              style={{
+                margin: '0 0 6px',
+                fontFamily: SANS,
+                fontSize: 12,
+                fontWeight: 700,
+                color: 'var(--ink-2)',
+              }}
+            >
+              {provider}
+            </h4>
+            {rows.map((w) => (
+              <ConnectionRow
+                key={w.id}
+                title={w.label}
+                subtitle={
+                  w.state === 'connected'
+                    ? `${w.account ?? 'Account unnamed'} · connected ${fmtDay(w.connectedAt)}`
+                    : w.description
+                }
+                state={w.state}
+                reason={w.blockedReason}
+                controls={
+                  w.state === 'connected' ? (
+                    <Btn onClick={() => void disconnect(w.id, w.label)}>Disconnect</Btn>
+                  ) : w.state === 'available' ? (
+                    <Link
+                      to={`/authorize/${w.id}?returnPath=/profile`}
+                      aria-label={`Connect ${w.label}`}
+                      className="pf-btn pf-focus"
+                      style={{
+                        fontFamily: SANS,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        border: '1px solid var(--seal-ring)',
+                        color: 'var(--seal-deep)',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      Connect
+                    </Link>
                   ) : (
-                    <Note>The grant recorded no scopes — {EM}.</Note>
+                    <Btn disabled>Connect</Btn>
                   )
-                ) : (
-                  <ul style={{ margin: 0, paddingLeft: 18, fontFamily: SANS, fontSize: 12, color: 'var(--ink-2)' }}>
-                    {w.requestedScopes.map((s) => (
-                      <li key={s.scope} style={{ marginBottom: 4 }}>
-                        <strong style={{ fontWeight: 600 }}>{s.label}</strong> — {s.reason}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {w.notRequested.length > 0 && (
-                  <p style={{ margin: '8px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>
-                    Never asked for: {w.notRequested.join('; ')}.
-                  </p>
-                )}
-              </div>
-            }
-          />
+                }
+                detailOpen={open === w.id}
+                onToggleDetail={() => toggle(w.id)}
+                detailLabel={w.state === 'connected' ? 'What you granted' : 'What it would ask for'}
+                detail={
+                  <div>
+                    {w.state === 'connected' ? (
+                      w.grantedScopes.length > 0 ? (
+                        <ul style={{ margin: 0, paddingLeft: 18, fontFamily: SANS, fontSize: 12, color: 'var(--ink-2)' }}>
+                          {w.grantedScopes.map((s) => (
+                            <li key={s}>{s}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <Note>The grant recorded no scopes — {EM}.</Note>
+                      )
+                    ) : (
+                      <ul style={{ margin: 0, paddingLeft: 18, fontFamily: SANS, fontSize: 12, color: 'var(--ink-2)' }}>
+                        {w.requestedScopes.map((s) => (
+                          <li key={s.scope} style={{ marginBottom: 4 }}>
+                            <strong style={{ fontWeight: 600 }}>{s.label}</strong> — {s.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {w.notRequested.length > 0 && (
+                      <p style={{ margin: '8px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>
+                        Never asked for: {w.notRequested.join('; ')}.
+                      </p>
+                    )}
+                  </div>
+                }
+              />
+            ))}
+          </section>
         ))}
         {workMsg && <StatusLine tone={workMsg.tone}>{workMsg.text}</StatusLine>}
       </Rail>
     </Register>
   );
+}
+
+/**
+ * One heading per provider, one row — and one grant — per service under it.
+ * The grants stay separate on purpose: grouping is the only thing this does.
+ */
+function groupByProvider<T extends { providerLabel: string }>(rows: T[]): [string, T[]][] {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = groups.get(row.providerLabel);
+    if (list) list.push(row);
+    else groups.set(row.providerLabel, [row]);
+  }
+  return [...groups];
 }
 
 export default ConnectionsRegister;

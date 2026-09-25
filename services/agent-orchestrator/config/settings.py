@@ -10,6 +10,24 @@ from functools import lru_cache
 from typing import Optional
 
 
+def _canonical_origin(raw: Optional[str]) -> Optional[str]:
+    """
+    Mirrors `canonicalOrigin()` in the gateway's
+    `template-config.ts` (ADR 0149 row 28): `FRONTEND_URL`
+    is treated across the codebase (`cors-origins.ts`, that TS helper) as a
+    comma-separated CORS allow-list whose FIRST entry is the canonical
+    origin -- a comma-separated allow-list such as
+    `"https://mudavym.com,https://www.mudavym.com"`. A raw
+    `os.getenv("FRONTEND_URL")` hands back the whole string; every Python link
+    builder that turns `FRONTEND_URL` into a link must go through this
+    instead, or it mails/texts a literal comma-joined URL.
+    """
+    if not raw:
+        return None
+    first = raw.split(",")[0].strip()
+    return first.rstrip("/") or None
+
+
 class Settings:
     """Application settings loaded from environment variables."""
 
@@ -241,7 +259,7 @@ class Settings:
             os.getenv("DRAFT_INPUT_TOKEN_HARD_CAP", "8000")
         )
         self.wineops_disclaimer: str = (
-            "—\nThis message was drafted by WineOps AI on behalf of {restaurant_name}."
+            "—\nThis message was drafted by Mudavym on behalf of {restaurant_name}."
         )
         # Phase 21: Notification backends (E2E-v2-03)
         self.plivo_auth_id: Optional[str] = os.getenv("PLIVO_AUTH_ID")
@@ -267,7 +285,30 @@ class Settings:
         self.api_gateway_url: str = os.getenv(
             "API_GATEWAY_URL", "http://localhost:4000"
         )
-        self.frontend_url: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        # ADR 0149 row 45: when unset, frontend_url defaults to
+        # https://mudavym.com, and to http://localhost:5173 only when
+        # ENVIRONMENT is EXPLICITLY "development" or DEBUG is true --
+        # mirroring the TypeScript fallbacks in this same pass (ADR 0149 row
+        # 28) instead of always defaulting to localhost.
+        #
+        # Deliberately reads os.getenv("ENVIRONMENT")
+        # again here rather than self.environment. self.environment (line
+        # 166) defaults an UNSET var to "development", so gating on it made
+        # "ENVIRONMENT never set" -- a real production-orchestrator shape,
+        # and exactly the case this row exists to guard against -- silently
+        # choose localhost. Only a literal "development" value opts in now;
+        # unset is not development. See test_falls_back_to_mudavym_when_frontend_url_and_environment_are_unset
+        # in test_email_composer_service_links.py (fails on the old
+        # self.environment check, passes on this one).
+        #
+        # `_canonical_origin` also fixes the separate, unrelated bug:
+        # FRONTEND_URL is a comma-separated allow-list, so a raw read could
+        # mail/text every entry glued together into one broken URL.
+        self.frontend_url: str = _canonical_origin(os.getenv("FRONTEND_URL")) or (
+            "http://localhost:5173"
+            if os.getenv("ENVIRONMENT") == "development" or self.debug
+            else "https://mudavym.com"
+        )
         self.allowed_origins: str = os.getenv(
             "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
         )

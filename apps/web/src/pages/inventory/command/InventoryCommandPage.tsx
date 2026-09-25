@@ -77,11 +77,15 @@ import {
   type RowFlag,
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
+import { HousePriceCell, addedPriceNote, type AdviceLoad } from "./HousePriceCell";
+import { getPriceAdvice } from "../../../services/api/pricing";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
 import { CellarMapView } from "./CellarMapView";
 
+// "Your price" (ADR 0193) sits between Runway and Market: the house's own
+// bottle / glass price, editable, beside the market figure it is not.
 const GRID =
-  "34px minmax(215px,1.5fr) 80px 128px 195px 90px 78px 84px 92px 106px 32px";
+  "34px minmax(215px,1.5fr) 80px 128px 195px 90px 78px 150px 84px 92px 106px 32px";
 
 const SORTS = [
   { value: "runway", label: "Runway, shortest first" },
@@ -104,7 +108,7 @@ const SORTABLE_COL: Record<number, SortKey> = {
   0: "name", // Wine
   4: "velocity",
   5: "runway",
-  7: "value",
+  8: "value",
 };
 
 const FLAG_DEFS: Array<{ key: RowFlag; label: string; dot: string }> = [
@@ -114,6 +118,9 @@ const FLAG_DEFS: Array<{ key: RowFlag; label: string; dot: string }> = [
   { key: "dead", label: "Dead stock", dot: "bg-gray-300" },
   { key: "price", label: "Price signals", dot: "bg-emerald-500" },
 ];
+
+/** An unknown figure, never a fabricated zero (CLAUDE.md §9). */
+const UNKNOWN = "—";
 
 export function InventoryCommandPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -130,7 +137,39 @@ export function InventoryCommandPage() {
     stats,
     refetchInventory,
     updateInventoryItem,
+    error: inventoryError,
+    summaryError,
+    lowStockError,
+    hasFailedRead,
+    figuresUnknown,
   } = page;
+
+  /** Renders `value`, or the em dash when any of the three inventory reads
+   * failed OR simply has no data yet (`figuresUnknown` — wave5/live-confirm.md
+   * B2, fixed 2026-09-19: a query mid-refetch resets to `pending` and clears
+   * `error`, so checking `hasFailedRead` alone let a zero through in that
+   * window) — the figures derived from an empty
+   * `inventory`/`filteredInventory` array are unknown in that state, never
+   * genuinely zero. */
+  const fig = (value: number | string): number | string =>
+    figuresUnknown ? UNKNOWN : value;
+
+  /** "the inventory list (msg), the summary (msg) and the low-stock list
+   * (msg)" — named per failed read, so the banner is honest about which of
+   * the three queries did not answer rather than collapsing them into one
+   * generic sentence. */
+  const failedReadDetail = useMemo(() => {
+    const parts: string[] = [];
+    if (inventoryError) parts.push(`the inventory list (${inventoryError})`);
+    if (summaryError) parts.push(`the summary (${summaryError})`);
+    if (lowStockError) parts.push(`the low-stock list (${lowStockError})`);
+    if (parts.length === 0) return "";
+    const joined =
+      parts.length === 1
+        ? parts[0]
+        : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+    return `${joined[0].toUpperCase()}${joined.slice(1)}`;
+  }, [inventoryError, summaryError, lowStockError]);
 
   // See RowExpansion: the retired `/inventory-legacy` honoured the Settings
   // measurement unit and this page did not (ADR 0019 §B).
@@ -144,7 +183,49 @@ export function InventoryCommandPage() {
     locationsUnavailable,
     mappingsUnavailable,
   } = useStorageLocations();
-  const { availableRestaurants, refreshBranches } = useAuth();
+  const { availableRestaurants, refreshBranches, activeRole, user } = useAuth();
+  // ADR 0193: a wine's price is the manager's to change. The page offers the
+  // controls to owners and managers only; the gateway refuses anyone else
+  // regardless of what this page shows.
+  const canEditPrice =
+    ((activeRole ?? user?.role ?? null) as string | null) === "owner" ||
+    ((activeRole ?? user?.role ?? null) as string | null) === "manager";
+
+  // Per-wine advice toward the house's target margin (ADR 0193). A failed
+  // read is shown as "advice unavailable" on each row, never as no advice.
+  const adviceQuery = useQuery({
+    queryKey: ["pricing-advice", getActiveRestaurantId()],
+    queryFn: getPriceAdvice,
+    staleTime: 30_000,
+    retry: 1,
+  });
+  const refetchAdvice = adviceQuery.refetch;
+  const adviceLoad: AdviceLoad = useMemo(() => {
+    if (adviceQuery.isError)
+      return {
+        status: "error",
+        message:
+          (adviceQuery.error as Error | null)?.message ??
+          "the price advice could not be read",
+      };
+    if (!adviceQuery.data) return { status: "loading" };
+    // An answer without the advice's shape is a failed read, said on every
+    // row -- never a crash of the whole page, never "no advice".
+    if (!Array.isArray(adviceQuery.data.wines) || !adviceQuery.data.target)
+      return {
+        status: "error",
+        message: "the price advice came back in a shape this page cannot read",
+      };
+    return {
+      status: "ready",
+      byId: new Map(adviceQuery.data.wines.map((w) => [w.inventoryId, w])),
+      targetSet: adviceQuery.data.target.set,
+      // ADR 0193 round 3: whether a price is locked could not be read ->
+      // every lock is unknown and the one-tap accept is not offered.
+      locksReadable: adviceQuery.data.locks?.readable !== false,
+      locksReason: adviceQuery.data.locks?.reason ?? null,
+    };
+  }, [adviceQuery.isError, adviceQuery.error, adviceQuery.data]);
   const multiLocation = availableRestaurants.length > 1;
   const createInventoryItem = useCreateInventoryItem();
   const navigate = useNavigate();
@@ -318,6 +399,24 @@ export function InventoryCommandPage() {
     if (match) setVerifyOrder(match);
   }, [searchParams, toVerify, verifyOrder]);
 
+  /**
+   * Deep-link: /inventory?wine=<name> (low-stock-alert.template.ts's email
+   * CTA, sw.js's push action) — reuses the same substring search the search
+   * box already runs (useInventoryPage.ts) so the named wine is what is
+   * actually visible, once, rather than an unfiltered page.
+   * `?action=reorder` is deliberately NOT read here: there is no distinct
+   * reorder flow on this page to open, so that promise goes no further than
+   * "the item is now visible" — stated plainly rather than built on a guess
+   * at what a reorder flow should do.
+   */
+  const appliedWineParam = useRef(false);
+  useEffect(() => {
+    const wine = searchParams.get("wine");
+    if (!wine || appliedWineParam.current) return;
+    appliedWineParam.current = true;
+    setSearchQuery(wine);
+  }, [searchParams, setSearchQuery]);
+
   const closeVerify = () => {
     setVerifyOrder(null);
     if (searchParams.has("verify")) {
@@ -461,6 +560,9 @@ export function InventoryCommandPage() {
         },
       },
       { header: "WAC", value: (i) => i.wac ?? i.price ?? "" },
+      // The house's own prices (ADR 0193), beside -- never instead of -- Market.
+      { header: "Your bottle price", value: (i) => i.menuPriceBottle ?? "" },
+      { header: "Your glass price", value: (i) => i.menuPriceGlass ?? "" },
       { header: "Market", value: (i) => i.marketPrice ?? "" },
       {
         header: "Value",
@@ -777,8 +879,8 @@ export function InventoryCommandPage() {
             Inventory
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            {stats.total} wines, {stats.liveTotal + stats.shadowTotal} bottles
-            on hand
+            {fig(stats.total)} wines, {fig(stats.liveTotal + stats.shadowTotal)}{" "}
+            bottles on hand
           </p>
         </div>
         <div
@@ -851,6 +953,55 @@ export function InventoryCommandPage() {
         </div>
       </div>
 
+      {/* A failed read is an error, not an empty success (CLAUDE.md §9 /
+          ADR 0149): without this, every KPI below and "No wines match" read
+          identically whether the house's cellar really is empty or the
+          gateway just could not be reached — go-live sweep 2026-09-17,
+          wave4/live-fix.md.
+
+          Extended 2026-09-18 (wave5/live-fix.md, live-confirm.md §8.2–3):
+          the banner used to key on the inventory-list read alone, so a
+          summary- or low-stock-only failure rendered no banner while the
+          KPIs it feeds still went to zero. It now raises on any of the
+          three reads, and the figures below render an em dash instead of a
+          zero whenever `hasFailedRead` is true — a zero here is a claim
+          ("this house owns none of this wine"), and a failed read has not
+          earned the right to make that claim.
+
+          CORRECTED 2026-09-19 (wave5/live-confirm.md B2, struck rather than
+          rewritten): `hasFailedRead` alone was not enough for the figures.
+          Under the app's real QueryClient defaults, a query with no data
+          that gets refetched resets to TanStack v5's `pending` status and
+          CLEARS `error` for the duration — measured at "0 wines, 0 bottles"
+          with no banner in 28 of 39 half-second samples (72%) on a real
+          mount, caused by a pre-existing refetch loop (unmemoized `refetch`
+          re-running the spot-count-outbox watcher effect every render; fixed
+          the same pass in useInventoryData.ts and spotCountOutbox.ts). The
+          banner below still keys on `hasFailedRead` alone — it should not
+          say a read "could not be reached" while it is merely loading — but
+          every figure now keys on `figuresUnknown` (`hasFailedRead ||
+          isPending`, computed in useInventoryPage.ts), so a zero cannot
+          reach the screen through the pending window either. */}
+      {hasFailedRead && (
+        <div
+          role="alert"
+          className="mb-3.5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5"
+        >
+          <span className="text-xs text-red-700">
+            {failedReadDetail} could not be reached. The counts and totals
+            below are unknown, not zero — this is a failed read, not an
+            empty cellar.
+          </span>
+          <button
+            type="button"
+            onClick={() => void refetchInventory()}
+            className="rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+
       {/* KPI strip */}
       <div
         className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-3.5"
@@ -858,18 +1009,18 @@ export function InventoryCommandPage() {
       >
         <Kpi
           label="On hand"
-          value={stats.liveTotal + stats.shadowTotal}
-          sub={`${stats.total} wines`}
+          value={fig(stats.liveTotal + stats.shadowTotal)}
+          sub={figuresUnknown ? UNKNOWN : `${stats.total} wines`}
         />
         <Kpi
           label="Live"
-          value={stats.liveTotal}
+          value={fig(stats.liveTotal)}
           sub="POS-verified"
           tone="blue"
         />
         <Kpi
           label="Shadow"
-          value={stats.shadowTotal}
+          value={fig(stats.shadowTotal)}
           sub="awaiting reconcile"
           tone="violet"
           active={activeFlag === "recon"}
@@ -877,25 +1028,27 @@ export function InventoryCommandPage() {
         />
         <Kpi
           label="Value on hand"
-          value={fmtMoney(kpis.valueOnHand)}
+          value={figuresUnknown ? UNKNOWN : fmtMoney(kpis.valueOnHand)}
           sub={
-            kpis.menuPotential > 0
-              ? `${fmtMoney(kpis.menuPotential)} menu`
-              : "cost basis"
+            figuresUnknown
+              ? UNKNOWN
+              : kpis.menuPotential > 0
+                ? `${fmtMoney(kpis.menuPotential)} menu`
+                : "cost basis"
           }
           tone="green"
         />
         <Kpi
           label="Below par"
-          value={stats.low + stats.critical}
-          sub={`${stats.critical} critical`}
+          value={fig(stats.low + stats.critical)}
+          sub={figuresUnknown ? UNKNOWN : `${stats.critical} critical`}
           tone="amber"
           active={activeFlag === "low"}
           onClick={() => setActiveFlag(activeFlag === "low" ? null : "low")}
         />
         <Kpi
           label="Runway alerts"
-          value={kpis.runwayAlerts}
+          value={fig(kpis.runwayAlerts)}
           sub="stockout inside 5 days"
           tone="red"
         />
@@ -971,7 +1124,7 @@ export function InventoryCommandPage() {
           >
             <span className={cn("w-1.5 h-1.5 rounded-full", f.dot)} />
             {f.label}{" "}
-            <b className="font-mono text-[11px]">{flagCounts[f.key]}</b>
+            <b className="font-mono text-[11px]">{fig(flagCounts[f.key])}</b>
           </button>
         ))}
       </div>
@@ -1120,7 +1273,7 @@ export function InventoryCommandPage() {
           )}
           <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <div className="min-w-[1180px]">
+              <div className="min-w-[1330px]">
                 <div
                   className="grid items-center gap-x-3 px-5 h-10 bg-gray-50 border-b border-gray-100"
                   style={{ gridTemplateColumns: GRID }}
@@ -1141,13 +1294,14 @@ export function InventoryCommandPage() {
                     "Stock, live / shadow",
                     "Velocity",
                     "Runway",
+                    "Your price",
                     "Market",
                     "Value",
                     "Status",
                     "",
                   ].map((h, i) => {
                     const sortKey = SORTABLE_COL[i];
-                    const rightAlign = i === 6 || i === 7;
+                    const rightAlign = i === 6 || i === 7 || i === 8;
                     if (sortKey) {
                       const activeSort = sort === sortKey;
                       return (
@@ -1320,6 +1474,18 @@ export function InventoryCommandPage() {
                             ? "n/a"
                             : `${Math.max(0, Math.round(run))}d`}
                         </div>
+                        <HousePriceCell
+                          inventoryId={item.inventoryId!}
+                          wineName={item.name}
+                          bottle={item.menuPriceBottle ?? null}
+                          glass={item.menuPriceGlass ?? null}
+                          advice={adviceLoad}
+                          canEdit={canEditPrice}
+                          onChanged={() => {
+                            void refetchInventory();
+                            void refetchAdvice();
+                          }}
+                        />
                         <div
                           className={cn(
                             "text-right font-mono text-xs font-bold",
@@ -1365,7 +1531,7 @@ export function InventoryCommandPage() {
           </div>
           <div className="flex items-center justify-between mt-2.5 text-xs text-gray-400">
             <span>
-              Showing {rows.length} of {stats.total} wines
+              Showing {fig(rows.length)} of {fig(stats.total)} wines
             </span>
             {flagCounts.dead > 0 && (
               <span>
@@ -1445,7 +1611,7 @@ export function InventoryCommandPage() {
           storageLocationId?: string,
           volumeFields?: any,
         ) => {
-          await createInventoryItem.mutateAsync({
+          const added = await createInventoryItem.mutateAsync({
             wineId: wine.id,
             stockLive: quantity,
             thresholdMin: threshold,
@@ -1454,6 +1620,7 @@ export function InventoryCommandPage() {
             saleType: volumeFields?.saleType,
             pourSizeMl: volumeFields?.pourSizeMl,
             menuPriceGlass: volumeFields?.menuPriceGlass,
+            menuPriceBottle: volumeFields?.menuPriceBottle,
             // A sample is a deliberate $0, so it is sent as $0 with an explicit
             // 'sample' provenance rather than omitted. Omitting the cost would land
             // as provenance 'estimated' — indistinguishable from "nobody typed the
@@ -1480,6 +1647,10 @@ export function InventoryCommandPage() {
                 ? `${wine.name} added — cost recorded as unknown, not $0`
                 : `${wine.name} added to inventory`,
           );
+          // The price typed with it is said when it did not land (a lock
+          // held it, a newer price stood, or the write failed): ADR 0193.
+          const priceNote = addedPriceNote(added as unknown as Parameters<typeof addedPriceNote>[0]);
+          if (priceNote) toast.error(priceNote);
           void refetchInventory();
         }}
       />

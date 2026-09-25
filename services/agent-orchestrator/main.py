@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI):
 _DOCS_PUBLIC = _environment.strip().lower() not in ("production", "prod")
 
 app = FastAPI(
-    title="WineOps Agent Orchestrator",
+    title="Mudavym Agent Orchestrator",
     description="Orchestrates AI agents for restaurant wine management.",
     version="2.0.0",
     lifespan=lifespan,

@@ -32,7 +32,7 @@ for (const relative of ["../../../.env", "../../../../../.env"]) {
 function buildVerificationMailBody(frontendBaseUrl: string, token: string) {
   const verifyUrl = `${frontendBaseUrl.replace(/\/$/, "")}/verify-email?token=${encodeURIComponent(token)}`;
   return {
-    subject: "Verify your WineOps account" as const,
+    subject: "Verify your Mudavym account" as const,
     html:
       `<p>Click to verify your email: <a href="${verifyUrl}">${verifyUrl}</a></p>` +
       `<p>This link expires in 24 hours.</p>`,

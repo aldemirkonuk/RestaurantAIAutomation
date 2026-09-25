@@ -420,7 +420,11 @@ Production holds **0 rows**. `mapGeneratedReportToUi` therefore always produces
 below are gone; those controls are now disabled and carry the reason, a banner
 states the condition once up front, and the disable is computed per row from
 `reportFileUnavailableReason(report)` rather than hard-coded — so they re-enable
-by themselves the day a generator fills `pdf_url`. The table records what the
+by themselves the day a generator fills `pdf_url`. **[2026-09-17, OD-81: the
+reason now reads "This entry has no file attached, so there is nothing here to
+view, download or print." It says neither "not built yet" (an export exists) nor
+where exports are written — the shelf is on the redesigned `/reports` only, and a
+house still on the legacy page before cutover has none.]** The table records what the
 failure branch *was*:
 
 | Button | Line (pre-fix) | What used to happen | Now |
@@ -463,7 +467,7 @@ same reason.
 
 | Data | Producer | Live? |
 |---|---|---|
-| Report rows | ~~`POST /reports/generate` from `/communications`~~ — **no producer at all as of 2026-08-26 (OD-81)**: that call site was deleted with the lying "Generate Now" handler, and `/reports` Generate was already disabled. The endpoint still exists and is still the table's only writer; nothing in the product calls it | Rows: **no** (production: 0 rows) |
+| Report rows | ~~`POST /reports/generate` from `/communications`~~ — **no producer at all as of 2026-08-26 (OD-81)**: that call site was deleted with the lying "Generate Now" handler, and `/reports` Generate was already disabled. The endpoint still exists and is still the table's only writer; nothing in the product calls it **[2026-09-17, OD-81: the endpoint now answers 410 and writes nothing; `GET /reports` and `GET /reports/:id` leave out a `pending` row with no file (`WRITTEN_REPORT_FILTER`, reports.service.ts), so neither this page nor the legacy one can list a report that will never exist. Real reports are exports written on `/reports` (`report_exports`) — reports.md §13 item 2]** | Rows: **no** (production: 0 rows) |
 | Report files | **none** — verified whole-repo, no `UPDATE` on `generated_reports` exists; no reports Storage bucket exists (production has one bucket, `vendor-attachments`) | — |
 | Conversation history | Gmail push → `email.inbound.received` → `rabbitmq-bridge.service.ts:528` → `procurement_conversations`; sentiment/intent from `inbound-responder.service.ts:300,520` | Yes (live Gmail watch, OD-78) |
 | Realtime toasts | `useReportSubscription` / `useCalendarEventsSubscription` (`DocumentsPage.tsx:157-187`) | Yes — but they only announce the same empty rows |

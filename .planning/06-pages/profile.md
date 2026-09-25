@@ -71,6 +71,10 @@ behind it exists:
   exists, no button does — `lib/identityProviders.ts` `RENDERABLE_PROVIDER_IDS`). The
   shipping page's Microsoft "Connect" is a toast-only stub that looks like it worked
   (`Profile.tsx:256-268`)
+- **Workspace rail grouped by provider (founder, 2026-09-22)** — one "Google" heading over
+  Drive, Gmail-send and Gmail-read, each keeping its own Connect and its own grant (the
+  "send permission and nothing else" ruling stands; this is grouping, not one grant). No
+  Google Calendar grant exists in the catalogue, so none is drawn.
 - **Workspace rail (new to this page)** — Google Drive and Microsoft Excel from
   `GET /integrations/oauth/catalog` + `/connections`: real connect (via the existing
   `/authorize/:integrationId` consent screen), real disconnect, the granted scopes shown

@@ -64,6 +64,41 @@ function spaRewrite(config: VercelConfig): { index: number; segments: Set<string
   return { index, segments: new Set(list.split('|')) };
 }
 
+const CANONICAL_HOST = 'mudavym.com';
+// The canonical host, the retired alias, and any other host a deployment answers on.
+const HOSTS = [CANONICAL_HOST, 'restaurant-ai-automation-web.vercel.app', 'preview-abc.vercel.app'];
+
+/** Does one `has`/`missing` entry hold for a request to `host`? Only host equality is modelled. */
+function conditionHolds(cond: { type: string; value: unknown }, host: string): boolean {
+  const eq = (cond.value as { eq?: unknown } | null)?.eq;
+  if (cond.type !== 'host' || typeof eq !== 'string') {
+    throw new Error(`crawl-surface: cannot evaluate header condition ${JSON.stringify(cond)}; extend conditionHolds()`);
+  }
+  return eq === host;
+}
+
+/**
+ * Every value that a `headers` rule of `config` sets for `key` on a request to `pathname` on
+ * `host`, in file order. A condition or parameter this does not model (a cookie or query
+ * condition, a `:name` source) throws rather than pass unexamined. It does not model
+ * path-to-regexp-only syntax, which it reads as a JavaScript regular expression, and it skips a
+ * rule gated on a host outside HOSTS (ADR 0158, Known limits).
+ */
+function headerValuesFor(config: VercelConfig, key: string, pathname: string, host: string): string[] {
+  const values: string[] = [];
+  for (const rule of config.headers) {
+    // `:name` is path-to-regexp's named parameter; `(?:` is a plain regex group and is fine.
+    if (/(^|[^?]):[A-Za-z_]/.test(rule.source)) {
+      throw new Error(`crawl-surface: cannot evaluate header source ${rule.source}; extend headerValuesFor()`);
+    }
+    if (!new RegExp(`^${rule.source}$`).test(pathname)) continue;
+    if (!(rule.has ?? []).every((c) => conditionHolds(c, host))) continue;
+    if ((rule.missing ?? []).some((c) => conditionHolds(c, host))) continue;
+    for (const h of rule.headers ?? []) if (h.key.toLowerCase() === key.toLowerCase()) values.push(h.value);
+  }
+  return values;
+}
+
 describe('apps/web/vercel.json serves every App.tsx route and nothing else', () => {
   it('the SPA rewrite lists exactly the first path segments App.tsx routes', () => {
     const inApp = appFirstSegments();
@@ -119,7 +154,9 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
     expect(other?.missing).toEqual([{ type: 'host', value: { eq: 'mudavym.com' } }]);
     expect(other?.headers).toEqual([{ key: 'X-Robots-Tag', value: 'noindex' }]);
 
-    const token = web.headers.find((h) => h.headers?.some((x) => x.key === 'Referrer-Policy'));
+    // Found by what makes it the token rule, not by carrying a Referrer-Policy: a site-wide
+    // rule that also sets one must not be mistaken for it.
+    const token = web.headers.find((h) => h.headers?.some((x) => x.key === 'X-Robots-Tag' && x.value === 'noindex, nofollow'));
     expect(token).toBeDefined();
     const re = new RegExp(`^${token!.source}$`);
     for (const prefix of TOKEN_PREFIXES) {
@@ -128,6 +165,55 @@ describe('apps/web/vercel.json serves every App.tsx route and nothing else', () 
     }
     expect(token!.headers).toContainEqual({ key: 'Referrer-Policy', value: 'no-referrer' });
     expect(token!.headers).toContainEqual({ key: 'X-Robots-Tag', value: 'noindex, nofollow' });
+  });
+
+  it('no rule, in any position, weakens what a token route sends', () => {
+    // A link that carries a secret must not be indexed and must not leak in a Referer.
+    // Vercel merges every matching header rule and its docs do not say which one wins when two
+    // set the same key, so this does not lean on order: a rule that matches a token route and
+    // sets one of these keys differently fails, before or after the token rule. Give a site-wide
+    // Referrer-Policy a source that leaves the token routes out.
+    // Limits (ADR 0158, Known limits): three hosts, sources read as JS regular expressions, and
+    // slashless paths only; /reset-password/ is not probed here, in the census, or matched by the
+    // token rule (open claim ADR-0158-TOKEN-ROUTES-MATCH-TRAILING-SLASH).
+    const tokenPaths = TOKEN_PREFIXES.map((p) => (p.endsWith('/') ? `${p}abc123` : p));
+    for (const host of HOSTS) {
+      for (const path of tokenPaths) {
+        const at = `${host}${path}`;
+        expect(new Set(headerValuesFor(web, 'Referrer-Policy', path, host)), `${at} Referrer-Policy`).toEqual(
+          new Set(['no-referrer']),
+        );
+        const robots = headerValuesFor(web, 'X-Robots-Tag', path, host);
+        expect(robots.length, `${at} X-Robots-Tag is not set`).toBeGreaterThan(0);
+        for (const value of robots) expect(value, `${at} X-Robots-Tag`).toMatch(/\bnoindex\b/);
+        expect(
+          robots.some((v) => /\bnofollow\b/.test(v)),
+          `${at} X-Robots-Tag never says nofollow`,
+        ).toBe(true);
+        if (host === CANONICAL_HOST) expect(new Set(robots), `${at} X-Robots-Tag`).toEqual(new Set(['noindex, nofollow']));
+      }
+    }
+  });
+
+  it('the header evaluator refuses a cookie condition or a :name source, rather than pass it unexamined', () => {
+    const rule = (extra: Partial<Rule>): VercelConfig => ({
+      rewrites: [],
+      headers: [{ source: '/(.*)', headers: [{ key: 'Referrer-Policy', value: 'origin' }], ...extra }],
+    });
+    expect(() => headerValuesFor(rule({ has: [{ type: 'cookie', value: 'x' }] }), 'Referrer-Policy', '/a', CANONICAL_HOST)).toThrow(/cannot evaluate/);
+    expect(() => headerValuesFor(rule({ source: '/:path*' }), 'Referrer-Policy', '/a', CANONICAL_HOST)).toThrow(/cannot evaluate/);
+    // A non-capturing group is ordinary regex, not a named parameter.
+    expect(headerValuesFor(rule({ source: '/((?:a|b)x)' }), 'Referrer-Policy', '/ax', CANONICAL_HOST)).toEqual(['origin']);
+  });
+
+  it('the live census probes every token prefix', () => {
+    const census = readFileSync(join(REPO, 'scripts', 'crawl_surface_census.py'), 'utf8');
+    const list = /^TOKEN_SAMPLES\s*=\s*\[([^\]]*)\]/m.exec(census)?.[1];
+    if (!list) throw new Error('crawl-surface: no TOKEN_SAMPLES list in scripts/crawl_surface_census.py');
+    const samples = [...list.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    for (const prefix of TOKEN_PREFIXES) {
+      expect(samples.some((s) => s === prefix || s.startsWith(prefix)), `the census does not probe ${prefix}`).toBe(true);
+    }
   });
 
   it('the token list still names real routes', () => {
