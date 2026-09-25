@@ -668,6 +668,23 @@ describe('no operator internals in front of a restaurant user', () => {
       grants: [grant({ scopes: ['https://www.googleapis.com/auth/drive.file'] })],
       unattributed: 0,
     });
+    // Calendar links are personal since ADR 0111 (2026-09-21, #438): the
+    // address is drawn only on the answer to the click that made it, so this
+    // test issues one to put the address on the page it scans.
+    d.createFeed = {
+      mutate: vi.fn(),
+      isPending: false,
+      isSuccess: true,
+      submittedAt: 3,
+      data: myLink({
+        issued: {
+          feedUrl: '/api/v1/calendar/feed/x.ics',
+          absoluteFeedUrl: ISSUED_ADDRESS,
+          webcalUrl: null,
+          originSource: 'config',
+        },
+      }),
+    };
     mockData.current = d;
     const { container } = render(<ConnectionsNext />);
     const text = container.textContent ?? '';
@@ -701,8 +718,8 @@ describe('no operator internals in front of a restaurant user', () => {
       expect(text).not.toMatch(leak);
     }
     expect(container.querySelector('#deployment')).toBeNull();
-    // The calendar feed address is the house's own subscribe link, and stays —
-    // marked as a credential so the nightly walk masks it (ADR 0135).
+    // The calendar address is the reader's own subscribe link (ADR 0111), and
+    // stays — marked as a credential so the nightly walk masks it (ADR 0135).
     const feed = screen.getByText(/\/api\/v1\/calendar\/feed\//);
     expect(feed.getAttribute('data-secret')).toBe('credential');
     // The till row is still drawn: only its internals are hidden.
