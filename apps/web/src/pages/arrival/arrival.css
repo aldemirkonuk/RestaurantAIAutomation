@@ -696,3 +696,31 @@
 .mudavym.ar-page p.ar-feedback {
   color: var(--seal);
 }
+
+/* OD-140 — "Show me the N it could not place": the rows behind the count,
+   ruled like the book, section in pencil beside each line. */
+.ar-not-placed {
+  margin: 12px 0 18px;
+}
+.ar-not-placed-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+  max-width: 62ch;
+}
+.ar-not-placed-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.ar-not-placed-list .ar-mark {
+  white-space: normal;
+  color: var(--ink-3);
+}

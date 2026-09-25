@@ -681,6 +681,91 @@ function EvidenceFolio({ book, refresh }: { book: Book; refresh: () => void }) {
  *    difference itself. This renders that sentence rather than flattening both
  *    into an empty row.
  */
+/**
+ * "Show me the N it could not place" — sketch 121 frame 03, OD-140 (founder
+ * 2026-09-25: "Separate list endpoint").
+ *
+ * The list is read only when asked for: it is the whole unplaced part of a
+ * menu, and the count beside it already came with the book. Four states, kept
+ * apart (ADR 0020 / 0051): reading; a read that failed, said as a failure and
+ * never as "none"; the lines; and a list whose length is not the count — the
+ * menu changed between the two reads, and the page says so rather than
+ * letting the number and the rows disagree in silence.
+ */
+function NotPlacedLines({
+  restaurantId,
+  count,
+}: {
+  restaurantId: string
+  count: number
+}) {
+  const [open, setOpen] = useState(false)
+  const q = useQuery({
+    queryKey: ['arrival', 'unplaced', restaurantId],
+    queryFn: () => arrivalApi.unplaced(restaurantId),
+    enabled: open,
+    retry: false,
+  })
+  const regionId = 'ar-not-placed-lines'
+  return (
+    <div className="ar-not-placed">
+      <button
+        type="button"
+        className="ar-ask"
+        aria-expanded={open}
+        aria-controls={regionId}
+        onClick={() => setOpen((was) => !was)}
+      >
+        {open
+          ? 'Hide the lines it could not place'
+          : `Show me the ${count} it could not place`}
+      </button>
+      {open && (
+        <div id={regionId} data-testid="not-placed-lines">
+          {q.isLoading ? (
+            <p className="ar-note" role="status">
+              Reading the lines it could not place…
+            </p>
+          ) : q.isError ? (
+            <p className="ar-message" role="alert">
+              The lines could not be read ({arrivalError(q.error)}), so this
+              does not say which they are. The count above still stands.
+            </p>
+          ) : q.data ? (
+            <>
+              {q.data.lines.length !== count && (
+                <p className="ar-note" role="status">
+                  The menu changed since the count above: this read finds{' '}
+                  {q.data.lines.length} of {q.data.read} lines it could not
+                  place.
+                </p>
+              )}
+              {q.data.lines.length > 0 ? (
+                <ol className="ar-not-placed-list">
+                  {q.data.lines.map((line) => (
+                    <li key={line.id}>
+                      <span>{line.name?.trim() || 'A line with no name'}</span>
+                      <span className="ar-mark">
+                        {line.category?.trim()
+                          ? `under “${line.category.trim()}”`
+                          : 'no section'}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="ar-note">
+                  The reader now places every line in this house’s menu book.
+                </p>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PourReveal({
   book,
   refresh,
@@ -736,6 +821,12 @@ function PourReveal({
             by the same pass that wrote the registers below — not a count of
             what any file contained.
           </p>
+          {lines.notPlaced > 0 && (
+            <NotPlacedLines
+              restaurantId={book.restaurantId}
+              count={lines.notPlaced}
+            />
+          )}
         </>
       ) : (
         <p className="ar-message" role="alert">
@@ -821,7 +912,7 @@ function PourReveal({
       </div>
       <p className="ar-note">
         {lines && lines.notPlaced > 0
-          ? `The ${lines.notPlaced} lines the reader could not place stay in this house’s menu book. The book returns their number, not yet the lines themselves — it will not list what it cannot name.`
+          ? `The ${lines.notPlaced} lines the reader could not place stay in this house’s menu book, as they are. “Show me” lists them; nothing is placed for you.`
           : 'Nothing above was ticked, so nothing here has been rubber-stamped. What the book read enters the ledger through one held seal; what you switch by hand posts at once.'}
       </p>
 

@@ -207,3 +207,43 @@ Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the poli
    **The skip is the actual proposal.** Today `ThresholdStep`'s "Skip for now" calls `onDone()` and writes nothing (`components/onboarding/ThresholdStep.tsx:80-81`), and the only state it could touch is `restaurants.threshold_configured boolean DEFAULT false NOT NULL` (`20260805000000_baseline_from_production.sql:3597`) — `false` for a house that skipped **and** for a house nobody asked. The product cannot tell them apart, which is [[absence-reported-as-health]] at the front door. So: an explicit skip writes one `system_audit_log` row — `action: 'configuration_step_skipped'`, `changes: {register, offered: [...], answered: []}`, **no setting changed**. Then `/settings` can render *"offered on 4 September, skipped"* instead of sharing an em dash with a register nobody ever mentioned, and the assistant of ADR 0113 can re-offer it truthfully later. No migration: `system_audit_log` and its `changes jsonb` are in the baseline (`:5553-5568`), and `SettingsAuditService.record` is already exported from `SettingsAuditModule`.
 
    *Outside this page's paths:* the step needs the role gate ADR 0113 rule 2 makes a precondition — `PUT /settings/approval-thresholds` carries `@UseGuards(JwtAuthGuard, TenantGuard)` and no role decorator (`settings/settings.controller.ts:40,107`) while `@Roles()`/`RolesGuard` exist and are used on two other controllers. Filed in `settings.md` §13.31, not built here.
+
+## 14. The lines the reader could not place — BUILT 2026-09-25 (OD-140, founder)
+
+The founder, 2026-09-25, on OD-140: **"Separate list endpoint"** — option (a) of the
+register, with a test that pins count and list to the same rule.
+
+- **Endpoint.** `GET /cellar/:restaurantId/registers/unplaced` (`apps/api-gateway/src/cellar/cellar.controller.ts`)
+  returns `{ restaurantId, read, lines: [{ id, category, name }] }`. House-scoped exactly
+  like its sibling `GET /cellar/:restaurantId/registers`: the path names the house and
+  `JwtAuthGuard`'s `assertTenantMatch` compares it with the token (ADR 0147).
+- **Why the count and the list cannot drift.** `CellarRegistersService.readUnplaced`
+  reads through `readMenuRows`, the one `menu_items` query the readout's tally also uses
+  (house, not `discarded`, ordered by id), and filters with `unplacedMenuLines` — and
+  `tallyMenuLines`'s `notPlaced` is now *defined* as `unplacedMenuLines(lines).length`
+  (`cellar-registers.ts`). One query, one filter.
+- **The pin.** `cellar-registers.service.spec.ts` "returns as many lines as the readout
+  counts not placed — for the same menu" runs `read()` and `readUnplaced()` over one menu
+  and asserts `lines.length === menuLines.notPlaced`; a second spec records the builder
+  calls of both reads and asserts they are identical. Mutations (list or count switched to
+  a section-only rule; a second query without the `discarded` filter; an error returned
+  as `[]`) each fail.
+- **A failed read is an error, never `[]`.** An empty list means "the reader placed every
+  line"; over a menu nobody could open that would be absence reported as health.
+- **Where the control is.** The not-placed count is printed on `main` in one place only:
+  the Arrival book's reveal (`pages/arrival/Arrival.tsx` `PourReveal`, the `next` face
+  behind `mudavym_design_arrival`, OFF). `NotPlacedLines` there adds **"Show me the N it
+  could not place"** (sketch 121 frame 03) — a disclosure (`aria-expanded`,
+  `aria-controls`) that reads the list only when opened, with four states: reading; a
+  failed read said as a failure ("The count above still stands"); the lines, name and
+  section; and a list whose length is not the count, said as "the menu changed since the
+  count above". The note under the registers no longer says the book "will not list what
+  it cannot name". Tests: `Arrival.test.tsx` "The reveal" (+5).
+- **Not built: `/house/menu`.** The first proof's three counts (ADR 0213 row 14) are
+  *read / set / pencilled* from the import review (`pages/HouseMenu.tsx`, `lineNeedsPencil`)
+  — a different rule from the register reader's `placeMenuLine`, and it shows no
+  not-placed count, so there was nowhere to hang the control without adding a fourth
+  number to a locked page. Whether the first proof should carry the register reader's
+  count is a fork for the founder, not decided here. The Arrival book is on the ADR 0149
+  deletion manifest at cutover (founder 2026-09-25, #414), so until that fork is answered
+  the endpoint outlives its only caller.

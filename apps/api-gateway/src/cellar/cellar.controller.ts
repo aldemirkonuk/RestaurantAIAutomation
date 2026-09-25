@@ -60,6 +60,38 @@ export class CellarController {
     }
   }
 
+  /**
+   * The menu lines the register reader could not place — the rows behind
+   * `menuLines.notPlaced` on the read above (OD-140, founder 2026-09-25:
+   * "Separate list endpoint"). House-scoped the same way as its sibling: the
+   * path names the restaurant and `JwtAuthGuard`'s `assertTenantMatch` compares
+   * it with the token before this line runs (ADR 0147). Same query, same
+   * `placeMenuLine` rule as the count, so the two cannot drift.
+   */
+  @Get(":restaurantId/registers/unplaced")
+  @ApiOperation({
+    summary:
+      "The menu lines the register reader could not place on any register",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "The unplaced lines (id, category, name) and how many lines were read",
+  })
+  async readUnplaced(@Param("restaurantId") restaurantId: string) {
+    try {
+      return await this.registers.readUnplaced(restaurantId);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error instanceof Error
+          ? error.message
+          : "Failed to read the lines the register reader could not place",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   /* ── the floor: zones, and whether anybody has ever looked at them ───── */
 
   @Get(":restaurantId/zones")
