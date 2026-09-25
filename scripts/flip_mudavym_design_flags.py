@@ -108,7 +108,8 @@ PAGES: tuple[str, ...] = (
     # without it "logs" fails "not a Mudavym page" instead of correctly
     # reporting the no-op below (live-review.md defect 2).
     "logs",
-    # ADR 0143 — the Mudavym admin desk; still flag-gated (not live-in-code).
+    # ADR 0143 — the Mudavym admin desk. [2026-09-25: live in code now — see
+    # LIVE_IN_CODE below; still a known slug so a flip of it reports NO-OP.]
     "admin",
 )
 
@@ -143,6 +144,14 @@ LIVE_IN_CODE: frozenset[str] = frozenset(
         # (.planning/06-pages/wines.md, Seventh pass). `/menu` has no column,
         # so it is not a slug here at all.
         "cellar",
+        # [2026-09-25] `settings` went live in code with PR #419 (2026-09-19)
+        # but was never added here, so a flip of it wrote a column nothing
+        # reads and reported success. `admin` joins on ADR 0149 row 36's
+        # 2026-09-25 bracket (founder Q2/Q4, 2026-09-22). `shell` and
+        # `authorize_integration` joined LIVE_PAGES at the same time but were
+        # never slugs here (see PAGES).
+        "settings",
+        "admin",
     }
 )
 
@@ -308,11 +317,11 @@ def self_test() -> int:
             "dashboard", "orders", "receiving_door", "providers", "communications",
             "team", "inventory", "receipts", "documents_reports", "document",
             "reports", "calendar", "profile", "connections", "notifications", "logs",
-            "cellar",
+            "cellar", "settings", "admin",
         },
-        "LIVE_IN_CODE is exactly the sixteen ADR 0149 row 36 names plus the cellar",
+        "LIVE_IN_CODE is the sixteen ADR 0149 row 36 names plus cellar, settings and admin",
     )
-    check(len(LIVE_IN_CODE) == 17, "seventeen live-in-code pages")
+    check(len(LIVE_IN_CODE) == 19, "nineteen live-in-code pages")
     check(set(LIVE_IN_CODE) <= set(PAGES), "every live-in-code slug is a known page")
     check("receiving" not in LIVE_IN_CODE, "the receiving DESK is not live-in-code (only the door is)")
     if failures:

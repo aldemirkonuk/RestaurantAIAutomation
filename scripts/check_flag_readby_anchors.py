@@ -7,12 +7,18 @@ anchors are hand-maintained and every MUDAVYM_PAGES edit moves the line they
 point at — the P3 wave re-pointed them four times by hand (Opus correctness
 review, NIT: "no CI guard for the nine hand-maintained readBy anchors").
 
+It also holds the three copies of the live-in-code set to one another:
+`LIVE_PAGES` (web), `LIVE_IN_CODE_FLAGS` (registry) and the flip script's
+`LIVE_IN_CODE` (added 2026-09-25, after that third copy was found missing
+`settings`).
+
 Solve-it-once rule: sweep + blocking guard. This guard exits 2 when it cannot
 check (missing registry, unreadable file), 1 on a stale anchor, 0 when every
 anchor's cited line actually contains a recognisable gate.
 """
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -20,6 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 REGISTRY = ROOT / "apps/api-gateway/src/settings/feature-flag-registry.ts"
 USE_MUDAVYM_DESIGN = ROOT / "apps/web/src/lib/mudavym/useMudavymDesign.ts"
+FLIP_SCRIPT = ROOT / "scripts/flip_mudavym_design_flags.py"
 
 # What counts as "code that branches on a flag" at the cited line. Keyed by
 # anchor file so new families state their expectation explicitly.
@@ -97,6 +104,61 @@ def check_live_pages_agree(active_keys: set[str]) -> list[str]:
         bad.append(
             "LIVE_IN_CODE_FLAGS key(s) not in LIVE_PAGES (stale — page was "
             f"pulled back behind a flag but the registry wasn't updated): {', '.join(extra_in_registry)}"
+        )
+    bad.extend(check_flip_script_agrees(set(live_pages)))
+    return bad
+
+
+def _module_constant(tree: ast.Module, name: str) -> ast.expr | None:
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
+            return node.value
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return node.value
+    return None
+
+
+def check_flip_script_agrees(live_pages: set[str]) -> list[str]:
+    """The founder's flip script keeps its own copy of the live set
+    (`LIVE_IN_CODE`) so it can refuse a flip that changes nothing. That copy
+    drifted once: `settings` went live in code with PR #419 (2026-09-19) and
+    the script kept writing its column and reporting success until
+    2026-09-25. Its live set must be exactly the slugs it knows (`PAGES`)
+    that `LIVE_PAGES` resolves in code.
+
+    Parsed with `ast`, not a regex: the tuple's comments quote words.
+    """
+    if not FLIP_SCRIPT.is_file():
+        fail_cannot_check(f"{FLIP_SCRIPT} not found")
+    try:
+        tree = ast.parse(FLIP_SCRIPT.read_text(encoding="utf-8"))
+    except SyntaxError as exc:
+        fail_cannot_check(f"{FLIP_SCRIPT.name} does not parse: {exc}")
+    pages_node = _module_constant(tree, "PAGES")
+    live_node = _module_constant(tree, "LIVE_IN_CODE")
+    # LIVE_IN_CODE is `frozenset({...})`; unwrap the call to its one argument.
+    if isinstance(live_node, ast.Call) and len(live_node.args) == 1:
+        live_node = live_node.args[0]
+    try:
+        pages = set(ast.literal_eval(pages_node)) if pages_node is not None else set()
+        flip_live = set(ast.literal_eval(live_node)) if live_node is not None else set()
+    except ValueError:
+        fail_cannot_check(f"{FLIP_SCRIPT.name}: PAGES / LIVE_IN_CODE are no longer literals")
+    if not pages or not flip_live:
+        fail_cannot_check(f"{FLIP_SCRIPT.name}: PAGES or LIVE_IN_CODE parsed empty — shape changed?")
+
+    bad: list[str] = []
+    missing = sorted((pages & live_pages) - flip_live)
+    if missing:
+        bad.append(
+            f"{FLIP_SCRIPT.name} LIVE_IN_CODE is missing page(s) LIVE_PAGES resolves in code "
+            f"(a flip would write a column nothing reads and report success): {', '.join(missing)}"
+        )
+    extra = sorted(flip_live - (pages & live_pages))
+    if extra:
+        bad.append(
+            f"{FLIP_SCRIPT.name} LIVE_IN_CODE names page(s) that are not a known slug in LIVE_PAGES "
+            f"(a real flip would be refused as a no-op): {', '.join(extra)}"
         )
     return bad
 
