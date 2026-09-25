@@ -356,18 +356,24 @@ export function asDatabaseService(db: StubDb): any {
     // same roster `TeamService` sees over the same tables — needed to run
     // `persistForRestaurant` for real instead of mocking it away.
     async getRestaurantMemberIds(restaurantId: string): Promise<string[]> {
-      const { data: ura } = await db.supabase
+      // Unlike the real method (whose two reads are baselined debt in
+      // scripts/read_error_baseline.json), the stub binds each read's
+      // `error` and throws: a harness that turned a failed read into "no
+      // members" would let a spec pass on a silent empty roster (ADR 0051).
+      const { data: ura, error: uraError } = await db.supabase
         .from("user_restaurant_access")
         .select("user_id")
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true);
+      if (uraError) throw uraError;
       const uraIds = (ura || []).map((r: any) => r.user_id).filter(Boolean);
       if (uraIds.length) return Array.from(new Set(uraIds)) as string[];
 
-      const { data: users } = await db.supabase
+      const { data: users, error: usersError } = await db.supabase
         .from("users")
         .select("user_id")
         .eq("restaurant_id", restaurantId);
+      if (usersError) throw usersError;
       return Array.from(
         new Set((users || []).map((u: any) => u.user_id).filter(Boolean)),
       ) as string[];
