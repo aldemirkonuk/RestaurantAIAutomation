@@ -647,10 +647,12 @@ export class NotificationsController {
    * arbitrary HTML from the house's domain (ADR 0147 named gap). ADR 0149
    * row 15 asked for owner/manager plus house recipients — a constrained
    * open send is still an open send of client HTML, which ADR 0170 refuses
-   * for vendor mail. The three web callers (QuickGmailModal, email-scheduler,
-   * RecurringOrders) will see this 403 until house mail has a send of its
-   * own. Gmail is never called. A 200 `{success:false}` would look like a
-   * failed send; this is a refusal.
+   * for vendor mail. Gmail is never called. A 200 `{success:false}` would
+   * look like a failed send; this is a refusal. The house's own send is
+   * `POST /communications/letters` (the Communications composer). The three
+   * web callers this route had (QuickGmailModal, email-scheduler,
+   * RecurringOrders, none reachable from a Mudavym page) were retired in the
+   * same PR, and `no-client-send-email.test.ts` keeps a fourth from appearing.
    */
   @Post("send-email")
   async sendEmail(): Promise<never> {

@@ -194,3 +194,20 @@ route that still sends client-supplied HTML is the hole, whoever is allowed to
 call it. The handler throws `ForbiddenException` and
 `NotificationsService.sendEmail` is deleted so nothing else can reopen it.
 House mail gets a send of its own later; this route is not that send.
+
+**[2026-09-25, PR #410 wave-1 rework: "three web callers still post to it" and
+"house mail gets a send of its own later" are both superseded. The house's own
+send already exists: `POST /communications/letters`, the Communications
+composer (ADR 0118), which checks the recipient against the house's book and
+sends from the house's own mailbox. None of the three callers was reachable
+from a Mudavym page (App.tsx: `/providers` renders `ProvidersNext` for every
+house because `providers` is in `LIVE_PAGES`, legacy only under the QA
+override; `OneTapActionCenter` is mounted nowhere; `RecurringOrders` has no
+route), so each was retired rather than rebuilt, and none was deleted (ADR
+0149: legacy files go in the one cutover, on the founder's manifest):
+`main.tsx` no longer starts `email-scheduler` (its queue has had no producer
+since 2026-05-14) and its send returns false; `QuickGmailModal`'s send button
+opens `/communications`; `RecurringOrders`' price inquiry (which posted
+`to: []` and never reached a vendor) does the same.
+`apps/web/src/__tests__/no-client-send-email.test.ts` fails if any web code
+names the route outside a comment.]**

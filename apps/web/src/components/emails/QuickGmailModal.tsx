@@ -6,15 +6,11 @@ import {
   Mail,
   UserPlus,
   Eye,
-  Check,
-  AlertCircle,
-  Loader2,
   FileText,
   Sparkles,
 } from 'lucide-react'
 import { SavedTemplate } from '../documents/GmailTemplateBuilder'
 import { defaultTemplates } from '../../data/emailTemplateCategories'
-import axios from 'axios'
 
 interface QuickGmailModalProps {
   onClose: () => void
@@ -23,7 +19,8 @@ interface QuickGmailModalProps {
   prefilledSubject?: string
 }
 
-const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+/** Where the house writes its mail (CommunicationsNext's composer). */
+const COMPOSER_PATH = '/communications'
 
 export function QuickGmailModal({
   onClose,
@@ -36,13 +33,8 @@ export function QuickGmailModal({
   const [recipients, setRecipients] = useState<string[]>(prefilledRecipient ? [prefilledRecipient] : [])
   const [recipientInput, setRecipientInput] = useState('')
   const [subject, setSubject] = useState(prefilledSubject || '')
-  const [cc] = useState<string[]>([])
-  const [bcc] = useState<string[]>([])
   const [showCc, setShowCc] = useState(false)
   const [showBcc, setShowBcc] = useState(false)
-  const [sending, setSending] = useState(false)
-  const [sendSuccess, setSendSuccess] = useState(false)
-  const [sendError, setSendError] = useState('')
   const [preview, setPreview] = useState(false)
   const [customBody, setCustomBody] = useState('')
   const [useCustomBody, setUseCustomBody] = useState(false)
@@ -162,71 +154,19 @@ export function QuickGmailModal({
     `
   }
 
-  const handleSend = async () => {
-    if (recipients.length === 0) {
-      setSendError('Please add at least one recipient')
-      return
-    }
-
-    if (!subject.trim()) {
-      setSendError('Please enter a subject')
-      return
-    }
-
-    setSending(true)
-    setSendError('')
-
-    try {
-      let bodyHtml: string
-      let bodyText: string
-      
-      if (useCustomBody && customBody) {
-        // Convert simple markdown to HTML
-        bodyText = customBody
-        bodyHtml = `
-          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-            <div style="background:linear-gradient(135deg,#7c2d12,#991b1b);padding:24px;border-radius:12px 12px 0 0;">
-              <h1 style="color:#fff;margin:0;font-size:22px;">Mudavym</h1>
-            </div>
-            <div style="background:#fff;padding:24px;border:1px solid #e5e7eb;border-radius:0 0 12px 12px;">
-              ${customBody
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/_(.*?)_/g, '<em>$1</em>')
-                .split('\n').map(line => {
-                  if (line.startsWith('- ')) return `<li>${line.slice(2)}</li>`
-                  return `<p style="margin:4px 0;color:#374151;">${line || '&nbsp;'}</p>`
-                }).join('')}
-            </div>
-            <p style="color:#9ca3af;font-size:11px;text-align:center;margin-top:12px;">Sent by Mudavym</p>
-          </div>`
-      } else {
-        bodyHtml = generateEmailHTML()
-        bodyText = selectedTemplate?.description || subject
-      }
-      
-      const response = await axios.post(`${API_URL}/api/v1/notifications/send-email`, {
-        to: recipients,
-        subject: subject,
-        body_html: bodyHtml,
-        body_text: bodyText,
-        cc: cc.length > 0 ? cc : undefined,
-        bcc: bcc.length > 0 ? bcc : undefined,
-      })
-
-      if (response.data.success) {
-        setSendSuccess(true)
-        setTimeout(() => {
-          onClose()
-        }, 2000)
-      } else {
-        setSendError(response.data.error || 'Failed to send email')
-      }
-    } catch (error: any) {
-      console.error('Failed to send email:', error)
-      setSendError(error.response?.data?.error || error.message || 'Network error')
-    } finally {
-      setSending(false)
-    }
+  /**
+   * This modal no longer sends. `POST /notifications/send-email` took the
+   * recipients and the HTML from the browser and sent them from the house's
+   * domain; it is closed (ADR 0147, PR #410) and answers 403. The house's own
+   * send is the Communications composer (`POST /communications/letters`),
+   * which checks the recipient against the house's book and sends from the
+   * house's own mailbox. This legacy modal is not reachable from any Mudavym
+   * page (legacy /providers shows only under the QA override; the One-Tap
+   * center is mounted nowhere), so it hands the writer to the composer
+   * instead of being rebuilt, and goes with the ADR 0149 cutover.
+   */
+  const openComposer = () => {
+    window.location.assign(COMPOSER_PATH)
   }
 
   return (
@@ -472,31 +412,14 @@ export function QuickGmailModal({
                   )}
                 </div>
 
-                {/* Error Message */}
-                {sendError && (
-                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-rose-900">Error sending email</p>
-                      <p className="text-sm text-rose-700">{sendError}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Success Message */}
-                {sendSuccess && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-3"
-                  >
-                    <Check className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-emerald-900">Email sent successfully!</p>
-                      <p className="text-sm text-emerald-700">Your email has been sent to {recipients.length} recipient(s)</p>
-                    </div>
-                  </motion.div>
-                )}
+                <p
+                  className="text-sm text-gray-600"
+                  data-testid="quick-gmail-moved"
+                >
+                  Mail from the house is written in Communications now, where
+                  it goes to an address in the house's book and leaves from the
+                  house's own mailbox. This window no longer sends.
+                </p>
               </div>
             )}
           </div>
@@ -506,28 +429,17 @@ export function QuickGmailModal({
             <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
               <button
                 onClick={onClose}
-                disabled={sending}
-                className="px-5 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-5 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
-              
+
               <button
-                onClick={handleSend}
-                disabled={sending || recipients.length === 0 || !subject.trim()}
-                className="px-6 py-2.5 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                onClick={openComposer}
+                className="px-6 py-2.5 bg-wine-600 text-white font-medium rounded-xl hover:bg-wine-700 transition-colors flex items-center gap-2"
               >
-                {sending ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-5 h-5" />
-                    Send Email
-                  </>
-                )}
+                <Send className="w-5 h-5" />
+                Write it in Communications
               </button>
             </div>
           )}
