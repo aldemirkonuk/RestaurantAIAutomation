@@ -1138,6 +1138,12 @@ Put to him as a recommended option, his pick, verbatim as relayed:
   is untouched, because it still greps migration `20260925120500`
   specifically, and that file did not change. See CLAIMS.jsonl's bracketed
   correction and the new row `ADR-0191-R6-NOTE-AUTHORS-KEPT-TWO-YEARS`.
+  [**AMENDED 2026-09-25, lane L10a:** its `verify` is no longer untouched.
+  A mutation test found it never read the `SET` clause — replacing
+  `set created_by = null` with `set created_by = created_by` in
+  `20260925120500` left it passing — so it now also requires that exact
+  line (`grep -qxF`), and the same mutation fails it. The claim's text is
+  unchanged.]
 
 ### Options considered in round 6
 
