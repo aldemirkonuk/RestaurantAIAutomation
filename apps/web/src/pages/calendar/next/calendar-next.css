@@ -633,10 +633,12 @@
    the single weather fact that changes what a kitchen does, so it is the one
    that earns the colour.
 
-   The mark is never absent. `[data-dark]` is the cell's own way of saying "no
-   reading, and here is why" — a cell that simply omitted the sky would read as
+   [OVERRULED 2026-09-22 by the founder — "remove the 'no reading' sign, leave
+   blank". A cell with no reading now draws no mark. The rule as it stood: "The
+   mark is never absent. `[data-dark]` is the cell's own way of saying 'no
+   reading, and here is why' — a cell that simply omitted the sky would read as
    fair weather to anyone scanning the column, which is the absence-reported-as-
-   health fault drawn as a blank.
+   health fault drawn as a blank."]
    ============================================================ */
 
 .cn-sky {
@@ -658,11 +660,6 @@
 .cn-sky-lo {
   color: var(--ink-3);
 }
-.cn-sky[data-dark='true'] {
-  color: var(--ink-3);
-  font-style: normal;
-}
-
 /* Six bars of rain CHANCE — NWS publishes no quantitative amount. */
 .cn-rain {
   display: inline-flex;

@@ -243,7 +243,11 @@ enforced against.
 - **The maths.** None. It is transcription. Everything read is stamped with the issuer,
   the issue time and the forecast horizon, and **kept**, so §2b can be scored later.
 - **Honest state when absent.** No coordinate ⇒ the weather line reads *"No location set
-  for this house"* with a link to set it — never a blank, never a default city. Provider
+  for this house"* with a link to set it — never a blank, never a default city.
+  **[AMENDED 2026-09-22 by the founder after the preview review — "remove the 'no
+  reading' sign, leave blank". The page-level weather line still says why; a DAY CELL
+  with no reading is now blank, which this ADR (and `SkyMark.tsx`) had forbidden as
+  reading like fair weather. He chose blank knowing that.]** Provider
   unreachable ⇒ *"Weather could not be read at 06:14"*, and the last successful read stays
   visible with its age.
 - **Day cell.** Icon + high/low in tabular mono, a six-bar hourly precipitation
@@ -374,7 +378,10 @@ vendor"* with the one control that records one.
 ### 4. ⌘K — the day's assistant, and the line it may not cross
 
 The machinery exists and is proven; this extends it rather than inventing it.
-`POST /ask-ai/propose` → a human looks → `POST /ask-ai/confirm` → execute, with a
+`POST /ask-ai/propose` → a human looks → `POST /ask-ai/confirm` → execute **[amended
+2026-09-21: the confirm step is now a sealed hold — `seal-challenge` then `sealed-confirm`
+under `/ask-ai/actions/:id/`; the unsealed confirm answers 410 (the founder's "Never
+without the seal", ADR 0160's review trail of that date)]**, with a
 validated allowlist, grounding against candidate ids, and a status lifecycle
 `proposed → confirmed → executed | failed | discarded`
 (`apps/api-gateway/src/ask-ai/ask-ai.service.ts:305,429-444,525,653,700`;

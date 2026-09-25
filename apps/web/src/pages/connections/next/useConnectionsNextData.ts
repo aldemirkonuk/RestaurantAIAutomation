@@ -115,6 +115,18 @@ export interface SenderIdentityVM {
 }
 
 /**
+ * Receive-half status from `GET /communications/letters/sender` (`reader`).
+ * Used only for the persistent reconnect banner when mail reading is ON and
+ * no live grant backs it (founder Q8 / HELP-ALERT research 2026-09-22).
+ */
+export interface MailReaderStatusVM {
+  granted: boolean | 'unknown';
+  enabled: boolean;
+  lastReadAt: string | null;
+  lastError: string | null;
+}
+
+/**
  * The house's TEXT sender — the mail row's sibling (ADR 0121).
  *
  * `state` is the whole story and there are six of it, because "we asked", "they
@@ -581,6 +593,22 @@ export function useConnectionsNextData() {
     },
     enabled: on,
     staleTime: 300_000,
+  });
+
+  /* read 3c — whether vendor-mail reading still has a live grant. Separate
+     from sender-identity on purpose: that route is the send half; this is the
+     receive half (`HouseInboxService.statusFor`) and a failure of one must
+     not blank the other. Powers the reconnect banner only. */
+  const mailReaderQ = useQuery({
+    queryKey: ['connections-next-mail-reader', rid],
+    queryFn: async (): Promise<MailReaderStatusVM> => {
+      const { data } = await apiClient.get<{ reader: MailReaderStatusVM }>(
+        '/communications/letters/sender',
+      );
+      return data.reader;
+    },
+    enabled: on,
+    staleTime: 60_000,
   });
 
   /* read 3b — the TEXT senders, and what each registrar would require.
@@ -1278,6 +1306,8 @@ export function useConnectionsNextData() {
     provider: toRegister(providerQ),
     payments: toRegister(paymentsQ),
     sender: toRegister(senderQ),
+    /** Receive-half grant status — see MailReaderStatusVM. */
+    mailReader: toRegister(mailReaderQ),
     textSenders: toRegister(textQ),
     /**
      * Re-read the text-sender register after a manager stops a sender.

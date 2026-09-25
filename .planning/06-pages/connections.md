@@ -167,7 +167,14 @@ the two registers that would actually leak are refused at the gateway as well.
   house's book and nothing else; anything else discarded unread; landing in
   `procurement_conversations`; visible to everyone who works in this restaurant
   and nobody outside it.
-- **Register IV — set once for every house on this deployment.** Token
+- **[OVERRULED 2026-09-22 by the founder after the preview review — "remove technical
+  secrets / webhooks / terms". Register IV is no longer drawn, and the page no longer
+  prints webhook URLs, the house id, key names (Stripe, Anthropic, token encryption),
+  table names, raw OAuth scopes, or gateway sentences that
+  carry any of those (`plainReason` in `cx-format.ts`). The webhooks and keys themselves
+  are untouched. The page's stated principle, "a page that shows only what a house
+  controls is not a list of what acts on its behalf", is reversed for these rows.]** The
+  rule as it stood: *Register IV — set once for every house on this deployment.* Token
   encryption and the model provider, named and read-only. *(The model provider
   row claims nothing: no endpoint reports its state — see §9.)*
 - **A written refusal for a non-manager**, which says the server refuses too.

@@ -141,6 +141,38 @@ export async function addWineToInventory(
   );
 }
 
+/**
+ * One reading, offered to the house library for de-duplication — never a
+ * stock write. `POST /wines/submissions` (`wines.controller.ts:99`,
+ * `WineSubmissionsService#submitWine`) queues the row into
+ * `master_wine_library_submissions` with `status: 'pending'`; a background
+ * dedup pass later decides whether it matches an existing bottle or becomes a
+ * new one. This is the write side of "Photograph the label" (ADR 0160 sec110
+ * item 5) and of any other "is this the bottle?" confirmation — confirming
+ * submits the reading, it puts nothing on a shelf.
+ */
+export interface WineSubmissionInput {
+  name: string
+  producer: string
+  vintage?: number | null
+  priceReference?: number | null
+  primaryType?: string
+  grapeVariety?: string
+  country?: string
+  region?: string
+  appellation?: string
+  subRegion?: string
+  bottleSizeMl?: number
+}
+
+export async function submitWine(input: WineSubmissionInput): Promise<{ id: string; status: string }> {
+  const response = await apiClient.post<{ id: string; status: string }>(
+    `${WINES_PATH}/submissions`,
+    input
+  )
+  return response.data
+}
+
 // ==================== Export all functions ====================
 
 export const winesApi = {
@@ -153,6 +185,7 @@ export const winesApi = {
   getWineSuggestions,
   getSimilarWines,
   addWineToInventory,
+  submitWine,
 };
 
 export default winesApi;

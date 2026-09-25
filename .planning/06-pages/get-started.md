@@ -3,7 +3,7 @@ type: page
 route: /get-started
 slug: get-started
 softwares: [auth-onboarding]
-component: apps/web/src/pages/GetStarted.tsx
+component: apps/web/src/pages/GetStarted.tsx # legacy; `next` is apps/web/src/pages/arrival/Arrival.tsx behind `mudavym_design_arrival`
 audience: owner
 tier: core
 archetype: form # proposed 2026-08-26 (OD-106)
@@ -18,6 +18,20 @@ links: ["[[PAGE-CONTRACT]]", "[[onboarding]]", "[[verify-email]]", "[[dashboard]
 # /get-started
 
 > **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
+
+**[ADDED 2026-09-19: two faces, one route, one flag (`mudavym_design_arrival`, OFF by
+default).** Flag off — everything below is unchanged and still accurate. Flag on —
+`PageGate(page="arrival", legacy=GetStarted, next=Arrival)` (`App.tsx`) renders the
+Arrival book instead: the flyleaf-and-contents design of [[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]]
+and [[0144-the-book-opens-on-evidence-and-three-pages-get-a-job]] (direction C),
+adopted from Codex lane C2 (audit: codex-audit/C2-adopt.md) and brought to the
+adopt bar 2026-09-19 — seal on apply (`arrival/arrival-seal.ts`), a resumable
+apply/undo, an honest batch status, and the notifications-undo fix cited in
+0144's build-status note. `/onboarding` now redirects here permanently either
+way (ADR 0149 row 11) — see [[onboarding]]. **Not written:** a full `next`-face
+treatment at this dossier's depth (endpoints, data flow, tenancy) — this note is
+a pointer to 0143/0144, not that write-up, and is owed under the same rule 0144
+names for the folio-0 evidence files.]**
 
 ## Surface — buttons → where they go
 

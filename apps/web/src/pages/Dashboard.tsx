@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { Header } from '../components/layout/Header'
+import { DayLine } from '../components/mudavym/DayLine'
 import {
   TrendingUp,
   TrendingDown,
@@ -404,6 +405,11 @@ export function Dashboard() {
         animate="visible"
         className="p-6 space-y-6"
       >
+        {/* The day line (sketch 119 §E) — a PAGE element, self-gated by the
+            shell flag; renders nothing when the shell is off. As the page's
+            own FIRST line, above the stats grid. */}
+        <DayLine />
+
         {/* Stats Grid - Clickable Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" data-tour="dashboard-kpis">
           {stats.map((stat) => {

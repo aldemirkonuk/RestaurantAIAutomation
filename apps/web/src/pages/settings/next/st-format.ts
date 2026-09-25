@@ -94,10 +94,16 @@ export const PROVENANCE_UNKNOWN = {
  * (`pages/Settings.tsx:66`). `cellar` was added at the end rather than
  * inserted, for the same reason, and the fourth pass's three follow it.
  *
- * THIS ARRAY IS THE ID SET, NOT THE READING ORDER (changed 2026-09-03). The
- * contents column reads in `GROUPS` order below; ids never move, so no `?tab=`
- * link ever breaks, but a fourteen-item flat list with no headings does not
- * read cleanly and the founder asked for a clean tab bar.
+ * THIS ARRAY IS THE ID SET, NOT THE READING ORDER (changed 2026-09-03, and
+ * true in a new way since sketch 109A, 2026-09-17: the page is no longer
+ * tab-panels swapped by this order at all — it is one continuous interview in
+ * `INTERVIEW_GROUPS`' fixed I–VII order below. `SECTION_IDS` survives as the
+ * bookmark surface: `TAB_TO_ANCHOR` maps every one of these ids to the
+ * interview anchor it now scrolls to, so no existing `?tab=` link breaks).
+ * `group`/`order` below are the OLD five-group taxonomy (`GroupId`) this
+ * spec was built under; kept on `SectionSpec` only because `keptTally` and a
+ * couple of internal callers still read `kind`, not because anything renders
+ * five groups any more — the visible grouping is `INTERVIEW_GROUPS`.
  */
 export const SECTION_IDS = [
   'team', 'services', 'email', 'notifications', 'locations',
@@ -107,6 +113,15 @@ export const SECTION_IDS = [
   // position is not its identity, but a bookmark is, and `?tab=` is the id.
   'currency',
   'carrying-cost',
+  // 'hours', 'digest', and 'ask-training' render outside `SECTIONS`/
+  // `group.members` — each is a special-cased block in `SettingsNext.tsx`
+  // keyed on `group.id`, with its own real `st-section-<id>` DOM id — so they
+  // were never added to SECTIONS even though that DOM id is exactly what the
+  // deep-link effect looks up. They do NOT belong in `SECTIONS` — only here
+  // and in `TAB_TO_ANCHOR`.
+  'hours',
+  'digest',
+  'ask-training',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -174,87 +189,112 @@ export const SECTIONS: SectionSpec[] = [
   // product had ever asked a house for that number.
   { id: 'carrying-cost', label: 'Carrying cost', title: 'What holding stock costs', kind: 'restaurant', group: 'house', order: 6,
     description: 'What a month of holding stock costs this house, as a percent of its value. Until it is stated, no alert here prints a saving.' },
+  // The house's consent for its /ask questions (ADR 0145, founder 2026-09-21,
+  // "Same as the wine pool (Recommended)": an owner opt-out per house). Under
+  // The house because it is the house's answer, given by its owner.
 ];
 
-/**
- * The contents column, grouped by what a person came here to do.
+/* ── Sketch 109A — the interview, organised by certainty ──────────────────
  *
- * Fourteen numbered rows in one flat list is a list you scan rather than read.
- * Linear's settings redesign groups its own into "Account · Features ·
- * Administration · Your teams" — personal settings, workspace-level feature
- * configuration, admin-only workspace governance, and per-team settings
- * (https://linear.app/changelog/2024-12-18-personalized-sidebar), and the
- * standard advice that follows is to cluster by USER INTENT rather than by
- * internal structure. Stripe's 2023 Dashboard navigation went the same way,
- * adding grouped sections plus pinned and recently-visited shortcuts
- * (https://support.stripe.com/questions/dashboard-update-may-2024).
- *
- * So the grouping here is by intent, NOT by where the value is kept — which is
- * the internal fact, and is still printed under every open register's heading
- * by `KEPT_NOTE`. The one place storage does surface in the contents column is
- * the "Yours" group's own subtitle, because "this is not shared with the house"
- * is something a person needs before they open the register, not after.
+ * The founder's locked pick (ADR 0160, 2026-09-17): "A, the interview, with
+ * two grafts" — C's *read by* line under every answer, and B's day sheet as
+ * the hours editor. Direction A replaces the old five intent groups (house /
+ * buying / autonomy / yours / record, above — kept only because `SectionSpec`
+ * still carries `group`/`order` for `KEPT_NOTE` and a few internal callers)
+ * with SEVEN groups in the sketch's fixed interview order (I–VII), all shown
+ * on one continuously scrolling page rather than one register at a time. A
+ * heading is a label; which register renders under it is decided in
+ * `SettingsNext.tsx`, not derived here — the mapping is not 1:1 with the old
+ * five groups (features/notifications split across "What it may do on its
+ * own" and "Yours"; services/pos/email/calendar collapse to one pointer row
+ * when `/connections` is live, per the existing COLLAPSED_SECTIONS rule).
  */
-export interface SectionGroup {
-  id: GroupId;
+export type InterviewGroupId = 'house' | 'carries' | 'buys' | 'own' | 'who' | 'yours' | 'record';
+
+export interface InterviewGroupSpec {
+  id: InterviewGroupId;
+  /** I–VII, as the sketch prints it. */
+  roman: string;
   title: string;
-  /** One line under the group heading. Kept short — it is a signpost. */
   hint: string;
-  members: SectionId[];
+  /** Anchor id, matching `direction-a.html`'s own (`a-house`, `a-carries`, …). */
+  anchor: string;
 }
 
 /**
- * The five headings, and nothing else.
- *
- * A heading is a label, not a row: which registers live under it is derived
- * from each `SectionSpec`'s own `group` and `order` below, so there is exactly
- * one place a register's position is declared and the two cannot drift.
+ * Text only — `roman` and `anchor` are both mechanical functions of `id` and
+ * position (see `INTERVIEW_GROUPS` below), not independent facts, so a
+ * literal here never asserts a value the source doesn't already carry.
+ * `check_no_seeded_defaults.py` rule S1 reads a module-level array of
+ * `id`-bearing objects with a third key outside its descriptor vocabulary as
+ * a table of rows; `roman`/`anchor` are exactly that kind of derived key, so
+ * they are computed, not hand-carried per entry.
  */
-const GROUP_HEADINGS: Array<{ id: GroupId; title: string; hint: string }> = [
-  {
-    id: 'house',
-    title: 'The house',
-    hint: 'Who works here, where here is, and how it signs its name.',
-  },
-  {
-    id: 'buying',
-    title: 'How it buys',
-    hint: 'The terms it trades on and who may commit to them.',
-  },
-  {
-    id: 'autonomy',
-    title: 'What it does on its own',
-    hint: 'The switches that let the system act without being asked.',
-  },
-  {
-    id: 'yours',
-    title: 'Yours',
-    hint: 'Kept on your account or in this browser. Nobody else here sees these.',
-  },
-  {
-    id: 'record',
-    title: 'The record',
-    hint: 'What was changed, by whom.',
-  },
+const INTERVIEW_GROUP_TEXT: ReadonlyArray<Pick<InterviewGroupSpec, 'id' | 'title' | 'hint'>> = [
+  { id: 'house', title: 'The house',
+    hint: 'Kept on the restaurant. Everyone who works here gets the same answer.' },
+  { id: 'carries', title: 'What it carries',
+    hint: 'Which of the seven drinks registers this house keeps.' },
+  { id: 'buys', title: 'How it buys',
+    hint: "What each vendor told the house, and what the house's own orders can support." },
+  { id: 'own', title: 'What it may do on its own',
+    hint: 'The mandates the house has given the system.' },
+  { id: 'who', title: 'Who is here',
+    hint: 'Who can reach this house, and what each may change.' },
+  { id: 'yours', title: 'Yours',
+    hint: 'Kept on your account or in this browser. Nobody else here sees these.' },
+  { id: 'record', title: 'The record',
+    hint: 'A log, not a question — not counted in the tally.' },
 ];
 
-export const GROUPS: SectionGroup[] = GROUP_HEADINGS.map((g) => ({
+/** I, II, III, … — the sketch's fixed interview order, from position alone. */
+function romanForPosition(position: number): string {
+  const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'] as const;
+  return NUMERALS[position] ?? String(position + 1);
+}
+
+export const INTERVIEW_GROUPS: InterviewGroupSpec[] = INTERVIEW_GROUP_TEXT.map((g, i) => ({
   ...g,
-  members: SECTIONS.filter((s) => s.group === g.id)
-    .sort((a, b) => a.order - b.order)
-    .map((s) => s.id),
+  roman: romanForPosition(i),
+  anchor: `a-${g.id}`,
 }));
 
-/**
- * Reading order, flattened. Derived from `GROUPS` so the numbers in the
- * contents column and the "Register N of M" line cannot drift apart.
- */
-export const READING_ORDER: SectionId[] = GROUPS.flatMap((g) => g.members);
-
-/** 1-based position in the contents column. */
-export function readingIndex(id: SectionId): number {
-  return READING_ORDER.indexOf(id) + 1;
+export function interviewGroup(id: InterviewGroupId): InterviewGroupSpec {
+  return INTERVIEW_GROUPS.find((g) => g.id === id) as InterviewGroupSpec;
 }
+
+/**
+ * Every existing `?tab=` bookmark still has to land somewhere true. The page
+ * no longer swaps panels, so a deep link now scrolls to the interview group
+ * that carries that register, rather than opening it alone — `st-format.ts`
+ * remains the one place a register's position is declared.
+ */
+export const TAB_TO_ANCHOR: Record<SectionId, string> = {
+  team: 'a-who',
+  services: 'a-house',
+  email: 'a-house',
+  notifications: 'a-yours',
+  locations: 'a-house',
+  measurement: 'a-yours',
+  map: 'a-yours',
+  features: 'a-own',
+  pos: 'a-house',
+  calendar: 'a-house',
+  cellar: 'a-carries',
+  'vendor-terms': 'a-buys',
+  thresholds: 'a-buys',
+  ledger: 'a-record',
+  currency: 'a-house',
+  'carrying-cost': 'a-house',
+  // Matches where `SettingsNext.tsx` actually mounts each special-cased block:
+  // `id="st-section-hours"` / `id="st-section-ask-training"` inside `group.id === 'house'`, `id="st-section-digest"`
+  // inside `group.id === 'own'`. Not consulted by the deep-link scroll effect
+  // itself (that only needs `isSectionId` + the DOM id), but `Record<SectionId,
+  // string>` requires every key once 'hours'/'digest'/'ask-training' join `SectionId`.
+  hours: 'a-house',
+  digest: 'a-own',
+  'ask-training': 'a-house',
+};
 
 /* ── THE COLLAPSE (founder, 2026-09-04) ──────────────────────────────────
  *
@@ -300,22 +340,6 @@ export function sectionsFor(connectionsOn: boolean): SectionSpec[] {
   return connectionsOn
     ? SECTIONS.filter((s) => !isCollapsedSection(s.id))
     : SECTIONS;
-}
-
-export function groupsFor(connectionsOn: boolean): SectionGroup[] {
-  if (!connectionsOn) return GROUPS;
-  return GROUPS.map((g) => ({
-    ...g,
-    members: g.members.filter((id) => !isCollapsedSection(id)),
-  })).filter((g) => g.members.length > 0);
-}
-
-export function readingOrderFor(connectionsOn: boolean): SectionId[] {
-  return groupsFor(connectionsOn).flatMap((g) => g.members);
-}
-
-export function readingIndexFor(connectionsOn: boolean, id: SectionId): number {
-  return readingOrderFor(connectionsOn).indexOf(id) + 1;
 }
 
 export function isSectionId(v: string | null): v is SectionId {

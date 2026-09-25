@@ -27,9 +27,10 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Wordmark } from '@/components/mudavym';
+import { DayLine } from '@/components/mudavym/DayLine';
 import { animate, settle } from '@/lib/mudavym';
 import { useDashboardSpine } from './useDashboardNextData';
-import { ensureFraunces, SERIF } from './fonts';
+import { SERIF } from './fonts';
 import KpiRow from './KpiRow';
 import SalesCalendar from './SalesCalendar';
 import WaitingOnYou from './WaitingOnYou';
@@ -63,10 +64,6 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
   const noteReport = useNoteCloseReport(activeRestaurantId);
   const reportLine = noteCloseReportLine(noteReport);
   const headRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   // One quiet entrance for the opening line — settle, 6px, once.
   useEffect(() => {
@@ -145,6 +142,12 @@ export default function DashboardNext({ ground }: DashboardNextProps) {
             {standing}
           </p>
         </header>
+
+        {/* ── the day line (sketch 119 §E) ──────────────────────────────── */}
+        {/* A PAGE element, self-gated by the shell flag — renders nothing
+            when the shell is off. The page's own first line, above the KPI
+            row, per the founder's 2026-09-21 pick. */}
+        <DayLine />
 
         {/* ── the KPI row ───────────────────────────────────────────────── */}
         <KpiRow stats={spine.stats} pendingCount={pendingCount} lowStockCount={lowStockCount} />

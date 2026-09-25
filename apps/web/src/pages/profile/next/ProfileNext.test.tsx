@@ -1232,6 +1232,43 @@ describe('ProfileNext — honesty states', () => {
     expect(within(drive).getByText('—')).toBeInTheDocument();
   });
 
+  it('groups the Google grants under one heading, each with its own Connect (founder ruling 2026-09-22)', () => {
+    const grant = (id: string, label: string, providerLabel: string) => ({
+      id,
+      label,
+      providerLabel,
+      description: `${label}.`,
+      state: 'available' as const,
+      account: null,
+      connectedAt: null,
+      grantedScopes: [],
+      requestedScopes: [],
+      notRequested: [],
+      blockedReason: null,
+    });
+    mockData.current = base({
+      workspace: [
+        grant('google_drive', 'Google Drive', 'Google'),
+        grant('gmail_send', 'Gmail — sending only', 'Google'),
+        grant('gmail_read', 'Gmail — reading vendor replies only', 'Google'),
+        grant('excel', 'Microsoft Excel', 'Microsoft'),
+      ],
+    });
+    draw();
+    const google = screen.getByRole('region', { name: 'Google' });
+    expect(within(google).getByRole('heading', { name: 'Google' })).toBeInTheDocument();
+    for (const [id, label] of [
+      ['google_drive', 'Google Drive'],
+      ['gmail_send', 'Gmail — sending only'],
+      ['gmail_read', 'Gmail — reading vendor replies only'],
+    ]) {
+      const link = within(google).getByRole('link', { name: `Connect ${label}` });
+      expect(link.getAttribute('href')).toBe(`/authorize/${id}?returnPath=/profile`);
+    }
+    expect(within(google).queryByText('Microsoft Excel')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Microsoft' })).toBeInTheDocument();
+  });
+
   it('renders permission-denied as a server rule now that the endpoint enforces one', () => {
     mockData.current = base({ role: 'staff', isManagerOrOwner: false, locationState: 'idle', location: null });
     draw();
