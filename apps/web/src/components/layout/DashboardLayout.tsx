@@ -30,6 +30,10 @@ interface DashboardLayoutProps {
  * four doors). Off, the legacy layout below renders exactly as it always has,
  * including while the flag check is in flight: the gate never flashes the new
  * shell at someone who is not meant to see it (useMudavymDesign.ts).
+ * [2026-09-25: `shell` is in `LIVE_PAGES` (ADR 0149 row 36's bracket, founder
+ * Q2/Q4 of 2026-09-22), so the gate is on for every house on the first render
+ * with no flag read; the legacy layout stays mounted below, reachable only
+ * through the browser override `mudavym.design.shell = 0`.]
  */
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const shellOn = useMudavymDesign('shell')

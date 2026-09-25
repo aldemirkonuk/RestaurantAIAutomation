@@ -39,6 +39,14 @@
  *      to legacy for a reason that has nothing to do with the founder's
  *      redesign call.
  *
+ * [2026-09-25: `authorize_integration` is in `LIVE_PAGES` (ADR 0149 row 36's
+ * bracket, founder Q2/Q4 of 2026-09-22), so branch 1 is now ON for every
+ * house, with or without a flag row, and the "structurally unable to be on"
+ * reason in branch 2 no longer holds — the hook would answer true. Branch 2
+ * still asks the public-door switch when no house is known; that choice is
+ * unchanged here, and a "flag-off house" below now exists only under the
+ * browser's QA override.]
+ *
  * Design OFF -> renders `PublicShell` UNCHANGED: a flag-off house (or an
  * unknown one with the public door also off) sees exactly today's page,
  * byte for byte. This is the whole reason `PublicShell` is still imported
