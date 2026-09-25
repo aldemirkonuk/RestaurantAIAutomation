@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 
@@ -10,6 +10,18 @@ import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
  * have left a broken twin behind for the next reader to fix again. The live
  * implementation is `ProvidersService.createRetroactiveOrder`, routed from
  * `providers.controller.ts` `POST :id/retroactive-order`.
+ *
+ * TENANCY (ADR 0147) — every read here takes `restaurantId` and puts it in the
+ * query. It is not optional and it is never defaulted: the controller reads it
+ * from the verified token via `houseOf(user)` and a session that names no house
+ * is refused there, so no call path can reach these methods without a house.
+ * The parameter sits immediately after the id it scopes (or first, where there
+ * is no id). `provider_knowledge`, `provider_promotions`,
+ * `conversation_embeddings`, `provider_conversation_sessions` and
+ * `provider_sentiment_history` all carry `restaurant_id NOT NULL`
+ * (supabase/migrations/20260805000000_baseline_from_production.sql), so there
+ * is no row these filters can wrongly hide. An empty string cannot leak either:
+ * `restaurant_id` is `uuid`, and PostgREST answers 22P02 rather than matching.
  */
 @Injectable()
 export class ProviderIntelligenceService {
@@ -21,11 +33,17 @@ export class ProviderIntelligenceService {
   // DIGITAL TWIN (Knowledge Graph)
   // =========================================================================
 
-  async getKnowledge(providerId: string, category?: string) {
+  async getKnowledge(
+    providerId: string,
+    restaurantId: string,
+    category?: string,
+  ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     let query = this.databaseService.supabase
       .from("provider_knowledge")
       .select("*")
       .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .order("category")
       .order("updated_at", { ascending: false });
@@ -80,15 +98,25 @@ export class ProviderIntelligenceService {
     return grouped;
   }
 
-  async verifyKnowledge(knowledgeId: string, userId: string) {
+  async verifyKnowledge(
+    knowledgeId: string,
+    userId: string,
+    restaurantId: string,
+  ) {
+    // `maybeSingle`, never `single`, for the reason spelled out on
+    // `ProvidersService.getProvider`: `single()` turns "no row" into PGRST116,
+    // which a caller cannot tell apart from a database that is down. A fact
+    // belonging to another house must answer the same 404 as one that does not
+    // exist, and it must not answer 500.
     const { data, error } = await this.databaseService.supabase
       .from("provider_knowledge")
       .update({ verified: true, verified_by: userId })
       .eq("id", knowledgeId)
+      .eq("restaurant_id", restaurantId)
       .select("*")
-      .single();
+      .maybeSingle();
 
-    if (error) {
+    if (error && (error as { code?: string }).code !== "PGRST116") {
       this.logger.error("Failed to verify knowledge", {
         knowledgeId,
         error: error.message,
@@ -96,14 +124,22 @@ export class ProviderIntelligenceService {
       throw error;
     }
 
+    if (!data) {
+      throw new NotFoundException(
+        `No knowledge fact with id ${knowledgeId} belongs to this restaurant.`,
+      );
+    }
+
     return data;
   }
 
-  async getContradictions(providerId: string) {
+  async getContradictions(providerId: string, restaurantId: string) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_knowledge")
       .select("*")
       .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .not("previous_value", "is", null)
       .order("updated_at", { ascending: false });
@@ -138,11 +174,17 @@ export class ProviderIntelligenceService {
   // PROMOTIONS
   // =========================================================================
 
-  async getPromotions(providerId: string, status?: string) {
+  async getPromotions(
+    providerId: string,
+    restaurantId: string,
+    status?: string,
+  ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     let query = this.databaseService.supabase
       .from("provider_promotions")
       .select("*")
       .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false });
 
     if (status) {
@@ -162,10 +204,11 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
-  async getAllActivePromotions() {
+  async getAllActivePromotions(restaurantId: string) {
     const { data, error } = await this.databaseService.supabase
       .from("provider_promotions")
       .select("*, providers(id, name)")
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .order("end_date", { ascending: true });
 
@@ -179,13 +222,14 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
-  async getExpiringPromotions(days: number = 7) {
+  async getExpiringPromotions(restaurantId: string, days: number = 7) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + days);
 
     const { data, error } = await this.databaseService.supabase
       .from("provider_promotions")
       .select("*, providers(id, name)")
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .lte("end_date", cutoff.toISOString().split("T")[0])
       .order("end_date", { ascending: true });
@@ -200,10 +244,11 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
-  async getPromoSavings() {
+  async getPromoSavings(restaurantId: string) {
     const { data, error } = await this.databaseService.supabase
       .from("provider_promotions")
       .select("provider_id, savings_realized, times_used, providers(name)")
+      .eq("restaurant_id", restaurantId)
       .gt("savings_realized", 0)
       .order("savings_realized", { ascending: false });
 
@@ -225,10 +270,11 @@ export class ProviderIntelligenceService {
     };
   }
 
-  async comparePromotions() {
+  async comparePromotions(restaurantId: string) {
     const { data, error } = await this.databaseService.supabase
       .from("provider_promotions")
       .select("*, providers(id, name)")
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .order("promo_type")
       .order("provider_id");
@@ -254,13 +300,19 @@ export class ProviderIntelligenceService {
   // CONVERSATION MEMORY
   // =========================================================================
 
-  async getConversationMemory(providerId: string, limit: number = 50) {
+  async getConversationMemory(
+    providerId: string,
+    restaurantId: string,
+    limit: number = 50,
+  ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("conversation_embeddings")
       .select(
         "id, message_text, role, channel, importance_score, extracted_entities, language, created_at",
       )
       .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -295,11 +347,17 @@ export class ProviderIntelligenceService {
    * feature to build, not a repair to make, and it is filed as OD-104 rather
    * than left implied by a call to a function nobody wrote.
    */
-  async searchConversationMemory(providerId: string, query: string) {
+  async searchConversationMemory(
+    providerId: string,
+    restaurantId: string,
+    query: string,
+  ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("conversation_embeddings")
       .select("id, message_text, role, channel, importance_score, created_at")
       .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
       .ilike("message_text", `%${query}%`)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -320,11 +378,17 @@ export class ProviderIntelligenceService {
   // SESSIONS
   // =========================================================================
 
-  async getSessions(providerId: string, includeCompleted: boolean = false) {
+  async getSessions(
+    providerId: string,
+    restaurantId: string,
+    includeCompleted: boolean = false,
+  ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     let query = this.databaseService.supabase
       .from("provider_conversation_sessions")
       .select("*")
       .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false });
 
     if (!includeCompleted) {
@@ -349,14 +413,18 @@ export class ProviderIntelligenceService {
     return data || [];
   }
 
-  async getSessionSummary(sessionId: string) {
+  async getSessionSummary(sessionId: string, restaurantId: string) {
+    // `maybeSingle` for the same reason as `verifyKnowledge`: a session id
+    // belonging to another house answers the same 404 as one that does not
+    // exist, and neither is a 500. `single()` used to make both a 500.
     const { data, error } = await this.databaseService.supabase
       .from("provider_conversation_sessions")
       .select("*")
       .eq("id", sessionId)
-      .single();
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
 
-    if (error) {
+    if (error && (error as { code?: string }).code !== "PGRST116") {
       this.logger.error("Failed to fetch session summary", {
         sessionId,
         error: error.message,
@@ -364,7 +432,44 @@ export class ProviderIntelligenceService {
       throw error;
     }
 
+    if (!data) {
+      throw new NotFoundException(
+        `No conversation session with id ${sessionId} belongs to this restaurant.`,
+      );
+    }
+
     return data;
+  }
+
+  /**
+   * The vendor is this house's, or the caller gets the same 404 as for a
+   * missing id (ADR 0147). Used by the two routes that WRITE a conversation
+   * session against a provider id (`POST :id/outreach`, `POST :id/onboard`).
+   * A failed read throws; it is never reported as "not found".
+   */
+  async assertProviderInHouse(
+    providerId: string,
+    restaurantId: string,
+  ): Promise<void> {
+    const { data, error } = await this.databaseService.supabase
+      .from("providers")
+      .select("id")
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+
+    if (error) {
+      this.logger.error("Failed to check the provider's house", {
+        providerId,
+        error: error.message,
+      });
+      throw error;
+    }
+    if (!data) {
+      throw new NotFoundException(
+        `No provider with id ${providerId} belongs to this restaurant.`,
+      );
+    }
   }
 
   // =========================================================================
@@ -384,6 +489,7 @@ export class ProviderIntelligenceService {
     restaurantId: string,
     limit: number = 30,
   ) {
+    await this.assertProviderInHouse(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_sentiment_history")
       .select(
@@ -427,24 +533,27 @@ export class ProviderIntelligenceService {
 
   /**
    * Was unscoped: every active provider in every restaurant, with its
-   * reliability score, tier and (via the per-provider queries below)
-   * sentiment and knowledge counts (2026-09-17 finding — no restaurant
-   * filter existed at all). `restaurantId` scopes the provider list the same
-   * way `ProvidersService` scopes it everywhere else in this gateway; the
-   * per-provider `provider_sentiment_history` read is scoped too, since that
-   * table carries its own `restaurant_id` independent of the provider row
-   * (a provider can be shared across houses via the nullable
-   * `providers.restaurant_id`).
+   * reliability score, tier and (via the per-provider queries below) promotion,
+   * sentiment and knowledge counts. `restaurantId` scopes the provider list and
+   * all three per-provider aggregates, since each of those tables carries its
+   * own `restaurant_id` independent of the provider row.
    *
-   * The provider list itself uses the repo's shared-row idiom
-   * (`restaurant_id.is.null,restaurant_id.eq.<house>` — see
-   * `price-register/visibility.ts:305`,
-   * `vendor-intel/identity.service.ts:729`) rather than a plain `.eq`, so a
-   * provider deliberately shared across houses (`restaurant_id IS NULL`) is
-   * not dropped from every house's comparison. This is strictly a superset
-   * of the plain `.eq` this method shipped with on 2026-09-17 — if
-   * production holds zero shared-provider rows today, behaviour is
-   * unchanged; that count was NOT measured in this session (CLAUDE.md 0.5).
+   * The provider list is a plain `.eq("restaurant_id", ...)`, NOT the
+   * shared-row idiom (`restaurant_id.is.null,restaurant_id.eq.<house>`) that
+   * main briefly used here (#391). A `providers` row with a NULL house is not a
+   * shared vendor anywhere else in this gateway — `ProvidersService.listProviders`
+   * and `getProvider` both filter with `.eq`, so no house can list, open or
+   * order from it. Those rows are orphans (bulk import wrote `restaurant_id`
+   * NULL for every imported vendor until PR #412), i.e. ONE house's vendors
+   * with the house dropped; admitting them here showed their names, tiers and
+   * minimum orders to every house (2026-09-25 merge, PR #416).
+   *
+   * `providerIds` is a filter, not an assertion that each id exists. An id from
+   * another house drops out of the result exactly the way an inactive or
+   * soft-deleted id of this house already does — the endpoint has never told a
+   * caller which of the ids it named were real, and it does not start now.
+   * That keeps a foreign id indistinguishable from a missing one (ADR 0147),
+   * with no existence oracle bolted onto a list route.
    */
   async compareProviders(restaurantId: string, providerIds?: string[]) {
     let query = this.databaseService.supabase
@@ -452,7 +561,7 @@ export class ProviderIntelligenceService {
       .select(
         "id, name, reliability_score, tier, minimum_order, lead_time_days",
       )
-      .or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
+      .eq("restaurant_id", restaurantId)
       .eq("is_active", true)
       .is("deleted_at", null);
 
@@ -473,6 +582,7 @@ export class ProviderIntelligenceService {
           .from("provider_promotions")
           .select("id")
           .eq("provider_id", provider.id)
+          .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
         this.databaseService.supabase
           .from("provider_sentiment_history")
@@ -485,6 +595,7 @@ export class ProviderIntelligenceService {
           .from("provider_knowledge")
           .select("id")
           .eq("provider_id", provider.id)
+          .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
       ]);
 
@@ -507,10 +618,11 @@ export class ProviderIntelligenceService {
     return result;
   }
 
-  async getLeverageSignals() {
+  async getLeverageSignals(restaurantId: string) {
     const { data, error } = await this.databaseService.supabase
       .from("provider_knowledge")
       .select("provider_id, label, attributes, providers(name)")
+      .eq("restaurant_id", restaurantId)
       .eq("category", "relationship")
       .eq("subcategory", "leverage_signal")
       .eq("is_active", true)
