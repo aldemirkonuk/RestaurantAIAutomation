@@ -14,6 +14,12 @@ import {
 import { FEED_SOURCE_TYPE, FEED_TRUST_TIER } from "./parse-edi832";
 
 describe("the declared distributor connection", () => {
+  it("tells the house the letter cannot be sent, without naming a route", () => {
+    const letter = DISTRIBUTOR_FEED_CONNECTION.waysIn.find((w) => w.id === "letter");
+    expect(letter?.how).toContain("does not send it and cannot");
+    expect(letter?.how).not.toMatch(/\b(protocol|webhook|iframe|token|route)\b/i);
+  });
+
   it("is not offerable, and carries the reason in the same object", () => {
     expect(DISTRIBUTOR_FEED_CONNECTION.offerable).toBe(false);
     expect(DISTRIBUTOR_FEED_CONNECTION.notOfferableBecause.length).toBeGreaterThan(

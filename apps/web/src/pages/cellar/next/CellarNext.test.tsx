@@ -44,6 +44,25 @@ const mock = vi.hoisted(() => ({
   whole: { rows: [], reads: [], loading: false, partial: false } as Record<string, unknown>,
   zones: { data: null, loading: false, error: null } as Record<string, unknown>,
   confirmZone: { confirm: vi.fn(), saving: false, error: null } as Record<string, unknown>,
+  // The order-hold ceremony and gazetteer measures (ADR 0160 sec110 items 2, 6)
+  // — read by both `Registers` and `BottleLeaf`. Unread-default shape, same
+  // as `useCellarSettings`'s own fallback, so a test that never touches
+  // settings sees exactly what an unconfigured house would.
+  settings: {
+    data: {
+      restaurantId: 'r1',
+      holdCeremony: 'hold',
+      holdCeremonyConfigured: false,
+      gazetteerMeasures: ['bottles', 'titles', 'par', 'offbook'],
+      gazetteerMeasuresConfigured: false,
+      setBy: null,
+      setAt: null,
+      readable: true,
+      readError: null,
+    },
+    loading: false,
+    save: { mutateAsync: vi.fn(), isPending: false, isError: false, error: null },
+  } as Record<string, unknown>,
 }));
 
 vi.mock('./useCellarNextData', async (orig) => ({
@@ -58,6 +77,7 @@ vi.mock('./useCellarNextData', async (orig) => ({
   useWholeCellar: () => mock.whole,
   useZones: () => mock.zones,
   useConfirmZone: () => mock.confirmZone,
+  useCellarSettings: () => mock.settings,
 }));
 
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
@@ -93,6 +113,7 @@ function bottle(over: Partial<BottleVM> = {}): BottleVM {
     observedAt: null,
     cellar: null,
     beverageKind: 'wine',
+    structure: null,
     ...over,
   };
 }
@@ -157,9 +178,12 @@ const base = {
   activeRestaurantId: 'r1',
   authLoading: false,
   bottles: [] as BottleVM[] | null,
-  building: { titles: 0, bottles: 0, belowPar: 0, offBook: 0 },
+  building: { titles: 0, bottles: 0, belowPar: 0, offBook: 0, parUnset: 0 },
   providers: [],
   bookTruncated: false,
+  bookLimit: 500,
+  loadingMoreBook: false,
+  loadMoreBook: vi.fn(),
   booking: false,
   bookError: null as string | null,
   cellarKnown: true,
@@ -341,7 +365,7 @@ describe('CellarNext — the parent surface', () => {
       cellarKnown: false,
       cellarError: 'ECONNREFUSED',
       registers: readout(),
-      building: { titles: null, bottles: null, belowPar: null, offBook: null },
+      building: { titles: null, bottles: null, belowPar: null, offBook: null, parUnset: null },
     };
     draw();
     expect(screen.getByText(/could not be read \(ECONNREFUSED\)/)).toBeInTheDocument();
@@ -364,6 +388,69 @@ describe('CellarNext — the parent surface', () => {
     draw();
     expect(screen.getByTestId('cellar-opening')).toBeInTheDocument();
     expect(screen.queryByTestId('cellar-no-tenant')).not.toBeInTheDocument();
+  });
+});
+
+describe('CellarNext — "In the building tonight" (ADR 0160 sec110 item 2)', () => {
+  it('holds the tile grid — no default four, then a swap — while settings are still loading', () => {
+    mock.current = { ...base, registers: readout(), building: { titles: 9, bottles: 40, belowPar: 2, offBook: 0, parUnset: 1 } };
+    mock.settings = { ...mock.settings, loading: true };
+    draw();
+    const section = screen.getByText('In the building tonight').closest('section')!;
+    expect(within(section).getByTestId('gazetteer-measures-loading')).toBeInTheDocument();
+    // Scoped: `RegisterCard` prints its own "Bottles on hand" stat regardless
+    // of this section's state, so only THIS section's absence proves the
+    // hold.
+    expect(within(section).queryByText('Bottles on hand')).not.toBeInTheDocument();
+  });
+
+  it('says the configuration could not be read, and draws no tiles — never the default four dressed up as an answer', () => {
+    mock.current = { ...base, registers: readout(), building: { titles: 9, bottles: 40, belowPar: 2, offBook: 0, parUnset: 1 } };
+    mock.settings = {
+      ...mock.settings,
+      loading: false,
+      data: { ...(mock.settings.data as Record<string, unknown>), readable: false, readError: 'ECONNREFUSED' },
+    };
+    draw();
+    const alert = screen.getByTestId('gazetteer-measures-unread');
+    expect(alert).toHaveTextContent(/could not be read/i);
+    expect(alert).toHaveTextContent('ECONNREFUSED');
+    const section = screen.getByText('In the building tonight').closest('section')!;
+    expect(within(section).queryByText('Bottles on hand')).not.toBeInTheDocument();
+  });
+
+  it('says plainly when a house configured NO measures — never a bare empty grid', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.settings = {
+      ...mock.settings,
+      loading: false,
+      data: { ...(mock.settings.data as Record<string, unknown>), gazetteerMeasures: [], gazetteerMeasuresConfigured: true, readable: true },
+    };
+    draw();
+    expect(screen.getByTestId('gazetteer-measures-none')).toBeInTheDocument();
+  });
+
+  it('draws the house\'s configured tiles, each naming the source it was counted from', () => {
+    mock.current = {
+      ...base,
+      registers: readout({ carried: ['wines', 'beer'] }),
+      building: { titles: 9, bottles: 40, belowPar: 2, offBook: 0, parUnset: 1 },
+    };
+    mock.settings = {
+      ...mock.settings,
+      loading: false,
+      data: { ...(mock.settings.data as Record<string, unknown>), gazetteerMeasures: ['bottles', 'registers'], gazetteerMeasuresConfigured: true, readable: true },
+    };
+    draw();
+    // Scoped to the tile grid itself: `RegisterCard` also prints its own
+    // "Bottles on hand" stat, so an unscoped query is ambiguous.
+    const section = screen.getByText('In the building tonight').closest('section')!;
+    expect(within(section).getByText('Bottles on hand')).toBeInTheDocument();
+    expect(within(section).getByText('Registers carried')).toBeInTheDocument();
+    // Every tile names the table/rows it was counted from — the sketch's own
+    // "every tile names the table" rule, item 2's own gap before this fix.
+    expect(within(section).getAllByText(/this house.s wine rows|restaurant_cellar_registers/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByTestId('gazetteer-measures-none')).not.toBeInTheDocument();
   });
 });
 
@@ -438,6 +525,12 @@ describe('CellarNext — the wine register', () => {
             providerId: 'p1',
             providerName: 'Bodega Álvaro',
             lastCountedAt: null,
+            glassesPerBottle: null,
+            menuPriceGlass: null,
+            menuPriceBottle: null,
+            velocityPerDay: null,
+            daysSinceSale: null,
+            analyticsReadable: true,
           },
         }),
       ],
@@ -1209,6 +1302,58 @@ describe('what this house’s book is called', () => {
     expect(crumb).toHaveTextContent('The Cellar · register');
   });
 
+  it('a book capped at its read limit offers Load more, and calls back into the data hook', () => {
+    // ADR 0160 sec110 item 1 — the 500-title wall the sketch forbids. A
+    // truncated read must offer a way past itself rather than silently
+    // dropping every title after the 500th.
+    const loadMoreBook = vi.fn();
+    mock.current = {
+      ...base,
+      bottles: [bottle()],
+      registers: carrying('wines'),
+      bookTruncated: true,
+      bookLimit: 500,
+      loadMoreBook,
+    };
+    draw({ category: 'wines' }, '/wines');
+    const button = within(screen.getByTestId('wine-register')).getByTestId('wine-register-load-more');
+    expect(button).toHaveTextContent('Load 500 more');
+    fireEvent.click(button);
+    expect(loadMoreBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows more titles once the data hook reports a wider read, past 500 rows', () => {
+    // Proves the wall is actually gone rather than just the button existing:
+    // a SECOND page of titles (501 total) shows up once `bookLimit` widens.
+    const many = Array.from({ length: 501 }, (_, i) => bottle({ id: `w${i}`, name: `Wine ${i}` }));
+    mock.current = {
+      ...base,
+      bottles: many,
+      registers: carrying('wines'),
+      bookTruncated: false,
+      bookLimit: 1000,
+    };
+    draw({ category: 'wines' }, '/wines');
+    const wr = screen.getByTestId('wine-register');
+    expect(within(wr).getByText(/501 of 501 titles/)).toBeInTheDocument();
+    expect(within(wr).queryByTestId('wine-register-load-more')).not.toBeInTheDocument();
+  });
+
+  it('shows the reading state, disabled, while a wider page is in flight', () => {
+    mock.current = {
+      ...base,
+      bottles: [bottle()],
+      registers: carrying('wines'),
+      bookTruncated: true,
+      bookLimit: 500,
+      loadingMoreBook: true,
+    };
+    draw({ category: 'wines' }, '/wines');
+    const button = within(screen.getByTestId('wine-register')).getByTestId('wine-register-load-more');
+    expect(button).toHaveTextContent('Reading more…');
+    expect(button).toBeDisabled();
+  });
+
   it('a Bar house reads “The Bar” in its own children too', () => {
     mock.current = { ...base, registers: carrying('beer', 'cocktails') };
     mock.register = { data: registerVM(), loading: false, error: null, refetch: () => {} };
@@ -1269,6 +1414,12 @@ describe('the live path on the wine register', () => {
             providerId: null,
             providerName: null,
             lastCountedAt: null,
+            glassesPerBottle: null,
+            menuPriceGlass: null,
+            menuPriceBottle: null,
+            velocityPerDay: null,
+            daysSinceSale: null,
+            analyticsReadable: true,
           },
         }),
       ],

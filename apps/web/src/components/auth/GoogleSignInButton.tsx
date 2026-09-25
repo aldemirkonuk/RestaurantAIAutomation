@@ -13,6 +13,7 @@ interface GoogleSignInButtonProps {
   disabled?: boolean
   /** Show Google One Tap (saved accounts) on mount — only on login/register. */
   enableOneTap?: boolean
+  mode?: 'sign-in' | 'register'
 }
 
 export interface GoogleSignInHandle {
@@ -60,8 +61,9 @@ export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInBut
   onError,
   disabled,
   enableOneTap = false,
+  mode = 'sign-in',
 }, ref) {
-  const { loginWithGoogle } = useAuth()
+  const { loginWithGoogle, registerAccountWithGoogle } = useAuth()
   const gsiHostRef = useRef<HTMLDivElement>(null)
   const oneTapShownRef = useRef(false)
   const [ready, setReady] = useState(false)
@@ -70,15 +72,19 @@ export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInBut
 
   const clientId = getGoogleClientId()
 
-  const handlersRef = useRef({ onSuccess, onError, loginWithGoogle })
+  const handlersRef = useRef({ onSuccess, onError, loginWithGoogle, registerAccountWithGoogle, mode })
   useEffect(() => {
-    handlersRef.current = { onSuccess, onError, loginWithGoogle }
-  }, [onSuccess, onError, loginWithGoogle])
+    handlersRef.current = { onSuccess, onError, loginWithGoogle, registerAccountWithGoogle, mode }
+  }, [onSuccess, onError, loginWithGoogle, registerAccountWithGoogle, mode])
 
   const handleCredential = useCallback(async (credential: string) => {
     setSigningIn(true)
     try {
-      await handlersRef.current.loginWithGoogle(credential)
+      if (handlersRef.current.mode === 'register') {
+        await handlersRef.current.registerAccountWithGoogle(credential)
+      } else {
+        await handlersRef.current.loginWithGoogle(credential)
+      }
       handlersRef.current.onSuccess()
     } catch (e: any) {
       handlersRef.current.onError?.(e?.message || 'Google sign-in failed')
@@ -184,7 +190,7 @@ export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInBut
         ) : (
           <>
             <GoogleGlyph className="h-5 w-5 shrink-0" />
-            Sign in with Google
+            {mode === 'register' ? 'Continue with Google' : 'Sign in with Google'}
           </>
         )}
       </button>

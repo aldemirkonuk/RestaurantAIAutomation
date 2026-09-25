@@ -1,0 +1,73 @@
+/* ============================================================
+   /admin (next) — The Operations Desk
+   ============================================================
+
+   Fonts are the house set only: DM Sans / Plus Jakarta Sans (index.html),
+   JetBrains Mono (index.html), Fraunces via fonts.ts's ensureFraunces(). No
+   Inter, no IBM Plex Mono — those never load, so they were rendering in the
+   browser's system font.
+
+   No raw hex for a ground, an ink or the seal (ADR 0042). The one chromatic
+   colour is the seal, and it marks a thing you may do, never a status word —
+   so "healthy" / "needs attention" are ink weight, not a green/amber hue the
+   house does not have.
+*/
+
+.admin-desk {
+  min-height: 100vh;
+  padding: clamp(20px, 4vw, 56px);
+  background: var(--paper-0);
+  color: var(--ink-1);
+  --ad-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --ad-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ad-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-family: var(--ad-sans);
+}
+.admin-desk__masthead, .admin-desk__heading, .admin-desk__section-head, .admin-desk__footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.admin-desk__masthead { padding-bottom: 26px; border-bottom: 3px double var(--ink-4); }
+.admin-desk__eyebrow, .admin-desk__section-head > span, .admin-desk__caption { font: 11px/1.7 var(--ad-mono); letter-spacing: .04em; color: var(--ink-2); }
+.admin-desk__heading { padding: 42px 0 28px; }
+.admin-desk h1, .admin-desk h2 { font-family: var(--ad-serif); font-weight: 400; letter-spacing: -.04em; }
+.admin-desk h1 { font-size: clamp(36px, 5vw, 58px); line-height: 1.1; margin: 0 0 14px; }
+.admin-desk h2 { font-size: 30px; margin: 0; }
+.admin-desk h3 { font-size: 15px; font-weight: 500; margin: 0 0 6px; }
+.admin-desk p { font-size: 14px; line-height: 1.65; margin: 6px 0; color: var(--ink-2); }
+.admin-desk button, .admin-desk__confirmation button { padding: 10px 16px; background: transparent; border: 1px solid var(--ink-3); border-radius: 3px; color: inherit; font-size: 12px; cursor: pointer; transition: background 160ms cubic-bezier(0.16, 1, 0.3, 1), border-color 160ms cubic-bezier(0.16, 1, 0.3, 1); }
+.admin-desk button:hover:not(:disabled), .admin-desk__confirmation button:hover:not(:disabled) { background: var(--paper-2); border-color: var(--ink-2); }
+.admin-desk button:disabled, .admin-desk__confirmation button:disabled { opacity: .5; cursor: default; }
+.admin-desk :focus-visible, .admin-desk__confirmation :focus-visible { outline: 2px solid var(--seal); outline-offset: 4px; }
+.admin-desk__links { display: flex; flex-wrap: wrap; gap: 24px; padding: 18px 0; border-block: 1px solid var(--ink-4); font-size: 13px; }
+.admin-desk a { color: var(--seal-deep); text-underline-offset: 4px; transition: color 160ms cubic-bezier(0.16, 1, 0.3, 1); }
+.admin-desk a:hover { color: var(--seal); }
+.admin-desk section { margin-top: 40px; }
+.admin-desk__section-head { padding-bottom: 14px; border-bottom: 3px double var(--ink-4); }
+.admin-desk__register { margin-top: 22px; }
+.admin-desk__row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 22px 0; border-bottom: 1px solid var(--paper-2); transition: background 160ms cubic-bezier(0.16, 1, 0.3, 1); }
+.admin-desk__row > div:first-child { flex: 1; }
+.admin-desk__row > span { font: 12px/1.7 var(--ad-mono); }
+.admin-desk__row[role='button'] { cursor: pointer; }
+.admin-desk__row[role='button']:hover, .admin-desk__row[role='button']:focus-visible { background: var(--paper-1); }
+/* State is ink weight, not a hue the house doesn't have (ADR 0042). */
+.admin-desk__state[data-state='healthy'] { color: var(--ink-3); }
+.admin-desk__state[data-state='attention'] { color: var(--ink-1); font-weight: 600; }
+.admin-desk__state[data-state='unknown'] { color: var(--ink-4); }
+.admin-desk__actions { display: flex; gap: 8px; }
+.admin-desk__filters { display: flex; gap: 8px; margin-top: 18px; }
+.admin-desk__filter { padding: 6px 12px; font-size: 11px; }
+.admin-desk__filter[data-active='true'] { background: var(--paper-2); border-color: var(--ink-1); font-weight: 600; }
+.admin-desk__notice { padding: 18px; border-left: 2px solid var(--seal); background: var(--paper-1); margin-top: 20px !important; }
+.admin-desk__stale { color: var(--ink-3); font-style: italic; }
+.admin-desk__footer { margin-top: 64px; padding-top: 20px; border-top: 3px double var(--ink-4); font-size: 11px; color: var(--ink-2); }
+/* `.mdv-ovl__body` (sheet.css) deliberately carries no padding of its own — every
+   page insets its own sheet content, the way TwinSheet.tsx:84 does with `px-4`. */
+.admin-desk__confirmation, .admin-desk__detail { padding: 16px; }
+.admin-desk__confirmation { color: var(--ink-1); font: 14px/1.7 var(--ad-sans); }
+.admin-desk__confirmation label { display: block; margin-top: 24px; }
+.admin-desk__confirmation input { display: block; width: 100%; padding: 12px; border: 1px solid var(--ink-3); background: var(--paper-0); color: var(--ink-1); margin: 12px 0 20px; font-family: var(--ad-sans); }
+.admin-desk__detail dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font: 12px/1.7 var(--ad-mono); }
+.admin-desk__detail dt { color: var(--ink-3); }
+.admin-desk__detail dd { margin: 0; color: var(--ink-1); }
+@media (max-width: 680px) { .admin-desk__heading, .admin-desk__section-head, .admin-desk__row, .admin-desk__footer { flex-direction: column; align-items: flex-start; gap: 12px; } .admin-desk__masthead { flex-wrap: wrap; } .admin-desk__actions { width: 100%; } .admin-desk__actions button { flex: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .admin-desk button, .admin-desk__confirmation button, .admin-desk a, .admin-desk__row { transition: none !important; }
+}
