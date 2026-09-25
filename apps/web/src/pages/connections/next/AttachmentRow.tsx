@@ -80,6 +80,15 @@ export interface AttachmentRowProps {
   owner: string;
   /** The address, the identifier, the thing you would paste into a ticket. */
   subtitle?: string | null;
+  /**
+   * The subtitle IS a credential, not a label for one — an iCal feed address, a
+   * signed URL, a token. It renders normally; the attribute exists so anything
+   * that captures the page can find it. The nightly walk masks
+   * `[data-secret]` before it screenshots (ADR 0135), because a screenshot is a
+   * picture and the artifact scrub reads bytes: a rendered token matches no
+   * regex and would be published as "clean".
+   */
+  subtitleIsSecret?: boolean;
   /** What this is and why it matters, in the house's voice. */
   why: ReactNode;
   permissionsLabel?: string;
@@ -129,6 +138,7 @@ export function AttachmentRow({
   stopNote,
   alert = null,
   nested = false,
+  subtitleIsSecret = false,
 }: AttachmentRowProps) {
   return (
     <div className={nested ? 'cx-row is-nested' : 'cx-row'}>
@@ -146,7 +156,14 @@ export function AttachmentRow({
           ))}
           <span className="cx-owner">{owner}</span>
         </div>
-        {subtitle ? <div className="cx-row-sub">{subtitle}</div> : null}
+        {subtitle ? (
+          <div
+            className="cx-row-sub"
+            data-secret={subtitleIsSecret ? 'credential' : undefined}
+          >
+            {subtitle}
+          </div>
+        ) : null}
         <div className="cx-row-why">{why}</div>
       </div>
 

@@ -49,6 +49,7 @@ import { Plus, ShieldOff } from 'lucide-react';
 import { HoldToApprove } from '../../../components/mudavym';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
 import type { McpRuntimeVM, McpServerVM } from './useConnectionsNextData';
+import { plainReason } from './cx-format';
 
 const ICON = { width: 14, height: 14, strokeWidth: 1.8 } as const;
 
@@ -161,7 +162,7 @@ export function HouseServerControls({
       await apiClient.delete(`/mcp-connections/${id}`);
       setMsg({
         tone: 'done',
-        text: `${serverName} revoked. The row stays, marked revoked, and its stored credential was destroyed — a grant that once existed must not become indistinguishable from one that never did.`,
+        text: `${serverName} revoked. The row stays, marked revoked, and its stored sign-in was destroyed — a grant that once existed must not become indistinguishable from one that never did.`,
       });
       onChanged?.();
     } catch (e) {
@@ -216,27 +217,28 @@ export function HouseServerControls({
 
           <Row
             id="cx-mcp-url"
-            label="Endpoint"
-            hint="http or https, reachable from the public internet. A private-network or loopback address is refused when the server is checked, because a gateway that fetches those on request is a way into them."
+            label="Address"
+            hint="A public address. A private-network or loopback address is refused when the server is checked, because fetching those would be a way into them."
           >
             <input
               id="cx-mcp-url"
               style={FIELD}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://mcp.example.com"
+              placeholder="https://bridge.example.com"
             />
           </Row>
 
           <Row
             id="cx-mcp-scopes"
-            label="Scopes granted"
+            label="What it may do"
             hint={
               <>
-                Space- or comma-separated lowercase slugs. Leave it empty to
-                declare a server that may call nothing yet.
+                Separate each permission with a space or a comma, written as the
+                server names it. Leave it empty to declare a server that may do
+                nothing yet.
                 {parsed.rejected.length > 0 ? (
-                  <> Not a valid scope, and will be dropped: {parsed.rejected.join(', ')}.</>
+                  <> Not a permission this page can keep, and will be dropped: {parsed.rejected.join(', ')}.</>
                 ) : null}
               </>
             }
@@ -252,14 +254,16 @@ export function HouseServerControls({
 
           <Row
             id="cx-mcp-secret"
-            label="Credential"
+            label="Sign-in"
             hint={
               runtime === null
-                ? 'This deployment did not report whether it can store a credential, so the field is disabled rather than accepting one it might drop.'
+                ? 'Mudavym did not report whether it can store a sign-in, so the field is disabled rather than accepting one it might drop.'
                 : canStoreSecret
-                  ? 'Optional. Encrypted before it is stored and never returned by any route — a server that authenticates by network position needs none. Changing it afterwards is not built on this page: the route answers, the button does not exist yet.'
-                  : (runtime.secretStorage.reason ??
-                    'This deployment cannot store a credential, so the field is disabled.')
+                  ? 'Optional. Encrypted before it is stored and never shown again. A server that recognizes this house by its address needs none. Changing it afterwards is not on this page yet.'
+                  : plainReason(
+                      runtime.secretStorage.reason,
+                      'Mudavym cannot store a sign-in yet, so the field is disabled.',
+                    )
             }
           >
             <input
@@ -270,7 +274,7 @@ export function HouseServerControls({
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
               disabled={!canStoreSecret}
-              placeholder="Bearer token, if this server needs one"
+              placeholder="Only if this server asks for one"
             />
           </Row>
 
@@ -294,7 +298,7 @@ export function HouseServerControls({
           </div>
           {!valid ? (
             <p className="cx-ctl-note">
-              A name of at least two characters and an http(s) endpoint are needed.
+              A name of at least two characters and the server&rsquo;s address are needed.
             </p>
           ) : null}
         </div>
@@ -308,7 +312,7 @@ export function HouseServerControls({
         <div style={{ marginTop: 14 }}>
           <span className="cx-col-h">Revoke an attachment</span>
           <p className="cx-ctl-note" style={{ marginTop: 0 }}>
-            Revoking destroys the stored credential and cannot be undone by
+            Revoking destroys the stored sign-in and cannot be undone by
             declaring the same server again — the revoked row stays. It is the
             one act here that carries the seal.
           </p>

@@ -7,7 +7,7 @@
  * A house sends from its OWN connected mailbox, or from a Mudavym subdomain
  * address we provision for it. Never from the mailbox every restaurant on this
  * deployment shares — `gmail.service.ts:78-80`, `GMAIL_SENDER_EMAIL` falling
- * back to `notifications@wineops.ai`. That fallback is exactly what the house
+ * back to `notifications@mudavym.com`. That fallback is exactly what the house
  * composer retires for manager-written letters: the sign-off inside the letter
  * carries the house's name and the envelope carries ours, which is the one
  * thing `/communications` may never claim.
@@ -207,7 +207,7 @@ export class HouseSenderService {
   private deploymentMailbox(): string {
     return (
       this.config.get<string>("GMAIL_SENDER_EMAIL") ??
-      "notifications@wineops.ai"
+      "notifications@mudavym.com"
     );
   }
 

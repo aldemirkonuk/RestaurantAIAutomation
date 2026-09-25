@@ -43,11 +43,11 @@ Follow the RUBRIC promotion protocol:
 | Workflow | Jobs / schedule | Role |
 |----------|-----------------|------|
 | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) | `test-typescript`, `test-python`, `test-e2e` | Unit + integration on push; local Playwright smoke |
-| [`.github/workflows/e2e-prod.yml`](../../.github/workflows/e2e-prod.yml) | cron `0 2 * * *` | Nightly cloud production E2E (Phase 25) |
+| [`.github/workflows/e2e-prod.yml`](../../.github/workflows/e2e-prod.yml) | cron `0 2 * * *` + `workflow_dispatch` | Nightly production E2E ([ADR 0135](../decisions/0135-the-nightly-reports-four-states-and-walks-the-gated-pages.md)). **How it works, what it opens, how to run and change it: [`apps/web/e2e/README.md`](../../apps/web/e2e/README.md)**, the one place that describes the suite (this row's long description and the secrets paragraph below were retired into it 2026-09-16, retire-to-write). |
 
 **Do not treat TFND-05 as green CI.** Black debt on `services/agent-orchestrator/api/studio_routes.py` as of **2026-07-27** may keep `main` red (Lint Python / Run Black). Downstream test jobs are not a trustworthy green signal until lint is green.
 
-**Nightly secrets status (names only, never values):** **secrets present? no as of 2026-07-27** (premortem / scorecard baseline from `gh run view` on a recent `e2e-prod` run — empty `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `E2E_TEST_EMAIL`, `E2E_TEST_PASSWORD`, etc.). No durable `test-results/` wave XML observed → TFND-05 = **schedule-present / capability-unverified** until one wave XML lands.
+**Nightly secrets status:** see [`apps/web/e2e/README.md`](../../apps/web/e2e/README.md) §8 and §9 (required names, what is not yet proven). History before the 2026-09-11 rebuild: no wave had ever run with credentials (secrets absent as of 2026-07-27).
 
 TFND-05 = wiring documented; `main` may still be red; **do not promote scores from green-wishful thinking**.
 

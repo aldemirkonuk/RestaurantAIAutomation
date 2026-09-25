@@ -936,3 +936,61 @@
   min-height: 3.4em;
   font: inherit;
 }
+
+/* ── the shelf under the sheet: what was written up (OD-81) ───────────────
+   Plain ruled rows, no card chrome: an export is a line in the house's book,
+   and its status is a tag in ink — never the seal, which is for commitments
+   (ADR 0042). A failed row's reason is a sentence, not a colour. */
+.rp-exports {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--paper-2);
+  display: grid;
+  gap: 12px;
+}
+.rp-exports__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rp-exports__head > div:first-child {
+  max-width: 520px;
+}
+.rp-exports__list {
+  gap: 0;
+}
+.rp-exports__paging {
+  justify-content: space-between;
+}
+.rp-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--paper-2);
+}
+.rp-export__what {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 320px;
+}
+.rp-export__acts {
+  gap: 6px;
+}
+.rp-tag[data-status='queued'] {
+  border-style: dashed;
+  color: var(--ink-3);
+}
+.rp-tag[data-status='failed'] {
+  color: var(--ink-1);
+  border-color: var(--ink-3);
+}
+.rp-mini[disabled] {
+  cursor: progress;
+  opacity: 0.6;
+}

@@ -17,11 +17,11 @@ const drive: PermissionSource = {
   scopes: [
     {
       scope: 'https://www.googleapis.com/auth/drive.file',
-      label: 'Create and manage files WineOps puts in your Drive',
+      label: 'Create and manage files Mudavym puts in your Drive',
     },
     { scope: 'openid', label: 'Confirm which Google account you connected' },
   ],
-  notRequested: ['Reading files you did not create with WineOps', 'Your Gmail messages'],
+  notRequested: ['Reading files you did not create with Mudavym', 'Your Gmail messages'],
 };
 
 const gmailSend: PermissionSource = {
@@ -41,9 +41,9 @@ const gmailSend: PermissionSource = {
 describe('what an integration would ask for', () => {
   it('draws Drive’s bullets from Drive', () => {
     expect(wouldAskFor(drive)).toEqual([
-      { text: 'Create and manage files WineOps puts in your Drive', can: true },
+      { text: 'Create and manage files Mudavym puts in your Drive', can: true },
       { text: 'Confirm which Google account you connected', can: true },
-      { text: 'Reading files you did not create with WineOps', can: false },
+      { text: 'Reading files you did not create with Mudavym', can: false },
       { text: 'Your Gmail messages', can: false },
     ]);
   });
@@ -79,16 +79,15 @@ describe('what one grant holds', () => {
 
   it('matches a stored scope tail against the definition’s full scope URL', () => {
     expect(grantHolds(['drive.file'], drive)[0]).toEqual({
-      text: 'Create and manage files WineOps puts in your Drive',
+      text: 'Create and manage files Mudavym puts in your Drive',
       can: true,
     });
   });
 
-  it('prints an unrecognised scope as itself rather than dropping it', () => {
+  it('keeps an unrecognised scope as a bullet, in plain words, rather than dropping it', () => {
+    // Founder, 2026-09-22: no raw scope strings in front of a restaurant user.
     const bullets = grantHolds(['https://www.googleapis.com/auth/drive'], drive);
-    expect(bullets).toEqual([
-      { text: 'https://www.googleapis.com/auth/drive', can: true },
-    ]);
+    expect(bullets).toEqual([{ text: 'A permission this page has no plain name for', can: true }]);
   });
 
   it('withholds the definition’s promises when the grant is wider than the definition', () => {
@@ -99,13 +98,12 @@ describe('what one grant holds', () => {
       gmailSend,
     );
     expect(bullets.some((b) => !b.can)).toBe(false);
-    expect(bullets.map((b) => b.text)).toContain('https://mail.google.com/');
+    expect(bullets.map((b) => b.text)).toContain('A permission this page has no plain name for');
+    expect(bullets.map((b) => b.text).join(' ')).not.toMatch(/https?:/);
   });
 
   it('is empty when the grant records no scope, and when the catalogue is unread', () => {
     expect(grantHolds([], drive)).toEqual([]);
-    expect(grantHolds(['drive.file'], null)).toEqual([
-      { text: 'drive.file', can: true },
-    ]);
+    expect(grantHolds(['drive.file'], null)).toEqual([{ text: 'A permission this page has no plain name for', can: true }]);
   });
 });

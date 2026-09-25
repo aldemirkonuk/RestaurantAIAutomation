@@ -26,27 +26,6 @@ import { addDays, dayKey, parseDayKey, startOfWeek } from './cal-format';
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MAX_RIBBONS = 3;
 
-/**
- * Why this particular cell carries no forecast.
- *
- * One sentence per reason, and never an empty node: a cell that simply omits
- * the sky reads as fair weather down the whole column. The page-level notice
- * carries the gateway's full sentence; this is the cell-sized version of it.
- */
-export function skyAbsence(data: CalendarData, day: string, today: string): string | null {
-  const w = data.weather;
-  if (w.isLoading) return 'Reading the forecast.';
-  if (w.isError) return `The forecast register could not be read (${w.errorMessage}).`;
-  const win = w.window;
-  if (!win) return null;
-  if (win.refusal) return win.refusal;
-  if (day < today) return 'No forecast was kept for this day.';
-  if (win.horizonDays !== null) {
-    return `Beyond ${win.issuer}'s ${win.horizonDays}-day forecast.`;
-  }
-  return `${win.issuer} published nothing for this day.`;
-}
-
 export interface MonthLedgerProps {
   data: CalendarData;
   cursor: Date;
@@ -178,9 +157,9 @@ export function DayLedger({
         {record ? (
           <DayRecordMark day={record} />
         ) : (
-          <SkyMark reading={sky} absence={skyAbsence(data, day, dayKey(new Date()))} />
+          <SkyMark reading={sky} />
         )}
-        {sky && record && <SkyMark reading={sky} absence={null} />}
+        {sky && record && <SkyMark reading={sky} />}
       </div>
       {record && (
         <p className="cn-meta" style={{ margin: '0 0 8px' }}>
@@ -334,10 +313,10 @@ export default function MonthLedger({
                 record ? (
                   <DayRecordMark day={record} />
                 ) : (
-                  <SkyMark reading={sky} absence={skyAbsence(data, key, today)} />
+                  <SkyMark reading={sky} />
                 )
               ) : (
-                <SkyMark reading={sky} absence={skyAbsence(data, key, today)} />
+                <SkyMark reading={sky} />
               )}
               {shown.map((ev) => (
                 <Ribbon

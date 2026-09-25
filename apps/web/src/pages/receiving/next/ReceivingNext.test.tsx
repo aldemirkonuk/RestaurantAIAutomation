@@ -46,12 +46,19 @@ vi.mock('react-router-dom', async () => {
 })
 
 const activeRestaurantId = vi.hoisted(() => ({ current: 'rest-A' }))
-vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    activeRestaurantId: activeRestaurantId.current,
-    user: { userId: 'u1', restaurantId: activeRestaurantId.current, role: 'manager' },
-  }),
-}))
+// `AuthContext` (the object, not just `useAuth`) is exported too — DayLine.tsx
+// and useMudavymDesign.ts both read it with `useContext(AuthContext)` directly
+// (see ReceivingHome.test.tsx's identical comment for the full reasoning).
+vi.mock('../../../contexts/AuthContext', async () => {
+  const { createContext } = await import('react')
+  return {
+    AuthContext: createContext<unknown>(null),
+    useAuth: () => ({
+      activeRestaurantId: activeRestaurantId.current,
+      user: { userId: 'u1', restaurantId: activeRestaurantId.current, role: 'manager' },
+    }),
+  }
+})
 
 const pendingByType = vi.hoisted(() => vi.fn())
 const flushDoorOutbox = vi.hoisted(() => vi.fn())
@@ -346,7 +353,10 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     get.mockResolvedValue(queuePayload({ items, totalAtRisk: 12000 }))
     harness(ManagerBody)
 
-    expect(await screen.findByText('≥$12,000')).toBeInTheDocument()
+    // A full window is 100 rows, and the day line now mounts above them, so the
+    // first paint of this case is the heaviest in the file. On a loaded CI runner
+    // it crossed the 1000 ms default and the assertion read the pre-load em dash.
+    expect(await screen.findByText('≥$12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Short/ })).toHaveTextContent('≥100')
   })
 
@@ -575,5 +585,46 @@ describe('F10 — the hand-off carries the order, and the rate names its populat
     expect(refused).toHaveTextContent('Asked for and turned down')
     expect(screen.getByText(/50% of resolved claims settled/)).toBeInTheDocument()
     expect(screen.getByText(/not a property of the refusals above/)).toBeInTheDocument()
+  })
+})
+
+/**
+ * F11 — `/deliveries/:id` (DeliveryRedirect.tsx) resolves to an order and
+ * hands off here as `?order=…`; this queue is where the founder's "worst
+ * money first" decision on it lives (ReceivingNext.tsx `highlightOrderId`).
+ * Before this pass the queue had no way to open one row from outside it at
+ * all — the hand-off was a bare `/receiving`, indistinguishable from any
+ * other visit.
+ */
+describe('F11 — a delivery hand-off opens its row in the decision queue', () => {
+  const ManagerBodyHighlighted = () => (
+    <RcManagerQueue data={useManagerQueue()} highlightOrderId="ord-1" />
+  )
+
+  it('expands the matching row and does not print a "not in the queue" line', async () => {
+    get.mockResolvedValue(
+      queuePayload({ items: [queueItem({ orderId: 'ord-1' }), queueItem({ orderId: 'ord-2', orderNumber: 'PO-2' })] }),
+    )
+    harness(ManagerBodyHighlighted)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /PO-1/ })).toHaveAttribute('aria-expanded', 'true'),
+    )
+    expect(screen.getByRole('button', { name: /PO-2/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('highlight-order-missing')).not.toBeInTheDocument()
+  })
+
+  it('says so, in one honest sentence, when the read came back and the order is not in the queue', async () => {
+    get.mockResolvedValue(queuePayload({ items: [queueItem({ orderId: 'ord-2', orderNumber: 'PO-2' })] }))
+    harness(ManagerBodyHighlighted)
+
+    expect(await screen.findByTestId('highlight-order-missing')).toHaveTextContent('ord-1')
+  })
+
+  it('says nothing while the queue is still loading', () => {
+    get.mockReturnValue(new Promise(() => {})) // never resolves
+    harness(ManagerBodyHighlighted)
+
+    expect(screen.queryByTestId('highlight-order-missing')).not.toBeInTheDocument()
   })
 })

@@ -102,6 +102,45 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
     expect(gmail.sendLowStockDigest.mock.calls[0][0].mode).toBe("instant");
   });
 
+  /**
+   * B1 residue: `inventoryUrl()` used to read
+   * `FRONTEND_URL` raw and fall back to the literal `"#"` dead CTA when
+   * unset — the exact class of bug `canonicalOrigin()` exists to close
+   * elsewhere in this codebase (ADR 0149 row 28 / template-config.ts).
+   */
+  describe("inventoryUrl() — the digest's CTA link", () => {
+    it("never falls back to the dead '#' href when FRONTEND_URL is unset", async () => {
+      config.get.mockReturnValue("");
+      const svc = build([]);
+      await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+
+      const inventoryUrl = gmail.sendLowStockDigest.mock.calls[0][0].inventoryUrl;
+      expect(inventoryUrl).toBe("https://mudavym.com/inventory?filter=low-stock");
+      expect(inventoryUrl).not.toContain("#");
+    });
+
+    it("routes a comma-separated FRONTEND_URL through canonicalOrigin — never glues the whole allow-list into the href", async () => {
+      config.get.mockReturnValue(
+        "https://mudavym.com,https://www.mudavym.com",
+      );
+      const svc = build([]);
+      await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+
+      const inventoryUrl = gmail.sendLowStockDigest.mock.calls[0][0].inventoryUrl;
+      expect(inventoryUrl).toBe("https://mudavym.com/inventory?filter=low-stock");
+      expect(inventoryUrl).not.toContain(",");
+    });
+
+    it("uses a single-origin FRONTEND_URL as-is", async () => {
+      config.get.mockReturnValue("https://custom.example.com/");
+      const svc = build([]);
+      await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+
+      const inventoryUrl = gmail.sendLowStockDigest.mock.calls[0][0].inventoryUrl;
+      expect(inventoryUrl).toBe("https://custom.example.com/inventory?filter=low-stock");
+    });
+  });
+
   it("does NOT re-alert a wine that is merely STILL low (low → low)", async () => {
     const svc = build([{ inventory_id: "inv-1", last_alert_level: "low" }]);
     const { newCrossings } = await svc.evaluateRestaurant(
