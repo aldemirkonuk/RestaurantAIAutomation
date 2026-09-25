@@ -13,9 +13,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const get = vi.hoisted(() => vi.fn());
 vi.mock('../../../services/api/client', () => ({ apiClient: { get, post: vi.fn() } }));
 const who = vi.hoisted(() => ({ role: 'manager' }));
-vi.mock('../../../contexts/AuthContext', () => ({
-  useAuth: () => ({ activeRestaurantId: 'rest-A', user: { userId: 'u1', restaurantId: 'rest-A', role: who.role } }),
-}));
+vi.mock('../../../contexts/AuthContext', async () => {
+  // Keep the real module's other exports (main's DayLine reads `AuthContext`
+  // with useContext); only `useAuth` is this suite's.
+  const actual = await vi.importActual<typeof import('../../../contexts/AuthContext')>('../../../contexts/AuthContext');
+  return {
+    ...actual,
+    useAuth: () => ({ activeRestaurantId: 'rest-A', user: { userId: 'u1', restaurantId: 'rest-A', role: who.role } }),
+  };
+});
 vi.mock('../../../lib/offline-storage', () => ({
   offlineStorage: {
     getPendingMutationsByType: vi.fn().mockResolvedValue([]),

@@ -57,6 +57,12 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 // Transient legacy modals — mounted by the team/locations registers, and not
 // under test here.
+// Mail reading reads the house's data terms through react-query; this page
+// suite mounts no QueryClientProvider, and the terms have their own suites.
+vi.mock('../../../hooks/queries/useDataTerms', () => ({
+  useDataTerms: () => ({ data: undefined }),
+  useInvalidateDataTerms: () => vi.fn(),
+}));
 vi.mock('@/components/team/InviteTeamDialog', () => ({ InviteTeamDialog: () => null }));
 vi.mock('@/components/team/TeamLaborSettings', () => ({ TeamLaborSettings: () => null }));
 vi.mock('@/components/team/TeamGoalsSettings', () => ({ TeamGoalsSettings: () => null }));
@@ -210,6 +216,16 @@ function base(over: Record<string, unknown> = {}) {
       statedAt: null,
       statedBy: null,
     }),
+    // ADR 0207 (2026-09-21): Time zone and Mail reading are eager registers
+    // on the interview page like every other, so their fixtures are load-
+    // bearing on every test that mounts the page.
+    houseTimeZone: remote({
+      restaurantId: 'r1', zone: 'Europe/Istanbul', unreadZone: null, country: 'TR',
+      readable: true, reason: null, statedAt: null, statedBy: null,
+    }),
+    houseToneScoring: remote({
+      restaurantId: 'r1', enabled: false, readable: true, reason: null, statedAt: null, statedBy: null,
+    }),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     saveFlag, savePrefs, saveNotif,
     saveSender: vi.fn(), sendTestEmail: vi.fn(), regenerateIcal: vi.fn(),
@@ -219,6 +235,8 @@ function base(over: Record<string, unknown> = {}) {
     saveHours: vi.fn(() => Promise.resolve(true)),
     saveDigest: vi.fn(() => Promise.resolve(true)),
     saveAskTraining: vi.fn(() => Promise.resolve(true)),
+    saveTimeZone: vi.fn(() => Promise.resolve(true)),
+    saveToneScoring: vi.fn(() => Promise.resolve(true)),
     ...over,
   };
 }
