@@ -263,7 +263,7 @@ export function isWorked(shift: { state?: string | null }): boolean {
  * KEPT, NOT SHOWN (ADR 0215 item 20). A removed person's shifts and leave
  * requests are kept five years (founder, 2026-09-22 round 6y, "Keep them 5
  * years (Recommended)") — as a record, like the wage record, which no page
- * reads. Before migration 20260922013000 a removal deleted them, so no week,
+ * reads. Before migration 20260925180200 a removal deleted them, so no week,
  * copy or leave list ever held a person who had left. This keeps it that way:
  * a row whose `member_id` names nobody on `roster` (the house's live
  * `team_members` ids) is left out; a row with no person (an open shift) stays.

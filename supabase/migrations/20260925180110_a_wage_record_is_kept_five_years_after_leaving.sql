@@ -6,7 +6,7 @@
 -- after they leave the roster, then deleted. Five years is how long a wage
 -- claim can be brought; after it, KVKK's "no longer than needed" applies.
 --
--- `team_member_wage_changes` (20260921170200) is append-only and has no
+-- `team_member_wage_changes` (20260925180000) is append-only and has no
 -- foreign key to `team_members`, on purpose: removing a person must not take
 -- their pay record with it. So nothing knew WHEN they left, and nothing could
 -- ever delete the record. This file adds both halves:
@@ -31,7 +31,7 @@
 --    INVOKER; EXECUTE for service_role only.
 --
 -- ADDITIVE AND IDEMPOTENT. One table, four functions (one replaced: the guard
--- from 20260921170200, which only gains the exception above), four triggers,
+-- from 20260925180000, which only gains the exception above), four triggers,
 -- RLS on the new table in this file. The backfill below writes a departure only
 -- for a wage record whose person is already off the roster -- expected 0 rows,
 -- since the record itself is new -- stamped now, so it is kept at least five
@@ -204,7 +204,7 @@ END
 $function$;
 
 COMMENT ON FUNCTION public.tmwc_append_only() IS
-  'Refuses UPDATE, DELETE and TRUNCATE on the wage record, except the referential actions its own foreign keys perform and, from 20260921170910, the DELETE of a row whose person left the roster more than wage_record_retention() (5 years) ago (ADR 0215). A history the application can rewrite records what the application currently believes.';
+  'Refuses UPDATE, DELETE and TRUNCATE on the wage record, except the referential actions its own foreign keys perform and, from 20260925180110, the DELETE of a row whose person left the roster more than wage_record_retention() (5 years) ago (ADR 0215). A history the application can rewrite records what the application currently believes.';
 
 -- ---------------------------------------------------------------------------
 -- 3. The purge.

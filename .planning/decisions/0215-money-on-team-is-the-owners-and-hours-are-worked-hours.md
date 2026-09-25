@@ -21,10 +21,11 @@
   leave outlive removal, member_id foreign key dropped
 - **Links:** [[0088-a-team-change-is-recorded-and-a-wage-is-not-invented]],
   [[0051-rebuilt-pages-show-live-data-only]], ADR 0117 (Q25, a house names its
-  money), `supabase/migrations/20260921170200_a_wage_is_the_owners_and_every_change_is_kept.sql`,
-  `supabase/migrations/20260921170900_a_shift_over_four_hours_has_a_break.sql`,
-  `supabase/migrations/20260921170910_a_wage_record_is_kept_five_years_after_leaving.sql`,
-  `supabase/migrations/20260922013000_a_persons_shifts_and_leave_outlive_their_removal.sql`,
+  money), `supabase/migrations/20260925180000_a_wage_is_the_owners_and_every_change_is_kept.sql`,
+  `supabase/migrations/20260925180100_a_shift_over_four_hours_has_a_break.sql`,
+  `supabase/migrations/20260925180110_a_wage_record_is_kept_five_years_after_leaving.sql`,
+  `supabase/migrations/20260925180200_a_persons_shifts_and_leave_outlive_their_removal.sql`,
+  **[Renumbered 2026-09-25, merging `origin/main` 059169a5 into #440: the four files were `20260921170200`, `20260921170900`, `20260921170910` and `20260922013000`, all below main's newest `20260922231300`, which ADR 0212's `check_migration_order.py` refuses. Moved by `git mv` to `20260925180000`, `…180100`, `…180110`, `…180200`, same order, content unchanged except the version numbers they cite; every citation in this ADR, CLAIMS and the code was rewritten to the new numbers. No main migration after `20260921170200` touches `team_members`, `shifts`, `leave_requests` or `team_member_*`, so the later apply position changes nothing they depend on.]**
   `apps/api-gateway/src/team/pay-rules.ts`,
   `apps/api-gateway/src/team/wage-record-retention.service.ts`,
   `apps/api-gateway/src/team/team-pay.spec.ts`,
@@ -185,7 +186,7 @@ of the work" is measured on:
 
 **Where a recorded break lives.** `shift_breaks` (baseline) holds planned
 breaks with a start time and a cover; no product path writes it. A new nullable
-`shifts.recorded_break_min` (migration `20260921170900`) is written in the same
+`shifts.recorded_break_min` (migration `20260925180100`) is written in the same
 UPDATE as the re-priced cost, so the record and the price commit or fail
 together: `NULL` nothing recorded (assumed if over 4 hours), `0` recorded as no
 break taken, `n` minutes. Rejected: writing `shift_breaks` rows (a second
@@ -397,7 +398,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     delete their shifts and leave requests straight away; they are kept and
     end with the wage record (same five-year clock, same deletion job)" (open
     question 5, "Keep them 5 years (Recommended)"). Migration
-    `20260922013000`:
+    `20260925180200`:
     - `shifts.member_id` and `time_off_requests.member_id` drop their foreign
       key to `team_members` (the same reason `team_member_wage_changes.member_id`
       already carries none: a row that must outlive its person's removal
@@ -487,7 +488,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   money-currency baseline (4 sites) for a follow-up; the house currency is
   sent only with the owner's money today. (g) The gateway now names
   `shifts.recorded_break_min` in its shift reads: served before migration
-  `20260921170900` has applied, those reads fail and answer a 500 in words,
+  `20260925180100` has applied, those reads fail and answer a 500 in words,
   not a wrong figure. (h) Only the redesigned shift sheet has the break field;
   the legacy desk (`pages/team/command/**`) saves shifts without one, which
   leaves a recorded break as it was. (i) The retention job runs in every
@@ -596,7 +597,7 @@ shows what was asked and that nothing was silently dropped (CLAUDE.md §5b):**
    the same five years, or is the wage record alone what the pick meant?
    As built, only the wage record is kept.~~ **Answered: "Keep them 5 years
    (Recommended)" — built (item 20): the same five-year clock, the same job,
-   migration `20260922013000`.**
+   migration `20260925180200`.**
 
 Nothing from rounds 1 and 2 is open. The round-3 last call (2026-09-22)
 returned two new questions to the orchestrator, not filed as OD rows and not
@@ -840,5 +841,5 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-21 | Opus last call | The settings save still echoed `wage_visible` (fixed, test + mutation); the CLAIMS currency row's prose named every /team file while the per-server sales still print `$` (narrowed; residual (f)); the legacy Tonight pulse's called-out double count named as residual (d) |
 | 2026-09-21 | Round 2 build (founder: "Take all five") | Items 10–15 built; four questions returned (switching tracking on, shifts of 4 h or less, span vs work for the minimum, inactive as leaving); the HOURS claim row had gone red on the moved `workedHours` line and was re-pointed; two migration mutants survived the first probe and were killed by two added checks |
 | 2026-09-21 | Round 2 Opus last call | The sheet's under-minimum warning said "60 minutes for this shift" on an 8-hour shift whose minimum it also said was 30; it now names the minimum owed for the work the typed break leaves (fixed, test + killed mutation). The ADR's "safer side" sentence read as if the chosen break were the larger one (reworded). `assignCover`'s price read (`recomputeCostForMember`, whose select this round had widened) swallowed its error and wrote the cover as unpriced, which also made residual (g) untrue for that path (fixed: a 500 in words, nothing assigned; test + killed mutation). Found and recorded, not changed: a removal still cascades a person's shifts and leave (residual (j), question 5), and a departure is stamped once (residual (k)). Re-run: `team-pay.spec.ts` 63 of 63, one new mutation (an empty `shift_breaks` embed read as a recorded 0) killed by 4 cases, the PGlite probe ALL PASS |
-| 2026-09-22 | Round 3 build (founder round 6y, five answers, verbatim in "Answered, 2026-09-22") | Items 16–20 built or recorded; the "Open, for the founder" section's five questions are all struck, answered. Item 10 corrected in place (the "over 4 hours" gate removed; `ASSUME_BREAK_OVER_MIN` deleted from `pay-rules.ts` and its `tm-format.ts` mirror; boundary tests at 4h00/4h01/7h30/7h31 the founder named). Item 20 is the substantial change: `shifts.member_id` and `time_off_requests.member_id` drop their foreign key to `team_members` (migration `20260922013000`); `team_member_departure_recorded()` broadened to shifts and leave, not wage records alone; a new `purge_expired_shift_and_leave_records()` (service_role only, SECURITY INVOKER); `purge_expired_wage_records()`'s departure cleanup broadened the same way; `tmd_guard()` broadened identically; `WageRecordRetentionService` reordered to call the new purge first, then the wage purge, with a short-circuit on the first's failure (this was the one piece left unfinished from an earlier, interrupted pass of this session — found via `grep purge_expired_shift_and_leave_records apps/**/*.ts` turning up only the migration and comments, never a call site). Residual (j) struck (resolved), not deleted. New PGlite probe `teamfix-r3-shifts-and-leave-outlive-removal.mjs`, 31 checks, reproduces the pre-migration cascade defect first, then proves the fix and isolates the broadened `tmd_guard` from the purge functions (a departure with no wage row at all, past five years, with a live shift, refused). 8 of 8 migration mutations and 3 of 3 service mutations killed. Full `/team` suites re-measured: gateway 135 of 135 (7 files), web 105 of 105 (9 files). |
+| 2026-09-22 | Round 3 build (founder round 6y, five answers, verbatim in "Answered, 2026-09-22") | Items 16–20 built or recorded; the "Open, for the founder" section's five questions are all struck, answered. Item 10 corrected in place (the "over 4 hours" gate removed; `ASSUME_BREAK_OVER_MIN` deleted from `pay-rules.ts` and its `tm-format.ts` mirror; boundary tests at 4h00/4h01/7h30/7h31 the founder named). Item 20 is the substantial change: `shifts.member_id` and `time_off_requests.member_id` drop their foreign key to `team_members` (migration `20260925180200`); `team_member_departure_recorded()` broadened to shifts and leave, not wage records alone; a new `purge_expired_shift_and_leave_records()` (service_role only, SECURITY INVOKER); `purge_expired_wage_records()`'s departure cleanup broadened the same way; `tmd_guard()` broadened identically; `WageRecordRetentionService` reordered to call the new purge first, then the wage purge, with a short-circuit on the first's failure (this was the one piece left unfinished from an earlier, interrupted pass of this session — found via `grep purge_expired_shift_and_leave_records apps/**/*.ts` turning up only the migration and comments, never a call site). Residual (j) struck (resolved), not deleted. New PGlite probe `teamfix-r3-shifts-and-leave-outlive-removal.mjs`, 31 checks, reproduces the pre-migration cascade defect first, then proves the fix and isolates the broadened `tmd_guard` from the purge functions (a departure with no wage row at all, past five years, with a live shift, refused). 8 of 8 migration mutations and 3 of 3 service mutations killed. Full `/team` suites re-measured: gateway 135 of 135 (7 files), web 105 of 105 (9 files). |
 | 2026-09-22 | Round 3 Opus last call | Item 20 dropped the foreign keys but nothing read the week any differently, so a removed person's kept rows entered it: their next week counted as covered and costed, "Copy last week" wrote them into new weeks, replacing a week deleted their kept shifts, and a pending leave request waited in the manager's list. Fixed as "kept, not shown" (`onTheRoster`; K1, 10 of 10 mutations killed; new CLAIMS row), the week reading as it did before the change; how kept rows should appear is returned to the founder. Records corrected in place: "never had a grant" (OD-72 revoked them), the retention job's header said the other order could clear a departure on live rows (it cannot; the order finishes the job in one night) and that "the tables refuse" an early delete of shifts and leave (no guard on them; the purge's clause is the rule), the Answered table's question 1 carried an "(and off)" the question never had, and "changed no page a person looks at". Returned: the literal reading of "on and off". Residuals (l) and (m) added. |

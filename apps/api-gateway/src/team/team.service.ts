@@ -857,7 +857,7 @@ export class TeamService {
     const { data } = await q.order("created_at", { ascending: false });
     if (role === "staff") return data ?? [];
     // A removed person's requests are kept five years, not listed (ADR 0215
-    // item 20): before 20260922013000 the removal deleted them, and a
+    // item 20): before 20260925180200 the removal deleted them, and a
     // pending one would otherwise wait for a decision about someone gone.
     return onTheRoster(data ?? [], await this.rosterMemberIds(restaurantId));
   }

@@ -19,14 +19,14 @@
 -- roster row -- `TeamService.deleteMember`, `team.service.ts` -- deletes
 -- `team_members`, and the cascade took every shift and leave request with it
 -- in the same statement, so the wage record kept five years
--- (`20260921170910`) had no hours or leave beside it to show what it priced.
+-- (`20260925180110`) had no hours or leave beside it to show what it priced.
 --
 -- THE FIX, in two halves:
 --
 -- 1. Both foreign keys are dropped. `shifts.member_id` and
 --    `time_off_requests.member_id` keep their column and their value; they
 --    stop referencing `team_members` at all, on purpose -- the SAME reason
---    `team_member_wage_changes.member_id` (20260921170200) already carries no
+--    `team_member_wage_changes.member_id` (20260925180000) already carries no
 --    such key: a row that must outlive its person's removal cannot be
 --    pinned to a row the removal deletes. New writes are still checked
 --    against the live roster in the gateway (`assertMemberInRestaurant` in
@@ -36,7 +36,7 @@
 --    permissions and referential checks live in code, audited).
 --
 -- 2. The SAME clock, the SAME job. `team_member_departure_recorded()`
---    (20260921170910) stamped a `team_member_departures` row only when the
+--    (20260925180110) stamped a `team_member_departures` row only when the
 --    removed person had a wage record; it now also stamps one when they have
 --    a shift or a leave request, so a person who worked but was never paid
 --    through this table is still timed. `purge_expired_shift_and_leave_records()`
