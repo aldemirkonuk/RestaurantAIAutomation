@@ -29,9 +29,20 @@ vi.mock('react-router-dom', async () => {
 
 // Anything unrecognised falls to the staff view, but say so explicitly: the role decides
 // which of the three renderings mounts, and the manager/owner views call other endpoints.
-vi.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { userId: 'u1', restaurantId: 'r1', role: 'staff' } }),
-}))
+//
+// `AuthContext` (the object, not just `useAuth`) is exported too — DayLine.tsx and
+// useMudavymDesign.ts both read it with `useContext(AuthContext)` directly, and a
+// mock module missing the export throws the moment either is mounted (a real React
+// Context with no Provider above it degrades to its default value, exactly what
+// both call sites are written to tolerate; see useMudavymDesign.ts's own doc
+// comment: "degrade to the localStorage fallback outside an AuthProvider").
+vi.mock('../../contexts/AuthContext', async () => {
+  const { createContext } = await import('react')
+  return {
+    AuthContext: createContext<unknown>(null),
+    useAuth: () => ({ user: { userId: 'u1', restaurantId: 'r1', role: 'staff' } }),
+  }
+})
 
 /** `GET /procurement/orders` returns `OrderListResponseDto` — `orders`, never `items`. */
 const orderListPayload = (orders: unknown[]) => ({

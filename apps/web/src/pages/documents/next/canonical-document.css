@@ -19,6 +19,10 @@
 .cd-page {
   min-height: 100vh;
 }
+.cd-page[data-embedded] {
+  min-height: 0;
+  background: transparent !important;
+}
 
 /* The sheet keeps a page's proportions rather than filling the viewport. */
 .cd-sheet {

@@ -2,6 +2,8 @@
    page that does not opt in. Must precede all rules per the CSS @import spec;
    Vite inlines it at build time. */
 @import './mudavym.css';
+/* The product's two sans faces, served from /fonts (ADR 0158). */
+@import './fonts-sans.css';
 
 @tailwind base;
 @tailwind components;
@@ -157,6 +159,97 @@
 
   .dark p {
     @apply text-slate-300;
+  }
+
+  /* Mudavym pages carry their own ink on the `.mudavym` root (ADR 0104 D9's
+     charcoal/paper grounds); a bare h1-h4 or p with no other colour rule
+     should inherit that ink instead of keeping the slate default above.
+     History and the specificity bug this replaces are in mudavym.css's
+     comment (search "CORRECTED 2026-09-19").
+
+     `:where()` holds this at specificity (0,0,1) -- equal to the h1-p rules
+     above, so it must stay physically after them in this file, and strictly
+     below any single-class or Tailwind-utility colour declaration (`.tm-sub`,
+     `text-inkm-3`, `.mdv-pub__title`, HouseBell's `.mdv-note`, Sidebar.tsx,
+     ...).
+
+     CORRECTED 2026-09-19 (lane verification pass, CLAUDE.md §5b -- the
+     specificity numbers and the ordering rule above stand as measured;
+     only the mechanism claim that followed was wrong, and is struck below
+     rather than silently rewritten):
+
+     The struck claim was: "...which stay unlayered and always outrank
+     anything in `@layer base` regardless of specificity or source order
+     (CSS Cascade Layers: unlayered normal rules beat every layered normal
+     rule, full stop). Living in this file's own `@layer base` ... also
+     makes the win order-independent." That is false for this build:
+     apps/web runs tailwindcss 3.4.19 (apps/web/node_modules/tailwindcss/
+     package.json), where `@layer base` is a Tailwind directive compiled
+     away at build time, not a native CSS cascade layer that ships.
+     Re-measured against a clean build of the current source, not copied
+     forward from the earlier pass: the built CSS bundle contains 0
+     occurrences of `@layer` (grep -c), the same result already on record
+     via dist/assets/index-S9p4v2J_.css. There is no cascade-layers
+     mechanism in production, so nothing here wins or loses "by layer".
+
+     What actually happens, same clean build: this rule beats the bare
+     `h1`-`p` rules above because both are (0,0,1) -- an exact specificity
+     tie -- and Tailwind's compiler hoists every `@layer base` declaration
+     into one concatenated block that preserves source order, so of two
+     tied rules the later one wins (confirmed in the built CSS: the bare
+     `h1{...}` rule sits before this `:where(.mudavym) h1` rule) -- plain
+     CSS cascade, no layers involved. It loses to `.tm-sub`, `text-inkm-3`,
+     `.mdv-pub__title`, HouseBell's `.mdv-note`, Sidebar.tsx and any other
+     single-class/utility colour declaration purely by specificity: a
+     single class alone is (0,1,0), and (0,1,0) > (0,0,1) regardless of
+     source order or which file either rule lives in.
+
+     The order-independence claim survives, but not on this floor. mudavym.css
+     is not part of the hoisted base block: `@import './mudavym.css'` at
+     globals.css:4 inlines it ahead of `@tailwind base` on line 6, so its
+     rules sit outside whatever Tailwind hoists there. Fresh build
+     (dist/assets/index-BjKV6-Nn.css): mudavym.css's own
+     `.mudavym,.mudavym[data-ground=charcoal]{` ground rule lands at offset
+     25893, before Tailwind's preflight `*,:before,:after{` at 27816, which
+     is itself before this file's bare `h1{` at 34195. The earlier 'dev
+     index 2311/2312, prod offset 22868' measurement is the evidence that
+     mudavym.css moves relative to globals.css between dev and prod -- it
+     was misread here as evidence that it stays put.
+
+     The real floor: the win is order-independent because this rule and the
+     bare `h1`-`p` rules above that it must beat are both declared in this
+     same `@layer base` block in globals.css, which Tailwind emits as one
+     hoisted block at `@tailwind base` in source order, in dev and prod
+     alike (same build: bare `h1{` at 34195, `:where(.mudavym) h1` at
+     35017 -- the later declaration wins the same-specificity tie). A source
+     line number here would drift the moment either rule moves; the
+     built-CSS offsets above do not, because comment-only edits leave the
+     compiled bundle byte-identical. Where mudavym.css lands no longer
+     matters to this fix, because mudavym.css does not carry an h1-p colour
+     rule any more -- see its own comment.
+
+     Also: scratchpad `b1-cascade-check.html`, on record elsewhere as this
+     fix's "real Chrome proof", built its case with native `@layer` blocks.
+     Production has no native layers, so that scratchpad modelled a
+     mechanism this build does not have; it reached the right visual
+     answer only because its specificity numbers happened to match
+     production's regardless.
+
+     Known gap, left as is: `.dark h1`/`.dark p` above are (0,1,1), so they
+     outrank this (0,0,1) rule outright by specificity -- no layer either
+     way -- when both `.dark` and `.mudavym` apply to the same element
+     (uiStore.ts toggles `.dark` on `<html>` independently of `.mudavym`'s
+     own `data-ground`). Not fixed, because it cannot reproduce the
+     measured defect: `.dark`'s slate-100/slate-300 are light-on-charcoal
+     and already clear 4.5:1 there, so the only measured failure
+     (slate-900/800/600 near-black text on the charcoal ground) cannot
+     occur through that path. */
+  :where(.mudavym) h1,
+  :where(.mudavym) h2,
+  :where(.mudavym) h3,
+  :where(.mudavym) h4,
+  :where(.mudavym) p {
+    color: inherit;
   }
 
   /* Dark theme overrides for common utility classes */

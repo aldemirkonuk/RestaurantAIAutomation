@@ -10,7 +10,17 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { EM, matchNote, quoteSource, shortDate } from './cellar-format';
+import {
+  EM,
+  acidityTicks,
+  bodyTicks,
+  composedTastingSentence,
+  handlingSentence,
+  matchNote,
+  quoteSource,
+  shortDate,
+  tanninTicks,
+} from './cellar-format';
 
 describe('shortDate', () => {
   /**
@@ -97,5 +107,82 @@ describe('matchNote', () => {
   });
   it('says nothing at all when there was no match to describe', () => {
     expect(matchNote(null)).toBeNull();
+  });
+});
+
+/**
+ * "The wine's own detail" — ADR 0160 sec110 Owed #4/#11, sketch 121. Checked
+ * against sketch 121's own three worked examples (`sketch-121-cellar-b-
+ * plus.html`'s `wineRecord()`): body "Full" → 5 ticks, acidity "Medium-high"
+ * → 4 ticks, tannin "High" → 5 ticks.
+ */
+describe('structure ticks', () => {
+  it('matches sketch 121\'s own three examples exactly', () => {
+    expect(bodyTicks('full')).toBe(5);
+    expect(acidityTicks('medium-high')).toBe(4);
+    expect(tanninTicks('high')).toBe(5);
+  });
+
+  it('is case-insensitive — production stores these as plain lowercase, but nothing should depend on that', () => {
+    expect(bodyTicks('Full')).toBe(5);
+    expect(acidityTicks('Medium-High')).toBe(4);
+  });
+
+  it('places the bottom and top of a scale at 1 and 5, never 0 or off the bar', () => {
+    expect(bodyTicks('light')).toBe(1);
+    expect(tanninTicks('none')).toBe(1);
+    expect(tanninTicks('high')).toBe(5);
+  });
+
+  it('scales a 6-step vocabulary (tannin) onto the same 5-tick bar as a 5-step one (body) proportionally', () => {
+    // medium-low is index 2 of 6 -> round((3/6)*5) = round(2.5) = 3 (banker's
+    // rounding is not in play here — Math.round(2.5) is 3 in JS).
+    expect(tanninTicks('medium-low')).toBe(3);
+  });
+
+  it('returns null, never a guessed position, for a word outside the known scale', () => {
+    // 13 production rows carry these for tannin — real words, not on this bar.
+    expect(tanninTicks('firm')).toBeNull();
+    expect(tanninTicks('grippy')).toBeNull();
+    expect(bodyTicks(null)).toBeNull();
+    expect(bodyTicks('')).toBeNull();
+  });
+});
+
+describe('handlingSentence', () => {
+  const FULL = { servingTempCelsius: 17, glassType: 'Bordeaux', decantingRecommended: true, agingPotentialYears: 8 };
+
+  it('composes all four parts, in sketch 121\'s own order, when every field is recorded', () => {
+    expect(handlingSentence(FULL)).toBe('17 °C · Bordeaux glass · decant · ageing potential 8 years');
+  });
+
+  it('says "no decanting" rather than omitting the segment when the library recorded false', () => {
+    expect(handlingSentence({ ...FULL, decantingRecommended: false })).toContain('no decanting');
+  });
+
+  it('is whole or not at all — missing exactly one of the four still returns null, never three of four', () => {
+    expect(handlingSentence({ ...FULL, agingPotentialYears: null })).toBeNull();
+    expect(handlingSentence({ ...FULL, servingTempCelsius: null })).toBeNull();
+    expect(handlingSentence({ ...FULL, glassType: null })).toBeNull();
+    expect(handlingSentence({ ...FULL, decantingRecommended: null })).toBeNull();
+  });
+
+  it('singularises "1 year"', () => {
+    expect(handlingSentence({ ...FULL, agingPotentialYears: 1 })).toContain('ageing potential 1 year');
+    expect(handlingSentence({ ...FULL, agingPotentialYears: 1 })).not.toContain('1 years');
+  });
+});
+
+describe('composedTastingSentence', () => {
+  it('composes from body, acidity and sweetness together', () => {
+    expect(composedTastingSentence('full', 'high', 'dry')).toBe(
+      'A full-bodied wine with high acidity and a dry character.',
+    );
+  });
+
+  it('is whole or not at all — two of three is not enough to compose a sentence', () => {
+    expect(composedTastingSentence(null, 'high', 'dry')).toBeNull();
+    expect(composedTastingSentence('full', null, 'dry')).toBeNull();
+    expect(composedTastingSentence('full', 'high', null)).toBeNull();
   });
 });

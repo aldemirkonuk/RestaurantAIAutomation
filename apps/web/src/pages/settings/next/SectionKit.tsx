@@ -19,17 +19,25 @@ import type { Remote } from './useSettingsNextData';
 
 /* ── Type ────────────────────────────────────────────────────────────────── */
 
+/**
+ * OD-112 (2026-09-16, ADR 0042 amendment): captions on the paper ground use
+ * `--ink-4`; `--ink-3` is decorative only (a border, an icon tint — anything
+ * that only needs WCAG's 3:1 non-text minimum, never a glyph a person reads).
+ * This is every register's "kept · …" line and every `Micro` eyebrow, so
+ * fixing the token here is the whole page's half of the sweep — the other
+ * half is per-file prose the confirm pass also flagged (settings-build note).
+ */
 export const microStyle: CSSProperties = {
   fontFamily: MONO,
   fontSize: 9.5,
   fontWeight: 600,
   letterSpacing: '0.13em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3)',
+  color: 'var(--ink-4)',
 };
 
 export function Micro({ children, tone }: { children: ReactNode; tone?: 'seal' }) {
-  return <span style={{ ...microStyle, color: tone === 'seal' ? 'var(--seal-deep)' : 'var(--ink-3)' }}>{children}</span>;
+  return <span style={{ ...microStyle, color: tone === 'seal' ? 'var(--seal-deep)' : 'var(--ink-4)' }}>{children}</span>;
 }
 
 export function Note({ children, role }: { children: ReactNode; role?: 'status' | 'alert' }) {
@@ -188,21 +196,78 @@ export interface Provenance {
    * shape [[absence-reported-as-health]] warns about, wearing its opposite face.
    */
   verb?: string;
+  /**
+   * Sketch 109A's C-graft: who or what actually consults this field, cited as
+   * `file:line` (or "read by nothing" plus the files grepped). Not decorative —
+   * it is the honest answer to "did flipping this change anything, and for
+   * whom", one field at a time instead of once per register. Omitted only
+   * where the register's own note above the rows already carries it once for
+   * the whole group (documented per-row in `SettingsNext.md`'s build note).
+   */
+  readBy?: ReactNode;
 }
 
-function ProvenanceLine({ kept, when, whenUnknown, verb = 'changed' }: Provenance) {
+function ProvenanceLine({ kept, when, whenUnknown, verb = 'changed', readBy }: Provenance) {
   const known = Boolean(when);
   return (
-    <p style={{ ...microStyle, margin: '5px 0 0', letterSpacing: '0.1em', fontWeight: 500 }} title={fmtExact(when)}>
-      kept · {KEPT_LABEL[kept]}
-      <span aria-hidden style={{ opacity: 0.45 }}> — </span>
-      {verb} · {known ? fmtWhen(when) : <span title={whenUnknown}>{EM} {whenUnknown ?? 'no date is recorded'}</span>}
-    </p>
+    <>
+      <p style={{ ...microStyle, margin: '5px 0 0', letterSpacing: '0.1em', fontWeight: 500 }} title={fmtExact(when)}>
+        kept · {KEPT_LABEL[kept]}
+        <span aria-hidden style={{ opacity: 0.45 }}> — </span>
+        {verb} · {known ? fmtWhen(when) : <span title={whenUnknown}>{EM} {whenUnknown ?? 'no date is recorded'}</span>}
+      </p>
+      {readBy && (
+        <p style={{ ...microStyle, margin: '2px 0 0', letterSpacing: '0.1em', fontWeight: 500, color: 'var(--ink-4)' }}>
+          read by · {readBy}
+        </p>
+      )}
+    </>
+  );
+}
+
+/**
+ * The five certainty stamps sketch 109A sorts the whole page by: `manual` (a
+ * named person typed it), `confirmed` (an inference or a proposal a person
+ * accepted), `inferred` (worked out from the house's own books, computed on
+ * read, never written), `unstated` (an em dash — not stated and not
+ * defaulted) and `refused` (a read the gateway declined, never counted as
+ * empty). Purely a display tag; nothing here decides the value.
+ */
+export type Certainty = 'manual' | 'confirmed' | 'inferred' | 'unstated' | 'refused';
+
+export const CERTAINTY_LABEL: Record<Certainty, string> = {
+  manual: 'Manual',
+  confirmed: 'Confirmed',
+  inferred: 'Inferred',
+  unstated: EM,
+  refused: 'Refused',
+};
+
+const CERTAINTY_TONE: Record<Certainty, { bg: string; fg: string }> = {
+  manual: { bg: 'var(--seal-tint)', fg: 'var(--seal-deep)' },
+  confirmed: { bg: 'var(--seal-tint)', fg: 'var(--seal-deep)' },
+  inferred: { bg: 'var(--paper-2)', fg: 'var(--ink-2)' },
+  unstated: { bg: 'transparent', fg: 'var(--ink-4)' }, // OD-112: the em dash is read, not decorative
+  refused: { bg: 'var(--paper-2)', fg: 'var(--ink-1)' },
+};
+
+export function CertaintyTag({ value }: { value: Certainty }) {
+  const tone = CERTAINTY_TONE[value];
+  return (
+    <span
+      style={{
+        ...microStyle, display: 'inline-block', padding: '1.5px 6px', borderRadius: 999,
+        background: tone.bg, color: tone.fg,
+        border: value === 'unstated' ? '1px dashed var(--paper-2)' : undefined,
+      }}
+    >
+      {CERTAINTY_LABEL[value]}
+    </span>
   );
 }
 
 export function Row({
-  label, consequence, provenance, control, children, tone,
+  label, consequence, provenance, control, children, tone, cert,
 }: {
   label: string;
   consequence: ReactNode;
@@ -210,9 +275,12 @@ export function Row({
   control?: ReactNode;
   children?: ReactNode;
   tone?: 'grave';
+  /** Sketch 109A's certainty stamp for this row — the page's filter key. */
+  cert?: Certainty;
 }) {
   return (
     <div
+      data-cert={cert}
       style={{
         display: 'flex', alignItems: 'flex-start', gap: 16, padding: '13px 0',
         borderTop: '1px solid var(--paper-2)',
@@ -220,7 +288,9 @@ export function Row({
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>{label}</p>
+        <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>
+          {cert && <CertaintyTag value={cert} />} {label}
+        </p>
         <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-2)', margin: '3px 0 0' }}>
           {consequence}
         </p>
@@ -247,14 +317,14 @@ export function Dead({
         <span
           style={{
             fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
-            color: 'var(--ink-3)', border: '1px dashed var(--paper-2)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap',
+            color: 'var(--ink-4)', border: '1px dashed var(--paper-2)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap',
           }}
         >
           {stored}
         </span>
       }
     >
-      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
         No switch: nothing in the product reads this. {evidence}
       </p>
     </Row>
@@ -282,7 +352,7 @@ export function Register<T>({
       </Note>
     );
   }
-  if (remote.status === 'error' || remote.data === null) {
+  if (remote.status === 'error') {
     return (
       <div role="alert" style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2)', margin: '0 0 12px' }}>
         <p style={{ margin: '0 0 8px', lineHeight: 1.55 }}>
@@ -293,7 +363,20 @@ export function Register<T>({
       </div>
     );
   }
-  return <>{children(remote.data)}</>;
+  // `Remote<T>.data` is typed `T | null` for every register, whether or not
+  // `T` itself admits `null` — `useRemote`'s state shape bakes the `null` in
+  // uniformly so it has a value before the first fetch resolves. On `'ok'`
+  // status `data` is exactly what the fetcher returned, which is `T` — a
+  // literal `null` here is a legitimate ANSWER for a register whose own `T`
+  // allows it (e.g. the sign-off register: no `sender_identity` row exists
+  // yet), never a sign the read failed. Treating `data === null` as a
+  // failure here regardless of `status` was reporting that ordinary empty
+  // answer as an error nobody asked about (BLOCKER, found 2026-09-18: this
+  // exact register). The child renderer owns what a `null` answer means;
+  // `Register`'s job stops at "did the read succeed" — hence the cast, not a
+  // runtime check TypeScript cannot express without splitting `Remote<T>`
+  // into a nullable and non-nullable variant.
+  return <>{children(remote.data as T)}</>;
 }
 
 /* ── A settle disclosure ─────────────────────────────────────────────────── */

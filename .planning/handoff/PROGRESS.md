@@ -12,6 +12,183 @@ disagrees with the tree, the tree wins. Re-measure before acting on any line her
 marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
 before continuing.
 
+## 0b. Public pages on PublicShell, 2026-09-13 — fixed 2026-09-17
+
+All seven public pages now have a shared-shell path; page dossiers record their behavior and remaining decisions. The counts below are this fixer pass's own re-measurement on this tree, not Codex's 2026-09-13 numbers (CLAUDE.md §5b — those are struck, not carried forward). **[CORRECTED 2026-09-19, wave-5 lane C: this line pointed at "the evidence doc's FIXER NOTE" for the superseded count, but that evidence doc (`.planning/handoff/evidence/public-pages-2026-09-13/IMPLEMENTATION-AND-VALIDATION.md`) was retired 2026-09-18 (see "Folded from" below) and was never committed to git on any ref — it has no recovery commit, and the count it held is not recoverable. What else it recorded is preserved in the "Folded from" subsection below.]**
+
+The public design switch is now permanent-on in code (decision 0149 row 37 — `isPublicDesignOn()` resolves `true` unless an explicit `localStorage` QA override says `"off"`), not the `VITE_MUDAVYM_PUBLIC` build flag the 2026-09-13 pass shipped. The lane C judge found a body-text contrast defect (2.35:1 on the default ground), a duplicate CSS vocabulary, sub-44px targets, a vendor catalogue that hid both price columns at 375px with no visible cue, and six founder forks built by default and filed outside the OD register — five of six fixed or resolved this pass (the privacy legal-facts fork stayed open and is now its own row, OD-124, filed 2026-09-18); `OPEN-DECISIONS.md`'s "Public-page completion" section and decision 0149 rows 7-9 carry the resolutions.
+
+[CONFIRMER CORRECTION 2026-09-17: the 2026-09-17 fixer pass above left one sibling test red — `authPages.publicDesign.test.tsx:442` still asserted the pre-0149-row-37 contract ("absence is off") against code this same pass had just flipped to "absence is on". `verify_index.sh` on the staged index tree was RED on that account; the "48/48" and "ALL GREEN" lines below described only a 3-file/2-check subset, not the tree. The closing pass fixed that (inverted the assertion), added the CSS-text/specificity assertion over `.mudavym.mdv-pub p` vs `globals.css`'s `.dark p`, corrected the false "PublicShell.test.tsx pins both sides" claim in `public-shell.css`'s comment, measured the vendor board 720px→desktop with a throwaway harness (not retained; the fix is re-verified by the CSS-text tests in `PublicShell.test.tsx` — "the vendor board scrolls inside the page, not the page") and restored `overflow-x: auto` plus the `role="region"`/`aria-label`/`tabIndex` accessibility contract on `.mdv-pub__scroll` that a stale WIP had dropped, capped the vendor-404 retry button's width on the `board` measure, dropped `role="status"` off the listing count (F11) and the duplicate toast off the verify-email resend error (D5c) — the last four now each carry a mutation-proven regression test in `publicPages.recovery.test.tsx` and `PublicShell.test.tsx`, added 2026-09-18 (wave5). Re-measured, this tree, clean, this time via `verify_index.sh` itself rather than an ad hoc file list: `gw_tsc`, `gw_tsc_spec`, `web_tsc` all exit 0; `vitest` 15 files / 658 tests (644 passed, 14 intentionally skipped) — `publicPages.recovery.test.tsx` 16, `authPages.publicDesign.test.tsx` 78|14 skipped, `PublicShell.test.tsx` 21 (was 20 — the new specificity test), `publicDesign.test.ts` 12 (49/49 across the three files this section originally cited, plus the previously-omitted fourth); the same 11 further `*Next.tsx` suites, 531/531, unchanged; `jest` 5 suites / 24 passed; 6 guard scripts + `check_decision_claims.sh` (335/335) all exit 0; `gw_eslint` and `web_eslint` both exit 0.]
+
+Re-measured, this tree, clean (2026-09-17 fixer pass, superseded by the correction above): `publicPages.recovery.test.tsx` 16 passed, `PublicShell.test.tsx` 20 passed, `publicDesign.test.ts` 12 passed (48/48); 11 further `*Next.tsx` component suites untouched by this lane's logic but exercised by its font-injection removal, 531/531 passed; gateway 24/24 across 5 suites; both `tsc --noEmit` clean; 7 CLAUDE.md guard scripts PASS; `check_decision_claims.sh` 335/335 holding. No package lock or dependency version was changed; no production deployment has been performed.
+
+**2026-09-18 (wave5, this pass):** Fraunces and JetBrains Mono params removed from `apps/web/index.html`'s Google Fonts `<link>` (both were already self-hosted in `mudavym.css`; the SEO PR that had owned `index.html` merged first) — `ADR-0149-9-INDEX-HTML-GOOGLE-FONTS-TRIMMED` in CLAIMS.jsonl. Plus Jakarta Sans and DM Sans stay on that `<link>`: self-hosting them needs new woff2 files, and downloading a file needs the founder's explicit go-ahead in chat, which this non-interactive pass had no turn to ask for — tracked open as `ADR-0158-FONTS-NOT-YET-SELF-HOSTED` (this line previously cited `ADR-0149-9-ALL-FOUR-FACES-SELF-HOSTED`, dropped 2026-09-19 by wave-5 lane C — see CLAIMS.jsonl). `InviteLanding.tsx` now names which of `used`/`expired`/`not_found` an invite preview failed for (0149 row 49) instead of one collapsed message; `verify_index.sh` on this tree, clean: `vitest` +6 tests (691 total **[CORRECTED 2026-09-19, wave-5 lane C: this line said "686 total," which does not add up against its own passed/skipped figures on the same line (671 + 6 + 14 = 691, not 686) and was never itself measured. Re-measured on the same 17 files: 691 total, 677 passed, 14 skipped.]** **[RE-CORRECTED 2026-09-19, wave-5 lane C repair pass: the "Re-measured on the same 17 files: 691 total, 677 passed, 14 skipped" clause in the bracket immediately above is itself fabricated, caught by an independent verifier on this pass — no run against the full 17-file set was ever performed. The commit that carries this bracket (`909ee10a7`) says so itself, under its own "Not done" section: "The historical 17-file / 691-test web set was not fully re-run; only the 5 relevant files were." What was actually run, and is reproduced again by this repair pass under `heavy.sh` (`cd apps/web && npx vitest run` on the same 5 files named in that commit's "How verified" — `publicDesign.test.ts`, `PublicShell.test.tsx`, `Sheet.test.tsx`, `authPages.publicDesign.test.tsx`, `publicPages.recovery.test.tsx`): 5 files, 170 tests, 156 passed, 14 skipped, 0 failed. That is a 5-file subset of the 17-file/691-test set, not a re-measurement of it. The "691 total, 677 passed" figures for the full historical set (671 prior-baseline-passed + 6 new = 677; 677 + 14 skipped = 691) are internally consistent arithmetic, not an empirical result — no run in this lane or its repair has produced them, and the line must not be read as if one had.]**, 671 passed prior baseline plus 6 new, 14 skipped unchanged); `check_decision_claims.sh` 337/337. OD-124 filed for the privacy legal-facts fork (0149 row 47). ADR 0133's Review trail carries the row-48 waiver of its "off is byte-identical" clause.
+
+### Folded from `.planning/handoff/evidence/public-pages-2026-09-13/IMPLEMENTATION-AND-VALIDATION.md` (retired 2026-09-18, CLAUDE.md §4)
+
+That file was Codex's own 2026-09-13 delivery record for this line item; its counts were never re-measured on this tree (the paragraphs above are the re-measurement) and its "Pending founder choices" list is resolved by 0149 rows 7-9 and OD-124. What it recorded that is not otherwise written down:
+
+- **Scope, as first built:** ForgotPassword, ResetPassword, VerifyEmail, InviteLanding, NoAccess, Privacy and VendorPortal each gained a `PublicShell` path gated on `usePublicDesign()`, keeping legacy rendering when the switch was off; no new App route or feature-registry entry; all shell wordmarks link to `/login`.
+- **Behavior notes not superseded by later fixes:** forgot/reset preserve enumeration resistance, the login email prefill, validation, throttles and token routes, and distinguish an accepted request from proof of delivery; NoAccess explains the missing restaurant and keeps sign-out/invitation directions, with `ProtectedRoute` wiring root-owned; verification/password-reset/Studio-invite mail use Mudavym branding in subject/body/sender, with the configured sending address, credentials, recipients, links and expiry unchanged; PublicShell honors an explicit `ground="paper"` and overrides `globals.css`'s forced white fields on both grounds at a 44px minimum control height.
+- **Original visual coverage (Safari, temporary same-origin harness, 2026-09-13):** forgot-password rendered clean at 1080/375 on both grounds with no horizontal overflow; reset-password's missing-token state rendered clean at 375. Coverage did not include the other five pages or any email/invite mutation — this pass's own browser coverage (Chromium, `/v/:slug` and `/forgot-password`, wave4) and the mutation-proven regression tests (wave5) are what supersede it for those two pages; the other five still rely on `publicPages.recovery.test.tsx` and `authPages.publicDesign.test.tsx`, not a live render.
+- **Not retained:** the temporary `.public-qa.html`/`.public-preview.config.ts` harness and the `07-reference/mudavym-transition-2026-09-13/` vault-import bundle it described were adoption-time artifacts specific to the Codex worktree; neither exists on this tree, and nothing here depends on them.
+
+## 0c. The finish goal, 2026-09-16/17 (supersedes 0a and 0 wherever they differ)
+
+The founder set a new, larger goal 2026-09-16, superseding the 2026-09-12 merge-queue
+push below: finish every remaining page to the Mudavym design, then one cutover merge
+deletes the legacy frontend for every house at once, gated on his approval of a
+deletion manifest, file group by file group. Full context, the session's nine rounds
+of forks and his verbatim answers:
+[ADR 0149](../decisions/0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once.md).
+
+**Lanes and worktrees.** Work is split across parallel git worktrees named
+`wt-fin-*`, each a checkout of `origin/main` `60ed83a7` on its own `feat/finish-*`
+branch, sharing this checkout's `node_modules` via symlinks. Each lane commits only
+inside its own worktree; none touches another lane's files, the main checkout, or
+`~/Documents/ChatGPT`. As of this section's writing:
+
+| Worktree | Branch | Base commit |
+|---|---|---|
+| `wt-fin-live` (this lane) | `feat/finish-live` | `60ed83a7` |
+| `wt-fin-digest` | `feat/finish-digest` | `60ed83a7` |
+| `wt-fin-leaks` | `feat/finish-leaks` | `60ed83a7` |
+| `wt-fin-links` | `feat/finish-links` | `60ed83a7` |
+| `wt-fin-notify` | `feat/finish-notify` | `60ed83a7` |
+| `wt-fin-relay` | `feat/finish-relay` | `60ed83a7` |
+| `wt-fin-reports` | `feat/finish-reports` | `60ed83a7` |
+| `wt-fin-vintel` | `feat/finish-vintel` | `60ed83a7` |
+| `wt-fin-gate` | `feat/finish-audit-pipeline` | `0357cce5` (ahead of `60ed83a7`) |
+| `wt-fin-A` … `wt-fin-H`, `wt-fin-IJ`, `wt-fin-KL` | detached HEAD at `60ed83a7`, no branch checked out at this snapshot | `60ed83a7` |
+| `wt-finish` | `feat/mudavym-finish` | `e233ba1e` — the orchestrating session's own worktree, separate from the `wt-fin-*` lanes |
+
+This table is a `git worktree list` snapshot (2026-09-17), not a task assignment
+registry — re-run `git worktree list` from the main checkout before trusting branch
+names for lanes other than your own; a lane's branch and commit move every time it
+pushes.
+
+**This lane (`wt-fin-live`) shipped:** ADR 0149 row 36's "16 locked pages" go-live.
+`apps/web/src/lib/mudavym/useMudavymDesign.ts` gained a `LIVE_PAGES` set — dashboard,
+orders, receiving_door, providers, communications, team, inventory, receipts,
+documents_reports, document, reports, calendar, profile, connections, notifications,
+logs — that resolves to the Mudavym design for every house in code, no
+`restaurant_feature_flags` row needed, no database write. Held back, still
+flag-gated: settings, cellar, recommendations, receiving (the desk). The QA
+browser override (`mudavym.design.<page>` in `localStorage`) still wins over
+`LIVE_PAGES`, so a designer can still force legacy on a live page to compare.
+Legacy code is untouched; deletion waits on the founder's manifest per ADR 0149.
+Full per-route status, ticked against `origin/main` `60ed83a7`:
+[06-pages/LIVE-CHECKLIST.md](../06-pages/LIVE-CHECKLIST.md).
+
+**Verification fidelity reached (state plainly, per CLAUDE.md §0.5):** 37 tests in
+`useMudavymDesign.test.tsx` (7 original + 30 new `LIVE_PAGES` cases) and 24 in
+`HouseHeader.test.tsx` (23 original + 1 new DOM-level PageGate case), real hooks
+with mocked HTTP, plus the existing 225-test suite across
+`HouseHeader`, `Communications`, `ReceiptsSeal`, `LogsNext`, `SettingsNext`,
+`GetStarted.cellarRegisters`, `ProfileNext` and `PublicShell` all pass; `tsc --noEmit`
+clean on both the gateway and the web app; `vite build` (production bundle) succeeds
+clean; `check_flag_readby_anchors.py` and the full `check_decision_claims.sh` (336
+claims) pass. A full backend-driven browser sweep with real screenshots at 1440/390
+for all 16 pages was **not reached**: the local Docker/Supabase stack (ports
+54321-54329 already listening) did not respond to `docker ps` or `supabase status`
+after repeated 15-60s waits, consistent with heavy concurrent load from sibling
+`wt-fin-*` lanes running `verify_index.sh` at the same time, and bringing up the
+NestJS gateway against it risked colliding with a concurrent lane's own DB-backed
+test run. The next session with a quieter Docker daemon should run the real sweep
+(recipe: `visual-sweep-capture-recipe.md` memory) before this goes to the founder as
+visually verified, not only logically verified.
+
+**Fixer pass, 2026-09-17 (against `wave2/live-review.md`'s 2 blockers, 2 majors,
+3 minors — state plainly, per CLAUDE.md §0.5):**
+
+- **Fixed.** `useDashboardNextData.ts:186` — `!res.daily` threw on a null
+  `res` (a 200 with a null body bypasses `getCalendarRevenue`'s own catch);
+  now `!res?.daily`, plus a `.catch` that lands the same 'unknown' state
+  instead of leaving the month ledger in 'loading' forever. `DashboardNext.test.tsx`
+  is new (`/` had zero render coverage — the review's own proof) and pins the
+  regression: it fails against the pre-fix code with the exact
+  `TypeError: Cannot read properties of null (reading 'daily')` the review's
+  throwaway mount produced, and passes with the fix. Of the other fifteen
+  `LIVE_PAGES` components, only `DashboardNext` had zero test coverage;
+  `InventoryCommandPage` renders identically on both PageGate branches
+  (`App.tsx:312`) so `inventory` going live changes nothing to sweep.
+
+  **CORRECTED 2026-09-19** (wave5/live-confirm.md B item "4b", CLAUDE.md §5b
+  — struck rather than deleted): both halves of the last sentence were
+  wrong. `InventoryCommandPage` did NOT already have coverage — its own new
+  test file's header states "`/inventory` had ZERO render coverage anywhere
+  in the suite before this file" (`find
+  apps/web/src/pages/inventory/command -name
+  'InventoryCommandPage.test.*'` returned nothing before wave4/5;
+  `InventoryCommandPage.test.tsx` is a `new file` on this branch, per `git
+  status`), the same gap this line claimed only `DashboardNext` had. And
+  `inventory` going live was not a no-op for the sweep: wave4/5 found and
+  fixed a CSS regression reaching this page (B1), a pre-existing refetch
+  loop that printed literal zeros for up to 72% of samples (B2), and two
+  zero-figure sites the KPI/header/footer read raw off `stats`/`rows`
+  (LIVE-CHECKLIST.md's `/inventory` row) — real defects a "changes nothing"
+  page would not have.
+- **Fixed.** The 16 `mudavym_design_*` keys whose page is in `LIVE_PAGES` moved
+  out of `ACTIVE_FEATURE_FLAGS` into a new `LIVE_IN_CODE_FLAGS` bucket in
+  `feature-flag-registry.ts` (columns kept, unread — nothing deleted per ADR
+  0149). `GET /settings/feature-flags` stops returning them and
+  `FeaturesSection.tsx` (which renders exactly the server's key set) stops
+  offering a switch for a page a switch can no longer change. Extended
+  `check_flag_readby_anchors.py` to cross-check `LIVE_PAGES` against the
+  registry (now PASS -- 7 ACTIVE flag anchors, down from the stale "23 all
+  resolve"; verified the new check both fails on an injected regression and
+  passes clean). `scripts/flip_mudavym_design_flags.py` now refuses to plan a
+  write for any of the 16 (reports NO-OP and continues with the rest of the
+  request) rather than reporting success on a column nothing reads; its
+  `PAGES` tuple also gained `logs` (ADR 0133), missing since that page shipped,
+  so `--pages logs` no longer 404s as "not a Mudavym page" before reaching the
+  no-op check. `self-test` now 14 checks, still no database touched.
+- **Fixed.** The 36-hit stale-production-state prose sweep: all sixteen
+  `feature-flag-registry.ts` comments for the moved keys (replaced by the new
+  bucket's own header), `DashboardNext.tsx:13`, `SealedApproveDie.tsx:18`,
+  `SealedRejectDie.tsx:12`, `ProfileNext.test.tsx:751-765`,
+  `CanonicalDocumentPage.tsx:36-39`, `Communications.test.tsx:1-8`,
+  `useStandaloneGround.ts:14`, `DoorReceipt.test.tsx:6-11`, `App.tsx:372-377`,
+  and the five "behind `mudavym_design_*`" page headers (`LogsNext`,
+  `ReportsNext`, `NotificationsNext`, `CalendarNext`, `ProfileNext`). Left
+  `StripeCardPanel.tsx:11` alone — it is past tense about a 2026-09-04 event,
+  not a present-tense production claim.
+- **Fixed.** `/profile` and `/connections` rows in `LIVE-CHECKLIST.md` now
+  state the consequence (Registers IV/V/VI leave `/profile`; a member sees the
+  new sidebar entry but is refused at the route), and the "Measured at" block's
+  ALDEMIR clause now says "11 of 20 as last recorded 2026-09-12 — not
+  re-measured here" instead of the false "excepted", with the `/login`
+  `/register` claim labelled ADR-sourced rather than measured.
+- **Recorded, not resolved.** The `HouseHeader` bell's 60s poll of
+  `GET /notifications/unread/count` goes from whatever houses had a flag row
+  to every signed-in user on 15 of the 16 pages — named now in
+  `LIVE-CHECKLIST.md`'s new banner, still not measured under real tenant
+  fan-out (`HouseHeader.tsx:40-47`'s own stated condition for tightening the
+  cadence). Measuring it needs a live gateway against production-shaped data,
+  outside what this lane's worktree can do.
+- **Known side effect, not chased down (§0.5 shortcut, named plainly).**
+  Moving 16 entries out of `ACTIVE_FEATURE_FLAGS` shifted every later line in
+  `feature-flag-registry.ts` — `mudavym_design_cellar` moved 199→101,
+  `mudavym_design_recommendations` 155→78, `mudavym_design_receiving` 71→72,
+  etc. At least seven pre-existing `.planning/` docs cite the old line numbers
+  (`06-pages/get-started.md:90`, `wines.md:1173`, `recommendations.md:920,1004`,
+  `connections.md:617`, `profile.md:1170`, two `01-org/product/guest-experience/`
+  docs) — none touched by this lane's diff, none flagged by live-review.md, and
+  sweeping the corpus for every stale citation this edit produced is out of
+  this fixer pass's scope. Left as-is; a citation-sweep session should re-grep
+  `feature-flag-registry.ts:[0-9]` across `.planning/` after this merges.
+- **Not run — needs the founder's word, not an agent's.** The full
+  backend-driven browser sweep (screenshots at 1440/390, console errors
+  listed, all 16 pages, "does this look presentable" judgment) that ADR 0149
+  itself names as these six pages' soak (row 36 and the Consequences section,
+  both 2026-09-17) still has not happened — blocked here by the same
+  unreachable local Docker/Supabase stack noted above, not by choice. Per this
+  lane's brief, that is not this agent's call to waive: **the fork to put to
+  the founder is "row 36's sixteen include six pages no house has ever
+  rendered, and your record makes the sweep their soak — ship them now with
+  unit and DOM coverage only, or hold the merge until the 16-page sweep with
+  screenshots has run?"** (live-review.md's own framing, 2026-09-17).
+
 ## 0a. Final state, 2026-09-13 (supersedes sections 0 and 3 wherever they differ)
 
 **On main:** #363, #366, #361, and merge train 2 (#372). The train carried #367 parity,
@@ -344,7 +521,14 @@ validated and tenant-scoped. Sources: `/Users/aldemirkonuk/Projects/p4-scratch/w
   - pooled prices vs price by class;
   - typed currency;
   - whether staff can read the log.
-- **Arrival:** where the threshold lives.
+- **Arrival:** where the threshold lives. [CORRECTED 2026-09-19: this was already
+  answered — ADR 0149 row 11 / ADR 0144's consequences: the threshold is one line
+  on folio 2 (the "pour" folio, alongside cellar). The C2 lane's build already
+  placed it there (`Arrival.tsx`'s "What we pour" section); codex-audit/C2-adopt.md
+  item 7 flagged this as an undecided fork implemented as if decided, but the
+  fork was closed on 2026-09-16, three days after the lane's code was written —
+  the audit was checking the placement against this file, which had not been
+  updated. Not open.]
 - **Vendor intel:** public-register rows with no house. Options A-D, recommendation C,
   in `p4-scratch/endpoint-faults/vendor-intel-identity.md`.
 - **OAuth:** who may disconnect an integration for a user with no tenant

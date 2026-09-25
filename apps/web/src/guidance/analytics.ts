@@ -12,7 +12,6 @@ export type GuidanceEventName =
   | 'tour_completed'
   | 'tour_skipped'
   | 'guide_card_clicked'
-  | 'wine_agent_fab_clicked'
   | 'services_visited'
   | 'learn_opened'
 
