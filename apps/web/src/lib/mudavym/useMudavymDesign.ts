@@ -78,12 +78,15 @@ export const MUDAVYM_PAGES = [
   // until this one is turned on. Held back from LIVE_PAGES.
   'arrival',
   // ADR 0143: one desk and one switch, including the old health bookmark.
+  // [2026-09-25: live for every house in code — see LIVE_PAGES below.]
   'admin',
   // Not a page: the app SHELL (sketch 119 direction D, the founder's pick of
   // 2026-09-21; ADR 0149 row 5). `DashboardLayout` reads this gate and renders
   // `HouseShell` — rooms rail, house header, counter, the phone's four doors —
   // around whatever page is routed, legacy or rebuilt. Off, the legacy
   // Sidebar layout renders byte-for-byte. Column added by 20260921114300.
+  // [2026-09-25: live for every house in code — see LIVE_PAGES below; "off"
+  // is now reachable only through the browser's QA override.]
   'shell',
   // ADR 0160 §111 / ADR 0149 row 52 (2026-09-21). `/help` resolves on for
   // every house in code — see LIVE_PAGES below — so it carries no
@@ -98,6 +101,8 @@ export const MUDAVYM_PAGES = [
   'menu',
   // ADR 0144 -- the /authorize consent page. Enrolled after the 2026-09-17
   // go-live, so NOT in LIVE_PAGES: flag-gated, OFF by default (20260922220200).
+  // [2026-09-25: superseded — now in LIVE_PAGES, live for every house in
+  // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
 ] as const;
 
@@ -111,13 +116,23 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * which IS live. `settings` joined 2026-09-19 after its sketch review cleared
  * (ADR 0160 "109 — settings · A, the interview"; PR #419) — same code-side
  * always-on as the original sixteen, still no database write. `help` joined
- * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. Held back, still
- * flag-gated: `recommendations`, `receiving`, `admin`, `shell`, and `arrival`
- * (the /get-started book; OFF until deliberately flipped).
- * `cellar` and `menu` go live on this merge (prior cellar ruling).
+ * 2026-09-21 (ADR 0149 row 52 / PR #413) the same way. `cellar` and `menu`
+ * joined with the cellar lane's merge (prior cellar ruling).
  *
- * `MUDAVYM_PAGES.length` is 26 (`authorize_integration` from #430 stays
- * flag-gated); this is deliberately not "the rest" spelled
+ * [2026-09-25, ADR 0149 row 36's bracket: `shell`, `admin` and
+ * `authorize_integration` joined, on the founder's 2026-09-22 page-gap answers
+ * Q2 ("I want all locked pages to be live (production)") and Q4 ("turn on for
+ * every house the instant each PR merges — no staged single-house rollout").
+ * Before this, a 2026-09-25 production read found `shell` and `admin` ON for
+ * all 14 existing houses, but a house created later got the legacy shell and
+ * admin because both columns default to false; in code it no longer matters
+ * which row a house has, or whether it has one. Their three columns stay,
+ * unread (ADR 0149 never deletes a column).]
+ *
+ * 23 keys. Held back, still flag-gated: `recommendations`, `receiving`, and
+ * `arrival` (the /get-started book, whose `legacy` slot is the ADR 0213 plan
+ * of record — OFF until deliberately flipped). `MUDAVYM_PAGES.length` is 26;
+ * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.
@@ -143,6 +158,9 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'help',
   'cellar',
   'menu',
+  'shell',
+  'admin',
+  'authorize_integration',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

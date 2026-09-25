@@ -53,7 +53,12 @@ beforeEach(() => {
 });
 afterEach(() => window.localStorage.clear());
 
-describe('shell off (default)', () => {
+// [2026-09-25: `shell` is in LIVE_PAGES (ADR 0149 row 36's bracket, founder
+// Q2/Q4 of 2026-09-22). "Off" is no longer the default or any house's flag;
+// only the browser's QA override '0' reaches the legacy renderer now.]
+describe("shell off (the QA override '0' -- since 2026-09-25 the only way to legacy)", () => {
+  beforeEach(() => window.localStorage.setItem('mudavym.design.shell', '0'));
+
   it('never calls sonner — the legacy Radix toast renders its own markup', () => {
     mount();
     act(() => screen.getByText('fire').click());
@@ -61,6 +66,15 @@ describe('shell off (default)', () => {
     // The legacy renderer's own title/description land in the DOM.
     expect(screen.getByText('Order sent')).toBeTruthy();
     expect(screen.getByText('not yet confirmed by the vendor')).toBeTruthy();
+  });
+});
+
+describe('shell on (the default: live in code, no override, no flag row)', () => {
+  it('forwards a call to sonner with no override set at all', () => {
+    mount();
+    act(() => screen.getByText('fire').click());
+    expect(sonnerToast.success).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('not yet confirmed by the vendor')).toBeNull();
   });
 });
 
@@ -104,6 +118,9 @@ describe('shell on (browser override)', () => {
  * Router). The house flag answers AFTER the first render, so a provider that
  * returned a different component for on and off remounted every page beneath
  * it once per load. Children must survive the gate turning on.
+ * [2026-09-25: with `shell` in LIVE_PAGES no house flag flips it any more;
+ * the QA override is the only thing that still can, and it is what this
+ * test flips.]
  */
 describe('the gate turning on mid-session', () => {
   it('never remounts what the provider wraps', () => {
@@ -129,6 +146,7 @@ describe('the gate turning on mid-session', () => {
         <Fire />
       </ToastProvider>
     );
+    window.localStorage.setItem('mudavym.design.shell', '0');
     const { rerender } = render(tree());
     expect(mounts).toBe(1);
     // Off: the call is the legacy renderer's, sonner is not touched.
@@ -179,7 +197,8 @@ describe('the undo toast', () => {
     expect(onUndo).toHaveBeenCalledTimes(1);
   });
 
-  it('shell off: the legacy toast draws an Undo control that calls back', () => {
+  it('shell off (QA override): the legacy toast draws an Undo control that calls back', () => {
+    window.localStorage.setItem('mudavym.design.shell', '0');
     const onUndo = vi.fn();
     render(
       <ToastProvider>
