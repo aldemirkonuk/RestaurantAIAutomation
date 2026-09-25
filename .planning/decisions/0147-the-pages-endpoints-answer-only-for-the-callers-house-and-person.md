@@ -48,6 +48,7 @@ By module (details and failing output in the named report):
 | sender trust, prospects | /senders and POST /prospects/:id/promote take a role. providerId is checked against the house. `trusted: "false"` no longer trusts. promote no longer treats failed reads as empty or a failed write as success | sender-trust-and-prospects.md |
 | vendor intel | a session with no house no longer receives every tenant's queue and log, and can no longer decide or undo any house's row | vendor-intel-identity.md (fault 3) |
 | wines | the search string is no longer interpolated into the `.or()` filter. `search` has a MaxLength and `limit` a Max. Database text no longer leaves in a 500 | wines-search.md |
+| provider intelligence | [2026-09-25, PR #416] all seventeen `provider-intelligence.controller.ts` routes take the house from `houseOf(user)` (403 for a session naming none); fifteen reads that filtered on `provider_id` alone, or on nothing (`promotions/active` listed every house's offers), now filter on `restaurant_id`. The per-provider reads and the two session writes (`POST :id/outreach`, `POST :id/onboard`) check the provider is the house's first, so another house's id is a 404. `compareProviders` does not admit NULL-house providers | PR #416; claims ADR-0147-PROVIDER-INTELLIGENCE-HOUSE-SCOPED, TECHDEBT-PROVIDER-INTEL-12-UNSCOPED-READS |
 
 ## Named and not fixed
 
