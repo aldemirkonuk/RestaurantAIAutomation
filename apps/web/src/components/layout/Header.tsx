@@ -21,6 +21,7 @@ import { useNotificationStore } from '../../stores'
 import { collapseStackedNotifications, stackedNotificationLabel } from '../../lib/notificationStack'
 import { Popover } from '../mudavym/Sheet'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
+import { useInHouseShell } from '../mudavym/houseShellContext'
 
 interface HeaderProps {
   title?: string
@@ -34,6 +35,7 @@ export function Header({ title, subtitle }: HeaderProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const shell = useMudavymShell()
+  const inHouseShell = useInHouseShell()
   const bellRef = useRef<HTMLButtonElement>(null)
   const userRef = useRef<HTMLButtonElement>(null)
   const storeUnread = useNotificationStore((s) => s.unreadCount)
@@ -91,6 +93,21 @@ export function Header({ title, subtitle }: HeaderProps) {
       default:
         return '#6B7280'
     }
+  }
+
+  // Under the Mudavym app shell (sketch 119 D) the search, bell, theme,
+  // branch and account controls are the shell's own header; repeating them
+  // here would be a second banner with the same five controls. The page's
+  // title and subtitle are the page's, so they stay. Outside the shell this
+  // branch never runs and the header is byte-for-byte what it was.
+  if (inHouseShell) {
+    if (!title && !subtitle) return null
+    return (
+      <div className="px-4 sm:px-6 pt-5 pb-1 min-w-0">
+        {title && <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{title}</h1>}
+        {subtitle && <p className="text-sm text-gray-500 truncate">{subtitle}</p>}
+      </div>
+    )
   }
 
   return (

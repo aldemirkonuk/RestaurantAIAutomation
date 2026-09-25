@@ -2,6 +2,8 @@
 # Regenerate with: ./scripts/check_migrations_single_home.py --update
 # A new line here is a migration written somewhere it will never be
 # applied. The review of that decision is the review of this diff.
+.planning/handoff/evidence/arrival-2026-09-13/postgres-assertions.sql
+.planning/handoff/evidence/arrival-2026-09-13/postgres-fixture.sql
 Supabase_SQL_Files/SQL_editor1.sql
 Supabase_SQL_Files/SQL_editor2.sql
 Supabase_SQL_Files/SQL_editor3.sql

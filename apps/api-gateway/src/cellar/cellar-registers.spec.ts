@@ -2,9 +2,11 @@ import {
   ADD_THE_ROWS_PROMPT,
   applyAnswers,
   inferRegisters,
+  placeMenuLine,
   registerForKind,
   registersForLabel,
   REGISTER_IDS,
+  tallyMenuLines,
   type InferenceInput,
   type RegisterId,
   type StoredAnswer,
@@ -289,5 +291,75 @@ describe("applyAnswers", () => {
     const rows = applyAnswers(booksSayBeer, new Map());
     expect(by(rows, "beer").decidedBy).toBe("inferred");
     expect(by(rows, "beer").carried).toBe(true);
+  });
+});
+
+/**
+ * The reading count — "N lines read · N placed · N not placed".
+ *
+ * The founder's decision of 2026-09-22 keeps all three numbers, and `notPlaced`
+ * is the one no existing read returns. These tests pin what it means, because
+ * the number is only honest if "placed" is defined as "the register reader
+ * placed it" and nothing else.
+ */
+describe("placeMenuLine", () => {
+  it("prefers the section header over the item name", () => {
+    // A cocktail named after a wine grape belongs to the section it is printed
+    // under, not to the grape in its name.
+    expect(placeMenuLine({ category: "Signature Cocktails", name: "Merlot Sour" }))
+      .toEqual(["cocktails"]);
+  });
+
+  it("falls back to the item name when the section says nothing", () => {
+    expect(placeMenuLine({ category: "House Selection", name: "Draft Lager" }))
+      .toContain("beer");
+  });
+
+  it("places nothing when neither the section nor the name names a register", () => {
+    expect(placeMenuLine({ category: "Starters", name: "Popcorn Shrimp" })).toEqual([]);
+    expect(placeMenuLine({ category: null, name: null })).toEqual([]);
+  });
+});
+
+describe("tallyMenuLines", () => {
+  it("counts read, placed and not placed, and the two always sum to read", () => {
+    const tally = tallyMenuLines([
+      { category: "Wines by the glass", name: "Barolo" },
+      { category: "Draft Beer", name: "Pilsner" },
+      { category: "Kitchen", name: "Mixed olives" },
+      { category: null, name: "Chalkboard special" },
+    ]);
+    expect(tally).toEqual({ read: 4, placed: 2, notPlaced: 2 });
+    expect(tally.placed + tally.notPlaced).toBe(tally.read);
+  });
+
+  it("counts a line that lands on three registers as ONE placed line", () => {
+    // The symmetric half of the bug already fixed in the other direction: a
+    // "Whiskey & Rye" section credits whiskey AND spirits, and that is two
+    // signals about one line, not two lines.
+    const tally = tallyMenuLines([{ category: "Whiskey & Rye", name: "Redbreast 12" }]);
+    expect(placeMenuLine({ category: "Whiskey & Rye", name: "Redbreast 12" }).length)
+      .toBeGreaterThan(1);
+    expect(tally).toEqual({ read: 1, placed: 1, notPlaced: 0 });
+  });
+
+  it("reports the thin-harvest case as a real number, not an empty page", () => {
+    // Frame 06 of sketch 121: a photographed chalkboard. Nine lines read, two
+    // placed. The page must be able to say nine.
+    const chalkboard = [
+      { category: null, name: "House red" },
+      { category: null, name: "House white" },
+      ...Array.from({ length: 7 }, (_, i) => ({
+        category: null,
+        name: `Today's plate ${i + 1}`,
+      })),
+    ];
+    expect(tallyMenuLines(chalkboard)).toEqual({ read: 9, placed: 2, notPlaced: 7 });
+  });
+
+  it("reads an empty menu as zero read rather than refusing to answer", () => {
+    // An empty menu IS a readable menu. Unreadable is the service's problem
+    // (it returns null there); zero lines is a fact this function may state.
+    expect(tallyMenuLines([])).toEqual({ read: 0, placed: 0, notPlaced: 0 });
   });
 });
