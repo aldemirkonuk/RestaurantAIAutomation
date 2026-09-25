@@ -27,9 +27,10 @@ import {
 import { GrantSuspendedProducer } from "./grant-suspended.producer";
 import { AddedToolProducer } from "./added-tool.producer";
 import { ExperimentEndedProducer } from "./experiment-ended.producer";
+import { MailGrantAbsentProducer } from "./mail-grant-absent.producer";
 
 /**
- * The nine notification producers, and the two crons that run them.
+ * The ten notification producers, and the two crons that run them.
  *
  * WHAT THIS FILE OWNS
  * -------------------
@@ -172,6 +173,9 @@ export class NotificationProducersService {
     // The ninth. It is NOT run per tenant — see `runFounderSweep` and the
     // producer's own header. It reports a fact about the product to one reader.
     private readonly experimentEnded: ExperimentEndedProducer,
+    // The tenth (0160 §111) — the house's own mail-reading declaration with
+    // no live grant behind it. Narrows itself to owners/managers; see its header.
+    private readonly mailGrantAbsent: MailGrantAbsentProducer,
     // Optional for the same reason the ledger's is: the spec constructs this
     // service positionally, and production keeps the wall clock.
     @Optional() @Inject(PRODUCER_CLOCK) clock?: ProducerClock,
@@ -295,6 +299,14 @@ export class NotificationProducersService {
         AddedToolProducer.PRODUCER,
         now,
         () => this.addedTool.sweepTenant(tenant.id, timeZone, audience, now),
+      ),
+      // Narrows itself to owners/managers, like GrantSuspendedProducer above.
+      [MailGrantAbsentProducer.PRODUCER]: await this.runOne(
+        tenant.id,
+        MailGrantAbsentProducer.PRODUCER,
+        now,
+        () =>
+          this.mailGrantAbsent.sweepTenant(tenant.id, timeZone, audience, now),
       ),
     };
   }
@@ -498,6 +510,7 @@ export class NotificationProducersService {
       [InvoiceConfirmedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [GrantSuspendedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [AddedToolProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
+      [MailGrantAbsentProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [ExperimentEndedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [SaleRecordProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
       [MarketPriceProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
@@ -526,6 +539,17 @@ export class NotificationProducersService {
     if (armed && served !== false) {
       suspendedGrants =
         await this.grantSuspended.suspendedGrantCount(restaurantId);
+    }
+
+    // The tenth: whether THIS house's own mail-reading declaration is
+    // currently backed by a live grant. `wouldFire` reads the identical
+    // `HouseInboxService.statusFor` the sweep itself uses, so a house that
+    // never turned mail reading on, or whose grant is fine, is reported
+    // quiet rather than defaulting to "will write" the way a producer with
+    // no precheck at all would (the fault this record's guard exists for).
+    let mailGrantWouldFire: boolean | null = null;
+    if (armed && served !== false) {
+      mailGrantWouldFire = await this.mailGrantAbsent.wouldFire(restaurantId);
     }
 
     // The ninth producer is not decided by the two questions above. It does not
@@ -560,7 +584,7 @@ export class NotificationProducersService {
         // AHEAD OF THE `served` BRANCHES ON PURPOSE. This producer runs outside
         // `runPerTenant`, so whether the scheduler enumerates this restaurant
         // does not decide whether it speaks — saying it did would be a true
-        // sentence about the other eight printed against the one it is false
+        // sentence about the other nine printed against the one it is false
         // for. What decides is DEFAULT_RESTAURANT_ID.
         if (founderHouse === null) {
           willWrite = false;
@@ -605,6 +629,19 @@ export class NotificationProducersService {
             "No tool grant on this house's model-context servers is suspended, so this " +
             "producer will stay silent even though it is armed. It speaks when a probe " +
             "finds that a server changed or withdrew a tool a manager had granted.";
+        }
+      } else if (producer === MailGrantAbsentProducer.PRODUCER) {
+        if (mailGrantWouldFire === null) {
+          willWrite = null;
+          silentReason =
+            "Whether this house's mail-reading grant is live could not be read, so " +
+            "whether this producer has anything to report is unknown.";
+        } else if (mailGrantWouldFire === false) {
+          willWrite = false;
+          silentReason =
+            "Either this house has not turned on vendor-mail reading, or the grant behind " +
+            "it is live, so this producer will stay silent even though it is armed. It " +
+            "speaks once mail reading is on and no live grant backs it.";
         }
       } else if (producer === AddedToolProducer.PRODUCER) {
         if (declaredServers === null) {

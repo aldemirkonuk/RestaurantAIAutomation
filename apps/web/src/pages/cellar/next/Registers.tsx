@@ -33,9 +33,80 @@ import {
   type RegisterId,
 } from './cellar-format';
 import { REGISTER_SOURCE } from './registerShapes';
-import { BOOK_READ_LIMIT, type CellarData, type RegisterReadoutVM } from './useCellarNextData';
+import {
+  BOOK_READ_LIMIT,
+  useCellarSettings,
+  type CellarData,
+  type GazetteerMeasureId,
+  type RegisterReadoutVM,
+} from './useCellarNextData';
 import FloorStrip from './FloorStrip';
 import WholeCellar from './WholeCellar';
+
+/**
+ * Every measure "In the building tonight" can show, and how to read it off
+ * `CellarData`. ADR 0160 sec110 item 2 — the founder: "these boxes with the
+ * analytics should be able to be configured based on customer needs" — so the
+ * SET drawn is `useCellarSettings().gazetteerMeasures`, and this map is the
+ * only place that has to change to add a seventh. `bottles`/`titles`/`par`/
+ * `offbook` are the page's long-standing four (unconfigured default);
+ * `parUnset`/`registers` are the "one or two more" — both read from data this
+ * page fetches for every house already, so neither cost a new endpoint.
+ */
+const MEASURE_LABEL: Record<GazetteerMeasureId, string> = {
+  bottles: 'Bottles on hand',
+  titles: 'Titles carried',
+  par: 'At or under their own par',
+  offbook: 'Carried but off this read',
+  parUnset: 'No par recorded',
+  registers: 'Registers carried',
+};
+
+/**
+ * Where each tile's figure was counted from — ADR 0160 sec110's own rule
+ * ("every tile names the table it was counted from"), which the first pass
+ * of `parUnset`/`registers` did not carry. The first four are all counted off
+ * this page's own wine read (`data.building`, from the rows `WineRegister`
+ * fetches); `registers` is the separate carried-registers readout.
+ */
+const MEASURE_SOURCE: Record<GazetteerMeasureId, string> = {
+  bottles: 'this house’s wine rows',
+  titles: 'this house’s wine rows',
+  par: 'this house’s wine rows, against each item’s own par',
+  offbook: 'this house’s wine rows vs the wine library',
+  parUnset: 'this house’s wine rows, against each item’s own par',
+  registers: 'restaurant_cellar_registers',
+};
+
+function measureValue(id: GazetteerMeasureId, data: CellarData): number | null {
+  switch (id) {
+    case 'bottles':
+      return data.building.bottles;
+    case 'titles':
+      return data.building.titles;
+    case 'par':
+      return data.building.belowPar;
+    case 'offbook':
+      return data.building.offBook;
+    case 'parUnset':
+      return data.building.parUnset;
+    case 'registers': {
+      if (data.registers?.decidedBy === 'unknown') return null;
+      const carried = data.registers?.carried;
+      if (!carried) return null;
+      // `soft_drinks` is the adaptive NAME an alcohol-free house sees for the
+      // non-alcoholic register, not a second classification (ADR 0149 row
+      // 24) — but a house whose `restaurant_cellar_registers` rows predate
+      // that naming can carry BOTH ids for the one register it actually
+      // pours. Counting raw `.length` read that house as carrying 2 where it
+      // carries 1; collapsing the alias to its parent before counting keeps
+      // this tile a register count rather than a row count. See not_fixed
+      // for whether the stored duplicate rows should themselves be folded.
+      const distinct = new Set(carried.map((id) => (id === 'soft_drinks' ? 'non_alcoholic' : id)));
+      return distinct.size;
+    }
+  }
+}
 
 /* ── the tally: figures arrive overdamped, and an unknown never counts ──── */
 
@@ -166,14 +237,12 @@ function RegisterCard({
 /* ── the parent surface ────────────────────────────────────────────────── */
 
 export default function Registers({ data }: { data: CellarData }) {
-  const { building, registers } = data;
+  const { registers } = data;
+  const settings = useCellarSettings();
 
-  const tiles: [string, string, number | null][] = [
-    ['bottles', 'Bottles on hand', building.bottles],
-    ['titles', 'Titles carried', building.titles],
-    ['par', 'At or under their own par', building.belowPar],
-    ['offbook', 'Carried but off this read', building.offBook],
-  ];
+  const tiles: [GazetteerMeasureId, string, number | null][] = settings.data.gazetteerMeasures.map(
+    (id) => [id, MEASURE_LABEL[id], measureValue(id, data)],
+  );
 
   // Which cards to draw. Four states, four answers — never an empty grid.
   const readoutById = new Map((registers?.registers ?? []).map((r) => [r.id, r]));
@@ -299,23 +368,53 @@ export default function Registers({ data }: { data: CellarData }) {
 
       <section style={{ marginTop: 26 }}>
         <h2 className="cl-sec">In the building tonight</h2>
-        <div className="cl-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-          {tiles.map(([k, label, v]) => (
-            <div key={k} className="cl-tile">
-              <p className="cl-tile-label">{label}</p>
-              <p className="cl-tile-fig">
-                <Tally value={v} />
-              </p>
-            </div>
-          ))}
-        </div>
-        <p className="cl-note">
-          {data.cellarError
-            ? `The cellar could not be read (${data.cellarError}) — the four figures above are unknown, not zero.`
-            : !data.cellarKnown
-              ? 'Counting the cellar…'
-              : 'Par is only claimed for a row that records its own minimum. Everything the cellar holds is booked against the wine library today — `restaurant_inventory` is keyed on it, so beer, spirits and cocktails can be browsed here but not yet counted as stock.'}
-        </p>
+        {settings.loading ? (
+          // Held rather than drawing the unconfigured default four and then
+          // swapping to the house's real choice a moment later — ADR 0160
+          // sec110 item 2's tiles are meant to be the house's OWN
+          // configuration, not a flash of somebody else's.
+          <p className="cl-said" role="status" data-testid="gazetteer-measures-loading">
+            Reading which measures this house shows here…
+          </p>
+        ) : !settings.data.readable ? (
+          <p className="cl-said" role="alert" data-testid="gazetteer-measures-unread">
+            <AlertTriangle size={13} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
+            Which measures this house configured could not be read
+            {settings.data.readError ? ` (${settings.data.readError})` : ''}. Nothing is drawn here,
+            rather than guessing at the default four.
+          </p>
+        ) : tiles.length === 0 ? (
+          <p className="cl-said" data-testid="gazetteer-measures-none">
+            No measures chosen — this house configured this box to show none. Change that in
+            Settings › Cellar.
+          </p>
+        ) : (
+          <div className="cl-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+            {tiles.map(([k, label, v]) => (
+              <div key={k} className="cl-tile">
+                <p className="cl-tile-label">{label}</p>
+                <p className="cl-tile-fig">
+                  <Tally value={v} />
+                </p>
+                <p className="cl-note" style={{ margin: '2px 0 0', fontSize: 10 }}>
+                  {MEASURE_SOURCE[k]}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {settings.loading || !settings.data.readable ? null : (
+          <p className="cl-note">
+            {data.cellarError
+              ? `The cellar could not be read (${data.cellarError}) — the ${tiles.length === 1 ? 'figure' : 'figures'} above ${tiles.length === 1 ? 'is' : 'are'} unknown, not zero.`
+              : !data.cellarKnown
+                ? 'Counting the cellar…'
+                : 'Par is only claimed for a row that records its own minimum. Everything the cellar holds is booked against the wine library today — `restaurant_inventory` is keyed on it, so beer, spirits and cocktails can be browsed here but not yet counted as stock.'}
+            {settings.data.gazetteerMeasuresConfigured
+              ? ' This house configured which measures show here — change it in Settings › Cellar.'
+              : ''}
+          </p>
+        )}
       </section>
 
       {/* Direction A, built: the floor, over confirmed zones only. It sits

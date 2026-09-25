@@ -76,8 +76,16 @@ import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
 
-export function CanonicalDocumentPage() {
-  const { id = '' } = useParams<{ id: string }>()
+export interface CanonicalDocumentPageProps {
+  /** The document to draw when it is not the route's `:id` (the /orders sheet). */
+  documentId?: string
+  /** Drawn inside a Sheet: the sheet carries the title and the way out. */
+  embedded?: boolean
+}
+
+export function CanonicalDocumentPage({ documentId, embedded = false }: CanonicalDocumentPageProps = {}) {
+  const route = useParams<{ id: string }>()
+  const id = documentId ?? route.id ?? ''
   const navigate = useNavigate()
   /**
    * `?view=door` opens the door frame directly (ADR 0104 S10). The door is a
@@ -306,6 +314,7 @@ export function CanonicalDocumentPage() {
   const shell = (children: React.ReactNode) => (
     <div
       className="mudavym cd-page"
+      data-embedded={embedded || undefined}
       style={{
         background: 'var(--paper-1, #F3EFE6)',
         color: 'var(--ink-1, #211C16)',
@@ -319,28 +328,36 @@ export function CanonicalDocumentPage() {
         // equals screen".
       }}
     >
-      <div style={{ maxWidth: 1240, margin: '0 auto', padding: '18px 22px 40px' }}>
-        <header
-          className="cd-no-print"
-          style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}
-        >
-          <Wordmark />
-          <button
-            type="button"
-            onClick={() => navigate('/receipts')}
-            style={{
-              marginLeft: 'auto',
-              fontSize: 11.5,
-              fontWeight: 600,
-              color: 'var(--seal-deep, #14515C)',
-              background: 'none',
-              border: 0,
-              cursor: 'pointer',
-            }}
+      <div
+        style={
+          embedded
+            ? { padding: '4px 0 24px' }
+            : { maxWidth: 1240, margin: '0 auto', padding: '18px 22px 40px' }
+        }
+      >
+        {!embedded && (
+          <header
+            className="cd-no-print"
+            style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}
           >
-            ← Back to the documents
-          </button>
-        </header>
+            <Wordmark />
+            <button
+              type="button"
+              onClick={() => navigate('/receipts')}
+              style={{
+                marginLeft: 'auto',
+                fontSize: 11.5,
+                fontWeight: 600,
+                color: 'var(--seal-deep, #14515C)',
+                background: 'none',
+                border: 0,
+                cursor: 'pointer',
+              }}
+            >
+              ← Back to the documents
+            </button>
+          </header>
+        )}
         {children}
       </div>
     </div>

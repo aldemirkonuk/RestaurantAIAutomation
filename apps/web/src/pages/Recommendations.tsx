@@ -90,6 +90,7 @@ const CATEGORY_CHIP: Record<string, string> = {
   staff: "bg-pink-50 text-pink-700 border-pink-200",
   basket: "bg-rose-50 text-rose-700 border-rose-200",
   goals: "bg-gray-50 text-gray-700 border-gray-200",
+  pricing: "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
 
 const DISMISS_REASONS = [
@@ -119,6 +120,10 @@ function actTarget(rec: Card): { href: string; label: string } {
     spend_acceleration: { href: `/orders?${q}`, label: "Audit open orders" },
     pairing_promotion: { href: `/promotions?${q}`, label: "Promote pairing" },
     staff_spread: { href: `/team?${q}`, label: "Open Team" },
+    // ADR 0193: price advice toward the house's target margin.
+    margin_to_target: { href: `/inventory?${q}`, label: "Review your prices" },
+    margin_advice_blind: { href: `/inventory?${q}`, label: "See which wines" },
+    margin_target_unset: { href: `/settings?tab=target-margin&${q}`, label: "Set your target" },
   };
   if (byRule[rec.ruleKey]) return byRule[rec.ruleKey];
   if (rec.ruleKey.startsWith("goal_behind"))

@@ -137,7 +137,7 @@ export function probeWord(status: string | null | undefined): string {
     case 'refused':
       return 'Refused';
     case 'protocol_error':
-      return 'Not this protocol';
+      return 'Not readable';
     case 'unconfigured':
       return 'Not called';
     default:
@@ -172,4 +172,37 @@ export function readError(e: unknown): string {
   if (typeof raw === 'string' && raw.trim()) return raw;
   if (err?.message) return err.message;
   return 'This register could not be read, and the reason did not come back with the failure.';
+}
+
+/**
+ * A gateway sentence, or `fallback` when the sentence is written for an
+ * operator: an environment-variable name, an API path or a table name.
+ *
+ * Founder, 2026-09-22: a restaurant user is not shown webhook URLs, key names,
+ * table names or raw scopes on this page. The gateway's sentences stay as they
+ * are for the operator desk; this page swaps any that carry one for plain words.
+ */
+const OPERATOR_TERM =
+  /\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\/api\/|\b[a-z]+_[a-z_]+\b|https?:\/\/|\bOAuth\b|\bwebhook/i;
+
+export function plainReason(reason: string | null | undefined, fallback: string): string {
+  if (!reason || OPERATOR_TERM.test(reason)) return fallback;
+  return reason;
+}
+
+/**
+ * The one old stored sentence that named the wire.
+ *
+ * New probes already say the reply could not be read. A redirect is also
+ * stored as `protocol_error`, and its sentence names the address to declare
+ * instead — including one that happens to contain "token" or "webhook". That
+ * sentence stays. Only this leftover is rewritten.
+ */
+const OLD_WIRE_SENTENCE = /not speaking this protocol|carried no protocolVersion/i;
+
+export function houseProbeDetail(status: string | null | undefined, detail: string): string {
+  if (status === 'protocol_error' && OLD_WIRE_SENTENCE.test(detail)) {
+    return 'The reply could not be read.';
+  }
+  return detail;
 }
