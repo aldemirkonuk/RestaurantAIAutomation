@@ -1,3 +1,4 @@
+import { IntegrationReturnNotice } from '../../authorize-integration/IntegrationReturnNotice'
 /**
  * ProfileNext — the Mudavym redesign of `/profile` (ADR 0044 p4 wave). Live
  * in code for every house since ADR 0149 row 36 (2026-09-17) —
@@ -121,7 +122,7 @@ import { Link } from 'react-router-dom';
 import { DoorOpen } from 'lucide-react';
 import { HoldToApprove, Wordmark } from '../../../components/mudavym';
 import { animate, settle } from '../../../lib/mudavym/motion';
-import { EM, MONO, SANS, SERIF, countWord, ensureFraunces, roleLabel } from './pf-format';
+import { EM, MONO, SANS, SERIF, countWord, roleLabel } from './pf-format';
 import { Btn, Card, Note, PF_CSS, Register, StatusLine } from './pf-ui';
 import { IdentityRegister } from './IdentityRegister';
 import { SecurityRegister } from './SecurityRegister';
@@ -223,10 +224,6 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
   const [confirmDelete, setConfirmDelete] = useState('');
 
   useEffect(() => {
-    ensureFraunces();
-  }, []);
-
-  useEffect(() => {
     if (!headRef.current) return;
     animate(
       headRef.current,
@@ -290,6 +287,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
     >
       <style>{PF_CSS}</style>
       <div style={{ margin: '0 auto', maxWidth: 860, padding: '24px 16px 40px' }}>
+        <IntegrationReturnNotice />
         {/* ── the opening — Fraunces speaks ───────────────────────────── */}
         <header ref={headRef}>
           <Wordmark size={13} />

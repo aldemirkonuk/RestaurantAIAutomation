@@ -145,7 +145,7 @@ describe('PublicShell — the same house at every door', () => {
 /* ── both grounds ────────────────────────────────────────────────────────── */
 
 describe('PublicShell — both grounds (ADR 0042)', () => {
-  it('declares no ground of its own, so it follows the app theme', () => {
+  it('declares no ground of its own, so the shared charcoal default applies', () => {
     const { container } = render(
       <PublicShell title="A">
         <p>body</p>
@@ -171,15 +171,13 @@ describe('PublicShell — both grounds (ADR 0042)', () => {
     expect(root).toHaveAttribute('data-ground', 'charcoal');
   });
 
-  it('treats an explicit paper ground as "no claim", not as a second declaration', () => {
+  it('honors the explicit shared paper exception on the same token node', () => {
     const { container } = render(
       <PublicShell title="A" ground="paper">
         <p>body</p>
       </PublicShell>,
     );
-    // `data-ground="paper"` would freeze the page on the light column even
-    // under the app's own dark theme. Paper is the absence of a claim.
-    expect(shellRoot(container).hasAttribute('data-ground')).toBe(false);
+    expect(shellRoot(container)).toHaveAttribute('data-ground', 'paper');
   });
 
   it('defines no colour outside the token column', () => {
@@ -208,6 +206,43 @@ describe('PublicShell — both grounds (ADR 0042)', () => {
   it('renders no motion at all for a reader who asked for none', () => {
     expect(CSS_RULES).toContain('@media (prefers-reduced-motion: reduce)');
     expect(CSS_RULES).toContain('animation: none');
+  });
+
+  it('out-ranks the app base layer\'s paragraph ink on specificity, not load order', () => {
+    // globals.css:154-159 paints every <p> text-slate-600 and every
+    // `.dark p` text-slate-300 — one class + one type, specificity (0,1,1).
+    // Read directly so the claim is checked against that rule's own text
+    // (CLAUDE.md 5b), not restated from memory or another file's comment.
+    const GLOBALS = readFileSync(resolve(HERE, '../../styles/globals.css'), 'utf8');
+    expect(GLOBALS).toMatch(/(^|\n)\s*p\s*{/);
+    expect(GLOBALS).toMatch(/\.dark p\s*{/);
+    // The shell's own paragraph ink is two classes + one type — (0,2,1) —
+    // which wins that tie even though `main.tsx` imports `App.tsx` (and so
+    // globals.css) after this stylesheet, on `--paper-1` where the untokened
+    // globals ink first measured 2.35:1 (Chrome, 375px, 2026-09-17).
+    expect(CSS_RULES).toMatch(/\.mudavym\.mdv-pub p\s*{\s*color:\s*var\(--ink-2\);?\s*}/);
+  });
+});
+
+/* ── the vendor board's own containment (wave4 R1/board-cap; CLAUDE.md 5b —
+   jsdom resolves no stylesheet, so these are read from the rule's own text,
+   same move as the ink-2 specificity test above) ─────────────────────────── */
+
+describe('PublicShell — the vendor board scrolls inside the page, not the page', () => {
+  it('contains an unbreakable wine/producer token in the scroller, not the document', () => {
+    // Fails if `overflow-x: auto` is dropped from `.mdv-pub__scroll` (mutation
+    // M6, wave4 confirm D4/R1): the whole page then scrolls sideways at every
+    // width once a token is wider than the board.
+    expect(CSS_RULES).toMatch(/\.mdv-pub__scroll\s*{[^}]*overflow-x:\s*auto;?[^}]*}/);
+  });
+
+  it('caps the board-measure retry button to its own width, not the 1080px column', () => {
+    // Fails if the board-measure button-width rule is removed (mutation M7,
+    // wave4 confirm D4): a full-column-width "Try again" reads as a bar, not
+    // a button, on a 1080px vendor board.
+    expect(CSS_RULES).toMatch(
+      /\.mdv-pub\[data-measure=['"]board['"]\]\s*\.mdv-pub__stack\s*>\s*\.mdv-btn\s*{[^}]*width:\s*auto;?[^}]*}/,
+    );
   });
 });
 

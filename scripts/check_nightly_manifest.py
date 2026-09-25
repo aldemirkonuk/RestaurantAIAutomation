@@ -428,7 +428,8 @@ def self_test() -> int:
         "an enrolled page with no entry",
         edit_manifest(lambda m: m["pages"].pop()),
         1,
-        "[1] MUDAVYM_PAGES enrols 'logs'",
+        # Last pages[] entry is the fixture; keep this string equal to that slug.
+        "[1] MUDAVYM_PAGES enrols 'arrival'",
     )
     mutate(
         "a pending page that has enrolled",

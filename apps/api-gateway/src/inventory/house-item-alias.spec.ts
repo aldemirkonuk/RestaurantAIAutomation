@@ -104,7 +104,12 @@ describe("the rule holds in the source itself", () => {
     const src = readFileSync(join(__dirname, "inventory.service.ts"), "utf8");
     const start = src.indexOf("async updateInventoryItem(");
     expect(start).toBeGreaterThan(-1);
-    const body = src.slice(start, start + 4000);
+    // The whole method, to the next member -- not a fixed 4000 characters. The
+    // fixed window had 61 characters of slack and ADR 0193's price hand-off
+    // (2026-09-21) pushed the alias branch past it without changing it.
+    const next = src.slice(start + 1).search(/\n {2}(?:\/\*\*|private |public |async )/);
+    const body = src.slice(start, next === -1 ? undefined : start + 1 + next);
+    expect(body.length).toBeGreaterThan(1000);
     expect(body).toContain("updateData.wine_name");
     expect(body).not.toContain('from("master_wine_library")');
   });

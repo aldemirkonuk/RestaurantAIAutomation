@@ -41,11 +41,10 @@ import {
   mondayOf,
   weekDays,
 } from './tm-format';
-import { ensureFraunces, MutationError } from './tm-bits';
+import { MutationError } from './tm-bits';
 import './team-next.css';
 
 export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
-  ensureFraunces();
   const rid = useActiveRestaurantId();
   const qc = useQueryClient();
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));

@@ -34,6 +34,109 @@
   overflow: hidden;
 }
 
+/* ── sketch 121 (2026-09-19): the wine register's own record opens BESIDE a
+   narrowed index, not above the full table — `.cl-stand` above is unchanged
+   and still used by CatalogueRegister/CocktailRegister (MOTIONS.md's third
+   pass); this page's WineRegister.tsx alone moved. No entrance transition on
+   the split itself — a register appearing/disappearing is already a
+   deliberate non-motion on this page (MOTIONS.md), and a narrowed index
+   appearing is the same kind of fact, not a transition to watch. Container
+   queries, not a viewport media query: this page is always mounted at the
+   same route width, but the index/leaf split should still narrow to a single
+   column whenever ITS OWN box is narrow (a phone, or a future embed), not
+   only when the browser window is. */
+.cl-split {
+  /* Establishes the query container ONLY — a size container cannot be
+     styled by a query rooted at itself (the query's search for a named
+     ancestor starts at the querying element's PARENT, skipping the element
+     that defines the container; verified live in a browser, 2026-09-19: a
+     first attempt at this file put `grid-template-columns` on `.cl-split`
+     itself, inside `@container cl-split (...)`, and the query silently
+     never matched at ANY width — measured, not assumed, hence the wrapper
+     below). Actual layout lives on `.cl-split-grid`, the child. */
+  container-type: inline-size;
+  container-name: cl-split;
+  margin-top: 14px;
+}
+.cl-split-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  align-items: start;
+}
+.cl-split-index {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  padding: 4px;
+}
+.cl-index-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.cl-index-row:hover {
+  border-color: var(--seal-ring);
+  background: var(--paper-1);
+}
+.cl-index-row[data-selected='true'] {
+  border-color: var(--seal-ring);
+  background: var(--seal-tint);
+}
+.cl-index-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.cl-index-row-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+}
+.cl-split-leaf {
+  min-width: 0;
+}
+
+/* Narrow container (a phone, or any box under 620px): the index sits above
+   the leaf, height-capped so a 500-title book cannot push the record itself
+   off screen. Wide enough (620px+): the index becomes a fixed-width column
+   beside the leaf, sized to the container's own inline size — not the
+   viewport's — which is the entire reason this is `@container`. */
+@container cl-split (min-width: 620px) {
+  .cl-split-grid {
+    grid-template-columns: 220px 1fr;
+  }
+  .cl-split-index {
+    max-height: calc(100vh - 220px);
+  }
+}
+/* Roomier still: a wider index column, and its second line — style/vintage
+   and on-hand-or-price — reads more comfortably at the same font size the
+   name uses a step down from, rather than staying as tight as the narrow
+   column had to be. */
+@container cl-split (min-width: 900px) {
+  .cl-split-grid {
+    grid-template-columns: 264px 1fr;
+  }
+  .cl-index-row-meta {
+    font-size: 11px;
+  }
+}
+
 /* ── micro-states: nothing moves more than 2px, 160ms house curve ──────── */
 .cl-ink {
   transition:
@@ -270,7 +373,12 @@
   color: var(--ink-3);
 }
 
-.cl-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+/* --ink-4, not --ink-3: a caption on paper reads with --ink-4 by house
+   convention, and --ink-3 measured 4.43:1 on --paper-2 — under AA's 4.5:1
+   floor for this size text. --ink-4 is the higher-contrast token in both
+   themes (see mudavym.css's :root and dark-mode blocks), so this can only
+   raise contrast, never lower it, wherever `.cl-note` already appears. */
+.cl-note { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--ink-4); }
 .cl-said { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
 
 /* facts of record: a label above the figure, never a label beside it */
@@ -287,6 +395,20 @@
   color: var(--ink-3);
 }
 .cl-facts dd { margin: 2px 0 0; font-size: 13px; color: var(--ink-1); }
+
+/* "the wine's own detail" — body/acidity/tannin as a word and a 5-tick bar
+   (ADR 0160 sec110 Owed #4/#11, sketch 121's `.ticks`/`.ticks i`, copied here
+   in this page's own tokens rather than the sketch's). */
+.cl-ticks { display: inline-flex; gap: 3px; margin-left: 8px; vertical-align: middle; }
+.cl-ticks i {
+  display: inline-block;
+  width: 13px;
+  height: 6px;
+  border-radius: 2px;
+  border: 1px solid var(--seal-ring);
+  font-style: normal;
+}
+.cl-ticks i[data-on='true'] { background: var(--seal); border-color: var(--seal); }
 
 .cl-grid {
   display: grid;

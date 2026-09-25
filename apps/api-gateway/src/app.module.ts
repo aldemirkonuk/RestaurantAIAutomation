@@ -67,6 +67,7 @@ import { TenantGuard } from "./common/tenant/tenant.guard";
 import { OrchestratorModule } from "./common/orchestrator/orchestrator.module";
 import { UxOptimizerModule } from "./ux-optimizer/ux-optimizer.module";
 import { AskAiModule } from "./ask-ai/ask-ai.module";
+import { HouseModule } from "./house/house.module";
 
 @Module({
   imports: [
@@ -148,6 +149,7 @@ import { AskAiModule } from "./ask-ai/ask-ai.module";
     RestaurantTemplatesModule, // Communication templates CRUD
     PushModule, // Expo push sender for the mobile app
     MobileModule, // Mobile decision feed, today-pulse, device registry, idempotency
+    HouseModule, // The house shell's counter: one read, seven registers, each answering for itself (sketch 119 D)
 
     // Real-time communication
     WebsocketModule,
