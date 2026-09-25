@@ -26,7 +26,7 @@ function chain(result: TableResult) {
   const self: Record<string, unknown> = {};
   const passthrough = () => self;
   for (const m of [
-    "select", "eq", "is", "in", "or", "ilike", "gte", "lte", "order", "limit", "range", "not",
+    "select", "eq", "neq", "is", "in", "or", "ilike", "gte", "lte", "order", "limit", "range", "not",
   ]) {
     self[m] = jest.fn(passthrough);
   }
@@ -147,6 +147,37 @@ describe("CellarRegistersService.read", () => {
     expect(out.carried).toContain("spirits");
   });
 
+  it("excludes a discarded menu_items row from the register inference read (migration 20260922230200)", async () => {
+    // The `chain()` fake does not itself filter by the predicates the service
+    // applies — it always answers with the table's configured `data`
+    // regardless — so the thing this test can actually prove is that the
+    // service ASKS for `status <> 'discarded'` on `menu_items`, the same
+    // predicate `getMenu` already applies and the ledger/beverages readers
+    // gained alongside this fix.
+    const menuChain = chain({ data: [{ category: null, name: "Draft Cola" }] });
+    const service = await (
+      await Test.createTestingModule({
+        providers: [
+          CellarRegistersService,
+          {
+            provide: DatabaseService,
+            useValue: {
+              getClient: () => ({
+                from: (table: string) =>
+                  table === "menu_items"
+                    ? menuChain
+                    : chain(table === "cocktails" ? { count: 0 } : { data: [] }),
+              }),
+            },
+          },
+        ],
+      }).compile()
+    ).get(CellarRegistersService);
+
+    await service.read(RID);
+    expect(menuChain.neq).toHaveBeenCalledWith("status", "discarded");
+  });
+
   it("reports sake and cider rather than folding them into a neighbouring register", async () => {
     const service = await serviceWith({
       restaurant_cellar_registers: { data: [] },
@@ -162,6 +193,60 @@ describe("CellarRegistersService.read", () => {
     const out = await service.read(RID);
     expect(out.unmappedKinds).toEqual({ sake: 1, cider: 1 });
     expect(out.carried).toEqual([]);
+  });
+
+  it("returns the reading count off the SAME menu read the registers were inferred from", async () => {
+    // The founder's 2026-09-22 decision keeps three numbers on the reveal, and
+    // `notPlaced` is the one no read returned before. It has to be derived from
+    // the register reader's own pass — not from a second count of the menu —
+    // or the reveal's headline can disagree with the registers under it.
+    const service = await serviceWith({
+      restaurant_cellar_registers: { data: [] },
+      restaurant_inventory: { data: [] },
+      menu_items: {
+        data: [
+          { category: "Wines by the glass", name: "Barolo" },
+          { category: "Wines by the glass", name: "Chablis" },
+          { category: "Draft Beer", name: "Efes" },
+          { category: "Kitchen", name: "Mixed olives" },
+          { category: null, name: "Today's plate" },
+        ],
+      },
+      cocktails: { count: 0 },
+    });
+
+    const out = await service.read(RID);
+    expect(out.menuLines).toEqual({ read: 5, placed: 3, notPlaced: 2 });
+    // The same pass: the placed lines are exactly the lines credited to a
+    // register below, so the headline cannot drift from the body.
+    expect(out.sources.menu.rows).toBe(5);
+    expect(out.registers.find((r) => r.id === "wines")!.evidence.menuRows).toBe(2);
+    expect(out.registers.find((r) => r.id === "beer")!.evidence.menuRows).toBe(1);
+  });
+
+  it("leaves the reading count NULL — never zeroes — when the menu could not be read", async () => {
+    // "0 lines read, 0 placed, 0 not placed" over a failed read is the same
+    // absence-reported-as-health failure this file exists to prevent.
+    const service = await serviceWith({
+      restaurant_cellar_registers: { data: [] },
+      restaurant_inventory: { data: [] },
+      menu_items: { error: { code: "57014", message: "statement timeout" } },
+      cocktails: { count: 0 },
+    });
+    const out = await service.read(RID);
+    expect(out.sources.menu.readable).toBe(false);
+    expect(out.menuLines).toBeNull();
+  });
+
+  it("reports an empty but readable menu as zero lines read", async () => {
+    const service = await serviceWith({
+      restaurant_cellar_registers: { data: [] },
+      restaurant_inventory: { data: [] },
+      menu_items: { data: [] },
+      cocktails: { count: 0 },
+    });
+    const out = await service.read(RID);
+    expect(out.menuLines).toEqual({ read: 0, placed: 0, notPlaced: 0 });
   });
 
   it("a house with nothing in any book gets UNKNOWN on every register, not false", async () => {

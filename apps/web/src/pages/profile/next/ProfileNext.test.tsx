@@ -748,13 +748,21 @@ describe('ProfileNext — the payment register (the provider path)', () => {
   });
 
   /**
-   * THE PORT, 2026-09-05 — the same component, still here with the flag off.
+   * THE PORT, 2026-09-05 — the same component, still here with `connections`
+   * forced off (this file's `useMudavymDesign` mock defaults `connections` to
+   * `false`, above).
    *
-   * `mudavym_design_connections` is OFF in production, so `/profile` is where a
-   * card is actually added today. The panel is no longer in this directory; if
-   * the port had broken this page, nothing else in this file would have noticed
-   * — every other payment test exercises the UNKEYED path, where the panel is
-   * never constructed.
+   * `connections` has been live in code for every house since ADR 0149 row 36
+   * (2026-09-17) — `/profile` no longer shows this panel by default in
+   * production; the card-adding path now lives at `/connections`
+   * (`StripeCardPanel.tsx`, `ConnectionsNext.tsx`). This test keeps exercising
+   * `/profile`'s own off-branch rendering of the shared panel — reachable via
+   * the QA `localStorage["mudavym.design.connections"]` override, or before
+   * this go-live — so a regression in the shared component would still be
+   * caught here even though it is no longer what a house sees by default. The
+   * panel is no longer in this directory; if the port had broken this page,
+   * nothing else in this file would have noticed — every other payment test
+   * exercises the UNKEYED path, where the panel is never constructed.
    */
   it('mounts the shared card panel here when both halves of the credential exist', async () => {
     mockData.current = base({
@@ -1222,6 +1230,43 @@ describe('ProfileNext — honesty states', () => {
     const drive = rowFor('Google Drive');
     expect(within(drive).queryByText('Not connected')).not.toBeInTheDocument();
     expect(within(drive).getByText('—')).toBeInTheDocument();
+  });
+
+  it('groups the Google grants under one heading, each with its own Connect (founder ruling 2026-09-22)', () => {
+    const grant = (id: string, label: string, providerLabel: string) => ({
+      id,
+      label,
+      providerLabel,
+      description: `${label}.`,
+      state: 'available' as const,
+      account: null,
+      connectedAt: null,
+      grantedScopes: [],
+      requestedScopes: [],
+      notRequested: [],
+      blockedReason: null,
+    });
+    mockData.current = base({
+      workspace: [
+        grant('google_drive', 'Google Drive', 'Google'),
+        grant('gmail_send', 'Gmail — sending only', 'Google'),
+        grant('gmail_read', 'Gmail — reading vendor replies only', 'Google'),
+        grant('excel', 'Microsoft Excel', 'Microsoft'),
+      ],
+    });
+    draw();
+    const google = screen.getByRole('region', { name: 'Google' });
+    expect(within(google).getByRole('heading', { name: 'Google' })).toBeInTheDocument();
+    for (const [id, label] of [
+      ['google_drive', 'Google Drive'],
+      ['gmail_send', 'Gmail — sending only'],
+      ['gmail_read', 'Gmail — reading vendor replies only'],
+    ]) {
+      const link = within(google).getByRole('link', { name: `Connect ${label}` });
+      expect(link.getAttribute('href')).toBe(`/authorize/${id}?returnPath=/profile`);
+    }
+    expect(within(google).queryByText('Microsoft Excel')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Microsoft' })).toBeInTheDocument();
   });
 
   it('renders permission-denied as a server rule now that the endpoint enforces one', () => {

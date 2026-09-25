@@ -78,6 +78,11 @@ import {
 const LegacyReceiptsPage = lazy(() =>
   import('../../ReceiptsPage').then((m) => ({ default: m.ReceiptsPage })),
 );
+const CanonicalDocumentPage = lazy(() =>
+  import('../../documents/next/CanonicalDocumentPage').then((m) => ({
+    default: m.CanonicalDocumentPage,
+  })),
+);
 
 const TYPE_LABELS: Record<string, string> = {
   invoice: 'Invoice',
@@ -1521,7 +1526,14 @@ export default function ReceiptsNext() {
           {/* the selected document */}
           <section aria-label="Document detail">
             {selected ? (
-              <DocView key={selected.id} doc={selected} onVerified={() => setSelectedId(null)} />
+              <>
+                <div aria-label="Formatted document" className="mb-6">
+                  <Suspense fallback={null}>
+                    <CanonicalDocumentPage documentId={selected.id} embedded />
+                  </Suspense>
+                </div>
+                <DocView key={selected.id} doc={selected} onVerified={() => setSelectedId(null)} />
+              </>
             ) : (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
                 Choose a document from the queue — its lines, its order, and the confirm ceremony

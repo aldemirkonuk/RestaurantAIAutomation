@@ -5,6 +5,8 @@
 > [archive/STATE-pre-P2-20260825.md](archive/STATE-pre-P2-20260825.md).
 > If this file and any other doc disagree about what is current, fix the other doc.
 >
+> **2026-09-22 — get-started lock.** Founder approved all 17 Opus recs as A. [ADR 0213](decisions/0213-get-started-is-account-then-house-then-first-proof.md) (OD-134–139, OD-141). Build on `feat/arrival-first-proof`: account-only `/register`, four arrival screens, first proof at `/house/menu`. Do not merge #414/#454; do not flip `mudavym_design_arrival`; gate-owned #415/#430/#434 stay with their owner.
+
 > **2026-09-12 handoff:** the merge queue, the seven unlanded branches, and the page wave in flight are in [handoff/PROGRESS.md](handoff/PROGRESS.md). Read it before continuing any of them.
 
 > **2026-09-17 — the finish goal.** The founder asked for every page on the Mudavym design,
@@ -24,6 +26,33 @@
 **Current milestone: P3 — Grade, then scale** ([ADR 0029](decisions/0029-p3-plan-of-record.md)).
 **P2 closed 2026-08-26** — all five stages deployed and verified, both held items resolved.
 **Read order:** [PROJECT.md](PROJECT.md) → [decisions/README.md](decisions/README.md) → this file → [ROADMAP.md](ROADMAP.md).
+
+## Finish goal — 2026-09-16/17 (ADR 0149) — supersedes P3 in practice
+
+The founder set one session goal 2026-09-16: finish every page to the Mudavym
+design, then one cutover deletes the legacy frontend for every house at once —
+gated on his approval of a deletion manifest, file group by file group. Full
+context, the nine rounds of forks and his answers:
+[ADR 0149](decisions/0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once.md).
+Lanes run as parallel git worktrees (`wt-fin-*`), each owning a slice, none
+touching another's files or committing on its own. Detail and lane map:
+[handoff/PROGRESS.md](handoff/PROGRESS.md) §0c.
+
+**Live since 2026-09-22 (#421 `34c33a76a` merged 2026-09-21; first served by production from
+`9cfc4e96d` at 2026-09-22T03:41:32Z UTC; proof in LIVE-CHECKLIST "Deploy proof, 2026-09-22"):** 16 of the 20
+`MUDAVYM_PAGES` keys resolve to the Mudavym design for every house in code, no
+`restaurant_feature_flags` row needed — dashboard, orders, receiving_door,
+providers, communications, team, inventory, receipts, documents_reports,
+document, reports, calendar, profile, connections, notifications, logs
+(`apps/web/src/lib/mudavym/useMudavymDesign.ts`, `LIVE_PAGES`). Held back,
+still flag-gated pending a sketch review: settings, cellar (all 8 routes),
+recommendations, receiving (the desk, not the door). No database write; legacy
+code untouched. Full per-route status: [06-pages/LIVE-CHECKLIST.md](06-pages/LIVE-CHECKLIST.md).
+
+**What P3 below still describes:** the P3.0 doneability-coverage work
+(2026-08-27) is real and shipped; P3.A–P3.D are unstarted or blocked as
+written. Nothing in ADR 0149 changes that — it runs alongside, on the frontend
+page layer, not the backend task-grading gate.
 
 ## What is live in production (2026-08-25)
 
@@ -196,4 +225,7 @@ founder-readable layer are CI-claimed (ADR-0018 claims in `CLAIMS.jsonl`).
 - Real data, never mock-only; docs bulletproof before features (ADR 0018).
 
 ---
-*Last updated: 2026-08-27 — P3.0 shipped: every task type graded or knowingly exempt, guarded in CI.*
+*Last updated: 2026-09-22 — the ADR 0149 finish-goal section's sixteen pages are live in
+production (first served from `9cfc4e96d`, 2026-09-22T03:41:32Z UTC); added 2026-09-17. The 2026-08-27 P3.0 entry
+below is unchanged and still current: every task type graded or knowingly
+exempt, guarded in CI.*

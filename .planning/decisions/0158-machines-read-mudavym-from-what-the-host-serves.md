@@ -320,7 +320,7 @@ fixed; the rest are named here rather than silently accepted.
   session's task (ADR 0149 row 7), and out of this lane's scope. This is not a regression this
   build introduces (every page already made that request); it does mean the pages this build
   marks `index, follow` still carry it until that work lands. Tracked:
-  `CLAIMS.jsonl` `ADR-0158-FONTS-NOT-YET-SELF-HOSTED` (`status: open`; flips to `resolved`,
+  `CLAIMS.jsonl` `ADR-0158-FONTS-NOT-YET-SELF-HOSTED` (`status: open`; flips to `resolved`, **[CLOSED 2026-09-21: the founder said "Yes, download them"; Plus Jakarta Sans and DM Sans are self-hosted (apps/web/public/fonts, styles/fonts-sans.css) and index.html calls no Google Fonts host; `ADR-0158-FONTS-NOT-YET-SELF-HOSTED` is resolved.]**
   i.e. the build must re-verify it, once `index.html` stops referencing
   `fonts.googleapis.com`).
 - **`VendorPortal.tsx` still injects its own client-side JSON-LD and title on mount**, which for

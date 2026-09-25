@@ -75,7 +75,7 @@
       "destination": "/crawl/heads/privacy.html"
     },
     {
-      "source": "/(admin|authorize|beer|calendar|calendar-classic|cellar|cocktails|communications|connections|credits|dev|dev-sandbox|distributors|documents|documents-reports|forgot-password|get-started|help|inventory|inventory-legacy|invite|login|logs|no-access|non-alcoholic|notifications|onboarding|orders|privacy|profile|promotions|providers|receipts|receiving|recommendations|register|reports|reset-password|services|settings|simpos|soft-drinks|sommelier|spirits|studio|team|v|vendor-prices|verify-email|whiskey|wines)(/.*)?",
+      "source": "/(admin|authorize|beer|calendar|calendar-classic|cellar|cocktails|communications|connections|credits|deliveries|dev|dev-sandbox|distributors|documents|documents-reports|forgot-password|get-started|help|house|inventory|inventory-legacy|invite|login|logs|menu|no-access|non-alcoholic|notifications|onboarding|orders|privacy|profile|promotions|providers|receipts|receiving|recommendations|register|reports|reset-password|services|settings|simpos|soft-drinks|sommelier|spirits|studio|team|v|vendor-prices|verify-email|whiskey|wines)(/.*)?",
       "destination": "/crawl/app.html"
     }
   ],
@@ -134,6 +134,40 @@
         {
           "key": "Referrer-Policy",
           "value": "no-referrer"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin-allow-popups"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(self), microphone=(self), geolocation=(), usb=(), serial=(), hid=(), bluetooth=(), midi=(), accelerometer=(), gyroscope=(), magnetometer=(), display-capture=(), browsing-topics=()"
+        }
+      ]
+    },
+    {
+      "source": "/((?!reset-password|verify-email|invite/|studio/invite/).*)",
+      "headers": [
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
         }
       ]
     }

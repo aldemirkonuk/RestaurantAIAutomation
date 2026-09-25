@@ -198,7 +198,7 @@ export class DeliveryService {
   /** The open deliveries at a restaurant, newest first. */
   async list(
     restaurantId: string,
-    opts: { state?: string; limit?: number } = {},
+    opts: { state?: string; orderId?: string; limit?: number } = {},
   ): Promise<ReadResult<DeliveryRow[]>> {
     let q = this.db
       .getClient()
@@ -208,6 +208,7 @@ export class DeliveryService {
       .order("created_at", { ascending: false })
       .limit(Math.min(opts.limit ?? 50, 200));
     if (opts.state) q = q.eq("state", opts.state);
+    if (opts.orderId) q = q.eq("order_id", opts.orderId);
     const read = await q;
     if (read.error)
       return {
