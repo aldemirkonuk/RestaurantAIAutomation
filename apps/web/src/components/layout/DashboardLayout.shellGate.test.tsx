@@ -1,8 +1,16 @@
 /**
- * The shell is gated like every Mudavym page: the browser override, then the
- * house flag, then false (useMudavymDesign.ts). Off — and while the flag check
- * is in flight — the legacy layout renders; the new shell is never flashed at
- * someone who is not meant to see it.
+ * The shell is gated like every Mudavym page: the browser override, then
+ * LIVE_PAGES, then the house flag, then false (useMudavymDesign.ts).
+ *
+ * [2026-09-25, ADR 0149 row 36's bracket, founder Q2/Q4 of 2026-09-22:
+ * `shell` is in LIVE_PAGES. It resolves ON for every house in code — on the
+ * first render, with no flag request, whether the house has a
+ * restaurant_feature_flags row or not. Until now this file proved the
+ * opposite ("off for this house: legacy"); a house created after the
+ * 2026-09-25 production read (every existing house had the column ON) got the
+ * legacy layout because the column defaults to false. The legacy layout is
+ * still mounted, untouched, and reachable only through the browser's QA
+ * override `mudavym.design.shell = 0` — never from a house's data.]
  *
  * `HouseShell` and the legacy layout's heavy children are replaced by markers:
  * what is under test is the GATE (DashboardLayout + useMudavymDesign), and the
@@ -10,7 +18,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 const checkFlag = vi.hoisted(() => vi.fn());
@@ -45,6 +53,7 @@ vi.mock('../../guidance/announce', () => ({ GuidanceLiveRegion: () => null }));
 
 import { DashboardLayout } from './DashboardLayout';
 import {
+  LIVE_PAGES,
   MUDAVYM_PAGES,
   clearMudavymDesignCache,
   flagKeyFor,
@@ -69,14 +78,15 @@ beforeEach(() => {
 afterEach(() => window.localStorage.clear());
 
 describe('the shell is enrolled in the design gate', () => {
-  it('is a gated slug with its own override key and house flag', () => {
+  it('is a gated slug with its own override key and house flag, live in code', () => {
     expect(MUDAVYM_PAGES).toContain('shell');
+    expect(LIVE_PAGES.has('shell')).toBe(true);
     expect(overrideKeyFor('shell')).toBe('mudavym.design.shell');
     expect(flagKeyFor('shell')).toBe('mudavym_design_shell');
   });
 });
 
-describe('layer 1 — the browser override', () => {
+describe('layer 1 — the browser override (QA only)', () => {
   it('"1" shows the house shell and no legacy chrome', () => {
     window.localStorage.setItem('mudavym.design.shell', '1');
     mount();
@@ -84,7 +94,7 @@ describe('layer 1 — the browser override', () => {
     expect(screen.queryByTestId('legacy-sidebar')).toBeNull();
   });
 
-  it('"0" forces the legacy layout even when the house flag is on', async () => {
+  it('"0" forces the legacy layout even though the shell is live in code', async () => {
     window.localStorage.setItem('mudavym.design.shell', '0');
     window.localStorage.setItem('activeRestaurantId', 'r-1');
     checkFlag.mockResolvedValue({ active: true, enabled: true });
@@ -97,39 +107,45 @@ describe('layer 1 — the browser override', () => {
   });
 });
 
-describe('layer 2 — the house flag', () => {
-  it('on for this house: the shell renders once the flag answers', async () => {
-    window.localStorage.setItem('activeRestaurantId', 'r-1');
-    checkFlag.mockResolvedValue({ active: true, enabled: true });
+describe('layer 2 — LIVE_PAGES: every house, whatever its row says', () => {
+  it('a house with NO flag row gets the shell on the first render, and no request is spent', async () => {
+    window.localStorage.setItem('activeRestaurantId', 'r-new-house');
+    // What the gateway answers for a house with no settings row.
+    checkFlag.mockResolvedValue({ active: false, enabled: false });
     mount();
-    // In flight: legacy, never a flash of the new shell.
-    expect(screen.getByTestId('legacy-sidebar')).toBeTruthy();
-    await waitFor(() => expect(screen.getByTestId('house-shell')).toBeTruthy());
-    expect(checkFlag).toHaveBeenCalledWith('r-1', 'mudavym_design_shell');
+    expect(screen.getByTestId('house-shell')).toBeTruthy();
+    expect(screen.queryByTestId('legacy-sidebar')).toBeNull();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(screen.getByTestId('house-shell')).toBeTruthy();
+    expect(checkFlag).not.toHaveBeenCalled();
   });
 
-  it('off for this house: legacy, byte for byte (WineAgentFab removed everywhere, ADR 0149 row 33)', async () => {
+  it('a house whose column is an explicit false still gets the shell', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r-1');
+    checkFlag.mockResolvedValue({ active: true, enabled: false });
     mount();
-    await waitFor(() => expect(checkFlag).toHaveBeenCalled());
-    expect(screen.getByTestId('legacy-sidebar')).toBeTruthy();
-    expect(screen.queryByTestId('house-shell')).toBeNull();
+    expect(screen.getByTestId('house-shell')).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(screen.queryByTestId('legacy-sidebar')).toBeNull();
+    expect(checkFlag).not.toHaveBeenCalled();
   });
 
-  it('a flag read that fails is legacy, never a broken page', async () => {
+  it('a flag API that is down cannot take the shell away', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r-1');
     checkFlag.mockRejectedValue(new Error('503'));
     mount();
-    await waitFor(() => expect(checkFlag).toHaveBeenCalled());
-    expect(screen.getByTestId('legacy-sidebar')).toBeTruthy();
-    expect(screen.queryByTestId('house-shell')).toBeNull();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(screen.getByTestId('house-shell')).toBeTruthy();
+    expect(screen.queryByTestId('legacy-sidebar')).toBeNull();
+    expect(checkFlag).not.toHaveBeenCalled();
   });
 });
 
-describe('layer 3 — the default', () => {
-  it('no override and no house: legacy', () => {
+describe('layer 3 — no house known', () => {
+  it('no override and no house: still the shell (live in code needs no house)', () => {
     mount();
-    expect(screen.getByTestId('legacy-sidebar')).toBeTruthy();
+    expect(screen.getByTestId('house-shell')).toBeTruthy();
+    expect(screen.queryByTestId('legacy-sidebar')).toBeNull();
     expect(checkFlag).not.toHaveBeenCalled();
   });
 });
