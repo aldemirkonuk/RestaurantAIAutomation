@@ -134,9 +134,20 @@ function mapGeneratedReportToUi(r: GeneratedReport): Report {
  * still computed per row rather than hard-coded to `false`, so the day a real
  * generator lands and starts filling `pdf_url`, the controls come back on their
  * own with no change here.
+ *
+ * [2026-09-17, OD-81] The real writer landed, as a different thing: a report
+ * EXPORT on /reports (`report_exports`, CSV + print page, queued/ready/failed).
+ * `POST /reports/generate` answers 410, and the gateway no longer lists or
+ * reads a `pending` row with no file (`WRITTEN_REPORT_FILTER`,
+ * reports.service.ts) — so this page never shows a report that can never
+ * exist. A row that still reaches it without a file says only that it has no
+ * file — not "not built yet", which stopped being true, and not WHERE exports
+ * are written: the shelf lives on the redesigned /reports, and a house still
+ * on the legacy /reports before cutover (ADR 0149) has no shelf there, so
+ * naming a place would send that reader to a page that does not have it.
  */
 export const NO_REPORT_FILE_REASON =
-  'Report file generation is not built yet — this entry has no file to open.'
+  'This entry has no file attached, so there is nothing here to view, download or print.'
 
 export function reportFileUnavailableReason(
   report: Pick<Report, 'fileUrl'>,

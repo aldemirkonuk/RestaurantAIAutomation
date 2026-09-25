@@ -42,7 +42,7 @@ const SECTIONS: Item[] = [
   },
   {
     title: "The lock screen",
-    body: "Face ID or a fingerprint is checked by the operating system, which answers yes or no. WineOps never sees the biometric itself and cannot store it.",
+    body: "Face ID or a fingerprint is checked by the operating system, which answers yes or no. Mudavym never sees the biometric itself and cannot store it.",
   },
   {
     title: "Working offline",
@@ -50,11 +50,11 @@ const SECTIONS: Item[] = [
   },
   {
     title: "Notifications",
-    body: "Turning on push registers a device token with WineOps so alerts can reach this phone. It identifies the device, not you, and unregistering in Settings removes it. Notification content is your own operational data — low stock, an order status.",
+    body: "Turning on push registers a device token with Mudavym so alerts can reach this phone. It identifies the device, not you, and unregistering in Settings removes it. Notification content is your own operational data — low stock, an order status.",
   },
   {
     title: "The camera",
-    body: "The camera is used only where you open it: photographing a delivery document or a wine list. Photos go to WineOps to be read, and nowhere else. The app has no access to your photo library unless you pick from it.",
+    body: "The camera is used only where you open it: photographing a delivery document or a wine list. Photos go to Mudavym to be read, and nowhere else. The app has no access to your photo library unless you pick from it.",
   },
   {
     title: "Product analytics",
@@ -62,7 +62,7 @@ const SECTIONS: Item[] = [
   },
   {
     title: "Signing in with Google",
-    body: "If your account uses Google, WineOps receives your email address, name and profile picture to identify you. We never receive your Google password, and this grants no access to Gmail or Drive.",
+    body: "If your account uses Google, Mudavym receives your email address, name and profile picture to identify you. We never receive your Google password, and this grants no access to Gmail or Drive.",
   },
   {
     title: "Sharing with partners",
@@ -86,7 +86,7 @@ export default function PrivacyScreen() {
       >
         <View style={{ gap: space.xs, marginBottom: space.sm }}>
           <AppText variant="signature" tone="wine">
-            WineOps
+            Mudavym
           </AppText>
           <AppText variant="display">Privacy &amp; data</AppText>
           <AppText variant="footnote" tone="tertiary">

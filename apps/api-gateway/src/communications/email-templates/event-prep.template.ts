@@ -2,7 +2,12 @@
  * Event Preparation Reminder Email Template
  */
 
-import { EMAIL_CONFIG, formatDate, formatCurrency } from "./template-config";
+import {
+  EMAIL_CONFIG,
+  formatDate,
+  formatCurrency,
+  frontendUrl,
+} from "./template-config";
 import { baseTemplate, metricBox, tableRow, alertBox } from "./base-template";
 
 export interface EventPrepData {
@@ -170,8 +175,10 @@ export function eventPrepTemplate(data: EventPrepData): string {
     preheader: `${data.eventName} on ${formatDate(data.eventDate)} - ${hasShortfalls ? "Stock shortfall detected!" : "Wine requirements ready"}`,
     content,
     ctaButton: {
+      // No event id on this data shape -- `/calendar` is where the event
+      // lives.
       text: "View Event Details",
-      url: "#",
+      url: `${frontendUrl()}/calendar`,
       color: hasShortfalls ? colors.danger : colors.primary,
     },
   });

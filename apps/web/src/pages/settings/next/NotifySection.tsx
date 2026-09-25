@@ -61,7 +61,7 @@
  */
 
 import { Choice, Dead, Micro, Note, Register, Row, SaveFailure, Toggle, fieldStyle } from './SectionKit';
-import { PROVENANCE_UNKNOWN, SANS, fmtWhen } from './st-format';
+import { MONO, PROVENANCE_UNKNOWN, SANS, fmtWhen } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
 
 const MODE_OPTIONS = [
@@ -99,17 +99,19 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <div style={{ margin: '14px 0 0' }}><Micro tone="seal">Doors</Micro></div>
 
             <Row
-              label="Email"
-              provenance={kept}
-              consequence="Team broadcasts and scheduled digests reach you by email. Read by the broadcast recipient list."
+              label="Email door"
+              cert="manual"
+              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>team/broadcast-preferences.ts:69,104</code> }}
+              consequence="Team broadcasts and scheduled digests reach you by email."
               control={
                 <Toggle label="Email notifications" checked={p.email} busy={writer.busy === 'email'}
                   onChange={(v) => void saveNotif('email', { email: v })} />
               }
             />
             <Row
-              label="SMS"
-              provenance={kept}
+              label="SMS door"
+              cert="manual"
+              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>team/broadcast-preferences.ts:70,104</code> }}
               consequence="Team broadcasts may also go to your phone number, where one is on file."
               control={
                 <Toggle label="SMS notifications" checked={p.sms} busy={writer.busy === 'sms'}
@@ -126,7 +128,8 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Low stock</Micro></div>
             <Row
               label="Low-stock alerts"
-              provenance={kept}
+              cert="manual"
+              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>notifications/low-stock-alerts.service.ts:505,515</code> }}
               consequence="The alerting engine runs for this restaurant when any member has this on."
               control={
                 <Toggle label="Low-stock alerts" checked={low.enabled} busy={writer.busy === 'low.enabled'}
@@ -179,7 +182,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Scheduled mail</Micro></div>
             <Row
               label="Order reminders"
-              provenance={kept}
+              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>communications/scheduled-tasks.service.ts:1528</code> }}
               consequence="Recurring orders coming due within two days. “In-app only” keeps the notification and drops the email."
               control={
                 <Choice label="Order reminders" value={p.ordersMode ?? 'both'} options={MODE_OPTIONS}
@@ -188,7 +191,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             />
             <Row
               label="Weekly report"
-              provenance={kept}
+              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>communications/scheduled-tasks.service.ts:1528</code> }}
               consequence="The Monday summary of the week's spend and movement."
               control={
                 <Choice label="Weekly report" value={p.reportsMode ?? 'both'} options={MODE_OPTIONS}
@@ -198,8 +201,16 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
 
             <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Quiet hours</Micro></div>
             <Row
-              label="Hold non-critical alerts overnight"
-              provenance={kept}
+              label="Quiet hours"
+              cert="manual"
+              provenance={{
+                ...kept,
+                readBy: (
+                  <code style={{ fontFamily: MONO }}>
+                    notification_agent.py:1448,1487-1494
+                  </code>
+                ),
+              }}
               consequence={
                 <>
                   Honoured by the alerting agent: inside this window it drops every channel for
@@ -233,7 +244,7 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                       className="st-focus"
                       style={fieldStyle}
                     />
-                    <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>to</span>
+                    <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>to</span>
                     <input
                       type="time"
                       aria-label="Quiet hours end"

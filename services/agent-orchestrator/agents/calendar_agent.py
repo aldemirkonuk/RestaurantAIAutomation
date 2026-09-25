@@ -72,6 +72,23 @@ class CalendarAgent(BaseAgent):
 
         self.logger.info("Calendar Agent initialized with daily self-scheduling")
 
+    async def cleanup(self) -> None:
+        """Drain the self-scheduling daily-check loop.
+
+        `stop()` sets `_shutdown_event` (which wakes the loop's wait) but never
+        waits for the task itself unless `cleanup()` does — without this override
+        the loop kept running after `stop()` reported STOPPED, and `restart()`
+        started a second one on top of it.
+        """
+        import asyncio
+
+        if self._daily_check_task:
+            await self._drain_tasks(
+                {self._daily_check_task},
+                asyncio.get_running_loop().time() + self.config.task_timeout_seconds,
+            )
+            self._daily_check_task = None
+
     def get_subscribed_routing_keys(self) -> List[tuple[str, str]]:
         return [
             ("procurement.events", "procurement.conversation.completed"),
@@ -367,7 +384,13 @@ class CalendarAgent(BaseAgent):
                 break
             except Exception as e:
                 self.logger.error(f"Daily check loop error: {e}")
-                await asyncio.sleep(3600)  # Retry in 1 hour
+                # Interruptible: a bare sleep(3600) here would make cleanup()
+                # wait up to an hour past the shutdown deadline for this task.
+                try:
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=3600)
+                    break  # Shutdown requested
+                except asyncio.TimeoutError:
+                    pass  # Retry in 1 hour
 
     async def _check_upcoming_events(self) -> None:
         """Check for upcoming events and send reminders"""

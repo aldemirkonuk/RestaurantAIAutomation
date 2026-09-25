@@ -9,7 +9,7 @@
  *   - `digest`   → the periodic reminder of every wine that REMAINS low.
  */
 
-import { EMAIL_CONFIG } from "./template-config";
+import { EMAIL_CONFIG, frontendUrl } from "./template-config";
 import { baseTemplate, tableRow, alertBox } from "./base-template";
 
 export type LowStockSeverity = "critical" | "low";
@@ -101,12 +101,12 @@ export function lowStockDigestTemplate(data: LowStockDigestData): string {
   `;
 
   return baseTemplate({
-    title: `${heading} — WineOps`,
+    title: `${heading} — Mudavym`,
     preheader: `${critical.length} critical, ${low.length} low`,
     content,
     ctaButton: {
       text: "View Inventory",
-      url: data.inventoryUrl || "#",
+      url: data.inventoryUrl || `${frontendUrl()}/inventory?filter=low-stock`,
       color: colors.primary,
     },
   });

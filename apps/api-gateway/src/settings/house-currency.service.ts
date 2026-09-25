@@ -1,3 +1,4 @@
+import { restoreArrivalEntry } from "../arrival/restore-entry";
 import {
   BadRequestException,
   Injectable,
@@ -123,6 +124,11 @@ interface HouseRow {
 
 @Injectable()
 export class HouseCurrencyService {
+  /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
+  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
+    return restoreArrivalEntry(this.databaseService, "currency", restaurantId, actorId, batchId, rowId);
+  }
+
   private readonly logger = new Logger(HouseCurrencyService.name);
 
   constructor(

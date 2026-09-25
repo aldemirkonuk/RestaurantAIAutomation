@@ -118,9 +118,21 @@ const QUOTE_COLUMNS =
   "id, product_name_raw, raw_price, normalized_unit_price, source_type, observed_at, vendor_name_raw, provider_id";
 const TILL_LINE_COLUMNS =
   "id, item_name, qty, price, created_at, external_check_id";
+/**
+ * Live checks that carry the sold lines. Non-wine items (cola, coffee, tea,
+ * water — the non-alcoholic register) never enter `pos_unresolved_lines`:
+ * `PosHubService.applyStockEffects` skips `!is_wine` before the unresolved
+ * queue (`pos-hub.service.ts`), so their only durable sale record is
+ * `pos_checks.items`. Q9 (founder 2026-09-22) wires that into the cellar heat
+ * map via this read.
+ */
+const POS_CHECK_COLUMNS =
+  "id, external_check_id, opened_at, closed_at, voided, items";
 
 /** How many lines of one book a single row's record will carry. */
 export const ROW_RECORD_LINE_LIMIT = 400;
+/** How many recent checks to expand when mining `pos_checks.items` for a row. */
+export const POS_CHECK_SCAN_LIMIT = 200;
 
 /** The register read's own cap on each side. The response says if it was hit. */
 export const REGISTER_CATALOGUE_LIMIT = 400;
@@ -761,6 +773,10 @@ export class BeveragesService {
       .from("menu_items")
       .select(MENU_LINE_COLUMNS)
       .eq("restaurant_id", restaurantId)
+      // A discarded line was removed from what guests see; it should not
+      // still surface in this row's own "on the menu" record (migration
+      // 20260922230200, ADR 0160 sec110 item 7).
+      .neq("status", "discarded")
       .limit(ROW_RECORD_LINE_LIMIT);
     if (error) return this.failed("menu", source, error);
 
@@ -953,18 +969,44 @@ export class BeveragesService {
     restaurantId: string,
     label: string,
   ): Promise<BookRecord> {
-    const source = "pos_unresolved_lines";
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("pos_unresolved_lines")
-      .select(TILL_LINE_COLUMNS)
-      .eq("restaurant_id", restaurantId)
-      .eq("resolved", false)
-      .limit(ROW_RECORD_LINE_LIMIT);
-    if (error) return this.failed("pos", source, error);
+    // TWO SOURCES, ONE BOOK. Unresolved wine lines still live in
+    // `pos_unresolved_lines`. Non-wine live sales (non-alcoholic heat map, Q9)
+    // live only in `pos_checks.items` — see POS_CHECK_COLUMNS above.
+    const unresolvedSource = "pos_unresolved_lines";
+    const checksSource = "pos_checks.items";
+    const source = `${unresolvedSource} + ${checksSource}`;
+
+    const client = this.dbService.getClient();
+    const [unresolved, checks] = await Promise.all([
+      client
+        .from("pos_unresolved_lines")
+        .select(TILL_LINE_COLUMNS)
+        .eq("restaurant_id", restaurantId)
+        .eq("resolved", false)
+        .limit(ROW_RECORD_LINE_LIMIT),
+      client
+        .from("pos_checks")
+        .select(POS_CHECK_COLUMNS)
+        .eq("restaurant_id", restaurantId)
+        .limit(POS_CHECK_SCAN_LIMIT),
+    ]);
+
+    if (unresolved.error && checks.error) {
+      return this.failed("pos", source, {
+        message: `${unresolved.error.message}; ${checks.error.message}`,
+        code: unresolved.error.code,
+      });
+    }
+    if (unresolved.error) {
+      return this.failed("pos", unresolvedSource, unresolved.error);
+    }
+    if (checks.error) {
+      return this.failed("pos", checksSource, checks.error);
+    }
 
     const ledger: LedgerEntry[] = [];
-    for (const r of (data ?? []) as Record<string, unknown>[]) {
+
+    for (const r of (unresolved.data ?? []) as Record<string, unknown>[]) {
       const line = seriesStr(r.item_name) ?? "";
       const how = matchLine(label, line);
       if (how === null) continue;
@@ -981,12 +1023,46 @@ export class BeveragesService {
         matchedBy: how,
       });
     }
+
+    for (const check of (checks.data ?? []) as Record<string, unknown>[]) {
+      if (check.voided === true) continue;
+      const at =
+        seriesStr(check.closed_at) ?? seriesStr(check.opened_at) ?? null;
+      const checkId = seriesStr(check.external_check_id);
+      const items = Array.isArray(check.items) ? check.items : [];
+      for (const raw of items) {
+        if (!raw || typeof raw !== "object") continue;
+        const item = raw as Record<string, unknown>;
+        // Wine lines already have a path: mapped → inventory pour, unmapped →
+        // pos_unresolved_lines. Re-reading them from the check would double-
+        // count every unmapped wine. Non-wine (Q9) has only this path.
+        if (item.is_wine === true) continue;
+        const line = seriesStr(item.name) ?? "";
+        const how = matchLine(label, line);
+        if (how === null) continue;
+        const qty = seriesNum(item.qty);
+        const price = seriesNum(item.price);
+        ledger.push({
+          at,
+          label: line,
+          who: null,
+          qty,
+          unitPrice: price,
+          total: qty !== null && price !== null ? qty * price : null,
+          note: checkId,
+          matchedBy: how,
+        });
+        if (ledger.length >= ROW_RECORD_LINE_LIMIT) break;
+      }
+      if (ledger.length >= ROW_RECORD_LINE_LIMIT) break;
+    }
+
     return composeBook({
       book: "pos",
       source,
       ledger,
       emptyReason:
-        "The till has not rung this up. Only UNRESOLVED lines are here, and that is the point: a resolved line was mapped to a wine's inventory row and is counted against that wine instead.",
+        "The till has not rung this up. Unresolved wine lines and live non-wine pos_checks.items were both read; neither names this.",
     });
   }
 }

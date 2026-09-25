@@ -42,6 +42,17 @@ export interface LibraryResolutionInput {
   region?: string | null;
   grapeVariety?: string | null;
   country?: string | null;
+  /**
+   * What the menu itself called this line — one member of
+   * MENU_CATEGORY_VOCABULARY (menus/wine-extract-item.interface.ts).
+   *
+   * NOT part of the identity, so it is deliberately absent from every
+   * signature hash: two houses listing the same bottle under "red" and under
+   * "dessert" are still listing one bottle. It exists solely so a row created
+   * here reaches `wine_classify_beverage_kind()` with something to classify —
+   * see where it is written in `resolveLibraryWinesBatch`.
+   */
+  menuCategory?: string | null;
 }
 
 export interface LibraryResolutionResult {
@@ -819,6 +830,28 @@ export class WineSubmissionsService {
         rowBySignature.set(signatureHash, {
           wine_id: this.generateWineId(),
           name: item.name,
+          // THE WHOLE REASON A MENU UPLOAD CAN CLASSIFY A BEER.
+          //
+          // `beverage_kind` is not settable from here — trg_wine_beverage_kind
+          // recomputes it on every insert and update from exactly two inputs:
+          // `primary_type`, and `data_enrichment->>'menu_category'`
+          // (20260817060000_beverage_kind_classification.sql:115-143). This
+          // path writes `primary_type: "unknown"` by design (it means
+          // *unclassified*, and inventing a style would be a fabrication), so
+          // a row created without a menu_category had NOTHING for the
+          // classifier to read and came out `beverage_kind = 'unknown'`,
+          // `classification_status = 'unclassified'` — every single one.
+          // Measured 2026-09-05 and recorded in .planning/v3.0-TECH-DEBT.md:
+          // 78 unclassified rows, all `source = 'menu_import'`, with the note
+          // that "the real fault is upstream: the bulk-add path writes a
+          // library row without ever asking the classifier". This is that ask.
+          //
+          // Null, never `{}` or a placeholder string: a house whose menu gave
+          // no basis for a category is unclassified, and that is the honest
+          // answer the classifier already has a value for.
+          data_enrichment: item.menuCategory
+            ? { menu_category: item.menuCategory }
+            : null,
           // Same rule as the single-row path above: null, never a
           // placeholder. This is the door 26 of 26 Antalya rows came through.
           // A venue's own row needs it for a second reason (ADR 0130): the

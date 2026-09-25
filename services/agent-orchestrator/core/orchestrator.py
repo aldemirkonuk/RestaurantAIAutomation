@@ -9,7 +9,6 @@ Refactored with:
 - Connection pooling integration
 """
 
-import asyncio
 import os
 from typing import Dict, Any, Optional, Type
 from datetime import datetime
@@ -442,8 +441,10 @@ class AgentOrchestrator:
                 started_count += 1
                 logger.info(f"Started core agent: {agent_name}")
             except Exception as e:
+                if proxy.loaded_instance is not None:
+                    self.agents[agent_name] = proxy.loaded_instance
                 logger.error(f"Failed to start agent {agent_name}: {e}")
-                # Continue starting other agents
+                # Retain a failed loaded instance for health and operator recovery.
 
         # Start the auto-suspend monitor for on-demand agents
         await self.registry.start_suspend_monitor(check_interval=60)
@@ -500,12 +501,12 @@ class AgentOrchestrator:
         if proxy and proxy.is_loaded:
             try:
                 logger.info(f"Restarting agent: {agent_name}")
-                await proxy.stop()
-                await asyncio.sleep(1)
-                instance = await proxy.ensure_started()
+                instance = await proxy.restart()
                 self.agents[agent_name] = instance
                 return {"success": True, "agent": agent_name, "status": proxy.state}
             except Exception as e:
+                if proxy.loaded_instance is not None:
+                    self.agents[agent_name] = proxy.loaded_instance
                 logger.error(f"Failed to restart agent {agent_name}: {e}")
                 return {"success": False, "error": str(e)}
 
@@ -516,8 +517,11 @@ class AgentOrchestrator:
 
         try:
             await agent.stop()
-            await asyncio.sleep(1)
+            if agent.status != AgentStatus.STOPPED:
+                raise RuntimeError("Agent did not reach stopped state")
             await agent.start()
+            if agent.status != AgentStatus.ACTIVE:
+                raise RuntimeError("Agent did not reach active state")
             return {"success": True, "agent": agent_name, "status": agent.status.value}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -537,6 +541,8 @@ class AgentOrchestrator:
             return {"success": False, "error": "Agent not found"}
         try:
             await agent.stop()
+            if agent.status != AgentStatus.STOPPED:
+                raise RuntimeError("Agent did not reach stopped state")
             return {"success": True, "agent": agent_name, "status": "stopped"}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -550,6 +556,8 @@ class AgentOrchestrator:
                 self.agents[agent_name] = instance
                 return {"success": True, "agent": agent_name, "status": "started"}
             except Exception as e:
+                if proxy.loaded_instance is not None:
+                    self.agents[agent_name] = proxy.loaded_instance
                 return {"success": False, "error": str(e)}
 
         return {"success": False, "error": "Agent not registered"}
@@ -638,7 +646,8 @@ class AgentOrchestrator:
         }
         all_healthy = (
             all(
-                health.get("healthy", True) and health.get("state") != "failed"
+                health.get("healthy") is True
+                and health.get("state") not in {"error", "failed", "stopped"}
                 for health in loaded_agents.values()
             )
             if loaded_agents

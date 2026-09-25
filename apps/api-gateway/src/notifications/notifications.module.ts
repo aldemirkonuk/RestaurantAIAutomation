@@ -21,6 +21,7 @@ import { MarketPriceProducer } from "./producers/market-price.producer";
 import { GrantSuspendedProducer } from "./producers/grant-suspended.producer";
 import { AddedToolProducer } from "./producers/added-tool.producer";
 import { ExperimentEndedProducer } from "./producers/experiment-ended.producer";
+import { MailGrantAbsentProducer } from "./producers/mail-grant-absent.producer";
 import { NotificationProducersService } from "./producers/notification-producers.service";
 
 @Module({
@@ -69,6 +70,7 @@ import { NotificationProducersService } from "./producers/notification-producers
     GrantSuspendedProducer,
     AddedToolProducer,
     ExperimentEndedProducer,
+    MailGrantAbsentProducer,
     NotificationProducersService,
   ],
   exports: [
