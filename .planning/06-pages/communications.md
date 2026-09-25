@@ -106,7 +106,7 @@ outbound-email audit trail, labelled by `outbound_email_type`).
 
 ### Redesign feature summary (behind the flag)
 
-- **Mudavym redesign behind `mudavym_design_communications` (OFF)**: four-figure glance strip (threads · drafts waiting · sent-30d · report schedules), the conversation book as a short-row ledger with prose inside the expansion, honest channel-state line (Gmail inbound watch queried, never asserted), scheduled-reports rail
+- **Mudavym redesign behind `mudavym_design_communications` (OFF)**: four-figure glance strip (threads · drafts waiting · sent-30d · report schedules), the conversation book as a short-row ledger with prose inside the expansion, honest channel-state line (Gmail inbound watch queried, never asserted), scheduled-reports rail **[2026-09-25, ADR 0083 amendment: now a THREE-figure strip — the report-schedules figure, the scheduled-reports rail card and the Gmail inbound-watch line left this page; the watch line reads on `/admin`. See "The house page names the three sources it owns" below.]**
 - **The house email composer** (flag ON, ADR 0118): a wide sheet that writes one
   letter — the sender line first, a recipient chosen **from the vendor book only**
   with "add to the book" inline, a house template picker, a body, and a merge
@@ -1005,3 +1005,18 @@ WhatsApp reply and no rendering of the 24-hour window state; a grep of `apps/web
 for `whatsapp/reply` or `whatsapp/window` returns nothing. That is on the pages build
 backlog, not shipped. See ADR 0121's 2026-09-17 review-trail row for what was fixed and
 what still needs a founder answer.
+
+## The house page names the three sources it owns — 2026-09-25 (ADR 0083 amendment)
+
+Founder, census fork F1, option (a) "amend ADR 0083". The Mudavym page's banner
+names three sources — the conversation book, the thread index, the drafts
+awaiting action — and a real failure of any of them still raises it
+(`useCommsNextData.test.tsx` fails each alone). Off the page, with their
+requests: the **report schedules** (glance figure + rail card; `public.scheduled_reports`
+is created by no migration, so the banner fired for every house) — back when a
+real table exists, tracked in v3.0-TECH-DEBT "Scheduled reports is a dead
+feature" and by `check_queried_tables_exist.py` KNOWN_MISSING; and the **Gmail
+inbound-watch line**, now a row on the admin desk ([[admin]]). The legacy page's
+Scheduled Reports tab (§1a) is unchanged and leaves at the ADR 0149 cutover.
+Nightly manifest: "Saved schedules could not be loaded" removed from this page's
+`failed_read`. Supersedes #457's blocked attempt.

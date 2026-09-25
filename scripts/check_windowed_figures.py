@@ -303,10 +303,11 @@ PAGES = (
         floor_markers=("GE",),
         nullable_contract={
             # Every glance figure must be able to say it does not know. The page
-            # has FIVE sources and only one of them used to have a failure
+            # had FIVE sources and only one of them used to have a failure
             # surface, so four figures rendered a failure as the em dash the ADR
-            # reserves for "has not answered".
-            "CommsGlance": ["threads", "draftsPending", "sentLast30", "schedules"],
+            # reserves for "has not answered". Since the ADR 0083 amendment of
+            # 2026-09-25 it owns three; the schedules figure left with its card.
+            "CommsGlance": ["threads", "draftsPending", "sentLast30"],
         },
         tenant_tokens=("rid", "restaurantId"),
         tenant_keyed=True,
@@ -810,7 +811,21 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
         )
     bodies = hook_bodies + [b for src in renderer_src.values() for b in query_bodies(src)]
     keys = [k for b in bodies for k in query_keys(b)]
-    if not keys:
+    # A page whose EVERY cache bucket lives in a declared shared hook has no
+    # page-local key to judge, and that is a shape, not a blind spot: W7 below
+    # reads those hooks' keys and raises CannotCheck itself when one holds none.
+    # /communications took this shape on 2026-09-25 (ADR 0083 amendment), when
+    # its two page-local reads — the report schedules and the Gmail watch —
+    # left the page. The exemption needs BOTH halves: no query call anywhere in
+    # the page's files (so an unparseable one still refuses below) AND at least
+    # one declared shared hook (so a page with no reads at all still refuses).
+    local_query_call = any(
+        re.search(r"\buse(?:Infinite)?Query\b", src)
+        for src in [hooks_src, *renderer_src.values()]
+    )
+    if not keys and not local_query_call and page.imported_query_hooks:
+        pass
+    elif not keys:
         raise CannotCheck(
             f"no `queryKey: [...]` found in any parsed useQuery in {page.name}'s hook "
             "or renderers. W6 would pass vacuously, which is how /receipts kept three "
@@ -961,22 +976,24 @@ export interface CommsGlance {
   draftsPending: number | null;
   sentLast30: number | null;
   sentLast30Truncated: boolean;
-  schedules: number | null;
 }
 
 export function useCommsNextData() {
-  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
-  const schedulesQ = useQuery<ScheduledReport[]>({
-    queryKey: ['report-schedules', restaurantId],
+  const historyQ = useProcurementConversationHistory();
+  const threadsQ = useConversationThreads();
+  const activeQ = useActiveConversations();
+  const truncated = (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS;
+  return { truncated, historyQ, threadsQ, activeQ };
+}
+"""
+
+# A page-local read added back to the comms hook. Since 2026-09-25 the page has
+# none (every bucket is a declared shared hook, W7), so W6's only job there is
+# to judge one the day it returns.
+COMMS_LOCAL_QUERY = """  const schedulesQ = useQuery<ScheduledReport[]>({
+    queryKey: ['report-schedules'],
     queryFn: listReportSchedules,
   });
-  const gmailQ = useQuery<{ configured: boolean }>({
-    queryKey: ['comms-gmail-watch-status', restaurantId],
-    queryFn: async () => (await apiClient.get('/x')).data,
-  });
-  const truncated = (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS;
-  return { truncated, schedulesQ, gmailQ };
-}
 """
 
 # The header deliberately says MERGE and the body calls GET: both contain the
@@ -1586,12 +1603,45 @@ def self_test() -> int:
         "clean",
     )
     case(
-        "W6 the comms schedules key lost its tenant",
+        "W6 a page-local comms read returns without its tenant",
         lambda t: (t / _CMS.hooks).write_text(
-            CLEAN_COMMS_HOOKS.replace("'report-schedules', restaurantId]", "'report-schedules']"),
+            CLEAN_COMMS_HOOKS.replace(
+                "  const truncated =", COMMS_LOCAL_QUERY + "  const truncated ="
+            ),
             encoding="utf-8",
         ),
         "violation",
+        "report-schedules",
+    )
+    case(
+        "W6 a page-local comms read with its tenant is judged clean",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace(
+                "  const truncated =",
+                COMMS_LOCAL_QUERY.replace("['report-schedules']", "['report-schedules', restaurantId]")
+                + "  const truncated =",
+            ),
+            encoding="utf-8",
+        ),
+        "clean",
+    )
+    case(
+        "W6 an unparseable page-local comms read still refuses",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace("  const truncated =", "  const q = useQuery(opts);\n  const truncated ="),
+            encoding="utf-8",
+        ),
+        "cannot-check",
+    )
+    case(
+        "W6 a keyless page-local comms read is not excused by the shared hooks",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace(
+                "  const truncated =", "  const q = useQuery({ queryFn: listReportSchedules });\n  const truncated ="
+            ),
+            encoding="utf-8",
+        ),
+        "cannot-check",
     )
     case(
         "W2 the comms floor marker was deleted but its IMPORT remained",

@@ -1,19 +1,20 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), role: 'owner', operator: false }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), role: 'owner', operator: false, mailWatch: true }));
 vi.mock('@/services/api/client', () => ({ default: { get: mocks.get, post: mocks.post }, getErrorMessage: (error: Error) => error.message }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { userId: 'operator-id', restaurantId: 'house-id', role: mocks.role } }) }));
 import AdminDesk from './AdminDesk';
 
 beforeEach(() => {
-  mocks.role = 'owner'; mocks.operator = false; mocks.post.mockReset();
+  mocks.role = 'owner'; mocks.operator = false; mocks.mailWatch = true; mocks.post.mockReset();
   mocks.get.mockReset().mockImplementation(async (path: string) => {
     if (path === '/health/access') return { data: { platformOperator: mocks.operator } };
     if (path === '/health/agents') return { data: { agents: [{ agent_name: 'inventory', version: '1', status: 'idle', healthy: true }], observedAt: '2026-09-13T20:00:00Z', scope: 'platform' } };
     if (path === '/health/providers') return { data: { providers: [{ id: 'claude', name: 'Studio Vision', desc: 'Model', status: 'Configured · not probed', configured: true }] } };
     if (path === '/health/ready') return { data: { status: 'ready', checkedAt: '2026-09-13T20:00:00Z', bootedAt: '2026-09-13T19:00:00Z', commit: 'abc123', checks: { database: 'reachable' } } };
     if (path === '/health/agent-operations') return { data: { operations: [] } };
+    if (path === '/communications/webhooks/gmail/status') return { data: { configured: mocks.mailWatch, service: 'gmail-watch' } };
     throw new Error(`Unexpected path ${path}`);
   });
 });
@@ -21,6 +22,41 @@ const open = () => render(<MemoryRouter><AdminDesk /></MemoryRouter>);
 const asVisible = () => Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
 
 afterEach(() => { asVisible(); vi.useRealTimers(); });
+
+describe('the Gmail inbound watch (moved here from /communications, ADR 0083 amended 2026-09-25)', () => {
+  const watchRow = () => screen.getByTestId('desk-mail-watch');
+  it('reads the watch status and says configured', async () => {
+    open(); await screen.findByText('inventory');
+    await waitFor(() => expect(watchRow()).toHaveTextContent('Configured'));
+    expect(mocks.get.mock.calls.some(([path]) => path === '/communications/webhooks/gmail/status')).toBe(true);
+    expect(screen.getByText(/does not prove a reply has arrived/)).toBeInTheDocument();
+  });
+  it('says not configured in words when the gateway answers false', async () => {
+    mocks.mailWatch = false;
+    open(); await screen.findByText('inventory');
+    await waitFor(() => expect(watchRow()).toHaveTextContent('Not configured'));
+  });
+  it('says a failed status read is a failure, never a configured or unconfigured watch', async () => {
+    const base = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation((path, config) => path === '/communications/webhooks/gmail/status' ? Promise.reject(new Error('Service unavailable')) : base(path, config));
+    open(); await screen.findByText(/The Gmail watch status could not be read/);
+    expect(watchRow()).toHaveTextContent('Unavailable');
+    expect(watchRow()).not.toHaveTextContent(/configured/i);
+  });
+  it('keeps the last watch reading in view, marked stale, when a re-read fails', async () => {
+    open(); await screen.findByText('inventory');
+    await waitFor(() => expect(watchRow()).toHaveTextContent('Configured'));
+    const base = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation((path, config) => path === '/communications/webhooks/gmail/status' ? Promise.reject(new Error('Service unavailable')) : base(path, config));
+    fireEvent.click(screen.getByRole('button', { name: 'Read again' }));
+    await screen.findByText(/Gmail watch re-read failed, showing the last reading/);
+    expect(watchRow()).toHaveTextContent('Configured');
+  });
+  it('is not read for a manager', async () => {
+    mocks.role = 'manager'; open(); await screen.findByText(/This desk is available/);
+    expect(mocks.get.mock.calls.some(([path]) => path === '/communications/webhooks/gmail/status')).toBe(false);
+  });
+});
 
 describe('the operations desk', () => {
   it('shows measured health to an owner without platform controls', async () => {
