@@ -242,9 +242,9 @@ const SOLD: CellarColumn = {
   label: 'Sold',
   kind: 'figure',
   side: 'house',
-  source: 'pos_unresolved_lines.qty',
+  source: 'pos_unresolved_lines.qty + pos_checks.items.qty',
   meaning:
-    'How many the till has rung up. Unresolved lines only, and that is the point: a resolved line was mapped to a wine and is counted against that wine instead.',
+    'How many the till has rung up. Unresolved wine lines plus live pos_checks.items (non-wine sales never enter the unresolved queue — Q9).',
   fill: null,
   on: true,
   why: '',
@@ -256,9 +256,9 @@ const CHARGED: CellarColumn = {
   label: 'Taken',
   kind: 'figure',
   side: 'house',
-  source: 'pos_unresolved_lines.price · qty',
+  source: 'pos_unresolved_lines.price · qty + pos_checks.items',
   meaning:
-    'What the till actually took for it — the price charged, not the price listed. The two differ every time somebody comps, discounts or rings the wrong button, and the difference is the only place a menu price is ever checked.',
+    'What the till actually took for it — the price charged, not the price listed. The two differ every time somebody comps, discounts or rings the wrong button, and the difference is the only place a menu price is ever checked. Non-wine lines are read from pos_checks.items (Q9).',
   fill: null,
   on: true,
   why: '',

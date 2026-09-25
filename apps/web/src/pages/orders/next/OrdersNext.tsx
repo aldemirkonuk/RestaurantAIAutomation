@@ -22,21 +22,24 @@
  * wired to NOTHING and says so.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { HoldToApprove, Wordmark } from '@/components/mudavym';
 import { AgreementSheet } from './AgreementSheet';
 import { BulkApproveBar } from './BulkApproveBar';
 import { DraftRail } from './DraftRail';
 import { LedgerRow } from './LedgerRow';
 import { RecurrenceSheet } from './RecurrenceSheet';
+import { ReceiptSheet } from './ReceiptSheet';
 import { ResponsesSheet } from './ResponsesSheet';
 import { StageSpine, type SpineStation } from './StageSpine';
 import { Tally } from './Tally';
 import { EM, MONO, SANS, SERIF, fmtMoneyWhole } from './format';
 import { emptyStationSentence } from './recurrence';
-import { useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
+import { STAGES, useOrdersNextData, type OrderRowVM } from './useOrdersNextData';
 
 const monthName = new Intl.DateTimeFormat('en-GB', { month: 'long' });
+const VALID_STATIONS = new Set<string>([...STAGES, 'recurring']);
 
 /** The die with nothing behind it — clearly guarded demo state. */
 function RehearsalCard() {
@@ -106,7 +109,32 @@ function RehearsalCard() {
 
 export default function OrdersNext() {
   const data = useOrdersNextData();
-  const [station, setStation] = useState<SpineStation | null>(null);
+  /**
+   * A single order asked for from OUTSIDE the ledger — an email/SMS/push deep
+   * link (`/orders/:id`, App.tsx) or a hand-off from another page that has not
+   * been taught the path form yet (RcManagerQueue's "Open the order" still
+   * sends `?order=`, RcManagerQueue.tsx:411). The path param wins when both are
+   * somehow present. Read once; changing tabs mid-session is not this page's
+   * job to react to.
+   */
+  const { id: routeOrderId } = useParams<{ id?: string }>();
+  const [searchParams] = useSearchParams();
+  const targetOrderId = routeOrderId ?? searchParams.get('order');
+  /** Which target id this page has already acted on, so a manual collapse by
+   *  the person afterwards is not fought by re-expanding on every render. */
+  const handledTargetRef = useRef<string | null>(null);
+  const [station, setStation] = useState<SpineStation | null>(() => {
+    // A specific order (above) decides its own station once the book loads —
+    // an initial `?station=` would only be overwritten a beat later, so it
+    // is not read at all when a target id is also present.
+    if (targetOrderId) return null;
+    // `tab` is an alias for `station`: scheduled-tasks.service.ts's in-app
+    // notification for a recurring order sends `?tab=recurring` while
+    // recurring-order.template.ts's email for the SAME event sends
+    // `?station=recurring` — two spellings for one intent.
+    const requested = searchParams.get('station') ?? searchParams.get('tab');
+    return requested && VALID_STATIONS.has(requested) ? (requested as SpineStation) : null;
+  });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
@@ -119,6 +147,8 @@ export default function OrdersNext() {
   const [responsesFor, setResponsesFor] = useState<string | null>(null);
   /** Which order's recurrence is open. One sheet for the page, as above. */
   const [recurrenceFor, setRecurrenceFor] = useState<string | null>(null);
+  /** Which order's receipt is open. One sheet for the page, as above. */
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
 
   const visibleRows = useMemo(() => {
     const byDate = (a: OrderRowVM, b: OrderRowVM) =>
@@ -138,10 +168,56 @@ export default function OrdersNext() {
     [data.rows, recurrenceFor],
   );
 
+  const receiptRow = useMemo(
+    () => (receiptFor === null ? null : (data.rows.find((r) => r.id === receiptFor) ?? null)),
+    [data.rows, receiptFor],
+  );
+
   const selectedRows = useMemo(
     () => data.rows.filter((r) => selected.has(r.id) && r.stage === 'pending' && !r.recurring),
     [data.rows, selected],
   );
+
+  const targetRow = useMemo(
+    () => (targetOrderId ? (data.rows.find((r) => r.id === targetOrderId) ?? null) : null),
+    [data.rows, targetOrderId],
+  );
+  /**
+   * A read that CAME BACK with rows, found nothing matching — not "still
+   * loading" and not "the fetch failed" (both are said elsewhere).
+   *
+   * This does NOT mean the order does not exist or is foreign: `data.rows` is
+   * only the first page the list endpoint returns (`services/api/orders.ts`
+   * sends no `limit`; the gateway defaults to 50, newest first —
+   * `procurement.service.ts`), so a real order of this house that is merely
+   * older than the 50 most recent looks identical, from here, to one that
+   * truly does not exist or belongs to another house. The banner below says
+   * only what was actually checked — how many rows were loaded, not a claim
+   * about the order's existence or ownership.
+   */
+  const targetMissing = Boolean(targetOrderId) && data.hasData && !data.isError && !targetRow;
+
+  useEffect(() => {
+    if (!targetOrderId || !targetRow) return;
+    if (handledTargetRef.current === targetOrderId) return;
+    handledTargetRef.current = targetOrderId;
+    if (targetRow.recurring) setStation('recurring');
+    else if (station !== null && station !== targetRow.stage) setStation(null);
+    setExpandedId(targetRow.id);
+    // Deferred a tick so the row (now visible via the station change above)
+    // has actually mounted before the browser is asked to scroll to it.
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(`order-row-${targetRow.id}`);
+      // `scrollIntoView` is not universal (jsdom's test DOM has none of it) —
+      // a page that scrolls nowhere is a much smaller honesty gap than one
+      // that throws.
+      if (el && typeof el.scrollIntoView === 'function') {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }, 0);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetOrderId, targetRow]);
 
   const pendingKnownEmpty = data.hasData && data.counts.pending === 0;
   const showRehearsal = data.isError || pendingKnownEmpty;
@@ -271,6 +347,10 @@ export default function OrdersNext() {
           />
         )}
 
+        {receiptRow && (
+          <ReceiptSheet open onClose={() => setReceiptFor(null)} row={receiptRow} />
+        )}
+
         {/* ── the gateway, when it cannot be reached, is said plainly ──── */}
         {data.isError && (
           <div
@@ -302,6 +382,49 @@ export default function OrdersNext() {
             >
               Try again
             </button>
+          </div>
+        )}
+
+        {/* ── a link asked for ONE order, and it is not among the rows this
+            page loaded ── says only what was checked (§ targetMissing
+            above): the list read is one page, so "not loaded here" is never
+            widened into "does not exist" or "not this house's". */}
+        {targetMissing && (
+          <div
+            role="alert"
+            data-testid="target-order-missing"
+            className="mb-4 rounded-xl px-4 py-3"
+            style={{
+              fontFamily: SANS,
+              fontSize: 12.5,
+              color: 'var(--ink-2, #4F473C)',
+              border: '1px solid var(--paper-2, #EAE4D8)',
+              background: 'var(--paper-1, #F3EFE6)',
+            }}
+          >
+            Order {targetOrderId} was not among the {data.rows.length} most recently loaded
+            orders — it may exist further back, or belong to a different house. Showing every
+            loaded order below instead.
+          </div>
+        )}
+
+        {/* ── the one asked for exists, but the ledger never lists a
+            cancelled order — the count above is where it is kept ──────── */}
+        {targetRow && targetRow.stage === 'cancelled' && (
+          <div
+            role="status"
+            data-testid="target-order-cancelled"
+            className="mb-4 rounded-xl px-4 py-3"
+            style={{
+              fontFamily: SANS,
+              fontSize: 12.5,
+              color: 'var(--ink-2, #4F473C)',
+              border: '1px solid var(--paper-2, #EAE4D8)',
+              background: 'var(--paper-1, #F3EFE6)',
+            }}
+          >
+            Order {targetRow.orderNumber || targetRow.id.slice(0, 8)} is cancelled, so the ledger
+            does not list it — it is kept in the cancelled count below.
           </div>
         )}
 
@@ -360,19 +483,25 @@ export default function OrdersNext() {
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                 {visibleRows.map((row) => (
-                  <LedgerRow
-                    key={row.id}
-                    row={row}
-                    expanded={expandedId === row.id}
-                    onToggle={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
-                    selected={selected.has(row.id)}
-                    onSelectChange={(next) => setRowSelected(row.id, next)}
-                    bulkRunning={bulkRunning}
-                    approval={data.approvalByOrder?.get(row.id)}
-                    onOpenResponses={() => setResponsesFor(row.id)}
-                    onOpenRecurrence={() => setRecurrenceFor(row.id)}
-                    approvalGateError={data.approvalGateError}
-                  />
+                  // The id a deep link scrolls to (see the targetOrderId
+                  // effect above) — on this wrapper, not LedgerRow itself, so
+                  // the row component stays free of a concern that is this
+                  // page's, not its rows'.
+                  <div key={row.id} id={`order-row-${row.id}`} data-testid={`order-row-${row.id}`}>
+                    <LedgerRow
+                      row={row}
+                      expanded={expandedId === row.id}
+                      onToggle={() => setExpandedId((cur) => (cur === row.id ? null : row.id))}
+                      selected={selected.has(row.id)}
+                      onSelectChange={(next) => setRowSelected(row.id, next)}
+                      bulkRunning={bulkRunning}
+                      approval={data.approvalByOrder?.get(row.id)}
+                      onOpenResponses={() => setResponsesFor(row.id)}
+                      onOpenRecurrence={() => setRecurrenceFor(row.id)}
+                      onOpenReceipt={() => setReceiptFor(row.id)}
+                      approvalGateError={data.approvalGateError}
+                    />
+                  </div>
                 ))}
               </div>
             )}

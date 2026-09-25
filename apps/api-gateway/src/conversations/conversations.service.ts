@@ -1,4 +1,9 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import axios from "axios";
 
@@ -152,6 +157,47 @@ export class ConversationsService {
           `${status ?? "no response"}${permanent ? ", route not served" : ""})`,
       );
     }
+  }
+
+  /**
+   * A conversation belongs to one house, and a caller may act only on their own
+   * house's (ADR 0147: the token decides the restaurant). Every by-id method
+   * below takes the caller's `restaurantId` as a REQUIRED argument and filters
+   * on it, so forgetting the house is a compile error rather than an unfiltered
+   * query. A row in another house answers exactly like a row that does not
+   * exist — a 404, never a 403, so the answer cannot confirm an id.
+   */
+  private requireHouse(restaurantId: string | undefined | null): string {
+    if (!restaurantId) {
+      throw new Error("restaurantId is required to act on a conversation");
+    }
+    return restaurantId;
+  }
+
+  private notFound(): NotFoundException {
+    return new NotFoundException("Conversation not found");
+  }
+
+  /**
+   * Update one conversation, only if it is this house's. `.eq("id")` alone
+   * matches nothing-or-anything without an error, so the affected row is read
+   * back: zero rows is "not this house's" and never a quiet success.
+   */
+  private async updateOwned(
+    conversationId: string,
+    restaurantId: string,
+    updates: Record<string, unknown>,
+  ): Promise<{ error?: string }> {
+    if (!UUID_RE.test(conversationId)) throw this.notFound();
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .update(updates)
+      .eq("id", conversationId)
+      .eq("restaurant_id", restaurantId)
+      .select("id");
+    if (error) return { error: error.message || "update failed" };
+    if (!data || data.length === 0) throw this.notFound();
+    return {};
   }
 
   // ── New: Listing & Filtering ──────────────────────────────────────
@@ -465,18 +511,20 @@ export class ConversationsService {
   /**
    * Regenerate summary for a conversation's thread
    */
-  async regenerateSummary(conversationId: string) {
+  async regenerateSummary(conversationId: string, restaurantId: string) {
+    this.requireHouse(restaurantId);
     try {
-      // Get the thread_id for this conversation
+      // Get the thread_id for this conversation — this house's only.
+      if (!UUID_RE.test(conversationId)) throw this.notFound();
       const { data: conv, error } = await this.databaseService.supabase
         .from("procurement_conversations")
         .select("id, order_id")
         .eq("id", conversationId)
-        .single();
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
 
-      if (error || !conv) {
-        return { success: false, error: "Conversation not found" };
-      }
+      if (error) throw new Error(error.message);
+      if (!conv) throw this.notFound();
 
       // Publish event to trigger summarization in the EmailParsingAgent.
       // If this does not land, nothing was requested of anything — saying
@@ -576,9 +624,15 @@ export class ConversationsService {
   }
 
   /**
-   * Get conversation by ID
+   * Get conversation by ID, if it is this house's. Null is "not found" — the
+   * same answer for a missing id and another house's; a failed read throws.
    */
-  async getConversation(conversationId: string): Promise<any> {
+  async getConversation(
+    conversationId: string,
+    restaurantId: string,
+  ): Promise<any | null> {
+    this.requireHouse(restaurantId);
+    if (!UUID_RE.test(conversationId)) return null;
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_conversations")
@@ -602,14 +656,15 @@ export class ConversationsService {
         `,
         )
         .eq("id", conversationId)
-        .single();
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
 
       if (error) {
         this.logger.error(`Supabase error: ${error.message}`);
         throw new Error(error.message);
       }
 
-      return data;
+      return data ?? null;
     } catch (error) {
       this.logger.error(`Failed to get conversation: ${error.message}`);
       throw error;
@@ -617,11 +672,13 @@ export class ConversationsService {
   }
 
   /**
-   * Get all pending conversations
+   * Get this house's pending conversations. The house is required: the filter
+   * used to apply only `if (restaurantId)`, so omitting it listed every house's.
    */
-  async getPendingConversations(restaurantId?: string): Promise<any[]> {
+  async getPendingConversations(restaurantId: string): Promise<any[]> {
+    this.requireHouse(restaurantId);
     try {
-      let query = this.databaseService.supabase
+      const query = this.databaseService.supabase
         .from("procurement_conversations")
         .select(
           `
@@ -631,11 +688,8 @@ export class ConversationsService {
         `,
         )
         .eq("delivery_status", "pending")
+        .eq("restaurant_id", restaurantId)
         .order("created_at", { ascending: true });
-
-      if (restaurantId) {
-        query = query.eq("restaurant_id", restaurantId);
-      }
 
       const { data, error } = await query;
 
@@ -646,10 +700,18 @@ export class ConversationsService {
 
       return data || [];
     } catch (error) {
+      // A failed read is not an empty queue. This used to `return []` here,
+      // so `GET /conversations/pending/list` answered `{ count: 0 }` — "no
+      // vendor is waiting on you" — over a read that never happened, and the
+      // house counter (sketch 119 D) would have printed that zero as an
+      // answer. The controller turns the throw into its own 500; the mobile
+      // feed keeps its own catch (mobile.service.ts), which is its call.
       this.logger.error(
         `Failed to get pending conversations: ${error.message}`,
       );
-      return [];
+      throw new ServiceUnavailableException(
+        "Could not read the replies waiting on this house",
+      );
     }
   }
 
@@ -659,8 +721,10 @@ export class ConversationsService {
    */
   async approveConversation(
     conversationId: string,
+    restaurantId: string,
     options: ApprovalOptions,
   ): Promise<{ success: boolean; messageSent: boolean; error?: string }> {
+    this.requireHouse(restaurantId);
     try {
       // 1. Update conversation in database
       const updates: any = {
@@ -680,7 +744,11 @@ export class ConversationsService {
       }
 
       // Calculate time to approval
-      const conversation = await this.getConversation(conversationId);
+      const conversation = await this.getConversation(
+        conversationId,
+        restaurantId,
+      );
+      if (!conversation) throw this.notFound();
       if (conversation.paused_at) {
         const pausedAt = new Date(conversation.paused_at);
         const now = new Date();
@@ -690,19 +758,18 @@ export class ConversationsService {
         updates.time_to_approval_seconds = diffSeconds;
       }
 
-      const { error: updateError } = await this.databaseService.supabase
-        .from("procurement_conversations")
-        .update(updates)
-        .eq("id", conversationId);
+      const { error: updateError } = await this.updateOwned(
+        conversationId,
+        restaurantId,
+        updates,
+      );
 
       if (updateError) {
-        this.logger.error(
-          `Failed to update conversation: ${updateError.message}`,
-        );
+        this.logger.error(`Failed to update conversation: ${updateError}`);
         return {
           success: false,
           messageSent: false,
-          error: updateError.message,
+          error: updateError,
         };
       }
 
@@ -744,6 +811,7 @@ export class ConversationsService {
       // still fail downstream — so we do not claim the message went out.
       return { success: true, messageSent: false };
     } catch (error) {
+      if (error instanceof NotFoundException) throw error;
       this.logger.error(`Failed to approve conversation: ${error.message}`);
       return { success: false, messageSent: false, error: error.message };
     }
@@ -754,9 +822,11 @@ export class ConversationsService {
    */
   async editMessage(
     conversationId: string,
+    restaurantId: string,
     newMessage: string,
     managerNotes?: string,
   ): Promise<{ success: boolean; error?: string }> {
+    this.requireHouse(restaurantId);
     try {
       const updates: any = {
         manager_approved_message: newMessage,
@@ -766,18 +836,20 @@ export class ConversationsService {
         updates.manager_notes = managerNotes;
       }
 
-      const { error } = await this.databaseService.supabase
-        .from("procurement_conversations")
-        .update(updates)
-        .eq("id", conversationId);
+      const { error } = await this.updateOwned(
+        conversationId,
+        restaurantId,
+        updates,
+      );
 
       if (error) {
-        this.logger.error(`Failed to edit message: ${error.message}`);
-        return { success: false, error: error.message };
+        this.logger.error(`Failed to edit message: ${error}`);
+        return { success: false, error };
       }
 
       return { success: true };
     } catch (error) {
+      if (error instanceof NotFoundException) throw error;
       this.logger.error(`Failed to edit message: ${error.message}`);
       return { success: false, error: error.message };
     }
@@ -789,9 +861,11 @@ export class ConversationsService {
    */
   async rejectConversation(
     conversationId: string,
+    restaurantId: string,
     reason?: string,
     managerNotes?: string,
   ): Promise<{ success: boolean; error?: string }> {
+    this.requireHouse(restaurantId);
     try {
       // 1. Update conversation in database
       const updates: any = {
@@ -807,16 +881,15 @@ export class ConversationsService {
         updates.manager_notes = managerNotes;
       }
 
-      const { error: updateError } = await this.databaseService.supabase
-        .from("procurement_conversations")
-        .update(updates)
-        .eq("id", conversationId);
+      const { error: updateError } = await this.updateOwned(
+        conversationId,
+        restaurantId,
+        updates,
+      );
 
       if (updateError) {
-        this.logger.error(
-          `Failed to update conversation: ${updateError.message}`,
-        );
-        return { success: false, error: updateError.message };
+        this.logger.error(`Failed to update conversation: ${updateError}`);
+        return { success: false, error: updateError };
       }
 
       // 2. Publish conversation.rejected so the procurement agent resumes.
@@ -846,6 +919,7 @@ export class ConversationsService {
 
       return { success: true };
     } catch (error) {
+      if (error instanceof NotFoundException) throw error;
       this.logger.error(`Failed to reject conversation: ${error.message}`);
       return { success: false, error: error.message };
     }

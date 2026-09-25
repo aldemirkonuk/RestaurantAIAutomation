@@ -2,7 +2,12 @@
  * Inventory Audit Reminder Email Template
  */
 
-import { EMAIL_CONFIG, formatDate, formatCurrency } from "./template-config";
+import {
+  EMAIL_CONFIG,
+  formatDate,
+  formatCurrency,
+  frontendUrl,
+} from "./template-config";
 import { baseTemplate, metricBox, alertBox } from "./base-template";
 
 export interface InventoryAuditData {
@@ -152,7 +157,7 @@ export function inventoryAuditTemplate(data: InventoryAuditData): string {
     content,
     ctaButton: {
       text: "Start Audit",
-      url: "#",
+      url: `${frontendUrl()}/inventory`,
       color: colors.primary,
     },
   });

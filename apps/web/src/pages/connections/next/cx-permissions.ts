@@ -91,7 +91,7 @@ export function grantHolds(
   const tail = new Map(declared.map((s) => [s.scope.split('/').pop() ?? s.scope, s.label]));
 
   const may = held.map((raw) => ({
-    text: label.get(raw) ?? tail.get(raw.split('/').pop() ?? raw) ?? raw,
+    text: label.get(raw) ?? tail.get(raw.split('/').pop() ?? raw) ?? 'A permission this page has no plain name for',
     can: true,
   }));
   const allDeclared = held.every(

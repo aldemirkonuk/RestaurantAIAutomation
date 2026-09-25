@@ -15,6 +15,8 @@ export interface InventoryItem extends Wine {
   lastCounted: string | null;
   isActive: boolean;
   marketPrice?: number;
+  /** This house's own bottle price (ADR 0193). Undefined = not set. */
+  menuPriceBottle?: number;
   wac?: number;
   costProvenance?: "invoice" | "estimated";
   lotLocationCount?: number;
@@ -90,9 +92,29 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     lowStockItems: apiLowStock,
     isLoading: inventoryLoading,
     error: inventoryError,
+    summaryError,
+    lowStockError,
+    isPending,
     refetch: refetchInventory,
     updateItem: updateInventoryItem,
   } = useInventoryData();
+
+  // A failed read is an error, not an empty success (CLAUDE.md §9 / ADR
+  // 0149): any of the three reads failing means the figures derived from an
+  // empty `inventory` array below are unknown, not zero. Go-live sweep
+  // 2026-09-18, wave5/live-fix.md — the wave-4 banner keyed on
+  // `inventoryError` alone and missed the summary/low-stock queries.
+  const hasFailedRead = Boolean(inventoryError || summaryError || lowStockError);
+
+  // Fixed 2026-09-19 (wave5/live-confirm.md B2): `hasFailedRead` alone drove
+  // the em-dash figures, but a query with no data yet is ALSO not zero --
+  // it's unknown, whether that's the ordinary first mount or (the measured
+  // defect) a refetch loop that keeps resetting a query to `pending` and
+  // clearing `error` for its duration, in which case `hasFailedRead` reads
+  // false throughout. `figuresUnknown` is for the figures; `hasFailedRead`
+  // keeps its narrower, error-only meaning for the banner, which should not
+  // claim a read "could not be reached" while it is merely still loading.
+  const figuresUnknown = hasFailedRead || isPending;
 
   const excludeRowIdSet = useMemo(
     () => new Set((options.excludeInventoryRowIds ?? []).filter(Boolean)),
@@ -189,6 +211,9 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         saleType: item.saleType ?? fallback.saleType,
         pourSizeMl: item.pourSizeMl ?? fallback.pourSizeMl,
         menuPriceGlass: item.menuPriceGlass ?? fallback.menuPriceGlass,
+        // The house's own bottle price (ADR 0193: menu_price_current on the
+        // row, `menuPriceBottle` on the wire). Never the library's figure.
+        menuPriceBottle: item.menuPriceBottle ?? undefined,
         marketPrice: (item as any).retailPriceAvg ?? undefined,
         wac: (item as any).wac ?? undefined,
         costProvenance: (item as any).costProvenance ?? undefined,
@@ -457,6 +482,10 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     lowStockItems: apiLowStock,
     isLoading: inventoryLoading,
     error: inventoryError,
+    summaryError,
+    lowStockError,
+    hasFailedRead,
+    figuresUnknown,
     refetchInventory,
     updateInventoryItem,
 

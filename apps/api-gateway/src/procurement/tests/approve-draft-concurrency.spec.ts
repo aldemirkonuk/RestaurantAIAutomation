@@ -20,10 +20,14 @@
  */
 
 import { Test, TestingModule } from "@nestjs/testing";
-import { ProcurementService } from "../procurement.service";
+import {
+  ProcurementService,
+  SendRefusedBeforeSendError,
+} from "../procurement.service";
 import { DatabaseService } from "../../database/database.service";
 import { EventsService } from "../../events/events.service";
 import { InventoryLedgerService } from "../../inventory-ledger/inventory-ledger.service";
+import { ConfigService } from "@nestjs/config";
 import { GmailService } from "../../communications/gmail.service";
 
 type Row = Record<string, any>;
@@ -287,6 +291,83 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
 
     // Nothing reached the vendor, so re-approval is safe and expected.
     expect(conversationRow(store).status).toBe("PENDING_APPROVAL");
+  });
+
+  // ── Header refusals (ADR 0172) ────────────────────────────────────────────
+  // mime-headers.ts refuses an address with an interior line break BEFORE
+  // gmail.users.messages.send, so the vendor provably has nothing. That is a
+  // definite refusal: release the draft, and name the header, not Gmail auth.
+  // These run the REAL GmailService.sendEmail with a fake Gmail client.
+  function realGmail() {
+    const gmail = new GmailService({
+      get: () => undefined,
+    } as unknown as ConfigService);
+    const send = jest.fn(async () => ({
+      data: { id: "gmail-1", threadId: "thread-1" },
+    }));
+    Object.assign(gmail as any, {
+      isConfigured: true,
+      senderEmail: "siparis@lokantamudavim.com",
+      gmail: { users: { messages: { send } } },
+    });
+    jest.spyOn((gmail as any).logger, "error").mockImplementation(() => {});
+    jest.spyOn((gmail as any).logger, "log").mockImplementation(() => {});
+    const sendEmail = jest.fn((opts: any) => gmail.sendEmail(opts));
+    return { send, sendEmail };
+  }
+
+  it("releases the draft on a header refusal and blames the header, not GMAIL_REFRESH_TOKEN", async () => {
+    const store = makeStore();
+    conversationRow(store).providers.contact_email =
+      "supplier@bordeaux.com\r\nBcc: attacker@evil.example";
+    const { send, sendEmail } = realGmail();
+    const service = await buildService(store, sendEmail);
+
+    const err = await service
+      .approveDraft(RESTAURANT_ID, ORDER_ID, {} as any)
+      .catch((e: Error) => e);
+
+    expect(err).toBeInstanceOf(SendRefusedBeforeSendError);
+    expect((err as Error).message).toMatch(
+      /Refusing to write the To header: its value contains a line break/,
+    );
+    expect((err as Error).message).toMatch(/Gmail was never called/);
+    expect((err as Error).message).not.toMatch(/GMAIL_REFRESH_TOKEN/);
+    expect((err as Error).message).not.toMatch(/may or may not/);
+    expect(send).not.toHaveBeenCalled();
+    // Definite refusal: re-approvable once the address is fixed, not parked.
+    expect(conversationRow(store).status).toBe("PENDING_APPROVAL");
+  });
+
+  it("classifies a header refusal by type, never by text a vendor controls", async () => {
+    // The refusal phrase inside the vendor's own contact address, then an
+    // AMBIGUOUS Gmail failure: that must still park, or a re-approve could
+    // send the vendor a second purchase order.
+    const store = makeStore();
+    conversationRow(store).providers.contact_email =
+      '"Refusing to write the To header:" <v@x.example>';
+    const sendEmail = jest.fn(async () => ({
+      success: false,
+      error: "socket hang up",
+    }));
+    const service = await buildService(store, sendEmail);
+
+    await expect(
+      service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any),
+    ).rejects.toThrow(/may or may not have reached the vendor/i);
+    expect(conversationRow(store).status).toBe("SEND_UNCONFIRMED");
+  });
+
+  it("sends when the stored vendor address only has a trailing newline", async () => {
+    const store = makeStore();
+    conversationRow(store).providers.contact_email = "supplier@bordeaux.com\n";
+    const { send, sendEmail } = realGmail();
+    const service = await buildService(store, sendEmail);
+
+    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(conversationRow(store).status).toBe("SENT");
   });
 
   // ── Ambiguous send failures ───────────────────────────────────────────────

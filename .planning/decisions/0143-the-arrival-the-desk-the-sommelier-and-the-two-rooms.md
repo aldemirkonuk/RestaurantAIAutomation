@@ -1,6 +1,6 @@
 # 0143 — The arrival, the desk, the sommelier, and the two rooms nobody visits
 
-- **Status:** Locked on six founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 4, 7, 8, 10 and 11 — Studio and SimPOS, the public doors, the contact address, the desk's defaults, and the arrival's threshold, `/onboarding` redirect and tutorial action boxes. See "Founder answers, 2026-09-16" below. Answered, not built.]**
+- **Status:** Locked on six founder calls, 2026-09-12, in session. **[AMENDED 2026-09-16 by [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] rows 4, 7, 8, 10 and 11 — Studio and SimPOS, the public doors, the contact address, the desk's defaults, and the arrival's threshold, `/onboarding` redirect and tutorial action boxes. See "Founder answers, 2026-09-16" below. Answered, not built.]** Extended by two more, 2026-09-18 (ADR 0149 rows 41-42 — see the addendum below).
 - **Numbering:** drafted as 0140; 0140 was claimed on a pushed ref by a peer session (`0140-the-door-outbox-keeps-the-receipt-and-claims-nothing-it-cannot-prove.md`) while this sat unfiled, and 0141 and 0142 were taken by this session's own work. Renumbered rather than collided: see CLAUDE.md 5b, "never reuse a number".
 - **Date:** 2026-09-12
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
@@ -33,7 +33,7 @@ seven separate treatments. One thing to get right, one thing to review, and a
 stranger meets the same house at every door. The component does not exist yet;
 building it is the first task of that group. [2026-09-16, ADR 0149 row 7: the treatment Codex drew for these doors is ratified — see the founder answers of that date below and ADR 0133's amendment. "Both grounds" is read under 0149 row 6: charcoal, and paper only where a surface declares it.]
 
-[2026-09-17, ADR 0149 row 35: **`/login` and `/register` take the flyleaf look of sketch 104 direction C** (same fields and flow; nothing moves), reopening this record's improve-in-place-only reading for those two pages. A sketch (118) goes to the founder before the build; the flyleaf itself still lives on `/get-started`.]
+[2026-09-17, ADR 0149 row 35: **`/login` and `/register` take the flyleaf look of sketch 104 direction C** (same fields and flow; nothing moves), reopening this record's improve-in-place-only reading for those two pages. A sketch (118) goes to the founder before the build; the flyleaf itself still lives on `/get-started`.] [2026-09-19: sketch 118 = **B, the endpaper** (the founder's answer, over the README's recommended A). It is built as `EndpaperShell` on `/login` and `/register`, with Google sign-in also on `/login`'s first page (ADR 0149 row 35).]
 
 `login` and `register` are NOT in this set. The founder rejected their redrawn
 versions (*"It looks too modern... This just looks like an AI web page"*) and
@@ -323,6 +323,66 @@ line on folio 2; **(b)** `/onboarding` redirects permanently to
 first as sketch 115 for his review, one of 0149's gated stops, before it is built. Carried
 also into ADR 0144.
 
+## Founder answer, 2026-09-19 — a stuck batch is resumed only by the manager who sealed it
+
+A crash mid-`apply()` or mid-`undo()` strands a batch at `'applying'` or `'undoing'`
+(section 4's held seal; the resume mechanics are this lane's own C2 build,
+`arrival.service.ts:697-853,882-961`). Resuming is a same-actor operation everywhere in
+this service, not a special case of resume alone: `batch()` (`:446-463`) scopes every
+read of a batch — behind `propose`, `discard`, `apply`, `undo` and `issueApplySeal`
+alike — by `user_id = actor.userId` (`:457`), so a different manager of the same house
+cannot read, let alone act on, a colleague's batch at all. `manage()` (`:69-75`) only
+confirms the caller may administer the house in general; it does not widen who may
+touch one specific batch row. The question this lane's adoption surfaced: if the
+manager who sealed a batch is away when it crashes, should an owner, or any other
+manager, be able to force it forward? **Answered: no. A batch stuck at `'applying'` or
+`'undoing'` is resumed only by the manager who sealed it, as built.** No code follows
+from this answer — it ratifies the existing per-user scoping rather than widening it.
+
+Rejected:
+- an owner override, so an absent manager's crash cannot block the house's own
+  configuration indefinitely — rejected because a second person resuming a batch they
+  did not seal would replay a write that neither the seal challenge nor that person's
+  own hold ever covered for them;
+- any manager of the house resuming any other manager's batch, for the same reason.
+
+Founder's answer, verbatim as recorded: *"stuck Arrival batch = only the sealing
+manager resumes"* (`founder-sketch-decisions-106-115.md`, "Lane answers batch 4,"
+2026-09-19 ~10:00Z).
+
+## Addendum — 2026-09-18: the OD-03 core-line diet does not bind this lane
+
+**ADR 0149 row 41 (founder, 2026-09-18).** The wave-4 close-out pass on this lane's
+Python half (`services/agent-orchestrator/`) asked whether ADR 0039's Track A clause —
+*"Nothing in Track A may extend `core/` while A1 runs"* (`0039-activation-plan-of-record.md`
+line 37, the OD-03 bake-off diet) — binds a product bug-fix lane like this one, which is
+not Track A's OD-03 bake-off work. **Answered: it does not.** The founder accepted the
+growth on this lane as it stands, measured against `origin/main` `60ed83a7`:
+
+- `core/*.py` grew 6817→7048 lines (+231) — mostly the lifecycle bug fixes this lane made
+  (a `_shutdown_event`/`cleanup()` drain fix for `NotificationAgent` and `CalendarAgent`,
+  a forgotten-task-handle fix in `_drain_tasks`, a suspend-monitor `try`/`except` fix);
+- every agent now holds a full local queue's broker deliveries **unacknowledged** rather
+  than dropping the oldest one, so `drop_oldest_on_overflow` (`base_agent.py:221`,
+  default `True`) is now read nowhere in `core/`;
+- `MessageBus` gained a new public method, `stop_consuming()`.
+
+No follow-up ADR is required for this growth. Two smaller items that rode on the same
+question are left as built, not reopened by this ruling: an operator's stop still lasts
+only until the next deploy or process restart, and the gateway's 60s operate-call timeout
+(`AGENT_OPERATION_TIMEOUT_MS`) is not being raised further as part of this answer. Detail
+and the measured line counts live in [[admin#The next build — /admin (Mudavym desk)]];
+this addendum is the decision record CLAUDE.md §5 requires for it.
+
+**ADR 0149 row 42 (founder, 2026-09-18).** A second, narrower question from the same
+pass: keep the gateway's receipt read-repair (reconciling a pending
+`platform_agent_operations` row against the orchestrator's own in-memory record), or drop
+it. **Answered: keep it**, on the condition that a receipt says so plainly when that
+record is gone — most often because the orchestrator restarted since the request was
+made. Built as a caption on the affected receipt in `AdminDesk.tsx`, driven by
+`agent-operations.controller.ts`'s existing `remote: "absent"` reconciliation outcome,
+which was already computed but never surfaced to the reader before this pass.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -332,4 +392,7 @@ also into ADR 0144.
 | 2026-09-12 | — | Renumbered 0140 to 0143 after a peer claimed 0140 on a pushed ref |
 | 2026-09-12 | Aldemir | Three more: on-device speech keeping only the rows (closes 0113 Q6/Q7); only what Mudavym proposed waits for the seal; the auth emails renamed, OD-27 partly lifted |
 | 2026-09-17 | Aldemir | Via ADR 0149 rows 32 and 35: Studio kept as an internal tool; `/login` and `/register` take the flyleaf look (sketch 118 first) |
+| 2026-09-19 | Aldemir | Via ADR 0149 row 35: sketch 118 is **B, the endpaper**, and Google sign-in also goes on `/login`'s first page |
 | 2026-09-16 | Aldemir | Five more, via ADR 0149 (rows 4, 7, 8, 10, 11): SimPOS kept as-is and Studio waiting on the Codex-conversation check; the public doors' treatment ratified; `support@mudavym.com` everywhere; the desk's defaults kept; the threshold on folio 2, `/onboarding` redirecting permanently to `/get-started`, and the tutorial action boxes redrawn for review |
+| 2026-09-18 | Aldemir | ADR 0149 rows 41-42: the OD-03 core-line diet does not bind this product lane, growth accepted as-is; read-repair kept, on condition a gone record reads plainly |
+| 2026-09-19 | Aldemir | A batch a crash stranded at `'applying'` or `'undoing'` is resumed only by the manager who sealed it — ratifies the C2 lane's existing per-user batch scoping, no code change |

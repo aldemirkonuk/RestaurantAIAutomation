@@ -376,8 +376,15 @@ class PushNotificationService:
             provider_name: Provider name
             quantity: Quantity
             final_price: Final negotiated price
-            approve_url: Approval action URL
-            reject_url: Rejection action URL
+            approve_url: Deep link into the order. Approval and rejection both
+                happen THERE, behind the in-app hold-to-approve ceremony
+                (HoldToApprove / ResponsesSheet, OrdersNext.tsx) -- there is
+                no one-tap approve or reject from outside the app, so this and
+                `reject_url` are the same link (notification_agent.py).
+            reject_url: Same link as `approve_url` -- kept as a separate
+                parameter so a future caller CAN pass two different links if
+                a real one-tap scheme is ever built; today's only caller
+                always passes the same value for both.
             conversation_summary: Summary text
 
         Returns:
@@ -386,21 +393,15 @@ class PushNotificationService:
         title = "🍷 Order Requires Approval"
         body = f"{wine_name} - {quantity} bottles from {provider_name} at ${final_price}/bottle"
 
-        # Define action buttons
+        # ONE action, not "Approve"/"Reject"/"View" -- all three used to
+        # navigate to the identical URL, so two of the three buttons promised
+        # a one-tap act neither delivered. The real approve
+        # and reject gestures live behind the hold-to-approve ceremony on the
+        # order page itself.
         actions = [
             {
-                "action": "approve",
-                "title": "✅ Approve",
-                "icon": "/static/icons/approve.png",
-            },
-            {
-                "action": "reject",
-                "title": "❌ Reject",
-                "icon": "/static/icons/reject.png",
-            },
-            {
-                "action": "view",
-                "title": "👁️ View Details",
+                "action": "open",
+                "title": "Open Order",
                 "icon": "/static/icons/view.png",
             },
         ]

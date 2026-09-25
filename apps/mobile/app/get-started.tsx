@@ -149,7 +149,7 @@ export default function GetStartedScreen() {
           </View>
         ) : (
           <View style={{ gap: space.sm }}>
-            <AppText variant="title">How to use WineOps</AppText>
+            <AppText variant="title">How to use Mudavym</AppText>
             <AppText variant="body" tone="secondary" style={{ marginBottom: space.sm }}>
               Short paths for busy shifts — open a surface, get the job done.
             </AppText>

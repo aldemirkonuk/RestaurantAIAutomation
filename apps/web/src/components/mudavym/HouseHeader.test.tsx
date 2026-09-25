@@ -9,8 +9,8 @@
  * actually blind (ADR 0020).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
@@ -60,6 +60,12 @@ import { AuthContext } from '../../contexts/AuthContext';
 import { ThemeProvider } from '../../contexts/ThemeContext';
 import { HouseHeader } from './HouseHeader';
 import { PageGate } from './PageGate';
+import {
+  GROUND_CHOICE_ATTR,
+  resetGroundChoiceForTests,
+  setGroundChoice,
+} from '../../lib/mudavym/groundChoice';
+import { getMudavymShell } from '../../lib/mudavym/shellGround';
 
 /* ── fixtures ───────────────────────────────────────────────────────────── */
 
@@ -394,5 +400,120 @@ describe('PageGate', () => {
     expect(screen.getByTestId('cmd')).toBeTruthy();
     expect(container.querySelector('.mdv-hdr')).toBeNull();
     expect(container.querySelector('.mudavym')).toBeNull();
+  });
+
+  /* ── the round-4 defect: a live switch of the person's choice ────────────
+     ADR 0169 round 5 must-fix #1. `next` here is deliberately the shape
+     eighteen of the twenty real MUDAVYM_PAGES use — `className="mudavym
+     min-h-screen"`, no `data-ground` of its own (ADR 0169's own census table)
+     — so the ONLY source for the header's ground is `readShellGroundFromDom`'s
+     fallback to the person's choice. Before the fix neither test below could
+     pass: PageGate never re-measured on a choice change at all (must-fix's
+     first half), and even the second test's page-change rerender — which DID
+     already sit in the effect's dependency array — still answered charcoal,
+     because the unfixed DOM query found the header's own leftover mirror
+     before it found nothing declared by the page (must-fix's second half,
+     `shellGround.ts`'s file-header note). */
+  describe('repaints on a live ground-choice change (ADR 0169 round 5)', () => {
+    beforeEach(() => {
+      document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
+      resetGroundChoiceForTests();
+    });
+
+    afterEach(() => {
+      document.documentElement.removeAttribute(GROUND_CHOICE_ATTR);
+      resetGroundChoiceForTests();
+    });
+
+    it('goes from charcoal to paper the moment the choice changes, with no page change at all', async () => {
+      window.localStorage.setItem('mudavym.design.orders', '1');
+      setGroundChoice('charcoal');
+      const { container } = mount(
+        <PageGate
+          page="orders"
+          legacy={<p>legacy</p>}
+          next={<main className="mudavym min-h-screen">the page</main>}
+        />,
+        '/orders',
+      );
+      await waitFor(() =>
+        expect((container.querySelector('.mdv-hdr') as HTMLElement | null)?.getAttribute('data-ground')).toBe(
+          'charcoal',
+        ),
+      );
+      expect(getMudavymShell()).toEqual({ on: true, ground: 'charcoal' });
+
+      act(() => {
+        setGroundChoice('paper');
+      });
+
+      await waitFor(() =>
+        expect((container.querySelector('.mdv-hdr') as HTMLElement).getAttribute('data-ground')).toBeNull(),
+      );
+      expect(getMudavymShell()).toEqual({ on: true, ground: 'paper' });
+    });
+
+    it('does not relapse to charcoal on a page change once the choice is paper (the exact round-4 repro)', async () => {
+      window.localStorage.setItem('mudavym.design.orders', '1');
+      window.localStorage.setItem('mudavym.design.providers', '1');
+      setGroundChoice('charcoal');
+      const { container, rerender } = mount(
+        <PageGate
+          page="orders"
+          legacy={<p>legacy</p>}
+          next={<main className="mudavym min-h-screen">the page</main>}
+        />,
+        '/orders',
+      );
+      await waitFor(() =>
+        expect((container.querySelector('.mdv-hdr') as HTMLElement).getAttribute('data-ground')).toBe('charcoal'),
+      );
+
+      act(() => {
+        setGroundChoice('paper');
+      });
+      await waitFor(() =>
+        expect((container.querySelector('.mdv-hdr') as HTMLElement).getAttribute('data-ground')).toBeNull(),
+      );
+
+      // The round-4 reviewer's own repro: rerender with a DIFFERENT `page`,
+      // which already sat in the effect's dependency array before this fix.
+      rerender(
+        <MemoryRouter initialEntries={['/providers']}>
+          <ThemeProvider>
+            <AuthContext.Provider value={auth as unknown as never}>
+              <PageGate
+                page="providers"
+                legacy={<p>legacy</p>}
+                next={<main className="mudavym min-h-screen">the page</main>}
+              />
+            </AuthContext.Provider>
+          </ThemeProvider>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() =>
+        expect((container.querySelector('.mdv-hdr') as HTMLElement).getAttribute('data-ground')).toBeNull(),
+      );
+      expect(getMudavymShell().ground).toBe('paper');
+    });
+  });
+
+  /**
+   * ADR 0149 row 36 go-live, at the DOM level, with NO setup at all — no
+   * localStorage override, no feature-flag mock (`apiClient.post` is not
+   * even stubbed in this file, so a page still reading the flag would throw
+   * here). This is what a real house with no `restaurant_feature_flags` row
+   * actually renders the instant a live page mounts: no legacy, no flash,
+   * one request never made.
+   */
+  it('a LIVE_PAGES page (providers) shows the Mudavym header with zero setup — no override, no flag row', async () => {
+    const { container } = mount(
+      <PageGate page="providers" legacy={<p>legacy</p>} next={<main data-testid="next">the page</main>} />,
+      '/providers',
+    );
+    expect(screen.getByTestId('next')).toBeTruthy();
+    expect(screen.queryByText('legacy')).toBeNull();
+    await waitFor(() => expect(container.querySelector('.mdv-hdr')).toBeTruthy());
   });
 });
