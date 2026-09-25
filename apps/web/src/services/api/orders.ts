@@ -293,6 +293,36 @@ export async function cancelOrder(
   }
 }
 
+/**
+ * The founder's box on the never-arrived cancel (ADR 0207 round 5, question
+ * 20, round 6z): "Add the box (Recommended)" — "We paid for this, we are
+ * owed {total}". Only legal once the SAME order has been cancelled with
+ * `reasonCode=never_arrived`; a repeat call is a no-op that returns the same
+ * claim (`alreadyOpen: true`) rather than opening a second one.
+ */
+export interface NeverArrivedCreditClaimResult {
+  opened: boolean;
+  alreadyOpen: boolean;
+  claim: { id: string; claimedAmount: number; currency: string | null; state: string };
+}
+
+export async function openNeverArrivedCreditClaim(
+  orderId: string,
+): Promise<NeverArrivedCreditClaimResult> {
+  try {
+    const response = await apiClient.post<NeverArrivedCreditClaimResult>(
+      `${ORDERS_PATH}/${orderId}/never-arrived-credit-claim`,
+    );
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const spoken = getErrorMessage(error);
+      if (spoken) error.message = spoken;
+    }
+    throw error;
+  }
+}
+
 /* ===========================================================================
  * ALREADY DELIVERED — 409, AND THE EARLIER DELIVERY TO SHOW INSTEAD
  * ===========================================================================
@@ -601,6 +631,7 @@ export const ordersApi = {
   mintOrderSeal,
   mintOrderCancelSeal,
   cancelOrder,
+  openNeverArrivedCreditClaim,
   markOrderDelivered,
   getPendingOrdersCount,
   getOrdersNeedingApproval,

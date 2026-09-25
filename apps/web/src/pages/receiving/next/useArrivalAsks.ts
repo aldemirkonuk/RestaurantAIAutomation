@@ -38,6 +38,9 @@ export interface ArrivalAsk {
   standing: 'unconfirmed' | 'confirmed_late';
   answeredAt: string | null;
   choices: ArrivalChoice[];
+  /** ADR 0207 round 5 (question 20) — the amount the "We paid for this" box would claim. */
+  totalCost: number | null;
+  currency: string | null;
 }
 
 export interface ArrivalAsksReadout {

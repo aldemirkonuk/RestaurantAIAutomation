@@ -14,6 +14,7 @@ import { BrandMark } from '../brand/BrandMark'
 import { useMudavymShell } from '../../lib/mudavym/shellGround'
 import { useMudavymDesign } from '../../lib/mudavym/useMudavymDesign'
 import { HouseShell } from '../mudavym/HouseShell'
+import { DataTermsSignInGate } from '../settings/DataTermsSignInGate'
 import '../mudavym/sheet.css'
 
 interface DashboardLayoutProps {
@@ -33,8 +34,21 @@ interface DashboardLayoutProps {
  */
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const shellOn = useMudavymDesign('shell')
-  if (shellOn) return <HouseShell>{children}</HouseShell>
-  return <LegacyDashboardLayout>{children}</LegacyDashboardLayout>
+  return (
+    <>
+      {shellOn ? (
+        <HouseShell>{children}</HouseShell>
+      ) : (
+        <LegacyDashboardLayout>{children}</LegacyDashboardLayout>
+      )}
+      {/* ADR 0207 round 5 (question 19) — every owner, at their next
+          sign-in, meets the house's data-and-privacy terms. Mounted here,
+          outside both shells, so the Mudavym shell and the legacy layout
+          both carry it; the sheet is portalled (Panel), so its position is
+          only about mounting once per authenticated layout. */}
+      <DataTermsSignInGate />
+    </>
+  )
 }
 
 function LegacyDashboardLayout({ children }: DashboardLayoutProps) {

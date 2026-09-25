@@ -148,7 +148,9 @@ export class ArrivalAsksService {
         throw new ServiceUnavailableException(ASK_COPY.tooMany);
       const { data, error } = await this.client()
         .from("procurement_orders")
-        .select("id, order_number, provider_id, status, expected_delivery_date")
+        .select(
+          "id, order_number, provider_id, status, expected_delivery_date, total_cost, currency",
+        )
         .eq("restaurant_id", house)
         .in("status", [...ORDER_OPEN_WITH_VENDOR_STATUSES])
         .not("expected_delivery_date", "is", null)

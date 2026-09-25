@@ -31,7 +31,16 @@ export type CreditReason =
   | "damaged"
   | "price_variance"
   | "never_ordered"
-  | "other";
+  | "other"
+  /**
+   * The house paid for an order that was then cancelled `never_arrived`
+   * (ADR 0207 round 5). Distinct from `never_ordered` (a vendor billed for
+   * something the house never placed at all) — this is the reverse: the
+   * house placed it, paid for it, and it never came. Opened only from
+   * `ProcurementService.openNeverArrivedCreditClaim`, never from
+   * `draftClaimFromMatch` (an invoice-match verdict is never this reason).
+   */
+  | "never_arrived";
 
 export interface Credit {
   state: CreditState;

@@ -5,11 +5,45 @@
  * gateway's own rules are in `house-time-zone-and-tone-switch.spec.ts`.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { TimeZoneSection, allZones, zonesOfCountry } from './TimeZoneSection';
 import { MailReadingSection } from './MailReadingSection';
 import type { SettingsNextData } from './useSettingsNextData';
+import type { DataTermsReadout } from '../../../services/api/dataTerms';
+
+/**
+ * ADR 0207 round 5. `MailReadingSection` reads `useDataTerms` (TanStack
+ * Query) to decide whether "Turn on" can call the switch directly or must
+ * open the acceptance sheet instead — mocked rather than wrapped in a
+ * `QueryClientProvider`, matching this file's existing style of stubbing
+ * `SettingsNextData` by hand instead of exercising the real data layer.
+ * `DataTermsAcceptSheet.test.tsx` covers the sheet itself end to end.
+ */
+const dataTermsMock = vi.hoisted(() => ({
+  data: undefined as DataTermsReadout | undefined,
+}));
+vi.mock('../../../hooks/queries/useDataTerms', () => ({
+  useDataTerms: () => ({ data: dataTermsMock.data }),
+  useInvalidateDataTerms: () => vi.fn(),
+}));
+
+function currentReadout(over: Partial<DataTermsReadout> = {}): DataTermsReadout {
+  return {
+    readable: true,
+    reason: null,
+    version: 1,
+    digest: 'a'.repeat(64),
+    statements: [],
+    subprocessors: [],
+    changedSince: {},
+    acceptance: { version: 1, acceptedAt: '2026-09-22T00:00:00Z', acceptedBy: { userId: 'u', name: 'Aldemir' } },
+    current: true,
+    jev: { enabled: true, effective: true, pausedBecause: null },
+    ...over,
+  };
+}
 
 function remote(data: unknown, status = 'ok') {
   return { status, data, error: status === 'error' ? 'gateway unreachable' : null, reload: vi.fn(), set: vi.fn() };
@@ -96,11 +130,25 @@ function mountTone(over: Record<string, unknown> = {}) {
     houseToneScoring: remote(toneReg()),
     ...over,
   } as unknown as SettingsNextData;
-  render(<MailReadingSection data={data} />);
+  // MemoryRouter: the acceptance sheet (ADR 0207 round 5) links to
+  // /privacy, and a `not current` case below mounts it for real.
+  render(
+    <MemoryRouter>
+      <MailReadingSection data={data} />
+    </MemoryRouter>,
+  );
   return { saveToneScoring };
 }
 
 describe('the Mail reading register', () => {
+  beforeEach(() => {
+    // Default: the data-terms read has not resolved. `onTurnOnClick` treats
+    // that the same as "already current" — see MailReadingSection's own
+    // comment — so every pre-existing test below still calls the switch
+    // directly without a single new mock in it.
+    dataTermsMock.data = undefined;
+  });
+
   it('starts off, says nothing is sent, and says what turning it on sends — names removed', () => {
     const { saveToneScoring } = mountTone();
     expect(screen.getByText('Off')).toBeInTheDocument();
@@ -112,10 +160,10 @@ describe('the Mail reading register', () => {
     expect(
       screen.getByText(/A name or topic written in a way this pass does not recognise may not be caught\./),
     ).toBeInTheDocument();
-    // Last call, 2026-09-22: the note says where acceptance is — not yet on
-    // this page — rather than pointing at a Settings section that does not exist.
-    expect(screen.getByText(/accepting them is not on this page yet — so for now Jev stays off\./)).toBeInTheDocument();
-    expect(screen.queryByText(/Settings → Data terms/)).toBeNull();
+    // ADR 0207 round 5 — the sheet is built now; the note points to the
+    // sign-in gate and says the switch is also reachable here.
+    expect(screen.getByText(/every owner meets that sheet at their next sign-in/)).toBeInTheDocument();
+    expect(screen.queryByText(/is not on this page yet/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     expect(saveToneScoring).toHaveBeenCalledWith(true);
   });
@@ -136,5 +184,26 @@ describe('the Mail reading register', () => {
     mountTone({ houseToneScoring: remote(toneReg({ enabled: null, readable: false, reason: 'timeout' })) });
     expect(screen.getByRole('alert')).toHaveTextContent('That is not the same as off.');
     expect(screen.queryByRole('button', { name: /Turn/ })).not.toBeInTheDocument();
+  });
+
+  it('calls the switch directly once the data terms read as current', () => {
+    dataTermsMock.data = currentReadout();
+    const { saveToneScoring } = mountTone();
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
+    expect(saveToneScoring).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole('button', { name: /hold to accept/i })).toBeNull();
+  });
+
+  /**
+   * ADR 0207 round 5 — "Turn on" opens the terms instead of a request that
+   * would only 409 when this house's owner has not accepted the CURRENT
+   * version.
+   */
+  it('opens the terms sheet, and calls no switch, when the data terms are not current', () => {
+    dataTermsMock.data = currentReadout({ current: false });
+    const { saveToneScoring } = mountTone();
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
+    expect(saveToneScoring).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /hold to accept/i })).toBeInTheDocument();
   });
 });

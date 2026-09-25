@@ -29,6 +29,9 @@ interface IncompleteOrder {
   daysPast: number;
   confirmed: boolean;
   choices: { key: string; route?: string }[];
+  /** ADR 0207 round 5 (question 20) — what the "We paid for this" box would claim. */
+  totalCost: number | null;
+  currency: string | null;
 }
 
 interface IncompleteOrdersReadout {
@@ -60,6 +63,7 @@ const drawerStyle = {
 function IncompleteOrderRow({ o }: { o: IncompleteOrder }) {
   const receive = o.choices.find((c) => c.key === 'receive');
   const [cancelling, setCancelling] = useState(false);
+  const [cancelledNote, setCancelledNote] = useState<string | null>(null);
   return (
     <li
       data-testid="incomplete-order"
@@ -95,9 +99,25 @@ function IncompleteOrderRow({ o }: { o: IncompleteOrder }) {
             orderId={o.orderId}
             reasonCode="never_arrived"
             label="Hold to cancel"
+            totalCost={o.totalCost}
+            currency={o.currency}
             onRejected={() => setCancelling(false)}
+            onCreditClaimOpened={(r) =>
+              setCancelledNote(
+                r.ok
+                  ? r.result.alreadyOpen
+                    ? 'A claim for this order was already open — nothing was opened twice.'
+                    : `A credit claim for this order was opened, chasing the vendor for ${r.result.claim.claimedAmount}${r.result.claim.currency ? ` ${r.result.claim.currency}` : ''}.`
+                  : r.message,
+              )
+            }
           />
         </div>
+      )}
+      {cancelledNote && (
+        <p role="status" style={{ margin: '4px 0 0', fontFamily: SANS, fontSize: 11, lineHeight: 1.4, color: 'var(--ink-2, #4F473C)' }}>
+          {cancelledNote}
+        </p>
       )}
     </li>
   );
