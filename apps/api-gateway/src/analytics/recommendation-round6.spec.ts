@@ -20,8 +20,8 @@ import {
  *
  * WHAT THIS FILE PROVES, AND WHAT IT DOES NOT
  * --------------------------------------------
- * The SQL is migration 20260922021000, proven by its own self-asserting
- * test (`supabase/tests/20260922021000_..._test.sql`, T1-T12) and the
+ * The SQL is migration 20260925120600, proven by its own self-asserting
+ * test (`supabase/tests/20260925120600_..._test.sql`, T1-T12) and the
  * PGlite probe (`p4-scratch/pglite-probe/RECS6-note-authors-kept-two-
  * years.mjs`) — that a row past two years really does end up with all four
  * author columns NULL, on one call, and that a row inside two years does not
@@ -51,7 +51,7 @@ describe("round 6: after the sweep clears a note's author, the gate is owner/man
 
   it("after the sweep clears the author column (pinned_by/rated_by/assigned_by = null): the SAME staff member who made the note can no longer touch it", () => {
     // This is exactly the row shape recommendation_actions_forget_old_
-    // creators() (20260922021000) leaves behind on a row past two years:
+    // creators() (20260925120600) leaves behind on a row past two years:
     // the note's value (pinned/feedback/assigned_to) is untouched, only the
     // *_by column is null. Proven at the SQL layer by the migration's own
     // test, T3/T4/T6/T10.
@@ -83,7 +83,7 @@ describe("round 6: after the sweep clears a note's author, the gate is owner/man
   it("round 6 is the SAME sweep, not a second job: one RPC name, called once a day, whose SQL body now reaches four columns instead of one", () => {
     // No new RPC constant exists for the note-author columns — see
     // recommendation-history-retention.ts's ROUND 6 doc comment and
-    // migration 20260922021000's CREATE OR REPLACE of this exact function.
+    // migration 20260925120600's CREATE OR REPLACE of this exact function.
     expect(FORGET_OLD_CREATORS_RPC).toBe(
       "recommendation_actions_forget_old_creators",
     );

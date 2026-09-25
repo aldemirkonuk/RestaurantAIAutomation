@@ -34,7 +34,7 @@ import {
  *   5. staff undo only their own acts; owners and managers undo anyone's;
  *   6. the history keeps names two years, then the name goes and the act
  *      stays (`recommendation-history-retention.spec.ts`, and the SQL test
- *      `supabase/tests/20260921171100_…_test.sql`);
+ *      `supabase/tests/20260925120300_…_test.sql`);
  *   7. the platform `admin` role never acts for a house's cards unless also
  *      an owner or manager there.
  */

@@ -3,7 +3,7 @@
 -- WHY
 -- ---
 -- The founder, 2026-09-22 (ADR 0191 round 5, answer 3, "History + created_by"):
--- the two-year name rule (round 4, answer 6; migration 20260921171100) reaches
+-- the two-year name rule (round 4, answer 6; migration 20260925120300) reaches
 -- `recommendation_actions.created_by` too, on the same job and the same
 -- schedule. `system_audit_log` keeps its own retention -- his words: "an
 -- audit trail that forgets who acted is no longer an audit trail". That table
@@ -16,7 +16,7 @@
 --       Clears `created_by` on every `recommendation_actions` row whose
 --       `updated_at` is older than
 --       `recommendation_action_history_name_kept_for()` -- the SAME function
---       20260921171100 defined (2 years), read here rather than restated, so
+--       20260925120300 defined (2 years), read here rather than restated, so
 --       the number still lives in one place. Returns how many it cleared --
 --       0 is a real answer, never a failure. Service role only.
 --
@@ -33,7 +33,7 @@
 -- bumped `updated_at` without it can be cleared LATE by this clock, never
 -- early.
 --
--- `pinned_by`, `rated_by` and `assigned_by` (20260922010000) are NOT cleared
+-- `pinned_by`, `rated_by` and `assigned_by` (20260925120400) are NOT cleared
 -- here. The founder's answer named `created_by` specifically; those three
 -- columns did not exist when he was asked. Whether the same rule should reach
 -- them is put to him -- not decided by this build (founder_questions).

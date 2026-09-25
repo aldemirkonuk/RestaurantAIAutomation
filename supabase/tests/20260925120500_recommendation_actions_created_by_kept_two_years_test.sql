@@ -1,11 +1,11 @@
 -- ADR 0191 round 5, answer 3 (the founder, 2026-09-22, "History + created_by"):
 -- recommendation_actions.created_by is cleared on the same two-year rule as
--- the history's names. Migration 20260922010001.
+-- the history's names. Migration 20260925120500.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` or the PGlite harness stops
 -- at the first one. Run it on a database built from supabase/migrations. It
--- must FAIL on a build without 20260922010001 (the function does not exist)
+-- must FAIL on a build without 20260925120500 (the function does not exist)
 -- and PASS with it. One transaction, rolled back: it leaves nothing behind.
 
 begin;

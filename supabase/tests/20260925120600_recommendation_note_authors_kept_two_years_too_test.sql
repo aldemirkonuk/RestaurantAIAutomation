@@ -1,11 +1,11 @@
 -- ADR 0191 round 6 (the founder, 2026-09-22, "Clear them too (Recommended)"):
 -- the two-year sweep that clears recommendation_actions.created_by now also
--- clears pinned_by, rated_by and assigned_by. Migration 20260922021000.
+-- clears pinned_by, rated_by and assigned_by. Migration 20260925120600.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` or the PGlite harness stops
 -- at the first one. Run it on a database built from supabase/migrations. It
--- must FAIL on a build without 20260922021000 (the round-5 function still
+-- must FAIL on a build without 20260925120600 (the round-5 function still
 -- leaves pinned_by/rated_by/assigned_by untouched) and PASS with it. One
 -- transaction, rolled back: it leaves nothing behind.
 

@@ -6,7 +6,7 @@
 -- options he took with "Take all seven"): the action history keeps people's
 -- names for 2 years; then the name is removed, and the act is kept.
 --
--- `recommendation_action_history` (20260921170400) names who dismissed,
+-- `recommendation_action_history` (20260925120100) names who dismissed,
 -- restored, finished or snoozed a card, in `actor_id`. Until now the only
 -- way a name left was the person's user row being deleted. Nothing bounded
 -- how long a name was kept -- round 3 recorded "there is no retention period

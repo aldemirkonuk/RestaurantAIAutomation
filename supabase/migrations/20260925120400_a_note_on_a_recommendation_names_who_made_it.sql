@@ -34,7 +34,7 @@
 -- gave a pre-history act (consequences: "a small one-time set").
 --
 -- `public.users(user_id)`, not `auth.users` -- the JWT's actor id, the same
--- table `recommendation_action_history.actor_id` references (20260921170400,
+-- table `recommendation_action_history.actor_id` references (20260925120100,
 -- see that migration for why the two tables are disjoint in production). ON
 -- DELETE SET NULL: a deleted person's name leaves a note the same way it
 -- leaves the history.

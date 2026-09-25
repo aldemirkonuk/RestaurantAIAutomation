@@ -34,7 +34,7 @@
 --
 -- NOT HERE: a person's own snooze. The founder (answer 4, "Only them"): a
 -- staff snooze hides the card from that person alone and is not written to
--- the house history. It has its own table, 20260921170410.
+-- the house history. It has its own table, 20260925120200.
 --
 -- APPEND-ONLY, ENFORCED
 -- ---------------------

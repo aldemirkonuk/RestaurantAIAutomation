@@ -1,6 +1,6 @@
 # 0191 — The recommendations catalogue is actionable, not a read-only leaf
 
-- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below. The seven questions round 2 left open were answered the same day too — six answers, built in "Round 3" below. The seven round 3 left open (six here, the seventh — the platform `admin` — in the lane's report) were answered the same day with "Take all seven", built in "Round 4" below. Round 4 left three questions open; the founder answered all three on 2026-09-22 — built in "Round 5" below. Round 5 left one question open; the founder answered it on 2026-09-22 — built in "Round 6" below. No open founder question remains.
+- **Status:** Locked (founder, 2026-09-21). Both forks it left open were answered by the founder the same day and are built — see "Round 2" below. The seven questions round 2 left open were answered the same day too — six answers, built in "Round 3" below. The seven round 3 left open (six here, the seventh — the platform `admin` — in the lane's report) were answered the same day with "Take all seven", built in "Round 4" below. Round 4 left three questions open; the founder answered all three on 2026-09-22 — built in "Round 5" below. Round 5 left one question open; the founder answered it on 2026-09-22 — built in "Round 6" below. No open founder question remains. [**RENUMBERED 2026-09-25** (lane L10a, ADR 0212): the seven migrations this record cites were built on 2026-09-21/22 and still dated behind main's newest version `20260922231300` when they reached a PR, so each moved past it with its order kept, and every citation in this record, the code, the SQL tests and CLAIMS now reads the new version: `20260921115500`→`20260925120000`, `20260921170400`→`20260925120100`, `20260921170410`→`20260925120200`, `20260921171100`→`20260925120300`, `20260922010000`→`20260925120400`, `20260922010001`→`20260925120500`, `20260922021000`→`20260925120600`. Production had applied none of the old versions (read-only `list_migrations`, 2026-09-25: newest `20260922231300`), so nothing runs twice. No SQL statement changed; only comments that cite a version.]
 - **Date:** 2026-09-21
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** recommendations, catalogue, insight catalog, candidate type, on/off, toggle, recommendation_actions, insight prefs, rule toggle, suppression, audited, owner/manager, one-tap acts, CatalogView, InsightCatalog, NEW-434, NEW-707, ADR 0149, firing, fire:week, append-only history, recommendation_action_history, snooze for me, recommendation_personal_snoozes, already handled, not now, area lead hook, undo own acts, not_your_act, platform admin, mayActForTheHouse, retention, two years, recommendation_action_history_forget_old_names, cardKeyOf, notes gated like acts, pinned_by, rated_by, assigned_by, not_your_note, mayTouchNote, recommendation_note_changed, recommendation_actions_forget_old_creators, created_by retention
@@ -294,7 +294,7 @@ ones; the verbatim relay is in the review trail):
   snooze and done off the bare rule row only, and the stored read honoured
   nothing written since its last persist.
 - **The stored read needed the item's identity**: `analytics_insights` now
-  stores `subject` and `period_key` (migration `20260921115500`, additive,
+  stores `subject` and `period_key` (migration `20260925120000`, additive,
   no backfill) and `INSIGHT_GENERATOR_VERSION` is 3, so a version-2 row —
   which cannot be resolved at the scope a state was written — is withheld and
   recomputed on first read, never served unfiltered. Stored rows go out with
@@ -417,7 +417,7 @@ words. What each asked, and which answer closed it:
 - Existing rows written as `snoozed` with no instant come back on every
   surface; before, they were invisible everywhere and listed nowhere.
 - After deploy, every stored insight row is version 2 and is recomputed on
-  its first read; until migration `20260921115500` is applied, `persist()`
+  its first read; until migration `20260925120000` is applied, `persist()`
   cannot write the new columns and each read computes live.
 - A period-only finding's `suppression.scope` reads `insight`, not `rule`.
 
@@ -467,7 +467,7 @@ chose):
   version-3 row has been served (`main` is at 2), so the change of key needs
   no second recompute. Keys written before round 3 keep meaning what they
   meant: a bare-key dismissal still hides the whole rule.
-- **2 — keep every label.** Migration `20260921170400` adds
+- **2 — keep every label.** Migration `20260925120100` adds
   `recommendation_action_history`: act (`dismiss | restore | done |
   snooze`), the status it lifted (read before the write), the status it
   wrote, the label (on a dismiss, and only there — CHECKed to the two
@@ -491,7 +491,7 @@ chose):
   `already_handled` to done with no label (`planAct`), so every door — the
   legacy page and older clients included — records done; every web dismiss
   list keeps the choice and posts `{ status: 'done' }` (`patchForChoice`).
-- **4 — a staff snooze is "Only them".** Migration `20260921170410` adds
+- **4 — a staff snooze is "Only them".** Migration `20260925120200` adds
   `recommendation_personal_snoozes` — house, person, key, until, and the
   card's own words for the person's Snoozed leaf; no reason (KVKK: the
   minimum); deleted when woken, cleared once ended on the person's next
@@ -576,7 +576,7 @@ chose):
   card away and why — is now a row naming them. Names leave the history when
   the person's user row is deleted; there is no retention period yet
   [**round 4, answer 6:** two years, then the name is removed and the act is
-  kept (migration `20260921171100`).]
+  kept (migration `20260925120300`).]
 - "Not now" from the legacy page's quick Dismiss, its `d` key and its bulk
   Dismiss (all of which send `not_now` without asking) is now a one-day snooze
   for the person who pressed it, not a house-wide dismissal [**round 4,
@@ -705,8 +705,8 @@ relay's words:
     person who did this, or an owner or manager, can undo it."*. A refused
     write says the gateway's own sentence (`notYourActOf`), never the
     whole-house one.
-- **6 — a name is kept two years.** Migration `20260921171100` (in the lane
-  band) adds three things:
+- **6 — a name is kept two years.** Migration `20260925120300` (in the lane
+  band; renumbered 2026-09-25, see Status) adds three things:
   - `recommendation_action_history_name_kept_for()` holds the period, two
     calendar years, in one place;
   - a replaced append-only trigger lets exactly one more change through, at
@@ -726,7 +726,7 @@ relay's words:
     after two years the history cannot tell two acts by one person from acts
     by two people.
   - The rule is proven by the self-asserting SQL test
-    `supabase/tests/20260921171100_…_test.sql` (T1–T10) on a database built
+    `supabase/tests/20260925120300_…_test.sql` (T1–T10) on a database built
     from every migration.
 - **7 — the platform admin makes no house act.** `mayActForTheHouse` is
   owner or manager. It is the one set behind `mayActRuleWide`,
@@ -857,7 +857,7 @@ chose:
 
 - **1 — kept as built, recorded with why.** No code changed for this answer.
   Every `recommendation_actions` row a house had before migration
-  `20260921170400` landed (round 3) has no history row, so `authorOf` cannot
+  `20260925120100` landed (round 3) has no history row, so `authorOf` cannot
   name who dismissed or completed it, and `mayUndo` falls to owner/manager
   only (round 4, answer 5). The founder's pick keeps that.
   - **Why, as he put it in the option and as the build reads it:** it
@@ -879,7 +879,7 @@ chose:
      first note or a changed one alike.
    - **Each note field gets its own author column** —
      `recommendation_actions.pinned_by`, `.rated_by`, `.assigned_by`
-     (migration `20260922010000`, each `uuid references
+     (migration `20260925120400`, each `uuid references
      public.users(user_id) on delete set null`) — set on every write to
      that field (`RecommendationActionsService.setAction`). This is
      deliberately **not** `created_by`: round 4's own "Options considered"
@@ -931,11 +931,11 @@ chose:
      `ActRefused`'s `code` gains `"not_your_note"`, so a page can word this
      one refusal as its own later, without a text match.
 - **3 — `created_by` is kept two years too.**
-   - Migration `20260922010001` adds
+   - Migration `20260925120500` adds
      `recommendation_actions_forget_old_creators()`, which clears
      `created_by` on every `recommendation_actions` row whose `updated_at`
      is older than `recommendation_action_history_name_kept_for()` — the
-     **same function** `20260921171100` defined, read rather than restated,
+     **same function** `20260925120300` defined, read rather than restated,
      so the period still lives in one place. Service role only, the same
      grants as the history's sweep.
    - **`RecommendationHistoryRetention.sweep()`** now calls both
@@ -974,9 +974,9 @@ chose:
      answer 2 of this same round introduced. See "Founder questions round 5
      leaves open" below — not decided by this build. [**SUPERSEDED
      2026-09-22, round 6 — "Clear them too (Recommended)."** They now are:
-     migration 20260922021000 `CREATE OR REPLACE`s the SAME function
+     migration 20260925120600 `CREATE OR REPLACE`s the SAME function
      (`recommendation_actions_forget_old_creators()`, still that name, still
-     one daily call) to also null these three. `20260922010001` itself is
+     one daily call) to also null these three. `20260925120500` itself is
      unchanged — see "Round 6" below and the corrected claim
      `ADR-0191-R5-CREATED-BY-KEPT-TWO-YEARS`.]
 
@@ -1022,7 +1022,7 @@ chose:
 - **Every note made before this round names nobody**, the same shape as a
   pre-history act (round 4). Every `pinned`, `feedback` or `assigned_to`
   value already on a `recommendation_actions` row when migration
-  `20260922010000` lands has `pinned_by`/`rated_by`/`assigned_by` NULL —
+  `20260925120400` lands has `pinned_by`/`rated_by`/`assigned_by` NULL —
   the row exists, the value exists, but the gate cannot name who set it, so
   only an owner or manager may change or clear it from here on. A staff
   member who pinned a card before this round lands loses the ability to
@@ -1103,17 +1103,17 @@ Put to him as a recommended option, his pick, verbatim as relayed:
 
 ### What was built
 
-- **One sweep, not two.** Migration `20260922021000` `CREATE OR REPLACE`s
+- **One sweep, not two.** Migration `20260925120600` `CREATE OR REPLACE`s
   the SAME function `recommendation_actions_forget_old_creators()`
-  (`20260922010001`) — same name, same daily call
+  (`20260925120500`) — same name, same daily call
   (`RecommendationHistoryRetention.sweep()`, unchanged in this round) — so
   its `set` clause also nulls `pinned_by`, `rated_by` and `assigned_by`, and
   its `where` clause widens from "`created_by is not null`" to "any of the
   four is not null". The widening matters on its own: a row whose
   `created_by` a PREVIOUS run already cleared, but whose `pinned_by` still
   names someone, would be silently skipped forever under the narrower
-  clause, because nothing else ever re-sets `created_by`. `20260922010001`
-  itself is untouched — the same move it made on `20260921171100`'s shared
+  clause, because nothing else ever re-sets `created_by`. `20260925120500`
+  itself is untouched — the same move it made on `20260925120300`'s shared
   period function, not a rewrite of history.
 - **No gateway code changed for "test it".** `mayTouchNote` (`item-state.ts`,
   round 5) already reads a SET note field with no recorded author as not
@@ -1122,7 +1122,7 @@ Put to him as a recommended option, his pick, verbatim as relayed:
   distinguish "never recorded" from "recorded, then cleared by this sweep":
   both are `owner: null` on a set field. So the founder's "test it" is
   satisfied by naming the connection explicitly and proving both halves:
-  the SQL clearing (`supabase/tests/20260922021000_..._test.sql`, T1-T12 —
+  the SQL clearing (`supabase/tests/20260925120600_..._test.sql`, T1-T12 —
   T12 proving `system_audit_log` is left byte for byte, including a
   three-year-old row naming a pinner the sweep just cleared — and the
   mutation-tested PGlite probe
@@ -1135,7 +1135,7 @@ Put to him as a recommended option, his pick, verbatim as relayed:
 - **The claim `ADR-0191-R5-CREATED-BY-KEPT-TWO-YEARS` is corrected, not
   rewritten.** Its text said these three columns "are deliberately NOT
   cleared by this sweep" — true when written, now superseded. Its `verify`
-  is untouched, because it still greps migration `20260922010001`
+  is untouched, because it still greps migration `20260925120500`
   specifically, and that file did not change. See CLAIMS.jsonl's bracketed
   correction and the new row `ADR-0191-R6-NOTE-AUTHORS-KEPT-TWO-YEARS`.
 
@@ -1161,7 +1161,7 @@ Put to him as a recommended option, his pick, verbatim as relayed:
    matches.** Rejected: a row can reach two years old with `created_by`
    already cleared (by a previous run) while a note-author column still
    names someone — round 5's own build made this reachable the moment
-   `20260922010001` first ran. The widened clause (any of the four) is
+   `20260925120500` first ran. The widened clause (any of the four) is
    proven necessary by the SQL test's T4/R2 fixture and the probe's `M1`
    mutation.
 4. **Extend `mayTouchNote` or `assertMayTouchNotes` with an explicit
@@ -1200,16 +1200,17 @@ Put to him as a recommended option, his pick, verbatim as relayed:
 | 2026-09-21 | — | Created; built in lane `recs-catalogue` (`wt-recs-cat`) |
 | 2026-09-21 | last call (Opus) | Amended before merge: (1) "audited" is a `system_audit_log` row per toggle, not the overwritten `created_by`; (2) the toggle refuses keys the catalogue does not list; (3) "open live items" narrows server-side before the five-per-category cap and never persists — the client-side filter called a fired type empty; (4) a failed live Pin/Dismiss is put back and said, as the feed does; unreadable dismissals and an unreadable on/off read are said, not shown as clean; (5) option 4's "trivially bypassed" and option 5's "every live insight" corrected in place; the one-door gate recorded as a founder fork. |
 | 2026-09-21 | founder (relayed to lane `recs-catalogue`) | Answered both forks, verbatim as relayed: "(1) rule-wide dismiss and restore (the feed's 'dismiss the whole rule', Restore all, the catalogue toggle) are owner/manager only and audited EVERYWHERE; staff keep dismissing a single finding or subject; (2) "Build it right, in order": the engine gets ONE shared per-item state (dismissed with a reason / snoozed-until / done) that the feed, the catalogue, reports and the rails all read; build in order dismiss-with-reason (the reason is a labelled signal), then snooze (time suppression; the item returns after), then done (completion, no negative signal); show each action on the catalogue's live-items panel only once it is honoured on every surface." |
-| 2026-09-21 | — | Round 2 built in lane `recs-catalogue` (`wt-recs-cat`): the gate in `setActionAs`/`bulkSetActionAs`, `item-state.ts`, the stored read, migration `20260921115500`, the four web surfaces. "Restore all" in the relay is read as the Dismissed leaf's Restore (no control by that name exists; the question put to him said "the Dismissed tab's Restore"). |
+| 2026-09-21 | — | Round 2 built in lane `recs-catalogue` (`wt-recs-cat`): the gate in `setActionAs`/`bulkSetActionAs`, `item-state.ts`, the stored read, migration `20260925120000`, the four web surfaces. "Restore all" in the relay is read as the Dismissed leaf's Restore (no control by that name exists; the question put to him said "the Dismissed tab's Restore"). |
 | 2026-09-21 | last call (Opus), round 2 | Amended before merge: (1) the stored cache is state-free — a rebuild stores what fired as well as what is shown, so a snooze that ends, or a dismissal or done returned to the book, is back on Reports and the rails without waiting for the category's next rebuild (the first build persisted only what was visible, so the founder's "the item returns after" did not hold on the stored surfaces); (2) the rails and the Reports panel say when the state could not be read; (3) two code citations the new lines shifted (`mcp-tool-readers.service.ts`, `house-letters.service.ts`) now name the function instead of a line range; (4) the round's founder questions are written here — the text pointed at a section that did not exist — with the subject-less-card question added. |
 | 2026-09-21 | founder (relayed to lane `recs3`) | Answered round 2's seven questions with six picks, verbatim as relayed: (1) "Each firing is one card"; (2) "Keep every label"; (3) "Already handled" recorded as DONE; (4) "Only them" — staff snooze is personal, "Not now" becomes it, snooze for everyone owners/managers (area leads once that lane lands); (5) "Fix the message" — 'Only an owner or manager can dismiss this for the whole house.'; (6) 'Restore all' = the per-card Restore as built, no bulk button. |
-| 2026-09-21 | — | Round 3 built in lane `recs3` (`wt-recs-cat`): firing keys (`suppression.ts`, the feed, the generator), `recommendation_action_history` (20260921170400) and `recommendation_personal_snoozes` (20260921170410), `planAct` routing, the personal view on the two named-person reads, the legacy message, the four web surfaces; round 3's six open questions written above. |
+| 2026-09-21 | — | Round 3 built in lane `recs3` (`wt-recs-cat`): firing keys (`suppression.ts`, the feed, the generator), `recommendation_action_history` (20260925120100) and `recommendation_personal_snoozes` (20260925120200), `planAct` routing, the personal view on the two named-person reads, the legacy message, the four web surfaces; round 3's six open questions written above. |
 | 2026-09-21 | last call (Opus), round 3 | Amended before merge: (1) "Only them" had no test that could fail: the write-path stub ignored every filter, so dropping the `user_id` or `restaurant_id` filter from `listForMe`, or the `user_id` filter from `wakeForMe`, left all 45 round-3 tests green. Each of those drops means one person's snooze hides the card from the whole house, or a wake ends someone else's snooze. A table stub that applies the filters, with rows for two people and two houses, now kills all three (`recommendation-round3.spec.ts`, "a snooze for me is read, applied and woken for me alone"). (2) The mapping of round 2's first question now says its done half is not closed at the gateway: a bare-key done from any member still hides the whole rule, and the legacy page sends one (round 3 open question 4). (3) The claim that every surface says an unreadable personal read is corrected: the legacy page says neither flag. |
 | 2026-09-21 | founder (relayed to lane `recs4`) | Answered round 3's seven questions, verbatim as relayed: "Take all seven" — (1) firing = the rule's own period, confirmed; (2) "Not now" = 1 day unless a time is picked, confirmed; (3) the legacy quick Dismiss, `d` key and bulk Dismiss are that personal Not now, confirmed; (4) legacy Done and "Already handled" act on the card's item key; (5) staff undo only their own acts, owners/managers anyone's; (6) names kept 2 years, then removed or pseudonymised, the act kept; (7) the platform `admin` never acts for a house's cards unless also its owner or manager. |
-| 2026-09-21 | — | Round 4 built in lane `recs4` (`wt-recs-cat`): the undo gate (`holdsAnAct`, `authorOf`, `mayUndo`, `assertMayUndo`, `undoableByYou`, `not_your_act`), `mayActForTheHouse` without `admin` (gateway, toggle, web), the legacy page's `cardKeyOf`, migration `20260921171100` + `RecommendationHistoryRetention`; round 4's two open questions written above [a third, what the two-year rule covers, was added at round 4's last call]. |
+| 2026-09-21 | — | Round 4 built in lane `recs4` (`wt-recs-cat`): the undo gate (`holdsAnAct`, `authorOf`, `mayUndo`, `assertMayUndo`, `undoableByYou`, `not_your_act`), `mayActForTheHouse` without `admin` (gateway, toggle, web), the legacy page's `cardKeyOf`, migration `20260925120300` + `RecommendationHistoryRetention`; round 4's two open questions written above [a third, what the two-year rule covers, was added at round 4's last call]. |
 | 2026-09-21 | last call (Opus), round 4 | Amended before merge, docs only: (1) the two-year rule clears `recommendation_action_history.actor_id` only; `recommendation_actions.created_by` and the `system_audit_log` rows of rule-wide acts and toggles keep the id with no end. This is now said under Consequences and put to the founder as question 3. (2) Question 2 now also says that, as built, staff may change a note someone else made, because the undo gate reads status writes only. (3) The page note's round-4 bracket said the admin "is offered no house act"; the new feed still offers a card's Done and Dismiss, which the gateway refuses, and the bracket now says so. Re-run on the staged tree: 5 gateway suites (121 tests) and 17 web files (313 tests) green. Two mutations, both killed: `authorOf` without its status match (2 tests), and the legacy Done on the rule key (1 test). |
 | 2026-09-22 | founder (relayed to lane `recs5`, round 6w) | Answered round 4's three open questions, each as a "Recommended" option, all three taken verbatim as relayed: (1) "Owner/manager only (Recommended)" — keep as built, record why (fails closed; a small one-time set); (2) "Gate like acts (Recommended)" — the platform admin is refused, staff change or clear only their own notes, owners/managers any, every note change audited like an act, server-side, tested per role, mutation-tested; (3) "History + created_by (Recommended)" — also clear `recommendation_actions.created_by` on the same two-year job as the history rule; `system_audit_log` keeps its own retention — "an audit trail that forgets who acted is no longer an audit trail." |
-| 2026-09-22 | — | Round 5 built in lane `recs5` (`wt-recs-cat`): `pinned_by`/`rated_by`/`assigned_by` + the note gate (`touchesNotes`, `mayTouchNote`, `noteRefusal`, `assertMayTouchNotes(Bulk)`, `not_your_note`, `recommendation_note_changed` → `noteAudit`), migrations `20260922010000` and `20260922010001`, `RecommendationHistoryRetention.forgetOldCreators()` on the same daily tick as `forgetOldNames()`; round 5's two open questions written above [the second withdrawn at the last call]. Two pre-existing CLAIMS rows (`ADR-0191-R3-EVERY-ACT-IS-KEPT`, `ADR-0191-R4-NAMES-KEPT-TWO-YEARS`) had their `verify` text repaired in place — a shared `assertNamedActor` condition and a `forgetOldNames` refactor (its count parsing moved into a shared `parseCount`; the RPC call itself stays literal) changed the literal code shape their greps matched; the claims they check were re-confirmed true, not reworded. |
+| 2026-09-22 | — | Round 5 built in lane `recs5` (`wt-recs-cat`): `pinned_by`/`rated_by`/`assigned_by` + the note gate (`touchesNotes`, `mayTouchNote`, `noteRefusal`, `assertMayTouchNotes(Bulk)`, `not_your_note`, `recommendation_note_changed` → `noteAudit`), migrations `20260925120400` and `20260925120500`, `RecommendationHistoryRetention.forgetOldCreators()` on the same daily tick as `forgetOldNames()`; round 5's two open questions written above [the second withdrawn at the last call]. Two pre-existing CLAIMS rows (`ADR-0191-R3-EVERY-ACT-IS-KEPT`, `ADR-0191-R4-NAMES-KEPT-TWO-YEARS`) had their `verify` text repaired in place — a shared `assertNamedActor` condition and a `forgetOldNames` refactor (its count parsing moved into a shared `parseCount`; the RPC call itself stays literal) changed the literal code shape their greps matched; the claims they check were re-confirmed true, not reworded. |
 | 2026-09-22 | last call (Opus), round 5 | Amended before merge: (1) a name-only assignment (`assigned_name` set, `assigned_to` null) read as unset, so staff could change or clear someone else's — `noteOwnershipFrom` now reads either half as set; (2) the note audit named only the to-values — each field is now `{ from, to, from_by }`, like an act's row; (3) the legacy page, what houses see, worded a refused pin as the whole-house dismiss sentence, kept the refused note on screen and toasted a refused assignment as done — fixed, with `noteRefusalOf`; the rebuilt page now reads `noteAudit` for a missed house-log row (the legacy page reads no receipt, as before); (4) round 4's open questions and the round 3/4 sentences the answers made false are bracketed, not rewritten; (5) the "Act click bumps `updated_at` without `created_by`" clock gap was false — every write route is `JwtAuthGuard`-only and names its caller in the same upsert — so the migration comment, the ADR and round 5's question 2 are corrected and that question withdrawn. Fixes (1)-(3) mutation-tested: 8 mutations, all killed. |
 | 2026-09-22 | founder (relayed to lane `recs6`, round 6z) | Answered round 5's one open question with the recommended option, verbatim as relayed: **"Clear them too (Recommended)"** — the two-year sweep that clears `created_by` also clears `pinned_by`, `rated_by` and `assigned_by`; after clearing, the note gate treats that note as owner/manager-only to change (test it); `system_audit_log` keeps its own retention. |
-| 2026-09-22 | — | Round 6 built in lane `recs6` (`wt-recs-cat`): migration `20260922021000` (in this lane's band, `20260922021000`–`20260922021099`) `CREATE OR REPLACE`s `recommendation_actions_forget_old_creators()` (unchanged name) to also null `pinned_by`/`rated_by`/`assigned_by`, widening its `WHERE` to any of the four author columns; `20260922010001` itself is untouched. No gateway code changed — `mayTouchNote` already fails closed on a cleared author. Proof: `supabase/tests/20260922021000_..._test.sql` (T1-T11, then T12 — `system_audit_log` untouched by two sweeps — added the same morning), the PGlite probe `RECS6-note-authors-kept-two-years.mjs` (control + 4 mutations, all caught), and `recommendation-round6.spec.ts` (the gate's reading of a cleared column). The claim `ADR-0191-R5-CREATED-BY-KEPT-TWO-YEARS` is corrected in place, bracketed — its text said these three columns "are deliberately NOT cleared"; its `verify` is untouched because it still greps `20260922010001` alone, which did not change. New claim: `ADR-0191-R6-NOTE-AUTHORS-KEPT-TWO-YEARS`. Round 5's open question 1 (the one this round answers) is bracketed, not rewritten. |
+| 2026-09-22 | — | Round 6 built in lane `recs6` (`wt-recs-cat`): migration `20260925120600` (written as `20260922021000`, in that lane's band `20260922021000`–`20260922021099`; renumbered 2026-09-25, see Status) `CREATE OR REPLACE`s `recommendation_actions_forget_old_creators()` (unchanged name) to also null `pinned_by`/`rated_by`/`assigned_by`, widening its `WHERE` to any of the four author columns; `20260925120500` itself is untouched. No gateway code changed — `mayTouchNote` already fails closed on a cleared author. Proof: `supabase/tests/20260925120600_..._test.sql` (T1-T11, then T12 — `system_audit_log` untouched by two sweeps — added the same morning), the PGlite probe `RECS6-note-authors-kept-two-years.mjs` (control + 4 mutations, all caught), and `recommendation-round6.spec.ts` (the gate's reading of a cleared column). The claim `ADR-0191-R5-CREATED-BY-KEPT-TWO-YEARS` is corrected in place, bracketed — its text said these three columns "are deliberately NOT cleared"; its `verify` is untouched because it still greps `20260925120500` alone, which did not change. New claim: `ADR-0191-R6-NOTE-AUTHORS-KEPT-TWO-YEARS`. Round 5's open question 1 (the one this round answers) is bracketed, not rewritten. |
+| 2026-09-25 | lane L10a (`feat/recs-catalogue-round6`) | Carried the pushed rounds 1–5 (`origin/wip/2026-09-21/fin-recs-catalogue`, `c7db79871`) and the uncommitted round 6 (`wt-recs-cat`'s index plus its one unstaged edit, T12) onto `origin/main` `059169a59`; renumbered the seven migrations and four SQL tests past main's `20260922231300` (see the Status bracket). No decision changed. |

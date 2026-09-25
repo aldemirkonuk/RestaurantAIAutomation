@@ -1,12 +1,12 @@
 -- ADR 0191 round 4, answer 6 (the founder, 2026-09-21, one of the seven
 -- options he took with "Take all seven"): the recommendation action history
 -- keeps a person's name for two years; then the name is removed and the act
--- is kept. Migration 20260921171100.
+-- is kept. Migration 20260925120300.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` or the PGlite harness stops
 -- at the first one. Run it on a database built from supabase/migrations. It
--- must FAIL on a build without 20260921171100 (the function does not exist)
+-- must FAIL on a build without 20260925120300 (the function does not exist)
 -- and PASS with it. One transaction, rolled back: it leaves nothing behind.
 
 begin;

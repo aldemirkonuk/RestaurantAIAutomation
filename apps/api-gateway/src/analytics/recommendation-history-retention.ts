@@ -3,7 +3,7 @@
  * (ADR 0191 round 4, answer 6 — one of the seven options the founder took
  * with "Take all seven", 2026-09-21).
  *
- * The rule itself lives in the database: migration 20260921171100's
+ * The rule itself lives in the database: migration 20260925120300's
  * `recommendation_action_history_forget_old_names()` removes every `actor_id`
  * acted on more than `recommendation_action_history_name_kept_for()` ago (two
  * calendar years), and the append-only trigger lets exactly that change, and
@@ -11,7 +11,7 @@
  *
  * ROUND 5 (the founder, 2026-09-22, "History + created_by"): the same two-
  * year rule, on the same daily run, now also clears
- * `recommendation_actions.created_by` — migration 20260922010001's
+ * `recommendation_actions.created_by` — migration 20260925120500's
  * `recommendation_actions_forget_old_creators()`. `system_audit_log` keeps
  * its own retention: his words, "an audit trail that forgets who acted is no
  * longer an audit trail". Each RPC is its own call, its own try/catch and its
@@ -22,14 +22,14 @@
  * again now that `pinned_by`/`rated_by`/`assigned_by` exist (round 5's OTHER
  * answer introduced them, so round 5's "History + created_by" could not have
  * named them) — the SAME sweep, same function, same daily call, now ALSO
- * clears those three note-author columns (migration 20260922021000's
+ * clears those three note-author columns (migration 20260925120600's
  * CREATE OR REPLACE of `recommendation_actions_forget_old_creators()`). No
  * code here changed: `forgetOldCreators()` still calls the one RPC named by
  * `FORGET_OLD_CREATORS_RPC`, which still returns one count — the SQL body it
  * runs now touches four columns instead of one. The note gate
  * (`item-state.ts` `mayTouchNote`) needed no change either — it already
  * reads a cleared author the same as one that was never recorded, proven at
- * `recommendation-round6.spec.ts` and `supabase/tests/20260922021000_..._
+ * `recommendation-round6.spec.ts` and `supabase/tests/20260925120600_..._
  * test.sql`.
  *
  * DAILY, not yearly: a name's two years end on its own date, so a sweep once
@@ -48,13 +48,13 @@ import { DatabaseService } from "../database/database.service";
 /** 03:45 UTC every day — after the raw-mail sweep (03:30), before business. */
 export const RECOMMENDATION_HISTORY_RETENTION_CRON = "45 3 * * *";
 
-/** The SQL function that removes the names (migration 20260921171100). */
+/** The SQL function that removes the names (migration 20260925120300). */
 export const FORGET_OLD_NAMES_RPC = "recommendation_action_history_forget_old_names";
 
 /**
  * The SQL function that clears `recommendation_actions.created_by`
- * (migration 20260922010001, round 5, answer 3) and, since round 6 (migration
- * 20260922021000, founder 2026-09-22: "Clear them too"), `pinned_by`,
+ * (migration 20260925120500, round 5, answer 3) and, since round 6 (migration
+ * 20260925120600, founder 2026-09-22: "Clear them too"), `pinned_by`,
  * `rated_by` and `assigned_by` too — one function, one call, unchanged name.
  */
 export const FORGET_OLD_CREATORS_RPC = "recommendation_actions_forget_old_creators";

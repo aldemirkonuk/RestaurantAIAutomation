@@ -16,7 +16,7 @@ import { PLATFORM_ADMIN_REFUSAL } from "./insights/item-state";
  *      owners and managers any; every note change is audited. THIS FILE.
  *   3. the two-year name rule reaches "History + created_by (Recommended)":
  *      `recommendation-history-retention.spec.ts` and the SQL tests
- *      (`supabase/tests/20260922010001_…_test.sql`) cover this half.
+ *      (`supabase/tests/20260925120500_…_test.sql`) cover this half.
  */
 
 const RID = "r-1";

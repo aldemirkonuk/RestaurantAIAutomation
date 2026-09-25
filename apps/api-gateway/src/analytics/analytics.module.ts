@@ -58,7 +58,7 @@ import { PricingModule } from "../pricing/pricing.module";
     // outages the manager has ruled out of every baseline.
     DayExclusionsService,
     // ADR 0191 round 4: a name leaves the recommendation history after two
-    // years (the act stays) — the daily sweep of migration 20260921171100.
+    // years (the act stays) — the daily sweep of migration 20260925120300.
     RecommendationHistoryRetention,
   ],
   // TableAnalyticsService joined the exports for ADR 0093: the scenario

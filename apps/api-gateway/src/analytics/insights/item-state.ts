@@ -367,7 +367,7 @@ export type ActRoute =
  * — the platform admin is refused those too, whole, the same as a status
  * write. Who ELSE may touch a note they do not own is not decided here: that
  * needs the row's current note-authors (`pinned_by`/`rated_by`/`assigned_by`,
- * migration 20260922010000), which this function — pure, no DB — cannot
+ * migration 20260925120400), which this function — pure, no DB — cannot
  * read. `RecommendationActionsService.assertMayTouchNotes` gates that half,
  * with `mayTouchNote` below.
  */

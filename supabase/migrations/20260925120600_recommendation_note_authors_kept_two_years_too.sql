@@ -17,10 +17,10 @@
 -- WHAT THIS DOES
 -- --------------
 -- CREATE OR REPLACEs `recommendation_actions_forget_old_creators()`
--- (20260922010001) to ALSO null `pinned_by`, `rated_by` and `assigned_by` on
+-- (20260925120500) to ALSO null `pinned_by`, `rated_by` and `assigned_by` on
 -- the same rows, on the same clock (`updated_at`), reading the SAME
 -- `recommendation_action_history_name_kept_for()` (2 years, defined by
--- 20260921171100). One function, one daily call --
+-- 20260925120300). One function, one daily call --
 -- `RecommendationHistoryRetention.sweep()` already calls it; no gateway code
 -- changes. The function's NAME is unchanged, so the gateway's
 -- `FORGET_OLD_CREATORS_RPC` constant still names it and every existing
@@ -43,9 +43,9 @@
 -- what the founder asked -- proven directly at
 -- apps/api-gateway/src/analytics/recommendation-round6.spec.ts.
 --
--- 20260922010001 ITSELF IS UNCHANGED by this migration -- this file only
--- CREATE OR REPLACEs the function it defined, the same move 20260922010001
--- made on 20260921171100's shared period function. Its own claim
+-- 20260925120500 ITSELF IS UNCHANGED by this migration -- this file only
+-- CREATE OR REPLACEs the function it defined, the same move 20260925120500
+-- made on 20260925120300's shared period function. Its own claim
 -- (ADR-0191-R5-CREATED-BY-KEPT-TWO-YEARS, whose text said these three
 -- columns are "deliberately NOT cleared by this sweep") is corrected in
 -- place, bracketed, in the ADR and in CLAIMS.jsonl -- not rewritten, and its

@@ -412,7 +412,7 @@ export class InsightGeneratorService {
    * the last persist — a dismissal made at 10:05 stood on Reports, the rails
    * and the mobile tab until the category's next cadence run, which for a
    * `daily @ 06:00` category is the next morning. Every stored row now
-   * carries its subject and period (`20260921115500`), so the same
+   * carries its subject and period (`20260925120000`), so the same
    * `resolveItemState` the live compute uses decides here too, and each row
    * goes out with the keys an act on it must write (`suppression`), exactly
    * as a live row does — no surface builds a key.
@@ -552,7 +552,7 @@ export class InsightGeneratorService {
             period_start: i.periodStart ?? null,
             period_end: i.periodEnd ?? null,
             // The item's identity, so a stored read resolves its shared
-            // state at every scope (ADR 0191, `20260921115500`).
+            // state at every scope (ADR 0191, `20260925120000`).
             subject: i.subject ?? null,
             period_key: i.periodKey ?? null,
             generator_version: INSIGHT_GENERATOR_VERSION,

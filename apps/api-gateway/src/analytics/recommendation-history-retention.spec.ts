@@ -16,14 +16,14 @@ import {
  *
  * ROUND 6 (the founder, 2026-09-22, "Clear them too (Recommended)"): the
  * SAME `created_by` call, same RPC name, now also clears `pinned_by`,
- * `rated_by` and `assigned_by` in its SQL body (migration 20260922021000) —
+ * `rated_by` and `assigned_by` in its SQL body (migration 20260925120600) —
  * nothing in this file changed, so no new test is needed here for round 6;
- * see `supabase/tests/20260922021000_..._test.sql` for the widened SQL and
+ * see `supabase/tests/20260925120600_..._test.sql` for the widened SQL and
  * `recommendation-round6.spec.ts` for the note gate's reading of a column
  * this sweep cleared.
  *
- * The RULE is SQL — migrations 20260921171100, 20260922010001 and (round 6)
- * 20260922021000, proven by their self-asserting SQL tests on a database
+ * The RULE is SQL — migrations 20260925120300, 20260925120500 and (round 6)
+ * 20260925120600, proven by their self-asserting SQL tests on a database
  * built from every migration. The unit here is the gateway's daily runner:
  * that it calls BOTH functions, every day, independently, and never reports
  * a run it did not make as one that removed nothing. The database client is

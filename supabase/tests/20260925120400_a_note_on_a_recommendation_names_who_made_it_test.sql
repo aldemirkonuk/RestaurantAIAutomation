@@ -1,11 +1,11 @@
 -- ADR 0191 round 5, answer 2 (the founder, 2026-09-22, "Gate like acts"):
 -- pinned_by, rated_by and assigned_by name who made a note. Migration
--- 20260922010000.
+-- 20260925120400.
 --
 -- Self-asserting: every block raises on a failure (assert -> P0004, or the
 -- error itself), so `psql -v ON_ERROR_STOP=1 -f` or the PGlite harness stops
 -- at the first one. Run it on a database built from supabase/migrations. It
--- must FAIL on a build without 20260922010000 (the columns do not exist) and
+-- must FAIL on a build without 20260925120400 (the columns do not exist) and
 -- PASS with it. One transaction, rolled back: it leaves nothing behind.
 
 begin;

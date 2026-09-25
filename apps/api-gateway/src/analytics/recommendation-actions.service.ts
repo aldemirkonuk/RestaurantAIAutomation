@@ -146,7 +146,7 @@ export interface ActWriteResult {
 
 /**
  * Who last set each note field on a `recommendation_actions` row (round 5,
- * migration 20260922010000) — read before a note write, the same way
+ * migration 20260925120400) — read before a note write, the same way
  * `ruleWideStatus` reads a status before that write.
  *
  * `xBy: null` on a SET field is not provably anyone's — a row from before
