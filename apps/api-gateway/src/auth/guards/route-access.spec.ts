@@ -78,8 +78,12 @@ describe("RolesGuard is exact (ADR 0164, 'Keep managers in')", () => {
 
 describe("no route's access changed except as decided (ADR 0164)", () => {
   it("finds the controllers it measures", () => {
-    // Nine controller files used @Roles on cb756083e; a tenth would be a new
-    // file whose routes are not in the table yet.
+    // Nine controller files used @Roles on cb756083e. Four more reached main
+    // before this branch landed (conversations, the house counter and day,
+    // report exports), each written with @Roles naming owner AND manager, so
+    // the exact guard admits them what the old guard did, less admin
+    // (re-measured 2026-09-25). A fourteenth would be a new file whose routes
+    // are not in the table yet.
     expect(controllersWithRoles()).toEqual([
       "ask-ai/ask-ai.controller.ts",
       "auth/auth.controller.ts",
@@ -87,8 +91,12 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "common/orchestrator/prospects.controller.ts",
       "common/orchestrator/sender-trust.controller.ts",
       "communications/archive/house-mail-archive.controller.ts",
+      "conversations/conversations.controller.ts",
       "distributor-feed/distributor-feed.controller.ts",
+      "house/house-counter.controller.ts",
+      "house/house-day.controller.ts",
       "price-index/price-index.controller.ts",
+      "reports/exports/report-exports.controller.ts",
       "vendor-intel/vendor-intel.controller.ts",
     ]);
   });

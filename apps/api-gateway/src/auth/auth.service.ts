@@ -1024,7 +1024,9 @@ export class AuthService {
         `queueEmailVerification failed (non-fatal): ${err.message}`,
       ),
     );
-    return this.generateTokens(user);
+    // A new account has no house yet (ADR 0213), so its session names none
+    // (ADR 0164): no house, no role, until createFirstHouse opens one.
+    return this.generateTokens(user, false, null);
   }
 
   /**
@@ -1078,7 +1080,9 @@ export class AuthService {
       );
     }
 
-    return this.generateTokens(user);
+    // A new account has no house yet (ADR 0213), so its session names none
+    // (ADR 0164): no house, no role, until createFirstHouse opens one.
+    return this.generateTokens(user, false, null);
   }
 
   /**
@@ -1176,11 +1180,14 @@ export class AuthService {
       const failed = writes.find((write) => write.error);
       if (failed?.error) throw new Error(failed.error.message);
 
-      const tokens = await this.generateTokens({
-        ...user,
-        restaurant_id: restaurantId,
-        role: "owner",
-      });
+      // The membership row above is written before this mint, so
+      // generateTokens finds it and names the new house with its owner role
+      // (ADR 0164: every mint is membership-checked in one place).
+      const tokens = await this.generateTokens(
+        { ...user, restaurant_id: restaurantId, role: "owner" },
+        false,
+        restaurantId,
+      );
       return { ...tokens, restaurantId: restaurantId as string };
     } catch (error) {
       if (restaurantId)

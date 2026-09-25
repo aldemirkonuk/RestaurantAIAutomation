@@ -154,6 +154,9 @@ export class AuthController {
 
   @Post("register/house")
   @UseGuards(JwtAuthGuard)
+  // An account-only signup (ADR 0213) is a session in no house (ADR 0164);
+  // opening its first house is the one way such a session gets one.
+  @AllowsNoHouse()
   async createFirstHouse(
     @Req() req: Request & { user: any },
     @Body() dto: CreateFirstHouseDto,

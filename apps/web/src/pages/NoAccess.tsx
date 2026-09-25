@@ -28,6 +28,7 @@ export function NoAccess() {
         }
       >
         <div className="mdv-pub__plate mdv-pub__stack">
+          {ended && <p role="status">Your access to {ended} has ended.</p>}
           <p>
             {user?.email ? (
               <>
@@ -43,10 +44,22 @@ export function NoAccess() {
             Open the invitation link an owner sends you, or sign in with a
             different account.
           </p>
+          {/* ADR 0213: an account can open its own first house. An
+              account-only signup that has not done so yet is a session in no
+              house (ADR 0164) and lands here, so the way on stays one link
+              away. */}
+          <p>
+            <Link className="mdv-link" to="/get-started">
+              Opening your own restaurant? Start here.
+            </Link>
+          </p>
           <button
             className="mdv-btn mdv-btn--seal"
             type="button"
-            onClick={() => void logout()}
+            onClick={() => {
+              clearHouseEnded()
+              void logout()
+            }}
           >
             Sign out
           </button>
@@ -93,6 +106,9 @@ export function NoAccess() {
             className="inline-block w-full text-center border border-gray-200 text-gray-700 rounded-xl py-3 text-sm font-medium hover:bg-gray-50"
           >
             Back to sign in
+          </Link>
+          <Link to="/get-started" className="text-sm text-gray-600 underline underline-offset-4">
+            Opening your own restaurant? Start here.
           </Link>
         </div>
       </AuthCard>

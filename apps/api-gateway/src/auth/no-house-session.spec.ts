@@ -11,7 +11,8 @@ import { ALLOWS_NO_HOUSE_KEY } from "../common/tenant/allows-no-house.decorator"
  *
  * The list of routes it may call is short on purpose and pinned here in full:
  * who am I, my houses, choose one, accept an invitation, my own account,
- * verify, sign out. A route added to it must be added to this list too, by
+ * verify, sign out, and open a first house (ADR 0213's account-only
+ * signup). A route added to it must be added to this list too, by
  * someone who has decided it belongs.
  */
 
@@ -69,6 +70,7 @@ describe("a session in no house (ADR 0164, R4)", () => {
       "POST /auth/logout",
       "POST /auth/me/link/:provider",
       "POST /auth/me/password",
+      "POST /auth/register/house",
       "POST /auth/resend-verification",
       "POST /auth/switch-restaurant",
     ]);

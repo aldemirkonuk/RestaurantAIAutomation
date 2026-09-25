@@ -721,11 +721,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     data: { accessToken: string; refreshToken: string };
   }) => {
     const { accessToken, refreshToken: refresh } = response.data;
-    localStorage.setItem("accessToken", accessToken);
-    localStorage.setItem("refreshToken", refresh);
+    // One helper stores every session (ADR 0164): a new account names no
+    // house yet (ADR 0213), so this also clears any house an earlier session
+    // on this device left in `activeRestaurantId`.
+    storeSession(accessToken, refresh);
     api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
     const userResponse = await api.get("/api/v1/auth/me");
-    setUser(userResponse.data.user);
+    setUser(userFrom(userResponse.data.user, accessToken));
   }, []);
 
   const registerAccount = useCallback(
@@ -771,16 +773,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (data: CreateFirstHouseData): Promise<string> => {
       const response = await api.post("/api/v1/auth/register/house", data);
       const { restaurantId, accessToken, refreshToken: refresh } = response.data;
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("refreshToken", refresh);
-      localStorage.setItem("activeRestaurantId", restaurantId);
+      // `activeRestaurantId` follows the TOKEN's house (ADR 0164), and the
+      // device remembers it as this person's last house.
+      const house = storeSession(accessToken, refresh) ?? restaurantId;
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-      api.defaults.headers.common["X-Restaurant-Id"] = restaurantId;
-      setActiveRestaurantIdState(restaurantId);
-      useAuthStore.getState().setActiveRestaurantId(restaurantId);
+      api.defaults.headers.common["X-Restaurant-Id"] = house;
+      clearHouseEnded();
+      setActiveRestaurantIdState(house);
+      useAuthStore.getState().setActiveRestaurantId(house);
       const userResponse = await api.get("/api/v1/auth/me");
-      setUser(userResponse.data.user);
-      return restaurantId;
+      setUser(userFrom(userResponse.data.user, accessToken));
+      return house;
     },
     [],
   );

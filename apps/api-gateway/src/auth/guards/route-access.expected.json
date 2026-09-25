@@ -45,6 +45,62 @@
     "admin",
     "null"
   ],
+  "GET /conversations (ConversationsController.listConversations)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /conversations/:conversationId (ConversationsController.getConversation)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /conversations/by-order/:orderId (ConversationsController.getByOrder)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /conversations/by-provider/:providerId (ConversationsController.getByProvider)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /conversations/pending/list (ConversationsController.getPendingConversations)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /conversations/stats/overview (ConversationsController.getStats)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /conversations/thread/:threadId (ConversationsController.getThread)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /conversations/threads (ConversationsController.listConversationThreads)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
   "GET /distributor-feed/:jurisdiction (DistributorFeedController.forJurisdiction)": [
     "owner",
     "manager"
@@ -61,6 +117,16 @@
     "owner",
     "manager"
   ],
+  "GET /house/counter (HouseCounterController.read)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "GET /house/day (HouseDayController.read)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
   "GET /price-index/:state (PriceIndexController.forState)": [
     "owner",
     "manager"
@@ -76,6 +142,18 @@
   "GET /prospects (ProspectsController.list)": "open",
   "GET /prospects/:id/attachments (ProspectsController.attachments)": "open",
   "GET /prospects/triage (ProspectsController.triage)": "open",
+  "GET /reports/exports (ReportExportsController.list)": [
+    "owner",
+    "manager"
+  ],
+  "GET /reports/exports/:id (ReportExportsController.get)": [
+    "owner",
+    "manager"
+  ],
+  "GET /reports/exports/:id/download (ReportExportsController.download)": [
+    "owner",
+    "manager"
+  ],
   "GET /senders/reputation (SenderTrustController.list)": [
     "owner",
     "manager"
@@ -129,9 +207,12 @@
     "manager"
   ],
   "PATCH /auth/me (AuthController.updateProfile)": "open",
-  "POST /ask-ai/actions/:id/confirm (AskAiController.confirm)": [
+  "POST /ask-ai/actions/:id/confirm (AskAiController.retiredConfirm)": [
     "owner",
-    "manager"
+    "manager",
+    "staff",
+    "admin",
+    "null"
   ],
   "POST /ask-ai/actions/:id/discard (AskAiController.discard)": [
     "owner",
@@ -139,6 +220,14 @@
     "staff",
     "admin",
     "null"
+  ],
+  "POST /ask-ai/actions/:id/seal-challenge (AskAiController.sealChallenge)": [
+    "owner",
+    "manager"
+  ],
+  "POST /ask-ai/actions/:id/sealed-confirm (AskAiController.sealedConfirm)": [
+    "owner",
+    "manager"
   ],
   "POST /ask-ai/propose (AskAiController.propose)": [
     "owner",
@@ -163,6 +252,9 @@
   "POST /auth/oauth/microsoft (AuthController.loginWithMicrosoft)": "open",
   "POST /auth/refresh (AuthController.refresh)": "open",
   "POST /auth/register (AuthController.register)": "open",
+  "POST /auth/register/account (AuthController.registerAccount)": "open",
+  "POST /auth/register/google (AuthController.registerAccountWithGoogle)": "open",
+  "POST /auth/register/house (AuthController.createFirstHouse)": "open",
   "POST /auth/register/restaurant (AuthController.registerRestaurant)": "open",
   "POST /auth/request-password-reset (AuthController.requestPasswordReset)": "open",
   "POST /auth/resend-verification (AuthController.resendVerification)": "open",
@@ -202,6 +294,21 @@
     "owner",
     "manager"
   ],
+  "POST /conversations/:conversationId/approve (ConversationsController.approveConversation)": [
+    "owner",
+    "manager"
+  ],
+  "POST /conversations/:conversationId/reject (ConversationsController.rejectConversation)": [
+    "owner",
+    "manager"
+  ],
+  "POST /conversations/:conversationId/summarize (ConversationsController.regenerateSummary)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
   "POST /distributor-feed/codes/:distributorKey (DistributorFeedController.declareCode)": [
     "owner",
     "manager"
@@ -240,6 +347,14 @@
     "manager"
   ],
   "POST /prospects/:id/restore (ProspectsController.restore)": "open",
+  "POST /reports/exports (ReportExportsController.request)": [
+    "owner",
+    "manager"
+  ],
+  "POST /reports/exports/:id/retry (ReportExportsController.retry)": [
+    "owner",
+    "manager"
+  ],
   "POST /senders/trust (SenderTrustController.setTrust)": [
     "owner",
     "manager"
@@ -292,6 +407,10 @@
     "manager"
   ],
   "POST /vendor-intel/sweep (VendorIntelController.sweep)": [
+    "owner",
+    "manager"
+  ],
+  "PUT /conversations/:conversationId/message (ConversationsController.editMessage)": [
     "owner",
     "manager"
   ]

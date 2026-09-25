@@ -620,3 +620,54 @@ describe("nothing mints a token naming a house without a membership row", () => 
     expect(user.restaurantId).toBeNull();
   });
 });
+
+describe("account-only signup (ADR 0213) under membership-only sessions", () => {
+  const NEW = "33333333-3333-4333-8333-333333333333";
+
+  it("registerAccount mints a session in no house, with no role", async () => {
+    const db = world();
+    const result = await service(db).registerAccount({
+      name: "Selin",
+      email: "selin@new.test",
+      password: "long-enough-password",
+    } as any);
+
+    expect(result.restaurantId).toBeNull();
+    expect(claims(result.accessToken)).toMatchObject({
+      restaurantId: null,
+      role: null,
+    });
+  });
+
+  it("createFirstHouse names the house it just opened, at the owner row it wrote", async () => {
+    const db = world({
+      users: [
+        {
+          user_id: NEW,
+          email: "selin@new.test",
+          name: "Selin",
+          role: "owner",
+          restaurant_id: null,
+          email_verified: true,
+        },
+      ],
+    });
+    const result = await service(db).createFirstHouse(NEW, {
+      restaurantName: "Meyhane",
+      address: "1 House Street",
+      city: "Istanbul",
+      country: "Türkiye",
+    } as any);
+
+    const access = db.tables.user_restaurant_access.find(
+      (r: Row) => r.user_id === NEW,
+    ) as Row;
+    expect(access).toMatchObject({ role: "owner", is_active: true });
+    expect(result.restaurantId).toBe(access.restaurant_id);
+    expect(claims(result.accessToken)).toMatchObject({
+      sub: NEW,
+      restaurantId: access.restaurant_id,
+      role: "owner",
+    });
+  });
+});
