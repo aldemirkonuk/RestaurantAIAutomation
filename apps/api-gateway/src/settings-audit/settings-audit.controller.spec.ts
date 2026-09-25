@@ -54,6 +54,8 @@ const EVERY: Record<SettingsRegister, true> = {
   "time-zone": true,
   "tone-scoring": true,
   "data-terms": true,
+  "target-margin": true,
+  "ask-training": true,
 };
 
 describe("the ?register= allow-list holds every register the type admits", () => {

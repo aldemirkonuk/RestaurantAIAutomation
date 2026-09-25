@@ -126,6 +126,16 @@
  * back once it has landed. See `procurement/documents/document-seal.ts` for what
  * each act's arguments cover and why.
  */
+/**
+ * `configuration_batch` (added 2026-09-19, ADR 0113/0144, codex-audit/C2-adopt.md
+ * #2) is the seal on APPLYING an Arrival configuration batch — "the assistant
+ * proposes, the seal applies". Its subject is the BATCH, and its args carry
+ * the batch id and revision, so a hold begun over one draft cannot be spent
+ * after the draft changed underneath it. The seven-day UNDO that follows a
+ * sealed batch is a separate, unsealed control (ADR 0113 rule 4a); nothing in
+ * that record or the C2 audit asks for a second ceremony there. See
+ * `arrival/arrival-seal.ts` for the act and the arguments.
+ */
 export const SEAL_SUBJECT_KINDS = [
   "mcp_tool",
   "mcp_tool_grant",
@@ -137,6 +147,13 @@ export const SEAL_SUBJECT_KINDS = [
   "commodity_exposure",
   "procurement_document",
   "house_data_terms",
+  "configuration_batch",
+  "integration_grant",
+  // An assistant proposal (`ai_proposed_actions`), applied from the house
+  // counter — "applied only by the seal" (the founder's pick of 2026-09-21,
+  // sketch 119 D). One act, `apply`, bound to the proposal's stored arguments.
+  // Admitted in SQL by 20260921114400.
+  "ai_proposed_action",
 ] as const;
 
 export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
@@ -144,6 +161,8 @@ export type SealSubjectKind = (typeof SEAL_SUBJECT_KINDS)[number];
 /** How a refusal names the thing, in the operator's language rather than ours. */
 export function subjectNoun(kind: SealSubjectKind): string {
   switch (kind) {
+    case "integration_grant":
+      return "integration grant";
     case "procurement_order":
       return "order";
     case "payment_method":
@@ -195,6 +214,17 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // running acceptance state), the same shape `house_mail_export` and
       // `text_credit_purchase` use for the same reason.
       return "data terms";
+    case "configuration_batch":
+      // "batch", not "proposal" or "receipt": the act being sealed is APPLYING
+      // it, and the book's own UI already calls it "this batch" throughout —
+      // a refusal that said "a different proposal" would name the assistant's
+      // side of it, not the thing the seal is over.
+      return "batch";
+    case "ai_proposed_action":
+      // "proposal", not "action": until it is applied it is only a proposal,
+      // and a refusal reading "a different action" would name the act the seal
+      // exists to gate as if it had already happened.
+      return "proposal";
   }
 }
 

@@ -65,16 +65,19 @@ describe("Ask AI is gated, and the gating is wired to the routes", () => {
     expect(user.limit).toBeLessThan(100);
   });
 
-  it("confirm is owner-or-manager, not any member", () => {
-    const roles: string[] = Reflect.getMetadata(
-      ROLES_KEY,
-      AskAiController.prototype.confirm,
-    );
-    expect(roles).toEqual(expect.arrayContaining(["owner", "manager"]));
-    expect(roles).not.toContain("staff");
-  });
+  it.each(["sealChallenge", "sealedConfirm"])(
+    "%s — the only way to apply a proposal — is owner-or-manager, not any member",
+    (handler) => {
+      const roles: string[] = Reflect.getMetadata(
+        ROLES_KEY,
+        (AskAiController.prototype as any)[handler],
+      );
+      expect(roles).toEqual(expect.arrayContaining(["owner", "manager"]));
+      expect(roles).not.toContain("staff");
+    },
+  );
 
-  it("propose and confirm take DTO CLASSES, so ValidationPipe has a metatype", () => {
+  it("propose and the sealed routes take DTO CLASSES, so ValidationPipe has a metatype", () => {
     // The original fault in one line: an inline TypeScript type erases, Nest
     // hands ValidationPipe `Object`, and the pipe returns the body untouched.
     // `design:paramtypes` is what the pipe reads, so that is what is asserted.
@@ -88,12 +91,15 @@ describe("Ask AI is gated, and the gating is wired to the routes", () => {
     // sees it, because a custom param decorator is not a body.
     expect(proposeParams[0]).toBe(ProposeDto);
 
-    const confirmParams = Reflect.getMetadata(
-      "design:paramtypes",
-      AskAiController.prototype,
-      "confirm",
-    );
-    expect(confirmParams).toContain(ConfirmDto);
+    // The edit travels in both sealed bodies: minted on, then carried back.
+    for (const handler of ["sealChallenge", "sealedConfirm"]) {
+      const params = Reflect.getMetadata(
+        "design:paramtypes",
+        AskAiController.prototype,
+        handler,
+      );
+      expect(params).toContain(ConfirmDto);
+    }
   });
 
   it("the real ValidationPipe refuses the bodies it used to wave through", async () => {
@@ -155,14 +161,14 @@ describe("Ask AI is gated, and the gating is wired to the routes", () => {
     expect(out).toEqual(hostile);
   });
 
-  it("confirm's payload is validated as an object, not trusted as one", async () => {
+  it("the sealed routes' payload is validated as an object, not trusted as one", async () => {
     const pipe = new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
     });
     const meta = { type: "body" as const, metatype: ConfirmDto };
-    // Absent payload is legitimate — confirming without edits.
+    // Absent payload is legitimate — applying without edits.
     await expect(pipe.transform({}, meta)).resolves.toBeInstanceOf(ConfirmDto);
     // A non-object payload is not.
     await expect(

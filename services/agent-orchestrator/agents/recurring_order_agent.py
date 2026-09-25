@@ -151,15 +151,12 @@ class RecurringOrderAgent(BaseAgent):
         )
 
     async def cleanup(self) -> None:
-        if self._scheduler_task and not self._scheduler_task.done():
-            self._scheduler_task.cancel()
-            try:
-                await self._scheduler_task
-            except asyncio.CancelledError:
-                pass
-            except Exception as exc:
-                self.logger.warning(f"Scheduler task ended with error: {exc}")
-        self._scheduler_task = None
+        if self._scheduler_task:
+            await self._drain_tasks(
+                {self._scheduler_task},
+                asyncio.get_running_loop().time() + self.config.task_timeout_seconds,
+            )
+            self._scheduler_task = None
 
     async def health_check(self) -> Dict[str, Any]:
         health = await super().health_check()
@@ -179,6 +176,8 @@ class RecurringOrderAgent(BaseAgent):
         while not self._shutdown_event.is_set():
             try:
                 await self._pause_event.wait()
+                if self._shutdown_event.is_set():
+                    return
                 await self.check_scheduled_orders()
                 await self._sleep_until_next_check()
             except asyncio.CancelledError:
@@ -186,7 +185,7 @@ class RecurringOrderAgent(BaseAgent):
             except Exception as exc:
                 self.logger.error(f"Error in recurring order sweep: {exc}")
                 self.metrics.record_error(str(exc))
-                await asyncio.sleep(_ERROR_BACKOFF_SECONDS)
+                await self._wait_for_shutdown(_ERROR_BACKOFF_SECONDS)
 
     async def _sleep_until_next_check(self) -> None:
         """Sleep until tomorrow 00:05 (small offset for safety)."""
@@ -197,7 +196,13 @@ class RecurringOrderAgent(BaseAgent):
         self.logger.info(
             f"Next recurring-order sweep in {sleep_seconds / 3600:.1f} hours"
         )
-        await asyncio.sleep(sleep_seconds)
+        await self._wait_for_shutdown(sleep_seconds)
+
+    async def _wait_for_shutdown(self, timeout: float) -> None:
+        try:
+            await asyncio.wait_for(self._shutdown_event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            pass
 
     # =========================================================================
     # Public entry point

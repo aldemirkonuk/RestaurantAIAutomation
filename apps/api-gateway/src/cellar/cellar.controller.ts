@@ -13,11 +13,13 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CellarRegistersService } from "./cellar-registers.service";
+import { CellarSettingsService } from "./cellar-settings.service";
 import { ZonesService } from "./zones.service";
 import {
   ConfirmZoneDto,
   SetCellarRegistersDto,
 } from "./dto/cellar-registers.dto";
+import { SetCellarSettingsDto } from "./dto/cellar-settings.dto";
 
 /**
  * Which registers this house carries.
@@ -35,6 +37,7 @@ export class CellarController {
   constructor(
     private readonly registers: CellarRegistersService,
     private readonly zones: ZonesService,
+    private readonly settings: CellarSettingsService,
   ) {}
 
   @Get(":restaurantId/registers")
@@ -135,6 +138,48 @@ export class CellarController {
           ? error.message
           : "Failed to record the cellar registers",
         HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /* ── two per-house choices: the hold ceremony and the tiles it shows
+     (ADR 0160 sec110, items 2 and 6) ───────────────────────────────────── */
+
+  @Get(":restaurantId/settings")
+  @ApiOperation({
+    summary:
+      "This house's cellar settings — the order-hold ceremony and which overview tiles it configured",
+  })
+  @ApiResponse({ status: 200, description: "Settings readout, defaulted where unconfigured" })
+  async readSettings(@Param("restaurantId") restaurantId: string) {
+    return this.settings.read(restaurantId);
+  }
+
+  @Put(":restaurantId/settings")
+  @ApiOperation({
+    summary: "Record one or both of the house's cellar settings. The actor comes from the JWT",
+  })
+  @ApiResponse({ status: 200, description: "The readout after the write" })
+  async writeSettings(
+    @Param("restaurantId") restaurantId: string,
+    @Body() dto: SetCellarSettingsDto,
+    @Req() req: { user?: { userId?: string; role?: string } },
+  ) {
+    try {
+      return await this.settings.write(
+        restaurantId,
+        dto,
+        req.user?.userId ?? null,
+        req.user?.role ?? null,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const code = (error as { code?: string } | undefined)?.code;
+      throw new HttpException(
+        error instanceof Error ? error.message : "Failed to record the cellar settings",
+        code === "CELLAR_HOLD_CEREMONY_FORBIDDEN"
+          ? HttpStatus.FORBIDDEN
+          : HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

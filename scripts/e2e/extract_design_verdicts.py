@@ -218,6 +218,8 @@ def without_frame_runtime(text: str) -> str:
 def route_to_slug(manifest: dict[str, Any]) -> dict[str, str]:
     table: dict[str, str] = {}
     for entry in manifest["pages"]:
+        if entry.get("chrome"):  # the shell wraps "/" too; "/" is the dashboard's
+            continue
         if "{" not in entry["route"]:  # a param route would shadow its parent
             table[entry["route"]] = entry["slug"]
     # The board titles two pages without a route of their own.

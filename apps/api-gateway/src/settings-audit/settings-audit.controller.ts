@@ -48,6 +48,8 @@ export const REGISTERS: SettingsRegister[] = [
   "time-zone",
   "tone-scoring",
   "data-terms",
+  "target-margin",
+  "ask-training",
 ];
 
 /**
