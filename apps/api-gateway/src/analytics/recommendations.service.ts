@@ -147,6 +147,7 @@ export class RecommendationsService {
        * rule_keys`) instead of logging an impression for every compose.
        */
       recordImpressions?: boolean;
+      /**
        * The person looking (from the JWT). Their own snoozes (ADR 0191 round
        * 3) are withheld from them alone; with no viewer — the digest — the
        * answer is the house's.
