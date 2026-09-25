@@ -18,8 +18,20 @@
  *     a way to revoke it, and is never offered an approval.
  */
 
+import type { ReactElement } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+/**
+ * The manager view now renders IntegrationReturnNotice unconditionally too
+ * (KL audit J9/D9), and that component calls useSearchParams, which throws
+ * outside a Router. Every render in this file goes through one MemoryRouter
+ * wrapper rather than each call site adding its own.
+ */
+function render(ui: ReactElement) {
+  return rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 const mockData = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -120,6 +132,8 @@ interface Fixture {
   provider: Reg;
   payments: Reg;
   sender: Reg;
+  /** Receive-half grant status — drives the reconnect banner. */
+  mailReader: Reg;
   /** The house's WhatsApp and SMS senders (ADR 0121). */
   textSenders: Reg;
   /** Re-read the text-sender register after a manager stops a sender. */
@@ -180,6 +194,13 @@ function base(): Fixture {
       configuredBy: 'GMAIL_SENDER_EMAIL',
       resolvedFromProfile: false,
       perHouse: { supported: false, reason: 'No per-restaurant sender exists.' },
+    }),
+    /** Default: reading off — no reconnect banner. Tests that need the banner set this. */
+    mailReader: reg({
+      granted: false,
+      enabled: false,
+      lastReadAt: null,
+      lastError: null,
     }),
     /**
      * The measured state of every house on this deployment: no text sender of
@@ -465,6 +486,7 @@ beforeEach(() => {
 describe('who may look', () => {
   it('refuses a non-manager in words, and says the server refuses as well', () => {
     mockData.current = { ...base(), isManager: false, role: 'staff' };
+    // The refused branch renders IntegrationReturnNotice, which reads the URL.
     render(<ConnectionsNext />);
 
     expect(
@@ -473,6 +495,58 @@ describe('who may look', () => {
     // The distinction that matters: not merely a hidden page.
     expect(screen.getByText(/refused at the server/i)).toBeInTheDocument();
     expect(screen.queryByText(/what the house pays with/i)).not.toBeInTheDocument();
+  });
+
+  // KL audit J9/D9: the notice rendered only in the refused (non-manager)
+  // branch, so a manager returning from /authorize never saw their own
+  // grant's outcome on this page.
+  it('shows a manager the outcome of a permission they just returned from, not only a non-manager', () => {
+    mockData.current = { ...base(), isManager: true };
+    rtlRender(
+      <MemoryRouter initialEntries={['/connections?integration_status=denied&integration_reason=denied']}>
+        <ConnectionsNext />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/provider returned a declined permission/i)).toBeInTheDocument();
+  });
+});
+
+describe('mail reconnect banner (founder Q8)', () => {
+  it('stays silent when mail reading is off', () => {
+    render(<ConnectionsNext />);
+    expect(screen.queryByTestId('mail-reconnect-banner')).not.toBeInTheDocument();
+  });
+
+  it('shows a routine reconnect banner when reading is on and no live grant backs it', () => {
+    const d = base();
+    d.mailReader = reg({
+      granted: false,
+      enabled: true,
+      lastReadAt: null,
+      lastError: null,
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const banner = screen.getByTestId('mail-reconnect-banner');
+    expect(banner).toHaveTextContent(/mail connection needs to be reconnected/i);
+    expect(within(banner).getByRole('link', { name: /reconnect/i })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/authorize/gmail_read'),
+    );
+  });
+
+  it('does not invent a banner when the grant status is unknown', () => {
+    const d = base();
+    d.mailReader = reg({
+      granted: 'unknown',
+      enabled: true,
+      lastReadAt: null,
+      lastError: null,
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+    expect(screen.queryByTestId('mail-reconnect-banner')).not.toBeInTheDocument();
   });
 });
 
@@ -546,6 +620,95 @@ describe('a register that could not be read', () => {
   });
 });
 
+/**
+ * Founder, 2026-09-22, after the preview review: "remove technical secrets /
+ * webhooks / terms". The webhook stays wired; only its display goes.
+ */
+describe('no operator internals in front of a restaurant user', () => {
+  const catalogRow = (id: string, label: string, providerLabel: string) => ({
+    id,
+    provider: providerLabel.toLowerCase(),
+    label,
+    providerLabel,
+    description: `${label}.`,
+    available: false,
+    unavailableReason: `${providerLabel} OAuth is not configured on this deployment.`,
+    scopes: [{ scope: `https://www.googleapis.com/auth/${id}`, label: `Use ${label}` }],
+    notRequested: [],
+  });
+
+  it('prints no webhook URL, house id, key name, table name, raw scope or deployment register', () => {
+    const d = base();
+    d.restaurantId = 'house-7f3a91';
+    d.houseGrants = reg({
+      grants: [grant({ scopes: ['https://www.googleapis.com/auth/drive.file'] })],
+      unattributed: 0,
+    });
+    mockData.current = d;
+    const { container } = render(<ConnectionsNext />);
+    const text = container.textContent ?? '';
+
+    for (const leak of [
+      /pos-hub\/webhook/,
+      /webhook →/,
+      /house-7f3a91/,
+      /STRIPE_[A-Z_]+/,
+      /VITE_STRIPE/,
+      /ANTHROPIC_API_KEY/,
+      /INTEGRATION_TOKEN_ENCRYPTION_KEY/,
+      /MCP_CONNECTION_SECRET_KEY/,
+      /GMAIL_SENDER_EMAIL/,
+      /payment_methods/,
+      /vendor_portal_pages/,
+      /googleapis\.com/,
+      /Set once for every house/,
+      /invocation (on|off)/,
+      /POST \/procurement/,
+      /Bearer token/,
+      /\bwebhook\b/i,
+      /\biCal\b/,
+      /unauthenticated/,
+      /Token expires/,
+      /asking for a token/,
+      /\biframe/i,
+      /readOnlyHint/,
+      /\bprotocol\b/i,
+    ]) {
+      expect(text).not.toMatch(leak);
+    }
+    expect(container.querySelector('#deployment')).toBeNull();
+    // The calendar feed address is the house's own subscribe link, and stays —
+    // marked as a credential so the nightly walk masks it (ADR 0135).
+    const feed = screen.getByText(/\/api\/v1\/calendar\/feed\//);
+    expect(feed.getAttribute('data-secret')).toBe('credential');
+    // The till row is still drawn: only its internals are hidden.
+    expect(screen.getByText('Point of sale')).toBeInTheDocument();
+  });
+
+  it('draws one Google heading with a row per service, and swaps an OAuth reason for plain words', () => {
+    const d = base();
+    d.catalog = reg([
+      catalogRow('google_drive', 'Google Drive', 'Google'),
+      catalogRow('gmail_send', 'Gmail — sending only', 'Google'),
+      catalogRow('gmail_read', 'Gmail — reading vendor replies only', 'Google'),
+      catalogRow('excel', 'Microsoft Excel', 'Microsoft'),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const google = screen.getByRole('region', { name: 'Google' });
+    expect(within(google).getByRole('heading', { name: 'Google' })).toBeInTheDocument();
+    for (const label of ['Google Drive', 'Gmail — sending only', 'Gmail — reading vendor replies only']) {
+      expect(within(google).getByText(label)).toBeInTheDocument();
+    }
+    expect(within(google).getAllByRole('button', { name: 'Connect yours' })).toHaveLength(3);
+    expect(within(google).queryByText('Microsoft Excel')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Microsoft' })).toBeInTheDocument();
+    expect(screen.queryByText(/OAuth/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('This connection is not available yet.').length).toBe(4);
+  });
+});
+
 describe('the one row, four columns and no fifth', () => {
   it('gives a row with no live control a sentence saying who can stop it', () => {
     render(<ConnectionsNext />);
@@ -554,14 +717,15 @@ describe('the one row, four columns and no fifth', () => {
     const disconnect = screen.getByRole('button', { name: 'Disconnect' });
     expect(disconnect).toBeDisabled();
     expect(
-      screen.getByText(/no disconnect endpoint exists/i),
+      screen.getByText(/The till cannot be disconnected from this page yet/),
     ).toBeInTheDocument();
   });
 
   it('states that no public page exists for a house rather than drawing one', () => {
     render(<ConnectionsNext />);
     expect(screen.getByText(/public page for this house/i)).toBeInTheDocument();
-    expect(screen.getByText(/its table has no restaurant column at all/i)).toBeInTheDocument();
+    expect(screen.getByText(/belongs to a/i)).toBeInTheDocument();
+    expect(screen.queryByText(/vendor_portal_pages/)).not.toBeInTheDocument();
   });
 
   it('offers the calendar feed as a real address and a real regenerate', () => {
@@ -644,6 +808,116 @@ describe('house declares, each person consents', () => {
         'drop_table — the server declares it changes things · not granted',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('hides a stored reply that still names the wire', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: {
+          status: 'protocol_error',
+          detail:
+            'The endpoint answered, but its initialize result carried no protocolVersion, so it is not speaking this protocol.',
+          serverName: null,
+          serverVersion: null,
+          protocolVersion: null,
+          tools: null,
+          toolCount: null,
+        },
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/The reply could not be read/)).toBeInTheDocument();
+    expect(screen.queryByText(/protocol/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps a refused reply that names a token, because that sentence is why it was refused', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: {
+          status: 'refused',
+          detail: 'HTTP 401 — the sign-in was refused: invalid token.',
+          serverName: null,
+          serverVersion: null,
+          protocolVersion: null,
+          tools: null,
+          toolCount: null,
+        },
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/invalid token/i)).toBeInTheDocument();
+    expect(screen.queryByText(/The reply could not be read/)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Refused').length).toBeGreaterThan(0);
+  });
+
+  it('keeps a redirect refusal whose address contains a wire word', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: {
+          status: 'protocol_error',
+          detail:
+            'it redirected (HTTP 308 to https://host/webhook/mcp/); declare the final URL, so the credential is never sent somewhere this gateway did not check.',
+          serverName: null,
+          serverVersion: null,
+          protocolVersion: null,
+          tools: null,
+          toolCount: null,
+        },
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText(/declare the final URL/)).toBeInTheDocument();
+    expect(screen.getByText(/webhook\/mcp/)).toBeInTheDocument();
+    expect(screen.queryByText('The reply could not be read.')).not.toBeInTheDocument();
+  });
+
+  it('names a reply the house cannot read without using the protocol word', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: {
+          status: 'protocol_error',
+          detail: 'The reply could not be read.',
+          serverName: null,
+          serverVersion: null,
+          protocolVersion: null,
+          tools: null,
+          toolCount: null,
+        },
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getAllByText('Not readable').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/protocol/i)).not.toBeInTheDocument();
+  });
+
+  it('says a listed tool with no read-or-write answer counts as a write, in plain words', () => {
+    const d = base();
+    d.mcp = reg([
+      server({
+        probe: probeWith([listed('mystery_write', { readOnlyHint: null })]),
+      }),
+    ]);
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(
+      screen.getByText(
+        /mystery_write — the server did not say whether it only reads, so it counts as a write/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/readOnlyHint/)).not.toBeInTheDocument();
   });
 
   it('says when a tool counts as a write because the server declared NOTHING', () => {
@@ -1054,7 +1328,7 @@ describe('the collapse — anchors and the acts that moved', () => {
 
     // A fragment nothing answers to is a link that silently does nothing, so
     // each anchor must exist on the rendered page, not merely in the mapping.
-    for (const anchor of ['attached', 'till', 'sender', 'feed', 'servers', 'payment', 'grants', 'deployment']) {
+    for (const anchor of ['attached', 'till', 'sender', 'feed', 'servers', 'payment', 'grants']) {
       expect(container.querySelector(`#${anchor}`)).not.toBeNull();
     }
   });
@@ -1079,15 +1353,15 @@ describe('the collapse — anchors and the acts that moved', () => {
     fireEvent.click(screen.getByRole('button', { name: /declare a server/i }));
     expect(screen.getByRole('button', { name: 'Declare server' })).toBeDisabled();
     expect(
-      screen.getByText(/A name of at least two characters and an http\(s\) endpoint are needed\./),
+      screen.getByText(/A name of at least two characters and the server.s address are needed\./),
     ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'House bridge' } });
-    fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://mcp.example.test' } });
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'https://mcp.example.test' } });
     expect(screen.getByRole('button', { name: 'Declare server' })).toBeEnabled();
   });
 
-  it('disables the credential field with the deployment’s own reason, never a blank one', () => {
+  it('disables the credential field with a plain reason, never a blank one and never a key name', () => {
     const d = base();
     d.mcp = reg([server()]);
     d.mcpRuntime = reg({
@@ -1102,10 +1376,12 @@ describe('the collapse — anchors and the acts that moved', () => {
     render(<ConnectionsNext />);
 
     fireEvent.click(screen.getByRole('button', { name: /declare a server/i }));
-    // Disabled AND carrying the server's own sentence — a field that accepted a
-    // secret the deployment would drop is worse than no field.
-    expect(screen.getByLabelText('Credential')).toBeDisabled();
-    expect(screen.getAllByText(/MCP_CONNECTION_SECRET_KEY is not set/).length).toBeGreaterThan(0);
+    // Disabled AND carrying a reason — a field that accepted a secret the
+    // deployment would drop is worse than no field. The gateway's sentence
+    // names a key, so the page says it in plain words (founder, 2026-09-22).
+    expect(screen.getByLabelText('Sign-in')).toBeDisabled();
+    expect(screen.getByText(/Mudavym cannot store a sign-in yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/MCP_CONNECTION_SECRET_KEY/)).not.toBeInTheDocument();
   });
 
   it('says nothing about storing a credential when the deployment did not report', () => {
@@ -1116,9 +1392,9 @@ describe('the collapse — anchors and the acts that moved', () => {
     render(<ConnectionsNext />);
 
     fireEvent.click(screen.getByRole('button', { name: /declare a server/i }));
-    expect(screen.getByLabelText('Credential')).toBeDisabled();
+    expect(screen.getByLabelText('Sign-in')).toBeDisabled();
     expect(
-      screen.getByText(/did not report whether it can store a credential/),
+      screen.getByText(/did not report whether it can store a sign-in/),
     ).toBeInTheDocument();
   });
 
@@ -1149,13 +1425,14 @@ describe('the collapse — anchors and the acts that moved', () => {
 
     expect(screen.getByRole('button', { name: 'Add a card' })).toBeDisabled();
     expect(
-      screen.getByText(/VITE_STRIPE_PUBLISHABLE_KEY is not set in this web bundle/),
-    ).toBeInTheDocument();
+      screen.getAllByText(/Card payments are not switched on yet, so no card can be added\./).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/VITE_STRIPE_PUBLISHABLE_KEY/)).not.toBeInTheDocument();
     expect(screen.queryByText(/has not been rebuilt here yet/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Adding a card happens on \/profile/)).not.toBeInTheDocument();
   });
 
-  it("prefers the gateway's own reason when the provider itself is unkeyed", () => {
+  it("replaces the gateway's key-naming reason with plain words when the provider is unkeyed", () => {
     const d = base();
     d.payments = reg({
       provider: {
@@ -1168,11 +1445,11 @@ describe('the collapse — anchors and the acts that moved', () => {
     render(<ConnectionsNext />);
 
     expect(screen.getByRole('button', { name: 'Add a card' })).toBeDisabled();
-    // The gateway's sentence, so the disabled control and the 503 the create
-    // path would answer with say the same thing.
+    // Founder, 2026-09-22: no key names in front of a restaurant user.
     expect(
-      screen.getByText(/STRIPE_SECRET_KEY is not set on this deployment\./),
-    ).toBeInTheDocument();
+      screen.getAllByText(/Card payments are not switched on yet/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/STRIPE_SECRET_KEY/)).not.toBeInTheDocument();
   });
 });
 

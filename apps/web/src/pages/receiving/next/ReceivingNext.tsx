@@ -35,6 +35,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Wordmark } from '@/components/mudavym';
+import { DayLine } from '@/components/mudavym/DayLine';
 import { ink } from '@/lib/mudavym/motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { RcCreditDrafts } from './RcCreditDrafts';
@@ -275,6 +276,12 @@ export default function ReceivingNext() {
             <RolePreview actual={actual} preview={preview} onPreview={setPreview} />
           </div>
         </header>
+
+        {/* ── the day line (sketch 119 §E) ─────────────────────────────── */}
+        {/* A PAGE element, self-gated by the shell flag — renders nothing
+            when the shell is off. Shared under all three renderings, the
+            same as the masthead above it. */}
+        <DayLine />
 
         {/* ── the rendering, with the shared outbox rail beside it ─────── */}
         <div

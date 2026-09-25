@@ -41,7 +41,11 @@ Nothing about this is speculative machinery. Every piece it needs exists and is 
 
 - **Propose → confirm → execute** is built and shipped. `POST /ask-ai/propose` never
   executes; a human looks; `POST /ask-ai/actions/:id/confirm` executes through the owning
-  service (`ask-ai/ask-ai.controller.ts:34,70`). The confirm is a **compare-and-swap** on
+  service (`ask-ai/ask-ai.controller.ts:34,70`). **[amended 2026-09-21: that unsealed
+  route is retired — it answers 410 and names the sealed pair. A proposal is now applied
+  only behind a redeemed seal, `POST /ask-ai/actions/:id/seal-challenge` when the hold
+  begins (any edits bound into it), then `sealed-confirm` carrying it, on the founder's
+  "Never without the seal"; see ADR 0160's review trail, 2026-09-21.]** The confirm is a **compare-and-swap** on
   the row's status, so a double tap executes exactly once
   (`ask-ai/ask-ai.service.ts:500-548`). An operator's edit is re-validated through the
   *same* allowlist and the *same* grounding check as a model proposal, "because an editable

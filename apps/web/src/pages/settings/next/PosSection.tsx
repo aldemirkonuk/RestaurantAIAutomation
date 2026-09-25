@@ -92,6 +92,7 @@ export function PosSection({ data }: { data: SettingsNextData }) {
                 kept: 'account',
                 when: prefsReady ? (prefs.data?.updatedAt ?? null) : null,
                 whenUnknown: chooserUnknown,
+                readBy: 'nothing in the ingest path — a documentation bookmark only; a till starts sending on its own handshake',
               }}
               consequence={
                 <>

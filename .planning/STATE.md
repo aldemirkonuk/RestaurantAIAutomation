@@ -5,6 +5,8 @@
 > [archive/STATE-pre-P2-20260825.md](archive/STATE-pre-P2-20260825.md).
 > If this file and any other doc disagree about what is current, fix the other doc.
 >
+> **2026-09-22 — get-started lock.** Founder approved all 17 Opus recs as A. [ADR 0213](decisions/0213-get-started-is-account-then-house-then-first-proof.md) (OD-134–139, OD-141). Build on `feat/arrival-first-proof`: account-only `/register`, four arrival screens, first proof at `/house/menu`. Do not merge #414/#454; do not flip `mudavym_design_arrival`; gate-owned #415/#430/#434 stay with their owner.
+
 > **2026-09-12 handoff:** the merge queue, the seven unlanded branches, and the page wave in flight are in [handoff/PROGRESS.md](handoff/PROGRESS.md). Read it before continuing any of them.
 
 > **2026-09-17 — the finish goal.** The founder asked for every page on the Mudavym design,

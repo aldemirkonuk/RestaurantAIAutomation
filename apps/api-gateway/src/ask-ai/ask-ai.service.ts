@@ -1,12 +1,16 @@
 import {
   BadRequestException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import {
@@ -129,6 +133,15 @@ export interface CandidateSets {
  * unchanged and unbypassed, and both of them produce a DRAFT — so nothing
  * reaches a vendor without a person acting twice.
  */
+/** The one act a proposal's seal approves. */
+export const PROPOSAL_SEAL_ACT = "apply";
+
+/**
+ * Every column the seal reads of a proposal, as a module-level literal for
+ * `scripts/check_read_columns_exist.py`.
+ */
+const PROPOSAL_SEAL_COLUMNS = "id, family, action_type, payload, status";
+
 @Injectable()
 export class AskAiService {
   private readonly logger = new Logger(AskAiService.name);
@@ -139,6 +152,11 @@ export class AskAiService {
     private readonly modelClient: ModelClientService,
     private readonly nfVerdicts: NfVerdictService,
     private readonly procurement: ProcurementService,
+    // The seal a proposal is applied with from the house counter (sketch 119
+    // D). Optional so the suites that construct this service positionally
+    // keep compiling; when it is absent the sealed routes REFUSE — a seal
+    // check that vanishes with its own dependency must never apply anything.
+    @Optional() private readonly sealChallenges?: SealChallengeService,
   ) {}
 
   /**
@@ -303,7 +321,7 @@ export class AskAiService {
    *
    * `GET /ask-ai/candidates` is this and nothing else: a read that creates no
    * row, calls no model, and costs nothing but three selects. It exists because
-   * `confirm()` accepts an edited `inventoryId` / `providerId` / `orderId` and
+   * the sealed apply (`confirmSealed`) accepts an edited `inventoryId` / `providerId` / `orderId` and
    * re-grounds it — an ability the web app could not use, having no way to name
    * the alternatives. A uuid text box is not a control.
    *
@@ -593,10 +611,18 @@ export class AskAiService {
    * An UNTOUCHED confirm is checked too — a proposal can sit in the open list
    * for days, so "nobody edited it" is no reason to trust that what it points
    * at still exists — but by direct lookup rather than candidate-set
-   * membership. See the comment in `confirm` for why those are different
-   * questions and why answering both with the capped set was wrong.
+   * membership. See the comment below for why those are different questions
+   * and why answering both with the capped set was wrong.
+   *
+   * PRIVATE, AND ONLY EVER BEHIND A REDEEMED SEAL (founder, 2026-09-21: "Never
+   * without the seal"). This used to be the public `confirm`, reached by
+   * `POST /ask-ai/actions/:id/confirm` with no seal at all — the Ask panel's
+   * proposal card applied through it. That route now answers 410 and names the
+   * sealed one, and the only caller of this method is `confirmSealed`, after
+   * `seals.redeem` has returned. `scripts/check_ask_ai_is_gated.py` holds both
+   * halves: this stays `private`, and no controller calls it.
    */
-  async confirm(
+  private async applyAfterSeal(
     restaurantId: string,
     userId: string,
     actionId: string,
@@ -702,7 +728,7 @@ export class AskAiService {
     } catch (err) {
       // The checks THROW on a failed query (loadCandidates does, by design).
       // Without this the throw escaped past the rollback and left the row at
-      // `confirmed` — where `confirm` cannot claim it again (it requires
+      // `confirmed` — where the apply cannot claim it again (it requires
       // `proposed`) and `discard` cannot either. A transient database blip
       // would have permanently stranded a proposal: not executable, not
       // dismissable, gone.
@@ -766,6 +792,194 @@ export class AskAiService {
     }
   }
 
+  /**
+   * The arguments a proposal's seal is bound to: the row as it is stored, plus
+   * the operator's edit when there is one.
+   *
+   * Read fresh for the mint AND for the redemption, so a proposal whose stored
+   * action changed between the two is refused ("changed after the seal was
+   * issued") rather than applied as something other than what was held.
+   * A proposal that is not open in THIS house is a 404 — the same answer as
+   * one that does not exist.
+   *
+   * THE EDIT IS INSIDE THE SEAL (founder, 2026-09-21: "Never without the
+   * seal"). The Ask panel's card lets the operator fix a quantity or pick a
+   * different vendor before applying. The seal is minted AFTER those edits,
+   * when the hold begins, and binds the exact edited payload under `edit`; the
+   * apply must carry the same payload back. So an edit made after the hold
+   * began, a seal minted untouched then spent on an edit, or a seal minted on
+   * one edit then spent on another all hash differently and are refused as
+   * "changed after the seal was issued". An untouched proposal binds no `edit`
+   * key at all, so its seal cannot carry an edit either.
+   */
+  private sealArgsWithEdit(
+    stored: Record<string, unknown>,
+    editedPayload: Record<string, unknown> | undefined,
+  ): Record<string, unknown> {
+    return editedPayload === undefined
+      ? stored
+      : { ...stored, edit: editedPayload };
+  }
+
+  /** Read the stored proposal the seal binds (see `sealArgsWithEdit`). */
+  private async readProposalSealArgs(
+    restaurantId: string,
+    actionId: string,
+  ): Promise<Record<string, unknown>> {
+    const { data, error } = await this.databaseService
+      .getClient()
+      .from("ai_proposed_actions")
+      .select(PROPOSAL_SEAL_COLUMNS)
+      .eq("id", actionId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `Ask AI could not read proposal ${actionId}: ${error.message}`,
+      );
+      throw new ServiceUnavailableException("Could not read that proposal.");
+    }
+    const row = data as {
+      id: string;
+      family: string | null;
+      action_type: string | null;
+      payload: Record<string, unknown> | null;
+      status: string;
+    } | null;
+    if (!row || row.status !== "proposed") {
+      throw new NotFoundException(
+        "That action is no longer waiting for confirmation.",
+      );
+    }
+    return {
+      actionId: row.id,
+      family: row.family,
+      actionType: row.action_type,
+      payload: row.payload ?? {},
+    };
+  }
+
+  private requireSeal(): SealChallengeService {
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued or checked (the seal service is not wired into Ask AI), " +
+          "so nothing was applied. This is a gateway fault, not a decision about this proposal.",
+      );
+    }
+    return this.sealChallenges;
+  }
+
+  /**
+   * Mint the one-time seal a proposal's application has to carry back — when
+   * the hold BEGINS (the house counter's sheet and the Ask panel's card both
+   * call this from `HoldToApprove`'s `onChallenge`). Bound to this person, this
+   * proposal, the act `apply`, the proposal's stored arguments and — when the
+   * operator edited it — the edited payload.
+   *
+   * An edit is checked HERE, through the same allowlist and grounding an apply
+   * runs, before any seal exists: a seal minted for an edit that the apply
+   * would refuse is a seal a manager holds and is then told meant nothing
+   * (the seal service's own rule). The apply checks it again, because the
+   * world can move between the hold and the write.
+   */
+  async issueProposalSeal(
+    restaurantId: string,
+    userId: string,
+    actionId: string,
+    editedPayload?: Record<string, unknown>,
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    const seals = this.requireSeal();
+    const stored = await this.readProposalSealArgs(restaurantId, actionId);
+    if (editedPayload !== undefined) {
+      const edit = await this.validateEdit(
+        restaurantId,
+        { family: stored.family, action_type: stored.actionType },
+        editedPayload,
+      );
+      if (!edit.ok) throw new BadRequestException(edit.reason);
+    }
+    const issued = await seals.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "ai_proposed_action",
+      subjectId: actionId,
+      action: PROPOSAL_SEAL_ACT,
+      args: this.sealArgsWithEdit(stored, editedPayload),
+    });
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
+
+  /**
+   * Apply a proposal behind a redeemed seal — "applied only by the seal"
+   * (the founder's pick of 2026-09-21, sketch 119 D), and the ONLY way a
+   * proposal is applied at all ("Never without the seal", the founder,
+   * 2026-09-21, on the Ask panel).
+   *
+   * Redeem FIRST, then the same compare-and-swap every proposal goes through.
+   * An edit travels with the apply and must be the edit the seal was minted
+   * on (see `sealArgsWithEdit`): the operator edits, THEN holds, and what runs
+   * is what was held. The seal is spent even if the apply then refuses (a stale
+   * id) — a seal is good for one attempt at one act, exactly as an order's is.
+   *
+   * WHY THE SEAL CHECK IS ITS OWN TRY/CATCH, AND `applyAfterSeal` IS NOT
+   * ----------------------------------------------------------------------
+   * `readProposalSealArgs()`, `requireSeal()` and `seals.redeem()` all run
+   * strictly before the only write (`applyAfterSeal`'s compare-and-swap) —
+   * that ordering is the whole point of this method, and
+   * `scripts/check_ask_ai_is_gated.py` holds it. So whatever any of them
+   * throws, the row is still `proposed`; a refusal (`ForbiddenException`:
+   * spent, expired, someone else's, minted on a different edit) or a
+   * legitimate "not waiting any more" (`NotFoundException`, which the web
+   * card classifies `gone`, not `failed`) already tell the web card that
+   * ("refused ... Nothing was written", `apps/web/src/services/api/askAi.ts`).
+   * An INTERNAL fault here — the seal service not wired into this module
+   * (the admitted gap: `@Optional() sealChallenges`), a redeem-side failure,
+   * or the proposal-row read itself erroring — carries the exact same
+   * "nothing was written" truth, but a raw 5xx reaching the web card is
+   * classified `failed`, whose own contract says the row is TERMINAL and
+   * "will not appear again" (`ProposalCard.tsx`) — false here. So an
+   * internal fault from this phase is re-shaped into the same refusal the
+   * card already treats as recoverable, with a fixed sentence rather than
+   * the internal error's own text.
+   */
+  async confirmSealed(
+    restaurantId: string,
+    userId: string,
+    actionId: string,
+    challenge: string | null | undefined,
+    editedPayload?: Record<string, unknown>,
+  ) {
+    try {
+      const stored = await this.readProposalSealArgs(restaurantId, actionId);
+      const seals = this.requireSeal();
+      await seals.redeem({
+        restaurantId,
+        actorUserId: userId,
+        subjectKind: "ai_proposed_action",
+        subjectId: actionId,
+        action: PROPOSAL_SEAL_ACT,
+        args: this.sealArgsWithEdit(stored, editedPayload),
+        challenge: challenge ?? null,
+      });
+    } catch (err) {
+      if (err instanceof ForbiddenException || err instanceof NotFoundException)
+        throw err;
+      this.logger.error(
+        `Seal check failed before any write (proposal ${actionId}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      throw new ForbiddenException(
+        "The seal could not be checked, so nothing was applied. Try again.",
+      );
+    }
+    return this.applyAfterSeal(restaurantId, userId, actionId, editedPayload);
+  }
+
   async discard(restaurantId: string, userId: string, actionId: string) {
     const { data, error } = await this.databaseService
       .getClient()
@@ -812,7 +1026,7 @@ export class AskAiService {
    *
    * The claim is a compare-and-swap, so anything that stops the execution after
    * it has been won MUST undo it. A row left at `confirmed` is unreachable by
-   * both `confirm` (which requires `proposed`) and `discard` (same), so it is
+   * both `applyAfterSeal` (which requires `proposed`) and `discard` (same), so it is
    * not a retry away from working — it is gone.
    */
   private async releaseClaim(actionId: string): Promise<void> {

@@ -26,9 +26,14 @@
  * The page keeps the legacy screen's essence — one job, one hand, one minute,
  * full-screen outside DashboardLayout, no prices anywhere — on the Warm
  * Charcoal ground. It states that ground out loud (data-ground="charcoal"),
- * which the input rules below hang off; since 2026-09-12 charcoal is also the
- * `.mudavym` default in every app theme, so the attribute confirms rather than
- * forces.
+ * which the input rules below hang off. [2026-09-19, ADR 0169: from
+ * 2026-09-12 to 2026-09-19 charcoal was also the `.mudavym` default in every
+ * app theme, so this attribute merely confirmed. The founder then chose paper
+ * as the default with a per-person option to choose charcoal (ADR 0169), so
+ * this attribute now FORCES again — this is a loading-dock kiosk, chrome-free
+ * and one-handed, and its ground is this page's own decision, not the
+ * person's general preference. It is unaffected by that preference either
+ * way, exactly as it was already unaffected by the old default.]
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -54,7 +59,6 @@ import {
   composeDoorNotes,
   creditDraft,
   doorFacts,
-  ensureDoorFraunces,
   matchLine,
   normalizeDoorOrder,
   readPaper,
@@ -173,10 +177,6 @@ export default function DoorNext() {
   // reuse it so a request that landed before the connection dropped cannot
   // book the stock twice (doorOutbox's whole design).
   const idem = useRef(newIdempotencyKey(orderId));
-
-  useEffect(() => {
-    ensureDoorFraunces();
-  }, []);
 
   // One quiet entrance for the header — settle, 6px, once.
   useEffect(() => {

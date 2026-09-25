@@ -1,5 +1,7 @@
 /**
- * The public door's one switch (ADR 0133 §Decision 1).
+ * The public door's one switch (ADR 0133 §Decision 1, waived 2026-09-18 for
+ * the "off is byte-identical" clause — see ADR 0133's Review trail; permanent-
+ * on at cutover, decision 0149 row 37).
  *
  * Nine routes are public — `/login`, `/register`, `/forgot-password`,
  * `/reset-password`, `/verify-email`, `/invite/:code`, `/no-access`,
@@ -10,38 +12,21 @@
  * that ships, never to build a parallel tree — so the improvement lives IN
  * those pages and reads this one module to decide whether it is on.
  *
- * Precedence, the same shape as the per-house hook:
+ * Decision 0149 ("Mudavym is the only design") makes the house treatment the
+ * only one that ships: `isPublicDesignOn()` now resolves `true` unconditionally,
+ * with exactly one escape —
  *
- * 1. `localStorage["mudavym.design.public"]` — a designer's own browser.
- *    `"1" | "true" | "on"` forces the house treatment, `"0" | "false" | "off"`
- *    forces today's page. Anything else falls through.
- * 2. `import.meta.env.VITE_MUDAVYM_PUBLIC` — the deployment switch. Set on
- *    Vercel by the founder's own keystroke; `"1" | "true" | "on"` turns the
- *    public door on for everyone at once. It is read HERE and nowhere else —
- *    a page that reads the env directly is a review defect.
- * 3. `false`. Absence is off, and off is byte-identical to today.
- *
- * Why a build-time variable and not a flag row: there is no row to read. A
- * stranger has no house to be enrolled in, so "one house at a time" cannot
- * apply to the front door; the honest shape is one switch that opens it for
- * every visitor, the same way the mark shipped to production (PR #172).
+ * 1. `localStorage["mudavym.design.public"]` set to `"0" | "false" | "off"` —
+ *    a QA override, kept ONLY so today's page keeps compiling and is
+ *    reachable for comparison until it is deleted (decision 0149's gated
+ *    cutover). `"1" | "true" | "on"` is accepted too, but is now a no-op:
+ *    the house treatment was already going to render.
+ * 2. Anything else — no override, or `VITE_MUDAVYM_PUBLIC` set or unset — is
+ *    `true`. The deployment env var is no longer read: there is nothing left
+ *    for it to gate.
  */
 
 export const PUBLIC_OVERRIDE_KEY = 'mudavym.design.public';
-
-/** The env value as Vite injects it at build time; `undefined` when unset. */
-function readEnv(): string | undefined {
-  // Written as the literal `import.meta.env.VITE_MUDAVYM_PUBLIC` on purpose:
-  // Vite replaces exactly that expression with the build-time value, and
-  // vitest's `vi.stubEnv` reaches exactly that expression. A cast between
-  // `import.meta` and `.env` defeats both (measured 2026-09-06: six env cases
-  // read `undefined` until this was made literal).
-  try {
-    return import.meta.env.VITE_MUDAVYM_PUBLIC as string | undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function parse(raw: string | null | undefined): boolean | null {
   if (raw === null || raw === undefined) return null;
@@ -63,18 +48,20 @@ function readOverride(): boolean | null {
 
 /**
  * `true` → the public pages wear the house treatment; `false` → today's page,
- * untouched. Pure and synchronous: nothing to await, nothing to flash.
+ * kept compiling only for the explicit QA override. Pure and synchronous:
+ * nothing to await, nothing to flash.
  */
 export function isPublicDesignOn(): boolean {
   const override = readOverride();
-  if (override !== null) return override;
-  return parse(readEnv()) ?? false;
+  if (override === false) return false;
+  return true;
 }
 
 /**
  * Hook form, for symmetry with `useMudavymDesign`. The value cannot change
- * during a session (the env is baked in; the override is read on render), so
- * this is a plain call — no state, no effect, no request.
+ * during a session — it resolves `true` unconditionally except the explicit
+ * QA `localStorage` override, read fresh on every render — so this is a
+ * plain call — no state, no effect, no request.
  */
 export function usePublicDesign(): boolean {
   return isPublicDesignOn();
