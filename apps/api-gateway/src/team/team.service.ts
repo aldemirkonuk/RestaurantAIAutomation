@@ -440,7 +440,9 @@ export class TeamService {
         hourly_wage: dto.hourlyWage ?? null,
         // Who set the wage, in the same statement: the database writes the
         // `team_member_wage_changes` row from it and clears it (ADR 0215).
-        ...(setsWage ? { wage_changed_by: userId } : {}),
+        // Undefined (no wage set) is dropped from the JSON body; an inline
+        // key keeps this write readable by check_order_capture_contract.py.
+        wage_changed_by: setsWage ? userId : undefined,
         skills: dto.skills ?? [],
         hire_date: dto.hireDate ?? null,
         notes: dto.notes ?? null,
@@ -894,7 +896,7 @@ export class TeamService {
         reason: dto.reason ?? null,
         // Whether the days are paid (ADR 0215). Omitted, the column's own
         // default applies: 'unknown', because nobody said.
-        ...(dto.leaveType ? { leave_type: dto.leaveType } : {}),
+        leave_type: dto.leaveType || undefined,
       })
       .select()
       .single();
@@ -919,7 +921,7 @@ export class TeamService {
         updated_at: new Date().toISOString(),
         // The reviewer says whether the days are paid; omitted, it stays as
         // it was (ADR 0215). A type is a classification of time, not money.
-        ...(leaveType ? { leave_type: leaveType } : {}),
+        leave_type: leaveType || undefined,
       })
       .eq("id", requestId)
       .eq("restaurant_id", restaurantId)

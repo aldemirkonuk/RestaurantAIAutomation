@@ -91,6 +91,26 @@ export function makeStubDb(
   return db;
 }
 
+/**
+ * What PostgREST actually receives for a single-row write. supabase-js sends
+ * the payload as `JSON.stringify(values)`, which DROPS a key whose value is
+ * `undefined` -- so `{ leave_type: undefined }` leaves the column untouched
+ * (update) or at its own default (insert), exactly like omitting the key.
+ * The stub mirrors that, so a service may write an optional column as an
+ * inline key (readable by check_order_capture_contract.py) instead of a
+ * `...(x ? { col: x } : {})` spread, and the specs still see what the
+ * database would. Multi-row (array) payloads are left as given: supabase-js
+ * sends those with a `columns` list, which this stub does not model.
+ */
+function onTheWire(payload: any): any {
+  if (!payload || Array.isArray(payload) || typeof payload !== "object") {
+    return payload;
+  }
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, v]) => v !== undefined),
+  );
+}
+
 class Builder implements PromiseLike<any> {
   private op: RecordedOp["op"] | null = null;
   private filters: Filter[] = [];
@@ -139,17 +159,17 @@ class Builder implements PromiseLike<any> {
   }
   insert(payload: any) {
     this.op = "insert";
-    this.payload = payload;
+    this.payload = onTheWire(payload);
     return this;
   }
   update(payload: any) {
     this.op = "update";
-    this.payload = payload;
+    this.payload = onTheWire(payload);
     return this;
   }
   upsert(payload: any, _opts?: any) {
     this.op = "upsert";
-    this.payload = payload;
+    this.payload = onTheWire(payload);
     return this;
   }
   delete() {

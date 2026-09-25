@@ -689,9 +689,10 @@ export class ScheduleService {
         state: dto.memberId ? "scheduled" : "open",
         note: dto.note ?? null,
         labor_cost: cost,
-        ...(recordedBreak !== undefined
-          ? { recorded_break_min: recordedBreak }
-          : {}),
+        // Undefined is dropped from the JSON body, so an unsent break leaves
+        // the column's own default; an inline key keeps this write readable
+        // by check_order_capture_contract.py (no spread).
+        recorded_break_min: recordedBreak,
       })
       .select("*, shift_breaks(*)")
       .single();
