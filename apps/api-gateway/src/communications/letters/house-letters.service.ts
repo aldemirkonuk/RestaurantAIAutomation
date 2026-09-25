@@ -692,6 +692,12 @@ export class HouseLettersService {
    * A send that fails is recorded as failed, in words. It is never left as
    * QUEUED (the next run would try again forever and the page would show a
    * letter perpetually about to leave) and never marked SENT.
+   *
+   * A queue that cannot be READ throws. It does not return the zero-shape:
+   * `{ considered: 0, sent: 0, ... }` is what a quiet minute looks like, and a
+   * database outage that reported it would read as "nothing was due" for as
+   * long as the outage lasted, on the one surface (`lastRun`) that exists to
+   * say whether letters can still leave. ADR 0161.
    */
   async dispatchDue(nowMs = Date.now()): Promise<{
     considered: number;
@@ -709,10 +715,10 @@ export class HouseLettersService {
       .limit(50);
 
     if (error) {
-      this.logger.error(
+      // The cron logs this and records it as `lastRun().error`.
+      throw new Error(
         `letter dispatch could not read the queue: ${error.message}`,
       );
-      return { considered: 0, sent: 0, failed: 0, skipped: 0 };
     }
 
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
