@@ -84,11 +84,10 @@ describe('what one grant holds', () => {
     });
   });
 
-  it('prints an unrecognised scope as itself rather than dropping it', () => {
+  it('keeps an unrecognised scope as a bullet, in plain words, rather than dropping it', () => {
+    // Founder, 2026-09-22: no raw scope strings in front of a restaurant user.
     const bullets = grantHolds(['https://www.googleapis.com/auth/drive'], drive);
-    expect(bullets).toEqual([
-      { text: 'https://www.googleapis.com/auth/drive', can: true },
-    ]);
+    expect(bullets).toEqual([{ text: 'A permission this page has no plain name for', can: true }]);
   });
 
   it('withholds the definition’s promises when the grant is wider than the definition', () => {
@@ -99,13 +98,12 @@ describe('what one grant holds', () => {
       gmailSend,
     );
     expect(bullets.some((b) => !b.can)).toBe(false);
-    expect(bullets.map((b) => b.text)).toContain('https://mail.google.com/');
+    expect(bullets.map((b) => b.text)).toContain('A permission this page has no plain name for');
+    expect(bullets.map((b) => b.text).join(' ')).not.toMatch(/https?:/);
   });
 
   it('is empty when the grant records no scope, and when the catalogue is unread', () => {
     expect(grantHolds([], drive)).toEqual([]);
-    expect(grantHolds(['drive.file'], null)).toEqual([
-      { text: 'drive.file', can: true },
-    ]);
+    expect(grantHolds(['drive.file'], null)).toEqual([{ text: 'A permission this page has no plain name for', can: true }]);
   });
 });

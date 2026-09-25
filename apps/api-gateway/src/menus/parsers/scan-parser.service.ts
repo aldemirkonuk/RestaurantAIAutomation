@@ -1,17 +1,33 @@
 import {
   Injectable,
+  HttpException,
+  HttpStatus,
   Logger,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   ModelClientService,
+  ModelSpendCeilingError,
+  ModelSpendLedgerUnreadableError,
   NfEventRef,
 } from "../../common/model-client/model-client.service";
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 import { PARSE_YIELD_BASIS } from "../../common/model-client/verdict-bases";
 import { menuScanVerdict } from "./menu-scan-verdict";
-import { WineExtractItem } from "../wine-extract-item.interface";
+import {
+  MENU_CATEGORY_VOCABULARY,
+  WineExtractItem,
+} from "../wine-extract-item.interface";
+
+/**
+ * The menu read is WAITING, not broken: the house's AI spend record could not
+ * be read, so nothing was sent (founder, 2026-09-21, ADR 0163 Q22 re-answered:
+ * the ceiling fails closed for the menu-upload billed read, and the read
+ * "waits and says why"). A 503 whose message is the reason, and its own type
+ * so a multi-chunk read stops instead of reporting the chunk as a gap.
+ */
+export class MenuReadWaitingException extends ServiceUnavailableException {}
 
 /**
  * Two things in this prompt are load-bearing and were both set by measurement.
@@ -40,13 +56,37 @@ import { WineExtractItem } from "../wine-extract-item.interface";
  * time. name feeds master_wine_library.normalized_name, which is a match key,
  * so a coin-flip there means the same wine fails to match itself across two
  * imports.
+ *
+ * `category` is a CLOSED vocabulary, and is the only field on a menu line that
+ * decides what kind of drink it is. It reaches
+ * master_wine_library.data_enrichment.menu_category, which is precedence rule 2
+ * of wine_classify_beverage_kind() — so a beer line whose category says "beer"
+ * becomes beverage_kind='beer' and lights the Beer register, and one whose
+ * category is absent or free-text becomes 'unknown' and lights nothing. See
+ * MENU_CATEGORY_VOCABULARY for why the member, not the printed heading.
  */
+const CATEGORY_VOCABULARY_CLAUSE =
+  "category MUST be exactly one of: " +
+  MENU_CATEGORY_VOCABULARY.join(", ") +
+  ". Choose it from the menu's own section heading where there is one " +
+  "(a line under 'Draft Beer' is beer; under 'Reds by the Glass' is red), " +
+  "otherwise from the item itself. Use the singular lowercase form listed " +
+  "above, never the heading as printed, and never a word outside the list. " +
+  "Omit category only when the line gives no basis at all for choosing one. ";
+
 const WINE_EXTRACTION_PROMPT =
-  "You are analyzing a restaurant wine list or beverage menu image. " +
-  "Extract all wine and beverage items you can identify. For each item return JSON: " +
+  "You are analyzing a restaurant beverage menu image. " +
+  "Extract EVERY drink listed, not only the wines — beer, cider, sake, " +
+  "spirits, whiskey, cocktails, soft drinks and non-alcoholic listings all " +
+  "count, and a menu that prints them in their own sections still prints " +
+  "them. For each item return JSON: " +
   "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price }. " +
-  "producer is the winery/estate/château name. " +
-  "name is the wine's cuvée or label designation ONLY — do NOT repeat the producer in it, " +
+  CATEGORY_VOCABULARY_CLAUSE +
+  "producer is the winery/estate/château name, or the brewery/distillery for " +
+  "a beer or a spirit. " +
+  "vintage, region and grape_variety describe wine — omit all three on a " +
+  "line that is not wine rather than inventing them. " +
+  "name is the drink's cuvée or label designation ONLY — do NOT repeat the producer in it, " +
   "and do NOT include the vintage, region, country or price " +
   "(e.g. for '2019 Duckhorn Merlot, Napa Valley 120', producer is 'Duckhorn', name is 'Merlot', " +
   "vintage is '2019', region is 'Napa Valley', bottle_price is 120). " +
@@ -74,7 +114,8 @@ const WINE_EXTRACTION_PROMPT =
   "wrong one propagates. " +
   "Return ONLY a JSON array with no surrounding text. " +
   "If a field is not visible, omit it. " +
-  'Example: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120}]';
+  'Examples: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120},' +
+  '{"name":"Pale Ale","producer":"Sierra Nevada","category":"beer","by_glass_price":9}]';
 
 @Injectable()
 export class ScanParserService {
@@ -105,6 +146,7 @@ export class ScanParserService {
   async parse(
     imageBase64: string,
     restaurantId?: string,
+    arrival = false,
   ): Promise<WineExtractItem[]> {
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
@@ -126,8 +168,9 @@ export class ScanParserService {
     // dense short menu and zero on everything else, without guessing a
     // density threshold the corpus would immediately violate.
     if (isPdf) {
-      const preSplit = await this.splitPdfIfLarge(imageBase64);
-      if (preSplit.length > 1) return this.parseChunks(preSplit, restaurantId);
+      const preSplit = await this.splitPdfIfLarge(imageBase64, { arrival });
+      if (preSplit.length > 1)
+        return this.parseChunks(preSplit, restaurantId, 0, arrival);
     }
 
     const first = await this.parseOne(
@@ -135,11 +178,23 @@ export class ScanParserService {
       mediaType,
       isPdf,
       restaurantId,
+      arrival,
     );
+    if (first.truncated && !isPdf && arrival)
+      throw new ServiceUnavailableException(
+        "The menu reading was cut short. Use a clearer or smaller image; no items were imported.",
+      );
     if (!first.truncated || !isPdf) return first.items;
 
-    const chunks = await this.splitPdfIfLarge(imageBase64, { force: true });
+    const chunks = await this.splitPdfIfLarge(imageBase64, {
+      force: true,
+      arrival,
+    });
     if (chunks.length <= 1) {
+      if (arrival)
+        throw new ServiceUnavailableException(
+          "The PDF reading was cut short. Divide the menu into smaller files; nothing was imported.",
+        );
       // Single-page PDF, or unsplittable — the salvaged partial is all there is.
       this.logger.error(
         `Menu truncated and could not be split — importing ` +
@@ -151,10 +206,12 @@ export class ScanParserService {
     this.logger.log(
       `Menu truncated on a single request — retrying as ${chunks.length} page-range chunk(s)`,
     );
-    const retried = await this.parseChunks(chunks, restaurantId);
+    const retried = await this.parseChunks(chunks, restaurantId, 0, arrival);
     // Keep whichever run recovered more; a split should always win, but never
     // return less than the first attempt already proved was extractable.
-    return retried.length >= first.items.length ? retried : first.items;
+    return arrival || retried.length >= first.items.length
+      ? retried
+      : first.items;
   }
 
   /**
@@ -171,6 +228,7 @@ export class ScanParserService {
     chunks: string[],
     restaurantId?: string,
     depth = 0,
+    arrival = false,
   ): Promise<WineExtractItem[]> {
     // Splitting once is not always enough. RL Restaurant packs ~27 wines per
     // page, so even a 6-page chunk overflows the output cap. Rather than guess
@@ -188,12 +246,14 @@ export class ScanParserService {
           "application/pdf",
           true,
           restaurantId,
+          arrival,
         );
 
         if (truncated && depth < MAX_SPLIT_DEPTH) {
           const finer = await this.splitPdfIfLarge(chunks[i], {
             force: true,
             pagesPerChunk: 2,
+            arrival,
           });
           if (finer.length > 1) {
             this.logger.log(
@@ -204,19 +264,29 @@ export class ScanParserService {
               finer,
               restaurantId,
               depth + 1,
+              arrival,
             );
             // Never regress: keep whichever pass recovered more.
-            all.push(...(deeper.length >= items.length ? deeper : items));
+            all.push(
+              ...(arrival || deeper.length >= items.length ? deeper : items),
+            );
             continue;
           }
         }
 
+        if (truncated && arrival)
+          throw new ServiceUnavailableException(
+            "A menu page range was incomplete.",
+          );
         all.push(...items);
         this.logger.log(
           `Menu chunk ${i + 1}/${chunks.length}: ${items.length} item(s)` +
             (truncated ? " (still truncated — cannot split further)" : ""),
         );
       } catch (err: any) {
+        if (err instanceof HttpException && err.getStatus() === 429) throw err;
+        // Not a gap in the menu: the whole read waits and says why.
+        if (err instanceof MenuReadWaitingException) throw err;
         failed.push(i + 1);
         this.logger.error(
           `Menu chunk ${i + 1}/${chunks.length} failed: ${err?.message}`,
@@ -230,6 +300,10 @@ export class ScanParserService {
       );
     }
     if (failed.length > 0) {
+      if (arrival)
+        throw new ServiceUnavailableException(
+          "Some menu pages could not be read. No items were imported. Retry with a smaller file.",
+        );
       this.logger.error(
         `Menu extracted with gaps — chunk(s) ${failed.join(", ")} of ` +
           `${chunks.length} failed; ${all.length} item(s) recovered`,
@@ -273,6 +347,7 @@ export class ScanParserService {
     mediaType: string,
     isPdf: boolean,
     restaurantId?: string,
+    arrival = false,
   ): Promise<{ items: WineExtractItem[]; truncated: boolean }> {
     // OD-59 / P3.0: an unreadable response and a menu page with no wines on it
     // are different outcomes that used to record identically — see
@@ -321,6 +396,13 @@ export class ScanParserService {
         // stop_reason signal the split retry depends on. LOAD-BEARING
         // override of the client's 60s default; do not shrink it.
         timeoutMs: 180_000,
+        // The menu-upload billed read: if the house's spend ledger cannot be
+        // read, this call is not made (founder, 2026-09-21, ADR 0163 Q22).
+        spendLedgerUnreadable: "closed",
+        // ...and being OVER the allowance never refuses it, first attempt or
+        // retry (founder, 2026-09-21, round 6c: "never refuse a menu read";
+        // tiers later). ADR 0193 round 3, answer 2.
+        allowance: "unlimited",
         nf: {
           subjectId: "ScanParser",
           taskType: "menu_scan",
@@ -362,6 +444,16 @@ export class ScanParserService {
       );
       return { items, truncated };
     } catch (error) {
+      // Scoped to arrival (codex-audit/C2-adopt.md #8): this used to convert
+      // unconditionally, which turned the legacy /menus scan's 503 into a 429
+      // too. The legacy path keeps its original "temporarily unavailable"
+      // wording below; only arrival gets the more specific ceiling message.
+      if (error instanceof ModelSpendCeilingError && arrival)
+        throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
+      if (error instanceof ModelSpendLedgerUnreadableError) {
+        this.logger.warn(`Menu read waiting: ${error.message}`);
+        throw new MenuReadWaitingException(error.message);
+      }
       this.logger.error(`Scan parser LLM call failed: ${error.message}`);
       throw new ServiceUnavailableException(
         "Menu scan service temporarily unavailable",
@@ -381,7 +473,7 @@ export class ScanParserService {
    */
   private async splitPdfIfLarge(
     base64: string,
-    opts: { force?: boolean; pagesPerChunk?: number } = {},
+    opts: { force?: boolean; pagesPerChunk?: number; arrival?: boolean } = {},
   ): Promise<string[]> {
     // `force` is used on the truncation retry, where page count already
     // proved to be the wrong signal — split whatever we have.
@@ -418,6 +510,11 @@ export class ScanParserService {
       const MAX_PAGES = 120;
       const effectivePages = Math.min(pageCount, MAX_PAGES);
       if (pageCount > MAX_PAGES) {
+        if (opts.arrival)
+          throw new HttpException(
+            "This menu exceeds 120 pages. Divide it into smaller files; nothing was imported.",
+            HttpStatus.PAYLOAD_TOO_LARGE,
+          );
         this.logger.error(
           `Menu PDF reports ${pageCount} pages — refusing to parse beyond ${MAX_PAGES}. ` +
             `Importing the first ${MAX_PAGES} page(s) only; the rest are skipped.`,
@@ -442,6 +539,7 @@ export class ScanParserService {
       );
       return chunks;
     } catch (err: any) {
+      if (err instanceof HttpException) throw err;
       // An unsplittable PDF (encrypted, malformed) still deserves a shot at
       // single-request extraction — truncation handling downstream covers it.
       this.logger.warn(

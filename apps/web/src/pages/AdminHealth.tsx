@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Activity, Server, AlertCircle, CheckCircle2, RefreshCw, Clock, X as XCircle } from 'lucide-react'
 import { toast } from 'sonner'
@@ -44,6 +44,13 @@ export default function AdminHealth() {
   /** NEW-549 status filter · NEW-548 per-agent drill-down. */
   const [statusFilter, setStatusFilter] = useState<'all' | 'healthy' | 'unhealthy'>('all')
   const [detail, setDetail] = useState<{ name: string; data: any; loading: boolean } | null>(null)
+  // The 30s poll below re-runs fetchHealth indefinitely while the tab stays open. A
+  // persistent cause (most often a standing 403 — a manager with no operator grant,
+  // which will not change until an owner acts) would otherwise toast every cycle
+  // forever. Toast once per distinct reason; a change in reason, or a recovery
+  // followed by a new failure, is new information and toasts again (measured:
+  // wave-5 IJ confirm, R5).
+  const lastErrorReason = useRef<'403' | '401' | 'other' | null>(null)
 
   const fetchHealth = async () => {
     try {
@@ -53,8 +60,20 @@ export default function AdminHealth() {
       })
       setAgents(res.data.agents ?? [])
       setLastUpdated(new Date())
-    } catch {
-      toast.error('Failed to fetch agent health — check api-gateway connection')
+      lastErrorReason.current = null
+    } catch (error) {
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined
+      const reason = status === 403 ? '403' : status === 401 ? '401' : 'other'
+      if (lastErrorReason.current !== reason) {
+        toast.error(
+          status === 403
+            ? 'This page needs a house owner, or a platform operator grant — ask an owner to add you.'
+            : status === 401
+              ? 'Sign in again — the gateway rejected this session.'
+              : 'Failed to fetch agent health — check api-gateway connection',
+        )
+        lastErrorReason.current = reason
+      }
     } finally {
       setLoading(false)
     }

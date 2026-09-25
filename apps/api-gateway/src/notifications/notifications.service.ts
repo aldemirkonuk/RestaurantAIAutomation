@@ -1,3 +1,4 @@
+import { restoreArrivalEntry } from "../arrival/restore-entry";
 import {
   Injectable,
   Logger,
@@ -33,6 +34,11 @@ interface PushSubscription {
 
 @Injectable()
 export class NotificationsService {
+  /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
+  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
+    return restoreArrivalEntry(this.databaseService, "notifications", restaurantId, actorId, batchId, rowId);
+  }
+
   private readonly logger = new Logger(NotificationsService.name);
   private webPush: any = null;
 
@@ -119,7 +125,7 @@ export class NotificationsService {
    * BROWSER, not of a house: `notification_preferences` is now per
    * (restaurant, user), and a device has no restaurant to belong to. The old
    * column, `notification_preferences.push_subscription`, is left in place
-   * but unread — see `20260921090000_a_preference_is_kept_once_per_person_per_house.sql`.
+   * but unread — see `20260925160500_a_preference_is_kept_once_per_person_per_house.sql`.
    */
   async sendWebPush(
     userId: string,
@@ -184,7 +190,7 @@ export class NotificationsService {
    * Register a push subscription for a user's device.
    *
    * Upserts into `notification_push_devices` on `(user_id, endpoint)` — a
-   * real unique index (`20260921090000_a_preference_is_kept_once_per_person_per_house.sql`),
+   * real unique index (`20260925160500_a_preference_is_kept_once_per_person_per_house.sql`),
    * unlike the old target (`notification_preferences`, `onConflict:
    * "user_id"`), which named no index at all and 42P10'd on every call
    * (ADR 0149 row 39).

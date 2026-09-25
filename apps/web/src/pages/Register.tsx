@@ -15,6 +15,7 @@ import { CountryCombobox } from '../components/ui/CountryCombobox'
 import { CuisinePicker } from '../components/ui/CuisinePicker'
 import { apiClient } from '../services/api/client'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
+import { GoogleSignInButton } from '../components/auth/GoogleSignInButton'
 import '../components/brand/auth-house.css'
 
 /*
@@ -66,7 +67,7 @@ interface InvitePreview {
 export function Register() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { registerRestaurant, joinViaInvite, error: authError } = useAuth()
+  const { registerAccount, registerRestaurant, joinViaInvite, error: authError } = useAuth()
   const on = usePublicDesign()
 
   const [path, setPath] = useState<Path>('selector')
@@ -809,8 +810,7 @@ export function Register() {
         <>
           <div className="flex items-center gap-2 mb-6">
             <div className="h-1.5 flex-1 rounded-full bg-wine-600" />
-            <div className="h-1.5 flex-1 rounded-full bg-gray-200" />
-            <span className="text-xs text-gray-400 ml-1">Step 1 of 2</span>
+            <span className="text-xs text-gray-400 ml-1">Account</span>
           </div>
           <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
         </>
@@ -965,7 +965,19 @@ export function Register() {
           }
 
           setError(null)
-          setPathBStep(2)
+          setLoading(true)
+          try {
+            await registerAccount({
+              name: createName,
+              email: createEmail,
+              password: createPassword,
+            })
+            navigate('/verify-email', { replace: true })
+          } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'Registration failed')
+          } finally {
+            setLoading(false)
+          }
         }}
       >
         {createEmailCheck.checking ? (
@@ -974,9 +986,19 @@ export function Register() {
             Checking email…
           </>
         ) : (
-          <>Next: Restaurant Details <ArrowRight className="w-4 h-4 ml-1" /></>
+          <>Create account <ArrowRight className="w-4 h-4 ml-1" /></>
         )}
       </Button>
+      <div className="my-4 flex items-center gap-3 text-xs text-gray-400">
+        <span className="h-px flex-1 bg-gray-200" />
+        or
+        <span className="h-px flex-1 bg-gray-200" />
+      </div>
+      <GoogleSignInButton
+        mode="register"
+        onSuccess={() => navigate('/get-started', { replace: true })}
+        onError={setError}
+      />
     </motion.div>
   )
 
@@ -1515,7 +1537,12 @@ export function Register() {
       }
     }
     if (pathBStep === 1) {
-      return { ...voice, folio: 'Register · 1 of 2', title: 'Who keeps this book?', lede: 'Your restaurant comes next.' }
+      return {
+        ...voice,
+        folio: 'Register',
+        title: 'Who keeps this book?',
+        lede: 'Name, email, and a password — or continue with Google. The house comes after you verify.',
+      }
     }
     return {
       houseLine: restaurantName.trim() || voice.houseLine,

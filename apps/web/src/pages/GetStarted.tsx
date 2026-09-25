@@ -1,528 +1,399 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Camera,
-  FileSpreadsheet,
-  PenLine,
-  Check,
-  Wine,
-  Package,
-  ShoppingCart,
-  Truck,
-  Users,
-  Bot,
-  Shield,
-  ArrowRight,
-} from 'lucide-react'
-import { Button } from '../components/ui/button'
-import { MenuImportCard } from '../components/onboarding/MenuImportCard'
-import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
-import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
-import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
-import { MenuReviewScreen } from '../components/onboarding/MenuReviewScreen'
-import { ThresholdStep } from '../components/onboarding/ThresholdStep'
-import { OptionalTail } from '../components/onboarding/OptionalTail'
-import { StaffWelcome } from '../components/onboarding/StaffWelcome'
-import { useOnboardingProgress } from '../hooks/queries/useOnboardingProgress'
-import { useAuth } from '../contexts/AuthContext'
-import type { MenuImportResult } from '../services/api/menus'
-import { trackGuidance } from '../guidance/analytics'
-import { cn } from '../lib/utils'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { MapPin, PenLine } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
-import { useMudavymDesign } from '../lib/mudavym/useMudavymDesign'
+import { PlacesAutocomplete, type PlaceResult } from '../components/ui/PlacesAutocomplete'
+import { CountryCombobox } from '../components/ui/CountryCombobox'
+import { MenuCsvUpload } from '../components/onboarding/MenuCsvUpload'
+import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
+import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
+import { useAuth } from '../contexts/AuthContext'
+import { apiClient } from '../services/api/client'
+import { importMenu, type MenuImportResult } from '../services/api/menus'
+import { currencyForCountry } from '../lib/currency'
+import { writeProof } from '../lib/firstProof'
+import { isMapsConfigured } from '../lib/googleMaps'
 
-// Flag-gated and lazy: with `mudavym_design_cellar` off this chunk is never
-// requested, so the legacy onboarding bundle is unchanged.
-const CellarRegistersOnboarding = lazy(
-  () => import('../components/onboarding/CellarRegistersOnboarding'),
-)
+type Step = 'you' | 'restaurant' | 'menu' | 'reading'
+type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
+type MenuMethod = 'photo' | 'file' | 'typed' | null
 
-type ImportMethod = 'scan' | 'csv' | 'manual'
-type TabId = 'activate' | 'use'
+const roles: Role[] = ['Owner', 'General manager', 'Beverage lead', 'Chef']
 
-function SuccessScreen({
-  result,
-  restaurantId,
-  onContinueGuide,
-  onInventory,
+function ArrivalShell({
+  step,
+  children,
 }: {
-  result: MenuImportResult
-  restaurantId: string
-  onContinueGuide: () => void
-  onInventory: () => void
+  step: Step
+  children: React.ReactNode
 }) {
+  const label = {
+    you: '01 · You',
+    restaurant: '02 · Your restaurant',
+    menu: '03 · Your menu',
+    reading: '04 · Reading',
+  }[step]
   return (
-    <div className="min-h-screen flex flex-col items-center px-8 py-12 bg-white overflow-y-auto">
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', duration: 0.5 }}
-        className="flex flex-col items-center text-center w-full max-w-lg"
-      >
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-6">
-          <Check className="w-8 h-8 text-green-600" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          We found {result.itemsExtracted} wine{result.itemsExtracted !== 1 ? 's' : ''}!
-        </h1>
-        <p className="text-gray-500 text-center max-w-sm mb-8">
-          Your wine list is uploaded and your inventory is live. Next, learn how to use Mudavym
-          day to day.
-        </p>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={onInventory}>
-            View Inventory
-          </Button>
-          <Button
-            onClick={onContinueGuide}
-            className="bg-wine-600 hover:bg-wine-500 text-white"
-          >
-            How to use the app →
-          </Button>
-        </div>
-
-        <div className="w-full">
-          <OptionalTail restaurantId={restaurantId} />
-        </div>
-      </motion.div>
+    <div className="min-h-screen bg-[#fbfaf7] text-[#211f1b]">
+      <header className="h-14 border-b border-[#211f1b]/15 px-5 flex items-center justify-between bg-white">
+        <BrandMark size={24} alt="Mudavym" />
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">
+          {label}
+        </span>
+      </header>
+      <main className="mx-auto w-full max-w-3xl px-5 py-10 sm:py-16">{children}</main>
     </div>
   )
 }
-
-const USE_CARDS = [
-  {
-    id: 'import',
-    title: 'Import your wine list',
-    description: 'Scan, CSV, or manual entry — the foundation for accurate inventory.',
-    icon: Wine,
-    action: 'activate' as const,
-    label: 'Activate',
-    ownerOnly: true,
-  },
-  {
-    id: 'inventory',
-    title: 'Check inventory & alerts',
-    description: 'See stock levels, low-stock signals, and cellar locations.',
-    icon: Package,
-    href: '/inventory',
-    label: 'Open',
-    ownerOnly: false,
-  },
-  {
-    id: 'orders',
-    title: 'Create & track orders',
-    description: 'Turn low stock into vendor orders without leaving the app.',
-    icon: ShoppingCart,
-    href: '/orders',
-    label: 'Open',
-    ownerOnly: false,
-  },
-  {
-    id: 'vendors',
-    title: 'Add a vendor',
-    description: 'Connect suppliers so sourcing and communication stay in one place.',
-    icon: Truck,
-    href: '/providers',
-    label: 'Open',
-    ownerOnly: true,
-  },
-  {
-    id: 'team',
-    title: 'Invite your team',
-    description: 'Share load with managers and staff from Settings.',
-    icon: Users,
-    href: '/settings?tab=team',
-    label: 'Invite',
-    ownerOnly: true,
-  },
-  {
-    id: 'wine-agent',
-    title: 'Wine Agent',
-    description:
-      'After setup, a small Wine Agent button appears bottom-right and opens Sommelier AI for inventory & ordering help. It does not access your email.',
-    icon: Bot,
-    href: '/sommelier',
-    label: 'Open',
-    ownerOnly: false,
-  },
-  {
-    id: 'services',
-    title: 'Services & permissions',
-    description:
-      'Control email, web, and privacy access. Optional — never required to learn the app.',
-    icon: Shield,
-    href: '/settings?tab=services',
-    label: 'Manage',
-    ownerOnly: false,
-  },
-]
 
 export default function GetStarted() {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [activeMethod, setActiveMethod] = useState<ImportMethod | null>(null)
-  const [reviewResult, setReviewResult] = useState<MenuImportResult | null>(null)
+  const { user, createFirstHouse } = useAuth()
+  const [step, setStep] = useState<Step>('you')
+  const [name, setName] = useState(user?.name ?? '')
+  const [mobile, setMobile] = useState('')
+  const [role, setRole] = useState<Role | null>(null)
+  const [restaurantName, setRestaurantName] = useState('')
+  const [address, setAddress] = useState('')
+  const [city, setCity] = useState('')
+  const [country, setCountry] = useState('')
+  const [stateProvince, setStateProvince] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [restaurantPhone, setRestaurantPhone] = useState('')
+  const [placePoint, setPlacePoint] = useState<{
+    latitude: number
+    longitude: number
+    googlePlaceId?: string
+  } | null>(null)
+  const [locationBias, setLocationBias] = useState<{
+    latitude: number
+    longitude: number
+  } | null>(null)
+  const [locationStatus, setLocationStatus] = useState<string | null>(null)
+  const [menuMethod, setMenuMethod] = useState<MenuMethod>(null)
   const [pendingResult, setPendingResult] = useState<MenuImportResult | null>(null)
-  const [result, setResult] = useState<MenuImportResult | null>(null)
-  const { progress, isLoading } = useOnboardingProgress()
+  const [sourceImage, setSourceImage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [dropping, setDropping] = useState(false)
 
-  // The house's registers are inferred, then CONFIRMED AT ONBOARDING (founder
-  // decision; `.planning/06-pages/wines.md` §13 "Roadmap for the adaptation"
-  // item 1). Gated on the cellar flag so the legacy page is byte-for-byte
-  // unchanged when it is off, and never a gate on the flow either way.
-  const cellarNext = useMudavymDesign('cellar')
-  const [registersFor, setRegistersFor] = useState<MenuImportResult | null>(null)
-  const [registersDoneInTab, setRegistersDoneInTab] = useState(false)
-
-  const isStaff = user?.role === 'staff'
-
-  const tabParam = searchParams.get('tab')
-  const [tab, setTab] = useState<TabId>(
-    tabParam === 'use' || progress?.menu_uploaded ? 'use' : 'activate',
-  )
+  const currency = useMemo(() => currencyForCountry(country), [country])
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
   useEffect(() => {
-    const m = searchParams.get('method')?.toLowerCase()
-    if (m === 'scan' || m === 'csv' || m === 'manual') {
-      setActiveMethod(m as ImportMethod)
-      setTab('activate')
-    }
-  }, [searchParams])
+    if (step !== 'reading' || !pendingResult) return
+    const timer = window.setTimeout(() => {
+      writeProof(pendingResult, sourceImage)
+      navigate('/house/menu', { replace: true })
+    }, 1200)
+    return () => window.clearTimeout(timer)
+  }, [navigate, pendingResult, sourceImage, step])
 
-  useEffect(() => {
-    if (tabParam === 'use' || tabParam === 'activate') {
-      setTab(tabParam)
+  const saveYou = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      await apiClient.patch('/auth/me', {
+        name: name.trim(),
+        phone: mobile.trim() || undefined,
+      })
+      if (role) sessionStorage.setItem('mudavym:arrival-role', role)
+      setStep('restaurant')
+    } catch (cause: any) {
+      setError(cause?.response?.data?.message || cause?.message || 'We could not save this yet.')
+    } finally {
+      setSaving(false)
     }
-  }, [tabParam])
+  }
 
-  // After menu upload, prefer Use tab instead of bouncing away forever
-  useEffect(() => {
-    if (!isLoading && progress?.menu_uploaded && tabParam !== 'activate') {
-      setTab('use')
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus('Location is not available in this browser.')
+      return
     }
-  }, [progress, isLoading, tabParam])
-
-  // Once the threshold is already configured (e.g. a second import), skip
-  // straight through the threshold step instead of showing it again.
-  useEffect(() => {
-    if (pendingResult && !isLoading && progress?.threshold_configured) {
-      setResult(pendingResult)
-      setPendingResult(null)
-    }
-  }, [pendingResult, isLoading, progress?.threshold_configured])
-
-  const selectTab = (next: TabId) => {
-    setTab(next)
-    setSearchParams(
-      (prev) => {
-        const p = new URLSearchParams(prev)
-        p.set('tab', next)
-        return p
+    setLocationStatus('Finding your location…')
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setLocationBias({ latitude: coords.latitude, longitude: coords.longitude })
+        setLocationStatus('Restaurant search is now centred near you.')
       },
-      { replace: true },
+      () => setLocationStatus('We could not use your location. Search by name or address instead.'),
+      { enableHighAccuracy: false, timeout: 8000 },
     )
   }
 
-  const toggleMethod = (method: ImportMethod) => {
-    setActiveMethod((prev) => (prev === method ? null : method))
+  const selectPlace = (place: PlaceResult) => {
+    if (place.placeName) setRestaurantName(place.placeName)
+    setAddress(place.streetAddress)
+    setCity(place.city)
+    setCountry(place.country)
+    setStateProvince(place.stateProvince)
+    setPostalCode(place.postalCode)
+    if (place.latitude != null && place.longitude != null) {
+      setPlacePoint({
+        latitude: place.latitude,
+        longitude: place.longitude,
+        googlePlaceId: place.googlePlaceId ?? undefined,
+      })
+    }
   }
 
-  // Staff get a read-oriented welcome with no upload/threshold/invite steps —
-  // those are owner/manager actions on the restaurant's shared menu.
-  if (isStaff) {
-    return <StaffWelcome />
+  const createHouse = async () => {
+    if (!restaurantName.trim() || !address.trim() || !city.trim() || !country.trim()) {
+      setError('Restaurant name and full address are required.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await createFirstHouse({
+        restaurantName: restaurantName.trim(),
+        address: address.trim(),
+        city: city.trim(),
+        country: country.trim(),
+        stateProvince: stateProvince.trim() || undefined,
+        postalCode: postalCode.trim() || undefined,
+        restaurantPhone: restaurantPhone.trim() || undefined,
+        timezone,
+        currency: currency ?? undefined,
+        latitude: placePoint?.latitude,
+        longitude: placePoint?.longitude,
+        googlePlaceId: placePoint?.googlePlaceId,
+      })
+      setStep('menu')
+    } catch (cause: any) {
+      setError(cause?.response?.data?.message || cause?.message || 'We could not create the house.')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  // Where the review step hands off: to the registers question when the cellar
-  // flag is on, otherwise straight on as before.
-  const afterReview = (r: MenuImportResult) => {
-    if (cellarNext) setRegistersFor(r)
-    else setPendingResult(r)
-    setReviewResult(null)
+  const menuRead = (result: MenuImportResult, source?: { image?: string | null }) => {
+    setPendingResult(result)
+    setSourceImage(source?.image ?? null)
+    setStep('reading')
   }
 
-  if (reviewResult) {
+  const ingestDroppedImage = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setMenuMethod('file')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(new Error('Could not read that photo.'))
+        reader.readAsDataURL(file)
+      })
+      const result = await importMenu('scan', { imageBase64: image })
+      menuRead(result, { image })
+    } catch (cause: any) {
+      setError(cause?.response?.data?.message || cause?.message || 'We could not read that photo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (step === 'you') {
     return (
-      <MenuReviewScreen
-        result={reviewResult}
-        onConfirm={() => afterReview(reviewResult)}
-        onSkip={() => afterReview(reviewResult)}
-      />
-    )
-  }
-
-  // Step 2b (flag-gated): immediately after the menu review, confirm what this
-  // house pours. Skippable, and self-skipping when there is nothing to ask —
-  // `onDone` always continues to the existing threshold/success path.
-  if (registersFor) {
-    return (
-      <div className="min-h-screen bg-white flex flex-col items-center px-4 py-12">
-        <div className="w-full max-w-2xl">
-          <Suspense fallback={null}>
-            <CellarRegistersOnboarding
-              onDone={() => {
-                setPendingResult(registersFor)
-                setRegistersFor(null)
-              }}
+      <ArrivalShell step={step}>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Welcome</p>
+        <h1 className="mt-3 font-serif text-4xl sm:text-5xl leading-tight">
+          Welcome, {name.trim().split(/\s+/)[0] || 'there'}. Let&apos;s set up your restaurant.
+        </h1>
+        <div className="mt-10 space-y-7">
+          <label className="block border-b border-[#211f1b]/25 pb-2">
+            <span className="text-xs uppercase tracking-wider">Your name · required</span>
+            <input
+              aria-label="Your name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="mt-2 block w-full bg-transparent font-serif text-2xl outline-none"
             />
-          </Suspense>
+          </label>
+          <label className="block border-b border-[#211f1b]/25 pb-2">
+            <span className="text-xs uppercase tracking-wider">Mobile · optional</span>
+            <input
+              aria-label="Mobile"
+              value={mobile}
+              onChange={(event) => setMobile(event.target.value)}
+              placeholder="For urgent stock alerts. Never marketing."
+              className="mt-2 block w-full bg-transparent text-base outline-none"
+            />
+          </label>
+          {mobile.trim() && (
+            <p className="text-sm text-[#6d685f]">
+              If you give a number, we may text urgent stock alerts only. Never marketing.
+              Reply <strong>STOP</strong> anytime. Optional — the account does not depend on it.
+            </p>
+          )}
+          <fieldset>
+            <legend className="text-xs uppercase tracking-wider">Role · optional</legend>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {roles.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setRole(item)}
+                  className={`border px-3 py-2 text-sm ${role === item ? 'border-[#1a5e6b] bg-[#1a5e6b] text-white' : 'border-[#211f1b]/20 bg-white'}`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          </fieldset>
         </div>
-      </div>
-    )
-  }
-
-  // Step 3: low-stock threshold, shown once right after a successful import
-  // if it hasn't been configured yet ("activated" = menu + threshold).
-  if (pendingResult && !isLoading && !progress?.threshold_configured) {
-    return (
-      <ThresholdStep
-        onDone={() => {
-          setResult(pendingResult)
-          setPendingResult(null)
-        }}
-      />
-    )
-  }
-
-  if (pendingResult) {
-    // Waiting on the progress fetch / threshold-configured effect above to
-    // decide whether to show ThresholdStep or skip straight to `result`.
-    return null
-  }
-
-  if (result) {
-    return (
-      <SuccessScreen
-        result={result}
-        restaurantId={user?.restaurantId ?? ''}
-        onContinueGuide={() => {
-          setResult(null)
-          selectTab('use')
-        }}
-        onInventory={() => navigate('/inventory')}
-      />
-    )
-  }
-
-  const visibleUseCards = USE_CARDS.filter((c) => !c.ownerOnly || user?.role !== 'staff')
-
-  return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <header className="p-6 flex items-center justify-between border-b border-gray-100">
-        <div className="flex items-center">
-          <BrandMark size={20} alt="Mudavym" />
-        </div>
+        {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
         <button
           type="button"
-          onClick={() => navigate('/')}
-          className="text-sm text-gray-500 hover:text-gray-800"
+          disabled={!name.trim() || saving}
+          onClick={saveYou}
+          className="mt-9 bg-[#1a5e6b] px-6 py-3 text-white disabled:opacity-40"
         >
-          Go to Dashboard
+          {saving ? 'Saving…' : 'Continue'}
         </button>
-      </header>
+      </ArrivalShell>
+    )
+  }
 
-      <div className="border-b border-gray-100">
-        <div className="max-w-4xl mx-auto px-4 flex gap-1">
-          {(
-            [
-              { id: 'activate', label: 'Activate' },
-              { id: 'use', label: 'Use the app' },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => selectTab(t.id)}
-              className={cn(
-                'px-4 py-3 text-sm font-medium border-b-2 transition-colors',
-                tab === t.id
-                  ? 'border-wine-600 text-wine-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-800',
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
+  if (step === 'restaurant') {
+    return (
+      <ArrivalShell step={step}>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The house</p>
+        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your restaurant</h1>
+        <p className="mt-3 max-w-xl text-[#6d685f]">
+          Find the exact place. Its address sets the house&apos;s timezone and reporting currency.
+        </p>
+        {!isMapsConfigured() && (
+          <p role="status" className="mt-4 text-sm text-[#6d685f]">
+            Places search needs <code>VITE_GOOGLE_MAPS_API_KEY</code>. Type the address by hand until it is set.
+          </p>
+        )}
+        <div className="mt-9 space-y-5">
+          <label htmlFor="arrival-place" className="block">
+            <span className="text-xs uppercase tracking-wider">Find your restaurant</span>
+            <PlacesAutocomplete
+              id="arrival-place"
+              value={address}
+              onChange={(value) => {
+                setAddress(value)
+                setPlacePoint(null)
+              }}
+              onPlaceSelect={selectPlace}
+              locationBias={locationBias}
+              placeholder="Restaurant name or address"
+              className="mt-2 rounded-none border-x-0 border-t-0 bg-transparent"
+            />
+          </label>
+          <button type="button" onClick={useMyLocation} className="flex items-center gap-2 text-sm text-[#1a5e6b]">
+            <MapPin className="h-4 w-4" /> Use my location
+          </button>
+          {locationStatus && <p role="status" className="text-xs text-[#6d685f]">{locationStatus}</p>}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="border-b border-[#211f1b]/25 pb-2">
+              <span className="text-xs uppercase tracking-wider">Restaurant name · required</span>
+              <input aria-label="Restaurant name" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+            </label>
+            <label className="border-b border-[#211f1b]/25 pb-2">
+              <span className="text-xs uppercase tracking-wider">Address · required</span>
+              <input aria-label="Address" value={address} onChange={(e) => { setAddress(e.target.value); setPlacePoint(null) }} className="mt-2 w-full bg-transparent text-lg outline-none" />
+            </label>
+            <label className="border-b border-[#211f1b]/25 pb-2">
+              <span className="text-xs uppercase tracking-wider">Restaurant phone · optional</span>
+              <input aria-label="Restaurant phone" value={restaurantPhone} onChange={(e) => setRestaurantPhone(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+            </label>
+            <label className="border-b border-[#211f1b]/25 pb-2">
+              <span className="text-xs uppercase tracking-wider">City · required</span>
+              <input aria-label="City" value={city} onChange={(e) => setCity(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
+            </label>
+            <div>
+              <span className="text-xs uppercase tracking-wider">Country · required</span>
+              <CountryCombobox id="arrival-country" value={country} onChange={setCountry} />
+            </div>
+          </div>
+          <div className="border-y border-[#211f1b]/15 py-4 text-sm">
+            <span className="mr-6">Timezone · {timezone}</span>
+            <span>Currency · {currency ?? 'Not inferred yet'}</span>
+          </div>
         </div>
+        {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
+        <button type="button" onClick={createHouse} disabled={saving} className="mt-8 bg-[#1a5e6b] px-6 py-3 text-white disabled:opacity-40">
+          {saving ? 'Opening the house…' : 'This is us'}
+        </button>
+      </ArrivalShell>
+    )
+  }
+
+  if (step === 'menu') {
+    return (
+      <ArrivalShell step={step}>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The first inscription</p>
+        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your menu</h1>
+        <p className="mt-3 text-[#6d685f]">Drop the menu here. Mudavym will set it as the house&apos;s own list.</p>
+        <button
+          type="button"
+          onClick={() => setMenuMethod(menuMethod === 'photo' ? null : 'photo')}
+          onDragEnter={() => setDropping(true)}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setDropping(true)
+          }}
+          onDragLeave={() => setDropping(false)}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDropping(false)
+            const file = event.dataTransfer.files?.[0]
+            if (file) void ingestDroppedImage(file)
+          }}
+          className={`mt-10 flex min-h-[220px] w-full flex-col items-center justify-center border border-dashed px-6 text-center ${
+            dropping ? 'border-[#1a5e6b] bg-white' : 'border-[#211f1b]/25 bg-[#fbfaf7]'
+          }`}
+        >
+          <span className="font-serif text-3xl">Drop the menu here</span>
+          <span className="mt-3 text-sm text-[#6d685f]">
+            {saving ? 'Reading…' : 'A photo, or click to photograph.'}
+          </span>
+        </button>
+        <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <button type="button" onClick={() => setMenuMethod(menuMethod === 'file' ? null : 'file')} className="text-[#1a5e6b] underline underline-offset-4">
+            Send a file
+          </button>
+          <button type="button" onClick={() => setMenuMethod(menuMethod === 'typed' ? null : 'typed')} className="flex items-center gap-1 text-[#1a5e6b] underline underline-offset-4">
+            <PenLine className="h-3.5 w-3.5" /> Type a few lines
+          </button>
+        </div>
+        <div className="mt-6">
+          {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
+          {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} />}
+          {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} />}
+        </div>
+        <div className="mt-8 border border-dashed border-[#211f1b]/20 px-4 py-3 text-sm text-[#b7b2a8]">
+          <p className="text-[11px] uppercase tracking-[0.12em]">Later</p>
+          <p>Your last invoice — read the same way, set beside the menu. Not a step now.</p>
+        </div>
+        <div className="mt-6 border-t border-[#211f1b]/15 pt-5">
+          <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
+            Skip for now — open the house
+          </button>
+        </div>
+      </ArrivalShell>
+    )
+  }
+
+  return (
+    <ArrivalShell step="reading">
+      <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Reading</p>
+      <h1 className="mt-3 font-serif text-4xl sm:text-5xl">The facts are settling.</h1>
+      <div className="mt-12 space-y-4 border-y border-[#211f1b]/20 py-7 font-serif text-2xl">
+        <p>Lines named.</p>
+        <p>Prices placed.</p>
+        <p>Sections taking shape.</p>
       </div>
-
-      <main className="flex-1 flex flex-col items-center px-4 pb-16 pt-10">
-        <div className="w-full max-w-4xl">
-          {tab === 'activate' && (
-            <>
-              <div className="text-center mb-10">
-                <h1 className="text-3xl font-bold text-gray-900 mb-3">
-                  Let&apos;s set up your wine list
-                </h1>
-                <p className="text-gray-500 max-w-lg mx-auto">
-                  Uploading your menu helps Mudavym understand what you sell — making
-                  ordering, inventory, and AI suggestions accurate from day one.
-                </p>
-                {progress?.menu_uploaded && (
-                  <p className="mt-3 text-sm text-green-700">
-                    Menu already uploaded — switch to Use the app to continue learning.
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mb-6">
-                <MenuImportCard
-                  icon={<Camera className="w-5 h-5" />}
-                  title="Scan Photo"
-                  description="Take a photo of your menu with your camera or upload an image"
-                  active={activeMethod === 'scan'}
-                  dimmed={activeMethod !== null && activeMethod !== 'scan'}
-                  onClick={() => toggleMethod('scan')}
-                />
-                <MenuImportCard
-                  icon={<FileSpreadsheet className="w-5 h-5" />}
-                  title="Upload File"
-                  description="Export from your POS system or Excel and import directly. Supports CSV, PDF, and other common formats."
-                  active={activeMethod === 'csv'}
-                  dimmed={activeMethod !== null && activeMethod !== 'csv'}
-                  onClick={() => toggleMethod('csv')}
-                />
-                <MenuImportCard
-                  icon={<PenLine className="w-5 h-5" />}
-                  title="Manual Entry"
-                  description="Type your wines in — perfect for a quick start"
-                  active={activeMethod === 'manual'}
-                  dimmed={activeMethod !== null && activeMethod !== 'manual'}
-                  onClick={() => toggleMethod('manual')}
-                />
-              </div>
-
-              <AnimatePresence mode="wait">
-                {activeMethod === 'scan' && (
-                  <motion.div
-                    key="scan"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="w-full"
-                  >
-                    <MenuScanUpload onSuccess={setReviewResult} />
-                  </motion.div>
-                )}
-                {activeMethod === 'csv' && (
-                  <motion.div
-                    key="csv"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="w-full"
-                  >
-                    <MenuCsvUpload onSuccess={setReviewResult} />
-                  </motion.div>
-                )}
-                {activeMethod === 'manual' && (
-                  <motion.div
-                    key="manual"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    className="w-full"
-                  >
-                    <MenuManualEntry onSuccess={setReviewResult} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {cellarNext && progress?.menu_uploaded && !registersDoneInTab && (
-                <div className="w-full mt-8" data-testid="activate-cellar-registers">
-                  <Suspense fallback={null}>
-                    <CellarRegistersOnboarding
-                      onDone={() => setRegistersDoneInTab(true)}
-                    />
-                  </Suspense>
-                </div>
-              )}
-
-              <div className="flex justify-center gap-4 mt-6">
-                <button
-                  onClick={() => selectTab('use')}
-                  className="text-sm text-wine-600 hover:text-wine-500 font-medium"
-                >
-                  Skip to app guide →
-                </button>
-                <button
-                  onClick={() => navigate('/')}
-                  className="text-sm text-gray-400 hover:text-gray-600"
-                >
-                  Go to Dashboard
-                </button>
-              </div>
-            </>
-          )}
-
-          {tab === 'use' && (
-            <>
-              <div className="text-center mb-10">
-                <h1 className="text-3xl font-bold text-gray-900 mb-3">
-                  How to use Mudavym
-                </h1>
-                <p className="text-gray-500 max-w-lg mx-auto">
-                  Short paths for busy shifts — open a surface, get the job done, come back
-                  anytime from Learn & Help.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                {visibleUseCards.map((card) => {
-                  const Icon = card.icon
-                  return (
-                    <div
-                      key={card.id}
-                      className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 rounded-xl border border-gray-200 hover:border-wine-600/30 transition-colors bg-white"
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-wine-600/10 flex items-center justify-center flex-shrink-0">
-                        <Icon className="w-5 h-5 text-wine-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900">{card.title}</p>
-                        <p className="text-sm text-gray-500 mt-0.5">{card.description}</p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        className="flex-shrink-0 min-h-[44px]"
-                        onClick={() => {
-                          trackGuidance('guide_card_clicked', { cardId: card.id })
-                          if ('action' in card && card.action === 'activate') {
-                            selectTab('activate')
-                            return
-                          }
-                          if ('href' in card && card.href) {
-                            if (card.id === 'services') {
-                              trackGuidance('services_visited', { source: 'get-started' })
-                            }
-                            navigate(card.href)
-                          }
-                        }}
-                      >
-                        {card.label}
-                        <ArrowRight className="w-4 h-4 ml-1" />
-                      </Button>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <div className="mt-8 rounded-xl border border-dashed border-gray-200 p-4 text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-wine-600 text-white mb-2">
-                  <Bot className="w-5 h-5" />
-                </div>
-                <p className="text-sm text-gray-600 max-w-md mx-auto">
-                  After you activate, look for this Wine Agent circle at the bottom-right of
-                  the app. It only opens Sommelier AI — it is not support chat and
-                  does not control privacy permissions.
-                </p>
-              </div>
-            </>
-          )}
-        </div>
-      </main>
-    </div>
+      <p role="status" className="mt-6 text-sm text-[#6d685f]">Opening the first proof…</p>
+    </ArrivalShell>
   )
 }
+

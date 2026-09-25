@@ -11,8 +11,25 @@
  *    `activeRestaurantId` (or the user id, for account-scoped registers) and
  *    the effect blanks `data` BEFORE the new request, so a branch switch can
  *    never leave the previous tenant's roster on screen.
- * 3. **Lazy by register.** A key is `null` until its section is open, so
- *    opening /settings costs the one fetch the open register needs — not ten.
+ * 3. **Eager, all at once (changed 2026-09-17, sketch 109A).** The page used
+ *    to be sixteen tab panels with one open at a time, so a key stayed `null`
+ *    until its section was the active one — opening /settings cost one fetch,
+ *    not sixteen. Direction A is a single interview: every register is on
+ *    screen together, so there is no "closed" register left to defer a fetch
+ *    for. Every key below is live as soon as its tenant/account id is known
+ *    — except when `role === 'staff'`: tenant keys stay `null` so
+ *    `GET /calendar/ical-token` (and the other house remotes) never fire for
+ *    a viewer who is gated out of this page. SettingsNext gates staff before
+ *    mounting this hook; the null keys are the belt if the hook is reached
+ *    anyway. This is a real cost of the interview shape, stated once here
+ *    rather than hidden: opening the page now issues on the order of fourteen
+ *    requests instead of one.
+ *    [Corrected 2026-09-19: this point previously said "the tally strip at
+ *    the top counts across all of them" — true of sketch 109A's DRAWING, not
+ *    of what was ever built. The tally shipped (`certaintyTally.ts`,
+ *    `SettingsNext.tsx`'s own docblock) counts nine rows across five of these
+ *    registers, not all of them; eager-fetch is justified on its own here —
+ *    no closed register to defer for — without leaning on that wrong claim.]
  *
  * Every endpoint here is one this page's dossier already lists (06-pages/
  * settings.md §4/§11), reached with the authenticated `apiClient` — the legacy
@@ -38,8 +55,13 @@ import {
   updateNotificationPreferences,
   type NotificationPreferences,
 } from '@/services/api/notifications';
+import {
+  restaurantsApi,
+  type OperatingHours,
+  type OperatingHoursResponse,
+} from '@/services/api/restaurants';
 import type { UserPreferences } from '@/hooks/useUserPreferences';
-import { errText, httpStatus, type SectionId, type TermSource } from './st-format';
+import { errText, httpStatus, type TermSource } from './st-format';
 
 /* ── Remote ──────────────────────────────────────────────────────────────── */
 
@@ -377,6 +399,62 @@ export interface HouseCarryingCostRegister {
   auditReason?: string | null;
 }
 
+/**
+ * Whether this house's /ask questions may be used for training, as
+ * `GET /settings/ask-training` answers (ADR 0145, founder 2026-09-21, "Same as
+ * the wine pool (Recommended)"). Mirrors `HouseAskTrainingReadout`
+ * (`apps/api-gateway/src/settings/house-ask-training.service.ts`). Three
+ * states: `readable: false` is a failed READ; `statedAt: null` means nobody has
+ * answered and the default (not opted out) is in force; a date is an answer.
+ */
+export interface HouseAskTrainingRegister {
+  restaurantId: string;
+  optedOut: boolean;
+  readable: boolean;
+  reason: string | null;
+  statedAt: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+  /** Present on a write only. `false` = the change landed, the paper did not. */
+  audited?: boolean;
+  auditReason?: string | null;
+}
+
+/**
+ * The recommendations digest sender's own preference row, as
+ * `GET /analytics/recommendations/:restaurantId/digest` answers
+ * (`analytics.controller.ts:1143`, `recommendation-actions.service.ts:285-297`).
+ *
+ * `recommendation_digest_prefs` is keyed one row per RESTAURANT — house-wide,
+ * not per person, and one recipient email, not a list. The founder's brief for
+ * this pass named "per-person frequency and weekday"; neither exists anywhere
+ * in this table or this route (grepped 2026-09-17), so this register cannot
+ * offer them — see the settings-build note's not_fixed for the exact question.
+ *
+ * `stated` is a field this pass ADDS to the gateway's response (small,
+ * additive, backward compatible): the service's own defaults —
+ * `digest_hour ?? 7`, `digest_min_urgency ?? "this_week"`
+ * (`recommendation-actions.service.ts:294-295`) — made every never-written
+ * house look like it had already answered "07:00, this week or sooner".
+ * `stated` says whether a `recommendation_digest_prefs` row exists at all, so
+ * the page can show empty controls with `Record` disabled rather than a
+ * stored default dressed as an answer (ADR 0020).
+ */
+export interface DigestRegister {
+  stated: boolean;
+  digestEnabled: boolean;
+  digestHour: number | null;
+  digestMinUrgency: 'now' | 'this_week' | 'this_month' | null;
+  recipientEmail: string | null;
+  lastSentAt: string | null;
+}
+
+export interface SetDigestBody {
+  digestEnabled?: boolean;
+  digestHour?: number;
+  digestMinUrgency?: 'now' | 'this_week' | 'this_month';
+  recipientEmail?: string | null;
+}
+
 export interface SetVendorTermsBody {
   deliveryWeekdays?: number[] | null;
   orderCutoffTime?: string | null;
@@ -442,7 +520,16 @@ async function fetchTeam(restaurantId: string, canSeeInvites: boolean): Promise<
   }
 }
 
-export function useSettingsNextData(active: SectionId) {
+/**
+ * Every register on the page, fetched together.
+ *
+ * No `active` parameter any more (removed 2026-09-17, sketch 109A) — see the
+ * file header's rule 3. `tenantKey`/`accountKey` keep their old shape (a
+ * per-register key namespaced by tenant or account id) because `useRemote`
+ * still keys its cache on the string, and a stable per-register key is what
+ * lets a branch switch blank exactly the registers that moved tenant.
+ */
+export function useSettingsNextData() {
   const { user, activeRestaurantId, activeRole, availableRestaurants, refreshBranches } = useAuth();
   const rid = activeRestaurantId ?? null;
   const uid = user?.userId ?? null;
@@ -450,12 +537,14 @@ export function useSettingsNextData(active: SectionId) {
   const canManage = role === 'owner' || role === 'manager';
 
   const tenantKey = useCallback(
-    (section: SectionId) => (rid && active === section ? `${rid}:${section}` : null),
-    [rid, active],
+    // Staff never manage house settings; a live rid must not mint tenant
+    // remotes (especially `/calendar/ical-token`) for them.
+    (section: string) => (rid && role !== 'staff' ? `${rid}:${section}` : null),
+    [rid, role],
   );
   const accountKey = useCallback(
-    (sections: SectionId[]) => (uid && sections.includes(active) ? `${uid}:${sections[0]}` : null),
-    [uid, active],
+    (sections: string[]) => (uid ? `${uid}:${sections[0]}` : null),
+    [uid],
   );
 
   const team = useRemote<TeamRegister>(tenantKey('team'), () => fetchTeam(rid as string, canManage));
@@ -549,8 +638,31 @@ export function useSettingsNextData(active: SectionId) {
     },
   );
 
+  const houseAskTraining = useRemote<HouseAskTrainingRegister>(tenantKey('ask-training'), async () => {
+    const { data } = await apiClient.get<HouseAskTrainingRegister>('/settings/ask-training');
+    return data;
+  });
+
   const ledger = useRemote<LedgerRegister>(tenantKey('ledger'), async () => {
     const { data } = await apiClient.get<LedgerRegister>('/settings-audit?limit=100');
+    return data;
+  });
+
+  // Sketch 109A graft B: the hours editor gets its home on this page (ADR 0149
+  // row 22). `restaurantsApi` is the same client `OperatingHoursSection.tsx`
+  // (legacy) uses — `null` survives the round trip and is never coerced to
+  // seven closed days (ADR 0093 D1).
+  const hours = useRemote<OperatingHoursResponse>(tenantKey('hours'), () =>
+    restaurantsApi.getOperatingHours(rid as string),
+  );
+
+  // Sketch 109A: "should it mail a recommendations digest?" (ADR 0149 row 26 —
+  // build the sender). House-wide, one row, one recipient — see
+  // `DigestRegister`'s own doc for what this deliberately cannot offer.
+  const digest = useRemote<DigestRegister>(tenantKey('digest'), async () => {
+    const { data } = await apiClient.get<DigestRegister>(
+      `/analytics/recommendations/${rid}/digest`,
+    );
     return data;
   });
 
@@ -734,6 +846,50 @@ export function useSettingsNextData(active: SectionId) {
     [writer, houseCarryingCost, ledger],
   );
 
+  const saveAskTraining = useCallback(
+    (optedOut: boolean) =>
+      writer.run('ask-training', async () => {
+        const { data } = await apiClient.put<HouseAskTrainingRegister>('/settings/ask-training', { optedOut });
+        if (data) houseAskTraining.set(data);
+        else houseAskTraining.reload();
+        ledger.reload();
+      }),
+    [writer, houseAskTraining, ledger],
+  );
+
+  /**
+   * Save the week — or `null`, an explicit "we do not know these hours".
+   *
+   * The key the gateway body ALWAYS carries is `operatingHours`, even when the
+   * value is `null` — a body missing the key entirely is refused rather than
+   * read as an erasure (`operating-hours.controller.ts` — `opts.explicit`).
+   */
+  const saveHours = useCallback(
+    (next: OperatingHours | null) =>
+      writer.run('hours', async () => {
+        hours.set(await restaurantsApi.putOperatingHours(rid as string, next));
+      }),
+    [writer, hours, rid],
+  );
+
+  /**
+   * State the digest — the value is always one a person chose. `digestHour`
+   * and `digestMinUrgency` are optional on the body (the gateway upserts only
+   * the keys present, `recommendation-actions.service.ts:301-329`), so a
+   * partial patch never overwrites a field the caller did not touch.
+   */
+  const saveDigest = useCallback(
+    (patch: SetDigestBody) =>
+      writer.run('digest', async () => {
+        const { data } = await apiClient.put<DigestRegister>(
+          `/analytics/recommendations/${rid}/digest`,
+          patch,
+        );
+        digest.set(data);
+      }),
+    [writer, digest, rid],
+  );
+
   const locations: RestaurantBranch[] = useMemo(
     () => availableRestaurants ?? [],
     [availableRestaurants],
@@ -749,11 +905,13 @@ export function useSettingsNextData(active: SectionId) {
     locations,
     refreshBranches,
     team, flags, ical, sender, chains, pos, prefs, notif, integrations,
-    vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost,
+    vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost, houseAskTraining,
+    hours, digest,
     writer,
     saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, regenerateIcal,
     setMemberRole, removeMember, revokeInvite, disconnectIntegration,
-    saveVendorTerms, saveThreshold, saveCurrency, saveCarryingCost,
+    saveVendorTerms, saveThreshold, saveCurrency, saveCarryingCost, saveAskTraining,
+    saveHours, saveDigest,
   };
 }
 

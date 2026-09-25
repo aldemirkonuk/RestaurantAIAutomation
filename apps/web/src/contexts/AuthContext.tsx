@@ -109,6 +109,28 @@ interface RegisterRestaurantData {
   googlePlaceId?: string;
 }
 
+interface RegisterAccountData {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface CreateFirstHouseData {
+  restaurantName: string;
+  address: string;
+  city: string;
+  country: string;
+  stateProvince?: string;
+  postalCode?: string;
+  neighborhood?: string;
+  restaurantPhone?: string;
+  timezone?: string;
+  currency?: string;
+  latitude?: number;
+  longitude?: number;
+  googlePlaceId?: string;
+}
+
 interface JoinViaInviteData {
   code: string;
   name: string;
@@ -128,6 +150,9 @@ export interface AuthContextType {
   setActiveRestaurantId: (restaurantId: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
+  registerAccount: (data: RegisterAccountData) => Promise<void>;
+  registerAccountWithGoogle: (token: string) => Promise<void>;
+  createFirstHouse: (data: CreateFirstHouseData) => Promise<string>;
   registerRestaurant: (data: RegisterRestaurantData) => Promise<void>;
   joinViaInvite: (data: JoinViaInviteData) => Promise<void>;
   loginWithGoogle: (token: string) => Promise<void>;
@@ -629,6 +654,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const establishSession = useCallback(async (response: {
+    data: { accessToken: string; refreshToken: string };
+  }) => {
+    const { accessToken, refreshToken: refresh } = response.data;
+    localStorage.setItem("accessToken", accessToken);
+    localStorage.setItem("refreshToken", refresh);
+    api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+    const userResponse = await api.get("/api/v1/auth/me");
+    setUser(userResponse.data.user);
+  }, []);
+
+  const registerAccount = useCallback(
+    async (data: RegisterAccountData) => {
+      try {
+        setError(null);
+        setLoading(true);
+        await establishSession(
+          await api.post("/api/v1/auth/register/account", data),
+        );
+      } catch (err: any) {
+        const message = err.response?.data?.message || "Registration failed";
+        setError(message);
+        throw new Error(message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [establishSession],
+  );
+
+  const registerAccountWithGoogle = useCallback(
+    async (token: string) => {
+      try {
+        setError(null);
+        setLoading(true);
+        await establishSession(
+          await api.post("/api/v1/auth/register/google", { token }),
+        );
+      } catch (err: any) {
+        const message =
+          err.response?.data?.message || "Google registration failed";
+        setError(message);
+        throw new Error(message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [establishSession],
+  );
+
+  const createFirstHouse = useCallback(
+    async (data: CreateFirstHouseData): Promise<string> => {
+      const response = await api.post("/api/v1/auth/register/house", data);
+      const { restaurantId, accessToken, refreshToken: refresh } = response.data;
+      localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem("refreshToken", refresh);
+      localStorage.setItem("activeRestaurantId", restaurantId);
+      api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+      api.defaults.headers.common["X-Restaurant-Id"] = restaurantId;
+      setActiveRestaurantIdState(restaurantId);
+      useAuthStore.getState().setActiveRestaurantId(restaurantId);
+      const userResponse = await api.get("/api/v1/auth/me");
+      setUser(userResponse.data.user);
+      return restaurantId;
+    },
+    [],
+  );
+
   const joinViaInvite = useCallback(async (data: JoinViaInviteData) => {
     try {
       setError(null);
@@ -783,6 +876,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setActiveRestaurantId,
     login,
     register,
+    registerAccount,
+    registerAccountWithGoogle,
+    createFirstHouse,
     registerRestaurant,
     joinViaInvite,
     loginWithGoogle,

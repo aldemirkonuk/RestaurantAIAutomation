@@ -24,6 +24,7 @@ from core.database import DatabaseClient
 from services.plivo_client import PlivoSMSClient
 from services.email_client import EmailClient
 from services.push_notification_service import PushNotificationService
+from config.settings import get_settings
 
 #: The table this agent reads push subscriptions from.
 #:
@@ -629,9 +630,14 @@ Please try again or add items to inventory manually.""",
         if not manager:
             return
 
-        # Generate action URLs
-        approve_url = f"{self._get_base_url()}/api/orders/{order_id}/approve?token={self._generate_action_token(order_id, 'approve')}"
-        reject_url = f"{self._get_base_url()}/api/orders/{order_id}/reject?token={self._generate_action_token(order_id, 'reject')}"
+        # Deep links into the order, not one-tap side effects. Approval and
+        # rejection both need the in-app seal (HoldToApprove / ResponsesSheet,
+        # OrdersNext.tsx) -- a GET/POST with a hashed order id and timestamp,
+        # against a gateway route that has never existed, was never a working
+        # one-tap action; it was a link that looked actionable and did
+        # nothing when followed. Both buttons now open the same order.
+        approve_url = f"{self._get_base_url()}/orders/{order_id}"
+        reject_url = f"{self._get_base_url()}/orders/{order_id}"
 
         # Get preferences
         prefs = await self._get_notification_preferences(manager["id"], restaurant_id)
@@ -658,14 +664,16 @@ Please try again or add items to inventory manually.""",
                 )
                 results.append(("push", result))
 
-        # SMS with action links
+        # SMS: the actual link is appended by send_sms_with_action_buttons
+        # below (one honest "Open:" line, since approve_url == reject_url).
+        # A truncated `approve_url[:40] + "..."` used to sit here too, above
+        # the full link -- an untappable half-URL nobody could follow.
         if "sms" in channels and manager.get("phone"):
             sms_body = (
                 f"🍷 ORDER APPROVAL NEEDED\n"
                 f"{wine_name}\n"
                 f"{quantity} bottles from {provider_name}\n"
-                f"${final_price}/bottle (Total: ${total_cost})\n"
-                f"Approve: {approve_url[:40]}..."
+                f"${final_price}/bottle (Total: ${total_cost})"
             )
             result = await self.sms_client.send_sms_with_action_buttons(
                 to_number=manager["phone"],
@@ -735,10 +743,18 @@ Please try again or add items to inventory manually.""",
                     title=f"Negotiation Complete: {wine_name}",
                     body=f"{provider_name} offered ${negotiated_price:.2f}/bottle (target: ${target_price:.2f}). {conversation_summary[:80]}",
                     data={"order_id": order_id, "type": "negotiation_complete"},
+                    # ONE action, not "Approve"/"Reject"/"View Details" -- all
+                    # three used to navigate to the identical order page under
+                    # sw.js's routing (data.order_id is the only field it can
+                    # act on here), so two of the three buttons promised a
+                    # one-tap act neither delivered -- the same defect M5
+                    # removed from send_order_approval_request's push above.
+                    # Approval and rejection both live behind the in-app
+                    # hold-to-approve ceremony on the order page itself.
+                    # action id "open" matches sw.js's notificationclick
+                    # handler (apps/web/public/sw.js).
                     actions=[
-                        {"action": "approve", "title": "Approve"},
-                        {"action": "reject", "title": "Reject"},
-                        {"action": "view", "title": "View Details"},
+                        {"action": "open", "title": "Open Order"},
                     ],
                 )
                 results.append(("push", result))
@@ -754,7 +770,11 @@ Please try again or add items to inventory manually.""",
                     "negotiated_price": f"{negotiated_price:.2f}",
                     "target_price": f"{target_price:.2f}",
                     "summary": conversation_summary,
-                    "approve_url": f"{self._get_base_url()}/orders/{order_id}?action=approve",
+                    # No `?action=approve` -- nothing in apps/web reads
+                    # `action` (grep get('action') apps/web/src -> 0 hits);
+                    # the link just opens the order, where the real
+                    # hold-to-approve ceremony lives.
+                    "approve_url": f"{self._get_base_url()}/orders/{order_id}",
                 },
                 subject=f"Negotiation Complete: {wine_name} with {provider_name}",
             )
@@ -822,7 +842,11 @@ Please try again or add items to inventory manually.""",
                     "wine_name": wine_name,
                     "provider_name": provider_name,
                     "quantity": quantity,
-                    "confirm_url": f"{self._get_base_url()}/orders/{order_id}?action=confirm",
+                    # No `?action=confirm` -- nothing in apps/web reads
+                    # `action` (grep get('action') apps/web/src -> 0 hits);
+                    # the link just opens the order (same class as M1/M6's
+                    # `?action=approve` removal above).
+                    "confirm_url": f"{self._get_base_url()}/orders/{order_id}",
                 },
                 subject=f"📦 Delivery Arrived: {wine_name} x{quantity}",
             )
@@ -857,7 +881,11 @@ Please try again or add items to inventory manually.""",
         results = []
 
         if manager.get("phone"):
-            sms_body = f"⚠️ {title}\n{message[:140]}\n{self._get_base_url()}/alerts"
+            # `/alerts` is not a route (App.tsx) -- the nearest real page is
+            # `/notifications`.
+            sms_body = (
+                f"⚠️ {title}\n{message[:140]}\n{self._get_base_url()}/notifications"
+            )
             result = await self.sms_client.send_sms(
                 manager["phone"], sms_body, priority="urgent"
             )
@@ -883,7 +911,8 @@ Please try again or add items to inventory manually.""",
                     "title": title,
                     "message": message,
                     "alert_type": alert_type,
-                    "dashboard_url": f"{self._get_base_url()}/dashboard",
+                    # `/dashboard` is not a route -- the dashboard IS `/`.
+                    "dashboard_url": f"{self._get_base_url()}/",
                 },
                 subject=f"⚠️ {title}",
             )
@@ -916,7 +945,8 @@ Please try again or add items to inventory manually.""",
             sms_body = (
                 f"🚨 FRAUD ALERT: {affected_entity}\n"
                 f"{alert_details[:120]}\n"
-                f"Review immediately: {self._get_base_url()}/audit"
+                # `/audit` is not a route -- the nearest real page is `/logs`.
+                f"Review immediately: {self._get_base_url()}/logs"
             )
             result = await self.sms_client.send_sms(
                 manager["phone"], sms_body, priority="urgent"
@@ -946,7 +976,8 @@ Please try again or add items to inventory manually.""",
                     "entity": affected_entity,
                     "details": alert_details,
                     "severity": severity,
-                    "audit_url": f"{self._get_base_url()}/audit",
+                    # `/audit` is not a route -- the nearest real page is `/logs`.
+                    "audit_url": f"{self._get_base_url()}/logs",
                 },
                 subject=f"🚨 Fraud Alert: {affected_entity}",
             )
@@ -983,7 +1014,8 @@ Please try again or add items to inventory manually.""",
                 "top_wine": report_data.get("top_wine", "N/A"),
                 "low_stock_count": report_data.get("low_stock_count", 0),
                 "pending_orders": report_data.get("pending_orders", 0),
-                "dashboard_url": f"{self._get_base_url()}/dashboard",
+                # `/dashboard` is not a route -- the dashboard IS `/`.
+                "dashboard_url": f"{self._get_base_url()}/",
             },
             subject=f"📊 Daily Report - {datetime.now().strftime('%B %d, %Y')}",
         )
@@ -1079,22 +1111,33 @@ Please try again or add items to inventory manually.""",
             f"Do you want to update the inventory?"
         )
 
-        # Action buttons for one-tap
+        # Action buttons for one-tap.
+        #
+        # NOT FIXED, and said plainly: `accept-vintage` / `contact` are not
+        # routes and there is no modal or page on `/orders` that does either
+        # act today -- a real fix needs that UI built (a founder call, not a
+        # link fix). `url` here is ALSO the wrong shape for a browser
+        # notification action in the first place (the Notifications API wants
+        # `{action, title}`; `push_notification_service.py` never reads a
+        # `url` off an action either), so nothing downstream currently
+        # dereferences this field at all. Pointed at the real order instead
+        # of a 404 so that IF it starts being read, it opens something rather
+        # than nothing -- not a claim that the three acts exist.
         actions = [
             {
                 "id": "approve",
                 "label": f"Accept {received_vintage}",
-                "url": f"/orders/{order_id}/approve-vintage",
+                "url": f"/orders/{order_id}",
             },
             {
                 "id": "reject",
                 "label": "Reject Delivery",
-                "url": f"/orders/{order_id}/reject",
+                "url": f"/orders/{order_id}",
             },
             {
                 "id": "contact",
                 "label": "Contact Vendor",
-                "url": f"/orders/{order_id}/contact",
+                "url": f"/orders/{order_id}",
             },
         ]
 
@@ -1361,22 +1404,26 @@ Please try again or add items to inventory manually.""",
             f"Wine: {wine_name}"
         )
 
-        # Action buttons
+        # Action buttons. NOT FIXED (same as send_vintage_mismatch_alert
+        # above): `accept-substitute` / `call-vendor` are not routes and no
+        # UI exists for either act yet -- needs a founder call on the UI, not
+        # a link fix. Pointed at the real order rather than a 404 in the
+        # meantime.
         actions = [
             {
                 "id": "accept",
                 "label": f"Accept {received_type}",
-                "url": f"/orders/{order_id}/accept-substitute",
+                "url": f"/orders/{order_id}",
             },
             {
                 "id": "reject",
                 "label": "Reject & Return",
-                "url": f"/orders/{order_id}/reject",
+                "url": f"/orders/{order_id}",
             },
             {
                 "id": "call",
                 "label": "Call Vendor",
-                "url": f"/orders/{order_id}/call-vendor",
+                "url": f"/orders/{order_id}",
             },
         ]
 
@@ -1712,12 +1759,38 @@ Please try again or add items to inventory manually.""",
         return f"{self._get_base_url()}/inventory?wine={wine_name}&action=reorder"
 
     def _get_base_url(self) -> str:
-        """Get base URL for links"""
-        return "https://app.wineops.ai"  # From config
+        """
+        Base URL for every link this agent sends.
+
+        Was hardcoded to ``https://app.wineops.ai``, a domain that does not
+        resolve at all (``curl`` -> connection failure).
+        ``settings.frontend_url`` reads ``FRONTEND_URL`` and defaults to
+        ``https://mudavym.com``, falling back to ``http://localhost:5173``
+        only when ``ENVIRONMENT`` is EXPLICITLY ``"development"`` or
+        ``DEBUG`` is true (ADR 0149 row 45, decided). It deliberately reads
+        ``os.getenv("ENVIRONMENT")`` rather than ``settings.environment``,
+        whose own default turns an unset ``ENVIRONMENT`` into
+        ``"development"``.
+        Production is expected to set ``FRONTEND_URL`` directly (Railway,
+        ``preserve()``), so this file no longer needs its own guess at what
+        "production" means.
+        """
+        return get_settings().frontend_url
 
     def _generate_action_token(self, order_id: str, action: str) -> str:
-        """Generate secure token for one-tap actions"""
-        # In real implementation, use proper JWT/HMAC signing
+        """
+        DEAD — kept only so a caller mid-migration does not hit an
+        AttributeError; delete once nothing calls it.
+
+        This was never a real token: the comment beside it admitted as much
+        ("In real implementation, use proper JWT/HMAC signing"), and the
+        gateway has no ``GET /api/orders/:id/approve`` route for it to be
+        checked against at all — the real approval door is
+        ``POST /procurement/orders/:id/approve``, which requires the caller's
+        JWT and a seal minted moments before (``order-seal.ts``), neither of
+        which a hash of the order id and a timestamp can stand in for. Nothing
+        in this file calls it any more (see ``send_order_approval_request``).
+        """
         import hashlib
         import time
 
@@ -1725,14 +1798,47 @@ Please try again or add items to inventory manually.""",
         return hashlib.sha256(data.encode()).hexdigest()[:16]
 
     async def _batch_processor(self) -> None:
-        """Background task to process batched notifications"""
-        while True:
+        """Background task to process batched notifications.
+
+        Waits on `_shutdown_event` rather than a bare sleep so `stop()` wakes it
+        immediately instead of leaving it to drain out its own timeout: `stop()`
+        does not cancel this task, it only waits for the loop to notice.
+        """
+        while not self._shutdown_event.is_set():
             try:
-                await asyncio.sleep(self.batch_interval_seconds)
+                await asyncio.wait_for(
+                    self._shutdown_event.wait(), timeout=self.batch_interval_seconds
+                )
+            except asyncio.TimeoutError:
+                pass
+            if self._shutdown_event.is_set():
+                return
+            try:
                 # Process batched notifications (email digests)
                 # Implementation placeholder
+                pass
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 self.logger.error(f"Batch processor error: {e}")
+
+    async def cleanup(self) -> None:
+        """Drain the batch loop and close the Redis client this agent opened.
+
+        Without this, `stop()` left `_batch_processor` running forever (BaseAgent
+        never cancels background tasks, it only waits for them to exit on their
+        own) and `restart()`'s `initialize()` opened a second Redis client on top
+        of the first, since neither was ever released.
+        """
+        if self._batch_task:
+            await self._drain_tasks(
+                {self._batch_task},
+                asyncio.get_running_loop().time() + self.config.task_timeout_seconds,
+            )
+            self._batch_task = None
+        if self._redis is not None:
+            await self._redis.close()
+            self._redis = None
 
     async def health_check(self) -> Dict[str, Any]:
         """

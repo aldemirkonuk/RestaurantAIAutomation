@@ -15,6 +15,14 @@ Embedding input is display_name + region + country + the sensory
 descriptors (arch §10.4: "natural embedding input is display name +
 sensory profile + region") -- built AFTER plan §1 (display_name) so it
 carries the full descriptive string, not the bare cuvee name.
+
+Menu lines (ADR 0193, menu versions, 2026-09-21): every kept menu's
+extracted lines carry `menu_items.embedding` (the same 384-dim model) for
+later search, and `embedding_model` names the model, because the column's
+CHECK refuses a vector that does not say what made it. The gateway never
+writes a vector; a NULL one is "not embedded yet". This pass embeds every
+line, discarded or not, current menu or not -- the founder: keep all menu
+extractions as ML data.
 """
 from __future__ import annotations
 
@@ -57,6 +65,19 @@ def wine_embed_text(row: dict) -> str:
     return " ".join(p for p in parts if p).strip()
 
 
+MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+
+
+def menu_line_embed_text(row: dict) -> str:
+    """A menu line as the house printed it: name, producer, vintage, section,
+    region, country, grape. No price: a price is not what a search for a
+    wine means, and it changes when nothing about the wine does."""
+    parts = [row.get("name") or "", row.get("producer") or "", row.get("vintage") or "",
+             row.get("category") or "", _clean(row.get("region")), _clean(row.get("country")),
+             row.get("grape_variety") or ""]
+    return " ".join(str(p) for p in parts if p).strip()
+
+
 def beverage_embed_text(row: dict) -> str:
     parts = [row.get("display_name") or row.get("name") or "", row.get("producer") or "",
              row.get("beverage_type") or "", _clean(row.get("region")), _clean(row.get("country"))]
@@ -85,35 +106,49 @@ def main() -> int:
            FROM beverages WHERE deleted_at IS NULL AND embedding IS NULL"""
     )
     beverage_rows = cur.fetchall()
+    cur.execute(
+        """SELECT id, name, producer, vintage, category, region, country, grape_variety
+           FROM menu_items WHERE embedding IS NULL"""
+    )
+    menu_rows = cur.fetchall()
 
     print(f"wines needing embedding: {len(wine_rows):,}")
     print(f"beverages needing embedding: {len(beverage_rows):,}")
+    print(f"menu lines needing embedding: {len(menu_rows):,}")
 
     if not args.apply:
         if wine_rows:
             print(f"\nsample wine embed text: {wine_embed_text(wine_rows[0])!r}")
         if beverage_rows:
             print(f"sample beverage embed text: {beverage_embed_text(beverage_rows[0])!r}")
+        if menu_rows:
+            print(f"sample menu line embed text: {menu_line_embed_text(menu_rows[0])!r}")
         print("\nDRY RUN -- no writes. Re-run with --apply.")
         return 0
 
     from sentence_transformers import SentenceTransformer
 
     t0 = time.time()
-    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    model = SentenceTransformer(MODEL_NAME)
     print(f"model loaded in {time.time()-t0:.1f}s")
 
-    def embed_and_write(table: str, rows: list[dict], text_fn) -> int:
+    def embed_and_write(table: str, rows: list[dict], text_fn, name_model: bool = False) -> int:
         written = 0
         for i in range(0, len(rows), args.batch_size):
             chunk = rows[i:i + args.batch_size]
             texts = [text_fn(r) for r in chunk]
             vecs = model.encode(texts, show_progress_bar=False)
             for row, vec in zip(chunk, vecs):
-                cur.execute(
-                    f"UPDATE {table} SET embedding = %s WHERE id = %s",
-                    (vec.tolist(), row["id"]),
-                )
+                if name_model:
+                    cur.execute(
+                        f"UPDATE {table} SET embedding = %s, embedding_model = %s WHERE id = %s",
+                        (vec.tolist(), MODEL_NAME, row["id"]),
+                    )
+                else:
+                    cur.execute(
+                        f"UPDATE {table} SET embedding = %s WHERE id = %s",
+                        (vec.tolist(), row["id"]),
+                    )
                 written += cur.rowcount
             print(f"  {table}: {min(i + args.batch_size, len(rows))}/{len(rows)}")
         return written
@@ -121,8 +156,9 @@ def main() -> int:
     t0 = time.time()
     wine_written = embed_and_write("master_wine_library", wine_rows, wine_embed_text)
     beverage_written = embed_and_write("beverages", beverage_rows, beverage_embed_text)
-    print(f"\nembedded and wrote {wine_written} wine rows, {beverage_written} beverage rows "
-          f"in {time.time()-t0:.1f}s")
+    menu_written = embed_and_write("menu_items", menu_rows, menu_line_embed_text, name_model=True)
+    print(f"\nembedded and wrote {wine_written} wine rows, {beverage_written} beverage rows, "
+          f"{menu_written} menu lines in {time.time()-t0:.1f}s")
 
     cur.execute("SELECT count(*) AS n FROM master_wine_library WHERE deleted_at IS NULL AND embedding IS NOT NULL")
     wine_total = cur.fetchone()["n"]

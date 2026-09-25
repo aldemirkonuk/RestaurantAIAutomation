@@ -36,9 +36,23 @@
 import { useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { INACTIVE_FEATURES } from '@/components/settings/inactiveFeatures';
+import { LIVE_PAGES, type MudavymPage } from '@/lib/mudavym/useMudavymDesign';
 import { Action, Micro, Note, Register, Row, Toggle } from './SectionKit';
 import { EM, MONO, SANS, isRedesignFlag, titleFromFlagKey } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
+
+/**
+ * `mudavym_design_<page>` for a page in `LIVE_PAGES` is read by nothing
+ * any more (`useMudavymDesign.ts`'s `LIVE_PAGES` short-circuits before
+ * the fetch) — that page renders the new design for every house regardless
+ * of this column. Rendering it here as a live `Toggle` would be exactly the
+ * shape ADR 0020 forbids: a control that looks like it governs something but
+ * does not. `isAlwaysOnRedesignFlag` is how `redesign.map` below tells the
+ * two apart.
+ */
+function isAlwaysOnRedesignFlag(key: string): boolean {
+  return LIVE_PAGES.has(key.replace(/^mudavym_design_/, '') as MudavymPage);
+}
 
 const AUTONOMY = 'enable_ai_autonomous_send';
 const NEGOTIATION = 'enable_ai_negotiation';
@@ -75,7 +89,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
             </Note>
 
             {!canManage && (
-              <p role="status" style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-3)', margin: '0 0 10px' }}>
+              <p role="status" style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-4)', margin: '0 0 10px' }}>
                 {NOT_YOURS} The switches below show what is set and cannot be moved from
                 here; the route refuses the write too, so none of them is a control that
                 would fail after you pressed it.
@@ -95,13 +109,19 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
             <Row
               label="Send AI replies without my approval"
               tone={autonomyOn ? 'grave' : undefined}
-              provenance={{ kept: 'restaurant', when: null, whenUnknown: NO_DATE }}
+              provenance={{
+                kept: 'restaurant', when: null, whenUnknown: NO_DATE,
+                // Was cited in the consequence prose as :1011 (a line inside this
+                // function's docblock, not the read) — corrected 2026-09-19 against
+                // the actual `.select("enable_ai_autonomous_send")` call, which
+                // matches the registry's own `readBy` for this key.
+                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:1027</code>,
+              }}
               consequence={
                 <>
                   ON means an AI-written reply leaves for your vendor with nobody having read it. You get two minutes to
                   cancel each one; a guardrail still holds a reply back for commitment language, a price above target, a
-                  quantity or budget change, an unverified sender, or unclear terms. Read at{' '}
-                  <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:1011</code>.
+                  quantity or budget change, an unverified sender, or unclear terms.
                 </>
               }
               control={
@@ -139,12 +159,18 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
 
             <Row
               label="Let AI handle vendor email at all"
-              provenance={{ kept: 'restaurant', when: null, whenUnknown: NO_DATE }}
+              provenance={{
+                kept: 'restaurant', when: null, whenUnknown: NO_DATE,
+                // Was cited in the consequence prose as :987 (inside this
+                // function's docblock, not the read) — corrected 2026-09-19 against
+                // the actual `.select("enable_ai_negotiation")` call, which matches
+                // the registry's own `readBy` for this key.
+                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:1003</code>,
+              }}
               consequence={
                 <>
                   AI reads vendor replies, works out what they mean, and drafts your answer. Off stops it reading and
-                  answering vendor email entirely — including the switch above. Read at{' '}
-                  <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:987</code>.
+                  answering vendor email entirely — including the switch above.
                 </>
               }
               control={
@@ -162,15 +188,17 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
               <Row
                 label="Read this house's mailbox"
                 tone={values[HOUSE_INBOX] === true ? 'grave' : undefined}
-                provenance={{ kept: 'restaurant', when: null, whenUnknown: NO_DATE }}
+                provenance={{
+                  kept: 'restaurant', when: null, whenUnknown: NO_DATE,
+                  readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>communications/inbox/house-inbox.service.ts:339</code>,
+                }}
                 consequence={
                   <>
                     ON means a scheduled job reads the mail in the account somebody here
                     connected, and files vendor replies against your orders. A person&apos;s
                     consent is necessary and not sufficient: they agreed for themselves, and
                     this switch is the house agreeing. Off is the default and every uncertain
-                    answer — no row, a failed read — is treated as off. Read at{' '}
-                    <code style={{ fontFamily: MONO, fontSize: 11 }}>communications/inbox/house-inbox.service.ts:339</code>.
+                    answer — no row, a failed read — is treated as off.
                   </>
                 }
                 control={
@@ -195,28 +223,62 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                   <code style={{ fontFamily: MONO, fontSize: 11 }}>localStorage["mudavym.design.&lt;page&gt;"]</code> — beats
                   the switch on this machine only, which is how a design is reviewed without turning it on for the floor.
                 </Note>
-                {redesign.map((key) => (
-                  <Row
-                    key={key}
-                    label={titleFromFlagKey(key)}
-                    provenance={{ kept: 'restaurant', when: null, whenUnknown: NO_DATE }}
-                    consequence={
-                      <>
-                        Renders the Mudavym design of this page for everyone at this restaurant.{' '}
-                        <code style={{ fontFamily: MONO, fontSize: 11 }}>{key}</code>
-                      </>
-                    }
-                    control={
-                      <Toggle
-                        label={`${titleFromFlagKey(key)} — Mudavym design`}
-                        checked={values[key] === true}
-                        disabled={!canManage}
-                        busy={writer.busy === key}
-                        onChange={(next) => void saveFlag(key, next)}
-                      />
-                    }
-                  />
-                ))}
+                {redesign.map((key) => {
+                  const alwaysOn = isAlwaysOnRedesignFlag(key);
+                  return (
+                    <Row
+                      key={key}
+                      label={titleFromFlagKey(key)}
+                      provenance={{
+                        kept: 'restaurant', when: null, whenUnknown: NO_DATE,
+                        // Matches the registry's own `readBy` for every
+                        // `mudavym_design_*` key: useMudavymDesign.ts:202:
+                        // `.checkFeatureFlag(restaurantId, flagKeyFor(page))`.
+                        // For a page in LIVE_PAGES the hook returns before
+                        // that call ever runs (see its module doc above) — the
+                        // column is real but nothing reads it any more.
+                        readBy: alwaysOn
+                          ? "nothing — useMudavymDesign.ts's LIVE_PAGES short-circuits before the fetch"
+                          : <code style={{ fontFamily: MONO, fontSize: 11 }}>lib/mudavym/useMudavymDesign.ts:202</code>,
+                      }}
+                      consequence={
+                        alwaysOn ? (
+                          <>
+                            Live for every restaurant already — this page resolves the Mudavym design in code, not
+                            from this switch (ADR 0149 row 36; the sketch review that cleared it is ADR 0160). The
+                            stored value below no longer changes anything; it is kept only because the column has not
+                            been retired yet.
+                          </>
+                        ) : (
+                          <>
+                            Renders the Mudavym design of this page for everyone at this restaurant.{' '}
+                            <code style={{ fontFamily: MONO, fontSize: 11 }}>{key}</code>
+                          </>
+                        )
+                      }
+                      control={
+                        alwaysOn ? (
+                          <span
+                            style={{
+                              fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase',
+                              color: 'var(--ink-4)', border: '1px dashed var(--paper-2)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap',
+                            }}
+                          >
+                            live for everyone
+                          </span>
+                        ) : (
+                          <Toggle
+                            label={`${titleFromFlagKey(key)} — Mudavym design`}
+                            checked={values[key] === true}
+                            disabled={!canManage}
+                            busy={writer.busy === key}
+                            onChange={(next) => void saveFlag(key, next)}
+                          />
+                        )
+                      }
+                    />
+                  );
+                })}
               </>
             )}
 
@@ -265,7 +327,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                   <span
                     style={{
                       fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase',
-                      color: 'var(--ink-3)', border: '1px dashed var(--paper-2)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap',
+                      color: 'var(--ink-4)', border: '1px dashed var(--paper-2)', borderRadius: 999, padding: '3px 9px', whiteSpace: 'nowrap',
                     }}
                   >
                     no switch

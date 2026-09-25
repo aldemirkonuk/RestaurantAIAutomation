@@ -16,6 +16,7 @@ import {
   RecipientResolverService,
 } from "../communications/recipient-resolver.service";
 import type { LowStockDigestWine } from "../communications/email-templates";
+import { canonicalOrigin } from "../communications/email-templates";
 
 type AlertLevel = "ok" | "low" | "critical";
 
@@ -1068,7 +1069,7 @@ export class LowStockAlertsService {
   }
 
   private inventoryUrl(): string {
-    const base = this.config.get<string>("FRONTEND_URL") || "";
-    return base ? `${base}/inventory?filter=low-stock` : "#";
+    const base = canonicalOrigin(this.config.get<string>("FRONTEND_URL")) || "https://mudavym.com";
+    return `${base}/inventory?filter=low-stock`;
   }
 }
