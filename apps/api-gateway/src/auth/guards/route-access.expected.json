@@ -1,0 +1,298 @@
+{
+  "DELETE /auth/me (AuthController.deleteAccount)": "open",
+  "DELETE /auth/me/link/:provider (AuthController.unlinkProvider)": "open",
+  "GET /ask-ai/actions (AskAiController.list)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /ask-ai/candidates (AskAiController.candidates)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /auth/check-email (AuthController.checkEmail)": "open",
+  "GET /auth/houses (AuthController.houses)": "open",
+  "GET /auth/invite/:code (AuthController.getInvitePreview)": "open",
+  "GET /auth/me (AuthController.getProfile)": "open",
+  "GET /auth/me/linked-providers (AuthController.getLinkedProviders)": "open",
+  "GET /auth/me/role (AuthController.getMyRole)": "open",
+  "GET /auth/verify (AuthController.verifyToken)": "open",
+  "GET /commodity-index/admin/series/:key/history (CommodityController.history)": [
+    "owner",
+    "manager"
+  ],
+  "GET /commodity-index/admin/series/:key/proposal (CommodityController.proposal)": [
+    "owner",
+    "manager"
+  ],
+  "GET /commodity-index/me (CommodityController.forHouse)": [
+    "owner",
+    "manager"
+  ],
+  "GET /commodity-index/status (CommodityController.status)": [
+    "owner",
+    "manager"
+  ],
+  "GET /communications/archive (HouseMailArchiveController.settings)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /distributor-feed/:jurisdiction (DistributorFeedController.forJurisdiction)": [
+    "owner",
+    "manager"
+  ],
+  "GET /distributor-feed/catalog (DistributorFeedController.catalog)": [
+    "owner",
+    "manager"
+  ],
+  "GET /distributor-feed/codes/:distributorKey (DistributorFeedController.codesFor)": [
+    "owner",
+    "manager"
+  ],
+  "GET /distributor-feed/letter (DistributorFeedController.letter)": [
+    "owner",
+    "manager"
+  ],
+  "GET /price-index/:state (PriceIndexController.forState)": [
+    "owner",
+    "manager"
+  ],
+  "GET /price-index/status (PriceIndexController.status)": [
+    "owner",
+    "manager"
+  ],
+  "GET /price-index/uploads (PriceIndexController.uploads)": [
+    "owner",
+    "manager"
+  ],
+  "GET /prospects (ProspectsController.list)": "open",
+  "GET /prospects/:id/attachments (ProspectsController.attachments)": "open",
+  "GET /prospects/triage (ProspectsController.triage)": "open",
+  "GET /senders/reputation (SenderTrustController.list)": [
+    "owner",
+    "manager"
+  ],
+  "GET /vendor-intel/below-average (VendorIntelController.belowAverage)": [
+    "owner",
+    "manager"
+  ],
+  "GET /vendor-intel/compare (VendorIntelController.compare)": [
+    "owner",
+    "manager"
+  ],
+  "GET /vendor-intel/identity/candidates (VendorIntelController.identityCandidates)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "GET /vendor-intel/identity/decisions (VendorIntelController.identityDecisions)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "GET /vendor-intel/identity/lookup (VendorIntelController.identityLookup)": [
+    "owner",
+    "manager"
+  ],
+  "GET /vendor-intel/identity/lwin/search (VendorIntelController.lwinSearch)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "GET /vendor-intel/identity/status (VendorIntelController.identityStatus)": [
+    "owner",
+    "manager"
+  ],
+  "GET /vendor-intel/identity/sweep-subjects (VendorIntelController.identitySweepSubjects)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "GET /vendor-intel/outlier-rejudge/status (VendorIntelController.outlierRejudgeStatus)": [
+    "owner",
+    "manager"
+  ],
+  "GET /vendor-intel/shop-sweep/status (VendorIntelController.shopSweepStatus)": [
+    "owner",
+    "manager"
+  ],
+  "GET /vendor-intel/site-sweep/status (VendorIntelController.siteSweepStatus)": [
+    "owner",
+    "manager"
+  ],
+  "PATCH /auth/me (AuthController.updateProfile)": "open",
+  "POST /ask-ai/actions/:id/confirm (AskAiController.confirm)": [
+    "owner",
+    "manager"
+  ],
+  "POST /ask-ai/actions/:id/discard (AskAiController.discard)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /ask-ai/propose (AskAiController.propose)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /auth/dev-bypass-login (AuthController.devBypassLogin)": "open",
+  "POST /auth/invite (AuthController.generateInvite)": [
+    "owner",
+    "manager"
+  ],
+  "POST /auth/invite/:code/accept (AuthController.acceptInviteAsAuthed)": "open",
+  "POST /auth/join (AuthController.joinViaInvite)": "open",
+  "POST /auth/login (AuthController.login)": "open",
+  "POST /auth/logout (AuthController.logout)": "open",
+  "POST /auth/me/leave-restaurant (AuthController.leaveRestaurant)": "open",
+  "POST /auth/me/link/:provider (AuthController.linkProvider)": "open",
+  "POST /auth/me/password (AuthController.changePassword)": "open",
+  "POST /auth/oauth/google (AuthController.loginWithGoogle)": "open",
+  "POST /auth/oauth/microsoft (AuthController.loginWithMicrosoft)": "open",
+  "POST /auth/refresh (AuthController.refresh)": "open",
+  "POST /auth/register (AuthController.register)": "open",
+  "POST /auth/register/restaurant (AuthController.registerRestaurant)": "open",
+  "POST /auth/request-password-reset (AuthController.requestPasswordReset)": "open",
+  "POST /auth/resend-verification (AuthController.resendVerification)": "open",
+  "POST /auth/reset-password (AuthController.resetPassword)": "open",
+  "POST /auth/sign-in-methods (AuthController.signInMethods)": "open",
+  "POST /auth/switch-restaurant (AuthController.switchRestaurant)": "open",
+  "POST /auth/verify-email (AuthController.verifyEmail)": "open",
+  "POST /commodity-index/admin/series/:key/arm (CommodityController.arm)": [
+    "owner",
+    "manager"
+  ],
+  "POST /commodity-index/admin/series/:key/disarm (CommodityController.disarm)": [
+    "owner",
+    "manager"
+  ],
+  "POST /commodity-index/exposures (CommodityController.assertExposure)": [
+    "owner",
+    "manager"
+  ],
+  "POST /commodity-index/exposures/:id/retire (CommodityController.retireExposure)": [
+    "owner",
+    "manager"
+  ],
+  "POST /commodity-index/exposures/challenge (CommodityController.exposureChallenge)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/archive (HouseMailArchiveController.choose)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/archive/export (HouseMailArchiveController.runExport)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/archive/seal-challenge (HouseMailArchiveController.challenge)": [
+    "owner",
+    "manager"
+  ],
+  "POST /distributor-feed/codes/:distributorKey (DistributorFeedController.declareCode)": [
+    "owner",
+    "manager"
+  ],
+  "POST /distributor-feed/codes/:distributorKey/:mappingId/withdraw (DistributorFeedController.withdrawCode)": [
+    "owner",
+    "manager"
+  ],
+  "POST /price-index/upload (PriceIndexController.upload)": [
+    "owner",
+    "manager"
+  ],
+  "POST /price-index/uploads/:reviewId/challenge (PriceIndexController.challenge)": [
+    "owner",
+    "manager"
+  ],
+  "POST /price-index/uploads/:reviewId/confirm (PriceIndexController.confirmUpload)": [
+    "owner",
+    "manager"
+  ],
+  "POST /price-index/uploads/:reviewId/refuse (PriceIndexController.refuseUpload)": [
+    "owner",
+    "manager"
+  ],
+  "POST /price-index/uploads/:reviewId/reopen (PriceIndexController.reopenUpload)": [
+    "owner",
+    "manager"
+  ],
+  "POST /price-index/uploads/:reviewId/reopen-challenge (PriceIndexController.reopenChallenge)": [
+    "owner",
+    "manager"
+  ],
+  "POST /prospects/:id/dismiss (ProspectsController.dismiss)": "open",
+  "POST /prospects/:id/promote (ProspectsController.promote)": [
+    "owner",
+    "manager"
+  ],
+  "POST /prospects/:id/restore (ProspectsController.restore)": "open",
+  "POST /senders/trust (SenderTrustController.setTrust)": [
+    "owner",
+    "manager"
+  ],
+  "POST /vendor-intel/identity/assert (VendorIntelController.identityAssert)": [
+    "owner",
+    "manager"
+  ],
+  "POST /vendor-intel/identity/candidates/decide (VendorIntelController.identityDecide)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /vendor-intel/identity/decisions/undo (VendorIntelController.identityUndo)": [
+    "owner",
+    "manager"
+  ],
+  "POST /vendor-intel/identity/lwin/confirm (VendorIntelController.lwinConfirm)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /vendor-intel/identity/nominate (VendorIntelController.identityNominate)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /vendor-intel/identity/suggest (VendorIntelController.identitySuggest)": [
+    "owner",
+    "manager"
+  ],
+  "POST /vendor-intel/observations (VendorIntelController.recordObservation)": [
+    "owner",
+    "manager"
+  ],
+  "POST /vendor-intel/outlier-rejudge/run (VendorIntelController.runOutlierRejudge)": [
+    "owner",
+    "manager"
+  ],
+  "POST /vendor-intel/scrape (VendorIntelController.scrape)": [
+    "owner",
+    "manager"
+  ],
+  "POST /vendor-intel/shop-sweep/run (VendorIntelController.runShopSweep)": [
+    "owner",
+    "manager"
+  ],
+  "POST /vendor-intel/site-sweep/run (VendorIntelController.runSiteSweep)": [
+    "owner",
+    "manager"
+  ],
+  "POST /vendor-intel/sweep (VendorIntelController.sweep)": [
+    "owner",
+    "manager"
+  ]
+}

@@ -53,6 +53,18 @@ function makeService(opts: { accessInsertError?: { message: string } } = {}) {
     return c;
   };
 
+  // OD-131(a) (2026-09-19, `createLocation` now also reads an EXISTING active
+  // house for the caller before creating the new one): the bare-awaited
+  // (no `.single()`) path on "restaurants" previously answered `data: null`
+  // unconditionally, which was fine while nothing but the rollback `delete()`
+  // used it (only its `.error` mattered). `createLocation`'s new
+  // "does the caller already hold a house in this organisation" read shares
+  // that same bare-await path, so it now needs a non-empty answer — this
+  // spec is about the access-grant-after-creation flow (ADR 0164 item 7,
+  // round 1), not the organisation-membership gate, so ANY seeded house
+  // satisfies it without changing what either test below asserts.
+  const EXISTING_HOUSE_ID = "existing-house-1";
+
   const restaurantsChain = (): any => {
     let deleting = false;
     const c: any = {
@@ -79,31 +91,55 @@ function makeService(opts: { accessInsertError?: { message: string } } = {}) {
         error: null,
       }),
       then: (res: any, rej: any) =>
-        Promise.resolve({ data: null, error: null }).then(res, rej),
+        Promise.resolve({
+          data: [{ id: EXISTING_HOUSE_ID, organization_id: ORG_ID }],
+          error: null,
+        }).then(res, rej),
     };
     return c;
   };
 
   const accessChain = (): any => {
-    const result = { data: null, error: opts.accessInsertError ?? null };
+    // Two different callers share this table now: `createLocation`'s NEW
+    // "does the caller already hold an active house" read (a plain SELECT,
+    // always answered from the fixture below) and its EXISTING access-grant
+    // INSERT (still gated by `opts.accessInsertError`, below). Collapsing
+    // them into one `result` made the read fail with the insert's forced
+    // error before the insert ever ran — caught by the "rolls back and
+    // throws" case actually asserting the wrong exception type.
+    let inserting = false;
+    const selectResult = {
+      data: [{ restaurant_id: EXISTING_HOUSE_ID }],
+      error: null,
+    };
+    const insertResult = { data: null, error: opts.accessInsertError ?? null };
     const c: any = {
       insert: (payload: any) => {
+        inserting = true;
         calls.accessInserts.push(payload);
         return c;
       },
       select: () => c,
       eq: () => c,
-      maybeSingle: async () => result,
-      single: async () => result,
-      then: (res: any, rej: any) => Promise.resolve(result).then(res, rej),
+      maybeSingle: async () => (inserting ? insertResult : selectResult),
+      single: async () => (inserting ? insertResult : selectResult),
+      then: (res: any, rej: any) =>
+        Promise.resolve(inserting ? insertResult : selectResult).then(
+          res,
+          rej,
+        ),
     };
     return c;
   };
 
   const supabase = {
     from: (table: string) => {
+      // An owner of the organisation (ADR 0164: only they may open a location).
       if (table === "organization_members")
-        return chain({ data: [{ organization_id: ORG_ID }], error: null });
+        return chain({
+          data: [{ organization_id: ORG_ID, role: "owner" }],
+          error: null,
+        });
       if (table === "organizations")
         return chain({ data: { id: ORG_ID }, error: null });
       if (table === "restaurants") return restaurantsChain();

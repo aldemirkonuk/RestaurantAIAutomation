@@ -22,6 +22,7 @@ import { RolesGuard } from "./guards/roles.guard";
 import { Roles } from "./decorators/roles.decorator";
 import { Public } from "./decorators/public.decorator";
 import { AllowsTenantChange } from "../common/tenant/allows-tenant-change.decorator";
+import { AllowsNoHouse } from "../common/tenant/allows-no-house.decorator";
 import { AllowUnverified } from "./decorators/allow-unverified.decorator";
 import { CheckEmailDto } from "./dto/check-email.dto";
 import { VerifyEmailDto } from "./dto/verify-email.dto";
@@ -83,11 +84,14 @@ export class AuthController {
   @Public()
   @Post("dev-bypass-login")
   @HttpCode(HttpStatus.OK)
-  async devBypassLogin(@Req() req: Request) {
+  async devBypassLogin(
+    @Req() req: Request,
+    @Body() body?: { lastHouses?: unknown },
+  ) {
     if (!devBypassAllowed(req)) {
       throw new BadRequestException("Dev auth bypass is not available");
     }
-    const tokens = await this.authService.devBypassLogin();
+    const tokens = await this.authService.devBypassLogin(body?.lastHouses);
     return {
       success: true,
       ...tokens,
@@ -166,9 +170,12 @@ export class AuthController {
   // Public by DECISION, not by omission (ADR 0096): sign-in entry point; the Google ID token in the body is the credential.
   @Public()
   @Post("oauth/google")
-  async loginWithGoogle(@Body() body: { token: string }) {
+  async loginWithGoogle(@Body() body: { token: string; lastHouses?: unknown }) {
     this.logger.log("Google OAuth login attempt");
-    const tokens = await this.authService.loginWithGoogle(body.token);
+    const tokens = await this.authService.loginWithGoogle(
+      body.token,
+      body.lastHouses,
+    );
 
     return {
       success: true,
@@ -183,9 +190,14 @@ export class AuthController {
   // Public by DECISION, not by omission (ADR 0096): sign-in entry point; the Microsoft ID token in the body is the credential.
   @Public()
   @Post("oauth/microsoft")
-  async loginWithMicrosoft(@Body() body: { token: string }) {
+  async loginWithMicrosoft(
+    @Body() body: { token: string; lastHouses?: unknown },
+  ) {
     this.logger.log("Microsoft OAuth login attempt");
-    const tokens = await this.authService.loginWithMicrosoft(body.token);
+    const tokens = await this.authService.loginWithMicrosoft(
+      body.token,
+      body.lastHouses,
+    );
 
     return {
       success: true,
@@ -198,6 +210,8 @@ export class AuthController {
    * Refresh access token
    */
   // Public by DECISION, not by omission (ADR 0096): the access token is expired by the time this is called; the refresh token in the body is the credential.
+  // Answers `houseAccessEnded` when the old token's house is no longer one of
+  // the person's; the new pair then names no house (ADR 0164, R5).
   @Public()
   @Post("refresh")
   async refresh(@Body() body: { refreshToken: string }) {
@@ -215,6 +229,7 @@ export class AuthController {
   @Post("logout")
   @UseGuards(JwtAuthGuard)
   @AllowUnverified() // leaving must never require verifying first
+  @AllowsNoHouse() // nor choosing a house
   async logout(
     @Req() req: Request & { user: any },
     @Headers("authorization") authorization?: string,
@@ -239,10 +254,17 @@ export class AuthController {
   // an unverified session cannot discover that it is unverified — it just
   // fails to load, which is indistinguishable from a broken login.
   @AllowUnverified()
+  // A session in no house must be able to learn that it is in none.
+  @AllowsNoHouse()
   async getProfile(@Req() req: Request & { user: any }) {
     const user = await this.authService.getProfileForUser(req.user.userId);
-    // Prefer JWT-scoped restaurant over users.restaurant_id (branch switch)
-    const restaurantId = req.user.restaurantId ?? user.restaurantId ?? null;
+    // The session's house and its role THERE (ADR 0164): the token's house,
+    // never the `users` row's, and the role from the person's access row in
+    // it, never the account-wide `users.role`. A session in no house reports
+    // null for both. The web and the phone read `role` from here in about
+    // fifteen places; before this it was `users.role` for every house.
+    const restaurantId = req.user.restaurantId ?? null;
+    const role = req.user.role ?? null;
     // A dev-bypass session reports ITSELF as verified. The bypass account's
     // `users.email_verified` is false and stays false; ProtectedRoute
     // (apps/web/src/components/ProtectedRoute.tsx:42) reads this field and
@@ -260,22 +282,32 @@ export class AuthController {
         : user.emailVerified;
     return {
       success: true,
-      user: { ...user, restaurantId, emailVerified },
+      user: { ...user, restaurantId, role, emailVerified },
     };
   }
 
   @Patch("me")
   @UseGuards(JwtAuthGuard)
+  @AllowsNoHouse()
   async updateProfile(
     @Req() req: Request & { user: any },
     @Body() body: UpdateProfileDto,
   ) {
     const user = await this.authService.updateProfile(req.user.userId, body);
-    return { success: true, user };
+    // The same house and role `GET /auth/me` reports (ADR 0164).
+    return {
+      success: true,
+      user: {
+        ...user,
+        restaurantId: req.user.restaurantId ?? null,
+        role: req.user.role ?? null,
+      },
+    };
   }
 
   @Post("me/password")
   @UseGuards(JwtAuthGuard)
+  @AllowsNoHouse()
   @HttpCode(HttpStatus.OK)
   async changePassword(
     @Req() req: Request & { user: any },
@@ -331,6 +363,7 @@ export class AuthController {
 
   @Get("me/linked-providers")
   @UseGuards(JwtAuthGuard)
+  @AllowsNoHouse()
   async getLinkedProviders(@Req() req: Request & { user: any }) {
     const linkedProviders = await this.authService.getLinkedProviders(
       req.user.userId,
@@ -340,6 +373,7 @@ export class AuthController {
 
   @Post("me/link/:provider")
   @UseGuards(JwtAuthGuard)
+  @AllowsNoHouse()
   @HttpCode(HttpStatus.OK)
   async linkProvider(
     @Req() req: Request & { user: any },
@@ -359,6 +393,7 @@ export class AuthController {
 
   @Delete("me/link/:provider")
   @UseGuards(JwtAuthGuard)
+  @AllowsNoHouse()
   async unlinkProvider(
     @Req() req: Request & { user: any },
     @Param("provider") provider: string,
@@ -387,6 +422,7 @@ export class AuthController {
   @Delete("me")
   @UseGuards(JwtAuthGuard)
   @AllowUnverified() // deleting an account you cannot verify must stay possible
+  @AllowsNoHouse() // and one with no house
   async deleteAccount(@Req() req: Request & { user: any }) {
     await this.authService.deleteAccount(req.user.userId);
     return { success: true, message: "Account deleted" };
@@ -411,6 +447,8 @@ export class AuthController {
 
   @Post("invite/:code/accept")
   @UseGuards(JwtAuthGuard)
+  // Someone with no house yet joins one exactly this way.
+  @AllowsNoHouse()
   async acceptInviteAsAuthed(
     @Req() req: Request & { user: any },
     @Param("code") code: string,
@@ -431,6 +469,7 @@ export class AuthController {
   @Get("verify")
   @UseGuards(JwtAuthGuard)
   @AllowUnverified() // answers "is this token live?", not "may you use the app?"
+  @AllowsNoHouse()
   async verifyToken() {
     return {
       success: true,
@@ -521,6 +560,7 @@ export class AuthController {
   @Post("resend-verification")
   @UseGuards(JwtAuthGuard)
   @AllowUnverified() // the escape hatch itself; gating it would be a trap
+  @AllowsNoHouse()
   async resendVerification(@Req() req: Request & { user: any }) {
     const result = await this.authService.resendVerification(
       req.user.userId,
@@ -530,12 +570,14 @@ export class AuthController {
   }
 
   /**
-   * Switch active restaurant context — re-issues JWT with the new restaurantId.
-   * Validates the requesting user belongs to the target restaurant's organisation.
+   * Move the session into another of the person's houses, or choose one when
+   * it names none (ADR 0164): re-issues the pair for that house. Membership
+   * only: an active `user_restaurant_access` row there, nothing else.
    */
   @Post("switch-restaurant")
   @UseGuards(JwtAuthGuard)
   @AllowsTenantChange()
+  @AllowsNoHouse() // choosing a house is how a session in none gets one
   async switchRestaurant(
     @Req() req: Request & { user: any },
     @Body() body: { restaurantId: string },
@@ -543,8 +585,21 @@ export class AuthController {
     const tokens = await this.authService.switchRestaurant(
       req.user.userId,
       body.restaurantId,
+      req.user.devBypass === true,
     );
     return { success: true, ...tokens };
+  }
+
+  /**
+   * The person's own houses, for the chooser (ADR 0164, R7): an active
+   * membership each, `{ id, name, city }`, sorted by name. No role, no numbers.
+   */
+  @Get("houses")
+  @UseGuards(JwtAuthGuard)
+  @AllowsNoHouse()
+  async houses(@Req() req: Request & { user: any }) {
+    const houses = await this.authService.memberHouses(req.user.userId);
+    return { success: true, houses };
   }
 
   /**
