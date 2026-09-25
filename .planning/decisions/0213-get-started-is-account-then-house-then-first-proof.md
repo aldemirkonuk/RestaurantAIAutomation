@@ -16,7 +16,7 @@ and asked for the build. Nothing here invents a product choice past that word.
 
 `#414` (`feat/finish-arrival`) and `#454` stay unmerged. This record does **not**
 flip `mudavym_design_arrival`. Gate-owned `#415` / `#430` / `#434` stay with
-their owner.
+their owner. **[CORRECTED 2026-09-25, [web-rebuild census](../07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md) §1c.1: false when this record landed. `#415` (`cc73f9f66`, 23:53Z), `#430` (`e2abd7844`, 00:43Z), `#434` (`92ea9cecc`, 01:29Z), `#454` (`162f25ade`, 01:42Z) and `#414` (`8ec925aa7`, 01:59Z) had all merged before `#455` (`ddc5e094b`, 02:33Z, 2026-09-22/23 UTC), which carried this paragraph. What held: `mudavym_design_arrival` is OFF for 14 of 14 houses (production read, 2026-09-25T21:11Z), so `/get-started` renders this record's flow from the `legacy` slot of `App.tsx:215-219` and `#414`'s book sits dormant in `next`. "Do not merge it" in Consequences below is moot for the same reason.]**
 
 OD-123 and OD-124 already mean other forks on `main` (Sheet scrim; privacy
 legal facts). The squad's draft mapping of F1–F7 onto those ids is **wrong**
@@ -78,3 +78,4 @@ as the fallback the verdict named: unmatched / uncategorised / unknown → penci
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-22 | Aldemir (founder) | All 17 Opus recs = A; build |
+| 2026-09-25 | Records lane L1 (Opus 5.5), web-rebuild census | Bracketed in place — the Context paragraph's "stay unmerged" was false when it landed (merge history, census §1c.1) |
