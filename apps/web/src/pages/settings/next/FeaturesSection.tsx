@@ -232,14 +232,14 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                       provenance={{
                         kept: 'restaurant', when: null, whenUnknown: NO_DATE,
                         // Matches the registry's own `readBy` for every
-                        // `mudavym_design_*` key: useMudavymDesign.ts:157:
+                        // `mudavym_design_*` key: useMudavymDesign.ts:202:
                         // `.checkFeatureFlag(restaurantId, flagKeyFor(page))`.
                         // For a page in LIVE_PAGES the hook returns before
                         // that call ever runs (see its module doc above) — the
                         // column is real but nothing reads it any more.
                         readBy: alwaysOn
                           ? "nothing — useMudavymDesign.ts's LIVE_PAGES short-circuits before the fetch"
-                          : <code style={{ fontFamily: MONO, fontSize: 11 }}>lib/mudavym/useMudavymDesign.ts:157</code>,
+                          : <code style={{ fontFamily: MONO, fontSize: 11 }}>lib/mudavym/useMudavymDesign.ts:202</code>,
                       }}
                       consequence={
                         alwaysOn ? (

@@ -97,34 +97,69 @@ describe('useMudavymDesign precedence', () => {
 /**
  * ADR 0149 row 36 (2026-09-17): 16 pages go live for every house in code.
  * `settings` joined 2026-09-19 (PR #419) after its sketch review — still
- * code-side always-on, no flag read. `recommendations`,
- * `receiving` (the desk, not the door), and `admin` (ADR 0143) stay
- * flag-gated. `cellar` and `menu` go live with this PR. `shell` (the house
- * shell, sketch 119 D, ADR 0149 row 5) is held back too: it stays behind its
- * own flag in this set (production may have flipped the column independently)
- * and is never a LIVE_PAGES entry. `arrival` (/get-started book) is held back
- * the same way — OFF until deliberately flipped.
+ * code-side always-on, no flag read. `cellar` and `menu` went live with the
+ * cellar lane; `help` with PR #413.
+ *
+ * [2026-09-25, ADR 0149 row 36's bracket, founder Q2/Q4 of 2026-09-22:
+ * `shell`, `admin` and `authorize_integration` join. Until now this block
+ * held `admin` and `shell` back and kept `authorize_integration` in its own
+ * "enrolled after go-live" list; all three now resolve for every house in
+ * code, so a house with no restaurant_feature_flags row — one created after
+ * the 2026-09-25 production read, where every existing house had shell and
+ * admin ON — gets them too.]
+ *
+ * Held back, still flag-gated: `recommendations`, `receiving` (the desk, not
+ * the door) and `arrival` (/get-started, whose legacy slot is ADR 0213's plan
+ * of record) — OFF until deliberately flipped.
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
-  const HELD_BACK = ['arrival', 'recommendations', 'receiving', 'admin', 'shell'] as const;
-  // Enrolled AFTER the 2026-09-17 go-live and not part of it: the /authorize
-  // consent page (ADR 0144), flag-gated and OFF by default (migration
-  // 20260922220200). Making it live is a separate founder call.
-  const ENROLLED_AFTER_GO_LIVE = ['authorize_integration'] as const;
+  const HELD_BACK = ['arrival', 'recommendations', 'receiving'] as const;
+  const PROMOTED_2026_09_25 = ['shell', 'admin', 'authorize_integration'] as const;
 
-  it('is exactly MUDAVYM_PAGES minus the held-back pages and the pages enrolled after go-live', () => {
-    const held = new Set<string>([...HELD_BACK, ...ENROLLED_AFTER_GO_LIVE]);
+  it('is exactly MUDAVYM_PAGES minus the held-back pages', () => {
+    const held = new Set<string>(HELD_BACK);
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
-    expect(LIVE_PAGES.size).toBe(20);
+    expect(LIVE_PAGES.size).toBe(23);
+    expect(MUDAVYM_PAGES.length).toBe(26);
   });
 
-  it('holds back arrival, recommendations, receiving, admin, shell -- and pages enrolled after go-live stay gated', () => {
-    for (const page of [...HELD_BACK, ...ENROLLED_AFTER_GO_LIVE]) {
+  it('holds back arrival, recommendations and receiving', () => {
+    for (const page of HELD_BACK) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated
     }
   });
+
+  it.each(PROMOTED_2026_09_25)(
+    'promoted 2026-09-25 (%s): on for a house with no flag row, first render, no request',
+    async (page) => {
+      expect(LIVE_PAGES.has(page)).toBe(true);
+      window.localStorage.setItem('activeRestaurantId', 'r-new-house');
+      // A house created after the 2026-09-25 production read has no settings
+      // row at all; the gateway answers { enabled: false, active: false } for
+      // it. The page must not even ask.
+      checkFlag.mockResolvedValue(checkResult(false, false));
+      const { result } = renderHook(() => useMudavymDesign(page));
+      expect(result.current).toBe(true);
+      await act(async () => {});
+      expect(result.current).toBe(true);
+      expect(checkFlag).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(PROMOTED_2026_09_25)(
+    'promoted 2026-09-25 (%s): the QA override is the only way back to legacy',
+    async (page) => {
+      window.localStorage.setItem('activeRestaurantId', 'r1');
+      window.localStorage.setItem(`mudavym.design.${page}`, '0');
+      const { result } = renderHook(() => useMudavymDesign(page));
+      expect(result.current).toBe(false);
+      await act(async () => {});
+      expect(result.current).toBe(false);
+      expect(checkFlag).not.toHaveBeenCalled();
+    },
+  );
 
   it('settings is live (always-on in code, no flag read)', () => {
     expect(LIVE_PAGES.has('settings')).toBe(true);
