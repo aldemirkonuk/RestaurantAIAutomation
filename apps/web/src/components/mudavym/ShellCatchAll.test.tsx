@@ -1,6 +1,7 @@
 /**
  * The in-app 404: gated the same way every shell page is (the browser
- * override, then the house flag, then false — `useMudavymDesign.ts`), and
+ * override, then LIVE_PAGES, then the house flag, then false —
+ * `useMudavymDesign.ts`; `shell` is in LIVE_PAGES since 2026-09-25), and
  * nested under `DashboardLayout` so it never races that flag check (see
  * ShellCatchAll.tsx's doc comment for the defect this replaces).
  */
@@ -54,19 +55,23 @@ beforeEach(() => {
 });
 afterEach(() => window.localStorage.clear());
 
-describe('shell off (default, or while the flag check is in flight)', () => {
-  it("today's behaviour is unchanged: a silent redirect home", () => {
+// [2026-09-25: `shell` is in LIVE_PAGES (ADR 0149 row 36's bracket, founder
+// Q2/Q4 of 2026-09-22), so "off" is no longer the default or a house's flag —
+// only the browser's QA override reaches the legacy redirect now.]
+describe("shell off (the QA override '0' -- since 2026-09-25 the only way to legacy)", () => {
+  it("the legacy behaviour is unchanged: a silent redirect home", () => {
+    window.localStorage.setItem('mudavym.design.shell', '0');
     mountCatchAll('/this/does/not/exist');
     expect(screen.getByTestId('dashboard')).toBeTruthy();
   });
 });
 
-describe('shell on', () => {
-  it('renders the in-app 404 instead of redirecting', () => {
-    window.localStorage.setItem('mudavym.design.shell', '1');
+describe('shell on (the default: live in code, no override, the house has no flag row)', () => {
+  it('renders the in-app 404 instead of redirecting, without asking for a flag', () => {
     mountCatchAll('/this/does/not/exist');
     expect(screen.queryByTestId('dashboard')).toBeNull();
     expect(screen.getByText('There is no page at /this/does/not/exist.')).toBeTruthy();
+    expect(checkFlag).not.toHaveBeenCalled();
   });
 });
 
