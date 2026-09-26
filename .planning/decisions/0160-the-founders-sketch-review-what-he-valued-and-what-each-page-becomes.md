@@ -630,7 +630,9 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
   drawn in the same ink, the sign and the words carrying the direction, as PR #473 built
   them. The landed/agreed label was answered in the same 2026-09-19 batch — "badge words =
   keep landed/agreed" — and is written here from that memory record, not from item 30. All
-  three of 112's further questions are therefore closed.]**; 113 — 6 of 7 open
+  three of 112's further questions are therefore closed. Item 30 also set the sequencing:
+  fork 6(a)'s full provenance MUST land before `mudavym_design_vendor_prices` is turned
+  on for any house (`founder-answers-2026-09-25-web-rebuild.md:50`).]**; 113 — 6 of 7 open
   (`README:336-377`): only question 7, the coupling to 112's forks, is answered, through
   112's accepted forks 1(a) and 2(c) (`README:367-377`); open include question 2, the
   projected worth (Open item 8), and question 3, senders and strangers (Open item 3).

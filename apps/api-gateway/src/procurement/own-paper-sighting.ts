@@ -248,7 +248,13 @@ function positiveInt(v: unknown): number | null {
  * against N priors" or "not judged: only N, below the floor" — the way
  * `vendor-comparison.service.ts`'s manual writer already does. A caller that
  * omits it gets `outlier_reason: null` (this file's own field goes unwritten,
- * not a guessed sentence) rather than a claim this function cannot back up.
+ * not a guessed sentence) rather than a claim this function cannot back up —
+ * and the caller MUST omit it when its register read failed, never pass 0.
+ *
+ * The sentence names the population the caller really reads: this house's
+ * rows plus the public register's, every source type. It does NOT copy the
+ * manual writer's "same comparison class" — that writer filters by class and
+ * `priorSightingUnitPrices` does not.
  */
 export function decideOwnPaperSighting(
   input: OwnPaperSightingInput,
@@ -441,10 +447,10 @@ export function decideOwnPaperSighting(
     opts.priorCount === undefined
       ? null
       : !judged
-        ? `Not judged: only ${opts.priorCount} comparable sighting(s) of this product's own-paper trail exist, below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
+        ? `Not judged: only ${opts.priorCount} earlier sighting(s) of this product exist on this house's register and the public one (every source type counted), below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
         : opts.isOutlier
-          ? `Flagged at write time against ${opts.priorCount} earlier sighting(s) of this product's own-paper trail: it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
-          : `Judged clean at write time against ${opts.priorCount} earlier sighting(s) of this product's own-paper trail.`;
+          ? `Flagged at write time against ${opts.priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted): it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
+          : `Judged clean at write time against ${opts.priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted).`;
   const judgedAt = opts.priorCount === undefined ? null : new Date().toISOString();
 
   // Fork 6(a). Deliberately NOT part of `contentHash` above: the hash answers
