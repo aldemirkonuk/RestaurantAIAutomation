@@ -115,6 +115,7 @@ import {
   roleSatisfies,
 } from "./order-approval-gate";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
+import { escapeHtml, textToEmailHtml } from "../common/html/escape-html";
 import {
   ORDER_CANCEL_ACT,
   ORDER_SEAL_ACT,
@@ -398,6 +399,14 @@ function embeddedProviderName(embed: unknown): string | null {
   const name = (one as { name?: unknown }).name;
   return typeof name === "string" && name.trim() !== "" ? name : null;
 }
+
+/**
+ * GmailService refused to build the message (ADR 0172: `refusedBeforeSend`),
+ * so Gmail was never called and the vendor provably has nothing. A distinct
+ * type so `isDefiniteSendRefusal` can recognise it by `instanceof` — never by
+ * its text, which embeds the vendor's own contact address.
+ */
+export class SendRefusedBeforeSendError extends BadRequestException {}
 
 @Injectable()
 export class ProcurementService {
@@ -5990,6 +5999,10 @@ export class ProcurementService {
    * that direction sends a real vendor a second purchase order.
    */
   private isDefiniteSendRefusal(error: any): boolean {
+    // A header refusal (ADR 0172) is identified by TYPE, not by text: the
+    // message embeds the vendor's contact address, which a vendor controls.
+    if (error instanceof SendRefusedBeforeSendError) return true;
+
     const text = `${error?.message ?? ""} ${error?.response?.data ? JSON.stringify(error.response.data) : ""}`;
     if (!text.trim()) return false;
 
@@ -6077,19 +6090,15 @@ export class ProcurementService {
   // SHARED EMAIL DELIVERY
   // =========================================================================
 
-  /** Convert plain-text body to simple HTML (paragraph/line breaks); pass HTML through. */
+  /**
+   * Vendor-bound body → HTML. The body is always text (ADR 0170): a manager's
+   * textarea edit, an LLM draft or a sentence built here. It used to pass
+   * anything matching /<[a-z]…>/ straight through as markup, and to wrap plain
+   * text unescaped, so a draft saying "<a href=…>" reached the vendor as a live
+   * link under the restaurant's name. Now every character is escaped first.
+   */
   private buildEmailHtml(rawBody: string): string {
-    const body = rawBody ?? "";
-    const isHtml = /<[a-z][\s\S]*>/i.test(body);
-    return isHtml
-      ? body
-      : body
-          .split(/\n\n+/)
-          .map(
-            (p) =>
-              `<p style="margin:0 0 1em 0">${p.replace(/\n/g, "<br>")}</p>`,
-          )
-          .join("");
+    return textToEmailHtml(rawBody);
   }
 
   /** Provider first name: contact_first_name → primary_contact.name → company name. */
@@ -6108,10 +6117,12 @@ export class ProcurementService {
   /** Rewrite a leading generic greeting ("Hi there,", "Hello,", "Hi Acme,") to use the first name. */
   private personalizeGreeting(html: string, firstName?: string): string {
     if (!html || !firstName || !firstName.trim()) return html;
-    const name = firstName.trim();
+    // The name is data from the providers row: escape it, and substitute with
+    // a function so a "$&" in it is not read as a replacement pattern.
+    const name = escapeHtml(firstName.trim());
     return html.replace(
       /(^|>)(\s*)(hi|hello|hey|dear)\b[^,<]*,/i,
-      `$1$2Hi ${name},`,
+      (_m, lead: string, space: string) => `${lead}${space}Hi ${name},`,
     );
   }
 
@@ -6127,11 +6138,12 @@ export class ProcurementService {
     senderName?: string,
   ): string {
     let out = this.personalizeGreeting(html, firstName);
-    const sig = (senderName || "").trim();
+    // A template body or branding name — data, so escaped (ADR 0170).
+    const sig = escapeHtml((senderName || "").trim());
     // Replace any leftover [Manager Name] / [Your Name] / [Name] / [Signature] placeholder.
     out = out.replace(
       /\[\s*(manager\s*name|your\s*name|name|signature|manager)\s*\]/gi,
-      sig,
+      () => sig,
     );
     return out;
   }
@@ -6227,6 +6239,14 @@ export class ProcurementService {
       replyTo,
     });
     if (!result.success) {
+      // A header refusal (ADR 0172) happens before Gmail is called: the data is
+      // wrong, not the credentials, so do not send anyone to re-auth Gmail.
+      if (result.refusedBeforeSend) {
+        throw new SendRefusedBeforeSendError(
+          `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+            "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address) and approve again.",
+        );
+      }
       throw new BadRequestException(
         `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
           "Check Gmail credentials (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).",
@@ -6299,13 +6319,15 @@ export class ProcurementService {
       if (!claimed) continue;
 
       try {
-        const { data: order } = await this.databaseService.supabase
+        const { data: order, error: orderError } = await this.databaseService.supabase
           .from("procurement_orders")
           .select(
             "id, status, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
           )
           .eq("id", row.order_id)
+          .eq("restaurant_id", row.restaurant_id)
           .single();
+        if (orderError || !order) throw new Error("The scheduled reply's owned order could not be checked.");
         const providerEmail = (order as any)?.providers?.contact_email ?? null;
         const wineName =
           (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";

@@ -98,6 +98,31 @@ this PR's specific nine files, not a standing exemption from §4 — the next
 new top-level-or-subdirectory doc still owes a real trade or its own waiver
 row here.
 
+## Retire-to-write waiver — PR #421, the go-live (2026-09-21)
+
+**Founder call 2026-09-21: retire-to-write is waived for PR #421's two
+additions** — `.planning/06-pages/LIVE-CHECKLIST.md` and
+`.planning/06-pages/live-checklist-wave5-sweep.json`.
+
+This is the waiver row the PR #353 section above says the next new
+subdirectory doc owes. It is written here rather than narrated in the PR,
+because that section's whole point is that an inline narration is a
+chat-only exception.
+
+Neither file is a duplicate, byte-identical elsewhere, or superseding an
+existing doc. Both are **evidence of a single event** — the record of which
+sixteen pages went live for every house under ADR 0149 row 36, and the
+machine-readable sweep that backs it. `PAGES-MAP.md` carries the index entry
+§4 requires. There is no natural retirement candidate: retiring a page
+dossier to make room for the checklist of what shipped would destroy the
+thing the checklist points at.
+
+Same shape and same reasoning as PR #353's waiver, and on the same terms:
+**a one-time waiver for these two specific files, not a standing exemption.**
+The founder was offered a standing exemption for generated go-live and audit
+evidence and did not take it, so the next new document under `.planning/`
+still owes a real trade or its own row here.
+
 Kept deliberately: `phases/999.1-consumer-food-profiles…/.gitkeep` (FUTURES §7
 backlog marker, not history); `archive/{ROADMAP,STATE}-pre-P2-20260825.md` (the
 only archive files anything references — STATE.md:5, ROADMAP.md:5, ADR 0018);

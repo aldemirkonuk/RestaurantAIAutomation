@@ -20,7 +20,7 @@ import {
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home, Sparkles } from "lucide-react";
+import { Search, CornerDownLeft, Lightbulb, ArrowRight, Home, Sparkles, Inbox, RotateCw } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
 import { LANDING_KEY } from "./CommandProvider";
@@ -35,11 +35,22 @@ import { apiClient } from "../../services/api/client";
 import { ASK_AI_OPEN_EVENT } from "../askai/events";
 import { Panel } from "../mudavym/Sheet";
 import { useMudavymShell } from "../../lib/mudavym/shellGround";
+import { useShellPalette } from "../mudavym/shellPalette";
 
 const RECENTS_KEY = "wineops.command.recents";
 const MAX_RECENTS = 5;
 
-const SECTION_ORDER: CommandSection[] = ["Recent", "Insights", "Create", "Navigation"];
+// "On the counter" and "Rooms" exist only under the app shell (sketch 119 D:
+// the counter is the palette's first section, then the rooms); outside it the
+// order is the original four, unchanged.
+const SECTION_ORDER: CommandSection[] = [
+  "On the counter",
+  "Recent",
+  "Rooms",
+  "Insights",
+  "Create",
+  "Navigation",
+];
 
 function loadRecents(): string[] {
   try {
@@ -69,6 +80,7 @@ export function CommandPalette({
   const toast = useToast();
   const { user } = useAuth();
   const shell = useMudavymShell();
+  const shellPalette = useShellPalette();
   const restaurantId = user?.restaurantId;
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -118,7 +130,33 @@ export function CommandPalette({
   const recentIds = useMemo(() => (open ? loadRecents() : []), [open]);
 
   const allCommands = useMemo(() => {
-    const base = staticCommands();
+    // Under the app shell the rooms come from the ONE rooms table the rail
+    // reads (so the palette can never offer a room the rail hides, or an
+    // internal tool), and the counter's acts come first. Outside the shell
+    // `shellPalette` is null and this is the original list.
+    const statics = staticCommands();
+    const base: Command[] = shellPalette
+      ? [
+          ...shellPalette.counter.map<Command>((row) => ({
+            id: row.id,
+            title: row.title,
+            subtitle: row.subtitle,
+            section: "On the counter",
+            icon: row.kind === "read" ? RotateCw : Inbox,
+            keywords: row.keywords,
+            action: row.run,
+          })),
+          ...shellPalette.rooms.map<Command>((room) => ({
+            id: room.id,
+            title: room.title,
+            subtitle: room.subtitle,
+            section: "Rooms",
+            icon: statics.find((c) => c.section === "Navigation" && c.href === room.href)?.icon ?? ArrowRight,
+            href: room.href,
+          })),
+          ...statics.filter((c) => c.section !== "Navigation"),
+        ]
+      : statics;
 
     // NEW-518 / NEW-681: default landing page, set from wherever you are.
     // Per-device (localStorage); CommandProvider honors it once per app boot.
@@ -172,7 +210,7 @@ export function CommandPalette({
 
     const merged = [...base, askAi, ...landing];
     return topRec ? [topRec, ...merged] : merged;
-  }, [topRec, location.pathname, toast]);
+  }, [topRec, location.pathname, toast, shellPalette]);
 
   // Ranked + grouped result set.
   const groups = useMemo(() => {
@@ -212,7 +250,9 @@ export function CommandPalette({
   const run = useCallback(
     (cmd?: Command) => {
       if (!cmd) return;
-      pushRecent(cmd.id);
+      // An act on the counter is not a place to return to: its id names one
+      // record that is gone once it is sealed, so it is never a "recent".
+      if (cmd.section !== "On the counter") pushRecent(cmd.id);
       onClose();
       if (cmd.action) cmd.action();
       else if (cmd.href) navigate(cmd.href);

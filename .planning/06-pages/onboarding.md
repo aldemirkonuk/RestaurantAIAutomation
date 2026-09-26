@@ -19,6 +19,15 @@ links: ["[[PAGE-CONTRACT]]", "[[get-started]]", "[[dashboard]]"]
 
 > **Part of** [[08-softwares/auth-onboarding|Auth & Onboarding]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
+**[SUPERSEDED 2026-09-19, ADR 0149 row 11 / [[0144-the-book-opens-on-evidence-and-three-pages-get-a-job]]:**
+`/onboarding` is now a bare permanent redirect to `/get-started` (`App.tsx`:
+`<Navigate to="/get-started" replace />`), decided by the founder 2026-09-16 and
+landed alongside the Codex C2 lane's adoption. `component: Onboarding.tsx` below
+and everything in §1–§13 describes code no route reaches any more — the file is
+not deleted (out of scope for this change; a "delete legacy" pass owns that),
+but this page's own tombstone is itself retired. See [[get-started]] for what
+now actually renders.]
+
 ## Surface — buttons → where they go
 
 - Auto-redirect (menu not yet uploaded) → [[get-started]] `/get-started`

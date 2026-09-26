@@ -9,6 +9,10 @@ import { NotificationsModule } from "../notifications/notifications.module";
 // resolve-or-create library wines. WinesModule does not import InventoryModule, so
 // this is a plain import rather than a forwardRef.
 import { WinesModule } from "../wines/wines.module";
+// ADR 0193: the PATCH's price fields are an owner/manager act
+// (`assertCanManageRestaurant`). OrganizationsModule imports only Database and
+// Auth, so this adds no cycle.
+import { OrganizationsModule } from "../organizations/organizations.module";
 
 @Module({
   imports: [
@@ -16,6 +20,7 @@ import { WinesModule } from "../wines/wines.module";
     OrchestratorModule,
     forwardRef(() => NotificationsModule),
     WinesModule,
+    OrganizationsModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService, PhotoCountService],

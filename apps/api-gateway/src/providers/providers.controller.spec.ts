@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { HttpException, HttpStatus } from "@nestjs/common";
+import { ForbiddenException, HttpException, HttpStatus } from "@nestjs/common";
 import { ProvidersController } from "./providers.controller";
 import { ProvidersService } from "./providers.service";
 import { OrganizationsService } from "../organizations/organizations.service";
@@ -18,7 +18,7 @@ describe("ProvidersController", () => {
   let controller: ProvidersController;
   let providersService: ProvidersService;
 
-  const mockUser = { id: "user-123", restaurantId: "restaurant-123" };
+  const mockUser = { userId: "user-123", restaurantId: "restaurant-123" };
 
   const mockProvidersService = {
     getProviderContacts: jest.fn(),
@@ -77,6 +77,12 @@ describe("ProvidersController", () => {
           phone: "+1234567890",
           role: "Sales Manager",
           isPrimary: true,
+          // ADR 0121 P0 item 2: the response now carries the phone's reach and
+          // whether anybody actually stated it. `unstated` is the honest
+          // verdict for a fixture that names no phone_type.
+          reach: "unstated" as const,
+          phoneTypeStated: false,
+          reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
         },
         {
           id: "contact-2",
@@ -86,6 +92,12 @@ describe("ProvidersController", () => {
           phone: "+0987654321",
           role: "Account Manager",
           isPrimary: false,
+          // ADR 0121 P0 item 2: the response now carries the phone's reach and
+          // whether anybody actually stated it. `unstated` is the honest
+          // verdict for a fixture that names no phone_type.
+          reach: "unstated" as const,
+          phoneTypeStated: false,
+          reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
         },
       ];
 
@@ -93,7 +105,7 @@ describe("ProvidersController", () => {
         expectedResponse,
       );
 
-      const result = await controller.getProviderContacts(providerId);
+      const result = await controller.getProviderContacts(providerId, mockUser);
 
       expect(result).toEqual(expectedResponse);
       expect(Array.isArray(result)).toBe(true);
@@ -103,13 +115,14 @@ describe("ProvidersController", () => {
       expect(result[0]).toHaveProperty("isPrimary");
       expect(mockProvidersService.getProviderContacts).toHaveBeenCalledWith(
         providerId,
+        mockUser.restaurantId,
       );
     });
 
     it("should return empty array when no contacts", async () => {
       mockProvidersService.getProviderContacts.mockResolvedValue([]);
 
-      const result = await controller.getProviderContacts(providerId);
+      const result = await controller.getProviderContacts(providerId, mockUser);
 
       expect(result).toEqual([]);
     });
@@ -119,7 +132,9 @@ describe("ProvidersController", () => {
         new Error("Database error"),
       );
 
-      await expect(controller.getProviderContacts(providerId)).rejects.toThrow(
+      await expect(
+        controller.getProviderContacts(providerId, mockUser),
+      ).rejects.toThrow(
         new HttpException("Database error", HttpStatus.INTERNAL_SERVER_ERROR),
       );
     });
@@ -144,13 +159,23 @@ describe("ProvidersController", () => {
         phone: createDto.phone,
         role: createDto.role,
         isPrimary: createDto.isPrimary!,
+        // ADR 0121 P0 item 2: the response now carries the phone's reach and
+        // whether anybody actually stated it. `unstated` is the honest
+        // verdict for a fixture that names no phone_type.
+        reach: "unstated" as const,
+        phoneTypeStated: false,
+        reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
       };
 
       mockProvidersService.addProviderContact.mockResolvedValue(
         expectedResponse,
       );
 
-      const result = await controller.addProviderContact(providerId, createDto);
+      const result = await controller.addProviderContact(
+        providerId,
+        createDto,
+        mockUser,
+      );
 
       expect(result).toEqual(expectedResponse);
       expect(result.id).toBe("contact-new");
@@ -158,6 +183,7 @@ describe("ProvidersController", () => {
       expect(mockProvidersService.addProviderContact).toHaveBeenCalledWith(
         providerId,
         createDto,
+        mockUser.restaurantId,
       );
     });
 
@@ -167,7 +193,7 @@ describe("ProvidersController", () => {
       );
 
       await expect(
-        controller.addProviderContact(providerId, createDto),
+        controller.addProviderContact(providerId, createDto, mockUser),
       ).rejects.toThrow(HttpException);
     });
   });
@@ -189,6 +215,12 @@ describe("ProvidersController", () => {
         phone: "+1234567890",
         role: "Manager",
         isPrimary: false,
+        // ADR 0121 P0 item 2: the response now carries the phone's reach and
+        // whether anybody actually stated it. `unstated` is the honest
+        // verdict for a fixture that names no phone_type.
+        reach: "unstated" as const,
+        phoneTypeStated: false,
+        reachSays: "Nobody has said whether this is a mobile or a landline, so nothing is texted to it. Set the number's type on the vendor's contact sheet.",
       };
 
       mockProvidersService.updateProviderContact.mockResolvedValue(
@@ -199,6 +231,7 @@ describe("ProvidersController", () => {
         providerId,
         contactId,
         updateDto,
+        mockUser,
       );
 
       expect(result).toEqual(expectedResponse);
@@ -208,6 +241,7 @@ describe("ProvidersController", () => {
         providerId,
         contactId,
         updateDto,
+        mockUser.restaurantId,
       );
     });
 
@@ -217,7 +251,12 @@ describe("ProvidersController", () => {
       );
 
       await expect(
-        controller.updateProviderContact(providerId, contactId, updateDto),
+        controller.updateProviderContact(
+          providerId,
+          contactId,
+          updateDto,
+          mockUser,
+        ),
       ).rejects.toThrow(HttpException);
     });
   });
@@ -232,12 +271,14 @@ describe("ProvidersController", () => {
       const result = await controller.deleteProviderContact(
         providerId,
         contactId,
+        mockUser,
       );
 
       expect(result).toEqual({ success: true });
       expect(mockProvidersService.deleteProviderContact).toHaveBeenCalledWith(
         providerId,
         contactId,
+        mockUser.restaurantId,
       );
     });
 
@@ -247,7 +288,7 @@ describe("ProvidersController", () => {
       );
 
       await expect(
-        controller.deleteProviderContact(providerId, contactId),
+        controller.deleteProviderContact(providerId, contactId, mockUser),
       ).rejects.toThrow(HttpException);
     });
   });
@@ -312,9 +353,8 @@ describe("ProvidersController", () => {
 
   describe("GET /providers/:id/recommendations", () => {
     const providerId = "provider-123";
-    const restaurantId = "restaurant-456";
 
-    it("should return recommendations", async () => {
+    it("should return recommendations for the token's house", async () => {
       const expectedResponse = {
         recommendations: [
           {
@@ -331,12 +371,13 @@ describe("ProvidersController", () => {
 
       const result = await controller.getProviderRecommendations(
         providerId,
-        restaurantId,
+        undefined,
+        mockUser,
       );
 
       expect(result).toEqual(expectedResponse);
       expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith(
-        restaurantId,
+        mockUser.restaurantId,
         undefined,
       );
     });
@@ -348,25 +389,25 @@ describe("ProvidersController", () => {
 
       await controller.getProviderRecommendations(
         providerId,
-        restaurantId,
         wineId,
+        mockUser,
       );
 
       expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith(
-        restaurantId,
+        mockUser.restaurantId,
         wineId,
       );
     });
 
-    it("should use empty string when restaurantId not provided", async () => {
+    it("refuses when the session names no house, never an unscoped list", async () => {
       mockProvidersService.getRecommendations.mockResolvedValue({});
 
-      await controller.getProviderRecommendations(providerId);
-
-      expect(mockProvidersService.getRecommendations).toHaveBeenCalledWith(
-        "",
-        undefined,
-      );
+      await expect(
+        controller.getProviderRecommendations(providerId, undefined, {
+          restaurantId: null,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockProvidersService.getRecommendations).not.toHaveBeenCalled();
     });
   });
 
@@ -436,13 +477,17 @@ describe("ProvidersController", () => {
         expectedResponse,
       );
 
-      const result = await controller.importProviders(bulkImportDto);
+      const result = await controller.importProviders(bulkImportDto, mockUser);
 
       expect(result).toEqual(expectedResponse);
       expect(result.imported).toBe(2);
       expect(result.failed).toBe(0);
+      // The house is the token's, never the body's (the body's copy is only
+      // compared by JwtAuthGuard); the import used to be called without one.
       expect(mockProvidersService.bulkImportProviders).toHaveBeenCalledWith(
         bulkImportDto,
+        "restaurant-123",
+        "user-123",
       );
     });
 
@@ -457,7 +502,7 @@ describe("ProvidersController", () => {
         expectedResponse,
       );
 
-      const result = await controller.importProviders(bulkImportDto);
+      const result = await controller.importProviders(bulkImportDto, mockUser);
 
       expect(result).toEqual(expectedResponse);
       expect(result.imported).toBe(1);
@@ -470,7 +515,7 @@ describe("ProvidersController", () => {
         new Error("Import failed"),
       );
 
-      await expect(controller.importProviders(bulkImportDto)).rejects.toThrow(
+      await expect(controller.importProviders(bulkImportDto, mockUser)).rejects.toThrow(
         HttpException,
       );
     });

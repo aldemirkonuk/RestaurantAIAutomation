@@ -10,11 +10,12 @@ import { SealChallengeService } from "./seal-challenge.service";
  * client of its own would be a second opinion about which database this is.
  *
  * Imported by `ProcurementModule` (sealing an order), `PaymentMethodsModule`
- * (changing how the house pays) and, since 2026-09-05, `BillingModule` — the
+ * (changing how the house pays), `BillingModule` (since 2026-09-05) — the
  * route that opens the card form, which is where an instrument is actually
- * attached (G-PAY-SETUP). NOT by `McpConnectionsModule` — see
- * `seal-challenge.service.ts`'s header for why that path keeps its own
- * redemption in this pass.
+ * attached (G-PAY-SETUP) — and `MenusModule` (since 2026-09-19, ADR 0113): the
+ * arrival configuration batch's apply, in `arrival/`. NOT by
+ * `McpConnectionsModule` — see `seal-challenge.service.ts`'s header for why
+ * that path keeps its own redemption in this pass.
  */
 @Module({
   imports: [DatabaseModule],

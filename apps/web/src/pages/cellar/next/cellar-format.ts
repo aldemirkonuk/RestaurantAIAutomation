@@ -25,25 +25,8 @@ export const EM = '—';
  */
 export const SANS = '"Plus Jakarta Sans", "DM Sans", system-ui, sans-serif';
 
-/**
- * Fraunces — the house serif. index.html loads the sans and the mono but not
- * Fraunces, and index.html is a shared file this page may not touch, so the
- * page injects the stylesheet itself, once. Georgia carries the text until (or
- * if) the webfont lands, so nothing here can break the page. (Copied from
- * dashboard/next/fonts.ts by the wave rule — pages do not import each other.)
- */
-const FRAUNCES_LINK_ID = 'mudavym-fraunces';
-
-export function ensureFraunces(): void {
-  if (typeof document === 'undefined') return;
-  if (document.getElementById(FRAUNCES_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = FRAUNCES_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href =
-    'https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&display=swap';
-  document.head.appendChild(link);
-}
+/** Fraunces — self-hosted; `@font-face` lives in `styles/mudavym.css`
+ * (decision 0149 row 9). Georgia is the fallback until it loads. */
 
 /** A finite number, or null. Guards NaN and the API's occasional string. */
 export function num(v: unknown): number | null {
@@ -121,6 +104,108 @@ export function knowledgeNote(k: Knowledge | null): string {
     return 'These notes were reasoned from the grape and the region — a typical profile, not a tasting of this bottle.';
   if (k === 'unknown') return 'Enrichment ran and recorded nothing for this bottle.';
   return 'This bottle carries no provenance mark, so the standing of its notes is unstated.';
+}
+
+/* ── "the wine's own detail" — ADR 0160 sec110 Owed #4/#11, sketch 121 ──── */
+
+/**
+ * Production's own vocabulary for each structure word, read low to high
+ * (`cellar-121/critique-checks.sql`, `wine-detail-coverage.sql`, verified
+ * again live 2026-09-19). Ordered so a word's INDEX is its rank — never
+ * alphabetical, which would put "high" before "low".
+ */
+const BODY_SCALE = ['light', 'medium-light', 'medium', 'medium-full', 'full'] as const;
+const ACIDITY_SCALE = ['low', 'medium-low', 'medium', 'medium-high', 'high'] as const;
+const TANNIN_SCALE = ['none', 'low', 'medium-low', 'medium', 'medium-high', 'high'] as const;
+
+/**
+ * A word's rank on its own scale, as 1–5 filled ticks of 5 (sketch 121's
+ * `ticks()`, `direction-b.html`'s own five-tick bar) — proportional, so a
+ * six-step scale (tannin) and a five-step one (body) both land on the same
+ * five-tick bar rather than tannin's top two steps both reading as "5 of 5".
+ * Checked against sketch 121's own three examples: body "Full" → 5, acidity
+ * "Medium-high" → 4, tannin "High" → 5.
+ *
+ * `null` — never a guessed middle tick — when the word is not in the known
+ * scale (13 production rows carry "firm"/"soft"/"grippy" for tannin, which
+ * are real words this house's library uses but not a rank this bar can
+ * place; the caller then shows the WORD with no bar, per the codebase's own
+ * rule of labelling or omitting rather than faking a position).
+ */
+export function structureTicks(word: string | null, scale: readonly string[]): number | null {
+  if (!word) return null;
+  const i = scale.indexOf(word.toLowerCase());
+  if (i === -1) return null;
+  return Math.max(1, Math.min(5, Math.round(((i + 1) / scale.length) * 5)));
+}
+
+export function bodyTicks(word: string | null): number | null {
+  return structureTicks(word, BODY_SCALE);
+}
+export function acidityTicks(word: string | null): number | null {
+  return structureTicks(word, ACIDITY_SCALE);
+}
+export function tanninTicks(word: string | null): number | null {
+  return structureTicks(word, TANNIN_SCALE);
+}
+
+export interface HandlingFacts {
+  servingTempCelsius: number | null;
+  glassType: string | null;
+  decantingRecommended: boolean | null;
+  agingPotentialYears: number | null;
+}
+
+/**
+ * "17 °C · Bordeaux glass · decant · ageing potential 8 years" — or `null`.
+ *
+ * Sketch 121, frame 2's own rule, in the founder's words about this exact
+ * set: *"temperature, glass, decanting and ageing are recorded together in
+ * the library, never one without the others; for a profiled wine without
+ * them ... the line reads 'How to serve it is not recorded' instead of
+ * guessing."* So this returns a sentence only when EVERY ONE of the four is
+ * present — never three of four with the reader left to notice which is
+ * missing.
+ */
+export function handlingSentence(f: HandlingFacts): string | null {
+  if (
+    f.servingTempCelsius === null ||
+    !f.glassType ||
+    f.decantingRecommended === null ||
+    f.agingPotentialYears === null
+  ) {
+    return null;
+  }
+  const years = f.agingPotentialYears;
+  return [
+    `${f.servingTempCelsius} °C`,
+    `${f.glassType} glass`,
+    f.decantingRecommended ? 'decant' : 'no decanting',
+    `ageing potential ${years} ${years === 1 ? 'year' : 'years'}`,
+  ].join(' · ');
+}
+
+/**
+ * "What the library knows"'s composed fallback sentence — ADR 0160 sec110
+ * Owed #11, the founder's own words: *"either compose it from the profile or
+ * ... extract ... from the master data set."* Used only when the library
+ * holds no free-text note for this bottle (`Notes`, `BottleLeaf.tsx`) but
+ * does hold a structured profile — composed from body, acidity and
+ * sweetness TOGETHER, never from two of the three: a sentence built from an
+ * incomplete profile would read as more certain than the profile actually
+ * is. Deliberately plain rather than literary (sketch 121's own mockup
+ * sentence, "A full, firm red with fresh acidity and dark fruit," is example
+ * prose for the drawing, not a template this function reproduces) — every
+ * word in it names a real field, so the sentence is checkable against the
+ * row it came from.
+ */
+export function composedTastingSentence(
+  body: string | null,
+  acidity: string | null,
+  sweetness: string | null,
+): string | null {
+  if (!body || !acidity || !sweetness) return null;
+  return `A ${body}-bodied wine with ${acidity} acidity and a ${sweetness} character.`;
 }
 
 /* ── the registers ─────────────────────────────────────────────────────── */
@@ -534,7 +619,7 @@ export const BOOK_SOURCE: Record<HouseBookId, string> = {
   invoice: 'procurement_document_lines, on documents of type invoice',
   order: 'procurement_order_items',
   quote: 'vendor_price_observations, this restaurant’s rows only',
-  pos: 'pos_unresolved_lines — the till lines the POS bridge could not map to a wine',
+  pos: 'pos_unresolved_lines + pos_checks.items — unresolved wine lines, and live non-wine sales (Q9)',
 };
 
 /**

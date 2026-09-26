@@ -175,7 +175,7 @@ export class McpRuntimeService {
         ...base,
         status: "protocol_error",
         detail:
-          "The endpoint answered, but its initialize result carried no protocolVersion, so it is not speaking this protocol.",
+          "It answered, but the reply could not be read because it named no version.",
       };
     }
 
@@ -353,7 +353,7 @@ export class McpRuntimeService {
         ...base,
         status: "protocol_error",
         detail:
-          "The endpoint answered, but its initialize result carried no protocolVersion, so it is not speaking this protocol.",
+          "It answered, but the reply could not be read because it named no version.",
       };
     }
 

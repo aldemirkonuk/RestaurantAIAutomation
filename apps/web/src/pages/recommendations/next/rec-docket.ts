@@ -189,6 +189,24 @@ const RULE_ACT: Record<string, ActFiling> = {
     act: 'floor',
     why: 'The rule says “Have the top seller run a 15-minute pre-shift on their pitch”. The act is a pre-shift.',
   },
+  // ADR 0193 (2026-09-21): price advice toward the house's own target margin.
+  margin_to_target: {
+    act: 'price',
+    why: 'The rule says “Raise the bottle to X” or “Lower the glass to Y” for each wine off your target margin. The act is a price change, accepted with one tap on the wine’s own row under Your price.',
+  },
+  margin_target_unset: {
+    act: 'price',
+    why: 'The rule says “Set the margin you need on a bottle and on a glass”. Until that number exists no price can be judged, so the act that unlocks every price change is naming it.',
+  },
+  margin_advice_blind: {
+    act: 'order',
+    why: 'The rule says “Receive the next delivery against its invoice (or record what you paid)”. A margin needs a cost, and a cost enters through the order book.',
+  },
+  // ADR 0193 round 3: a locked price that no longer fits is a price decision.
+  price_locks_to_review: {
+    act: 'price',
+    why: 'The rule says “Look at them on Menu, under Locked prices”. A lock holds a price until a person ends it, so keeping, changing, moving or releasing it is a price decision.',
+  },
 };
 
 /** The prefix the goal-behind family uses — one rule per goal already set. */

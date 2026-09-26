@@ -19,6 +19,50 @@ links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[sommelier]]", "[[services]]", "[[
 
 > **Part of** [[08-softwares/app-shell-support|App Shell & Support]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
+> **[Correction, 2026-09-18 — superseded, not rewritten]** Everything below documents
+> the **legacy** `Help.tsx` as it stood on 2026-08-26. That component is still on disk
+> and still mounted (`App.tsx:402`, `legacy={<Help />}`), but it no longer renders for
+> any house: `help` is in `useMudavymDesign.ts`'s `LIVE_PAGES` (ADR 0149 row 52 / ADR 0160 §111), so
+> `PageGate` resolves every house to `next={<HelpNext />}` —
+> `apps/web/src/pages/help/next/HelpNext.tsx` plus six pure modules and
+> `useHelpNextData.ts`, built on `feat/page-help` against ADR 0160 §111 / ADR 0149. A
+> per-browser `localStorage` override can still force `legacy` on one machine; no house
+> gets it by default. `legacy` stays mounted until the founder approves its deletion.
+> Specific claims below the rebuild fixes, so a reader does not carry them forward:
+> - §7/§8/§9/§10/§13's `support@wineops.ai` default and `VITE_SUPPORT_SLACK_URL`: the
+>   new page has one channel (email), no fallback address (`hp-support.ts:12,23,35` —
+>   an unset `VITE_SUPPORT_EMAIL` renders `'unconfigured'`, never a wineops.ai mailto),
+>   and no Slack, per the founder's own words quoted in `hp-support.ts:5-6` and ADR 0160
+>   §111. The address is `support@mudavym.com` (ADR 0143, 2026-09-16/17 row 8) — **but
+>   whether that env var is actually set in the live Vercel project (prod + preview) is
+>   still open**; not checkable from any worktree (pg-help lane report, 2026-09-18).
+> - §7's "WineOps" branding strings: no active occurrence in the new page or its modules
+>   (grepped `help/next/`; the only hits are a comment naming the legacy default it fixes
+>   and tests asserting the string's absence).
+> - §5/§10's dead-ended `trackGuidance` telemetry: not carried into the rebuild — the new
+>   page does not import `guidance/analytics.ts` (grepped, zero hits). A fresh telemetry
+>   read for the new page has not been done and is not claimed here.
+> **[added 2026-09-19 — pg-help lane, landing ADR 0160 §111's two grafts; corrected
+> 2026-09-21 after PR #413's audit gate caught the label]** These two are the ADR's
+> **grafts**, not its must-haves. §111:385-386 names the must-haves as *the guide
+> collection and promoting the one-tap acts* — carried by `hp-guide.ts`, `hp-nextup.ts`
+> and `hp-readiness.ts`, not by the two below. ADR 0160
+> §111's Decision, verbatim: *"B's What-to-do-next rail and write-to-support modal are
+> grafted in regardless of which base is picked."* Both landed this pass, so "six pure
+> modules" above is now seven, plus one component file:
+> - **What to do next** — `hp-nextup.ts` (`nextUpEntries`), rendered by `HelpNext.tsx`'s
+>   `NextUpRail` as its own section between the masthead and Section I — not folded into
+>   "Waiting on you", which was the round-2 review's own must-fix. Always visible; an
+>   empty list reads "Everything reads clear right now." rather than disappearing.
+> - **The write-to-support panel** — `SupportPanel.tsx`, ADR 0112's `Panel` shape
+>   (centred, closes on the word "Not now"). Both "Write to support" triggers on the page
+>   (the rail's and "Reach a person"'s, `HelpNext.tsx:558-566`) open it; neither is a bare
+>   `mailto:` link any more. It covers all three `EmailChannel` states, including
+>   unconfigured — the trigger no longer disappears when no address is configured, which
+>   had no coverage at all before this pass (`SupportPanel.test.tsx`).
+> A full rewrite of this dossier against the new component (files, endpoints, data flow,
+> maturity table) has still not been done in this pass.
+
 ## Surface — buttons → where they go
 
 - **Email support** → external `mailto:` (support address)
