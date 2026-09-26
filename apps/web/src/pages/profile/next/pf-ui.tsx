@@ -467,6 +467,7 @@ export function Field({
   readOnly,
   placeholder,
   autoComplete,
+  inputMode,
   hint,
 }: {
   id: string;
@@ -478,6 +479,7 @@ export function Field({
   readOnly?: boolean;
   placeholder?: string;
   autoComplete?: string;
+  inputMode?: 'text' | 'numeric' | 'email';
   hint?: ReactNode;
 }) {
   return (
@@ -503,6 +505,7 @@ export function Field({
         readOnly={readOnly}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        inputMode={inputMode}
         onChange={onChange ? (e) => onChange(e.target.value) : undefined}
         className="pf-focus"
         style={{

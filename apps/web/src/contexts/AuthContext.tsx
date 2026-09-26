@@ -158,6 +158,11 @@ export interface AuthContextType {
   loginWithGoogle: (token: string) => Promise<void>;
   loginWithMicrosoft: (token: string) => Promise<void>;
   /**
+   * Take a session the gateway minted after a passkey or an emailed code
+   * (ADR 0222 / ADR 0229): the same storage and `/auth/me` read as `login`.
+   */
+  signInWithSession: (pair: { accessToken: string; refreshToken: string }) => Promise<void>;
+  /**
    * Identity-first sign-in: ask the gateway which methods this address
    * actually has. Never throws — an unreachable gateway resolves to
    * `fallbackSignInMethods()` (marked `assumed`) so the page degrades to the
@@ -604,6 +609,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const signInWithSession = useCallback(
+    async (pair: { accessToken: string; refreshToken: string }) => {
+      setError(null);
+      localStorage.setItem("accessToken", pair.accessToken);
+      localStorage.setItem("refreshToken", pair.refreshToken);
+      api.defaults.headers.common["Authorization"] = `Bearer ${pair.accessToken}`;
+      const userResponse = await api.get("/api/v1/auth/me");
+      let studioRoles: string[] = [];
+      try {
+        const payload = JSON.parse(atob(pair.accessToken.split(".")[1]));
+        studioRoles = payload?.app_metadata?.roles ?? [];
+      } catch {
+        /* malformed token */
+      }
+      setUser({ ...userResponse.data.user, studioRoles });
+    },
+    [],
+  );
+
   const register = useCallback(async (data: RegisterData) => {
     try {
       setError(null);
@@ -882,6 +906,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     registerRestaurant,
     joinViaInvite,
     loginWithGoogle,
+    signInWithSession,
     loginWithMicrosoft,
     resolveSignInMethods,
     logout,

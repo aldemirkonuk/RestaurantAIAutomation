@@ -1,10 +1,10 @@
 # 0222 — Passkeys are verified by the gateway, and consents gather on one panel
 
-- **Status:** Proposed — the founder answered WHAT on 2026-09-21 (round 6r, below); this record is the HOW, and three of its forks are his (§ Open forks)
+- **Status:** Proposed — the founder answered WHAT on 2026-09-21 (round 6r, below) and again on 2026-09-25 (item 29, below: forks 1-4 answered, the consent panel accepted as built); this record is the HOW. The sign-in half is [[0229-a-passkey-or-an-emailed-code-signs-you-in-and-a-recent-sign-in-guards-enrolment]]
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** passkey, WebAuthn, FIDO2, simplewebauthn, rp id, mudavym.com, attestation, user verification, challenge, re-authentication, recovery, consent panel, ask-training, Jev, fork 14, SC 3.3.8, /profile, /settings
-- **Links:** ADR 0134 (`0134-one-motion-per-act-across-every-page.md`) §7 and fork 14 (on PR #433's branch `feat/motion-rules-locked`, not main), [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] row 14 (superseded in part), [[0145-mudavym-answers-out-of-a-reading]] (the ask-training opt-out), ADR 0207 (Jev acceptance, PR #435), ADR 0112 F11 (the manager passcode, unbuilt), PR for branch `feat/profile-passkeys-consent`
+- **Links:** [[0229-a-passkey-or-an-emailed-code-signs-you-in-and-a-recent-sign-in-guards-enrolment]] (sign-in, emailed codes, the ten-minute rule), ADR 0134 (`0134-one-motion-per-act-across-every-page.md`) §7 and fork 14 (on PR #433's branch `feat/motion-rules-locked`, not main), [[0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once]] row 14 (superseded in part), [[0145-mudavym-answers-out-of-a-reading]] (the ask-training opt-out), ADR 0207 (Jev acceptance, PR #435), ADR 0112 F11 (the manager passcode, unbuilt), PR for branch `feat/profile-passkeys-consent`
 
 ## Context
 
@@ -41,6 +41,17 @@ Measured before building (2026-09-25, `origin/main` `4e7c5b5a6`):
   is ADR 0207's, on PR #435 (open). Nothing on main reads a Jev switch.
 - The manager passcode a passkey is the peer of (ADR 0112 F11) is unbuilt:
   `git grep -i passcode` under `apps/` and `supabase/` finds no such field.
+
+**[2026-09-25, the founder, round 5 item 29 (confirmed reading; memory
+`founder-answers-2026-09-25-web-rebuild.md`):** "passkey (Face ID/Touch ID)
+IS a sign-in method; logged-out with no passkey → emailed one-time code;
+enrolling while signed in: signed in within last 10 min = direct, else email
+code first. Consent panel accepted as built (own store per switch, managers
+see disabled, in-app notice only)." This supersedes the "type your current
+password" proof below and ADR 0134 §7's action-only reading of a passkey.
+The HOW of the new half — the discoverable sign-in ceremony, the emailed
+code's rules, the `auth_time` claim — is ADR 0229; this record keeps
+enrolment, storage and the consent panel.]**
 
 ## Options considered — passkeys
 
@@ -82,15 +93,17 @@ Research branches (each checked, not assumed):
 | Counter | Stored; a counter that goes backwards is refused (the library's check) | Detects a cloned authenticator where counters are used | Ignoring counters |
 | Store | `user_passkeys`, per `public.users.user_id`, public key + counter + transports + device type + backup flag + aaguid + rp id + nickname; revoked rows kept with `revoked_at` | Per user, as ruled; a revoked credential stays on the record and its id can never be re-enrolled | Hard delete (the record would forget it existed) |
 | Who may enrol / check | Owner or manager **in the token's house** (`resolveRestaurantRole`) | As ruled | The token's role snapshot |
+| Proof before enrolment | **[2026-09-25, item 29:** a sign-in in the last ten minutes (the token's `auth_time`, ADR 0229), else a six-digit code emailed to the account's own address, checked at `registration/options` before any challenge exists; stale → 403 `STEP_UP_REQUIRED`. Works for a Google-only account.**]** | His rule | The typed password (built first; superseded — it refused Google-only accounts); a per-user "last signed in" column (a stolen token would borrow another device's fresh sign-in) |
 | Who may list / revoke | The person, always | Someone demoted must still see and remove what they enrolled | Gating revoke by role (strands credentials) |
 | Audit | `system_audit_log`: `passkey_enrolled`, `passkey_revoked`, `passkey_checked`, `actor_id` = `public.users.user_id`, `restaurant_id` = the token's house; receipt returned (`audited`, `auditReason`) | As ruled; a failed audit row is visible, never assumed | Throwing on a failed audit (would undo a change the person saw take effect) |
 | Notice | In-app notification on enrol and on removal | The standard tripwire for a credential added behind your back | Email (not built for this; see forks) |
-| Wrong password | 403, never 401 | The web client refreshes and retries on 401, which would turn a wrong password into a silent second try | 401 |
+| Refused proof | 403, never 401 | The web client refreshes and retries on 401, which would turn a missing or wrong proof into a silent second try | 401 |
 | "Check a passkey" | `POST /passkeys/check/*` verifies an assertion, advances the counter, stamps `last_used_at`, audits `passkey_checked` — and **grants nothing** | The point of action (F11) is unbuilt; this is the same verification it will call, proven now | Leaving verification unbuilt until F11 (untested code on the approval path) |
 
 Recovery: a passkey is a **peer** path, never the only one — password and Google
-sign-in stay. Losing a device means signing in the usual way and removing the
-passkey on `/profile`. No recovery codes are needed while that holds.
+sign-in stay, **[2026-09-25: and the emailed one-time code, ADR 0229]**. Losing a
+device means signing in another way and removing the passkey on `/profile`. No
+recovery codes are needed while that holds.
 
 ## Options considered — the consent panel
 
@@ -124,7 +137,9 @@ opt-out — each with its own audited trail.
 
 ## Open forks (the founder's; reported, not locked)
 
-1. **What proves it is you before a passkey is added.** As built: the account
+1. **[ANSWERED 2026-09-25, item 29: "signed in within last 10 min = direct,
+   else email code first" — built, ADR 0229; the password proof is gone.]**
+   **What proves it is you before a passkey is added.** As built: the account
    password, typed now; an account without a password is refused and told to
    set one. That stops a borrowed 15-minute token from planting a lasting
    credential, but a Google-only owner must set a password first. Paths:
@@ -132,26 +147,35 @@ opt-out — each with its own audited trail.
    simplest, weakest; (c) a fresh sign-in within N minutes, which needs an
    `auth_time` claim kept across refresh (touches `generateTokens`, shared with
    the sessions lane). **Recommendation: (a) now, (c) when F11 lands.**
-2. **Should a passkey ever be a sign-in method?** ADR 0134 recorded it as a
+2. **[ANSWERED 2026-09-25, item 29: yes — "passkey (Face ID/Touch ID) IS a
+   sign-in method"; built on `/login`, ADR 0229.]** **Should a passkey ever be
+   a sign-in method?** ADR 0134 recorded it as a
    point-of-action peer of the passcode only. Not built; the old row's subtitle
    ("Sign in with the device you are already holding") was dropped for that
    reason.
-3. **Where consent switches persist.** Never asked (round 6y, `founder-answers`
+3. **[ANSWERED 2026-09-25, item 29: "own store per switch" — as built.]**
+   **Where consent switches persist.** Never asked (round 6y, `founder-answers`
    memory: "Fork-14 store question NOT asked"). As built: each switch keeps its
    own store and the panel gathers them. Alternative: one `house_consents`
    table, versioned, with a migration of `ask_training_opt_outs` into it.
    **Recommendation: keep per-switch stores** — each has one reader and one
    owner already.
-4. **"Owner only" reach.** As built, managers can open the panel and see every
+4. **[ANSWERED 2026-09-25, item 29: "managers see disabled" — as built.]**
+   **"Owner only" reach.** As built, managers can open the panel and see every
    switch disabled with the sentence "Only the house's owner can change this."
    The other reading — the panel hidden from managers — is one line to change.
-5. **Email on enrolment.** Only an in-app notice is sent. An email copy is the
+5. **[2026-09-25: "in-app notice only" was accepted for the consent panel.
+   For passkeys it is still open, and sharper now that a passkey signs in —
+   ADR 0229 fork 1 (a passkey outlives a password reset).]** **Email on
+   enrolment.** Only an in-app notice is sent. An email copy is the
    usual tripwire when the account itself is taken over; not built.
 
 ## Consequences
 
 - `/profile` stops saying passkeys are `Not built`; two-factor codes, API tokens
   and other-device sessions still are.
+- **[2026-09-25]** A passkey signs you in (ADR 0229); `/profile` says so, and
+  that it still approves nothing.
 - F11 (the manager passcode) inherits a tested `finishCheck` to call as its
   passkey path; until then a passkey approves nothing, and the page says so.
 - The gateway gains one dependency tree (`@simplewebauthn/server` →
@@ -167,3 +191,4 @@ opt-out — each with its own audited trail.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-25 | lane W2-profile (agent) | Created, Proposed. Gateway spec 30/30 against a software authenticator (real ES256 signatures, CBOR `none` attestation); five mutations of the service's checks each went red |
+| 2026-09-25 | lane W3-passkeys (agent) | Founder's item 29 recorded; forks 1-4 bracketed answered; the password proof replaced by ADR 0229's ten-minute rule. `passkeys.service.spec.ts` now 28/28 (the two password cases removed; the proof's cases moved to `passkeys.sign-in.spec.ts`). Status stays Proposed: the HOW is still an agent's |

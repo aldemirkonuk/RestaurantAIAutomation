@@ -13,14 +13,19 @@
  *     indistinguishable from one that never did.
  *   - **Three states, never two.** A list that could not be read says so and
  *     offers a retry; it is never drawn as "no passkeys".
- *   - **Nothing asks for a passkey yet**, and the header says it: the manager
- *     passcode it sits beside (ADR 0112 F11) is unbuilt, so a passkey approves
- *     nothing today. "Check" proves one still answers, and grants nothing.
- *   - **Adding one takes your password, typed now** (ADR 0222 fork 1, as
- *     built). The field accepts paste and names itself `current-password`, so
- *     a password manager can fill it (ADR 0134 §7, SC 3.3.8).
+ *   - **A passkey signs you in** (the founder, 2026-09-25, item 29): Face ID,
+ *     Touch ID or the device PIN on the sign-in page. It approves nothing yet
+ *     -- the manager passcode it will sit beside (ADR 0112 F11) is unbuilt --
+ *     and the note says so. "Check" proves one still answers, and grants nothing.
+ *   - **Adding one needs a recent sign-in, or an emailed code** (same answer,
+ *     which replaced "type your current password"): signed in within the last
+ *     ten minutes, it goes straight to the device; otherwise the gateway says
+ *     so, a six-digit code is emailed to the account's own address, and the
+ *     field for it names itself `one-time-code` so a phone can fill it from
+ *     the mail (ADR 0134 §7, SC 3.3.8: nothing to remember, paste allowed).
+ *     A Google-only account adds one the same way.
  *   - **A disabled control carries its reason in words**: not an owner or
- *     manager here, no password set, or a browser that cannot make passkeys.
+ *     manager here, or a browser that cannot make passkeys.
  */
 
 import { useState } from 'react';
@@ -32,6 +37,8 @@ import {
   getPasskeys,
   passkeysSupported,
   removePasskey,
+  sendStepUpCode,
+  StepUpRequired,
   type Passkey,
   type PasskeyReceipt,
 } from '../../../services/api/passkeys';
@@ -66,28 +73,52 @@ function passkeySubtitle(p: Passkey): string {
   return `${kind} · added ${fmtDay(p.createdAt)} · ${used}`;
 }
 
-export function PasskeyRows({ hasPassword }: { hasPassword: boolean | null }) {
+export function PasskeyRows() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: PASSKEYS_QUERY_KEY, queryFn: getPasskeys, retry: false });
   const [adding, setAdding] = useState(false);
-  const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
+  /** Set once the gateway asked for an emailed code: where it went, and the typed code. */
+  const [stepUp, setStepUp] = useState<{ sentTo: string } | null>(null);
+  const [code, setCode] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg>(null);
   const supported = passkeysSupported();
 
   const refresh = () => qc.invalidateQueries({ queryKey: PASSKEYS_QUERY_KEY });
 
-  const add = useMutation({
-    mutationFn: () => addPasskey({ currentPassword: password, nickname }),
+  const closeForm = () => {
+    setAdding(false);
+    setNickname('');
+    setStepUp(null);
+    setCode('');
+  };
+
+  const sendCode = useMutation({
+    mutationFn: () => sendStepUpCode(),
     onSuccess: (r) => {
-      setAdding(false);
-      setPassword('');
-      setNickname('');
-      setMsg({ tone: 'done', text: `Passkey added.${receiptNote(r)}` });
+      setStepUp({ sentTo: r.sentTo });
+      setCode('');
+    },
+    onError: (e) => setMsg({ tone: 'error', text: `No code was sent — ${getErrorMessage(e)}` }),
+  });
+
+  const add = useMutation({
+    mutationFn: () => addPasskey({ nickname, emailCode: stepUp ? code : undefined }),
+    onSuccess: (r) => {
+      closeForm();
+      setMsg({ tone: 'done', text: `Passkey added. It signs you in on this device from now on.${receiptNote(r)}` });
       void refresh();
     },
-    onError: (e) => setMsg({ tone: 'error', text: describePasskeyError(e, 'Nothing was added') }),
+    onError: (e) => {
+      if (e instanceof StepUpRequired) {
+        // The sign-in is more than ten minutes old: email a code, then ask for it.
+        setMsg(null);
+        sendCode.mutate();
+        return;
+      }
+      setMsg({ tone: 'error', text: describePasskeyError(e, 'Nothing was added') });
+    },
   });
 
   const remove = useMutation({
@@ -128,16 +159,14 @@ export function PasskeyRows({ hasPassword }: { hasPassword: boolean | null }) {
   }
 
   const live = readout.passkeys.filter((p) => !p.revokedAt);
-  const busy = add.isPending || remove.isPending || check.isPending;
+  const busy = add.isPending || remove.isPending || check.isPending || sendCode.isPending;
 
   // Why "Add a passkey" is disabled, in words. Null exactly when it is not.
   const addReason = !readout.eligible
     ? (readout.eligibilityReason ?? 'Passkeys are for the house’s owners and managers.')
     : !supported
       ? 'This browser cannot make a passkey. Open Mudavym in a current Safari, Chrome, Edge or Firefox.'
-      : hasPassword === false
-        ? 'Set a password first, above. A passkey is added only after you type your password, so a borrowed session cannot add one.'
-        : null;
+      : null;
 
   return (
     <>
@@ -145,7 +174,7 @@ export function PasskeyRows({ hasPassword }: { hasPassword: boolean | null }) {
         title="Passkeys"
         subtitle={
           live.length === 0
-            ? 'A passkey on the device you are holding, for approving what the house asks an owner or manager to approve.'
+            ? 'Sign in with Face ID, Touch ID or your device’s PIN instead of a password.'
             : `${live.length === 1 ? 'One passkey' : `${live.length} passkeys`} on this account.`
         }
         state={live.length > 0 ? 'connected' : 'available'}
@@ -171,9 +200,9 @@ export function PasskeyRows({ hasPassword }: { hasPassword: boolean | null }) {
         }
       />
       <Note>
-        Nothing in Mudavym asks for a passkey yet. The approval it will stand beside — the manager passcode at the
-        moment an order is sealed — is not built, so a passkey approves nothing today. Adding one now means it is
-        ready the day that lands.
+        A passkey signs you in on mudavym.com: choose “Sign in with a passkey” on the sign-in page. It does not approve
+        anything yet — the manager passcode it will stand beside, at the moment an order is sealed, is not built.
+        Lost the device? Sign in with your email or password and remove it here.
       </Note>
 
       {adding && (
@@ -201,28 +230,33 @@ export function PasskeyRows({ hasPassword }: { hasPassword: boolean | null }) {
               placeholder="Work laptop"
               autoComplete="off"
             />
-            {hasPassword !== false && (
+            {stepUp && (
               <Field
-                id="pf-passkey-password"
-                label="Your current password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={setPassword}
-                hint={<Note>So a session someone borrowed cannot add a passkey of its own.</Note>}
+                id="pf-passkey-code"
+                label="The code we emailed you"
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                value={code}
+                onChange={setCode}
+                placeholder="123456"
+                hint={
+                  <Note>
+                    You signed in more than ten minutes ago, so we emailed a six-digit code to {stepUp.sentTo} to make
+                    sure it is you. It works once, for ten minutes.
+                  </Note>
+                }
               />
             )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <Btn type="submit" emphasis="seal" disabled={busy || !password}>
-                {add.isPending ? 'Waiting for your device…' : 'Continue on this device'}
+              <Btn type="submit" emphasis="seal" disabled={busy || (stepUp !== null && code.replace(/\s+/g, '').length !== 6)}>
+                {add.isPending ? 'Waiting for your device…' : sendCode.isPending ? 'Emailing a code…' : 'Continue on this device'}
               </Btn>
-              <Btn
-                disabled={add.isPending}
-                onClick={() => {
-                  setAdding(false);
-                  setPassword('');
-                }}
-              >
+              {stepUp && (
+                <Btn disabled={busy} onClick={() => { setMsg(null); sendCode.mutate(); }}>
+                  Send a new code
+                </Btn>
+              )}
+              <Btn disabled={add.isPending} onClick={closeForm}>
                 Cancel
               </Btn>
             </div>

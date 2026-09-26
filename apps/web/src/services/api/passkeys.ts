@@ -60,14 +60,41 @@ export function passkeysSupported(): boolean {
 }
 
 /**
- * Add a passkey: the gateway checks the role and the password and hands back
- * options, the authenticator makes the credential, the gateway verifies it.
+ * The gateway's answer when the sign-in is more than ten minutes old and no
+ * emailed code came with the request (founder 2026-09-25, item 29). The caller
+ * asks for a code (`sendStepUpCode`) and tries again with it.
  */
-export async function addPasskey(input: { currentPassword: string; nickname: string }): Promise<PasskeyReceipt> {
-  const { data: start } = await apiClient.post<{ challengeId: string; options: Parameters<typeof startRegistration>[0]['optionsJSON'] }>(
-    '/passkeys/registration/options',
-    { currentPassword: input.currentPassword },
-  )
+export class StepUpRequired extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'StepUpRequired'
+  }
+}
+
+function stepUpRefusal(e: unknown): StepUpRequired | null {
+  const res = (e as { response?: { status?: number; data?: { code?: string; message?: string } } })?.response
+  if (res?.status === 403 && res.data?.code === 'STEP_UP_REQUIRED') {
+    return new StepUpRequired(res.data.message ?? 'Confirm it is you with an emailed code first.')
+  }
+  return null
+}
+
+/**
+ * Add a passkey: the gateway checks the role and that the sign-in is recent
+ * (or the emailed code) and hands back options, the authenticator makes the
+ * credential, the gateway verifies it. Throws `StepUpRequired` when a code is
+ * needed first.
+ */
+export async function addPasskey(input: { nickname: string; emailCode?: string }): Promise<PasskeyReceipt> {
+  type Start = { challengeId: string; options: Parameters<typeof startRegistration>[0]['optionsJSON'] }
+  const code = input.emailCode?.replace(/\s+/g, '')
+  let start: Start
+  try {
+    const res = await apiClient.post<Start>('/passkeys/registration/options', code ? { emailCode: code } : {})
+    start = res.data
+  } catch (e) {
+    throw stepUpRefusal(e) ?? e
+  }
   const response = await startRegistration({ optionsJSON: start.options })
   const nickname = input.nickname.trim()
   const { data } = await apiClient.post<PasskeyReceipt>('/passkeys/registration/verify', {
@@ -76,6 +103,52 @@ export async function addPasskey(input: { currentPassword: string; nickname: str
     ...(nickname ? { nickname } : {}),
   })
   return data
+}
+
+/** Email the account's own address a six-digit code, to add a passkey. */
+export async function sendStepUpCode(): Promise<{ sent: boolean; sentTo: string; expiresInSeconds: number }> {
+  const { data } = await apiClient.post<{ sent: boolean; sentTo: string; expiresInSeconds: number }>(
+    '/passkeys/step-up/code',
+  )
+  return data
+}
+
+/* ── signing in without a password (ADR 0222 / ADR 0229) ─────────────────── */
+
+export interface SessionPair {
+  accessToken: string
+  refreshToken: string
+}
+
+/**
+ * Sign in with the passkey this device holds. Names nobody in advance: the
+ * browser offers the passkey, and its user handle tells the gateway whose it is.
+ */
+export async function signInWithPasskey(): Promise<SessionPair> {
+  const { data: start } = await apiClient.post<{ challengeId: string; options: Parameters<typeof startAuthentication>[0]['optionsJSON'] }>(
+    '/auth/passkey/options',
+  )
+  const response = await startAuthentication({ optionsJSON: start.options })
+  const { data } = await apiClient.post<SessionPair>('/auth/passkey/verify', {
+    challengeId: start.challengeId,
+    response,
+  })
+  return { accessToken: data.accessToken, refreshToken: data.refreshToken }
+}
+
+/** Ask for an emailed sign-in code. The answer never says whether the address has an account. */
+export async function requestSignInCode(email: string): Promise<{ message: string; expiresInSeconds: number }> {
+  const { data } = await apiClient.post<{ message: string; expiresInSeconds: number }>('/auth/email-code', { email })
+  return data
+}
+
+/** Sign in with the emailed code. */
+export async function signInWithEmailCode(email: string, code: string): Promise<SessionPair> {
+  const { data } = await apiClient.post<SessionPair>('/auth/email-code/verify', {
+    email,
+    code: code.replace(/\s+/g, ''),
+  })
+  return { accessToken: data.accessToken, refreshToken: data.refreshToken }
 }
 
 export async function removePasskey(id: string): Promise<PasskeyReceipt> {

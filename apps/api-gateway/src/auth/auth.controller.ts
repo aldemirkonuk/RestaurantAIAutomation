@@ -156,7 +156,11 @@ export class AuthController {
   ) {
     return {
       success: true,
-      ...(await this.authService.createFirstHouse(req.user.userId, dto)),
+      ...(await this.authService.createFirstHouse(
+        req.user.userId,
+        dto,
+        req.user.authTime ?? null,
+      )),
     };
   }
 
@@ -543,6 +547,7 @@ export class AuthController {
     const tokens = await this.authService.switchRestaurant(
       req.user.userId,
       body.restaurantId,
+      req.user.authTime ?? null,
     );
     return { success: true, ...tokens };
   }

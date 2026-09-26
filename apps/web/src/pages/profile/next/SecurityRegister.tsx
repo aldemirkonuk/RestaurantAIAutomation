@@ -31,6 +31,9 @@
  *     over `apps/api-gateway/src/passkeys/` and `user_passkeys`
  *     (20260926210000). Two-factor and API tokens are still `Not built`, and
  *     the measurement above still holds for them.]**
+ *     **[2026-09-25, ADR 0229 (Proposed; founder item 29): a passkey also signs
+ *     you in on /login, and adding one needs a sign-in in the last ten minutes
+ *     or an emailed code -- so `PasskeyRows` no longer takes `hasPassword`.]**
  *
  * No fake toggles. A switch that flips and stores nothing is the same lie as a
  * Connect button with no endpoint, and it is worse here, because the thing it
@@ -234,7 +237,7 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
           reason="No second factor exists in the gateway — no secret, no enrolment, no verification step, no recovery codes (measured 2026-09-03 across the whole auth module). A toggle here would turn nothing on, so there is not one."
           controls={<Btn disabled>Turn on two-factor</Btn>}
         />
-        <PasskeyRows hasPassword={data.hasPassword} />
+        <PasskeyRows />
       </Rail>
 
       <Rail

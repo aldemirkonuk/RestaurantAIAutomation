@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsEmail,
   IsObject,
   IsOptional,
   IsString,
@@ -17,11 +18,46 @@ import {
 export class StartPasskeyRegistrationDto {
   @ApiPropertyOptional({
     description:
-      "The account's current password. Required when the account has one (ADR 0222 fork 1, as built); an account without a password is refused until it sets one.",
+      "The six-digit code emailed by POST /passkeys/step-up/code. Needed only when the sign-in is older than ten minutes (founder 2026-09-25, item 29).",
+    example: "042917",
   })
   @IsOptional()
   @IsString()
-  currentPassword?: string;
+  @MaxLength(12)
+  emailCode?: string;
+}
+
+export class PasskeySignInVerifyDto {
+  @ApiProperty({
+    description: "The id returned by POST /auth/passkey/options.",
+  })
+  @IsUUID()
+  challengeId!: string;
+
+  @ApiProperty({
+    description: "The browser's AuthenticationResponseJSON, unchanged.",
+  })
+  @IsObject()
+  response!: Record<string, unknown>;
+}
+
+export class EmailCodeRequestDto {
+  @ApiProperty({ example: "you@restaurant.com" })
+  @IsEmail()
+  @MaxLength(320)
+  email!: string;
+}
+
+export class EmailCodeVerifyDto {
+  @ApiProperty({ example: "you@restaurant.com" })
+  @IsEmail()
+  @MaxLength(320)
+  email!: string;
+
+  @ApiProperty({ example: "042917" })
+  @IsString()
+  @MaxLength(12)
+  code!: string;
 }
 
 export class FinishPasskeyRegistrationDto {

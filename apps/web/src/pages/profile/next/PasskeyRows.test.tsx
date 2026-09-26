@@ -4,8 +4,9 @@
  * The API module is mocked at its boundary; the ceremony itself is proven in
  * the gateway's `passkeys.service.spec.ts` against a software authenticator.
  * These assert what the person sees: three states for the list, a reason in
- * words for every disabled control, the password typed before a passkey is
- * added, a removed passkey kept on the record, and a closed device prompt
+ * words for every disabled control, a recent sign-in or an emailed code before
+ * a passkey is added (founder 2026-09-25, item 29 -- it replaced the typed
+ * password), a removed passkey kept on the record, and a closed device prompt
  * described as that rather than as a fault.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -19,7 +20,10 @@ const api = vi.hoisted(() => ({
   addPasskey: vi.fn(),
   removePasskey: vi.fn(),
   checkPasskey: vi.fn(),
+  sendStepUpCode: vi.fn(),
+  StepUpRequired: class StepUpRequired extends Error {},
 }));
+const { StepUpRequired } = api;
 
 vi.mock('../../../services/api/passkeys', () => ({
   PASSKEYS_QUERY_KEY: ['passkeys'],
@@ -28,6 +32,8 @@ vi.mock('../../../services/api/passkeys', () => ({
   addPasskey: (...a: unknown[]) => api.addPasskey(...a),
   removePasskey: (...a: unknown[]) => api.removePasskey(...a),
   checkPasskey: (...a: unknown[]) => api.checkPasskey(...a),
+  sendStepUpCode: (...a: unknown[]) => api.sendStepUpCode(...a),
+  StepUpRequired: api.StepUpRequired,
 }));
 
 import { PasskeyRows, describePasskeyError } from './PasskeyRows';
@@ -49,11 +55,11 @@ function readout(over: Record<string, unknown> = {}) {
   return { readable: true, reason: null, passkeys: [], eligible: true, eligibilityReason: null, ...over };
 }
 
-function draw(hasPassword: boolean | null = true) {
+function draw() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={qc}>
-      <PasskeyRows hasPassword={hasPassword} />
+      <PasskeyRows />
     </QueryClientProvider>,
   );
 }
@@ -88,10 +94,12 @@ describe('PasskeyRows — the list', () => {
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
   });
 
-  it('says plainly when none has been added, and that nothing asks for one yet', async () => {
+  it('says plainly when none has been added, that a passkey signs you in, and that it approves nothing yet', async () => {
     draw();
     expect(await screen.findByText(/No passkey has been added/)).toBeInTheDocument();
-    expect(screen.getByText(/Nothing in Mudavym asks for a passkey yet/)).toBeInTheDocument();
+    expect(screen.getByText(/A passkey signs you in on mudavym.com/)).toBeInTheDocument();
+    expect(screen.getByText(/does not approve anything yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Lost the device\? Sign in with your email or password and remove it here/)).toBeInTheDocument();
     expect(within(row('Passkeys')).getByText('Not connected')).toBeInTheDocument();
   });
 
@@ -117,10 +125,10 @@ describe('PasskeyRows — who may add one, in words', () => {
     expect(within(header).getByRole('button', { name: 'Add a passkey' })).toBeDisabled();
   });
 
-  it('an account without a password is told to set one first', async () => {
-    draw(false);
-    expect(await screen.findByText(/Set a password first/)).toBeInTheDocument();
-    expect(within(row('Passkeys')).getByRole('button', { name: 'Add a passkey' })).toBeDisabled();
+  it('an account with no password (Google only) may add one -- nothing asks it to set a password', async () => {
+    draw();
+    expect(await screen.findByRole('button', { name: 'Add a passkey' })).toBeEnabled();
+    expect(screen.queryByText(/Set a password first/)).not.toBeInTheDocument();
   });
 
   it('a browser that cannot make passkeys is named as the reason', async () => {
@@ -132,27 +140,60 @@ describe('PasskeyRows — who may add one, in words', () => {
 });
 
 describe('PasskeyRows — adding, removing, checking', () => {
-  it('asks for the password (a field a password manager can fill), then adds and says so', async () => {
+  it('on a recent sign-in, goes straight to the device -- no password, no code', async () => {
     api.addPasskey.mockResolvedValue({ passkey: LIVE, audited: true, auditReason: null, notified: true });
     draw();
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }));
-    const pw = screen.getByLabelText('Your current password');
-    expect(pw).toHaveAttribute('autocomplete', 'current-password');
-    expect(pw).not.toHaveAttribute('onpaste');
+    expect(screen.queryByLabelText('Your current password')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('The code we emailed you')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Name it (optional)'), { target: { value: 'Work laptop' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue on this device' }));
+    await screen.findByText(/Passkey added\. It signs you in on this device from now on\./);
+    expect(api.addPasskey).toHaveBeenCalledWith({ nickname: 'Work laptop', emailCode: undefined });
+    expect(api.sendStepUpCode).not.toHaveBeenCalled();
+  });
+
+  it('on an older sign-in, emails a code, asks for it in a one-time-code field, then adds', async () => {
+    api.addPasskey
+      .mockRejectedValueOnce(new StepUpRequired('You signed in more than ten minutes ago.'))
+      .mockResolvedValueOnce({ passkey: LIVE, audited: true, auditReason: null, notified: true });
+    api.sendStepUpCode.mockResolvedValue({ sent: true, sentTo: 'm•••@example.com', expiresInSeconds: 600 });
+    draw();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue on this device' }));
+
+    const field = await screen.findByLabelText('The code we emailed you');
+    expect(api.sendStepUpCode).toHaveBeenCalledTimes(1);
+    expect(field).toHaveAttribute('autocomplete', 'one-time-code');
+    expect(field).toHaveAttribute('inputmode', 'numeric');
+    expect(screen.getByText(/emailed a six-digit code to m•••@example.com/)).toBeInTheDocument();
+
     const go = screen.getByRole('button', { name: 'Continue on this device' });
     expect(go).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Name it (optional)'), { target: { value: 'Work laptop' } });
-    fireEvent.change(pw, { target: { value: 'hunter22' } });
+    fireEvent.change(field, { target: { value: '042 917' } });
+    expect(go).toBeEnabled();
     fireEvent.click(go);
     await screen.findByText(/Passkey added\./);
-    expect(api.addPasskey).toHaveBeenCalledWith({ currentPassword: 'hunter22', nickname: 'Work laptop' });
+    expect(api.addPasskey).toHaveBeenLastCalledWith({ nickname: '', emailCode: '042 917' });
+  });
+
+  it('can ask for a new code, and says when one could not be sent', async () => {
+    api.addPasskey.mockRejectedValue(new StepUpRequired('stale'));
+    api.sendStepUpCode
+      .mockResolvedValueOnce({ sent: true, sentTo: 'm•••@example.com', expiresInSeconds: 600 })
+      .mockRejectedValueOnce(new Error('mail is down'));
+    draw();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue on this device' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Send a new code' }));
+    expect(await screen.findByText(/No code was sent — mail is down/)).toBeInTheDocument();
+    expect(api.sendStepUpCode).toHaveBeenCalledTimes(2);
   });
 
   it('says a change that was not written to the trail', async () => {
     api.addPasskey.mockResolvedValue({ passkey: LIVE, audited: false, auditReason: 'insert refused', notified: false });
     draw();
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }));
-    fireEvent.change(screen.getByLabelText('Your current password'), { target: { value: 'x' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue on this device' }));
     expect(await screen.findByText(/not written to the trail — insert refused/)).toBeInTheDocument();
   });
@@ -161,7 +202,6 @@ describe('PasskeyRows — adding, removing, checking', () => {
     api.addPasskey.mockRejectedValue(Object.assign(new Error('The operation either timed out or was not allowed.'), { name: 'NotAllowedError' }));
     draw();
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }));
-    fireEvent.change(screen.getByLabelText('Your current password'), { target: { value: 'x' } });
     fireEvent.click(screen.getByRole('button', { name: 'Continue on this device' }));
     expect(await screen.findByText('Nothing was added — the device prompt was closed or timed out.')).toBeInTheDocument();
   });

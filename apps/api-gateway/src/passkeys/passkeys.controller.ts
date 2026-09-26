@@ -9,8 +9,10 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
   UseGuards,
 } from "@nestjs/common";
+import type { Request } from "express";
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -19,6 +21,8 @@ import {
 } from "@nestjs/swagger";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RateLimit } from "../common/rate-limit";
+import { requestSource } from "./request-source";
 import {
   FinishPasskeyCheckDto,
   FinishPasskeyRegistrationDto,
@@ -67,16 +71,17 @@ export class PasskeysController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      "Start adding a passkey -- owners and managers, after typing the password",
+      "Start adding a passkey -- owners and managers; a sign-in in the last ten minutes, or an emailed code",
   })
   @ApiResponse({
     status: 403,
     description:
-      "Not an owner or manager here, no password set, or a wrong password.",
+      "Not an owner or manager here; or `code: STEP_UP_REQUIRED` -- the sign-in is older than ten minutes and no emailed code came with the request.",
   })
   async startRegistration(
     @CurrentUser("userId") userId: string,
     @CurrentUser("restaurantId") restaurantId: string | undefined,
+    @CurrentUser("authTime") authTime: number | null | undefined,
     @Headers("origin") origin: string | undefined,
     @Body() dto: StartPasskeyRegistrationDto,
   ) {
@@ -84,7 +89,27 @@ export class PasskeysController {
       userId,
       restaurantId ?? null,
       origin,
-      dto?.currentPassword,
+      authTime ?? null,
+      dto?.emailCode,
+    );
+  }
+
+  @Post("step-up/code")
+  @HttpCode(HttpStatus.OK)
+  @RateLimit({ limit: 5, windowSeconds: 600, keyPrefix: "passkey-step-up" })
+  @ApiOperation({
+    summary:
+      "Email your own address a six-digit code, to add a passkey when the sign-in is older than ten minutes",
+  })
+  async sendStepUpCode(
+    @CurrentUser("userId") userId: string,
+    @CurrentUser("restaurantId") restaurantId: string | undefined,
+    @Req() req: Request,
+  ) {
+    return this.passkeys.sendStepUpCode(
+      userId,
+      restaurantId ?? null,
+      requestSource(req),
     );
   }
 

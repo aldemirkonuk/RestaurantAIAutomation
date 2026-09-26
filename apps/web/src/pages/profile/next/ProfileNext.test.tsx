@@ -474,7 +474,7 @@ describe('ProfileNext — security', () => {
       return r;
     });
     expect(within(row).queryByText('Not built')).not.toBeInTheDocument();
-    expect(screen.getByText(/Nothing in Mudavym asks for a passkey yet/)).toBeInTheDocument();
+    expect(screen.getByText(/A passkey signs you in on mudavym.com/)).toBeInTheDocument();
   });
 
   it('keeps the password form reachable from the sign-in rail’s Change password', () => {

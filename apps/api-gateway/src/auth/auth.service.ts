@@ -94,6 +94,16 @@ export interface JwtPayload {
    * production server even though the signature is valid there.
    */
   devBypass?: boolean;
+  /**
+   * When this session last proved who it is, in seconds since the epoch (the
+   * OIDC `auth_time` claim; ADR 0229, founder 2026-09-25 item 29). Stamped
+   * ONLY by an interactive sign-in -- password, Google, Microsoft, passkey,
+   * emailed code, or the sign-up that just typed a password -- and carried
+   * unchanged by refresh and by a house switch, so a seven-day refresh chain
+   * never looks like a fresh sign-in. Absent means "not recent": adding a
+   * passkey then needs an emailed code.
+   */
+  auth_time?: number;
   iat?: number;
   exp?: number;
 }
@@ -109,6 +119,11 @@ export interface LoginCredentials {
 }
 
 /** "Google", "Google and Microsoft", "Google, Microsoft and Apple". */
+/** The `auth_time` of a sign-in happening now, in seconds (ADR 0229). */
+export function signedInNow(nowMs: number = Date.now()): number {
+  return Math.floor(nowMs / 1000);
+}
+
 function formatList(items: string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
@@ -281,7 +296,7 @@ export class AuthService {
 
     this.logger.log(`User logged in: ${user.email}`);
 
-    return this.generateTokens(user);
+    return this.generateTokens(user, false, signedInNow());
   }
 
   /**
@@ -334,7 +349,7 @@ export class AuthService {
     // (apps/web/src/components/ProtectedRoute.tsx:42) sends every route to
     // /verify-email on that. Changing the row instead would edit real data to
     // work around a dev tool, and would follow the account into production.
-    return this.generateTokens(user, true);
+    return this.generateTokens(user, true, signedInNow());
   }
 
   /**
@@ -353,7 +368,7 @@ export class AuthService {
 
     this.logger.log(`Google OAuth login: ${user.email}`);
 
-    return this.generateTokens(user);
+    return this.generateTokens(user, false, signedInNow());
   }
 
   /**
@@ -372,7 +387,7 @@ export class AuthService {
 
     this.logger.log(`Microsoft OAuth login: ${user.email}`);
 
-    return this.generateTokens(user);
+    return this.generateTokens(user, false, signedInNow());
   }
 
   /**
@@ -419,6 +434,8 @@ export class AuthService {
           restaurant_id: scopedRestaurantId,
         },
         devBypass,
+        // Carried, never renewed: a refresh is not a sign-in (ADR 0229).
+        typeof payload.auth_time === "number" ? payload.auth_time : null,
       );
     } catch (error) {
       throw new UnauthorizedException("Invalid refresh token");
@@ -448,6 +465,7 @@ export class AuthService {
   async switchRestaurant(
     userId: string,
     targetRestaurantId: string,
+    authTime: number | null = null,
   ): Promise<TokenPair> {
     const { data: user, error: userErr } = await this.databaseService.supabase
       .from("users")
@@ -468,10 +486,15 @@ export class AuthService {
       .maybeSingle();
 
     if (uraAccess) {
-      return this.generateTokens({
-        ...user,
-        restaurant_id: targetRestaurantId,
-      });
+      // A house switch is not a sign-in: the session's auth_time is carried.
+      return this.generateTokens(
+        {
+          ...user,
+          restaurant_id: targetRestaurantId,
+        },
+        false,
+        authTime,
+      );
     }
 
     // Legacy fallback: org-level check for users who have no URA row yet
@@ -513,7 +536,11 @@ export class AuthService {
     }
 
     // Issue new tokens with the switched restaurant_id
-    return this.generateTokens({ ...user, restaurant_id: targetRestaurantId });
+    return this.generateTokens(
+      { ...user, restaurant_id: targetRestaurantId },
+      false,
+      authTime,
+    );
   }
 
   /**
@@ -521,9 +548,41 @@ export class AuthService {
    * Studio roles are fetched from user_roles table and embedded in app_metadata.roles
    * so FastAPI require_studio_role() can authorize studio API calls without a DB round-trip.
    */
+  /**
+   * A session for an account whose owner just proved who they are by a path
+   * that is not a password -- a passkey or an emailed code (ADR 0222 / 0229,
+   * founder 2026-09-25 item 29). The caller has already verified the proof;
+   * this mints through `generateTokens`, the one place every session is minted,
+   * so membership and every other claim follow exactly the password path.
+   */
+  async issueSessionForVerifiedSignIn(
+    userId: string,
+    method: "passkey" | "email_code",
+  ): Promise<TokenPair> {
+    const { data: user, error } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !user) {
+      throw new UnauthorizedException(
+        "That account could not be read, so nobody was signed in.",
+      );
+    }
+    this.logger.log(`Signed in by ${method}: ${user.user_id}`);
+    return this.generateTokens(user, false, signedInNow());
+  }
+
+  /**
+   * `authTime` is the `auth_time` claim (ADR 0229): pass `signedInNow()` only
+   * from an interactive sign-in, the carried value from refresh or a house
+   * switch, and nothing otherwise. The default is null -- a new call site that
+   * forgets it mints a session that is NOT recent, which fails closed.
+   */
   private async generateTokens(
     user: any,
     devBypass = false,
+    authTime: number | null = null,
   ): Promise<TokenPair> {
     // Fetch active studio roles for this user
     let studioRoles: string[] = [];
@@ -567,6 +626,7 @@ export class AuthService {
       // key at all. A signed `false` would be a second way to say "not a dev
       // session", and readers would have to handle both.
       ...(devBypass ? { devBypass: true } : {}),
+      ...(authTime !== null ? { auth_time: authTime } : {}),
       app_metadata: { roles: studioRoles },
     };
 
@@ -823,7 +883,7 @@ export class AuthService {
         `queueEmailVerification failed (non-fatal): ${err.message}`,
       ),
     );
-    return this.generateTokens(user);
+    return this.generateTokens(user, false, signedInNow());
   }
 
   /**
@@ -877,7 +937,7 @@ export class AuthService {
       );
     }
 
-    return this.generateTokens(user);
+    return this.generateTokens(user, false, signedInNow());
   }
 
   /**
@@ -888,6 +948,7 @@ export class AuthService {
   async createFirstHouse(
     userId: string,
     dto: CreateFirstHouseDto,
+    authTime: number | null = null,
   ): Promise<TokenPair & { restaurantId: string }> {
     const { data: user, error: userReadError } =
       await this.databaseService.supabase
@@ -905,12 +966,11 @@ export class AuthService {
     let orgId: string | null = null;
     let restaurantId: string | null = null;
     try {
-      const { data: org, error: orgError } =
-        await this.databaseService.supabase
-          .from("organizations")
-          .insert({ name: `${dto.restaurantName} Group`, owner_id: userId })
-          .select()
-          .single();
+      const { data: org, error: orgError } = await this.databaseService.supabase
+        .from("organizations")
+        .insert({ name: `${dto.restaurantName} Group`, owner_id: userId })
+        .select()
+        .single();
       if (orgError || !org)
         throw new Error(orgError?.message ?? "organization was not created");
       orgId = org.id;
@@ -955,15 +1015,13 @@ export class AuthService {
           user_id: userId,
           role: "owner",
         }),
-        this.databaseService.supabase
-          .from("user_restaurant_access")
-          .insert({
-            user_id: userId,
-            restaurant_id: restaurantId,
-            role: "owner",
-            invited_via: null,
-            is_active: true,
-          }),
+        this.databaseService.supabase.from("user_restaurant_access").insert({
+          user_id: userId,
+          restaurant_id: restaurantId,
+          role: "owner",
+          invited_via: null,
+          is_active: true,
+        }),
         this.databaseService.supabase
           .from("users")
           .update({ restaurant_id: restaurantId, role: "owner" })
@@ -975,11 +1033,15 @@ export class AuthService {
       const failed = writes.find((write) => write.error);
       if (failed?.error) throw new Error(failed.error.message);
 
-      const tokens = await this.generateTokens({
-        ...user,
-        restaurant_id: restaurantId,
-        role: "owner",
-      });
+      const tokens = await this.generateTokens(
+        {
+          ...user,
+          restaurant_id: restaurantId,
+          role: "owner",
+        },
+        false,
+        authTime,
+      );
       return { ...tokens, restaurantId: restaurantId as string };
     } catch (error) {
       if (restaurantId)
@@ -1161,7 +1223,7 @@ export class AuthService {
           ),
         );
 
-      return this.generateTokens(user);
+      return this.generateTokens(user, false, signedInNow());
     } catch (err) {
       if (userId)
         await this.databaseService.supabase
@@ -1844,10 +1906,14 @@ export class AuthService {
       role: invite.role,
     });
 
-    return this.generateTokens({
-      ...user,
-      restaurant_id: invite.restaurant_id,
-    });
+    return this.generateTokens(
+      {
+        ...user,
+        restaurant_id: invite.restaurant_id,
+      },
+      false,
+      signedInNow(),
+    );
   }
 
   /**

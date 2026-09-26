@@ -70,6 +70,7 @@ export const mockAuthValue: AuthContextType = {
   joinViaInvite: noop,
   loginWithGoogle: noop,
   loginWithMicrosoft: noop,
+  signInWithSession: noop,
   // Storybook has no gateway, so this resolves the way the real client does
   // when the call fails: the standard set, flagged `assumed`. See ADR 0024.
   resolveSignInMethods: async (email: string) => fallbackSignInMethods(email),

@@ -7,7 +7,6 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import * as bcrypt from "bcrypt";
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -22,6 +21,7 @@ import type {
 } from "@simplewebauthn/server";
 import { DatabaseService } from "../database/database.service";
 import { OrganizationsService } from "../organizations/organizations.service";
+import { SignInCodesService } from "./sign-in-codes.service";
 import {
   RP_REFUSAL,
   resolveRelyingParty,
@@ -62,20 +62,59 @@ import {
  *   * The challenge lives in `webauthn_challenges`, is deleted as it is read
  *     (single use), expires after five minutes, and is bound to the exact
  *     origin and RP ID the ceremony started on.
- *   * **Proving it is you before a passkey is added (open, ADR 0222 fork 1):**
- *     as built, an account with a password must type it; an account without
- *     one is refused and told to set one first. A stolen fifteen-minute token
- *     alone therefore cannot plant a lasting credential.
+ *   * **Proving it is you before a passkey is added** (the founder, 2026-09-25,
+ *     item 29, which closed ADR 0222 fork 1): "signed in within last 10 min =
+ *     direct, else email code first." The token's `auth_time` (stamped at an
+ *     interactive sign-in, carried unchanged by refresh and house switch) is
+ *     read; older than ten minutes, or absent, and the ceremony starts only
+ *     with an emailed code (`SignInCodesService`, purpose `step_up`). It
+ *     replaced "type your current password", so a Google-only account can add
+ *     one too. A stolen fifteen-minute token alone still cannot plant a
+ *     lasting credential unless it is itself a sign-in from the last ten
+ *     minutes.
+ *   * **A passkey signs you in** (same answer): `startSignIn` / `finishSignIn`
+ *     run a discoverable-credential ceremony with no one named in advance; the
+ *     passkey's user handle names the account, and the gateway mints the
+ *     session through `AuthService`, the one place every session is minted.
  */
 
 export const PASSKEY_AUDIT_ACTIONS = {
   enrolled: "passkey_enrolled",
   revoked: "passkey_revoked",
   checked: "passkey_checked",
+  signedIn: "passkey_signed_in",
 } as const;
+
+/** How recent a sign-in must be to add a passkey without an emailed code. */
+export const FRESH_SIGN_IN_SECONDS = 10 * 60;
+
+/** The refusal that tells the web to ask for an emailed code. 403, never 401. */
+export const STEP_UP_REQUIRED = "STEP_UP_REQUIRED";
+
+/**
+ * Whether a token's `auth_time` is recent enough. Absent (a token minted before
+ * this field existed, or by a path that is not an interactive sign-in) is NOT
+ * fresh: the missing value fails closed. A time in the future beyond a minute of
+ * clock slack is refused too -- it is not a time this gateway stamped.
+ */
+export function isFreshSignIn(
+  authTime: number | null | undefined,
+  nowMs: number = Date.now(),
+): boolean {
+  if (typeof authTime !== "number" || !Number.isFinite(authTime)) return false;
+  const nowSec = Math.floor(nowMs / 1000);
+  if (authTime > nowSec + 60) return false;
+  return nowSec - authTime <= FRESH_SIGN_IN_SECONDS;
+}
 
 export const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const RP_NAME = "Mudavym";
+
+/** One sentence for every refused passkey sign-in. */
+export const SIGN_IN_REFUSAL =
+  "That passkey did not sign you in. Try again, or sign in with your email instead.";
+export const RP_SIGN_IN_REFUSAL =
+  "Passkeys sign in only on mudavym.com. Use your email or password on this address.";
 const MAX_NICKNAME = 60;
 
 export interface PasskeyView {
@@ -173,6 +212,7 @@ export class PasskeysService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly organizations: OrganizationsService,
+    private readonly codes: SignInCodesService,
   ) {}
 
   private get db() {
@@ -216,7 +256,8 @@ export class PasskeysService {
     userId: string,
     restaurantId: string | null,
     origin: string | undefined,
-    currentPassword: unknown,
+    authTime: number | null,
+    emailCode: unknown,
   ): Promise<{
     challengeId: string;
     options: PublicKeyCredentialCreationOptionsJSON;
@@ -224,7 +265,7 @@ export class PasskeysService {
     await this.assertEligible(userId, restaurantId);
     const rp = this.relyingParty(origin);
     const user = await this.readUser(userId);
-    await this.assertProvedItIsYou(user, currentPassword);
+    await this.assertProvedItIsYou(userId, authTime, emailCode);
 
     const live = await this.liveCredentials(userId, rp.rpId);
     const options = await generateRegistrationOptions({
@@ -534,6 +575,153 @@ export class PasskeysService {
     return { passkey: view, ...receipt };
   }
 
+  /* ── signing in with a passkey ─────────────────────────────────────────── */
+
+  /**
+   * Signed out: start a ceremony that names nobody. `allowCredentials` is
+   * empty, so the browser offers whatever passkey this device holds for
+   * mudavym.com (a discoverable credential), and the passkey's user handle
+   * says whose it is. User verification is required: Face ID, Touch ID or the
+   * device PIN, never a bare tap.
+   */
+  async startSignIn(origin: string | undefined): Promise<{
+    challengeId: string;
+    options: PublicKeyCredentialRequestOptionsJSON;
+  }> {
+    const rp = this.relyingParty(origin, RP_SIGN_IN_REFUSAL);
+    const options = await generateAuthenticationOptions({
+      rpID: rp.rpId,
+      userVerification: "required",
+      timeout: CHALLENGE_TTL_MS,
+    });
+    const challengeId = await this.storeChallenge(
+      null,
+      "sign_in",
+      options.challenge,
+      rp,
+    );
+    return { challengeId, options };
+  }
+
+  /**
+   * Verify a sign-in assertion and say whose account it opens. Mints nothing:
+   * the controller hands the id to `AuthService`, the one place a session is
+   * minted, so membership (ADR 0164) and session-version (ADR 0225) rules
+   * apply to a passkey exactly as to a password.
+   *
+   * Every refusal is the same 400 sentence whether the credential is unknown,
+   * removed, or signed wrongly: a stranger learns nothing about which
+   * credentials exist.
+   */
+  async finishSignIn(
+    origin: string | undefined,
+    challengeId: unknown,
+    response: unknown,
+  ): Promise<{ userId: string; passkey: PasskeyView; audited: boolean }> {
+    const challenge = await this.consumeChallenge(
+      null,
+      "sign_in",
+      challengeId,
+      origin,
+    );
+    const assertion = response as AuthenticationResponseJSON;
+    if (
+      !assertion ||
+      typeof assertion.id !== "string" ||
+      typeof assertion.response !== "object" ||
+      assertion.response === null
+    ) {
+      throw new BadRequestException(SIGN_IN_REFUSAL);
+    }
+    const { data: found, error: readError } = await this.db
+      .from("user_passkeys")
+      .select(ROW_COLUMNS)
+      .eq("credential_id", assertion.id)
+      .eq("rp_id", challenge.rp_id)
+      .is("revoked_at", null)
+      .maybeSingle();
+    if (readError) {
+      throw new InternalServerErrorException(
+        "Passkeys could not be read just now, so nobody was signed in. Try again.",
+      );
+    }
+    if (!found) throw new BadRequestException(SIGN_IN_REFUSAL);
+    const row = found as PasskeyRow;
+
+    // A discoverable credential returns the user handle it was made with --
+    // the opaque public.users id. It must name the account the credential row
+    // belongs to; a mismatch is a credential answering for someone else.
+    const expectedHandle = Buffer.from(
+      new TextEncoder().encode(row.user_id),
+    ).toString("base64url");
+    if (assertion.response.userHandle !== expectedHandle) {
+      throw new BadRequestException(SIGN_IN_REFUSAL);
+    }
+
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({
+        response: assertion,
+        expectedChallenge: challenge.challenge,
+        expectedOrigin: challenge.origin,
+        expectedRPID: challenge.rp_id,
+        credential: {
+          id: row.credential_id,
+          publicKey: new Uint8Array(Buffer.from(row.public_key, "base64url")),
+          counter: Number(row.sign_count),
+          transports: (row.transports ?? undefined) as never,
+        },
+        requireUserVerification: true,
+      });
+    } catch (e) {
+      this.logger.warn(
+        `Passkey sign-in refused for credential ${row.id}: ${(e as Error).message}`,
+      );
+      throw new BadRequestException(SIGN_IN_REFUSAL);
+    }
+    if (
+      !verification.verified ||
+      !verification.authenticationInfo.userVerified
+    ) {
+      throw new BadRequestException(SIGN_IN_REFUSAL);
+    }
+    const { data, error } = await this.db
+      .from("user_passkeys")
+      .update({
+        sign_count: verification.authenticationInfo.newCounter,
+        last_used_at: new Date().toISOString(),
+        backed_up: verification.authenticationInfo.credentialBackedUp,
+      })
+      .eq("id", row.id)
+      .is("revoked_at", null)
+      .select(ROW_COLUMNS)
+      .maybeSingle();
+    if (error || !data) {
+      // Either the counter could not be saved (a replayed counter would then
+      // go unnoticed) or the passkey was removed a moment ago. Neither signs in.
+      throw new BadRequestException(SIGN_IN_REFUSAL);
+    }
+    const view = toView(data as PasskeyRow);
+    const { audited } = await this.record(
+      null,
+      row.user_id,
+      PASSKEY_AUDIT_ACTIONS.signedIn,
+      view,
+      null,
+    );
+    return { userId: row.user_id, passkey: view, audited };
+  }
+
+  /** Signed in, before adding a passkey: email the account's own address a code. */
+  async sendStepUpCode(
+    userId: string,
+    restaurantId: string | null,
+    source: string | null,
+  ) {
+    await this.assertEligible(userId, restaurantId);
+    return this.codes.issueForStepUp(userId, source);
+  }
+
   /* ── the rules ───────────────────────────────────────────────────────── */
 
   private async eligibility(
@@ -582,22 +770,21 @@ export class PasskeysService {
       );
   }
 
-  private relyingParty(origin: string | undefined): RelyingParty {
+  private relyingParty(
+    origin: string | undefined,
+    refusal: string = RP_REFUSAL,
+  ): RelyingParty {
     const rp = resolveRelyingParty(origin);
-    if (!rp) throw new BadRequestException(RP_REFUSAL);
+    if (!rp) throw new BadRequestException(refusal);
     return rp;
   }
 
   private async readUser(
     userId: string,
-  ): Promise<{
-    email: string | null;
-    name: string | null;
-    password_hash: string | null;
-  }> {
+  ): Promise<{ email: string | null; name: string | null }> {
     const { data, error } = await this.db
       .from("users")
-      .select("email, name, password_hash")
+      .select("email, name")
       .eq("user_id", userId)
       .maybeSingle();
     if (error || !data) {
@@ -605,37 +792,30 @@ export class PasskeysService {
         "Your account could not be read, so nothing was started.",
       );
     }
-    return data as {
-      email: string | null;
-      name: string | null;
-      password_hash: string | null;
-    };
+    return data as { email: string | null; name: string | null };
   }
 
   /**
-   * ADR 0222 fork 1, as built: the account's password, typed now. Refusals are
-   * 403, never 401 -- a 401 makes the web client refresh the session and retry,
-   * which would turn a wrong password into a silent second attempt.
+   * The founder's rule (2026-09-25, item 29): a sign-in in the last ten
+   * minutes proceeds; otherwise an emailed code, typed now. Refusals are 403,
+   * never 401 -- a 401 makes the web client refresh the session and retry,
+   * which would turn a missing proof into a silent second attempt. A code is
+   * checked only when the sign-in is stale, so a fresh session never burns one.
    */
   private async assertProvedItIsYou(
-    user: { password_hash: string | null },
-    currentPassword: unknown,
+    userId: string,
+    authTime: number | null,
+    emailCode: unknown,
   ): Promise<void> {
-    if (!user.password_hash) {
-      throw new ForbiddenException(
-        "Set a password first (Password, above). A passkey is added only after you type your password, so a borrowed session cannot add one. Nothing was started.",
-      );
+    if (isFreshSignIn(authTime)) return;
+    if (emailCode === undefined || emailCode === null || emailCode === "") {
+      throw new ForbiddenException({
+        code: STEP_UP_REQUIRED,
+        message:
+          "You signed in more than ten minutes ago. We will email you a code to confirm it is you, then the passkey can be added. Nothing was started.",
+      });
     }
-    if (typeof currentPassword !== "string" || currentPassword.length === 0) {
-      throw new BadRequestException(
-        "Type your current password to add a passkey. Nothing was started.",
-      );
-    }
-    const ok = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!ok)
-      throw new ForbiddenException(
-        "That password is not right. Nothing was started.",
-      );
+    await this.codes.verifyStepUp(userId, emailCode);
   }
 
   private async liveCredentials(
@@ -657,8 +837,8 @@ export class PasskeysService {
   }
 
   private async storeChallenge(
-    userId: string,
-    purpose: "registration" | "authentication",
+    userId: string | null,
+    purpose: "registration" | "authentication" | "sign_in",
     challenge: string,
     rp: RelyingParty,
   ): Promise<string> {
@@ -669,11 +849,13 @@ export class PasskeysService {
       .from("webauthn_challenges")
       .delete()
       .lt("expires_at", now.toISOString());
-    await this.db
-      .from("webauthn_challenges")
-      .delete()
-      .eq("user_id", userId)
-      .eq("purpose", purpose);
+    if (userId !== null) {
+      await this.db
+        .from("webauthn_challenges")
+        .delete()
+        .eq("user_id", userId)
+        .eq("purpose", purpose);
+    }
     const { data, error } = await this.db
       .from("webauthn_challenges")
       .insert({
@@ -699,8 +881,8 @@ export class PasskeysService {
 
   /** Read and delete in one statement: a challenge answers once. */
   private async consumeChallenge(
-    userId: string,
-    purpose: "registration" | "authentication",
+    userId: string | null,
+    purpose: "registration" | "authentication" | "sign_in",
     challengeId: unknown,
     origin: string | undefined,
   ): Promise<ChallengeRow> {
@@ -709,12 +891,14 @@ export class PasskeysService {
         "The ceremony's id was missing. Start again.",
       );
     }
-    const { data, error } = await this.db
+    const owner = this.db
       .from("webauthn_challenges")
       .delete()
       .eq("id", challengeId)
-      .eq("user_id", userId)
-      .eq("purpose", purpose)
+      .eq("purpose", purpose);
+    const { data, error } = await (
+      userId === null ? owner.is("user_id", null) : owner.eq("user_id", userId)
+    )
       .select("challenge, rp_id, origin, expires_at")
       .maybeSingle();
     if (error) {
