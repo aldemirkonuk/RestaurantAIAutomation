@@ -52,6 +52,40 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 > the legacy /communications filter "All distributors") is left for ADR 0149's cutover
 > delete, as #481 already left it.]
 
+> [2026-09-26, lane W4-vendors-filters, ADR 0221 — house-first scopes (founder,
+> 2026-09-26, filters round, memory item 36), stacked on #481 as `feat/vendors-scopes`.
+> Asked "/vendors: open on 'Supplies my menu' (built from what you've actually bought:
+> price history, orders, inventory), then 'All my vendors'. Should there be an outer rung
+> 'Find new vendors' that searches the curated vendor catalogue we already have?";
+> chosen **"Yes, add 'Find new vendors' (Recommended)"** ("Uses the existing curated
+> catalogue search. This is not the shared-vendor layer ADR 0221 deferred."). Rejected:
+> "No, my vendors only" ("Discovery stays on its own page for now."). Same round, for both
+> pages: **"Widen + banner; show partial (Recommended)"** for a house with no menu.
+> Built: a scope bar **Supplies my menu · N → All my vendors · N → Find new vendors · N**
+> with live counts (an em dash, never a zero, when a count is unknown), state in `?scope=`,
+> and `?tab=discover` (the `/distributors` redirect) landing on Find new vendors.
+> *Supplies my menu* = `GET /providers/menu-supply` (`vendor-menu-supply.ts`): the house's
+> vendors with purchase evidence — `price_history (provider_id, master_wine_id)` with
+> `effective_date` in the last 180 days, lines of orders that reached the vendor
+> (`ORDER_ARRIVED_STATUSES` ∪ `ORDER_OPEN_WITH_VENDOR_STATUSES`, house read off the order),
+> and live `restaurant_inventory.provider_id` — intersected with the `wine_library_id`s of
+> the non-discarded lines of every ACTIVE menu (more than one is unioned). Every read is
+> `.eq` the caller's house and keyset-paged (no 1000-row cap). The card is tagged ("3 wines
+> on your menu · priced, ordered"); the rung hides cards, never re-orders them. No active
+> menu, a menu whose lines link no wine, or a failed read → the page opens on *All my
+> vendors* with a banner that says which; choosing the menu rung then says why it cannot
+> answer instead of drawing an empty list. *Find new vendors* = the curated
+> `vendor_catalogue` search (`GET /vendor-catalogue/search`, curated tier only) with its
+> total, a country field (opens on US, as the old add-vendor modal did — not derived from
+> the house), "In your vendors" for catalogue rows already linked, and "Add to my vendors"
+> through the existing `POST /providers {catalogue_vendor_id}`. Not built: the shared-vendor
+> layer and world map (ADR 0221 "later"); the licensed-territory discovery
+> (`/distributors/search`) — it remains the legacy page's map.
+> Guard change: `check_price_history_reads_group_by_unit.py` gains a narrow PRESENCE-read
+> arm (a literal projection naming no price, quantity, `*`, embed or runtime list), with
+> self-test cases both ways, because this read uses price_history as purchase evidence and
+> reads no price.]
+
 > **Part of** [[08-softwares/vendor-directory|Vendor Directory & Intel]] · [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
 ## Surface — buttons → where they go
@@ -332,6 +366,10 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
   (`apps/api-gateway/src/vendor-terms/vendor-terms.controller.ts:44,71`) via
   `pages/providers/next/useProviderTerms.ts`. The GET is house-wide — there is no
   per-provider read route (§9)
+- Scopes (redesign, 2026-09-26): `GET /providers/menu-supply` ("Supplies my menu",
+  `apps/api-gateway/src/providers/vendor-menu-supply.ts`) and `GET /vendor-catalogue/search`
+  with its total ("Find new vendors", `services/api/vendors.ts` `searchVendorCataloguePage`),
+  both via `pages/providers/next/useVendorScopes.ts`
 - Intelligence panel: `GET /providers/:id/promotions`, `/providers/promotions/active`,
   `/expiring`, `/savings` + knowledge/conversation-memory
   (`services/api/provider-intelligence.ts`; ENDPOINTS.md:450-459)

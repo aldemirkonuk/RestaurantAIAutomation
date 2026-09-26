@@ -96,6 +96,34 @@ vi.mock('./useProviderContacts', async () => {
   };
 });
 
+// The scope ladder (founder, 2026-09-26, item 36) reads its own evidence from
+// the gateway. This file is about the GRID and the sheet; the ladder's rungs,
+// counts, banner and empty states are asserted in VendorScopes.test.tsx against
+// a mocked apiClient. The double shows every card on "All my vendors", chosen,
+// so no banner draws here.
+vi.mock('./useVendorScopes', () => ({
+  useVendorScopes: (cards: unknown[]) => ({
+    scope: 'all',
+    choose: vi.fn(),
+    chosen: true,
+    supply: { status: 'loading' },
+    reason: null,
+    counts: { menu: null, all: cards.length, find: null },
+    visible: cards,
+    supplierOf: () => null,
+    find: {
+      q: '',
+      setQ: vi.fn(),
+      country: 'US',
+      setCountry: vi.fn(),
+      status: 'loading',
+      message: null,
+      result: null,
+    },
+    refetchSupply: vi.fn(),
+  }),
+}));
+
 import ProvidersNext from './ProvidersNext';
 
 function provider(over: Partial<Provider>): Provider {

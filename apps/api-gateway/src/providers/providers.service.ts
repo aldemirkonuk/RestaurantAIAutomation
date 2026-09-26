@@ -31,6 +31,10 @@ import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
 import { isIso4217 } from "../common/iso-4217";
+import {
+  readVendorMenuSupply,
+  type VendorMenuSupply,
+} from "./vendor-menu-supply";
 
 function normalizeToE164(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -1707,5 +1711,29 @@ export class ProvidersService {
     unstated.sort((a, b) => a.name.localeCompare(b.name));
 
     return { stated, total: live.length, unstated };
+  }
+
+  /**
+   * Which of this house's vendors supply a wine on its current menu, from
+   * purchase evidence (founder, 2026-09-26, item 36 — the "Supplies my menu"
+   * rung of /vendors). The rules live in `vendor-menu-supply.ts`. A failed
+   * read is a 503 with the reason, never a menu nobody supplies.
+   */
+  async vendorMenuSupply(restaurantId: string): Promise<VendorMenuSupply> {
+    try {
+      return await readVendorMenuSupply(
+        this.databaseService.supabase,
+        restaurantId,
+      );
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? "unknown";
+      this.logger.error("Failed to read which vendors supply the menu", {
+        restaurantId,
+        error: message,
+      });
+      throw new ServiceUnavailableException(
+        `${message}. That is a failed read, not a menu no vendor supplies.`,
+      );
+    }
   }
 }

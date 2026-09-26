@@ -32,6 +32,7 @@ import {
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProvidersService } from "./providers.service";
+import type { VendorMenuSupply } from "./vendor-menu-supply";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
 import {
@@ -91,6 +92,24 @@ export class ProvidersController {
   // =========================================================================
   // STATIC ROUTES (must come before :id params)
   // =========================================================================
+
+  // =========================================================================
+  // "Supplies my menu" — the first rung of /vendors (founder, 2026-09-26,
+  // item 36; ADR 0221). Which of the house's vendors have PURCHASE evidence
+  // (price history in 180 days, placed orders, live inventory) for a wine on
+  // the house's CURRENT menu. Information about the house's own book, so any
+  // member may read it, like the coverage count below. Declared with the
+  // static routes so `@Get(":id")` cannot swallow it.
+  // =========================================================================
+  @Get("menu-supply")
+  @ApiOperation({
+    summary: "Which of this house's vendors supply a wine on its current menu",
+    description:
+      "Unions three kinds of purchase evidence — price_history in the last 180 days, lines of orders that reached the vendor, and live inventory rows naming the vendor — and keeps the wines on the house's active menu(s). Every read is house-scoped and paged; a house with no active menu answers menu.current=false rather than an empty list. A failed read is a 503 with the reason.",
+  })
+  async menuSupply(@CurrentUser() user: AuthUser): Promise<VendorMenuSupply> {
+    return this.providersService.vendorMenuSupply(houseOf(user));
+  }
 
   // =========================================================================
   // B2 (batch 66) — how many vendors have stated a usual currency.
