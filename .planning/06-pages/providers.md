@@ -77,7 +77,8 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 > answer instead of drawing an empty list. *Find new vendors* = the curated
 > `vendor_catalogue` search (`GET /vendor-catalogue/search`, curated tier only) with its
 > total, a country field (opens on US, as the old add-vendor modal did — not derived from
-> the house), "In your vendors" for catalogue rows already linked, and "Add to my vendors"
+> the house **[CORRECTED 2026-09-26, lane W5-vendors: superseded by founder item 48 — it
+> now opens on the house's own country; see the next bracket]**), "In your vendors" for catalogue rows already linked, and "Add to my vendors"
 > through the existing `POST /providers {catalogue_vendor_id}`. Not built: the shared-vendor
 > layer and world map (ADR 0221 "later"); the licensed-territory discovery
 > (`/distributors/search`) — it remains the legacy page's map.
@@ -85,6 +86,29 @@ links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-pri
 > arm (a literal projection naming no price, quantity, `*`, embed or runtime list), with
 > self-test cases both ways, because this read uses price_history as purchase evidence and
 > reads no price.]
+
+> [2026-09-26, lane W5-vendors, ADR 0221 amendment — founder, round 7, item 48, as
+> recorded in project memory: "'Supplies my menu' = exact vintage; a NAME-ONLY search
+> (menu filter not applied) matches any vintage — implement now. Find new vendors
+> defaults to the house's country (US fallback)." (The round's literal option texts were
+> not preserved; ADR 0221's amendment says so and reconstructs the rejected options.)
+> Built on #484: *All my vendors* gets one search box — a vendor's own name, or a wine
+> they sold you — backed by `GET /providers/wine-sellers?q=` (`vendor-wine-search.ts`,
+> `readOwnWineSellers`): the house's purchase evidence of ALL time (price history,
+> orders that reached the vendor, live stock lines), matched by "producer name",
+> accent/case-blind, every word, any vintage; each matching card is tagged "Sold you
+> Opus One 2019, 2018 · priced, ordered". *Find new vendors* keeps the curated name /
+> specialty search and adds, above it, curated vendors SEEN PRICING any vintage of the
+> typed wine (`GET /providers/catalogue-wine-listers`, price sightings through
+> `scopePriceRegisterRead` / `houseAndOpenMarket` — this house's own and openly posted,
+> never another house's), each labelled Invoiced / Quoted / Listed, because a sighting is
+> not a sale. A four-digit year in the query narrows to that exact vintage (a reading,
+> recorded in the ADR). *Supplies my menu* is untouched (exact vintage) and has no search
+> box. The country field now opens on the house's country: `restaurants.country` via
+> `GET /settings/currency`, resolved to ISO-2 by `lib/countries.ts`
+> (`defaultCatalogueCountry`); US when missing, unknown or unreadable, with a hint saying
+> which; still editable; the catalogue is not searched until the house has answered.
+> Item 49 (substitution suggestions) is a FUTURE idea — no UI.]
 
 > **Part of** [[08-softwares/vendor-directory|Vendor Directory & Intel]] · [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 

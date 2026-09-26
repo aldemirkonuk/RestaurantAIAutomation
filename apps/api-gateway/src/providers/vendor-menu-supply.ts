@@ -51,7 +51,8 @@ export const SUPPLY_WINDOW_DAYS = 180;
 /** PostgREST's silent ceiling; every read pages under it. */
 export const PAGE_ROWS = 1000;
 
-const BOUGHT_STATUSES = [
+/** Orders that reached the vendor — what counts as "bought" on /vendors. */
+export const BOUGHT_STATUSES = [
   ...ORDER_ARRIVED_STATUSES,
   ...ORDER_OPEN_WITH_VENDOR_STATUSES,
 ];
@@ -89,7 +90,7 @@ export interface VendorMenuSupply {
   suppliers: MenuSupplier[];
 }
 
-type Row = Record<string, unknown>;
+export type Row = Record<string, unknown>;
 type Page = PromiseLike<{
   data: Row[] | null;
   error: { message: string } | null;
@@ -98,8 +99,10 @@ type Page = PromiseLike<{
 /**
  * Read every row of a keyset-paged query. `build(after)` returns the chain
  * with its filters; this adds the `id` cursor, the order and the page size.
+ * Exported for `vendor-wine-search.ts` (the name-only wine search, founder
+ * 2026-09-26 item 48), so the two /vendors reads page the same way.
  */
-async function readAll(
+export async function readAll(
   what: string,
   build: (after: string | null) => {
     order: (

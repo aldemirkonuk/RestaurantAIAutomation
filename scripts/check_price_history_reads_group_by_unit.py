@@ -26,7 +26,9 @@ on this tree with
 
 there is exactly ONE writer and ZERO readers. [2026-09-26: one reader now, a
 PRESENCE read in apps/api-gateway/src/providers/vendor-menu-supply.ts that
-selects no price or quantity -- see SELECT_LITERAL_RE below.] The Python agent's
+selects no price or quantity -- see SELECT_LITERAL_RE below. Same day, a
+second one: apps/api-gateway/src/providers/vendor-wine-search.ts, the /vendors
+name-only wine search (item 48), with the identical projection.] The Python agent's
 `_get_price_history` reads `procurement_orders.price_per_bottle` -- a different
 table that merely shares the phrase. A guard written against zero readers is
 not idle: it is the only moment at which the rule can be free, and it exists so

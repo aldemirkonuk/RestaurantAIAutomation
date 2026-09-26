@@ -35,6 +35,13 @@ import {
   readVendorMenuSupply,
   type VendorMenuSupply,
 } from "./vendor-menu-supply";
+import {
+  readCatalogueWineListers,
+  readOwnWineSellers,
+  type CatalogueWineSearch,
+  type OwnWineSearch,
+  type WineQuery,
+} from "./vendor-wine-search";
 
 function normalizeToE164(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -1733,6 +1740,62 @@ export class ProvidersService {
       });
       throw new ServiceUnavailableException(
         `${message}. That is a failed read, not a menu no vendor supplies.`,
+      );
+    }
+  }
+
+  /**
+   * The name-only wine search on "All my vendors" (founder, 2026-09-26, round
+   * 7, item 48): this house's vendors with purchase evidence for ANY vintage of
+   * the wine named. Rules in `vendor-wine-search.ts`. A failed read is a 503.
+   */
+  async ownWineSellers(
+    restaurantId: string,
+    query: WineQuery,
+  ): Promise<OwnWineSearch> {
+    try {
+      return await readOwnWineSellers(
+        this.databaseService.supabase,
+        restaurantId,
+        query,
+      );
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? "unknown";
+      this.logger.error("Failed to search the vendor book by wine", {
+        restaurantId,
+        error: message,
+      });
+      throw new ServiceUnavailableException(
+        `${message}. That is a failed search, not a wine nobody sold you.`,
+      );
+    }
+  }
+
+  /**
+   * The same search on "Find new vendors": curated catalogue vendors a price
+   * sighting (this house's own, or openly posted) ties to any vintage of the
+   * wine. A failed read is a 503.
+   */
+  async catalogueWineListers(
+    restaurantId: string,
+    query: WineQuery,
+    country: string,
+  ): Promise<CatalogueWineSearch> {
+    try {
+      return await readCatalogueWineListers(
+        this.databaseService.supabase,
+        restaurantId,
+        query,
+        country,
+      );
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? "unknown";
+      this.logger.error("Failed to search the vendor catalogue by wine", {
+        restaurantId,
+        error: message,
+      });
+      throw new ServiceUnavailableException(
+        `${message}. That is a failed search, not a wine no vendor lists.`,
       );
     }
   }

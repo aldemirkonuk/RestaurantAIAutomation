@@ -15,13 +15,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { fetchVendorMenuSupply } from '../../../services/api/vendorMenuSupply';
+import { settingsApi } from '../../../services/api/settings';
+import {
+  fetchCatalogueWineListers,
+  fetchOwnWineSellers,
+  type CatalogueWineSearch,
+  type OwnWineSeller,
+  type OwnWineSearch,
+} from '../../../services/api/vendorWineSearch';
 import {
   searchVendorCataloguePage,
   type VendorSearchResponse,
 } from '../../../services/api/vendors';
 import {
   cardsForScope,
+  defaultCatalogueCountry,
   openingScope,
+  vendorNameMatches,
+  wineSearchable,
+  type CountryBasis,
   scopeCounts,
   scopeFromSearch,
   supplierIndex,
@@ -64,14 +76,39 @@ function useSettled<T>(value: T, ms = 300): T {
   return settled;
 }
 
+export type AskState<R> =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; data: R };
+
 export interface CatalogueSearch {
   q: string;
   setQ: (q: string) => void;
   country: string;
   setCountry: (c: string) => void;
+  /**
+   * Why the country field holds what it holds before anybody typed in it
+   * (founder, round 7, item 48: the house's own country, US only when missing).
+   * `typed` once the person changed it.
+   */
+  countryBasis: CountryBasis | 'typed' | 'reading';
+  /** `restaurants.country` as written, for the hint. */
+  countryWritten: string | null;
   status: 'loading' | 'error' | 'ready';
   message: string | null;
   result: VendorSearchResponse | null;
+  /** The name-only wine search over catalogue sightings (item 48). */
+  wine: AskState<CatalogueWineSearch>;
+}
+
+/** "All my vendors"' search box: a vendor's name, or a wine it sold (any vintage). */
+export interface BookSearch {
+  q: string;
+  setQ: (q: string) => void;
+  /** The wine half; `idle` while the text is too short to be a wine name. */
+  wine: AskState<OwnWineSearch>;
+  sellerOf: (providerId: string) => OwnWineSeller | null;
 }
 
 export interface VendorScopes<T> {
@@ -86,10 +123,21 @@ export interface VendorScopes<T> {
   visible: T[] | null;
   supplierOf: (providerId: string) => MenuSupplier | null;
   find: CatalogueSearch;
+  book: BookSearch;
   refetchSupply: () => void;
 }
 
-export function useVendorScopes<T extends { provider: { id: string } }>(
+function askState<R>(
+  enabled: boolean,
+  q: { data?: R; isError: boolean; error: unknown },
+): AskState<R> {
+  if (!enabled) return { status: 'idle' };
+  if (q.isError) return { status: 'error', message: serverMessage(q.error) };
+  if (q.data !== undefined) return { status: 'ready', data: q.data };
+  return { status: 'loading' };
+}
+
+export function useVendorScopes<T extends { provider: { id: string; name: string } }>(
   cards: T[],
   cardsKnown: boolean,
 ): VendorScopes<T> {
@@ -111,16 +159,33 @@ export function useVendorScopes<T extends { provider: { id: string } }>(
       : { status: 'loading' };
 
   const [q, setQ] = useState('');
-  // The curated catalogue is keyed by country; the existing search (and the
-  // add-vendor modal before it) opens on US. The field is on screen so a house
-  // elsewhere can change it — nothing here guesses a country for them.
-  const [country, setCountry] = useState('US');
+  // The curated catalogue is keyed by country. Founder, 2026-09-26, round 7,
+  // item 48: "Find new vendors" opens on the HOUSE's own country (its address,
+  // `restaurants.country`, resolved to ISO-2 by lib/countries.ts), US only when
+  // that is missing — and the field stays editable. Until the house's country
+  // has answered, the catalogue is not searched at all, so the rung never
+  // flashes a US list at a house in Türkiye.
+  const houseQ = useQuery({
+    queryKey: ['settings', 'currency', activeRestaurantId ?? ''],
+    queryFn: () => settingsApi.houseCurrency(),
+    enabled: Boolean(activeRestaurantId),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+  const houseSettled = houseQ.isSuccess || houseQ.isError;
+  const derived = defaultCatalogueCountry(houseQ.data ?? null, houseQ.isError);
+  const [typedCountry, setTypedCountry] = useState<string | null>(null);
+  const country = typedCountry ?? (houseSettled ? derived.code : '');
+  const wantCountry = country.trim().toUpperCase();
   const settledQ = useSettled(q.trim());
-  const settledCountry = useSettled(country.trim().toUpperCase());
+  const settledCountry = useSettled(wantCountry);
+  // The pause has caught up with what the field says (so a debounced "US"
+  // from before the house answered is never sent).
+  const countryReady = wantCountry.length === 2 && settledCountry === wantCountry;
   const catalogueQ = useQuery({
     queryKey: ['vendor-catalogue-search', settledQ, settledCountry],
     queryFn: () => searchVendorCataloguePage(settledQ, settledCountry, 20, 0),
-    enabled: settledCountry.length > 0,
+    enabled: countryReady,
     staleTime: 5 * 60_000,
     retry: 1,
   });
@@ -128,16 +193,58 @@ export function useVendorScopes<T extends { provider: { id: string } }>(
   const reason = widenReason(supply);
   const index = supplierIndex(supply);
   const scope = openingScope(asked, supply);
+
+  // The name-only wine search (item 48): any vintage, only where the menu rung
+  // is not applied — "All my vendors" (the house's own purchases) and "Find new
+  // vendors" (price sightings of curated catalogue vendors).
+  const catalogueWineOn = scope === 'find' && countryReady && wineSearchable(settledQ);
+  const catalogueWineQ = useQuery({
+    queryKey: ['vendor-catalogue-wine', activeRestaurantId ?? '', settledQ, settledCountry],
+    queryFn: () => fetchCatalogueWineListers(settledQ, settledCountry),
+    enabled: catalogueWineOn,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const [bookQ, setBookQ] = useState('');
+  const settledBookQ = useSettled(bookQ.trim());
+  const ownWineOn = scope === 'all' && wineSearchable(settledBookQ);
+  const ownWineQ = useQuery({
+    queryKey: ['vendor-wine-sellers', activeRestaurantId ?? '', settledBookQ],
+    queryFn: () => fetchOwnWineSellers(settledBookQ),
+    enabled: ownWineOn,
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const sellers = useMemo(
+    () => new Map((ownWineQ.data?.sellers ?? []).map((s) => [s.providerId, s])),
+    [ownWineQ.data],
+  );
+  // The wine answer is only this box's answer when it was asked for what the
+  // box says now (a stale answer for an older text is not shown as current).
+  const ownWine: AskState<OwnWineSearch> = askState(
+    ownWineOn && settledBookQ === bookQ.trim(),
+    ownWineQ,
+  );
+  const sellerOf = (id: string) =>
+    ownWine.status === 'ready' ? (sellers.get(id) ?? null) : null;
   const counts = scopeCounts(
     cardsKnown ? cards : null,
     reason ? null : index,
     catalogueQ.data ? catalogueQ.data.total : null,
   );
 
-  const visible = useMemo(
-    () => (scope === 'find' ? null : cardsForScope(scope, cards, reason ? null : index)),
-    [scope, cards, index, reason],
-  );
+  const text = bookQ.trim();
+  const wineReady = ownWine.status === 'ready';
+  const visible = useMemo(() => {
+    if (scope === 'find') return null;
+    const shown = cardsForScope(scope, cards, reason ? null : index);
+    if (!shown || scope !== 'all' || text === '') return shown;
+    // A vendor's own name, or a wine it sold (any vintage, once answered).
+    return shown.filter(
+      (c) => vendorNameMatches(c.provider.name, text) || (wineReady && sellers.has(c.provider.id)),
+    );
+  }, [scope, cards, index, reason, text, wineReady, sellers]);
 
   return {
     scope,
@@ -155,11 +262,15 @@ export function useVendorScopes<T extends { provider: { id: string } }>(
       q,
       setQ,
       country,
-      setCountry,
+      setCountry: (c: string) => setTypedCountry(c),
+      countryBasis: typedCountry !== null ? 'typed' : houseSettled ? derived.basis : 'reading',
+      countryWritten: derived.written,
       status: catalogueQ.data ? 'ready' : catalogueQ.isError ? 'error' : 'loading',
       message: catalogueQ.isError ? serverMessage(catalogueQ.error) : null,
       result: catalogueQ.data ?? null,
+      wine: askState(catalogueWineOn && settledQ === q.trim(), catalogueWineQ),
     },
+    book: { q: bookQ, setQ: setBookQ, wine: ownWine, sellerOf },
     refetchSupply: () => void supplyQ.refetch(),
   };
 }

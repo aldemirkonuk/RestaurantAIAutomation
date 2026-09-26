@@ -21,8 +21,8 @@ import {
   type VendorCatalogueEntry,
 } from '../../../services/api/vendors';
 import { EM, MONO, SANS } from './pv-format';
-import { SCOPE_LABEL, type VendorScope } from './vendor-scope';
-import type { VendorScopes, CatalogueSearch } from './useVendorScopes';
+import { SCOPE_LABEL, listedTag, wineSearchable, type VendorScope } from './vendor-scope';
+import type { VendorScopes, CatalogueSearch, BookSearch } from './useVendorScopes';
 
 const SCOPES: VendorScope[] = ['menu', 'all', 'find'];
 
@@ -214,8 +214,105 @@ const TYPE_WORD: Record<string, string> = {
   other: 'Other',
 };
 
-function placeOf(v: VendorCatalogueEntry): string {
+/** What a catalogue row draws — the search's rows and the wine search's vendors. */
+type CatalogueVendorLike = Pick<
+  VendorCatalogueEntry,
+  'id' | 'name' | 'city' | 'state' | 'country' | 'wine_specialties'
+> & { type: string | null };
+
+function placeOf(v: CatalogueVendorLike): string {
   return [v.city, v.state, v.country].filter((x) => x && String(x).trim()).join(', ');
+}
+
+const quoted = (t: string) => `“${t}”`;
+
+/**
+ * "All my vendors"' search box — founder, 2026-09-26, round 7, item 48. It
+ * matches a vendor's own name at once, and — once two letters of a wine's name
+ * are typed — every vendor that sold the house ANY vintage of that wine (the
+ * menu rung is the exact-vintage one). The status line says which half has
+ * answered; a failed wine search is said, never shown as "nobody sold it".
+ */
+export function BookSearchBar({ book, shown }: { book: BookSearch; shown: number | null }) {
+  const text = book.q.trim();
+  const w = book.wine;
+  let line: React.ReactNode = null;
+  if (text !== '') {
+    if (w.status === 'idle') {
+      line = wineSearchable(text) ? null : (
+        <p style={quiet}>Matching vendor names. Type two letters of a wine’s name to also find who sold it to you.</p>
+      );
+    } else if (w.status === 'loading') {
+      line = <p role="status" style={quiet}>Matching vendor names; looking through what you have bought for {quoted(text)}…</p>;
+    } else if (w.status === 'error') {
+      line = (
+        <p role="alert" data-testid="book-wine-failed" style={note}>
+          The wine search could not run ({w.message}) — only vendor names are matched below. That is a failed
+          search, not a wine nobody sold you.
+        </p>
+      );
+    } else {
+      const n = w.data.sellers.length;
+      const which = w.data.query.vintages.length
+        ? `the ${w.data.query.vintages.join(' or ')} vintage`
+        : 'any vintage';
+      line = (
+        <p role="status" data-testid="book-wine-basis" style={quiet}>
+          {n === 0
+            ? `None of your vendors sold you a wine matching ${quoted(text)} (${which}) — prices, orders and stock lines of all time were read.`
+            : `${n} of your vendors sold you a wine matching ${quoted(text)} — ${which}, from prices, orders and stock lines of all time. Vendors whose own name matches are shown too.`}
+        </p>
+      );
+    }
+  }
+  return (
+    <div style={{ fontFamily: SANS, margin: '0 0 10px' }}>
+      <label style={{ display: 'grid', gap: 3, maxWidth: 420 }}>
+        <span style={{ ...quiet, margin: 0 }}>A vendor’s name, or a wine they sold you (any vintage)</span>
+        <input
+          type="search"
+          value={book.q}
+          onChange={(e) => book.setQ(e.target.value)}
+          placeholder="e.g. Opus One, Sancerre, a vendor’s name"
+          data-testid="book-q"
+          style={{
+            fontFamily: SANS,
+            fontSize: 13,
+            padding: '7px 10px',
+            borderRadius: 9,
+            border: '1px solid var(--paper-2, #EAE4D8)',
+            background: 'var(--paper-0, #FAF7F1)',
+            color: 'var(--ink-1, #211C16)',
+          }}
+        />
+      </label>
+      {line}
+      {text !== '' && shown === 0 && w.status !== 'loading' && w.status !== 'error' && (
+        <p data-testid="book-q-empty" style={note}>
+          No vendor’s name matches {quoted(text)}
+          {w.status === 'ready' ? ', and none sold you a wine by that name.' : '.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function countryHint(find: CatalogueSearch): string | null {
+  const code = find.country.toUpperCase();
+  switch (find.countryBasis) {
+    case 'reading':
+      return 'Reading your house’s country…';
+    case 'house':
+      return `Opens on your house’s country (${code}${find.countryWritten && find.countryWritten.toUpperCase() !== code ? `, from ${quoted(find.countryWritten)}` : ''}).`;
+    case 'missing':
+      return 'Your house has no country recorded, so this opens on US.';
+    case 'unknown':
+      return `Your house’s country (${quoted(find.countryWritten ?? '')}) is not one this list knows, so this opens on US.`;
+    case 'unreadable':
+      return 'Your house’s country could not be read, so this opens on US.';
+    default:
+      return null;
+  }
 }
 
 /**
@@ -235,7 +332,7 @@ export function FindNewVendors({
   const [added, setAdded] = useState<Set<string>>(() => new Set());
   const [addError, setAddError] = useState<string | null>(null);
 
-  const add = async (v: VendorCatalogueEntry) => {
+  const add = async (v: CatalogueVendorLike) => {
     setAdding(v.id);
     setAddError(null);
     try {
@@ -294,8 +391,16 @@ export function FindNewVendors({
       </div>
       <p id="find-country-hint" style={quiet}>
         The curated catalogue — vendors a person has checked, listed by two-letter country code.
-        Adding one puts it in your own book; nothing is sent to the vendor.
+        Adding one puts it in your own book; nothing is sent to the vendor.{' '}
+        <span data-testid="find-country-basis">{countryHint(find)}</span>
       </p>
+
+      <CatalogueWineResults
+        find={find}
+        isYours={(id) => addedCatalogueIds.has(id) || added.has(id)}
+        adding={adding}
+        onAdd={(v) => void add(v)}
+      />
 
       {find.status === 'loading' && !result && <p style={quiet}>Searching the catalogue…</p>}
       {find.status === 'error' && (
@@ -319,71 +424,166 @@ export function FindNewVendors({
                 }${result.total > result.data.length ? ` — showing the first ${result.data.length}; narrow the search to see others` : ''}.`}
           </p>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
-            {result.data.map((v) => {
-              const yours = addedCatalogueIds.has(v.id) || added.has(v.id);
-              return (
-                <li
-                  key={v.id}
-                  data-testid="find-row"
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'baseline',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    padding: '10px 14px',
-                    borderRadius: 12,
-                    border: '1px solid var(--paper-2, #EAE4D8)',
-                    background: 'var(--paper-1, #F3EFE6)',
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <span
-                      style={{
-                        fontFamily: MONO,
-                        fontSize: 8.5,
-                        fontWeight: 600,
-                        letterSpacing: '0.14em',
-                        textTransform: 'uppercase',
-                        color: 'var(--seal-deep, #14515C)',
-                      }}
-                    >
-                      {TYPE_WORD[v.type] ?? v.type}
-                    </span>
-                    <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
-                      {v.name}
-                    </span>
-                    <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
-                      {[placeOf(v), v.wine_specialties].filter(Boolean).join(' · ') || EM}
-                    </span>
-                  </div>
-                  {yours ? (
-                    <span style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>In your vendors</span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void add(v)}
-                      disabled={adding !== null}
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        padding: '5px 12px',
-                        borderRadius: 8,
-                        border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                        background: 'transparent',
-                        color: 'var(--seal-deep, #14515C)',
-                        cursor: adding ? 'progress' : 'pointer',
-                      }}
-                    >
-                      {adding === v.id ? 'Adding…' : 'Add to my vendors'}
-                    </button>
-                  )}
-                </li>
-              );
-            })}
+            {result.data.map((v) => (
+              <CatalogueRow
+                key={v.id}
+                v={v}
+                yours={addedCatalogueIds.has(v.id) || added.has(v.id)}
+                adding={adding}
+                onAdd={() => void add(v)}
+              />
+            ))}
           </ul>
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * One curated catalogue vendor: type, name, place and specialties, and either
+ * "In your vendors" or "Add to my vendors". `tag` is the wine search's label.
+ */
+function CatalogueRow({
+  v,
+  yours,
+  adding,
+  onAdd,
+  tag,
+}: {
+  v: CatalogueVendorLike;
+  yours: boolean;
+  adding: string | null;
+  onAdd: () => void;
+  tag?: string;
+}) {
+  return (
+    <li
+      data-testid={tag ? 'find-wine-row' : 'find-row'}
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+        gap: 8,
+        padding: '10px 14px',
+        borderRadius: 12,
+        border: '1px solid var(--paper-2, #EAE4D8)',
+        background: 'var(--paper-1, #F3EFE6)',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <span
+          style={{
+            fontFamily: MONO,
+            fontSize: 8.5,
+            fontWeight: 600,
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'var(--seal-deep, #14515C)',
+          }}
+        >
+          {(v.type && TYPE_WORD[v.type]) ?? v.type ?? EM}
+        </span>
+        <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
+          {v.name}
+        </span>
+        {tag && (
+          <span data-testid="find-wine-tag" style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+            {tag}
+          </span>
+        )}
+        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+          {[placeOf(v), v.wine_specialties].filter(Boolean).join(' · ') || EM}
+        </span>
+      </div>
+      {yours ? (
+        <span style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>In your vendors</span>
+      ) : (
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={adding !== null}
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            padding: '5px 12px',
+            borderRadius: 8,
+            border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+            background: 'transparent',
+            color: 'var(--seal-deep, #14515C)',
+            cursor: adding ? 'progress' : 'pointer',
+          }}
+        >
+          {adding === v.id ? 'Adding…' : 'Add to my vendors'}
+        </button>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The name-only wine search on "Find new vendors" (item 48): curated vendors a
+ * price sighting ties to ANY vintage of the wine typed, each labelled with how
+ * it was seen — "Listed" on their site, "Quoted", or "Invoiced" — and the
+ * vintage. Shown above the name/specialty results; never merged into their
+ * total, because the two answer different questions.
+ */
+function CatalogueWineResults({
+  find,
+  isYours,
+  adding,
+  onAdd,
+}: {
+  find: CatalogueSearch;
+  isYours: (id: string) => boolean;
+  adding: string | null;
+  onAdd: (v: CatalogueVendorLike) => void;
+}) {
+  const w = find.wine;
+  if (w.status === 'idle') return null;
+  const text = find.q.trim();
+  const where = find.country.toUpperCase();
+  if (w.status === 'loading') {
+    return (
+      <p role="status" style={quiet}>
+        Looking for curated vendors in {where} seen pricing a wine matching {quoted(text)}…
+      </p>
+    );
+  }
+  if (w.status === 'error') {
+    return (
+      <p role="alert" data-testid="find-wine-failed" style={note}>
+        The wine search could not run ({w.message}). That is a failed search, not a wine no vendor lists.
+      </p>
+    );
+  }
+  const which = w.data.query.vintages.length ? `the ${w.data.query.vintages.join(' or ')} vintage` : 'any vintage';
+  if (w.data.listers.length === 0) {
+    return (
+      <p data-testid="find-wine-none" style={quiet}>
+        No curated vendor in {where} has been seen pricing a wine matching {quoted(text)} ({which}).
+      </p>
+    );
+  }
+  return (
+    <section aria-label="Vendors seen pricing this wine" style={{ margin: '0 0 14px' }}>
+      <p data-testid="find-wine-basis" style={quiet}>
+        {w.data.listers.length} curated vendor{w.data.listers.length === 1 ? '' : 's'} in {where} seen pricing a wine
+        matching {quoted(text)} — {which}. A price on a vendor’s list is not a sale; each says how it was seen.
+      </p>
+      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
+        {w.data.listers.map((l) => (
+          <CatalogueRow
+            key={l.vendor.id}
+            v={l.vendor}
+            yours={isYours(l.vendor.id)}
+            adding={adding}
+            onAdd={() => onAdd(l.vendor)}
+            tag={listedTag(l.wines)}
+          />
+        ))}
+      </ul>
     </section>
   );
 }

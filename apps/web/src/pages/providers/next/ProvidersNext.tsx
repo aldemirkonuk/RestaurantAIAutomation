@@ -26,8 +26,8 @@ import { TwinSheet } from './TwinSheet';
 import { UsualCurrencyCoveragePanel } from './UsualCurrencyCoveragePanel';
 import { useProvidersNextData, type ProviderCardVM } from './useProvidersNextData';
 import { useVendorScopes } from './useVendorScopes';
-import { FindNewVendors, ScopeNotice, VendorScopeBar } from './VendorScopes';
-import { supplierTag } from './vendor-scope';
+import { BookSearchBar, FindNewVendors, ScopeNotice, VendorScopeBar } from './VendorScopes';
+import { soldTag, supplierTag } from './vendor-scope';
 
 /**
  * `?vendor=<id>` opens that vendor's sheet — where the currency control lives.
@@ -255,6 +255,11 @@ export default function ProvidersNext() {
         {scopes.scope === 'find' && (
           <FindNewVendors find={scopes.find} addedCatalogueIds={addedCatalogueIds} />
         )}
+        {/* Name-only search, any vintage (founder, 2026-09-26, round 7, item
+            48). Not on the menu rung: that one is the exact vintage. */}
+        {scopes.scope === 'all' && data.hasData && data.cards.length > 0 && (
+          <BookSearchBar book={scopes.book} shown={scopes.visible ? scopes.visible.length : null} />
+        )}
 
         {scopes.scope !== 'find' && data.hasData && data.cards.length === 0 && !data.isError && (
           <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
@@ -282,7 +287,10 @@ export default function ProvidersNext() {
                       const s = scopes.supplierOf(vm.provider.id);
                       return s ? supplierTag(s) : null;
                     })()
-                  : null
+                  : (() => {
+                      const s = scopes.book.sellerOf(vm.provider.id);
+                      return s ? soldTag(s) : null;
+                    })()
               }
               ordersKnown={data.ordersKnown}
               onOpen={() => {

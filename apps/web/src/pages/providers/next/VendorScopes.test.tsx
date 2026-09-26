@@ -21,6 +21,11 @@ const h = vi.hoisted(() => ({
   supplyFails: false,
   catalogue: null as unknown,
   catalogueFails: false,
+  house: null as unknown,
+  houseFails: false,
+  wineSellers: null as unknown,
+  wineSellersFails: false,
+  wineListers: null as unknown,
   gets: [] as string[],
   posts: [] as Array<{ url: string; body: unknown }>,
 }));
@@ -55,6 +60,21 @@ vi.mock('../../../services/api/client', () => ({
           });
         }
         return { data: h.supply };
+      }
+      if (url === '/settings/currency') {
+        if (h.houseFails) throw Object.assign(new Error('503'), { response: { status: 503 } });
+        return { data: h.house };
+      }
+      if (url.startsWith('/providers/wine-sellers')) {
+        if (h.wineSellersFails) {
+          throw Object.assign(new Error('503'), {
+            response: { status: 503, data: { message: 'The inventory could not be read (timeout)' } },
+          });
+        }
+        return { data: h.wineSellers };
+      }
+      if (url.startsWith('/providers/catalogue-wine-listers')) {
+        return { data: h.wineListers };
       }
       if (url.startsWith('/vendor-catalogue/search')) {
         if (h.catalogueFails) {
@@ -137,6 +157,36 @@ beforeEach(() => {
     offset: 0,
   };
   h.catalogueFails = false;
+  h.house = { restaurantId: 'r1', code: 'USD', country: 'United States', readable: true, reason: null, statedAt: null };
+  h.houseFails = false;
+  h.wineSellers = {
+    query: { text: 'opus one', words: ['opus', 'one'], vintages: [] },
+    winesMatched: 2,
+    sellers: [
+      {
+        providerId: 'p3',
+        wines: [
+          { masterWineId: 'w19', producer: 'Opus One Winery', name: 'Opus One', vintage: 2019, priced: false, ordered: true, stocked: false },
+          { masterWineId: 'w18', producer: 'Opus One Winery', name: 'Opus One', vintage: 2018, priced: true, ordered: false, stocked: false },
+        ],
+      },
+    ],
+  };
+  h.wineSellersFails = false;
+  h.wineListers = {
+    query: { text: 'opus', words: ['opus'], vintages: [] },
+    country: 'US',
+    sightingsRead: 3,
+    listers: [
+      {
+        vendor: { id: 'cat-7', name: 'Napa Imports', type: 'importer', country: 'US', state: 'CA', city: 'Napa', wine_specialties: null },
+        wines: [
+          { masterWineId: null, producer: null, name: 'OPUS ONE Napa 2016', vintage: 2016, vintageFromText: true, kind: 'listed', lastSeen: '2026-07-01T00:00:00Z' },
+          { masterWineId: 'w18', producer: 'Opus One Winery', name: 'Opus One', vintage: 2018, vintageFromText: false, kind: 'quoted', lastSeen: '2026-09-01T00:00:00Z' },
+        ],
+      },
+    ],
+  };
   h.gets = [];
   h.posts = [];
   window.history.replaceState({}, '', '/vendors');
@@ -251,5 +301,113 @@ describe('Find new vendors — the curated catalogue', () => {
       'That is a failed search, not an empty catalogue.',
     );
     expect(count('find')).toBe('—');
+  });
+});
+
+describe('Find new vendors opens on the house’s own country (founder, round 7, item 48)', () => {
+  const catalogueGets = () => h.gets.filter((u) => u.startsWith('/vendor-catalogue/search'));
+
+  it('a house in Türkiye searches TR, never US first, and says where the country came from', async () => {
+    h.house = { restaurantId: 'r1', code: 'TRY', country: 'Türkiye', readable: true, reason: null, statedAt: null };
+    window.history.replaceState({}, '', '/vendors?scope=find');
+    renderPage();
+    await waitFor(() => expect(catalogueGets().length).toBeGreaterThan(0));
+    expect(catalogueGets().every((u) => u.includes('country=TR'))).toBe(true);
+    expect(screen.getByTestId('find-country')).toHaveValue('TR');
+    expect(screen.getByTestId('find-country-basis')).toHaveTextContent('Opens on your house’s country (TR, from “Türkiye”).');
+  });
+
+  it('a house with no country recorded opens on US, and says so', async () => {
+    h.house = { restaurantId: 'r1', code: null, country: null, readable: true, reason: null, statedAt: null };
+    window.history.replaceState({}, '', '/vendors?scope=find');
+    renderPage();
+    await waitFor(() => expect(catalogueGets().length).toBeGreaterThan(0));
+    expect(catalogueGets().every((u) => u.includes('country=US'))).toBe(true);
+    expect(screen.getByTestId('find-country-basis')).toHaveTextContent('Your house has no country recorded, so this opens on US.');
+  });
+
+  it('a country the table does not know is not guessed at: US, and the hint names what was written', async () => {
+    h.house = { restaurantId: 'r1', code: null, country: 'Atlantis', readable: true, reason: null, statedAt: null };
+    window.history.replaceState({}, '', '/vendors?scope=find');
+    renderPage();
+    await waitFor(() => expect(catalogueGets().length).toBeGreaterThan(0));
+    expect(catalogueGets().every((u) => u.includes('country=US'))).toBe(true);
+    expect(screen.getByTestId('find-country-basis')).toHaveTextContent('Your house’s country (“Atlantis”) is not one this list knows');
+  });
+
+  it('a failed read of the house falls back to US and says the country could not be read', async () => {
+    h.houseFails = true;
+    window.history.replaceState({}, '', '/vendors?scope=find');
+    renderPage();
+    await waitFor(() => expect(catalogueGets().length).toBeGreaterThan(0), { timeout: 4000 });
+    expect(catalogueGets().every((u) => u.includes('country=US'))).toBe(true);
+    expect(screen.getByTestId('find-country-basis')).toHaveTextContent('could not be read, so this opens on US');
+  });
+
+  it('the field stays editable: a typed country wins over the house’s', async () => {
+    h.house = { restaurantId: 'r1', code: 'TRY', country: 'Türkiye', readable: true, reason: null, statedAt: null };
+    window.history.replaceState({}, '', '/vendors?scope=find');
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('find-country')).toHaveValue('TR'));
+    fireEvent.change(screen.getByTestId('find-country'), { target: { value: 'fr' } });
+    await waitFor(() => expect(catalogueGets().some((u) => u.includes('country=FR'))).toBe(true));
+    expect(screen.getByTestId('find-country-basis')).toHaveTextContent(/^$/);
+  });
+});
+
+describe('a wine NAME matches any vintage where the menu rung is not applied (item 48)', () => {
+  it('All my vendors: a wine name finds who sold any vintage of it, labelled with the vintages', async () => {
+    window.history.replaceState({}, '', '/vendors?scope=all');
+    renderPage();
+    fireEvent.change(screen.getByTestId('book-q'), { target: { value: 'opus one' } });
+    const tag = await screen.findByTestId('supply-tag');
+    expect(tag).toHaveTextContent('Sold you Opus One Winery Opus One 2019, 2018 · priced, ordered');
+    expect(h.gets).toContain('/providers/wine-sellers?q=opus+one');
+    expect(screen.getByText('Vinos del Sur')).toBeInTheDocument();
+    expect(screen.queryByText('Bodega Álvaro')).not.toBeInTheDocument();
+    expect(screen.getByTestId('book-wine-basis')).toHaveTextContent('1 of your vendors sold you a wine matching “opus one” — any vintage');
+  });
+
+  it('the same box still finds a vendor by its own name, accent-blind', async () => {
+    h.wineSellers = { query: { text: 'alvaro', words: ['alvaro'], vintages: [] }, winesMatched: 0, sellers: [] };
+    window.history.replaceState({}, '', '/vendors?scope=all');
+    renderPage();
+    fireEvent.change(screen.getByTestId('book-q'), { target: { value: 'alvaro' } });
+    await screen.findByTestId('book-wine-basis');
+    expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
+    expect(screen.queryByText('Vinos del Sur')).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId('supply-tag')).toHaveLength(0);
+  });
+
+  it('a failed wine search says so and keeps only the name matches — never “nobody sold it”', async () => {
+    h.wineSellersFails = true;
+    window.history.replaceState({}, '', '/vendors?scope=all');
+    renderPage();
+    fireEvent.change(screen.getByTestId('book-q'), { target: { value: 'opus one' } });
+    const alert = await screen.findByTestId('book-wine-failed', {}, { timeout: 4000 });
+    expect(alert).toHaveTextContent('That is a failed search, not a wine nobody sold you.');
+    expect(screen.queryByTestId('book-q-empty')).not.toBeInTheDocument();
+  });
+
+  it('the menu rung has no name search — it is the exact-vintage rung', async () => {
+    renderPage();
+    await waitFor(() => expect(count('menu')).toBe('2'));
+    expect(screen.queryByTestId('book-q')).not.toBeInTheDocument();
+    expect(h.gets.some((u) => u.startsWith('/providers/wine-sellers'))).toBe(false);
+  });
+
+  it('Find new vendors: a wine name lists curated vendors seen pricing any vintage, saying how each was seen', async () => {
+    window.history.replaceState({}, '', '/vendors?scope=find');
+    renderPage();
+    fireEvent.change(screen.getByTestId('find-q'), { target: { value: 'opus' } });
+    const row = await screen.findByTestId('find-wine-row');
+    expect(within(row).getByText('Napa Imports')).toBeInTheDocument();
+    expect(within(row).getByTestId('find-wine-tag')).toHaveTextContent(
+      'Quoted Opus One Winery Opus One 2018 · Listed “OPUS ONE Napa 2016” (as written on their list)',
+    );
+    expect(h.gets).toContain('/providers/catalogue-wine-listers?q=opus&country=US');
+    expect(screen.getByTestId('find-wine-basis')).toHaveTextContent('A price on a vendor’s list is not a sale');
+    fireEvent.click(within(row).getByText('Add to my vendors'));
+    await waitFor(() => expect(h.posts).toEqual([{ url: '/providers', body: { catalogue_vendor_id: 'cat-7' } }]));
   });
 });
