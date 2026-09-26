@@ -80,7 +80,7 @@ function fakeDb(tables: Tables, fail?: string) {
             });
           }
           const embedOrders = rec.select.includes("procurement_orders!inner");
-          let rows = (tables[table] ?? []).map((r) =>
+          let rows: Row[] = (tables[table] ?? []).map((r): Row =>
             embedOrders
               ? {
                   ...r,
