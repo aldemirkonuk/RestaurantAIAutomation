@@ -20,13 +20,13 @@
  *             evidence; belongs to the lawyer list (ADR 0207 §A7), not to a
  *             fact a spec can check.
  *
- * NOT EXHAUSTIVE OF EVERY HOST (named limit, ADR 0207 round 4 build report):
- * the host-literal completeness guard the design calls for
- * (`check_data_terms_name_every_host.py`, "every host is named or excused")
- * was not built this round — see the round's report. The statements below
- * name every flow the round's own research touched (vendor mail's two model
- * calls, Jev/TypeSafe, and the register's other rows by reference), which is
- * the floor the founder's sentence needs, not the ceiling the design wants.
+ * EVERY HOST IS NAMED OR EXCUSED (ADR 0207 round 5, ADR 0224; the founder,
+ * 2026-09-25: complete the subprocessor list first, then merge):
+ * `scripts/check_data_terms_name_every_host.py` fails the build unless every
+ * outside host that the gateway's and the orchestrator's code can send to — a
+ * URL or hostname literal in code, or a network SDK it imports — is named by a
+ * `host` below (a row may name several, comma-separated) or excused there with
+ * the reason no house data reaches it. Change this list and that guard together.
  */
 
 import { createHash } from "node:crypto";
@@ -113,11 +113,20 @@ export const STATEMENTS: readonly DataTermStatement[] = [
     key: "other-connections",
     kind: "fact",
     text:
-      "This house's data also reaches Sentry (error tracking), Gmail/Google and Microsoft (sign-in " +
-      "and mail), Plivo (text messages), Firebase (mobile push), Toast (point of sale), Supabase " +
-      "(the database itself) and Serper (web search for prices and verification) — each for the " +
-      "reason named in Mudavym's connections register.",
-    evidence: [".planning/foundation/EXTERNAL_CONNECTIONS.md:34-48"],
+      "This house's data also reaches every other service listed below, each for the reason its row " +
+      "gives: Sentry (error reports), Google (Gmail, sign-in, Drive and Calendar), Microsoft " +
+      "(sign-in and profile), Plivo, Twilio and Meta's WhatsApp (text messages), SendGrid (email, " +
+      "when it is the mail path), Firebase, Expo and the browsers' own push services (notifications), " +
+      "Toast (point of sale), Stripe (billing), Serper (web search), OpenAI (only when a key is set), " +
+      "the US National Weather Service (the house's map point, for its forecast), and the services " +
+      "Mudavym itself runs on: Supabase (the database), CloudAMQP (the message queue), Upstash (the " +
+      "cache), Railway (the servers) and Vercel (the web app and its /api relay). " +
+      "A check in Mudavym's build fails whenever its code can send to a host this list does not name.",
+    evidence: [
+      ".planning/foundation/EXTERNAL_CONNECTIONS.md:34-64",
+      "scripts/check_data_terms_name_every_host.py",
+      "vercel.json:8-12",
+    ],
   },
   {
     key: "not-a-vendor-consent",
@@ -164,41 +173,83 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
   {
     name: "Sentry",
     host: "sentry.io",
-    what: "error reports",
+    what: "error reports, with identities removed",
     when: "when the product errors",
     masked: false,
   },
   {
     name: "Gmail / Google",
-    host: "gmail.googleapis.com",
-    what: "vendor email send and inbox watch",
+    host: "gmail.googleapis.com, smtp.gmail.com",
+    what: "vendor email: sending it and watching the inbox",
     when: "every vendor email",
     masked: false,
   },
   {
+    name: "Google account, Drive and Calendar",
+    host: "www.googleapis.com, oauth2.googleapis.com, accounts.google.com",
+    what: "Google sign-in, the connected person's profile, the mail archive written to Drive, calendar sync",
+    when: "sign-in, and while a Google connection is on",
+    masked: false,
+  },
+  {
     name: "Microsoft",
-    host: "login.microsoftonline.com",
-    what: "sign-in (Outlook/365)",
-    when: "sign-in only",
+    host: "login.microsoftonline.com, graph.microsoft.com",
+    what: "sign-in (Outlook/365) and the connected person's profile",
+    when: "sign-in, and while a Microsoft connection is on",
     masked: false,
   },
   {
     name: "Plivo",
     host: "api.plivo.com",
-    what: "text messages",
-    when: "SMS reminders and summaries",
+    what: "text messages and calls: the number and the words",
+    when: "SMS reminders, summaries and vendor calls",
+    masked: false,
+  },
+  {
+    name: "Twilio",
+    host: "api.twilio.com",
+    what: "text messages: the number and the words",
+    when: "only for a house that connects a Twilio sender",
+    masked: false,
+  },
+  {
+    name: "Meta (WhatsApp)",
+    host: "graph.facebook.com",
+    what: "WhatsApp messages: the number and the words",
+    when: "only for a house that connects a WhatsApp sender",
+    masked: false,
+  },
+  {
+    name: "SendGrid",
+    host: "api.sendgrid.com",
+    what: "outgoing email: the address and the letter",
+    when: "only when SendGrid is set as the mail path",
     masked: false,
   },
   {
     name: "Firebase (FCM)",
     host: "fcm.googleapis.com",
-    what: "mobile push notifications",
+    what: "push notifications: the words shown on the phone or in Chrome",
+    when: "app and browser notifications",
+    masked: false,
+  },
+  {
+    name: "Expo",
+    host: "exp.host",
+    what: "mobile push notifications: the title and words shown on the phone",
     when: "app notifications",
     masked: false,
   },
   {
+    name: "Browser push services",
+    host: "updates.push.services.mozilla.com, web.push.apple.com, notify.windows.com",
+    what: "browser notifications: the words shown, encrypted for the browser",
+    when: "only for a person who turns on browser notifications",
+    masked: false,
+  },
+  {
     name: "Toast",
-    host: "ws-api.toasttab.com",
+    host: "toasttab.com",
     what: "point-of-sale orders, stock and menu events",
     when: "continuous, for houses on Toast",
     masked: false,
@@ -215,6 +266,55 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     host: "google.serper.dev",
     what: "web search for price verification",
     when: "research and price checks",
+    masked: false,
+  },
+  {
+    name: "Stripe",
+    host: "api.stripe.com",
+    what: "the house's name and email, and a card on file (the card is typed on Stripe's own page)",
+    when: "when an owner sets up billing",
+    masked: false,
+  },
+  {
+    name: "OpenAI",
+    host: "api.openai.com",
+    what: "auction-wine research questions",
+    when: "only when an OpenAI key is set",
+    masked: false,
+  },
+  {
+    name: "US National Weather Service",
+    host: "api.weather.gov",
+    what: "the house's map point (to four decimal places), for its local forecast",
+    when: "houses in the United States",
+    masked: false,
+  },
+  {
+    name: "CloudAMQP",
+    host: "cloudamqp.com",
+    what: "the message queue between Mudavym's own servers — house events in transit",
+    when: "continuous",
+    masked: false,
+  },
+  {
+    name: "Upstash",
+    host: "upstash.io",
+    what: "the cache and background jobs — copies of house data for a short time",
+    when: "continuous",
+    masked: false,
+  },
+  {
+    name: "Railway",
+    host: "railway.app",
+    what: "the servers Mudavym runs on — every request and every job",
+    when: "continuous",
+    masked: false,
+  },
+  {
+    name: "Vercel",
+    host: "vercel.com",
+    what: "the web app's pages, and any call sent through its /api relay to Mudavym's servers",
+    when: "every visit",
     masked: false,
   },
 ] as const;

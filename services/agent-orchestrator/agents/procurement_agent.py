@@ -240,9 +240,9 @@ class ProcurementAgent(BaseAgent):
         self.plivo_auth_id = config.get("plivo_auth_id")
         self.plivo_auth_token = config.get("plivo_auth_token")
         self.plivo_phone_number = config.get("plivo_phone_number")
-        self.plivo_webhook_base_url = config.get(
-            "plivo_webhook_base_url", "https://your-domain.com/webhooks/plivo"
-        )
+        # No placeholder default: "https://your-domain.com/..." is a real
+        # third-party domain (ADR 0224). Unset, a live call is refused.
+        self.plivo_webhook_base_url = config.get("plivo_webhook_base_url")
 
     async def initialize(self) -> None:
         self.logger.info("Initializing Procurement Agent")

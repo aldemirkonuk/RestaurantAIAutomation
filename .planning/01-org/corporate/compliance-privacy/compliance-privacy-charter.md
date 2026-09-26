@@ -205,6 +205,14 @@ register, and no privacy programme document anywhere in this repository.**
 `.planning/foundation/EXTERNAL_CONNECTIONS.md` §2, one row per outbound service. It is
 a connections census, not a DPA/data-processing record; this paragraph's other claims
 stand unchanged, and the register itself was not re-measured beyond adding TypeSafe's row.]
+[Bracket, 2026-09-25 (ADR 0224, PR #435): the register was re-measured and completed —
+13 rows added (Expo, browser push, Stripe, Twilio, Meta/WhatsApp, SendGrid, Google Drive and
+account, Microsoft Graph, US NWS, CloudAMQP, Upstash, Railway, Vercel) — and it is now held,
+together with the data terms' `SUBPROCESSORS`, by the blocking guard
+`scripts/check_data_terms_name_every_host.py`: every host literal and network SDK in the gateway
+and the orchestrator is named or excused with a written reason. This paragraph's DPA/BAA/policy
+claims were not re-measured (TypeSafe's DPA is the founder's "already done", 2026-09-25), and
+`subprocessor_classification` below is not re-scored here.]
 
 ### 🔴 The finding that reframes everything above: the schema has no callers
 
