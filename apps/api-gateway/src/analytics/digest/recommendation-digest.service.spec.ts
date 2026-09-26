@@ -374,6 +374,62 @@ describe("a member who did not opt in gets nothing", () => {
   });
 });
 
+/* ── preferences are per house (ADR 0149 row 39) ─────────────────────────── */
+
+describe("another house's preferences never decide this house's digest", () => {
+  it("a subscriber with no preferences row here but one in another house (email off, quiet hours on) gets this house's digest on the defaults", async () => {
+    const db = seed();
+    db.tables.notification_preferences = [
+      {
+        user_id: ANA,
+        restaurant_id: "house-2",
+        email_enabled: false,
+        categories: { ai: true },
+        quiet_hours_enabled: true,
+        quiet_hours_start: "00:00",
+        quiet_hours_end: "23:59",
+      },
+    ];
+    const { service, gmail } = build({ db });
+
+    const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
+
+    // Against the unfiltered read (PR #422 audit, 2026-09-26) house-2's row was
+    // applied here: Ana counted as emailOff and nothing was sent.
+    expect(tally.emailOff).toBe(0);
+    expect(tally.deferredQuietHours).toBe(0);
+    expect(tally.sent).toBe(1);
+    expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
+    expect(gmail.sendEmail.mock.calls[0][0].to).toEqual(["ana@house.test"]);
+  });
+
+  it("with rows in both houses, this house's row decides — whichever order the rows come back in", async () => {
+    for (const order of ["here-first", "here-last"] as const) {
+      const db = seed();
+      const here = {
+        user_id: ANA,
+        restaurant_id: HOUSE,
+        email_enabled: false,
+        categories: { ai: true },
+      };
+      const there = {
+        user_id: ANA,
+        restaurant_id: "house-2",
+        email_enabled: true,
+        categories: { ai: true },
+      };
+      db.tables.notification_preferences =
+        order === "here-first" ? [here, there] : [there, here];
+      const { service, gmail } = build({ db });
+
+      const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
+
+      expect(tally.emailOff).toBe(1);
+      expect(gmail.sendEmail).not.toHaveBeenCalled();
+    }
+  });
+});
+
 /* ── 2. quiet hours ───────────────────────────────────────────────────────── */
 
 describe("quiet hours defer the digest, on the house's wall clock", () => {
