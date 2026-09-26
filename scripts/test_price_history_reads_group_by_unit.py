@@ -2,8 +2,9 @@
 
 Every case is a shape the guard must judge, written as a throwaway tree rather
 than against the repo, so the suite never depends on `apps/` staying still. Two
-cases DO read the repo: one asserts the shipped tree passes with ZERO readers
-counted, the other plants a non-compliant read into a temporary copy and asserts
+cases DO read the repo: one asserts the shipped tree passes with no reader of a
+price or a quantity (its only reader, since 2026-09-26, is /vendors' presence
+read in vendor-menu-supply.ts), the other plants a non-compliant read into a temporary copy and asserts
 the guard fails and names it. Nothing is ever planted into the worktree.
 
     pytest scripts/test_price_history_reads_group_by_unit.py -q
@@ -307,12 +308,53 @@ def test_the_self_test_passes():
     assert self_test() == 0
 
 
-def test_the_shipped_tree_passes_with_zero_readers():
+def test_the_shipped_tree_passes_and_reads_no_price_without_a_unit():
+    # Until 2026-09-26 the tree had zero readers. /vendors' "Supplies my menu"
+    # (apps/api-gateway/src/providers/vendor-menu-supply.ts) added one PRESENCE
+    # read -- it selects who priced which wine, never a price -- so the shipped
+    # tree now passes with every reader compliant and that one counted as such.
     proc = subprocess.run(
         [sys.executable, str(GUARD)], cwd=REPO_ROOT, capture_output=True, text=True
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "0 readers today" in proc.stdout, proc.stdout
+    code, findings, counts = run(REPO_ROOT)
+    assert code == 0 and findings == []
+    assert counts["compliant"] == counts["reads"], counts
+    assert counts["presence_reads"] >= 1, counts
+
+
+def test_a_presence_read_is_compliant_and_counted(tmp_path):
+    root = _tree(
+        tmp_path,
+        _with(
+            "  async whoPriced(id) {\n"
+            '    return this.db.supabase.from("price_history")\n'
+            '      .select("id, provider_id, master_wine_id").eq("restaurant_id", id);\n'
+            "  }\n"
+        ),
+    )
+    code, findings, counts = run(root)
+    assert code == 0, findings
+    assert counts["presence_reads"] == 1 and counts["compliant"] == 1
+
+
+@pytest.mark.parametrize(
+    "projection",
+    ['"*"', '"id, quantity"', '"id, provider_id, price"', '"id, orders(price)"', "`id, ${cols}`"],
+)
+def test_a_projection_naming_a_unit_governed_number_is_not_a_presence_read(tmp_path, projection):
+    root = _tree(
+        tmp_path,
+        _with(
+            "  async peek(id, cols) {\n"
+            '    return this.db.supabase.from("price_history")\n'
+            f'      .select({projection}).eq("restaurant_id", id);\n'
+            "  }\n"
+        ),
+    )
+    code, findings, counts = run(root)
+    assert code == 1, (projection, findings)
+    assert counts["presence_reads"] == 0
 
 
 def test_a_planted_read_in_a_copy_of_the_tree_fails(tmp_path):

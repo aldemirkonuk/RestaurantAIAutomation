@@ -20,6 +20,10 @@
  * facts above are the vendor's own RECORD; `TermsSection` below is what this
  * HOUSE knows about dealing with them, each term showing its source, editable
  * in place through the same route the settings register writes.
+ *
+ * ── Fourth pass: branches (2026-09-26) ────────────────────────────────────
+ * `BranchesSection` carries the vendor's offices, warehouses and stores —
+ * until now editable only in the legacy sheet's Locations tab.
  */
 
 import { Suspense, lazy } from 'react';
@@ -29,6 +33,7 @@ import { EM, MONO, SANS, fmtDays, fmtLastContact } from './pv-format';
 import { TermsSection } from './TermsSection';
 import { UsualCurrencySection } from './UsualCurrencySection';
 import { ContactsSection } from './ContactsSection';
+import { BranchesSection } from './BranchesSection';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -117,6 +122,13 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
           lets a manager answer the question nobody has answered. */}
       <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
         <ContactsSection providerId={provider.id} providerName={provider.name} />
+      </div>
+
+      {/* where they are — offices, warehouses, stores this house deals with
+          (founder, 2026-09-26, round 8, item 51; ADR 0221). Read on open. No
+          map here: the new one is its own tab later (item 52). */}
+      <div className="px-4 pb-2" style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+        <BranchesSection providerId={provider.id} providerName={provider.name} />
       </div>
 
       {/* the twin — fetched on open, never on the grid */}

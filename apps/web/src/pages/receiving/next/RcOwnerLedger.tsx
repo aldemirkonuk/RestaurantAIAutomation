@@ -81,7 +81,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
   const statsFloorNote = `At least this much. /credits/stats reads at most ${SERVER_WINDOWS.RECOVERY_STATS} credit rows with no ordering, so a restaurant past that cap has claims outside the figure entirely.`;
 
   return (
-    <section aria-label="Money recovered from distributors" style={{ fontFamily: SANS }}>
+    <section aria-label="Money recovered from vendors" style={{ fontFamily: SANS }}>
       <div
         style={{
           border: '1px solid var(--paper-2, #EAE4D8)',
@@ -90,7 +90,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
           padding: '20px 22px',
         }}
       >
-        <span style={capStyle}>Recovered from distributors</span>
+        <span style={capStyle}>Recovered from vendors</span>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
           <RcTally
             value={stats ? stats.recovered : null}
@@ -258,7 +258,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
                 }}
               >
                 <strong>{stats.selfEvidencedOpen}</strong> open claim
-                {stats.selfEvidencedOpen === 1 ? ' is' : 's are'} provable from the distributor's
+                {stats.selfEvidencedOpen === 1 ? ' is' : 's are'} provable from the vendor's
                 own packing slip. Those are the ones worth a phone call.
               </p>
             )}

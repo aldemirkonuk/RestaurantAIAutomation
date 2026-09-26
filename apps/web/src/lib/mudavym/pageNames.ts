@@ -11,7 +11,7 @@
  *   Inventory              Sidebar.tsx:83
  *   Orders                 Sidebar.tsx:89
  *   Receiving              Sidebar.tsx:102
- *   Providers              Sidebar.tsx:116
+ *   Vendors                Sidebar.tsx:117
  *   Reports                Sidebar.tsx:128
  *   Calendar               Sidebar.tsx:137
  *   Team                   Sidebar.tsx:143
@@ -58,7 +58,9 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   receiving: 'Receiving',
   // Named for completeness; the door never renders chrome — see NO_CHROME.
   receiving_door: 'Receiving door',
-  providers: 'Providers',
+  // The slug stays `providers` (its flag is mudavym_design_providers); the
+  // word is "Vendors" (ADR 0221).
+  providers: 'Vendors',
   communications: 'Communications',
   team: 'Team',
   inventory: 'Inventory',

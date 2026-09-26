@@ -5,6 +5,7 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  BadRequestException,
   ForbiddenException,
   Param,
   Patch,
@@ -32,6 +33,13 @@ import {
 import { UpdateIntelligenceDto } from "./dto/update-intelligence.dto";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProvidersService } from "./providers.service";
+import type { VendorMenuSupply } from "./vendor-menu-supply";
+import {
+  parseWineQuery,
+  MIN_NAME_CHARS,
+  type CatalogueWineSearch,
+  type OwnWineSearch,
+} from "./vendor-wine-search";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
 import {
@@ -52,6 +60,17 @@ function houseOf(user: AuthUser | undefined): string {
     throw new ForbiddenException("This session names no restaurant.");
   }
   return user.restaurantId;
+}
+
+/** The wine-name query, or a 400 — never a search of everything. */
+function wineQueryOf(q: unknown) {
+  const parsed = parseWineQuery(q);
+  if (!parsed) {
+    throw new BadRequestException(
+      `Type at least ${MIN_NAME_CHARS} letters of the wine's name.`,
+    );
+  }
+  return parsed;
 }
 
 /**
@@ -91,6 +110,76 @@ export class ProvidersController {
   // =========================================================================
   // STATIC ROUTES (must come before :id params)
   // =========================================================================
+
+  // =========================================================================
+  // "Supplies my menu" — the first rung of /vendors (founder, 2026-09-26,
+  // item 36; ADR 0221). Which of the house's vendors have PURCHASE evidence
+  // (price history in 180 days, placed orders, live inventory) for a wine on
+  // the house's CURRENT menu. Information about the house's own book, so any
+  // member may read it, like the coverage count below. Declared with the
+  // static routes so `@Get(":id")` cannot swallow it.
+  // =========================================================================
+  @Get("menu-supply")
+  @ApiOperation({
+    summary: "Which of this house's vendors supply a wine on its current menu",
+    description:
+      "Unions three kinds of purchase evidence — price_history in the last 180 days, lines of orders that reached the vendor, and live inventory rows naming the vendor — and keeps the wines on the house's active menu(s). Every read is house-scoped and paged; a house with no active menu answers menu.current=false rather than an empty list. A failed read is a 503 with the reason.",
+  })
+  async menuSupply(@CurrentUser() user: AuthUser): Promise<VendorMenuSupply> {
+    return this.providersService.vendorMenuSupply(houseOf(user));
+  }
+
+  // =========================================================================
+  // The name-only wine search (founder, 2026-09-26, round 7, item 48; ADR
+  // 0221). "Supplies my menu" matches the menu line's exact vintage; a search
+  // by NAME, with the menu rung not applied, matches ANY vintage and labels
+  // each vendor with the vintage(s) its evidence names. Two routes because the
+  // evidence differs: the house's own purchases vs price sightings of curated
+  // catalogue vendors. Both read-only, any member, static (before ":id").
+  // =========================================================================
+  @Get("wine-sellers")
+  @ApiOperation({
+    summary: "This house's vendors who sold any vintage of a wine, by name",
+    description:
+      "Purchase evidence of all time — price_history, lines of orders that reached the vendor, live inventory — for every library wine whose producer+name contains every word of q (accent- and case-blind). A four-digit year in q narrows to that vintage; a name alone matches every vintage. House-scoped and paged; a failed read is a 503.",
+  })
+  @ApiQuery({ name: "q", required: true })
+  async wineSellers(
+    @CurrentUser() user: AuthUser,
+    @Query("q") q: string,
+  ): Promise<OwnWineSearch> {
+    const house = houseOf(user);
+    return this.providersService.ownWineSellers(house, wineQueryOf(q));
+  }
+
+  @Get("catalogue-wine-listers")
+  @ApiOperation({
+    summary:
+      "Curated catalogue vendors a price sighting ties to any vintage of a wine",
+    description:
+      "Price sightings (this house's own and openly posted ones, never another house's) of curated, active catalogue vendors in `country`, matched by the same rule as /providers/wine-sellers. Each wine says whether it was invoiced, quoted or only listed. A failed read is a 503.",
+  })
+  @ApiQuery({ name: "q", required: true })
+  @ApiQuery({ name: "country", required: true })
+  async catalogueWineListers(
+    @CurrentUser() user: AuthUser,
+    @Query("q") q: string,
+    @Query("country") country: string,
+  ): Promise<CatalogueWineSearch> {
+    const house = houseOf(user);
+    const code =
+      typeof country === "string" ? country.trim().toUpperCase() : "";
+    if (!/^[A-Z]{2}$/.test(code)) {
+      throw new BadRequestException(
+        "country must be a two-letter ISO 3166-1 code.",
+      );
+    }
+    return this.providersService.catalogueWineListers(
+      house,
+      wineQueryOf(q),
+      code,
+    );
+  }
 
   // =========================================================================
   // B2 (batch 66) — how many vendors have stated a usual currency.
@@ -782,12 +871,12 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ) {
     try {
-      await this.providersService.deleteProviderLocation(
+      const after = await this.providersService.deleteProviderLocation(
         providerId,
         locationId,
         houseOf(user),
       );
-      return { success: true };
+      return { success: true, ...after };
     } catch (error) {
       rethrow(error, "Failed to delete provider location");
     }

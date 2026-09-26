@@ -25,6 +25,9 @@ import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from './pv-format';
 import { TwinSheet } from './TwinSheet';
 import { UsualCurrencyCoveragePanel } from './UsualCurrencyCoveragePanel';
 import { useProvidersNextData, type ProviderCardVM } from './useProvidersNextData';
+import { useVendorScopes } from './useVendorScopes';
+import { BookSearchBar, FindNewVendors, ScopeNotice, VendorScopeBar } from './VendorScopes';
+import { soldTag, supplierTag } from './vendor-scope';
 
 /**
  * `?vendor=<id>` opens that vendor's sheet — where the currency control lives.
@@ -45,10 +48,13 @@ function BucketCard({
   vm,
   ordersKnown,
   onOpen,
+  tag,
 }: {
   vm: ProviderCardVM;
   ordersKnown: boolean;
   onOpen: () => void;
+  /** On "Supplies my menu": what the evidence is (item 36). Not a fourth fact. */
+  tag?: string | null;
 }) {
   const p = vm.provider;
   const open = !ordersKnown || vm.openOrders === null ? EM : String(vm.openOrders);
@@ -96,6 +102,14 @@ function BucketCard({
         >
           {p.name}
         </span>
+        {tag && (
+          <span
+            data-testid="supply-tag"
+            style={{ display: 'block', marginTop: 2, fontSize: 11, color: 'var(--ink-3, #7C7365)' }}
+          >
+            {tag}
+          </span>
+        )}
       </div>
       <dl style={{ margin: 0, display: 'grid', gap: 2, fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
         <div className="flex justify-between gap-3">
@@ -117,6 +131,18 @@ function BucketCard({
 
 export default function ProvidersNext() {
   const data = useProvidersNextData();
+  // Supplies my menu -> All my vendors -> Find new vendors (founder,
+  // 2026-09-26, item 36). The rules are in vendor-scope.ts.
+  const scopes = useVendorScopes(data.cards, data.hasData);
+  const addedCatalogueIds = useMemo(
+    () =>
+      new Set(
+        data.cards
+          .map((vm) => vm.provider.catalogueVendorId)
+          .filter((id): id is string => typeof id === 'string' && id !== ''),
+      ),
+    [data.cards],
+  );
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
   /*
    * A sheet opened FROM THE CURRENCY PROMPT — the panel's link or `?vendor=` —
@@ -176,7 +202,7 @@ export default function ProvidersNext() {
                 margin: '4px 0 0',
               }}
             >
-              Providers
+              Vendors
             </h1>
           </div>
           <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
@@ -224,13 +250,24 @@ export default function ProvidersNext() {
             2026-09-06 batch 66). It counts and links; it pre-fills nothing. */}
         <UsualCurrencyCoveragePanel knownIds={knownIds} onOpenVendor={openById} />
 
-        {data.hasData && data.cards.length === 0 && !data.isError && (
+        <VendorScopeBar scopes={scopes} />
+        <ScopeNotice scopes={scopes} />
+        {scopes.scope === 'find' && (
+          <FindNewVendors find={scopes.find} addedCatalogueIds={addedCatalogueIds} />
+        )}
+        {/* Name-only search, any vintage (founder, 2026-09-26, round 7, item
+            48). Not on the menu rung: that one is the exact vintage. */}
+        {scopes.scope === 'all' && data.hasData && data.cards.length > 0 && (
+          <BookSearchBar book={scopes.book} shown={scopes.visible ? scopes.visible.length : null} />
+        )}
+
+        {scopes.scope !== 'find' && data.hasData && data.cards.length === 0 && !data.isError && (
           <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
             No vendors yet — the book is open and empty.
           </p>
         )}
 
-        {!data.ordersKnown && data.hasData && data.cards.length > 0 && (
+        {scopes.scope !== 'find' && !data.ordersKnown && data.hasData && data.cards.length > 0 && (
           <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '0 0 10px' }}>
             The orders book hasn’t answered yet — open-order counts show {EM} until it does.
           </p>
@@ -240,10 +277,21 @@ export default function ProvidersNext() {
           className="grid gap-3"
           style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}
         >
-          {data.cards.map((vm) => (
+          {(scopes.scope === 'find' ? [] : (scopes.visible ?? [])).map((vm) => (
             <BucketCard
               key={vm.provider.id}
               vm={vm}
+              tag={
+                scopes.scope === 'menu'
+                  ? (() => {
+                      const s = scopes.supplierOf(vm.provider.id);
+                      return s ? supplierTag(s) : null;
+                    })()
+                  : (() => {
+                      const s = scopes.book.sellerOf(vm.provider.id);
+                      return s ? soldTag(s) : null;
+                    })()
+              }
               ordersKnown={data.ordersKnown}
               onOpen={() => {
                 setOpenedForCurrency(false);

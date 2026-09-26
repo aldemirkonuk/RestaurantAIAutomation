@@ -24,7 +24,11 @@ on this tree with
     grep -rn "price_history" apps services --include='*.ts' --include='*.tsx' \
         --include='*.py' --include='*.sql' | grep -v /dist/
 
-there is exactly ONE writer and ZERO readers. The Python agent's
+there is exactly ONE writer and ZERO readers. [2026-09-26: one reader now, a
+PRESENCE read in apps/api-gateway/src/providers/vendor-menu-supply.ts that
+selects no price or quantity -- see SELECT_LITERAL_RE below. Same day, a
+second one: apps/api-gateway/src/providers/vendor-wine-search.ts, the /vendors
+name-only wine search (item 48), with the identical projection.] The Python agent's
 `_get_price_history` reads `procurement_orders.price_per_bottle` -- a different
 table that merely shares the phrase. A guard written against zero readers is
 not idle: it is the only moment at which the rule can be free, and it exists so
@@ -191,6 +195,21 @@ CHAIN_RE = re.compile(
 )
 SELECT_IN_CHAIN_RE = re.compile(r"\.select\(")
 
+# A PRESENCE read: a literal projection that names no number the unit governs.
+# `select("id, provider_id, master_wine_id")` asks "who priced which wine, when"
+# -- it reads no price and no quantity, so no two rows of it can be added or
+# compared across units, and there is nothing for a unit to fix. Added
+# 2026-09-26 for /vendors' "Supplies my menu" (vendor-menu-supply.ts), which
+# reads price_history as purchase EVIDENCE only.
+#
+# Deliberately narrow, so it cannot become a way around the rule:
+#   * the projection must be ONE string literal closed right after (`"…")`);
+#   * it must not name `price` or `quantity`, nor `*`, nor any `(` (an embed or
+#     an aggregate), nor `${` (a column list assembled at runtime).
+# Anything else falls through to the unit checks below, unchanged.
+SELECT_LITERAL_RE = re.compile(r"""\.select\(\s*(["'`])([^"'`]*)\1\s*[,)]""")
+UNIT_GOVERNED_RE = re.compile(r"""\*|\(|\$\{|\b(?:price|quantity)\b""")
+
 # A unit filter, in either client's spelling. `in_` is supabase-py.
 UNIT_FILTER_RE = re.compile(
     r"""\.(?:eq|in|in_|filter|neq|is|match)\(\s*["']unit["']"""
@@ -259,6 +278,7 @@ def run(root: Path) -> tuple[int, list[str], dict[str, int]]:
         "compliant": 0,
         "sql_reads": 0,
         "identity_keyed": 0,
+        "presence_reads": 0,
     }
 
     for path in sorted(files):
@@ -281,6 +301,11 @@ def run(root: Path) -> tuple[int, list[str], dict[str, int]]:
                 continue  # a write, or a chain that names no projection
             counts["reads"] += 1
             line = line_of(m.start())
+            projection = SELECT_LITERAL_RE.search(chain)
+            if projection and not UNIT_GOVERNED_RE.search(projection.group(2)):
+                counts["presence_reads"] += 1
+                counts["compliant"] += 1
+                continue
             if UNIT_FILTER_RE.search(chain):
                 counts["compliant"] += 1
                 continue
@@ -392,13 +417,14 @@ def main() -> int:
             print(f"  - {f}")
         return 1
     readers = counts["reads"]
-    tail = "0 readers today" if readers == 0 else f"{counts['compliant']}/{readers} state a unit"
+    tail = "0 readers today" if readers == 0 else f"{counts['compliant']}/{readers} state a unit or read no unit-governed number"
     print(
         f"PASS -- every read of {TABLE} filters on `unit` or groups by it "
         f"({tail}; {counts['sql_reads']} raw-SQL read(s); {counts['mentions']} "
         f"mention(s) of the table across {counts['files_scanned']} source files "
         f"in {len(READ_ROOTS)} roots; {counts['identity_keyed']} identity-keyed "
-        f"read(s), each also stating a unit)."
+        f"read(s), each also stating a unit; {counts['presence_reads']} presence "
+        f"read(s) that select no price or quantity)."
     )
     return 0
 
@@ -567,6 +593,43 @@ def self_test() -> int:
             encoding="utf-8",
         )
         expect("raw SQL grouping by identity AND unit", code_of(root), 0)
+
+        # P. a PRESENCE read -- names no price, no quantity -- is compliant and
+        # counted as such; each way of naming a unit-governed number is not.
+        (root / SVC).write_text(
+            svc.replace(
+                "  async record(row) {",
+                "  async whoPriced(id) {\n"
+                '    return this.db.supabase.from("price_history")\n'
+                '      .select("id, provider_id, master_wine_id").eq("restaurant_id", id);\n'
+                "  }\n"
+                "  async record(row) {",
+            ),
+            encoding="utf-8",
+        )
+        c, findings, counts = run(root)
+        expect("a presence read naming no price or quantity", c, 0)
+        if counts["presence_reads"] != 1:
+            failures.append(f"presence read not counted: {counts}")
+        for label, projection in (
+            ("a presence-looking read selecting *", '"*"'),
+            ("a read selecting quantity", '"id, quantity"'),
+            ("a read selecting price among ids", '"id, provider_id, price"'),
+            ("a read with an embed", '"id, orders(price)"'),
+            ("a read with a runtime column list", "`id, ${cols}`"),
+        ):
+            (root / SVC).write_text(
+                svc.replace(
+                    "  async record(row) {",
+                    "  async peek(id, cols) {\n"
+                    '    return this.db.supabase.from("price_history")\n'
+                    f"      .select({projection}).eq(\"restaurant_id\", id);\n"
+                    "  }\n"
+                    "  async record(row) {",
+                ),
+                encoding="utf-8",
+            )
+            expect(label, code_of(root), 1)
 
         # C. a NON-compliant read -- the whole point.
         (root / SVC).write_text(

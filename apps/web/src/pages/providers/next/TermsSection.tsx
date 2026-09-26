@@ -400,7 +400,7 @@ function Editor({
         <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
           {nothingChanged
             ? 'Nothing has changed, so there is nothing to record.'
-            : 'Your name and the time are filed with this, on the provider row.'}
+            : 'Your name and the time are filed with this, on the vendor row.'}
         </span>
       </div>
     </div>

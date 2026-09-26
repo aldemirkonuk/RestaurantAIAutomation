@@ -31,6 +31,17 @@ import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
 import { isIso4217 } from "../common/iso-4217";
+import {
+  readVendorMenuSupply,
+  type VendorMenuSupply,
+} from "./vendor-menu-supply";
+import {
+  readCatalogueWineListers,
+  readOwnWineSellers,
+  type CatalogueWineSearch,
+  type OwnWineSearch,
+  type WineQuery,
+} from "./vendor-wine-search";
 
 function normalizeToE164(phone: string | null | undefined): string | null {
   if (!phone) return null;
@@ -1214,25 +1225,37 @@ export class ProvidersService {
     }
 
     return (data || []).map((row: any) => ({
-      id: row.id,
-      name: row.name,
-      type: row.type,
-      address: row.address,
-      isPrimary: row.is_primary,
-      // Numeric columns arrive as strings over PostgREST; Number() here keeps
-      // the API contract numeric so callers do not compare "40.7" to 40.7.
-      latitude:
-        row.latitude === null || row.latitude === undefined
-          ? null
-          : Number(row.latitude),
-      longitude:
-        row.longitude === null || row.longitude === undefined
-          ? null
-          : Number(row.longitude),
-      geocodedAt: row.geocoded_at ?? null,
-      geocodeSource: row.geocode_source ?? null,
+      ...this.mapLocationRow(row),
       createdAt: row.created_at,
     }));
+  }
+
+  /**
+   * Clear the primary mark on every OTHER branch of this vendor in this house.
+   *
+   * Runs before the write that sets the new primary, and its error is read:
+   * the old code ignored it, so a failed demotion left two primaries and the
+   * sheet reported success.
+   */
+  private async demoteOtherPrimaries(
+    providerId: string,
+    restaurantId: string,
+    exceptId?: string,
+  ) {
+    let q = this.databaseService.supabase
+      .from("provider_locations")
+      .update({ is_primary: false })
+      .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId);
+    if (exceptId) q = q.neq("id", exceptId);
+    const { error } = await q;
+    if (error) {
+      this.logger.error("Failed to clear the other primary branches", {
+        providerId,
+        error: error.message,
+      });
+      throw error;
+    }
   }
 
   async createProviderLocation(
@@ -1244,11 +1267,7 @@ export class ProvidersService {
     // a house could hang a location off ANOTHER house's provider id.
     await this.getProvider(providerId, restaurantId);
     if (dto.isPrimary) {
-      await this.databaseService.supabase
-        .from("provider_locations")
-        .update({ is_primary: false })
-        .eq("provider_id", providerId)
-        .eq("restaurant_id", restaurantId);
+      await this.demoteOtherPrimaries(providerId, restaurantId);
     }
 
     const { data, error } = await this.databaseService.supabase
@@ -1283,24 +1302,7 @@ export class ProvidersService {
       throw error;
     }
 
-    const row = data as any;
-    return {
-      id: row.id,
-      name: row.name,
-      type: row.type,
-      address: row.address,
-      isPrimary: row.is_primary,
-      latitude:
-        row.latitude === null || row.latitude === undefined
-          ? null
-          : Number(row.latitude),
-      longitude:
-        row.longitude === null || row.longitude === undefined
-          ? null
-          : Number(row.longitude),
-      geocodedAt: row.geocoded_at ?? null,
-      geocodeSource: row.geocode_source ?? null,
-    };
+    return this.mapLocationRow(data as any);
   }
 
   async updateProviderLocation(
@@ -1310,29 +1312,67 @@ export class ProvidersService {
     dto: UpdateProviderLocationDto,
   ) {
     await this.getProvider(providerId, restaurantId);
-    if (dto.isPrimary) {
-      await this.databaseService.supabase
-        .from("provider_locations")
-        .update({ is_primary: false })
-        .eq("provider_id", providerId)
-        .eq("restaurant_id", restaurantId);
+
+    // The branch must be this vendor's, in this house, BEFORE anything is
+    // written. The old order demoted every other primary first and only then
+    // found the id was wrong, so a PATCH with a stale id answered 404 and had
+    // still taken the primary mark off the vendor's real branch.
+    const { data: found, error: findError } = await this.databaseService.supabase
+      .from("provider_locations")
+      .select("id, address")
+      .eq("id", locationId)
+      .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (findError) {
+      this.logger.error("Failed to read provider location", {
+        locationId,
+        error: findError.message,
+      });
+      throw findError;
+    }
+    if (!found) {
+      throw new NotFoundException(
+        `No location with id ${locationId} belongs to this vendor.`,
+      );
     }
 
+    if (dto.isPrimary) {
+      await this.demoteOtherPrimaries(providerId, restaurantId, locationId);
+    }
+
+    const hasPair = dto.latitude !== undefined && dto.longitude !== undefined;
+    const newAddress = dto.address !== undefined ? dto.address || null : undefined;
+    const addressMoved =
+      newAddress !== undefined &&
+      newAddress !== ((found as { address?: string | null }).address ?? null);
     const { data, error } = await this.databaseService.supabase
       .from("provider_locations")
       .update({
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.type !== undefined && { type: dto.type }),
-        ...(dto.address !== undefined && { address: dto.address }),
+        ...(newAddress !== undefined && { address: newAddress }),
         ...(dto.isPrimary !== undefined && { is_primary: dto.isPrimary }),
-        ...(dto.latitude !== undefined && dto.longitude !== undefined
+        ...(hasPair
           ? {
               latitude: dto.latitude,
               longitude: dto.longitude,
               geocoded_at: new Date().toISOString(),
               geocode_source: "google_places",
             }
-          : {}),
+          : addressMoved
+            ? // A different address with no point of its own. The old point
+              // was resolved for the OLD address; keeping it would pin this
+              // branch where it no longer is and still say Google placed it
+              // there. The same address sent again (the legacy sheet resends
+              // every field) keeps its point.
+              {
+                latitude: null,
+                longitude: null,
+                geocoded_at: null,
+                geocode_source: null,
+              }
+            : {}),
       })
       .eq("id", locationId)
       .eq("provider_id", providerId)
@@ -1353,13 +1393,100 @@ export class ProvidersService {
       );
     }
 
-    const row = data as any;
+    return this.mapLocationRow(data as any);
+  }
+
+  /**
+   * Remove one branch. Answers which branch, if any, took the primary mark.
+   *
+   * A delete that matched nothing is a 404, not a success: the old code
+   * answered `{ success: true }` for an id that was never this vendor's,
+   * which is absence reported as a done job.
+   *
+   * Removing the primary hands the mark to the oldest remaining branch — the
+   * rule the legacy sheet applied in its own state before syncing
+   * (`EditProviderModal.tsx`, `removeLocation`), moved here so there is one
+   * place that decides it. If that second write fails the branch is still
+   * gone and `promotionFailed` says the mark went nowhere.
+   */
+  async deleteProviderLocation(
+    providerId: string,
+    locationId: string,
+    restaurantId: string,
+  ): Promise<{ promotedId: string | null; promotionFailed: boolean }> {
+    await this.getProvider(providerId, restaurantId);
+    const { data, error } = await this.databaseService.supabase
+      .from("provider_locations")
+      .delete()
+      .eq("id", locationId)
+      .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .select("id, is_primary");
+
+    if (error) {
+      this.logger.error("Failed to delete provider location", {
+        locationId,
+        error: error.message,
+      });
+      throw error;
+    }
+    const removed = (data ?? []) as { id: string; is_primary: boolean }[];
+    if (removed.length === 0) {
+      throw new NotFoundException(
+        `No location with id ${locationId} belongs to this vendor.`,
+      );
+    }
+
+    // Only one branch holds the mark at a time (every primary write demotes
+    // the others first), so removing a branch that did not hold it changes
+    // nothing about which one does.
+    if (!removed[0].is_primary) {
+      return { promotedId: null, promotionFailed: false };
+    }
+
+    const { data: next, error: nextError } = await this.databaseService.supabase
+      .from("provider_locations")
+      .select("id")
+      .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .order("created_at")
+      .limit(1)
+      .maybeSingle();
+    if (nextError) {
+      this.logger.warn("Branch removed; could not read what remains", {
+        providerId,
+        error: nextError.message,
+      });
+      return { promotedId: null, promotionFailed: true };
+    }
+    if (!next) return { promotedId: null, promotionFailed: false };
+
+    const nextId = (next as { id: string }).id;
+    const { error: promoteError } = await this.databaseService.supabase
+      .from("provider_locations")
+      .update({ is_primary: true })
+      .eq("id", nextId)
+      .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId);
+    if (promoteError) {
+      this.logger.warn("Branch removed; the next branch was not made primary", {
+        providerId,
+        error: promoteError.message,
+      });
+      return { promotedId: null, promotionFailed: true };
+    }
+    return { promotedId: nextId, promotionFailed: false };
+  }
+
+  private mapLocationRow(row: Record<string, any>) {
     return {
       id: row.id,
       name: row.name,
       type: row.type,
       address: row.address,
       isPrimary: row.is_primary,
+      // Numeric columns arrive as strings over PostgREST; Number() here keeps
+      // the API contract numeric so callers do not compare "40.7" to 40.7.
       latitude:
         row.latitude === null || row.latitude === undefined
           ? null
@@ -1371,28 +1498,6 @@ export class ProvidersService {
       geocodedAt: row.geocoded_at ?? null,
       geocodeSource: row.geocode_source ?? null,
     };
-  }
-
-  async deleteProviderLocation(
-    providerId: string,
-    locationId: string,
-    restaurantId: string,
-  ) {
-    await this.getProvider(providerId, restaurantId);
-    const { error } = await this.databaseService.supabase
-      .from("provider_locations")
-      .delete()
-      .eq("id", locationId)
-      .eq("provider_id", providerId)
-      .eq("restaurant_id", restaurantId);
-
-    if (error) {
-      this.logger.error("Failed to delete provider location", {
-        locationId,
-        error: error.message,
-      });
-      throw error;
-    }
   }
 
   // =========================================================================
@@ -1707,5 +1812,85 @@ export class ProvidersService {
     unstated.sort((a, b) => a.name.localeCompare(b.name));
 
     return { stated, total: live.length, unstated };
+  }
+
+  /**
+   * Which of this house's vendors supply a wine on its current menu, from
+   * purchase evidence (founder, 2026-09-26, item 36 — the "Supplies my menu"
+   * rung of /vendors). The rules live in `vendor-menu-supply.ts`. A failed
+   * read is a 503 with the reason, never a menu nobody supplies.
+   */
+  async vendorMenuSupply(restaurantId: string): Promise<VendorMenuSupply> {
+    try {
+      return await readVendorMenuSupply(
+        this.databaseService.supabase,
+        restaurantId,
+      );
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? "unknown";
+      this.logger.error("Failed to read which vendors supply the menu", {
+        restaurantId,
+        error: message,
+      });
+      throw new ServiceUnavailableException(
+        `${message}. That is a failed read, not a menu no vendor supplies.`,
+      );
+    }
+  }
+
+  /**
+   * The name-only wine search on "All my vendors" (founder, 2026-09-26, round
+   * 7, item 48): this house's vendors with purchase evidence for ANY vintage of
+   * the wine named. Rules in `vendor-wine-search.ts`. A failed read is a 503.
+   */
+  async ownWineSellers(
+    restaurantId: string,
+    query: WineQuery,
+  ): Promise<OwnWineSearch> {
+    try {
+      return await readOwnWineSellers(
+        this.databaseService.supabase,
+        restaurantId,
+        query,
+      );
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? "unknown";
+      this.logger.error("Failed to search the vendor book by wine", {
+        restaurantId,
+        error: message,
+      });
+      throw new ServiceUnavailableException(
+        `${message}. That is a failed search, not a wine nobody sold you.`,
+      );
+    }
+  }
+
+  /**
+   * The same search on "Find new vendors": curated catalogue vendors a price
+   * sighting (this house's own, or openly posted) ties to any vintage of the
+   * wine. A failed read is a 503.
+   */
+  async catalogueWineListers(
+    restaurantId: string,
+    query: WineQuery,
+    country: string,
+  ): Promise<CatalogueWineSearch> {
+    try {
+      return await readCatalogueWineListers(
+        this.databaseService.supabase,
+        restaurantId,
+        query,
+        country,
+      );
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? "unknown";
+      this.logger.error("Failed to search the vendor catalogue by wine", {
+        restaurantId,
+        error: message,
+      });
+      throw new ServiceUnavailableException(
+        `${message}. That is a failed search, not a wine no vendor lists.`,
+      );
+    }
   }
 }

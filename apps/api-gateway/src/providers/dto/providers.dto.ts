@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -506,13 +507,26 @@ export class BulkImportResultDto {
 
 // --- Provider Locations DTOs ---
 
+/**
+ * The four kinds of branch `provider_locations_type_check` admits (baseline
+ * migration). Named here so a fifth value is a 400 with the list, not a 500
+ * from a CHECK the caller cannot see.
+ */
+export const PROVIDER_LOCATION_TYPES = [
+  "office",
+  "warehouse",
+  "store",
+  "other",
+] as const;
+
 export class CreateProviderLocationDto {
   @ApiProperty()
   @IsString()
+  @IsNotEmpty()
   name: string;
 
-  @ApiPropertyOptional({ description: "office | warehouse | store | other" })
-  @IsString()
+  @ApiPropertyOptional({ enum: PROVIDER_LOCATION_TYPES })
+  @IsIn(PROVIDER_LOCATION_TYPES as unknown as string[])
   @IsOptional()
   type?: string;
 
@@ -549,11 +563,12 @@ export class CreateProviderLocationDto {
 export class UpdateProviderLocationDto {
   @ApiPropertyOptional()
   @IsString()
+  @IsNotEmpty()
   @IsOptional()
   name?: string;
 
-  @ApiPropertyOptional({ description: "office | warehouse | store | other" })
-  @IsString()
+  @ApiPropertyOptional({ enum: PROVIDER_LOCATION_TYPES })
+  @IsIn(PROVIDER_LOCATION_TYPES as unknown as string[])
   @IsOptional()
   type?: string;
 

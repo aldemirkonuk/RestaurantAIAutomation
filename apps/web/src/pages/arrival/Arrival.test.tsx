@@ -243,7 +243,7 @@ describe('Arrival folios', () => {
     )
     expect(
       screen.getByRole('link', { name: 'Open the vendor book' }),
-    ).toHaveAttribute('href', '/providers')
+    ).toHaveAttribute('href', '/vendors')
     // The vendor folio is the one the founder named as skippable, so its skip
     // is worded as an optional folio's ("Not yet — carry it forward") rather
     // than with every other folio's identical label.

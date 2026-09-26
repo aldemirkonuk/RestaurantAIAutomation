@@ -200,7 +200,7 @@ describe('the agreement currency field', () => {
     fireEvent.change(screen.getByLabelText('Vendor'), { target: { value: 'prov-1' } });
 
     const link = await screen.findByTestId('state-usual-currency-link');
-    expect(link).toHaveAttribute('href', '/providers?vendor=prov-1');
+    expect(link).toHaveAttribute('href', '/vendors?vendor=prov-1');
     // the house's currency is still OFFERED as a choice, never assumed
     expect((screen.getByLabelText('Currency') as HTMLSelectElement).value).toBe('');
     expect(screen.getByText(/this house reports in TRY/)).toBeTruthy();

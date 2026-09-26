@@ -163,7 +163,7 @@ export const SECTIONS: SectionSpec[] = [
   { id: 'measurement', label: 'Measurement', title: 'Measurement & recipes', kind: 'browser', group: 'yours', order: 3,
     description: 'Units, the default glass pour, and whether recipes are tracked.' },
   { id: 'map', label: 'Map', title: 'Map', kind: 'account', group: 'yours', order: 2,
-    description: 'How wide Find distributors frames you when it opens.' },
+    description: 'How wide vendor discovery frames you when it opens.' },
   { id: 'features', label: 'Features', title: 'Features', kind: 'restaurant', group: 'autonomy', order: 1,
     description: 'The switches that change what the system does on its own.' },
   { id: 'pos', label: 'POS', title: 'Point of sale', kind: 'restaurant', group: 'buying', order: 3,

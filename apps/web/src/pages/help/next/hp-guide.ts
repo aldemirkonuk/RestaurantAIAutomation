@@ -120,7 +120,7 @@ export const GUIDE_ENTRIES: readonly GuideEntry[] = [
         text: 'Orders and Receiving are the two sides of one exchange with a vendor: what was asked for, and what actually arrived. A receipt is where a discrepancy is recorded, not guessed at.',
       },
       {
-        text: 'Providers is the house’s vendor book — terms, contacts and the price history Recommendations and the state section above both read.',
+        text: 'Vendors is the house’s vendor book — terms, contacts and the price history Recommendations and the state section above both read.',
       },
       {
         text: 'Reports and Recommendations are where the numbers become a decision: goals, digests, and the analyses the house has actually earned enough history to compute.',
