@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import { storeRenewedSession } from '../../lib/sessionRenewed'
 
 export interface LinkedProviders {
   google: boolean
@@ -29,11 +30,22 @@ export const profileApi = {
     return data.user
   },
 
+  /**
+   * Change (or first set) the password. The gateway signs out every other
+   * session of this person and answers with a new pair for this one (ADR
+   * 0225); it is stored at once, since this session's old tokens are refused
+   * from now on.
+   */
   async changePassword(body: {
     currentPassword?: string
     newPassword: string
   }): Promise<void> {
-    await apiClient.post('/auth/me/password', body)
+    const { data } = await apiClient.post<{
+      success: boolean
+      accessToken?: string
+      refreshToken?: string
+    }>('/auth/me/password', body)
+    storeRenewedSession(data)
   },
 
   async getLinkedProviders(): Promise<LinkedProviders> {

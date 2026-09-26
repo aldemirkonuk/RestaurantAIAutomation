@@ -11,6 +11,11 @@ describe("public account email identity", () => {
     expect(html).not.toContain("WineOps");
     expect(html).toContain("https://mudavym.com/reset-password?token=example");
     expect(html).toContain("1 hour");
+    // ADR 0174 D8 / ADR 0225: the mail says what the reset does to sessions,
+    // and ships in the same change as the revocation itself.
+    expect(html).toContain(
+      "When you choose a new password, every device signed in to your account is signed out.",
+    );
   });
   it("uses Mudavym for Studio invitations, preserving recipient and role details", () => {
     const html = studioInviteEmailTemplate({
