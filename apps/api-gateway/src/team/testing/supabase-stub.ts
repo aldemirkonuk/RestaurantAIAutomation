@@ -392,5 +392,28 @@ export function asDatabaseService(db: StubDb): any {
     supabase: db.supabase,
     client: db.supabase,
     getClient: () => db.supabase,
+    // Mirrors `DatabaseService.getRestaurantMemberIds` (database.service.ts)
+    // so a spec can hand a real `NotificationsService` this stub and get the
+    // same roster `TeamService` sees over the same tables — needed to run
+    // `persistForRestaurant` for real instead of mocking it away.
+    async getRestaurantMemberIds(restaurantId: string): Promise<string[]> {
+      const { data: ura, error: uraErr } = await db.supabase
+        .from("user_restaurant_access")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true);
+      if (uraErr) throw new Error(`user_restaurant_access: ${uraErr.message}`);
+      const uraIds = (ura || []).map((r: any) => r.user_id).filter(Boolean);
+      if (uraIds.length) return Array.from(new Set(uraIds)) as string[];
+
+      const { data: users, error: usersErr } = await db.supabase
+        .from("users")
+        .select("user_id")
+        .eq("restaurant_id", restaurantId);
+      if (usersErr) throw new Error(`users: ${usersErr.message}`);
+      return Array.from(
+        new Set((users || []).map((u: any) => u.user_id).filter(Boolean)),
+      ) as string[];
+    },
   };
 }

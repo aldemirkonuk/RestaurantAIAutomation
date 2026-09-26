@@ -65,11 +65,20 @@ export class LogsController {
     @Query("before") before?: string,
   ) {
     try {
-      await this.members.assertMembership(user.userId, restaurantId);
+      // The membership row's own role, not a `@CurrentUser("role")` JWT claim
+      // — this call already runs to gate the route, so reading its role costs
+      // nothing extra and cannot go stale the way a token can across houses
+      // (`auth/house-role.ts`). It decides whether the timeline withholds a
+      // colleague's Away set/ended entries (ADR 0218 round 4, 2026-09-22).
+      const membership = await this.members.assertMembership(
+        user.userId,
+        restaurantId,
+      );
       return await this.timeline.getTimeline(restaurantId, {
         correlationId,
         limit: limit ? parseInt(limit, 10) : undefined,
         before,
+        role: membership.role,
       });
     } catch (error) {
       // A refusal (403) or a malformed cursor (400) is already the right

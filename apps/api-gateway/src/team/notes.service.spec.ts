@@ -4,6 +4,9 @@ import { TextSenderService } from "../communications/text/text-sender.service";
 import { textCollaborators } from "../communications/text/testing/text-collaborators";
 import { TeamService } from "./team.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
+import { AreaRoutingService } from "../areas/area-routing.service";
+import { AwayHoldService } from "./away-hold.service";
+import { houseLocalDay } from "../areas/area-routing";
 
 /**
  * A crew note is a record. (Founder, 2026-09-04; team.md §13.7.)
@@ -304,5 +307,107 @@ describe("NotesService — a staff member sees only what was addressed to them",
     // able to read every note is the shape ADR 0088 closed on time-off reasons.
     const asSam: any = await svc(db).notes.list(SAM, RID, WEEK);
     expect(asSam.notes).toHaveLength(0);
+  });
+});
+
+/**
+ * A note to someone who is Away waits for them (ADR 0218, the founder's
+ * round-2 answer 3, 2026-09-21), and the sender sees "Away until <date>".
+ * The hold service and the Away reader are the real ones over the stub.
+ */
+describe("NotesService — a note to someone Away waits until they are back", () => {
+  const TODAY = houseLocalDay(new Date(), "UTC");
+  const UNTIL = new Date(Date.parse(`${TODAY}T00:00:00Z`) + 4 * 86_400_000).toISOString().slice(0, 10);
+
+  function awaySeed(errors: Record<string, { message: string }> = {}): StubDb {
+    const db = seed(errors);
+    db.tables.restaurants = [{ id: RID, timezone: "UTC" }];
+    db.tables.house_away = [{ restaurant_id: RID, user_id: SAM, away_from: TODAY, away_until: UNTIL }];
+    db.tables.house_away_held = [];
+    return db;
+  }
+
+  function withHold(db: StubDb) {
+    const base = svc(db);
+    const hold = new AwayHoldService(asDatabaseService(db), new AreaRoutingService(asDatabaseService(db)));
+    const team = new TeamService(asDatabaseService(db));
+    const notes = new NotesService(asDatabaseService(db), team, base.notifications, base.push, base.text, hold);
+    return { notes, notifications: base.notifications };
+  }
+
+  it("reaches the person who is here now, and holds it for the one who is Away", async () => {
+    const db = awaySeed();
+    const { notes, notifications } = withHold(db);
+    const res: any = await notes.create(MANAGER, RID, {
+      weekStart: WEEK,
+      body: "Saturday moves to seven.",
+      memberIds: ["m-sam", "m-ray"],
+    } as any);
+
+    // The record is the same: both are recipients.
+    expect(res.addressed).toBe(2);
+    expect(db.tables.team_note_recipients.map((r: any) => r.member_id).sort()).toEqual(["m-ray", "m-sam"]);
+    // Only Ray's inbox was written now.
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [RAY] });
+    // One hold for Sam, pointing at the note; the words stay on team_notes.
+    expect(db.tables.house_away_held).toHaveLength(1);
+    expect(db.tables.house_away_held[0]).toMatchObject({
+      restaurant_id: RID,
+      user_id: SAM,
+      kind: "team_note",
+      note_id: res.id,
+      member_id: "m-sam",
+      body: null,
+      sent_by: MANAGER,
+      away_until: UNTIL,
+    });
+    // The sender reads "Away until …" — in the response and on every receipt.
+    expect(res.away).toMatchObject({ readable: true, holdFailed: false });
+    expect(res.away.held).toEqual([
+      { memberId: "m-sam", until: UNTIL, detail: expect.stringMatching(/^Away until \d{1,2} [A-Z][a-z]{2}\. It waits/) },
+    ]);
+    const sams = db.tables.team_note_deliveries.filter((d: any) => d.member_id === "m-sam");
+    expect(sams.map((d: any) => d.channel).sort()).toEqual(["inbox", "push", "sms", "whatsapp"]);
+    expect(sams.every((d: any) => d.state === "held_away" && d.detail.startsWith("Away until "))).toBe(true);
+    expect(res.receipts.byState.heldAway).toBe(4);
+    expect(res.receipts.byState.delivered).toBe(1);
+  });
+
+  it("holds nothing and says so when Away cannot be read — the note goes to everyone now", async () => {
+    const db = awaySeed({ "house_away:select": { message: "down" } });
+    const { notes, notifications } = withHold(db);
+    const res: any = await notes.create(MANAGER, RID, {
+      weekStart: WEEK,
+      body: "Saturday moves to seven.",
+      memberIds: ["m-sam", "m-ray"],
+    } as any);
+    expect(res.away).toEqual({ readable: false, holdFailed: false, held: [] });
+    expect(notifications.persistForRestaurant.mock.calls[0][2].onlyUserIds.sort()).toEqual([RAY, SAM].sort());
+    expect(db.tables.house_away_held).toEqual([]);
+  });
+
+  it("delivers now, and says so, when the hold cannot be written — never dropped", async () => {
+    const db = awaySeed({ "house_away_held:insert": { message: "down" } });
+    const { notes, notifications } = withHold(db);
+    const res: any = await notes.create(MANAGER, RID, {
+      weekStart: WEEK,
+      body: "Saturday moves to seven.",
+      memberIds: ["m-sam"],
+    } as any);
+    expect(res.away).toEqual({ readable: true, holdFailed: true, held: [] });
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [SAM] });
+    expect(db.tables.team_note_deliveries.some((d: any) => d.state === "held_away")).toBe(false);
+  });
+
+  it("does not hold for a person whose Away has not begun yet", async () => {
+    const db = awaySeed();
+    db.tables.house_away = [
+      { restaurant_id: RID, user_id: SAM, away_from: UNTIL, away_until: UNTIL },
+    ];
+    const { notes, notifications } = withHold(db);
+    await notes.create(MANAGER, RID, { weekStart: WEEK, body: "x", memberIds: ["m-sam"] } as any);
+    expect(notifications.persistForRestaurant.mock.calls[0][2]).toEqual({ onlyUserIds: [SAM] });
+    expect(db.tables.house_away_held).toEqual([]);
   });
 });

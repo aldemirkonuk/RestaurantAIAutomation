@@ -5,6 +5,7 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Optional,
   Param,
   Patch,
   Post,
@@ -22,6 +23,8 @@ import { NotesService } from "./notes.service";
 import { TeamService } from "./team.service";
 import { ScheduleService } from "./schedule.service";
 import { PerformanceService } from "./performance.service";
+import { AwayHoldService } from "./away-hold.service";
+import { heldDetail, splitForAway } from "./away-hold";
 import {
   AssignCoverDto,
   BroadcastDto,
@@ -61,6 +64,13 @@ export class TeamController {
     private readonly notifications: NotificationsService,
     private readonly push: ExpoPushService,
     private readonly notes: NotesService,
+    /**
+     * A message to a named person who is Away waits until they are back (ADR
+     * 0218, the founder's round-2 answer 3). Optional so the specs that build
+     * this controller with six arguments keep their behaviour; the Nest
+     * provider always has it (TeamModule provides it).
+     */
+    @Optional() private readonly awayHold?: AwayHoldService,
   ) {}
 
   private uid(req: Request & { user: AuthedUser }): string {
@@ -440,7 +450,56 @@ export class TeamController {
       ? roster.filter((m: any) => dto.memberIds!.includes(m.id))
       : roster.filter((m: any) => m.status === "active" && m.accountLinked);
     const audience: "everyone" | "selected" = named ? "selected" : "everyone";
-    const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
+
+    /**
+     * AWAY: A MESSAGE — NAMED OR TO EVERYONE — WAITS (ADR 0218, the founder's
+     * round-2 answer 3, 2026-09-21, extended to a whole-crew send by round-3
+     * answer 1, 2026-09-22: *"Wait like named"* — a person who is Away gets
+     * nothing now, whichever audience the sender chose, and the sender sees
+     * "away until <date>").
+     *
+     * BOTH audiences are held the same way, through the same table and the
+     * same `AwayReleaseService` sweep: an Away person included in "everyone"
+     * is no longer just skipped by the funnel (which drops them for good) —
+     * their copy of the message is written to `house_away_held` and delivered
+     * on their first day back, outside their quiet hours, exactly like a
+     * named send. A held person gets nothing now (no inbox row, no push). An
+     * unreadable Away register holds nothing and says so in `away.readable`
+     * (round-3 answer 2, 2026-09-22: *"Send now"* — unchanged, nothing lost or
+     * late, the same rule the alert funnel already uses); a hold that cannot
+     * be written is sent now instead of dropped, and `away.holdFailed` says
+     * that.
+     */
+    const heldChannels = (["inbox", "push"] as const).filter((c) => may(c));
+    let awayUntil: Map<string, string> | null = new Map();
+    if (this.awayHold && heldChannels.length > 0) {
+      awayUntil = await this.awayHold.awayToday(rid);
+    }
+    const split = splitForAway(targets, (m: any) => m.user_id, awayUntil ?? new Map());
+    let held = split.held;
+    let holdFailed = false;
+    if (held.length > 0) {
+      const ok = await this.awayHold!.hold(
+        held.map(({ person, until }) => ({
+          restaurant_id: rid,
+          user_id: person.user_id,
+          kind: "team_message" as const,
+          title: dto.title ?? null,
+          body: dto.message,
+          channels: [...heldChannels],
+          sent_by: userId,
+          away_until: until,
+        })),
+      );
+      if (!ok) {
+        holdFailed = true;
+        held = [];
+      }
+    }
+    // Everyone this send reaches NOW. `targets` stays the whole audience, so
+    // `recipients.targeted` still counts the people who are waiting for it.
+    const reachNow: any[] = holdFailed ? targets : split.now;
+    const userIds = reachNow.map((m: any) => m.user_id).filter(Boolean);
 
     // Read BEFORE anything is sent, because push is now governed by it. `null`
     // means the read FAILED, which is not the same as "nobody opted out" — the
@@ -457,9 +516,13 @@ export class TeamController {
       return !optOuts.optedOut[channel].has(m.user_id);
     };
 
-    // Always land in the in-app inbox — but ONLY the addressed members' inboxes
-    // when the caller named targets. A renewal request addressed to one person
-    // must never read as a restaurant-wide announcement (team-audit.md).
+    // Always land in the in-app inbox — but ONLY the people this send reaches
+    // NOW (`userIds`, from `reachNow`): the addressed members' inboxes when
+    // the caller named targets, and everyone reachable when they did not,
+    // MINUS whoever this round just held for their return (round-3 answer 1).
+    // A renewal request addressed to one person must never read as a
+    // restaurant-wide announcement (team-audit.md), and a held person's inbox
+    // row is written once, by the release, not twice.
     if (may("inbox"))
       await this.notifications.persistForRestaurant(
         rid,
@@ -471,11 +534,13 @@ export class TeamController {
           actionUrl: "/team",
           actionLabel: "Open Team",
         },
-        named ? { onlyUserIds: userIds } : {},
+        { onlyUserIds: userIds },
       );
 
+    // `reachNow`, never `targets`: a person held for their return is pushed
+    // when they are back, and their opt-out is read then.
     const pushable = may("push")
-      ? targets.filter((m: any) => m.user_id && wants(m, "push"))
+      ? reachNow.filter((m: any) => m.user_id && wants(m, "push"))
       : [];
     const pushIds = pushable.map((m: any) => m.user_id);
     /**
@@ -587,6 +652,22 @@ export class TeamController {
       emailed,
       texted,
       inbox: may("inbox"),
+      /**
+       * Who this message waits for (ADR 0218, round 3: named or everyone,
+       * the same way): each held person's last Away day and the sentence the
+       * sender reads. `readable: false` means Away could not be read and
+       * nothing was held; `holdFailed` means the hold could not be written
+       * and they were sent it now instead.
+       */
+      away: {
+        readable: awayUntil !== null,
+        holdFailed,
+        held: held.map(({ person, until }) => ({
+          memberId: person.id,
+          until,
+          detail: heldDetail(until),
+        })),
+      },
     };
   }
 

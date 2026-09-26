@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -11,6 +12,8 @@ import { ExpoPushService } from "../push/expo-push.service";
 import { TextSenderService } from "../communications/text/text-sender.service";
 import { TeamService } from "./team.service";
 import { CreateTeamNoteDto } from "./dto/team.dto";
+import { AwayHoldService } from "./away-hold.service";
+import { NO_SENDER_ON_RETURN, heldDetail, splitForAway } from "./away-hold";
 
 /**
  * One receipt: what happened to ONE person on ONE channel.
@@ -29,7 +32,12 @@ type DeliveryState =
   | "no_sender"
   | "declined"
   | "read_failed"
-  | "failed";
+  | "failed"
+  /**
+   * ADR 0218, the founder's round-2 answer 3: the person is Away, and the
+   * note waits for them. Replaced by what happened when it is delivered.
+   */
+  | "held_away";
 
 interface DeliveryReceipt {
   note_id: string;
@@ -77,6 +85,12 @@ export class NotesService {
      * the vendor thread, which is why the email leg was removed on 2026-09-04.
      */
     private readonly text: TextSenderService,
+    /**
+     * A note to a person who is Away waits until they are back (ADR 0218,
+     * round-2 answer 3). Optional so the specs that build this service with
+     * five arguments keep their behaviour; the Nest provider always has it.
+     */
+    @Optional() private readonly awayHold?: AwayHoldService,
   ) {}
 
   private get sb() {
@@ -277,38 +291,200 @@ export class NotesService {
       );
     }
 
-    const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
+    /**
+     * AWAY: THE NOTE WAITS (ADR 0218, the founder's round-2 answer 3, 2026-09-21:
+     * a note sent to a person who is Away waits until they are back, and the
+     * sender sees "away until <date>").
+     *
+     * Everybody named is still a recipient — the record is the same — but a
+     * person who is Away today gets nothing now: no inbox row, no push, no
+     * text. One `held_away` receipt per channel says so, with their last Away
+     * day, and `AwayReleaseService` delivers and rewrites those receipts when
+     * they are back. An unreadable Away register holds nothing (the send goes
+     * to everyone, as before) and says so in `away.readable`; a hold that
+     * cannot be written is delivered now instead of dropped.
+     */
+    const awayUntil = this.awayHold ? await this.awayHold.awayToday(restaurantId) : new Map<string, string>();
+    const split = splitForAway(targets, (m: any) => m.user_id, awayUntil ?? new Map());
+    let present: any[] = split.now;
+    let held = split.held;
+    let holdFailed = false;
+    if (held.length > 0) {
+      const ok = await this.awayHold!.hold(
+        held.map(({ person, until }) => ({
+          restaurant_id: restaurantId,
+          user_id: person.user_id,
+          kind: "team_note" as const,
+          note_id: note.id,
+          member_id: person.id,
+          sent_by: userId,
+          away_until: until,
+        })),
+      );
+      if (!ok) {
+        holdFailed = true;
+        present = targets;
+        held = [];
+      }
+    }
+
+    const { receipts, delivered } = await this.deliver(
+      restaurantId,
+      note.id,
+      present,
+      dto.body,
+      dto.weekStart,
+      textChannels,
+      senders,
+    );
+
+    const channelsToReport: Array<"whatsapp" | "sms"> =
+      textChannels.length > 0 ? textChannels : ["whatsapp", "sms"];
+    for (const { person, until } of held) {
+      for (const channel of ["inbox", "push", ...channelsToReport] as const) {
+        receipts.push({
+          note_id: note.id,
+          member_id: person.id,
+          channel,
+          state: "held_away",
+          detail: heldDetail(until),
+        });
+      }
+    }
+
+    /**
+     * THE RECEIPTS ARE WRITTEN EVEN WHEN NOTHING WAS DELIVERED. A failure here
+     * is reported and does not throw: the note itself is already on the record
+     * and rolling it back would lose a manager's message to save a receipt.
+     * What it must never do is fail silently, which is why the returned object
+     * carries `receiptsWritten` rather than assuming.
+     */
+    let receiptsWritten = false;
+    let receiptsError: string | null = null;
+    if (receipts.length) {
+      const { error: dErr } = await this.sb
+        .from("team_note_deliveries")
+        .insert(receipts);
+      if (dErr) {
+        receiptsError = dErr.message;
+        this.logger.error(`note ${note.id} receipts not written: ${dErr.message}`);
+      } else {
+        receiptsWritten = true;
+      }
+    }
+
+    /**
+     * The tally, computed from the RECEIPTS rather than from the roster.
+     *
+     * This is the fix ADR 0121 P0 asked for, stated as arithmetic: a count of
+     * people is not a count of deliveries, and every number below is derived
+     * from a row that says what happened to one person on one channel.
+     */
+    const tally = (state: DeliveryState) =>
+      receipts.filter((r) => r.state === state).length;
+
+    return {
+      id: note.id,
+      addressed: targets.length,
+      // Reported, not assumed: the note is on the record either way, and the
+      // strip must be able to say "written, but not delivered".
+      delivered,
+      channels,
+      receipts: {
+        written: receiptsWritten,
+        error: receiptsError,
+        total: receipts.length,
+        byState: {
+          delivered: tally("delivered"),
+          acceptedByService: tally("accepted_by_service"),
+          noDeviceRegistered: tally("no_device_registered"),
+          noConsent: tally("no_consent"),
+          noSender: tally("no_sender"),
+          readFailed: tally("read_failed"),
+          failed: tally("failed"),
+          heldAway: tally("held_away"),
+        },
+        note:
+          "One row per person per channel, written whether or not anything was delivered. `acceptedByService` is not a delivery, and `readFailed` is a fact about this system rather than about the crew.",
+      },
+      /**
+       * Who the note waits for (ADR 0218): the sender is told each one's last
+       * Away day. `readable: false` means Away could not be read and nothing
+       * was held; `holdFailed` means a hold could not be written and the note
+       * was delivered to them now instead.
+       */
+      away: {
+        readable: awayUntil !== null,
+        holdFailed,
+        held: held.map(({ person, until }) => ({
+          memberId: person.id,
+          until,
+          detail: heldDetail(until),
+        })),
+      },
+    };
+  }
+
+  /**
+   * Deliver a note to `targets` on every channel, and return one receipt per
+   * person per channel. Shared by the send and by the release of a note that
+   * waited for someone who was Away, so both paths deliver the same way.
+   */
+  private async deliver(
+    restaurantId: string,
+    noteId: string,
+    targets: any[],
+    body: string,
+    weekStart: string,
+    textChannels: Array<"whatsapp" | "sms">,
+    senders: { readable: boolean; reason?: string | null },
+    /**
+     * The release of a held note: an inbox write that wrote no row THROWS,
+     * before any push or text is sent, so the hold is handed back and tried
+     * again rather than deleted under a receipt that says "delivered". The
+     * funnel swallows its own failures and answers `inserted: 0`, so for a
+     * person with an account 0 is a failed write, never "nobody wanted it".
+     */
+    opts: { strictInbox?: boolean } = {},
+  ): Promise<{ receipts: DeliveryReceipt[]; delivered: { inbox: boolean; push: number } }> {
     const receipts: DeliveryReceipt[] = [];
+    let delivered = { inbox: false, push: 0 };
+    if (targets.length === 0) return { receipts, delivered };
+    const userIds = targets.map((m: any) => m.user_id).filter(Boolean);
     const push = (
       member: any,
       channel: DeliveryReceipt["channel"],
       state: DeliveryState,
       detail: string,
     ) => {
-      receipts.push({ note_id: note.id, member_id: member.id, channel, state, detail });
+      receipts.push({ note_id: noteId, member_id: member.id, channel, state, detail });
     };
 
-    let delivered = { inbox: false, push: 0 };
 
     // ── inbox ────────────────────────────────────────────────────────────
     let inboxError: string | null = null;
+    let inboxWritten: number | null = null;
     try {
-      await this.notifications.persistForRestaurant(
+      const out = await this.notifications.persistForRestaurant(
         restaurantId,
         {
           type: "system",
-          title: `A note about the week of ${dto.weekStart}`,
-          message: dto.body,
+          title: `A note about the week of ${weekStart}`,
+          message: body,
           priority: "high",
           actionUrl: "/team",
           actionLabel: "Open Team",
         },
         { onlyUserIds: userIds },
       );
+      inboxWritten = typeof out?.inserted === "number" ? out.inserted : 0;
       delivered = { ...delivered, inbox: true };
     } catch (e: any) {
       inboxError = e?.message ?? "the inbox write threw without a message";
-      this.logger.warn(`note ${note.id} not delivered to the inbox: ${inboxError}`);
+      this.logger.warn(`note ${noteId} not delivered to the inbox: ${inboxError}`);
+    }
+    if (opts.strictInbox && userIds.length > 0 && (inboxError !== null || !inboxWritten)) {
+      throw new Error(`the inbox row was not written${inboxError ? `: ${inboxError}` : ""}`);
     }
     for (const m of targets) {
       if (inboxError) {
@@ -336,7 +512,7 @@ export class NotesService {
     if (userIds.length && devices !== null && [...devices.values()].some((n) => n > 0)) {
       const outcome = await this.push.sendToUsers(userIds, {
         title: "A note from your manager",
-        body: dto.body,
+        body,
         priority: "high",
         data: { type: "team_note", actionUrl: "/team" },
       });
@@ -425,67 +601,131 @@ export class NotesService {
         const outcome = await this.text.send({
           restaurantId,
           recipientUserId: m.user_id,
-          body: dto.body,
+          body,
         });
         push(m, channel, outcome.sent ? "delivered" : "failed", outcome.words);
       }
     }
 
-    /**
-     * THE RECEIPTS ARE WRITTEN EVEN WHEN NOTHING WAS DELIVERED. A failure here
-     * is reported and does not throw: the note itself is already on the record
-     * and rolling it back would lose a manager's message to save a receipt.
-     * What it must never do is fail silently, which is why the returned object
-     * carries `receiptsWritten` rather than assuming.
-     */
-    let receiptsWritten = false;
-    let receiptsError: string | null = null;
-    if (receipts.length) {
-      const { error: dErr } = await this.sb
+    return { receipts, delivered };
+  }
+
+  /**
+   * Deliver a note that waited for one person who was Away, now that they are
+   * back (ADR 0218, round-2 answer 3). Called by `AwayReleaseService` after it
+   * has claimed the hold; a throw hands the claim back for the next sweep.
+   *
+   * It delivers exactly as the send does (`deliver`), on the channels this
+   * house has TODAY, and rewrites that person's `held_away` receipts with
+   * what happened. A held text channel the house no longer has a sender for
+   * becomes `no_sender`, so no receipt is left saying "waiting" for ever.
+   */
+  async releaseHeld(
+    restaurantId: string,
+    noteId: string,
+    memberId: string,
+  ): Promise<{ delivered: boolean; receipts: number }> {
+    const [noteRes, memberRes] = await Promise.all([
+      this.sb
+        .from("team_notes")
+        .select("id, restaurant_id, week_start, body")
+        .eq("id", noteId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle(),
+      this.sb
+        .from("team_members")
+        .select("id, restaurant_id, user_id, display_name")
+        .eq("id", memberId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle(),
+    ]);
+    if (noteRes.error) throw new Error(`team_notes could not be read: ${noteRes.error.message}`);
+    if (memberRes.error) throw new Error(`team_members could not be read: ${memberRes.error.message}`);
+    // Both keys cascade to the hold, so a missing row here is a race with a
+    // delete that is already removing the hold: nothing is owed.
+    if (!noteRes.data || !memberRes.data) return { delivered: false, receipts: 0 };
+
+    const senders = await this.text.readout(restaurantId);
+    const textChannels: Array<"whatsapp" | "sms"> = [];
+    if (senders.readable) {
+      if (senders.whatsapp?.state === "connected") textChannels.push("whatsapp");
+      if (senders.sms?.state === "connected") textChannels.push("sms");
+    }
+    const { receipts } = await this.deliver(
+      restaurantId,
+      noteId,
+      [memberRes.data],
+      noteRes.data.body,
+      String(noteRes.data.week_start).slice(0, 10),
+      textChannels,
+      senders,
+      { strictInbox: true },
+    );
+
+    const recordedAt = new Date().toISOString();
+    for (const r of receipts) {
+      const { data, error } = await this.sb
         .from("team_note_deliveries")
-        .insert(receipts);
-      if (dErr) {
-        receiptsError = dErr.message;
-        this.logger.error(`note ${note.id} receipts not written: ${dErr.message}`);
-      } else {
-        receiptsWritten = true;
+        .update({ state: r.state, detail: r.detail, recorded_at: recordedAt })
+        .eq("note_id", noteId)
+        .eq("member_id", memberId)
+        .eq("channel", r.channel)
+        .select("id");
+      if (error) {
+        // Delivered already: throwing now would hand the hold back and send it
+        // a second time. The receipt is wrong until fixed, so this is loud.
+        this.logger.error(
+          `AWAY_HOLD_RECEIPT_NOT_REWRITTEN note=${noteId} member=${memberId} channel=${r.channel} — ${error.message}. ` +
+            "It was delivered; its receipt still says it is waiting.",
+        );
+        continue;
+      }
+      if (!Array.isArray(data) || data.length === 0) {
+        const { error: insErr } = await this.sb
+          .from("team_note_deliveries")
+          // Spelled out, not spread: check_order_capture_contract.py reads the
+          // written columns off an inline literal, and a spread is blind to it.
+          .insert({
+            note_id: r.note_id,
+            member_id: r.member_id,
+            channel: r.channel,
+            state: r.state,
+            detail: r.detail,
+            recorded_at: recordedAt,
+          });
+        if (insErr) {
+          this.logger.error(
+            `note ${noteId} release receipt not written for ${memberId}/${r.channel}: ${insErr.message}`,
+          );
+        }
       }
     }
+    const { error: leftErr } = await this.sb
+      .from("team_note_deliveries")
+      .update({ state: "no_sender", detail: NO_SENDER_ON_RETURN, recorded_at: recordedAt })
+      .eq("note_id", noteId)
+      .eq("member_id", memberId)
+      .eq("state", "held_away");
+    if (leftErr) {
+      this.logger.error(`note ${noteId} left-over held receipts not closed: ${leftErr.message}`);
+    }
+    return { delivered: true, receipts: receipts.length };
+  }
 
-    /**
-     * The tally, computed from the RECEIPTS rather than from the roster.
-     *
-     * This is the fix ADR 0121 P0 asked for, stated as arithmetic: a count of
-     * people is not a count of deliveries, and every number below is derived
-     * from a row that says what happened to one person on one channel.
-     */
-    const tally = (state: DeliveryState) =>
-      receipts.filter((r) => r.state === state).length;
-
-    return {
-      id: note.id,
-      addressed: targets.length,
-      // Reported, not assumed: the note is on the record either way, and the
-      // strip must be able to say "written, but not delivered".
-      delivered,
-      channels,
-      receipts: {
-        written: receiptsWritten,
-        error: receiptsError,
-        total: receipts.length,
-        byState: {
-          delivered: tally("delivered"),
-          acceptedByService: tally("accepted_by_service"),
-          noDeviceRegistered: tally("no_device_registered"),
-          noConsent: tally("no_consent"),
-          noSender: tally("no_sender"),
-          readFailed: tally("read_failed"),
-          failed: tally("failed"),
-        },
-        note:
-          "One row per person per channel, written whether or not anything was delivered. `acceptedByService` is not a delivery, and `readFailed` is a fact about this system rather than about the crew.",
-      },
-    };
+  /**
+   * The person a note waited for left the house before coming back: their
+   * `held_away` receipts are closed as `failed`, with the reason.
+   */
+  async closeHeldForLeaver(noteId: string, memberId: string, detail: string): Promise<void> {
+    const { error } = await this.sb
+      .from("team_note_deliveries")
+      .update({ state: "failed", detail, recorded_at: new Date().toISOString() })
+      .eq("note_id", noteId)
+      .eq("member_id", memberId)
+      .eq("state", "held_away");
+    if (error) {
+      this.logger.error(`note ${noteId} held receipts not closed for ${memberId}: ${error.message}`);
+    }
   }
 
   /** The caller has opened this note. Their own row only, and only once. */

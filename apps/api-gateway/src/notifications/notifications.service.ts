@@ -12,7 +12,24 @@ import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { CommunicationsService } from "../communications/communications.service";
 import { DatabaseService } from "../database/database.service";
 import { ExpoPushService } from "../push/expo-push.service";
+import { AreaRoutingService } from "../areas/area-routing.service";
+import { type AreaLabel, readAreaLabel } from "../areas/area-label";
+import type { RouteStep } from "../areas/area-routing";
 import type { DeliveryMode, DigestFrequency } from "./dto/notifications.dto";
+
+/**
+ * How a broadcast was routed (ADR 0218), returned so a caller and a spec can
+ * see it rather than infer it from a row count. Counts only — never ids.
+ */
+export interface PersistRouting {
+  label: AreaLabel;
+  step: RouteStep;
+  alerted: number;
+  inboxOnly: number;
+  heldAway: number;
+  /** Non-null: the area registers were unreadable and everyone was written to. */
+  degraded: string | null;
+}
 
 export interface NotificationPayload {
   type: string;
@@ -50,6 +67,11 @@ export class NotificationsService {
     private readonly communicationsService?: CommunicationsService,
     @Optional()
     private readonly expoPushService?: ExpoPushService,
+    // ADR 0218. Optional so the specs that construct this service by hand keep
+    // their behaviour; the one Nest provider (NotificationsModule) always has
+    // it, because that module imports AreaRoutingModule.
+    @Optional()
+    private readonly areaRouting?: AreaRoutingService,
   ) {
     this.initWebPush();
   }
@@ -614,16 +636,60 @@ export class NotificationsService {
        * restaurant through this default (team-audit.md, BLOCKER 4).
        */
       onlyUserIds?: string[];
+      /**
+       * The item's AREA LABEL (ADR 0218). `null` or absent is house-wide.
+       *
+       * A broadcast (no `onlyUserIds`) is ROUTED: the labelled area's members
+       * who are not Away are alerted, owners and managers still get the row
+       * without the push, and a person who is Away gets nothing — see
+       * `areas/area-routing.ts` for the whole ladder. With nobody in any area
+       * and nobody Away, the audience is exactly what it was before.
+       *
+       * A targeted write (`onlyUserIds`) is NOT routed: its caller already
+       * chose the people (a message to one person, a producer's claimed
+       * audience that has already set Away aside).
+       */
+      area?: AreaLabel;
+      /**
+       * Set by a caller that already sends its OWN push, with its own
+       * opt-out and audience filtering — team broadcast is the first
+       * (`team.controller.ts` T5). Without this, this funnel's own "Mobile
+       * fan-out" below fired a SECOND push at every non-`"low"` priority,
+       * to the full write audience, reading no preference at all: an
+       * inbox-only send still pushed, and a push opt-out was ignored.
+       * Two push paths for one message; this keeps it to one.
+       */
+      skipMobilePush?: boolean;
     } = {},
-  ): Promise<{ inserted: number; ids: string[] }> {
+  ): Promise<{ inserted: number; ids: string[]; routing?: PersistRouting }> {
     const { broadcast = true, dedupeWithinMinutes } = opts;
     try {
       let userIds = await this.resolveRestaurantMemberIds(restaurantId);
+      // Who gets the push and the live ping. Equal to `userIds` except when
+      // routing puts someone in the inbox only.
+      let alertIds: string[] | null = null;
+      let routing: PersistRouting | undefined;
+      // Only the typed option is read — never a `metadata.area` some caller
+      // may already use for something else. An unknown value reads as
+      // house-wide, the direction that cannot lose an alert.
+      const label = readAreaLabel(opts.area);
       if (opts.onlyUserIds) {
         const allow = new Set(opts.onlyUserIds);
         userIds = userIds.filter((id) => allow.has(id));
+      } else if (this.areaRouting && userIds.length) {
+        const decision = await this.areaRouting.route(restaurantId, userIds, label);
+        userIds = [...new Set([...decision.alert, ...decision.inboxOnly])];
+        alertIds = decision.alert;
+        routing = {
+          label: decision.label,
+          step: decision.step,
+          alerted: decision.alert.length,
+          inboxOnly: decision.inboxOnly.length,
+          heldAway: decision.heldAway,
+          degraded: decision.degraded,
+        };
       }
-      if (!userIds.length) return { inserted: 0, ids: [] };
+      if (!userIds.length) return { inserted: 0, ids: [], routing };
 
       // Optional dedupe: skip if an identical group_key was already written for
       // this restaurant inside the window (prevents a re-alert on every sweep).
@@ -659,7 +725,8 @@ export class NotificationsService {
         action_url: payload.actionUrl ?? null,
         action_label: payload.actionLabel ?? null,
         group_key: payload.groupKey ?? null,
-        metadata: payload.metadata ?? {},
+        metadata:
+          label !== null ? { ...(payload.metadata ?? {}), area: label } : (payload.metadata ?? {}),
         created_at: now,
       }));
 
@@ -692,10 +759,21 @@ export class NotificationsService {
         // the socket either — DB rows and push were narrowed by onlyUserIds,
         // and the live emit follows the same addressing (Opus correctness
         // review, BLOCKER 2). Every client already joins its user:<id> room.
-        const emitTo = opts.onlyUserIds
-          ? this.websocketGateway.server.to(userIds.map((id) => `user:${id}`))
+        //
+        // A ROUTED write that did not simply reach everyone (ADR 0218) is
+        // addressed the same way: the restaurant room would ping a person who
+        // is Away. Inbox-only rows get no live ping in the last-resort step,
+        // because those owners are Away.
+        const narrowed =
+          routing !== undefined && (routing.step !== "everyone" || routing.heldAway > 0);
+        const liveIds =
+          routing?.step === "owners_inbox_only" ? [] : userIds;
+        const emitTo = opts.onlyUserIds || narrowed
+          ? liveIds.length
+            ? this.websocketGateway.server.to(liveIds.map((id) => `user:${id}`))
+            : null
           : this.websocketGateway.server.to(`restaurant:${restaurantId}`);
-        emitTo.emit("notification:new", {
+        emitTo?.emit("notification:new", {
           event: "NewNotification",
           data: {
             title: payload.title,
@@ -712,8 +790,17 @@ export class NotificationsService {
       // Mobile fan-out: whatever lands in the notification center lands on
       // members' phones too, except low priority which stays in-app only.
       // Batching happens upstream of this funnel, so a digest is one push.
-      if (this.expoPushService && (payload.priority ?? "medium") !== "low") {
-        await this.expoPushService.sendToUsers(userIds, {
+      // Routed writes push only to the people routing ALERTED (ADR 0218).
+      // `skipMobilePush` opts a caller OUT of this leg entirely, for when it
+      // is running its own — see the option's doc comment.
+      const pushTo = alertIds ?? userIds;
+      if (
+        this.expoPushService &&
+        !opts.skipMobilePush &&
+        (payload.priority ?? "medium") !== "low" &&
+        pushTo.length > 0
+      ) {
+        await this.expoPushService.sendToUsers(pushTo, {
           title: payload.title,
           body: payload.message,
           priority: payload.priority === "critical" ? "high" : "default",
@@ -725,7 +812,7 @@ export class NotificationsService {
         });
       }
 
-      return { inserted: rows.length, ids };
+      return { inserted: rows.length, ids, routing };
     } catch (e: any) {
       this.logger.warn(
         `persistForRestaurant failed for restaurant ${restaurantId}: ${e?.message}`,
