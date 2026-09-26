@@ -55,11 +55,22 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { SealChallengeService } from "../../common/seal/seal-challenge.service";
+import {
+  VendorSendAuthorityService,
+  type SendOrAsk,
+} from "../../organizations/vendor-send-authority.service";
+import {
+  VendorSendRequestsService,
+  type VendorSendRequestView,
+} from "../../organizations/vendor-send-requests.service";
 import { assertNamedActor } from "./house-letters.actor";
 import { composerGuardrails, type GuardrailHit } from "./composer-guardrails";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
@@ -75,6 +86,31 @@ import type {
   QueueLetterDto,
   UpsertLetterTemplateDto,
 } from "./house-letters.dto";
+
+/**
+ * The act a composer letter is sealed as (ADR 0175 D9; 2026-09-21). Its own
+ * act, over its own subject kind (`house_letter`, keyed on the VENDOR it is
+ * written to — there is no letter row until the seal is redeemed), so a seal
+ * minted for any other send can never queue a composer letter.
+ */
+export const HOUSE_LETTER_ACT = "queue_house_letter";
+
+/** What the hold was over: the recipient, the vendor, the subject and the words. */
+export function houseLetterSealArgs(dto: {
+  providerId: string;
+  to: string;
+  subject: string;
+  body: string;
+  orderId?: string | null;
+}): Record<string, unknown> {
+  return {
+    providerId: dto.providerId,
+    to: (dto.to ?? "").trim().toLowerCase(),
+    subject: (dto.subject ?? "").replace(/\s+/g, " ").trim(),
+    body: (dto.body ?? "").replace(/\s+/g, " ").trim(),
+    orderId: dto.orderId ?? null,
+  };
+}
 
 /** The lifecycle words this path owns. Chosen so no other cron can claim them. */
 export const LETTER_STATUS = {
@@ -134,7 +170,254 @@ export class HouseLettersService {
     private readonly db: DatabaseService,
     private readonly sender: HouseSenderService,
     private readonly oauth: IntegrationsOauthService,
+    // The composer's two gates (ADR 0175 D9/D10, 2026-09-21). Last and
+    // @Optional for the positional specs; CommunicationsModule supplies both,
+    // and `queue` REFUSES when either is missing.
+    @Optional() private readonly authority?: VendorSendAuthorityService,
+    @Optional() private readonly seal?: SealChallengeService,
+    // Staff ask a manager to send a letter (founder answer 3, 2026-09-21).
+    // Supplied by VendorSendAuthorityModule; the ask route refuses without it.
+    @Optional() private readonly requests?: VendorSendRequestsService,
   ) {}
+
+  private requireGates(): { authority: VendorSendAuthorityService; seal: SealChallengeService } {
+    if (!this.authority || !this.seal) {
+      throw new InternalServerErrorException(
+        "Who may send, or the seal, could not be checked (not wired into the composer), so nothing was queued and nothing was sent. This is a gateway fault, not a decision about this letter.",
+      );
+    }
+    return { authority: this.authority, seal: this.seal };
+  }
+
+  /**
+   * Whether this person's hold on the composer sends — the readout the sheet
+   * shows BEFORE the click. Since the founder's answer (3) of 2026-09-21 a
+   * staff member may ASK a manager to send a composer letter, so "ask" says
+   * the letter will be kept and a manager asked (`ask`, below).
+   */
+  async sendOrAsk(userId: string, restaurantId: string): Promise<SendOrAsk> {
+    if (!this.authority) {
+      return {
+        readable: false,
+        maySend: false,
+        mode: null,
+        basis: null,
+        grant: null,
+        sentence: "Whether your hold sends could not be read (not wired into the composer). Nothing will be sent until it can.",
+      };
+    }
+    return this.authority.readout(userId, restaurantId, { canAsk: true });
+  }
+
+  /**
+   * A staff member asks a manager to send this letter (founder answer 3,
+   * 2026-09-21: *"the same request flow as drafted replies (request state,
+   * exact text/terms saved, manager releases with one hold)"*).
+   *
+   * The letter is checked the way a send would check it — the recipient must
+   * be in the book and no guardrail may block — so a manager is never asked to
+   * release a letter the queue would refuse. Nothing is queued and nothing is
+   * sent: the exact letter is saved (`vendor_send_requests`), the owners and
+   * managers are told on the bell, and the release is the ordinary sealed
+   * queue with this request's id (`queue`, `dto.requestId`), which keeps the
+   * composer's undo window.
+   */
+  async ask(params: {
+    restaurantId: string;
+    userId: string;
+    dto: QueueLetterDto;
+  }): Promise<{ requestId: string; requestedAt: string; told: number; says: string; notices: GuardrailHit[] }> {
+    const { restaurantId, dto } = params;
+    const userId = assertNamedActor(params.userId, "asked and nothing was sent");
+    if (!this.requests) {
+      throw new InternalServerErrorException(
+        "Requests could not be recorded (not wired into the composer), so nothing was asked and nothing was sent.",
+      );
+    }
+    if (dto.requestId) {
+      throw new BadRequestException("A request cannot name another request. Nothing was asked.");
+    }
+    const { match, hits } = await this.checkLetter(restaurantId, dto);
+    const letter = {
+      providerId: dto.providerId,
+      to: match.email,
+      subject: dto.subject,
+      body: dto.body,
+      orderId: dto.orderId ?? null,
+      templateId: dto.templateId ?? null,
+    };
+    const row = await this.requests.ask({
+      userId,
+      restaurantId,
+      kind: "house_letter",
+      orderId: dto.orderId ?? null,
+      providerId: dto.providerId,
+      payload: letter,
+      sealArgs: houseLetterSealArgs({ ...dto, to: match.email }),
+      act: "send this letter",
+    });
+    const told = await this.requests.tellManagers({
+      restaurantId,
+      requesterId: userId,
+      kind: "house_letter",
+      vendorName: match.providerName,
+      requestId: row.id,
+      orderId: dto.orderId ?? null,
+    });
+    return {
+      requestId: row.id,
+      requestedAt: row.requested_at,
+      told,
+      notices: hits.filter((h) => !h.blocking),
+      says:
+        told > 0
+          ? `Asked. Your letter is saved exactly as you wrote it, and ${told} ${told === 1 ? "owner or manager was" : "owners and managers were"} told. Nothing has been sent; you will see who sends it.`
+          : "Asked. Your letter is saved exactly as you wrote it, but no owner or manager could be told; tell one yourself. Nothing has been sent.",
+    };
+  }
+
+  /**
+   * The letters waiting for a manager. An owner or a manager sees every one
+   * waiting in the house (they release them); anyone else sees only their own.
+   */
+  async requestsFor(
+    userId: string,
+    restaurantId: string,
+  ): Promise<{
+    requests: VendorSendRequestView[];
+    /** Who is reading: an owner or a manager may decline; anyone may withdraw their own (founder, 2026-09-21). */
+    viewer: { userId: string; mayDecline: boolean };
+  }> {
+    if (!this.requests || !this.authority) {
+      throw new InternalServerErrorException("The waiting letters could not be read (not wired into the composer).");
+    }
+    const reading = await this.authority.standing(userId, restaurantId);
+    const role = (reading.role ?? "").trim().toLowerCase();
+    const releaser = role === "owner" || role === "manager";
+    return {
+      requests: await this.requests.waiting(restaurantId, "house_letter", releaser ? {} : { requestedBy: userId }),
+      viewer: { userId, mayDecline: releaser },
+    };
+  }
+
+  /**
+   * An owner or a manager declines a waiting letter request, saying why; the
+   * person who asked is told (founder, 2026-09-21: *"Decline/withdraw; undo
+   * re-waits"*). Nothing is sent.
+   */
+  async declineRequest(params: {
+    restaurantId: string;
+    userId: string;
+    requestId: string;
+    reason: string;
+  }): Promise<{ id: string; state: string; says: string }> {
+    const userId = assertNamedActor(params.userId, "declined");
+    if (!this.requests) {
+      throw new InternalServerErrorException("Requests could not be changed (not wired into the composer). Nothing was changed.");
+    }
+    const row = await this.requests.decline({
+      restaurantId: params.restaurantId,
+      requestId: params.requestId,
+      kind: "house_letter",
+      userId,
+      reason: params.reason,
+    });
+    return {
+      id: row.id,
+      state: row.state,
+      says: "Declined. The person who asked was told why, and nothing was sent.",
+    };
+  }
+
+  /** The person who asked withdraws their own waiting letter request; the owners and managers are told. */
+  async withdrawRequest(params: {
+    restaurantId: string;
+    userId: string;
+    requestId: string;
+  }): Promise<{ id: string; state: string; says: string }> {
+    const userId = assertNamedActor(params.userId, "withdrawn");
+    if (!this.requests) {
+      throw new InternalServerErrorException("Requests could not be changed (not wired into the composer). Nothing was changed.");
+    }
+    const row = await this.requests.withdraw({
+      restaurantId: params.restaurantId,
+      requestId: params.requestId,
+      kind: "house_letter",
+      userId,
+    });
+    return {
+      id: row.id,
+      state: row.state,
+      says: "Withdrawn. It no longer waits for a manager, and nothing was sent.",
+    };
+  }
+
+  /**
+   * The two checks a letter must pass before anyone holds on it: its
+   * recipient is in the book for its vendor, and no guardrail blocks it.
+   * Shared by the send and the ask, so the two cannot disagree.
+   */
+  private async checkLetter(
+    restaurantId: string,
+    dto: QueueLetterDto,
+  ): Promise<{ match: BookEntry; hits: GuardrailHit[]; priorOutbound: number | null }> {
+    const book = await this.book(restaurantId).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new BadRequestException(
+        `${message} Nothing was queued and nothing was sent — a recipient cannot be checked against a book that could not be read.`,
+      );
+    });
+    const forProvider = book.filter((e) => e.providerId === dto.providerId);
+    if (forProvider.length === 0) {
+      throw new UnprocessableEntityException(
+        `That vendor has no address in this house's book, so there is nowhere to send. Add the contact to the vendor first (POST /providers/${dto.providerId}/contacts) — an address typed into a letter is not a vendor record, and the guardrails, the round count and the conversation book all key on the record.`,
+      );
+    }
+    const match = forProvider.find((e) => sameAddress(e.email, dto.to));
+    if (!match) {
+      throw new UnprocessableEntityException(
+        `${dto.to} is not in this house's book for that vendor. The addresses on record are: ${forProvider.map((e) => e.email).join(", ")}. Add it to the book first — Mudavym does not write to an address it has no record of.`,
+      );
+    }
+    const priorOutbound = dto.orderId ? await this.countOutboundOnOrder(dto.orderId) : null;
+    const hits = this.guardrails({
+      body: dto.body,
+      subject: dto.subject,
+      priorOutboundOnOrder: priorOutbound,
+    });
+    const blocking = hits.filter((h) => h.blocking);
+    if (blocking.length > 0) {
+      throw new UnprocessableEntityException({
+        message: blocking.map((h) => h.says).join(" "),
+        guardrails: blocking,
+      });
+    }
+    return { match, hits, priorOutbound };
+  }
+
+  /**
+   * Mint the seal a composer letter must carry back (the house composer door,
+   * sealed 2026-09-21 on the judge's finding that every composer recipient is
+   * a vendor in the book). WHO first; then a seal over the letter as it stands.
+   */
+  async issueQueueSeal(params: {
+    restaurantId: string;
+    userId: string;
+    dto: QueueLetterDto;
+  }): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    const userId = assertNamedActor(params.userId, "sealed and nothing was sent");
+    const { authority, seal } = this.requireGates();
+    await authority.assertMaySend(userId, params.restaurantId, "send this letter", { canAsk: true });
+    const issued = await seal.issue({
+      restaurantId: params.restaurantId,
+      actorUserId: userId,
+      subjectKind: "house_letter",
+      subjectId: params.dto.providerId,
+      action: HOUSE_LETTER_ACT,
+      args: houseLetterSealArgs(params.dto),
+    });
+    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+  }
 
   // ==========================================================================
   // The book
@@ -281,6 +564,8 @@ export class HouseLettersService {
     restaurantId: string;
     userId: string;
     dto: QueueLetterDto;
+    /** The seal minted by `issueQueueSeal` at the start of the hold. */
+    challenge?: string | null;
   }): Promise<{
     id: string;
     status: string;
@@ -297,44 +582,44 @@ export class HouseLettersService {
       "queued and nothing was sent",
     );
 
-    // ── 1. the recipient must be in the book ────────────────────────────────
-    // `book()` states the failure; this caller adds what it means HERE, because
-    // a failed read on the way to a send is a letter that did not go.
-    const book = await this.book(restaurantId).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new BadRequestException(
-        `${message} Nothing was queued and nothing was sent — a recipient cannot be checked against a book that could not be read.`,
-      );
+    // ── 0. WHO (ADR 0175 D10, 2026-09-21) ────────────────────────────────────
+    // An owner, a manager or a grantee. First, so a person whose hold cannot
+    // send is told so before the book, the guardrails or the mailbox are read.
+    const gates = this.requireGates();
+    // canAsk: a staff member is told to hold (click) again to ASK a manager
+    // instead (founder answer 3, 2026-09-21; `ask`).
+    const standing = await gates.authority.assertMaySend(userId, restaurantId, "send this letter", {
+      canAsk: true,
     });
-    const forProvider = book.filter((e) => e.providerId === dto.providerId);
-    if (forProvider.length === 0) {
-      throw new UnprocessableEntityException(
-        `That vendor has no address in this house's book, so there is nowhere to send. Add the contact to the vendor first (POST /providers/${dto.providerId}/contacts) — an address typed into a letter is not a vendor record, and the guardrails, the round count and the conversation book all key on the record.`,
-      );
-    }
-    const match = forProvider.find((e) => sameAddress(e.email, dto.to));
-    if (!match) {
-      throw new UnprocessableEntityException(
-        `${dto.to} is not in this house's book for that vendor. The addresses on record are: ${forProvider.map((e) => e.email).join(", ")}. Add it to the book first — Mudavym does not write to an address it has no record of.`,
-      );
+
+    // A release of a staff member's request names it (founder answer 3). The
+    // request must be this house's, waiting, and to the same vendor: a
+    // manager may change the words (a new version under their own seal) but
+    // not write to someone else under the staffer's request.
+    if (dto.requestId) {
+      if (!this.requests) {
+        throw new InternalServerErrorException(
+          "The request could not be checked (not wired into the composer), so nothing was queued and nothing was sent.",
+        );
+      }
+      const request = await this.requests.one(restaurantId, dto.requestId, "house_letter");
+      if (request.state !== "waiting") {
+        throw new ConflictException(
+          request.state === "released"
+            ? "That letter was already released by someone else. Nothing more was sent."
+            : "That request was closed. Nothing was sent.",
+        );
+      }
+      if (request.provider_id !== dto.providerId) {
+        throw new UnprocessableEntityException(
+          "That request is a letter to a different vendor. A release sends the letter that was asked for; write a new letter to write to someone else. Nothing was sent.",
+        );
+      }
     }
 
-    // ── 2. the guardrails, over the human's own draft ───────────────────────
-    const priorOutbound = dto.orderId
-      ? await this.countOutboundOnOrder(dto.orderId)
-      : null;
-    const hits = this.guardrails({
-      body: dto.body,
-      subject: dto.subject,
-      priorOutboundOnOrder: priorOutbound,
-    });
-    const blocking = hits.filter((h) => h.blocking);
-    if (blocking.length > 0) {
-      throw new UnprocessableEntityException({
-        message: blocking.map((h) => h.says).join(" "),
-        guardrails: blocking,
-      });
-    }
+    // ── 1. the recipient must be in the book; 2. the guardrails ─────────────
+    // (`checkLetter`, shared with `ask` so the two cannot disagree.)
+    const { match, hits, priorOutbound } = await this.checkLetter(restaurantId, dto);
 
     // ── 3. the house must have a sending identity ───────────────────────────
     const identity = await this.sender.resolve(restaurantId, userId);
@@ -373,6 +658,43 @@ export class HouseLettersService {
       dto.insights ?? [],
     );
 
+    // ── THE SEAL (ADR 0175 D9, 2026-09-21) ──────────────────────────────────
+    // Redeemed over exactly what is about to be written — the vendor, the
+    // address, the subject and the words — immediately before the row exists.
+    // A refused seal means nothing was queued; an edit after the hold is
+    // refused by the args hash, so an edited letter needs a new hold.
+    await gates.seal.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "house_letter",
+      subjectId: dto.providerId,
+      action: HOUSE_LETTER_ACT,
+      args: houseLetterSealArgs(dto),
+      challenge: params.challenge,
+    });
+    // A letter queued under a grant is on the security ledger before the row
+    // exists (ADR 0112 F12; founder answer 4, 2026-09-21).
+    await gates.authority.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
+      userId,
+      restaurantId,
+      act: HOUSE_LETTER_ACT,
+      subject: `house_letter:${dto.providerId}`,
+    });
+
+    // The release takes the request ONCE (two managers releasing together:
+    // the loser sends nothing). After the seal, so a refused seal never takes
+    // a request; given back if the letter then fails to queue.
+    const claimed =
+      dto.requestId && this.requests
+        ? await this.requests.claim({
+            restaurantId,
+            requestId: dto.requestId,
+            kind: "house_letter",
+            releasedBy: userId,
+            releaseSealArgs: houseLetterSealArgs({ ...dto, to: match.email }),
+          })
+        : null;
+
     const now = Date.now();
     const dispatchAt = new Date(now + (identity.undoMs ?? 0)).toISOString();
 
@@ -392,6 +714,9 @@ export class HouseLettersService {
         outbound_email_type: "HOUSE_LETTER",
         round_count: (priorOutbound ?? 0) + 1,
         inserted_insights: verified.length > 0 ? verified : null,
+        // Who released it, and under which grant (ADR 0175 D9/D10).
+        sent_by_user_id: userId,
+        sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
         email_headers: {
           subject: dto.subject,
           to: match.email,
@@ -399,15 +724,37 @@ export class HouseLettersService {
           sender_kind: identity.kind,
           written_by: userId,
           template_id: dto.templateId ?? null,
+          // The staff request this release took, by its id, on the letter
+          // itself: a pull-back finds the request from here even when the
+          // best-effort `linkConversation` below did not land (founder,
+          // 2026-09-21: "undo re-waits"). [Last call, 2026-09-21: that request
+          // was found only through the link, so a failed link left it
+          // released, silently, after its letter was pulled back.]
+          request_id: claimed && dto.requestId ? dto.requestId : null,
         },
       })
       .select("id")
       .single();
 
     if (error || !data) {
+      if (claimed && dto.requestId && this.requests) {
+        await this.requests.unclaim(restaurantId, dto.requestId, userId);
+      }
       throw new BadRequestException(
         `The letter was NOT queued and NOT sent — the conversation book refused the row (${error?.message ?? "no row returned"}).`,
       );
+    }
+
+    if (claimed && dto.requestId && this.requests) {
+      const conversationId = String((data as Record<string, unknown>).id);
+      await this.requests.linkConversation(restaurantId, dto.requestId, conversationId);
+      await this.requests.tellRequester({
+        restaurantId,
+        row: claimed.row,
+        releasedBy: userId,
+        asWritten: claimed.asWritten,
+        vendorName: match.providerName,
+      });
     }
 
     if (dto.templateId)
@@ -439,10 +786,12 @@ export class HouseLettersService {
   async cancel(params: {
     restaurantId: string;
     id: string;
-  }): Promise<{ id: string; status: string; says: string }> {
+    /** Who pulled it back — named on the staff request it re-opens, if any. */
+    userId?: string | null;
+  }): Promise<{ id: string; status: string; says: string; requestWaitsAgain?: boolean }> {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
-      .select("id, status, scheduled_send_at, restaurant_id")
+      .select("id, status, scheduled_send_at, restaurant_id, provider_id, email_headers")
       .eq("id", params.id)
       .eq("restaurant_id", params.restaurantId)
       .maybeSingle();
@@ -469,23 +818,94 @@ export class HouseLettersService {
       );
     }
 
-    const { error: updateError } = await this.db.client
+    const { data: cancelled, error: updateError } = await this.db.client
       .from("procurement_conversations")
       .update({ status: LETTER_STATUS.CANCELLED, scheduled_send_at: null })
       .eq("id", params.id)
-      .eq("status", LETTER_STATUS.QUEUED);
+      .eq("restaurant_id", params.restaurantId)
+      .eq("status", LETTER_STATUS.QUEUED)
+      .select("id");
 
     if (updateError) {
       throw new BadRequestException(
         `The letter was NOT cancelled (${updateError.message}). It is still queued.`,
       );
     }
+    // Conditional on QUEUED: when the dispatcher took the row between the read
+    // above and this write, nothing matched and nothing was cancelled. Saying
+    // "pulled back" then would be a claim about a letter that may have gone.
+    if (!Array.isArray(cancelled) || cancelled.length === 0) {
+      throw new ConflictException(
+        "That letter left the queue a moment ago (the dispatcher may hold it), so it was NOT cancelled. The conversation book will say what happened to it.",
+      );
+    }
+
+    // UNDO RE-WAITS (founder, 2026-09-21, verbatim: "Decline/withdraw; undo
+    // re-waits"). A letter a manager released from a staff member's request
+    // and then pulled back inside the undo window puts that request back to
+    // waiting, and the person who asked is told. After the cancel, never
+    // before: a request re-opened while its letter could still leave could be
+    // released twice. The letter is cancelled whatever happens here; a
+    // failure is said in the answer, not swallowed.
+    let requestWaitsAgain = false;
+    let requestNote = "";
+    // The request this letter's release took, as the letter records it (null
+    // for a letter queued before the id was stamped, or one no request asked for).
+    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+    const stampedRequestId =
+      typeof headers.request_id === "string" && headers.request_id.trim() ? headers.request_id.trim() : null;
+    if (this.requests) {
+      try {
+        const vendorName = await this.vendorNameOf(params.restaurantId, (row.provider_id as string | null) ?? null);
+        const rewaited = await this.requests.rewaitAfterUndo({
+          restaurantId: params.restaurantId,
+          conversationId: params.id,
+          requestId: stampedRequestId,
+          undoneBy: params.userId ?? null,
+          vendorName,
+        });
+        if (rewaited) {
+          requestWaitsAgain = true;
+          requestNote = " The staff request it released is waiting for an owner or a manager again, and the person who asked was told.";
+        } else if (stampedRequestId) {
+          // The letter says a request released it, and that request no longer
+          // reads as released by this letter: said, never a quiet "pulled back".
+          this.logger.error(
+            `Letter ${params.id} was pulled back, but its staff request ${stampedRequestId} no longer reads as released by it, so it was not put back to waiting.`,
+          );
+          requestNote =
+            " The staff request it released could not be put back to waiting (it no longer reads as released by this letter); ask the person who asked to send it again.";
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Letter ${params.id} was pulled back, but its staff request was not put back to waiting: ${message}`);
+        requestNote = ` If this letter came from a staff member's request, that request could not be put back to waiting (${message}); ask them to send it again.`;
+      }
+    }
 
     return {
       id: params.id,
       status: LETTER_STATUS.CANCELLED,
-      says: "Pulled back. It was never sent, and the book records it as cancelled rather than deleting it.",
+      says: `Pulled back. It was never sent, and the book records it as cancelled rather than deleting it.${requestNote}`,
+      requestWaitsAgain,
     };
+  }
+
+  /** A vendor's name for a notice; null (never a guess) when it cannot be read. */
+  private async vendorNameOf(restaurantId: string, providerId: string | null): Promise<string | null> {
+    if (!providerId) return null;
+    const { data, error } = await this.db.client
+      .from("providers")
+      .select("name")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", providerId)
+      .maybeSingle();
+    if (error) {
+      // Words only: the notice says "the vendor" instead. Logged, not hidden.
+      this.logger.warn(`The vendor's name for a notice could not be read (${error.message}).`);
+      return null;
+    }
+    return ((data as Record<string, unknown> | null)?.name as string | null) ?? null;
   }
 
   /** What is still inside its undo window for this house, newest first. */
@@ -668,7 +1088,14 @@ export class HouseLettersService {
     sent: number;
     failed: number;
     skipped: number;
+    /** Staff requests put back to waiting because their letter was not sent. */
+    rewaited: number;
   }> {
+    // A re-wait that did not land on an earlier run is retried first, so
+    // `released` never stands on an unsent letter for longer than one run
+    // (founder, 2026-09-22: "Back to waiting").
+    let rewaited = await this.rewaitRequestsOfFailedLetters();
+
     const { data, error } = await this.db.client
       .from("procurement_conversations")
       .select(
@@ -682,7 +1109,7 @@ export class HouseLettersService {
       this.logger.error(
         `letter dispatch could not read the queue: ${error.message}`,
       );
-      return { considered: 0, sent: 0, failed: 0, skipped: 0 };
+      return { considered: 0, sent: 0, failed: 0, skipped: 0, rewaited };
     }
 
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
@@ -710,15 +1137,17 @@ export class HouseLettersService {
         continue;
       }
 
+      // Set the moment the provider accepted the letter. After that, nothing
+      // here may call it failed or put its request back to waiting: that would
+      // let a manager release the same letter again.
+      let leftTheHouse = false;
       try {
         const identity = await this.sender.resolve(restaurantId, writer);
-        if (!identity.sendable || !identity.grant || !to) {
-          throw new Error(
-            identity.sendable
-              ? "the queued letter has no recipient recorded"
-              : identity.words,
-          );
-        }
+        // Each failure in its own words: the reason is now shown to the
+        // manager and to the person who asked (founder, 2026-09-22).
+        if (!identity.sendable) throw new Error(identity.words || "the house's mailbox cannot send");
+        if (!identity.grant) throw new Error("the house's mailbox holds no grant to send with");
+        if (!to) throw new Error("the queued letter has no recipient recorded");
         const token = await this.oauth.getAccessToken(
           identity.grant.personUserId,
           restaurantId,
@@ -731,7 +1160,8 @@ export class HouseLettersService {
           subject,
           text: String(row.message_text ?? ""),
         });
-        await this.db.client
+        leftTheHouse = true;
+        const { error: sentWriteError } = await this.db.client
           .from("procurement_conversations")
           .update({
             status: LETTER_STATUS.SENT,
@@ -741,10 +1171,19 @@ export class HouseLettersService {
             scheduled_send_at: null,
           })
           .eq("id", id);
+        if (sentWriteError) {
+          this.logger.error(`house letter ${id} was SENT, but the book could not record it (${sentWriteError.message}).`);
+        }
         sent += 1;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await this.db.client
+        if (leftTheHouse) {
+          // The provider took it: the letter is sent, whatever failed after.
+          this.logger.error(`house letter ${id} was sent, but recording it failed: ${message}`);
+          sent += 1;
+          continue;
+        }
+        const { error: failWriteError } = await this.db.client
           .from("procurement_conversations")
           .update({
             status: LETTER_STATUS.FAILED,
@@ -753,12 +1192,93 @@ export class HouseLettersService {
             constraint_flags: { house_letter_failure: message },
           })
           .eq("id", id);
+        if (failWriteError) {
+          this.logger.error(`house letter ${id} was not sent, and the book could not record the failure (${failWriteError.message}).`);
+        }
         this.logger.error(`house letter ${id} was not sent: ${message}`);
         failed += 1;
+        // BACK TO WAITING (founder, 2026-09-22, verbatim pick: "Back to
+        // waiting (Recommended)"): the staff request this letter was
+        // released from goes back to the managers' queue, with the reason
+        // shown to the manager and the person who asked.
+        if (await this.rewaitAfterFailedSend(restaurantId, id, headers, (row.provider_id as string | null) ?? null, message)) {
+          rewaited += 1;
+        }
       }
     }
 
-    return { considered: rows.length, sent, failed, skipped };
+    return { considered: rows.length, sent, failed, skipped, rewaited };
+  }
+
+  /**
+   * Put the staff request a failed letter was released from back to waiting.
+   * Found by the request id the letter carries (stamped at release) or by the
+   * letter's own id. Never throws: the letter is already recorded as failed;
+   * a re-wait that could not land is logged, and the next run retries it
+   * (`rewaitRequestsOfFailedLetters`).
+   */
+  private async rewaitAfterFailedSend(
+    restaurantId: string,
+    letterId: string,
+    headers: Record<string, unknown>,
+    providerId: string | null,
+    reason: string,
+  ): Promise<boolean> {
+    if (!this.requests) return false;
+    const stampedRequestId =
+      typeof headers.request_id === "string" && headers.request_id.trim() ? headers.request_id.trim() : null;
+    try {
+      const vendorName = await this.vendorNameOf(restaurantId, providerId);
+      const back = await this.requests.rewaitAfterFailedSend({
+        restaurantId,
+        conversationId: letterId,
+        requestId: stampedRequestId,
+        reason,
+        vendorName,
+      });
+      if (!back && stampedRequestId) {
+        this.logger.error(
+          `house letter ${letterId} was not sent, and its staff request ${stampedRequestId} no longer reads as released by it, so it was not put back to waiting.`,
+        );
+      }
+      return back != null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`house letter ${letterId} was not sent, and its staff request was not put back to waiting: ${message}`);
+      return false;
+    }
+  }
+
+  /**
+   * The retry: released requests whose linked letter reads FAILED go back to
+   * waiting. Never throws; a failed read is logged and retried next run.
+   */
+  private async rewaitRequestsOfFailedLetters(): Promise<number> {
+    if (!this.requests) return 0;
+    let stuck: Array<{ row: { id: string; restaurant_id: string; conversation_id: string | null; provider_id: string | null }; reason: string }>;
+    try {
+      stuck = await this.requests.releasedOnFailedLetters();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`letter dispatch could not read which released requests have a failed letter: ${message}`);
+      return 0;
+    }
+    let n = 0;
+    for (const { row, reason } of stuck) {
+      if (!row.conversation_id) continue;
+      if (
+        await this.rewaitAfterFailedSend(
+          row.restaurant_id,
+          row.conversation_id,
+          { request_id: row.id },
+          row.provider_id,
+          reason,
+        )
+      ) {
+        n += 1;
+      }
+    }
+    return n;
   }
 
   // ==========================================================================

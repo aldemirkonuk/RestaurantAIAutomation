@@ -394,7 +394,13 @@ behaviours) and what "done" means for one overlay.
 
 With these, F12 is closed. The build order this implies: the ledger first (everything else
 writes to it), then the authority rule and grants, then step-up, then the seal ceremony on both
-platforms together, then break-glass.
+platforms together, then break-glass. **[2026-09-21, built for grants on lane E round 2 (ADR
+0175 second amendment, founder answer 4): `security_events` exists as a per-house hash chain,
+append-only for every role (`20260926140500`); every grant event — issue, revoke, re-approve,
+delete, owner-only, the database's latch when a grant's owner goes, and each send made under a
+grant — is written to it, and `scripts/check_grant_writes_are_ledgered.py` is the guard that no
+app code writes a grant or the ledger any other way. Step-up and break-glass do not exist yet
+and write nothing; the ledger's kind vocabulary is grant events only until they do.]**
 
 
 ## Execution reconciliation — 2026-09-13

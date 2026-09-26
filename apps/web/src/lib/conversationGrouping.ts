@@ -113,6 +113,8 @@ const DRAFT_STATUS_LABEL: Record<string, string> = {
   // exact failure this map exists to prevent, on the one state where a human
   // most needs the truth.
   SEND_UNCONFIRMED: 'Sent, delivery unconfirmed — check the vendor thread',
+  // Refused before anything left; the draft is closed (founder answer 6).
+  SEND_REFUSED: 'Refused before sending — draft closed',
 }
 
 export function draftStatusLabel(

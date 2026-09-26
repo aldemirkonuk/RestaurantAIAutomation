@@ -434,3 +434,49 @@ export async function checkEventConflicts(
   )
   return response.data
 }
+
+// ── Day notes — ADR 0111 §1, own table, never calendar_events.description ──
+// Built 2026-09-21 (founder answer 2) to actually persist what
+// MeetingMemoPrompt collects, which `CalendarPage.tsx`'s `handleMemoSave` had
+// dropped since the prompt shipped.
+
+export type CalendarDayNoteDocType = 'meeting_memo' | 'call_log' | 'tasting_notes' | 'general'
+
+export interface CalendarDayNote {
+  id: string
+  businessDate: string
+  docType: CalendarDayNoteDocType
+  eventTitle?: string
+  body: string
+  authorName: string
+  createdAt: string
+}
+
+export interface CreateDayNoteInput {
+  businessDate: string
+  docType: CalendarDayNoteDocType
+  eventTitle?: string
+  body: string
+}
+
+export async function createDayNote(data: CreateDayNoteInput): Promise<CalendarDayNote> {
+  const response = await apiClient.post<CalendarDayNote>('/calendar/day-notes', data)
+  return response.data
+}
+
+export async function fetchDayNotes(businessDate: string): Promise<CalendarDayNote[]> {
+  const params = new URLSearchParams({ businessDate })
+  const response = await apiClient.get<CalendarDayNote[]>(`/calendar/day-notes?${params.toString()}`)
+  return response.data
+}
+
+/**
+ * Every note in an inclusive range of days (YYYY-MM-DD), oldest day first —
+ * what the rebuilt calendar reads to know which ended meetings already carry
+ * a note. A failed read rejects; it never resolves to an empty list.
+ */
+export async function fetchDayNotesInRange(from: string, to: string): Promise<CalendarDayNote[]> {
+  const params = new URLSearchParams({ from, to })
+  const response = await apiClient.get<CalendarDayNote[]>(`/calendar/day-notes?${params.toString()}`)
+  return response.data
+}

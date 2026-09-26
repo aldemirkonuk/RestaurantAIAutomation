@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { Card, Button } from '../components/ui'
 import { Header } from '../components/layout/Header'
@@ -9,7 +10,7 @@ import { DraftEmailApprovalPanel } from '../components/orders/DraftEmailApproval
 import { ActiveConversationsPanel } from '../components/orders/ActiveConversationsPanel'
 import { ContextualInsights } from '../components/insights/ContextualInsights'
 import { CommsThreadDrawer } from '../components/orders/CommsThreadDrawer'
-import { useApproveDraft, useDiscardDraft, useEditDraft, useActiveConversations, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
+import { useApproveDraft, useDiscardDraft, useEditDraft, useActiveConversations, useDraftStanding, requestDraftSend, draftKeys, type ActiveConversationDto } from '../hooks/queries/useDraftEmailQueries'
 import {
   Package,
   Clock,
@@ -260,6 +261,10 @@ export function Orders() {
   const [isDraftPanelOpen, setIsDraftPanelOpen] = useState(false)
   const [commsDrawerOrder, setCommsDrawerOrder] = useState<{ orderId: string; wineName: string; orderStatus: string } | null>(null)
   const approveDraftMutation = useApproveDraft()
+  // Whether this viewer's hold on the open draft sends or asks a manager
+  // (founder, 2026-09-21). Read only while the panel is open.
+  const draftStanding = useDraftStanding(isDraftPanelOpen ? draftPanelData?.orderId ?? null : null)
+  const queryClient = useQueryClient()
   const discardDraftMutation = useDiscardDraft()
   const editDraftMutation = useEditDraft()
   const [isActiveConvPanelOpen, setIsActiveConvPanelOpen] = useState(false)
@@ -3146,7 +3151,9 @@ Shadow stock has been moved to Live Stock.`)
                           // Filter providers based on search
                           const filteredProviders = allProviders.filter(provider =>
                             provider.name.toLowerCase().includes(providerSearchQuery.toLowerCase()) ||
-                            provider.primaryBusinessType.toLowerCase().includes(providerSearchQuery.toLowerCase())
+                            // Not stated (undefined) matches nothing rather than throwing — a
+                            // vendor added without a type is a real state now, not an absent field.
+                            (provider.primaryBusinessType ?? '').toLowerCase().includes(providerSearchQuery.toLowerCase())
                           )
 
                           if (filteredProviders.length === 0) {
@@ -3278,25 +3285,20 @@ Shadow stock has been moved to Live Stock.`)
         isOpen={isDraftPanelOpen}
         draftData={draftPanelData}
         managerName={user?.name ?? ''}
-        onApprove={async (modifiedContent, managerNotes, ccEmails) => {
+        onApprove={async (modifiedContent, managerNotes, ccEmails, challenge) => {
           if (!draftPanelData) return
-          try {
-            await approveDraftMutation.mutateAsync({
-              orderId: draftPanelData.orderId,
-              modifiedContent,
-              managerNotes,
-              ccEmails,
-            })
-            setIsDraftPanelOpen(false)
-            setDraftPanelData(null)
-          } catch (err: any) {
-            // 4xx = email delivery explicitly failed — keep modal open for retry
-            // Network/5xx = response lost but email may have sent — close anyway
-            if (!err?.response?.status || err.response.status >= 500) {
-              setIsDraftPanelOpen(false)
-              setDraftPanelData(null)
-            }
-          }
+          // A failure propagates: a missing response may follow delivery. Keep
+          // the draft visible and let the held control report uncertainty; never
+          // label it sent.
+          await approveDraftMutation.mutateAsync({
+            orderId: draftPanelData.orderId,
+            modifiedContent,
+            managerNotes,
+            ccEmails,
+            challenge,
+          })
+          setIsDraftPanelOpen(false)
+          setDraftPanelData(null)
         }}
         onDiscard={async () => {
           if (!draftPanelData) return
@@ -3312,6 +3314,16 @@ Shadow stock has been moved to Live Stock.`)
           setDraftPanelData(null)
         }}
         isSubmitting={approveDraftMutation.isPending || discardDraftMutation.isPending}
+        sendOrAsk={draftStanding.data?.sendOrAsk ?? null}
+        standingLoading={draftStanding.isPending}
+        standingError={draftStanding.isError ? String((draftStanding.error as Error)?.message ?? 'unknown error') : null}
+        sendRequest={draftStanding.data?.draft?.send_request ?? null}
+        onAsk={async (content, ccEmails) => {
+          if (!draftPanelData) return 'Nothing was asked: the draft is no longer open.'
+          const out = await requestDraftSend({ orderId: draftPanelData.orderId, content, ccEmails })
+          await queryClient.invalidateQueries({ queryKey: draftKeys.all })
+          return out?.says ?? 'Asked. Nothing has been sent.'
+        }}
       />
 
       {/* Comms Thread Drawer */}
@@ -3469,7 +3481,6 @@ Shadow stock has been moved to Live Stock.`)
           setIsDraftPanelOpen(true)
           setIsActiveConvPanelOpen(false)
         }}
-        onApprove={(orderId) => approveDraftMutation.mutate({ orderId })}
         onDiscard={(orderId) => discardDraftMutation.mutate(orderId)}
         isApproving={approveDraftMutation.isPending}
         isDiscarding={discardDraftMutation.isPending}

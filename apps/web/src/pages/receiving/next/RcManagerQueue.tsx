@@ -500,10 +500,16 @@ function QueueRow({
                   {fmtIntFloor(item.openClaimsFloor, true)} open claim
                   {item.openClaimsFloor === 1 ? '' : 's'} ·{' '}
                   {fmtMoneyWholeCcy(item.atRisk, item.currency)} at risk
-                  {item.backorderQty > 0 && (
+                  {item.backorderBottles !== null && item.backorderBottles > 0 && (
                     <>
                       <br />
-                      {item.backorderQty} on backorder
+                      {item.backorderBottles} {item.backorderBottles === 1 ? 'bottle' : 'bottles'} still on backorder
+                    </>
+                  )}
+                  {item.backorderBottles === null && item.backorderWhy && (
+                    <>
+                      <br />
+                      What is still owed is not known: {item.backorderWhy}
                     </>
                   )}
                   <br />

@@ -13,7 +13,7 @@ function controller(role: string | null) {
   const organizations = new OrganizationsService({} as never);
   jest.spyOn(organizations, "resolveRestaurantRole").mockResolvedValue(role);
   const update = jest.fn(async () => ({ id: "inv-1" }));
-  const c = new InventoryController({ updateInventoryItem: update } as any, organizations);
+  const c = new InventoryController({ updateInventoryItem: update } as any, organizations, {} as any);
   return { c, update };
 }
 
@@ -71,6 +71,7 @@ describe("POST inventory items — a price on add is gated and names the person"
     const c = new InventoryController(
       { createInventoryItem: create, bulkCreateInventoryItems: bulk } as any,
       organizations,
+      {} as any,
     );
     return { c, create, bulk };
   }

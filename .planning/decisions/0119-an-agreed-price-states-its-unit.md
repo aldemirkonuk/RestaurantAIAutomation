@@ -41,6 +41,12 @@
   and is `null` on a case order — a refusal, in the shape ADR 0011 requires and this ADR
   borrowed for the price pair. That defect is reported, not repaired; the LIVE-DEFECT entry in
   `v3.0-TECH-DEBT.md` stands.
+  **[SUPERSEDED 2026-09-21 by [ADR 0192](0192-received-is-the-shelf-count-from-the-ledger.md),
+  founder: *"Shelf count from ledger"*. The pair `quantityReceived` / `quantityReceivedUom`
+  is gone from `OrderResponseDto`; its replacement is a `received` block read from the
+  stock ledger, which keeps this ADR's three-state rule (key absent = the route did not
+  read the ledger; `readable: false` = the read failed). The LIVE-DEFECT entry is closed
+  by that ADR. `providerName` is unchanged.]**
 - **Date:** 2026-09-04 (researched) · 2026-09-04 (Q1/Q5 decided, phases 0-1 built) · 2026-09-05 (phase 2, the read side, built) · 2026-09-05 (Q2/Q3/Q4/Q6 decided and built)
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** agreed price, price unit, unit of measure, case price, bottle price,

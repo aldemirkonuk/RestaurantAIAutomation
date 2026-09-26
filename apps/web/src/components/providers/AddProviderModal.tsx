@@ -21,6 +21,7 @@ import {
   ShoppingBag,
   Wine,
   Grape,
+  HelpCircle,
 } from 'lucide-react'
 import { PhoneNumberInput } from '../ui/PhoneNumberInput'
 import { isValidPhone } from '../../lib/phone'
@@ -148,7 +149,10 @@ export function AddProviderModal({ isOpen, onClose, onSave, onCatalogueVendorAdd
     address: '',
     latitude: null,
     longitude: null,
-    primaryBusinessType: 'Distributor',
+    // '' — "Not stated". A vendor added without picking a type is not a
+    // distributor by default; nothing is assumed, and it is settable later
+    // (founder, 2026-09-21).
+    primaryBusinessType: '',
     specialties: [],
     // Blank, not 'Net 30'. Seeding it made every provider added here assert
     // Net 30 whether anybody chose it or not — the same fabricated answer
@@ -238,9 +242,10 @@ export function AddProviderModal({ isOpen, onClose, onSave, onCatalogueVendorAdd
     const typeToDelete = customTypes.find(t => t.id === typeId)
     setCustomTypes(prev => prev.filter(t => t.id !== typeId))
     
-    // If the deleted type was selected, reset to Distributor
+    // If the deleted type was selected, fall back to "Not stated" — never a
+    // guessed 'Distributor' (founder, 2026-09-21).
     if (typeToDelete && formData.primaryBusinessType === typeToDelete.name) {
-      setFormData(prev => ({ ...prev, primaryBusinessType: 'Distributor' }))
+      setFormData(prev => ({ ...prev, primaryBusinessType: '' }))
     }
   }
 
@@ -254,7 +259,7 @@ export function AddProviderModal({ isOpen, onClose, onSave, onCatalogueVendorAdd
       email: '',
       website: '',
       address: '',
-      primaryBusinessType: 'Distributor',
+      primaryBusinessType: '',
       specialties: [],
       paymentTerms: '',
       deliveryDays: [],
@@ -550,6 +555,29 @@ export function AddProviderModal({ isOpen, onClose, onSave, onCatalogueVendorAdd
                     Primary Business Type
                   </label>
                   <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
+                    {/* "Not stated" — the founder's 2026-09-21 answer: nothing
+                        is assumed about a vendor's business type, and it is
+                        settable later. This is a real, selectable choice, not
+                        the absence of one. */}
+                    {(() => {
+                      const isSelected = formData.primaryBusinessType === ''
+                      return (
+                        <button
+                          onClick={() => setFormData({ ...formData, primaryBusinessType: '' })}
+                          className={`p-4 rounded-xl border-2 transition-all ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <HelpCircle className={`w-6 h-6 mx-auto mb-2 ${isSelected ? 'text-blue-600' : 'text-gray-400'}`} />
+                          <p className={`text-sm font-medium ${isSelected ? 'text-blue-900' : 'text-gray-700'}`}>
+                            Not stated
+                          </p>
+                        </button>
+                      )
+                    })()}
+
                     {/* Default business types */}
                     {DEFAULT_BUSINESS_TYPES.map((type) => {
                       const Icon = getBusinessTypeIcon(type)

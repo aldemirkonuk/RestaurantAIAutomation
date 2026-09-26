@@ -39,6 +39,25 @@ export interface SenderIdentity {
   deployment: { address: string; refusedBecause: string };
   subdomain: { provisioned: boolean; tier: 'paid'; words: string };
   categories: string[];
+  /**
+   * Whether THIS person's hold sends (ADR 0175 D10; 2026-09-21): an owner, a
+   * manager or a grantee. Absent on a gateway that predates it — the sheet
+   * then treats the standing as unknown and does not offer the send.
+   */
+  sendOrAsk?: {
+    readable: boolean;
+    maySend: boolean;
+    mode: 'send' | 'ask' | null;
+    basis: 'owner' | 'manager' | 'grant' | null;
+    grant: {
+      id: string;
+      grantedBy: { userId: string; name: string | null };
+      expiresAt: string | null;
+      limitAmount: number | null;
+      limitCurrency: string | null;
+    } | null;
+    sentence: string | null;
+  };
   dispatcher: {
     at: string;
     considered: number;
@@ -208,6 +227,12 @@ export function useComposeData() {
     void queryClient.invalidateQueries({ queryKey: ['house-letter-templates', restaurantId] });
   }, [queryClient, restaurantId]);
 
+  // A staff member's ask lands in the waiting letters a manager releases
+  // (founder answer 3, 2026-09-21; `LetterRequestsPanel`).
+  const refetchRequests = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: letterRequestKeys.forHouse(restaurantId) });
+  }, [queryClient, restaurantId]);
+
   const byProvider = useMemo(() => {
     const map = new Map<string, BookEntry[]>();
     for (const entry of bookQ.data ?? []) {
@@ -236,7 +261,38 @@ export function useComposeData() {
     queued: queuedQ.data ?? null,
     queuedFailed: queuedQ.isError,
     refetchQueued,
+    refetchRequests,
   };
 }
+
+/**
+ * Whether this person's hold sends composer letters — read from the same
+ * sender readout (and the same cache entry) the composer reads, so the
+ * requests panel offers a release exactly when the composer would offer a
+ * send. `restaurantId` is the key both share.
+ */
+export function useLetterSenderStanding(): { restaurantId: string; canRelease: boolean } {
+  const { user, activeRestaurantId } = useAuth();
+  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
+  const senderQ = useQuery<SenderIdentity>({
+    queryKey: ['house-letter-sender', restaurantId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SenderIdentity>('/communications/letters/sender');
+      return data;
+    },
+    staleTime: 60_000,
+    enabled: Boolean(restaurantId),
+  });
+  const standing = senderQ.data?.sendOrAsk;
+  return {
+    restaurantId,
+    canRelease: Boolean(senderQ.data?.sendable && standing?.readable && standing.maySend),
+  };
+}
+
+/** The waiting letters' query key, shared by the composer and the requests panel. */
+export const letterRequestKeys = {
+  forHouse: (restaurantId: string) => ['house-letter-requests', restaurantId] as const,
+};
 
 export { errText };

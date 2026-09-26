@@ -7,7 +7,11 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
+import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
+import { closeDeliveryItemToNameBookedElsewhere } from "./delivery-item-to-name";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
+import { readBookedOrderBottles } from "./booked-order-quantity";
+import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
 import { ORDER_UNIT_TYPES } from "./order-units";
 
 /**
@@ -127,8 +131,8 @@ export interface DoorReceiptInput {
  * What the door is told back.
  *
  * `stockBooked` is the field that used to be a lie. The service warned on a
- * failed `apply_stock_movement` and then wrote `quantity_received`, the status
- * and `delivered_at` anyway, returning `stockDelta` as though the bottles were
+ * failed `apply_stock_movement` and then wrote the order's received column, the
+ * status and `delivered_at` anyway, returning `stockDelta` as though the bottles were
  * on the shelf. Two facts have to be reported separately because they can
  * genuinely differ: the delivery is recorded (durable, the receiver is done)
  * and the shelf count moved (or did not).
@@ -144,6 +148,14 @@ export interface DoorReceiptResult {
   stockBooked: boolean;
   /** A sentence for the receiver when the stock did not move. Never a code. */
   stockIssue?: string;
+  /**
+   * The research queue's answer for an item the wine library lacks, after
+   * this receipt booked it (founder, 2026-09-22: "Yes, same rule"). Absent for
+   * a library wine or when nothing was booked here.
+   */
+  research?: "queued" | "not_findable" | "matched";
+  /** A sentence when the item could not be queued for research. The stock stands. */
+  researchIssue?: string;
 }
 
 export interface UnverifiedDelivery {
@@ -187,7 +199,7 @@ export class ReceivingService {
       .getClient()
       .from("procurement_orders")
       .select(
-        "id, order_number, inventory_id, quantity, bottles_total, unit_type, quantity_received, status",
+        "id, order_number, inventory_id, quantity, bottles_total, unit_type, status",
       )
       .eq("restaurant_id", input.restaurantId)
       .eq("id", input.orderId)
@@ -351,8 +363,8 @@ export class ReceivingService {
 
     // THE RUNNING TOTAL COMES FROM THE EVENTS, NOT FROM A MUTABLE COLUMN.
     //
-    // Split deliveries are normal in wine. `quantity_received = acceptedBottles`
-    // set the column ABSOLUTELY, so truck two with six boxes after truck one's
+    // Split deliveries are normal in wine. The old received column was set
+    // ABSOLUTELY to this truck's accepted bottles, so truck two with six boxes after truck one's
     // eight recorded six received, not fourteen, and the match line called truck
     // two short against the whole PO while the driver waited.
     //
@@ -370,12 +382,20 @@ export class ReceivingService {
     // event's own idempotency key — except on the first door receipt for an
     // order, which must also reconcile against whatever the one-shot
     // markDelivered path already put on the shelf. That is the behaviour the
-    // old `acceptedBottles - quantity_received` line existed for, kept, and now
-    // scoped to the only receipt where it is correct.
+    // old "accepted minus the order's received column" line existed for, kept,
+    // read from the ledger, and scoped to the only receipt where it is correct.
     const acceptedBottles = Math.max(0, countedBottles - rejectedBottles);
     const alreadyBookedElsewhere = totals.priorEventCount
       ? 0
-      : Number(order.quantity_received ?? 0);
+      : order.inventory_id
+        ? await readBookedOrderBottles(
+            this.db.getClient(),
+            input.restaurantId,
+            input.orderId,
+            order.inventory_id,
+            true,
+          )
+        : 0;
     const delta = acceptedBottles - alreadyBookedElsewhere;
 
     let stockBooked = true;
@@ -474,7 +494,7 @@ export class ReceivingService {
       if (rpcErr) {
         // THE FAILURE IS MADE REAL, AND IT IS MADE RETRYABLE.
         //
-        // This used to warn and fall through, then write `quantity_received`,
+        // This used to warn and fall through, then write the received column,
         // the status and `delivered_at`, and return `stockDelta` as though the
         // bottles were on the shelf. Nothing downstream could tell that receipt
         // from one that worked.
@@ -508,9 +528,10 @@ export class ReceivingService {
       }
     }
 
-    // Only claim the shelf when the shelf actually moved. Writing
-    // `quantity_received` on a failed movement is what made the screen agree
-    // with a ledger that had never been touched.
+    // Only claim the shelf when the shelf actually moved. Writing a received
+    // count on a failed movement is what made the screen agree with a ledger
+    // that had never been touched — and since ADR 0192 no received count is
+    // written here at all: what the order received IS the ledger.
     const orderUpdate: Record<string, unknown> = {
       // The order is NOT completed here. A case count is not a verified
       // receipt, and closing on it would strand the bottle count that catches
@@ -519,34 +540,6 @@ export class ReceivingService {
       delivered_at: new Date().toISOString(),
       received_by: input.userId,
     };
-    // ⚠️ THIS WRITE IS IN BOTTLES, AND IT IS THE ONLY ONE THAT IS.
-    //
-    // `markDelivered` and `updateOrder` write `quantity_received` in the
-    // ORDER's own unit — the DTO field is literally called
-    // `quantityReceivedInOrderUom` — and `verifyReceipt` reads it back as
-    // `stockedQtyInCountedUom`, where `computeMatch` multiplies it by the pack
-    // size a second time. MEASURED on a 5-case order of a twelve-pack counted
-    // at the door: stocked reads 720 bottles instead of 60 and `ledgerDelta`
-    // is −660, so `applyReceiptAdjustment` takes 660 bottles out of live
-    // stock. Whether an invoice is on file changes only the WORD the manager
-    // sees — "unmatched" without one, "matched" with a matching one — and
-    // not the −660, which is identical either way.
-    //
-    // Nothing is corrupted retrospectively. Production `exzueerziesmczwlhomd`,
-    // measured by the coordinating session via SQL on 2026-09-02:
-    // `procurement_receipt_events` = 0 rows, and 0 of 2 `procurement_orders`
-    // carry a non-null, non-zero `quantity_received`. The door has never run
-    // there, so the exposure is the first real door-to-desk delivery.
-    //
-    // Left as bottles rather than converted, because choosing between the two
-    // units has costs on both sides and this column is `integer`, so a
-    // bottles→cases conversion rounds a part-case delivery away. Filed in
-    // `.planning/v3.0-TECH-DEBT.md` for the founder rather than guessed at.
-    //
-    // Nothing here depends on the choice: the read at `alreadyBookedElsewhere`
-    // above only ever fires on the FIRST door receipt for an order, so this
-    // path never reads back its own write.
-    if (stockBooked) orderUpdate.quantity_received = totals.receivedBottles;
 
     await this.db
       .getClient()
@@ -554,6 +547,47 @@ export class ReceivingService {
       .update(orderUpdate)
       .eq("restaurant_id", input.restaurantId)
       .eq("id", input.orderId);
+
+    // THE SAME RULE AT THE DOOR (founder, 2026-09-22, verbatim pick: "Yes, same
+    // rule (Recommended)"): stock this receipt booked for a wine the library
+    // lacks queues research, by the item's id, once per item. After the
+    // booking and never undoing it; a failure is said, not swallowed.
+    let research: DoorReceiptResult["research"];
+    let researchIssue: string | undefined;
+    if (stockBooked && delta > 0 && order.inventory_id) {
+      const queued = await queueResearchIfLibraryLacks(this.db.getClient(), {
+        restaurantId: input.restaurantId,
+        inventoryId: order.inventory_id,
+        queuedFrom: "receiving",
+        sourceOrderId: input.orderId,
+        queuedBy: input.userId ?? null,
+      });
+      if (queued && queued.ok) research = queued.status;
+      if (queued && !queued.ok) {
+        researchIssue = `The stock is booked, but whether this wine needs research could not be recorded: ${queued.error}.`;
+        this.logger.error(
+          `door receipt for order ${input.orderId} booked, but its item was not queued for research: ${queued.error}`,
+        );
+      }
+    }
+
+    // A STALE NAME ASK CLOSES BY ITSELF (founder, 2026-09-22, round 6z,
+    // verbatim pick 2: "Close by itself (Recommended)"): the door just
+    // booked this order's stock, so any open delivery_item_to_name ask for
+    // it no longer needs naming. Never blocks the receipt; a failure is
+    // logged.
+    if (stockBooked && delta > 0) {
+      const closed = await closeDeliveryItemToNameBookedElsewhere(this.db.getClient(), {
+        restaurantId: input.restaurantId,
+        orderId: input.orderId,
+        via: "receiving_door",
+      });
+      if (!closed.ok) {
+        this.logger.error(
+          `door receipt for order ${input.orderId} booked, but its stale name-item ask was not closed: ${closed.error}`,
+        );
+      }
+    }
 
     return {
       alreadyRecorded,
@@ -565,6 +599,8 @@ export class ReceivingService {
       stockDelta: stockBooked ? delta : null,
       stockBooked,
       ...(stockIssue ? { stockIssue } : {}),
+      ...(research ? { research } : {}),
+      ...(researchIssue ? { researchIssue } : {}),
     };
   }
 
@@ -616,20 +652,32 @@ export class ReceivingService {
    * the earlier 8" instead of calling a second truck ten short against the whole
    * purchase order while the driver waits.
    *
-   * It reads the receipt events rather than `procurement_orders.quantity_received`
-   * for the same reason the write path does: the column is a cache, the events
-   * are the record, and the column was being set absolutely by the very bug this
-   * answers.
+   * THE RUNNING TOTAL IS THE DOOR'S OWN EVENTS — ADR 0062 D3, founder-decided:
+   * "The running total is summed from `procurement_receipt_events`". That is the
+   * model the door BOOKS by, too: its first count reconciles against whatever a
+   * one-tap "delivered" already booked (the same truck, not an earlier one), and
+   * it books nothing when a delivery owns the order's stock. A total read from
+   * the ledger would count those bookings as an earlier truck and the match line
+   * would over-count the very delivery being counted. A truck whose movement
+   * failed and is still queued is in the events, so it is not called missing.
    *
-   * `boxes` is null — never 0 — when the pack size is not knowable, because a
-   * box count derived from a guessed pack is the error this whole area exists to
-   * refuse.
+   * What the stock LEDGER holds (ADR 0192) travels beside it — `onShelfBottles`,
+   * `countedNotBookedBottles` and the whole `received` block — and supplies the
+   * order's exact pack. A ledger that cannot be read leaves those null and the
+   * block `readable:false`; it does not stop the door counting, because the
+   * running total never came from it.
+   *
+   * NEVER ROUNDED. This used to return `Math.round(bottles / packSize)`, so
+   * five cases and seven loose bottles read as "6 earlier" on the match line
+   * and in the credit letter. It now returns whole boxes and the loose bottles
+   * beside them; both are null — never 0 — when no exact pack is known. A
+   * failed read of the events is an error, never an "earlier 0".
    */
   async doorReceivedSoFar(restaurantId: string, orderId: string) {
     const { data: order, error: orderErr } = await this.db
       .getClient()
       .from("procurement_orders")
-      .select("id, quantity, bottles_total, unit_type")
+      .select("id, inventory_id, quantity, bottles_total, unit_type")
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .maybeSingle();
@@ -637,21 +685,29 @@ export class ReceivingService {
     if (!order) throw new NotFoundException("Order not found");
 
     const totals = await this.doorTotals(restaurantId, orderId, null);
-    const packSize = this.resolvePackSize(null, order);
-    // resolvePackSize falls to 1 rather than to 12, so a pack of 1 is either a
-    // genuine bottle order or "not knowable". Only a case-unit order can be
-    // stated in boxes at all, which is the same rule normalizeDoorOrder applies.
-    const unit = String(order.unit_type ?? "").toLowerCase();
-    const boxes =
-      unit.startsWith("case") && packSize >= 1
-        ? Math.round(totals.receivedBottles / packSize)
-        : null;
+    const received = await readOneShelfReceived(
+      this.db.getClient(),
+      restaurantId,
+      order,
+    );
+    const bottles = totals.receivedBottles;
+    const packSize = received.readable ? received.packSize : null;
+    const split = packSize !== null ? packsAndLoose(bottles, packSize) : null;
 
     return {
-      receivedQtyBottles: totals.receivedBottles,
+      /** What the door's own events accepted, every truck, in bottles (ADR 0062 D3). */
+      receivedQtyBottles: bottles,
+      /** The stock ledger's count (ADR 0192), or null when it could not be read. */
+      onShelfBottles: received.readable ? received.quantityInStockUom : null,
+      countedNotBookedBottles: received.readable
+        ? received.countedNotBookedBottles
+        : null,
       doorEventCount: totals.priorEventCount,
+      /** Bottles per box, exact, or null when no exact pack is known. */
       packSize,
-      receivedBoxes: boxes,
+      receivedBoxes: split ? split.packs : null,
+      receivedLooseBottles: split ? split.loose : null,
+      received,
     };
   }
 
@@ -877,31 +933,44 @@ export class ReceivingService {
    * vendor's own paperwork and are the ones worth starting with.
    */
   async managerQueue(restaurantId: string) {
-    const [{ data: orders }, { data: credits }, unverified] = await Promise.all(
-      [
-        this.db
-          .getClient()
-          .from("procurement_orders")
-          .select(
-            "id, order_number, match_status, discrepancy_notes, backorder_quantity, invoice_quantity, quantity, match_verified_at, provider_id, currency",
-          )
-          .eq("restaurant_id", restaurantId)
-          .not("match_status", "is", null)
-          .neq("match_status", "matched")
-          .order("match_verified_at", { ascending: false })
-          .limit(100),
-        this.db
-          .getClient()
-          .from("procurement_credits")
-          .select(
-            "id, order_id, reason, summary, claimed_amount, state, self_evidenced, opened_at",
-          )
-          .eq("restaurant_id", restaurantId)
-          .in("state", ["open", "requested", "promised"])
-          .limit(200),
-        this.listUnverified(restaurantId),
-      ],
-    );
+    const [
+      { data: orders, error: ordersError },
+      { data: credits, error: creditsError },
+      unverified,
+    ] = await Promise.all([
+      this.db
+        .getClient()
+        .from("procurement_orders")
+        .select(
+          "id, order_number, match_status, discrepancy_notes, quantity, unit_type, bottles_total, inventory_id, match_verified_at, provider_id, currency",
+        )
+        .eq("restaurant_id", restaurantId)
+        .not("match_status", "is", null)
+        .neq("match_status", "matched")
+        .order("match_verified_at", { ascending: false })
+        .limit(100),
+      this.db
+        .getClient()
+        .from("procurement_credits")
+        .select(
+          "id, order_id, reason, summary, claimed_amount, state, self_evidenced, opened_at",
+        )
+        .eq("restaurant_id", restaurantId)
+        .in("state", ["open", "requested", "promised"])
+        .limit(200),
+      this.listUnverified(restaurantId),
+    ]);
+    // A failed read is an error, never an empty queue: "nothing to decide"
+    // and "the queue could not be read" are opposite facts to a manager.
+    if (ordersError) throw new Error(`The deliveries to decide could not be read (${ordersError.message}).`);
+    if (creditsError) throw new Error(`The open vendor claims could not be read (${creditsError.message}).`);
+
+    // What is still owed, from the ledger (ADR 0192 amendment, 2026-09-21):
+    // the order's bottles less what the shelf holds, in bottles. It used to be
+    // `procurement_orders.backorder_quantity`, written once per verification
+    // and never moved by a later truck. A failed ledger read reads as
+    // unknown on each row it covered, never as zero owed.
+    const shelf = await readShelfReceived(this.db.getClient(), restaurantId, (orders ?? []) as any[]);
 
     // The vendor box (sketch 107, direction A) needs a name to group by — F2 in
     // 06-pages/receiving.md §15: the old hook read `providerName`, which
@@ -948,7 +1017,18 @@ export class ReceivingService {
         orderNumber: o.order_number,
         verdict: o.match_status,
         summary: o.discrepancy_notes,
-        backorderQty: o.backorder_quantity ?? 0,
+        backorderBottles: (() => {
+          const r = shelf.get(o.id);
+          return r && r.readable ? r.backorderBottles : null;
+        })(),
+        backorderWhy: (() => {
+          const r = shelf.get(o.id);
+          if (!r) return "What is still owed on this order was not read.";
+          if (!r.readable) return r.why;
+          return r.backorderBottles === null
+            ? "This order's bottles are not known exactly, so what is still owed is not stated."
+            : null;
+        })(),
         verifiedAt: o.match_verified_at,
         dollarsAtRisk: Math.round(atRisk * 100) / 100,
         selfEvidenced: linked.some((c) => c.self_evidenced),

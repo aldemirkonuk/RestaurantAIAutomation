@@ -30,6 +30,9 @@ import { OrganizationsModule } from "../organizations/organizations.module";
 // The seal on an order (founder, 2026-09-04). Not circular: SealModule imports
 // DatabaseModule and nothing else.
 import { SealModule } from "../common/seal/seal.module";
+// Who may send to a vendor (ADR 0175 D10; founder, 2026-09-21). Not circular:
+// VendorSendAuthorityModule imports DatabaseModule and nothing else.
+import { VendorSendAuthorityModule } from "../organizations/vendor-send-authority.module";
 import { DeliveriesController } from "./deliveries.controller";
 import { CanonicalDocumentService } from "./canonical/canonical-document.service";
 import { LineMappingService } from "./canonical/line-mapping.service";
@@ -71,6 +74,7 @@ import { DeliveryClockService } from "./canonical/delivery-clock.service";
     SettingsModule,
     OrganizationsModule,
     SealModule,
+    VendorSendAuthorityModule,
     DistributorFeedModule,
     forwardRef(() => NotificationsModule),
   ],

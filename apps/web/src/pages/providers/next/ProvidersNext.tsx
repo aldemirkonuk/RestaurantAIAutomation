@@ -17,14 +17,19 @@
  * unreachable ≠ zero open orders); a vendor never contacted says so.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Wordmark } from '@/components/mudavym';
-import type { Provider } from '../../../services/api/providers';
-import { ink } from '../../../lib/mudavym/motion';
-import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from './pv-format';
-import { TwinSheet } from './TwinSheet';
-import { UsualCurrencyCoveragePanel } from './UsualCurrencyCoveragePanel';
-import { useProvidersNextData, type ProviderCardVM } from './useProvidersNextData';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Wordmark } from "@/components/mudavym";
+import type { Provider } from "../../../services/api/providers";
+import { ink } from "../../../lib/mudavym/motion";
+import { EM, MONO, SANS, SERIF, fmtDays, fmtLastContact } from "./pv-format";
+import { TwinSheet } from "./TwinSheet";
+import { NewVendorSheet } from "./NewVendorSheet";
+import { businessTypeLabel } from "./VendorRecordEdit";
+import { UsualCurrencyCoveragePanel } from "./UsualCurrencyCoveragePanel";
+import {
+  useProvidersNextData,
+  type ProviderCardVM,
+} from "./useProvidersNextData";
 
 /**
  * `?vendor=<id>` opens that vendor's sheet — where the currency control lives.
@@ -36,8 +41,8 @@ import { useProvidersNextData, type ProviderCardVM } from './useProvidersNextDat
  * is not fighting a param to keep it closed.
  */
 function vendorFromUrl(): string | null {
-  if (typeof window === 'undefined') return null;
-  const asked = new URLSearchParams(window.location.search).get('vendor');
+  if (typeof window === "undefined") return null;
+  const asked = new URLSearchParams(window.location.search).get("vendor");
   return asked && asked.trim() ? asked.trim() : null;
 }
 
@@ -51,21 +56,22 @@ function BucketCard({
   onOpen: () => void;
 }) {
   const p = vm.provider;
-  const open = !ordersKnown || vm.openOrders === null ? EM : String(vm.openOrders);
+  const open =
+    !ordersKnown || vm.openOrders === null ? EM : String(vm.openOrders);
   return (
     <button
       type="button"
       onClick={onOpen}
       className="pv-card text-left"
       style={{
-        display: 'flex',
-        flexDirection: 'column',
+        display: "flex",
+        flexDirection: "column",
         gap: 8,
-        padding: '14px 16px',
+        padding: "14px 16px",
         borderRadius: 12,
-        border: '1px solid var(--paper-2, #EAE4D8)',
-        background: 'var(--paper-1, #F3EFE6)',
-        cursor: 'pointer',
+        border: "1px solid var(--paper-2, #EAE4D8)",
+        background: "var(--paper-1, #F3EFE6)",
+        cursor: "pointer",
         transition: `border-color ${ink.ms}ms ${ink.easing}, background ${ink.ms}ms ${ink.easing}`,
         fontFamily: SANS,
       }}
@@ -76,38 +82,55 @@ function BucketCard({
             fontFamily: MONO,
             fontSize: 8.5,
             fontWeight: 600,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--seal-deep, #14515C)',
+            letterSpacing: "0.14em",
+            textTransform: "uppercase",
+            color: "var(--seal-deep, #14515C)",
           }}
         >
-          {p.primaryBusinessType}
+          {/* "Not stated" when nobody stated one (founder answer 12, 2026-09-21) — never blank, never a guessed type. */}
+          {businessTypeLabel(p.primaryBusinessType)}
         </span>
         <span
           style={{
-            display: 'block',
+            display: "block",
             fontFamily: SERIF,
             fontSize: 16,
             fontWeight: 600,
-            letterSpacing: '-0.01em',
+            letterSpacing: "-0.01em",
             lineHeight: 1.2,
-            color: 'var(--ink-1, #211C16)',
+            color: "var(--ink-1, #211C16)",
           }}
         >
           {p.name}
         </span>
       </div>
-      <dl style={{ margin: 0, display: 'grid', gap: 2, fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
+      <dl
+        style={{
+          margin: 0,
+          display: "grid",
+          gap: 2,
+          fontSize: 11.5,
+          color: "var(--ink-2, #4F473C)",
+        }}
+      >
         <div className="flex justify-between gap-3">
-          <dt style={{ color: 'var(--ink-3, #7C7365)' }}>Open orders</dt>
-          <dd style={{ margin: 0, fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>{open}</dd>
+          <dt style={{ color: "var(--ink-3, #7C7365)" }}>Open orders</dt>
+          <dd
+            style={{
+              margin: 0,
+              fontFamily: MONO,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {open}
+          </dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: 'var(--ink-3, #7C7365)' }}>Lead time</dt>
+          <dt style={{ color: "var(--ink-3, #7C7365)" }}>Lead time</dt>
           <dd style={{ margin: 0 }}>{fmtDays(vm.leadTimeDays)}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: 'var(--ink-3, #7C7365)' }}>Contact</dt>
+          <dt style={{ color: "var(--ink-3, #7C7365)" }}>Contact</dt>
           <dd style={{ margin: 0 }}>{fmtLastContact(vm.lastContact)}</dd>
         </div>
       </dl>
@@ -118,6 +141,7 @@ function BucketCard({
 export default function ProvidersNext() {
   const data = useProvidersNextData();
   const [openProvider, setOpenProvider] = useState<Provider | null>(null);
+  const [adding, setAdding] = useState(false);
   /*
    * A sheet opened FROM THE CURRENCY PROMPT — the panel's link or `?vendor=` —
    * carries the reason it was opened, so `UsualCurrencySection` can put the
@@ -155,7 +179,10 @@ export default function ProvidersNext() {
   return (
     <div
       className="mudavym min-h-screen"
-      style={{ background: 'var(--paper-0, #FAF7F1)', color: 'var(--ink-1, #211C16)' }}
+      style={{
+        background: "var(--paper-0, #FAF7F1)",
+        color: "var(--ink-1, #211C16)",
+      }}
     >
       <style>{`
         .pv-card:hover { border-color: var(--seal-ring, rgba(26,94,107,.32)); background: var(--paper-0, #FAF7F1) }
@@ -171,19 +198,42 @@ export default function ProvidersNext() {
                 fontFamily: SERIF,
                 fontSize: 30,
                 fontWeight: 600,
-                letterSpacing: '-0.015em',
+                letterSpacing: "-0.015em",
                 lineHeight: 1.1,
-                margin: '4px 0 0',
+                margin: "4px 0 0",
               }}
             >
               Providers
             </h1>
           </div>
-          <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+          <span
+            style={{
+              fontFamily: SANS,
+              fontSize: 12,
+              color: "var(--ink-3, #7C7365)",
+            }}
+          >
             {data.hasData
               ? `${data.cards.length} vendors — the learned detail lives inside each card`
-              : 'Reaching the gateway…'}
+              : "Reaching the gateway…"}
           </span>
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            data-testid="add-vendor"
+            style={{
+              fontFamily: SANS,
+              fontSize: 12.5,
+              fontWeight: 600,
+              padding: "7px 13px",
+              borderRadius: 9,
+              border: "1px solid var(--seal, #1A5E6B)",
+              background: "var(--seal, #1A5E6B)",
+              color: "var(--paper-0, #FBF8F1)",
+            }}
+          >
+            Add a vendor
+          </button>
         </header>
 
         {data.isError && (
@@ -192,11 +242,11 @@ export default function ProvidersNext() {
             className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3"
             style={{
               fontFamily: SANS,
-              border: '1px solid var(--paper-2, #EAE4D8)',
-              background: 'var(--paper-1, #F3EFE6)',
+              border: "1px solid var(--paper-2, #EAE4D8)",
+              background: "var(--paper-1, #F3EFE6)",
             }}
           >
-            <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+            <span style={{ fontSize: 12.5, color: "var(--ink-2, #4F473C)" }}>
               {data.hasData
                 ? `The vendor book could not be refreshed (${data.errorMessage}) — the cards show the last answer, not the present.`
                 : `The gateway could not be reached (${data.errorMessage}). The vendor book is unknown — nothing below is claimed.`}
@@ -207,12 +257,12 @@ export default function ProvidersNext() {
               style={{
                 fontSize: 12,
                 fontWeight: 600,
-                padding: '5px 12px',
+                padding: "5px 12px",
                 borderRadius: 8,
-                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                background: 'transparent',
-                color: 'var(--seal-deep, #14515C)',
-                cursor: 'pointer',
+                border: "1px solid var(--seal-ring, rgba(26,94,107,.32))",
+                background: "transparent",
+                color: "var(--seal-deep, #14515C)",
+                cursor: "pointer",
               }}
             >
               Try again
@@ -222,23 +272,42 @@ export default function ProvidersNext() {
 
         {/* The prompt that keeps the order-currency chain alive (founder,
             2026-09-06 batch 66). It counts and links; it pre-fills nothing. */}
-        <UsualCurrencyCoveragePanel knownIds={knownIds} onOpenVendor={openById} />
+        <UsualCurrencyCoveragePanel
+          knownIds={knownIds}
+          onOpenVendor={openById}
+        />
 
         {data.hasData && data.cards.length === 0 && !data.isError && (
-          <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+          <p
+            style={{
+              fontFamily: SANS,
+              fontSize: 12.5,
+              color: "var(--ink-3, #7C7365)",
+            }}
+          >
             No vendors yet — the book is open and empty.
           </p>
         )}
 
         {!data.ordersKnown && data.hasData && data.cards.length > 0 && (
-          <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '0 0 10px' }}>
-            The orders book hasn’t answered yet — open-order counts show {EM} until it does.
+          <p
+            style={{
+              fontFamily: SANS,
+              fontSize: 11,
+              color: "var(--ink-3, #7C7365)",
+              margin: "0 0 10px",
+            }}
+          >
+            The orders book hasn’t answered yet — open-order counts show {EM}{" "}
+            until it does.
           </p>
         )}
 
         <div
           className="grid gap-3"
-          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}
+          style={{
+            gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
+          }}
         >
           {data.cards.map((vm) => (
             <BucketCard
@@ -254,10 +323,21 @@ export default function ProvidersNext() {
         </div>
       </div>
 
+      {adding && (
+        <NewVendorSheet
+          open
+          onClose={() => setAdding(false)}
+          onAdded={data.refetch}
+        />
+      )}
       {openProvider && (
         <TwinSheet
           provider={openProvider}
           focusUsualCurrency={openedForCurrency}
+          onProviderSaved={(updated) => {
+            setOpenProvider(updated);
+            data.refetch();
+          }}
           onClose={() => {
             setOpenedForCurrency(false);
             setOpenProvider(null);

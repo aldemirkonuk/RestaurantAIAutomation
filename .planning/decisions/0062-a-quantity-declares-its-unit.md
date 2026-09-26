@@ -1,6 +1,6 @@
 # 0062 — A quantity crossing the wire declares its unit, and the door accumulates
 
-- **Status:** Proposed
+- **Status:** Proposed. **Superseded in part, 2026-09-21:** the `quantityReceived` clause of "Given up for now" below is answered by [ADR 0192](0192-received-is-the-shelf-count-from-the-ledger.md) (founder: *"Shelf count from ledger"*) — what an order received is the stock ledger's count, and the app no longer reads or writes `procurement_orders.quantity_received`. The rest of this record is unchanged.
 - **Date:** 2026-09-01
 - **Decider:** Aldemir (founder) — the accumulation rule (D3) and the typed-columns rule (D4) were decided by the founder before this work started; the rest is implementation under them
 - **Keywords:** receiving, door, units, bottles, boxes, rejected, idempotency, split delivery, accumulate, stock movement, procurement_receipt_events, guard

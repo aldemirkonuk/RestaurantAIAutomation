@@ -18,6 +18,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -36,7 +37,7 @@ import { HouseSenderService } from "./house-sender.service";
 import { HouseLettersCron } from "./house-letters.cron";
 import { HouseInboxCron } from "../inbox/house-inbox.cron";
 import { HouseInboxService } from "../inbox/house-inbox.service";
-import { QueueLetterDto, UpsertLetterTemplateDto } from "./house-letters.dto";
+import { DeclineLetterRequestDto, QueueLetterDto, UpsertLetterTemplateDto } from "./house-letters.dto";
 import { houseActor, type TokenUser } from "./house-letters.actor";
 
 @ApiTags("Communications")
@@ -68,6 +69,9 @@ export class HouseLettersController {
     const identity = await this.sender.resolve(restaurantId, userId);
     return {
       ...identity,
+      // Whether THIS person's hold sends (ADR 0175 D10; 2026-09-21) — read
+      // before the hold so the sheet never discovers it as a refusal after.
+      sendOrAsk: await this.letters.sendOrAsk(userId, restaurantId),
       dispatcher: this.cron.lastRun(),
       // The receive half's own report. `dispatcher` says whether letters can
       // still leave; this says whether replies are still arriving, and from
@@ -117,10 +121,76 @@ export class HouseLettersController {
     return this.letters.upsertTemplate({ restaurantId, userId, dto });
   }
 
+  /**
+   * Begin the hold on a composer letter: a one-time seal over the vendor, the
+   * address, the subject and the words (ADR 0175 D9; sealed 2026-09-21).
+   */
+  @Post("seal-challenge")
+  @ApiOperation({ summary: "Mint the one-time seal a composer letter's queue has to carry back" })
+  @ApiResponse({ status: 403, description: "The caller is not an owner, a manager or a grantee" })
+  async issueQueueSeal(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.issueQueueSeal({ restaurantId, userId, dto });
+  }
+
+  /**
+   * A staff member asks an owner or a manager to send this letter (founder
+   * answer 3, 2026-09-21). The exact letter is saved; nothing is queued.
+   */
+  @Post("requests")
+  @ApiOperation({ summary: "Ask an owner or a manager to send this letter; it is kept exactly and nothing is sent" })
+  @ApiResponse({ status: 409, description: "The caller may send it themself" })
+  async ask(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.ask({ restaurantId, userId, dto });
+  }
+
+  @Get("requests")
+  @ApiOperation({
+    summary: "Letters waiting for a manager: every one for an owner or a manager, the caller's own for anyone else",
+  })
+  async requests(@CurrentUser() user: TokenUser) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.requestsFor(userId, restaurantId);
+  }
+
+  /**
+   * An owner or a manager declines a waiting letter request, with a reason; the
+   * person who asked is told (founder, 2026-09-21: "Decline/withdraw; undo
+   * re-waits"). The role is read from the signed token's person, strictly.
+   */
+  @Post("requests/:id/decline")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Decline a waiting letter request, saying why; nothing is sent" })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or a manager" })
+  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  async declineRequest(
+    @CurrentUser() user: TokenUser,
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @Body() dto: DeclineLetterRequestDto,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.declineRequest({ restaurantId, userId, requestId: id, reason: dto.reason });
+  }
+
+  /** The person who asked withdraws their own waiting letter request; the owners and managers are told. */
+  @Post("requests/:id/withdraw")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Withdraw your own waiting letter request; nothing is sent" })
+  @ApiResponse({ status: 403, description: "The caller did not ask for it" })
+  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  async withdrawRequest(
+    @CurrentUser() user: TokenUser,
+    @Param("id", new ParseUUIDPipe()) id: string,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.letters.withdrawRequest({ restaurantId, userId, requestId: id });
+  }
+
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
-    summary: "Queue one letter from this house. Never sends immediately.",
+    summary: "Queue one letter from this house, behind a redeemed seal. Never sends immediately.",
   })
   @ApiResponse({
     status: 202,
@@ -138,11 +208,15 @@ export class HouseLettersController {
   @ApiResponse({
     status: 403,
     description:
-      "The house has stopped using the grant this identity rests on (ADR 0114).",
+      "The house has stopped using the grant this identity rests on (ADR 0114); or the seal was absent, spent or over different words; or the caller is not an owner, a manager or a grantee (ADR 0175 D10).",
   })
-  async queue(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+  async queue(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: QueueLetterDto,
+    @Headers("x-seal-challenge") challenge?: string,
+  ) {
     const { userId, restaurantId } = houseActor(user);
-    return this.letters.queue({ restaurantId, userId, dto });
+    return this.letters.queue({ restaurantId, userId, dto, challenge });
   }
 
   @Post(":id/cancel")
@@ -151,7 +225,9 @@ export class HouseLettersController {
     @CurrentUser() user: TokenUser,
     @Param("id", new ParseUUIDPipe()) id: string,
   ) {
-    const { restaurantId } = houseActor(user);
-    return this.letters.cancel({ restaurantId, id });
+    const { userId, restaurantId } = houseActor(user);
+    // Who pulled it back is named on a staff request it re-opens (founder,
+    // 2026-09-21: "undo re-waits").
+    return this.letters.cancel({ restaurantId, id, userId });
   }
 }

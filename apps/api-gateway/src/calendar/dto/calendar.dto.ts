@@ -605,3 +605,75 @@ export class ICalTokenResponseDto {
   })
   originSource: "config" | "request" | "none";
 }
+
+// ============================================================================
+// DAY NOTES — ADR 0111 §1, "Note / memo": its own table, never the calendar
+// event description. Built 2026-09-21 (founder answer 2) closing the
+// "Collected and discarded today" gap MeetingMemoPrompt left since it shipped.
+// ============================================================================
+
+export enum CalendarDayNoteDocType {
+  MEETING_MEMO = "meeting_memo",
+  CALL_LOG = "call_log",
+  TASTING_NOTES = "tasting_notes",
+  GENERAL = "general",
+}
+
+export class CreateCalendarDayNoteDto {
+  @ApiProperty({
+    description:
+      "The day this note is marginalia for (YYYY-MM-DD). Never an event id — see calendar_day_notes migration header.",
+    example: "2026-09-21",
+  })
+  @IsDateString()
+  businessDate: string;
+
+  @ApiPropertyOptional({
+    enum: CalendarDayNoteDocType,
+    default: CalendarDayNoteDocType.GENERAL,
+  })
+  @IsOptional()
+  @IsEnum(CalendarDayNoteDocType)
+  docType?: CalendarDayNoteDocType;
+
+  @ApiPropertyOptional({
+    description:
+      "A plain snapshot of the event this note was written against, for display only.",
+  })
+  @IsOptional()
+  @IsString()
+  eventTitle?: string;
+
+  @ApiProperty({
+    description:
+      "The note itself. Required — an empty note is not a statement.",
+  })
+  @IsString()
+  body: string;
+}
+
+export class CalendarDayNoteResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  businessDate: string;
+
+  @ApiProperty({ enum: CalendarDayNoteDocType })
+  docType: CalendarDayNoteDocType;
+
+  @ApiPropertyOptional()
+  eventTitle?: string | null;
+
+  @ApiProperty()
+  body: string;
+
+  @ApiProperty({
+    description:
+      "Who wrote it, as their name read at the moment of writing — an attestation, not a live join.",
+  })
+  authorName: string;
+
+  @ApiProperty()
+  createdAt: string;
+}

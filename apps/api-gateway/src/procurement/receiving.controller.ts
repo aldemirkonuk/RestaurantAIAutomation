@@ -309,7 +309,7 @@ export class ReceivingController {
   @ApiOperation({
     summary: "What earlier trucks on this order already brought",
     description:
-      "Split deliveries are normal in wine. Without this the door compared truck two's six boxes against the whole purchase order and called it ten short while the driver stood there. The total is summed from procurement_receipt_events rather than read from procurement_orders.quantity_received, because that column is a cache and the events are the record. receivedBoxes is null — never 0 — when the pack size is not knowable.",
+      "Split deliveries are normal in wine. Without this the door compared truck two's six boxes against the whole purchase order and called it ten short while the driver stood there. The total is summed from procurement_receipt_events (ADR 0062 D3, founder-decided) — never from the order's old received column, which the app no longer reads (ADR 0192). The stock ledger's count travels beside it as onShelfBottles, countedNotBookedBottles and the received block. receivedBoxes is WHOLE boxes and receivedLooseBottles what is left; both are null — never 0 — when no exact pack size is known, and neither is rounded.",
   })
   async receivedSoFar(
     @Param("id") orderId: string,

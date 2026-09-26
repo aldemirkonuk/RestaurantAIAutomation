@@ -54,6 +54,9 @@ import MonthLedger, { DayLedger } from './MonthLedger';
 import TimeGrid from './TimeGrid';
 import AgendaRoll from './AgendaRoll';
 import EventSheet, { type SheetTarget } from './EventSheet';
+import MeetingNotePanel, { meetingsAwaitingNote, withoutNotedMeetings } from './MeetingNotePanel';
+import { useDayNotesInRange } from '@/hooks/queries';
+import { getErrorMessage } from '@/services/api/client';
 import './calendar-next.css';
 
 const VIEWS: Array<{ key: CalView; label: string; hint: string }> = [
@@ -115,6 +118,18 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
   const [cursor, setCursor] = useState(() => new Date());
   const [selected, setSelected] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetTarget | null>(null);
+  /**
+   * THE NOTE PROMPT (ADR 0111; built 2026-09-06, packet 2).
+   *
+   * Which meeting's note is open, and which have been answered. `answered` is
+   * held IN THIS SESSION and not persisted, because the day-book has no column
+   * that records "we asked about this one": inventing a localStorage flag would
+   * make one browser's silence look like the house's answer. So the question
+   * comes back on a reload until the note is written or there is nothing to
+   * note — which is the truthful behaviour, and is said in the page note.
+   */
+  const [notingId, setNotingId] = useState<string | null>(null);
+  const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
   const [q, setQ] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const headRef = useRef<HTMLElement | null>(null);
@@ -322,6 +337,32 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
   }
 
   const openEvent = (event: CalEvent) => setSheet({ mode: 'edit', event });
+
+  /* Meetings that have ended and carry no note yet, minus the ones answered in
+     this session. Since 2026-09-21 a note lives in its own table
+     (calendar_day_notes), not in the entry's description, so the events alone
+     cannot say which meetings already carry one: the notes across the same
+     days are read, and a meeting they answer is not listed. Until that read
+     answers, nothing is listed; if it FAILS, the meetings are listed with a
+     line saying their notes could not be read — never as if there were none. */
+  const noteCandidates = useMemo(
+    () => meetingsAwaitingNote(data.events, new Date()).filter((e) => !answered.has(e.id)),
+    [data.events, answered],
+  );
+  // `meetingsAwaitingNote` sorts oldest first, so the ends are the range.
+  const noteRange = useMemo(
+    () =>
+      noteCandidates.length === 0
+        ? null
+        : { from: noteCandidates[0].date, to: noteCandidates[noteCandidates.length - 1].date },
+    [noteCandidates],
+  );
+  const notesRead = useDayNotesInRange(noteRange);
+  const notesUnread = noteRange !== null && notesRead.isError;
+  const awaitingNote = useMemo(() => {
+    if (notesRead.data) return withoutNotedMeetings(noteCandidates, notesRead.data);
+    return notesUnread ? noteCandidates : [];
+  }, [noteCandidates, notesRead.data, notesUnread]);
 
   /* ── the standing line: only what the page actually knows ─────────────── */
   const standing = useMemo(() => {
@@ -554,6 +595,44 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
           {view === 'agenda' && <AgendaRoll data={data} onOpenEvent={openEvent} />}
         </div>
 
+        {/* THE QUESTION, ASKED AFTER THE MEETING ENDS (ADR 0111 · census 102).
+            One line per meeting that has finished and carries no note. It never
+            claims the meeting happened — the entry says when it was, and the
+            house asks. */}
+        {awaitingNote.length > 0 && (
+          <section
+            aria-label={notesUnread ? 'Meetings whose notes could not be read' : 'Meetings without a note'}
+            style={{ marginTop: 24 }}
+          >
+            <div className="cn-rule2" />
+            {notesUnread && (
+              <p className="cn-meta" data-testid="cn-note-unread" style={{ margin: '8px 0 0' }}>
+                Whether these already have a note could not be read ({getErrorMessage(notesRead.error)}).
+              </p>
+            )}
+            {awaitingNote.map((e) => (
+              <p
+                key={e.id}
+                className="cn-meta"
+                data-testid="cn-note-prompt"
+                style={{ display: 'flex', alignItems: 'baseline', gap: 8, margin: '8px 0 0' }}
+              >
+                <span>
+                  {e.title} ended {e.date}. A note from it?
+                </span>
+                <button
+                  type="button"
+                  className="cn-btn"
+                  data-testid="cn-note-open"
+                  onClick={() => setNotingId(e.id)}
+                >
+                  Write one
+                </button>
+              </p>
+            ))}
+          </section>
+        )}
+
         <footer style={{ marginTop: 36 }}>
           <div className="cn-rule2" />
           <div className="cn-head" style={{ marginBottom: 0 }}>
@@ -566,6 +645,20 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
       </div>
 
       {sheet && <EventSheet data={data} target={sheet} onClose={() => setSheet(null)} />}
+
+      {/* The question, asked after the meeting ends. `MEETING_KINDS` is what the
+          house means by a meeting; an entry that already carries notes is not
+          asked about again, because it has been answered in the book itself. */}
+      <MeetingNotePanel
+        open={notingId !== null}
+        event={data.events.find((e) => e.id === notingId) ?? null}
+        data={data}
+        onClose={() => {
+          if (notingId) setAnswered((prev) => new Set(prev).add(notingId));
+          setNotingId(null);
+        }}
+        onSaved={() => data.refetch()}
+      />
     </div>
   );
 }

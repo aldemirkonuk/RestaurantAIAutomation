@@ -16,6 +16,11 @@ import { CacheModule } from "../common/cache/cache.module";
 import { OrchestratorModule } from "../common/orchestrator/orchestrator.module";
 import { AuthModule } from "../auth/auth.module";
 import { CryptoModule } from "../common/crypto/crypto.module";
+// The house composer's two gates (ADR 0175 D9/D10, 2026-09-21). Each imports
+// DatabaseModule and nothing else, and neither service file imports anything
+// that reaches back here, so they add no Nest cycle and no ES-module load cycle.
+import { SealModule } from "../common/seal/seal.module";
+import { VendorSendAuthorityModule } from "../organizations/vendor-send-authority.module";
 // The SERVICE file, not `integrations.module`. See the note on the provider
 // below — importing the module closes an ES-module load cycle that no
 // `forwardRef` can open, because forwardRef defers Nest's DI graph and not
@@ -43,6 +48,8 @@ import { HouseInboxCron } from "./inbox/house-inbox.cron";
     // For IntegrationsOauthService's own dependency; CryptoModule imports
     // ConfigModule and nothing else, so it adds no edge to the module graph.
     CryptoModule,
+    SealModule,
+    VendorSendAuthorityModule,
   ],
   controllers: [CommunicationsController, HouseLettersController],
   providers: [

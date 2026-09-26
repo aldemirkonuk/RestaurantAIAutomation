@@ -1,0 +1,608 @@
+/**
+ * "The house's reply, drafted" — the owed act on `/communications`, with the
+ * seal ADR 0118 requires.
+ *
+ * WHAT WAS OWED. The rebuilt page can COUNT drafts waiting — "drafts pending"
+ * on the glance strip, from `GET /procurement/conversations/active` — and could
+ * do nothing about one. The act lived on `/orders`, in
+ * `components/orders/DraftEmailApprovalPanel.tsx:130`, and the census moves it
+ * here because a letter to a vendor is this page's business.
+ *
+ * THE SEAL, AND WHY IT NEEDED TWO NEW ROUTES
+ * ------------------------------------------
+ * ADR 0118: *nothing reaches a vendor without a person's hold.* The legacy
+ * panel's approve button posted `POST orders/:id/approve-draft` — one click,
+ * and mail left the building on an unsealed request. Nothing in the gateway
+ * could seal a SEND, so packet 2 built it:
+ *
+ *   POST /procurement/orders/:id/draft-seal-challenge   mint  (procurement.controller.ts)
+ *   POST /procurement/orders/:id/send-drafted-reply     spend (procurement.controller.ts)
+ *
+ * The seal is minted when the HOLD BEGINS and bound to the LETTER — the words,
+ * the recipient and the copies as the person read them (`draftSealArgs`). A
+ * paragraph edited between the hold and the release is refused by the args
+ * hash rather than quietly posted; a seal minted to approve the order's MONEY
+ * cannot be spent to send its MAIL, because `send_draft` is its own act.
+ *
+ * `approve-draft` is not a second, unsealed door: it funnels into the same
+ * `sendDraftedReply` → `approveDraft` seal check as the new routes (lane E
+ * audit D8 correction — an earlier draft of this comment said otherwise).
+ *
+ * [Round 5 correction, 2026-09-21, CLAUDE.md §5b.] An earlier paragraph here
+ * described a `REQUIRE_DRAFT_SEND_SEAL` grace that let an absent challenge send
+ * unsealed. The founder deleted it the same day: the seal is REQUIRED on every
+ * vendor send, and an absent challenge is refused on both routes.
+ *
+ * SEND OR ASK (founder, 2026-09-21, "Staff ask, manager sends"). The panel
+ * reads this viewer's standing beside the draft (`GET orders/:id/draft`,
+ * `sendOrAsk`) BEFORE the hold. An owner, a manager or a person an owner has
+ * granted holds to SEND; anybody else holds to ASK — their exact words are
+ * saved as the version, the owners and managers are told, and a manager's one
+ * hold over that version sends it. A grant is shown as "granted by"; a waiting
+ * request is shown with who asked and whether it is still their version.
+ *
+ * A DRAFT NEVER LOOKS SENT (ADR 0112 rule 5). The engine's words are grey until
+ * a person edits them; an edited letter says "edited by you" and the grey does
+ * not come back. Nothing about opening this panel changes a draft.
+ *
+ * THE CONSTRAINT WARNINGS ARE THE ENGINE'S FLAGS AND NAME THEIR RULE. The
+ * legacy panel printed them with a severity colour; here each names the rule it
+ * tripped, in words, which is the house's own rule for a flag.
+ */
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Panel, HoldToApprove } from '@/components/mudavym';
+import { apiClient, getErrorMessage } from '@/services/api/client';
+import { queryKeys } from '@/lib/query-keys';
+import {
+  draftKeys,
+  requestDraftSend,
+  useDraftStanding,
+} from '@/hooks/queries/useDraftEmailQueries';
+import { SendStandingNote, holdAct } from '@/components/orders/SendStanding';
+import { MONO, SANS, SERIF } from './cm-format';
+
+export interface ConstraintWarning {
+  code: string;
+  message: string;
+  severity?: string;
+}
+
+/** `ActiveConversationDto`, as this panel needs it. */
+export interface DraftedReply {
+  id: string;
+  orderId: string;
+  orderNumber: string | null;
+  wineName: string | null;
+  providerName: string | null;
+  providerEmail: string | null;
+  emailType: string;
+  roundCount: number;
+  draftContent: string | null;
+  constraintFlags?: unknown;
+  createdAt: string;
+  /** What the gateway will actually put in the subject line if this is sent. */
+  subject: string;
+}
+
+/**
+ * The engine's own vocabulary, in the house's words.
+ *
+ * A type the gateway grows and this map has not caught up with is shown AS
+ * ITSELF, lower-cased and unpunctuated, rather than as "Email". The legacy
+ * panel's fallback erased the distinction between a kind nobody has named and
+ * a kind called "Email", and an operator could not tell which they had.
+ */
+const KINDS: Record<string, string> = {
+  PRICE_INQUIRY: 'asking a price',
+  DEMAND_OFFER: 'asking for an offer',
+  PROMO_INQUIRY: 'asking about a promotion',
+  WINE_INQUIRY: 'asking about a wine',
+  COUNTER_OFFER: 'a counter-offer',
+  CLARIFICATION: 'asking them to be clearer',
+  ACCEPTANCE_CONFIRM_REQUEST: 'accepting, and asking them to confirm',
+  ESCALATION: 'escalating',
+  ORDER_CONFIRMATION: 'confirming the order',
+  MANUAL_REPLY: 'a reply written by a person',
+};
+
+export function kindWords(emailType: string): string {
+  return KINDS[emailType] ?? emailType.toLowerCase().replace(/_/g, ' ');
+}
+
+
+/** The engine's flags on this letter, whatever shape they arrived in. */
+export function warningsOf(flags: unknown): ConstraintWarning[] {
+  const raw = Array.isArray(flags)
+    ? flags
+    : Array.isArray((flags as { warnings?: unknown })?.warnings)
+      ? ((flags as { warnings: unknown[] }).warnings)
+      : [];
+  const out: ConstraintWarning[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const w = item as Record<string, unknown>;
+    const message = typeof w.message === 'string' ? w.message : null;
+    if (!message) continue;
+    out.push({
+      code: typeof w.code === 'string' ? w.code : 'unnamed rule',
+      message,
+      severity: typeof w.severity === 'string' ? w.severity : undefined,
+    });
+  }
+  return out;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const field: React.CSSProperties = {
+  width: '100%',
+  fontFamily: SANS,
+  fontSize: 12.5,
+  padding: '6px 8px',
+  borderRadius: 6,
+  border: '1px solid var(--paper-2, #EAE4D8)',
+  background: 'var(--paper-0, #FAF7F1)',
+  color: 'var(--ink-1, #211C16)',
+};
+
+const legend: React.CSSProperties = {
+  display: 'block',
+  fontFamily: MONO,
+  fontSize: 9,
+  fontWeight: 600,
+  letterSpacing: '0.11em',
+  textTransform: 'uppercase',
+  color: 'var(--ink-3, #7C7365)',
+  marginBottom: 3,
+};
+
+export interface DraftedReplyPanelProps {
+  open: boolean;
+  reply: DraftedReply | null;
+  onClose: () => void;
+  /** Called after the letter really went. */
+  onSent?: () => void;
+  /** Called after the draft was discarded. */
+  onDiscarded?: () => void;
+  /** Substituted into `[Manager Name]`, as the legacy panel did. */
+  managerName?: string;
+}
+
+export function DraftedReplyPanel({
+  open,
+  reply,
+  onClose,
+  onSent,
+  onDiscarded,
+  managerName,
+}: DraftedReplyPanelProps) {
+  const queryClient = useQueryClient();
+  const [body, setBody] = useState('');
+  const [notes, setNotes] = useState('');
+  const [cc, setCc] = useState<string[]>([]);
+  const [ccInput, setCcInput] = useState('');
+  const [ccProblem, setCcProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
+  /** Bumped after a refusal so the die returns to rest rather than staying sealed. */
+  const [attempt, setAttempt] = useState(0);
+  /** The gateway's own sentence after a staff member's hold became a request. */
+  const [asked, setAsked] = useState<string | null>(null);
+
+  // WHO: this viewer's standing and any request waiting on this draft, read
+  // together so the hold's face is decided before anyone presses it.
+  const standingQuery = useDraftStanding(reply?.orderId ?? null);
+  const sendOrAsk = standingQuery.data?.sendOrAsk ?? null;
+  const request = standingQuery.data?.draft?.send_request ?? null;
+  const act = holdAct(sendOrAsk);
+
+  const engineWords = useMemo(() => {
+    const raw = reply?.draftContent ?? '';
+    return managerName ? raw.replace(/\[Manager Name\]/g, managerName) : raw;
+  }, [reply?.draftContent, managerName]);
+
+  const loadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!reply) return;
+    if (loadedFor.current === reply.id) return;
+    loadedFor.current = reply.id;
+    setBody(engineWords);
+    setNotes('');
+    setCc([]);
+    setCcInput('');
+    setCcProblem(null);
+    setFailure(null);
+    setSent(null);
+    setAsked(null);
+  }, [reply, engineWords]);
+
+  // A request that is still the requester's version carries their copies;
+  // the seal binds copies, so the releasing manager must hold over the same.
+  const ccLoadedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!reply || !request?.current) return;
+    if (ccLoadedFor.current === reply.id) return;
+    ccLoadedFor.current = reply.id;
+    setCc(request.ccEmails ?? []);
+  }, [reply, request]);
+
+  const warnings = useMemo(() => warningsOf(reply?.constraintFlags), [reply?.constraintFlags]);
+  const edited = reply !== null && body !== engineWords;
+  const empty = body.trim() === '';
+
+  if (!reply) return null;
+
+  const addCc = (raw: string) => {
+    const email = raw.trim().toLowerCase();
+    if (!email) return;
+    if (!EMAIL_RE.test(email)) {
+      setCcProblem(`“${raw.trim()}” is not an email address, so nobody was added.`);
+      return;
+    }
+    if (cc.includes(email)) {
+      setCcProblem(`${email} is already copied.`);
+      return;
+    }
+    setCc((prev) => [...prev, email]);
+    setCcInput('');
+    setCcProblem(null);
+  };
+
+  /**
+   * Mint the seal, at the moment the hold begins, over the letter AS IT STANDS.
+   * A null answer stops the send — `HoldToApprove` will not approve without a
+   * token, which is the whole point of minting at the start of the gesture.
+   */
+  const mint = async (): Promise<string | null> => {
+    setFailure(null);
+    try {
+      const { data } = await apiClient.post<{ challenge?: string }>(
+        `/procurement/orders/${reply.orderId}/draft-seal-challenge`,
+        { content: body, to: reply.providerEmail, ccEmails: cc },
+      );
+      const challenge = data?.challenge ?? null;
+      if (!challenge) {
+        setFailure('The seal was not issued, so nothing was sent. Hold it again.');
+        return null;
+      }
+      return challenge;
+    } catch (e) {
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      setFailure(
+        status === 404
+          ? 'There is no draft waiting on this order any more, so nothing was sent. It may already have gone or been discarded.'
+          : `The seal could not be issued (${getErrorMessage(e)}), so nothing was sent.`,
+      );
+      return null;
+    }
+  };
+
+  const send = async (challenge?: string | null) => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      // No `to`: the letter goes to the vendor's address on file and the
+      // gateway refuses a caller-named recipient with a 400
+      // (draft-routes-validate-bodies.spec.ts). The seal is always carried —
+      // there is no unsealed send any more (founder, 2026-09-21).
+      const { data } = await apiClient.post<{ sentAt?: string }>(
+        `/procurement/orders/${reply.orderId}/send-drafted-reply`,
+        {
+          modifiedContent: body,
+          managerNotes: notes.trim() || undefined,
+          ccEmails: cc.length > 0 ? cc : undefined,
+        },
+        { headers: { 'X-Seal-Challenge': challenge ?? '' } },
+      );
+      // Said only after the gateway accepted it, and from what it answered.
+      setSent(
+        data?.sentAt
+          ? `Sent to ${reply.providerEmail ?? 'the vendor'} at ${new Date(data.sentAt).toLocaleString()}.`
+          : `Sent to ${reply.providerEmail ?? 'the vendor'}. The gateway did not say when.`,
+      );
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+      onSent?.();
+    } catch (e) {
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      setFailure(
+        status === 403
+          ? `${getErrorMessage(e)} Nothing was sent.`
+          : `The send could not be confirmed (${getErrorMessage(e)}). Check the conversation before trying again; the vendor may already have received it.`,
+      );
+      setAttempt((a) => a + 1);
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * A staff member's hold: ask a manager. Nothing is sent and no seal is
+   * minted — the gateway saves these exact words and copies as the version and
+   * tells the owners and managers (founder, 2026-09-21).
+   */
+  const ask = async () => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      const out = await requestDraftSend({ orderId: reply.orderId, content: body, ccEmails: cc });
+      setAsked(out?.says ?? 'Asked. Nothing has been sent.');
+      await queryClient.invalidateQueries({ queryKey: draftKeys.all });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+    } catch (e) {
+      setFailure(`Nobody was asked (${getErrorMessage(e)}). Nothing was sent.`);
+      setAttempt((a) => a + 1);
+      throw e;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const discard = async () => {
+    setBusy(true);
+    setFailure(null);
+    try {
+      await apiClient.post(`/procurement/orders/${reply.orderId}/discard-draft`);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
+      onDiscarded?.();
+      onClose();
+    } catch (e) {
+      setFailure(
+        `The draft was not discarded (${getErrorMessage(e)}). It is still waiting.`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Panel
+      open={open}
+      onClose={onClose}
+      /* The contract, as the accessible name. */
+      label={
+        act === 'ask'
+          ? `This asks whether to send the house's drafted reply to ${reply.providerName ?? 'this vendor'}. Holding asks a manager to send your version. Leaving sends nothing and keeps the draft waiting.`
+          : `This asks whether to send the house's drafted reply to ${reply.providerName ?? 'this vendor'}. Holding the seal sends the letter to them. Leaving sends nothing and keeps the draft waiting.`
+      }
+      eyebrow={`Drafted · ${reply.orderNumber ?? 'this order'} · round ${reply.roundCount}`}
+      title="The house's reply, drafted"
+      closeLabel="Leave it waiting"
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+            {/* Scoped to this letter (lane E audit D8): a house with the
+                autonomy switch on still auto-sends replies with no hold
+                (processScheduledAutoSends), so the claim cannot be made for
+                every letter this house sends — only for the one in this panel. */}
+            This letter reaches the vendor only after a person’s hold (ADR 0118).
+          </span>
+          <button
+            type="button"
+            onClick={() => void discard()}
+            disabled={busy}
+            data-testid="draft-discard"
+            style={{
+              fontFamily: SANS,
+              fontSize: 12,
+              padding: '6px 12px',
+              borderRadius: 3,
+              border: '1px solid var(--paper-2, #EAE4D8)',
+              background: 'transparent',
+              color: 'var(--ink-2, #4F473C)',
+              cursor: busy ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Throw the draft away
+          </button>
+        </div>
+      }
+    >
+      <div style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+        <p style={{ margin: 0 }}>
+          <span style={{ fontFamily: SERIF, fontSize: 15, color: 'var(--ink-1, #211C16)' }}>
+            {reply.wineName ?? 'This order'}
+          </span>{' '}
+          — the house is {kindWords(reply.emailType)}.
+        </p>
+        <p style={{ margin: '3px 0 0', fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }} data-testid="draft-to">
+          To {reply.providerName ?? 'the vendor'}
+          {reply.providerEmail ? ` · ${reply.providerEmail}` : ' · no address on file'}
+        </p>
+        <p style={{ margin: '2px 0 0', fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }} data-testid="draft-subject">
+          Subject: {reply.subject}
+        </p>
+
+        {/* ── the engine's flags, each naming its rule ─────────────────── */}
+        {warnings.length > 0 && (
+          <ul
+            data-testid="draft-warnings"
+            style={{ listStyle: 'none', margin: '10px 0 0', padding: 0 }}
+          >
+            {warnings.map((w) => (
+              <li
+                key={`${w.code}-${w.message}`}
+                style={{
+                  borderLeft: '2px solid var(--seal-ring, rgba(26,94,107,.32))',
+                  paddingLeft: 8,
+                  marginTop: 4,
+                  fontSize: 11.5,
+                }}
+              >
+                {w.message}{' '}
+                <span style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-3, #7C7365)' }}>
+                  rule {w.code}
+                  {w.severity ? ` · ${w.severity}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* ── the letter ───────────────────────────────────────────────── */}
+        <label style={{ ...legend, marginTop: 12 }} htmlFor="draft-body">
+          The letter {edited ? '· edited by you' : '· the engine’s words'}
+        </label>
+        <textarea
+          id="draft-body"
+          data-testid="draft-body"
+          data-ink={edited ? 'person' : 'engine'}
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          style={{
+            ...field,
+            minHeight: 150,
+            lineHeight: 1.55,
+            // Grey while they are the engine's words; ink once a person has
+            // taken them. A draft never looks sent, and the hand that wrote it
+            // stays visible until a person changes it.
+            color: edited ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+          }}
+        />
+        {empty && (
+          <p role="status" data-testid="draft-empty" style={{ margin: '3px 0 0', fontSize: 11 }}>
+            An empty letter cannot be sent.
+          </p>
+        )}
+
+        {/* ── copies ───────────────────────────────────────────────────── */}
+        <label style={{ ...legend, marginTop: 12 }} htmlFor="draft-cc">
+          Copy somebody
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="draft-cc"
+            style={field}
+            value={ccInput}
+            data-testid="draft-cc-input"
+            onChange={(e) => setCcInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addCc(ccInput);
+              }
+            }}
+            placeholder="name@example.com"
+          />
+          <button
+            type="button"
+            onClick={() => addCc(ccInput)}
+            data-testid="draft-cc-add"
+            style={{
+              fontFamily: SANS,
+              fontSize: 12,
+              padding: '6px 10px',
+              borderRadius: 3,
+              border: '1px solid var(--paper-2, #EAE4D8)',
+              background: 'transparent',
+              color: 'var(--ink-2, #4F473C)',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Add
+          </button>
+        </div>
+        {ccProblem && (
+          <p role="status" data-testid="draft-cc-problem" style={{ margin: '3px 0 0', fontSize: 11 }}>
+            {ccProblem}
+          </p>
+        )}
+        {cc.length > 0 && (
+          <ul data-testid="draft-cc-list" style={{ listStyle: 'none', margin: '5px 0 0', padding: 0 }} className="flex flex-wrap gap-1.5">
+            {cc.map((email) => (
+              <li key={email}>
+                <button
+                  type="button"
+                  onClick={() => setCc((prev) => prev.filter((e) => e !== email))}
+                  aria-label={`Stop copying ${email}`}
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: 11,
+                    padding: '2px 7px',
+                    borderRadius: 3,
+                    border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                    background: 'transparent',
+                    color: 'var(--seal-deep, #14515C)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {email} ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <label style={{ ...legend, marginTop: 12 }} htmlFor="draft-notes">
+          A note for the book (optional)
+        </label>
+        <input
+          id="draft-notes"
+          style={field}
+          value={notes}
+          data-testid="draft-notes"
+          onChange={(e) => setNotes(e.target.value)}
+        />
+
+        {/* ── the seal: send, or ask a manager ───────────────────────────── */}
+        <div className="mt-4" data-testid="draft-seal">
+          {act === 'ask' ? (
+            <HoldToApprove
+              key={`ask-${attempt}`}
+              label="Hold to ask a manager to send it"
+              approvedLabel="Asked"
+              disabled={busy || empty || !reply.providerEmail || !!asked}
+              onApprove={ask}
+            />
+          ) : (
+            <HoldToApprove
+              key={attempt}
+              label={`Hold to send it to ${reply.providerName ?? 'the vendor'}`}
+              approvedLabel="Sent"
+              disabled={busy || empty || !reply.providerEmail || act !== 'send'}
+              onChallenge={mint}
+              onApprove={send}
+            />
+          )}
+          <SendStandingNote
+            standing={sendOrAsk}
+            request={request}
+            loading={standingQuery.isPending}
+            error={standingQuery.isError ? getErrorMessage(standingQuery.error) : null}
+            testId="draft-standing"
+          />
+          <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            {!reply.providerEmail
+              ? 'No address is on file for this vendor, so there is nowhere to send it. Nothing can be held.'
+              : act === 'ask'
+                ? 'Nothing leaves the house from your hold. A manager reads your version and sends it with their own hold.'
+                : 'The seal is minted when the hold begins, over this letter, this recipient and these copies. Change any of them after the hold and the send is refused rather than posted.'}
+          </p>
+        </div>
+
+        {asked && (
+          <p role="status" data-testid="draft-asked" style={{ margin: '10px 0 0', fontSize: 11.5 }}>
+            {asked}
+          </p>
+        )}
+
+        {sent && (
+          <p role="status" data-testid="draft-sent" style={{ margin: '10px 0 0', fontSize: 11.5 }}>
+            {sent}
+          </p>
+        )}
+        {failure && (
+          <p role="status" data-testid="draft-failure" style={{ margin: '10px 0 0', fontSize: 11.5 }}>
+            {failure}
+          </p>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+export default DraftedReplyPanel;

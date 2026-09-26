@@ -64,6 +64,21 @@ export class FakeDb {
   from(table: string) {
     return new FakeQuery(this, table);
   }
+
+  /**
+   * Postgres functions a spec models, by name. An unmodelled function answers
+   * with an ERROR rather than an empty success, so a service that starts
+   * calling a new RPC fails its test until somebody models what the SQL does
+   * (`organizations/testing/grant-ledger-fake.ts` models the grant functions;
+   * the SQL itself is proven against a real database in PGlite).
+   */
+  rpcHandlers: Record<string, (args: Record<string, any>) => { data: any; error: any }> = {};
+
+  async rpc(name: string, args: Record<string, any> = {}): Promise<{ data: any; error: any }> {
+    const handler = this.rpcHandlers[name];
+    if (!handler) return { data: null, error: { message: `function ${name} is not modelled by this fake` } };
+    return handler(args);
+  }
 }
 
 /** The unique indexes this fake actually enforces, by table. */
@@ -74,6 +89,8 @@ const UNIQUE_KEYS: Record<string, string[]> = {
     "dedupe_key",
     "user_id",
   ],
+  // uniq_delivery_item_to_name_order (20260926141300): one ask per order.
+  delivery_item_to_name: ["order_id"],
 };
 
 /**

@@ -91,6 +91,9 @@ export function sendState(status: string | null | undefined): SendState {
   // NOT 'sent' (that would overclaim) and NOT 'draft' (that would invite a
   // second send). ADR 0020: say the uncertainty out loud.
   if (s === 'SEND_UNCONFIRMED') return 'unconfirmed';
+  // The gateway refused to build it: definitely NOT sent, and closed (founder
+  // answer 6, 2026-09-21) — the same fact as a house letter that failed.
+  if (s === 'SEND_REFUSED') return 'failed';
   if (s === 'COMPLETED' || s === 'CLOSED') return 'closed';
   return 'other';
 }
