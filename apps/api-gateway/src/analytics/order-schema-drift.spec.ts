@@ -3,6 +3,7 @@ import * as path from "path";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
+import { alterTableColumnClauses } from "../common/testing/migration-alter-clauses";
 
 /**
  * Regression guard — analytics must not select columns that do not exist.
@@ -83,33 +84,19 @@ function loadSchema(): Map<string, Set<string>> {
       schema.set(table, cols);
     }
 
-    // ALTER TABLE [ONLY] [public.]name <statement body up to ';'>
-    //
-    // One ALTER TABLE may ADD or DROP several columns as comma-separated
-    // clauses in a single statement, e.g.
-    //   ALTER TABLE t ADD COLUMN a text, ADD COLUMN b text, ADD COLUMN c text;
-    // Matching "ALTER TABLE ... ADD COLUMN" as one literal run (the previous
-    // shape) only ever found the FIRST clause — "b" and "c" above were
-    // silently invisible to this schema, which then reported a real column
-    // as 42703. Captures the table once, then walks every ADD/DROP COLUMN
-    // clause found anywhere inside that one statement's body.
-    const alterStmtRe =
-      /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?(?:public\.)?"?(\w+)"?\s+([\s\S]*?);/gi;
-    const addClauseRe =
-      /ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?/gi;
-    const dropClauseRe =
-      /DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?"?(\w+)"?/gi;
-    while ((m = alterStmtRe.exec(sql))) {
-      const table = m[1];
-      const body = m[2];
-      const cols = schema.get(table) ?? new Set<string>();
-      let am: RegExpExecArray | null;
-      addClauseRe.lastIndex = 0;
-      while ((am = addClauseRe.exec(body))) cols.add(am[1]);
-      schema.set(table, cols);
-      let dm: RegExpExecArray | null;
-      dropClauseRe.lastIndex = 0;
-      while ((dm = dropClauseRe.exec(body))) cols.delete(dm[1]);
+    // Every ADD/DROP COLUMN clause of every ALTER TABLE, in file order, with
+    // comments blanked first. The shared reader explains the two ways the
+    // inline regexes that used to live here went blind: a multi-column
+    // statement showed only its first clause, and a `;` inside a comment cut
+    // the statement short (procurement_orders' seven recurrence_* columns).
+    for (const clause of alterTableColumnClauses(sql)) {
+      if (clause.op === "ADD") {
+        const cols = schema.get(clause.table) ?? new Set<string>();
+        cols.add(clause.column);
+        schema.set(clause.table, cols);
+      } else {
+        schema.get(clause.table)?.delete(clause.column);
+      }
     }
   }
   return schema;
@@ -280,7 +267,7 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
     expect(SCHEMA.get("providers")!.has("name")).toBe(true);
   });
 
-  it("[REVERT-FAILS] sees every column a single multi-column ALTER TABLE adds, not just the first", () => {
+  it("[REVERT-FAILS] reads every ADD COLUMN clause of a multi-column ALTER TABLE, not just the first", () => {
     // supabase/migrations/20260805132000_counting_catalog_and_correlation_columns.sql:
     //   ALTER TABLE public.pos_item_mappings
     //       ADD COLUMN IF NOT EXISTS sale_unit character varying(10),
@@ -300,6 +287,33 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
     // A genuinely nonexistent column must still be flagged — the fix must
     // not have made the parser permissive to close this gap.
     expect(cols.has("this_column_does_not_exist")).toBe(false);
+  });
+
+  it("[REVERT-FAILS] a `;` inside a comment does not end the ALTER TABLE statement", () => {
+    // supabase/migrations/20260905235800_an_order_that_repeats_says_so_on_itself.sql:101-108
+    //   ALTER TABLE public.procurement_orders
+    //     -- ... Set once; never advanced.
+    //     ADD COLUMN IF NOT EXISTS recurrence_anchored_on date,
+    //     ...
+    // Reading the statement body up to the first `;` stopped inside that
+    // comment, so all seven recurrence_* columns of the table this guard
+    // exists to protect were invisible and a real select naming one would
+    // 42703 here.
+    const cols = SCHEMA.get("procurement_orders")!;
+    for (const col of [
+      "recurrence_anchored_on",
+      "recurrence_next_due_on",
+      "recurrence_status",
+      "recurrence_status_by",
+      "recurrence_status_at",
+      "recurrence_parent_order_id",
+      "recurrence_occurrence_on",
+    ]) {
+      expect(cols.has(col)).toBe(true);
+    }
+    // Prose in a comment is not schema: "-- ALTER TABLE ADD COLUMN ..." in
+    // 20260818030000_sensory_columns_generated.sql once minted a table "ADD".
+    expect(SCHEMA.has("ADD")).toBe(false);
   });
 
   describe("AdvancedAnalyticsService", () => {

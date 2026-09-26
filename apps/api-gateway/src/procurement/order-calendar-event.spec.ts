@@ -6,6 +6,7 @@ import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
+import { alterTableColumnClauses } from "../common/testing/migration-alter-clauses";
 import {
   CalendarEventSource,
   CalendarEventStatus,
@@ -91,24 +92,15 @@ function readCalendarEventsShape(): TableShape {
       }
     }
 
-    // ALTER TABLE [public.]calendar_events <statement body up to ';'>
-    //
-    // One ALTER TABLE may ADD several columns as comma-separated clauses in a
-    // single statement ("ALTER TABLE t ADD COLUMN a text, ADD COLUMN b text;");
-    // matching "ALTER TABLE ... ADD COLUMN" as one literal run only ever found
-    // the FIRST clause. Captures the statement body once, then walks every
-    // ADD COLUMN clause inside it (order-schema-drift.spec.ts found this the
-    // same way for its own table-generic version of this parser).
-    const alterStmtRe =
-      /ALTER\s+TABLE\s+(?:ONLY\s+)?(?:public\.)?calendar_events\s+([\s\S]*?);/gi;
-    const addClauseRe =
-      /ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?"?([a-z_][a-z0-9_]*)"?/gi;
-    let a: RegExpExecArray | null;
-    while ((a = alterStmtRe.exec(sql)) !== null) {
-      addClauseRe.lastIndex = 0;
-      let am: RegExpExecArray | null;
-      while ((am = addClauseRe.exec(a[1])) !== null) {
-        columns.add(am[1].toLowerCase());
+    // Every ADD COLUMN clause of every ALTER TABLE calendar_events, comments
+    // blanked first — the shared reader explains why a statement-level regex
+    // went blind (multi-column statements, a `;` inside a comment).
+    for (const clause of alterTableColumnClauses(sql)) {
+      if (
+        clause.table.toLowerCase() === "calendar_events" &&
+        clause.op === "ADD"
+      ) {
+        columns.add(clause.column.toLowerCase());
       }
     }
   }

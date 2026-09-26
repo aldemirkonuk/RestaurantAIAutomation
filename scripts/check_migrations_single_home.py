@@ -202,9 +202,16 @@ CONSTRAINT_KEYWORDS = {
 # after the first in a multi-column statement and report it as an "extra"
 # column the outside copy has and the live migrations don't — a false
 # positive on this report-only check.
+#
+# `\s+` after the name is load-bearing: without it `ALTER TABLE auth.users`
+# binds "auth" as the table and reads users' clauses into it. `[^;]*` stops at
+# the statement's `;`; comments are already blanked by g.strip_sql_comments
+# before this runs, so a `;` inside a `--` comment cannot cut a statement short
+# (the same defect the jest specs' shared reader closes in
+# apps/api-gateway/src/common/testing/migration-alter-clauses.ts).
 ALTER_TABLE_STMT_RE = re.compile(
     r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:\"?public\"?\.)?\"?([a-z_][a-z0-9_]*)\"?"
-    r"([\s\S]*?);",
+    r"\s+([^;]*);",
     re.I,
 )
 ADD_COLUMN_CLAUSE_RE = re.compile(
