@@ -503,9 +503,32 @@ export async function updateProviderLocation(
   return response.data
 }
 
+/**
+ * What the gateway says after a branch is removed. Removing the primary hands
+ * the mark to the oldest remaining branch (`promotedId`); `promotionFailed`
+ * means the branch is gone but that second write did not land, so no branch
+ * is primary. An id that is not this vendor's branch is a 404, never success.
+ */
+export interface DeletedProviderLocation {
+  success: true
+  promotedId: string | null
+  promotionFailed: boolean
+}
+
 export async function deleteProviderLocation(
   providerId: string,
   locationId: string
-): Promise<void> {
-  await apiClient.delete(`/providers/${providerId}/locations/${locationId}`)
+): Promise<DeletedProviderLocation> {
+  const response = await apiClient.delete<DeletedProviderLocation>(
+    `/providers/${providerId}/locations/${locationId}`,
+  )
+  return response.data
 }
+
+/** The four kinds of branch the table admits, in the order the sheet offers them. */
+export const PROVIDER_LOCATION_TYPES = [
+  { value: 'office', label: 'Office' },
+  { value: 'warehouse', label: 'Warehouse' },
+  { value: 'store', label: 'Store' },
+  { value: 'other', label: 'Other' },
+] as const

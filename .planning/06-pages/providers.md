@@ -394,6 +394,10 @@ Sidebar item (`components/layout/Sidebar.tsx:87`). `/distributors` redirects her
   `apps/api-gateway/src/providers/vendor-menu-supply.ts`) and `GET /vendor-catalogue/search`
   with its total ("Find new vendors", `services/api/vendors.ts` `searchVendorCataloguePage`),
   both via `pages/providers/next/useVendorScopes.ts`
+- Branches (redesign, 2026-09-26, founder round 8 item 51 · ADR 0221): the locations CRUD
+  above is also called from the vendor sheet — `pages/providers/next/useVendorBranches.ts`
+  → `BranchesSection.tsx`, mounted in `TwinSheet.tsx`. Legacy `Providers.tsx` /
+  `EditProviderModal.tsx` are no longer its only callers. No map (item 52)
 - Intelligence panel: `GET /providers/:id/promotions`, `/providers/promotions/active`,
   `/expiring`, `/savings` + knowledge/conversation-memory
   (`services/api/provider-intelligence.ts`; ENDPOINTS.md:450-459)

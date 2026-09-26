@@ -96,6 +96,31 @@ vi.mock('./useProviderContacts', async () => {
   };
 });
 
+// And one more section down: the vendor's branches (founder, 2026-09-26,
+// round 8, item 51). Its behaviour is asserted in BranchesSection.test.tsx.
+vi.mock('./useVendorBranches', async () => {
+  const actual = await vi.importActual<typeof import('./useVendorBranches')>(
+    './useVendorBranches',
+  );
+  return {
+    ...actual,
+    useVendorBranches: () => ({
+      branches: null,
+      loading: true,
+      error: null,
+      busy: null,
+      saveError: null,
+      notice: null,
+      warning: null,
+      add: vi.fn(),
+      update: vi.fn(),
+      makePrimary: vi.fn(),
+      remove: vi.fn(),
+      reload: vi.fn(),
+    }),
+  };
+});
+
 // The scope ladder (founder, 2026-09-26, item 36) reads its own evidence from
 // the gateway. This file is about the GRID and the sheet; the ladder's rungs,
 // counts, banner and empty states are asserted in VendorScopes.test.tsx against
@@ -192,6 +217,9 @@ describe('ProvidersNext', () => {
     fireEvent.click(screen.getByText('Bodega Álvaro'));
     expect(await screen.findByTestId('twin-panel')).toHaveTextContent('twin of Bodega Álvaro');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // the sheet carries the vendor's branches (item 51), not only in legacy
+    expect(screen.getByRole('heading', { name: 'Branches' })).toBeInTheDocument();
+    expect(screen.getByText('Reading Bodega Álvaro’s branches…')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

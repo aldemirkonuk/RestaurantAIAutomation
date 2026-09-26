@@ -871,12 +871,12 @@ export class ProvidersController {
     @CurrentUser() user: AuthUser,
   ) {
     try {
-      await this.providersService.deleteProviderLocation(
+      const after = await this.providersService.deleteProviderLocation(
         providerId,
         locationId,
         houseOf(user),
       );
-      return { success: true };
+      return { success: true, ...after };
     } catch (error) {
       rethrow(error, "Failed to delete provider location");
     }

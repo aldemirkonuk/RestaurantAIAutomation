@@ -197,6 +197,56 @@ costs less at equal quality. He added that this is not for now: *"we don't have 
 data"*. No UI slot was added (ADR 0020's honest states). The FUTURES/OD entry is the
 records lane's (L1).
 
+**[founder, 2026-09-26, round 8, items 51 and 52 — item 51 built on #484 by lane W7-vloc.]**
+Asked about the deletion manifest's three capability gaps (legacy-only features with no
+Mudavym home). As recorded in project memory `founder-answers-2026-09-25-web-rebuild.md`,
+item 51: *"Three legacy-only features are BUILT into the new pages before cutover: vendor
+branch-locations edit, held low-stock queue on notifications, team coverage-template
+delete + hand-entered sales."* Item 52: *"Legacy vendor world map is DELETED at cutover;
+the new map comes later as 'a more futuristic globe draw, and tab' (its own tab on the
+vendors page)."* **The option texts offered in round 8 were not preserved in any record
+this lane could read** (the memory, the manifest draft and the wave script were
+searched), so the quotations are the memory's recording, not the literal options. The
+rejected alternative, reconstructed from the manifest draft's own wording ("Build a
+reader … or he waives it"; "Decide before deleting"), was to **waive** each gap and
+delete the legacy caller with nothing in its place.
+
+Built (vendor branches only; the other two gaps are other lanes'):
+
+- **The sheet.** `BranchesSection.tsx` in `TwinSheet.tsx`, below *Numbers on file*,
+  read on open through `useVendorBranches.ts`. It ports every field the legacy
+  Locations tab edited (`EditProviderModal.tsx`, "Provider Locations"): name, kind
+  (office / warehouse / store / other), address from the same Places suggestions, the
+  primary mark, and removal. Each change is its own write, and the list is read again
+  after it. The legacy sheet re-synced the whole list on save and swallowed a failure
+  (`Providers.tsx`, "Location sync failed"). A failed read is words and a retry, never
+  an empty book.
+- **House scope: already true, re-verified.** All four routes call
+  `getProvider(providerId, houseOf(user))` first, which answers 404 for another
+  house's vendor, and every `provider_locations` query is `.eq("restaurant_id", …)`.
+  `provider-subresources-are-house-scoped.spec.ts` already pinned the foreign-id
+  and no-house cases. It now also pins DELETE of another house's branch id through
+  the caller's own vendor.
+- **No map** (item 52). A picked address still stores its point, so the later
+  globe has something to draw.
+
+Readings by this lane, not founder answers (each one fixes a defect that the legacy
+sheet's resend-everything save had hidden, and each is pinned in `provider-locations.spec.ts`):
+
+- A PATCH naming a branch that is not this vendor's is a 404 **before** anything is
+  written. The old order took the primary mark off the vendor's real branch first.
+- Removing a branch that does not exist is a 404. It used to answer `{ success: true }`.
+- Removing the primary hands the mark to the oldest remaining branch. The legacy
+  sheet applied this rule in its own state; it is now the gateway's, and the answer
+  names the branch (`promotedId`) or says the hand-off failed (`promotionFailed`).
+- A **different** address sent with no point clears the old point. The same address
+  sent again keeps it.
+- The body refuses a fifth kind of branch and an empty name (400), before the table's
+  CHECK constraint would reject them as a 500.
+- The last branch **may** be removed. The legacy sheet disabled that, because its
+  Details-tab address mirrored the primary location. The new sheet has no such coupling.
+
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-26 | Lane W5-vendors (Opus 5.5), PR #484 | Items 36, 39 and 48 recorded as built; item 49 recorded as future. Code facts are cited at #484's head. The verbatim option texts of round 7 were not available; this is stated above. |
+| 2026-09-26 | Lane W7-vloc (Opus 5.5), PR #484 | Item 51 (vendor branches) recorded as built and item 52 as not built here. The four location routes were re-verified as house-scoped. Six readings are listed above. The verbatim option texts of round 8 were not available; this is stated above. |

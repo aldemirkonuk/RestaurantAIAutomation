@@ -497,6 +497,12 @@ const FOREIGN_ID_ROUTES: [string, Call][] = [
     (c, u) => c.deleteProviderLocation(PROV_B, "loc-b", u as never),
   ],
   [
+    // Own vendor, other house's branch id: the delete matches nothing, and
+    // that is a 404 — it used to answer { success: true } (ADR 0221, item 51).
+    "DELETE :id/locations/:locationId (own vendor, other house's location)",
+    (c, u) => c.deleteProviderLocation(PROV_A, "loc-b", u as never),
+  ],
+  [
     "POST :id/retroactive-order",
     (c, u) =>
       c.createRetroactiveOrder(
