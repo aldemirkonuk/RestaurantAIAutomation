@@ -27,9 +27,10 @@ import { normalizeUom, type Uom } from "./documents/document-types";
  *   * accepted  — the ledger count above (the verification's correction is
  *                 what moves it); there is no second "accepted" number;
  *   * rejected  — at the door (above) and at verification: the latest
- *                 `reconciled` event's `rejected_qty_bottles`;
- *   * invoiced  — the latest `reconciled` event's `invoice_qty_bottles`
- *                 (null = no invoice has been verified);
+ *                 `reconciled` event's `rejected_qty_bottles`, passing over a
+ *                 one-tap confirmation, which states no refusal (below);
+ *   * invoiced  — the `invoice_qty_bottles` of the latest `reconciled` event
+ *                 that STATES one (null = no invoice has been verified);
  *   * backorder — the order's bottles less the ledger count, never below
  *                 zero (null when the order's bottles are not known exactly).
  *
@@ -56,6 +57,34 @@ import { normalizeUom, type Uom } from "./documents/document-types";
  *     facts, and a desk that pre-filled "0" from a failed read would book a
  *     correction against it.
  */
+
+/**
+ * THE ONE-TAP CONFIRMATION (ADR 0192, fifth amendment; founder, 2026-09-26,
+ * round 6, verbatim option: "Yes, keep last invoice (Recommended) — It writes a
+ * history line with the counted bottles. The invoice figure from an earlier
+ * check stays readable instead of turning into 'unknown'.").
+ *
+ * A verification that states no count, no invoice and no refusal — the mobile
+ * Today card's "Counts match", which posts `{ adjustments: [] }` — writes a
+ * `reconciled` event with the bottles the ledger holds, no invoice, and this
+ * `outcome` (the receiver's word, from the column's own list: the delivery was
+ * accepted as booked). A full verification leaves `outcome` null, so the word
+ * is what tells the two apart; nothing is inferred from an absent number.
+ *
+ * Such a line is a verification (it sets `verifiedAt`), but it RESTATES
+ * nothing: the invoice and the desk's refusal are read from the latest event
+ * that states them, so an earlier check's invoice figure stays readable and
+ * its refusal is not turned into a zero nobody counted.
+ */
+export const COUNTS_CONFIRMED_OUTCOME = "accepted";
+
+/** A `reconciled` event written by the one-tap confirmation, not by a full verification. */
+export function isCountsConfirmation(e: {
+  stage?: string | null;
+  outcome?: string | null;
+}): boolean {
+  return e.stage === "reconciled" && e.outcome === COUNTS_CONFIRMED_OUTCOME;
+}
 
 /** The `reason` code when a caller tries to type a received count onto an order. */
 export const RECEIVED_IS_NOT_TYPED_IN = "received_is_the_ledger";
@@ -108,9 +137,9 @@ export type ShelfReceived =
        * cannot be set against a keg or a litre ledger.
        */
       countedNotBookedBottles: number | null;
-      /** Refused at verification, in bottles, from the latest `reconciled` event; null = never verified. */
+      /** Refused at verification, in bottles, from the latest full verification (a one-tap confirmation states none); null = never verified. */
       rejectedAtDeskBottles: number | null;
-      /** What the verified invoice billed, in bottles; null = no invoice verified. */
+      /** What the verified invoice billed, in bottles, from the latest verification that stated one; null = no invoice verified. */
       invoicedBottles: number | null;
       /** When the latest verification was recorded; null = never verified. */
       verifiedAt: string | null;
@@ -261,6 +290,8 @@ export interface ShelfDoorEvent {
   /** `case_count` (the door) or `reconciled` (a verification); absent = the door. */
   stage?: string | null;
   invoice_qty_bottles?: unknown;
+  /** On a `reconciled` event, `accepted` marks the one-tap confirmation (`COUNTS_CONFIRMED_OUTCOME`). */
+  outcome?: string | null;
   occurred_at?: string | null;
 }
 
@@ -354,11 +385,21 @@ export function composeShelfReceived(input: {
   let doorRejected = 0;
   // The verification of record is the LATEST `reconciled` event: a re-verify
   // restates the whole delivery, so events are not added up across runs.
+  // Each figure is read from the latest event that STATES it (ADR 0192, fifth
+  // amendment): the invoice from the latest event with an invoice, the desk's
+  // refusal from the latest full verification. A one-tap confirmation is the
+  // latest verification (`desk`) but states neither.
+  const later = (a: ShelfDoorEvent | null, b: ShelfDoorEvent) =>
+    !a || String(b.occurred_at ?? "") >= String(a.occurred_at ?? "");
   let desk: ShelfDoorEvent | null = null;
+  let deskRefusal: ShelfDoorEvent | null = null;
+  let deskInvoice: ShelfDoorEvent | null = null;
   for (const e of input.doorEvents) {
     if (e.order_id !== order.id) continue;
     if (e.stage === "reconciled") {
-      if (!desk || String(e.occurred_at ?? "") >= String(desk.occurred_at ?? "")) desk = e;
+      if (later(desk, e)) desk = e;
+      if (!isCountsConfirmation(e) && later(deskRefusal, e)) deskRefusal = e;
+      if (e.invoice_qty_bottles != null && later(deskInvoice, e)) deskInvoice = e;
       continue;
     }
     const counted = Number(e.counted_qty_bottles ?? 0);
@@ -375,8 +416,9 @@ export function composeShelfReceived(input: {
   let rejectedAtDeskBottles: number | null = null;
   let invoicedBottles: number | null = null;
   if (desk) {
-    const rejected = Number(desk.rejected_qty_bottles ?? 0);
-    const invoiced = desk.invoice_qty_bottles == null ? null : Number(desk.invoice_qty_bottles);
+    // Only confirmations so far: the desk verified and refused nothing.
+    const rejected = deskRefusal ? Number(deskRefusal.rejected_qty_bottles ?? 0) : 0;
+    const invoiced = deskInvoice ? Number(deskInvoice.invoice_qty_bottles) : null;
     if (!Number.isFinite(rejected) || (invoiced !== null && !Number.isFinite(invoiced))) {
       return shelfUnreadable(
         "The verification on this order holds a number that cannot be read, so what it rejected or was invoiced was not added up.",
@@ -519,7 +561,7 @@ export async function readShelfReceived(
           db
             .from("procurement_receipt_events")
             .select(
-              "id, order_id, stage, counted_qty_bottles, rejected_qty_bottles, invoice_qty_bottles, occurred_at",
+              "id, order_id, stage, outcome, counted_qty_bottles, rejected_qty_bottles, invoice_qty_bottles, occurred_at",
             )
             .eq("restaurant_id", restaurantId)
             .in("order_id", ids)

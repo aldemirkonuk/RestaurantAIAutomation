@@ -1275,3 +1275,104 @@ describe("verifyReceipt — the verification is an event, not four order columns
     expect(calls.orderUpdates).toEqual([]);
   });
 });
+
+describe("verifyReceipt — a one-tap 'Counts match' leaves a history line (ADR 0192, fifth amendment)", () => {
+  // Founder, 2026-09-26, round 6, verbatim option: "Yes, keep last invoice
+  // (Recommended) — It writes a history line with the counted bottles. The
+  // invoice figure from an earlier check stays readable instead of turning
+  // into 'unknown'." The mobile Today card posts exactly `{ adjustments: [] }`
+  // (`apps/mobile/src/components/today/DecisionCard.tsx`).
+  const bottleOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00007",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 24,
+    bottles_total: 24,
+    unit_type: "bottle",
+    final_price: 22,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+
+  it("writes one reconciled line with the booked bottles, no invoice, no refusal, and the confirmation's word", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({
+        restaurant_id: REST,
+        order_id: ORDER,
+        stage: "reconciled",
+        outcome: "accepted",
+        counted_qty: 24,
+        counted_uom: "bottle",
+        counted_qty_bottles: 24,
+        rejected_qty_bottles: 0,
+        invoice_qty_bottles: null,
+        received_by: USER,
+      }),
+    ]);
+    // Still the one-tap it was: the order completes and nothing moves.
+    expect(calls.orderUpdates[0]).toMatchObject({ status: "COMPLETED" });
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+  });
+
+  it("a full verification never carries the confirmation's word", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, { acceptedQuantity: 24 } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
+    expect(calls.receiptEvents[0].outcome).toBeUndefined();
+  });
+
+  it("an old offline payload that corrects the ordered line records the bottles after its correction", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      adjustments: [{ inventoryId: OWN_INVENTORY, delta: -2, reason: "two broken" }],
+    } as any);
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({ outcome: "accepted", counted_qty_bottles: 22, invoice_qty_bottles: null }),
+    ]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(1);
+  });
+
+  it("an order with no item still leaves its line, with no count rather than a guessed one", async () => {
+    const { db, calls } = makeDb({ orderRow: { ...bottleOrder, inventory_id: null } });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toEqual([
+      expect.objectContaining({ outcome: "accepted", counted_qty: null, counted_qty_bottles: null }),
+    ]);
+  });
+
+  it("a refused adjustment leaves no line claiming a verification happened", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, ownedInventoryIds: [OWN_INVENTORY] });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, {
+        adjustments: [{ inventoryId: FOREIGN_INVENTORY, delta: 5 }],
+      } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+  });
+
+  it("if the line cannot be recorded, nothing is changed", async () => {
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      receiptEventError: { message: "permission denied" },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
+    ).rejects.toThrow(/could not be recorded .*nothing was changed/);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+  });
+
+  it("an unreadable ledger records no line and changes nothing, rather than a zero", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, ledgerReadError: true });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
+    ).rejects.toThrow(/could not be read/);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+  });
+});

@@ -12,7 +12,9 @@
  * `stock_type` returns rows it should not, and the assertion sees them.
  */
 import {
+  COUNTS_CONFIRMED_OUTCOME,
   composeShelfReceived,
+  isCountsConfirmation,
   orderPack,
   packsAndLoose,
   readShelfReceived,
@@ -29,14 +31,18 @@ function fakeDb(
   tables: Record<string, Row[]>,
   errors: Record<string, { message: string }> = {},
 ) {
-  const reads: Array<{ table: string; filters: string[] }> = [];
+  const reads: Array<{ table: string; filters: string[]; columns: string }> = [];
   const from = (table: string) => {
     const filters: Array<(r: Row) => boolean> = [];
     const named: string[] = [];
+    let columns = "";
     let from_ = 0;
     let to_ = Infinity;
     const q: any = {
-      select: () => q,
+      select: (cols?: string) => {
+        if (typeof cols === "string") columns = cols;
+        return q;
+      },
       eq: (c: string, v: unknown) => {
         named.push(`${c}=${String(v)}`);
         filters.push((r) => r[c] === v);
@@ -54,7 +60,7 @@ function fakeDb(
         return q;
       },
       then: (resolve: (v: any) => void) => {
-        reads.push({ table, filters: named });
+        reads.push({ table, filters: named, columns });
         if (errors[table]) return resolve({ data: null, error: errors[table] });
         const rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
         return resolve({ data: rows.slice(from_, to_ + 1), error: null });
@@ -380,5 +386,102 @@ describe("the siblings, from the ledger and the verification's event (ADR 0192 a
     const events = reads.find((r) => r.table === "procurement_receipt_events")!;
     expect(events.filters).toContain(`restaurant_id=${REST}`);
     expect(events.filters).toContain("stage in 2");
+  });
+});
+
+describe("a one-tap 'Counts match' restates nothing (ADR 0192, fifth amendment)", () => {
+  // Founder, 2026-09-26, round 6, verbatim option: "Yes, keep last invoice
+  // (Recommended) — It writes a history line with the counted bottles. The
+  // invoice figure from an earlier check stays readable instead of turning
+  // into 'unknown'." The rejected "Yes, as the new record" is what these
+  // tests fail against: the latest event alone would blank the invoice.
+  const verified = (over: Row = {}): Row => ({
+    id: "ev-verify",
+    restaurant_id: REST,
+    order_id: "ord-1",
+    stage: "reconciled",
+    outcome: null,
+    counted_qty_bottles: 58,
+    rejected_qty_bottles: 2,
+    invoice_qty_bottles: 60,
+    occurred_at: "2026-09-21T10:00:00.000Z",
+    ...over,
+  });
+  const confirmed = (over: Row = {}): Row =>
+    verified({
+      id: "ev-tap",
+      outcome: COUNTS_CONFIRMED_OUTCOME,
+      counted_qty_bottles: 58,
+      rejected_qty_bottles: 0,
+      invoice_qty_bottles: null,
+      occurred_at: "2026-09-22T08:00:00.000Z",
+      ...over,
+    });
+  const compose = (doorEvents: Row[]) =>
+    composeShelfReceived({
+      order: caseOrder(),
+      stockUom: "bottle",
+      ledger: [tx(58, "order-delivered-live:ord-1")] as any[],
+      doorEvents: doorEvents as any[],
+      lines: [line()],
+    });
+
+  it("keeps the earlier check's invoice readable after a later confirmation", () => {
+    expect(compose([verified(), confirmed()])).toMatchObject({
+      invoicedBottles: 60,
+      // The confirmation IS the latest verification.
+      verifiedAt: "2026-09-22T08:00:00.000Z",
+    });
+  });
+
+  it("keeps the earlier check's refusal, never a zero nobody counted", () => {
+    expect(compose([verified(), confirmed()])).toMatchObject({ rejectedAtDeskBottles: 2 });
+  });
+
+  it("reads the invoice from the latest event that states one, even a full check without one", () => {
+    // A later full verification with no paper (a packing slip) states no
+    // invoice either; the reading is "the latest that states one".
+    const out = compose([
+      verified(),
+      verified({ id: "ev-slip", invoice_qty_bottles: null, rejected_qty_bottles: 0, occurred_at: "2026-09-23T08:00:00.000Z" }),
+    ]);
+    expect(out).toMatchObject({ invoicedBottles: 60, rejectedAtDeskBottles: 0 });
+  });
+
+  it("a later check that states an invoice replaces the earlier one", () => {
+    const out = compose([
+      verified(),
+      confirmed(),
+      verified({ id: "ev-late", invoice_qty_bottles: 72, rejected_qty_bottles: 1, occurred_at: "2026-09-24T08:00:00.000Z" }),
+    ]);
+    expect(out).toMatchObject({ invoicedBottles: 72, rejectedAtDeskBottles: 1 });
+  });
+
+  it("a confirmation alone: verified, nothing refused at the desk, no invoice", () => {
+    expect(compose([confirmed()])).toMatchObject({
+      verifiedAt: "2026-09-22T08:00:00.000Z",
+      rejectedAtDeskBottles: 0,
+      invoicedBottles: null,
+    });
+  });
+
+  it("only the confirmation's own word marks it; a full check is never passed over", () => {
+    expect(isCountsConfirmation({ stage: "reconciled", outcome: COUNTS_CONFIRMED_OUTCOME })).toBe(true);
+    expect(isCountsConfirmation({ stage: "reconciled", outcome: null })).toBe(false);
+    // The door's own 'accepted' is a door count, not a desk confirmation.
+    expect(isCountsConfirmation({ stage: "case_count", outcome: "accepted" })).toBe(false);
+  });
+
+  it("the reader asks for the outcome, so it can tell a confirmation from a check", async () => {
+    const { db, reads } = fakeDb({
+      inventory_transactions: [tx(58, "order-delivered-live:ord-1")],
+      procurement_receipt_events: [verified(), confirmed()],
+      restaurant_inventory: [item()],
+      procurement_order_items: [line()],
+    });
+    const out = await readShelfReceived(db, REST, [caseOrder()]);
+    expect(out.get("ord-1")).toMatchObject({ invoicedBottles: 60, rejectedAtDeskBottles: 2 });
+    const events = reads.find((r) => r.table === "procurement_receipt_events")!;
+    expect(events.columns.split(",").map((c) => c.trim())).toContain("outcome");
   });
 });

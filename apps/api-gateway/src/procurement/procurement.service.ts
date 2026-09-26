@@ -62,6 +62,7 @@ import {
 import { readAliasedQuantity } from "./quantity-aliases";
 import { readBookedOrderBottles } from "./booked-order-quantity";
 import {
+  COUNTS_CONFIRMED_OUTCOME,
   readOneShelfReceived,
   readShelfReceived,
   RECEIVED_IS_NOT_TYPED_IN,
@@ -5895,6 +5896,76 @@ export class ProcurementService {
       if (eventError) {
         throw new InternalServerErrorException(
           `This verification's counts could not be recorded (${eventError.message}), so nothing was changed: ` +
+            "no stock was corrected and the order is as it was. Try again.",
+        );
+      }
+    }
+
+    // A VERIFICATION THAT STATES NO COUNT STILL LEAVES A HISTORY LINE (ADR
+    // 0192, fifth amendment; founder, 2026-09-26, round 6, verbatim option:
+    // "Yes, keep last invoice (Recommended) — It writes a history line with
+    // the counted bottles. The invoice figure from an earlier check stays
+    // readable instead of turning into 'unknown'." Rejected: "Yes, as the new
+    // record" and "Leave it").
+    //
+    // The mobile Today card's one-tap "Counts match" posts `{ adjustments: [] }`
+    // and so takes no match path; it used to complete the order and record
+    // nothing. It now writes a `reconciled` event, in bottles, with what the
+    // ledger holds for the order's item — booked bottles, plus any legacy
+    // adjustment on that item from an old offline payload — no invoice, no
+    // refusal, and `outcome = 'accepted'` (`COUNTS_CONFIRMED_OUTCOME`), the word
+    // that tells the desk's readers this line restates nothing: the invoice and
+    // the refusal stay read from the latest event that states them
+    // (`shelf-received.ts`). Written before anything moves, like the full
+    // verification's event: if it cannot be recorded, nothing is changed.
+    //
+    // Every legacy adjustment's item is proven to be this house's FIRST, so a
+    // refused adjustment (403) leaves no line claiming a verification happened.
+    if (!hasMatchFields) {
+      for (const adj of adjustments)
+        await assertInventoryBelongsToRestaurant(
+          this.databaseService.supabase,
+          restaurantId,
+          adj.inventoryId,
+          `verifyReceipt on order ${orderId}`,
+          this.logger,
+        );
+      const orderedItem: string | null = (orderRow as any).inventory_id ?? null;
+      let confirmedBottles: number | null = null;
+      if (orderedItem) {
+        const booked = await readBookedOrderBottles(
+          this.databaseService.supabase,
+          restaurantId,
+          orderId,
+          orderedItem,
+        );
+        const onTheLine = adjustments
+          .filter((a) => a.inventoryId === orderedItem)
+          .reduce((sum, a) => sum + a.delta, 0);
+        const held = booked + onTheLine;
+        // A count nobody can state in whole bottles is recorded as no count
+        // ("no accepted count recorded"), never rounded into one.
+        confirmedBottles = Number.isSafeInteger(held) && held >= 0 ? held : null;
+      }
+      const { error: confirmError } = await this.databaseService.supabase
+        .from("procurement_receipt_events")
+        .insert({
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          stage: "reconciled",
+          outcome: COUNTS_CONFIRMED_OUTCOME,
+          counted_qty: confirmedBottles,
+          counted_uom: "bottle",
+          counted_qty_bottles: confirmedBottles,
+          rejected_qty: 0,
+          rejected_qty_bottles: 0,
+          invoice_qty_bottles: null,
+          received_by: userId,
+          notes: null,
+        });
+      if (confirmError) {
+        throw new InternalServerErrorException(
+          `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
             "no stock was corrected and the order is as it was. Try again.",
         );
       }
