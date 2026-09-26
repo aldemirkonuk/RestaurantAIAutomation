@@ -10,6 +10,7 @@ import {
   registersForBeverageType,
   registersForLabel,
   tallyMenuLines,
+  unplacedMenuLines,
   type DecidedBy,
   type InferenceInput,
   type MenuLineTally,
@@ -127,8 +128,32 @@ interface InventoryKindRow {
 }
 
 interface MenuItemRow {
+  id: string;
   category: string | null;
   name: string | null;
+}
+
+/** One menu line the register reader could not place (OD-140). */
+export interface UnplacedMenuLine {
+  /** `menu_items.id` — the line a correction would be written against. */
+  id: string;
+  category: string | null;
+  name: string | null;
+}
+
+/**
+ * `GET /cellar/:restaurantId/registers/unplaced` — the rows behind
+ * `menuLines.notPlaced`.
+ *
+ * `read` is the same denominator the readout prints, from the same query, so
+ * the page can say "17 of the 240 lines read" without a second request. There
+ * is no `null` form: a menu that could not be read is an error response, never
+ * an empty list — an empty list here means the reader placed every line.
+ */
+export interface UnplacedMenuLinesReadout {
+  restaurantId: string;
+  read: number;
+  lines: UnplacedMenuLine[];
 }
 
 interface AnswerRow {
@@ -413,23 +438,63 @@ export class CellarRegistersService {
     };
   }
 
+  /**
+   * The menu lines the register reader could not place — OD-140, founder
+   * 2026-09-25: "Separate list endpoint".
+   *
+   * THE ANTI-DRIFT RULE. This reads the menu through `readMenuRows`, the one
+   * query `readMenuLabels` also uses, and filters with `unplacedMenuLines`, the
+   * one filter `tallyMenuLines` counts. So for the same menu, `lines.length`
+   * here IS `menuLines.notPlaced` on `GET /cellar/:id/registers` — the spec
+   * pins it. A second, hand-written "which lines are unplaced" query is the
+   * drift this shape exists to prevent.
+   *
+   * A failed read THROWS. It is never `{ lines: [] }`, which would say "the
+   * reader placed every line" about a menu nobody could open.
+   */
+  async readUnplaced(restaurantId: string): Promise<UnplacedMenuLinesReadout> {
+    const { rows, error } = await this.readMenuRows(restaurantId);
+    if (error) {
+      throw new Error(`The menu could not be read, so the lines it could not place are unknown: ${error}`);
+    }
+    return {
+      restaurantId,
+      read: rows.length,
+      lines: unplacedMenuLines(rows).map(({ id, category, name }) => ({ id, category, name })),
+    };
+  }
+
+  /**
+   * The one read of this house's menu lines, shared by the readout's tally and
+   * the unplaced list so the two can only ever see the same rows. Ordered by
+   * id so the list is stable between requests; the tally does not care.
+   */
+  private async readMenuRows(
+    restaurantId: string,
+  ): Promise<{ rows: MenuItemRow[]; error: string | null }> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("menu_items")
+      .select("id, category, name")
+      .eq("restaurant_id", restaurantId)
+      // A discarded line is off the menu; it should not still infer a
+      // register carried (migration 20260922230200, ADR 0160 sec110 item 7).
+      .neq("status", "discarded")
+      .order("id", { ascending: true });
+    if (error) return { rows: [], error: error.message };
+    return { rows: (data ?? []) as MenuItemRow[], error: null };
+  }
+
   private async readMenuLabels(restaurantId: string): Promise<{
     status: SourceStatus;
     counts: Map<RegisterId, number> | null;
     lines: MenuLineTally | null;
   }> {
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("menu_items")
-      .select("category, name")
-      .eq("restaurant_id", restaurantId)
-      // A discarded line is off the menu; it should not still infer a
-      // register carried (migration 20260922230200, ADR 0160 sec110 item 7).
-      .neq("status", "discarded");
+    const { rows, error } = await this.readMenuRows(restaurantId);
 
     if (error) {
       return {
-        status: { readable: false, reason: error.message, rows: null },
+        status: { readable: false, reason: error, rows: null },
         counts: null,
         // Null, never a row of zeroes. "We could not read the menu" printed as
         // "0 lines read, 0 placed" is the exact absence-reported-as-health
@@ -438,7 +503,6 @@ export class CellarRegistersService {
       };
     }
 
-    const rows = (data ?? []) as MenuItemRow[];
     const counts = new Map<RegisterId, number>();
     for (const row of rows) {
       for (const id of placeMenuLine(row)) {

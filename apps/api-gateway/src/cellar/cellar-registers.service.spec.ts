@@ -381,3 +381,101 @@ describe("CellarRegistersService.write", () => {
     ).rejects.toThrow(/was not recorded/);
   });
 });
+
+/**
+ * OD-140 — `GET /cellar/:id/registers/unplaced` (founder 2026-09-25:
+ * "Separate list endpoint", with a test that pins count and list to the same
+ * `placeMenuLine` rule so they cannot drift). The anti-drift test the founder
+ * asked for is the first one: for the SAME menu, the readout's `notPlaced` and
+ * the list's length are one number.
+ */
+describe("CellarRegistersService.readUnplaced", () => {
+  const MENU = [
+    { id: "m-1", category: "Wines by the glass", name: "Barolo" },
+    { id: "m-2", category: "Draft Beer", name: "Efes" },
+    { id: "m-3", category: "Kitchen", name: "Mixed olives" },
+    { id: "m-4", category: null, name: "Today's plate" },
+    { id: "m-5", category: "House Selection", name: "Draft Lager" },
+    { id: "m-6", category: "Signature Cocktails", name: "Merlot Sour" },
+    { id: "m-7", category: "House Selection", name: "Grilled halloumi" },
+  ];
+
+  const tablesFor = (menu: TableResult): Record<string, TableResult> => ({
+    restaurant_cellar_registers: { data: [] },
+    restaurant_inventory: { data: [] },
+    menu_items: menu,
+    cocktails: { count: 0 },
+  });
+
+  it("returns as many lines as the readout counts not placed — for the same menu", async () => {
+    const service = await serviceWith(tablesFor({ data: MENU }));
+    const readout = await service.read(RID);
+    const unplaced = await service.readUnplaced(RID);
+
+    expect(readout.menuLines).not.toBeNull();
+    expect(unplaced.lines.length).toBe(readout.menuLines!.notPlaced);
+    expect(unplaced.read).toBe(readout.menuLines!.read);
+    expect(unplaced.lines.map((l) => l.id)).toEqual(["m-3", "m-4", "m-7"]);
+    expect(unplaced.restaurantId).toBe(RID);
+  });
+
+  it("sends only the id, section and name of each line", async () => {
+    const service = await serviceWith(
+      tablesFor({ data: [{ id: "m-9", category: "Kitchen", name: "Bread", menu_id: "x", by_glass_price: 4 }] }),
+    );
+    const unplaced = await service.readUnplaced(RID);
+    expect(unplaced.lines).toEqual([{ id: "m-9", category: "Kitchen", name: "Bread" }]);
+  });
+
+  it("reads the menu with the SAME query the readout's count is taken from", async () => {
+    // Recording db: every call made on the menu_items builder, per request.
+    const calls: Array<Array<[string, unknown[]]>> = [];
+    const recording = {
+      getClient: () => ({
+        from: (table: string) => {
+          const result = table === "menu_items" ? { data: MENU } : table === "cocktails" ? { count: 0 } : { data: [] };
+          const built = chain(result);
+          if (table === "menu_items") {
+            const log: Array<[string, unknown[]]> = [];
+            calls.push(log);
+            for (const m of ["select", "eq", "neq", "order", "is", "in"]) {
+              const inner = built[m] as jest.Mock;
+              built[m] = jest.fn((...args: unknown[]) => {
+                log.push([m, args]);
+                return inner(...args);
+              });
+            }
+          }
+          return built;
+        },
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [CellarRegistersService, { provide: DatabaseService, useValue: recording }],
+    }).compile();
+    const service = moduleRef.get(CellarRegistersService);
+
+    await service.read(RID);
+    await service.readUnplaced(RID);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual(calls[0]);
+    // …and that query is the house's own, without its discarded lines.
+    expect(calls[0]).toContainEqual(["eq", ["restaurant_id", RID]]);
+    expect(calls[0]).toContainEqual(["neq", ["status", "discarded"]]);
+  });
+
+  it("returns an empty list when the reader placed every line", async () => {
+    const service = await serviceWith(tablesFor({ data: [MENU[0], MENU[1]] }));
+    const unplaced = await service.readUnplaced(RID);
+    expect(unplaced).toEqual({ restaurantId: RID, read: 2, lines: [] });
+  });
+
+  it("THROWS when the menu cannot be read — never an empty list", async () => {
+    // An empty list says "the reader placed every line". Over a failed read
+    // that is the absence-reported-as-health failure this file refuses.
+    const service = await serviceWith(
+      tablesFor({ error: { code: "57014", message: "statement timeout" } }),
+    );
+    await expect(service.readUnplaced(RID)).rejects.toThrow(/could not be read.*statement timeout/);
+  });
+});
