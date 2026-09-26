@@ -140,20 +140,46 @@ def executable_sql(text):
     return SQL_LINE_COMMENT.sub("", SQL_BLOCK_COMMENT.sub("", text))
 
 
+def _git_tracked_files(dirs):
+    """Tracked paths under `dirs`, repo-relative. None if git cannot answer.
+
+    `git ls-files` rather than `os.walk`, on purpose (same move as
+    check_no_conflict_markers.py's `list_tracked`): a local, gitignored
+    `services/agent-orchestrator/venv` sits directly under one of SCAN_DIRS,
+    and an `os.walk` has no way to tell that vendored copy of `conkey`- and
+    `indkey`-handling SQLAlchemy source from this repo's own migrations. It
+    is not committed, so it must never be part of what this guard grades.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "-z", "--"] + list(dirs),
+            capture_output=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"cannot run git ls-files: {exc}", file=sys.stderr)
+        return None
+    if proc.returncode != 0:
+        err = proc.stderr.decode("utf-8", errors="replace").strip()
+        print(f"git ls-files exited {proc.returncode}: {err}", file=sys.stderr)
+        return None
+    return [p for p in proc.stdout.decode("utf-8", "replace").split("\0") if p]
+
+
 def sql_files():
-    """Every file that could carry the shape, repo-relative, sorted."""
+    """Every TRACKED file that could carry the shape, repo-relative, sorted."""
+    tracked = _git_tracked_files(SCAN_DIRS)
+    if tracked is None:
+        return None
     out = []
-    for root in SCAN_DIRS:
-        if not os.path.isdir(root):
+    for path in tracked:
+        name = os.path.basename(path)
+        if not name.endswith(SCAN_EXT):
             continue
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-            for name in filenames:
-                if not name.endswith(SCAN_EXT):
-                    continue
-                path = os.path.join(dirpath, name)
-                if os.path.abspath(path) != os.path.abspath(__file__):
-                    out.append(path)
+        if any(part in SKIP_DIRS for part in path.split("/")):
+            continue
+        if os.path.abspath(path) != os.path.abspath(__file__):
+            out.append(path)
     return sorted(out)
 
 
@@ -219,7 +245,14 @@ def check_index_reconstruction(paths):
     """C: no live SQL rebuilds a unique index's equality test by hand."""
     violations = []
     for path in paths:
-        text = open(path, encoding="utf-8", errors="replace").read()
+        # Same contract as check_shape: a tracked path that cannot be read
+        # (deleted in the working tree, or gone between the two passes) is
+        # CANNOT CHECK (None -> exit 2), never an uncaught traceback (exit 1).
+        try:
+            text = open(path, encoding="utf-8", errors="replace").read()
+        except OSError as exc:
+            print(f"cannot read {path}: {exc}", file=sys.stderr)
+            return None
         if "indkey" not in text.lower():
             continue
         if path.endswith(".sql"):
@@ -634,10 +667,11 @@ def self_test():
             "C fired on a bare read of indkey with no pg_attribute join -- that is "
             "counting, not reconstructing, and the ADR 0081 assertion itself does it")
 
-    if check_index_reconstruction(sql_files()):
-        failures.append(
-            f"C fails on the tree as committed: "
-            f"{check_index_reconstruction(sql_files())}")
+    idx = check_index_reconstruction(sql_files())
+    if idx is None:
+        failures.append("C could not read the tree")
+    elif idx:
+        failures.append(f"C fails on the tree as committed: {idx}")
 
     # The real tree must satisfy both, or the guard is testing nothing.
     got = check_shape(sql_files())
@@ -694,7 +728,10 @@ def main():
             )
             return 2
 
-    got = check_shape(sql_files())
+    files = sql_files()
+    if files is None:
+        return 2
+    got = check_shape(files)
     if got is None:
         return 2
     violations, covered = got
@@ -704,7 +741,9 @@ def main():
     live = check_fix_is_live()
     if live is None:
         return 2
-    idx_violations = check_index_reconstruction(sql_files())
+    idx_violations = check_index_reconstruction(files)
+    if idx_violations is None:
+        return 2
     return 0 if report(violations, covered, live, idx_violations) else 1
 
 

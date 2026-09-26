@@ -39,6 +39,7 @@ Exit codes:  0 pass  |  1 an ungraded task type  |  2 cannot check
 import ast
 import os
 import re
+import subprocess
 import sys
 from collections import defaultdict
 
@@ -47,6 +48,12 @@ PYTHON_ROOT = "services/agent-orchestrator"
 
 TS_TASK_TYPE = re.compile(r'taskType:\s*"([a-z_0-9]+)"')
 TS_RECORDER = re.compile(r"nfVerdicts\.(record|recordForEvent)\s*\(")
+
+# Corpus floors (same idea as check_a_count_is_recorded.py's MIN_CORPUS): far
+# below today's counts, far above zero. Below them the listing is not this
+# repo's tree, and any verdict would be about nothing.
+MIN_TS_FILES = 100
+MIN_PY_FILES = 50
 
 # ---------------------------------------------------------------------------
 # Knowingly ungraded, with the reason. Shrink-only.
@@ -88,56 +95,104 @@ EXEMPT: dict[str, str] = {
 }
 
 
-def scan_gateway() -> dict[str, list[str]]:
+def _git_tracked_files(dirs: list[str]) -> list[str]:
+    """Tracked paths under `dirs`, repo-relative. Raises RuntimeError if git
+    cannot answer.
+
+    `git ls-files` rather than `os.walk`, on purpose (same move as
+    check_no_conflict_markers.py's `list_tracked` and
+    check_fk_repoint_by_referenced_column.py's `_git_tracked_files`): a local,
+    gitignored `services/agent-orchestrator/venv` sits directly under
+    PYTHON_ROOT, and a filesystem walk has no way to tell vendored
+    third-party Python -- which may not even parse under this repo's grammar
+    assumptions, and can carry its own `task_type=` look-alikes -- from this
+    repo's own agents. It is not committed, so it must never be part of what
+    this guard grades.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "-z", "--"] + list(dirs),
+            capture_output=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"could not run git ls-files: {exc}") from exc
+    if proc.returncode != 0:
+        err = proc.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"git ls-files exited {proc.returncode}: {err}")
+    return [p for p in proc.stdout.decode("utf-8", "replace").split("\0") if p]
+
+
+def _read(path: str) -> str:
+    """Working-tree content of a tracked path. Raises RuntimeError (CANNOT
+    CHECK) if it cannot be read.
+
+    The path list comes from the index, the content from the working copy, so
+    a file that is tracked but deleted (or unreadable) on disk is listed and
+    then fails to open. That is a checkout this guard cannot answer for --
+    exit 2, never an uncaught traceback that exits 1 and reads as REGRESSED.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            return fh.read()
+    except OSError as exc:
+        raise RuntimeError(f"unreadable tracked file {path}: {exc}") from exc
+
+
+def gateway_files() -> list[str]:
+    return [
+        p for p in _git_tracked_files([GATEWAY])
+        if p.endswith(".ts") and not p.endswith(".spec.ts")
+    ]
+
+
+def python_files() -> list[str]:
+    return [
+        p for p in _git_tracked_files([PYTHON_ROOT])
+        if p.endswith(".py") and not any(x in p for x in ("__pycache__", "/tests"))
+    ]
+
+
+def scan_gateway(files: list[str]) -> dict[str, list[str]]:
     """task_type -> files that emit it without any verdict recorder."""
     ungraded: dict[str, list[str]] = defaultdict(list)
-    for dirpath, _dirs, files in os.walk(GATEWAY):
-        for name in files:
-            if not name.endswith(".ts") or name.endswith(".spec.ts"):
-                continue
-            path = os.path.join(dirpath, name)
-            text = open(path, encoding="utf-8", errors="ignore").read()
-            types = set(TS_TASK_TYPE.findall(text))
-            if not types:
-                continue
-            if TS_RECORDER.search(text):
-                continue
-            for t in types:
-                ungraded[t].append(path)
+    for path in files:
+        text = _read(path)
+        types = set(TS_TASK_TYPE.findall(text))
+        if not types:
+            continue
+        if TS_RECORDER.search(text):
+            continue
+        for t in types:
+            ungraded[t].append(path)
     return ungraded
 
 
-def scan_python() -> dict[str, list[str]]:
+def scan_python(files: list[str]) -> dict[str, list[str]]:
     """task_type -> `log(...)` call sites with no outcome_basis in context."""
     ungraded: dict[str, list[str]] = defaultdict(list)
-    for dirpath, _dirs, files in os.walk(PYTHON_ROOT):
-        if any(p in dirpath for p in ("__pycache__", "/tests", ".venv")):
-            continue
-        for name in files:
-            if not name.endswith(".py"):
+    for path in files:
+        try:
+            tree = ast.parse(_read(path))
+        except SyntaxError:
+            print(f"CANNOT CHECK — {path} does not parse")
+            sys.exit(2)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
                 continue
-            path = os.path.join(dirpath, name)
-            try:
-                tree = ast.parse(open(path, encoding="utf-8", errors="ignore").read())
-            except SyntaxError:
-                print(f"CANNOT CHECK — {path} does not parse")
-                sys.exit(2)
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                kwargs = {k.arg: k.value for k in node.keywords if k.arg}
-                tt = kwargs.get("task_type")
-                if not isinstance(tt, ast.Constant) or not isinstance(tt.value, str):
-                    continue
-                ctx = kwargs.get("context")
-                stamped = False
-                if isinstance(ctx, ast.Dict):
-                    stamped = any(
-                        isinstance(k, ast.Constant) and k.value == "outcome_basis"
-                        for k in ctx.keys
-                    )
-                if not stamped:
-                    ungraded[tt.value].append(f"{path}:{node.lineno}")
+            kwargs = {k.arg: k.value for k in node.keywords if k.arg}
+            tt = kwargs.get("task_type")
+            if not isinstance(tt, ast.Constant) or not isinstance(tt.value, str):
+                continue
+            ctx = kwargs.get("context")
+            stamped = False
+            if isinstance(ctx, ast.Dict):
+                stamped = any(
+                    isinstance(k, ast.Constant) and k.value == "outcome_basis"
+                    for k in ctx.keys
+                )
+            if not stamped:
+                ungraded[tt.value].append(f"{path}:{node.lineno}")
     return ungraded
 
 
@@ -146,34 +201,40 @@ def main() -> int:
         print("CANNOT CHECK — run from the repository root")
         return 2
 
-    gateway = scan_gateway()
-    python = scan_python()
+    try:
+        ts_files = gateway_files()
+        py_files = python_files()
+        # Floor, by design rather than by accident: an empty corpus must be
+        # CANNOT CHECK. Without this, zero files would reach a verdict only
+        # because every EXEMPT entry turns "dead" -- a FAIL that points the
+        # reader at the exemption list instead of at the checkout.
+        if len(ts_files) < MIN_TS_FILES or len(py_files) < MIN_PY_FILES:
+            print(
+                f"CANNOT CHECK — corpus is {len(ts_files)} gateway .ts and "
+                f"{len(py_files)} orchestrator .py tracked files (minimum "
+                f"{MIN_TS_FILES} / {MIN_PY_FILES}); that is not this repo"
+            )
+            return 2
 
-    emitted = set(gateway) | set(python)
-    # Everything that emits anywhere, so a dead exemption can be spotted.
-    all_types = set()
-    for dirpath, _dirs, files in os.walk(GATEWAY):
-        for name in files:
-            if name.endswith(".ts") and not name.endswith(".spec.ts"):
-                all_types |= set(
-                    TS_TASK_TYPE.findall(
-                        open(
-                            os.path.join(dirpath, name),
-                            encoding="utf-8",
-                            errors="ignore",
-                        ).read()
-                    )
-                )
-    for dirpath, _dirs, files in os.walk(PYTHON_ROOT):
-        if any(p in dirpath for p in ("__pycache__", "/tests", ".venv")):
-            continue
-        for name in files:
-            if not name.endswith(".py"):
-                continue
-            text = open(
-                os.path.join(dirpath, name), encoding="utf-8", errors="ignore"
-            ).read()
-            all_types |= set(re.findall(r'task_type\s*=\s*"([a-z_0-9]+)"', text))
+        gateway = scan_gateway(ts_files)
+        python = scan_python(py_files)
+
+        emitted = set(gateway) | set(python)
+        # Everything that emits anywhere, so a dead exemption can be spotted.
+        all_types = set()
+        for path in ts_files:
+            all_types |= set(TS_TASK_TYPE.findall(_read(path)))
+        for path in py_files:
+            all_types |= set(
+                re.findall(r'task_type\s*=\s*"([a-z_0-9]+)"', _read(path))
+            )
+    except RuntimeError as exc:
+        print(f"CANNOT CHECK — {exc}")
+        return 2
+
+    if not all_types:
+        print("CANNOT CHECK — no task type emits anywhere; the guard is looking at nothing")
+        return 2
 
     failures = {t: v for t, v in {**gateway, **python}.items() if t not in EXEMPT}
     dead = sorted(t for t in EXEMPT if t not in all_types)

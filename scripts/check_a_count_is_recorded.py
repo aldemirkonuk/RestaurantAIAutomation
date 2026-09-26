@@ -86,6 +86,7 @@ Usage:  python3 scripts/check_a_count_is_recorded.py [--self-test]
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -133,28 +134,48 @@ class CannotCheck(Exception):
 
 
 def collect(dirs: list[str]) -> list[Path]:
-    """Every scannable, non-test source file under `dirs`.
+    """Every scannable, non-test, TRACKED source file under `dirs`.
+
+    Enumerated via `git ls-files`, not a filesystem walk: a local, gitignored
+    `services/agent-orchestrator/venv` sits directly under one of SCAN_DIRS,
+    and vendored third-party Python inside it -- which can fail to even
+    decode as UTF-8 -- is not part of this repo's shape. It is not committed,
+    so it must never be part of the corpus this guard reads.
 
     Raises CannotCheck rather than returning an empty list, because an empty
     corpus and a healthy corpus must never produce the same answer.
     """
-    files: list[Path] = []
     roots_present = []
     for d in dirs:
         p = (ROOT / d) if not Path(d).is_absolute() else Path(d)
         if p.is_dir():
-            roots_present.append(p)
+            roots_present.append(d)
     if not roots_present:
         raise CannotCheck(f"none of the scan roots exist: {dirs}")
 
-    for root in roots_present:
-        for f in root.rglob("*"):
-            if not f.is_file() or f.suffix not in SUFFIXES:
-                continue
-            s = f.as_posix()
-            if "node_modules" in s or any(m in s for m in TEST_MARKERS):
-                continue
-            files.append(f)
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "-z", "--"] + roots_present,
+            capture_output=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise CannotCheck(f"could not run git ls-files: {exc}") from exc
+    if proc.returncode != 0:
+        err = proc.stderr.decode("utf-8", errors="replace").strip()
+        raise CannotCheck(f"git ls-files exited {proc.returncode}: {err}")
+
+    files: list[Path] = []
+    for rel in proc.stdout.decode("utf-8", errors="replace").split("\0"):
+        if not rel:
+            continue
+        f = ROOT / rel
+        if f.suffix not in SUFFIXES:
+            continue
+        s = f.as_posix()
+        if "node_modules" in s or any(m in s for m in TEST_MARKERS):
+            continue
+        files.append(f)
     return files
 
 
