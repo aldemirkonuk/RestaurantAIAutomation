@@ -13,12 +13,38 @@
  *   deliberately NOT done here (the door brainstorm's one exclusion);
  * - the unverified strip stays ahead of the queue: an uncounted delivery is
  *   the one that turns into unexplained shrinkage.
+ *
+ * Sketch 107 (ADR 0160 §107, "B+ with A's vendor boxes and its bolder
+ * figures"): rows are grouped into a box per vendor — "the vendor box as an
+ * object on the page" — with the queue's own worst-money-first order kept
+ * (a vendor's box rank is where its worst row first appears, never a
+ * re-sorted vendor total). A failed vendor-name lookup is drawn as one named
+ * box ("vendor names could not be loaded"), never silently as "unknown
+ * vendor" per row. The founder's scale question ("what happens when one
+ * delivery carries far more operations than the drawing shows") is answered
+ * per box: more than VENDOR_BOX_CAP rows collapse behind "Show N more"
+ * rather than growing the box without end.
+ *
+ * Approach 1 (founder Q7, 2026-09-22; ADR 0160 §107): one row per LINE,
+ * named by what was ordered, grouped by vendor, five rows a box behind
+ * "Show N more"; a line's full history opens on demand in `RcLineHistory`,
+ * ten entries a page, built from the door receipts already recorded
+ * (founder, 2026-09-25) — never from a table of its own.
+ *
+ * The append-only verdict ledger this queue used to open per row
+ * (`RcVerdictLedger`) is removed — the founder's condition for shipping it
+ * was "if it's bulletproof", and it was not: the "every ordered bottle
+ * either stands in a current bucket or is named not-yet-counted" invariant
+ * was stated in three places and enforced in none, and its own detector
+ * (`notCountedBottles`) was clamped to never read negative, which hid the
+ * exact violation it existed to catch.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ink, settle } from '@/lib/mudavym/motion';
 import type { UnverifiedDelivery } from '@/services/api/receiving';
+import { RcLineHistory } from './RcLineHistory';
 import { RcTally } from './RcTally';
 import {
   EM,
@@ -29,7 +55,7 @@ import {
   capStyle,
   fmtDate,
   fmtIntFloor,
-  fmtMoneyWhole,
+  fmtMoneyWholeCcy,
   fmtMoneyWholeFloor,
 } from './rc-format';
 import {
@@ -41,6 +67,90 @@ import {
 } from './useReceivingNextData';
 
 const LANES: OutcomeLane[] = ['accepted', 'short', 'refused'];
+
+/** More than this many rows in one vendor box collapse behind "Show more". */
+const VENDOR_BOX_CAP = 5;
+
+interface VendorGroup {
+  key: string;
+  name: string;
+  items: QueueItemVM[];
+  /**
+   * Summed PER CURRENCY, never across them — a box with a EUR order and a
+   * USD order is two subtotals, not one invented number (fixer review,
+   * 2026-09-18: "a priced receipt needs its currency",
+   * procurement_orders.currency). Keyed by the order's own currency code, or
+   * '' for a legacy order that carries none (treated as this page's other
+   * figures already do: USD). Empty when nothing in the box is priced yet.
+   */
+  atRiskByCurrency: Array<{ currency: string | null; amount: number }>;
+  /** Rows in this box with no at-risk figure at all — "missing is not zero". */
+  unpricedCount: number;
+  /** True for the one box standing in for a failed name lookup — never per-row. */
+  nameUnavailable: boolean;
+}
+
+/**
+ * Groups keep the server's own worst-money-first order: a box's rank is the
+ * position of the first (worst) row belonging to it, since `Map` preserves
+ * insertion order. Nothing here re-sorts by a vendor's summed total — that
+ * would be a second ordering the server never stated.
+ */
+function groupByVendor(items: QueueItemVM[], namesUnavailable: boolean): VendorGroup[] {
+  const subtotal = (its: QueueItemVM[]) => {
+    const byCcy = new Map<string, number>();
+    let unpricedCount = 0;
+    for (const i of its) {
+      if (i.atRisk === null) {
+        unpricedCount += 1;
+        continue;
+      }
+      const ccy = i.currency ?? '';
+      byCcy.set(ccy, (byCcy.get(ccy) ?? 0) + i.atRisk);
+    }
+    return {
+      atRiskByCurrency: Array.from(byCcy, ([currency, amount]) => ({
+        currency: currency || null,
+        amount,
+      })),
+      unpricedCount,
+    };
+  };
+
+  if (namesUnavailable) {
+    return items.length === 0
+      ? []
+      : [
+          {
+            key: '__unavailable',
+            name: 'Vendor names could not be loaded',
+            items,
+            ...subtotal(items),
+            nameUnavailable: true,
+          },
+        ];
+  }
+  const order: string[] = [];
+  const byKey = new Map<string, QueueItemVM[]>();
+  for (const item of items) {
+    const key = item.providerId ?? '__none';
+    if (!byKey.has(key)) {
+      byKey.set(key, []);
+      order.push(key);
+    }
+    byKey.get(key)!.push(item);
+  }
+  return order.map((key) => {
+    const its = byKey.get(key)!;
+    return {
+      key,
+      name: key === '__none' ? 'No vendor on the order' : (its[0].providerName ?? 'Unnamed vendor'),
+      items: its,
+      ...subtotal(its),
+      nameUnavailable: false,
+    };
+  });
+}
 
 /* ── the outcome lanes ──────────────────────────────────────────────────── */
 
@@ -192,10 +302,13 @@ function QueueRow({
   item,
   expanded,
   onToggle,
+  onOpenHistory,
 }: {
   item: QueueItemVM;
   expanded: boolean;
   onToggle: () => void;
+  /** Opens this line's history sheet (Approach 1: "opened on demand"). */
+  onOpenHistory: () => void;
 }) {
   const navigate = useNavigate();
   const linkStyle = {
@@ -241,14 +354,24 @@ function QueueRow({
           <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
             <span
               style={{
+                // Bolder main figure (sketch 107, A's graft onto B+): the
+                // line's own name carries more weight than the chrome around it.
                 fontFamily: SERIF,
-                fontSize: 14.5,
-                fontWeight: 600,
+                fontSize: 16.5,
+                fontWeight: 700,
                 color: 'var(--ink-1, #211C16)',
               }}
             >
-              {item.orderNumber || item.orderId.slice(0, 8)}
+              {/* One row per LINE (sketch 107 Approach 1): named by what was
+                  ordered, with its order number beside it. With no name the
+                  order number stands alone, as it always did. */}
+              {item.itemName ?? (item.orderNumber || item.orderId.slice(0, 8))}
             </span>
+            {item.itemName && (
+              <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+                {item.orderNumber || item.orderId.slice(0, 8)}
+              </span>
+            )}
             <span
               style={{
                 fontFamily: MONO,
@@ -289,6 +412,13 @@ function QueueRow({
           <span
             style={{
               display: 'block',
+              // `width: 0` + `minWidth: 100%`: the ellipsised line takes the
+              // row's width but contributes NONE to its parents' min-content.
+              // A `nowrap` line otherwise reports its full text width upward,
+              // and the vendor box, the section and <main> grow to fit it —
+              // 12px of sideways scroll at 390 (confirmer walk, 2026-09-18).
+              width: 0,
+              minWidth: '100%',
               fontSize: 11.5,
               color: 'var(--ink-3, #7C7365)',
               marginTop: 3,
@@ -316,18 +446,19 @@ function QueueRow({
           style={{
             flex: 'none',
             fontFamily: MONO,
-            fontSize: 13.5,
+            // Bolder main figure, same graft as the line's name above.
+            fontSize: 15,
             fontWeight: 700,
             fontVariantNumeric: 'tabular-nums',
             color:
               item.atRisk !== null && item.atRisk > 0
                 ? 'var(--ink-1, #211C16)'
                 : 'var(--ink-3, #7C7365)',
-            minWidth: 72,
+            minWidth: 76,
             textAlign: 'right',
           }}
         >
-          {fmtMoneyWhole(item.atRisk)}
+          {fmtMoneyWholeCcy(item.atRisk, item.currency)}
         </span>
         <span
           aria-hidden
@@ -385,11 +516,18 @@ function QueueRow({
                       full — `≥0` means "none inside the window", which is a
                       weaker and truer claim than "none". */}
                   {fmtIntFloor(item.openClaimsFloor, true)} open claim
-                  {item.openClaimsFloor === 1 ? '' : 's'} · {fmtMoneyWhole(item.atRisk)} at risk
-                  {item.backorderQty > 0 && (
+                  {item.openClaimsFloor === 1 ? '' : 's'} ·{' '}
+                  {fmtMoneyWholeCcy(item.atRisk, item.currency)} at risk
+                  {item.backorderBottles !== null && item.backorderBottles > 0 && (
                     <>
                       <br />
-                      {item.backorderQty} on backorder
+                      {item.backorderBottles} {item.backorderBottles === 1 ? 'bottle' : 'bottles'} still on backorder
+                    </>
+                  )}
+                  {item.backorderBottles === null && item.backorderWhy && (
+                    <>
+                      <br />
+                      What is still owed is not known: {item.backorderWhy}
                     </>
                   )}
                   <br />
@@ -399,11 +537,20 @@ function QueueRow({
                   Claim counts are lower bounds: the gateway links at most{' '}
                   {SERVER_WINDOWS.LINKED_CREDITS} credit rows per restaurant and does not order
                   them, so a claim can sit outside the window.
-                  {item.atRisk === 0 && ' The $0 above is measured, not missing.'}
+                  {item.atRisk === 0 &&
+                    ` The ${fmtMoneyWholeCcy(0, item.currency)} above is measured, not missing.`}
                 </p>
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                style={linkStyle}
+                data-ux-key="receiving-next:queue-open-history"
+                onClick={onOpenHistory}
+              >
+                History — what the door and the desk recorded
+              </button>
               <button
                 type="button"
                 style={linkStyle}
@@ -450,11 +597,30 @@ export function RcManagerQueue({
 }) {
   const [lane, setLane] = useState<OutcomeLane | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedVendors, setExpandedVendors] = useState<Set<string>>(new Set());
   const handledHighlightRef = useRef<string | null>(null);
+  const [historyFor, setHistoryFor] = useState<{
+    orderId: string;
+    label: string;
+    vendor: string | null;
+  } | null>(null);
+  const openHistory = (item: QueueItemVM) =>
+    setHistoryFor({
+      orderId: item.orderId,
+      label: item.itemName
+        ? `${item.itemName} · ${item.orderNumber || item.orderId.slice(0, 8)}`
+        : item.orderNumber || item.orderId.slice(0, 8),
+      vendor: data.providerNamesUnavailable ? null : item.providerName,
+    });
 
   const visible = useMemo(
     () => (lane === null ? data.items : data.items.filter((i) => i.lane === lane)),
     [data.items, lane],
+  );
+
+  const vendorGroups = useMemo(
+    () => groupByVendor(visible, data.providerNamesUnavailable),
+    [visible, data.providerNamesUnavailable],
   );
 
   const highlightItem = useMemo(
@@ -476,6 +642,12 @@ export function RcManagerQueue({
     // opened off-screen behind a tab it did not match.
     if (lane !== null && lane !== highlightItem.lane) setLane(null);
     setExpandedId(highlightItem.orderId);
+    // A box shows VENDOR_BOX_CAP rows; a highlighted row past the cap would
+    // be opened behind "Show more", invisible. Open its box.
+    const boxKey = data.providerNamesUnavailable
+      ? '__unavailable'
+      : (highlightItem.providerId ?? '__none');
+    setExpandedVendors((cur) => (cur.has(boxKey) ? cur : new Set(cur).add(boxKey)));
     const t = window.setTimeout(() => {
       const el = document.getElementById(`receiving-queue-row-${highlightItem.orderId}`);
       // `scrollIntoView` is not universal (jsdom's test DOM has none of it) —
@@ -515,18 +687,33 @@ export function RcManagerQueue({
         <span style={{ textAlign: 'right' }}>
           <span style={capStyle}>At risk</span>{' '}
           {/* Summed over the same capped list as the lane counts, so a full
-              window makes the total a lower bound. RcTally keeps its contract:
-              null is the em dash and the dash→number arrival does not tick. */}
-          <RcTally
-            value={data.totalAtRisk}
-            format={(n) => fmtMoneyWholeFloor(n, data.itemsAtFloor)}
-            style={{
-              fontFamily: MONO,
-              fontSize: 17,
-              fontWeight: 700,
-              color: 'var(--ink-1, #211C16)',
-            }}
-          />
+              window makes each currency's total a lower bound. Never a single
+              number across currencies (confirmer review, 2026-09-18) — one
+              RcTally per currency the queue carries, same rule as the vendor
+              boxes' own subtotals. RcTally keeps its contract: null is the em
+              dash and the dash→number arrival does not tick. */}
+          {data.totalAtRiskByCurrency === null || data.totalAtRiskByCurrency.length === 0 ? (
+            <RcTally
+              value={null}
+              style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: 'var(--ink-1, #211C16)' }}
+            />
+          ) : (
+            data.totalAtRiskByCurrency.map((c, i) => (
+              <span key={c.currency ?? ''}>
+                {i > 0 && ' + '}
+                <RcTally
+                  value={c.amount}
+                  format={(n) => fmtMoneyWholeFloor(n, data.itemsAtFloor, c.currency)}
+                  style={{
+                    fontFamily: MONO,
+                    fontSize: 17,
+                    fontWeight: 700,
+                    color: 'var(--ink-1, #211C16)',
+                  }}
+                />
+              </span>
+            ))
+          )}
         </span>
       </div>
 
@@ -548,6 +735,16 @@ export function RcManagerQueue({
           does not have — not "still loading", the read came back clean.
           Deliberately one sentence for every cause: already resolved, on no
           delivery this house holds, or the id does not exist at all. */}
+      {data.itemNamesUnavailable && data.items.length > 0 && (
+        <p
+          role="status"
+          data-testid="receiving-item-names-unavailable"
+          style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}
+        >
+          What each line ordered could not be loaded, so the rows below show their order numbers.
+        </p>
+      )}
+
       {highlightMissing && (
         <div
           role="status"
@@ -651,7 +848,13 @@ export function RcManagerQueue({
         </p>
       )}
 
-      {visible.length > 0 && (
+      {/* A vendor box earns its place only when there is more than one vendor
+          to compare — with a single, NAMED vendor its header would just
+          repeat the page's own "At risk" tally back at the reader. The one
+          exception is the failed-lookup box: it carries real information (the
+          lookup itself failed) that a flat list would silently lose. */}
+      {visible.length > 0 &&
+        !(vendorGroups.length > 1 || vendorGroups[0]?.nameUnavailable) && (
         <div style={{ borderTop: 'none' }}>
           {visible.map((item) => (
             <div
@@ -665,11 +868,173 @@ export function RcManagerQueue({
                 onToggle={() =>
                   setExpandedId((cur) => (cur === item.orderId ? null : item.orderId))
                 }
+                onOpenHistory={() => openHistory(item)}
               />
             </div>
           ))}
         </div>
       )}
+
+      {visible.length > 0 && (vendorGroups.length > 1 || vendorGroups[0]?.nameUnavailable) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 4 }}>
+          {vendorGroups.map((group) => {
+            const isOpen = expandedVendors.has(group.key);
+            const capped = group.items.length > VENDOR_BOX_CAP;
+            const shown = isOpen ? group.items : group.items.slice(0, VENDOR_BOX_CAP);
+            const nameId = `receiving-vendor-box-name-${group.key}`;
+            return (
+              <div
+                key={group.key}
+                data-ux-key="receiving-next:vendor-box"
+                role="group"
+                aria-labelledby={nameId}
+                style={{
+                  border: group.nameUnavailable
+                    ? '1px solid var(--seal-ring, rgba(26,94,107,.32))'
+                    : '1px solid var(--paper-2, #EAE4D8)',
+                  borderRadius: 14,
+                  overflow: 'hidden',
+                  background: 'var(--paper-0, #FAF7F1)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    padding: '10px 14px',
+                    borderBottom: '1px solid var(--paper-2, #EAE4D8)',
+                    background: 'var(--paper-1, #F3EFE6)',
+                  }}
+                >
+                  <span
+                    id={nameId}
+                    style={{
+                      fontFamily: SERIF,
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: group.nameUnavailable
+                        ? 'var(--ink-2, #4F473C)'
+                        : 'var(--ink-1, #211C16)',
+                      fontStyle: group.nameUnavailable ? 'italic' : 'normal',
+                    }}
+                  >
+                    {group.name}
+                    <span
+                      style={{
+                        fontFamily: MONO,
+                        fontSize: 10.5,
+                        fontWeight: 500,
+                        color: 'var(--ink-4, #665D50)',
+                        marginLeft: 8,
+                      }}
+                    >
+                      {group.items.length} deliver{group.items.length === 1 ? 'y' : 'ies'}
+                    </span>
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: MONO,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      fontVariantNumeric: 'tabular-nums',
+                      color: 'var(--ink-1, #211C16)',
+                      flex: 'none',
+                      textAlign: 'right',
+                    }}
+                    title="From GET /procurement/receiving/queue"
+                  >
+                    {/* Never a single number across currencies (fixer review,
+                        2026-09-18) — each currency subtotal prints on its
+                        own, floor-marked like every other capped figure on
+                        this page, and an unpriced row is named, not folded
+                        into 0. */}
+                    {group.atRiskByCurrency.length === 0
+                      ? EM
+                      : group.atRiskByCurrency
+                          .map(
+                            (c) =>
+                              `${data.itemsAtFloor ? GE : ''}${fmtMoneyWholeCcy(c.amount, c.currency)}`,
+                          )
+                          .join(' + ')}
+                    {group.unpricedCount > 0 && (
+                      <span style={{ color: 'var(--ink-4, #665D50)', fontWeight: 400, fontSize: 10.5 }}>
+                        {' '}
+                        · {group.unpricedCount} unpriced
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div>
+                  {shown.map((item) => (
+                    // The same id-carrying wrapper as the flat list, so a
+                    // highlighted row inside a box can be scrolled to.
+                    <div
+                      key={item.orderId}
+                      id={`receiving-queue-row-${item.orderId}`}
+                      data-testid={`receiving-queue-row-${item.orderId}`}
+                    >
+                      <QueueRow
+                        item={item}
+                        expanded={expandedId === item.orderId}
+                        onToggle={() =>
+                          setExpandedId((cur) => (cur === item.orderId ? null : item.orderId))
+                        }
+                        onOpenHistory={() => openHistory(item)}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {/* The founder's scale question: a box pages rather than
+                    growing without end when one vendor holds far more
+                    operations than the drawing showed. */}
+                {capped && (
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    aria-label={
+                      isOpen
+                        ? `Show fewer from ${group.name}`
+                        : `Show ${group.items.length - VENDOR_BOX_CAP} more from ${group.name}`
+                    }
+                    onClick={() =>
+                      setExpandedVendors((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(group.key)) next.delete(group.key);
+                        else next.add(group.key);
+                        return next;
+                      })
+                    }
+                    style={{
+                      width: '100%',
+                      padding: '8px 14px',
+                      fontFamily: SANS,
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      color: 'var(--seal-deep, #14515C)',
+                      background: 'transparent',
+                      border: 'none',
+                      borderTop: '1px solid var(--paper-2, #EAE4D8)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    {isOpen ? 'Show fewer' : `Show ${group.items.length - VENDOR_BOX_CAP} more`}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <RcLineHistory
+        orderId={historyFor?.orderId ?? null}
+        lineLabel={historyFor?.label ?? ''}
+        vendorName={historyFor?.vendor ?? null}
+        onClose={() => setHistoryFor(null)}
+      />
     </section>
   );
 }

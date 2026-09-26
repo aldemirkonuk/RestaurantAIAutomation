@@ -26,6 +26,7 @@ import {
   Plus,
   ExternalLink,
   ShoppingBag,
+  HelpCircle,
 } from 'lucide-react'
 import type { Provider } from '../../services/api/providers'
 import { fetchProviderContacts, getProviderLocations } from '../../services/api/providers'
@@ -280,7 +281,9 @@ export function EditProviderModal({
     email: '',
     website: '',
     address: '',
-    primaryBusinessType: 'Distributor',
+    // '' — "Not stated". Seeded from the provider read below; this initial
+    // value only shows before that read resolves.
+    primaryBusinessType: '',
     specialties: [],
     // Blank, not 'Net 30'. Seeding the field made every provider saved through
     // this dialog assert Net 30 whether anybody chose it or not — the same
@@ -360,7 +363,9 @@ export function EditProviderModal({
         email: provider.email || (provider as any).primaryContact?.email || '',
         website: provider.website || '',
         address: provider.physicalAddress || '',
-        primaryBusinessType: provider.primaryBusinessType || (provider as any).type || 'Distributor',
+        // Never fall back to 'Distributor' — a provider that has never stated
+        // a type reads back as "Not stated" (founder, 2026-09-21).
+        primaryBusinessType: provider.primaryBusinessType || (provider as any).type || '',
         specialties: (provider as any).specialties || [],
         // An unrecorded term stays unrecorded; see the initial state above.
         paymentTerms: (provider as any).paymentTerms || '',
@@ -768,10 +773,22 @@ export function EditProviderModal({
                       onChange={e => { setFormData(prev => ({ ...prev, primaryBusinessType: e.target.value })); setEditingLeftField(null) }}
                       onBlur={() => setEditingLeftField(null)}
                     >
+                      {/* "Not stated" is a real choice (founder, 2026-09-21). Without it a
+                          vendor nobody typed opened this select showing 'Distributor' —
+                          React falls back to the first option when the value matches
+                          none — and picking Distributor then fired no change at all. A
+                          type the vendor already carries that is not one of the three
+                          (a catalogue 'winery_direct', a house's own) is listed as
+                          itself, for the same reason. */}
+                      <option value="">Not stated</option>
                       {['Distributor', 'Importer', 'Wholesaler'].map(t => <option key={t}>{t}</option>)}
+                      {formData.primaryBusinessType &&
+                        !['Distributor', 'Importer', 'Wholesaler'].includes(formData.primaryBusinessType) && (
+                          <option value={formData.primaryBusinessType}>{formData.primaryBusinessType}</option>
+                        )}
                     </select>
                   ) : (
-                    <span className="text-[12px] text-gray-700 truncate group-hover:text-amber-700">{formData.primaryBusinessType || '—'}</span>
+                    <span className="text-[12px] text-gray-700 truncate group-hover:text-amber-700" data-testid="edit-provider-type">{formData.primaryBusinessType || 'Not stated'}</span>
                   )}
                 </div>
 
@@ -1091,6 +1108,18 @@ export function EditProviderModal({
                         Business Type & Tags
                       </h3>
                       <div className="flex flex-wrap gap-3 mb-4">
+                        {/* "Not stated" — nothing assumed, and choosing it clears a type
+                            set earlier (founder, 2026-09-21). */}
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, primaryBusinessType: '' })}
+                          className={`px-4 py-3 rounded-xl border-2 transition-all flex items-center gap-2 ${
+                            formData.primaryBusinessType === '' ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-amber-300'
+                          }`}
+                        >
+                          <HelpCircle className={`w-5 h-5 ${formData.primaryBusinessType === '' ? 'text-amber-600' : 'text-gray-400'}`} />
+                          <span className={`text-sm font-medium ${formData.primaryBusinessType === '' ? 'text-amber-900' : 'text-gray-700'}`}>Not stated</span>
+                        </button>
                         {['Distributor', 'Importer', 'Wholesaler'].map(type => {
                           const isSelected = formData.primaryBusinessType === type
                           const Icon = type === 'Distributor' ? Truck : type === 'Importer' ? Download : Package

@@ -57,8 +57,19 @@ const NO_SENDER = {
   dispatcher: null,
 };
 
+/** An owner or a manager: their hold sends (ADR 0175 D10, 2026-09-21). */
+const MAY_SEND = {
+  readable: true,
+  maySend: true,
+  mode: 'send' as const,
+  basis: 'manager' as const,
+  grant: null,
+  sentence: null,
+};
+
 const HOUSE_MAILBOX = {
   ...NO_SENDER,
+  sendOrAsk: MAY_SEND,
   kind: 'house_mailbox' as const,
   address: 'siparis@lokantamudavim.com',
   sendable: true,
@@ -70,6 +81,7 @@ const HOUSE_MAILBOX = {
 
 const SUBDOMAIN = {
   ...NO_SENDER,
+  sendOrAsk: MAY_SEND,
   kind: 'mudavym_subdomain' as const,
   address: 'siparis@mail.mudavym.com',
   sendable: true,
@@ -171,16 +183,22 @@ describe('the house composer', () => {
 
   it('a queued letter is never reported as sent, and can be pulled back', async () => {
     mockData.current = { ...base, sender: HOUSE_MAILBOX };
-    mockPost.mockResolvedValue({
-      data: {
-        id: 'L1',
-        dispatchAt: new Date(Date.now() + 120000).toISOString(),
-        says: 'Queued to leave from siparis@lokantamudavim.com. It has not been sent.',
-        undoMs: 120000,
-        notices: [],
-        insightsRecorded: 0,
-      },
-    });
+    mockPost.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === '/communications/letters/seal-challenge'
+          ? { data: { challenge: 'seal-1' } }
+          : {
+              data: {
+                id: 'L1',
+                dispatchAt: new Date(Date.now() + 120000).toISOString(),
+                says: 'Queued to leave from siparis@lokantamudavim.com. It has not been sent.',
+                undoMs: 120000,
+                notices: [],
+                insightsRecorded: 0,
+              },
+            },
+      ),
+    );
     open();
     pickRecipient();
     fireEvent.click(screen.getByTestId('letter-send'));
@@ -191,7 +209,8 @@ describe('the house composer', () => {
 
   it('renders a refused letter as words, and says nothing was queued', async () => {
     mockData.current = { ...base, sender: HOUSE_MAILBOX };
-    mockPost.mockRejectedValue({
+    mockPost.mockResolvedValueOnce({ data: { challenge: 'seal-1' } });
+    mockPost.mockRejectedValueOnce({
       response: {
         data: {
           message:
@@ -212,6 +231,7 @@ describe('the house composer', () => {
 
   it('a failed cancel never looks like a successful one', async () => {
     mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    mockPost.mockResolvedValueOnce({ data: { challenge: 'seal-1' } });
     mockPost.mockResolvedValueOnce({
       data: {
         id: 'L1',
@@ -307,5 +327,88 @@ describe('the house composer', () => {
         expect.objectContaining({ email: 'yeni@fikritarim.com' }),
       ),
     );
+  });
+});
+
+describe('the composer is a vendor send: sealed, and only for those who may send (ADR 0175 D9/D10, 2026-09-21)', () => {
+  it('mints a seal over the exact letter and queues it carrying that seal', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    mockPost.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === '/communications/letters/seal-challenge'
+          ? { data: { challenge: 'seal-1' } }
+          : { data: { id: 'L1', dispatchAt: new Date(Date.now() + 120000).toISOString(), says: 'Queued.', undoMs: 120000, notices: [], insightsRecorded: 0 } },
+      ),
+    );
+    open();
+    pickRecipient();
+    fireEvent.click(screen.getByTestId('letter-send'));
+    await waitFor(() => expect(mockPost).toHaveBeenCalledTimes(2));
+    const [mintPath, mintBody] = mockPost.mock.calls[0];
+    const [queuePath, queueBody, config] = mockPost.mock.calls[1];
+    expect(mintPath).toBe('/communications/letters/seal-challenge');
+    expect(queuePath).toBe('/communications/letters');
+    expect(queueBody).toEqual(mintBody);
+    expect(config?.headers?.['X-Seal-Challenge']).toBe('seal-1');
+  });
+
+  it('queues nothing when the seal is refused', async () => {
+    mockData.current = { ...base, sender: HOUSE_MAILBOX };
+    mockPost.mockRejectedValueOnce({ response: { data: { message: 'Nothing was sent. Only an owner, a manager, or someone an owner has named may send this letter with one hold.' } } });
+    open();
+    pickRecipient();
+    fireEvent.click(screen.getByTestId('letter-send'));
+    await waitFor(() => expect(screen.getByTestId('letter-refused')).toBeInTheDocument());
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockPost.mock.calls[0][0]).toBe('/communications/letters/seal-challenge');
+  });
+
+  it("a staff member is offered no send, and their click ASKS a manager, keeping the exact letter (founder answer 3)", async () => {
+    const refetchRequests = vi.fn();
+    mockData.current = {
+      ...base,
+      refetchRequests,
+      sender: {
+        ...HOUSE_MAILBOX,
+        sendOrAsk: {
+          readable: true,
+          maySend: false,
+          mode: 'ask',
+          basis: null,
+          grant: null,
+          sentence: 'Your hold will ask a manager to send it; your version is kept exactly as you wrote it.',
+        },
+      },
+    };
+    mockPost.mockResolvedValue({ data: { says: 'Asked. Your letter is saved exactly as you wrote it.', requestId: 'req-1' } });
+    open();
+    expect(screen.queryByTestId('letter-send')).toBeNull();
+    const ask = screen.getByTestId('letter-ask');
+    expect(ask).toBeDisabled();
+    pickRecipient();
+    expect(screen.getByText(/your version is kept exactly as you wrote it/)).toBeInTheDocument();
+    fireEvent.click(ask);
+    await waitFor(() => expect(screen.getByTestId('letter-asked')).toHaveTextContent(/Asked\. Your letter is saved exactly/));
+    // One call: the request. No seal is minted and nothing is queued.
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockPost.mock.calls[0][0]).toBe('/communications/letters/requests');
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ subject: 'Standing order', body: 'Merhaba,' });
+    expect(refetchRequests).toHaveBeenCalled();
+  });
+
+  it('a grantee sees who granted them', () => {
+    mockData.current = {
+      ...base,
+      sender: {
+        ...HOUSE_MAILBOX,
+        sendOrAsk: {
+          ...MAY_SEND,
+          basis: 'grant' as const,
+          grant: { id: 'g1', grantedBy: { userId: 'u-o', name: 'Olcay' }, expiresAt: null, limitAmount: null, limitCurrency: null },
+        },
+      },
+    };
+    open();
+    expect(screen.getByText(/You send under a grant from Olcay/)).toBeInTheDocument();
   });
 });

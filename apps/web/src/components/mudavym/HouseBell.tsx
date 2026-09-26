@@ -33,6 +33,10 @@ import { useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { Popover } from './Sheet';
 import { useBellBook, BELL_PAGE, type FoldFreshness } from '../../lib/mudavym/useBellBook';
+import {
+  ApproveFromBellPanel,
+  approvableOrderIdOf,
+} from '../notifications/ApproveFromBellPanel';
 import { stackedNotificationLabel } from '../../lib/notificationStack';
 import type { Notification } from '../../services/api/notifications';
 
@@ -73,6 +77,16 @@ function Stamps({ row, fold }: { row: Notification; fold?: FoldFreshness }) {
 
 export function HouseBell() {
   const [open, setOpen] = useState(false);
+  /**
+   * THE HAND-OFF (founder, 2026-09-04; built 2026-09-06, packet 2).
+   *
+   * The bell is a menu and the seal never sits in one — a popover is dismissed
+   * by clicking anywhere, so a commitment reached inside it is one stray click
+   * from being half-made. An approval line that names its order offers
+   * "Approve it", the popover CLOSES, and the panel opens in a room that cannot
+   * be dismissed by accident.
+   */
+  const [approving, setApproving] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const book = useBellBook(open);
@@ -182,9 +196,15 @@ export function HouseBell() {
         ) : (
           items.map((n) => {
             const sub = stackedNotificationLabel(n, foldedById[n.id]);
+            /* Only an APPROVAL line that names its order gets the hand-off.
+               Delivery and invoice lines name orders too and are not asking
+               for a seal, so they get none. The one `order_pending` producer
+               today writes a count and no order id (notifications.md §9), so
+               this control is built and not yet reachable from a real line. */
+            const orderId = approvableOrderIdOf(n);
             return (
+              <div key={n.id}>
               <button
-                key={n.id}
                 type="button"
                 className="mdv-item mdv-hdr__bellrow"
                 data-active={n.status === 'unread'}
@@ -205,10 +225,35 @@ export function HouseBell() {
                 </span>
                 <Stamps row={n} fold={folds[n.id]} />
               </button>
+              {orderId ? (
+                <button
+                  type="button"
+                  className="mdv-link"
+                  data-testid="bell-approve-open"
+                  onClick={() => {
+                    // The popover closes FIRST. A panel opened over a live
+                    // menu leaves the menu's dismiss-on-any-click behind it.
+                    setOpen(false);
+                    setApproving(orderId);
+                  }}
+                >
+                  Approve it
+                </button>
+              ) : null}
+              </div>
             );
           })
         )}
       </Popover>
+
+      {/* The room the bell hands off to. Outside the Popover on purpose: it
+          must outlive the menu that opened it. */}
+      <ApproveFromBellPanel
+        open={approving !== null}
+        orderId={approving}
+        onClose={() => setApproving(null)}
+        onApproved={() => book.refresh()}
+      />
     </div>
   );
 }

@@ -74,6 +74,7 @@ type SendState =
       notices: GuardrailHit[];
     }
   | { kind: 'cancelled'; says: string }
+  | { kind: 'asked'; says: string }
   | { kind: 'refused'; message: string; guardrails: GuardrailHit[] };
 
 export interface ComposeSheetProps {
@@ -111,9 +112,25 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
   const templates = useMemo(() => data.templates ?? [], [data.templates]);
   const sender = data.sender;
   const ceremony = data.senderFailed ? 'none' : (sender?.ceremony ?? 'none');
+  // WHO (ADR 0175 D10, 2026-09-21): the composer is a vendor send, so only an
+  // owner, a manager or a grantee may send from it. Said before the hold.
+  const standing = sender?.sendOrAsk ?? null;
+  const maySend = Boolean(standing?.readable && standing.maySend);
+  // A staff member's letter is KEPT and a manager is asked (founder answer 3,
+  // 2026-09-21). The composer stays a click (answer 7), so the ask is a click
+  // too; the manager's release is one hold.
+  const mayAsk = Boolean(standing?.readable && !standing.maySend && standing.mode === 'ask');
+  const canAsk =
+    mayAsk &&
+    to !== null &&
+    subject.trim().length > 0 &&
+    body.trim().length > 0 &&
+    send.kind !== 'queueing' &&
+    send.kind !== 'asked';
   const canSend =
     !data.senderFailed &&
     Boolean(sender?.sendable) &&
+    maySend &&
     to !== null &&
     subject.trim().length > 0 &&
     body.trim().length > 0 &&
@@ -140,9 +157,57 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
     setChosen((prev) => prev.filter((p) => p.candidateKey !== candidateKey));
   }, []);
 
-  const queue = useCallback(async () => {
-    if (!to) return;
+  /** The letter exactly as it will be queued — the seal is minted over this. */
+  const letter = useMemo(
+    () =>
+      to
+        ? {
+            providerId: to.providerId,
+            to: to.email,
+            subject: subject.trim(),
+            body,
+            templateId: templateId || undefined,
+            insights: chosen.map((c) => ({
+              candidateKey: c.candidateKey,
+              sentence: c.sentence,
+            })),
+          }
+        : null,
+    [to, subject, body, templateId, chosen],
+  );
+
+  /**
+   * Mint the seal over the letter (ADR 0175 D9, sealed 2026-09-21). On the seal
+   * ceremony it is minted when the hold begins; on the house-mailbox ceremony
+   * (a click and an undo window, ADR 0118 D2) it is minted on the click — the
+   * gateway requires a seal on every composer letter either way.
+   */
+  const mint = useCallback(async (): Promise<string | null> => {
+    if (!letter) return null;
+    try {
+      const { data: issued } = await apiClient.post<{ challenge?: string }>(
+        '/communications/letters/seal-challenge',
+        letter,
+      );
+      return issued?.challenge ?? null;
+    } catch (e) {
+      setSend({ kind: 'refused', message: `The seal could not be issued (${errText(e)}), so nothing was queued.`, guardrails: [] });
+      return null;
+    }
+  }, [letter]);
+
+  const queue = useCallback(async (held?: string | null) => {
+    if (!to || !letter) return;
     setSend({ kind: 'queueing' });
+    const challenge = held ?? (await mint());
+    if (!challenge) {
+      setSend((prev) =>
+        prev.kind === 'refused'
+          ? prev
+          : { kind: 'refused', message: 'The seal was not issued, so nothing was queued.', guardrails: [] },
+      );
+      return;
+    }
     try {
       const { data: result } = await apiClient.post<{
         id: string;
@@ -151,16 +216,8 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
         undoMs: number | null;
         notices: GuardrailHit[];
         insightsRecorded: number;
-      }>('/communications/letters', {
-        providerId: to.providerId,
-        to: to.email,
-        subject: subject.trim(),
-        body,
-        templateId: templateId || undefined,
-        insights: chosen.map((c) => ({
-          candidateKey: c.candidateKey,
-          sentence: c.sentence,
-        })),
+      }>('/communications/letters', letter, {
+        headers: { 'X-Seal-Challenge': challenge },
       });
       setSend({
         kind: 'queued',
@@ -178,7 +235,23 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
         guardrails: guardrailsFrom(e),
       });
     }
-  }, [to, subject, body, templateId, chosen, data]);
+  }, [to, letter, mint, data]);
+
+  /** Ask an owner or a manager to send this exact letter. Nothing is queued. */
+  const ask = useCallback(async () => {
+    if (!letter) return;
+    setSend({ kind: 'queueing' });
+    try {
+      const { data: result } = await apiClient.post<{ says: string; requestId: string }>(
+        '/communications/letters/requests',
+        letter,
+      );
+      setSend({ kind: 'asked', says: result.says });
+      data.refetchRequests?.();
+    } catch (e) {
+      setSend({ kind: 'refused', message: `Nothing was asked: ${errText(e)}`, guardrails: guardrailsFrom(e) });
+    }
+  }, [letter, data]);
 
   const cancel = useCallback(async () => {
     if (send.kind !== 'queued') return;
@@ -450,14 +523,41 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
           </p>
         )}
 
+        {send.kind === 'asked' && (
+          <p role="status" data-testid="letter-asked" style={{ margin: 0, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+            {send.says}
+          </p>
+        )}
+
         {/* ── Send ────────────────────────────────────────────────────────── */}
         <div
           className="flex flex-wrap items-center gap-3 pt-1"
           style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}
         >
-          {ceremony === 'seal' ? (
+          {mayAsk ? (
+            <button
+              type="button"
+              data-testid="letter-ask"
+              onClick={() => void ask()}
+              disabled={!canAsk}
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: '7px 16px',
+                borderRadius: 9,
+                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                background: canAsk ? 'var(--seal, #1A5E6B)' : 'transparent',
+                color: canAsk ? 'var(--paper-0, #FAF7F1)' : 'var(--ink-3, #7C7365)',
+                cursor: canAsk ? 'pointer' : 'not-allowed',
+                opacity: canAsk ? 1 : 0.7,
+              }}
+            >
+              {send.kind === 'queueing' ? 'Asking…' : 'Ask a manager to send it'}
+            </button>
+          ) : ceremony === 'seal' ? (
             <HoldToApprove
-              onApprove={queue}
+              onChallenge={mint}
+              onApprove={(challenge) => queue(challenge)}
               disabled={!canSend}
               label="Hold to send"
               approvedLabel="Queued"
@@ -466,7 +566,7 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
             <button
               type="button"
               data-testid="letter-send"
-              onClick={queue}
+              onClick={() => void queue()}
               disabled={!canSend}
               style={{
                 fontSize: 12.5,
@@ -490,6 +590,19 @@ export function ComposeSheet({ open, onClose, prefill }: ComposeSheetProps) {
                 ? 'Send is disabled until the sender line has answered.'
                 : !sender.sendable
                   ? `Send is disabled: ${sender.words}`
+                  : !standing
+                    ? 'Send is disabled: whether you may send letters to vendors has not been answered yet.'
+                    : mayAsk
+                      ? (standing.sentence ??
+                        'Your letter will be kept exactly as you wrote it and a manager asked to send it.')
+                    : !maySend
+                      ? `Send is disabled: ${standing.sentence ?? 'whether you may send letters to vendors could not be read.'}`
+                  : standing.basis === 'grant' && standing.grant
+                    ? `You send under a grant from ${standing.grant.grantedBy.name ?? 'an owner'}. ${
+                        ceremony === 'seal'
+                          ? 'Held under the seal because a letter on the shared Mudavym domain affects every other house that sends from it.'
+                          : `Sends after ${fmtWindowLength(sender.undoMs)}.`
+                      }`
                   : ceremony === 'seal'
                     ? 'Held under the seal because a letter on the shared Mudavym domain affects every other house that sends from it.'
                     : `Sends after ${fmtWindowLength(sender.undoMs)}. Nothing is sent automatically, and nothing is sent to an address the book does not hold.`}

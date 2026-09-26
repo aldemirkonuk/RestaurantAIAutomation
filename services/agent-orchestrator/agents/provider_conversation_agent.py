@@ -2608,8 +2608,18 @@ class ProviderConversationAgent(BaseAgent):
             return None
 
     # Statuses that mean "a send for this conversation is already in flight or
-    # already happened". A claim must never be granted over one of these.
-    _SEND_TERMINAL_STATUSES = ("SENDING", "SENT", "AUTO_SENT", "SEND_UNCONFIRMED")
+    # already happened", or that it is closed. A claim must never be granted
+    # over one of these. SEND_REFUSED is the gateway's own in-process send
+    # closing a draft it refused before anything left (founder, 2026-09-21,
+    # answer 6; migration 20260926140800): a replayed approval must not
+    # re-open it through this path.
+    _SEND_TERMINAL_STATUSES = (
+        "SENDING",
+        "SENT",
+        "AUTO_SENT",
+        "SEND_UNCONFIRMED",
+        "SEND_REFUSED",
+    )
 
     def _mint_rfc822_message_id(self) -> str:
         """Mint an RFC822 Message-ID BEFORE the send.

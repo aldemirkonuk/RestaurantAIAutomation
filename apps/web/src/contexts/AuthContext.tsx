@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { errorTracking } from "../lib/error-tracking";
@@ -521,7 +522,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchAndSetBranches(user.restaurantId);
   }, [user, fetchAndSetBranches]);
 
+  const branchSwitchSequence = useRef(0);
   const setActiveRestaurantId = useCallback(async (restaurantId: string) => {
+    const sequence = ++branchSwitchSequence.current;
     if (!isUuid(restaurantId)) {
       return;
     }
@@ -531,16 +534,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await api.post("/api/v1/auth/switch-restaurant", {
         restaurantId,
       });
+      if (sequence !== branchSwitchSequence.current) return;
       const { accessToken, refreshToken } = response.data;
+      if (!accessToken || !refreshToken)
+        throw new Error("The branch switch returned no session.");
 
       localStorage.setItem("accessToken", accessToken);
       localStorage.setItem("refreshToken", refreshToken);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
     } catch (err) {
-      console.warn(
-        "switch-restaurant failed, proceeding with X-Restaurant-Id header only",
-        err,
+      if (sequence !== branchSwitchSequence.current) return;
+      setError(
+        "The branch could not be switched. Your current branch is still active.",
       );
+      console.warn("switch-restaurant failed; current branch retained", err);
+      return;
     }
 
     setActiveRestaurantIdState(restaurantId);

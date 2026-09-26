@@ -104,6 +104,12 @@ export interface InventorySummary {
 }
 
 export interface UpdateInventoryItemRequest {
+  /**
+   * The house's own name for the item (ADR 0124's one alias; an empty string
+   * clears it). For an item the wine library does not have, a new name also
+   * re-decides its research (founder, 2026-09-21).
+   */
+  wineName?: string;
   providerId?: string;
   stockLive?: number;
   shadowStock?: number;
@@ -308,6 +314,41 @@ export type OrderWireStatus =
  * fails CI if the two drift apart again. Add a key here only after the DTO
  * declares it.
  */
+/** The gateway's `ShelfReceivedDto` (ADR 0192). Every field is null when `readable` is false. */
+export interface ShelfReceived {
+  readable: boolean;
+  /** Which read failed, when `readable` is false. */
+  why: string | null;
+  /** The ledger's sum, in `stockUom`. Never rounded. */
+  quantityInStockUom: number | null;
+  /** The item's stock unit — `bottle` for wine. */
+  stockUom: string | null;
+  /** The order's multiplying unit (`case`, `pack`, `split_case`) when there is a pack view. */
+  packUnit: string | null;
+  /** Bottles in one `packUnit`, exact; null = the order states no pack. */
+  packSize: number | null;
+  /** Whole packs in the count. */
+  packs: number | null;
+  /** What is left after the whole packs, in `stockUom`. */
+  looseInStockUom: number | null;
+  /** "5 cases + 5 bottles". */
+  words: string | null;
+  /** Refused at the door, in bottles. */
+  rejectedAtDoorBottles: number | null;
+  /** Accepted at the door and not on the shelf yet, in bottles. */
+  countedNotBookedBottles: number | null;
+  /**
+   * The four sibling quantities, from the ledger and the latest verification
+   * event, in BOTTLES (ADR 0192 amendment, 2026-09-21). Optional: an older
+   * gateway does not send them, and absent is "not read", never zero.
+   */
+  rejectedAtDeskBottles?: number | null;
+  invoicedBottles?: number | null;
+  verifiedAt?: string | null;
+  orderedBottles?: number | null;
+  backorderBottles?: number | null;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -348,21 +389,18 @@ export interface Order {
    */
   providerName?: string | null;
   /**
-   * `procurement_orders.quantity_received` — what has been booked against this
-   * order so far. A number; `null` (read, and nothing received); or the KEY
-   * ABSENT (this route does not read the column).
+   * What this order RECEIVED — ADR 0192 (founder, 2026-09-21): the bottles the
+   * stock ledger booked onto the shelf for the order's item, in the item's
+   * stock unit, never rounded, shown as `words` ("5 cases + 5 bottles").
+   * THREE states: the block with `readable: true`; the block with
+   * `readable: false` and `why` (a read failed — never read it as zero); or
+   * the KEY ABSENT (this route did not read the ledger).
    *
-   * NEVER USE IT WITHOUT `quantityReceivedUom`. The column has four writers
-   * and two units; on an order placed in cases the reading is ambiguous by the
-   * pack size and the unit key is `null` to say so.
+   * It replaces `quantityReceived` / `quantityReceivedUom`, which carried
+   * `procurement_orders.quantity_received` — a column with four writers in two
+   * units that the gateway no longer reads or writes.
    */
-  quantityReceived?: number | null;
-  /**
-   * The unit `quantityReceived` is stated in — ADR 0070. A unit; `null` (this
-   * row CANNOT state it — a refusal, not a default); or the key absent
-   * alongside `quantityReceived`.
-   */
-  quantityReceivedUom?: string | null;
+  received?: ShelfReceived;
   /**
    * The unit `finalPrice` is stated in — ADR 0119, read from the order LINE.
    * THREE values: a unit; `null` (the line was read and states none, which is

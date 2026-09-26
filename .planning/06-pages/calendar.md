@@ -35,7 +35,45 @@ multi-channel reminders, and meeting-memo capture … Previously built but unrou
 operator (`Sidebar.tsx:110`).
 
 ## 1a. Features
-- See deliveries, tastings and vendor meetings in Month / Week / Day / Agenda views
+
+- **A note from this meeting? — a PANEL, and the first time the note is KEPT**
+  (built 2026-09-06, packet 2 of the overlay layer; census 102 · ADR 0111 · ADR 0112).
+  `pages/calendar/next/MeetingNotePanel.tsx`, asked from a line under the calendar
+  for every meeting that has ended and carries no note.
+  - **The legacy prompt asked the question and threw the answer away.**
+    `pages/calendar/CalendarPage.tsx:325` is an underscore-prefixed argument and the
+    comment `// Future: persist to documents API`. So this is not a migration; it is
+    the write.
+  - **Where it goes**: `PATCH /calendar/events/:eventId`
+    (`calendar.controller.ts:174`), APPENDED to the entry's `description` under a
+    dated heading. ADR 0111 makes the calendar the day-book, and a note about a
+    meeting is a line in that book about that meeting. A documents table and an
+    event `metadata` column were both rejected: each needs a migration, and
+    migrations auto-apply on merge. [**UPDATED 2026-09-21, lane E-limits, founder answer 2** ("meeting notes get their own table (not the calendar event description)"): the note now goes to
+    `POST /calendar/day-notes` → `calendar_day_notes`
+    (`20260926140300_a_meeting_note_gets_its_own_table.sql`), keyed on the day with the
+    event title as a plain snapshot; nothing is written to `description` any more. The
+    legacy prompt's `handleMemoSave` writes there too. See ADR 0083's addendum.]
+  - **It never overwrites.** `appendNote` is pure and separately tested for exactly
+    that — an entry that already carries somebody's words keeps them, and the new
+    note goes underneath. The panel says how much is already there.
+  - **The kind of note is written into the heading**, because there is no column for
+    it, and the panel says so rather than showing a "Document type" field that files
+    nothing. [**UPDATED 2026-09-21:** it is a column now, `calendar_day_notes.doc_type`;
+    `appendNote` is kept only for descriptions written before then.]
+  - **Where it is filed is SHOWN, never chosen** — the entry's own vendor, read from
+    the book, with an unreadable vendor book told apart from an entry that names none.
+  - **Which meetings are asked about** is `meetingsAwaitingNote`: a meeting kind
+    (not a delivery), ended, not cancelled or dismissed, and carrying no description.
+    An entry with no time ends when its DAY ends, not at midnight that morning.
+    [**UPDATED 2026-09-21:** and no `calendar_day_notes` row carrying its day and title —
+    read across the listed days by `GET /calendar/day-notes?from=&to=`; nothing is listed
+    until that read answers, and a failed read says so above the list
+    (`withoutNotedMeetings`, `CalendarNext.tsx`).]
+  - 🚧 **"Asked once" is per session.** The day-book has no column recording that the
+    house asked, so the question returns on a reload until the note is written. A
+    localStorage flag would make one browser's silence look like the house's answer.
+  - Proved by `MeetingNote.test.tsx` (20 assertions).- See deliveries, tastings and vendor meetings in Month / Week / Day / Agenda views
 - Drag to move or resize an event; click an empty slot to create one
 - Full event editing with recurring events (RRULE)
 - Create and manage custom event types (server-backed)
@@ -662,11 +700,12 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | Page | Overlay | Shape | Status | Where the act lives or went | Source |
 |---|---|---|---|---|---|
 | `/calendar` | The entry | sheet | Built | One entry is one object; the month stays readable beneath. | `pages/calendar/next/EventSheet.tsx:230` |
-| `/calendar` | A note from this meeting? | panel | Owed | A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders). | `pages/calendar/MeetingMemoPrompt.tsx:109` |
+| `/calendar` | A note from this meeting? | panel | Built | A question asked once, after the meeting ends (ADR 0111 unifies meetings, notes and reminders). BUILT 2026-09-06 (packet 2) WITH THE WRITE IT NEVER HAD: the legacy onSave was `// Future: persist to documents API`. The note is APPENDED to the day-book entry under a dated heading (PATCH /calendar/events/:eventId); nothing already written is replaced, and the kind is in the heading because there is no column for it. [UPDATED 2026-09-21, founder answer 2: the note now goes to its own table, `calendar_day_notes`, via POST /calendar/day-notes — never the entry description; the kind is its `doc_type` column.] | `BUILT 2026-09-06 as pages/calendar/next/MeetingNotePanel.tsx (was pages/calendar/MeetingMemoPrompt.tsx:109, whose onSave wrote NOTHING)` |
 | `/calendar` | Ask the day-book | panel | Target | A question — the palette's shape, scoped to one page. | `sketch 098 · ADR 0111 (planned, not built)` |
 | `/calendar` | Event modal | — | Retires | The entry sheet. | `pages/calendar/EventModal.tsx:1511 (1,593 lines)` |
 | `/calendar` | Mobile sidebar scrim | — | Not a shape | Paint only — not a shape. | `pages/calendar/CalendarPage.tsx:597` |
 
+| `cn-note-settle` | The note question opens | *Write one* on a meeting that has ended — the house `Panel` on `settle`. It adds no motion of its own and `prefers-reduced-motion` renders none |
 Drawn in sketch 102 (`.planning/sketches/102-modal-census/index.html`); the policy is [[0112-one-modal-policy-three-shapes-one-primitive]].
 
 ## 2. Entry
@@ -759,6 +798,11 @@ Items 20, 21 and 22 below are **done**; item 30's two fixes are done and so are 
 further suspects it did not name. What follows them (23-29) is untouched.
 
 ## 9. Gaps
+
+- **Nothing records that the house asked for a meeting note** (found 2026-09-06 while
+  building the note panel). There is no column on `calendar_events` for "asked", so
+  the question returns on every reload until a note is written. Holding it in
+  localStorage was rejected: one browser's silence would look like the house's answer.
 
 **Provenance of the populated captures (added 2026-09-04).** The two `calendar-sky-*.png`
 shots in the capture set are **not a live tenant**: no production restaurant carries a
@@ -1102,7 +1146,7 @@ production (verified 2026-08-26), so nothing was ever misdelivered.
 | Manually created events | This page and the command palette (`commands.ts:93`) | Yes |
 | Provider/order-linked events | `calendar_agent` (`AgentTier.CORE`, `services/agent-orchestrator/core/agent_registry.py:83-87`); its LLM date extraction was repaired under ADR 0010 / OD-63 | Agent yes — but its output table `provider_important_dates` **does not exist in production** (OD-63 resolution, now **OD-68**), so the extracted dates have nowhere to land |
 | Reminder firing | `calendar/calendar-reminders.service.ts` — `@Cron("*/15 * * * *")` under `runPerTenant` (ADR 0109) | **Yes, server-side.** Writes the inbox row via `persistForRestaurant`, stamps `reminder_sent` / `reminder_sent_at`, logs a `calendar_reminder_runs` row per tenant per sweep. `lib/reminder-scheduler.ts` is demoted to draining what the legacy page queued (§9.1) |
-| Meeting memos | **none** | No |
+| Meeting memos | `calendar_day_notes`, written by `MeetingNotePanel` (rebuilt) and `MeetingMemoPrompt` (legacy) via `POST /calendar/day-notes` [**UPDATED 2026-09-21**; was **none**] | Yes |
 | iCal subscribers | External calendar clients | **Never observed to work** (`v3.0-TECH-DEBT.md:243-245`) — see settings.md §10 for the concrete suspect |
 
 ### Writes
@@ -1113,7 +1157,7 @@ production (verified 2026-08-26), so nothing was ever misdelivered.
 | Reminder fire (server) | A durable `notifications` row for every intended member + socket emit + Expo push (`persistForRestaurant`), a `calendar_reminder_dispatches` claim row per (entry, person), and `calendar_events.reminder_sent` / `.reminder_sent_at` stamped |
 | Event delete | Pending reminders for that event are cancelled first (`CalendarPage.tsx:313-315`) — correct, and easy to have missed |
 | Sidebar collapse | `localStorage` `'wineops-calendar-sidebar'` (`CalendarPage.tsx:53`) |
-| Labels / memo / email channel | **none** |
+| Labels / memo / email channel | **none** for labels and the email channel; a memo writes one `calendar_day_notes` row [**UPDATED 2026-09-21**] |
 
 ## 12. Design intent
 
@@ -1270,7 +1314,9 @@ ADR's; the order is not preference — each slice earns the trust the next one s
 24. **Notes and daily actions on the day** (**M**). `calendar_day_notes`, plus
     `recommendation_actions` / `one_tap_actions` / `ai_proposed_actions` rows projected onto
     their date and linking back. Closes §12 item 9 — the memo-into-a-void fault — without
-    waiting on the documents upload path.
+    waiting on the documents upload path. [**Notes half BUILT 2026-09-21** (founder answer
+    2): `calendar_day_notes`, `GET`/`POST /calendar/day-notes`; the projected action rows
+    are not built.]
 25. **The ⌘K calendar family** (**M**). Extends `ask-ai`'s propose→confirm allowlist with
     `calendar.create/move/annotate/remind/note`, split by
     [[0013-one-commitment-guardrail|ADR 0013]]'s leaves-the-house test. The
@@ -1336,3 +1382,8 @@ ADR's; the order is not preference — each slice earns the trust the next one s
     `GET /calendar/reminders/status` is the shape to copy.
 
 - **Correction to a commit message (recorded 2026-09-05).** Commit `bf6d57e9` (`?new=` opens the sheet prefilled) said "4 of 6 new tests fail" against the pre-fix code; its audit rebuilt the pre-fix copies and measured 6 of 6 failing. The real number is stronger evidence than claimed; the claim itself was wrong.
+
+
+### Codex execution — overlay packet, 2026-09-13
+
+The recovered calendar overlays and their interaction regressions were reconciled with current main. The cross-page seal, partial-result and validation account is appended to ADR 0118 under “overlay commitments”; the workspace immutable manifest records exactly what was integrated. This is implementation evidence, not a new design decision.

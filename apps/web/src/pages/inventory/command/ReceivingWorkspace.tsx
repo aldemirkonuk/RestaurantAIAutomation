@@ -47,6 +47,7 @@ import { ThemedSelect } from '../../../components/ui/ThemedSelect'
 import { computeMatch, verdictStyle, money } from '../../../lib/invoiceMatch'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
+import type { ShelfReceived } from '../../../services/api/types'
 
 interface Props {
   order: any
@@ -54,6 +55,128 @@ interface Props {
   onClose: () => void
   /** Completed orders reopen here as a read-only audit record (D9). */
   readOnly?: boolean
+}
+
+/** Units whose one-of-them is several bottles. */
+const MULTIPLYING = new Set(['case', 'cases', 'pack', 'packs', 'split_case'])
+
+function unitWord(unit: string, n: number): string {
+  const one = n === 1
+  switch (unit) {
+    case 'case':
+    case 'cases':
+      return one ? 'case' : 'cases'
+    case 'pack':
+    case 'packs':
+      return one ? 'pack' : 'packs'
+    case 'split_case':
+      return one ? 'split case' : 'split cases'
+    case 'bottle':
+    case 'bottles':
+      return one ? 'bottle' : 'bottles'
+    default:
+      return unit
+  }
+}
+
+export interface DeskCountBasis {
+  /** `order` = every number on the screen is in the order's own unit; `bottle` = in bottles. */
+  basis: 'order' | 'bottle'
+  /** What the physical count starts from, in `basis`. */
+  prefill: number
+  /** Bottles in one of the order's unit, when the count is in bottles. */
+  packSize: number | null
+  /** One sentence the desk prints, saying where the count came from. */
+  note: string
+}
+
+/**
+ * How the desk counts this order, decided ONCE from what the stock ledger
+ * booked for it — ADR 0192 (founder, 2026-09-21): "received" is the ledger's
+ * count, in the item's stock unit, never rounded.
+ *
+ * This screen used to seed the count from `order.quantityReceived`, a column
+ * the receiving door wrote in BOTTLES while this screen read it in the order's
+ * unit: a 5-case order the door had counted pre-filled "60", and submitted
+ * unedited that is 60 cases — a +660 bottle correction. The ledger's block
+ * says its own unit and pack view, so:
+ *
+ *   * a whole number of packs is counted in the order's unit ("5 cases" -> 5);
+ *   * a PART pack is counted in bottles ("5 cases + 5 bottles" -> 65, sent with
+ *     `countedUom: 'bottle'`), so it verifies instead of being refused as a
+ *     fraction of a case;
+ *   * a reading that failed, or a route that sent none, starts from the
+ *     ordered quantity and SAYS so — never from a number nobody measured.
+ */
+export function deskCountBasis(order: {
+  quantity?: number | null
+  unitType?: string | null
+  received?: ShelfReceived | null
+}): DeskCountBasis {
+  const ordered = typeof order.quantity === 'number' ? order.quantity : 0
+  const unit = (order.unitType ?? 'bottle').toString().trim().toLowerCase() || 'bottle'
+  const fromOrdered = (why: string): DeskCountBasis => ({
+    basis: 'order',
+    prefill: ordered,
+    packSize: null,
+    note: `${why} The count starts from the ordered quantity; confirm what actually arrived.`,
+  })
+  const r = order.received
+  if (!r) return fromOrdered('This screen was not told what the stock ledger booked for this order.')
+  if (!r.readable || r.quantityInStockUom === null || !r.words) {
+    return fromOrdered(
+      `What the stock ledger booked for this order could not be read${r.why ? ` (${r.why})` : ''}.`,
+    )
+  }
+  if (r.packUnit && r.packSize && r.packs !== null && r.looseInStockUom !== null) {
+    if (r.looseInStockUom === 0) {
+      return {
+        basis: 'order',
+        prefill: r.packs,
+        packSize: null,
+        note: `The shelf holds ${r.words} for this order, from the stock ledger.`,
+      }
+    }
+    return {
+      basis: 'bottle',
+      prefill: r.quantityInStockUom,
+      packSize: r.packSize,
+      note:
+        `The shelf holds ${r.words} for this order — not a whole number of ` +
+        `${unitWord(r.packUnit, 2)} — so every number here is in bottles.`,
+    }
+  }
+  const sameUnit =
+    !MULTIPLYING.has(unit) &&
+    (unit === r.stockUom ||
+      (['bottle', 'bottles', 'each'].includes(unit) && ['bottle', 'each'].includes(r.stockUom ?? '')))
+  if (sameUnit) {
+    return {
+      basis: 'order',
+      prefill: r.quantityInStockUom,
+      packSize: null,
+      note: `The shelf holds ${r.words} for this order, from the stock ledger.`,
+    }
+  }
+  return fromOrdered(
+    `The shelf holds ${r.words} for this order, but the order states no pack size, so ` +
+      `they cannot be counted in ${unitWord(unit, 2)} here.`,
+  )
+}
+
+/**
+ * The agreed price per BOTTLE, for the preview on a bottle-counted screen, or
+ * null when the order does not say what its price is per. The gateway compares
+ * the real thing (`verifyReceipt`, ADR 0119); a preview that guessed would ask
+ * for an override reason nobody owes.
+ */
+function perBottlePrice(order: any, price: number | null): number | null {
+  if (price === null) return null
+  const uom = typeof order.priceUom === 'string' ? order.priceUom.toLowerCase() : null
+  if (uom === 'bottle' || uom === 'each') return price
+  const pack = typeof order.pricePackSize === 'number' ? order.pricePackSize : null
+  if (uom && MULTIPLYING.has(uom) && pack && pack > 0) return price / pack
+  return null
 }
 
 interface ExtraLine {
@@ -171,10 +294,25 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const queryClient = useQueryClient()
   const toast = useNotificationStore()
 
-  const orderedQty: number = order.quantity ?? 0
-  const poUnitPrice: number | null =
+  // ADR 0192 — the count's unit and its starting point, from the ledger.
+  const count = useMemo(() => deskCountBasis(order), [order])
+  const inBottles = count.basis === 'bottle'
+  const headerPrice: number | null =
     order.finalPrice ?? order.negotiatedPrice ?? order.quotedPrice ?? order.unitPrice ?? null
-  const stockedQty: number = order.quantityReceived ?? order.quantity ?? 0
+  // In bottles, the ordered figure and the agreed price are restated per
+  // bottle so every number on the screen is in ONE unit.
+  const orderedQty: number = inBottles
+    ? (order.quantity ?? 0) * (count.packSize as number)
+    : (order.quantity ?? 0)
+  const poUnitPrice: number | null = inBottles ? perBottlePrice(order, headerPrice) : headerPrice
+  const stockedQty: number = count.prefill
+  const countUnitLabel = inBottles
+    ? 'Bottles'
+    : (() => {
+        const w = unitWord((order.unitType ?? 'bottle').toString().trim().toLowerCase() || 'bottle', 2)
+        return w.charAt(0).toUpperCase() + w.slice(1)
+      })()
+  const shelf: ShelfReceived | null = order.received ?? null
 
   // NULL until an invoice is actually in hand. Absence is not agreement: defaulting these to the
   // order made physical_vs_bill compare a number to itself and wrote price_verified for a delivery
@@ -199,8 +337,8 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const [currencyPrefilled, setCurrencyPrefilled] = useState(false)
   const [shippedQty, setShippedQty] = useState<number | null>(null)
   const [freeGoodsQty, setFreeGoodsQty] = useState<number>(0)
-  // The physical count DOES start from what was stocked — that number came from a human at the
-  // door, not from the vendor, so it is a real observation rather than an assumption.
+  // The physical count starts from what the LEDGER says is on the shelf for this order (ADR 0192)
+  // — bookings made by a human at the door or on delivery, not the vendor's claim.
   const [acceptedQty, setAcceptedQty] = useState<number>(stockedQty)
   const [rejectedQty, setRejectedQty] = useState<number>(0)
   const [rejectedReason, setRejectedReason] = useState('')
@@ -467,12 +605,13 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         // undefined, not a fallback. The server reads an absent invoice quantity as
         // "unknown" and returns `unmatched`, which keeps the order open until the
         // paperwork actually turns up.
-        // No unit is declared, and that is correct here: every number on this
-        // screen is in the order's own unit — the physical count is seeded from
-        // `order.quantityReceived ?? order.quantity` — and an absent unit means
-        // exactly that to the server. The field names say which declaration each
-        // quantity would belong to, so a future unit picker has one obvious place
-        // to write to rather than a bare number nobody can interpret.
+        // Every number on this screen is in ONE unit (ADR 0192). In the order's
+        // own unit, no unit is declared and an absent unit means exactly that to
+        // the server. In bottles — a part case on the shelf — every quantity
+        // declares `bottle`, so the server converts nothing it should not.
+        countedUom: inBottles ? 'bottle' : undefined,
+        invoiceUom: inBottles && invoiceQty != null ? 'bottle' : undefined,
+        shippedUom: inBottles && shippedQty != null ? 'bottle' : undefined,
         invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
         // Sent whenever it is set, price or no price. The gateway refuses the
@@ -568,6 +707,44 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
           {/* What the vendor's own paperwork said, and how confident we are we read it right. */}
           <DocumentStrip invoice={invoice} packingSlip={packingSlip} />
 
+          {/* WHAT THE SHELF HOLDS FOR THIS ORDER (ADR 0192), and the two facts that
+              travel beside it and are never folded into it. */}
+          <div
+            className="mb-3 rounded-lg border border-gray-100 bg-gray-50/60 px-3 py-2 text-xs text-gray-600"
+            data-testid="receiving-shelf-note"
+          >
+            <p>{count.note}</p>
+            {shelf?.readable && (shelf.rejectedAtDoorBottles ?? 0) > 0 && (
+              <p className="mt-1 text-amber-700">
+                {shelf.rejectedAtDoorBottles}{' '}
+                {shelf.rejectedAtDoorBottles === 1 ? 'bottle was' : 'bottles were'} rejected at the
+                door.
+              </p>
+            )}
+            {shelf?.readable && (shelf.countedNotBookedBottles ?? 0) > 0 && (
+              <p className="mt-1 text-amber-700">
+                {shelf.countedNotBookedBottles}{' '}
+                {shelf.countedNotBookedBottles === 1 ? 'bottle was' : 'bottles were'} counted at
+                the door and are not on the shelf yet.
+              </p>
+            )}
+            {/* The earlier verification's own facts (ADR 0192 amendment), in
+                bottles: they used to be order columns in two units. */}
+            {shelf?.readable && (shelf.rejectedAtDeskBottles ?? 0) > 0 && (
+              <p className="mt-1 text-amber-700" data-testid="receiving-shelf-desk-rejected">
+                {shelf.rejectedAtDeskBottles}{' '}
+                {shelf.rejectedAtDeskBottles === 1 ? 'bottle was' : 'bottles were'} rejected at the
+                last verification.
+              </p>
+            )}
+            {shelf?.readable && (shelf.backorderBottles ?? 0) > 0 && (
+              <p className="mt-1" data-testid="receiving-shelf-backorder">
+                {shelf.backorderBottles} {shelf.backorderBottles === 1 ? 'bottle is' : 'bottles are'} still
+                owed on this order.
+              </p>
+            )}
+          </div>
+
           {/* four-way header */}
           <div className="grid grid-cols-[1fr_74px_74px_74px_74px_74px_66px] gap-1.5 items-end pb-2 text-[10.5px] font-bold uppercase tracking-wider text-gray-400">
             <div className="truncate">{order.wineName || 'Ordered wine'}</div>
@@ -583,7 +760,9 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
 
           {/* quantities */}
           <div className="grid grid-cols-[1fr_74px_74px_74px_74px_74px_66px] gap-1.5 items-center py-3 border-t border-gray-100">
-            <div className="text-xs text-gray-500">Bottles</div>
+            <div className="text-xs text-gray-500" data-testid="receiving-count-unit">
+              {countUnitLabel}
+            </div>
             <div className="text-center font-mono text-sm text-gray-500">{orderedQty}</div>
             <div className="flex justify-center">
               <input

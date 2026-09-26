@@ -25,6 +25,22 @@ import { GmailService } from "../communications/gmail.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
+import {
+  enqueueHouseItemResearch,
+  queueResearchIfLibraryLacks,
+  type EnqueueOutcome,
+} from "../inventory/house-item-research";
+import { type DeliveryBooking, verifyNoticeMessage } from "./delivered-notice";
+import {
+  closeDeliveryItemToNameBookedElsewhere,
+  nameDeliveredItem as nameDeliveredItemAct,
+  raiseDeliveryItemToName,
+  readOpenDeliveryItemsToName,
+  type DeliveryItemToNameView,
+  type NameAskWhy,
+  type NamedDelivery,
+  type RaiseOutcome,
+} from "./delivery-item-to-name";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import {
@@ -44,7 +60,17 @@ import {
   toBottleOperands,
 } from "./invoice-match";
 import { readAliasedQuantity } from "./quantity-aliases";
-import { readQuantityReceived } from "./quantity-received-unit";
+import { readBookedOrderBottles } from "./booked-order-quantity";
+import {
+  COUNTS_CONFIRMED_OUTCOME,
+  readOneShelfReceived,
+  readShelfReceived,
+  RECEIVED_IS_NOT_TYPED_IN,
+  RECEIVED_IS_THE_LEDGER,
+  repeatsTheLatestConfirmation,
+  shelfUnreadable,
+  type ShelfReceived,
+} from "./shelf-received";
 import { draftClaimFromMatch } from "./documents/credit-ledger";
 import { ApproveDraftDto } from "./dto/approve-draft.dto";
 import {
@@ -84,14 +110,12 @@ import {
   receivingPriceNeedsACurrency,
   type PriceCurrencyClaim,
 } from "./price-currency";
-import {
-  orderCurrencyOffer,
-  orderCurrencySource,
-} from "./agreement-currency";
+import { orderCurrencyOffer, orderCurrencySource } from "./agreement-currency";
 import {
   documentMoneyState,
   receivingPriceRefusal,
 } from "./documents/invoice-currency";
+import { lastAgreementAnswer, type LastAgreement } from "./last-agreement";
 import { normalizeUnitPrice } from "../analytics/engine/vendor-price-consensus";
 // The calendar owns the vocabulary of calendar_events. Importing the enums
 // rather than restating the strings makes a divergence a compile error instead
@@ -118,10 +142,27 @@ import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { escapeHtml, textToEmailHtml } from "../common/html/escape-html";
 import {
   ORDER_CANCEL_ACT,
+  ORDER_CONFIRM_DEAL_ACT,
   ORDER_SEAL_ACT,
+  ORDER_SEND_DRAFT_ACT,
+  ORDER_SEND_MANUAL_REPLY_ACT,
+  dealSealArgs,
+  draftSealArgs,
+  letterVersionHash,
   orderCancelSealArgs,
   orderSealArgs,
 } from "./order-seal";
+import {
+  VendorSendAuthorityService,
+  type SendOrAsk,
+  type VendorSendReading,
+} from "../organizations/vendor-send-authority.service";
+import { type ActAmount } from "../organizations/vendor-send-authority";
+import {
+  SEND_REQUEST_PUSH_TEXT,
+  VendorSendRequestsService,
+  type VendorSendRequestView,
+} from "../organizations/vendor-send-requests.service";
 import {
   ORDER_GOODS_ARRIVED_STATUSES,
   ORDER_TERMINAL_STATUSES,
@@ -133,7 +174,9 @@ import { toPostgrestInList } from "./order-status";
 import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
   DELIVERY_REFUSED_STATE_UNREADABLE,
+  DELIVERY_REFUSED_STOCK_NOT_BOOKED,
   earlierDeliveryOf,
+  refuseUnbookedDelivery,
   refuseLostDeliveryRace,
   refuseSecondDelivery,
   resolveReceiverName,
@@ -142,10 +185,7 @@ import {
 // is the pure half of ADR 0124's identity register — no Nest DI, no database,
 // no module wiring — so the one rule that decides whether a key names a bottle
 // lives in exactly one place and this file cannot drift from it.
-import {
-  IdentityKeyRow,
-  joinByExactKey,
-} from "../vendor-intel/identity-join";
+import { IdentityKeyRow, joinByExactKey } from "../vendor-intel/identity-join";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -201,7 +241,9 @@ const APPROVAL_GATE_WINDOW_DAYS = 365;
  * number becomes `null` — never `0`, which `decideApproval` would read as a
  * genuine total below every ceiling.
  */
-function toFiniteNumber(value: string | number | null | undefined): number | null {
+function toFiniteNumber(
+  value: string | number | null | undefined,
+): number | null {
   if (value === null || value === undefined) return null;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -352,12 +394,6 @@ interface ProcurementOrderRow {
    */
   provider_name?: string | null;
   /**
-   * `quantity_received`, present on every route that selects `*`. Read through
-   * the key test for the same reason as `provider_name` — a route that selects
-   * a column list has not learned the column is empty.
-   */
-  quantity_received?: number | null;
-  /**
    * The recurrence rule this order carries, and the occurrence it was minted
    * for (ADR 0125's addendum, 2026-09-05). All six are OPTIONAL and read
    * through the key test, for exactly the reason `provider_name` is: a route
@@ -377,6 +413,12 @@ interface ProcurementOrderRow {
   recurrence_status?: string | null;
   recurrence_parent_order_id?: string | null;
   recurrence_occurrence_on?: string | null;
+  /**
+   * `procurement_orders.currency`, present on every route that selects `*`.
+   * Read through the key test, like `provider_name`: a route that selects a
+   * column list has not learned the order names no currency.
+   */
+  currency?: string | null;
 }
 
 /**
@@ -401,12 +443,76 @@ function embeddedProviderName(embed: unknown): string | null {
 }
 
 /**
+ * The subject line a drafted reply sends under.
+ *
+ * Both approveDraft (the live send) and getActiveConversations (the panel
+ * that shows what a send WOULD use, D-08) call this one function so the two
+ * cannot drift into two different opinions by hand-editing each copy — which
+ * is what a lane-E repair (2026-09-19) found had already happened: a comment
+ * claimed the two inline formulas were "identical" when they were not
+ * byte-for-byte the same expression (getActiveConversations was missing the
+ * `storedSubject` fallback and defaulted `wineName` at a different point in
+ * the chain). They produced the same string only because neither caller's
+ * `select()` actually fetches a `subject` column, so `storedSubject` was
+ * always undefined either way — a coincidence of the query shape, not a
+ * guarantee. Pulled out as a plain function (module-level, not a class
+ * method) so it is exercised directly, the same way as
+ * `describeOrderedQuantity` above.
+ */
+export function draftSubjectLine(
+  emailHeaders: Record<string, any>,
+  storedSubject: string | null | undefined,
+  wineName: string | null | undefined,
+): string {
+  return (
+    emailHeaders.subject ||
+    storedSubject ||
+    `Order Request: ${wineName ?? "Wine Order"}`
+  );
+}
+
+/**
+ * THE SEAL IS REQUIRED ON EVERY VENDOR SEND (founder, 2026-09-21).
+ *
+ * Until this date `legacyDraftSendMayGoUnsealed()` let an ABSENT
+ * `X-Seal-Challenge` send unsealed while `REQUIRE_DRAFT_SEND_SEAL` was unset —
+ * a grace period for native installs predating the seal. The founder's answer
+ * of 2026-09-21 deleted it: *"the draft-send seal is REQUIRED on every vendor
+ * send now - delete the REQUIRE_DRAFT_SEND_SEAL grace"*, on OD-109's record
+ * that the phone app has never been run on a device (and ADR 0175's context:
+ * production `mobile_devices` held 0 rows on 2026-09-19 — cited, not
+ * re-measured by this lane, which may not read production). There is no flag
+ * any more: an absent challenge reaches `sealChallenges.redeem` and is refused
+ * there (`refuse("absent")`) like every other sealed act.
+ */
+
+/** The "send or ask" readout, re-exported from where it is built. */
+export type { SendOrAsk } from "../organizations/vendor-send-authority.service";
+
+/** A staff member's request on a draft, as the panels read it. */
+export interface SendRequestView {
+  requestedBy: string | null;
+  requestedByName: string | null;
+  requestedAt: string;
+  /** false once the letter's words changed after the request (edit, regenerate). */
+  current: boolean;
+  ccEmails: string[];
+}
+
+/**
  * GmailService refused to build the message (ADR 0172: `refusedBeforeSend`),
  * so Gmail was never called and the vendor provably has nothing. A distinct
  * type so `isDefiniteSendRefusal` can recognise it by `instanceof` — never by
  * its text, which embeds the vendor's own contact address.
  */
 export class SendRefusedBeforeSendError extends BadRequestException {}
+
+/**
+ * The `reason` a 422 carries when the in-process send refused a draft before
+ * anything left and the draft was closed as `SEND_REFUSED` (founder, answer 6,
+ * 2026-09-21; 20260926140800).
+ */
+export const DRAFT_SEND_REFUSED = "draft_send_refused";
 
 @Injectable()
 export class ProcurementService {
@@ -445,7 +551,62 @@ export class ProcurementService {
     // seal check that disappears with its own dependency is not a seal check.
     @Optional()
     private readonly sealChallenges?: SealChallengeService,
+    // ── Who may send to a vendor (ADR 0175 D10; founder, 2026-09-21) ────────
+    // Last, for the positional specs. NOT optional in the DI graph —
+    // `ProcurementModule` imports `VendorSendAuthorityModule` — and every
+    // vendor send REFUSES when it is missing: a gate that opens when its own
+    // dependency is absent is not a gate (`requireSendAuthority`).
+    @Optional()
+    private readonly vendorSendAuthority?: VendorSendAuthorityService,
+    // ── Staff ask for a deal (founder answer 3, 2026-09-21) ────────────────
+    // Last, for the positional specs. Supplied by VendorSendAuthorityModule;
+    // the ask route refuses when it is missing.
+    @Optional()
+    private readonly vendorSendRequests?: VendorSendRequestsService,
   ) {}
+
+  /**
+   * The one door every vendor send goes through for WHO: an owner, a manager,
+   * or a person holding a live ADR 0112 F12 grant. Anybody else is refused with
+   * the whole sentence, and — where the act has a request path — told to hold
+   * again to ask a manager (`requestDraftSend`).
+   */
+  private async requireSendAuthority(
+    userId: string,
+    restaurantId: string,
+    act: string,
+    opts: { amount?: ActAmount | null; canAsk: boolean },
+  ): Promise<Extract<VendorSendReading, { mode: "send" }>> {
+    if (!userId?.trim()) {
+      throw new ForbiddenException("A named person is required to send to a vendor. Nothing was sent.");
+    }
+    if (!this.vendorSendAuthority) {
+      throw new InternalServerErrorException(
+        "Who may send to a vendor could not be checked (the authority service is not wired into procurement), so nothing was sent. This is a gateway fault, not a decision about this letter.",
+      );
+    }
+    return this.vendorSendAuthority.assertMaySend(userId, restaurantId, act, opts);
+  }
+
+  /**
+   * The "send or ask" readout for a panel — `mayApprove`'s shape, for letters
+   * (built in `VendorSendAuthorityService.readout`, so the composer and the
+   * draft panels cannot word it differently).
+   */
+  async sendOrAskFor(userId: string, restaurantId: string): Promise<SendOrAsk> {
+    if (!this.vendorSendAuthority) {
+      return {
+        readable: false,
+        maySend: false,
+        mode: null,
+        basis: null,
+        grant: null,
+        sentence:
+          "Whether your hold sends could not be read (the authority service is not wired into procurement). Nothing will be sent until it can.",
+      };
+    }
+    return this.vendorSendAuthority.readout(userId, restaurantId, { canAsk: true });
+  }
 
   /**
    * Manually (re)run the autonomous responder for an order's most recent inbound
@@ -1979,7 +2140,9 @@ export class ProcurementService {
     try {
       const { data, error } = await this.databaseService.supabase
         .from("vendor_price_observations")
-        .select("raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor")
+        .select(
+          "raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor",
+        )
         .eq("master_wine_id", masterWineId)
         .or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
         .order("observed_at", { ascending: false })
@@ -2184,6 +2347,110 @@ export class ProcurementService {
   }
 
   /**
+   * What this house last agreed with this vendor for this shelf item.
+   *
+   * The read behind `GET /procurement/last-agreement`, built for packet 2's
+   * new-order sheet: the census draws that sheet with "price and unit come from
+   * the agreement on the vendor's row", and no route could answer it.
+   *
+   * SCOPED THREE WAYS, ALWAYS. `restaurant_id` on the LINE, `provider_id` on the
+   * order, and `inventory_id` on the line. The restaurant comes from the token
+   * at the controller; nothing here trusts a body.
+   *
+   * ORDERED BY `requested_at`, never by insertion, for the same reason
+   * `agreementCurrencyForVendor` orders documents by their own date: "what we
+   * last agreed" must not change because somebody back-filled an old order this
+   * morning.
+   *
+   * A FAILED READ IS REPORTED AS ONE. The catch does not return "none"; it
+   * returns `unreadable`, and `lastAgreementAnswer` gives that its own sentence.
+   * The whole point of the route is that a sheet can tell a vendor who has
+   * never quoted this wine from a database that would not answer.
+   */
+  async lastAgreementFor(
+    restaurantId: string,
+    providerId: string,
+    inventoryId: string,
+  ): Promise<LastAgreement> {
+    let vendorName: string | null = null;
+    try {
+      const { data: vendor, error: vendorError } = await this.databaseService.supabase
+        .from("providers")
+        .select("name")
+        .eq("id", providerId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      // supabase-js resolves a failed read rather than throwing, so the failure
+      // is read here explicitly: it costs the noun, never the answer.
+      vendorName = vendorError ? null : (vendor as { name?: string } | null)?.name ?? null;
+    } catch {
+      // A missing vendor name costs the sentence a noun and nothing else. It is
+      // NOT allowed to turn the answer into a failure, because the price is the
+      // thing the caller asked for.
+      vendorName = null;
+    }
+
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select(
+          "order_number, requested_at, procurement_order_items!inner(" +
+            "final_unit_price, price_uom, price_pack_size, currency, unit_type, bottles_per_unit)",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("provider_id", providerId)
+        .eq("procurement_order_items.restaurant_id", restaurantId)
+        .eq("procurement_order_items.inventory_id", inventoryId)
+        .in("status", [ProcurementOrderStatus.CONFIRMED, ProcurementOrderStatus.IN_TRANSIT,
+          ProcurementOrderStatus.PARTIALLY_RECEIVED, ProcurementOrderStatus.DELIVERED, ProcurementOrderStatus.COMPLETED])
+        // Order the parent rows themselves. Ordering an embedded relation from
+        // the line table did not select the latest agreement.
+        .order("requested_at", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: false })
+        .limit(1);
+
+      if (error) throw new Error(error.message);
+
+      const parent = Array.isArray(data) ? (data[0] as any) : null;
+      if (!parent) return lastAgreementAnswer(null, false, vendorName);
+      const lines = Array.isArray(parent.procurement_order_items) ? parent.procurement_order_items : [parent.procurement_order_items].filter(Boolean);
+      // Zero lines under an `!inner` join on this exact item is a shape the
+      // query should not be able to produce — treat it as a failed read, not
+      // an empty book. More than one is a real ambiguity, not a failure (lane
+      // E audit D9): the order named this item twice, and retrying will not
+      // change that.
+      if (lines.length === 0) return lastAgreementAnswer(null, true, vendorName);
+      if (lines.length > 1) return lastAgreementAnswer(null, false, vendorName, true);
+      const row = lines[0];
+
+      return lastAgreementAnswer(
+        {
+          price:
+            typeof row.final_unit_price === "number" ? row.final_unit_price : null,
+          priceUom: row.price_uom ?? null,
+          pricePackSize:
+            typeof row.price_pack_size === "number" ? row.price_pack_size : null,
+          currency: row.currency ?? null,
+          unitType: row.unit_type ?? null,
+          bottlesPerUnit:
+            typeof row.bottles_per_unit === "number" ? row.bottles_per_unit : null,
+          agreedOn: parent?.requested_at ?? null,
+          orderNumber: parent?.order_number ?? null,
+        },
+        false,
+        vendorName,
+      );
+    } catch (e: any) {
+      this.logger.warn(
+        `Could not read the last agreement for provider ${providerId} and ` +
+          `inventory ${inventoryId}: ${e?.message}. Answering 'unreadable' — ` +
+          `NOT 'none', which would tell the sheet there is no agreed price.`,
+      );
+      return lastAgreementAnswer(null, true, vendorName);
+    }
+  }
+
+  /**
    * The currency the agreement sheet should OFFER for a new line with this
    * vendor, and the reason a person can check.
    *
@@ -2269,11 +2536,12 @@ export class ProcurementService {
     }
 
     let houseCurrency: string | null = null;
-    const { data: house, error: houseError } = await this.databaseService.supabase
-      .from("restaurants")
-      .select("currency")
-      .eq("id", restaurantId)
-      .maybeSingle();
+    const { data: house, error: houseError } =
+      await this.databaseService.supabase
+        .from("restaurants")
+        .select("currency")
+        .eq("id", restaurantId)
+        .maybeSingle();
     if (houseError) {
       this.logger.warn(
         `Could not read the house's currency for the agreement sheet: ` +
@@ -2342,11 +2610,12 @@ export class ProcurementService {
     docNumber: string | null;
     reason: string;
   } | null> {
-    const { data: links, error: linkError } = await this.databaseService.supabase
-      .from("procurement_document_links")
-      .select("document_id")
-      .eq("restaurant_id", restaurantId)
-      .eq("order_id", orderId);
+    const { data: links, error: linkError } =
+      await this.databaseService.supabase
+        .from("procurement_document_links")
+        .select("document_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId);
     if (linkError) {
       this.logger.warn(
         `The documents attached to order ${orderId} could not be read ` +
@@ -2355,7 +2624,9 @@ export class ProcurementService {
       );
       return null;
     }
-    const ids = (links ?? []).map((l) => (l as any).document_id).filter(Boolean);
+    const ids = (links ?? [])
+      .map((l) => (l as any).document_id)
+      .filter(Boolean);
     if (!ids.length) return null;
 
     const { data: docs, error: docError } = await this.databaseService.supabase
@@ -2546,6 +2817,16 @@ export class ProcurementService {
       throw error;
     }
 
+    // WHAT EACH ORDER RECEIVED, FROM THE LEDGER — ADR 0192. One batched
+    // reading for the whole page (four reads, not four per order), taken
+    // after the page itself was read under the same tenant scope. A failed
+    // read arrives on each order as `readable:false`, never as a zero.
+    const shelf = await readShelfReceived(
+      this.databaseService.supabase,
+      restaurantId,
+      (data || []) as any[],
+    );
+
     const orders = (data || []).map((row: any) => {
       const orderRow: ProcurementOrderRow = {
         ...row,
@@ -2564,17 +2845,21 @@ export class ProcurementService {
       // "read, and states nothing" — which is the honest reading of a header
       // with nothing under it, and is what the page prints the refusal for.
       const lines = embeddedOrderLines(row.procurement_order_items);
-      return this.mapOrderRow(orderRow, {
-        read: true,
-        stated: foldOrderPriceUnit(lines),
-        // The fees of the ONE line, and only when there is exactly one. Two
-        // lines carrying two deposits do not add up to an order-level deposit —
-        // they are two facts about two lines, and folding them would invent a
-        // third. `upsertOrderLine` writes exactly one line per order today, so
-        // this is that line; the day it writes two, this reports nothing rather
-        // than a sum nobody agreed to.
-        fees: lines.length === 1 ? readAgreementFees(lines[0]) : undefined,
-      });
+      return this.mapOrderRow(
+        orderRow,
+        {
+          read: true,
+          stated: foldOrderPriceUnit(lines),
+          // The fees of the ONE line, and only when there is exactly one. Two
+          // lines carrying two deposits do not add up to an order-level deposit —
+          // they are two facts about two lines, and folding them would invent a
+          // third. `upsertOrderLine` writes exactly one line per order today, so
+          // this is that line; the day it writes two, this reports nothing rather
+          // than a sum nobody agreed to.
+          fees: lines.length === 1 ? readAgreementFees(lines[0]) : undefined,
+        },
+        shelf.get(row.id),
+      );
     });
     const total = count ?? orders.length;
 
@@ -2597,7 +2882,9 @@ export class ProcurementService {
     // line all read, and all three wanted the name.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("*, inventory:inventory_id(wine_name), provider:provider_id(name)")
+      .select(
+        "*, inventory:inventory_id(wine_name), provider:provider_id(name)",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .single();
@@ -2619,7 +2906,14 @@ export class ProcurementService {
       provider_name: embeddedProviderName(row.provider),
     };
 
-    return this.mapOrderRow(orderRow);
+    // The route the door, the phone and the desk read: it states what the
+    // ledger booked for this order (ADR 0192).
+    const received = await readOneShelfReceived(
+      this.databaseService.supabase,
+      restaurantId,
+      row,
+    );
+    return this.mapOrderRow(orderRow, undefined, received);
   }
 
   /**
@@ -2692,6 +2986,19 @@ export class ProcurementService {
      */
     opts?: { statusTransitionAlreadyChecked?: boolean },
   ): Promise<OrderResponseDto> {
+    // ADR 0192 — WHAT AN ORDER RECEIVED IS NOT TYPED IN. This route used to
+    // write `procurement_orders.quantity_received` from the body with no stock
+    // movement behind it, so any caller could make an order "receive" a number
+    // the shelf never saw. Refused BEFORE anything is read or written, in
+    // words, naming where a delivery is actually recorded. A null says
+    // nothing and is let through, as every other field here treats it.
+    if (dto.quantityReceivedInOrderUom != null || dto.quantityReceived != null) {
+      throw new BadRequestException({
+        reason: RECEIVED_IS_NOT_TYPED_IN,
+        message: RECEIVED_IS_THE_LEDGER,
+      });
+    }
+
     // ADR 0125 — the state change is the one field on this DTO that is not a
     // note about the order but a claim about where the order IS. Until this,
     // `status: dto.status ?? undefined` reached the UPDATE unread, so any
@@ -2740,16 +3047,6 @@ export class ProcurementService {
       rejection_reason: dto.rejectionReason ?? undefined,
       delivery_notes: dto.deliveryNotes ?? undefined,
       tracking_number: dto.trackingNumber ?? undefined,
-      // Stored in the order's own unit_type, beside `quantity`. The canonical
-      // field says so in its name; the old unitless one is still accepted, and
-      // the two disagreeing is a 400 rather than a silent choice.
-      quantity_received:
-        readAliasedQuantity({
-          canonicalName: "quantityReceivedInOrderUom",
-          canonical: dto.quantityReceivedInOrderUom,
-          aliasName: "quantityReceived",
-          alias: dto.quantityReceived,
-        }) ?? undefined,
       price_verified: dto.priceVerified ?? undefined,
       invoice_image_url: dto.invoiceImageUrl ?? undefined,
       discrepancy_notes: dto.discrepancyNotes ?? undefined,
@@ -3714,12 +4011,15 @@ export class ProcurementService {
       );
     }
 
-    const { data: orderRow, error: orderError } = await this.databaseService.supabase
-      .from("procurement_orders")
-      .select("id, total_cost, provider_id, inventory_id, final_price, status")
-      .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
-      .maybeSingle();
+    const { data: orderRow, error: orderError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .select(
+          "id, total_cost, provider_id, inventory_id, final_price, status",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
 
     if (orderError) {
       throw new InternalServerErrorException(
@@ -3884,9 +4184,14 @@ export class ProcurementService {
     }
 
     const orders = walk.rows
-      .filter((r) => PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase()))
+      .filter((r) =>
+        PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase()),
+      )
       .map((r) => {
-        const decision: ApprovalDecision = decideApproval(readout.thresholds, r.test);
+        const decision: ApprovalDecision = decideApproval(
+          readout.thresholds,
+          r.test,
+        );
         const mayApprove =
           decision.requiredRole === null ||
           roleSatisfies(callerRole, decision.requiredRole);
@@ -3932,7 +4237,9 @@ export class ProcurementService {
     orderId: string,
     currentStatus: string | null,
   ): Promise<void> {
-    if ((currentStatus ?? "").toUpperCase() !== ProcurementOrderStatus.PENDING) {
+    if (
+      (currentStatus ?? "").toUpperCase() !== ProcurementOrderStatus.PENDING
+    ) {
       return;
     }
     try {
@@ -4034,7 +4341,9 @@ export class ProcurementService {
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
-        .select("id, status, provider_id, inventory_id, requested_at, total_cost, final_price")
+        .select(
+          "id, status, provider_id, inventory_id, requested_at, total_cost, final_price",
+        )
         .eq("restaurant_id", restaurantId)
         .gte("requested_at", since)
         .order("requested_at", { ascending: true })
@@ -4044,7 +4353,11 @@ export class ProcurementService {
       }
       const seenVendors = new Set<string>();
       const lastPriceByItem = new Map<string, number>();
-      const rows: Array<{ id: string; status: string | null; test: OrderUnderTest }> = [];
+      const rows: Array<{
+        id: string;
+        status: string | null;
+        test: OrderUnderTest;
+      }> = [];
       for (const raw of (data ?? []) as Array<{
         id: string;
         status: string | null;
@@ -4083,34 +4396,131 @@ export class ProcurementService {
     }
   }
 
+  // ==========================================================================
+  // A delivery that booked nothing asks for its item (founder, 2026-09-22,
+  // verbatim pick: "Deliver, flag to name it (Recommended)"; ADR 0192).
+  // ==========================================================================
+
+  /** Whether this person is an owner or a manager here. Strict: a failed read THROWS. */
+  private async isOwnerOrManagerHere(userId: string, restaurantId: string): Promise<boolean> {
+    if (!this.vendorSendAuthority) {
+      throw new Error("who holds which role here cannot be checked on this server");
+    }
+    const reading = await this.vendorSendAuthority.standing(userId, restaurantId);
+    const role = (reading.role ?? "").trim().toLowerCase();
+    return role === "owner" || role === "manager";
+  }
+
+  /**
+   * This house's deliveries waiting for their item to be named, and whether the
+   * viewer may name them. A failed read throws; it is never an empty list.
+   */
+  async deliveriesToName(
+    restaurantId: string,
+    userId: string,
+  ): Promise<{ viewer: { mayName: boolean; mayNameReason: string | null }; deliveries: DeliveryItemToNameView[] }> {
+    const deliveries = await readOpenDeliveryItemsToName(this.databaseService.supabase, restaurantId);
+    let mayName = false;
+    let mayNameReason: string | null = null;
+    try {
+      mayName = await this.isOwnerOrManagerHere(userId, restaurantId);
+      if (!mayName) mayNameReason = "Only an owner or a manager names a delivery's item.";
+    } catch (err: any) {
+      mayNameReason = `Whether you may name them could not be read (${err?.message ?? String(err)}).`;
+    }
+    return { viewer: { mayName, mayNameReason }, deliveries };
+  }
+
+  /** An owner or a manager names a delivery's item; the stock is booked then, once. */
+  async nameDeliveredItem(input: {
+    restaurantId: string;
+    orderId: string;
+    userId: string;
+    inventoryId: string;
+    bottles?: number | null;
+  }): Promise<NamedDelivery> {
+    return nameDeliveredItemAct(
+      {
+        client: this.databaseService.supabase as any,
+        logger: this.logger,
+        isOwnerOrManager: (userId, restaurantId) => this.isOwnerOrManagerHere(userId, restaurantId),
+      },
+      input,
+    );
+  }
+
+  /**
+   * The bell for the owners and managers when a delivery asks for its item.
+   * Best-effort: the ask row stands and /inventory lists it whatever happens
+   * here; a failure is logged, never read as "told".
+   */
+  private async tellOwnersAndManagersToName(
+    restaurantId: string,
+    orderId: string,
+    input: { orderNumber: string | null; why: NameAskWhy; raisedBy: string },
+  ): Promise<void> {
+    if (!this.notificationsService || !this.vendorSendAuthority) {
+      this.logger.warn(
+        `markDelivered: order ${orderId} asks for its item, but the owners and managers cannot be told on this server; /inventory lists it.`,
+      );
+      return;
+    }
+    try {
+      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(restaurantId);
+      const audience = [...new Set([...owners, ...managers])];
+      if (audience.length === 0) {
+        this.logger.warn(`markDelivered: order ${orderId} asks for its item, but this house has no owner or manager to tell.`);
+        return;
+      }
+      const order = input.orderNumber ?? "An order";
+      const what =
+        input.why === "zero_bottles"
+          ? "was delivered with no bottle count, so nothing was booked"
+          : "was delivered naming no item, so nothing was booked";
+      const { inserted } = await this.notificationsService.persistForRestaurant(
+        restaurantId,
+        {
+          type: "delivery_item_to_name",
+          title: `Name the item of ${order}`,
+          message: `${order} ${what}. Name the item${input.why === "zero_bottles" ? " and how many bottles came in" : ""} on Inventory; its stock is booked then, once.`,
+          priority: "high",
+          actionUrl: `/inventory?name-delivery=${orderId}`,
+          actionLabel: "Name the item",
+          groupKey: `delivery_item_to_name:${orderId}`,
+          metadata: { orderId, why: input.why, raisedBy: input.raisedBy },
+        },
+        { onlyUserIds: audience, dedupeWithinMinutes: 24 * 60 },
+      );
+      if (inserted === 0) {
+        this.logger.warn(`markDelivered: order ${orderId} asks for its item, but no bell row was written for its owners and managers.`);
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `markDelivered: order ${orderId} asks for its item, but the owners and managers could not be told (${err?.message ?? String(err)}).`,
+      );
+    }
+  }
+
   async markDelivered(
     restaurantId: string,
     orderId: string,
     userId: string,
     quantityReceived?: number,
   ): Promise<OrderResponseDto> {
-    // What the ledger is about to be told, decided ONCE and written down in the
-    // same breath. `resolvedQuantity` below used to be computed separately and
-    // the column written as `quantityReceived ?? null` — so the web client,
-    // which sends no quantity (useOrdersData.ts:68), booked `order.quantity`
-    // into the ledger and left the column NULL.
+    // What the ledger is about to be told, decided ONCE. ADR 0192: this
+    // method no longer writes `procurement_orders.quantity_received` at all —
+    // what an order received is what the ledger booked for it, and the door
+    // reconciles against the ledger (`readBookedOrderBottles`), not a column.
     //
-    // That gap is the door's anti-double-book guard, defeated. recordDoorReceipt
-    // reads `alreadyBooked = Number(order.quantity_received ?? 0)`
-    // (receiving.service.ts:194) to work out what is left to book; a NULL reads
-    // as 0, so the door books the full count a second time on top of what this
-    // method already booked. The column has to record what was BOOKED, not what
-    // the caller happened to say.
-    //
-    // Read before the update so `resolvedQuantity` is available to write. A
+    // Read before the update so `resolvedQuantity` is available to book. A
     // failed read is raised, not defaulted to 0: silently booking nothing and
-    // recording nothing is how this defect stayed invisible the first time.
+    // recording nothing is how an earlier defect here stayed invisible.
     //
     // AN ORDER IS DELIVERED ONCE (founder, 2026-09-05). The same read now also
     // carries the state, so the question "has this already arrived" is answered
     // BEFORE anything is written. `status` decides; `delivered_at`,
-    // `received_by`, `quantity_received`, `unit_type`, `bottles_total` and
-    // `order_number` are the EARLIER DELIVERY the refusal hands back, because
+    // `received_by`, `order_number` and the ledger's reading of what was
+    // received (ADR 0192) are the EARLIER DELIVERY the refusal hands back, because
     // the founder's 409 (batch 46) exists so a caller can show what already
     // happened instead of an error. See `delivered-once.ts` for the decision and
     // for what a second delivery actually did, measured rather than assumed.
@@ -4118,8 +4528,8 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "quantity, status, delivered_at, received_by, quantity_received, " +
-            "unit_type, bottles_total, order_number",
+          "id, inventory_id, quantity, status, delivered_at, received_by, " +
+            "unit_type, bottles_total, order_number, final_price",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -4151,6 +4561,14 @@ export class ProcurementService {
 
     const existingRow = existingOrder as Record<string, any>;
     const currentStatus = readOrderStatus(existingRow.status);
+    // What a refused booking puts back (founder answer 9), copied NOW, before
+    // anything is written: the put-back restores these values, not whatever
+    // the row object reads later.
+    const priorDelivery = {
+      status: existingRow.status,
+      delivered_at: existingRow.delivered_at ?? null,
+      received_by: existingRow.received_by ?? null,
+    };
 
     // An unreadable state is a refusal, not permission. A guard that cannot see
     // the state it is guarding has established nothing; letting the write
@@ -4168,16 +4586,20 @@ export class ProcurementService {
     }
 
     if (ORDER_GOODS_ARRIVED_STATUSES.includes(currentStatus)) {
-      const quantityReceived =
-        existingRow.quantity_received == null
-          ? null
-          : Number(existingRow.quantity_received);
+      // What the earlier delivery put on the shelf, from the ledger (ADR 0192).
+      // A failed read travels as `readable:false` and the sentence leaves the
+      // count out rather than printing a zero.
+      const received = await readOneShelfReceived(
+        this.databaseService.supabase,
+        restaurantId,
+        { ...existingRow, id: orderId },
+      );
       const sentence = refuseSecondDelivery({
         orderId,
         orderNumber: existingRow.order_number ?? null,
         status: currentStatus,
         deliveredAt: existingRow.delivered_at ?? null,
-        quantityReceived,
+        received,
       });
 
       // Named here and not left to the caller: the page that must print
@@ -4211,12 +4633,7 @@ export class ProcurementService {
           receivedBy: existingRow.received_by ?? null,
           receivedByName: receiver.name,
           receivedByNameReason: receiver.reason,
-          // RAW, both of them: `earlierDeliveryOf` asks
-          // `quantity-received-unit.ts` which unit this column is in, and that
-          // reading refuses to state one for a multiplying unit rather than
-          // guessing between the door's bottles and the desk's cases.
-          quantityReceived: existingRow.quantity_received ?? null,
-          unitType: existingRow.unit_type ?? null,
+          received,
           bottlesTotal:
             existingRow.bottles_total == null
               ? null
@@ -4228,6 +4645,44 @@ export class ProcurementService {
 
     const resolvedQuantity =
       quantityReceived ?? (existingOrder as any).quantity ?? 0;
+    const deliveryUnits = await this.resolveOrderMatchUnits(
+      restaurantId,
+      orderId,
+      existingOrder as any,
+    );
+    const deliveryAgreement = await this.readAgreedLine(restaurantId, orderId);
+    const deliveryPrice = agreedPricePerBottleForDoor({
+      price: deliveryAgreement.read
+        ? (deliveryAgreement.stated ? deliveryAgreement.finalUnitPrice ?? (existingOrder as any).final_price : (existingOrder as any).final_price) ?? null
+        : null,
+      stated: deliveryAgreement.stated,
+    });
+    let receivedBottles: number;
+    try {
+      const operands = toBottleOperands({
+        orderedQtyInOrderedUom: resolvedQuantity,
+        orderedUom: deliveryUnits.unitType,
+        orderedBottlesPerUnit: deliveryUnits.bottlesPerUnit,
+      });
+      if (["keg", "liter"].includes(operands.units.ordered.uom)) {
+        throw new MatchUnitError(
+          "not_comparable",
+          "The order does not state a convertible bottle quantity.",
+        );
+      }
+      receivedBottles = operands.orderedQty;
+      if (!Number.isSafeInteger(receivedBottles))
+        throw new MatchUnitError(
+          "not_comparable",
+          "The delivery must resolve to a whole number of bottles.",
+        );
+    } catch (error) {
+      if (error instanceof MatchUnitError)
+        throw new BadRequestException(
+          `Cannot book this delivery: ${error.message}`,
+        );
+      throw error;
+    }
 
     // THE SECOND DELIVERY LOSES AT THE DATABASE, NOT ONLY AT THE READ.
     //
@@ -4236,18 +4691,19 @@ export class ProcurementService {
     // clause: PostgREST sends `status=not.in.(...)` and Postgres, in READ
     // COMMITTED, re-evaluates that qualifier after taking the row lock — the
     // loser of the race therefore matches nothing and writes nothing, rather
-    // than overwriting the winner's `delivered_at`, `received_by` and
-    // `quantity_received`.
+    // than overwriting the winner's `delivered_at` and `received_by`.
     //
     // The set is imported, not restated. A guard whose two halves are typed out
     // twice is a guard with two answers waiting to disagree.
+    // Held so a refused booking can put back exactly this write and nothing a
+    // later request wrote (see the revert below).
+    const deliveredAtWritten = new Date().toISOString();
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
         status: ProcurementOrderStatus.DELIVERED,
-        delivered_at: new Date().toISOString(),
+        delivered_at: deliveredAtWritten,
         received_by: userId,
-        quantity_received: resolvedQuantity,
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
@@ -4278,7 +4734,7 @@ export class ProcurementService {
           await this.databaseService.supabase
             .from("procurement_orders")
             .select(
-              "status, delivered_at, received_by, quantity_received, " +
+              "id, inventory_id, quantity, status, delivered_at, received_by, " +
                 "unit_type, bottles_total, order_number",
             )
             .eq("restaurant_id", restaurantId)
@@ -4289,6 +4745,17 @@ export class ProcurementService {
           any
         >;
         const racedStatus = readOrderStatus(racedRow.status);
+        // The winner's delivery, from the ledger. When the re-read failed the
+        // row is empty and the reading says so (`readable:false`).
+        const racedReceived = racedError
+          ? shelfUnreadable(
+              `The order could not be read back (${racedError.message}), so what the other delivery put on the shelf is not known here.`,
+            )
+          : await readOneShelfReceived(
+              this.databaseService.supabase,
+              restaurantId,
+              { ...existingRow, ...racedRow, id: orderId },
+            );
         const racedReceiver = await resolveReceiverName(
           this.databaseService.supabase as any,
           racedRow.received_by ?? null,
@@ -4313,8 +4780,7 @@ export class ProcurementService {
             receivedBy: racedRow.received_by ?? null,
             receivedByName: racedReceiver.name,
             receivedByNameReason: racedReceiver.reason,
-            quantityReceived: racedRow.quantity_received ?? null,
-            unitType: racedRow.unit_type ?? null,
+            received: racedReceived,
             bottlesTotal:
               racedRow.bottles_total == null
                 ? null
@@ -4368,49 +4834,134 @@ export class ProcurementService {
       this.databaseService.supabase,
       orderId,
     );
-    if (!deliveryOwns.ok)
-      throw new ServiceUnavailableException(deliveryOwns.error);
 
-    if (deliveryOwns.value.booked) {
+    // Set when the live stock movement below is REFUSED. Before ADR 0192 its
+    // result was never looked at, so a failed booking still recorded an
+    // `order_delivered` event for bottles that never moved and told the
+    // manager they were "stocked in". Since the founder's answer (9) of
+    // 2026-09-21 a refused booking PUTS THE ORDER BACK to the status it had,
+    // so the delivery can be recorded again once the refusal is fixed (below,
+    // after the booking block); it used to stay DELIVERED with nothing on the
+    // shelf, which no screen offered a way out of.
+    let stockNotMoved: string | null = null;
+    // WHETHER the booking was refused is its own flag, set only to a literal
+    // `true` beside each reason. The reason is a sentence that can carry
+    // request values (the order id is in `deliveryHasBookedOrder`'s error),
+    // so it is only ever SAID, never tested: a condition that guards the
+    // put-back write below must not be decided by what a caller sent
+    // (CodeQL js/user-controlled-bypass, alert #1505).
+    let bookingRefused = false;
+    // What this call did to the shelf. The verify notice says exactly this and
+    // nothing more (`delivered-notice.ts`): it used to say "N bottles stocked
+    // in" on every path, also when nothing moved.
+    let booking: DeliveryBooking;
+    // The item's place on the research queue, when the wine library does not
+    // have it (founder, 2026-09-21; below). Null for a library wine.
+    let research: EnqueueOutcome | null = null;
+    // DELIVER, FLAG TO NAME IT (founder, 2026-09-22, verbatim pick: "Deliver,
+    // flag to name it (Recommended)"): a delivery that names no house item or
+    // resolves to zero bottles stays delivered with nothing booked, and asks
+    // an owner or a manager to name the item (`delivery-item-to-name.ts`).
+    let nameAsk: { why: NameAskWhy; bottles: number } | null = null;
+    let nameAskOutcome: RaiseOutcome | null = null;
+
+    if (!deliveryOwns.ok) {
+      // Whether the receiving door already booked this order could not be
+      // read. Booking without that answer can put one delivery on the shelf
+      // twice (ADR 0103 A5), so nothing is booked — and the order does not
+      // stay DELIVERED on nothing (founder, 2026-09-21: the order reads
+      // delivered only when its booking succeeded). It is put back below like
+      // any refused booking. This used to throw a 503 AFTER the delivered
+      // write, leaving the order delivered with nothing booked.
+      bookingRefused = true;
+      stockNotMoved = deliveryOwns.error;
+      booking = { kind: "nothing", why: deliveryOwns.error };
+    } else if (deliveryOwns.value.booked) {
       this.logger.log(
         `markDelivered: order ${orderId} stock is owned by delivery ` +
           `${deliveryOwns.value.deliveryIds.join(", ")} — not booked again`,
       );
-    } else if (order.inventoryId && resolvedQuantity > 0) {
+      booking = { kind: "booked_by_door" };
+    } else if (!order.inventoryId) {
+      booking = { kind: "nothing", why: "this order names no house item" };
+      nameAsk = {
+        why: "no_item",
+        bottles: receivedBottles > 0 ? receivedBottles : 0,
+      };
+    } else if (!(resolvedQuantity > 0) || !(receivedBottles > 0)) {
+      booking = {
+        kind: "nothing",
+        why: `the delivered quantity is ${resolvedQuantity}`,
+      };
+      nameAsk = { why: "zero_bottles", bottles: 0 };
+    } else {
+      const inventoryId = order.inventoryId;
       const idempotencyKey = `order-delivered:${orderId}`;
-      const { data: existingEvent } = await this.databaseService.supabase
-        .from("inventory_events")
-        .select("id")
-        .eq("idempotency_key", idempotencyKey)
-        .maybeSingle();
+      const { data: existingEvent, error: existingEventError } =
+        await this.databaseService.supabase
+          .from("inventory_events")
+          .select("id")
+          .eq("idempotency_key", idempotencyKey)
+          .maybeSingle();
 
-      if (!existingEvent) {
+      if (existingEventError) {
+        // A failed read is an error, never "not booked before": it refuses the
+        // booking and the order is put back below (founder, 2026-09-21).
+        bookingRefused = true;
+        stockNotMoved = `whether this order's stock was already booked could not be read (${existingEventError.message})`;
+        booking = { kind: "nothing", why: stockNotMoved };
+      } else if (existingEvent) {
+        booking = { kind: "booked_before" };
+      } else {
+        // BOOK THE STOCK ANYWAY (founder, 2026-09-21, ADR 0192's amendment):
+        // *"book the stock anyway, and if it's not on the maser wine that
+        // means that wine needs research treatment"*. The ledger is keyed by
+        // the HOUSE ITEM's id — `apply_stock_movement` locks and books by
+        // `p_inventory_id`, and a lot or a ledger row carries a NULL master
+        // wine when the item has none (20260903171000 made both nullable;
+        // PGlite probe E3-migrations.mjs books one). This used to book
+        // nothing for an item with no `master_wine_id` and still say "stocked
+        // in"; it now books it like any other item.
+        //
+        // One read, strict: the item row answers both what to release from
+        // shadow and whether the library has it. A failed read, a missing row,
+        // or anything the booking throws is a REFUSED booking, so the order is
+        // put back below exactly as a refused movement is (answer 9) — never
+        // "delivered with nothing booked", which the old swallowing catch here
+        // allowed.
+        let masterWineId: string | null = null;
+        let itemName: string | null = null;
         try {
-          const { data: inventoryRow, error: inventoryError } =
+          const { data: item, error: itemError } =
             await this.databaseService.supabase
               .from("restaurant_inventory")
-              .select("master_wine_id")
+              .select(
+                "master_wine_id, wine_name, display_name, shadow_stock, in_transit_quantity",
+              )
               .eq("restaurant_id", restaurantId)
-              .eq("id", order.inventoryId)
-              .single();
+              .eq("id", inventoryId)
+              .maybeSingle();
 
-          const masterWineId = inventoryError
-            ? null
-            : inventoryRow?.master_wine_id;
-
-          if (masterWineId) {
-            // Move shadow -> live through the ledger RPC (lots = source of truth). Two idempotent
-            // movements: release the reserved shadow, then receive the physical lot at cost.
-            const { data: currentStock } = await this.databaseService.supabase
-              .from("restaurant_inventory")
-              .select("shadow_stock, in_transit_quantity")
-              .eq("restaurant_id", restaurantId)
-              .eq("id", order.inventoryId)
-              .single();
-
-            const currentShadow = currentStock?.shadow_stock ?? 0;
-            const currentInTransit = currentStock?.in_transit_quantity ?? 0;
-            const shadowRelease = Math.min(resolvedQuantity, currentShadow);
+          if (itemError) {
+            bookingRefused = true;
+            stockNotMoved = `the order's item could not be read (${itemError.message})`;
+          } else if (!item) {
+            bookingRefused = true;
+            stockNotMoved = "the order's item is not an item of this house";
+          } else {
+            const itemRow = item as Record<string, any>;
+            masterWineId = itemRow.master_wine_id ?? null;
+            // The name is read only to classify an item the library lacks
+            // (research below). A house-declared item carries it in
+            // display_name (20260903171000) when wine_name is empty, so both
+            // come back on this one read — no second read decided by a value.
+            const nameOf = (v: unknown): string | null =>
+              typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+            itemName = nameOf(itemRow.wine_name) ?? nameOf(itemRow.display_name);
+            const currentShadow = Number(itemRow.shadow_stock ?? 0) || 0;
+            const currentInTransit =
+              Number(itemRow.in_transit_quantity ?? 0) || 0;
+            const shadowRelease = Math.min(receivedBottles, currentShadow);
 
             // WHAT KIND OF PRICE THIS IS.
             //
@@ -4436,12 +4987,15 @@ export class ProcurementService {
             // prefilled_invoice_unit_price) — so it was always `undefined` and
             // the `??` chain fell through it silently. Reading a column that
             // does not exist is not a fallback, it is a no-op wearing one.
-            const unitCost = row.final_price ?? null;
+            const unitCost = deliveryPrice.ok ? deliveryPrice.perBottle : null;
             const costProvenance = unitCost == null ? null : "estimated";
 
+            // Move shadow -> live through the ledger RPC (lots = source of
+            // truth). Two idempotent movements: release the reserved shadow,
+            // then receive the physical lot at cost.
             if (shadowRelease > 0) {
-              await this.databaseService.supabase.rpc("apply_stock_movement", {
-                p_inventory_id: order.inventoryId,
+              const shadow = await this.databaseService.supabase.rpc("apply_stock_movement", {
+                p_inventory_id: inventoryId,
                 p_stock_state: "shadow",
                 p_delta: -shadowRelease,
                 p_transaction_type: "adjustment",
@@ -4455,57 +5009,200 @@ export class ProcurementService {
                 // item belong here.
                 p_restaurant_id: restaurantId,
               });
+              // The live booking below does not depend on it; a shadow figure
+              // left reserved is logged, not hidden.
+              if (shadow?.error)
+                this.logger.warn(
+                  `markDelivered: order ${orderId}'s reserved (shadow) stock was not released (${shadow.error.message ?? String(shadow.error)})`,
+                );
             }
-            await this.databaseService.supabase.rpc("apply_stock_movement", {
-              p_inventory_id: order.inventoryId,
-              p_stock_state: "live",
-              p_delta: resolvedQuantity,
-              p_transaction_type: "purchase",
-              p_source: "order",
-              p_reason: "order delivered — physical receipt",
-              p_unit_cost: unitCost,
-              p_cost_provenance: costProvenance,
-              p_order_id: orderId,
-              p_idempotency_key: `order-delivered-live:${orderId}`,
-              // ADR 0141 — same reason as the shadow release above.
-              p_restaurant_id: restaurantId,
-            });
+            const live = await this.databaseService.supabase.rpc(
+              "apply_stock_movement",
+              {
+                p_inventory_id: inventoryId,
+                p_stock_state: "live",
+                p_delta: receivedBottles,
+                p_transaction_type: "purchase",
+                p_source: "order",
+                p_reason: "order delivered — physical receipt",
+                p_unit_cost: unitCost,
+                p_cost_provenance: costProvenance,
+                p_order_id: orderId,
+                p_idempotency_key: `order-delivered-live:${orderId}`,
+                // ADR 0141 — same reason as the shadow release above.
+                p_restaurant_id: restaurantId,
+              },
+            );
 
-            // in_transit_quantity is a separate denormalized display counter.
-            await this.databaseService.supabase
-              .from("restaurant_inventory")
-              .update({
-                in_transit_quantity: Math.max(
-                  0,
-                  currentInTransit - resolvedQuantity,
-                ),
-              })
-              .eq("restaurant_id", restaurantId)
-              .eq("id", order.inventoryId);
+            if (live?.error) {
+              bookingRefused = true;
+              stockNotMoved = live.error.message ?? String(live.error);
+            } else {
+              // in_transit_quantity is a separate denormalized display counter.
+              const { error: inTransitError } =
+                await this.databaseService.supabase
+                  .from("restaurant_inventory")
+                  .update({
+                    in_transit_quantity: Math.max(
+                      0,
+                      currentInTransit - receivedBottles,
+                    ),
+                  })
+                  .eq("restaurant_id", restaurantId)
+                  .eq("id", inventoryId);
+              if (inTransitError)
+                this.logger.warn(
+                  `markDelivered: order ${orderId} booked, but the in-transit display counter was not lowered (${inTransitError.message})`,
+                );
+            }
+          }
+        } catch (bookingError: any) {
+          bookingRefused = true;
+          stockNotMoved = `the booking failed (${bookingError?.message ?? String(bookingError)})`;
+        }
+
+        if (bookingRefused) {
+          this.logger.error(
+            `markDelivered: order ${orderId}'s stock movement was refused (${stockNotMoved}) — nothing was booked`,
+          );
+          // Unused: the refusal below throws before the notice is written.
+          booking = { kind: "nothing", why: stockNotMoved ?? "the booking was refused" };
+        } else {
+          booking = { kind: "booked", bottles: receivedBottles };
+
+          // The event records a quantity that MOVED — only ever reached after
+          // the live movement succeeded.
+          try {
+            const { error: eventWriteError } = await this.databaseService.supabase
+              .from("inventory_events")
+              .insert({
+                restaurant_id: restaurantId,
+                inventory_id: inventoryId,
+                master_wine_id: masterWineId,
+                event_type: "order_delivered",
+                quantity_change: receivedBottles,
+                source: "procurement",
+                idempotency_key: idempotencyKey,
+                metadata: {
+                  orderId,
+                  deliveredAt: order.deliveredAt,
+                },
+              });
+            // The booking stands (the ledger row is the record); a missing
+            // event is logged, never read as written.
+            if (eventWriteError) throw eventWriteError;
+          } catch (eventError: any) {
+            this.logger.warn(
+              "Failed to record inventory event for delivered order",
+              {
+                orderId,
+                error: eventError?.message ?? eventError,
+              },
+            );
           }
 
-          await this.databaseService.supabase.from("inventory_events").insert({
-            restaurant_id: restaurantId,
-            inventory_id: order.inventoryId,
-            master_wine_id: masterWineId ?? null,
-            event_type: "order_delivered",
-            quantity_change: resolvedQuantity,
-            source: "procurement",
-            idempotency_key: idempotencyKey,
-            metadata: {
-              orderId,
-              deliveredAt: order.deliveredAt,
-            },
-          });
-        } catch (eventError) {
-          this.logger.warn(
-            "Failed to record inventory event for delivered order",
-            {
-              orderId,
-              error: eventError?.message ?? eventError,
-            },
-          );
+          // NOT IN THE WINE LIBRARY: RESEARCH, BY THE ITEM'S ID (founder,
+          // 2026-09-21): *"that wine needs research treatment with fully in
+          // depth analysis to add to the master wine. If its found that it s
+          // nowhere to be found, like wine 1 and wine 2 and such, then we skip
+          // it and flag it."* The queue row is keyed by the house item's id;
+          // the name is read only to classify it. A placeholder name is
+          // `not_findable` and flagged on /inventory, never researched.
+          //
+          // After the booking, and never undoing it: the stock is on the shelf
+          // whether or not the queue can be written. A failed write is logged
+          // and said in the verify notice (`researchWords`), not swallowed.
+          if (!masterWineId) {
+            research = await enqueueHouseItemResearch(
+              this.databaseService.supabase,
+              {
+                restaurantId,
+                inventoryId,
+                name: itemName,
+                queuedFrom: "delivery",
+                sourceOrderId: orderId,
+                queuedBy: userId,
+              },
+            );
+            if (!research.ok) {
+              this.logger.error(
+                `markDelivered: order ${orderId} booked, but its item ${inventoryId} (no wine-library row) was not queued for research: ${research.error}`,
+              );
+            }
+          }
         }
+      }
+    }
+
+    // A REFUSED BOOKING PUTS THE ORDER BACK (founder, answer 9, 2026-09-21).
+    //
+    // Conditional on exactly the write above — DELIVERED, this delivered_at,
+    // this person — so it can never undo a different request's delivery; the
+    // race guard on that write (the NOT-IN on arrived statuses) is untouched.
+    // Since the founder's answer of 2026-09-21 on items with no master wine,
+    // an item that could not be read (or is not this house's) is a refused
+    // booking too: it used to be skipped and the order left delivered.
+    // Nothing else is undone because nothing else was written: the live
+    // movement was refused whole, and no `order_delivered` event, no in-transit
+    // change, no calendar change and no verify task happen for it. The shadow
+    // release above is idempotent on its own key, so a later delivery of the
+    // same order does not release it twice.
+    if (bookingRefused) {
+      const { data: putBack, error: putBackError } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .update(priorDelivery)
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .eq("status", ProcurementOrderStatus.DELIVERED)
+        .eq("delivered_at", deliveredAtWritten)
+        .eq("received_by", userId)
+        .select("id");
+      const reverted = !putBackError && Array.isArray(putBack) && putBack.length > 0;
+      if (!reverted) {
+        this.logger.error(
+          `markDelivered: order ${orderId}'s booking was refused and the order could not be put back ` +
+            `(${putBackError?.message ?? "no row matched the write this request made"}); it reads DELIVERED with nothing booked.`,
+        );
+      }
+      throw new UnprocessableEntityException({
+        reason: DELIVERY_REFUSED_STOCK_NOT_BOOKED,
+        orderId,
+        orderNumber: existingRow.order_number ?? null,
+        status: reverted ? currentStatus : ProcurementOrderStatus.DELIVERED,
+        reverted,
+        message: refuseUnbookedDelivery({
+          orderNumber: existingRow.order_number ?? null,
+          why: stockNotMoved ?? "the booking was refused",
+          revertedTo: reverted ? currentStatus : null,
+        }),
+      });
+    }
+
+    // THE ASK TO NAME THE ITEM (founder, 2026-09-22: "Deliver, flag to name
+    // it"). After the delivered write and never instead of it: the order
+    // stays delivered with nothing booked, and the ask is one row per order.
+    // A failed ask is said in the notice and logged, never dropped.
+    if (nameAsk) {
+      nameAskOutcome = await raiseDeliveryItemToName(
+        this.databaseService.supabase,
+        {
+          restaurantId,
+          orderId,
+          why: nameAsk.why,
+          bottlesResolved: nameAsk.bottles,
+          raisedBy: userId,
+        },
+      );
+      if (!nameAskOutcome.ok) {
+        this.logger.error(
+          `markDelivered: order ${orderId} was delivered with nothing booked, and the ask to name its item failed: ${nameAskOutcome.error}`,
+        );
+      } else if (nameAskOutcome.created) {
+        await this.tellOwnersAndManagersToName(restaurantId, orderId, {
+          orderNumber: existingRow.order_number ?? null,
+          why: nameAsk.why,
+          raisedBy: userId,
+        });
       }
     }
 
@@ -4525,7 +5222,17 @@ export class ProcurementService {
         {
           type: "invoice_received",
           title: `Verify delivery: ${order.wineName || order.orderNumber || "order"}`,
-          message: `${resolvedQuantity} bottles stocked in. Confirm the physical count against the vendor invoice.`,
+          // `receivedBottles`, not `resolvedQuantity`: the latter is in the
+          // ORDER's own unit (a 5-case order of 12 resolves to 5), while the
+          // ledger booked `receivedBottles` bottles (60) at :4681. Pre-fix
+          // this notice told the manager 5 bottles came in when 60 did
+          // (ADR 0190 D6 — filed as 0168 before its renumbering).
+          // A refused booking never reaches this line (it put the order back
+          // and threw, above). What the notice says about the shelf is what
+          // THIS call did (`delivered-notice.ts`): "N bottles stocked in" only
+          // for a booking that moved them, and the research sentence for an
+          // item the wine library does not have (founder, 2026-09-21).
+          message: verifyNoticeMessage(booking, research, nameAskOutcome),
           priority: "critical",
           actionUrl: `/inventory?verify=${orderId}`,
           actionLabel: "Verify receipt",
@@ -4536,13 +5243,35 @@ export class ProcurementService {
             wineName: order.wineName,
             quantity: resolvedQuantity,
             providerId: order.providerId,
+            // The research queue's answer for an item the wine library lacks
+            // (founder, 2026-09-21); null for a library wine.
+            researchStatus: research
+              ? research.ok
+                ? research.status
+                : "not_queued"
+              : null,
+            // The ask to name the item (founder, 2026-09-22); null when the
+            // delivery booked what it named.
+            nameAsk: nameAskOutcome
+              ? nameAskOutcome.ok
+                ? "asked"
+                : "not_asked"
+              : null,
           },
         },
         { dedupeWithinMinutes: 24 * 60 },
       );
     }
 
-    return order;
+    // What the order received, read back from the ledger AFTER the booking
+    // (ADR 0192) — so a movement that was refused reads as nothing on the
+    // shelf rather than as the quantity the caller asserted.
+    const received = await readOneShelfReceived(
+      this.databaseService.supabase,
+      restaurantId,
+      row,
+    );
+    return this.mapOrderRow(orderRow, undefined, received);
   }
 
   /**
@@ -4701,6 +5430,45 @@ export class ProcurementService {
         throw new UnprocessableEntityException(
           `Adjustment failed for item ${inventoryId}: ${error.message}`,
         );
+      }
+      // THE SAME RULE AT VERIFICATION (founder, 2026-09-22, verbatim pick:
+      // "Yes, same rule (Recommended)"): a correction that booked bottles in
+      // is a path that books stock, so an item the wine library lacks is
+      // queued for research by its id, once per item. [Last call, 2026-09-22:
+      // this path was missed; a zero-bottle delivery verified at its real
+      // count booked the wine and never queued it.] After the booking and
+      // never undoing it; a failure is logged, the stock stands.
+      if (delta > 0) {
+        const research = await queueResearchIfLibraryLacks(
+          this.databaseService.supabase,
+          {
+            restaurantId,
+            inventoryId,
+            queuedFrom: "receiving",
+            sourceOrderId: orderId,
+            queuedBy: userId ?? null,
+          },
+        );
+        if (research && !research.ok) {
+          this.logger.error(
+            `verifyReceipt booked ${delta} bottles of ${inventoryId} on order ${orderId}, but the item was not queued for research: ${research.error}`,
+          );
+        }
+
+        // A STALE NAME ASK CLOSES BY ITSELF (founder, 2026-09-22, round 6z,
+        // verbatim pick 2: "Close by itself (Recommended)"): this correction
+        // just booked bottles in for the order, so any open
+        // delivery_item_to_name ask for it no longer needs naming. A
+        // failure is logged, not surfaced; the correction stands either way.
+        const closed = await closeDeliveryItemToNameBookedElsewhere(
+          this.databaseService.supabase,
+          { restaurantId, orderId, via: "verification" },
+        );
+        if (!closed.ok) {
+          this.logger.error(
+            `verifyReceipt booked ${delta} bottles of ${inventoryId} on order ${orderId}, but its stale name-item ask was not closed: ${closed.error}`,
+          );
+        }
       }
     }
 
@@ -4918,56 +5686,18 @@ export class ProcurementService {
         );
     }
 
-    // What was already pushed into the ledger; corrections are relative to it.
-    //
-    // ⚠️ ITS UNIT IS NOT AGREED, AND THIS LINE ASSUMES ONE. Read this before
-    // trusting any verdict this method produces on a door-counted order.
-    //
-    // Three of the four parties say `procurement_orders.quantity_received` is
-    // stated in the ORDER's own unit, beside `quantity`:
-    //
-    //   * `markDelivered` writes `quantityReceived ?? existingOrder.quantity`
-    //     (:1602)
-    //   * `updateOrder` writes it from `quantityReceivedInOrderUom` (:1128) —
-    //     the DTO field name is itself the claim
-    //   * this method writes back `acceptedQty + rejectedQty` in the COUNTED
-    //     unit as submitted, and says so (:2353)
-    //
-    // The fourth writes BOTTLES. `ReceivingService.recordDoorReceipt` sets
-    // `quantity_received = totals.receivedBottles` (receiving.service.ts:504),
-    // a sum of `counted_qty_bottles - rejected_qty_bottles` (ADR 0062, #228).
-    //
-    // So on a door-counted order this number is already in bottles, and the
-    // line below hands it to `computeMatch` as `stockedQtyInCountedUom`, where
-    // `conv(rawStocked, counted)` (invoice-match.ts:558) multiplies it by the
-    // pack size a SECOND time. MEASURED by calling `toBottleOperands` /
-    // `computeMatch` directly on a 5-case order of a twelve-pack, door-counted
-    // at 5 cases, desk-verified at 5, with no `countedUom` sent (neither desk
-    // client sends one, so it falls back to the order's `case`):
-    //
-    //   no invoice on file    accepted 60  stocked 720  ledgerDelta -660  "unmatched"
-    //   matching invoice      accepted 60  stocked 720  ledgerDelta -660  "matched"
-    //
-    // THE INVOICE CHANGES ONLY WHAT THE MANAGER IS TOLD, NOT WHETHER STOCK
-    // MOVES. `-660` is identical either way, and the gate at :2267 fires on
-    // `match.ledgerDelta !== 0`, so `applyReceiptAdjustment` removes 660
-    // bottles from live stock on BOTH paths. (`invoice-match.ts:706` is where
-    // an absent invoice becomes "unmatched"; it touches no operand.) With no invoice the screen at
-    // least says "unmatched", which a manager might question; with a matching
-    // invoice it says "matched", which they would not. The precondition is
-    // about detection, not about reachability.
-    //
-    // The `?? quantity` fallback carries the same assumption for an order
-    // nothing has booked at all.
-    //
-    // NOT REPAIRED HERE, because the repair is a choice between the two
-    // writers and it has consequences either way: bottles is the more precise
-    // unit and the one the ledger speaks, while the order's unit is what the
-    // column name, three writers and every client that renders it assume, and
-    // `quantity_received` is an `integer`, so converting bottles→cases rounds
-    // a part-case delivery away. Filed for the founder rather than guessed at.
-    const stockedQty =
-      (orderRow as any).quantity_received ?? (orderRow as any).quantity ?? 0;
+    // The immutable ledger states bottles and retains receipts after stock is
+    // consumed. It is also what "received" MEANS (ADR 0192), so the correction
+    // below is measured against the same number every screen shows.
+    const stockedQtyInBottles =
+      hasMatchFields && orderRow.inventory_id
+        ? await readBookedOrderBottles(
+            this.databaseService.supabase,
+            restaurantId,
+            orderId,
+            orderRow.inventory_id,
+          )
+        : 0;
     const orderedQty = (orderRow as any).quantity ?? 0;
 
     // The order's own unit, which every comparison below is anchored to. It was
@@ -5057,10 +5787,10 @@ export class ProcurementService {
       invoiceUom: body.invoiceUom ?? null,
       invoiceBottlesPerUnit: body.invoiceBottlesPerUnit ?? null,
       invoiceUnitPrice: body.invoiceUnitPrice ?? null,
-      acceptedQtyInCountedUom: acceptedQuantity ?? stockedQty,
+      acceptedQtyInCountedUom: acceptedQuantity ?? null,
       rejectedQtyInCountedUom: rejectedQuantity ?? 0,
       freeGoodsQtyInCountedUom: freeGoodsQuantity ?? 0,
-      stockedQtyInCountedUom: stockedQty,
+      stockedQtyInBottles,
       countedUom: body.countedUom ?? null,
       countedBottlesPerUnit: body.countedBottlesPerUnit ?? null,
       allocatedCharges: body.allocatedCharges ?? 0,
@@ -5071,6 +5801,48 @@ export class ProcurementService {
     let bottles: ReturnType<typeof toBottleOperands> | null = null;
     if (hasMatchFields) {
       try {
+        if (acceptedQuantity == null) {
+          const unitReading = toBottleOperands(matchInput);
+          if (["keg", "liter"].includes(unitReading.units.counted.uom)) {
+            throw new MatchUnitError(
+              "not_comparable",
+              "The ledger counts bottles; this receipt must state a physical count in bottles or a known bottle pack.",
+            );
+          }
+          const bottlesPerPack = unitReading.units.counted.bottlesPerUnit;
+          const derivedAcceptedQty = stockedQtyInBottles / bottlesPerPack;
+          // Nobody stated an accepted count here, so it is BACK-DERIVED from
+          // what the ledger already booked — and that division does not always
+          // land on a whole pack: 59 bottles booked on a 12-pack case order is
+          // 4.9167 cases. This used to be refused (400), first because
+          // `procurement_orders.accepted_quantity` is an INTEGER column (ADR
+          // 0190 D5 — filed as 0168), then, after the 2026-09-21 amendment
+          // stopped writing that column, unchanged "as a follow-up" — and a
+          // refused verification left no history line.
+          //
+          // PART PACKS VERIFY IN BASE UNITS (founder, 2026-09-25, round 5,
+          // verbatim option: "Yes, in base units (Recommended) — Accept any
+          // count in the item's base unit (ADR 0070 integer qty + uom), so
+          // every verification leaves a history line"). A part pack is
+          // re-read as the WHOLE physical count in bottles — accepted,
+          // rejected and free goods together, because they share one counted
+          // unit and converting only one of the three is how a door-refused
+          // delivery once booked 33 bottles — so every operand stays an
+          // integer in a stated unit (ADR 0070) and nothing is rounded. A
+          // whole number of packs is unchanged. Still decided before any
+          // write: `openCreditClaim` and the event below see one reading.
+          if (Number.isInteger(derivedAcceptedQty)) {
+            matchInput.acceptedQtyInCountedUom = derivedAcceptedQty;
+          } else {
+            matchInput.countedUom = "bottle";
+            matchInput.countedBottlesPerUnit = 1;
+            matchInput.acceptedQtyInCountedUom = stockedQtyInBottles;
+            matchInput.rejectedQtyInCountedUom =
+              (rejectedQuantity ?? 0) * bottlesPerPack;
+            matchInput.freeGoodsQtyInCountedUom =
+              (freeGoodsQuantity ?? 0) * bottlesPerPack;
+          }
+        }
         match = computeMatch(matchInput);
         bottles = toBottleOperands(matchInput);
       } catch (e) {
@@ -5092,6 +5864,148 @@ export class ProcurementService {
       throw new UnprocessableEntityException(
         `${match.summary} Accept the price difference with a reason, or correct the invoice price.`,
       );
+    }
+
+    // THE VERIFICATION IS AN EVENT ROW (ADR 0192 amendment, founder answer 8,
+    // 2026-09-21). What the desk accepted, rejected and was invoiced for used
+    // to be written onto four `procurement_orders` columns — accepted and
+    // rejected in the COUNTED unit, backorder in bottles — and overwritten by
+    // the next verification. They are now one `reconciled` receipt event, all
+    // in BOTTLES (the unit `computeMatch` compared them in), written BEFORE
+    // anything else moves: if the facts cannot be recorded, nothing is changed.
+    // "Accepted" is then the ledger's own count (the correction below moves
+    // it), "rejected" the door's plus the desk's, "invoiced" this row's, and
+    // "backorder" what was ordered less what the ledger holds
+    // (`shelf-received.ts`). The four columns are no longer written or read;
+    // `scripts/check_no_quantity_received_column.py` holds that line.
+    if (match && bottles) {
+      const { error: eventError } = await this.databaseService.supabase
+        .from("procurement_receipt_events")
+        .insert({
+          restaurant_id: restaurantId,
+          order_id: orderId,
+          stage: "reconciled",
+          counted_qty: bottles.acceptedQty,
+          counted_uom: "bottle",
+          counted_qty_bottles: bottles.acceptedQty,
+          rejected_qty: bottles.rejectedQty,
+          rejected_qty_bottles: bottles.rejectedQty,
+          invoice_qty_bottles: hasInvoice ? bottles.invoiceQty : null,
+          received_by: userId,
+          notes: body.rejectedReason ?? null,
+        });
+      if (eventError) {
+        throw new InternalServerErrorException(
+          `This verification's counts could not be recorded (${eventError.message}), so nothing was changed: ` +
+            "no stock was corrected and the order is as it was. Try again.",
+        );
+      }
+    }
+
+    // A VERIFICATION THAT STATES NO COUNT STILL LEAVES A HISTORY LINE (ADR
+    // 0192, fifth amendment; founder, 2026-09-26, round 6, verbatim option:
+    // "Yes, keep last invoice (Recommended) — It writes a history line with
+    // the counted bottles. The invoice figure from an earlier check stays
+    // readable instead of turning into 'unknown'." Rejected: "Yes, as the new
+    // record" and "Leave it").
+    //
+    // The mobile Today card's one-tap "Counts match" posts `{ adjustments: [] }`
+    // and so takes no match path; it used to complete the order and record
+    // nothing. It now writes a `reconciled` event, in bottles, with what the
+    // ledger holds for the order's item — booked bottles, plus any legacy
+    // adjustment on that item from an old offline payload — no invoice, no
+    // refusal, and `outcome = 'accepted'` (`COUNTS_CONFIRMED_OUTCOME`), the word
+    // that tells the desk's readers this line restates nothing: the invoice and
+    // the refusal stay read from the latest event that states them
+    // (`shelf-received.ts`). Written before anything moves, like the full
+    // verification's event: if it cannot be recorded, nothing is changed.
+    //
+    // Every legacy adjustment's item is proven to be this house's FIRST, so a
+    // refused adjustment (403) leaves no line claiming a verification happened.
+    //
+    // A REPEATED IDENTICAL TAP WRITES NOTHING NEW (ADR 0192, sixth amendment;
+    // founder, 2026-09-26, round 7, item 47): before the insert below, the
+    // latest `reconciled` event for this order is read, and the insert is
+    // skipped when it already states this same accepted bottle count
+    // (`repeatsTheLatestConfirmation`, `shelf-received.ts`) — the tap still
+    // reports success, the order's status write below still runs, and an
+    // earlier full check's rejected count and invoice stay exactly as they
+    // were, read from that same still-latest row.
+    if (!hasMatchFields) {
+      for (const adj of adjustments)
+        await assertInventoryBelongsToRestaurant(
+          this.databaseService.supabase,
+          restaurantId,
+          adj.inventoryId,
+          `verifyReceipt on order ${orderId}`,
+          this.logger,
+        );
+      const orderedItem: string | null = (orderRow as any).inventory_id ?? null;
+      let confirmedBottles: number | null = null;
+      if (orderedItem) {
+        const booked = await readBookedOrderBottles(
+          this.databaseService.supabase,
+          restaurantId,
+          orderId,
+          orderedItem,
+        );
+        const onTheLine = adjustments
+          .filter((a) => a.inventoryId === orderedItem)
+          .reduce((sum, a) => sum + a.delta, 0);
+        const held = booked + onTheLine;
+        // A count nobody can state in whole bottles is recorded as no count
+        // ("no accepted count recorded"), never rounded into one.
+        confirmedBottles = Number.isSafeInteger(held) && held >= 0 ? held : null;
+      }
+
+      // IDEMPOTENCE (ADR 0192, sixth amendment; founder, 2026-09-26, round 7,
+      // item 47): a repeated identical "Counts match" tap writes nothing new.
+      // Read the latest `reconciled` event for THIS order before writing
+      // another one — the same read a re-verify would need anyway — and skip
+      // the insert when it already states this same accepted count. A read
+      // failure refuses rather than guesses: better a rejected tap than a
+      // duplicate line neither the desk nor the founder asked for.
+      const { data: latestReconciledRows, error: latestReconciledError } =
+        await this.databaseService.supabase
+          .from("procurement_receipt_events")
+          .select("counted_qty_bottles")
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .eq("stage", "reconciled")
+          .order("occurred_at", { ascending: false })
+          .limit(1);
+      if (latestReconciledError) {
+        throw new InternalServerErrorException(
+          `Whether this order was already verified could not be checked ` +
+            `(${latestReconciledError.message}), so nothing was changed. Try again.`,
+        );
+      }
+      const latestReconciled = latestReconciledRows?.[0] ?? null;
+
+      if (!repeatsTheLatestConfirmation(latestReconciled, confirmedBottles)) {
+        const { error: confirmError } = await this.databaseService.supabase
+          .from("procurement_receipt_events")
+          .insert({
+            restaurant_id: restaurantId,
+            order_id: orderId,
+            stage: "reconciled",
+            outcome: COUNTS_CONFIRMED_OUTCOME,
+            counted_qty: confirmedBottles,
+            counted_uom: "bottle",
+            counted_qty_bottles: confirmedBottles,
+            rejected_qty: 0,
+            rejected_qty_bottles: 0,
+            invoice_qty_bottles: null,
+            received_by: userId,
+            notes: null,
+          });
+        if (confirmError) {
+          throw new InternalServerErrorException(
+            `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
+              "no stock was corrected and the order is as it was. Try again.",
+          );
+        }
+      }
     }
 
     // Correct the ordered line to the accepted count, then apply any unlisted extras.
@@ -5167,8 +6081,8 @@ export class ProcurementService {
     // manager DID type one, i.e. exactly the discrepancy runs. By then the
     // ledger correction and the credit claim above have already been written, so
     // a PGRST204 here leaves the order permanently half-verified: status,
-    // match_status, accepted_quantity, the invoice_* columns and the price
-    // history below never land, and the retry fails identically.
+    // match_status, the invoice price and the price history below never land,
+    // and the retry fails identically.
     //
     // Appended rather than assigned. A note left at the door and a note left at
     // verification are two different observations of the same delivery, and the
@@ -5183,13 +6097,6 @@ export class ProcurementService {
     }
 
     if (match) {
-      // These columns sit beside `quantity` and are read back by clients that
-      // display the order's own unit, so they stay in the COUNTED unit as
-      // submitted — not in the bottle-equivalents the verdict was computed from.
-      // Converting them here would silently restate a manager's count.
-      const acceptedQty = acceptedQuantity ?? stockedQty;
-      const rejectedQty = rejectedQuantity ?? 0;
-
       // WHAT THE PRICE CHECK DID AND DID NOT COMPARE — ADR 0119 phase 2.
       //
       // Two sentences, and both exist because a verdict a manager cannot
@@ -5202,7 +6109,9 @@ export class ProcurementService {
       //     agreement named has not varied the price, and without this sentence
       //     a `price_variance` reads as an overcharge.
       const comparisonNotes = [
-        doorPrice.ok ? doorPrice.note : `Price not compared: ${doorPrice.reason}.`,
+        doorPrice.ok
+          ? doorPrice.note
+          : `Price not compared: ${doorPrice.reason}.`,
         hasStatedFees(agreedFees)
           ? "The agreement also names money outside the price of the wine: " +
             [
@@ -5227,14 +6136,14 @@ export class ProcurementService {
         `Receipt price comparison for order ${orderId}: ${comparisonNotes}`,
       );
 
+      // `quantity_received` is not written (ADR 0192): what this order
+      // received is the ledger's sum, which the correction above just moved.
+      // Nor are its four siblings (the ADR 0192 amendment, 2026-09-21): the
+      // accepted, rejected, invoiced and backordered quantities are the
+      // `reconciled` event above and the ledger, in bottles.
       Object.assign(update, {
-        quantity_received: acceptedQty + rejectedQty,
-        accepted_quantity: acceptedQty,
-        rejected_quantity: rejectedQty,
         rejected_reason: body.rejectedReason ?? null,
-        invoice_quantity: invoiceQuantity ?? null,
         invoice_unit_price: body.invoiceUnitPrice ?? null,
-        backorder_quantity: match.backorderQty,
         match_status: match.verdict,
         // NULL, not false, when there was no invoice to verify against: "we
         // checked and it did not match" and "nobody has checked" are different
@@ -5582,7 +6491,9 @@ export class ProcurementService {
   async listPendingOrders(restaurantId: string): Promise<OrderResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("*, inventory:inventory_id(wine_name), provider:provider_id(name)")
+      .select(
+        "*, inventory:inventory_id(wine_name), provider:provider_id(name)",
+      )
       .eq("restaurant_id", restaurantId)
       .in("status", [
         ProcurementOrderStatus.PENDING,
@@ -5632,20 +6543,21 @@ export class ProcurementService {
    * (`check_order_capture_contract.py` cannot read a `...(x ? {} : {})`) and
    * the reason a reader of this method can see every field at once.
    *
-   * `providerName`, `quantityReceived` and `quantityReceivedUom` follow the
-   * same three-state rule but take their "was this read?" answer from the KEY
-   * being present on the row rather than from an argument — see the comments
-   * at each. A route that neither joins `providers` nor selects `*` therefore
-   * emits none of them, which is the honest report of a query that did not ask.
+   * `providerName` follows the same three-state rule but takes its "was this
+   * read?" answer from the KEY being present on the row rather than from an
+   * argument. A route that does not join `providers` therefore emits no
+   * `providerName`, which is the honest report of a query that did not ask.
+   *
+   * `received` (ADR 0192) takes its answer from the third argument: the
+   * ledger reading when the route read one, `undefined` when it did not. It is
+   * never derived from the row — `procurement_orders.quantity_received` is not
+   * read by the app any more.
    */
   private mapOrderRow(
     row: ProcurementOrderRow,
     priceUnit: AgreedPriceUnitReading = { read: false },
+    received: ShelfReceived | undefined = undefined,
   ): OrderResponseDto {
-    // Read once. Both DTO keys come from the same reading, so computing it
-    // twice would be two chances for them to disagree.
-    const receivedRead = "quantity_received" in row;
-    const received = readQuantityReceived(row.quantity_received, row.unit_type);
     // The same discipline for the recurrence. `recurrence_frequency` is the key
     // that decides for all six, because it is the one column whose NULL means
     // "does not repeat" — the other five are NULL on a non-recurring order too,
@@ -5669,6 +6581,10 @@ export class ProcurementService {
       approvedAt: row.approved_at ?? undefined,
       deliveredAt: row.delivered_at ?? undefined,
       completedAt: row.completed_at ?? undefined,
+      // The key test again: `null` is "the row names no currency", absence is
+      // "this route did not read the column". `currencyCode` reads membership,
+      // so a stored value that names no currency reads as none, not as money.
+      currency: "currency" in row ? currencyCode(row.currency) : undefined,
       isEmergency: row.is_emergency ?? undefined,
       priorityLevel: row.priority_level ?? undefined,
       wineName: row.wine_name ?? undefined,
@@ -5681,14 +6597,9 @@ export class ProcurementService {
       // row rather than on a reading argument.
       providerName:
         "provider_name" in row ? (row.provider_name ?? null) : undefined,
-      // `quantity_received` and its unit, together or not at all (ADR 0070).
-      // Present on every route that selects `*`; absent on the ones that select
-      // a column list, which have not learned the column is empty. The unit is
-      // derived from the ROW — `quantity-received-unit.ts` carries the
-      // measurement of the four writers and why a multiplying unit is refused
-      // rather than guessed.
-      quantityReceived: receivedRead ? received.quantity : undefined,
-      quantityReceivedUom: receivedRead ? received.uom : undefined,
+      // What the stock ledger booked for this order (ADR 0192), or undefined
+      // on a route that did not read it. `readable:false` travels as itself.
+      received,
       // The recurrence, as SIX keys that travel together (ADR 0125's addendum).
       // The key test again, and here it closes the exact hole the rebuilt page
       // was left with: `useOrdersNextData` set `recurring = false` because the
@@ -5721,7 +6632,9 @@ export class ProcurementService {
       // Both keys, always written, and both `undefined` when the line was not
       // read — absence on the wire, never a null that would read as "the line
       // states no unit". See `AgreedPriceUnitReading`.
-      priceUom: priceUnit.read ? (priceUnit.stated?.priceUom ?? null) : undefined,
+      priceUom: priceUnit.read
+        ? (priceUnit.stated?.priceUom ?? null)
+        : undefined,
       pricePackSize: priceUnit.read
         ? (priceUnit.stated?.pricePackSize ?? null)
         : undefined,
@@ -5751,17 +6664,367 @@ export class ProcurementService {
   // PHASE 32: DRAFT MANAGEMENT
   // =========================================================================
 
+  /**
+   * Mint the seal a drafted reply's SEND has to carry back.
+   *
+   * ADR 0118 and packet 2 (2026-09-06). Minted when the hold BEGINS, over the
+   * LETTER — the words, the recipient and the copies — because that is what the
+   * person read before they pressed. See `draftSealArgs` for why the order's
+   * total is deliberately not in it.
+   *
+   * A pending draft is confirmed to EXIST first, so a manager is never handed a
+   * seal for a letter that has already gone or was discarded — the same rule
+   * `issueOrderSealChallenge` follows.
+   */
+  async issueDraftSendSeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    letter: { body: string; to?: string | null; cc?: string[] | null },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    // WHO first (ADR 0175 D10): an owner, a manager or a grantee. Anybody else
+    // is refused BEFORE a seal is issued — a seal handed to a person whose hold
+    // cannot send teaches that the seal is decoration — and is told to hold
+    // again to ASK (founder, 2026-09-21), which `requestDraftSend` records.
+    await this.requireSendAuthority(userId, restaurantId, "send this letter", { canAsk: true });
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), " +
+          "so nothing can be sent. This is a gateway fault, not a decision about this letter.",
+      );
+    }
+
+    const { data: pending, error } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .select("id, content, providers!inner(contact_email, restaurant_id)")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "PENDING_APPROVAL")
+      .maybeSingle();
+
+    if (error) {
+      // The draft could not be CHECKED, which is not the same as there being
+      // none. Refusing with the reason beats issuing a seal over nothing.
+      throw new InternalServerErrorException(
+        `Whether a draft is waiting on this order could not be read (${error.message}), so no seal was issued and nothing was sent.`,
+      );
+    }
+    if (!pending) {
+      throw new NotFoundException(
+        "There is no draft waiting on this order, so there is nothing to seal. It may already have been sent or discarded.",
+      );
+    }
+
+    const provider = Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers;
+    const recipient = provider?.contact_email;
+    if (provider?.restaurant_id !== restaurantId || !recipient ||
+        recipient.trim().toLowerCase() !== letter.to?.trim().toLowerCase()) {
+      throw new BadRequestException("The vendor address changed or could not be confirmed. Review the draft before holding again.");
+    }
+    if (!letter.body?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEND_DRAFT_ACT,
+      args: { ...draftSealArgs({ body: letter.body, to: recipient, cc: letter.cc }), draftId: pending.id },
+    });
+    return {
+      challenge: issued.challenge,
+      expiresAt: issued.expiresAt,
+      act: issued.action,
+    };
+  }
+
+  /**
+   * Send the drafted reply, behind a REDEEMED seal — always.
+   *
+   * Both HTTP routes (`approve-draft`, `send-drafted-reply`) land here. Two
+   * gates, both unconditional since 2026-09-21:
+   *
+   *   1. WHO — `requireSendAuthority`: an owner, a manager, or a person holding
+   *      a live grant (ADR 0175 D10; ADR 0112 F12). Anybody else gets a 403 that
+   *      tells them to hold again to ASK (`requestDraftSend`).
+   *   2. THE SEAL — carried into `approveDraft`, which redeems it over the exact
+   *      pending row and the vendor's address on file immediately before the
+   *      atomic sending claim. An ABSENT challenge is refused there like every
+   *      other sealed act; the `REQUIRE_DRAFT_SEND_SEAL` grace is deleted
+   *      (founder, 2026-09-21).
+   *
+   * The seal is spent BEFORE the send, so a refused seal means nothing left the
+   * building; and it is spent over the letter as EDITED, so a paragraph changed
+   * between the hold and the release is refused by the args hash rather than
+   * quietly posted — an edit is a new version and needs a new seal.
+   */
+  async sendDraftedReply(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    dto: ApproveDraftDto,
+    challenge: string | null | undefined,
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    const standing = await this.requireSendAuthority(userId, restaurantId, "send this letter", {
+      canAsk: true,
+    });
+    return this.approveDraft(restaurantId, orderId, dto, {
+      userId,
+      challenge,
+      grantId: standing.basis === "grant" ? standing.grant.id : null,
+    });
+  }
+
+  /**
+   * A staff member's hold: the letter becomes a REQUEST (founder, 2026-09-21).
+   *
+   * *"When a staff member holds, the letter becomes a REQUEST: save the
+   * staffer's exact edited text as the version, record who asked, mark the
+   * draft waiting for a manager, notify managers and owners (web bell now) ...
+   * a manager releases it with one hold over that exact text; an edit is a new
+   * version needing a new seal; the staffer sees who sent it."*
+   *
+   * WHAT IT WRITES
+   *   - A draft is waiting: its `content` becomes the staffer's exact words (the
+   *     version), and `send_requested_by/_at/_sha256/_cc` record who asked, when,
+   *     over which words and with which copies. The row stays PENDING_APPROVAL,
+   *     so every reader that lists pending drafts keeps listing it, and the
+   *     manager's release is the ordinary sealed send over these exact words.
+   *   - No draft is waiting (a letter the staffer wrote from the thread, the
+   *     manual-reply case): a PENDING_APPROVAL row is created from their words,
+   *     threaded to the vendor's latest message the way `manualReply` threads,
+   *     so the release is the same sealed send.
+   *
+   * WHAT IT REFUSES
+   *   - A person who may SEND: 409 — nothing is asked on their behalf, they
+   *     hold to send.
+   *   - A person with no role in the house: 403.
+   *   - A standing, a draft or a vendor that could not be READ: 500, never a
+   *     quiet request over nothing.
+   *
+   * Nothing leaves the building here, so no seal is spent: the hold's intent is
+   * recorded as a request, and the SEAL belongs to the person who releases it.
+   */
+  async requestDraftSend(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    input: { content: string; ccEmails?: string[] | null },
+  ): Promise<{ conversationId: string; requestedAt: string; told: number; says: string }> {
+    const content = input.content ?? "";
+    if (!content.trim()) throw new BadRequestException("An empty letter cannot be asked for. Nothing was asked.");
+    if (!userId?.trim()) throw new ForbiddenException("A named person is required to ask. Nothing was asked.");
+    if (!this.vendorSendAuthority) {
+      throw new InternalServerErrorException(
+        "Who may send could not be checked (the authority service is not wired into procurement), so nothing was asked.",
+      );
+    }
+    const standing = await this.vendorSendAuthority.standing(userId, restaurantId);
+    if (standing.mode === "send") {
+      throw new ConflictException(
+        "You may send this yourself with one hold, so nothing was asked on your behalf.",
+      );
+    }
+    if (!standing.role) {
+      throw new ForbiddenException("You hold no role in this house, so nothing was asked.");
+    }
+
+    const cc = [...new Set((input.ccEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean))].sort();
+    const requestedAt = new Date().toISOString();
+    const request = {
+      send_requested_by: userId,
+      send_requested_at: requestedAt,
+      send_requested_sha256: letterVersionHash(content),
+      send_requested_cc: cc,
+    };
+
+    const { data: pending, error: pendingError } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .select("id, providers!left(name, restaurant_id)")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("status", "PENDING_APPROVAL")
+      .maybeSingle();
+    if (pendingError) {
+      throw new InternalServerErrorException(
+        `Whether a draft is waiting on this order could not be read (${pendingError.message}), so nothing was asked.`,
+      );
+    }
+
+    let conversationId: string;
+    let vendorName: string | null;
+    if (pending) {
+      const { data: saved, error: saveError } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .update({
+          content,
+          // Written out (not `...request`): check_order_capture_contract.py
+          // reads insert/update literals to prove every column exists, and a
+          // spread is invisible to it. Same four fields as `request` above.
+          send_requested_by: request.send_requested_by,
+          send_requested_at: request.send_requested_at,
+          send_requested_sha256: request.send_requested_sha256,
+          send_requested_cc: request.send_requested_cc,
+        })
+        .eq("id", (pending as any).id)
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("status", "PENDING_APPROVAL")
+        .select("id");
+      if (saveError) {
+        throw new InternalServerErrorException(
+          `Your version was not saved (${saveError.message}), so nothing was asked.`,
+        );
+      }
+      if (!saved || (saved as any[]).length === 0) {
+        throw new ConflictException(
+          "The draft was sent or discarded while you were holding, so nothing was asked. Refresh the order to see what happened.",
+        );
+      }
+      conversationId = (pending as any).id;
+      const provider = Array.isArray((pending as any).providers) ? (pending as any).providers[0] : (pending as any).providers;
+      vendorName = provider?.name ?? null;
+    } else {
+      // No draft: the staffer wrote this letter themself. Build the pending
+      // row the release will send, threaded the way manualReply threads.
+      const { data: order, error: orderError } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("id, provider_id, providers!left(name, contact_email, restaurant_id), restaurant_inventory:inventory_id(wine_name)")
+        .eq("id", orderId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (orderError) {
+        throw new InternalServerErrorException(`The order could not be read (${orderError.message}), so nothing was asked.`);
+      }
+      if (!order) throw new NotFoundException(`Order ${orderId} not found in this house. Nothing was asked.`);
+      if (!(order as any).providers?.contact_email) {
+        throw new BadRequestException("This vendor has no email address on file, so there is nowhere to send. Nothing was asked.");
+      }
+      const { data: lastInbound, error: inboundError } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .select("gmail_thread_id, message_id, email_headers")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("direction", "inbound")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (inboundError) {
+        throw new InternalServerErrorException(
+          `The vendor's last message could not be read (${inboundError.message}), so the reply could not be threaded and nothing was asked.`,
+        );
+      }
+      const inHeaders = ((lastInbound as any)?.email_headers ?? {}) as Record<string, any>;
+      const wineName = (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
+      const { data: inserted, error: insertError } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .insert({
+          order_id: orderId,
+          restaurant_id: restaurantId,
+          provider_id: (order as any).provider_id,
+          direction: "outbound",
+          channel: "email",
+          content,
+          message_text: content,
+          ai_generated: false,
+          status: "PENDING_APPROVAL",
+          outbound_email_type: "MANUAL_REPLY",
+          gmail_thread_id: (lastInbound as any)?.gmail_thread_id || null,
+          email_headers: {
+            subject: inHeaders.subject || `Re: Order Request: ${wineName}`,
+            in_reply_to: (lastInbound as any)?.message_id || inHeaders.message_id || null,
+            references: inHeaders.references || null,
+          },
+          // Written out (not `...request`): check_order_capture_contract.py
+          // reads insert/update literals to prove every column exists, and a
+          // spread is invisible to it. Same four fields as `request` above.
+          send_requested_by: request.send_requested_by,
+          send_requested_at: request.send_requested_at,
+          send_requested_sha256: request.send_requested_sha256,
+          send_requested_cc: request.send_requested_cc,
+        })
+        .select("id")
+        .single();
+      if (insertError || !inserted) {
+        throw new InternalServerErrorException(
+          `Your letter was not saved (${insertError?.message ?? "no row returned"}), so nothing was asked.`,
+        );
+      }
+      conversationId = (inserted as any).id;
+      vendorName = (order as any).providers?.name ?? null;
+    }
+
+    const told = await this.tellManagersOfRequest({ restaurantId, orderId, userId, vendorName });
+    this.emitConvUpdate(restaurantId, orderId, null, conversationId);
+    return {
+      conversationId,
+      requestedAt,
+      told,
+      says:
+        told > 0
+          ? `Asked. Your version is saved exactly as you wrote it, and ${told} ${told === 1 ? "owner or manager was" : "owners and managers were"} told. Nothing has been sent; you will see who sends it.`
+          : "Asked. Your version is saved exactly as you wrote it, but no owner or manager could be told; tell one yourself. Nothing has been sent.",
+    };
+  }
+
+  private async tellManagersOfRequest(input: {
+    restaurantId: string;
+    orderId: string;
+    userId: string;
+    vendorName: string | null;
+  }): Promise<number> {
+    if (!this.notificationsService || !this.vendorSendAuthority) return 0;
+    try {
+      const { owners, managers } = await this.vendorSendAuthority.ownersAndManagers(input.restaurantId);
+      const audience = [...new Set([...owners, ...managers])].filter((id) => id !== input.userId);
+      if (audience.length === 0) return 0;
+      const names = await this.vendorSendAuthority.namesOf([input.userId]);
+      const who = names.get(input.userId) ?? "A member of the team";
+      const { inserted } = await this.notificationsService.persistForRestaurant(
+        input.restaurantId,
+        {
+          type: "vendor_send_requested",
+          title: `${who} asks you to send a letter`,
+          message: `${who} wrote a letter to ${input.vendorName ?? "a vendor"} and asks an owner or a manager to send it. It waits for one hold; nothing has been sent.`,
+          // The web bell only, for the reason given at `tellRequesterItWent`:
+          // a push would carry a vendor's name to a locked screen (ADR 0175 D3).
+          priority: "low",
+          // /orders lists every waiting draft with who asked; it has no
+          // per-order deep link, so none is claimed. The order is in metadata.
+          actionUrl: "/orders",
+          actionLabel: "Read it and send",
+          // The only words a push of this may ever carry (founder answer 5,
+          // 2026-09-21): no names on a locked screen.
+          metadata: { orderId: input.orderId, requestedBy: input.userId, lockScreenText: SEND_REQUEST_PUSH_TEXT },
+        },
+        { onlyUserIds: audience },
+      );
+      return inserted;
+    } catch (e: any) {
+      this.logger.warn(`A send request could not be told to the managers: ${e?.message}`);
+      return 0;
+    }
+  }
+
+  /**
+   * The atomic send. `actor` is REQUIRED: there is no unsealed path through
+   * this method any more (founder, 2026-09-21). Callers reach it only through
+   * `sendDraftedReply`, which has already checked who may send.
+   */
   async approveDraft(
     restaurantId: string,
     orderId: string,
     dto: ApproveDraftDto,
+    actor: { userId: string; challenge: string | null | undefined; grantId: string | null },
   ): Promise<{ conversationId: string; sentAt: string }> {
+    if (!actor?.userId?.trim()) {
+      throw new ForbiddenException("A named person is required to send this letter. Nothing was sent.");
+    }
     // Fetch conversation + provider email before updating
     const { data: conv, error: fetchError } =
       await this.databaseService.supabase
         .from("procurement_conversations")
         .select(
-          "id, content, created_at, gmail_thread_id, message_id, email_headers, providers!left(name, contact_email, contact_first_name, primary_contact), procurement_orders!inner(inventory:inventory_id(wine_name))",
+          "id, content, created_at, gmail_thread_id, message_id, email_headers, send_requested_by, send_requested_sha256, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), procurement_orders!inner(inventory:inventory_id(wine_name))",
         )
         .eq("restaurant_id", restaurantId)
         .eq("order_id", orderId)
@@ -5802,10 +7065,11 @@ export class ProcurementService {
       string,
       any
     >;
-    const subject =
-      emailHeaders.subject ||
-      (conv as any).subject ||
-      `Order Request: ${wineName}`;
+    const subject = draftSubjectLine(
+      emailHeaders,
+      (conv as any).subject,
+      wineName,
+    );
     const replyThreadId = (conv as any).gmail_thread_id || undefined;
     const replyInReplyTo = emailHeaders.in_reply_to || undefined;
     const replyReferences = emailHeaders.references || undefined;
@@ -5817,6 +7081,27 @@ export class ProcurementService {
     }
 
     const conversationId = (conv as any).id as string;
+    // THE SEAL, UNCONDITIONALLY (founder, 2026-09-21). No `if`: an absent
+    // challenge is redeemed like any other and refused as "absent".
+    if (!this.sealChallenges) throw new InternalServerErrorException("The draft seal cannot be checked. Nothing was sent.");
+    if ((conv as any).providers?.restaurant_id !== restaurantId) throw new ForbiddenException("The vendor does not belong to this house. Nothing was sent.");
+    // Bind the actual row and actual recipient used below, immediately before
+    // the atomic claim. A stale UI address or replacement draft cannot spend
+    // a seal over the earlier letter.
+    await this.sealChallenges.redeem({
+      restaurantId, actorUserId: actor.userId, subjectKind: "procurement_order", subjectId: orderId,
+      action: ORDER_SEND_DRAFT_ACT,
+      args: { ...draftSealArgs({ body: rawEmailBody, to: providerEmail, cc: dto.ccEmails }), draftId: conversationId },
+      challenge: actor.challenge,
+    });
+    // A send under a grant is a grant event, on the security ledger BEFORE
+    // anything leaves (ADR 0112 F12; founder answer 4, 2026-09-21).
+    await this.vendorSendAuthority?.witnessGrantUse(actor.grantId, {
+      userId: actor.userId,
+      restaurantId,
+      act: ORDER_SEND_DRAFT_ACT,
+      subject: `procurement_order:${orderId}`,
+    });
 
     // ── Atomic claim, BEFORE the send ────────────────────────────────────────
     // Two managers tapping "approve" at the same moment both used to pass the
@@ -5893,6 +7178,27 @@ export class ProcurementService {
       // So: release only on a positively-identified refusal; park everything
       // else as unconfirmed. The costs are asymmetric — a stuck draft costs a
       // phone call, a duplicate PO costs money and a vendor relationship.
+      // A refusal that would refuse the same letter identically on every retry
+      // (ADR 0172: GmailService refused to BUILD the message, so Gmail was
+      // never called) CLOSES the draft with the reason — the founder's answer
+      // (6) of 2026-09-21, the in-process twin of the relay's RELAY_REFUSED.
+      // Handing it back as PENDING_APPROVAL invited a tap that fails the same
+      // way. 422: the request was well formed; this letter cannot be sent.
+      if (sendError instanceof SendRefusedBeforeSendError) {
+        const reason = String(sendError.message ?? "").trim() || "The message could not be built.";
+        const closed = await this.closeRefusedDraft(conversationId, reason);
+        throw new UnprocessableEntityException({
+          reason: DRAFT_SEND_REFUSED,
+          conversationId,
+          closed,
+          message: closed
+            ? `Nothing was sent, and this draft is closed: ${reason} Write the letter again once the vendor's details are corrected.`
+            : `Nothing was sent: ${reason} The draft could not be closed and reads as being sent; do not approve it again, and check it on the order.`,
+        });
+      }
+      // Every other positively identified refusal (no transport, credentials
+      // refused, an SMTP 5xx) is released for another try: fixing the mailbox
+      // or the address can make the same letter go.
       if (this.isDefiniteSendRefusal(sendError)) {
         await this.releaseSendClaim(conversationId, sendError?.message);
         throw sendError;
@@ -5922,6 +7228,10 @@ export class ProcurementService {
       ...(gmailMessageId && { gmail_message_id: gmailMessageId }),
       ...(gmailThreadId && { gmail_thread_id: gmailThreadId }),
       message_id: rfc822MessageId || outboundMessageId,
+      // Who sent it, and under which grant (ADR 0175 D9/D10 — "with an actor
+      // recorded"). The requester, if a staff member asked, stays on the row.
+      sent_by_user_id: actor.userId,
+      sent_under_grant_id: actor.grantId,
     };
     if (dto.modifiedContent) {
       updatePayload.content = dto.modifiedContent;
@@ -5985,7 +7295,64 @@ export class ProcurementService {
       );
     }
 
+    // The staffer sees who sent it (founder, 2026-09-21). Told on their bell,
+    // and said whether it went as they wrote it or with the sender's changes.
+    // Best-effort: the letter has gone, and failing the send because the bell
+    // failed would tell the sender something false.
+    const requester = (conv as any).send_requested_by as string | null;
+    if (requester && requester !== actor.userId) {
+      await this.tellRequesterItWent({
+        restaurantId,
+        orderId,
+        requester,
+        senderUserId: actor.userId,
+        vendorName: (conv as any).providers?.name ?? null,
+        asWritten:
+          !!(conv as any).send_requested_sha256 &&
+          (conv as any).send_requested_sha256 === letterVersionHash(rawEmailBody),
+      });
+    }
+
     return { conversationId: (data as any).id, sentAt: (data as any).sent_at };
+  }
+
+  private async tellRequesterItWent(input: {
+    restaurantId: string;
+    orderId: string;
+    requester: string;
+    senderUserId: string;
+    vendorName: string | null;
+    asWritten: boolean;
+  }): Promise<void> {
+    if (!this.notificationsService || !this.vendorSendAuthority) return;
+    try {
+      const names = await this.vendorSendAuthority.namesOf([input.senderUserId]);
+      const sender = names.get(input.senderUserId) ?? "A manager";
+      await this.notificationsService.persistForRestaurant(
+        input.restaurantId,
+        {
+          type: "vendor_send_released",
+          title: `${sender} sent your letter`,
+          message: `${sender} sent your letter to ${input.vendorName ?? "the vendor"}${
+            input.asWritten ? ", as you wrote it." : ", with their own changes."
+          }`,
+          // "low" = the web bell only. `persistForRestaurant` fans every other
+          // priority out to phones as a push, and this message names a vendor
+          // and a person — ADR 0175 D3 keeps those off a locked screen, and the
+          // per-phone payload rules are not built. The founder asked for the
+          // web bell now (2026-09-21); push waits for D3's payload work.
+          priority: "low",
+          // /orders lists every waiting draft with who asked; it has no
+          // per-order deep link, so none is claimed. The order is in metadata.
+          actionUrl: "/orders",
+          actionLabel: "See the thread",
+          metadata: { orderId: input.orderId, sentBy: input.senderUserId, asWritten: input.asWritten },
+        },
+        { onlyUserIds: [input.requester] },
+      );
+    } catch (e: any) {
+      this.logger.warn(`The requester could not be told their letter went: ${e?.message}`);
+    }
   }
 
   /**
@@ -6057,6 +7424,32 @@ export class ProcurementService {
       this.logger.error(
         `Could not park ${conversationId} as SEND_UNCONFIRMED: ${e?.message}. Row remains SENDING (still not re-approvable).`,
       );
+    }
+  }
+
+  /**
+   * Close a claimed draft whose send was refused before anything left
+   * (`SEND_REFUSED`, with the gateway's own sentence). Conditional on the
+   * claim this request holds, so it can never close a draft another request
+   * owns. Returns whether it closed; a failed write is logged and the row
+   * stays SENDING, which is not re-approvable either.
+   */
+  private async closeRefusedDraft(conversationId: string, reason: string): Promise<boolean> {
+    try {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_conversations")
+        .update({ status: "SEND_REFUSED", send_refusal_reason: reason.slice(0, 2000) })
+        .eq("id", conversationId)
+        .eq("status", "SENDING")
+        .select("id");
+      if (error) {
+        this.logger.error(`Could not close refused draft ${conversationId}: ${error.message}. Row remains SENDING.`);
+        return false;
+      }
+      return Array.isArray(data) && data.length > 0;
+    } catch (e: any) {
+      this.logger.error(`Could not close refused draft ${conversationId}: ${e?.message}. Row remains SENDING.`);
+      return false;
     }
   }
 
@@ -6244,7 +7637,7 @@ export class ProcurementService {
       if (result.refusedBeforeSend) {
         throw new SendRefusedBeforeSendError(
           `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
-            "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address) and approve again.",
+            "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address).",
         );
       }
       throw new BadRequestException(
@@ -6342,7 +7735,10 @@ export class ProcurementService {
         // on the wire. DISCARDED, not reverted: reverting would leave a manager
         // a one-tap approval for a letter about a dead order.
         const orderState = readOrderStatus((order as any)?.status);
-        if (orderState !== null && ORDER_TERMINAL_STATUSES.includes(orderState)) {
+        if (
+          orderState !== null &&
+          ORDER_TERMINAL_STATUSES.includes(orderState)
+        ) {
           await this.databaseService.supabase
             .from("procurement_conversations")
             .update({ status: "DISCARDED", scheduled_send_at: null })
@@ -6547,34 +7943,124 @@ export class ProcurementService {
   // MANUAL REPLY + AI PAUSE
   // =========================================================================
 
-  /** Manager writes and sends their own threaded reply (bypasses the AI draft). */
-  async manualReply(
+  /**
+   * The vendor a hand-written reply on this order goes to, read once for the
+   * mint and once for the send, so the seal and the send cannot disagree about
+   * the address.
+   */
+  private async manualReplyTarget(
     restaurantId: string,
     orderId: string,
-    content: string,
-    ccEmails?: string[],
-  ): Promise<{ conversationId: string; sentAt: string }> {
-    if (!content || !content.trim()) {
-      throw new BadRequestException("Reply content cannot be empty");
-    }
-
-    const { data: order } = await this.databaseService.supabase
+  ): Promise<{ order: any; providerEmail: string; wineName: string }> {
+    const { data: order, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "id, provider_id, providers!left(contact_email), restaurant_inventory:inventory_id(wine_name)",
+        "id, provider_id, providers!left(contact_email, restaurant_id), restaurant_inventory:inventory_id(wine_name)",
       )
       .eq("id", orderId)
       .eq("restaurant_id", restaurantId)
-      .single();
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order could not be read (${error.message}), so nothing was sent.`,
+      );
+    }
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
     const providerEmail = (order as any)?.providers?.contact_email ?? null;
-    const wineName =
-      (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
     if (!providerEmail) {
       throw new BadRequestException(
         "Provider has no email address — cannot send reply",
       );
     }
+    return {
+      order,
+      providerEmail,
+      wineName: (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order",
+    };
+  }
+
+  /**
+   * Mint the seal a hand-written reply must carry back (ADR 0175 D9, the
+   * `manual-reply` door). Same shape as the drafted-reply mint: WHO first, then
+   * the vendor's address on file, then a seal over the words, that address and
+   * the copies.
+   */
+  async issueManualReplySeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    letter: { content: string; ccEmails?: string[] | null },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    await this.requireSendAuthority(userId, restaurantId, "send this letter", { canAsk: true });
+    if (!letter.content?.trim()) throw new BadRequestException("An empty letter cannot be sent.");
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), so nothing can be sent.",
+      );
+    }
+    const { providerEmail } = await this.manualReplyTarget(restaurantId, orderId);
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEND_MANUAL_REPLY_ACT,
+      args: draftSealArgs({ body: letter.content, to: providerEmail, cc: letter.ccEmails ?? [] }),
+    });
+    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+  }
+
+  /**
+   * A person writes and sends their own threaded reply (bypasses the AI draft).
+   *
+   * THE THIRD DOOR, CLOSED (ADR 0175 D9/D10; founder, 2026-09-21). Until this
+   * date this took no user id: no role check, no seal and no actor, and it
+   * discarded the waiting AI draft — so a staff member refused on a drafted
+   * reply could paste the same words here and send them, unsealed and
+   * unnamed. Now: WHO (owner, manager or grantee; anybody else is told to hold
+   * again to ASK, which `requestDraftSend` records), then the seal redeemed
+   * over these exact words, the vendor's address on file and these copies,
+   * BEFORE the send, then `sent_by_user_id` on the row.
+   */
+  async manualReply(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    content: string,
+    ccEmails: string[] | undefined,
+    challenge: string | null | undefined,
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    if (!content || !content.trim()) {
+      throw new BadRequestException("Reply content cannot be empty");
+    }
+    const standing = await this.requireSendAuthority(userId, restaurantId, "send this letter", {
+      canAsk: true,
+    });
+
+    const { order, providerEmail, wineName } = await this.manualReplyTarget(restaurantId, orderId);
+    if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
+      throw new ForbiddenException("The vendor does not belong to this house. Nothing was sent.");
+    }
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException("The reply's seal cannot be checked. Nothing was sent.");
+    }
+    // Spent BEFORE the send: a refused seal means nothing left the building,
+    // and a second request with the same token is refused as "spent".
+    await this.sealChallenges.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_SEND_MANUAL_REPLY_ACT,
+      args: draftSealArgs({ body: content, to: providerEmail, cc: ccEmails ?? [] }),
+      challenge,
+    });
+    await this.vendorSendAuthority?.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
+      userId,
+      restaurantId,
+      act: ORDER_SEND_MANUAL_REPLY_ACT,
+      subject: `procurement_order:${orderId}`,
+    });
 
     // Thread to the vendor's latest inbound message if there is one.
     const { data: lastInbound } = await this.databaseService.supabase
@@ -6629,6 +8115,8 @@ export class ProcurementService {
           in_reply_to: inReplyTo || null,
           references: references || null,
         },
+        sent_by_user_id: userId,
+        sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
       })
       .select("id, sent_at")
       .single();
@@ -6910,28 +8398,274 @@ export class ProcurementService {
       .eq("id", (row as any).id);
   }
 
+  /** The order a deal confirmation commits, read the same way for the mint and the act. */
+  private async dealTarget(restaurantId: string, orderId: string): Promise<any> {
+    const { data: order, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select(
+        "id, provider_id, inventory_id, quantity, bottles_total, final_price, negotiated_price, quoted_price, currency, providers!left(name, contact_email, contact_first_name, primary_contact, restaurant_id), restaurant_inventory:inventory_id(wine_name)",
+      )
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order could not be read (${error.message}), so nothing was confirmed.`,
+      );
+    }
+    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    return order;
+  }
+
   /**
-   * Manager confirms an AI-detected deal: commit the order to CONFIRMED at the
-   * (possibly edited) terms and, by default, send the vendor a confirmation email.
+   * The money a deal confirmation commits, for a grant's limit: the confirmed
+   * price (or the order's own, when the person did not change it) times the
+   * quantity, in the order's currency. Either unreadable → `null`, which a
+   * grantee's limit cannot cover (owners and managers are not limited here).
+   */
+  private dealAmount(
+    order: any,
+    opts: { finalPrice?: number; quantity?: number },
+  ): ActAmount {
+    const price = Number(
+      opts.finalPrice ?? order?.final_price ?? order?.negotiated_price ?? order?.quoted_price,
+    );
+    const qty = Number(opts.quantity ?? order?.quantity);
+    const value = Number.isFinite(price) && Number.isFinite(qty) ? Math.round(price * qty * 100) / 100 : null;
+    const currency = typeof order?.currency === "string" && order.currency.trim() ? order.currency.trim().toUpperCase() : null;
+    return { value, currency };
+  }
+
+  private dealSeal(orderId: string, order: any, opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean }) {
+    return dealSealArgs({
+      orderId,
+      finalPrice: opts.finalPrice ?? null,
+      quantity: opts.quantity ?? order?.quantity ?? null,
+      sendConfirmation: opts.sendConfirmation !== false,
+      to: order?.providers?.contact_email ?? null,
+    });
+  }
+
+  /**
+   * Mint the seal a deal confirmation must carry back (ADR 0175 D9, the
+   * `confirm-deal` door): WHO first — with the deal's money, so a grantee's
+   * limit is checked before a seal is issued — then a seal over the terms and
+   * the vendor's address.
+   */
+  async issueConfirmDealSeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    const order = await this.dealTarget(restaurantId, orderId);
+    // canAsk: a staff member whose hold cannot confirm may ASK a manager
+    // instead (founder answer 3, 2026-09-21; `requestConfirmDeal`).
+    await this.requireSendAuthority(userId, restaurantId, "confirm this deal", {
+      amount: this.dealAmount(order, opts),
+      canAsk: true,
+    });
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException(
+        "The seal could not be issued (the seal service is not wired into procurement), so nothing can be confirmed.",
+      );
+    }
+    const issued = await this.sealChallenges.issue({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_CONFIRM_DEAL_ACT,
+      args: this.dealSeal(orderId, order, opts),
+    });
+    return { challenge: issued.challenge, expiresAt: issued.expiresAt, act: issued.action };
+  }
+
+  /**
+   * A staff member ASKS a manager to confirm a deal on the terms they set —
+   * the founder's answer (3) of 2026-09-21: *"the same request flow as drafted
+   * replies (request state, exact text/terms saved, manager releases with one
+   * hold)"*. The terms are saved exactly (`vendor_send_requests`); nothing is
+   * committed and nothing is mailed. The release is the ordinary sealed
+   * `confirm-deal` by a person who may confirm, which answers the waiting
+   * request and tells the person who asked whether it went on their terms.
+   */
+  async requestConfirmDeal(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    opts: { finalPrice?: number; quantity?: number; sendConfirmation?: boolean },
+  ): Promise<{ requestId: string; requestedAt: string; told: number; says: string }> {
+    if (!this.vendorSendRequests) {
+      throw new InternalServerErrorException(
+        "Requests could not be recorded (the requests service is not wired into procurement), so nothing was asked.",
+      );
+    }
+    const order = await this.dealTarget(restaurantId, orderId);
+    const terms = {
+      finalPrice: opts.finalPrice ?? null,
+      quantity: opts.quantity ?? null,
+      sendConfirmation: opts.sendConfirmation !== false,
+    };
+    const row = await this.vendorSendRequests.ask({
+      userId,
+      restaurantId,
+      kind: "confirm_deal",
+      orderId,
+      providerId: (order as any)?.provider_id ?? null,
+      payload: terms,
+      sealArgs: this.dealSeal(orderId, order, opts),
+      amount: this.dealAmount(order, opts),
+      act: "confirm this deal",
+    });
+    const told = await this.vendorSendRequests.tellManagers({
+      restaurantId,
+      requesterId: userId,
+      kind: "confirm_deal",
+      vendorName: (order as any)?.providers?.name ?? null,
+      requestId: row.id,
+      orderId,
+    });
+    this.emitConvUpdate(restaurantId, orderId, (order as any)?.provider_id ?? null, orderId);
+    return {
+      requestId: row.id,
+      requestedAt: row.requested_at,
+      told,
+      says:
+        told > 0
+          ? `Asked. Your terms are saved exactly, and ${told} ${told === 1 ? "owner or manager was" : "owners and managers were"} told. Nothing has been confirmed; you will see who confirms it.`
+          : "Asked. Your terms are saved exactly, but no owner or manager could be told; tell one yourself. Nothing has been confirmed.",
+    };
+  }
+
+  /**
+   * The deal's request and this person's standing to confirm it, read before
+   * the hold so the modal says "hold to confirm" or "hold to ask" up front.
+   * A failed read of the request is an error; a standing that could not be
+   * read is `readable: false` (never "ask", never "send").
+   */
+  async dealRequestReadout(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    opts: { finalPrice?: number; quantity?: number } = {},
+  ): Promise<{ request: VendorSendRequestView | null; standing: SendOrAsk }> {
+    if (!this.vendorSendRequests || !this.vendorSendAuthority) {
+      throw new InternalServerErrorException(
+        "Whether a deal request is waiting could not be read (the requests service is not wired into procurement).",
+      );
+    }
+    const order = await this.dealTarget(restaurantId, orderId);
+    const [waiting, standing] = await Promise.all([
+      this.vendorSendRequests.waiting(restaurantId, "confirm_deal", { orderId }),
+      this.vendorSendAuthority.readout(userId, restaurantId, {
+        canAsk: true,
+        amount: this.dealAmount(order, opts),
+        act: "confirm this deal",
+      }),
+    ]);
+    return { request: waiting[0] ?? null, standing };
+  }
+
+  /**
+   * The deal request to decline or withdraw, by order id — shared by both so
+   * they read the same row the same way. This is the MOST RECENT request for
+   * the order, any state, not only `waiting`: a request declined/withdrawn by
+   * order id (rather than by a request id a list screen already holds) needs
+   * to tell "never asked" (404) apart from "already released a moment ago"
+   * (409, `decline`/`withdraw`'s own `assertStillWaiting`) — filtering to
+   * `waiting` first would flatten both into the same bare 404.
+   */
+  private async waitingDealRequestOrThrow(restaurantId: string, orderId: string) {
+    if (!this.vendorSendRequests) {
+      throw new InternalServerErrorException(
+        "Requests could not be read (the requests service is not wired into procurement). Nothing was changed.",
+      );
+    }
+    const row = await this.vendorSendRequests.latestForOrder(restaurantId, orderId, "confirm_deal");
+    if (!row) {
+      throw new NotFoundException("No deal request is waiting on this order. Nothing was changed.");
+    }
+    return row;
+  }
+
+  /**
+   * An owner or a manager declines a waiting deal request, saying why — the
+   * founder's answer of 2026-09-22 (round 6z), verbatim pick: (1) "Yes, same
+   * as letters (Recommended)": a waiting deal request is declined and
+   * withdrawn exactly like a house-letter request (`VendorSendRequestsService
+   * .decline`, shared by both kinds; `requestId` never comes from the
+   * client — this reads the order's own waiting row first, so a stale id
+   * cannot decline someone else's request). Nothing is committed.
+   */
+  async declineDealRequest(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    reason: string,
+  ): Promise<{ id: string; state: string; says: string }> {
+    const waiting = await this.waitingDealRequestOrThrow(restaurantId, orderId);
+    const row = await this.vendorSendRequests!.decline({
+      restaurantId,
+      requestId: waiting.id,
+      kind: "confirm_deal",
+      userId,
+      reason,
+    });
+    this.emitConvUpdate(restaurantId, orderId, waiting.provider_id ?? null, orderId);
+    return { id: row.id, state: row.state, says: "Declined. The person who asked was told why, and nothing was confirmed." };
+  }
+
+  /**
+   * The person who asked withdraws their own waiting deal request — founder,
+   * 2026-09-22 (round 6z), verbatim pick (1): "Yes, same as letters
+   * (Recommended)". Nobody else may withdraw it (an owner or a manager
+   * declines instead, same rule as a letter request).
+   */
+  async withdrawDealRequest(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<{ id: string; state: string; says: string }> {
+    const waiting = await this.waitingDealRequestOrThrow(restaurantId, orderId);
+    const row = await this.vendorSendRequests!.withdraw({
+      restaurantId,
+      requestId: waiting.id,
+      kind: "confirm_deal",
+      userId,
+    });
+    this.emitConvUpdate(restaurantId, orderId, waiting.provider_id ?? null, orderId);
+    return { id: row.id, state: row.state, says: "Withdrawn. It no longer waits for a manager, and nothing was confirmed." };
+  }
+
+  /**
+   * Confirm an AI-detected deal: commit the order at the (possibly edited)
+   * terms and, by default, send the vendor a confirmation email.
+   *
+   * THE SECOND DOOR, CLOSED (ADR 0175 D9/D10; founder, 2026-09-21). Until this
+   * date it took no user id: any member could commit money at a price and
+   * quantity from the request body and mail the vendor, with no seal and no
+   * actor. Now: WHO — an owner, a manager, or a grantee whose limit covers this
+   * deal's total in its currency — then the seal, redeemed over the terms and
+   * the vendor's address BEFORE anything is written, then `approved_by` on the
+   * order and `sent_by_user_id` on the confirmation letter. Staff are refused
+   * with the sentence, which points them at asking: since the founder's answer
+   * (3) of 2026-09-21 a staff member ASKS (`requestConfirmDeal`), and this
+   * confirmation answers the waiting request below. [Last call, 2026-09-21:
+   * this header still called the request path "an open fork, not built".]
    */
   async confirmDeal(
     restaurantId: string,
     orderId: string,
+    userId: string,
     opts: {
       finalPrice?: number;
       quantity?: number;
       sendConfirmation?: boolean;
     },
+    challenge: string | null | undefined,
   ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
-    const { data: order } = await this.databaseService.supabase
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, inventory_id, quantity, bottles_total, final_price, negotiated_price, quoted_price, providers!left(name, contact_email, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
-      )
-      .eq("id", orderId)
-      .eq("restaurant_id", restaurantId)
-      .single();
-    if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    const order = await this.dealTarget(restaurantId, orderId);
 
     // Gate: don't commit terms while a newer reply is still being analyzed.
     if (await this.newerReplyStillAnalyzing(orderId, null)) {
@@ -6939,6 +8673,34 @@ export class ProcurementService {
         "A newer vendor reply just arrived and the AI is still reading it. Please review the updated terms before confirming.",
       );
     }
+
+    const standing = await this.requireSendAuthority(userId, restaurantId, "confirm this deal", {
+      amount: this.dealAmount(order, opts),
+      canAsk: true,
+    });
+    if ((order as any)?.providers?.restaurant_id && (order as any).providers.restaurant_id !== restaurantId) {
+      throw new ForbiddenException("The vendor does not belong to this house. Nothing was confirmed.");
+    }
+    if (!this.sealChallenges) {
+      throw new InternalServerErrorException("The deal's seal cannot be checked. Nothing was confirmed.");
+    }
+    // Spent BEFORE the first write: a refused seal means nothing was committed
+    // and nothing was mailed.
+    await this.sealChallenges.redeem({
+      restaurantId,
+      actorUserId: userId,
+      subjectKind: "procurement_order",
+      subjectId: orderId,
+      action: ORDER_CONFIRM_DEAL_ACT,
+      args: this.dealSeal(orderId, order, opts),
+      challenge,
+    });
+    await this.vendorSendAuthority?.witnessGrantUse(standing.basis === "grant" ? standing.grant.id : null, {
+      userId,
+      restaurantId,
+      act: ORDER_CONFIRM_DEAL_ACT,
+      subject: `procurement_order:${orderId}`,
+    });
 
     const providerEmail = (order as any)?.providers?.contact_email ?? null;
     const greetName =
@@ -6961,6 +8723,8 @@ export class ProcurementService {
       status: ProcurementOrderStatus.APPROVED,
       approved_at: new Date().toISOString(),
       confirmed_at: new Date().toISOString(),
+      // Who committed it (ADR 0175 D9/D10: "with an actor recorded").
+      approved_by: userId,
     };
     // `negotiated_price` is this order's own column and stays here. `final_price`
     // does NOT: ADR 0119 Q2 (founder, 2026-09-05) made the header an echo of the
@@ -7101,7 +8865,8 @@ export class ProcurementService {
         vendorName: (order as any)?.providers?.name ?? null,
         productName: shelfItem.wineName ?? wineName ?? null,
         unitPrice: agreedPrice ?? null,
-        unitLabel: statedPriceUnit?.priceUom ?? confirmUnits.unitType ?? "bottle",
+        unitLabel:
+          statedPriceUnit?.priceUom ?? confirmUnits.unitType ?? "bottle",
         packSize:
           statedPriceUnit?.pricePackSize ??
           (bottlesPerConfirmedUnit === 1 ? 1 : null),
@@ -7195,12 +8960,38 @@ export class ProcurementService {
             gmail_message_id: ids.gmailMessageId || null,
             message_id: ids.rfc822MessageId || null,
             email_headers: { subject },
+            sent_by_user_id: userId,
+            sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
           });
         sentConfirmation = true;
       } catch (e: any) {
         this.logger.warn(
           `confirmDeal: confirmation email failed for order ${orderId}: ${e?.message}`,
         );
+      }
+    }
+
+    // A staff member's waiting request for this deal is answered by this
+    // confirmation (founder answer 3, 2026-09-21): released by this person,
+    // "as you set it" only when the terms are the ones asked for, and the
+    // person who asked is told. Best-effort: the deal is committed, and
+    // failing it because the request row could not be closed would tell the
+    // confirmer something false.
+    if (this.vendorSendRequests) {
+      const answered = await this.vendorSendRequests.answerWaitingDeal({
+        restaurantId,
+        orderId,
+        releasedBy: userId,
+        releaseSealArgs: this.dealSeal(orderId, order, opts),
+      });
+      if (answered) {
+        await this.vendorSendRequests.tellRequester({
+          restaurantId,
+          row: answered.row,
+          releasedBy: userId,
+          asWritten: answered.asWritten,
+          vendorName: (order as any)?.providers?.name ?? null,
+        });
       }
     }
 
@@ -7228,7 +9019,7 @@ export class ProcurementService {
   async dismissDeal(
     restaurantId: string,
     orderId: string,
-  ): Promise<{ dismissed: boolean }> {
+  ): Promise<{ dismissed: boolean; requestsClosed: number }> {
     const { data: order } = await this.databaseService.supabase
       .from("procurement_orders")
       .select("id")
@@ -7236,9 +9027,16 @@ export class ProcurementService {
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (!order) throw new NotFoundException(`Order ${orderId} not found`);
+    // A staff member's request to confirm this deal closes with it, BEFORE the
+    // proposal is dismissed: a failed close refuses the dismissal rather than
+    // leaving a request that blocks the next ask on this order (founder answer
+    // 3's request flow; `closeWaitingDeal`).
+    const requestsClosed = this.vendorSendRequests
+      ? await this.vendorSendRequests.closeWaitingDeal(restaurantId, orderId, "deal_dismissed")
+      : 0;
     await this.resolveLatestDealProposal(orderId, "dismissed");
     this.emitConvUpdate(restaurantId, orderId, null, orderId);
-    return { dismissed: true };
+    return { dismissed: true, requestsClosed };
   }
 
   async discardDraft(
@@ -7323,6 +9121,7 @@ export class ProcurementService {
       .select(
         `
         id, content, message_text, outbound_email_type, constraint_flags, round_count, created_at,
+        send_requested_by, send_requested_at, send_requested_sha256, send_requested_cc,
         providers!left(name, contact_email),
         procurement_orders!inner(
           order_number,
@@ -7337,17 +9136,70 @@ export class ProcurementService {
       .limit(1)
       .single();
 
+    if (error && error.code !== "PGRST116") {
+      throw new InternalServerErrorException("The pending draft could not be read. Nothing was sent.");
+    }
     if (error) return null;
     if (!data) return null;
     const row = data as any;
+    const content = row.content ?? row.message_text ?? null;
+    const [request] = await this.sendRequestViews([{ ...row, content }]);
+    const {
+      send_requested_by: _by,
+      send_requested_at: _at,
+      send_requested_sha256: _sha,
+      send_requested_cc: _cc,
+      ...rest
+    } = row;
     return {
-      ...row,
-      content: row.content ?? row.message_text ?? null,
+      ...rest,
+      content,
       provider_name: row.providers?.name ?? null,
       provider_email: row.providers?.contact_email ?? null,
       wine_name: row.procurement_orders?.inventory?.wine_name ?? null,
       order_number: row.procurement_orders?.order_number ?? null,
+      // A staff member's request on this draft (founder, 2026-09-21), or null.
+      send_request: request,
     };
+  }
+
+  /**
+   * The request state of each row, in order: who asked (with their name), when,
+   * with which copies, and whether the draft's words are still the version they
+   * asked for. A name that could not be read is `null` and the page says so; it
+   * never drops the request.
+   */
+  private async sendRequestViews(
+    rows: Array<{
+      content?: string | null;
+      send_requested_by?: string | null;
+      send_requested_at?: string | null;
+      send_requested_sha256?: string | null;
+      send_requested_cc?: string[] | null;
+    }>,
+  ): Promise<Array<SendRequestView | null>> {
+    let names = new Map<string, string>();
+    const asked = rows.filter((r) => r.send_requested_at);
+    if (asked.length > 0 && this.vendorSendAuthority) {
+      try {
+        names = await this.vendorSendAuthority.namesOf(asked.map((r) => r.send_requested_by));
+      } catch (e: any) {
+        this.logger.warn(`Requesters' names could not be read: ${e?.message}`);
+      }
+    }
+    return rows.map((r) =>
+      r.send_requested_at
+        ? {
+            requestedBy: r.send_requested_by ?? null,
+            requestedByName: r.send_requested_by ? (names.get(r.send_requested_by) ?? null) : null,
+            requestedAt: r.send_requested_at,
+            current:
+              !!r.send_requested_sha256 &&
+              r.send_requested_sha256 === letterVersionHash(r.content ?? ""),
+            ccEmails: r.send_requested_cc ?? [],
+          }
+        : null,
+    );
   }
 
   // =========================================================================
@@ -7373,6 +9225,11 @@ export class ProcurementService {
         constraint_flags,
         content,
         message_text,
+        email_headers,
+        send_requested_by,
+        send_requested_at,
+        send_requested_sha256,
+        send_requested_cc,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price,
           inventory:inventory_id(wine_name)
@@ -7392,22 +9249,41 @@ export class ProcurementService {
       throw error;
     }
 
-    return (data || []).map((row: any) => ({
-      id: row.id,
-      orderId: row.order_id,
-      providerId: row.provider_id,
-      emailType: row.outbound_email_type,
-      roundCount: row.round_count,
-      createdAt: row.created_at,
-      constraintFlags: row.constraint_flags,
-      draftContent: row.content ?? row.message_text ?? null,
-      orderNumber: row.procurement_orders?.order_number ?? null,
-      quantity: row.procurement_orders?.quantity ?? null,
-      quotedPrice: row.procurement_orders?.quoted_price ?? null,
-      wineName: row.procurement_orders?.inventory?.wine_name ?? null,
-      providerName: row.providers?.name ?? null,
-      providerEmail: row.providers?.contact_email ?? null,
-    }));
+    const requests = await this.sendRequestViews(
+      (data || []).map((row: any) => ({ ...row, content: row.content ?? row.message_text ?? null })),
+    );
+    return (data || []).map((row: any, i: number) => {
+      const wineName = row.procurement_orders?.inventory?.wine_name ?? null;
+      // This is a READ of what a send WOULD use, not a second opinion: it
+      // calls approveDraft's own draftSubjectLine() (this file) rather than
+      // repeating the formula, so the two cannot read differently from what
+      // is actually sent (lane E audit D5: the panel used to guess
+      // "<wine> — <kind>", which the gateway never sends). A drafted reply
+      // already inside a thread carries the vendor's own subject in
+      // email_headers; a fresh outbound draft has none yet, so it falls back
+      // to the same composed sentence approveDraft sends with.
+      const emailHeaders = (row.email_headers ?? {}) as Record<string, any>;
+      const subject = draftSubjectLine(emailHeaders, row.subject, wineName);
+      return {
+        id: row.id,
+        orderId: row.order_id,
+        providerId: row.provider_id,
+        emailType: row.outbound_email_type,
+        roundCount: row.round_count,
+        createdAt: row.created_at,
+        constraintFlags: row.constraint_flags,
+        draftContent: row.content ?? row.message_text ?? null,
+        orderNumber: row.procurement_orders?.order_number ?? null,
+        quantity: row.procurement_orders?.quantity ?? null,
+        quotedPrice: row.procurement_orders?.quoted_price ?? null,
+        wineName,
+        providerName: row.providers?.name ?? null,
+        providerEmail: row.providers?.contact_email ?? null,
+        subject,
+        // A staff member's request on this draft, or null (founder, 2026-09-21).
+        sendRequest: requests[i],
+      };
+    });
   }
 
   /**
@@ -7477,6 +9353,7 @@ export class ProcurementService {
         created_at,
         sent_at,
         status,
+        send_refusal_reason,
         content,
         message_text,
         constraint_flags,
@@ -7524,6 +9401,9 @@ export class ProcurementService {
         | "INBOUND",
       emailType: row.outbound_email_type,
       status: row.status,
+      // Why the gateway's own send closed this draft before anything left
+      // (SEND_REFUSED; founder answer 6, 2026-09-21). null otherwise.
+      refusalReason: row.send_refusal_reason ?? null,
       roundCount: row.round_count,
       createdAt: row.created_at,
       sentAt: row.sent_at ?? row.created_at,
@@ -7570,6 +9450,10 @@ export class ProcurementService {
         ai_generated,
         conversation_context,
         email_headers,
+        send_requested_by,
+        sent_by_user_id,
+        sent_under_grant_id,
+        send_refusal_reason,
         procurement_orders!inner(
           id, order_number, quantity, quoted_price, status, ai_autonomy_paused,
           inventory:inventory_id(wine_name)
@@ -7590,10 +9474,30 @@ export class ProcurementService {
       throw error;
     }
 
+    // Who sent each letter and who asked for it (founder, 2026-09-21: "the
+    // staffer sees who sent it"). A name that could not be read is null and
+    // the page says "not recorded"; the id stays.
+    let people = new Map<string, string>();
+    if (this.vendorSendAuthority) {
+      try {
+        people = await this.vendorSendAuthority.namesOf(
+          (data || []).flatMap((r: any) => [r.sent_by_user_id, r.send_requested_by]),
+        );
+      } catch (e: any) {
+        this.logger.warn(`Senders' names could not be read: ${e?.message}`);
+      }
+    }
     return (data || []).map((row: any) => ({
       id: row.id,
       orderId: row.order_id,
       status: row.status,
+      // SEND_REFUSED's own sentence (founder answer 6, 2026-09-21).
+      refusalReason: row.send_refusal_reason ?? null,
+      sentBy: row.sent_by_user_id ?? null,
+      sentByName: row.sent_by_user_id ? (people.get(row.sent_by_user_id) ?? null) : null,
+      sentUnderGrant: !!row.sent_under_grant_id,
+      requestedBy: row.send_requested_by ?? null,
+      requestedByName: row.send_requested_by ? (people.get(row.send_requested_by) ?? null) : null,
       // DB stores direction lowercase ('inbound'/'outbound'); the UI compares
       // against uppercase, so normalize here or inbound replies render as rounds.
       direction: String(row.direction ?? "outbound").toUpperCase() as

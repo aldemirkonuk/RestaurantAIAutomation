@@ -32,6 +32,21 @@ import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
 import { isIso4217 } from "../common/iso-4217";
 
+/**
+ * A blank string and "not stated" are the same fact. The edit sheet's "Not
+ * stated" choice sends '' to clear a type set earlier (Providers.tsx
+ * handleEditProvider), and an older caller may send '' on create — this makes
+ * the column agree rather than storing a distinguishable-but-meaningless empty
+ * string next to NULL, which would render as "Not stated" in one place and a
+ * blank label in another for the identical fact.
+ */
+function normalizeBusinessType(
+  value: string | null | undefined,
+): string | null | undefined {
+  if (value === "") return null;
+  return value;
+}
+
 function normalizeToE164(phone: string | null | undefined): string | null {
   if (!phone) return null;
   if (phone.startsWith("+")) return phone;
@@ -77,7 +92,12 @@ interface ProviderRow {
   is_active: boolean | null;
   deleted_at: string | null;
   payment_terms: string | null;
-  vendor_type: string | null;
+  // `vendor_type` was declared here for years against a column that has never
+  // existed in any migration (confirmed 2026-09-21 against baseline:4854-4901
+  // and every migration since — `match_restaurant_providers.sql:87-89` already
+  // recorded the same finding). `primary_business_type` (20260926140200) is
+  // the real column; kept nullable, no default, never assumed.
+  primary_business_type: string | null;
   known_personnel: string[] | null;
 }
 
@@ -195,6 +215,11 @@ export class ProvidersService {
         catalogue_vendor_id: dto.catalogue_vendor_id,
         is_custom: false,
         restaurant_id: restaurantId ?? null,
+        // The catalogue vendor already states its own type (used above for
+        // `catalogueNotes`) — that is a real fact, not an absence, so it is
+        // carried onto the provider row rather than left "Not stated" beside a
+        // value this house was just shown.
+        primary_business_type: normalizeBusinessType(vendor.type) ?? null,
       };
     } else {
       // Mode B: custom provider — requires name
@@ -230,6 +255,12 @@ export class ProvidersService {
         catalogue_vendor_id: null,
         is_custom: true,
         restaurant_id: restaurantId ?? null,
+        // Nothing assumed. A vendor added without a business type gets NULL
+        // here, and the sheet's "Not stated" choice is what sends nothing —
+        // never a guessed 'Distributor' (founder, 2026-09-21). `type` is the
+        // deprecated alias, honored for older callers.
+        primary_business_type:
+          normalizeBusinessType(dto.primaryBusinessType ?? dto.type) ?? null,
       };
     }
 
@@ -456,7 +487,15 @@ export class ProvidersService {
       tier: dto.tier ?? undefined,
       is_active: dto.isActive ?? undefined,
       payment_terms: dto.paymentTerms ?? undefined,
-      vendor_type: (dto as any).primaryBusinessType ?? undefined,
+      // `primaryBusinessType` is a real field on UpdateProviderDto now (it was
+      // not — the global ValidationPipe, `whitelist` + `forbidNonWhitelisted`
+      // (main.ts:52-56), refused an update carrying it with a 400 before this
+      // ever ran, so setting a vendor's type later was a write no page could
+      // make). `type` is the deprecated alias. '' ("Not stated", chosen on the
+      // edit sheet) clears it to NULL; undefined leaves it alone.
+      primary_business_type: normalizeBusinessType(
+        dto.primaryBusinessType ?? dto.type ?? undefined,
+      ),
       known_personnel: (dto as any).knownPersonnel ?? undefined,
     };
     // Remove undefined keys so Supabase doesn't null-out untouched columns
@@ -1485,8 +1524,7 @@ export class ProvidersService {
       catalogueVendorId: (row as any).catalogue_vendor_id ?? null,
       isCustom: (row as any).is_custom ?? true,
       paymentTerms: row.payment_terms ?? undefined,
-      primaryBusinessType:
-        row.vendor_type ?? (row as any).primary_business_type ?? undefined,
+      primaryBusinessType: row.primary_business_type ?? undefined,
       knownPersonnel: row.known_personnel ?? undefined,
     };
   }

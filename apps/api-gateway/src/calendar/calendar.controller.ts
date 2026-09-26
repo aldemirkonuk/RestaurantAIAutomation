@@ -41,7 +41,10 @@ import {
   UpdateEventTypeDto,
   UpdateEventStatusDto,
   ICalTokenResponseDto,
+  CreateCalendarDayNoteDto,
+  CalendarDayNoteResponseDto,
 } from "./dto/calendar.dto";
+import { CalendarDayNotesService } from "./calendar-day-notes.service";
 import { WeatherService } from "../weather/weather.service";
 import type { WeatherWindow } from "../weather/weather.service";
 import { GetWeatherQueryDto } from "../weather/dto/weather.dto";
@@ -59,6 +62,7 @@ export class CalendarController {
     private readonly reminders: CalendarRemindersService,
     private readonly weather: WeatherService,
     private readonly dayRecord: DayRecordService,
+    private readonly dayNotes: CalendarDayNotesService,
   ) {}
 
   // ==========================================================================
@@ -836,5 +840,64 @@ export class CalendarController {
       user.restaurantId,
     );
     return this.icalTokenResponse(token, req);
+  }
+
+  // ==========================================================================
+  // DAY NOTES — ADR 0111 §1, own table, never calendar_events.description.
+  // Built 2026-09-21 closing the gap MeetingMemoPrompt left since it shipped.
+  // ==========================================================================
+
+  @Post("day-notes")
+  @ApiOperation({
+    summary: "Record a meeting memo / call log / tasting note against a day",
+  })
+  @ApiResponse({ status: 201, type: CalendarDayNoteResponseDto })
+  async createDayNote(
+    @Body() dto: CreateCalendarDayNoteDto,
+    @CurrentUser()
+    user: {
+      userId: string;
+      restaurantId: string;
+      name?: string;
+      email?: string;
+    },
+  ): Promise<CalendarDayNoteResponseDto> {
+    // The token's own name, never a name the request body could claim —
+    // same rule as every other "who said this" column in this schema
+    // (declared_by_name, usual_currency_set_by).
+    const authorName = (user.name ?? user.email ?? "").trim();
+    return this.dayNotes.create(
+      user.restaurantId,
+      user.userId,
+      authorName,
+      dto,
+    );
+  }
+
+  @Get("day-notes")
+  @ApiOperation({
+    summary:
+      "Every note recorded for one day (businessDate), newest first — or for an inclusive range of days (from + to), oldest day first",
+  })
+  @ApiQuery({ name: "businessDate", required: false, example: "2026-09-21" })
+  @ApiQuery({ name: "from", required: false, example: "2026-09-01" })
+  @ApiQuery({ name: "to", required: false, example: "2026-09-30" })
+  @ApiResponse({ status: 200, type: [CalendarDayNoteResponseDto] })
+  async listDayNotes(
+    @Query("businessDate") businessDate: string | undefined,
+    @Query("from") from: string | undefined,
+    @Query("to") to: string | undefined,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<CalendarDayNoteResponseDto[]> {
+    if (businessDate) {
+      return this.dayNotes.listForDay(user.restaurantId, businessDate);
+    }
+    if (from && to) {
+      return this.dayNotes.listForRange(user.restaurantId, from, to);
+    }
+    throw new HttpException(
+      "businessDate, or both from and to, is required (YYYY-MM-DD)",
+      HttpStatus.BAD_REQUEST,
+    );
   }
 }

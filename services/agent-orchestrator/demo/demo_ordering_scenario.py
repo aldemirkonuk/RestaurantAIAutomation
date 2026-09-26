@@ -796,7 +796,8 @@ Powered by WineOps AI
             {
                 "status": "COMPLETED",
                 "completed_at": datetime.utcnow().isoformat(),
-                "quantity_received": 12,
+                # No received count is written (ADR 0192): what an order
+                # received is what the stock ledger booked for it.
                 "price_verified": True,
             }
         ).eq("id", self.demo_order_id).execute()

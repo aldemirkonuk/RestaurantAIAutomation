@@ -17,19 +17,9 @@
 import { color } from "@/design/tokens";
 
 /**
- * ⚠️ STALE — DO NOT USE WITHOUT UPDATING FIRST.
- *
- * This is a third copy of the match rules and it has ZERO importers. It still
- * implements the old three-way match and is missing: the packing-slip document
- * (`shippedQty`, `overbilled_vs_ship`, `short_shipped`), free-goods netting,
- * allocated freight in landed cost, `creditAmount`, and `selfEvidenced`. It also
- * still contains the free-goods bug where an agreed 11-for-10 reports an overage.
- *
- * The authority is apps/api-gateway/src/procurement/invoice-match.ts; the web
- * mirror at apps/web/src/lib/invoiceMatch.ts is kept in sync with it. Bring this
- * file up to both when mobile receiving is built (Track B3), or delete it — a
- * silently divergent copy of the logic that decides vendor disputes is worse
- * than no copy.
+ * Local bottle-count preview for the native receiving form. The gateway owns
+ * verification, packing-slip/free-goods checks, landed costs and credit claims.
+ * This preview must not describe missing price/document inputs as verified.
  */
 export type MatchVerdict =
   | "matched"
@@ -45,6 +35,7 @@ export interface MatchInput {
   poUnitPrice?: number | null;
   invoiceQty?: number | null;
   invoiceUnitPrice?: number | null;
+  invoiceCurrency?: string | null;
   acceptedQty: number;
   rejectedQty?: number;
   priceOverrideReason?: string | null;
@@ -63,7 +54,8 @@ export interface MatchResult {
 export const money = (n: number) => `$${n.toFixed(2)}`;
 
 /** Compare as cents so 22.000000001 still equals 22. */
-const priceEquals = (a: number, b: number) => Math.round(a * 100) === Math.round(b * 100);
+const priceEquals = (a: number, b: number) =>
+  Math.round(a * 100) === Math.round(b * 100);
 
 export function computeMatch(input: MatchInput): MatchResult {
   const orderedQty = Math.max(0, input.orderedQty ?? 0);
@@ -72,13 +64,17 @@ export function computeMatch(input: MatchInput): MatchResult {
   const receivedQty = acceptedQty + rejectedQty;
 
   const hasInvoice = input.invoiceQty != null;
-  const invoiceQty = hasInvoice ? Math.max(0, input.invoiceQty as number) : null;
+  const invoiceQty = hasInvoice
+    ? Math.max(0, input.invoiceQty as number)
+    : null;
   const poUnitPrice = input.poUnitPrice ?? null;
   const invoiceUnitPrice = input.invoiceUnitPrice ?? null;
   const overrideReason = (input.priceOverrideReason ?? "").trim();
 
   const bothPriced = poUnitPrice != null && invoiceUnitPrice != null;
-  const priceVerified = bothPriced && priceEquals(poUnitPrice as number, invoiceUnitPrice as number);
+  const priceVerified =
+    bothPriced &&
+    priceEquals(poUnitPrice as number, invoiceUnitPrice as number);
   const priceMismatch = bothPriced && !priceVerified;
   const requiresOverride = priceMismatch && overrideReason.length === 0;
 
@@ -94,7 +90,8 @@ export function computeMatch(input: MatchInput): MatchResult {
   else if (!fullyFulfilled) verdict = "partial";
   else verdict = "matched";
 
-  const creditDue = rejectedQty > 0 || (hasInvoice && (invoiceQty as number) > acceptedQty);
+  const creditDue =
+    rejectedQty > 0 || (hasInvoice && (invoiceQty as number) > acceptedQty);
 
   const effectiveUnitCost =
     hasInvoice && invoiceUnitPrice != null && acceptedQty > 0
@@ -104,9 +101,11 @@ export function computeMatch(input: MatchInput): MatchResult {
   const summary = (() => {
     switch (verdict) {
       case "matched":
-        return `All ${acceptedQty} accepted at the agreed price.`;
+        return priceVerified
+          ? `All ${acceptedQty} accepted; the stated prices match.`
+          : `All ${acceptedQty} accepted; the entered quantities match. Price verification is pending.`;
       case "price_variance":
-        return `Billed ${money(invoiceUnitPrice as number)} against an agreed ${money(poUnitPrice as number)}.`;
+        return `Billed ${(invoiceUnitPrice as number).toFixed(2)} against a stated ${(poUnitPrice as number).toFixed(2)} per bottle. The server will check the agreement and currency.`;
       case "qty_over":
         return `${receivedQty} arrived but only ${invoiceQty} were billed.`;
       case "qty_short":
@@ -118,7 +117,7 @@ export function computeMatch(input: MatchInput): MatchResult {
       case "partial":
         return `${acceptedQty} of ${orderedQty} accepted, ${backorderQty} still outstanding.`;
       case "unmatched":
-        return `${acceptedQty} accepted with no invoice on file yet.`;
+        return `${acceptedQty} counted; no invoice quantities entered on this form.`;
     }
   })();
 
@@ -140,13 +139,41 @@ interface VerdictTone {
 }
 
 const VERDICT_TONES: Record<MatchVerdict, VerdictTone> = {
-  matched: { label: "Clean match", bg: color.successTint, text: color.success },
-  price_variance: { label: "Price variance", bg: color.dangerTint, text: color.danger },
-  qty_over: { label: "Over-delivered", bg: color.warningTint, text: color.warning },
-  qty_short: { label: "Short shipment", bg: color.dangerTint, text: color.danger },
-  rejected: { label: "Units rejected", bg: color.warningTint, text: color.warning },
-  partial: { label: "Partial delivery", bg: color.warningTint, text: color.warning },
-  unmatched: { label: "No invoice yet", bg: color.fill, text: color.inkTertiary },
+  matched: {
+    label: "Counts match — preview",
+    bg: color.successTint,
+    text: color.success,
+  },
+  price_variance: {
+    label: "Price variance",
+    bg: color.dangerTint,
+    text: color.danger,
+  },
+  qty_over: {
+    label: "Over-delivered",
+    bg: color.warningTint,
+    text: color.warning,
+  },
+  qty_short: {
+    label: "Short shipment",
+    bg: color.dangerTint,
+    text: color.danger,
+  },
+  rejected: {
+    label: "Units rejected",
+    bg: color.warningTint,
+    text: color.warning,
+  },
+  partial: {
+    label: "Partial delivery",
+    bg: color.warningTint,
+    text: color.warning,
+  },
+  unmatched: {
+    label: "No invoice yet",
+    bg: color.fill,
+    text: color.inkTertiary,
+  },
 };
 
 export const verdictTone = (v: MatchVerdict): VerdictTone => VERDICT_TONES[v];

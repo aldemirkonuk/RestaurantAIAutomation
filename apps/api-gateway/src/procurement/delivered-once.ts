@@ -31,11 +31,10 @@
  *
  * What the second call DID do, every time:
  *
- *   * `quantity_received` was rewritten to `quantityReceived ?? order.quantity`
- *     — so an order the receiving door had counted 3 of 12 into came back
- *     saying 12 were received, with 3 on the shelf. That column IS the door's
- *     anti-double-book base (`receiving.service.ts:371`) and the number every
- *     receipt figure reads.
+ *   * the order's received column was rewritten to the caller's quantity or the
+ *     order's — so an order the receiving door had counted 3 of 12 into came
+ *     back saying 12 were received, with 3 on the shelf. (ADR 0192 retired that
+ *     column from the app: what an order received is now the ledger's sum.)
  *   * `delivered_at` and `received_by` were overwritten, so when the wine
  *     arrived and who signed for it became whenever it was last tapped and
  *     whoever last tapped it.
@@ -72,13 +71,34 @@
  */
 import { ProcurementOrderStatus } from "./dto/procurement.dto";
 import { statusInWords } from "./order-transitions";
-import { readQuantityReceived } from "./quantity-received-unit";
+import { besideTheShelf, type ShelfReceived } from "./shelf-received";
 
 /** The `reason` code on the 409 body, so a client can branch without parsing prose. */
 export const DELIVERY_REFUSED_ALREADY_ARRIVED = "order_already_delivered";
 
 /** The `reason` code when the stored status is not a state this house knows. */
 export const DELIVERY_REFUSED_STATE_UNREADABLE = "order_state_unreadable";
+
+/**
+ * The `reason` code when the delivery's stock booking was REFUSED — by the
+ * ledger, or because the order's item could not be read (founder, answer 9,
+ * and the answer on items with no master wine, 2026-09-21): the order is put back to the status
+ * it had, so the delivery can be recorded again, and the 422 says whether the
+ * put-back itself landed.
+ */
+export const DELIVERY_REFUSED_STOCK_NOT_BOOKED = "delivery_stock_not_booked";
+
+/** The sentence a refused booking answers with. */
+export function refuseUnbookedDelivery(input: {
+  orderNumber: string | null;
+  why: string;
+  revertedTo: string | null;
+}): string {
+  const which = input.orderNumber ? `Order ${input.orderNumber}` : "This order";
+  return input.revertedTo
+    ? `${which} was not marked delivered: the stock booking was refused (${input.why}). Nothing is on the shelf for it, and the order is back to ${statusInWords(input.revertedTo as ProcurementOrderStatus)} so the delivery can be recorded again once the refusal is fixed.`
+    : `${which} reads as delivered, but the stock booking was refused (${input.why}) and the order could not be put back. Nothing is on the shelf for it; book it at the receiving door and tell a manager.`;
+}
 
 /**
  * When the delivery happened, in words, from a stored timestamp.
@@ -123,14 +143,18 @@ export function refuseSecondDelivery(input: {
   orderNumber: string | null;
   status: ProcurementOrderStatus;
   deliveredAt: string | null;
-  quantityReceived: number | null;
+  /**
+   * What the earlier delivery put on the shelf, from the ledger (ADR 0192).
+   * An unreadable reading leaves the count out of the sentence; it is never
+   * printed as a zero.
+   */
+  received: ShelfReceived;
 }): string {
   const name = orderInWords(input.orderNumber, input.orderId);
   const when = deliveredWhenInWords(input.deliveredAt);
-  const counted =
-    input.quantityReceived == null
-      ? ""
-      : ` ${input.quantityReceived} recorded as received.`;
+  const counted = input.received.readable
+    ? ` ${capitalise(input.received.words)} on the shelf for it${besideTheShelf(input.received)}.`
+    : "";
 
   if (input.status === ProcurementOrderStatus.PARTIALLY_RECEIVED) {
     return (
@@ -156,8 +180,7 @@ export function refuseSecondDelivery(input: {
   return (
     `${name} was already delivered ${when}.${counted} An order is delivered ` +
     `once. Nothing was changed — a second confirmation would restate when the ` +
-    `wine arrived and who signed for it, and reset the received count the ` +
-    `receiving door measures its own work against. If the count was wrong, ` +
+    `wine arrived and who signed for it. If the count was wrong, ` +
     `correct it at the receiving door; if the invoice disagrees, verify the ` +
     `receipt.`
   );
@@ -232,47 +255,39 @@ export interface EarlierDelivery {
   receivedByName: string | null;
   /** Why no name, when one was wanted. `null` when the question did not arise. */
   receivedByNameReason: string | null;
-  /** How much was booked. Meaningless without `unitType`; see below. */
-  quantityReceived: number | null;
   /**
-   * The unit `quantityReceived` is stated in — **or `null`, which is a refusal
-   * and never a default**.
+   * What the earlier delivery put on the shelf — the stock ledger's sum for
+   * this order and its item (ADR 0192), with the pack view and the door's
+   * rejections beside it. `readable:false` carries why the ledger could not be
+   * read; it is never a zero.
    *
-   * `procurement_orders.quantity_received` has four writers and they do not
-   * agree: three write the order's own unit, and `recordDoorReceipt` writes
-   * BOTTLES. Nothing on the row records which one wrote it. For a
-   * non-multiplying unit both produce the same number, so it can be stated; for
-   * `case`, `pack` or `split_case` the two differ by the pack size and every
-   * answer is a guess, so this is `null` and `quantityUnitWhy` says so. That
-   * rule is `quantity-received-unit.ts` `readQuantityReceived`, IMPORTED rather
-   * than restated — an earlier draft of this file printed "5 cases (60 bottles)"
-   * off the order's `unit_type` alone, which is exactly the silent
-   * multiplication ADR 0011 forbids.
+   * It replaces `quantityReceived` / `unitType` / `quantityUnitWhy`, which
+   * read `procurement_orders.quantity_received`, a column with four writers in
+   * two units that the app no longer reads.
    */
-  unitType: string | null;
-  /** Why the unit is, or is not, stated. Always present. */
-  quantityUnitWhy: string;
+  received: ShelfReceived;
   /** Bottles in the whole ORDER (`bottles_total`) — a different fact from the count. */
   bottlesTotal: number | null;
   /** The one line every surface prints, so four surfaces cannot word it four ways. */
   summary: string;
 }
 
+function capitalise(words: string): string {
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /**
- * "12 bottles", or nothing at all.
+ * "5 cases + 5 bottles on the shelf", with the door's rejections and anything
+ * counted but not booked beside it (ADR 0192), or nothing at all.
  *
- * NOTHING is printed when the unit could not be placed. A count under a guessed
- * unit is worse than no count: "5" read as cases when the door meant bottles is
- * off by the pack size, and a receiver acts on it. The refusal travels instead,
- * in `quantityUnitWhy`, which the summary defers to.
+ * NOTHING is printed when the ledger could not be read. A count standing in
+ * for a failed read is worse than no count; the reason travels in
+ * `received.why` instead.
  */
-export function quantityInWords(
-  quantityReceived: number | null,
-  unitType: string | null,
-): string | null {
-  if (quantityReceived == null || !Number.isFinite(quantityReceived)) return null;
-  if (!unitType) return null;
-  return `${quantityReceived} ${unitType}${quantityReceived === 1 ? "" : "s"}`;
+export function receivedInWords(received: ShelfReceived): string | null {
+  return received.readable
+    ? `${received.words} on the shelf${besideTheShelf(received)}`
+    : null;
 }
 
 /**
@@ -287,8 +302,7 @@ export function describeEarlierDelivery(input: {
   deliveredAt: string | null;
   receivedBy: string | null;
   receivedByName: string | null;
-  quantityReceived: number | null;
-  unitType: string | null;
+  received: ShelfReceived;
 }): string {
   const when = deliveredWhenInWords(input.deliveredAt);
   const who = input.receivedByName
@@ -296,44 +310,38 @@ export function describeEarlierDelivery(input: {
     : input.receivedBy
       ? " by someone this house could not look up"
       : " — the record names nobody";
-  const what = quantityInWords(input.quantityReceived, input.unitType);
-  return `Delivered ${when}${who}${what ? `, ${what} booked in` : ""}.`;
+  const what = receivedInWords(input.received);
+  return `Delivered ${when}${who}${what ? `, ${what}` : ""}.`;
 }
 
 /**
- * Build the body a caller renders, from one `procurement_orders` row.
+ * Build the body a caller renders, from one `procurement_orders` row and the
+ * ledger's reading of it.
  *
- * Pure. Two things are resolved OUTSIDE it and passed in, for opposite reasons:
- * the receiver's name needs a database read (`resolveReceiverName`), and the
- * count's unit needs the house's one reading of a column with four disagreeing
- * writers — `readQuantityReceived`, called here rather than reimplemented.
+ * Pure. Two things are resolved OUTSIDE it and passed in, both because they
+ * need a database read: the receiver's name (`resolveReceiverName`) and what
+ * the ledger booked (`readOneShelfReceived`, ADR 0192).
  */
 export function earlierDeliveryOf(input: {
   deliveredAt: string | null;
   receivedBy: string | null;
   receivedByName: string | null;
   receivedByNameReason: string | null;
-  /** The RAW column value and the order's RAW `unit_type`. Read, never guessed. */
-  quantityReceived: unknown;
-  unitType: string | null;
+  received: ShelfReceived;
   bottlesTotal: number | null;
 }): EarlierDelivery {
-  const reading = readQuantityReceived(input.quantityReceived, input.unitType);
   return {
     deliveredAt: input.deliveredAt,
     receivedBy: input.receivedBy,
     receivedByName: input.receivedByName,
     receivedByNameReason: input.receivedByNameReason,
-    quantityReceived: reading.quantity,
-    unitType: reading.uom,
-    quantityUnitWhy: reading.why,
+    received: input.received,
     bottlesTotal: input.bottlesTotal,
     summary: describeEarlierDelivery({
       deliveredAt: input.deliveredAt,
       receivedBy: input.receivedBy,
       receivedByName: input.receivedByName,
-      quantityReceived: reading.quantity,
-      unitType: reading.uom,
+      received: input.received,
     }),
   };
 }

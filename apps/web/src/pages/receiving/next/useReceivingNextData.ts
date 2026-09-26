@@ -10,11 +10,17 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { creditsApi, type ProcurementCredit, type CreditStats } from '@/services/api/credits';
-import type { UnverifiedDelivery } from '@/services/api/receiving';
+import {
+  receivingApi,
+  type LineHistoryEntry,
+  type LineHistoryPage,
+  type LineReceived,
+  type UnverifiedDelivery,
+} from '@/services/api/receiving';
 import {
   dismissDroppedDoorReceipt,
   flushDoorOutbox,
@@ -39,11 +45,30 @@ export interface FailureVM {
   forbidden: boolean;
 }
 
+/**
+ * What the SERVER said, when it said anything. Axios's own `message` is the
+ * generic "Request failed with status code 500" for every non-2xx; the
+ * gateway's sentence (a Nest `HttpException` body: `{ statusCode, message }`,
+ * where `message` is a string, or a list for a validation failure) is on
+ * `response.data`. Null when the response carried no usable text.
+ */
+export function serverMessageOf(error: unknown): string | null {
+  const m = (error as { response?: { data?: { message?: unknown } } } | null)?.response?.data
+    ?.message;
+  if (typeof m === 'string' && m.trim() !== '') return m.trim();
+  if (Array.isArray(m)) {
+    const parts = m.filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+    if (parts.length > 0) return parts.join('; ');
+  }
+  return null;
+}
+
 export function failureOf(isError: boolean, error: unknown): FailureVM | null {
   if (!isError) return null;
   const status =
     num((error as { response?: { status?: unknown } } | null)?.response?.status) ?? null;
-  const message = (error as { message?: string } | null)?.message ?? 'request failed';
+  const message =
+    serverMessageOf(error) ?? (error as { message?: string } | null)?.message ?? 'request failed';
   return { status, message, forbidden: status === 403 || status === 401 };
 }
 
@@ -263,11 +288,27 @@ export interface QueueItemDto {
   orderNumber: string | null;
   verdict: string;
   summary: string | null;
-  backorderQty: number;
+  /**
+   * Ordered bottles the ledger does not hold yet, in BOTTLES (ADR 0192
+   * amendment, 2026-09-21: read from the ledger, not the order's retired
+   * backorder column). null when it could not be stated; `backorderWhy` says why.
+   */
+  backorderBottles: number | null;
+  backorderWhy: string | null;
   verifiedAt: string | null;
   dollarsAtRisk: number;
   selfEvidenced: boolean;
   openClaims: number;
+  providerId: string | null;
+  providerName: string | null;
+  /**
+   * What the line ordered, by name (restaurant_inventory wine_name, else
+   * display_name). Null when the item has no name or the lookup failed —
+   * `itemNamesUnavailable` on the queue says which.
+   */
+  itemName?: string | null;
+  /** The order's own currency (procurement_orders.currency), or null when unset. A priced receipt needs its currency. */
+  currency: string | null;
 }
 
 /** The same row after `num()` has separated a measured 0 from an absent field. */
@@ -350,7 +391,14 @@ export interface ManagerQueueData {
   /** Worst money first — the server's own order, kept. */
   items: QueueItemVM[];
   laneCounts: Record<OutcomeLane, number | null>;
-  totalAtRisk: number | null;
+  /**
+   * Never a single number across currencies (confirmer review, 2026-09-18) —
+   * each currency the queue carries gets its own entry, the same rule the
+   * vendor boxes already apply to their own subtotals. Empty when nothing in
+   * the queue is priced yet; null when the queue has not answered (a failed
+   * read is not "nothing at risk").
+   */
+  totalAtRiskByCurrency: Array<{ currency: string | null; amount: number }> | null;
   /**
    * True when the queue came back holding exactly its cap, so every count and
    * every sum derived from it is a lower bound (SERVER_WINDOWS.QUEUE_ITEMS).
@@ -364,6 +412,15 @@ export interface ManagerQueueData {
   unverified: UnverifiedDelivery[] | null;
   /** The uncounted list is built behind `.limit(500)` on receipt events. */
   unverifiedAtFloor: boolean;
+  /**
+   * True when the vendor-name lookup itself failed (receiving.service.ts
+   * `managerQueue`). A failed read is named — the vendor boxes below group
+   * under "vendor names could not be loaded", never under "unknown vendor" as
+   * if that were measured.
+   */
+  providerNamesUnavailable: boolean;
+  /** True when the item-name lookup failed; each row's name is then null, not a guess. */
+  itemNamesUnavailable: boolean;
   hasData: boolean;
   isLoading: boolean;
   isError: boolean;
@@ -381,7 +438,9 @@ export function useManagerQueue(): ManagerQueueData {
       return data as {
         items: QueueItemDto[];
         unverified: UnverifiedDelivery[];
-        totalAtRisk: number;
+        totalAtRiskByCurrency?: Array<{ currency: string | null; amount: number }>;
+        providerNamesUnavailable?: boolean;
+        itemNamesUnavailable?: boolean;
       };
     },
   });
@@ -396,6 +455,10 @@ export function useManagerQueue(): ManagerQueueData {
           chip: verdictLabel(i.verdict),
           atRisk: num(i.dollarsAtRisk),
           openClaimsFloor: num(i.openClaims),
+          // An older gateway sent no bottle count: unknown, never zero.
+          backorderBottles: num(i.backorderBottles),
+          backorderWhy: i.backorderWhy ?? null,
+          itemName: typeof i.itemName === 'string' && i.itemName.trim() !== '' ? i.itemName : null,
         }))
       : [];
     const laneCounts: Record<OutcomeLane, number | null> = {
@@ -411,13 +474,15 @@ export function useManagerQueue(): ManagerQueueData {
     return {
       items,
       laneCounts,
-      totalAtRisk: known ? num(q.data!.totalAtRisk) : null,
+      totalAtRiskByCurrency: known ? (q.data!.totalAtRiskByCurrency ?? null) : null,
       itemsAtFloor,
       unverified,
       // Built from the newest 500 receipt events; the list itself is shorter
       // than that window, so fullness is not observable and this is a floor
       // whenever the list is non-empty.
       unverifiedAtFloor: (unverified?.length ?? 0) > 0,
+      providerNamesUnavailable: known ? !!q.data!.providerNamesUnavailable : false,
+      itemNamesUnavailable: known ? !!q.data!.itemNamesUnavailable : false,
       hasData: known,
       isLoading: q.isLoading,
       isError: q.isError,
@@ -426,6 +491,74 @@ export function useManagerQueue(): ManagerQueueData {
       refetch: () => void q.refetch(),
     };
   }, [q.data, q.isLoading, q.isError, q.error, q.refetch]);
+}
+
+/* ──────────────────────────────── manager: one line's history, ten a page ── */
+
+/**
+ * A line's history (sketch 107 Approach 1, founder Q7 2026-09-22: "a line's
+ * full history opened on demand, paged 10 at a time"), built by the gateway
+ * from the door receipts already recorded (founder, 2026-09-25). Opened on
+ * demand: nothing is read until `orderId` is set.
+ *
+ * Three states, never a fourth: loading (the first page in flight), unreadable
+ * (refused or broken — say which), ready (a real answer, including a real
+ * empty history). An older page that fails keeps the pages already shown and
+ * says the older ones could not be read.
+ */
+export interface LineHistoryData {
+  /** Newest first. Null until the first page answers — never an empty list standing in for a failed read. */
+  entries: LineHistoryEntry[] | null;
+  /** Exact count of the line's entries; null when unknown. */
+  total: number | null;
+  hasMore: boolean;
+  received: LineReceived | null;
+  matchVerifiedAt: string | null;
+  recordedByUnavailable: boolean;
+  hasData: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  failure: FailureVM | null;
+  /** An older page failed; the shown pages still stand. */
+  olderFailure: FailureVM | null;
+  isFetchingOlder: boolean;
+  fetchOlder: () => void;
+  refetch: () => void;
+}
+
+export function useLineHistory(orderId: string | null): LineHistoryData {
+  const rid = useActiveRestaurantId();
+  const q = useInfiniteQuery({
+    queryKey: ['receiving-next-line-history', rid, orderId],
+    enabled: !!orderId,
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }): Promise<LineHistoryPage> =>
+      receivingApi.lineHistory(orderId as string, pageParam),
+    getNextPageParam: (last: LineHistoryPage) => (last.hasMore ? last.nextBefore : undefined),
+  });
+
+  return useMemo(() => {
+    const pages = q.data?.pages ?? [];
+    const first = pages[0] ?? null;
+    const hasData = pages.length > 0 && pages.every((p) => Array.isArray(p?.entries));
+    const firstFailed = q.isError && !hasData;
+    return {
+      entries: hasData ? pages.flatMap((p) => p.entries) : null,
+      total: first ? num(first.total) : null,
+      hasMore: hasData ? !!pages[pages.length - 1].hasMore : false,
+      received: first?.received ?? null,
+      matchVerifiedAt: first?.matchVerifiedAt ?? null,
+      recordedByUnavailable: pages.some((p) => p.recordedByUnavailable),
+      hasData,
+      isLoading: q.isLoading,
+      isError: firstFailed,
+      failure: failureOf(firstFailed, q.error),
+      olderFailure: q.isFetchNextPageError ? failureOf(true, q.error) : null,
+      isFetchingOlder: q.isFetchingNextPage,
+      fetchOlder: () => void q.fetchNextPage(),
+      refetch: () => void q.refetch(),
+    };
+  }, [q.data, q.isLoading, q.isError, q.error, q.isFetchNextPageError, q.isFetchingNextPage, q.fetchNextPage, q.refetch]);
 }
 
 /* ─────────────────────────── manager: drafted-unsent credit requests (calm) ── */

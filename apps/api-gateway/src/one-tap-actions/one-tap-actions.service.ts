@@ -27,6 +27,7 @@ import {
   dispositionOf,
 } from "./one-tap-workflow";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
+import { readOneShelfReceived } from "../procurement/shelf-received";
 import {
   ORDER_GOODS_ARRIVED_STATUSES,
   readOrderStatus,
@@ -44,9 +45,12 @@ import {
 // print "delivered on the 4th by Ada" from columns nobody read. The seal's
 // argument hash is unchanged — `deliverySealArgs` names its four fields
 // explicitly and ignores everything else on the row.
+// ADR 0192: `quantity_received` is no longer read. What the earlier delivery
+// received is the ledger's sum, read by `readOneShelfReceived` below, which
+// needs `inventory_id` to know the order's item.
 const ORDER_SEAL_COLUMNS =
-  "id, restaurant_id, status, quantity, bottles_total, unit_type, " +
-  "order_number, delivered_at, received_by, quantity_received";
+  "id, restaurant_id, inventory_id, status, quantity, bottles_total, unit_type, " +
+  "order_number, delivered_at, received_by";
 
 /**
  * One-Tap Actions Service
@@ -438,15 +442,19 @@ export class OneTapActionsService {
         this.dbService.supabase as any,
         (order as any).received_by ?? null,
       );
+      // What the earlier delivery put on the shelf, from the ledger (ADR 0192),
+      // under the same house the order was read for.
+      const received = await readOneShelfReceived(
+        this.dbService.supabase,
+        action.restaurantId,
+        order as any,
+      );
       const earlierDelivery = earlierDeliveryOf({
         deliveredAt: (order as any).delivered_at ?? null,
         receivedBy: (order as any).received_by ?? null,
         receivedByName: receiver.name,
         receivedByNameReason: receiver.reason,
-        // RAW: `earlierDeliveryOf` asks `quantity-received-unit.ts` which unit
-        // this column is in, and refuses to state one it would have to guess.
-        quantityReceived: (order as any).quantity_received ?? null,
-        unitType: (order as any).unit_type ?? null,
+        received,
         bottlesTotal:
           order.bottles_total == null ? null : Number(order.bottles_total),
       });
@@ -550,7 +558,14 @@ export class OneTapActionsService {
         orderNumber: delivered.orderNumber ?? null,
         status: delivered.status,
         quantityBooked: delivered.quantity ?? null,
-        bottlesBooked: delivered.bottlesTotal ?? null,
+        // What the LEDGER holds for the order after the booking (ADR 0192),
+        // not the order's `bottles_total`: a movement that was refused books
+        // nothing, and this record must not say otherwise. Null — never a
+        // guessed count — when the ledger could not be read back.
+        bottlesBooked:
+          delivered.received?.readable === true
+            ? delivered.received.quantityInStockUom
+            : null,
         sealed: true,
         ranAt: new Date().toISOString(),
       };

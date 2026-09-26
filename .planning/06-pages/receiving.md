@@ -11,9 +11,18 @@ signals_today: none
 rebrand_strings: 0
 maturity: broken
 status: documented
-updated: 2026-09-01
+updated: 2026-09-25
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 ---
+
+> **[2026-09-25] The desk is Approach 1 now — see §16.** One row per line, grouped by vendor
+> five to a box, and a line's history opened on demand ten entries a page, built from the door
+> receipts already recorded (founder, 2026-09-25). The append-only verdict ledger drafted for this
+> page between 2026-09-17 and 2026-09-21 was never merged: the founder's condition was *"if it's
+> bulletproof … then build"*, it was not, and it was stripped in `8ea44f527`. Its full record,
+> including the round-4/5 page-note text, stays on `origin/wip/2026-09-19/receiving` and
+> `origin/wip/2026-09-21/receiving` (`30a8c7ce7`); recovery ref
+> `refs/snapshots/receiving-preStrip/20260921`.
 
 # /receiving — Receiving home (role-split)
 
@@ -23,6 +32,14 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 
 - **Delivery card** (staff view) → [[receiving-door]] `/receiving/:orderId/door`
 - **Issue row** (manager view) → [[orders]] `/orders?order=<id>`
+
+## Action integrity — 2026-09-13 (pending release)
+
+`verifyReceipt` now measures previously booked quantity from immutable `inventory_transactions`, scoped by restaurant, order, inventory item and live stock, paginated through all rows. The new matcher operand names bottles explicitly; it never multiplies this total by the receiving unit again. The mixed historical `quantity_received` cache is retained for display compatibility and no longer authorizes a stock correction. An unreadable ledger refuses before any receipt write. Five twelve-bottle cases recorded at the door and verified at the desk now compare accepted 60 to stocked 60 with or without an invoice; a physical count of 58 corrects by −2.
+
+The native receiving form counts individual bottles in its steppers, scanner and request payload. It uses `bottlesTotal` for case orders, refuses an unknown pack/opaque unit, names the prefill as a suggested count, and requires explicit invoice figures and currency instead of copying the purchase order into invoice evidence. Its local result is labelled a preview; the gateway owns the document verdict. Scanning adds a count, not proof of product identity.
+
+Remaining limits: the legacy desk adjustment still has one idempotency key per order/item; changing quantities after a prior verification needs an atomic revision design. This patch does not backfill ambiguous historical cache units or reconcile prior production receipts, and the native preview does not implement the gateway's packing-slip, free-goods or credit ledger.
 
 ## 1. Purpose
 
@@ -36,7 +53,11 @@ the cost-free staff view on purpose.
 ## 1a. Features
 One event, three renderings by role:
 - **Staff**: pick which delivery you're receiving → the door flow; no prices shown
-- **Manager**: the decision queue, worst money first
+- **Manager**: the decision queue, worst money first. **[2026-09-21, ADR 0192
+  amendment: what is still owed is read from the ledger, in bottles
+  (`backorderBottles`, "N bottles still on backorder"), not from the order's
+  retired backorder column, and a queue that cannot be read is an error, not an
+  empty queue.]**
 - **Owner**: money that actually came back (recovered credits), **plus the manager
   decision queue since 2026-09-18** (ADR 0149 row 44, §12) — no longer one number alone
 - **Verification settles COST, never quantity (ADR 0103 A1).** The bottles arrived on the shelf at the door; pressing verify posts the agreed price — an accepted proposal beats the invoice line it is about — onto that delivery's lots and flips them from `provisional` to `final`. The response's `costNote` says what could not be costed and why, rather than reporting a silent success.
@@ -114,7 +135,10 @@ Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/
   403 that names the item; a failed ownership *lookup* is a 422, never a pass.
 - **Marking a delivery at the door cannot book it twice.** `quantity_received`
   now records what was actually booked instead of NULL, so `recordDoorReceipt`'s
-  `alreadyBooked` sees it. `?quantityReceived=` is validated: a non-numeric,
+  `alreadyBooked` sees it. **[2026-09-21, ADR 0192: no longer through the column —
+  `recordDoorReceipt` reads what was already booked from the stock ledger
+  (`readBookedOrderBottles`), and the app neither reads nor writes
+  `quantity_received`.]** `?quantityReceived=` is validated: a non-numeric,
   fractional or negative value is a 400 that says which, not a 200 that marks
   the order delivered with no stock booked.
 
@@ -741,3 +765,118 @@ approve path).
    half exists (`procurement/documents/credit-ledger.ts`); **the count-correction half is
    not verified from this page and is not claimed here** — whether a counted receipt can be
    corrected at the door, and by whom, is the open question the refusal now creates.
+
+## 16. Approach 1 — the desk as built, 2026-09-25 (`feat/receiving-desk-approach1`)
+
+**The rulings it builds.** ADR 0160 §107 (B+ with A's vendor boxes); the founder's Q7 answer of
+2026-09-22, *Approach 1*: "one row per line grouped by vendor (capped, 'show more'), a line's full
+verdict history opened on demand and paged 10-at-a-time", thresholds 5 rows a box and 10 a page
+(memory `founder-answers-2026-09-22-page-gap`, the proposal file it cites was never committed); and
+his 2026-09-25 answer 2: the history is **built from the door receipts already recorded, with no
+separate verdict ledger table**, and the 2026-09-21 strip stands. None of these is in an ADR yet
+(the records lane owns that bracket).
+
+**What is on the page.**
+- **One row per line.** A `procurement_orders` row is one line (one `inventory_id`). The row is
+  now named by what was ordered (`restaurant_inventory.wine_name`, else `display_name`), with its
+  order number beside it. A failed name lookup is said once above the queue
+  (`itemNamesUnavailable`) and each row falls back to its order number; a name is never guessed.
+- **Grouped by vendor, five a box.** Unchanged from the post-strip desk (`VENDOR_BOX_CAP = 5`,
+  "Show N more"). New: a row opened from `?order=` that sits past the fifth in its box opens the
+  box, and every boxed row carries the id the scroll-to looks for; before, it expanded out of sight.
+- **A line's history, on demand, ten a page.** The expanded row's first action opens
+  `RcLineHistory` (ADR 0112 `Sheet`), which reads nothing until opened.
+  `GET /procurement/receiving/orders/:id/history?before=<marker>` returns the newest ten entries,
+  the exact total, and a tie-safe marker (`<occurred_at>|<id>`) for the next, older page. The first
+  page also carries the line's received block from the stock ledger (ADR 0192: ordered, on the
+  shelf in packs + loose, still owed). Each entry is one sentence in the unit the person counted in:
+  a door count, a refusal at the door with its reason, or a desk verification with the invoice's
+  bottles. A stage the page does not word is shown by its own name, never hidden.
+- **Honest states (ADR 0020, ADR 0051).** Loading, refused (403: "only an owner or a manager
+  can", no retry), broken (the server's sentence, and Try again), empty (only when the read
+  answered), an older page that failed (the shown entries stand), an unknown total ("the total
+  could not be read"), unknown recorders. A verification made before verifications were kept as
+  entries is named when every page is read: the order carries `match_verified_at` and the history
+  holds no desk entry, so the sheet says the check has no entry rather than implying no one checked.
+  `check_windowed_figures.py` also found two `[]` fallbacks on this page (the queue's per-currency
+  total, from the post-strip base, and the new history list); both are now null until answered.
+
+**Where the history comes from, and why this lane stacks on #436.** On `main` a desk verification
+overwrites columns on `procurement_orders` and writes no event, so a history "built from the door
+receipts" would show the door and then nothing. #436 (ADR 0192 amendment, 2026-09-21) makes
+`verifyReceipt` write a `stage = 'reconciled'` row to `procurement_receipt_events` with
+`invoice_qty_bottles` (migration `20260926140900`), and reads received and backorder from the stock
+ledger. The history needs both, so this branch merges #436's head (`9c5a3541f`) and its PR is
+based on `feat/finish-action-integrity`. Two limits come with it: a verification writes its event
+only when it has a match and an exact bottle count (`procurement.service.ts:5860`, `if (match &&
+bottles)`), so a unit-less verification still leaves no entry; and verifications made before #436
+lands have none (named on the sheet, above). **[2026-09-25, W3-receiving: narrowed. A PART PACK
+now verifies and writes its event — the founder's round-5 answer *"Yes, in base units"* (ADR 0192
+fourth amendment): the back-derived count that used to be refused as a fraction of a case is
+re-read in bottles. What still writes no entry is a verification that carries no count at all,
+the mobile one-tap "Counts match" (`{ adjustments: [] }`); stated in that amendment as a fork.]**
+**[2026-09-26, W4-receiving: closed. The founder answered *"Yes, keep last invoice
+(Recommended)"* (ADR 0192 fifth amendment): the one-tap now writes a `reconciled` entry marked
+`outcome = 'accepted'` with the ledger's bottles and no invoice, and the desk reads the invoice and
+its refusal from the latest entry that states them. The line history words it as its own kind,
+`desk_confirmed` ("The desk confirmed the counts match: …"), so it never reads as a full check.]**
+
+**Does the door record satisfy §107's "the verdict history stays append-only" (ADR 0149 row 23)?
+By convention only, not by enforcement.** Measured on this branch (`main` + #436):
+- **Writes are insert-only in code.** Every write to `procurement_receipt_events` in `apps/`,
+  `services/`, `packages/` and `scripts/` is an `.insert(...)`: the door
+  (`receiving.service.ts`, `recordDoorReceipt`) and the desk (`procurement.service.ts:5862`,
+  #436). None updates, upserts or deletes a row. A retried door tap collides on
+  `uq_pre_idempotency` (`baseline:11894`) and is read back, not rewritten.
+- **Only the gateway can write.** RLS is on with a service-role-only policy, and `anon` and
+  `authenticated` hold no privilege (`20260825200000_od73_close_anon_dml.sql:204-208`).
+- **Nothing in the database refuses a change.** No migration defines a trigger on the table, and
+  the service role can `UPDATE` or `DELETE` any row. **[Superseded 2026-09-25 by [ADR 0227](../decisions/0227-the-door-record-is-append-only-in-the-database.md)
+  (founder, round 5: *"Trigger, no cascade"*): migration `20260927120000` refuses UPDATE, DELETE and
+  TRUNCATE by trigger.]** A migration has already rewritten rows once:
+  the `rejected_qty_bottles` backfill (`20260901220000_door_facts_are_columns.sql:64`).
+- **The history dies with its parent.** `order_id` and `restaurant_id` are `ON DELETE CASCADE`
+  (`baseline:13182`, `:13190`), so deleting an order or a house erases its receipts. **[Superseded
+  2026-09-25 by ADR 0227: both keys, and the document key, are `ON DELETE RESTRICT`; an order or a
+  house with receipts cannot be hard-deleted, and every path that deletes one today meets no
+  receipt (ADR 0227's table).]**
+So the record is append-only in practice (one writer, insert-only paths, closed to clients) and
+not append-only by construction. Making it so is a schema decision this lane did not take (see the
+fork below); an immutability trigger would also meet the cascade conflict the stripped ledger hit
+(a trigger that refuses every `DELETE` makes deleting a house abort). **[Decided and built 2026-09-25 — [ADR
+0227](../decisions/0227-the-door-record-is-append-only-in-the-database.md): the founder chose
+*"Trigger, no cascade"*, so the keys became RESTRICT instead of the trigger meeting a cascade; a
+house with a door history is removed by soft delete (`restaurants.deleted_at`), and no path that
+deletes a house or an order today reaches a receipt.]**
+
+**Who may read it.** `GET …/history` is `@Roles("owner","manager")` on the method, the same rule
+ADR 0167 set for the queue and the credit ledger ("Refuse staff on all four"); staff and a session
+with no role in the house get 403 before anything is read. The door routes stay open to staff.
+ADR 0167 names four routes; this is a fifth desk route under the same rule, applied by this lane
+and not yet recorded in that ADR.
+
+**Tests.** Gateway: `receiving-line-history.spec.ts` (16: cursor grammar, tie-safe paging across
+eleven rows at one instant, house scoping of every events read, 404 for a foreign order, 400 for a
+foreign marker before any read, bound errors, names, queue item names) and
+`receiving-line-history-route.spec.ts` (11: real Nest pipeline, staff/none 403 with no read,
+owner/manager/admin 200, marker and uuid validation, the gate's metadata). Web:
+`RcLineHistory.test.tsx` (17). Each guard was mutation-checked: removing the house filter, the id
+half of the cursor, the ownership 404, the `@Roles` gate, the box-opening on highlight, or the
+answered-before-empty rule turns at least one test red.
+
+**Not done here, said plainly.**
+- **The flag.** `/receiving` is still gated by `mudavym_design_receiving` (ON for one house). Moving
+  it to live-in-code for every house is the flags lane's promotion, not this PR.
+- **B+ as drawn is still not built**: no clock-ordered delivery tabs, no per-line four-number grid
+  (ordered / door / paper / difference) with the answer owed, no documents rail, no phone desk.
+  Approach 1 answers the "too many operations" question; it does not build the rest of the grid.
+- **The deliveries-domain question** (filed on the lane ref as register row 125, narrowed
+  2026-09-21, not yet on `main`): does ADR 0104 D13 bind `/receiving` to the canonical `deliveries`
+  domain? The desk still keys on `procurement_orders`. With no append-only table keyed to it, the
+  answer is no longer irreversible. Rows 126 and 127 (resolved by the strip) are also only on the
+  lane ref; the three rows are handed to the register lane. **[answered 2026-09-26, founder, round
+  6: *"Stay on orders now (Recommended)"* — the desk stays keyed on `procurement_orders`; moving to
+  `deliveries` is its own later migration, when deliveries with no order need handling. Recorded in
+  ADR 0160 §107.]**
+- **Browser check** of the sheet at 390 and 1440 against a real house was not run (no local
+  gateway with receipt data in this session).

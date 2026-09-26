@@ -44,6 +44,7 @@ import { ConversationsModule } from "./conversations/conversations.module";
 import { UserPreferencesModule } from "./user-preferences/user-preferences.module";
 import { RestaurantTemplatesModule } from "./restaurant-templates/restaurant-templates.module";
 import { OrganizationsModule } from "./organizations/organizations.module";
+import { AuthorityGrantsModule } from "./organizations/authority-grants.module";
 import { McpConnectionsModule } from "./mcp-connections/mcp-connections.module";
 import { McpServerModule } from "./mcp-server/mcp-server.module";
 import { PaymentMethodsModule } from "./payment-methods/payment-methods.module";
@@ -134,6 +135,7 @@ import { HouseModule } from "./house/house.module";
     ArchiveModule, // The house's own copy of that mail: its choice, its export, its counts (ADR 0118 D16)
     TextSendersModule, // The house's own WhatsApp/SMS sender + each person's consent (ADR 0121)
     OrganizationsModule, // Multi-tenant org hierarchy (branches, chains)
+    AuthorityGrantsModule, // ADR 0112 F12 grants: an owner names who may send to vendors (ADR 0175 D10)
     McpConnectionsModule, // Model-context (MCP) servers declared per user + restaurant
     McpServerModule, // The INBOUND half: Mudavym answers MCP for a house-scoped key (ADR 0132)
     PaymentMethodsModule, // Payment instruments on file; create refuses with no provider

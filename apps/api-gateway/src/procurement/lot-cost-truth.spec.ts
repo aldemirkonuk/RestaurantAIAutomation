@@ -143,7 +143,6 @@ function migrationSql(): string {
 // D3 — the enum cast that made every receipt verification 422
 // ---------------------------------------------------------------------------
 
-
 /*
  * `invoiceCurrency: "USD"` appears beside every `invoiceUnitPrice` below since
  * 2026-09-06 (founder batch 67): `verifyReceipt` refuses a unit price with no
@@ -234,13 +233,18 @@ describe("D1 — no price is promoted to 'invoice' by silence", () => {
     // guard `scripts/check_lot_cost_provenance.py:83` keys on the path alone
     // for the same reason, and this is the same mistake the stock-writes
     // allowlist was re-keyed off file:line to escape.
-    expect(offenders.some((o) => o.startsWith(`${OWNED_ELSEWHERE}:`))).toBe(true);
+    expect(offenders.some((o) => o.startsWith(`${OWNED_ELSEWHERE}:`))).toBe(
+      true,
+    );
   });
 
   it("markDelivered books the delivery at a stated, non-invoice provenance", async () => {
     // A delivery that has NOT yet happened: the goods-arrived guard refuses a
     // second one, and this test is about what the first one costs the lot.
-    const { db, calls } = makeDb({ status: "APPROVED", quantity_received: null });
+    const { db, calls } = makeDb({
+      status: "APPROVED",
+      quantity_received: null,
+    });
     await service(db).markDelivered(REST, ORDER, USER, 10);
 
     const live = calls.rpc.find(
@@ -254,6 +258,36 @@ describe("D1 — no price is promoted to 'invoice' by silence", () => {
     // invoice, so whatever this lot is, it is not invoice-verified.
     expect(live!.args.p_cost_provenance).toBeDefined();
     expect(live!.args.p_cost_provenance).not.toBe("invoice");
+  });
+
+  it("D1 (ADR 0168) — the pre-read actually selects final_price, so a legacy order's own quote is booked as its cost", async () => {
+    // `makeDb`'s mock hands back every column on `orderRow` no matter what the
+    // real `.select(...)` asked for, so it cannot see a column missing from
+    // that list — which is exactly how `final_price` being absent from the
+    // pre-read shipped past the test above. This mock is column-scoped: the
+    // pre-read (the plain `.select(...)` before any `.update()`) only gets
+    // back the fields it actually named, the way PostgREST would behave.
+    const { db, calls } = makeSelectScopedDb({
+      status: "APPROVED",
+      quantity_received: null,
+      final_price: 40,
+    });
+    await service(db).markDelivered(REST, ORDER, USER, 10);
+
+    const live = calls.rpc.find(
+      (c) =>
+        c.name === "apply_stock_movement" &&
+        c.args.p_stock_state === "live" &&
+        (c.args.p_delta ?? 0) > 0,
+    );
+    expect(live).toBeDefined();
+    // This order has no line row (`procurement_order_items` reads null below),
+    // so `agreedPricePerBottleForDoor` falls to the header's own `final_price`.
+    // Pre-fix, the pre-read never asked for that column, so it read back
+    // `undefined`, the resolution came back `ok: false`, and this booked
+    // `p_unit_cost: null` — a legacy delivery with a stated PO price landed on
+    // the shelf costing nothing.
+    expect(live!.args.p_unit_cost).toBe(40);
   });
 
   it("markDelivered does not read suggested_price, which is not a column", () => {
@@ -410,6 +444,11 @@ function makeDb(orderOverrides: Record<string, any> = {}) {
             },
             error: null,
           };
+        if (table === "inventory_transactions")
+          return {
+            data: [{ id: "received", quantity_change: 10 }],
+            error: null,
+          };
         if (table === "restaurant_inventory") {
           if (cols.trim() === "id")
             return { data: { id: filters.id }, error: null };
@@ -427,6 +466,113 @@ function makeDb(orderOverrides: Record<string, any> = {}) {
       const q: any = {
         select(c?: string) {
           if (op === "select" && typeof c === "string") cols = c;
+          return q;
+        },
+        eq(c: string, v: any) {
+          filters[c] = v;
+          return q;
+        },
+        neq: () => q,
+        not: () => q,
+        in: () => q,
+        is: () => q,
+        gt: () => q,
+        order: () => q,
+        range: () => q,
+        limit: () => q,
+        insert: () => {
+          op = "insert";
+          return q;
+        },
+        update: () => {
+          op = "update";
+          return q;
+        },
+        delete: () => {
+          op = "delete";
+          return q;
+        },
+        single: async () => settle("one"),
+        maybeSingle: async () => settle("one"),
+        then: (res: any, rej: any) =>
+          Promise.resolve(settle("many")).then(res, rej),
+      };
+      return q;
+    },
+    rpc: async (name: string, args: Record<string, any>) => {
+      calls.rpc.push({ name, args });
+      return { data: null, error: null };
+    },
+    storage: { from: () => ({}) },
+  };
+
+  const db = {
+    supabase,
+    getClient: () => supabase,
+    client: supabase,
+  } as unknown as DatabaseService;
+
+  return { db, calls };
+}
+
+/**
+ * Same shape as `makeDb`, except the `procurement_orders` SELECT is honest
+ * about what it was asked for. `makeDb` returns the whole fixture row on
+ * every read of that table regardless of the `.select(...)` list, which
+ * cannot fail if a real call site forgets to name a column it needs — that
+ * gap is D1 (ADR 0168): the pre-read in `markDelivered` never asked for
+ * `final_price`, and every test above kept passing because this mock handed
+ * it over anyway.
+ *
+ * Only the bare pre-read is scoped down. The UPDATE's own re-select
+ * (`select("*, inventory:inventory_id(wine_name))")`, issued after `.update()`
+ * has already set `op`) still gets the full row — it names `*` in real life
+ * too, so scoping it down would be its own fiction.
+ */
+function makeSelectScopedDb(orderOverrides: Record<string, any> = {}) {
+  const calls = { rpc: [] as { name: string; args: Record<string, any> }[] };
+
+  const supabase: any = {
+    from(table: string) {
+      let op = "select";
+      let cols = "";
+      const filters: Record<string, any> = {};
+      const settle = (shape: "one" | "many"): Record<string, any> => {
+        if (table === "procurement_orders") {
+          const full = { ...orderRow, ...orderOverrides };
+          if (op === "select" && cols && !cols.includes("*")) {
+            const wanted = cols.split(",").map((c) => c.trim());
+            const scoped: Record<string, any> = {};
+            for (const key of wanted) if (key in full) scoped[key] = full[key];
+            return { data: scoped, error: null };
+          }
+          return {
+            data: { ...full, inventory: { wine_name: "Barolo" } },
+            error: null,
+          };
+        }
+        if (table === "inventory_transactions")
+          return {
+            data: [{ id: "received", quantity_change: 10 }],
+            error: null,
+          };
+        if (table === "restaurant_inventory") {
+          if (cols.trim() === "id")
+            return { data: { id: filters.id }, error: null };
+          return {
+            data: {
+              master_wine_id: "55555555-5555-4555-8555-555555555555",
+              shadow_stock: 0,
+              in_transit_quantity: 0,
+            },
+            error: null,
+          };
+        }
+        return { data: shape === "many" ? [] : null, error: null };
+      };
+      const q: any = {
+        select(c?: string) {
+          if (typeof c === "string") cols = c;
           return q;
         },
         eq(c: string, v: any) {

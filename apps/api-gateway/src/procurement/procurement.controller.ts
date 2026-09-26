@@ -7,15 +7,17 @@ import {
   Get,
   Header,
   Headers,
+  HttpCode,
   HttpException,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
@@ -23,11 +25,19 @@ import {
   OrderFilterDto,
   OrderListResponseDto,
   OrderResponseDto,
+  NameDeliveredItemDto,
   UpdateOrderDto,
   VerifyReceiptDto,
 } from "./dto/procurement.dto";
-import { ApproveDraftDto } from "./dto/approve-draft.dto";
-import { ProcurementService } from "./procurement.service";
+import {
+  ApproveDraftDto,
+  ConfirmDealDto,
+  DeclineDealRequestDto,
+  DraftSealChallengeDto,
+  DraftSendRequestDto,
+  ManualReplyDto,
+} from "./dto/approve-draft.dto";
+import { ProcurementService, type SendOrAsk } from "./procurement.service";
 
 /**
  * `?quantityReceivedInOrderUom=` -> a whole non-negative count, or a 400 that
@@ -400,6 +410,52 @@ export class ProcurementController {
   }
 
   /**
+   * What this house last agreed with one vendor for one shelf item.
+   *
+   * NEW ROUTE (packet 2 of the overlay layer, 2026-09-06). The new-order sheet
+   * is drawn with "price and unit come from the agreement on the vendor's row"
+   * and nothing could answer that: `agreement-currency` answers which money,
+   * `vendor-terms` carries no prices, and the price register has no controller.
+   *
+   * Declared as a literal tail rather than under `orders/` for the same reason
+   * `order-approval-gate` and `agreement-currency` are — it can never be
+   * shadowed by, or shadow, `orders/:id`.
+   *
+   * The restaurant is the token's. Both ids are REQUIRED and refused when
+   * absent: an "agreement" resolved without naming the vendor would be the last
+   * price from anybody, which is a different and much more dangerous number.
+   * A read that fails answers `state: "unreadable"` with its own sentence — it
+   * is never flattened into "no agreement on file".
+   */
+  @Get("last-agreement")
+  @ApiOperation({
+    summary: "The last agreed price and unit for one vendor and one shelf item",
+    description:
+      'Three states, kept apart: "found" (with the price, its unit pair, the currency, the date and the order it was struck on), "none" (this house has never agreed a price with this vendor for this item) and "unreadable" (the read failed). Every state carries a sentence, because an answer with no sentence is what lets a failure render as an empty field. Nothing is converted — a price whose unit was never stated is reported as unstated, never as per bottle.',
+  })
+  @ApiQuery({ name: "providerId", required: true })
+  @ApiQuery({ name: "inventoryId", required: true })
+  @ApiResponse({ status: 200, description: "The last agreement, or why there is none" })
+  @ApiResponse({ status: 400, description: "providerId and inventoryId are both required" })
+  async lastAgreement(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Query("providerId") providerId?: string,
+    @Query("inventoryId") inventoryId?: string,
+  ) {
+    if (!providerId?.trim() || !inventoryId?.trim()) {
+      throw new HttpException(
+        "Name both the vendor and the shelf item. An agreement resolved without a vendor is the last price from anybody, which is a different number.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.procurementService.lastAgreementFor(
+      user.restaurantId,
+      providerId.trim(),
+      inventoryId.trim(),
+    );
+  }
+
+  /**
    * Begin the hold. Returns a one-time seal, once.
    *
    * The token is returned HERE and nowhere else, and it is minted at the moment
@@ -526,6 +582,37 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * Deliveries that booked nothing and wait for an owner or a manager to name
+   * their item (founder, 2026-09-22: "Deliver, flag to name it"). The house is
+   * the token's. A failed read is an error, never an empty list.
+   */
+  @Get("items-to-name")
+  @ApiOperation({ summary: "Deliveries waiting for their item to be named" })
+  async deliveriesToName(@CurrentUser() user: { userId: string; restaurantId: string }) {
+    return this.procurementService.deliveriesToName(user.restaurantId, user.userId);
+  }
+
+  /**
+   * An owner or a manager names a delivery's item by its id; the stock is
+   * booked then, once, and the naming is audited.
+   */
+  @Post("orders/:id/name-item")
+  @ApiOperation({ summary: "Name the item of a delivery that booked nothing, booking its stock once" })
+  async nameDeliveredItem(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @Body() dto: NameDeliveredItemDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.nameDeliveredItem({
+      restaurantId: user.restaurantId,
+      orderId,
+      userId: user.userId,
+      inventoryId: dto.inventoryId,
+      bottles: dto.bottles ?? null,
+    });
+  }
+
   @Post("orders/:id/verify-receipt")
   @ApiOperation({
     summary:
@@ -571,20 +658,145 @@ export class ProcurementController {
     @Param("id") orderId: string,
     @Body() dto: ApproveDraftDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{ conversationId: string; sentAt: string }> {
     try {
-      return await this.procurementService.approveDraft(
+      return await this.procurementService.sendDraftedReply(
         user.restaurantId,
         orderId,
+        user.userId,
         dto,
+        challenge,
       );
     } catch (error: any) {
-      if (error instanceof ForbiddenException) throw error;
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to approve draft",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
+  }
+
+  /**
+   * Begin the hold on a drafted reply. Returns a one-time seal, once.
+   *
+   * NEW ROUTE (packet 2 of the overlay layer, 2026-09-06; ADR 0118). The only
+   * approval of a drafted reply was `POST orders/:id/approve-draft`, which
+   * sends a letter to a vendor on an unsealed request. Nothing reaches a vendor
+   * without a person's hold, so the hold now mints a seal over THE LETTER — the
+   * words, the recipient and the copies as the person read them — and
+   * `send-drafted-reply` below spends it.
+   *
+   * The letter travels in the BODY because it is what the seal is over, and the
+   * body is what the person edited in the panel; the seal itself comes back in
+   * a header on the send, the way every other seal in this house travels.
+   *
+   * The body is a class (`DraftSealChallengeDto`) so the global ValidationPipe
+   * checks it — an inline type is recorded as `Object` and skipped
+   * (`draft-routes-validate-bodies.spec.ts`).
+   */
+  @Post("orders/:id/draft-seal-challenge")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: "Mint the one-time seal a drafted reply's send has to carry back",
+    description:
+      "Bound to this actor, this order, the act `send_draft`, and the LETTER as it stands — its words normalised, its recipient and its copies. A seal minted to approve an order's money cannot be spent to send its mail, and a seal minted over one paragraph cannot be spent after the paragraph changes. 404 when no draft is waiting; 500 (never a seal) when whether one is waiting could not be read.",
+  })
+  @ApiResponse({ status: 201, description: "`challenge`, `expiresAt` and `act`" })
+  @ApiResponse({ status: 404, description: "No draft is waiting on this order" })
+  async issueDraftSendSeal(
+    @Param("id") orderId: string,
+    @Body() body: DraftSealChallengeDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueDraftSendSeal(
+      user.restaurantId,
+      orderId,
+      user.userId,
+      { body: body.content, to: body.to ?? null, cc: body.ccEmails ?? [] },
+    );
+  }
+
+  /**
+   * Send the drafted reply, behind a redeemed seal — always.
+   *
+   * NEW ROUTE (packet 2, 2026-09-06). It wraps `approveDraft` rather than
+   * replacing its atomic sending claim. Both this route and the legacy
+   * approve-draft route land in `sendDraftedReply`, which requires an owner, a
+   * manager or a grantee (ADR 0175 D10) and ALWAYS redeems the seal: the
+   * `REQUIRE_DRAFT_SEND_SEAL` grace was deleted on the founder's answer of
+   * 2026-09-21, so an absent `X-Seal-Challenge` is refused like every other
+   * sealed act. A member who may not send is told to hold again to ASK
+   * (`draft-send-request`).
+   *
+   * The body is `ApproveDraftDto` itself, never an intersection with it: an
+   * intersection type is recorded as `Object`, which the ValidationPipe skips.
+   * It carries no recipient — the letter goes to the vendor's address on file,
+   * and the seal is redeemed over that address, not over anything the caller
+   * names.
+   */
+  @Post("orders/:id/send-drafted-reply")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: "Send the house's drafted reply behind a redeemed seal (ADR 0118)",
+  })
+  @ApiResponse({ status: 200, description: "The letter was sent" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The seal was absent, already spent, issued to somebody else, issued for a different order or act, or issued before the letter changed. The body's `message` is the whole sentence and the panel renders it verbatim.",
+  })
+  async sendDraftedReply(
+    @Param("id") orderId: string,
+    @Body() dto: ApproveDraftDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
+  ): Promise<{ conversationId: string; sentAt: string }> {
+    try {
+      return await this.procurementService.sendDraftedReply(
+        user.restaurantId,
+        orderId,
+        user.userId,
+        dto,
+        challenge,
+      );
+    } catch (error: any) {
+      // Every deliberate refusal keeps its status and its sentence. Flattening
+      // a 403 from the seal into a 500 would tell a manager the gateway broke
+      // when in fact it refused, which are different things to do next about.
+      if (error instanceof HttpException) throw error;
+      if (error instanceof ForbiddenException) throw error;
+      throw new HttpException(
+        error.message || "Failed to send the drafted reply",
+        error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * A staff member's hold: the letter becomes a REQUEST a manager releases
+   * (founder, 2026-09-21, "Staff ask, manager sends").
+   *
+   * Saves the person's exact edited words as the draft's version, records who
+   * asked, keeps the draft PENDING_APPROVAL (waiting for a manager) and tells
+   * the owners and managers on their bell. Nothing is sent, so no seal is
+   * spent; the release is the ordinary sealed send over these words. 409 when
+   * the caller may send themself.
+   */
+  @Post("orders/:id/draft-send-request")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Ask a manager to send this letter (a staff member's hold)" })
+  @ApiResponse({ status: 201, description: "Asked: the version, when, how many were told, and the sentence" })
+  @ApiResponse({ status: 409, description: "The caller may send it themself, or the draft went while they held" })
+  async requestDraftSend(
+    @Param("id") orderId: string,
+    @Body() body: DraftSendRequestDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ conversationId: string; requestedAt: string; told: number; says: string }> {
+    return this.procurementService.requestDraftSend(user.restaurantId, orderId, user.userId, {
+      content: body.content,
+      ccEmails: body.ccEmails ?? [],
+    });
   }
 
   @Post("orders/:id/generate-ai-reply")
@@ -630,29 +842,61 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * Begin the hold on a hand-written reply: a one-time seal over its words,
+   * the vendor's address on file and its copies (ADR 0175 D9, 2026-09-21).
+   */
+  @Post("orders/:id/manual-reply-seal-challenge")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Mint the one-time seal a hand-written reply's send has to carry back" })
+  async issueManualReplySeal(
+    @Param("id") orderId: string,
+    @Body() body: ManualReplyDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueManualReplySeal(user.restaurantId, orderId, user.userId, {
+      content: body.content,
+      ccEmails: body.ccEmails ?? [],
+    });
+  }
+
+  /**
+   * A person's own threaded reply to the vendor — sealed, gated and named
+   * since 2026-09-21 (ADR 0175 D9/D10). Until then this route took no user id,
+   * checked no role, spent no seal and recorded no sender.
+   */
   @Post("orders/:id/manual-reply")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
-    summary: "Send a manager-written threaded reply to the provider",
+    summary: "Send a hand-written threaded reply to the provider, behind a redeemed seal",
   })
   @ApiResponse({
     status: 200,
-    description: "Manual reply sent and recorded on the thread",
+    description: "Manual reply sent and recorded on the thread, with its sender",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The seal was absent, spent or issued over different words, or the caller may not send (they are told to hold again to ask)",
   })
   async manualReply(
     @Param("id") orderId: string,
-    @Body() body: { content: string; ccEmails?: string[] },
+    @Body() body: ManualReplyDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{ conversationId: string; sentAt: string }> {
     try {
       return await this.procurementService.manualReply(
         user.restaurantId,
         orderId,
+        user.userId,
         body?.content,
         body?.ccEmails,
+        challenge,
       );
     } catch (error: any) {
-      if (error instanceof ForbiddenException) throw error;
+      // Every deliberate refusal keeps its status and its sentence.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to send manual reply",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -733,35 +977,134 @@ export class ProcurementController {
     }
   }
 
+  /**
+   * Begin the hold on a deal confirmation: a one-time seal over its terms and
+   * the vendor's address (ADR 0175 D9, 2026-09-21). A grantee's money limit is
+   * checked here, before any seal is issued.
+   */
+  @Post("orders/:id/confirm-deal-seal-challenge")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Mint the one-time seal a deal confirmation has to carry back" })
+  async issueConfirmDealSeal(
+    @Param("id") orderId: string,
+    @Body() body: ConfirmDealDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ challenge: string; expiresAt: string; act: string }> {
+    return this.procurementService.issueConfirmDealSeal(user.restaurantId, orderId, user.userId, {
+      finalPrice: body?.finalPrice,
+      quantity: body?.quantity,
+      sendConfirmation: body?.sendConfirmation,
+    });
+  }
+
+  /**
+   * A staff member asks a manager to confirm this deal on their terms (founder
+   * answer 3, 2026-09-21). Saves the exact terms; commits and mails nothing.
+   */
+  @Post("orders/:id/confirm-deal-request")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Ask an owner or a manager to confirm this deal on the terms given; nothing is committed" })
+  @ApiResponse({ status: 409, description: "The caller may confirm it themself, or a request is already waiting" })
+  async requestConfirmDeal(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @Body() body: ConfirmDealDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.requestConfirmDeal(user.restaurantId, orderId, user.userId, {
+      finalPrice: body?.finalPrice,
+      quantity: body?.quantity,
+      sendConfirmation: body?.sendConfirmation,
+    });
+  }
+
+  /** The waiting deal request, and whether this person's hold confirms or asks. */
+  @Get("orders/:id/deal-request")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "The deal request waiting on this order, if any, and the caller's standing to confirm it" })
+  async dealRequest(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+    @Query("finalPrice") finalPrice?: string,
+    @Query("quantity") quantity?: string,
+  ) {
+    const num = (v?: string) => (v === undefined || v === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
+    return this.procurementService.dealRequestReadout(user.restaurantId, orderId, user.userId, {
+      finalPrice: num(finalPrice),
+      quantity: num(quantity),
+    });
+  }
+
+  /**
+   * An owner or a manager declines this order's waiting deal request, saying
+   * why (founder, 2026-09-22, round 6z, verbatim pick 1: "Yes, same as
+   * letters (Recommended)"). Nothing is committed.
+   */
+  @Post("orders/:id/deal-request/decline")
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Decline the deal request waiting on this order, saying why; nothing is confirmed" })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or a manager" })
+  @ApiResponse({ status: 404, description: "No deal request is waiting on this order" })
+  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  async declineDealRequest(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @Body() dto: DeclineDealRequestDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.declineDealRequest(user.restaurantId, orderId, user.userId, dto.reason);
+  }
+
+  /**
+   * The person who asked withdraws their own waiting deal request on this
+   * order (founder, 2026-09-22, round 6z, verbatim pick 1: "Yes, same as
+   * letters (Recommended)"). Nobody else may withdraw it.
+   */
+  @Post("orders/:id/deal-request/withdraw")
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Withdraw your own deal request waiting on this order; nothing is confirmed" })
+  @ApiResponse({ status: 403, description: "The caller did not ask for it" })
+  @ApiResponse({ status: 404, description: "No deal request is waiting on this order" })
+  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  async withdrawDealRequest(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.withdrawDealRequest(user.restaurantId, orderId, user.userId);
+  }
+
   @Post("orders/:id/confirm-deal")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({
     summary:
-      "Confirm an AI-detected deal: commit the order and optionally email the vendor",
+      "Confirm an AI-detected deal behind a redeemed seal: commit the order and optionally email the vendor",
   })
   @ApiResponse({ status: 200 })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The seal was absent, spent or over different terms, or the caller is not an owner, a manager or a grantee whose limit covers this deal",
+  })
   async confirmDeal(
     @Param("id") orderId: string,
-    @Body()
-    body: {
-      finalPrice?: number;
-      quantity?: number;
-      sendConfirmation?: boolean;
-    },
+    @Body() body: ConfirmDealDto,
     @CurrentUser() user: { userId: string; restaurantId: string },
+    @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
     try {
       return await this.procurementService.confirmDeal(
         user.restaurantId,
         orderId,
+        user.userId,
         {
           finalPrice: body?.finalPrice,
           quantity: body?.quantity,
           sendConfirmation: body?.sendConfirmation,
         },
+        challenge,
       );
     } catch (error: any) {
-      if (error instanceof ForbiddenException) throw error;
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to confirm deal",
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -779,7 +1122,7 @@ export class ProcurementController {
   async dismissDeal(
     @Param("id") orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<{ dismissed: boolean }> {
+  ): Promise<{ dismissed: boolean; requestsClosed: number }> {
     try {
       return await this.procurementService.dismissDeal(
         user.restaurantId,
@@ -902,21 +1245,32 @@ export class ProcurementController {
   @Get("orders/:id/draft")
   @UseGuards(JwtAuthGuard)
   @Header("Cache-Control", "no-store")
-  @ApiOperation({ summary: "Get pending AI email draft for an order" })
+  @ApiOperation({
+    summary:
+      "Get pending AI email draft for an order, and whether this viewer's hold sends it or asks a manager",
+  })
   @ApiResponse({ status: 200 })
   async getPendingDraft(
     @Param("id") orderId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<{ draft: Record<string, any> | null }> {
+  ): Promise<{ draft: Record<string, any> | null; sendOrAsk: SendOrAsk }> {
     try {
       const draft = await this.procurementService.getPendingDraft(
         user.restaurantId,
         orderId,
       );
+      // `sendOrAsk` is the viewer's own standing (founder, 2026-09-21): the
+      // panel says "hold to send" or "hold to ask a manager" BEFORE the hold,
+      // never as a refusal after it. It is present even when no draft waits,
+      // because the thread's own reply box reads it too.
+      const sendOrAsk = await this.procurementService.sendOrAskFor(
+        user.userId,
+        user.restaurantId,
+      );
       // Always return a JSON object so the browser receives Content-Type: application/json
       // and a non-empty body. Returning `null` directly causes NestJS to send Content-Length: 0
       // which Safari DevTools flags as an error and Axios deserialises as an empty string.
-      return { draft };
+      return { draft, sendOrAsk };
     } catch (error: any) {
       throw new HttpException(
         error.message || "Failed to get draft",

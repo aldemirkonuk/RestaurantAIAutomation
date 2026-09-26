@@ -80,6 +80,27 @@ export class QueueLetterDto {
   @ValidateNested({ each: true })
   @Type(() => InsertedInsightDto)
   insights?: InsertedInsightDto[];
+
+  @ApiPropertyOptional({
+    description:
+      "A manager releasing a staff member's waiting letter names its request (founder answer 3, 2026-09-21). The request is taken once; the letter keeps the composer's undo window.",
+  })
+  @IsOptional()
+  @IsUUID()
+  requestId?: string;
+}
+
+/**
+ * An owner or a manager declines a staff member's letter request, saying why
+ * (founder, 2026-09-21: "Decline/withdraw; undo re-waits"). The person who
+ * asked reads the reason on the bell.
+ */
+export class DeclineLetterRequestDto {
+  @ApiProperty({ description: "Why it is declined; the person who asked reads it." })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason: string;
 }
 
 export class UpsertLetterTemplateDto {

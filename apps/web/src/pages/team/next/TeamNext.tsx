@@ -66,6 +66,7 @@ import {
 import { MutationError } from './tm-bits';
 import { LENSES, WeekGrid, type Lens } from './WeekGrid';
 import { RosterSheet, MemberSheet } from './RosterSheet';
+import { CertificationsSheet } from './CertificationsSheet';
 import { ShiftSheet, type ShiftSheetTarget } from './ShiftSheet';
 import {
   CopyWeekPanel,
@@ -76,6 +77,7 @@ import {
   TimeOffSheet,
 } from './TeamOverlays';
 import { TeamRecordSection, TrailSheet } from './TeamRecord';
+import { SendGrantsSection } from './SendGrantsSection';
 import {
   useActiveRestaurantId,
   useTeamNextData,
@@ -375,6 +377,7 @@ export default function TeamNext({ ground }: { ground?: 'charcoal' }) {
 type Overlay =
   | { kind: 'roster' }
   | { kind: 'member'; member: TeamMember | null }
+  | { kind: 'certificates'; member: TeamMember }
   | { kind: 'shift'; target: ShiftSheetTarget }
   | { kind: 'publish'; republish: boolean }
   | { kind: 'copy' }
@@ -727,6 +730,14 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
 
         <hr className="tm-rule" />
 
+        {/* Who may send to vendors — the owners' grants (ADR 0112 F12;
+            founder, 2026-09-21). Owners see, name and revoke; managers see
+            every grant not marked owner-only; anyone else sees only the
+            grants that name them. */}
+        <SendGrantsSection restaurantId={rid} members={data.members} />
+
+        <hr className="tm-rule" />
+
         <TeamRecordSection
           labourEnabled={labor === null ? null : labor.enabled}
           wageVisible={data.wageVisible}
@@ -749,7 +760,18 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           wageVisible={data.wageVisible}
           onClose={() => setOverlay(null)}
           onEdit={(m) => setOverlay({ kind: 'member', member: m })}
+          onCertificates={(m) => setOverlay({ kind: 'certificates', member: m })}
           onAdd={() => setOverlay({ kind: 'member', member: null })}
+        />
+      )}
+      {overlay?.kind === 'certificates' && (
+        <CertificationsSheet
+          open
+          member={overlay.member}
+          certs={data.certs}
+          restaurantId={rid ?? null}
+          onClose={() => setOverlay({ kind: 'roster' })}
+          onChanged={() => data.refetch?.()}
         />
       )}
       {overlay?.kind === 'member' && (
