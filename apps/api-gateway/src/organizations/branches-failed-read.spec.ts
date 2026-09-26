@@ -106,70 +106,56 @@ async function refusal(service: OrganizationsService): Promise<unknown> {
 }
 
 describe("getBranchesForUser refuses a failed read", () => {
-  it("rejects when the organisation's restaurants cannot be read", async () => {
-    const err = await refusal(makeService({ orgMembers: ORG, restaurants: failed }));
-    expect(err).toBeInstanceOf(ServiceUnavailableException);
-  });
-
-  it("rejects when user_restaurant_access cannot be read, with no organisation", async () => {
+  it("rejects when user_restaurant_access cannot be read", async () => {
     const err = await refusal(makeService({ ura: failed }));
     expect(err).toBeInstanceOf(ServiceUnavailableException);
   });
 
-  it("rejects rather than serve a partial list when the access read fails after the organisation read", async () => {
-    const err = await refusal(
-      makeService({
-        orgMembers: ORG,
-        restaurants: ok([branchRow("r1", "Moda")]),
-        ura: failed,
-      }),
-    );
-    expect(err).toBeInstanceOf(ServiceUnavailableException);
-  });
-
-  it("rejects when the legacy users.restaurant_id read fails", async () => {
-    const err = await refusal(makeService({ user: failed }));
-    expect(err).toBeInstanceOf(ServiceUnavailableException);
-  });
-
-  it("rejects when the legacy restaurant row cannot be read", async () => {
-    const err = await refusal(
-      makeService({ user: ok({ restaurant_id: "r1" }), restaurantRow: failed }),
-    );
-    expect(err).toBeInstanceOf(ServiceUnavailableException);
-  });
-
   it("does not put the database's own error text in the refusal", async () => {
-    const err = await refusal(makeService({ orgMembers: ORG, restaurants: failed }));
+    const err = await refusal(makeService({ ura: failed }));
     expect(err).toBeInstanceOf(HttpException);
     expect(JSON.stringify((err as HttpException).getResponse())).not.toContain(DB_MESSAGE);
   });
 });
 
-describe("getBranchesForUser still answers what it read", () => {
-  it("answers [] for a user who genuinely has no branch", async () => {
+/**
+ * [ADR 0164, 2026-09-18, "Membership only": the list is the person's
+ * memberships and nothing else. The organisation path and the users-row path
+ * this suite used to pin (a failed organisation read, a failed legacy read,
+ * the legacy single branch, the organisation-and-access merge) are gone, so
+ * their tests are replaced by the three below.]
+ */
+describe("getBranchesForUser lists memberships only (ADR 0164)", () => {
+  it("answers [] for a person with no membership, whatever their organisation and users row hold", async () => {
     await expect(
-      makeService({ user: ok({ restaurant_id: null }) }).getBranchesForUser("u1"),
+      makeService({
+        orgMembers: ORG,
+        restaurants: ok([branchRow("r1", "Moda"), branchRow("r2", "Kadikoy")]),
+        user: ok({ restaurant_id: "r1" }),
+        restaurantRow: ok({ ...branchRow("r1", "Moda"), organization_id: "org-1" }),
+      }).getBranchesForUser("u1"),
     ).resolves.toEqual([]);
   });
 
-  it("still resolves the legacy single-restaurant branch", async () => {
-    const branches = await makeService({
-      user: ok({ restaurant_id: "r1" }),
-      restaurantRow: ok({ ...branchRow("r1", "Moda"), organization_id: null }),
-    }).getBranchesForUser("u1");
-    expect(branches.map((b) => b.id)).toEqual(["r1"]);
-  });
-
-  it("merges organisation and access branches when both reads succeed", async () => {
+  it("does not list the organisation's other houses beside the person's memberships", async () => {
     const branches = await makeService({
       orgMembers: ORG,
-      restaurants: ok([branchRow("r1", "Moda")]),
+      restaurants: ok([branchRow("r1", "Moda"), branchRow("r3", "Sim Meyhouse")]),
       ura: ok([
         { restaurant_id: "r1", restaurants: branchRow("r1", "Moda") },
         { restaurant_id: "r2", restaurants: branchRow("r2", "Kadikoy") },
       ]),
     }).getBranchesForUser("u1");
     expect(branches.map((b) => b.id)).toEqual(["r1", "r2"]);
+  });
+
+  it("lists each house once", async () => {
+    const branches = await makeService({
+      ura: ok([
+        { restaurant_id: "r1", restaurants: branchRow("r1", "Moda") },
+        { restaurant_id: "r1", restaurants: branchRow("r1", "Moda") },
+      ]),
+    }).getBranchesForUser("u1");
+    expect(branches.map((b) => b.id)).toEqual(["r1"]);
   });
 });
