@@ -1,3 +1,4 @@
+import { stateBookFrom } from "./item-state";
 import {
   INSIGHT_GENERATOR_VERSION,
   InsightGeneratorService,
@@ -100,8 +101,8 @@ function generatorWith(rowsByTable: Record<string, any[]>) {
       }),
     } as any,
     {
-      listSuppressions: async () => ({
-        keys: new Set<string>(),
+      readState: async () => ({
+        book: stateBookFrom([]),
         readable: true,
         problem: null,
       }),
@@ -162,11 +163,11 @@ describe("the insight cache carries its arithmetic", () => {
       { getClient: () => client, supabase: client } as any,
       { load: async () => ({ dates: new Set(), readable: true, problem: null }) } as any,
       {
-        listSuppressions: async () => ({
-          keys: new Set(),
-          readable: true,
-          problem: null,
-        }),
+        readState: async () => ({
+        book: stateBookFrom([]),
+        readable: true,
+        problem: null,
+      }),
       } as any,
     );
     expect(await svc.getStored("r1")).toEqual([]);
