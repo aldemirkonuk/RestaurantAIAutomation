@@ -17,6 +17,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)
+  const [refused, setRefused] = useState<string | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const shell = useMudavymShell()
 
@@ -44,12 +45,24 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
   const handleSwitch = async (branchId: string) => {
     setIsSwitching(true)
     setOpen(false)
-    await setActiveRestaurantId(branchId)
+    setRefused(null)
+    const ok = await setActiveRestaurantId(branchId)
     setIsSwitching(false)
+    // A refused switch stays in this house and says so (ADR 0164, R6); the
+    // page used to relabel itself anyway.
+    if (!ok) {
+      const name = availableRestaurants.find((b) => b.id === branchId)?.name ?? 'that house'
+      setRefused(`Couldn't open ${name}. You're still in ${activeBranch?.name ?? 'this house'}.`)
+    }
   }
 
   return (
     <div className={className ?? 'relative'}>
+      {refused && (
+        <p role="alert" className="absolute left-0 top-full mt-1 z-50 whitespace-nowrap rounded-lg bg-white px-2 py-1 text-[11px] text-red-700 shadow-sm">
+          {refused}
+        </p>
+      )}
       <button
         type="button"
         ref={triggerRef}

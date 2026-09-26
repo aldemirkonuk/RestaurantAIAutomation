@@ -951,10 +951,22 @@ export function WebSocketProvider({
   unsubscribeRef.current = unsubscribeFromRestaurant
 
   useEffect(() => {
-    if (!resolvedRestaurantId) return
+    if (!resolvedRestaurantId) {
+      // No active house: forget every remembered subscription outright, not
+      // just skip adding a new one. `connect` below resubscribes to whatever
+      // is still in this ref, so leaving an old id in it would let a
+      // reconnect rejoin a house that just ended.
+      subscriptionsRef.current.clear()
+      return
+    }
     subscribeRef.current(resolvedRestaurantId)
     return () => {
       unsubscribeRef.current(resolvedRestaurantId)
+      // Clear the whole set, not only this one id, on every transition away
+      // from the active house (a switch or an end) — ADR 0164's websocket
+      // sibling. A reconnect that lands between this cleanup and the next
+      // subscribe must never find a stale house still waiting to be rejoined.
+      subscriptionsRef.current.clear()
     }
   }, [resolvedRestaurantId])
   
