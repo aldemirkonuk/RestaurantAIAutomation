@@ -63,6 +63,32 @@ describe("ProducerLedgerService.audienceFor", () => {
     expect(audience.ready).toEqual(["user-2"]);
   });
 
+  it("(D5, 2026-09-19) a quiet-hours row for a DIFFERENT restaurant does not defer a member here", async () => {
+    // notification_preferences is per (restaurant_id, user_id) since ADR 0149
+    // row 39. user-1's quiet hours are set at OTHER, and user-1 has no row at
+    // all for TENANT -- readPreferences used to read `.in("user_id", …)` with
+    // no restaurant_id filter, so that foreign row was the only one found and
+    // deferred them here too.
+    const { db, service } = build();
+    db.tables.notification_preferences.push({
+      user_id: "user-1",
+      restaurant_id: OTHER,
+      quiet_hours_enabled: true,
+      quiet_hours_start: "22:00",
+      quiet_hours_end: "08:00",
+    });
+
+    // 03:00 UTC is 23:00 in New York -- inside the OTHER-house window, were
+    // it wrongly applied here.
+    const audience = await service.audienceFor(
+      TENANT,
+      "America/New_York",
+      new Date("2026-09-03T03:00:00Z"),
+    );
+    expect(audience.ready).toEqual(MEMBERS);
+    expect(audience.deferred).toEqual([]);
+  });
+
   it("[REVERT-FAILS] a member with no preferences row is awake, not suppressed", async () => {
     const { service } = build();
     const audience = await service.audienceFor(

@@ -268,6 +268,30 @@ describe("TeamController.broadcast — T4: an opt-out means the same thing on bo
     expect(pushed.sort()).toEqual([MANAGER, RAY, SAM].sort());
   });
 
+  it("(D5, 2026-09-19) an opt-out recorded for a DIFFERENT house does not silence a member here", async () => {
+    // notification_preferences is per (restaurant_id, user_id) since ADR 0149
+    // row 39 -- Ray turned push off at a SECOND house he also belongs to, and
+    // has no row at all for RID. `loadChannelOptOuts` used to read by
+    // user_id alone, so this foreign row still suppressed him here.
+    const db = seed();
+    db.tables.notification_preferences.push({
+      user_id: RAY,
+      restaurant_id: "restaurant-2",
+      email_enabled: true,
+      sms_enabled: true,
+      push_enabled: false,
+    });
+    const { controller, push } = harness(db);
+
+    await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+    } as any);
+
+    const pushed: string[] = push.sendToUsers.mock.calls[0][0];
+    expect(pushed.sort()).toEqual([MANAGER, RAY, SAM].sort());
+  });
+
   it("pushes to nobody when the preference register could not be read", async () => {
     const db = seed({ "notification_preferences:select": { message: "connection reset" } });
     const { controller, push } = harness(db);
