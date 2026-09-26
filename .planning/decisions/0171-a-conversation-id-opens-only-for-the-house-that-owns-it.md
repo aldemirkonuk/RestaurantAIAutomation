@@ -1,6 +1,6 @@
 # 0171 — A conversation id opens only for the house that owns it
 
-- **Status:** Proposed. **Locked in part.** The scope (the six routes named below answer only for the caller's house, a foreign id is a 404 and never a 403) and "plus the role the approval needs" were directed by the founder in the 2026-09-19 fix brief. **Not yet decided by him, and marked as assumptions below:** that edit and reject take the same role as approve, that the by-id read and summarize take no role, and that a session naming no house is a 403.
+- **Status:** Proposed. **Locked in part.** The scope (the six routes named below answer only for the caller's house, a foreign id is a 404 and never a 403) and "plus the role the approval needs" were directed by the founder in the 2026-09-19 fix brief. **Not yet decided by him, and marked as assumptions below:** that edit and reject take the same role as approve, and that the by-id read and summarize take no role. **[CONFIRMED 2026-09-25 by the founder, via `AskUserQuestion` ("Conversations (#472) and providers (#416): a signed-in user with no house calls a list route. The code refuses with 403 (ADR 0171 assumption, never decided by you). Confirm?"), answer "403 refuse (Recommended)": a session naming no house is a 403 — no longer an open assumption, see Decision assumption 3 and the Amendment section below.]**
 - **Date:** 2026-09-19
 - **Decider:** Aldemir (founder) for the scope; the role extension awaits him.
 - **Keywords:** conversations, approve, reject, edit message, summarize, pending/list, tenant scope, cross-tenant, 404 not 403, RolesGuard, manager_approved_message, procurement_conversations, one-tap, ADR 0112 seal, D4
@@ -42,11 +42,14 @@ Any signed-in user of any house who held a conversation id could read, rewrite, 
 3. **`approve`, `edit` and `reject` require owner or manager**, through the existing class-level `RolesGuard`, which reads the role in the token's house (ADR 0162). This is the ADR 0116 rule (only a higher tier may approve) applied to the legacy conversation path.
 4. **`pending/list` takes the house** and filters unconditionally.
 
-**Assumptions I made and the founder has not decided:**
+**Assumptions I made, still not decided by the founder:**
 
 - Edit and reject share approve's gate. Edit is the same power as `modified_message`. Reject stops a manager's queued message, so staff could otherwise kill the approval queue.
 - The by-id read, `pending/list` and `summarize` take **no role**, only the house, so staff keep reading their own house's vendor threads. Summarize spends a model call (ADR 0146); gating it is a separate call.
-- A session that names no house is a **403**, not a 404, because the session is the fault and no id is involved.
+
+**Confirmed, no longer an assumption:**
+
+- A session that names no house is a **403**, not a 404, because the session is the fault and no id is involved. **[CONFIRMED 2026-09-25 by the founder, round 5 (`AskUserQuestion`, "403 refuse (Recommended)"): see the Status line above.]**
 
 ## Named and not decided
 
@@ -61,7 +64,7 @@ Any signed-in user of any house who held a conversation id could read, rewrite, 
 
 **What changed.** On `origin/main` at `e754b3a27`, `GET by-order/:orderId` and `GET by-provider/:providerId` took no `@CurrentUser` and called `listConversations` with no house, and the service filtered the house only `if (options.restaurantId)`, so any signed-in caller who knew an order or vendor id read that house's vendor messages. `GET /`, `GET threads`, `GET thread/:threadId` and `GET stats/overview` passed `user.restaurantId` unchecked, and `getStats` also filtered only `if (restaurantId)`, so a session naming no house listed and counted every house's.
 
-1. **All twelve handlers take the house from `houseOf(user)`.** A session naming no house is a 403 on every route, before any read (this extends Decision 1's assumption, "no-house = 403", to the list routes; ADR 0147 already answers a session naming no house that way on provider intelligence, PR #416).
+1. **All twelve handlers take the house from `houseOf(user)`.** A session naming no house is a 403 on every route, before any read (this extends Decision assumption 3's "no-house = 403" — **confirmed by the founder 2026-09-25, see the Status line** — to the list routes; ADR 0147 already answers a session naming no house that way on provider intelligence, PR #416).
 2. **`listConversations` and `getStats` require the house** (`requireHouse`) and filter on it unconditionally; `ListConversationsOptions.restaurantId` is no longer optional.
 3. **by-order and by-provider check the id first.** `assertOrderInHouse` / `assertProviderInHouse` read the order or vendor by `id` AND `restaurant_id`. A missing, foreign or malformed id answers the same 404, so the answer cannot confirm an id; a failed read is a 500 with a fixed sentence, never an empty list. This is the PR #416 shape for vendors. **A vendor row with no house is a 404** here, as it is on the provider-intelligence routes (founder 2026-09-25: each house owns its vendor rows; houseless rows are left alone and reported). Such a house's messages with that vendor stay reachable through `GET /conversations?providerId=`, which is house-filtered.
 4. **A missing order or vendor id is now a 404 where it was a 200 with an empty list.** No web or mobile screen calls either route (`grep` over `apps/web/src` and `apps/mobile`, 2026-09-25).
@@ -87,3 +90,4 @@ Any signed-in user of any house who held a conversation id could read, rewrite, 
 | 2026-09-19 | Claude | Built it. Spec `conversation-routes-belong-to-the-callers-house.spec.ts`: 23 of 29 tests fail against the unfixed controller and service, and 14 of 14 mutants (each house filter, the zero-row check, each `@Roles`, `RolesGuard`, `houseOf`, the 404 pass-through) are killed. The claim's static verify fails on `origin/main`. |
 | 2026-09-19 | pr-audit-gate (Opus planner, two Sonnet reviewers) | Both reviewers approved d4822c196 and found: raw database text still reaches the client as a 400 on the write routes; `listConversations` and `getStats` fail open for a no-house session; the staff-403 consequence named a component nothing imports; one wrong line cite; and a claim verify that did not pin the zero-row check, `houseOf`, `requireHouse` or the UUID guard. All corrected or named above, and the verify now pins them. |
 | 2026-09-25 | Claude (lane W2-conversations) | Amendment 2026-09-25: the six list routes take the house; by-order and by-provider 404 another house's id. Branch `fix/conversations-house-scope-r2`. |
+| 2026-09-25 | Aldemir (founder), round 5 (`AskUserQuestion`) | Confirmed the no-house-session assumption: "Conversations (#472) and providers (#416): a signed-in user with no house calls a list route. The code refuses with 403 (ADR 0171 assumption, never decided by you). Confirm?" → **"403 refuse (Recommended)"**. No longer marked as an undecided assumption (Status line, Decision assumption 3, Amendment point 1). |
