@@ -1233,9 +1233,14 @@ export class NotificationsService {
    * (ADR 0149 row 39). This no longer also flips `push_enabled` to `false`:
    * that column is a per-HOUSE preference now, and this route (like its
    * `subscribeToPush` sibling) carries no restaurant to scope it to. Turning
-   * push off for a house is `PATCH /notifications/preferences`; this route
-   * is "forget this browser," a device-level act, same as before the
-   * per-house split for everything except the column that split moved.
+   * push off for a house is `PATCH /notifications/preferences`.
+   *
+   * Scope: EVERY device this user registered, not only the browser that
+   * called — `PushUnsubscribeDto` carries no endpoint, so the delete keys on
+   * `user_id` alone. Only the caller's own rows (the controller takes the
+   * user from the verified token). Narrowing it to one device needs the
+   * client to send its endpoint; until then "unsubscribe" signs out every
+   * browser this person has (PR #422 audit, 2026-09-26).
    */
   async unregisterPushSubscription(
     userId: string,

@@ -23,7 +23,9 @@
 -- same commit — a migration cannot repair an ON CONFLICT clause.
 --
 -- This migration's job is the part that IS schema: guarantee the unique key
--- the corrected upsert now targets actually exists, additively and
+-- the corrected `updatePreferences` upsert now targets actually exists (the
+-- corrected `registerPushSubscription` targets the new table in §2 instead,
+-- on `(user_id, endpoint)`), additively and
 -- idempotently, and give the one column that does NOT belong to a house
 -- (a browser's push subscription is a property of a DEVICE, not of a
 -- restaurant) a home that is not inside a row this migration just made
@@ -60,7 +62,7 @@
 -- wraps each migration file in a transaction.
 
 -- ---------------------------------------------------------------------------
--- 1. Guarantee the unique key the corrected upsert targets.
+-- 1. Guarantee the unique key the corrected updatePreferences upsert targets.
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
@@ -83,8 +85,10 @@ COMMENT ON CONSTRAINT notification_preferences_restaurant_id_user_id_key
   ON public.notification_preferences IS
   'Founder answer, ADR 0149 row 39 (2026-09-18): preferences are per person '
   'PER HOUSE. The upsert target for NotificationsService.updatePreferences '
-  'and .registerPushSubscription is (restaurant_id, user_id), taken from the '
-  'verified token, never from the request body.';
+  'is (restaurant_id, user_id), taken from the verified token, never from '
+  'the request body. Push devices are not kept here: '
+  'NotificationsService.registerPushSubscription upserts into '
+  'notification_push_devices on (user_id, endpoint).';
 
 -- ---------------------------------------------------------------------------
 -- 2. A home for a push subscription that is not inside a per-house row.
