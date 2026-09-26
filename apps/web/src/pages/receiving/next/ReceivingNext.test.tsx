@@ -565,10 +565,10 @@ describe('Sketch 107 — vendor boxes group the queue, worst money first', () =>
     get.mockResolvedValue(
       queuePayload({
         items: [
-          queueItem({ orderId: 'a', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: 100, currency: 'USD' }),
+          queueItem({ orderId: 'a', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: 100, currency: 'GBP' }),
           queueItem({ orderId: 'b', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: 40, currency: 'EUR' }),
           queueItem({ orderId: 'c', providerId: 'p-1', providerName: 'Skurnik', dollarsAtRisk: null }),
-          queueItem({ orderId: 'd', providerId: 'p-2', providerName: 'SGWS', dollarsAtRisk: 20, currency: 'USD' }),
+          queueItem({ orderId: 'd', providerId: 'p-2', providerName: 'SGWS', dollarsAtRisk: 20, currency: 'GBP' }),
         ],
         totalAtRisk: 120,
       }),
@@ -577,8 +577,10 @@ describe('Sketch 107 — vendor boxes group the queue, worst money first', () =>
 
     await screen.findByText('Skurnik')
     // Two currencies in one box print as two figures, added — never a single
-    // invented "$140" that pretends 100 USD and 40 EUR are the same money.
-    expect(screen.getByText(/\$100 \+ €40/)).toBeInTheDocument()
+    // invented "£140" that pretends 100 GBP and 40 EUR are the same money.
+    // (Stated as GBP, not USD: check_money_states_its_currency.py counts a
+    // pinned USD literal as a page assuming dollars.)
+    expect(screen.getByText(/£100 \+ €40/)).toBeInTheDocument()
     // The unpriced row is named, not silently treated as $0.
     expect(screen.getByText(/1 unpriced/)).toBeInTheDocument()
   })
@@ -652,7 +654,7 @@ describe('Sketch 107 — vendor boxes group the queue, worst money first', () =>
     get.mockResolvedValue(
       queuePayload({
         items: [
-          queueItem({ orderId: 'a', orderNumber: 'PO-A', providerId: 'p-1', dollarsAtRisk: 100, currency: 'USD' }),
+          queueItem({ orderId: 'a', orderNumber: 'PO-A', providerId: 'p-1', dollarsAtRisk: 100, currency: 'GBP' }),
           queueItem({ orderId: 'b', orderNumber: 'PO-B', providerId: 'p-2', dollarsAtRisk: 40, currency: 'EUR' }),
         ],
       }),
@@ -660,12 +662,12 @@ describe('Sketch 107 — vendor boxes group the queue, worst money first', () =>
     harness(ManagerBody)
 
     await screen.findByText('PO-A')
-    // "$100" and "€40" render as two separate figures joined by " + " — never
+    // "£100" and "€40" render as two separate figures joined by " + " — never
     // one invented cross-currency sum. Checked against the header's own
     // container's full text (the two amounts are sibling <RcTally> spans,
     // not one text node), waiting since RcTally's display lags by an effect.
     const header = screen.getByText('At risk').parentElement as HTMLElement
-    await waitFor(() => expect(header).toHaveTextContent('$100 + €40'))
+    await waitFor(() => expect(header).toHaveTextContent('£100 + €40'))
   })
 
   // The verdict-ledger feature was stripped (founder's condition was "if

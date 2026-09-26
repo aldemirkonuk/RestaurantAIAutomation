@@ -52,7 +52,7 @@ const queueItem = (over: Record<string, unknown> = {}) => ({
   providerId: 'prov-1',
   providerName: 'Wine Warehouse',
   itemName: 'Chablis 2022',
-  currency: 'USD',
+  currency: 'EUR',
   ...over,
 })
 
@@ -60,7 +60,7 @@ const queue = (items: unknown[], over: Record<string, unknown> = {}) => ({
   data: {
     items,
     unverified: [],
-    totalAtRiskByCurrency: [{ currency: 'USD', amount: 40 }],
+    totalAtRiskByCurrency: [{ currency: 'EUR', amount: 40 }],
     providerNamesUnavailable: false,
     itemNamesUnavailable: false,
     ...over,
@@ -74,10 +74,10 @@ const entry = (n: number, over: Partial<LineHistoryEntry> = {}): LineHistoryEntr
   occurredAt: `2026-09-25T10:${String(n).padStart(2, '0')}:00.000Z`,
   outcome: 'accepted',
   refusalReason: null,
-  countedQty: 2,
+  countedQtyInCountedUom: 2,
   countedUom: 'case',
   countedBottles: 24,
-  rejectedQty: 0,
+  rejectedQtyInCountedUom: 0,
   rejectedBottles: 0,
   expectedBottles: null,
   invoiceBottles: null,
@@ -154,10 +154,10 @@ beforeEach(() => {
 describe('entryWords — every entry says one true sentence', () => {
   it('a door count, in the unit counted and the bottles it came to', () => {
     expect(entryWords(entry(1))).toBe('The door counted 2 cases (24 bottles).')
-    expect(entryWords(entry(1, { rejectedQty: 1, rejectedBottles: 12 }))).toBe(
+    expect(entryWords(entry(1, { rejectedQtyInCountedUom: 1, rejectedBottles: 12 }))).toBe(
       'The door counted 2 cases (24 bottles) and refused 1 case (12 bottles).',
     )
-    expect(entryWords(entry(1, { countedQty: 6, countedUom: 'bottle', countedBottles: 6 }))).toBe(
+    expect(entryWords(entry(1, { countedQtyInCountedUom: 6, countedUom: 'bottle', countedBottles: 6 }))).toBe(
       'The door counted 6 bottles.',
     )
   })
@@ -169,7 +169,7 @@ describe('entryWords — every entry says one true sentence', () => {
           kind: 'door_refused',
           outcome: 'refused',
           refusalReason: 'broken_case',
-          rejectedQty: 2,
+          rejectedQtyInCountedUom: 2,
           rejectedBottles: 24,
         }),
       ),
@@ -180,7 +180,7 @@ describe('entryWords — every entry says one true sentence', () => {
     const desk = entry(1, {
       kind: 'desk_verified',
       stage: 'reconciled',
-      countedQty: 58,
+      countedQtyInCountedUom: 58,
       countedUom: 'bottle',
       countedBottles: 58,
       rejectedBottles: 2,

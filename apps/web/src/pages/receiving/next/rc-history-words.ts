@@ -42,11 +42,11 @@ function counted(qty: number | null, uom: string | null, inBottles: number | nul
  * sentence, and an unworded stage is named by its own stage, never hidden.
  */
 export function entryWords(e: LineHistoryEntry): string {
-  const got = counted(e.countedQty, e.countedUom, e.countedBottles);
+  const got = counted(e.countedQtyInCountedUom, e.countedUom, e.countedBottles);
   const refused =
     e.rejectedBottles !== null && e.rejectedBottles > 0
       ? counted(
-          e.rejectedQty !== null && e.rejectedQty > 0 ? e.rejectedQty : null,
+          e.rejectedQtyInCountedUom !== null && e.rejectedQtyInCountedUom > 0 ? e.rejectedQtyInCountedUom : null,
           e.countedUom,
           e.rejectedBottles,
         )

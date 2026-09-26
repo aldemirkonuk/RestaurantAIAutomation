@@ -175,7 +175,7 @@ describe("ReceivingService.lineHistory", () => {
     expect(page.nextBefore).toBe(`${at(4)}|${uuid(4)}`);
     expect(page.entries[0]).toMatchObject({
       kind: "door_count",
-      countedQty: 2,
+      countedQtyInCountedUom: 2,
       countedUom: "case",
       countedBottles: 24,
       recordedBy: "Selin at the door",

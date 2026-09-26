@@ -86,11 +86,11 @@ export interface LineHistoryEntry {
   outcome: string | null;
   refusalReason: string | null;
   /** What the person counted, in the unit they counted in. Never re-multiplied here. */
-  countedQty: number | null;
+  countedQtyInCountedUom: number | null;
   countedUom: string | null;
   /** The same count in bottles, as the door converted it; null when the door could not. */
   countedBottles: number | null;
-  rejectedQty: number | null;
+  rejectedQtyInCountedUom: number | null;
   rejectedBottles: number | null;
   expectedBottles: number | null;
   /** On a desk verification only: what the invoice billed, in bottles. */
@@ -131,10 +131,10 @@ export function toLineHistoryEntry(
     occurredAt: String(row.occurred_at ?? ""),
     outcome: s(row.outcome),
     refusalReason: s(row.refusal_reason),
-    countedQty: n(row.counted_qty),
+    countedQtyInCountedUom: n(row.counted_qty),
     countedUom: s(row.counted_uom),
     countedBottles: n(row.counted_qty_bottles),
-    rejectedQty: n(row.rejected_qty),
+    rejectedQtyInCountedUom: n(row.rejected_qty),
     rejectedBottles: n(row.rejected_qty_bottles),
     expectedBottles: n(row.expected_qty_bottles),
     invoiceBottles: n(row.invoice_qty_bottles),

@@ -144,10 +144,10 @@ export interface LineHistoryEntry {
   outcome: string | null
   refusalReason: string | null
   /** What the person counted, in the unit they counted in. */
-  countedQty: number | null
+  countedQtyInCountedUom: number | null
   countedUom: string | null
   countedBottles: number | null
-  rejectedQty: number | null
+  rejectedQtyInCountedUom: number | null
   rejectedBottles: number | null
   expectedBottles: number | null
   /** A desk verification only: what the invoice billed, in bottles. */
