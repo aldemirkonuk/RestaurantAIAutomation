@@ -18,7 +18,9 @@ Two build items the founder answered on 2026-09-21 (round 6r) had no lane
 ADR 0134 (`feat/motion-rules-locked`, "Round 6 answers", items 2 and 3)
 records what each meant. **Passkey:** WebAuthn; per user (never per house,
 never per device); owner and manager only **[2026-09-26, founder round 6:
-staff may enrol too — ADR 0229 § Round 6]**; a peer path beside the manager
+staff may enrol too — ADR 0229 § Round 6] [2026-09-26, round 7: anyone
+signed in, with or without a house — a passkey is the person's (ADR 0229 §
+Round 7)]**; a peer path beside the manager
 passcode, neither replacing the other; enrolment and revocation on `/profile`;
 audited — who enrolled or revoked which credential and when, and each use at a
 point of action. **Consent panel:** opened from the rebuilt `/settings`; holds
@@ -93,7 +95,7 @@ Research branches (each checked, not assumed):
 | Challenge | Row in `webauthn_challenges`, deleted as it is read (single use), five-minute expiry, bound to the exact origin and RP ID it began on, one per person per kind | The gateway can run as several instances; a signed stateless token could be replayed within its lifetime | In-memory map (breaks across instances); signed JWT challenge (replayable) |
 | Counter | Stored; a counter that goes backwards is refused (the library's check) | Detects a cloned authenticator where counters are used | Ignoring counters |
 | Store | `user_passkeys`, per `public.users.user_id`, public key + counter + transports + device type + backup flag + aaguid + rp id + nickname; revoked rows kept with `revoked_at` | Per user, as ruled; a revoked credential stays on the record and its id can never be re-enrolled | Hard delete (the record would forget it existed) |
-| Who may enrol / check | Owner or manager **in the token's house** (`resolveRestaurantRole`) **[2026-09-26, founder round 6: any role in the token's house — staff too (ADR 0229)]** | As ruled | The token's role snapshot |
+| Who may enrol / check | Owner or manager **in the token's house** (`resolveRestaurantRole`) **[2026-09-26, founder round 6: any role in the token's house — staff too (ADR 0229)] [round 7: no house or role read — anyone signed in (ADR 0229 § Round 7)]** | As ruled | The token's role snapshot |
 | Proof before enrolment | **[2026-09-25, item 29:** a sign-in in the last ten minutes (the token's `auth_time`, ADR 0229), else a six-digit code emailed to the account's own address, checked at `registration/options` before any challenge exists; stale → 403 `STEP_UP_REQUIRED`. Works for a Google-only account.**]** | His rule | The typed password (built first; superseded — it refused Google-only accounts); a per-user "last signed in" column (a stolen token would borrow another device's fresh sign-in) |
 | Who may list / revoke | The person, always | Someone demoted must still see and remove what they enrolled | Gating revoke by role (strands credentials) |
 | Audit | `system_audit_log`: `passkey_enrolled`, `passkey_revoked`, `passkey_checked`, `actor_id` = `public.users.user_id`, `restaurant_id` = the token's house; receipt returned (`audited`, `auditReason`) | As ruled; a failed audit row is visible, never assumed | Throwing on a failed audit (would undo a change the person saw take effect) |
@@ -172,7 +174,9 @@ opt-out — each with its own audited trail.
    usual tripwire when the account itself is taken over; not built.
    **[ANSWERED 2026-09-26, founder, round 6: "every new passkey emails the
    account" — built (ADR 0229 § Round 6, part 2); a reset also retires every
-   passkey (part 1).]**
+   passkey (part 1).] [round 7, same day: part 1 superseded — a reset and a
+   change keep every passkey and mail the account the list (ADR 0229 § Round
+   7).]**
 
 ## Consequences
 
@@ -197,3 +201,4 @@ opt-out — each with its own audited trail.
 | 2026-09-25 | lane W2-profile (agent) | Created, Proposed. Gateway spec 30/30 against a software authenticator (real ES256 signatures, CBOR `none` attestation); five mutations of the service's checks each went red |
 | 2026-09-25 | lane W3-passkeys (agent) | Founder's item 29 recorded; forks 1-4 bracketed answered; the password proof replaced by ADR 0229's ten-minute rule. `passkeys.service.spec.ts` now 28/28 (the two password cases removed; the proof's cases moved to `passkeys.sign-in.spec.ts`). Status stays Proposed: the HOW is still an agent's |
 | 2026-09-26 | lane W4-passkeys (agent) | Round 6 brackets: staff may enrol; fork 5 answered (enrolment mail built). Details and tests in ADR 0229 § Round 6 |
+| 2026-09-26 | lane W5-passkeys (agent) | Round 7 brackets: reset no longer retires passkeys; enrolment is the person's, no house needed. Evidence table and tests in ADR 0229 § Round 7 |

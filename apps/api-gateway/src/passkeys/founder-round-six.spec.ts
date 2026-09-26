@@ -1,14 +1,9 @@
 import "reflect-metadata";
-import { ServiceUnavailableException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import * as bcrypt from "bcrypt";
 import { AuthService } from "../auth/auth.service";
 import { makeStubDb, StubDb } from "../team/testing/supabase-stub";
-import {
-  PASSKEY_AUDIT_ACTIONS,
-  PasskeysService,
-  SIGN_IN_REFUSAL,
-} from "./passkeys.service";
-import { PASSWORD_RESET_REASON, retireEveryPasskey } from "./retire-passkeys";
+import { PASSKEY_AUDIT_ACTIONS, PasskeysService } from "./passkeys.service";
 import { SignInCodesService } from "./sign-in-codes.service";
 import { FakeDb, SoftAuthenticator } from "./testing/passkey-harness";
 
@@ -17,6 +12,15 @@ import { FakeDb, SoftAuthenticator } from "./testing/passkey-harness";
  * (ADR 0229): password reset RETIRES every passkey (kept as revoked, not
  * deleted) + every new passkey emails the account; staff may enrol passkeys
  * too; emailed-code sign-in marks email verified."
+ *
+ * Round 7, item 44, the same day, his words: "do industry mimic both for
+ * password RESET retires every passkey, and password CHANGE while signed in do
+ * same" -- follow industry practice for both. Industry (Google, Apple,
+ * Microsoft, GitHub, Okta; NIST SP 800-63B-4 §4.2 / §4.1.2.1) keeps passkeys
+ * across a password reset AND a change, and notifies the account. So part (1)
+ * below is round 7's: a reset and a change keep every passkey and mail the
+ * account the list of passkeys that still sign it in. "No-house enrolment:
+ * passkey belongs to the person (industry) → allowed" is part (3).
  *
  * Each answer is driven through the real code: the real `AuthService`
  * (`resetPassword`, `issueSessionForVerifiedSignIn`), the real
@@ -31,14 +35,17 @@ const ORIGIN = "https://mudavym.com";
 const TOKEN = "44444444-4444-4444-8444-444444444444";
 const nowSec = () => Math.floor(Date.now() / 1000);
 
-function world(role: string | null = "manager") {
+const OLD_PASSWORD = "the old password";
+const OLD_HASH = bcrypt.hashSync(OLD_PASSWORD, 4);
+
+function world() {
   const db = new FakeDb();
   db.tables.users.push(
     {
       user_id: USER,
       email: "m@example.com",
       name: "Mira",
-      password_hash: "$2b$04$old",
+      password_hash: OLD_HASH,
     },
     {
       user_id: OTHER,
@@ -57,7 +64,6 @@ function world(role: string | null = "manager") {
       used_at: null,
     },
   ];
-  const organizations = { resolveRestaurantRole: jest.fn(async () => role) };
   const codeMail = { sendEmail: jest.fn(async () => ({ success: true })) };
   const enrolMail = {
     sendEmail: jest.fn(
@@ -68,18 +74,24 @@ function world(role: string | null = "manager") {
   const codes = new SignInCodesService({ client: db } as any, codeMail as any);
   const passkeys = new PasskeysService(
     { client: db } as any,
-    organizations as any,
     codes,
     enrolMail as any,
   );
+  // The account mail AuthService sends ("your password was reset/changed").
+  const authMail = {
+    sendEmail: jest.fn(
+      async (_m: { to: string[]; subject: string; html: string }) =>
+        ({ success: true }) as { success: boolean; error?: string },
+    ),
+  };
   const auth = new AuthService(
     new JwtService({}),
     { get: () => undefined } as any,
     { supabase: db, client: db } as any,
     { isBlacklisted: async () => false } as any,
-    { sendEmail: async () => ({ success: true }) } as any,
+    authMail as any,
   );
-  return { db, passkeys, auth, enrolMail };
+  return { db, passkeys, auth, enrolMail, authMail };
 }
 
 async function enrol(
@@ -114,88 +126,124 @@ async function signIn(passkeys: PasskeysService, device: SoftAuthenticator) {
   );
 }
 
-describe("round 6 (1): a password reset retires every passkey", () => {
-  it("keeps every row, marks it revoked by the account now, audits the cause, and none of them signs in again", async () => {
+describe("round 7 (1): a password reset or change keeps every passkey and tells the account", () => {
+  it("a reset keeps every passkey live -- none revoked, all still sign in -- and spends the link", async () => {
     const { db, passkeys, auth } = world();
     const phone = new SoftAuthenticator();
     const laptop = new SoftAuthenticator();
     await enrol(passkeys, phone, USER, "Phone");
     await enrol(passkeys, laptop, USER, "Laptop");
-    // Someone else's passkey is not touched.
-    const theirs = new SoftAuthenticator();
-    await enrol(passkeys, theirs, OTHER, "Theirs");
-    // Before the reset the passkey signs in.
-    await expect(signIn(passkeys, phone)).resolves.toMatchObject({
-      userId: USER,
-    });
 
-    const before = Date.now();
     await auth.resetPassword(TOKEN, "a brand new password");
 
     const mine = db.tables.user_passkeys.filter((r) => r.user_id === USER);
-    expect(mine).toHaveLength(2); // kept, never deleted
+    expect(mine).toHaveLength(2);
     for (const row of mine) {
-      expect(row.revoked_by).toBe(USER);
-      expect(new Date(row.revoked_at).getTime()).toBeGreaterThanOrEqual(
-        before - 1000,
-      );
+      expect(row.revoked_at).toBeNull();
+      expect(row.revoked_by ?? null).toBeNull();
     }
-    const retiredAudit = db.tables.system_audit_log.filter(
-      (r) =>
-        r.action === PASSKEY_AUDIT_ACTIONS.revoked &&
-        r.reason === PASSWORD_RESET_REASON,
-    );
-    expect(retiredAudit.map((r) => r.entity_id).sort()).toEqual(
-      mine.map((r) => r.id).sort(),
-    );
     expect(
-      db.tables.user_passkeys.find((r) => r.user_id === OTHER)?.revoked_at,
-    ).toBeNull();
-
-    // A retired passkey cannot sign in; the other account's still can.
-    await expect(signIn(passkeys, phone)).rejects.toThrow(SIGN_IN_REFUSAL);
-    await expect(signIn(passkeys, laptop)).rejects.toThrow(SIGN_IN_REFUSAL);
-    await expect(signIn(passkeys, theirs)).resolves.toMatchObject({
-      userId: OTHER,
+      db.tables.system_audit_log.filter(
+        (r) => r.action === PASSKEY_AUDIT_ACTIONS.revoked,
+      ),
+    ).toHaveLength(0);
+    await expect(signIn(passkeys, phone)).resolves.toMatchObject({
+      userId: USER,
     });
-    // And the link is spent.
+    await expect(signIn(passkeys, laptop)).resolves.toMatchObject({
+      userId: USER,
+    });
     expect(db.tables.password_resets[0].used_at).not.toBeNull();
   });
 
-  it("a passkey removed earlier on /profile keeps its own time and actor", async () => {
-    const { db, passkeys, auth } = world();
-    const r = await enrol(passkeys, new SoftAuthenticator());
-    await passkeys.revoke(USER, HOUSE, r.passkey.id);
-    const earlier = db.tables.user_passkeys[0].revoked_at;
+  it("a reset mails the account's own address the passkeys that still sign it in, with no secret and no link", async () => {
+    const { db, passkeys, auth, authMail } = world();
+    await enrol(passkeys, new SoftAuthenticator(), USER, "Phone <i>");
+    await enrol(passkeys, new SoftAuthenticator(), USER, "Laptop");
+    const removed = await enrol(
+      passkeys,
+      new SoftAuthenticator(),
+      USER,
+      "Gone",
+    );
+    await passkeys.revoke(USER, HOUSE, removed.passkey.id);
+    // Someone else's passkey is never listed.
+    await enrol(passkeys, new SoftAuthenticator(), OTHER, "Theirs");
+
     await auth.resetPassword(TOKEN, "a brand new password");
-    expect(db.tables.user_passkeys[0].revoked_at).toBe(earlier);
-    expect(
-      db.tables.system_audit_log.filter(
-        (x) => x.reason === PASSWORD_RESET_REASON,
-      ),
-    ).toHaveLength(0);
+
+    expect(authMail.sendEmail).toHaveBeenCalledTimes(1);
+    const mail = authMail.sendEmail.mock.calls[0][0];
+    expect(mail.to).toEqual(["m@example.com"]);
+    expect(mail.subject).toBe("Your Mudavym password was reset");
+    expect(mail.html).toContain("These 2 passkeys still sign you in");
+    expect(mail.html).toContain("Phone &lt;i&gt;"); // escaped, not markup
+    expect(mail.html).toContain("Laptop");
+    expect(mail.html).not.toContain("Gone"); // a removed one is not "still"
+    expect(mail.html).not.toContain("Theirs");
+    for (const row of db.tables.user_passkeys) {
+      expect(mail.html).not.toContain(row.credential_id);
+      expect(mail.html).not.toContain(row.public_key);
+    }
+    expect(mail.html).not.toContain(TOKEN);
+    expect(mail.html).not.toMatch(/href="https?:\/\/[^"]*mudavym/);
   });
 
-  it("if the passkeys cannot be retired, the reset is not reported done and the same link still finishes it", async () => {
-    const { db, passkeys, auth } = world();
+  it("a change while signed in keeps every passkey too, and mails the same review", async () => {
+    const { db, passkeys, auth, authMail } = world();
     const phone = new SoftAuthenticator();
-    await enrol(passkeys, phone);
-    db.failUpdateOn = "user_passkeys";
+    await enrol(passkeys, phone, USER, "Phone");
+
+    await auth.changePassword(USER, OLD_PASSWORD, "a brand new password");
+
+    expect(db.tables.user_passkeys[0].revoked_at).toBeNull();
+    await expect(signIn(passkeys, phone)).resolves.toMatchObject({
+      userId: USER,
+    });
+    expect(authMail.sendEmail).toHaveBeenCalledTimes(1);
+    const mail = authMail.sendEmail.mock.calls[0][0];
+    expect(mail.to).toEqual(["m@example.com"]);
+    expect(mail.subject).toBe("Your Mudavym password was changed");
+    expect(mail.html).toContain("This passkey still signs you in");
+    expect(mail.html).toContain("Phone");
+  });
+
+  it("a wrong current password changes nothing and mails nothing", async () => {
+    const { auth, authMail } = world();
+    await expect(
+      auth.changePassword(USER, "not the password", "a brand new password"),
+    ).rejects.toThrow(/incorrect/);
+    expect(authMail.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("with no passkeys, the mail says there are none", async () => {
+    const { auth, authMail } = world();
+    await auth.resetPassword(TOKEN, "a brand new password");
+    expect(authMail.sendEmail.mock.calls[0][0].html).toContain(
+      "There are no passkeys on your account.",
+    );
+  });
+
+  it("when the passkeys cannot be read, the mail says so instead of claiming there are none, and the reset still finishes", async () => {
+    const { db, passkeys, auth, authMail } = world();
+    await enrol(passkeys, new SoftAuthenticator(), USER, "Phone");
+    db.failReadOn = "user_passkeys";
+    await auth.resetPassword(TOKEN, "a brand new password");
+    const html = authMail.sendEmail.mock.calls[0][0].html;
+    expect(html).not.toContain("There are no passkeys");
+    expect(html).toContain("could not read them just now");
+    expect(db.tables.password_resets[0].used_at).not.toBeNull();
+  });
+
+  it("a notice that cannot be sent never undoes or fails the reset", async () => {
+    const { db, auth, authMail } = world();
+    authMail.sendEmail.mockRejectedValueOnce(new Error("smtp down"));
     await expect(
       auth.resetPassword(TOKEN, "a brand new password"),
-    ).rejects.toBeInstanceOf(ServiceUnavailableException);
-    expect(db.tables.password_resets[0].used_at).toBeNull();
-
-    db.failUpdateOn = null;
-    await auth.resetPassword(TOKEN, "a brand new password");
-    await expect(signIn(passkeys, phone)).rejects.toThrow(SIGN_IN_REFUSAL);
-  });
-
-  it("retires nothing and throws nothing for an account with no passkeys", async () => {
-    const { db } = world();
-    await expect(
-      retireEveryPasskey(db, USER, PASSWORD_RESET_REASON),
-    ).resolves.toEqual({ retired: 0, audited: 0 });
+    ).resolves.toBeUndefined();
+    expect(db.tables.password_resets[0].used_at).not.toBeNull();
+    const user = db.tables.users.find((u) => u.user_id === USER)!;
+    expect(user.password_hash).not.toBe(OLD_HASH);
   });
 });
 
@@ -238,13 +286,28 @@ describe("round 6 (2): every new passkey emails the account", () => {
   });
 });
 
-describe("round 6 (3): staff may enrol passkeys", () => {
-  it("a staff member enrols, is mailed, and then signs in with it", async () => {
-    const { passkeys, enrolMail } = world("staff");
+describe("round 6 (3) + round 7: a passkey is the person's -- staff, and people with no house, enrol", () => {
+  it("a person whose session names no house enrols, is mailed, and then signs in with it", async () => {
+    const { db, passkeys, enrolMail } = world();
     const device = new SoftAuthenticator();
-    const r = await enrol(passkeys, device);
-    expect(r).toMatchObject({ audited: true, mailed: true });
+    const { challengeId, options } = await passkeys.startRegistration(
+      USER,
+      null,
+      ORIGIN,
+      nowSec(),
+      undefined,
+    );
+    const r = await passkeys.finishRegistration(
+      USER,
+      null,
+      ORIGIN,
+      challengeId,
+      device.register(options, ORIGIN),
+      "Phone",
+    );
+    expect(r).toMatchObject({ audited: true, mailed: true, notified: false });
     expect(enrolMail.sendEmail).toHaveBeenCalledTimes(1);
+    expect(db.tables.system_audit_log[0].restaurant_id).toBeNull();
     await expect(signIn(passkeys, device)).resolves.toMatchObject({
       userId: USER,
     });

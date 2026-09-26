@@ -32,7 +32,7 @@ const HOUSE = "33333333-3333-4333-8333-333333333333";
 const ORIGIN = "https://mudavym.com";
 const nowSec = () => Math.floor(Date.now() / 1000);
 
-function setup(role: string | null = "manager") {
+function setup() {
   const db = new FakeDb();
   db.tables.users.push(
     // A Google-only account: no password at all.
@@ -49,18 +49,13 @@ function setup(role: string | null = "manager") {
       password_hash: null,
     },
   );
-  const organizations = { resolveRestaurantRole: jest.fn(async () => role) };
   const mail = {
     sendEmail: jest.fn(async (_m: { subject: string; to: string[] }) => ({
       success: true,
     })),
   };
   const codes = new SignInCodesService({ client: db } as any, mail as any);
-  const service = new PasskeysService(
-    { client: db } as any,
-    organizations as any,
-    codes,
-  );
+  const service = new PasskeysService({ client: db } as any, codes);
   const lastCode = () =>
     mail.sendEmail.mock.calls[
       mail.sendEmail.mock.calls.length - 1
@@ -227,12 +222,13 @@ describe("adding a passkey: fresh sign-in, or an emailed code", () => {
     ).rejects.toThrow(CODE_REFUSAL);
   });
 
-  it("does not mail a code to someone who may not add a passkey here", async () => {
-    const { service, mail } = setup(null);
-    await expect(
-      service.sendStepUpCode(USER, HOUSE, null),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(mail.sendEmail).not.toHaveBeenCalled();
+  // ADR 0229, round 7, item 44: a passkey is the person's, so a session with
+  // no house may ask for the step-up code too -- to the account's own address.
+  it("mails a step-up code to a session with no house, at the account's own address", async () => {
+    const { service, mail } = setup();
+    await service.sendStepUpCode(USER, null, null);
+    expect(mail.sendEmail).toHaveBeenCalledTimes(1);
+    expect(mail.sendEmail.mock.calls[0][0].to).toEqual(["m@example.com"]);
   });
 });
 

@@ -23,7 +23,6 @@ import type {
 import { GmailService } from "../communications/gmail.service";
 import { passkeyAddedEmailTemplate } from "../communications/email-templates/passkey-added.template";
 import { DatabaseService } from "../database/database.service";
-import { OrganizationsService } from "../organizations/organizations.service";
 import { SignInCodesService } from "./sign-in-codes.service";
 import {
   RP_REFUSAL,
@@ -41,14 +40,16 @@ import {
  *   1. **WebAuthn, per user.** One row per credential in `user_passkeys`, keyed
  *      on `public.users.user_id` from the signed token -- never a house, never
  *      a device, never an id from the body.
- *   2. **Anyone in the house** -- owner and manager only as first recorded;
- *      staff too since the founder, 2026-09-26, round 6, item 37 ("staff may
- *      enrol passkeys too"), because a passkey is now a sign-in method, not an
- *      approval. Enrolling and checking resolve the caller's role IN THIS HOUSE
- *      (`OrganizationsService.resolveRestaurantRole`) and refuse only when
- *      there is none (not a member here, or unreadable). Listing and revoking
- *      your own passkeys are not gated: someone who left the house must still
- *      be able to see and remove what they enrolled.
+ *   2. **The person's, not the house's** -- owner and manager only as first
+ *      recorded; staff too since the founder, 2026-09-26, round 6, item 37
+ *      ("staff may enrol passkeys too"); and, since round 7, item 44
+ *      ("passkey belongs to the person (industry) → allowed"), anyone signed
+ *      in, with or without a house. A passkey is a sign-in method for the
+ *      account, as it is at Google, Apple, Microsoft and GitHub, so no house
+ *      role gates enrolling, checking, listing or revoking one. What guards
+ *      enrolment is proof it is you (the ten-minute rule below) and the mail
+ *      to the account. The house, when the session has one, only says where
+ *      the audit row and the in-app notice are filed.
  *   3. **Enrolment and revocation on /profile, audited.** Every enrolment,
  *      revocation and check files a `system_audit_log` row
  *      (`passkey_enrolled` / `passkey_revoked` / `passkey_checked`), and the
@@ -143,7 +144,7 @@ export interface PasskeyReadout {
   readable: boolean;
   reason: string | null;
   passkeys: PasskeyView[];
-  /** Whether this caller may enrol or check one in this house. */
+  /** Whether this caller may enrol or check one (always, since ADR 0229 round 7: a passkey is the person's). */
   eligible: boolean;
   /** Why not, in words. Null exactly when `eligible`. */
   eligibilityReason: string | null;
@@ -225,7 +226,6 @@ export class PasskeysService {
 
   constructor(
     private readonly databaseService: DatabaseService,
-    private readonly organizations: OrganizationsService,
     private readonly codes: SignInCodesService,
     @Optional() private readonly gmail?: GmailService,
   ) {}
@@ -797,35 +797,20 @@ export class PasskeysService {
 
   /* ── the rules ───────────────────────────────────────────────────────── */
 
+  /**
+   * Who may enrol or check a passkey: anyone with a session (the founder,
+   * 2026-09-26, round 7, item 44 -- "passkey belongs to the person
+   * (industry) → allowed"). The session's person is already proven by the
+   * signed token, whose `validateJwtPayload` re-reads the account on every
+   * request; no house and no role in one is needed. Kept as a function, and
+   * `eligible` / `eligibilityReason` kept on the readout, so the /profile
+   * contract does not change shape.
+   */
   private async eligibility(
-    userId: string,
-    restaurantId: string | null,
+    _userId: string,
+    _restaurantId: string | null,
   ): Promise<{ eligible: boolean; eligibilityReason: string | null }> {
-    if (!restaurantId) {
-      return {
-        eligible: false,
-        eligibilityReason:
-          "This session is not attached to a house, so a passkey cannot be added.",
-      };
-    }
-    let role: string | null = null;
-    try {
-      role = await this.organizations.resolveRestaurantRole(
-        userId,
-        restaurantId,
-      );
-    } catch {
-      role = null;
-    }
-    // The founder, 2026-09-26, round 6, item 37: "staff may enrol passkeys
-    // too". Any role in this house is enough; only no role at all refuses.
-    if (typeof role === "string" && role.trim().length > 0)
-      return { eligible: true, eligibilityReason: null };
-    return {
-      eligible: false,
-      eligibilityReason:
-        "Your place in this house could not be read, so a passkey cannot be added right now.",
-    };
+    return { eligible: true, eligibilityReason: null };
   }
 
   private async assertEligible(
@@ -1047,7 +1032,14 @@ export class PasskeysService {
     }
 
     let notified = false;
-    if (notice) {
+    // `notifications.restaurant_id` is NOT NULL (baseline schema), so a
+    // session with no house has nowhere to file an in-app notice. Not tried,
+    // and reported as not notified; an enrolment still mails the account.
+    if (notice && !restaurantId) {
+      this.logger.warn(
+        `${action}: no house on this session, so no in-app notice was filed`,
+      );
+    } else if (notice) {
       try {
         const { error } = await this.db.from("notifications").insert({
           user_id: userId,

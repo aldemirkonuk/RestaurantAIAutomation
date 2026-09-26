@@ -23,8 +23,9 @@ interface PasskeyAddedEmailData {
  *
  * Carries no secret: no credential id, no public key, no code, no link. It
  * names the passkey, the kind, the address and the time, and says what to do
- * if it was not you (reset the password -- a reset retires every passkey --
- * and remove it on the profile).
+ * if it was not you: remove it on the profile, and reset the password. A reset
+ * does NOT remove passkeys (ADR 0229, round 7, item 44 -- industry keeps
+ * them), so removing this one is the step that closes it.
  */
 export function passkeyAddedEmailTemplate(data: PasskeyAddedEmailData): string {
   const firstName = (data.name ?? "").trim().split(" ")[0];
@@ -46,14 +47,14 @@ export function passkeyAddedEmailTemplate(data: PasskeyAddedEmailData): string {
       If this was you, there is nothing to do.
     </p>
     <p style="margin: 0; color: #9ca3af; font-size: 13px; line-height: 1.6; border-top: 1px solid #f3f4f6; padding-top: 20px;">
-      Not you? Reset your password from the sign-in page on mudavym.com — a reset removes every passkey on the account — then check the passkeys on your profile.
+      Not you? Sign in on mudavym.com — with an emailed code if you need one — open your profile and remove this passkey, then reset your password. A new password does not remove passkeys; removing it does.
       <br>— The Mudavym team
     </p>
   `;
 
   return baseTemplate({
     title: "A passkey was added to your account",
-    preheader: `A passkey was added on ${data.origin}. Not you? Reset your password.`,
+    preheader: `A passkey was added on ${data.origin}. Not you? Remove it on your profile.`,
     content,
     showFooter: true,
   });

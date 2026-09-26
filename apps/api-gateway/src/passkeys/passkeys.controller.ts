@@ -40,9 +40,10 @@ import {
  *
  * Every route acts on the signed token's person. None takes a user id in any
  * shape, so there is no way to enrol, list or revoke a passkey for somebody
- * else. The house is the token's and only decides eligibility (any role in
- * this house -- staff too since the founder's 2026-09-26 round-6 answer, ADR
- * 0229) and where the audit row is filed.
+ * else. A passkey is the person's, not the house's (ADR 0229; the founder,
+ * 2026-09-26, round 7, item 44): no house and no role gates any route here.
+ * The token's house, when it has one, only says where the audit row and the
+ * in-app notice are filed.
  *
  * The ceremony's origin is the request's own `Origin` header -- the page the
  * person is on -- and the RP ID follows from it (`relying-party.ts`).
@@ -72,12 +73,12 @@ export class PasskeysController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      "Start adding a passkey -- anyone in the house; a sign-in in the last ten minutes, or an emailed code",
+      "Start adding a passkey -- anyone signed in, with or without a house; a sign-in in the last ten minutes, or an emailed code",
   })
   @ApiResponse({
     status: 403,
     description:
-      "No role in this house; or `code: STEP_UP_REQUIRED` -- the sign-in is older than ten minutes and no emailed code came with the request.",
+      "`code: STEP_UP_REQUIRED` -- the sign-in is older than ten minutes and no emailed code came with the request.",
   })
   async startRegistration(
     @CurrentUser("userId") userId: string,

@@ -29,7 +29,6 @@ const ORIGIN = "https://mudavym.com";
 const FRESH = () => Math.floor(Date.now() / 1000);
 
 async function setup(
-  role: string | null = "manager",
   passwordHash: string | null = "$2b$04$not-read-by-passkeys",
 ) {
   const db = new FakeDb();
@@ -46,7 +45,6 @@ async function setup(
     name: "Onur",
     password_hash: hash,
   });
-  const organizations = { resolveRestaurantRole: jest.fn(async () => role) };
   const mail = { sendEmail: jest.fn(async () => ({ success: true })) };
   const codes = new SignInCodesService({ client: db } as any, mail as any);
   // The "a passkey was added" mail, kept apart from the code mails above.
@@ -58,11 +56,10 @@ async function setup(
   };
   const service = new PasskeysService(
     { client: db } as any,
-    organizations as any,
     codes,
     enrolMail as any,
   );
-  return { db, service, organizations, codes, mail, enrolMail };
+  return { db, service, codes, mail, enrolMail };
 }
 
 async function enrol(
@@ -188,37 +185,56 @@ describe("PasskeysService — enrolment", () => {
     ]);
   });
 
-  // The founder, 2026-09-26, round 6, item 37: "staff may enrol passkeys too".
-  it.each([["staff"], ["admin"]])(
-    "lets a %s in this house enrol (ADR 0229, round 6)",
-    async (role) => {
-      const { service } = await setup(role);
-      await expect(
-        enrol(service, new SoftAuthenticator()),
-      ).resolves.toMatchObject({ audited: true });
-    },
-  );
+  // The founder, 2026-09-26: round 6, item 37 ("staff may enrol passkeys
+  // too") and round 7, item 44 ("passkey belongs to the person (industry) →
+  // allowed"). No house role is read at all: the service no longer has one to
+  // read (OrganizationsService is not injected).
+  it("lets a session with no house enrol, audited with no house and mailed, with no in-app notice (notifications.restaurant_id is NOT NULL)", async () => {
+    const { db, service, enrolMail } = await setup();
+    const auth = new SoftAuthenticator();
+    const { challengeId, options } = await service.startRegistration(
+      USER,
+      null,
+      ORIGIN,
+      FRESH(),
+      undefined,
+    );
+    const receipt = await service.finishRegistration(
+      USER,
+      null,
+      ORIGIN,
+      challengeId,
+      auth.register(options, ORIGIN),
+      "Phone",
+    );
+    expect(receipt).toMatchObject({
+      audited: true,
+      notified: false,
+      mailed: true,
+    });
+    expect(db.tables.user_passkeys).toHaveLength(1);
+    expect(db.tables.system_audit_log[0]).toMatchObject({
+      action: PASSKEY_AUDIT_ACTIONS.enrolled,
+      restaurant_id: null,
+    });
+    expect(db.tables.notifications).toHaveLength(0);
+    expect(enrolMail.sendEmail).toHaveBeenCalledTimes(1);
+  });
 
-  it("refuses someone with no role in this house before anything starts", async () => {
-    const { db, service } = await setup(null);
+  it("a houseless session still needs a recent sign-in or an emailed code", async () => {
+    const { db, service } = await setup();
     await expect(
-      service.startRegistration(USER, HOUSE, ORIGIN, FRESH(), undefined),
+      service.startRegistration(USER, null, ORIGIN, null, undefined),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(db.tables.webauthn_challenges).toHaveLength(0);
   });
 
-  it("lets an owner enrol", async () => {
-    const { service } = await setup("owner");
+  it("lets anyone in a house enrol, with the in-app notice filed in that house", async () => {
+    const { db, service } = await setup();
     await expect(
       enrol(service, new SoftAuthenticator()),
-    ).resolves.toMatchObject({ audited: true });
-  });
-
-  it("refuses a session with no house", async () => {
-    const { service } = await setup();
-    await expect(
-      service.startRegistration(USER, null, ORIGIN, FRESH(), undefined),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).resolves.toMatchObject({ audited: true, notified: true });
+    expect(db.tables.notifications[0].restaurant_id).toBe(HOUSE);
   });
 
   it("refuses a preview origin before anything starts", async () => {
@@ -419,19 +435,11 @@ describe("PasskeysService — list and revoke", () => {
     expect(mine.passkeys).toHaveLength(1);
   });
 
-  it("still lists the passkeys of someone who left the house, and says why they cannot add one", async () => {
-    const { service, organizations } = await setup();
+  it("a session with no house reads its passkeys and may add one (ADR 0229, round 7)", async () => {
+    const { service } = await setup();
     await enrol(service, new SoftAuthenticator());
-    organizations.resolveRestaurantRole.mockResolvedValue(null);
-    const readout = await service.list(USER, HOUSE);
+    const readout = await service.list(USER, null);
     expect(readout.passkeys).toHaveLength(1);
-    expect(readout.eligible).toBe(false);
-    expect(readout.eligibilityReason).toMatch(/could not be read/);
-  });
-
-  it("a staff member is eligible on the readout too", async () => {
-    const { service } = await setup("staff");
-    const readout = await service.list(USER, HOUSE);
     expect(readout.eligible).toBe(true);
     expect(readout.eligibilityReason).toBeNull();
   });
@@ -456,13 +464,12 @@ describe("PasskeysService — list and revoke", () => {
     );
   });
 
-  it("lets someone who left the house remove what they enrolled", async () => {
-    const { service, organizations } = await setup();
+  it("lets someone with no house remove what they enrolled", async () => {
+    const { service } = await setup();
     const { passkey } = await enrol(service, new SoftAuthenticator());
-    organizations.resolveRestaurantRole.mockResolvedValue(null);
-    await expect(
-      service.revoke(USER, HOUSE, passkey.id),
-    ).resolves.toMatchObject({ audited: true });
+    await expect(service.revoke(USER, null, passkey.id)).resolves.toMatchObject(
+      { audited: true, notified: false },
+    );
   });
 
   it("answers another person's passkey exactly like a missing one", async () => {

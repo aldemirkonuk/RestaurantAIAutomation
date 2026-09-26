@@ -60,7 +60,7 @@ drop policy if exists user_passkeys_service_only on public.user_passkeys;
 create policy user_passkeys_service_only on public.user_passkeys
   for all to service_role using (true) with check (true);
 comment on table public.user_passkeys is
-  'ADR 0222 (Proposed) / ADR 0134 §7 (founder 2026-09-21: "Passkey + paste (Recommended)"): WebAuthn passkeys, one row per credential, per user. Enrolled and revoked on /profile by anyone in the house (staff too: ADR 0229, founder 2026-09-26 round 6); every enrolment and revocation files a system_audit_log row (passkey_enrolled / passkey_revoked). A revoked row is kept with revoked_at set; a password reset revokes every live row (revoked_by = the account, audit reason password_reset).';
+  'ADR 0222 (Proposed) / ADR 0134 §7 (founder 2026-09-21: "Passkey + paste (Recommended)"): WebAuthn passkeys, one row per credential, per user. Enrolled and revoked on /profile by the person, with or without a house (a passkey is the person''s: ADR 0229, founder 2026-09-26 rounds 6 and 7); every enrolment and revocation files a system_audit_log row (passkey_enrolled / passkey_revoked). A revoked row is kept with revoked_at set. A password reset or change keeps every passkey and mails the account the list (ADR 0229 round 7, industry practice).';
 
 -- 2. Ceremonies in flight -----------------------------------------------------
 create table if not exists public.webauthn_challenges (

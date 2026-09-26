@@ -14,9 +14,9 @@ import { DatabaseService } from "../database/database.service";
 import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GmailService } from "../communications/gmail.service";
 import {
-  PASSWORD_RESET_REASON,
-  retireEveryPasskey,
-} from "../passkeys/retire-passkeys";
+  passwordChangedEmailTemplate,
+  type PasskeyStillLive,
+} from "../communications/email-templates/password-changed.template";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import axios from "axios";
@@ -2411,6 +2411,11 @@ export class AuthService {
       this.logger.error(`changePassword failed: ${updateErr.message}`);
       throw new BadRequestException("Failed to update password");
     }
+
+    // ADR 0229 (founder 2026-09-26, round 7, item 44): a change keeps every
+    // passkey, as a reset does, and tells the account which ones still sign
+    // it in. Never throws: the password is already changed.
+    await this.mailPasswordChangedNotice(userId, "change");
   }
 
   /** Minimum seconds between password-reset requests for the same email. */
@@ -2559,28 +2564,6 @@ export class AuthService {
       throw new BadRequestException("Failed to update password");
     }
 
-    // ADR 0229 (the founder, 2026-09-26, round 6, item 37): a reset retires
-    // every passkey of the account -- kept as revoked, never deleted. Before
-    // the link is consumed: if the passkeys cannot be retired, the reset is
-    // not reported as done and the same link still works to finish it.
-    try {
-      const { retired } = await retireEveryPasskey(
-        this.databaseService.supabase,
-        reset.user_id,
-        PASSWORD_RESET_REASON,
-      );
-      if (retired > 0) {
-        this.logger.log(
-          `resetPassword retired ${retired} passkey(s) of ${reset.user_id}`,
-        );
-      }
-    } catch (err) {
-      this.logger.error(`resetPassword: ${(err as Error).message}`);
-      throw new ServiceUnavailableException(
-        "Your new password is saved, but your passkeys could not be removed. Open the same reset link again to finish.",
-      );
-    }
-
     const usedAt = new Date().toISOString();
 
     // Consume this token and any other still-pending reset for the same user
@@ -2592,6 +2575,14 @@ export class AuthService {
       .eq("user_id", reset.user_id)
       .is("used_at", null);
 
+    // ADR 0229 (founder 2026-09-26, round 7, item 44, superseding item 37's
+    // "reset RETIRES every passkey"): a reset keeps every passkey -- what
+    // Google, Apple, Microsoft, GitHub and Okta do -- and the account is told,
+    // with the passkeys that still sign it in listed for review (NIST SP
+    // 800-63B-4 §4.2: an account-recovery event always notifies). Never
+    // throws: the password is already reset and the link already spent.
+    await this.mailPasswordChangedNotice(reset.user_id, "reset");
+
     // Deliberately does not revoke existing sessions. changePassword() above —
     // the existing, in-app password-change path — does not do this either, and
     // TokenBlacklistService can only blacklist a token it is handed; nothing in
@@ -2600,6 +2591,88 @@ export class AuthService {
     // reset should force other devices out, that is a follow-up against
     // TokenBlacklistService, applied consistently to changePassword too — not
     // a one-off here.
+  }
+
+  /**
+   * "Your password was reset / changed", to the account's own address (read
+   * from `users`, never from the request), listing every passkey that still
+   * signs the account in (ADR 0229, round 7, item 44). Industry keeps passkeys
+   * across a password reset and a change and notifies instead; this mail is
+   * the "review your passkeys" prompt, and it reaches the mailbox -- the one
+   * channel an intruder inside a session does not control.
+   *
+   * Returns whether the mail was handed to the mail service. Never throws: the
+   * password write already happened, and a failed notice must not turn a
+   * finished reset into a reported failure. A failure is logged; when the
+   * passkeys cannot be read the mail says so rather than claiming there are
+   * none (absence is not reported as "no passkeys").
+   */
+  async mailPasswordChangedNotice(
+    userId: string,
+    how: "reset" | "change",
+  ): Promise<boolean> {
+    try {
+      const { data: person, error } = await this.databaseService.supabase
+        .from("users")
+        .select("email, name")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const to = typeof person?.email === "string" ? person.email.trim() : "";
+      if (error || !to) {
+        this.logger.error(
+          `password ${how} for ${userId}: the notice was not sent, the address could not be read -- ${error?.message ?? "no address"}`,
+        );
+        return false;
+      }
+
+      let passkeys: PasskeyStillLive[] | null = null;
+      const { data: rows, error: pkErr } = await this.databaseService.supabase
+        .from("user_passkeys")
+        .select("nickname, device_type, created_at")
+        .eq("user_id", userId)
+        .is("revoked_at", null)
+        .order("created_at", { ascending: true });
+      if (pkErr) {
+        this.logger.error(
+          `password ${how} for ${userId}: the passkeys could not be read for the notice -- ${pkErr.message}`,
+        );
+      } else {
+        passkeys = ((rows as Array<Record<string, unknown>> | null) ?? []).map(
+          (r) => ({
+            nickname: typeof r.nickname === "string" ? r.nickname : null,
+            deviceType:
+              r.device_type === "multiDevice" ? "multiDevice" : "singleDevice",
+            createdAt: String(r.created_at ?? ""),
+          }),
+        );
+      }
+
+      const result = await this.gmailService.sendEmail({
+        to: [to],
+        subject:
+          how === "reset"
+            ? "Your Mudavym password was reset"
+            : "Your Mudavym password was changed",
+        html: passwordChangedEmailTemplate({
+          name: typeof person?.name === "string" ? person.name : null,
+          how,
+          at: new Date().toISOString(),
+          passkeys,
+        }),
+      });
+      if (!result?.success) {
+        this.logger.warn(
+          `password ${how} for ${userId}: the notice was not delivered -- ${result?.error}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (e) {
+      this.logger.error(
+        `password ${how} for ${userId}: the notice threw -- ${(e as Error).message}`,
+      );
+      return false;
+    }
   }
 
   /**

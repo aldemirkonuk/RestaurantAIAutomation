@@ -168,7 +168,7 @@ export function PasskeyRows() {
 
   // Why "Add a passkey" is disabled, in words. Null exactly when it is not.
   const addReason = !readout.eligible
-    ? (readout.eligibilityReason ?? 'A passkey cannot be added in this house right now.')
+    ? (readout.eligibilityReason ?? 'A passkey cannot be added right now.')
     : !supported
       ? 'This browser cannot make a passkey. Open Mudavym in a current Safari, Chrome, Edge or Firefox.'
       : null;
