@@ -104,6 +104,9 @@ export const MUDAVYM_PAGES = [
   // [2026-09-25: superseded — now in LIVE_PAGES, live for every house in
   // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
+  // ADR 0160 §112 (/vendor-prices). Flag-gated, OFF by default, NOT in
+  // LIVE_PAGES — the founder flips it per house (column: 20260926170000).
+  'vendor_prices',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];

@@ -113,6 +113,36 @@ export interface OwnPaperSightingInput {
    */
   currency: string | null | undefined;
   notes?: string | null;
+  /**
+   * ADR 0160 §112 fork 6(a): the paper and the message this price was read
+   * from. Optional, and NEVER a refusal when absent — fork 6(b)'s order link
+   * (`source_ref`) still traces every own-paper row to its order, and a
+   * missing paper is a gap the row states (`raw.provenance.sentence`), not a
+   * reason to drop a verified price from the register.
+   */
+  provenance?: OwnPaperProvenance | null;
+}
+
+/**
+ * Where an own-paper price was read from, as the writer found it (fork 6(a)).
+ *
+ * Every id here was read house-scoped by the caller
+ * (`procurement.service.ts` `receiptPaperFor` / `dealMessageFor`), and the
+ * database refuses any other house's document or message on its own
+ * (`20260927130000_a_price_names_its_paper_and_its_messenger.sql`'s composite
+ * keys) — so this module never has to trust them for the boundary.
+ */
+export interface OwnPaperProvenance {
+  documentId?: string | null;
+  documentLineId?: string | null;
+  conversationMessageId?: string | null;
+  /**
+   * The sentence that says what was found and what was not — "the invoice
+   * linked to this order, line 3" or "two invoices are linked to this order,
+   * so none is named". Carried onto `raw.provenance.sentence` so a row with no
+   * paper says WHY rather than reading like a row nobody looked for.
+   */
+  sentence?: string | null;
 }
 
 export interface OwnPaperSightingRow {
@@ -134,6 +164,24 @@ export interface OwnPaperSightingRow {
   normalization_note: string;
   content_hash: string;
   is_outlier: boolean;
+  /**
+   * A sentence a person can read, mirroring the manual writer's own words
+   * (`vendor-comparison.service.ts`'s `outlierReason`) — never left null when
+   * the caller supplied a `priorCount`. Before this field existed, an
+   * own-paper row was judged (`is_outlier` was a real true/false) but said
+   * nothing about it, so the register read "No judge has looked at this
+   * row" for a row that HAD been looked at. Its own review finding — not
+   * ADR 0160 §112 fork 6(a), whose `document_id` + line-reference provenance
+   * is the three `document_id` / `document_line_id` /
+   * `conversation_message_id` fields below (built 2026-09-25).
+   */
+  outlier_reason: string | null;
+  outlier_basis: "write_time" | null;
+  outlier_judged_at: string | null;
+  /** ADR 0160 §112 fork 6(a) — see `OwnPaperProvenance`. */
+  document_id: string | null;
+  document_line_id: string | null;
+  conversation_message_id: string | null;
   raw: Record<string, unknown>;
 }
 
@@ -195,10 +243,24 @@ function positiveInt(v: unknown): number | null {
  * `isOutlier` is passed in rather than computed here because it is a property
  * of the GROUP, which only the caller can read. The caller obtains it from
  * `isOutlierAgainstPriors` with the register rows it has just fetched.
+ *
+ * `priorCount` is the same rows' length, so this can say WHY — "judged clean
+ * against N priors" or "not judged: only N, below the floor" — the way
+ * `vendor-comparison.service.ts`'s manual writer already does. A caller that
+ * omits it gets `outlier_reason: null` (this file's own field goes unwritten,
+ * not a guessed sentence) rather than a claim this function cannot back up —
+ * and the caller MUST omit it when its register read failed, never pass 0.
+ * A row with no `masterWineId` is never judged: there is no group, so any
+ * `priorCount` is ignored and the row is stored unflagged with no reason.
+ *
+ * The sentence names the population the caller really reads: this house's
+ * rows plus the public register's, every source type. It does NOT copy the
+ * manual writer's "same comparison class" — that writer filters by class and
+ * `priorSightingUnitPrices` does not.
  */
 export function decideOwnPaperSighting(
   input: OwnPaperSightingInput,
-  opts: { isOutlier?: boolean } = {},
+  opts: { isOutlier?: boolean; priorCount?: number } = {},
 ): OwnPaperSightingDecision {
   const where = `${input.source} on order ${input.orderId ?? "(no id)"}`;
 
@@ -374,6 +436,40 @@ export function decideOwnPaperSighting(
     )
     .digest("hex");
 
+  // The sentence, not just the boolean. `isOutlierAgainstPriors` (the
+  // caller's own judge) returns `false` BOTH when a row is judged clean AND
+  // when there were too few priors to judge at all — `opts.isOutlier` alone
+  // cannot tell those apart, which is exactly how a judged-clean own-paper
+  // row and a never-judged one both used to read "No judge has looked at
+  // this row" on the register (review finding). `priorCount` recovers the
+  // distinction the same way the manual writer already draws it.
+  //
+  // No product identity means no group: there is nothing this row could be
+  // compared with, so nothing was counted and no count may be stated. A
+  // `priorCount` for an unidentified row is ignored, whatever the caller
+  // passes — otherwise the register would store "Not judged: only 0 earlier
+  // sighting(s) of this product" beside a sheet that says the product is
+  // "Unidentified" (PR #473 audit at 81f7a6abf, PR #482 audit at cd2dc58f6).
+  const priorCount = input.masterWineId ? opts.priorCount : undefined;
+  const judged =
+    priorCount !== undefined && priorCount + 1 >= MIN_OUTLIER_SAMPLE;
+  const outlierReason =
+    priorCount === undefined
+      ? null
+      : !judged
+        ? `Not judged: only ${priorCount} earlier sighting(s) of this product exist on this house's register and the public one (every source type counted), below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
+        : opts.isOutlier
+          ? `Flagged at write time against ${priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted): it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
+          : `Judged clean at write time against ${priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted).`;
+  const judgedAt = priorCount === undefined ? null : new Date().toISOString();
+
+  // Fork 6(a). Deliberately NOT part of `contentHash` above: the hash answers
+  // "is this the same evidence about the price", and finding the paper a
+  // second time does not make a re-verification at the same numbers new
+  // evidence. A line without its document is dropped rather than written —
+  // a line reference means nothing without the paper it is a line of.
+  const prov = provenanceIds(input.provenance);
+
   return {
     write: true,
     sourceRef,
@@ -397,11 +493,28 @@ export function decideOwnPaperSighting(
       normalized_unit_price: normalized,
       normalization_note: note,
       content_hash: contentHash,
-      is_outlier: opts.isOutlier === true,
+      // An unidentified row has no group to sit outside of.
+      is_outlier: input.masterWineId ? opts.isOutlier === true : false,
+      outlier_reason: outlierReason,
+      outlier_basis: priorCount === undefined ? null : "write_time",
+      outlier_judged_at: judgedAt,
+      document_id: prov.documentId,
+      document_line_id: prov.documentLineId,
+      conversation_message_id: prov.conversationMessageId,
       raw: {
         origin: "own_paper",
         priceHistorySource: input.source,
         orderId,
+        // The ids are copied here as well as into their columns: the columns
+        // are cleared when the paper or the message is deleted (ON DELETE SET
+        // NULL), and this copy is what lets the register say "the paper was
+        // deleted" rather than read as a row that never had one.
+        provenance: {
+          documentId: prov.documentId,
+          documentLineId: prov.documentLineId,
+          conversationMessageId: prov.conversationMessageId,
+          sentence: prov.sentence,
+        },
         // The document's own unit word, kept verbatim beside the pack size it
         // resolved to, so a person auditing the row can see what the paper
         // said rather than only what the platform made of it.
@@ -410,4 +523,163 @@ export function decideOwnPaperSighting(
       },
     },
   };
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function uuidOrNull(v: unknown): string | null {
+  return typeof v === "string" && UUID_RE.test(v.trim()) ? v.trim() : null;
+}
+
+/**
+ * The ids a sighting row may carry, cleaned. Exported for tests.
+ *
+ * A malformed id becomes null (the database would refuse the whole insert on
+ * a non-uuid, and a verified receipt must not lose its price over a
+ * provenance typo), and a line without its document is dropped with the
+ * sentence saying so.
+ */
+export function provenanceIds(p: OwnPaperProvenance | null | undefined): {
+  documentId: string | null;
+  documentLineId: string | null;
+  conversationMessageId: string | null;
+  sentence: string | null;
+} {
+  const documentId = uuidOrNull(p?.documentId);
+  const lineRaw = uuidOrNull(p?.documentLineId);
+  const documentLineId = documentId ? lineRaw : null;
+  const conversationMessageId = uuidOrNull(p?.conversationMessageId);
+  let sentence = typeof p?.sentence === "string" && p.sentence.trim() ? p.sentence.trim() : null;
+  if (lineRaw && !documentId) {
+    sentence = [
+      sentence,
+      "A line reference was found without its document, so it is not recorded: a line means nothing without the paper it is a line of.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  return { documentId, documentLineId, conversationMessageId, sentence };
+}
+
+/** One `procurement_documents` row as `receiptPaperFor` reads it. */
+export interface PaperCandidate {
+  id: string;
+  doc_type: string | null;
+  doc_number: string | null;
+  status: string | null;
+}
+
+/** One `procurement_document_lines` row as `receiptPaperFor` reads it. */
+export interface PaperLineCandidate {
+  id: string;
+  document_id: string;
+  line_no: number | null;
+  order_line_id: string | null;
+}
+
+/**
+ * Which paper a VERIFIED RECEIPT's price was read from — fork 6(a)'s first
+ * writer change (sketch 112 README: "receipt verification ... carries only
+ * `raw.orderId`").
+ *
+ * The rule, and why it refuses rather than guesses:
+ *   * the documents are the ones LINKED to this order
+ *     (`procurement_document_links`), filtered to invoices — a packing slip
+ *     states no price, and a credit memo is not what was charged;
+ *   * a rejected or superseded invoice is not the paper a price was verified
+ *     against, so it is left out;
+ *   * exactly one invoice names the paper. Two or more is an ambiguity the
+ *     writer does not settle by picking one: the row is written with no
+ *     document and a sentence saying how many there were;
+ *   * the line is the invoice line the line matcher paired with this order's
+ *     line (`procurement_document_lines.order_line_id`, the only place a
+ *     pairing means anything — `20260901200000_receiving_preserves_the_pair
+ *     .sql`). Exactly one such line names it; none or several leaves the
+ *     paper named without a line, and says which.
+ *
+ * Pure, so every branch is tested without a database.
+ */
+export function pickReceiptPaper(args: {
+  orderId: string;
+  orderLineId: string | null;
+  documents: readonly PaperCandidate[];
+  lines: readonly PaperLineCandidate[];
+}): OwnPaperProvenance {
+  const invoices = args.documents.filter(
+    (d) =>
+      d.doc_type === "invoice" &&
+      d.status !== "rejected" &&
+      d.status !== "superseded",
+  );
+  if (invoices.length === 0) {
+    return {
+      documentId: null,
+      documentLineId: null,
+      sentence:
+        args.documents.length === 0
+          ? `No document is attached to order ${args.orderId}, so this price names its order but no paper.`
+          : `The ${args.documents.length} document(s) attached to order ${args.orderId} include no live invoice, so this price names its order but no paper.`,
+    };
+  }
+  if (invoices.length > 1) {
+    return {
+      documentId: null,
+      documentLineId: null,
+      sentence: `${invoices.length} invoices are attached to order ${args.orderId}; the price is not tied to one of them rather than to a guess.`,
+    };
+  }
+  const invoice = invoices[0];
+  const label = invoice.doc_number ? `invoice ${invoice.doc_number}` : "the invoice";
+  if (!args.orderLineId) {
+    return {
+      documentId: invoice.id,
+      documentLineId: null,
+      sentence: `Read from ${label} attached to this order. The order has no line row, so no invoice line is named.`,
+    };
+  }
+  const matched = args.lines.filter(
+    (l) => l.document_id === invoice.id && l.order_line_id === args.orderLineId,
+  );
+  if (matched.length === 1) {
+    const n = matched[0].line_no;
+    return {
+      documentId: invoice.id,
+      documentLineId: matched[0].id,
+      sentence: `Read from ${label}${n != null ? `, line ${n}` : ""}, the line paired with this order's line.`,
+    };
+  }
+  return {
+    documentId: invoice.id,
+    documentLineId: null,
+    sentence:
+      matched.length === 0
+        ? `Read from ${label}; no line on it has been paired with this order's line yet, so no line is named.`
+        : `Read from ${label}; ${matched.length} of its lines are paired with this order's line, so none is named rather than one picked.`,
+  };
+}
+
+/** One inbound `procurement_conversations` row, as the deal readers see it. */
+export interface DealMessageCandidate {
+  id: string;
+  conversation_context?: Record<string, any> | null;
+}
+
+/**
+ * The vendor reply a confirmed deal was read out of — fork 6(a)'s second
+ * writer change. It is the newest inbound message that carries a
+ * `deal_proposal` not yet resolved: the SAME rule `resolveLatestDealProposal`
+ * uses to mark it resolved, so the message the price names is the message the
+ * manager confirmed. Rows must arrive newest first.
+ */
+export function pickDealMessage(
+  rows: readonly DealMessageCandidate[],
+): DealMessageCandidate | null {
+  return (
+    rows.find(
+      (r) =>
+        r.conversation_context?.deal_proposal &&
+        !r.conversation_context?.deal_resolved_at,
+    ) ?? null
+  );
 }

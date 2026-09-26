@@ -104,6 +104,23 @@ export class ManualObservationDto {
   sourceUrl?: string;
 
   /**
+   * The currency this price was quoted in. Optional here only for the
+   * pre-existing caller that has never sent one (`VendorPriceCompare.tsx`,
+   * the legacy page — its behaviour must not change): omitting it keeps the
+   * long-standing USD default. The Mudavym register (`/vendor-prices`) is a
+   * NEW caller and its own client refuses to submit without one chosen — see
+   * `vp-format.ts` — so "required, no default" is enforced there, not by
+   * loosening what an existing integration already relies on. When present
+   * it is checked against the real ISO 4217 list
+   * (`common/iso-4217.ts#isIso4217`), not just "three capital letters" —
+   * `common/iso-4217.ts`'s header names the fault a bare regex has.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  currency?: string;
+
+  /**
    * When the price was quoted, if not now. A rep's message from three weeks
    * ago is weaker evidence than one from this morning and the recency
    * weighting can only know that if the caller says so.
@@ -116,4 +133,31 @@ export class ManualObservationDto {
   @IsString()
   @MaxLength(1000)
   note?: string;
+
+  /**
+   * ADR 0160 §112 fork 6(a) — the attach-a-paper step: the
+   * `procurement_documents` row the person attached (uploaded through
+   * `POST /procurement/documents`, which returns its id). Checked against the
+   * caller's house before anything is written
+   * (`vendor-comparison.service.ts` `assertProvenanceIsThisHouses`), and the
+   * database refuses another house's document on its own.
+   */
+  @IsOptional()
+  @IsUUID()
+  documentId?: string;
+
+  /** The line on `documentId` this price is. Refused without `documentId`. */
+  @IsOptional()
+  @IsUUID()
+  documentLineId?: string;
+
+  /** The house's message (`procurement_conversations` row) this price came from. */
+  @IsOptional()
+  @IsUUID()
+  conversationMessageId?: string;
+
+  /** The vendor contact (`provider_contacts`) who gave this price. */
+  @IsOptional()
+  @IsUUID()
+  contactId?: string;
 }

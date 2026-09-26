@@ -18,12 +18,17 @@ import { ProcurementService } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
+import { Logger } from "@nestjs/common";
 import {
   decideOwnPaperSighting,
   isOutlierAgainstPriors,
   MIN_OUTLIER_SAMPLE,
+  pickDealMessage,
+  pickReceiptPaper,
+  provenanceIds,
 } from "./own-paper-sighting";
 import { priceBelowAverage } from "../vendor-intel/price-below-average";
+import * as ownPaperSighting from "./own-paper-sighting";
 
 type Row = Record<string, any>;
 
@@ -36,6 +41,8 @@ const WINE = "55555555-5555-4555-8555-555555555555";
 interface Calls {
   sightingInserts: Row[];
   priceHistoryInserts: Row[];
+  /** Every settled read, with the equality filters it carried. */
+  reads: Array<{ table: string; filters: Record<string, any> }>;
 }
 
 function makeDb(opts: {
@@ -45,8 +52,20 @@ function makeDb(opts: {
   bottleSizeMl?: number | null;
   /** Rows already on the register for this wine. */
   existingSightings?: Row[];
+  /** Fork 6(a): the order's document links, documents and invoice lines. */
+  docLinks?: Row[];
+  documents?: Row[];
+  docLines?: Row[];
+  /** A read error for one of the paper tables, by table name. */
+  failTable?: string;
+  /** Inbound `procurement_conversations` rows, newest first. */
+  dealRows?: Row[];
+  /** The outlier population read fails (supabase resolves with an error). */
+  priorReadFails?: boolean;
+  /** `restaurant_inventory.master_wine_id` for the shelf slot; default WINE. */
+  inventoryMasterWineId?: string | null;
 }) {
-  const calls: Calls = { sightingInserts: [], priceHistoryInserts: [] };
+  const calls: Calls = { sightingInserts: [], priceHistoryInserts: [], reads: [] };
   const existing = opts.existingSightings ?? [];
 
   const supabase: any = {
@@ -56,6 +75,22 @@ function makeDb(opts: {
       const filters: Record<string, any> = {};
 
       const settle = (shape: "one" | "many"): Row => {
+        if (op === "select") calls.reads.push({ table, filters: { ...filters } });
+        if (opts.failTable === table && op === "select")
+          return { data: null, error: { message: `${table} unreachable` } };
+        if (table === "procurement_document_links")
+          return { data: opts.docLinks ?? [], error: null };
+        if (table === "procurement_documents")
+          return { data: opts.documents ?? [], error: null };
+        if (table === "procurement_document_lines")
+          return { data: opts.docLines ?? [], error: null };
+        // Only the deal readers select `conversation_context`; the
+        // "newer reply still analysing" gate selects `id` and must see none.
+        if (table === "procurement_conversations" && op === "select")
+          return {
+            data: selectedColumns.includes("conversation_context") ? (opts.dealRows ?? []) : [],
+            error: null,
+          };
         if (table === "procurement_orders") {
           if (op === "update") return { data: opts.orderRow ?? {}, error: null };
           return { data: opts.orderRow ?? null, error: null };
@@ -68,7 +103,8 @@ function makeDb(opts: {
             return { data: { id: filters.id }, error: null };
           return {
             data: {
-              master_wine_id: WINE,
+              master_wine_id:
+                "inventoryMasterWineId" in opts ? opts.inventoryMasterWineId : WINE,
               bottle_size_ml:
                 "bottleSizeMl" in opts ? opts.bottleSizeMl : 750,
               wine_name: "Barolo Riserva",
@@ -90,6 +126,11 @@ function makeDb(opts: {
             return { data: hit ? { id: "existing" } : null, error: null };
           }
           // The outlier population read.
+          if (opts.priorReadFails)
+            return {
+              data: null,
+              error: { message: "canceling statement due to statement timeout" },
+            };
           return {
             data: existing.filter((r) => r.master_wine_id === WINE),
             error: null,
@@ -220,6 +261,17 @@ describe("own paper reaches vendor_price_observations", () => {
     expect(row.currency).toBe("TRY");
     expect(typeof row.content_hash).toBe("string");
     expect(row.is_outlier).toBe(false);
+    // Review finding — its own fix, not ADR 0160 §112 fork 6(a): the
+    // own-paper writer judged (is_outlier was a real false, not an absence)
+    // but used to write no `outlier_reason`, so the register read "No judge
+    // has looked at this row" for a row that HAD been looked at. Zero prior
+    // sightings exist here, so the honest reason is "not judged", not
+    // "clean".
+    expect(row.outlier_reason).toMatch(
+      /^Not judged: only 0 earlier sighting\(s\) of this product exist on this house's register and the public one \(every source type counted\), below the floor of 5/,
+    );
+    expect(row.outlier_basis).toBe("write_time");
+    expect(typeof row.outlier_judged_at).toBe("string");
     // observed_at is the verification's own moment, and effective_date agrees.
     expect(row.observed_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(row.effective_date).toBe(row.observed_at.slice(0, 10));
@@ -383,6 +435,12 @@ describe("own paper reaches vendor_price_observations", () => {
 
     expect(calls.sightingInserts).toHaveLength(1);
     expect(calls.sightingInserts[0].is_outlier).toBe(true);
+    // The reason names the count and the test, the same words the manual
+    // writer already uses (`vendor-comparison.service.ts`) — a struck row is
+    // never a bare boolean on this register.
+    expect(calls.sightingInserts[0].outlier_reason).toMatch(
+      /^Flagged at write time against 5 earlier sighting\(s\) of this product on this house's register and the public one \(every source type counted\)/,
+    );
   });
 
   it("does not flag an ordinary price against the same history", async () => {
@@ -406,6 +464,100 @@ describe("own paper reaches vendor_price_observations", () => {
     });
 
     expect(calls.sightingInserts[0].is_outlier).toBe(false);
+    // Before this fix this row's `outlier_reason` was null, indistinguishable
+    // from a row nobody had judged at all — the exact defect this test now
+    // guards (its own review finding, not ADR 0160 §112 fork 6(a)).
+    expect(calls.sightingInserts[0].outlier_reason).toMatch(
+      /^Judged clean at write time against 5 earlier sighting\(s\) of this product on this house's register and the public one \(every source type counted\)\.$/,
+    );
+  });
+
+  // PR #473 audit (2026-09-26): a failed outlier-population read used to come
+  // back as `[]`, which this PR turned into a stored "Not judged: only 0
+  // sighting(s)" with `outlier_basis = 'write_time'` — a failed read written
+  // down as an empty register. The seeded five rows make the lie visible: had
+  // the read worked there WERE five.
+  it("a register it could not read writes no flag and NO reason, never 'only 0'", async () => {
+    const seeded = [18, 18.5, 19, 18.2, 18.8].map((p, i) => ({
+      master_wine_id: WINE,
+      raw_price: p,
+      source_type: "invoice",
+      observed_at: `2026-08-0${i + 1}T00:00:00.000Z`,
+      pack_size: 1,
+      unit_volume_ml: 750,
+      yield_factor: 1,
+    }));
+    const warn = jest
+      .spyOn(Logger.prototype, "warn")
+      .mockImplementation(() => undefined);
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, final_price: 380 },
+      existingSightings: seeded,
+      priorReadFails: true,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...verifyBody,
+      invoiceUnitPrice: 380,
+    });
+
+    // The sighting is still evidence and is still written...
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    // ...but nothing is claimed about it: not flagged, not "judged", no count.
+    expect(row.is_outlier).toBe(false);
+    expect(row.outlier_reason).toBeNull();
+    expect(row.outlier_basis).toBeNull();
+    expect(row.outlier_judged_at).toBeNull();
+    const said = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(said).toContain("Could not read the price register to screen for outliers");
+    expect(said).toContain("statement timeout");
+    warn.mockRestore();
+  });
+
+  // PR #473 audit (81f7a6abf) and PR #482 audit (cd2dc58f6): a line with no
+  // product identity used to get `[]` from `priorSightingUnitPrices` without
+  // any read, and was stored as "Not judged: only 0 earlier sighting(s) of
+  // this product exist..." — a count nobody took, next to a sighting sheet
+  // that says the product is "Unidentified". Five priors are seeded so a
+  // count, had one been taken, could not honestly be 0.
+  it("a line with no product identity writes no flag and NO reason, never 'only 0'", async () => {
+    const seeded = [18, 18.5, 19, 18.2, 18.8].map((p, i) => ({
+      master_wine_id: WINE,
+      raw_price: p,
+      source_type: "invoice",
+      observed_at: `2026-08-0${i + 1}T00:00:00.000Z`,
+      pack_size: 1,
+      unit_volume_ml: 750,
+      yield_factor: 1,
+    }));
+    const decide = jest.spyOn(ownPaperSighting, "decideOwnPaperSighting");
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, final_price: 380 },
+      existingSightings: seeded,
+      inventoryMasterWineId: null,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...verifyBody,
+      invoiceUnitPrice: 380,
+    });
+
+    // Still evidence of what this vendor charged, so still written...
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.master_wine_id).toBeNull();
+    // ...but no judgement is claimed: no flag, no count, no basis, no time.
+    expect(row.is_outlier).toBe(false);
+    expect(row.outlier_reason).toBeNull();
+    expect(row.outlier_basis).toBeNull();
+    expect(row.outlier_judged_at).toBeNull();
+    // The service itself passes no count (not just the pure decision
+    // discarding one): the final decision call gets `priorCount: undefined`.
+    const withOpts = decide.mock.calls.filter((c) => c[1] !== undefined);
+    expect(withOpts).toHaveLength(1);
+    expect(withOpts[0][1]).toEqual({ isOutlier: false, priorCount: undefined });
+    decide.mockRestore();
   });
 });
 
@@ -442,6 +594,29 @@ describe("decideOwnPaperSighting", () => {
     expect(d.row.pack_size).toBe(12);
     // The ladder gets the conversion, done once, by the engine.
     expect(d.normalizedUnitPrice).toBeCloseTo(20, 6);
+  });
+
+  // An unidentified row has no group, so a count passed for it is ignored:
+  // the pure decision alone never writes "only 0 ... of this product" for it.
+  it("never judges a row with no product identity, whatever count it is given", () => {
+    const unidentified = { ...base, masterWineId: null };
+    for (const opts of [
+      { isOutlier: false, priorCount: 0 },
+      { isOutlier: true, priorCount: 12 },
+    ]) {
+      const d = decideOwnPaperSighting(unidentified, opts);
+      if (!d.write) throw new Error(d.reason);
+      expect(d.row.master_wine_id).toBeNull();
+      expect(d.row.is_outlier).toBe(false);
+      expect(d.row.outlier_reason).toBeNull();
+      expect(d.row.outlier_basis).toBeNull();
+      expect(d.row.outlier_judged_at).toBeNull();
+    }
+    // The same count on an identified row IS a judgement, so the guard is
+    // about identity and nothing else.
+    const identified = decideOwnPaperSighting(base, { isOutlier: false, priorCount: 0 });
+    if (!identified.write) throw new Error(identified.reason);
+    expect(identified.row.outlier_reason).toMatch(/^Not judged: only 0 earlier sighting/);
   });
 
   it("refuses a tenant-less sighting", () => {
@@ -629,4 +804,213 @@ describe("priceBelowAverage over own-paper rows", () => {
       yield_factor: 1,
     };
   }
+});
+
+// ---------------------------------------------------------------------------
+// ADR 0160 §112 fork 6(a): the paper, its line and the message, on the row.
+// ---------------------------------------------------------------------------
+const DOC = "66666666-6666-4666-8666-666666666666";
+const DOC2 = "77777777-7777-4777-8777-777777777777";
+const LINE = "88888888-8888-4888-8888-888888888888";
+const ORDER_LINE = "99999999-9999-4999-8999-999999999999";
+const MSG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+describe("fork 6(a): a verified receipt names the invoice and the line it was read from", () => {
+  const invoice = { id: DOC, doc_type: "invoice", doc_number: "F-2201", status: "verified", currency: "TRY", extracted: {} };
+
+  it("names the one linked invoice and its paired line, and reads house-scoped", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      orderLineRow: { id: ORDER_LINE },
+      docLinks: [{ document_id: DOC }],
+      documents: [invoice],
+      docLines: [{ id: LINE, document_id: DOC, line_no: 3, order_line_id: ORDER_LINE }],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.document_id).toBe(DOC);
+    expect(row.document_line_id).toBe(LINE);
+    expect(row.conversation_message_id).toBeNull();
+    expect(row.raw.provenance).toEqual({
+      documentId: DOC,
+      documentLineId: LINE,
+      conversationMessageId: null,
+      sentence: "Read from invoice F-2201, line 3, the line paired with this order's line.",
+    });
+    // Every paper read carries this house's id — the database's composite
+    // keys are the second wall, not the only one.
+    for (const t of ["procurement_document_links", "procurement_documents", "procurement_document_lines"]) {
+      const r = calls.reads.filter((x) => x.table === t);
+      expect(r.length).toBeGreaterThan(0);
+      for (const x of r) expect(x.filters.restaurant_id).toBe(REST);
+    }
+  });
+
+  it("names no paper when two invoices are linked, and says so rather than picking one", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      orderLineRow: { id: ORDER_LINE },
+      docLinks: [{ document_id: DOC }, { document_id: DOC2 }],
+      documents: [invoice, { ...invoice, id: DOC2, doc_number: "F-2202" }],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    const row = calls.sightingInserts[0];
+    expect(row.document_id).toBeNull();
+    expect(row.document_line_id).toBeNull();
+    expect(row.raw.provenance.sentence).toBe(
+      `2 invoices are attached to order ${ORDER}; the price is not tied to one of them rather than to a guess.`,
+    );
+  });
+
+  it("still writes the verified price when the paper cannot be read, and calls it a failed read", async () => {
+    const second = makeDb({
+      orderRow: deliveredOrder,
+      docLinks: [{ document_id: DOC }],
+      failTable: "procurement_documents",
+    });
+
+    await service(second.db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    expect(second.calls.sightingInserts).toHaveLength(1);
+    const row = second.calls.sightingInserts[0];
+    expect(row.document_id).toBeNull();
+    expect(row.raw.provenance.sentence).toMatch(/could not be read .*That is a failed read, not an order without paper\.$/);
+  });
+});
+
+describe("fork 6(a): a confirmed deal names the vendor message it was read from", () => {
+  it("names the newest unresolved deal-proposal message, read house-scoped", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      orderLineRow: {
+        id: ORDER_LINE,
+        price_uom: "bottle",
+        price_pack_size: 1,
+        currency: "EUR",
+        unit_type: "bottle",
+        bottles_per_unit: 1,
+      },
+      dealRows: [
+        { id: "resolved-newer", conversation_context: { deal_proposal: {}, deal_resolved_at: "2026-09-20" } },
+        { id: MSG, conversation_context: { deal_proposal: { price: 36 } } },
+      ],
+    });
+
+    await service(db).confirmDeal(REST, ORDER, { finalPrice: 36, sendConfirmation: false });
+
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.source_ref).toBe(`order_confirmed:${ORDER}`);
+    expect(row.conversation_message_id).toBe(MSG);
+    expect(row.document_id).toBeNull();
+    expect(row.raw.provenance.sentence).toBe("Read from the vendor's reply this deal was confirmed from.");
+    const convReads = calls.reads.filter((x) => x.table === "procurement_conversations" && x.filters.restaurant_id !== undefined);
+    expect(convReads.length).toBeGreaterThan(0);
+    for (const x of convReads) expect(x.filters.restaurant_id).toBe(REST);
+  });
+});
+
+describe("pickReceiptPaper", () => {
+  const inv = (id: string, over: Partial<Record<string, any>> = {}) => ({
+    id, doc_type: "invoice", doc_number: null, status: "received", ...over,
+  });
+  it("names no paper when nothing is attached", () => {
+    const p = pickReceiptPaper({ orderId: "o", orderLineId: null, documents: [], lines: [] });
+    expect(p.documentId).toBeNull();
+    expect(p.sentence).toBe("No document is attached to order o, so this price names its order but no paper.");
+  });
+  it("ignores packing slips, credit memos, rejected and superseded invoices", () => {
+    const p = pickReceiptPaper({
+      orderId: "o",
+      orderLineId: null,
+      documents: [
+        inv("a", { doc_type: "packing_slip" }),
+        inv("b", { doc_type: "credit_memo" }),
+        inv("c", { status: "rejected" }),
+        inv("d", { status: "superseded" }),
+      ],
+      lines: [],
+    });
+    expect(p.documentId).toBeNull();
+    expect(p.sentence).toMatch(/^The 4 document\(s\) attached to order o include no live invoice/);
+  });
+  it("names the invoice but no line when the order has no line row", () => {
+    const p = pickReceiptPaper({ orderId: "o", orderLineId: null, documents: [inv("a")], lines: [] });
+    expect(p).toMatchObject({ documentId: "a", documentLineId: null });
+  });
+  it("names the invoice but no line when none is paired, or when several are", () => {
+    const none = pickReceiptPaper({ orderId: "o", orderLineId: "L", documents: [inv("a")], lines: [] });
+    expect(none).toMatchObject({ documentId: "a", documentLineId: null });
+    expect(none.sentence).toMatch(/no line on it has been paired/);
+    const two = pickReceiptPaper({
+      orderId: "o",
+      orderLineId: "L",
+      documents: [inv("a")],
+      lines: [
+        { id: "x", document_id: "a", line_no: 1, order_line_id: "L" },
+        { id: "y", document_id: "a", line_no: 2, order_line_id: "L" },
+      ],
+    });
+    expect(two).toMatchObject({ documentId: "a", documentLineId: null });
+    expect(two.sentence).toMatch(/2 of its lines are paired/);
+  });
+  it("never names a line of a different document", () => {
+    const p = pickReceiptPaper({
+      orderId: "o",
+      orderLineId: "L",
+      documents: [inv("a")],
+      lines: [{ id: "x", document_id: "other", line_no: 1, order_line_id: "L" }],
+    });
+    expect(p.documentLineId).toBeNull();
+  });
+});
+
+describe("pickDealMessage", () => {
+  it("takes the first unresolved proposal in newest-first order", () => {
+    expect(
+      pickDealMessage([
+        { id: "plain", conversation_context: {} },
+        { id: "done", conversation_context: { deal_proposal: {}, deal_resolved_at: "x" } },
+        { id: "open", conversation_context: { deal_proposal: {} } },
+        { id: "older", conversation_context: { deal_proposal: {} } },
+      ])?.id,
+    ).toBe("open");
+    expect(pickDealMessage([{ id: "a", conversation_context: null }])).toBeNull();
+  });
+});
+
+describe("provenance on decideOwnPaperSighting", () => {
+  const base = {
+    restaurantId: REST,
+    orderId: ORDER,
+    providerId: null,
+    vendorName: null,
+    masterWineId: WINE,
+    productName: "x",
+    source: "receipt_verified" as const,
+    unitPrice: 40,
+    unitLabel: "bottle",
+    packSize: 1,
+    unitVolumeMl: 750,
+    observedAt: "2026-09-20T10:00:00.000Z",
+    currency: "EUR",
+  };
+  it("does not change the content hash — finding the paper is not new price evidence", () => {
+    const a = decideOwnPaperSighting(base);
+    const b = decideOwnPaperSighting({ ...base, provenance: { documentId: DOC, documentLineId: LINE } });
+    if (!a.write || !b.write) throw new Error("expected writes");
+    expect(b.contentHash).toBe(a.contentHash);
+    expect(b.row.document_id).toBe(DOC);
+    expect(a.row.document_id).toBeNull();
+  });
+  it("drops a line named without its document, and a malformed id, saying why", () => {
+    const ids = provenanceIds({ documentId: "not-a-uuid", documentLineId: LINE, conversationMessageId: "x" });
+    expect(ids).toMatchObject({ documentId: null, documentLineId: null, conversationMessageId: null });
+    expect(ids.sentence).toMatch(/line reference was found without its document/);
+  });
 });

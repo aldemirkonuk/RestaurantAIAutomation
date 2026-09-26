@@ -3,21 +3,437 @@ type: page
 route: /vendor-prices
 slug: vendor-prices
 softwares: [vendor-price-compare]
-component: apps/web/src/pages/VendorPriceCompare.tsx
+component: apps/web/src/pages/vendor-prices/next/VendorPricesNext.tsx
 audience: owner
 tier: plus
 archetype: list+detail # proposed 2026-08-26 (OD-106)
 signals_today: none
 rebrand_strings: 0
-maturity: hollow
+maturity: built
 status: documented
-updated: 2026-08-26
+updated: 2026-09-25
 links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[wines]]"]
 ---
 
 # /vendor-prices — cross-vendor price comparison
 
 > **Part of** [[08-softwares/vendor-price-compare|Vendor Price Compare]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
+
+## 0. Mudavym rebuild (2026-09-18) — ADR 0160 §112, direction A
+
+`/vendor-prices` now renders `apps/web/src/pages/vendor-prices/next/VendorPricesNext.tsx`
+for every house, no per-page flag (founder brief, 2026-09-18 — this route cut over
+directly rather than staging behind `PageGate`). `VendorPriceCompare.tsx` (§1–§13 below
+describe it) stays in the tree, unrouted, until the founder approves the deletion
+manifest.
+
+**[Corrected 2026-09-19, repair pass, wt-pg-vprices]** The paragraph above is
+superseded, not current state: the founder's LATER, more specific decision
+overrides the 2026-09-18 brief it describes. Memory
+`founder-sketch-decisions-106-115.md`, "19-lane blocking answers
+(AskUserQuestion, 2026-09-19 ~09:20Z)": *"vendor-prices = behind a flag
+(vendor_prices mudavym_design_* column migration, he flips it; NOT live on
+merge)"*. `/vendor-prices` is now gated by `PageGate page="vendor_prices"`
+exactly like every other Mudavym page — `legacy={<VendorPriceCompare />}`,
+`next={<VendorPricesNext />}` (`App.tsx`) — behind `mudavym_design_vendor_prices`
+(migration `20260919110000_mudavym_design_vendor_prices.sql`, registered in
+`feature-flag-registry.ts`), OFF by default. It is not live for every house on
+merge; the founder flips it per house, the same as the other seventeen
+Mudavym-gated pages. This was found and fixed by an independent verifier's
+NOT READY finding, same day.
+
+**[Renamed 2026-09-21, must-fix closure pass, wt-r5-vprices]** The migration
+named above shipped as `20260919110000_mudavym_design_vendor_prices.sql`.
+That version was older than `origin/main`'s
+`20260919120000_trust_counter_is_server_only.sql` (#396) and than versions
+several sibling worktrees had already taken (up to `20260920100100`) — the
+house-ordering rule the migration guard's uniqueness check does not itself
+enforce, only that no two files share one version (independent verifier's
+must-fix finding). Same column, same content, renamed to
+`20260921000000_mudavym_design_vendor_prices.sql`, confirmed unique again
+against `origin/main` and 36 open PRs; `feature-flag-registry.ts`, `App.tsx`
+and `useMudavymDesign.ts` all cite the new version.
+
+**[Renamed again 2026-09-21, round-6 must-fix closure, wt-r5-vprices]** The
+bracket above was already wrong when it was written: "confirmed unique
+again" is true but was never the right test — `check_migration_versions_unique.py`
+checks only that no two files share one version, not that a new file is the
+newest, which is the actual house rule; a green run from it is the repo's
+"absence reported as health" pattern, not proof of order. By the time
+`20260921000000` landed, `r5/promos` (commit `872baff9d`,
+2026-09-21T02:08:42-04:00) and `r5/notify` (commit `1c682b8d1`,
+2026-09-21T02:22:11-04:00, which alone added all three of its 2026-09-21
+migrations) had already committed newer 2026-09-21 migrations on their own
+branches — both reachable *before* the bracket above's own commit
+(`fb8d57400`, 02:28:24), so a sweep that actually covered every branch would
+have caught them; these two timestamps were re-measured directly from
+`git log --follow` on each sibling branch for this bracket, not copied
+forward from the previous verifier's report (CLAUDE.md §5b). Independent
+verification swept
+`refs/heads` + `refs/remotes/origin` twice (2026-09-21T14:44:22Z and again
+at 2026-09-21T14:47:50Z, unchanged) via `git ls-tree -r <ref> --
+supabase/migrations` per ref; the five newest 2026-09-2x versions found,
+newest first:
+`20260921100000_a_low_stock_warning_can_reach_an_inbox.sql` (`r5/notify`),
+`20260921093000_a_daily_summary_can_reach_a_phone.sql` (`r5/notify`),
+`20260921090000_a_preference_is_kept_once_per_person_per_house.sql`
+(`r5/notify`),
+`20260921060250_an_offer_dismissed_is_dismissed_for_the_house.sql`
+(`r5/promos`), then this lane's own `20260921000000_mudavym_design_vendor_prices.sql`
+— the oldest of the five, i.e. exactly the one exposed to out-of-order
+application. Same column, same content, renamed again to
+`20260921150000_mudavym_design_vendor_prices.sql`, comfortably past the
+`20260921100000` ceiling the sweep found rather than one step above it (a
+single step lost the race last time). `feature-flag-registry.ts`, `App.tsx`
+and `useMudavymDesign.ts` all cite this version now; this bracket is the
+settled version until the next sweep proves otherwise.
+
+**[2026-09-25, W2-vprices lane, `feat/vendor-prices-mudavym`]** Rebuilt on
+`origin/main` from `origin/wip/2026-09-21/vprices` (`41e9060c8`, identical to
+`r5/vprices`; the census critic verified it is newer than the dirty
+`wt-pg-vprices` tree). What changed, and what did not:
+
+- **Migration renamed a third time**, `20260921150000` → `20260926170000`: the
+  2026-09-21 version sorts behind main's ceiling `20260922231300`, which
+  `scripts/check_migration_order.py` (ADR 0212) fails. `20260926170000` is the
+  first version of this lane's assigned range `20260926170000`-`20260926179999`.
+  The brackets above stay as history.
+- **Fork 6, as answered 2026-09-18 ("Always on the record, loaded fresh"), is
+  now built.** Every price record draws C's paper trail (`PaperTrail.tsx`)
+  under the ladders: every sighting, newest first, across classes, with the
+  order-and-receipt link, the source link, or the sentence saying there is
+  nothing to open. No click is needed to see it. The compare read that feeds it
+  carries `gcTime: 0` / `staleTime: 0`, so reopening a record re-reads it
+  (`useVendorPricesNextData.test.tsx` pins both, under App.tsx's own 5 s
+  default). Before this, the build still said the trail "opens on demand, never
+  pre-fetched", which was the pre-answer reading.
+- **Still not built (unchanged): fork 6(a)'s full provenance.** That means the
+  `document_id` + line-reference column, the two writer changes, the
+  attach-a-paper upload, and the conversation's message and person. The trail
+  names that last absence on every chat or social line. The sequencing
+  question above is still open. **[Answered and built 2026-09-25 — see the
+  W3-provenance bracket that follows this list. The founder sequenced it
+  (round 5 item 30: a follow-on lane that must land before the flag is turned
+  on for any house), and `feat/vendor-price-provenance` builds it.]**
+- **House scope.** The compare read goes through
+  `scopePriceRegisterRead({ kind: "houseAndOpenMarket" })`
+  (`price-register/visibility.ts`). That returns this house's rows plus the
+  public-register rows (`restaurant_id IS NULL` on `vendor_price_observations`,
+  contributed-only rows excluded). This is ADR 0117's design, and it is the
+  founder's "house versus public pages" comparison. It is not ADR 0221's
+  vendor-row question, which is about `providers`. The currency default reads
+  `GET /providers` and `GET /providers/:id/usual-currency`, and both are
+  house-scoped `.eq` on main after #412/#416.
+- **Honest empty states (ADR 0020).** An empty record now says which window
+  it looked in and where a price would come from. It no longer says "add one
+  below": the button is above. The below-average box now says it found nothing
+  instead of disappearing.
+- **Nightly manifest.** `vendor_prices` moved from `pending_pages` to `pages`
+  (`check_nightly_manifest.py`).
+
+**[2026-09-25, W3-provenance lane, `feat/vendor-price-provenance`, stacked on
+#473] Fork 6(a)'s full provenance is built.** The founder's sequencing answer
+(web-rebuild round 5 item 30, 2026-09-25): "provenance = follow-on lane that
+must land before the flag goes live for any house." So
+`mudavym_design_vendor_prices` stays OFF for every house until this lane has
+merged. What it adds:
+
+- **Schema**, `20260927130000_a_price_names_its_paper_and_its_messenger.sql`,
+  additive only. It adds four nullable columns on `vendor_price_observations`:
+  `document_id`, `document_line_id`, `conversation_message_id` and
+  `source_contact_id`.
+  - The document and the message are **composite foreign keys with
+    `restaurant_id`**, against new `UNIQUE (id, restaurant_id)` indexes on the
+    parents. The database itself refuses a sighting that names another house's
+    paper or message.
+  - The line is a line *of* the named document: a composite key with
+    `document_id`, plus a plain key of its own. **[corrected 2026-09-26, PR #482
+    audit at cd2dc58f6: only when `document_id` is set. The composite key is
+    MATCH SIMPLE, so a house row naming a line with `document_id` NULL is not
+    house-checked by the database: another house's line is ACCEPTED there
+    (PGlite probe P2, below). The CHECK that would close it, "no line without
+    its document", fails a document's deletion (migration section 2). Both
+    writers refuse a line without its document before any write, and the
+    reader reads lines only from the viewer's house. Filed in
+    `v3.0-TECH-DEBT.md`.]**
+  - Three CHECKs refuse all four ids on a public-register row
+    (`restaurant_id IS NULL`). **[corrected 2026-09-26, PR #482 audit at
+    cd2dc58f6: there were three CHECKs and they covered three ids, not
+    `document_line_id`. A fourth, `vpo_document_line_needs_a_house`, is added
+    in the same migration, and the migration's own assertions now require
+    it.]**
+  - Delete rules are `ON DELETE SET NULL (<the id column only>)`. A deleted
+    paper never deletes a price, never nulls `restaurant_id` (a plain `SET NULL`
+    on a composite key would publish the house's price), and never blocks a
+    house deletion.
+  - The migration's own assertions refuse a plain `SET NULL`.
+  - Measured in a PGlite build of all 219 migrations, 15 probes, plus 5
+    mutations (scratch harness, not in the repo):
+    - same-house insert succeeds;
+    - another house's document, message or line is refused with `23503`;
+      **[corrected 2026-09-26: a line only when the row also names a
+      document]**
+    - a public row naming any of the four is refused with `23514`;
+      **[corrected 2026-09-26: not the line alone until
+      `vpo_document_line_needs_a_house` was added]**
+  - Re-measured 2026-09-26 after that fix (PR #482 audit), PGlite build of all
+    230 migrations in `wt-w3-provenance` (superuser, no Supabase platform;
+    scratch harness `p4-scratch/pglite-probe/w3-provenance-482/probe.mjs`):
+    - P1: a public row naming only a line is refused, `23514`
+      `vpo_document_line_needs_a_house`;
+    - P2: a house row naming another house's line with no document is
+      ACCEPTED. This is the named gap above;
+    - P3: a house row naming its own document and another house's line is
+      refused, `23503` `vpo_document_line_on_document_fkey`;
+    - P4, P5: a same-house document and line is accepted, and a public row
+      naming a document is refused (`23514`);
+    - P6, P7: deleting a named document still succeeds, nulls the document and
+      the line, and keeps the house;
+    - mutations: dropping the new CHECK fails the build on the migration's own
+      assertion, and dropping the CHECK and its assertion together flips P1 to
+      ACCEPTED.
+    - deleting the document nulls both the document and the line and keeps the
+      house;
+    - deleting the house succeeds, and its sightings keep `restaurant_id`.
+  - One of those probes found a real defect in the first draft. With a single
+    composite line key, deleting the document left `document_line_id`
+    dangling. That is why the line now takes two keys.
+- **Writer change 1, verified receipt** (`procurement.service.ts`
+  `receiptPaperFor` → `own-paper-sighting.ts` `pickReceiptPaper`). The rule:
+  - The paper is the one live invoice linked to the order. Rejected and
+    superseded invoices are skipped, and so are packing slips and credit memos.
+  - The line is the invoice line the line matcher paired with the order's line
+    (`procurement_document_lines.order_line_id`).
+  - When there are two invoices, or the paired line is ambiguous, the writer
+    names no paper (or no line) and a sentence says why. It never picks one.
+  - A failed read is recorded as a failed read.
+  - The price is always still written.
+- **Writer change 2, confirmed deal** (`dealMessageFor` → `pickDealMessage`).
+  The price names the newest inbound message carrying an unresolved
+  `deal_proposal`. `resolveLatestDealProposal` now uses the same function, so
+  the price names the message the manager confirmed.
+- **Attach-a-paper upload** (`RecordPriceForm`). The file goes through the
+  house's one document door, `POST /procurement/documents`, and the price is
+  recorded with the returned id. A failed upload records nothing and says so.
+  The old free-text link field stays, relabelled as a link.
+- **The message and the person.**
+  - When the typed vendor matches one of this house's vendors, the form offers
+    this house's 20 most recent messages with that vendor and the vendor's
+    contacts. This is the new
+    `GET /vendor-intel/observation-sources?providerId=`, owner/manager,
+    house-scoped, never cached.
+  - `POST /vendor-intel/observations` accepts `documentId`, `documentLineId`,
+    `conversationMessageId` and `contactId`. Each is checked against the
+    caller's house before the write. A failed check refuses the write.
+- **Shown on every record, loaded fresh** (fork 6's answer).
+  - `compare` reads each named paper, line, message and person fresh,
+    house-scoped on its own table (`vendor-intel/price-provenance.ts`).
+    `provider_contacts` is scoped through its vendor's `restaurant_id`.
+  - `PaperTrail` and `SightingSheet` draw the same lines (`ProvenanceList`).
+    Each paper opens at `/documents/:id`.
+  - A person comes from one of two places. It is either the contact someone
+    named, or it is read off the message's own From/To header and matched to
+    the vendor's contacts.
+  - The page states in plain words what it cannot show:
+    - a failed read says it is a failed read;
+    - a paper or message deleted since says it was deleted (from the id copy
+      in `raw.provenance`);
+    - a message whose raw mail the house's retention window deleted shows no
+      words and no header-derived person.
+- **Not done, named:**
+  - The form offers no picker for the *line* on an attached paper. The DTO
+    accepts `documentLineId`, and the two own-paper writers set it, but a
+    freshly uploaded paper's lines only exist once extraction has run.
+  - An order confirmed by `confirmDeal` names a message but no document. The
+    vendor's confirmation is a message, not a stored paper.
+  - WhatsApp messages carry no From header this page can read. Their person
+    is only known when someone names a contact.
+  - No browser check of the rendered page was run. Rendering needs a
+    signed-in house with the flag on, and this lane has neither. Coverage is
+    jsdom tests only.
+
+**The three §112 questions ADR 0160 lists as unanswered (`0160:600-603`).**
+**[Answered 2026-09-25, round 5 item 30: "no seal on 'Lowest admitted',
+rise/fall same ink — accepted"; the landed/agreed wording from the 2026-09-19
+batch — all three are now bracketed closed in ADR 0160's open-questions line.]**
+They are written up here and in the PR body. The build takes the default that
+presumes least on each:
+
+1. *May the seal mark "lowest before terms"?* **Default: no seal at all on a
+   conditional figure.** The card says "Lowest admitted" and marks nothing
+   else. No terms data exists to seal on. The memory record
+   `founder-sketch-decisions-106-115.md` ("Lane answers batch 2", 2026-09-19)
+   holds an answer, "never seal now + follow-up lane for structured terms".
+   That answer is not yet in ADR 0160, which still lists the question as open.
+   The default matches the memory answer either way.
+2. *The landed/agreed label under ADR 0054 (Proposed).* **Default: keep the
+   words, and state the literal fact next to each one.** The trail line reads
+   "landed — receipt verified by this house" or "agreed — order confirmed by
+   the vendor", so the line stays true whichever label the founder settles on.
+   The same memory record says "badge words = keep landed/agreed" (2026-09-19).
+   That answer is also not yet in ADR 0160.
+3. *A price-movement colour pair.* **Open, with no answer on record. Default:
+   none.** A rise and a fall are drawn in the same ink, and the sign and the
+   words carry the direction (`VendorPricesNext.test.tsx`, "draws a rise and a
+   fall in the same ink").
+
+**Fixed against the sections below, so read them as history, not current state:**
+route is reachable now (§2's "unreachable" gap is closed); the identity log is a
+drawer opened from the page header plus staff's own 403 fallback, not the always-mounted
+block §3 describes; `windowDays` (365 default) is now returned by `compare` and stated on
+the ladder; each observation now carries `identityLabel` (the confirmed bottle's own name,
+best-effort) alongside `identityId`; a decision on a shared (public-register) row now
+carries `decidedIn`/`personShown`/`undoRefusal` (migration
+`20260917010000_a_shared_decision_names_its_deciding_house.sql`, ported from the parallel
+`feat/finish-vintel` lane — **reconcile/dedupe this migration and the matching
+`identity.service.ts` read-path changes when both lanes merge**, since they were built
+independently against the same founder answer, ADR 0149 row 17).
+
+**Built beyond the legacy page:** a mixed-currency comparison class (ADR 0117 "a house
+names its money") now draws one ladder lane per currency with every crossed figure
+suppressed, never a blended number; the house-vs-public comparison is one row, not two
+stacked sections; a masthead standing line (identity register, price index, and for an
+owner the two sweeps) and a "newest below the earlier mean" box fill the page before a
+bottle is picked; the sighting sheet links an own-paper row to its order
+(`/receiving/:orderId/door`) and a recorded `sourceUrl`, and no longer says "nothing to
+open" when either is present; a candidate's evidence (method + field agreement) is shown
+before Confirm/Reject, not a bare percent; a trend chip refuses below 5 comparable
+sightings and prints the count.
+
+**Named absences, not built:** the seal's "lowest quote before terms" structured
+parsing (needs `vendor-terms`, a follow-up lane — see item 3 below, **[Answered
+2026-09-19]**: policy decided, matches today's build, only the structured-terms
+lane itself remains unbuilt); C's full page-turn chart
+with per-mark counts cross-checked against the trail (costed as its own build in sketch
+112's recommendation); fork 6(a)'s line-level document excerpt (an inline preview of the
+document itself — still not built; the two writer changes and the attach-a-paper step
+that sketch 112 named as owed for the FIRST build are done, see the 2026-09-19 bracket
+below) **[Corrected 2026-09-19, must-fix closure pass, wt-pg-vprices: that clause is
+FALSE — an independent verifier's must-fix finding. Neither the writer changes nor the
+attach-a-paper step is done; see the correction on the 2026-09-19 bracket below.]**;
+recording a price from a conversation does not capture which message or person
+it came from (`SightingSheet` prints this as a named absence on a chat/social row) — open
+founder question below.
+
+**[Fixed 2026-09-19, confirm-page lane, wt-pg-vprices]** Fork 6(a)'s two named writer
+changes are done: `own-paper-sighting.ts`'s `decideOwnPaperSighting` now computes and
+writes `outlier_reason` (and `outlier_basis`/`outlier_judged_at`) for both
+`receipt_verified` and `order_confirmed` rows, mirroring the manual writer's own wording
+— before this fix the own-paper writer judged a row (`is_outlier` was a real true/false)
+but never said why, so the register read "No judge has looked at this row" for a row that
+had been looked at (`own-paper-sighting.spec.ts`, three new assertions). `RecordPriceForm`'s
+existing source-document field is relabelled to name itself as that attach step ("Source
+document, if there is one"), rather than the generic "Link, if there is one" it was. The
+line-level document EXCERPT (previewing the document's own content, not just a link to
+it) and the WhatsApp/mail conversation-message-and-person piece both remain not built —
+the former was never named as owed for the first build; the latter is blocked on the
+`GET /conversations/by-order/:orderId` tenant-scope fix named below, which this lane did
+not touch (a different lane's endpoint, outside this page's scope).
+
+**[Corrected 2026-09-19, must-fix closure pass, wt-pg-vprices]** The heading above
+mis-names what got fixed — an independent verifier's must-fix finding. Sketch 112's
+actual "two named writer changes" (README `398-403`) are "a `document_id` + line
+reference on the observation," written by the receipt-verification and
+order-confirmation writers — not the `outlier_reason`/`outlier_basis`/`outlier_judged_at`
+bookkeeping the bracket above describes. That bookkeeping is real and stays in the
+record, under its own name, not fork 6(a)'s. Likewise `RecordPriceForm`'s relabelled
+field is not sketch 112's "attach-a-paper step" (README `400-401`: "an upload plus
+`document_id` on `POST /vendor-intel/observations`") — it is the pre-existing free-text
+`sourceUrl` input, a link rather than an upload, and it sets no `document_id` because
+the column does not exist on `vendor_price_observations` (checked against every file in
+`supabase/migrations/`; see the corrected comment on `RecordPriceForm.tsx` itself).
+
+**Fork 6(a) is therefore unbuilt beyond fork 6(b)** (the order/receipt link, already
+shipped) **and the outlier-reason fix above.** The founder's decision on it (memory
+`founder-sketch-decisions-106-115.md`, "112 vendor prices", 2026-09-18: *"fork 6 moves
+to (a): FULL provenance (document, message, person) in the FIRST build"*) is
+unconditional and is not satisfied by anything built in this lane. Not built: the
+`document_id` + line-reference migration; the two writer changes that set them
+(`own-paper-sighting.ts`, `procurement.service.ts`); a real attach-a-paper upload on
+`POST /vendor-intel/observations`; and the conversation message-and-person link, which
+is additionally blocked on `GET /conversations/by-order/:orderId` — confirmed still
+un-tenant-scoped (`conversations.controller.ts`'s `getByOrder` takes no `CurrentUser`
+and passes no `restaurantId` into `listConversations`), a different lane's endpoint.
+
+**Open founder question, not decided here:** `/vendor-prices` now ships dark behind
+`mudavym_design_vendor_prices` (OFF by default; the founder flips it per house). Given
+that, may the remaining fork 6(a) graft — the schema, the two writer changes, and the
+attach-a-paper upload, all in scope for this page regardless of the conversations bug —
+be named as an immediate follow-on lane that must land and be verified before the flag
+is ever flipped on for any house, rather than built inside this docs/flag/sealing-policy
+lane? Or does "not deferred" mean fork 6(a) must be complete before this lane's own
+changes are considered ready at all? **Recommendation:** the follow-on-lane reading —
+the page cannot reach a single house until the founder flips its flag regardless, so the
+sequencing risk is small, and the remaining graft is sized like the codebase's other
+single-purpose schema-plus-writer changes (e.g. ADR 0124 Q5's `identity_id` backfill),
+not like a same-lane touch-up. This is a recommendation on ORDER, not on the outcome —
+it does not reopen "not deferred," which this lane treats as binding; it asks the
+founder to confirm the sequencing rather than assuming it.
+
+**Open founder questions (not decided here):**
+1. Should recording a price attach the conversation it came from (a message/thread id
+   from `/communications` plus the contact), and should own-paper rows show their
+   order's mail thread? `GET /conversations/by-order/:orderId` exists but does not take
+   `CurrentUser` tenant scope, so it must not be wired until that is fixed. **Recommendation:**
+   file as a fast-follow OD; the ADR's own "owed now" list (112's Decision, "Owed" paragraph)
+   names only the own-paper writer changes and the attach-a-paper step as required for the
+   first build (both now done, see the 2026-09-19 bracket above) — the conversation/message
+   piece is this reviewing lane's own broader reading of "the message and the person," not a
+   line the ADR itself put in the first-build list. Does not block ready.
+
+   **[Corrected 2026-09-19, must-fix closure pass, wt-pg-vprices]** Both premises above
+   are wrong, per an independent verifier's must-fix finding. The writer changes and the
+   attach-a-paper step are NOT done (see the correction on the 2026-09-19 bracket above);
+   and the ADR's first-build list does name the message and the person, in so many words —
+   the founder's own answer is *"FULL provenance (document, message, person) in the FIRST
+   build"* (memory `founder-sketch-decisions-106-115.md`, "112 vendor prices"), not this
+   reviewing lane's "broader reading." Filing this as a low-urgency fast-follow that "does
+   not block ready" decided a founder question this lane had no founder answer for. The
+   sequencing question that remains — whether the message-and-person piece, and the rest
+   of fork 6(a), may land as a named follow-on lane given the page ships dark behind a
+   flag — is asked plainly after the 2026-09-19 bracket above, instead of assumed.
+2. **[Fixed 2026-09-19]** Fork 2 (a hand-typed price's currency) now builds direction A's
+   accepted (c) — "the vendor's usual currency where stated, else required" — by matching
+   the typed vendor name against `GET /providers` and defaulting from that provider's
+   `GET /providers/:id/usual-currency` when stated; the free-text vendor field is
+   unchanged (a picker-only field would have refused an unonboarded vendor's price, which
+   `ManualObservationDto` deliberately allows). Falls back to the original required/no-default
+   floor when no provider matches or none has stated a currency. See
+   `RecordPriceForm.tsx`, `RecordPriceForm.test.tsx` (5 new tests).
+3. The seal's "lowest quote before terms" (may it mark a conditional rep quote such as
+   "$28.50 on 3 cases," or does the lowest admitted figure stay unsealed): ADR 0160's own
+   review trail names this one of three questions the founder's blanket acceptance did
+   NOT cover ("112 — … its three further, unlisted questions … are not [answered]").
+   Options: (a) the lowest admitted figure never seals regardless of terms (today's
+   build); (b) a conditional quote may seal, labelled with its condition ("$28.50 on 3
+   cases"); (c) a conditional quote is excluded from the seal candidate set entirely,
+   sealing only an unconditional figure even if higher. **Recommendation was (a)**, the
+   current build — a sealed number a person cannot act on at that price without meeting
+   an unstated condition risks being read as a firm quote.
+
+   **[Answered 2026-09-19, repair pass, wt-pg-vprices]** No longer open: memory
+   `founder-sketch-decisions-106-115.md`, "Lane answers batch 2 (~09:30Z)" —
+   *"vendor-prices conditional quote = never seal now + follow-up lane for structured
+   terms (min qty/unit/valid-until; seal = lowest price the house gets at its usual
+   order size, ADR 0165 basis; unparsed terms never seal)"*. This is option (a),
+   confirmed matching today's build as-is — no code change needed for this item. The
+   structured-terms parsing itself (min qty/unit/valid-until) is a separate, explicitly
+   deferred follow-up lane, not a fork of this question and not this page's scope.
+
+   **[2026-09-19, must-fix closure pass, wt-pg-vprices]** The `vendor-terms` follow-up
+   lane's shape, recorded here so it need not be re-derived: terms become FIELDS on a
+   quote — minimum quantity, unit, and valid-until — never a free-text parse of a phrase
+   like "on 3 cases." Once they exist, the seal marks the lowest price the house itself
+   gets at its usual order size (ADR 0165's largest-single-order-volume basis, the same
+   measure promotions already locked). A cheaper conditional quote the house does not
+   qualify for at that size shows BESIDE the seal, not instead of it, labelled "cheaper
+   at N cases." A term that is unparsed or unconfirmed never seals — the same floor as
+   today, just stated for a world where terms exist to be unparsed. A house with no
+   order history to size "usual order size" against seals only its unconditional
+   prices, never a guess at what size it would order. The seal always shows its own
+   reason (which figure, at what size, and why), never a bare number. None of this is
+   built by this lane; it is recorded so the next lane starts from a spec instead of a
+   blank page.
 
 ## Surface — buttons → where they go
 

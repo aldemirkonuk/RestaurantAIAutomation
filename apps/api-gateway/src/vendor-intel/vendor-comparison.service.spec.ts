@@ -15,6 +15,7 @@ interface Calls {
   /** `.is(col, null)` -- the openMarketOnly scope's predicate (ADR 0117 addendum). */
   is: Array<[string, any]>;
   inserted: any[];
+  identityLookup: Array<[string, any[]]>;
 }
 
 function makeService(
@@ -23,9 +24,11 @@ function makeService(
   opts: {
     wine?: { producer: string; name: string; vintage: number | null } | null;
     insertError?: any;
+    identityRows?: Array<{ id: string; display_label: string | null }>;
+    identityError?: any;
   } = {},
 ) {
-  const calls: Calls = { or: [], eq: [], is: [], inserted: [] };
+  const calls: Calls = { or: [], eq: [], is: [], inserted: [], identityLookup: [] };
 
   // A PostgREST builder is thenable: every filter returns the builder and the
   // query only executes when it is awaited. The service chains .eq()/.or()
@@ -76,10 +79,28 @@ function makeService(
     }),
   };
 
+  // The identity-label lookup (`compare`'s best-effort name-not-id read) —
+  // its own table with its own terminal call (`.in()`, not `.eq()`/`.limit()`).
+  // Empty by default: most tests never write an `identity_id`, and the ones
+  // that do only assert on OTHER fields via `toMatchObject`.
+  const identities: any = {
+    select: () => identities,
+    in: (col: string, vals: any[]) => {
+      calls.identityLookup.push([col, vals]);
+      return identities;
+    },
+    then: (resolve: any) =>
+      resolve({ data: opts.identityRows ?? [], error: opts.identityError ?? null }),
+  };
+
   const databaseService = {
     supabase: {
       from: (table: string) =>
-        table === "master_wine_library" ? library : observations,
+        table === "master_wine_library"
+          ? library
+          : table === "beverage_identities"
+            ? identities
+            : observations,
     },
   } as any;
 
@@ -197,6 +218,140 @@ describe("VendorComparisonService", () => {
     });
   });
 
+  it("carries the ladder's row-level fields — the direction-A register needs id, currency, trust tier, the stored outlier verdict, the class and the normalised price (ADR 0160 §112)", async () => {
+    const { svc } = makeService([
+      row({
+        id: "obs-own-paper",
+        source_type: "invoice",
+        source_ref: "receipt_verified:order-9",
+        currency: "TRY",
+        trust_tier: 1,
+        is_outlier: true,
+        outlier_reason: "3.7x the trailing median",
+        identity_id: "ident-42",
+        raw_price: 620,
+        pack_size: 6,
+      }),
+    ]);
+    const out = await svc.compare({ masterWineId: WINE_ID });
+
+    expect(out.observations[0]).toMatchObject({
+      id: "obs-own-paper",
+      sourceRef: "receipt_verified:order-9",
+      comparisonClass: "quoted",
+      currency: "TRY",
+      trustTier: 1,
+      isOutlier: true,
+      outlierReason: "3.7x the trailing median",
+      identityId: "ident-42",
+    });
+    expect(out.observations[0].normalizedUnitPrice).toBeCloseTo(620 / 6, 5);
+  });
+
+  it("passes a recorded note through, from whichever writer's own key held it (review finding: the sighting sheet had no note field because this mapping dropped `raw` before it reached the client)", async () => {
+    const { svc } = makeService([
+      row({ id: "obs-manual", raw: { note: "Called on the 12th, price good through month end" } }),
+      row({ id: "obs-own-paper", raw: { notes: "Half case, freight included" } }),
+      row({ id: "obs-bare", raw: {} }),
+      row({ id: "obs-no-raw" }),
+    ]);
+    const out = await svc.compare({ masterWineId: WINE_ID });
+    const byId = Object.fromEntries(out.observations.map((o) => [o.id, o.note]));
+    expect(byId["obs-manual"]).toBe("Called on the 12th, price good through month end");
+    expect(byId["obs-own-paper"]).toBe("Half case, freight included");
+    expect(byId["obs-bare"]).toBeNull();
+    expect(byId["obs-no-raw"]).toBeNull();
+  });
+
+  it("names an identified bottle by its own label, not its id (ADR 0160 §112 review, minor)", async () => {
+    const { svc, calls } = makeService(
+      [row({ id: "obs-1", identity_id: "ident-42" })],
+      null,
+      { identityRows: [{ id: "ident-42", display_label: "Krug Grande Cuvée (750ml)" }] },
+    );
+    const out = await svc.compare({ masterWineId: WINE_ID });
+    expect(out.observations[0].identityId).toBe("ident-42");
+    expect(out.observations[0].identityLabel).toBe("Krug Grande Cuvée (750ml)");
+    expect(calls.identityLookup).toEqual([["id", ["ident-42"]]]);
+  });
+
+  it("keeps the id and reports no label rather than failing, when the identity lookup errors", async () => {
+    const { svc } = makeService(
+      [row({ id: "obs-1", identity_id: "ident-42" })],
+      null,
+      { identityError: { message: "connection reset" } },
+    );
+    const out = await svc.compare({ masterWineId: WINE_ID });
+    expect(out.observations[0].identityId).toBe("ident-42");
+    expect(out.observations[0].identityLabel).toBeNull();
+  });
+
+  it("skips the identity lookup entirely when no row carries one", async () => {
+    const { svc, calls } = makeService([row({ id: "obs-1" })]);
+    await svc.compare({ masterWineId: WINE_ID });
+    expect(calls.identityLookup).toEqual([]);
+  });
+
+  it("states the window it actually read, so a silently dropped older rung can be disclosed", async () => {
+    const { svc } = makeService([row()]);
+    const out = await svc.compare({ masterWineId: WINE_ID });
+    expect(out.windowDays).toBe(365);
+    const { svc: svc2 } = makeService([row()]);
+    const out2 = await svc2.compare({ masterWineId: WINE_ID, windowDays: 60 });
+    expect(out2.windowDays).toBe(60);
+  });
+
+  it("never averages a quoted price with a public-page price — consensusByClass and trendsByClass stay apart (fork 1)", async () => {
+    const now = Date.now();
+    const { svc } = makeService([
+      row({
+        source_type: "invoice",
+        raw_price: 30,
+        observed_at: new Date(now - 86_400_000).toISOString(),
+      }),
+      row({
+        source_type: "website_scrape",
+        raw_price: 50,
+        observed_at: new Date(now - 86_400_000).toISOString(),
+      }),
+    ]);
+    const out = await svc.compare({ masterWineId: WINE_ID });
+
+    expect(Object.keys(out.consensusByClass).sort()).toEqual([
+      "public_site",
+      "quoted",
+    ]);
+    expect(out.consensusByClass.quoted.consensusPrice).toBeCloseTo(30, 5);
+    expect(out.consensusByClass.public_site.consensusPrice).toBeCloseTo(50, 5);
+    // Pooling the two would land the consensus between them; each class must
+    // see only its own rows.
+    expect(out.consensusByClass.quoted.consensusPrice).not.toBeCloseTo(40, 5);
+
+    expect(Object.keys(out.trendsByClass).sort()).toEqual([
+      "public_site",
+      "quoted",
+    ]);
+    expect(out.trendsByClass.quoted.map((t) => t.windowDays)).toEqual([
+      7, 30, 90,
+    ]);
+    expect(out.trendsByClass.public_site.map((t) => t.windowDays)).toEqual([
+      7, 30, 90,
+    ]);
+  });
+
+  it("says the read is incomplete once the 500-row cap is hit, so callers do not print a floor as a total", async () => {
+    const rows = Array.from({ length: 500 }, () => row());
+    const { svc } = makeService(rows);
+    const out = await svc.compare({ masterWineId: WINE_ID });
+    expect(out.complete).toBe(false);
+  });
+
+  it("says the read is complete under the cap", async () => {
+    const { svc } = makeService([row()]);
+    const out = await svc.compare({ masterWineId: WINE_ID });
+    expect(out.complete).toBe(true);
+  });
+
   describe("matching scraped rows to a picked wine", () => {
     it("queries the identity hash as well as the id", async () => {
       // The bug this replaces: a scrape writes signature_hash and no
@@ -312,6 +467,26 @@ describe("VendorComparisonService", () => {
       await svc.recordManualObservation(base);
       expect(calls.inserted[0].source_type).toBe("manual");
       expect(calls.inserted[0].trust_tier).toBe(7);
+    });
+
+    it("keeps the long-standing USD default when the caller sends no currency (the legacy page never sends one)", async () => {
+      const { svc, calls } = makeService([]);
+      await svc.recordManualObservation(base);
+      expect(calls.inserted[0].currency).toBe("USD");
+    });
+
+    it("stores the caller's currency, uppercased, when it names a real ISO 4217 code", async () => {
+      const { svc, calls } = makeService([]);
+      await svc.recordManualObservation({ ...base, currency: "try" });
+      expect(calls.inserted[0].currency).toBe("TRY");
+    });
+
+    it("refuses a currency that is not a real ISO 4217 code, rather than filing a price under a made-up unit", async () => {
+      const { svc, calls } = makeService([]);
+      await expect(
+        svc.recordManualObservation({ ...base, currency: "TL" }),
+      ).rejects.toThrow(/not a currency code/i);
+      expect(calls.inserted).toHaveLength(0);
     });
 
     it("stores null parse confidence, because nothing was parsed", async () => {

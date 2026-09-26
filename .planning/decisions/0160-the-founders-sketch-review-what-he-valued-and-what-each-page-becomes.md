@@ -491,6 +491,32 @@ confirmation, `own-paper-sighting.ts:350-404`, per 112 README:398-403) and the
 attach-a-paper step in Record a price, all owed now rather than as a second step. **[corrected 2026-09-18, correction 5: the original
 Owed line asserted this as settled; the README defers it to a costed second step, and it
 is only decided for the first build by his 2026-09-18 ruling above.]**
+**[sequenced 2026-09-25, founder via `AskUserQuestion`, web-rebuild round 5 item 30
+(memory `founder-answers-2026-09-25-web-rebuild.md`): "provenance = follow-on lane that
+must land before the flag goes live for any house". So the first build (PR #473,
+`/vendor-prices` dark behind `mudavym_design_vendor_prices`) may merge without fork 6(a),
+and `mudavym_design_vendor_prices` may not be turned on for any house until the
+provenance lane has landed. This answers the sequencing question #473's page note asked;
+it does not reopen "not deferred" — the provenance is still owed before any house sees
+the page.]** **[built 2026-09-25, lane W3-provenance, branch
+`feat/vendor-price-provenance` (stacked on #473): `vendor_price_observations` gains
+`document_id`, `document_line_id`, `conversation_message_id` and `source_contact_id`
+(`20260927130000_a_price_names_its_paper_and_its_messenger.sql` — composite keys with
+`restaurant_id`, so the database refuses another house's paper or message, and a
+public-register row can carry none **[corrected 2026-09-26, PR #482 audit at
+cd2dc58f6: a line is house-checked by the database only when the row also names its
+document (MATCH SIMPLE); a line named alone is refused by both writers and read
+house-scoped, not refused by the database. "Can carry none" held for three of the four
+ids until `vpo_document_line_needs_a_house` was added in the same migration.
+`06-pages/vendor-prices.md` has the measurements.]**); the two writer changes (`procurement.service.ts`
+`receiptPaperFor` names the one live invoice linked to a verified receipt's order and
+the line paired with the order's line, `dealMessageFor` names the vendor reply a
+confirmed deal was read from); the attach-a-paper upload in Record a price (the file
+goes through `POST /procurement/documents` and the price is recorded with the returned
+id); and the message and person a price came from, picked in the same form or read off
+the message's own headers. All of it is shown on every record and read fresh on every
+opening (`vendor-intel/price-provenance.ts`, fork 6's "Always on the record, loaded
+fresh"). What it does not do is named in `.planning/06-pages/vendor-prices.md` §0.]**
 
 ### 113 — promotions · B, with C's density and bundles; A's 4c acts kept, their address open
 
@@ -600,7 +626,18 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
   is accepted by his blanket "I agree ... in the other things" (`README:354-383`), but
   its three further,
   unlisted questions (whether the seal may mark "lowest before terms," the landed/agreed
-  label under ADR 0054 Proposed, a price-movement colour pair) are not; 113 — 6 of 7 open
+  label under ADR 0054 Proposed, a price-movement colour pair) are not **[answered
+  2026-09-25 for 112, founder via `AskUserQuestion`, web-rebuild round 5 item 30 (memory
+  `founder-answers-2026-09-25-web-rebuild.md`): "no seal on 'Lowest admitted', rise/fall
+  same ink — accepted" — the seal never marks the lowest admitted figure (matching his
+  2026-09-19 lane answer "never seal now + follow-up lane for structured terms", memory
+  `founder-sketch-decisions-106-115.md` "Lane answers batch 2"), and a rise and a fall are
+  drawn in the same ink, the sign and the words carrying the direction, as PR #473 built
+  them. The landed/agreed label was answered in the same 2026-09-19 batch — "badge words =
+  keep landed/agreed" — and is written here from that memory record, not from item 30. All
+  three of 112's further questions are therefore closed. Item 30 also set the sequencing:
+  fork 6(a)'s full provenance MUST land before `mudavym_design_vendor_prices` is turned
+  on for any house (`founder-answers-2026-09-25-web-rebuild.md:50`).]**; 113 — 6 of 7 open
   (`README:336-377`): only question 7, the coupling to 112's forks, is answered, through
   112's accepted forks 1(a) and 2(c) (`README:367-377`); open include question 2, the
   projected worth (Open item 8), and question 3, senders and strangers (Open item 3).

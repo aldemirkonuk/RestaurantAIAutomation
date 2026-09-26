@@ -53,9 +53,15 @@ import {
   resolveOrderUnits,
 } from "./order-units";
 import {
+  DealMessageCandidate,
+  OwnPaperProvenance,
+  PaperCandidate,
+  PaperLineCandidate,
   decideOwnPaperSighting,
   isOutlierAgainstPriors,
   isOwnPaperSource,
+  pickDealMessage,
+  pickReceiptPaper,
 } from "./own-paper-sighting";
 import { Uom } from "./documents/document-types";
 import {
@@ -1472,6 +1478,12 @@ export class ProcurementService {
       observedAt?: string | null;
       currency?: string | null;
     };
+    /**
+     * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
+     * from, as `receiptPaperFor` / `dealMessageFor` found them. Rides on the
+     * sighting only — `price_history` keeps its order-level `order_id`.
+     */
+    provenance?: OwnPaperProvenance | null;
   }): Promise<void> {
     // The register mirror runs first and on its own operands: a price_history
     // row that cannot be written must not silently take the sighting down with
@@ -1795,6 +1807,12 @@ export class ProcurementService {
       observedAt?: string | null;
       currency?: string | null;
     };
+    /**
+     * ADR 0160 §112 fork 6(a): the paper and/or message the sighting was read
+     * from, as `receiptPaperFor` / `dealMessageFor` found them. Rides on the
+     * sighting only — `price_history` keeps its order-level `order_id`.
+     */
+    provenance?: OwnPaperProvenance | null;
   }): Promise<void> {
     if (!isOwnPaperSource(args.source)) return;
 
@@ -1835,6 +1853,7 @@ export class ProcurementService {
       observedAt: s.observedAt,
       currency: s.currency ?? null,
       notes: args.notes ?? null,
+      provenance: args.provenance ?? null,
     });
 
     // The refusal is a logged SENTENCE, not a silent return. A register that
@@ -1873,13 +1892,23 @@ export class ProcurementService {
         return;
       }
 
-      const isOutlier = isOutlierAgainstPriors(
-        await this.priorSightingUnitPrices(
-          args.restaurantId,
-          args.masterWineId,
-        ),
-        provisional.normalizedUnitPrice,
+      const priorUnitPrices = await this.priorSightingUnitPrices(
+        args.restaurantId,
+        args.masterWineId,
       );
+      // `null` is a register we could not read, or a row with no product
+      // identity to read one for. Neither is an empty register: no
+      // flag, and no reason either — `priorCount: undefined` leaves
+      // `outlier_reason`/`outlier_basis`/`outlier_judged_at` null, so the row
+      // reads "No judge has looked at this row", which is the truth. Passing
+      // `0` here would store "Not judged: only 0 sightings" against a
+      // register that may hold hundreds (PR #473 audit, 2026-09-26).
+      const isOutlier =
+        priorUnitPrices !== null &&
+        isOutlierAgainstPriors(
+          priorUnitPrices,
+          provisional.normalizedUnitPrice,
+        );
 
       const decision = decideOwnPaperSighting(
         {
@@ -1897,8 +1926,14 @@ export class ProcurementService {
           observedAt: s.observedAt,
           currency: s.currency ?? null,
           notes: args.notes ?? null,
+          provenance: args.provenance ?? null,
         },
-        { isOutlier },
+        // `priorUnitPrices.length` — not just the boolean — so the row can
+        // say WHY it was or was not flagged (its own review finding, not
+        // ADR 0160 §112 fork 6(a): the own-paper writer judged but never
+        // recorded a reason, so a judged-clean row and a never-judged one
+        // both read "No judge has looked at this row").
+        { isOutlier, priorCount: priorUnitPrices?.length },
       );
       if (!decision.write) {
         this.logger.warn(decision.reason);
@@ -1930,6 +1965,15 @@ export class ProcurementService {
           normalization_note: row.normalization_note,
           content_hash: row.content_hash,
           is_outlier: row.is_outlier,
+          outlier_reason: row.outlier_reason,
+          outlier_basis: row.outlier_basis,
+          outlier_judged_at: row.outlier_judged_at,
+          // ADR 0160 §112 fork 6(a). The database refuses another house's
+          // document or message here on its own (composite keys,
+          // `20260927130000_a_price_names_its_paper_and_its_messenger.sql`).
+          document_id: row.document_id,
+          document_line_id: row.document_line_id,
+          conversation_message_id: row.conversation_message_id,
           raw: row.raw,
         });
 
@@ -1947,6 +1991,8 @@ export class ProcurementService {
 
       this.logger.log("Price sighting written to the register", {
         orderId: args.orderId,
+        documentId: row.document_id,
+        conversationMessageId: row.conversation_message_id,
         sourceRef: row.source_ref,
         sourceType: row.source_type,
         trustTier: row.trust_tier,
@@ -1970,14 +2016,28 @@ export class ProcurementService {
    * = this tenant`, `vendor-comparison.service.ts:341`) so the MAD test is run
    * over the same population the ladder will later read. `master_wine_id` is
    * the key `priceBelowAverage` groups on (`price-below-average.ts:141-144`);
-   * with no identity there is no group, so there is nothing to be an outlier
-   * against and the answer is an empty list.
+   * with no identity there is no group and nothing is read, so the answer is
+   * `null` — "nothing was counted" — never `[]`. An empty list is a register
+   * that was read and holds nothing, and the writer turns it into a stored
+   * "only 0 earlier sighting(s) of this product" beside a sheet that says the
+   * product is "Unidentified" (PR #473 audit at 81f7a6abf, PR #482 audit at
+   * cd2dc58f6). `decideOwnPaperSighting` also ignores a count for an
+   * unidentified row, so neither layer alone can write that sentence.
+   *
+   * The population is every source type — invoices, quotes, scrapes, typed
+   * prices — on this house's rows and the public register's. There is no
+   * `source_type` filter, and the reason `decideOwnPaperSighting` writes says
+   * exactly that rather than "own-paper trail".
+   *
+   * `null` also means the read FAILED. It is never folded into `[]`: an empty
+   * list becomes a stored "only 0 sightings" sentence, and a failed read is not
+   * a register with nothing in it.
    */
   private async priorSightingUnitPrices(
     restaurantId: string,
     masterWineId: string | null,
-  ): Promise<number[]> {
-    if (!masterWineId) return [];
+  ): Promise<number[] | null> {
+    if (!masterWineId) return null;
     try {
       const { data, error } = await this.databaseService.supabase
         .from("vendor_price_observations")
@@ -2004,11 +2064,12 @@ export class ProcurementService {
       return out;
     } catch (e: any) {
       // A register we could not read is not a register with nothing in it. Say
-      // so, and decline to flag rather than flagging against an empty list.
+      // so, and return `null` — the caller declines to flag AND declines to
+      // write a reason, rather than recording "only 0 sightings".
       this.logger.warn(
-        `Could not read the price register to screen for outliers: ${e?.message}`,
+        `Could not read the price register to screen for outliers: ${e?.message}. Nothing was flagged, and no reason is recorded.`,
       );
-      return [];
+      return null;
     }
   }
 
@@ -2315,6 +2376,125 @@ export class ProcurementService {
       };
 
     return { ...offer, vendorUsualCurrency };
+  }
+
+  /**
+   * ADR 0160 §112 fork 6(a), writer change 1 — the paper a verified receipt's
+   * price was read from. Reads are house-scoped on every table; the choice is
+   * `pickReceiptPaper`'s (pure, tested).
+   *
+   * A FAILED READ NAMES NO PAPER AND SAYS SO. It is never "no document
+   * attached": that sentence would be a claim about the order the read could
+   * not make. Best-effort like the sighting it rides on — a delivery that has
+   * been counted is not failed over provenance.
+   */
+  private async receiptPaperFor(
+    restaurantId: string,
+    orderId: string,
+    orderLineId: string | null,
+  ): Promise<OwnPaperProvenance> {
+    const failed = (what: string, message: string): OwnPaperProvenance => {
+      this.logger.warn(
+        `Price provenance for order ${orderId}: ${what} could not be read (${message}); the sighting names no paper.`,
+      );
+      return {
+        documentId: null,
+        documentLineId: null,
+        sentence: `The paper for order ${orderId} could not be read when this price was recorded (${what}), so none is named. That is a failed read, not an order without paper.`,
+      };
+    };
+
+    const { data: links, error: linkError } = await this.databaseService.supabase
+      .from("procurement_document_links")
+      .select("document_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId);
+    if (linkError) return failed("the order's document links", linkError.message);
+    const ids = [
+      ...new Set(
+        (links ?? []).map((l: any) => l.document_id).filter(Boolean) as string[],
+      ),
+    ];
+
+    let documents: PaperCandidate[] = [];
+    if (ids.length) {
+      const { data: docs, error: docError } = await this.databaseService.supabase
+        .from("procurement_documents")
+        .select("id, doc_type, doc_number, status")
+        .eq("restaurant_id", restaurantId)
+        .in("id", ids);
+      if (docError) return failed("the order's documents", docError.message);
+      documents = (docs ?? []) as PaperCandidate[];
+    }
+
+    let lines: PaperLineCandidate[] = [];
+    const invoiceIds = documents
+      .filter((d) => d.doc_type === "invoice")
+      .map((d) => d.id);
+    if (orderLineId && invoiceIds.length === 1) {
+      const { data: lineRows, error: lineError } =
+        await this.databaseService.supabase
+          .from("procurement_document_lines")
+          .select("id, document_id, line_no, order_line_id")
+          .eq("restaurant_id", restaurantId)
+          .eq("document_id", invoiceIds[0])
+          .eq("order_line_id", orderLineId);
+      if (lineError) {
+        // The document read worked; only the line did not. Name the paper,
+        // and say the line could not be read.
+        const paper = pickReceiptPaper({ orderId, orderLineId: null, documents, lines: [] });
+        this.logger.warn(
+          `Price provenance for order ${orderId}: the invoice's lines could not be read (${lineError.message}); the paper is named without a line.`,
+        );
+        return {
+          ...paper,
+          sentence: `${paper.documentId ? "Read from the invoice attached to this order." : paper.sentence} Its lines could not be read when this price was recorded, so no line is named — a failed read, not an unpaired line.`,
+        };
+      }
+      lines = (lineRows ?? []) as PaperLineCandidate[];
+    }
+
+    return pickReceiptPaper({ orderId, orderLineId, documents, lines });
+  }
+
+  /**
+   * ADR 0160 §112 fork 6(a), writer change 2 — the vendor message a confirmed
+   * deal was read from. House-scoped (`restaurant_id`), newest inbound first,
+   * picked by `pickDealMessage` — the rule `resolveLatestDealProposal` marks
+   * the same row resolved by.
+   */
+  private async dealMessageFor(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<OwnPaperProvenance> {
+    const { data: rows, error } = await this.databaseService.supabase
+      .from("procurement_conversations")
+      .select("id, conversation_context")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
+      .limit(6);
+    if (error) {
+      this.logger.warn(
+        `Price provenance for order ${orderId}: the vendor's messages could not be read (${error.message}); the sighting names no message.`,
+      );
+      return {
+        conversationMessageId: null,
+        sentence: `The vendor's messages on order ${orderId} could not be read when this price was confirmed, so no message is named. That is a failed read, not a deal without a message.`,
+      };
+    }
+    const row = pickDealMessage((rows ?? []) as DealMessageCandidate[]);
+    return row
+      ? {
+          conversationMessageId: row.id,
+          sentence: "Read from the vendor's reply this deal was confirmed from.",
+        }
+      : {
+          conversationMessageId: null,
+          sentence:
+            "No open deal proposal was found among the vendor's recent replies on this order, so no message is named — the price was confirmed without one on record.",
+        };
   }
 
   /**
@@ -5295,6 +5475,15 @@ export class ProcurementService {
         restaurantId,
         (orderRow as any).inventory_id,
       );
+      // ADR 0160 §112 fork 6(a), writer change 1: the invoice (and its line)
+      // this verified price was read from, found house-scoped. Never a
+      // refusal — a price with no paper found is still a verified price, and
+      // the row says why no paper is named.
+      const receiptPaper = await this.receiptPaperFor(
+        restaurantId,
+        orderId,
+        agreedLine.id,
+      );
       await this.recordPriceHistory({
         restaurantId,
         orderId,
@@ -5302,6 +5491,7 @@ export class ProcurementService {
         masterWineId: shelfItem.masterWineId,
         price: match.effectiveUnitCost ?? body.invoiceUnitPrice,
         source: "receipt_verified",
+        provenance: receiptPaper,
         // BOTTLES. It used to be the raw invoice number: on an order billed in
         // cases of 12, a 2 was written into a column labelled BOTTLE, and
         // `effectiveUnitCost` — a per-bottle amount divided by a case count —
@@ -6874,11 +7064,9 @@ export class ProcurementService {
       .eq("direction", "inbound")
       .order("created_at", { ascending: false })
       .limit(6);
-    const row = (rows || []).find(
-      (r: any) =>
-        r.conversation_context?.deal_proposal &&
-        !r.conversation_context?.deal_resolved_at,
-    );
+    // The same rule `dealMessageFor` names the confirmed price's message by —
+    // one function, so the two can never pick different rows.
+    const row = pickDealMessage((rows || []) as DealMessageCandidate[]);
     if (!row) return;
     const ctx = { ...((row as any).conversation_context || {}) };
     ctx.deal_resolved_at = new Date().toISOString();
@@ -7043,6 +7231,11 @@ export class ProcurementService {
     // the two reads to disagree about the same row.
     const statedPriceUnit = agreedLine.stated;
 
+    // ADR 0160 §112 fork 6(a), writer change 2: the vendor reply this deal
+    // was read out of — read BEFORE `resolveLatestDealProposal` below marks it
+    // resolved, and by the same rule (`pickDealMessage`), so the message the
+    // price names is the one the manager confirmed.
+    const dealMessage = await this.dealMessageFor(restaurantId, orderId);
     await this.recordPriceHistory({
       restaurantId,
       orderId,
@@ -7050,6 +7243,7 @@ export class ProcurementService {
       masterWineId: shelfItem.masterWineId,
       price: agreedPrice,
       source: "order_confirmed",
+      provenance: dealMessage,
       quantity: (order as any).bottles_total ?? quantity ?? 1,
       notes: `Agreed on order confirmation${finalPrice != null ? "" : " (price unchanged from the order)"}.`,
       // ADR 0119 Q4: the series takes the unit the AGREEMENT states, and a
