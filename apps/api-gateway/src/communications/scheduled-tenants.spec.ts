@@ -454,6 +454,7 @@ describe("RecipientResolverService — the env fallback is tenant-scoped", () =>
     const result = await makeResolver().resolveRecipients({
       restaurantId: LEGACY_ID,
       roles: ["manager"],
+      category: "financial_reports",
       channels: ["email"],
     });
 
@@ -467,10 +468,167 @@ describe("RecipientResolverService — the env fallback is tenant-scoped", () =>
     const result = await makeResolver().resolveRecipients({
       restaurantId: "some-other-tenant",
       roles: ["manager"],
+      category: "financial_reports",
       channels: ["email"],
       allowDefaultFallback: false,
     });
 
     expect(result.emails).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("scheduled jobs — a failed recipient lookup is a FAILED run, not an empty house", () => {
+  /**
+   * 2026-09-17, notify-lane review M2. The resolver used to catch a failed
+   * roster/preferences/contacts read and hand back an empty list with no
+   * marker, so every job logged "skipped: no recipients" and runPerTenant
+   * counted the tenant as SUCCEEDED. [REVIEW-FAILS] on the first build of the
+   * lane.
+   *
+   * The REAL RecipientResolverService runs here over a client whose
+   * `user_restaurant_access` read fails; only Gmail and the tenant list are
+   * stand-ins.
+   */
+  const TOMORROW = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0];
+  })();
+
+  function build(opts: { failing: string[] }) {
+    const tenants = makeTenantsService({
+      restaurants: [restaurant("r1", "One")],
+      flags: [optIn("r1")],
+      legacyId: null,
+    });
+    const tenantErrors: string[] = [];
+    jest
+      .spyOn((tenants as any).logger, "error")
+      .mockImplementation((m: any) => {
+        tenantErrors.push(String(m));
+      });
+    for (const level of ["log", "warn"]) {
+      jest
+        .spyOn((tenants as any).logger, level as any)
+        .mockImplementation(() => {});
+    }
+
+    const inserts: Array<{ table: string; rows: any }> = [];
+    const base = makeClient(
+      {
+        user_restaurant_access: [
+          { user_id: "u1", role: "manager", restaurant_id: "r1", is_active: true },
+        ],
+        users: [{ user_id: "u1", email: "manager@one.test" }],
+        notification_preferences: [],
+        procurement_orders: [
+          {
+            id: "po-1",
+            restaurant_id: "r1",
+            status: "CONFIRMED",
+            wine_name: "Barolo",
+            quantity: 6,
+            expected_delivery_date: `${TOMORROW}T10:00:00`,
+          },
+        ],
+      },
+      opts.failing,
+    );
+    const client = {
+      from: (table: string) => {
+        const b = base.from(table);
+        b.insert = jest.fn((rows: any) => {
+          inserts.push({ table, rows });
+          return Promise.resolve({ data: null, error: null });
+        });
+        return b;
+      },
+    };
+    const databaseService = {
+      getClient: () => client,
+      supabase: client,
+      getRestaurantInventory: jest.fn(async () => [{ stock_live: 4 }]),
+      getLowStockItems: jest.fn(async () => []),
+      getRestaurantMemberIds: jest.fn(async () => ["u1"]),
+    };
+    const resolver = new RecipientResolverService(
+      { get: () => undefined } as any,
+      databaseService as any,
+    );
+    for (const level of ["error", "warn", "debug", "log"]) {
+      jest
+        .spyOn((resolver as any).logger, level as any)
+        .mockImplementation(() => {});
+    }
+    const gmailService = {
+      sendInventoryAuditReminder: jest.fn(async () => ({ success: true })),
+      sendDeliveryETANotification: jest.fn(async () => ({ success: true })),
+    };
+    const service = new ScheduledTasksService(
+      { get: () => undefined } as any,
+      {} as any,
+      databaseService as any,
+      gmailService as any,
+      resolver,
+      tenants,
+    );
+    const jobErrors: string[] = [];
+    jest
+      .spyOn((service as any).logger, "error")
+      .mockImplementation((m: any) => {
+        jobErrors.push(String(m));
+      });
+    for (const level of ["log", "warn"]) {
+      jest
+        .spyOn((service as any).logger, level as any)
+        .mockImplementation(() => {});
+    }
+    return { service, gmailService, inserts, tenantErrors, jobErrors };
+  }
+
+  it("[REVIEW-FAILS] an email-only job fails the tenant with recipient_lookup_failed and sends nothing", async () => {
+    const { service, gmailService, tenantErrors, jobErrors } = build({
+      failing: ["user_restaurant_access"],
+    });
+
+    await service.sendInventoryAuditReminder();
+
+    expect(gmailService.sendInventoryAuditReminder).not.toHaveBeenCalled();
+    expect(jobErrors.join("\n")).toMatch(
+      /RECIPIENT_LOOKUP_FAILED job=inventory-audit-reminder restaurant=r1/,
+    );
+    expect(tenantErrors.join("\n")).toMatch(
+      /SCHEDULED_JOB_TENANT_FAILED job=inventory-audit-reminder restaurant=r1 .*recipient_lookup_failed/,
+    );
+  });
+
+  it("[REVIEW-FAILS] a job that also writes the inbox row writes it FIRST, then fails the tenant", async () => {
+    const { service, gmailService, inserts, tenantErrors } = build({
+      failing: ["user_restaurant_access"],
+    });
+
+    await service.sendDeliveryETANotifications();
+
+    expect(gmailService.sendDeliveryETANotification).not.toHaveBeenCalled();
+    expect(inserts.map((i) => i.table)).toEqual(["notifications"]);
+    expect(tenantErrors.join("\n")).toMatch(
+      /SCHEDULED_JOB_TENANT_FAILED job=delivery-eta-notification restaurant=r1 .*recipient_lookup_failed/,
+    );
+  });
+
+  it("with readable tables the same two jobs send and succeed (both states)", async () => {
+    const { service, gmailService, inserts, tenantErrors } = build({
+      failing: [],
+    });
+
+    await service.sendInventoryAuditReminder();
+    await service.sendDeliveryETANotifications();
+
+    expect(gmailService.sendInventoryAuditReminder).toHaveBeenCalledTimes(1);
+    expect(gmailService.sendDeliveryETANotification).toHaveBeenCalledTimes(1);
+    expect(inserts.map((i) => i.table)).toEqual(["notifications"]);
+    expect(tenantErrors.join("\n")).not.toMatch(/SCHEDULED_JOB_TENANT_FAILED/);
   });
 });

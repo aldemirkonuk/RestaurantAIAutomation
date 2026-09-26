@@ -25,11 +25,67 @@ import {
   dayGrain,
   effectiveScope,
   insightRuleId,
-  isSuppressed,
   suppressionKeys,
   trendGrain,
   windowGrain,
+  withFiring,
 } from "./suppression";
+import {
+  ItemState,
+  ResolvedState,
+  StateBook,
+  resolveItemState,
+} from "./item-state";
+
+/** How many items each hiding state withheld from one read (ADR 0191). */
+export interface WithheldCounts {
+  dismissed: number;
+  snoozed: number;
+  done: number;
+}
+
+/**
+ * Drop every item whose shared state is not `active` — dismissed, done, or
+ * snoozed with an instant still ahead — and count each. The ONE filter the
+ * live compute and the stored read both apply, so an item hidden on the feed
+ * is hidden on Reports, the rails, the catalogue and the mobile tab by the
+ * same rule (ADR 0191, founder 2026-09-21).
+ */
+export function withholdByState<T>(
+  items: T[],
+  targetOf: (item: T) => {
+    ruleId: string;
+    subject: string | null;
+    periodKey: string | null;
+  },
+  book: StateBook,
+): { kept: T[]; withheld: WithheldCounts } {
+  const withheld: WithheldCounts = { dismissed: 0, snoozed: 0, done: 0 };
+  const kept: T[] = [];
+  for (const item of items) {
+    const st: ResolvedState = resolveItemState(targetOf(item), book);
+    if (st.state === "active") kept.push(item);
+    else withheld[st.state as Exclude<ItemState, "active">]++;
+  }
+  return { kept, withheld };
+}
+
+/** The item a stored `analytics_insights` row is — the same target as live. */
+function storedTarget(row: any): {
+  ruleId: string;
+  subject: string | null;
+  periodKey: string | null;
+} {
+  return {
+    ruleId: insightRuleId(String(row?.candidate_key ?? "")),
+    subject:
+      typeof row?.subject === "string" && row.subject ? row.subject : null,
+    periodKey:
+      typeof row?.period_key === "string" && row.period_key
+        ? row.period_key
+        : null,
+  };
+}
 
 /**
  * The floor under any "vs its own history" sentence.
@@ -87,8 +143,17 @@ export const MIN_TREND_OBSERVED = 14;
  *       (`toDaily`/`timeSeriesInsights`); manager day-exclusions are honoured;
  *       dismissals are honoured; the baseline sentence carries its support
  *       count and dates itself when it skipped back.
+ *   3 — 2026-09-21 (ADR 0191): snoozes and done are withheld as well as
+ *       dismissals, and every row stores its `subject` and `period_key` so
+ *       the stored read can resolve the shared per-item state. A version-2
+ *       row has neither, so its state cannot be read at the scope it was
+ *       written: it is withheld and recomputed, not served unfiltered.
+ *       Round 3 (same day, still version 3 — no version-3 row has ever been
+ *       served: `main` is at 2): a type that names no subject and no period
+ *       stores the week it fired in as its `period_key` ("Each firing is one
+ *       card").
  */
-export const INSIGHT_GENERATOR_VERSION = 2;
+export const INSIGHT_GENERATOR_VERSION = 3;
 
 /**
  * InsightGeneratorService — executes the insight candidate space.
@@ -161,15 +226,25 @@ export class InsightGeneratorService {
     restaurantId: string,
     opts: {
       categories?: InsightCategory[];
+      /**
+       * Only these types (the catalogue's "open live items", ADR 0191). A
+       * narrowed read filters BEFORE the per-category cap, is uncapped unless
+       * `maxPerCategory` is passed, and is NEVER persisted — see below.
+       */
+      candidateKeys?: string[];
       maxPerCategory?: number;
       persist?: boolean;
     } = {},
   ) {
     const startedAt = Date.now();
-    const maxPerCategory = opts.maxPerCategory ?? 5;
-    const [bundle, suppressions] = await Promise.all([
+    const narrowed = (opts.candidateKeys?.length ?? 0) > 0;
+    // The cap keeps a MIXED feed readable. A read narrowed to one type is the
+    // manager asking for that type's whole list, so it is not capped.
+    const maxPerCategory =
+      opts.maxPerCategory ?? (narrowed ? Number.POSITIVE_INFINITY : 5);
+    const [bundle, state] = await Promise.all([
       this.loadBundle(restaurantId),
-      this.actions.listSuppressions(restaurantId),
+      this.actions.readState(restaurantId),
     ]);
     const candidates = availableCandidates(bundle.availability);
 
@@ -189,6 +264,14 @@ export class InsightGeneratorService {
       const set = new Set(opts.categories);
       insights = insights.filter((i) => set.has(i.category));
     }
+    // BEFORE the cap below, never after it: filtering a capped list would
+    // hide a type's live items whenever five higher-scoring insights of other
+    // types share its category, and the catalogue would then say "nothing
+    // live" about a type that fired (ADR 0191).
+    if (narrowed) {
+      const keys = new Set(opts.candidateKeys);
+      insights = insights.filter((i) => keys.has(i.candidateKey));
+    }
 
     // ---- The manager's dismissals, honoured HERE ---------------------------
     // This is the fix for "if the person says dismiss, it should be avoided at
@@ -198,21 +281,24 @@ export class InsightGeneratorService {
     // and the hourly `analytics_insights` persist, had never heard of it. The
     // count is kept and returned rather than swallowed: a page that shows four
     // insights when six fired has to be able to say so (ADR 0020).
-    const beforeSuppression = insights.length;
-    if (suppressions.keys.size > 0) {
-      insights = insights.filter(
-        (i) =>
-          !isSuppressed(
-            {
-              ruleId: insightRuleId(i.candidateKey),
-              subject: i.subject,
-              periodKey: i.periodKey,
-            },
-            suppressions.keys,
-          ),
-      );
-    }
-    const suppressed = beforeSuppression - insights.length;
+    //
+    // Since ADR 0191's second round (founder, 2026-09-21: "Build it right, in
+    // order") this honours the ONE shared per-item state, not dismissals
+    // alone: a snooze (until its instant) and a done hold here too, at every
+    // scope, so an item snoozed on the feed is snoozed on Reports, the rails
+    // and the catalogue.
+    const fired = insights;
+    const held = withholdByState(
+      insights,
+      (i) => ({
+        ruleId: insightRuleId(i.candidateKey),
+        subject: i.subject,
+        periodKey: i.periodKey,
+      }),
+      state.book,
+    );
+    insights = held.kept;
+    const suppressed = held.withheld.dismissed;
 
     // Rank: score desc, cap per category.
     insights.sort((a, b) => b.score - a.score);
@@ -224,8 +310,36 @@ export class InsightGeneratorService {
       return true;
     });
 
-    if (opts.persist) {
-      await this.persist(restaurantId, ranked, opts.categories);
+    // A narrowed read is never persisted, whatever the caller asked:
+    // `persist()` REPLACES every stored row of the requested categories (of
+    // every category when none is named), so writing one type's list back
+    // would delete every other type's stored insights for the house.
+    //
+    // The cache is state-free (ADR 0191, last call): it stores what fired —
+    // capped as if nothing were hidden — together with what is shown now, and
+    // every stored read applies the shared state (`readStored`). Storing only
+    // what was visible at the rebuild meant a finding snoozed at 06:00 was
+    // missing from the cache when its snooze ended, so on Reports and the
+    // rails it did not "return after" (the founder's words) until the
+    // category's next rebuild — a day for `daily`, a week for `weekly`, never
+    // for `manual`. Same for a dismissal or a done returned to the book.
+    // Bounded: at most twice the per-category cap.
+    if (opts.persist && !narrowed) {
+      const shown = new Set(ranked);
+      const firedPerCat = new Map<string, number>();
+      const firedCapped = [...fired]
+        .sort((a, b) => b.score - a.score)
+        .filter((i) => {
+          const c = firedPerCat.get(i.category) || 0;
+          if (c >= maxPerCategory) return false;
+          firedPerCat.set(i.category, c + 1);
+          return true;
+        });
+      const toStore = [
+        ...ranked,
+        ...firedCapped.filter((i) => !shown.has(i)),
+      ].sort((a, b) => b.score - a.score);
+      await this.persist(restaurantId, toStore, opts.categories);
     }
 
     return {
@@ -249,7 +363,10 @@ export class InsightGeneratorService {
       // means the list below may contain things already dismissed — the
       // surface must say that rather than present it as clean.
       suppressed,
-      suppressionsReadable: suppressions.readable,
+      // Every hiding state, counted apart: a page that shows four when six
+      // fired says which of the two were snoozed and which were ruled off.
+      withheld: held.withheld,
+      suppressionsReadable: state.readable,
       // Days the manager ruled out of the baselines, and whether THAT store
       // was readable. Same contract, same reason.
       excludedDays: Array.from(bundle.excludedDates).sort(),
@@ -285,6 +402,67 @@ export class InsightGeneratorService {
     restaurantId: string,
     opts: { categories?: string[]; limit?: number } = {},
   ) {
+    return (await this.readStored(restaurantId, opts)).rows;
+  }
+
+  /**
+   * The stored read, with the ONE shared per-item state applied (ADR 0191).
+   *
+   * Before this, a stored row was served whatever had been done to it since
+   * the last persist — a dismissal made at 10:05 stood on Reports, the rails
+   * and the mobile tab until the category's next cadence run, which for a
+   * `daily @ 06:00` category is the next morning. Every stored row now
+   * carries its subject and period (`20260925120000`), so the same
+   * `resolveItemState` the live compute uses decides here too, and each row
+   * goes out with the keys an act on it must write (`suppression`), exactly
+   * as a live row does — no surface builds a key.
+   *
+   * Reads past `limit` so that withheld rows do not shorten the page: the
+   * table holds at most the per-category cap of each category, so the extra
+   * read is bounded.
+   *
+   * `read` is how many current-version rows existed BEFORE the state was
+   * applied: zero means a cold cache (the caller computes), anything else is
+   * an answer even when every row was withheld.
+   */
+  async readStored(
+    restaurantId: string,
+    opts: { categories?: string[]; limit?: number } = {},
+  ): Promise<{
+    rows: any[];
+    read: number;
+    withheld: WithheldCounts;
+    suppressionsReadable: boolean;
+  }> {
+    const limit = opts.limit ?? 30;
+    const [rows, state] = await Promise.all([
+      this.queryStored(restaurantId, opts.categories, Math.max(limit, 200)),
+      this.actions.readState(restaurantId),
+    ]);
+    const held = withholdByState(rows, storedTarget, state.book);
+    return {
+      rows: held.kept.slice(0, limit).map((r) => {
+        const target = storedTarget(r);
+        return {
+          ...r,
+          suppression: {
+            key: buildSuppressionKey(target, "insight"),
+            scope: effectiveScope(target, "insight"),
+            keys: suppressionKeys(target),
+          },
+        };
+      }),
+      read: rows.length,
+      withheld: held.withheld,
+      suppressionsReadable: state.readable,
+    };
+  }
+
+  private async queryStored(
+    restaurantId: string,
+    categories: string[] | undefined,
+    limit: number,
+  ): Promise<any[]> {
     const client = this.dbService.getClient();
     let q = client
       .from("analytics_insights")
@@ -292,8 +470,8 @@ export class InsightGeneratorService {
       .eq("restaurant_id", restaurantId)
       .gte("generator_version", INSIGHT_GENERATOR_VERSION)
       .order("score", { ascending: false })
-      .limit(opts.limit ?? 30);
-    if (opts.categories?.length) q = q.in("category", opts.categories);
+      .limit(limit);
+    if (categories?.length) q = q.in("category", categories);
     const { data, error } = await q;
     if (error) {
       // Includes the window between this code deploying and migration
@@ -373,6 +551,10 @@ export class InsightGeneratorService {
             evidence: i.evidence,
             period_start: i.periodStart ?? null,
             period_end: i.periodEnd ?? null,
+            // The item's identity, so a stored read resolves its shared
+            // state at every scope (ADR 0191, `20260925120000`).
+            subject: i.subject ?? null,
+            period_key: i.periodKey ?? null,
             generator_version: INSIGHT_GENERATOR_VERSION,
           })),
         );
@@ -1481,12 +1663,22 @@ export class InsightGeneratorService {
     if (!sentence) return null;
     const subject =
       scoreParams.subject ?? scoreParams.entityLabel ?? evidence.entity ?? null;
-    const periodKey = scoreParams.periodKey ?? null;
-    const target = {
-      ruleId: insightRuleId(candidateKey),
-      subject,
-      periodKey,
-    };
+    // "Each firing is one card" (ADR 0191 round 3, founder 2026-09-21): a
+    // type that names no subject and no period is keyed by the week it fired
+    // in — the founder's own example of a firing period, and the grain the
+    // catalogue's types carry no other horizon for. A one-item dismiss or
+    // done then hides this firing, not the whole type (which is the
+    // catalogue's On/Off), and the item returns when it fires next week.
+    const target = withFiring(
+      {
+        ruleId: insightRuleId(candidateKey),
+        subject,
+        periodKey: scoreParams.periodKey ?? null,
+      },
+      "week",
+      new Date(),
+    );
+    const periodKey = target.periodKey ?? null;
     return {
       candidateKey,
       category,
