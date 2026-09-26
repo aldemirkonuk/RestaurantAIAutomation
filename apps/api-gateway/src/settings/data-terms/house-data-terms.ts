@@ -79,13 +79,16 @@ export const STATEMENTS: readonly DataTermStatement[] = [
     text:
       "Jev (built by TypeSafe) reads the LATEST part of a vendor message, with names, emails, " +
       "phone numbers, private topics, account numbers, government ids and credentials removed " +
-      "first — never the whole thread, never an automated message — and only while this switch is " +
-      "on and an owner has accepted these terms in their current version. Up to the last 365 days " +
-      "of mail is read once the switch is first turned on. The removal is a rule-based pass: a name " +
-      "it was never told, or a private matter written in words its list does not hold, can still get " +
-      "through. A message not written in Turkish or English is not sent at all.",
+      "first — never an automated message — and only while this switch is on and an owner has " +
+      "accepted these terms in their current version. The earlier thread a reply quotes is cut off " +
+      "at the reply headers and separators Gmail, Outlook and Apple Mail write in Turkish and " +
+      "English. Up to the last 365 days of mail is read once the switch is first turned on. The cut " +
+      "and the removal are rule-based passes: an earlier message quoted in a shape the cut does not " +
+      "know, a name the removal was never told, or a private matter written in words its list does " +
+      "not hold, can still get through. A message not written in Turkish or English is not sent at all.",
     evidence: [
       "apps/api-gateway/src/vendor-tone/jev-tone.client.ts",
+      "apps/api-gateway/src/vendor-tone/tone-scale.ts",
       "apps/api-gateway/src/vendor-tone/pii-mask.ts",
       "apps/api-gateway/src/vendor-tone/sensitive-mask.ts",
       "apps/api-gateway/src/vendor-tone/vendor-tone-scoring.service.ts:45",

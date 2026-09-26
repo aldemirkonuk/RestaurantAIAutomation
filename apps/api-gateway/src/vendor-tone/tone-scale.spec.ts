@@ -160,6 +160,100 @@ describe("the message's own sentences", () => {
   });
 });
 
+// [Audit of PR #435 at 2f78b659, 2026-09-26] The terms say only the latest
+// part leaves. Each of these sent the earlier thread whole before the fix.
+describe("the thread cut — the earlier thread never rides along", () => {
+  const LATEST = "Merhaba, siparişiniz pazartesi teslim edilecek.";
+  const EARLIER = "Selin Aksoy gizli fiyat listesini istedi";
+  const cases: Array<[string, string]> = [
+    [
+      "a Turkish Outlook reply (Kimden / Gönderildi / Kime / Konu)",
+      `${LATEST}\n\nKimden: Selin Aksoy <selin@harbor.com>\nGönderildi: 21 Eylül 2026 Pazartesi 10:00\nKime: Can <can@kestrel.com>\nKonu: Sipariş\n\n${EARLIER}`,
+    ],
+    [
+      "a Turkish Outlook for Mac reply (Kimden / Tarih)",
+      `${LATEST}\nKimden: Selin Aksoy <selin@harbor.com>\nTarih: 21 Eylül 2026 10:00\n${EARLIER}`,
+    ],
+    [
+      "a newer Turkish Outlook reply (Gönderen / Gönderildi), bold",
+      `${LATEST}\n**Gönderen:** Selin Aksoy\n**Gönderildi:** 21 Eylül 2026\n${EARLIER}`,
+    ],
+    [
+      "an Outlook header with no space after the colon",
+      `${LATEST}\nFrom:Selin Aksoy\nSent:Monday\n${EARLIER}`,
+    ],
+    [
+      "an Outlook header whose From value wraps onto a second line",
+      `${LATEST}\nFrom: Selin Aksoy\n<selin@harbor.com>\nSent: Monday, 21 September 2026\n${EARLIER}`,
+    ],
+    [
+      "an Outlook header that opens with Date before From",
+      `${LATEST}\nDate: Mon, 21 Sep 2026\nFrom: Selin Aksoy\n${EARLIER}`,
+    ],
+    [
+      "a Gmail header wrapped across two lines",
+      `${LATEST}\n\nOn Mon, 21 Sep 2026 at 10:00, Selin Aksoy <\nselin@harbor.com> wrote:\n\n${EARLIER}`,
+    ],
+    [
+      "a Gmail header wrapped across three lines",
+      `${LATEST}\nOn Mon, 21 Sep 2026 at 10:00,\nSelin Aksoy\n<selin@harbor.com> wrote:\n${EARLIER}`,
+    ],
+    [
+      "a Turkish Gmail header wrapped so 'tarihinde' opens the second line",
+      `${LATEST}\n21 Eyl 2026 Pzt, 10:00\ntarihinde Selin Aksoy <selin@harbor.com> şunu yazdı:\n${EARLIER}`,
+    ],
+    [
+      "an Outlook separator in Turkish (Özgün İleti)",
+      `${LATEST}\n-----Özgün İleti-----\n${EARLIER}`,
+    ],
+    [
+      "an Outlook separator in Turkish (Orijinal İleti)",
+      `${LATEST}\n-----Orijinal İleti-----\n${EARLIER}`,
+    ],
+    [
+      "a Turkish Gmail forward (Yönlendirilen ileti)",
+      `${LATEST}\n---------- Yönlendirilen ileti ---------\n${EARLIER}`,
+    ],
+    [
+      "Outlook on the web's underscore rule",
+      `${LATEST}\n________________________________\n${EARLIER}`,
+    ],
+    [
+      "an Apple Mail forward",
+      `${LATEST}\nBegin forwarded message:\n\n${EARLIER}`,
+    ],
+    [
+      "a message that opens with the quoted header, Windows line ends",
+      `Kimden: Selin Aksoy\r\nGönderildi: Pazartesi\r\n${EARLIER}`,
+    ],
+  ];
+  it.each(cases)("cuts %s", (_name, text) => {
+    const latest = latestPart(text);
+    expect(latest).not.toContain("gizli fiyat");
+    expect(latest).not.toContain("Selin");
+    expect(latest).not.toContain("harbor.com");
+    if (!text.startsWith("Kimden")) expect(latest).toBe(LATEST);
+    else expect(latest).toBe("");
+    expect(JSON.stringify(egressFor(text, []))).not.toContain("gizli fiyat");
+  });
+
+  it("cuts a Turkish Gmail header wrapped over three lines, 'tarihinde' opening the middle one", () => {
+    const text = `${LATEST}\nPzt, 21 Eyl 2026 10:00\ntarihinde Selin Aksoy <selin@harbor.com>\nşunu yazdı:\n${EARLIER}`;
+    const latest = latestPart(text);
+    expect(latest).not.toContain("Selin");
+    expect(latest).not.toContain("gizli fiyat");
+    expect(latest.startsWith(LATEST)).toBe(true);
+  });
+
+  it("keeps the vendor's own lines that only look like one header", () => {
+    const own =
+      "Merhaba,\nTarih: pazartesi teslim.\nKonu: Barolo fiyatı değişmedi.\nTeşekkürler";
+    expect(latestPart(own)).toBe(own);
+    const en = "Hello,\nOn Monday we ship the Barolo.\nThanks";
+    expect(latestPart(en)).toBe(en);
+  });
+});
+
 describe("the egress — only masked text leaves", () => {
   const mail =
     "Hi Selin,\nSorry for the delay — the truck broke down. We can deliver Monday; call me on +90 532 123 45 67 or can.yilmaz@kestrel.com.\nBest regards,\nCan Yılmaz\nKestrel Wine Co.";

@@ -110,25 +110,107 @@ export function round2(x: number): number {
 }
 
 /**
+ * The labels a mail client writes in the header block above a message it
+ * quotes, in English and Turkish (Gmail, Outlook, Outlook on the web, Apple
+ * Mail). A FROM label must be one line of the pair that marks a block.
+ */
+const FROM_LABELS = /^(?:from|kimden|gönderen)$/iu;
+const HEADER_LABELS =
+  /^(?:from|sent|date|to|cc|bcc|subject|kimden|gönderen|gönderildi|gönderilme tarihi|gönderim tarihi|tarih|kime|bilgi|gizli|konu)$/iu;
+/** "From:", "From :", "**From:**", "Kimden:" — the label a header line starts with, or null. */
+function headerLabelOf(line: string): string | null {
+  const m =
+    /^[ \t]*[*_]{0,2}[ \t]*(\p{L}[\p{L} ]{0,24}?)[ \t]*[*_]{0,2}[ \t]*:/u.exec(
+      line,
+    );
+  if (!m) return null;
+  const label = m[1].trim();
+  return HEADER_LABELS.test(label) ? label : null;
+}
+/** A line that can open a reply header: "On Mon, …", "21 Eyl 2026 …", "… tarihinde …". */
+function opensReplyHeader(line: string): boolean {
+  return (
+    /^[ \t]*On\s/iu.test(line) ||
+    /(?:^|\s)tarihinde(?:\s|$)/iu.test(line) ||
+    /^[ \t]*\d{1,2}[ ./-]+\p{L}{3,}\.?[ ./-]+\d{4}/u.test(line) ||
+    /^[ \t]*\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/u.test(line) ||
+    /^[ \t]*\d{4}-\d{2}-\d{2}/u.test(line)
+  );
+}
+/** Separator lines that start a quoted or forwarded message, whatever sits below them. */
+const SEPARATOR_LINES = [
+  /^[ \t]*-{2,}[ \t]*(?:Original Message|Forwarded message|(?:Özgün|Orijinal|Orjinal|Asıl|İletilen|Yönlendirilen|İletilmiş) [İIi]leti)[ \t]*-{2,}/iu,
+  /^[ \t]*(?:Begin forwarded message|İletilmiş ileti başlangıcı)[ \t]*:/iu,
+  /^[ \t]*_{10,}[ \t]*$/u,
+  /^[ \t]*>/u,
+];
+/** How far above a "wrote:" / "yazdı:" line a wrapped reply header may have started. */
+const WRAPPED_HEADER_LINES = 2;
+
+/**
  * The latest message only: a reply quotes the thread below it, and the tone of
- * the house's own earlier words is not the vendor's. Cut at the first quote
- * header or quoted line.
+ * the house's own earlier words is not the vendor's — nor may the earlier
+ * thread leave with it (the terms, `house-data-terms.ts` `jev-tone-scoring`).
+ * Cut at the first line where any of these starts, on the text's own lines:
+ *
+ *   - a header block: two header lines within three lines of each other, one
+ *     of them a FROM label ("From:", "Kimden:", "Gönderen:") and the other any
+ *     header label ("Sent:", "Date:", "Gönderildi:", "Tarih:", "Konu:", …) —
+ *     in any order, with or without a space after the colon, bold or not, and
+ *     with the FROM value wrapped onto the next line;
+ *   - a reply line ending "wrote:" or "yazdı:" — cut where its header opens,
+ *     up to two lines above when the client wrapped it ("On …", a date,
+ *     "… tarihinde …");
+ *   - a separator ("-----Original Message-----", "-----Özgün İleti-----",
+ *     "---------- Forwarded message ---------", "Begin forwarded message:",
+ *     Outlook's underscore rule) or a quoted ">" line.
+ *
+ * A cut that fires on the vendor's own words only makes the part shorter —
+ * less leaves, never more. A thread quoted in a shape none of these know is
+ * not cut: the terms name that residual risk.
+ *
+ * [Audit of PR #435 at 2f78b659, 2026-09-26: the cut knew English headers only,
+ * on one line, with a space after "From:" — a Turkish Outlook reply
+ * ("Kimden: … Gönderildi: …"), "From:X\nSent:Y", and a wrapped "On … wrote:"
+ * header all sent the earlier thread whole.]
  */
 export function latestPart(text: string): string {
-  const src = typeof text === "string" ? text.replace(/\r\n/g, "\n") : "";
-  const cuts = [
-    /\n[ \t]*On .{4,200}wrote:[ \t]*\n/,
-    /\n[ \t]*-{2,}[ \t]*(?:Original Message|Forwarded message)[ \t]*-{2,}/i,
-    /\n[ \t]*From:[ \t].+\n[ \t]*(?:Sent|Date):[ \t]/,
-    /\n[ \t]*>/,
-    /\n[ \t]*.{4,200} tarihinde .{0,200}yazdı:[ \t]*\n/,
-  ];
-  let end = src.length;
-  for (const re of cuts) {
-    const m = re.exec(src);
-    if (m && m.index < end) end = m.index;
+  const src = typeof text === "string" ? text.replace(/\r\n?/g, "\n") : "";
+  const lines = src.split("\n");
+  const starts: number[] = [];
+  let at = 0;
+  for (const line of lines) {
+    starts.push(at);
+    at += line.length + 1;
   }
-  return src.slice(0, end).trim();
+  const cutAt = (i: number) => src.slice(0, starts[i]).trim();
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (SEPARATOR_LINES.some((re) => re.test(line))) return cutAt(i);
+
+    const label = headerLabelOf(line);
+    if (label !== null) {
+      for (let j = i + 1; j <= i + 2 && j < lines.length; j++) {
+        const next = headerLabelOf(lines[j]);
+        if (
+          next !== null &&
+          (FROM_LABELS.test(label) || FROM_LABELS.test(next))
+        )
+          return cutAt(i);
+      }
+    }
+
+    if (/(?:wrote|yazdı|yazmış)[ \t]*:[ \t]*$/iu.test(line)) {
+      let open = i;
+      for (let k = i; k >= Math.max(0, i - WRAPPED_HEADER_LINES); k--) {
+        if (k < i && lines[k].trim() === "") break;
+        if (opensReplyHeader(lines[k])) open = k;
+      }
+      return cutAt(open);
+    }
+  }
+  return src.trim();
 }
 
 /**
