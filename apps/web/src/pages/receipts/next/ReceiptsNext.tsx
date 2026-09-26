@@ -72,12 +72,31 @@ import {
   useReceiptsNextData,
 } from './useReceiptsNextData';
 
-// The credit ledger has no Next lane yet; /credits lands here as
-// ?tab=credits and must keep working with the flag ON (opus-correctness
-// DEFECT 5) — that tab renders the legacy page until a credits lane exists.
-const LegacyReceiptsPage = lazy(() =>
-  import('../../ReceiptsPage').then((m) => ({ default: m.ReceiptsPage })),
+// The credit ledger is this page's second lane (ADR 0149 row 22). `/credits`
+// lands here as `?tab=credits`. Until 2026-09-25 that tab lazy-loaded the
+// LEGACY `ReceiptsPage`, so a live Mudavym route still rendered the old design
+// for one tab; it now renders `ReceiptsCredits`, and nothing on a live route
+// imports the legacy page (its only importer is App.tsx's `legacy` slot, which
+// `receipts` being in LIVE_PAGES never reaches outside a QA override).
+const ReceiptsCredits = lazy(() =>
+  import('./ReceiptsCredits').then((m) => ({ default: m.ReceiptsCredits })),
 );
+
+/**
+ * Whether this person is offered the credit ledger. ADR 0167 (founder
+ * 2026-09-19, "Refuse staff on all four"): the gateway answers the list, the
+ * figures and every move only for the owner or a manager (or an admin) of the
+ * house in the token. The role read is the one IN THIS HOUSE, `activeRole`;
+ * `user.role` is the global `users.role` and only the fallback while no house
+ * is active. An unrecognised role is treated as staff, as the server does.
+ */
+export function canSeeCreditLedger(
+  activeRole: string | null | undefined,
+  globalRole: string | null | undefined,
+): boolean {
+  const role = (activeRole ?? globalRole ?? '').toLowerCase();
+  return role === 'owner' || role === 'manager' || role === 'admin';
+}
 const CanonicalDocumentPage = lazy(() =>
   import('../../documents/next/CanonicalDocumentPage').then((m) => ({
     default: m.CanonicalDocumentPage,
@@ -1291,7 +1310,20 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
 
 export default function ReceiptsNext() {
   const data = useReceiptsNextData();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { activeRole, user } = useAuth();
+  const creditsOffered = canSeeCreditLedger(activeRole, user?.role);
+  const askedForCredits = searchParams.get('tab') === 'credits';
+  // A staff member who follows `/credits` lands on Receipts, as ADR 0167 has
+  // it, and is told why rather than shown a ledger that can only refuse.
+  const tab: 'receipts' | 'credits' = askedForCredits && creditsOffered ? 'credits' : 'receipts';
+  const setTab = (next: 'receipts' | 'credits') => {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'credits') params.set('tab', 'credits');
+    else params.delete('tab');
+    params.delete('doc');
+    setSearchParams(params);
+  };
   /*
    * `?doc=<id>` opens that document straight away. The receiving workspace links
    * here when it refuses a unit price for an invoice whose money is held
@@ -1308,14 +1340,6 @@ export default function ReceiptsNext() {
     data.queue.find((d) => d.id === selectedId) ??
     data.verified.find((d) => d.id === selectedId) ??
     null;
-
-  if (searchParams.get('tab') === 'credits') {
-    return (
-      <Suspense fallback={null}>
-        <LegacyReceiptsPage />
-      </Suspense>
-    );
-  }
 
   return (
     <div
@@ -1336,9 +1360,44 @@ export default function ReceiptsNext() {
           <div>
             <Wordmark size={13} />
             <h1 style={{ fontFamily: SERIF, fontSize: 30, fontWeight: 600, letterSpacing: '-0.015em', lineHeight: 1.1, margin: '4px 0 0' }}>
-              Receipts
+              {tab === 'credits' ? 'Credits' : 'Receipts'}
             </h1>
+            {creditsOffered && (
+              <div role="tablist" aria-label="Receipts or credits" style={{ display: 'flex', gap: 14, marginTop: 8 }}>
+                {(
+                  [
+                    ['receipts', 'Receipts'],
+                    ['credits', 'Credits'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === key}
+                    onClick={() => setTab(key)}
+                    className="rc-ink"
+                    style={{
+                      fontFamily: MONO,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: '0.14em',
+                      textTransform: 'uppercase',
+                      padding: '4px 0',
+                      border: 'none',
+                      borderBottom: tab === key ? '2px solid var(--seal, #1A5E6B)' : '2px solid transparent',
+                      background: 'transparent',
+                      color: tab === key ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+          {tab === 'receipts' && (
           <span
             style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}
             title={
@@ -1360,7 +1419,32 @@ export default function ReceiptsNext() {
             {' · '}
             {data.verifiedCount === null ? EM : `${data.verifiedCapped ? GE : ''}${data.verifiedCount} verified`}
           </span>
+          )}
         </header>
+
+        {askedForCredits && !creditsOffered && (
+          <p
+            role="status"
+            className="mb-4"
+            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}
+          >
+            The credit ledger is kept for the owner and managers of this house, so it is not shown
+            here. The receipts are below.
+          </p>
+        )}
+
+        {tab === 'credits' ? (
+          <Suspense
+            fallback={
+              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+                Opening the credit ledger…
+              </p>
+            }
+          >
+            <ReceiptsCredits />
+          </Suspense>
+        ) : (
+        <>
 
         {data.noRestaurant && (
           <div
@@ -1542,6 +1626,8 @@ export default function ReceiptsNext() {
             )}
           </section>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
