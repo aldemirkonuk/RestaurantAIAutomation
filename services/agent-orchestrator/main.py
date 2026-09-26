@@ -38,12 +38,27 @@ else:
         environment=_environment,
         # Already the SDK default, stated explicitly because it is a privacy
         # control and a silent default is not a control anyone can audit. Keeps
-        # the SDK from attaching request bodies, cookies and client IPs on its
-        # own. It does not cover anything set through set_user(), which is why
-        # SentryClient.set_user takes opaque identifiers only.
+        # the SDK from attaching cookies and client IPs on its own; it does NOT
+        # withhold request bodies (max_request_body_size governs those), which
+        # is why scrub_sentry_event drops request["data"]. It does not cover
+        # anything set through set_user(), which is why SentryClient.set_user
+        # takes opaque identifiers only.
         send_default_pii=False,
+        # Founder 2026-09-25 (PR #427 round 3): stop sending locals. scrub_text
+        # cannot catch a bare token quoted inside a frame local's repr (no URL
+        # around it, e.g. a request body model) -- the only fix is to never
+        # attach frame locals in the first place. This is the SDK's own knob,
+        # upstream of before_send, so no scrubber pass can substitute for it.
+        include_local_variables=False,
         integrations=[StarletteIntegration(), FastApiIntegration()],
         before_send=scrub_sentry_event,
+        # sentry_sdk skips before_send for transaction events. With
+        # traces_sample_rate above, the ASGI integration attaches request.url
+        # and request.query_string to EVERY event type, so a SUCCESSFUL request
+        # shipped its query -- INBOUND_WEBHOOK_SECRET arrives as ?secret= on a
+        # @Public() route -- entirely unscrubbed, at a higher volume than the
+        # error path. Found by PR #427's own security re-audit.
+        before_send_transaction=scrub_sentry_event,
     )
 # ── End Sentry ────────────────────────────────────────────────────────────────
 

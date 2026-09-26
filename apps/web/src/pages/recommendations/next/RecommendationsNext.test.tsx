@@ -137,6 +137,7 @@ const excludeDay = vi.fn(async () => true);
 const ruleOutDay = vi.fn(async () => {});
 const bulk = vi.fn(async () => {});
 const restore = vi.fn(async () => {});
+const wake = vi.fn(async () => {});
 const refetch = vi.fn();
 const loadGoals = vi.fn();
 interface GoalInput {
@@ -212,6 +213,15 @@ const base = {
   dismiss: dismissFn,
   restore,
   bulk,
+  // A manager's page: the existing expectations are the whole-rule choices.
+  // Staff are drawn explicitly in "rule-wide acts are owner/manager only".
+  canActRuleWide: true,
+  // Round 3: a manager may snooze for everyone; nothing hidden just for them.
+  canSnoozeForEveryone: true,
+  hiddenForYou: 0,
+  personalSnoozesReadable: true,
+  personalProblem: null,
+  wake,
 };
 
 const draw = (path = '/recommendations') =>
@@ -228,6 +238,8 @@ beforeEach(() => {
   includeDay.mockClear();
   ruleOutDay.mockClear();
   bulk.mockClear();
+  wake.mockClear();
+  restore.mockClear();
   navigate.mockClear();
   loadGoals.mockClear();
   createGoal.mockClear();
@@ -367,12 +379,18 @@ describe('RecommendationsNext — the standing book', () => {
     );
 
     fireEvent.click(within(row).getByText('Snooze'));
-    fireEvent.click(within(row).getByText('Until next week'));
+    fireEvent.click(
+      within(within(row).getByRole('group', { name: 'Snooze it for you' })).getByText(
+        'Until next week',
+      ),
+    );
     expect(setDisposition).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ status: 'snoozed' }),
+      expect.objectContaining({ status: 'snoozed', snoozeFor: 'me' }),
       expect.any(String),
       true,
+      // the ITEM's key (ADR 0191) — for a rule naming nothing, its bare key
+      'stockout_imminent',
     );
 
     fireEvent.click(within(row).getByText('Pin'));
@@ -463,9 +481,13 @@ describe('RecommendationsNext — the standing book', () => {
     fireEvent.click(within(screen.getAllByTestId('rc-entry')[0]).getByText('Select'));
     expect(screen.getByText('1 selected')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Dismiss them — whole rules'));
+    // The bar asks the reason — a labelled signal, never a stamped one.
+    expect(bulk).not.toHaveBeenCalled();
+    const why = screen.getByRole('group', { name: 'Why dismiss them' });
+    fireEvent.click(within(why).getByText('I disagree'));
     expect(bulk).toHaveBeenCalledWith(
       [expect.objectContaining({ ruleKey: 'stockout_imminent' })],
-      expect.objectContaining({ status: 'dismissed' }),
+      expect.objectContaining({ status: 'dismissed', reason: 'disagree' }),
       expect.stringContaining('1'),
     );
   });
@@ -534,14 +556,14 @@ describe('dismissal — the standing instruction, asked for and said back', () =
     draw();
     const row = openSheet();
 
-    fireEvent.click(within(row).getByText('Already handled'));
+    fireEvent.click(within(row).getByText('I disagree'));
     fireEvent.click(within(row).getByRole('radio', { name: /Every Wednesday/ }));
     fireEvent.click(within(row).getByText('Dismiss it'));
 
     expect(dismissFn).toHaveBeenCalledWith(
       expect.objectContaining({ ruleKey: 'sales_below_weekday_baseline' }),
       expect.objectContaining({
-        reason: 'already_handled',
+        reason: 'disagree',
         scope: 'subject',
         key: 'sales_below_weekday_baseline#wednesday#*',
         excludeDate: null,
@@ -1428,5 +1450,310 @@ describe('RecommendationsNext — the catalogue nav tab', () => {
     );
     fireEvent.click(screen.getByRole('link', { name: 'The catalogue' }));
     expect(screen.getByTestId('rc-catalog-stub')).toBeInTheDocument();
+  });
+});
+
+/*
+ * The founder, 2026-09-21 (ADR 0191): rule-wide dismiss and restore are
+ * "owner/manager only and audited EVERYWHERE; staff keep dismissing a single
+ * finding or subject" — and snooze and done are the ITEM's state, read the
+ * same way by every surface. The gateway refuses a staff whole-rule write
+ * with a 403; the page stops offering it and says why.
+ */
+describe('rule-wide acts are owner/manager only; snooze and done are the item', () => {
+  const staff = { ...base, canActRuleWide: false, canSnoozeForEveryone: false };
+  const openSheet = () => {
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Dismiss'));
+    return row;
+  };
+
+  it('staff are offered this finding and this subject, never the whole rule', () => {
+    mockData.current = { ...staff, entries: [weekdayEntry()] };
+    draw();
+    const row = openSheet();
+    const radios = within(row).getAllByRole('radio');
+    expect(radios).toHaveLength(2);
+    expect(
+      within(row).queryByRole('radio', { name: /This rule entirely/ }),
+    ).not.toBeInTheDocument();
+    expect(within(row).getByTestId('rc-dismiss-rule-withheld')).toBeInTheDocument();
+  });
+
+  it('staff cannot dismiss a rule that names nothing — the sheet says so and the button is dark', () => {
+    mockData.current = { ...staff, entries: [entry()] };
+    draw();
+    const row = openSheet();
+    expect(within(row).queryAllByRole('radio')).toHaveLength(0);
+    expect(within(row).getByTestId('rc-dismiss-whole-rule-only')).toBeInTheDocument();
+    fireEvent.click(within(row).getByText('Not relevant'));
+    expect(within(row).getByRole('button', { name: 'Dismiss it' })).toBeDisabled();
+    fireEvent.click(within(row).getByText('Dismiss it'));
+    expect(dismissFn).not.toHaveBeenCalled();
+  });
+
+  it('staff see the bulk whole-rule dismissal dark', () => {
+    mockData.current = { ...staff, entries: [entry()] };
+    draw();
+    fireEvent.click(within(screen.getByTestId('rc-entry')).getByText('Select'));
+    expect(screen.getByTestId('rc-bulk-dismiss-dark')).toBeDisabled();
+    expect(bulk).not.toHaveBeenCalled();
+  });
+
+  it('staff cannot return a whole-rule dismissal; a one-finding dismissal they can', () => {
+    mockData.current = {
+      ...staff,
+      leaf: 'dismissed',
+      entries: [
+        entry({ status: 'dismissed', ruleWide: true, suppression: null }),
+        entry({
+          ruleKey: 'sales_below_weekday_baseline#wednesday#d:2026-09-02',
+          status: 'dismissed',
+          ruleWide: false,
+          suppression: null,
+        }),
+      ],
+    };
+    draw();
+    const [whole, one] = screen.getAllByTestId('rc-entry');
+    expect(within(whole).getByTestId('rc-restore-dark')).toBeDisabled();
+    fireEvent.click(within(one).getByText('Return it to the book'));
+    expect(restore).toHaveBeenCalledWith('sales_below_weekday_baseline#wednesday#d:2026-09-02');
+  });
+
+  it("staff cannot return someone else's act — the gateway said so on the row (round 4, answer 5)", () => {
+    mockData.current = {
+      ...staff,
+      leaf: 'dismissed',
+      entries: [
+        entry({
+          ruleKey: 'stockout_imminent#*#fire:day:2026-09-21',
+          status: 'dismissed',
+          ruleWide: false,
+          suppression: null,
+          undoableByYou: false,
+        }),
+        entry({
+          ruleKey: 'sales_below_weekday_baseline#wednesday#d:2026-09-02',
+          status: 'dismissed',
+          ruleWide: false,
+          suppression: null,
+          undoableByYou: null,
+        }),
+      ],
+    };
+    draw();
+    const [theirs, unknown] = screen.getAllByTestId('rc-entry');
+    expect(within(theirs).getByTestId('rc-restore-not-yours')).toBeDisabled();
+    expect(
+      within(theirs).getByText('Only the person who did this, or an owner or manager, can undo it.'),
+    ).toBeInTheDocument();
+    fireEvent.click(within(theirs).getByTestId('rc-restore-not-yours'));
+    expect(restore).not.toHaveBeenCalled();
+    // Could not tell: the control stays open — the gateway decides at the write.
+    fireEvent.click(within(unknown).getByText('Return it to the book'));
+    expect(restore).toHaveBeenCalledWith('sales_below_weekday_baseline#wednesday#d:2026-09-02');
+  });
+
+  it('a manager may return a whole-rule dismissal', () => {
+    mockData.current = {
+      ...base,
+      leaf: 'dismissed',
+      entries: [entry({ status: 'dismissed', ruleWide: true, suppression: null })],
+    };
+    draw();
+    fireEvent.click(within(screen.getByTestId('rc-entry')).getByText('Return it to the book'));
+    expect(restore).toHaveBeenCalledWith('stockout_imminent');
+  });
+
+  it('a snooze goes to the finding, so next Wednesday still stands', () => {
+    mockData.current = { ...staff, entries: [weekdayEntry()] };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Snooze'));
+    fireEvent.click(within(row).getByText('Until tomorrow'));
+    expect(setDisposition).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKey: 'sales_below_weekday_baseline' }),
+      // Round 3: a staff snooze is theirs alone ("Only them").
+      { status: 'snoozed', snoozeFor: 'me', snoozeUntil: expect.any(String) },
+      expect.stringContaining('for you alone'),
+      true,
+      'sales_below_weekday_baseline#wednesday#d:2026-09-02',
+    );
+  });
+
+  it('a bulk snooze goes to each finding', () => {
+    mockData.current = { ...staff, entries: [weekdayEntry()] };
+    draw();
+    fireEvent.click(within(screen.getByTestId('rc-entry')).getByText('Select'));
+    fireEvent.click(screen.getByText('Snooze a week — just me'));
+    expect(bulk).toHaveBeenCalledWith(
+      [expect.objectContaining({ ruleKey: 'sales_below_weekday_baseline' })],
+      expect.objectContaining({ status: 'snoozed', snoozeFor: 'me' }),
+      expect.stringContaining('for you alone'),
+      true,
+    );
+  });
+});
+
+/**
+ * ADR 0191 round 3 — the founder's answers of 2026-09-21, on the feed:
+ * each firing is one card; "Already handled" is done; "Not right now" and a
+ * staff snooze are the person's own; snooze for everyone is owners and
+ * managers; the personal snoozes are said, listed and woken.
+ */
+describe('round 3: the dismiss list, the snooze audience and the firing', () => {
+  const staff = { ...base, canActRuleWide: false, canSnoozeForEveryone: false };
+  const openSheet = () => {
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Dismiss'));
+    return row;
+  };
+  const FIRING = 'vendor_concentration#*#fire:month:2026-09';
+  const firingEntry = () =>
+    entry({
+      ruleKey: 'vendor_concentration',
+      category: 'risk',
+      urgency: 'this_month',
+      periodKey: 'fire:month:2026-09',
+      suppression: {
+        key: FIRING,
+        scope: 'insight',
+        keys: { insight: FIRING, subject: 'vendor_concentration', rule: 'vendor_concentration' },
+      },
+    });
+
+  it("'Already handled' is recorded as done — at the item's key, never as a dismissal", () => {
+    mockData.current = { ...staff, entries: [weekdayEntry()] };
+    draw();
+    const row = openSheet();
+    fireEvent.click(within(row).getByText('Already handled'));
+    expect(within(row).getByTestId('rc-choice-note')).toHaveTextContent(
+      'Recorded as done, not as a dismissal.',
+    );
+    expect(within(row).queryByRole('radiogroup', { name: 'What to silence' })).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: 'Record it done' }));
+    expect(setDisposition).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKey: 'sales_below_weekday_baseline' }),
+      { status: 'done' },
+      expect.any(String),
+      true,
+      'sales_below_weekday_baseline#wednesday#d:2026-09-02',
+    );
+    expect(dismissFn).not.toHaveBeenCalled();
+  });
+
+  it("'Not right now' hides it from this person alone, until tomorrow", () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    const row = openSheet();
+    fireEvent.click(within(row).getByText('Not right now'));
+    expect(within(row).getByTestId('rc-choice-note')).toHaveTextContent(
+      'Hidden from you alone until tomorrow. Everyone else still sees it.',
+    );
+    fireEvent.click(within(row).getByRole('button', { name: 'Hide it from me' }));
+    const call = setDisposition.mock.calls.at(-1) as unknown as unknown[];
+    expect(call[1]).toEqual({ status: 'snoozed', snoozeFor: 'me', snoozeUntil: expect.any(String) });
+    const until = Date.parse((call[1] as { snoozeUntil: string }).snoozeUntil);
+    expect(until - Date.now()).toBeGreaterThan(23 * 3_600_000);
+    expect(until - Date.now()).toBeLessThanOrEqual(24 * 3_600_000);
+    expect(dismissFn).not.toHaveBeenCalled();
+  });
+
+  it('a manager may snooze for everyone; the choice is explicit', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Snooze'));
+    const everyone = within(row).getByRole('group', { name: 'Snooze it for everyone' });
+    fireEvent.click(within(everyone).getByText('Until next week'));
+    expect(setDisposition).toHaveBeenCalledWith(
+      expect.anything(),
+      { status: 'snoozed', snoozeFor: 'house', snoozeUntil: expect.any(String) },
+      expect.stringContaining('for everyone'),
+      true,
+      'sales_below_weekday_baseline#wednesday#d:2026-09-02',
+    );
+  });
+
+  it('staff are offered their own snooze only, and told why', () => {
+    mockData.current = { ...staff, entries: [weekdayEntry()] };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Snooze'));
+    expect(within(row).queryByRole('group', { name: 'Snooze it for everyone' })).toBeNull();
+    expect(within(row).getByTestId('rc-snooze-for-everyone-withheld')).toHaveTextContent(
+      'Only an owner or manager can snooze it for everyone.',
+    );
+  });
+
+  it('a subject-less rule is this firing: staff can dismiss it, and the sheet names the firing', () => {
+    mockData.current = { ...staff, entries: [firingEntry()] };
+    draw();
+    const row = openSheet();
+    expect(within(row).queryByTestId('rc-dismiss-whole-rule-only')).toBeNull();
+    fireEvent.click(within(row).getByText('I disagree'));
+    expect(within(row).getByRole('radio', { name: /This firing only — Sep 2026/ })).toBeChecked();
+    expect(within(row).getByText(/It comes back when the rule fires again with new numbers/)).toBeInTheDocument();
+    // A firing is not a day of data: no exclusion is offered for it.
+    expect(within(row).getByRole('checkbox')).toBeDisabled();
+    fireEvent.click(within(row).getByText('Dismiss it'));
+    expect(dismissFn).toHaveBeenCalledWith(
+      expect.objectContaining({ ruleKey: 'vendor_concentration' }),
+      expect.objectContaining({ reason: 'disagree', scope: 'insight', key: FIRING, excludeDate: null }),
+    );
+  });
+
+  it('the standing leaf says how many are hidden just for you — and when that could not be read', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()], hiddenForYou: 2 };
+    const { unmount } = draw();
+    expect(screen.getByTestId('rc-hidden-for-you')).toHaveTextContent(
+      '2 entries are hidden just for you',
+    );
+    unmount();
+    mockData.current = { ...base, entries: [weekdayEntry()], personalSnoozesReadable: false };
+    draw();
+    expect(screen.getByTestId('rc-hidden-for-you')).toHaveTextContent(
+      'What you snoozed for yourself could not be read',
+    );
+  });
+
+  it('nothing is said when nothing is hidden for you and the read held', () => {
+    mockData.current = { ...base, entries: [weekdayEntry()] };
+    draw();
+    expect(screen.queryByTestId('rc-hidden-for-you')).toBeNull();
+  });
+
+  it("the Snoozed leaf wakes a person's own snooze — never a house restore", () => {
+    mockData.current = {
+      ...staff,
+      leaf: 'snoozed',
+      entries: [weekdayEntry({ status: 'snoozed', snoozeUntil: '2026-09-28T00:00:00.000Z', personal: true })],
+    };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    expect(within(row).getByTestId('rc-snoozed-for-you')).toHaveTextContent('Snoozed just for you');
+    fireEvent.click(within(row).getByText('Wake it for me'));
+    expect(wake).toHaveBeenCalledWith('sales_below_weekday_baseline');
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it('the Snoozed leaf says when your own snoozes could not be read', () => {
+    mockData.current = { ...staff, leaf: 'snoozed', entries: [], personalProblem: 'timeout' };
+    draw();
+    expect(screen.getByTestId('rc-personal-unread')).toHaveTextContent('(timeout)');
+  });
+
+  it("undo of a snooze that was the person's own wakes it", () => {
+    mockData.current = {
+      ...staff,
+      entries: [],
+      note: 'Snoozed until tomorrow, for you alone.',
+      undo: { ruleKey: FIRING, label: 'x', personal: true },
+    };
+    draw();
+    fireEvent.click(screen.getByText('Undo'));
+    expect(wake).toHaveBeenCalledWith(FIRING);
+    expect(restore).not.toHaveBeenCalled();
   });
 });

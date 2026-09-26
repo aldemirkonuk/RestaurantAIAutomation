@@ -51,6 +51,7 @@ import { useToast } from "../contexts/ToastContext";
 import { Header } from "../components/layout/Header";
 import { getTeamMembers } from "../services/api/team";
 import { apiClient, getErrorMessage } from "../services/api/client";
+import { NOT_YOUR_ACT_SAID, noteRefusalOf, notYourActOf } from "../lib/recommendationState";
 
 type Urgency = "now" | "this_week" | "this_month";
 type Status = "active" | "dismissed" | "snoozed" | "done";
@@ -73,7 +74,37 @@ interface Card {
   assignedTo?: string | null;
   assignedName?: string | null;
   updatedAt?: string;
+  /**
+   * The gateway-built key of THIS card — the exact finding, or the rule plus
+   * the period it fired in (`suppression.key`, ADR 0191 round 3: "Each firing
+   * is one card"). On feed cards only; a tab row's own `ruleKey` is the key
+   * that was stored.
+   */
+  suppression?: { key?: unknown } | null;
+  /**
+   * Whether this person may return a tab row to the book (round 4, answer 5
+   * — staff undo only their own acts). The gateway's answer; null or absent
+   * when it could not tell, and then the control stays open.
+   */
+  undoableByYou?: boolean | null;
 }
+
+/**
+ * The key a Done or an "Already handled" writes: THIS card's own key, never
+ * the whole rule (ADR 0191 round 4, answer 4 — the founder, 2026-09-21).
+ * Before, both went to the bare rule key, so one staff member's Done hid the
+ * rule house-wide in every period until someone returned it. Null when the
+ * gateway sent no key for the card — then nothing is written rather than
+ * the whole rule.
+ */
+export function cardKeyOf(rec: Pick<Card, "suppression">): string | null {
+  const k = rec.suppression?.key;
+  return typeof k === "string" && k.trim() ? k : null;
+}
+
+/** Said when a card came without its own key, so Done would hit the whole rule. */
+export const NO_CARD_KEY =
+  "This card could not be marked done on its own — reload the page and try again.";
 
 const URGENCY_META: Record<Urgency, { label: string; chip: string; icon: typeof Zap; rank: number }> = {
   now: { label: "Tonight", chip: "bg-red-100 text-red-700", icon: Zap, rank: 0 },
@@ -92,6 +123,26 @@ const CATEGORY_CHIP: Record<string, string> = {
   goals: "bg-gray-50 text-gray-700 border-gray-200",
   pricing: "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
+
+/**
+ * The founder, 2026-09-21 (ADR 0191 round 3, answer 5 — "Fix the message"):
+ * whole-rule dismissal is owner/manager only, and this page dismisses whole
+ * rules, so the gateway refuses a staff dismissal here with a 403. The page
+ * says this — never "try again", which promised a retry could work.
+ */
+export const WHOLE_HOUSE_REFUSAL =
+  "Only an owner or manager can dismiss this for the whole house.";
+const WHOLE_HOUSE_RETURN_REFUSAL =
+  "Only an owner or manager can return this for the whole house.";
+
+/** What the gateway recorded a write as (round 3), in the page's words. */
+function recordedWords(data: unknown, fallback: string): { label: string; personal: boolean } {
+  const as = (data as { recordedAs?: unknown } | null)?.recordedAs;
+  if (as === "done") return { label: "Recorded as done", personal: false };
+  if (as === "snoozed_for_you")
+    return { label: "Hidden from you — everyone else still sees it", personal: true };
+  return { label: fallback, personal: false };
+}
 
 const DISMISS_REASONS = [
   { code: "not_relevant", label: "Not relevant" },
@@ -184,7 +235,11 @@ export default function Recommendations() {
   >(null);
   const [snoozeDate, setSnoozeDate] = useState("");
   const [digestEnabled, setDigestEnabled] = useState(false);
-  const [undo, setUndo] = useState<{ ruleKey: string; label: string } | null>(null);
+  const [undo, setUndo] = useState<{
+    ruleKey: string;
+    label: string;
+    personal?: boolean;
+  } | null>(null);
   /** NEW-296: assign to a teammate. Roster is loaded lazily on first use. */
   const [assignFor, setAssignFor] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ id: string; display_name: string }>>([]);
@@ -233,6 +288,9 @@ export default function Recommendations() {
           snoozeUntil: r.snoozeUntil,
           feedback: r.feedback,
           updatedAt: r.updatedAt,
+          // Round 4, answer 5: the gateway says whether this row is yours to
+          // return; anything but a boolean is "could not tell".
+          undoableByYou: typeof r.undoableByYou === "boolean" ? r.undoableByYou : null,
         }));
         setTabItems(items);
       } catch (e) {
@@ -260,24 +318,44 @@ export default function Recommendations() {
   }, [restaurantId, base]);
 
   // ---- Mutations ----------------------------------------------------------
+  /**
+   * One write. Resolves with what the gateway answered, or `ok: false` when
+   * it did not land. A 403 is a permanent refusal, said as the founder's
+   * sentence (`refuse`), not as "try again" (ADR 0191 round 3, answer 5).
+   */
   const patchAction = useCallback(
-    async (ruleKey: string, patch: Record<string, unknown>, snapshot?: unknown) => {
-      if (!restaurantId) return;
+    async (
+      ruleKey: string,
+      patch: Record<string, unknown>,
+      snapshot?: unknown,
+      // A sentence, or — for a note (round 5) — a reader of the refusal, so a
+      // refused pin says the gateway's own words, never a dismiss sentence.
+      refuse: string | ((e: unknown) => string) = WHOLE_HOUSE_REFUSAL,
+    ): Promise<{ ok: boolean; data?: unknown }> => {
+      if (!restaurantId) return { ok: false };
       try {
-        await apiClient.post(`${base}/${restaurantId}/action`, {
+        const { data } = await apiClient.post(`${base}/${restaurantId}/action`, {
           ruleKey,
           ...patch,
           snapshot,
         });
-      } catch {
-        toast.error("Couldn't save that — try again");
+        return { ok: true, data };
+      } catch (e) {
+        const status = (e as { response?: { status?: number } } | null)?.response?.status;
+        // Round 4, answer 5: an undo of someone else's act is its own refusal,
+        // said in the gateway's sentence — not the whole-house one.
+        const refusal = typeof refuse === "function" ? refuse(e) : refuse;
+        toast.error(
+          status === 403 ? (notYourActOf(e) ?? refusal) : "Couldn't save that — try again",
+        );
+        return { ok: false };
       }
     },
     [restaurantId, base, toast],
   );
 
-  const showUndo = (ruleKey: string, label: string) => {
-    setUndo({ ruleKey, label });
+  const showUndo = (ruleKey: string, label: string, personal = false) => {
+    setUndo({ ruleKey, label, personal });
     if (undoTimer.current) clearTimeout(undoTimer.current);
     undoTimer.current = setTimeout(() => setUndo(null), 8000);
   };
@@ -292,54 +370,105 @@ export default function Recommendations() {
   };
 
   const doDismiss = async (rec: Card, reasonCode: string) => {
-    hideCard(rec);
-    setCounts((c) => ({ ...c, active: Math.max(0, c.active - 1), dismissed: c.dismissed + 1 }));
-    await patchAction(rec.ruleKey, { status: "dismissed", reason: reasonCode }, snapshotOf(rec));
-    showUndo(rec.ruleKey, "Dismissed");
+    // "Already handled" is recorded as done (round 3), and a done is THIS
+    // card's, never the whole rule's (round 4, answer 4). A real dismissal
+    // and "Not right now" keep the key they had.
+    const key = reasonCode === "already_handled" ? cardKeyOf(rec) : rec.ruleKey;
     setMenu(null);
+    if (!key) return void toast.error(NO_CARD_KEY);
+    hideCard(rec);
+    const res = await patchAction(
+      key,
+      { status: "dismissed", reason: reasonCode },
+      snapshotOf(rec),
+      WHOLE_HOUSE_REFUSAL,
+    );
+    // Refused or failed: the card is back, and nothing claims it moved.
+    if (!res.ok) return void loadActive();
+    // "Already handled" is recorded as done and "Not right now" as your own
+    // snooze (round 3) — the counts and the undo follow what was recorded.
+    const said = recordedWords(res.data, "Dismissed");
+    const as = (res.data as { recordedAs?: unknown } | null)?.recordedAs;
+    setCounts((c) => ({
+      ...c,
+      active: Math.max(0, c.active - 1),
+      ...(as === "done"
+        ? { done: c.done + 1 }
+        : as === "snoozed_for_you"
+          ? {}
+          : { dismissed: c.dismissed + 1 }),
+    }));
+    // The undo lifts what was written, at the key it was written to.
+    showUndo(key, said.label, said.personal);
   };
 
   const doSnooze = async (rec: Card, until: Date, label: string) => {
     hideCard(rec);
-    setCounts((c) => ({ ...c, active: Math.max(0, c.active - 1), snoozed: c.snoozed + 1 }));
-    await patchAction(
+    setMenu(null);
+    const res = await patchAction(
       rec.ruleKey,
       { status: "snoozed", snoozeUntil: until.toISOString(), reason: label },
       snapshotOf(rec),
     );
-    showUndo(rec.ruleKey, `Snoozed ${label}`);
-    setMenu(null);
+    if (!res.ok) return void loadActive();
+    // A staff snooze hides it from that person alone (round 3, "Only them").
+    const said = recordedWords(res.data, `Snoozed ${label}`);
+    if (!said.personal)
+      setCounts((c) => ({ ...c, active: Math.max(0, c.active - 1), snoozed: c.snoozed + 1 }));
+    showUndo(rec.ruleKey, said.personal ? `Snoozed ${label}, for you alone` : said.label, said.personal);
   };
 
+  /** Done hides THIS card — this finding, or this firing — never the rule (round 4, answer 4). */
   const doDone = async (rec: Card) => {
+    const key = cardKeyOf(rec);
+    if (!key) return void toast.error(NO_CARD_KEY);
     hideCard(rec);
+    const res = await patchAction(key, { status: "done" }, snapshotOf(rec));
+    if (!res.ok) return void loadActive();
     setCounts((c) => ({ ...c, active: Math.max(0, c.active - 1), done: c.done + 1 }));
-    await patchAction(rec.ruleKey, { status: "done" }, snapshotOf(rec));
-    showUndo(rec.ruleKey, "Marked done");
+    showUndo(key, "Marked done");
   };
 
   const doRestore = async (ruleKey: string) => {
-    await patchAction(ruleKey, { status: "active" });
+    const res = await patchAction(ruleKey, { status: "active" }, undefined, WHOLE_HOUSE_RETURN_REFUSAL);
     setUndo(null);
     if (tab === "active") loadActive();
     else loadTab(tab);
-    toast.success("Restored to your feed");
+    if (res.ok) toast.success("Restored to your feed");
   };
+
+  /** Undo of a snooze that was this person's own: wake it for them (round 3). */
+  const doWake = async (ruleKey: string) => {
+    setUndo(null);
+    if (!restaurantId) return;
+    try {
+      await apiClient.post(`${base}/${restaurantId}/snoozed-for-me/wake`, { ruleKey });
+      toast.success("Back in your feed");
+    } catch {
+      toast.error("It is still hidden from you — try again");
+    }
+    loadActive();
+  };
+
+  // A note (pin, rating, assignment) is gated like an act since ADR 0191
+  // round 5: someone else's is refused (403, `not_your_note`), and so is any
+  // from the platform admin. A refused note is put back as it was — the page
+  // never shows a pin the gateway did not keep.
+  const putBack = (rec: Card, fields: Partial<Card>) =>
+    setRecs((prev) => prev.map((r) => (r.ruleKey === rec.ruleKey ? { ...r, ...fields } : r)));
 
   const doPin = async (rec: Card) => {
     const next = !rec.pinned;
-    setRecs((prev) =>
-      prev.map((r) => (r.ruleKey === rec.ruleKey ? { ...r, pinned: next } : r)),
-    );
-    await patchAction(rec.ruleKey, { pinned: next }, snapshotOf(rec));
+    putBack(rec, { pinned: next });
+    const { ok } = await patchAction(rec.ruleKey, { pinned: next }, snapshotOf(rec), noteRefusalOf);
+    if (!ok) putBack(rec, { pinned: rec.pinned });
   };
 
   const doFeedback = async (rec: Card, value: "helpful" | "not_helpful") => {
     const next = rec.feedback === value ? null : value;
-    setRecs((prev) =>
-      prev.map((r) => (r.ruleKey === rec.ruleKey ? { ...r, feedback: next } : r)),
-    );
-    await patchAction(rec.ruleKey, { feedback: next }, snapshotOf(rec));
+    putBack(rec, { feedback: next });
+    const { ok } = await patchAction(rec.ruleKey, { feedback: next }, snapshotOf(rec), noteRefusalOf);
+    if (!ok) putBack(rec, { feedback: rec.feedback });
   };
 
   const openAssign = useCallback(async (ruleKey: string) => {
@@ -365,11 +494,17 @@ export default function Recommendations() {
       ),
     );
     setAssignFor(null);
-    await patchAction(
+    const { ok } = await patchAction(
       rec.ruleKey,
       { assignedTo: member?.id ?? null, assignedName: member?.display_name ?? null },
       snapshotOf(rec),
+      noteRefusalOf,
     );
+    if (!ok) {
+      // Refused or failed: say nothing was assigned, and show what is kept.
+      putBack(rec, { assignedTo: rec.assignedTo, assignedName: rec.assignedName });
+      return;
+    }
     toast.success(member ? `Assigned to ${member.display_name}` : "Assignment cleared");
   };
 
@@ -403,14 +538,28 @@ export default function Recommendations() {
     const n = items.length;
     setSelected(new Set());
     try {
-      await apiClient.post(`${base}/${restaurantId}/bulk-action`, {
-        items,
-        ...patch,
-      });
-      toast.success(`${label} ${n} recommendation${n === 1 ? "" : "s"}`);
+      const { data } = await apiClient.post<{ updated?: number; snoozedForYou?: number }>(
+        `${base}/${restaurantId}/bulk-action`,
+        {
+          items,
+          ...patch,
+        },
+      );
+      // Round 3: "Not right now" (and a staff snooze) hides them from you
+      // alone — say that, not "Dismissed".
+      const mine = data?.snoozedForYou ?? 0;
+      toast.success(
+        mine > 0 && mine === (data?.updated ?? n)
+          ? `Hid ${mine} recommendation${mine === 1 ? "" : "s"} from you — everyone else still sees ${mine === 1 ? "it" : "them"}`
+          : `${label} ${n} recommendation${n === 1 ? "" : "s"}`,
+      );
       loadActive();
-    } catch {
-      toast.error("Bulk action failed");
+    } catch (e) {
+      const status = (e as { response?: { status?: number } } | null)?.response?.status;
+      toast.error(
+        status === 403 ? (notYourActOf(e) ?? WHOLE_HOUSE_REFUSAL) : "Bulk action failed",
+      );
+      loadActive();
     }
   };
 
@@ -931,7 +1080,21 @@ export default function Recommendations() {
                       )}
 
                       {/* Restore (non-active tabs) */}
-                      {readonly && (
+                      {readonly && r.undoableByYou === false && (
+                        // Round 4, answer 5: staff undo only their own acts.
+                        <div className="flex flex-wrap items-center gap-2 mt-4">
+                          <button
+                            type="button"
+                            disabled
+                            data-testid="rec-restore-not-yours"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-400 rounded-lg cursor-not-allowed"
+                          >
+                            <Undo2 className="w-3.5 h-3.5" /> Restore to feed
+                          </button>
+                          <span className="text-xs text-gray-500">{NOT_YOUR_ACT_SAID}</span>
+                        </div>
+                      )}
+                      {readonly && r.undoableByYou !== false && (
                         <button
                           onClick={() => doRestore(r.ruleKey)}
                           className="flex items-center gap-1.5 mt-4 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -1030,7 +1193,7 @@ export default function Recommendations() {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 bg-gray-900 text-white rounded-xl shadow-xl">
           <span className="text-sm">{undo.label}</span>
           <button
-            onClick={() => doRestore(undo.ruleKey)}
+            onClick={() => (undo.personal ? doWake(undo.ruleKey) : doRestore(undo.ruleKey))}
             className="flex items-center gap-1.5 text-sm font-semibold text-amber-300 hover:text-amber-200"
           >
             <Undo2 className="w-4 h-4" /> Undo

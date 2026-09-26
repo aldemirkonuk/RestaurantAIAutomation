@@ -1001,6 +1001,22 @@ dashboard.md §7.
   enabling email for financial reports also enables it for low stock. Tracked as
   **OD-121**; it needs a founder call on which category each of the seven
   `resolveRecipients` call sites belongs to.
+  **[2026-09-17: built on `feat/finish-notify` after founder answer 15 (ADR 0149).
+  Eleven sends, each mapped in `NOTIFICATION_SEND_CATEGORY`; gate 2 reads one array;
+  an unmapped category is refused. ~~A stock row now declines low-stock email — see
+  the ADR 0147 amendment.~~ **[Corrected 2026-09-19: true only for a row already
+  holding a customised `low_stock_channels`. A row created after migration
+  `20260925160700_a_low_stock_warning_can_reach_an_inbox.sql` (or one reset to the
+  default) no longer declines it: that migration widened the DEFAULT to
+  `['sms','push','email']` and, by the founder's standing rule (same 19-lane
+  blocking round, batch 4), backfilled every existing row that still held exactly
+  the old `['sms','push']` default to match — a row someone customised away from
+  it was left alone. Full record: the ADR 0147 amendment's Recipient routing
+  (OD-121) bullet.]** The five uncalled POST senders are closed and
+  `send-email` is owner/manager-only to the house's own book. **[2026-09-25: the
+  `send-email` half was dropped from this branch before merge; the founder closed the
+  endpoint instead (round 4 item 14), which PR #410 does. See ADR 0147's 2026-09-25
+  bracket.]**]**
 
 **Found while building the Mudavym redesign (2026-09-02).** All four are outside the
 page's own paths; none was built.

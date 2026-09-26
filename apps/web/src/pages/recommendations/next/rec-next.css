@@ -211,6 +211,17 @@
 }
 .rc-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 
+/* ── catalogue: type on/off + live items (ADR 0191) ──────────────────────── */
+
+.rc-live-items { margin-top: 10px; }
+.rc-live-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 10px; }
+.rc-live-item {
+  padding: 8px 10px; border-radius: 9px;
+  border: 1px solid var(--paper-2, #eae4d8); background: var(--paper-1, #f3efe6);
+}
+.rc-live-item .rc-plain { margin: 0; }
+.rc-live-item .rc-row { margin-top: 8px; }
+
 /* ── the dismissal sheet — the one write that is a standing instruction ──── */
 
 .rc-sheet { padding: 12px 14px; }
