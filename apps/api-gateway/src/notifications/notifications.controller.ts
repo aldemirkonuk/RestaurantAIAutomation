@@ -287,14 +287,17 @@ export class NotificationsController {
   @ApiOperation({
     summary: "Low-stock crossings detected but not yet sent to anyone",
     description:
-      'Wines that crossed below par and were deliberately held — by the 15-minute instant cooldown, or by the restaurant\'s own notification preferences — with the reason and when. Before this existed, a held crossing and a crossing that never happened looked identical in `inventory_alert_state`, so "tonight\'s digest will cover it" and "nothing is wrong" rendered the same (POS lens, absence-as-health 8). A failed read is an error, never an empty list (ADR 0067).',
+      'Wines that crossed below par and were deliberately held — by the 15-minute instant cooldown, or by the restaurant\'s own notification preferences — with the reason and when, plus when the digest will tell them (`digest`, null when the preferences could not be read). A wine back above par, or one the digest already covered, is not listed. Before this existed, a held crossing and a crossing that never happened looked identical in `inventory_alert_state`, so "tonight\'s digest will cover it" and "nothing is wrong" rendered the same (POS lens, absence-as-health 8). A failed read is an error, never an empty list (ADR 0067).',
   })
   async getHeldLowStock(
     @Param("restaurantId") restaurantId: string,
     @Req() req: ScopedRequest,
   ) {
     // Scoped 2026-09-12: the path named any restaurant and this read it.
-    scopeOwnRestaurant(req, restaurantId);
+    // The read then uses the TOKEN's id, not the path's (2026-09-26): the
+    // guard compares case-insensitively, so the path's spelling of the same
+    // id must not be what reaches the query or the echoed `restaurant_id`.
+    const own = scopeOwnRestaurant(req, restaurantId);
     if (!this.lowStockAlerts) {
       throw new HttpException(
         "Low-stock alerts are not available on this deployment",
@@ -302,7 +305,7 @@ export class NotificationsController {
       );
     }
     try {
-      return await this.lowStockAlerts.listHeldCrossings(restaurantId);
+      return await this.lowStockAlerts.listHeldCrossings(own);
     } catch (error) {
       this.logger.error(
         `Failed to read held low-stock crossings: ${error.message}`,
