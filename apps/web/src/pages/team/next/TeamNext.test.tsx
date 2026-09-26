@@ -250,6 +250,9 @@ describe('useTeamNextData derivations', () => {
 
 describe('TeamNext rendering', () => {
   it('withholds the labour figure in words when tracking is off', async () => {
+    // The owner's view: money is the owner's (ADR 0215), so "tracking is off"
+    // is a sentence only the owner is shown — a manager is shown hours.
+    api.week = weekPayload({ labor: { enabled: false, moneyVisible: true, totalHours: 0 } });
     render(<TeamNext />, { wrapper });
     expect(await screen.findByText(/Labour tracking is off/)).toBeInTheDocument();
     expect(screen.getByText(/withheld number, not a zero/)).toBeInTheDocument();

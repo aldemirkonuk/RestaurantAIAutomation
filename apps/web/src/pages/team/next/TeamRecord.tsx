@@ -14,7 +14,7 @@
  *    `labor_target_pct` is `numeric(5,2) DEFAULT 28 NOT NULL` (baseline
  *    `:5656`) — exactly the shape of `providers.lead_time_days DEFAULT 7` that
  *    the vendor-terms register exists to catch. A stored 28 with no provenance
- *    is NOT a target: the first house to toggle `wage_visible` acquires it
+ *    is NOT a target: the first house to save a labour setting acquires it
  *    without choosing it, and nothing on the page could tell that apart from a
  *    target somebody set. It renders as unknown, with the default named, and
  *    the week is never measured against it. The migration that drops the
@@ -131,23 +131,29 @@ function Record({
 
 export function TeamRecordSection({
   labourEnabled,
-  wageVisible,
+  moneyVisible,
   target,
   settingsUpdatedAt,
   settingsConfigured,
   coverageRuleCount,
   certsOnFile,
   onOpenTrail,
+  viewerIsOwner = false,
+  onOpenFormerStaff,
 }: {
   /** `null` when the week has not answered. */
   labourEnabled: boolean | null;
-  wageVisible: boolean;
+  /** Whether this viewer sees money — the owner only (ADR 0215). */
+  moneyVisible: boolean;
   target: TargetReading;
   settingsUpdatedAt: string | null;
   settingsConfigured: boolean;
   coverageRuleCount: number | null;
   certsOnFile: number | null;
   onOpenTrail: () => void;
+  /** The owner alone opens the former-staff history (ADR 0215, round 4 item 19). */
+  viewerIsOwner?: boolean;
+  onOpenFormerStaff?: () => void;
 }) {
   const whenUnknown = settingsConfigured
     ? 'the settings row has no changed-at value'
@@ -178,16 +184,28 @@ export function TeamRecordSection({
       />
 
       <Record
-        label="Wages visible"
-        value={wageVisible ? 'yes' : 'no'}
-        consequence="When wages are hidden the gateway blanks hourly_wage on every roster row before it leaves the server, so this page could not show one even if it wanted to."
+        label="Wages and labour cost"
+        value={
+          viewerIsOwner
+            ? 'the owner · and managers you switch on'
+            : moneyVisible
+              ? 'the owner · and you, switched on'
+              : 'the owner · and managers the owner switches on'
+        }
+        consequence={
+          viewerIsOwner
+            ? "You see wages, shift cost and totals. A manager sees them only if you switch their pay access on (open the manager's row), and can then set wages — their own too, and you are told when they do; their other rights stay as they are. Every wage change is kept: who, when, the old and the new figure."
+            : moneyVisible
+              ? 'An owner switched your pay access on: you see wages, shift cost and totals, and can set a colleague’s wage, not your own. Every wage change is kept: who, when, the old and the new figure.'
+              : 'Wages, shift cost and totals are the owner’s, and a manager’s only when the owner switches their pay access on, so this page shows you hours. The gateway leaves the money out before it is sent, so nothing here could show it.'
+        }
         provenance={
-          <Provenance
-            kept="this restaurant, in team_settings"
-            when={writtenAt}
-            whenUnknown={whenUnknown}
-            whoUnknown="team_settings has no author column"
-          />
+          <p
+            className="tm-fact__k"
+            style={{ marginTop: 5, letterSpacing: '0.1em', fontWeight: 500, textTransform: 'none' }}
+          >
+            {`kept · the gateway, by role and each manager's pay switch ${EM} decided by the owner of Mudavym on 2026-09-21 and 2026-09-25 (ADR 0215)`}
+          </p>
         }
       />
 
@@ -236,6 +254,28 @@ export function TeamRecordSection({
           />
         }
       />
+
+      {viewerIsOwner && onOpenFormerStaff ? (
+        <div style={{ padding: '10px 0', borderTop: '1px solid var(--paper-2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <p className="tm-label" style={{ margin: 0 }}>
+              Former staff
+            </p>
+            <button
+              type="button"
+              className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+              onClick={onOpenFormerStaff}
+            >
+              Open the former-staff history
+            </button>
+          </div>
+          <p className="tm-note" style={{ fontSize: 12, marginTop: 3 }}>
+            When someone is removed from the roster, their shifts, leave, wage changes and
+            credentials are kept for five years for pay and legal records, and shown only here,
+            to an owner. Their availability is not kept.
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -245,6 +285,8 @@ export function TeamRecordSection({
 function describe(action: string): string {
   if (action === 'member_role_changed') return 'changed what someone may do';
   if (action === 'team_member_removed') return 'removed someone from the team';
+  if (action === 'team_pay_access_changed') return "switched a manager's pay access";
+  if (action === 'team_member_own_wage_set') return 'set their own wage (an owner was told)';
   return action.replace(/_/g, ' ');
 }
 
@@ -280,7 +322,7 @@ export function TrailSheet({
         <span>
           The last {LE}
           {TEAM_SERVER_WINDOWS.TRAIL_ROWS} changes on this restaurant, from the same trail
-          `/settings` reads, filtered to the two actions that are about people. A ceiling,
+          `/settings` reads, filtered to the actions that are about people. A ceiling,
           not a total: the route caps the read and offers no count of what is behind it.
           There is no write route and no delete route — a log a manager can edit is not a
           log.

@@ -30,7 +30,7 @@ import {
   Avatar, Pill, PulseCell, todayIso,
 } from './bits'
 import { ShiftEditor, MemberEditor } from './editors'
-import { EM } from '../next/tm-format'
+import { EM, fmtMoneyWhole, WEEKLY_REVIEW_HOURS, workedHours } from '../next/tm-format'
 import { PerformancePanel } from './PerformancePanel'
 import { OpsRulesPanel } from './OpsRulesPanel'
 
@@ -159,9 +159,11 @@ export function ManagerShiftDesk() {
 
   const weeklyHours = useMemo(() => {
     const map = new Map<string, number>()
+    // Worked hours: breaks out (4857 Art. 68), a called-out shift out — the
+    // gateway counts the same way (ADR 0215).
     for (const s of shifts) {
-      if (!s.member_id) continue
-      map.set(s.member_id, (map.get(s.member_id) ?? 0) + shiftHours(s))
+      if (!s.member_id || s.state === 'callout') continue
+      map.set(s.member_id, (map.get(s.member_id) ?? 0) + workedHours(s))
     }
     return map
   }, [shifts])
@@ -191,7 +193,7 @@ export function ManagerShiftDesk() {
   function shiftRiskFlags(s: Shift, memberId: string | null | undefined) {
     const hrs = memberId ? (weeklyHours.get(memberId) ?? 0) : 0
     const fair =
-      hrs > 40 ||
+      hrs > WEEKLY_REVIEW_HOURS ||
       (memberId ? (weekendCloses.get(memberId) ?? 0) >= 2 : false)
     const longShift = shiftHours(s) >= 6
     const missingBreak = longShift && !(s.shift_breaks?.length)
@@ -218,7 +220,7 @@ export function ManagerShiftDesk() {
     }
     for (const ot of week?.labor.overtime ?? []) {
       const m = membersById.get(ot.memberId)
-      list.push({ id: `ot-${ot.memberId}`, group: 'publish', priority: 'soon', title: `${m?.display_name ?? 'A member'} reaches ${ot.hours}h`, meta: 'Crosses 40h — review before publishing to control overtime.' })
+      list.push({ id: `ot-${ot.memberId}`, group: 'publish', priority: 'soon', title: `${m?.display_name ?? 'A member'} reaches ${ot.hours}h`, meta: `Over ${WEEKLY_REVIEW_HOURS} worked hours — review before publishing. Not priced.` })
     }
     for (const d of week?.coverage.days ?? []) {
       for (const g of d.gaps) {
@@ -238,7 +240,10 @@ export function ManagerShiftDesk() {
   }, [shifts, week, certs, membersById, staffCount, receiptsSeen])
 
   const visibleTasks = tasks.filter((t) => deskTab === 'all' || t.group === deskTab)
-  const laborEnabled = week?.labor.enabled ?? false
+  // Money is the owner's (ADR 0215): anyone else gets hours, and the gateway
+  // has already left the cost out of what it sent them.
+  const moneyVisible = week?.labor.moneyVisible === true
+  const laborEnabled = (week?.labor.enabled ?? false) && moneyVisible
 
   // ── Mutations ──────────────────────────────────────────────────────────
   const invalidateWeek = () => qc.invalidateQueries({ queryKey: ['team', 'week'] })
@@ -297,7 +302,14 @@ export function ManagerShiftDesk() {
       { header: 'Role', value: (sh) => sh.role ?? '' },
       { header: 'Type', value: (sh) => sh.shift_type ?? '' },
       { header: 'State', value: (sh) => sh.state ?? '' },
-      { header: 'Labor cost', value: (sh) => sh.labor_cost ?? '' },
+      ...(moneyVisible
+        ? [
+            {
+              header: `Labor cost (${week?.money?.readable && week.money.currency ? week.money.currency : 'currency not recorded'})`,
+              value: (sh: Shift) => sh.labor_cost ?? '',
+            },
+          ]
+        : []),
     ]
     try {
       await exportTable({
@@ -460,10 +472,10 @@ export function ManagerShiftDesk() {
    */
   const tonightLabor =
     tonightShifts.length === 0
-      ? '$0'
+      ? fmtMoneyWhole(0, week?.money)
       : tonightShifts.some((s) => s.labor_cost == null)
         ? EM
-        : `$${Math.round(tonightShifts.reduce((sum, s) => sum + (s.labor_cost ?? 0), 0)).toLocaleString()}`
+        : fmtMoneyWhole(tonightShifts.reduce((sum, s) => sum + (s.labor_cost ?? 0), 0), week?.money)
   const tonightStaffed = tonightShifts.filter((s) => s.member_id && s.state !== 'callout').length
   const published = week?.schedule?.status === 'published'
   // Exactly the gateway's own fallback set (team.controller.ts:347), computed
@@ -554,7 +566,7 @@ export function ManagerShiftDesk() {
         />
         <PulseCell
           label={laborEnabled ? 'Tonight labor' : 'Tonight hours'}
-          value={laborEnabled ? tonightLabor : `${tonightShifts.reduce((sum, s) => sum + shiftHours(s), 0).toFixed(0)}h`}
+          value={laborEnabled ? tonightLabor : `${tonightShifts.reduce((sum, s) => sum + workedHours(s), 0).toFixed(0)}h`}
           sub={laborEnabled && tonightLabor === EM ? `${tonightShifts.length} shifts, not priced` : `${tonightShifts.length} shifts`}
         />
         {/* This cell sits under a heading that says "Tonight's board", so it
@@ -655,7 +667,7 @@ export function ManagerShiftDesk() {
                 )}
                 {members.map((m) => {
                   const hrs = weeklyHours.get(m.id) ?? 0
-                  const ot = hrs > 40
+                  const ot = hrs > WEEKLY_REVIEW_HOURS
                   return (
                     <div key={m.id} className="grid" style={{ gridTemplateColumns: '150px repeat(7, minmax(96px,1fr))' }}>
                       <button onClick={() => setMemberEditor({ member: m })} className="flex items-center gap-2 px-2.5 py-2 bg-gray-50/50 border-b border-r border-gray-100 text-left hover:bg-gray-100 min-h-[52px]">
@@ -694,9 +706,9 @@ export function ManagerShiftDesk() {
                                     <span className="block text-[9.5px] font-extrabold tabular-nums leading-tight">{fmtTime(s.start_time)}-{fmtTime(s.end_time)}</span>
                                     <span className="block text-[7.5px] font-semibold opacity-75 truncate">
                                       {lens === 'labor' && laborEnabled && s.labor_cost != null
-                                        ? `$${Math.round(s.labor_cost)}`
+                                        ? fmtMoneyWhole(s.labor_cost, week?.money)
                                         : lens === 'fairness' && risk.fair
-                                          ? ((weeklyHours.get(m.id) ?? 0) > 40 ? 'OT risk' : 'Fairness risk')
+                                          ? ((weeklyHours.get(m.id) ?? 0) > WEEKLY_REVIEW_HOURS ? `over ${WEEKLY_REVIEW_HOURS}h` : 'Fairness risk')
                                           : lens === 'compliance' && risk.compliance
                                             ? (s.state === 'callout' ? 'call-out' : (s.shift_breaks?.length ? 'cert' : 'break plan'))
                                             : s.role ?? s.shift_type}
@@ -802,7 +814,7 @@ export function ManagerShiftDesk() {
                 read as three green ticks. `known` is the difference between a
                 measurement and a silence. */}
             <Readiness known={weekKnown} label="Role coverage" ok={(week?.coverage.totalGaps ?? 0) === 0} bad={`${week?.coverage.totalGaps ?? 0} gap`} />
-            <Readiness known={weekKnown} label="Overtime" ok={(week?.labor.overtime?.length ?? 0) === 0} bad={`${week?.labor.overtime?.length ?? 0} over 40h`} />
+            <Readiness known={weekKnown} label={`Over ${WEEKLY_REVIEW_HOURS}h`} ok={(week?.labor.overtime?.length ?? 0) === 0} bad={`${week?.labor.overtime?.length ?? 0} to review`} />
             <Readiness known={weekKnown} label="Open shifts" ok={!shifts.some((s) => !s.member_id)} bad={`${shifts.filter((s) => !s.member_id).length} open`} />
           </div>
 
@@ -942,7 +954,7 @@ export function ManagerShiftDesk() {
       {memberEditor && (
         <MemberEditor
           member={memberEditor.member}
-          wageVisible={week?.settings?.wage_visible ?? true}
+          wageVisible={moneyVisible}
           ownerCount={members.filter(m => m.role === 'owner').length}
           onClose={() => setMemberEditor(null)}
         />

@@ -36,13 +36,22 @@ import {
   getTextSenders,
   publishSchedule,
   reviewTimeOff,
+  type HouseMoney,
+  type LeaveType,
   type Shift,
   type TeamMember,
   type TeamNotesReadout,
   type TextSendersReadout,
 } from '../../../services/api/team';
 import { exportTable, type TableExportColumn, type TableExportFormat } from '../../../lib/tableExport';
-import { EM, addDays, fmtDayShort, fmtWeekRange, resolveName } from './tm-format';
+import {
+  EM,
+  addDays,
+  fmtDayShort,
+  fmtWeekRange,
+  resolveName,
+  workedHours,
+} from './tm-format';
 import { MutationError, Tag } from './tm-bits';
 import { useActiveRestaurantId, type TimeOffRow } from './useTeamNextData';
 
@@ -592,6 +601,11 @@ export function CrewNoteSheet({
 
 /* ── time off ────────────────────────────────────────────────────────────── */
 
+/** Whether the days are paid, in words. `unknown` is a real state: nobody said. */
+function leaveWords(t: string | null | undefined): string {
+  return t === 'paid' ? 'paid leave' : t === 'unpaid' ? 'unpaid leave' : 'paid or unpaid not said';
+}
+
 export function TimeOffSheet({
   requests,
   failed,
@@ -615,8 +629,8 @@ export function TimeOffSheet({
   }, [members]);
 
   const review = useMutation({
-    mutationFn: (v: { id: string; status: 'approved' | 'denied' }) =>
-      reviewTimeOff(v.id, v.status),
+    mutationFn: (v: { id: string; status: 'approved' | 'denied'; leaveType?: LeaveType }) =>
+      reviewTimeOff(v.id, v.status, v.leaveType),
     onSuccess: onChanged,
   });
   const add = useMutation({
@@ -646,7 +660,8 @@ export function TimeOffSheet({
       footer={
         <span>
           Approving a request changes its status and nothing else — it does not remove the
-          person from shifts they already hold.
+          person from shifts they already hold. Saying whether the days are paid lets the
+          owner see paid leave beside the week&apos;s cost.
         </span>
       }
     >
@@ -683,15 +698,24 @@ export function TimeOffSheet({
             <div className="tm-rrow__line">
               {fmtDayShort(r.start_date)} – {fmtDayShort(r.end_date)}
               {r.reason ? ` · ${r.reason}` : ''}
+              {` · ${leaveWords(r.leave_type)}`}
             </div>
             <div className="tm-actions">
               <button
                 type="button"
                 className="tm-ctl tm-ctl--sm"
                 disabled={review.isPending}
-                onClick={() => review.mutate({ id: r.id, status: 'approved' })}
+                onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid' })}
               >
-                Approve
+                Approve as paid
+              </button>
+              <button
+                type="button"
+                className="tm-ctl tm-ctl--sm"
+                disabled={review.isPending}
+                onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid' })}
+              >
+                Approve as unpaid
               </button>
               <button
                 type="button"
@@ -713,7 +737,28 @@ export function TimeOffSheet({
             </div>
             <div className="tm-rrow__line">
               {fmtDayShort(r.start_date)} – {fmtDayShort(r.end_date)}
+              {r.status === 'approved' ? ` · ${leaveWords(r.leave_type)}` : ''}
             </div>
+            {r.status === 'approved' && (r.leave_type ?? 'unknown') === 'unknown' && (
+              <div className="tm-actions">
+                <button
+                  type="button"
+                  className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+                  disabled={review.isPending}
+                  onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'paid' })}
+                >
+                  Mark paid
+                </button>
+                <button
+                  type="button"
+                  className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+                  disabled={review.isPending}
+                  onClick={() => review.mutate({ id: r.id, status: 'approved', leaveType: 'unpaid' })}
+                >
+                  Mark unpaid
+                </button>
+              </div>
+            )}
           </div>
         ))}
 
@@ -769,6 +814,8 @@ export function ExportPopover({
   weekStart,
   shifts,
   members,
+  moneyVisible,
+  money,
   onClose,
 }: {
   anchorRef: React.RefObject<HTMLElement | null>;
@@ -776,6 +823,9 @@ export function ExportPopover({
   /** `null` when the week has not answered — exporting is then refused in words. */
   shifts: Shift[] | null;
   members: TeamMember[] | null;
+  /** The owner only (ADR 0215): nobody else's export carries a cost column. */
+  moneyVisible: boolean;
+  money: HouseMoney | null;
   onClose: () => void;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
@@ -804,8 +854,24 @@ export function ExportPopover({
     { header: 'Station', value: (s) => s.role ?? '' },
     { header: 'Kind', value: (s) => s.shift_type },
     { header: 'State', value: (s) => s.state },
+    // Hours are what payroll is handed (founder, 2026-09-21: "Hand hours
+    // over"): worked hours, breaks taken out (4857 Art. 68).
+    {
+      header: 'Hours worked',
+      value: (s) =>
+        Math.round(workedHours(s) * 100) / 100,
+    },
+    // The owner only, and in the house's own money: the header names the
+    // currency, because a bare number in a spreadsheet has none.
     // An unpriced shift exports as blank, never as 0 — a spreadsheet sums a 0.
-    { header: 'Labour cost', value: (s) => (s.labor_cost == null ? '' : s.labor_cost) },
+    ...(moneyVisible
+      ? [
+          {
+            header: `Labour cost (${money?.readable && money.currency ? money.currency : 'currency not recorded'})`,
+            value: (s: Shift) => (s.labor_cost == null ? '' : s.labor_cost),
+          },
+        ]
+      : []),
   ];
 
   const run = async (format: TableExportFormat) => {

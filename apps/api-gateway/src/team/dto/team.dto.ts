@@ -61,6 +61,12 @@ export class CreateShiftDto {
   @IsIn(["am", "pm", "double", "split", "training", "borrowed", "open"])
   shiftType?: string;
   @IsOptional() @IsString() note?: string;
+  /**
+   * The break taken on this shift, in whole minutes (0 = none taken). Omitted,
+   * nothing is recorded and the shift, any length, is counted with the Art.
+   * 68 minimum, shown as assumed (ADR 0215).
+   */
+  @IsOptional() @IsInt() @Min(0) @Max(1439) breakMinutes?: number | null;
 }
 
 export class UpdateShiftDto {
@@ -76,6 +82,12 @@ export class UpdateShiftDto {
   @IsIn(["scheduled", "callout", "covered", "open"])
   state?: string;
   @IsOptional() @IsString() note?: string;
+  /**
+   * The break taken on this shift, in whole minutes (0 = none taken). `null`
+   * clears the record, so the shift, any length, is counted with the Art. 68
+   * minimum again and shown as assumed; omitted leaves it as it is (ADR 0215).
+   */
+  @IsOptional() @IsInt() @Min(0) @Max(1439) breakMinutes?: number | null;
 }
 
 export class CalloutDto {
@@ -140,10 +152,18 @@ export class CreateTimeOffDto {
   @IsDateString() startDate: string;
   @IsDateString() endDate: string;
   @IsOptional() @IsString() reason?: string;
+  /** Whether the days are paid (ADR 0215). Omitted = 'unknown'. */
+  @IsOptional()
+  @IsIn(["unknown", "paid", "unpaid"])
+  leaveType?: "unknown" | "paid" | "unpaid";
 }
 
 export class ReviewRequestDto {
   @IsIn(["approved", "denied"]) status: "approved" | "denied";
+  /** The reviewer says whether the days are paid (ADR 0215). */
+  @IsOptional()
+  @IsIn(["unknown", "paid", "unpaid"])
+  leaveType?: "unknown" | "paid" | "unpaid";
 }
 
 // ── Coverage template ──────────────────────────────────────────────────────
@@ -222,6 +242,10 @@ export class CreateTeamNoteDto {
 // ── Settings ───────────────────────────────────────────────────────────────
 export class UpdateTeamSettingsDto {
   @IsOptional() @IsBoolean() laborTrackingEnabled?: boolean;
+  /**
+   * RETIRED (ADR 0215). Kept in the DTO only so a client that still sends it is
+   * refused in words (`updateSettings`), not silently stripped by the pipe.
+   */
   @IsOptional() @IsBoolean() wageVisible?: boolean;
   @IsOptional()
   @Type(() => Number)
@@ -229,4 +253,10 @@ export class UpdateTeamSettingsDto {
   @Min(1)
   @Max(100)
   laborTargetPct?: number;
+}
+
+// ── Pay access (ADR 0215, founder 2026-09-25 round 4 item 19) ──────────────
+/** An owner switches one manager's pay access on or off. */
+export class SetPayAccessDto {
+  @IsBoolean() payAccess!: boolean;
 }

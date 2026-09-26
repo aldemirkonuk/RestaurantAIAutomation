@@ -27,8 +27,10 @@ import { Sheet } from '@/components/mudavym';
 import {
   createTeamMember,
   deleteTeamMember,
+  setMemberPayAccess,
   updateTeamMember,
   type Certification,
+  type HouseMoney,
   type Shift,
   type TeamMember,
 } from '../../../services/api/team';
@@ -36,10 +38,11 @@ import {
   EM,
   fmtDayShort,
   fmtHours,
+  fmtMoneyExact,
   fmtTime,
   fmtWeekday,
   resolveName,
-  shiftHours,
+  workedHours,
 } from './tm-format';
 import { Card, Fact, KV, Mark, MutationError, Tag } from './tm-bits';
 import { PerformanceCard } from './PerformanceCard';
@@ -58,8 +61,9 @@ const STATUSES: ReadonlyArray<[string, string]> = [
   ['inactive', 'Inactive'],
 ];
 
-function money(v: number | null | undefined): string {
-  return typeof v === 'number' && Number.isFinite(v) ? `$${v.toFixed(2)}` : EM;
+/** Paid, unpaid, or not said — a leave row's type in words (ADR 0215). */
+function leaveWords(t: string | null | undefined): string {
+  return t === 'paid' ? 'paid' : t === 'unpaid' ? 'unpaid' : 'paid or unpaid not said';
 }
 
 /* ── the expanded row ────────────────────────────────────────────────────── */
@@ -69,7 +73,8 @@ function MemberDetail({
   shifts,
   certs,
   timeOff,
-  wageVisible,
+  moneyVisible,
+  money,
   onEdit,
 }: {
   member: TeamMember;
@@ -77,12 +82,17 @@ function MemberDetail({
   shifts: Shift[] | null;
   certs: Certification[] | null;
   timeOff: TimeOffRow[] | null;
-  wageVisible: boolean;
+  /** The owner only (ADR 0215). */
+  moneyVisible: boolean;
+  money: HouseMoney | null;
   onEdit: () => void;
 }) {
   const name = resolveName(member);
   const mine = (shifts ?? []).filter((s) => s.member_id === member.id);
-  const hours = mine.reduce((sum, s) => sum + shiftHours(s.start_time, s.end_time), 0);
+  // Worked hours: breaks out, a called-out shift out — as the gateway counts.
+  const hours = mine
+    .filter((s) => s.state !== 'callout')
+    .reduce((sum, s) => sum + workedHours(s), 0);
   const myCerts = (certs ?? []).filter((c) => c.member_id === member.id);
   const myLeave = (timeOff ?? []).filter((r) => r.member_id === member.id);
 
@@ -96,7 +106,7 @@ function MemberDetail({
           k="This week"
           v={shifts === null ? `${EM} not read` : `${mine.length} shifts · ${fmtHours(hours)}`}
         />
-        {wageVisible && <Fact k="Wage" v={money(member.hourly_wage)} />}
+        {moneyVisible && <Fact k="Hourly wage" v={fmtMoneyExact(member.hourly_wage, money)} />}
       </div>
 
       {!name.known && (
@@ -157,7 +167,7 @@ function MemberDetail({
               <KV
                 key={r.id}
                 k={`${fmtDayShort(r.start_date)} – ${fmtDayShort(r.end_date)}`}
-                v={r.status}
+                v={r.status === 'approved' ? `approved · ${leaveWords(r.leave_type)}` : r.status}
               />
             ))
           )}
@@ -183,7 +193,8 @@ export function RosterSheet({
   shifts,
   certs,
   timeOff,
-  wageVisible,
+  moneyVisible,
+  money,
   onClose,
   onEdit,
   onAdd,
@@ -193,7 +204,8 @@ export function RosterSheet({
   shifts: Shift[] | null;
   certs: Certification[] | null;
   timeOff: TimeOffRow[] | null;
-  wageVisible: boolean;
+  moneyVisible: boolean;
+  money: HouseMoney | null;
   onClose: () => void;
   onEdit: (m: TeamMember) => void;
   onAdd: () => void;
@@ -202,8 +214,11 @@ export function RosterSheet({
   const hoursById = useMemo(() => {
     const m = new Map<string, number>();
     for (const s of shifts ?? []) {
-      if (!s.member_id) continue;
-      m.set(s.member_id, (m.get(s.member_id) ?? 0) + shiftHours(s.start_time, s.end_time));
+      if (!s.member_id || s.state === 'callout') continue;
+      m.set(
+        s.member_id,
+        (m.get(s.member_id) ?? 0) + workedHours(s),
+      );
     }
     return m;
   }, [shifts]);
@@ -293,7 +308,8 @@ export function RosterSheet({
                   shifts={shifts}
                   certs={certs}
                   timeOff={timeOff}
-                  wageVisible={wageVisible}
+                  moneyVisible={moneyVisible}
+                  money={money}
                   onEdit={() => onEdit(m)}
                 />
               )}
@@ -320,14 +336,31 @@ export function RosterSheet({
  */
 export function MemberSheet({
   member,
-  wageVisible,
+  moneyVisible,
+  viewerIsOwner = false,
+  viewerUserId = null,
   ownerCount,
   onClose,
   onChanged,
 }: {
   /** `null` for a new member. */
   member: TeamMember | null;
-  wageVisible: boolean;
+  /**
+   * The owner only (ADR 0215): only an owner may set a wage, and the gateway
+   * refuses anyone else. So the field is the owner's, and nobody else is shown
+   * a control that would be refused.
+   */
+  moneyVisible: boolean;
+  /**
+   * The owner switches a manager's pay access here (ADR 0215, founder
+   * 2026-09-25 round 4 item 19, "Pay visibility only").
+   */
+  viewerIsOwner?: boolean;
+  /**
+   * The viewer's `user_id`: a manager with pay access setting their own wage is
+   * told the owner hears of it (founder 2026-09-25, round 5 item 32).
+   */
+  viewerUserId?: string | null;
   /** `null` when the roster has not answered — the sole-owner rule then abstains. */
   ownerCount: number | null;
   onClose: () => void;
@@ -350,6 +383,19 @@ export function MemberSheet({
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const isSoleOwner = member?.role === 'owner' && ownerCount !== null && ownerCount <= 1;
+  // A manager the owner switched on sets anyone's wage, their own included
+  // (founder 2026-09-25, round 5 item 32, replacing the round-4 refusal); on
+  // their own row the page says the owner is told before they save.
+  const ownRowAsManager =
+    !viewerIsOwner && viewerUserId != null && member?.user_id === viewerUserId;
+  const mayWriteWage = moneyVisible;
+  const [ownWageUntold, setOwnWageUntold] = useState<string | null>(null);
+  const hasPaySwitch = viewerIsOwner && member?.role === 'manager';
+  const paySwitch = useMutation({
+    mutationFn: (on: boolean) => setMemberPayAccess(member!.id, on),
+    onSuccess: () => onChanged(),
+  });
+  const payOn = paySwitch.isSuccess ? paySwitch.data.payAccess : (member?.payAccess ?? null);
 
   const save = useMutation({
     mutationFn: () => {
@@ -361,8 +407,10 @@ export function MemberSheet({
         employmentType: form.employmentType,
         homeLocation: form.homeLocation.trim() || undefined,
         // A wage nobody typed stays unknown. `Number('')` is 0, and a 0 here
-        // would be a priced hour that costs nothing (ADR 0088).
-        hourlyWage: form.hourlyWage.trim() === '' ? undefined : Number(form.hourlyWage),
+        // would be a priced hour that costs nothing (ADR 0088). Only an owner
+        // sends one at all (ADR 0215).
+        hourlyWage:
+          !mayWriteWage || form.hourlyWage.trim() === '' ? undefined : Number(form.hourlyWage),
         skills: form.skills
           .split(',')
           .map((s) => s.trim())
@@ -374,8 +422,21 @@ export function MemberSheet({
         ? updateTeamMember(member!.id, payload)
         : createTeamMember(payload as never);
     },
-    onSuccess: () => {
+    onSuccess: (saved: { ownWage?: { audited: boolean; ownersNotified: number; ownersFound: number | null } } | undefined) => {
       onChanged();
+      // The wage is saved either way. A notice that did not reach the owner is
+      // said here instead of closing on it (ADR 0215 item 21).
+      const own = saved?.ownWage;
+      if (own && (own.ownersNotified === 0 || !own.audited)) {
+        setOwnWageUntold(
+          own.ownersFound === null
+            ? 'Your wage was saved, but the owners of this house could not be read, so none was told. Tell an owner yourself.'
+            : own.ownersNotified === 0
+              ? 'Your wage was saved, but the notice to the owner did not go out. Tell an owner yourself.'
+              : 'Your wage was saved and the owner was told, but the entry in the record did not save.',
+        );
+        return;
+      }
       onClose();
     },
   });
@@ -400,6 +461,7 @@ export function MemberSheet({
         <MutationError when={save.isError}>
           Nothing was saved, so the roster is unchanged. Your values are still here.
         </MutationError>
+        <MutationError when={ownWageUntold !== null}>{ownWageUntold}</MutationError>
         <MutationError when={remove.isError}>
           The removal did not go through — this person is still on the roster and still
           has whatever access they had.
@@ -475,7 +537,7 @@ export function MemberSheet({
               onChange={(e) => setForm({ ...form, homeLocation: e.target.value })}
             />
           </label>
-          {wageVisible ? (
+          {mayWriteWage ? (
             <label>
               <span className="tm-label">Hourly wage</span>
               <input
@@ -490,14 +552,22 @@ export function MemberSheet({
               <p className="tm-hint">
                 Blank stays unknown. Every hour this person works is uncosted until a
                 real figure is here — the week total says so rather than showing a zero.
+                Each change is kept: who, when, the old and the new figure.
               </p>
+              {ownRowAsManager && (
+                <p className="tm-hint" data-testid="own-wage-note">
+                  This is your own wage. You may change it; an owner of this house is told
+                  when you do, with the old and the new figure, and the record names you.
+                </p>
+              )}
             </label>
           ) : (
             <div>
               <span className="tm-label">Hourly wage</span>
               <p className="tm-hint">
-                Wages are hidden for this restaurant, so this field is withheld rather
-                than blank. Change it in team settings.
+                Wages are the owner&apos;s to see and to set, and a manager&apos;s only when
+                the owner switches their pay access on, so this field is withheld rather than
+                blank.
               </p>
             </div>
           )}
@@ -543,6 +613,36 @@ export function MemberSheet({
           />
         </label>
 
+        {hasPaySwitch && (
+          <div data-testid="pay-access">
+            <span className="tm-label">Pay access</span>
+            {payOn === null ? (
+              <p className="tm-hint" role="status">
+                Whether this manager&apos;s pay access is on could not be read, so it is not
+                offered here. Nothing about their access changed.
+              </p>
+            ) : (
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={payOn}
+                  disabled={paySwitch.isPending}
+                  onChange={(e) => paySwitch.mutate(e.target.checked)}
+                />
+                <span style={{ fontSize: 12.5 }}>Sees and sets pay</span>
+              </label>
+            )}
+            <p className="tm-hint">
+              On, this manager sees wages, shift cost and labour totals, and can set wages —
+              their own too, and then you are told. Their other rights are unchanged. Each
+              switch is written to the record, and they are told.
+            </p>
+            <MutationError when={paySwitch.isError}>
+              The switch did not save, so this manager&apos;s pay access is as it was.
+            </MutationError>
+          </div>
+        )}
+
         {editing && isSoleOwner && (
           <p className="tm-hint">
             This is the restaurant&apos;s only owner, so they cannot be removed here. Make
@@ -555,7 +655,9 @@ export function MemberSheet({
             <p style={{ margin: 0 }}>
               Removing {resolved?.known ? resolved.text : 'this person'} deletes their
               roster row and revokes their access to this restaurant. It is written to the
-              audit log and they are notified. This cannot be undone.
+              audit log and they are notified. This cannot be undone. Their shifts, leave, wage
+              changes and credentials are kept for five years, for an owner only, in the
+              former-staff history; their availability is not kept.
             </p>
             <div className="tm-actions">
               <button

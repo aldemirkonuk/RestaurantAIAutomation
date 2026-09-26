@@ -3,6 +3,9 @@
  * words (labour tracking off is a state, not a zero).
  */
 
+import { countryByName } from '@/lib/countries';
+import { CURRENCY_NOT_RECORDED, currencyMinorUnits } from '@/lib/currency';
+
 export const EM = '—';
 
 /**
@@ -21,14 +24,86 @@ export const SERIF = '"Fraunces", Georgia, "Times New Roman", serif';
 export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = '"DM Sans", "Plus Jakarta Sans", system-ui, sans-serif';
 
-const money = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
+/* ── money, in the house's own currency and locale ─────────────────────────
 
-export function fmtMoneyWhole(v: number | null | undefined): string {
-  return typeof v === 'number' && Number.isFinite(v) ? money.format(v) : EM;
+   This was a US-dollar formatter pinned to the en-US locale, so a house in
+   Türkiye read its labour cost in dollars (ADR 0215; the judge's census found it
+   tracked nowhere). A figure now carries the house's currency, which the gateway
+   sends WITH the money and only to the owner, and it is printed in the house's
+   locale, derived by `Intl` from the house's country — `Türkiye` gives
+   `tr-Latn-TR` and `₺12.346`, with no table of locales to keep.
+
+   A house that has not stated a currency is shown the number and the words
+   "currency not recorded" (ADR 0117 Q25): never a symbol nobody chose. */
+
+export interface HouseMoneyLike {
+  currency: string | null;
+  country: string | null;
+  readable: boolean;
+}
+
+/**
+ * The house's locale, from its country: `Intl.Locale('und-TR').maximize()` is
+ * `tr-Latn-TR`. `undefined` (the reader's own runtime locale) when the country
+ * is unknown — never a hard-coded one.
+ */
+export function houseLocale(country: string | null | undefined): string | undefined {
+  const code = countryByName(country ?? null)?.code;
+  if (!code) return undefined;
+  try {
+    return new Intl.Locale(`und-${code}`).maximize().baseName;
+  } catch {
+    return undefined;
+  }
+}
+
+function fmtMoney(
+  v: number | null | undefined,
+  money: HouseMoneyLike | null | undefined,
+  whole: boolean,
+): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return EM;
+  const code =
+    money?.readable && typeof money.currency === 'string' && /^[A-Z]{3}$/.test(money.currency)
+      ? money.currency
+      : null;
+  const digits = whole ? 0 : (currencyMinorUnits(code) ?? 2);
+  const locale = houseLocale(money?.country);
+  const plain = () =>
+    new Intl.NumberFormat(locale, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(v);
+  if (!code) {
+    return `${plain()} (${money && !money.readable ? 'currency could not be read' : CURRENCY_NOT_RECORDED})`;
+  }
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: code,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(v);
+  } catch {
+    // A well-formed code Intl does not know still names the money.
+    return `${plain()} ${code}`;
+  }
+}
+
+/** A total, in whole units of the house's money — or the dash. */
+export function fmtMoneyWhole(
+  v: number | null | undefined,
+  money: HouseMoneyLike | null | undefined,
+): string {
+  return fmtMoney(v, money, true);
+}
+
+/** A rate (an hourly wage), to the currency's own minor units — or the dash. */
+export function fmtMoneyExact(
+  v: number | null | undefined,
+  money: HouseMoneyLike | null | undefined,
+): string {
+  return fmtMoney(v, money, false);
 }
 
 const weekday = new Intl.DateTimeFormat('en-GB', { weekday: 'long' });
@@ -121,6 +196,102 @@ export function shiftHours(start: string, end: string): number {
   if (diff < 0) diff += 1440;
   return diff / 60;
 }
+
+/* ── the break a shift is counted with (4857 Art. 68) ──────────────────────
+
+   The gateway's rule, mirrored (`apps/api-gateway/src/team/pay-rules.ts`), so
+   the grid and the week's figure agree. The founder, 2026-09-21, picked "Take
+   all five" (ADR 0215): a shift with no break on record is counted with the
+   Art. 68 minimum and shown as an ASSUMED break; whoever edits the shift can
+   record the real one. That round's relayed option named shifts over 4 hours
+   only; the founder answered the shorter ones 2026-09-22 (round 6y): "Yes,
+   follow Art. 68 (Recommended)" — so the assumption is not gated on length,
+   from the shortest shift up. Art. 68 keys the break on working time, which
+   does not include the break, so a 4-hour shift is 15 minutes and an 8-hour
+   shift is 7.5 hours of work and a 30-minute break. */
+
+/** Art. 68 (a)-(c) on WORKING minutes: <= 4 h 15 min, <= 7.5 h 30 min, over it 60. */
+export function art68BreakForWork(workedMin: number): number {
+  if (workedMin <= 240) return 15;
+  if (workedMin <= 450) return 30;
+  return 60;
+}
+
+/** The least of 15 / 30 / 60 minutes a shift spanning `spanMin` complies with. */
+export function art68MinimumBreak(spanMin: number): number {
+  for (const b of [15, 30, 60]) {
+    if (b >= art68BreakForWork(spanMin - b)) return b;
+  }
+  return 60;
+}
+
+export interface ShiftBreakSource {
+  start_time: string;
+  end_time: string;
+  shift_breaks?: ReadonlyArray<{ duration_min?: number | null }> | null;
+  /** Recorded by whoever edits the shift; 0 = no break taken; null = nothing recorded. */
+  recorded_break_min?: number | null;
+}
+
+/** The break on record in minutes, or `null` when nothing is recorded. */
+export function recordedBreakMinutes(s: ShiftBreakSource): number | null {
+  if (s?.recorded_break_min != null) {
+    const n = Number(s.recorded_break_min);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  const rows = s?.shift_breaks ?? [];
+  if (rows.length > 0) {
+    return rows.reduce((n, b) => {
+      const d = Number(b?.duration_min);
+      return Number.isFinite(d) && d > 0 ? n + d : n;
+    }, 0);
+  }
+  return null;
+}
+
+/** The break a shift is counted with, and whether it is assumed (any length). */
+export function breakCounted(s: ShiftBreakSource): { minutes: number; assumed: boolean } {
+  const recorded = recordedBreakMinutes(s);
+  if (recorded != null) return { minutes: recorded, assumed: false };
+  const span = Math.round(shiftHours(s.start_time, s.end_time) * 60);
+  if (span <= 0) return { minutes: 0, assumed: false };
+  return { minutes: art68MinimumBreak(span), assumed: true };
+}
+
+/**
+ * Hours WORKED on a shift: its span minus the break it is counted with (4857
+ * Art. 68 — a break is not working time), never below zero.
+ */
+export function workedHours(s: ShiftBreakSource): number {
+  return Math.max(0, shiftHours(s.start_time, s.end_time) - breakCounted(s).minutes / 60);
+}
+
+/** The break as a shift's fact: "30 min · assumed" / "45 min" / "none taken" / "none". */
+export function fmtBreak(s: ShiftBreakSource): string {
+  const b = breakCounted(s);
+  if (b.assumed) return `${b.minutes} min · assumed`;
+  if (recordedBreakMinutes(s) === 0) return 'none taken';
+  return b.minutes > 0 ? `${b.minutes} min` : 'none';
+}
+
+/**
+ * A RECORDED break shorter than Art. 68 asks for the work it leaves, at any
+ * shift length (the same scope as the assumption). An assumed break is never
+ * under: it is the minimum. For the compliance lens; it changes no figure.
+ */
+export function breakUnderMinimum(s: ShiftBreakSource): boolean {
+  const recorded = recordedBreakMinutes(s);
+  if (recorded == null) return false;
+  const span = Math.round(shiftHours(s.start_time, s.end_time) * 60);
+  return recorded < art68BreakForWork(span - recorded);
+}
+
+/**
+ * The Turkish week (4857 Art. 63). Over it is a flag to REVIEW, never a price:
+ * whether an hour over 45 is overtime pay depends on agreements and consent
+ * Mudavym does not hold (ADR 0215). It was 40, the US week.
+ */
+export const WEEKLY_REVIEW_HOURS = 45;
 
 export function fmtHours(h: number | null): string {
   if (h === null || !Number.isFinite(h)) return EM;

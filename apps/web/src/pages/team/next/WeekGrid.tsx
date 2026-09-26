@@ -38,19 +38,26 @@ import {
   reportCallout,
   type Certification,
   type CoverageDay,
+  type HouseMoney,
   type Shift,
   type TeamMember,
 } from '../../../services/api/team';
 import {
   DOW,
   EM,
+  breakCounted,
+  breakUnderMinimum,
+  fmtBreak,
   fmtDayShort,
   fmtHours,
+  fmtMoneyWhole,
   fmtTime,
+  recordedBreakMinutes,
   resolveName,
-  shiftHours,
   todayIso,
+  WEEKLY_REVIEW_HOURS,
   weekDays,
+  workedHours,
 } from './tm-format';
 import { Card, Fact, KV, Mark } from './tm-bits';
 import { PerformanceCard } from './PerformanceCard';
@@ -79,6 +86,13 @@ interface GridProps {
   engineIdle: boolean;
   lens: Lens;
   labourEnabled: boolean;
+  /**
+   * The owner only (ADR 0215). Anyone else gets hours: the gateway does not
+   * send them a shift's cost, because the cost divided by the hours is the wage.
+   */
+  moneyVisible: boolean;
+  /** The house's currency and country, sent with the money. */
+  money: HouseMoney | null;
   scheduleId: string | null;
   onEditShift: (t: ShiftSheetTarget) => void;
   onChanged: () => void;
@@ -95,6 +109,8 @@ export function WeekGrid({
   engineIdle,
   lens,
   labourEnabled,
+  moneyVisible,
+  money,
   scheduleId,
   onEditShift,
   onChanged,
@@ -109,11 +125,15 @@ export function WeekGrid({
   // the page and it redraws whenever an overlay opens.
   const rows = useMemo(() => shifts ?? [], [shifts]);
 
+  /** WORKED hours per person: breaks out, a called-out shift out (ADR 0215). */
   const hoursById = useMemo(() => {
     const m = new Map<string, number>();
     for (const s of rows) {
-      if (!s.member_id) continue;
-      m.set(s.member_id, (m.get(s.member_id) ?? 0) + shiftHours(s.start_time, s.end_time));
+      if (!s.member_id || s.state === 'callout') continue;
+      m.set(
+        s.member_id,
+        (m.get(s.member_id) ?? 0) + workedHours(s),
+      );
     }
     return m;
   }, [rows]);
@@ -144,23 +164,29 @@ export function WeekGrid({
     const id = s.member_id;
     const hours = id ? (hoursById.get(id) ?? 0) : 0;
     const closes = id ? (closesById.get(id) ?? 0) : 0;
-    const fair = hours > 40 || closes >= 2;
-    const long = shiftHours(s.start_time, s.end_time) >= 6;
-    const noBreak = long && !(s.shift_breaks?.length ?? 0);
+    const fair = hours > WEEKLY_REVIEW_HOURS || closes >= 2;
+    // A shift with no break recorded is counted with the Art. 68 minimum
+    // (ADR 0215; any length, founder round 6y): the lens says the break is
+    // assumed, and a recorded break shorter than the law asks for says that
+    // instead.
+    const assumedBreak = breakCounted(s).assumed;
+    const shortBreak = breakUnderMinimum(s);
     const lapsed = id ? lapsedIds.has(id) : false;
-    const compliance = noBreak || lapsed || s.state === 'callout';
+    const compliance = assumedBreak || shortBreak || lapsed || s.state === 'callout';
     const why =
       s.state === 'callout'
         ? 'called out'
         : lapsed
           ? 'credential lapsed'
-          : noBreak
-            ? 'no break planned'
-            : hours > 40
-              ? 'over 40h'
-              : closes >= 2
-                ? `${closes} weekend closes`
-                : '';
+          : shortBreak
+            ? 'break under the legal minimum'
+            : assumedBreak
+              ? 'break assumed · not recorded'
+              : hours > WEEKLY_REVIEW_HOURS
+                ? `over ${WEEKLY_REVIEW_HOURS}h · review`
+                : closes >= 2
+                  ? `${closes} weekend closes`
+                  : '';
     return { fair, compliance, why };
   }
 
@@ -168,10 +194,12 @@ export function WeekGrid({
   function chipMeta(s: Shift): string {
     const f = flagsFor(s);
     if (lens === 'labour') {
+      // Hours for anyone who is not the owner: the cost is withheld, not unknown.
+      if (!moneyVisible) return fmtHours(workedHours(s));
       if (!labourEnabled) return 'labour off';
       // An unpriced shift is unknown, not free. `?? 0` here is exactly the
       // defect ADR 0089 found in the Tonight pulse.
-      return s.labor_cost == null ? `${EM} not priced` : `$${Math.round(s.labor_cost)}`;
+      return s.labor_cost == null ? `${EM} not priced` : fmtMoneyWhole(s.labor_cost, money);
     }
     if (lens === 'fairness') return f.fair ? f.why || 'fairness' : (s.role ?? s.shift_type);
     if (lens === 'compliance') {
@@ -190,6 +218,9 @@ export function WeekGrid({
         endTime: s.end_time,
         role: s.role ?? undefined,
         shiftType: s.shift_type,
+        // The copy keeps the break on record, as a copied week does (ADR
+        // 0215); nothing on record stays nothing on record, so it is assumed.
+        ...(recordedBreakMinutes(s) != null ? { breakMinutes: recordedBreakMinutes(s) } : {}),
       }),
     onSuccess: onChanged,
   });
@@ -325,7 +356,7 @@ export function WeekGrid({
                     </span>
                     <span
                       className="tm-membercell__h"
-                      data-over={hours !== null && hours > 40 ? 'true' : undefined}
+                      data-over={hours !== null && hours > WEEKLY_REVIEW_HOURS ? 'true' : undefined}
                     >
                       {shifts === null ? EM : fmtHours(hours ?? 0)}
                     </span>
@@ -389,6 +420,8 @@ export function WeekGrid({
                     coverPending={cover.isPending}
                     coverFailed={cover.isError}
                     coverSent={cover.isSuccess}
+                    moneyVisible={moneyVisible}
+                    money={money}
                   />
                 )}
               </div>
@@ -516,6 +549,8 @@ function ShiftDetail({
   coverPending,
   coverFailed,
   coverSent,
+  moneyVisible,
+  money,
 }: {
   shift: Shift;
   member: TeamMember;
@@ -528,6 +563,8 @@ function ShiftDetail({
   coverPending: boolean;
   coverFailed: boolean;
   coverSent: boolean;
+  moneyVisible: boolean;
+  money: HouseMoney | null;
 }) {
   const name = resolveName(member);
   return (
@@ -539,9 +576,16 @@ function ShiftDetail({
         <Fact k="Kind" v={shift.shift_type} />
         <Fact k="State" v={shift.state} />
         <Fact
-          k="Cost"
-          v={shift.labor_cost == null ? `${EM} not priced` : `$${Math.round(shift.labor_cost)}`}
+          k="Hours"
+          v={fmtHours(workedHours(shift))}
         />
+        <Fact k="Break" v={fmtBreak(shift)} />
+        {moneyVisible && (
+          <Fact
+            k="Cost"
+            v={shift.labor_cost == null ? `${EM} not priced` : fmtMoneyWhole(shift.labor_cost, money)}
+          />
+        )}
       </div>
       <div className="tm-cards">
         <Card title="Cover, if this falls through">

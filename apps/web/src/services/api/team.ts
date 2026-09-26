@@ -22,7 +22,11 @@ export interface TeamMember {
   position: string | null
   employment_type: string
   home_location: string | null
-  hourly_wage: number | null
+  /**
+   * The OWNER's alone (ADR 0215). The gateway removes the key for anyone else,
+   * so absent means "not yours to see" and `null` means "no wage on file".
+   */
+  hourly_wage?: number | null
   skills: string[]
   hire_date: string | null
   status: string
@@ -30,6 +34,62 @@ export interface TeamMember {
   role: 'owner' | 'manager' | 'staff' | null
   accountLinked: boolean
   linkedUser?: { name?: string; email?: string; avatar_url?: string } | null
+  /**
+   * A MANAGER's pay switch, on the owner's roster only (ADR 0215, founder
+   * 2026-09-25 round 4 item 19, "Pay visibility only"): `true`/`false` is the
+   * switch; `null` = it could not be read; absent = not the owner's roster, or
+   * not a manager.
+   */
+  payAccess?: boolean | null
+}
+
+/** One person removed from the roster, as the owner's former-staff history has them. */
+export interface FormerStaffPerson {
+  memberId: string
+  /** From the removal's audit row; `null` = the name was not recorded. */
+  name: string | null
+  position: string | null
+  leftAt: string
+  keptUntil: string
+  shifts: {
+    id: string
+    shift_date: string
+    start_time: string
+    end_time: string
+    state: string
+    role: string | null
+    workedHours: number
+    labor_cost: number | null
+  }[]
+  totals: {
+    shiftsWorked: number
+    workedHours: number
+    /** `null` when any worked shift had no cost on file — never a partial. */
+    cost: number | null
+    unpricedShifts: number
+  }
+  leave: { id: string; start_date: string; end_date: string; status: string; leave_type: string }[]
+  wageChanges: {
+    old_wage: number | null
+    new_wage: number | null
+    currency: string | null
+    changed_by_role: string | null
+    changed_at: string
+  }[]
+  credentials: {
+    id: string
+    cert_type: string
+    issued_at: string | null
+    expires_at: string | null
+    doc_url: string | null
+    status: string
+  }[]
+}
+
+export interface FormerStaffReadout {
+  retentionYears: number
+  money: { currency: string | null; country: string | null; readable: boolean }
+  people: FormerStaffPerson[]
 }
 
 export interface ShiftBreak {
@@ -52,8 +112,15 @@ export interface Shift {
   shift_type: string
   state: string
   note: string | null
-  labor_cost: number | null
+  /** The owner's alone (ADR 0215): absent for anyone else, `null` = unpriced. */
+  labor_cost?: number | null
   shift_breaks?: ShiftBreak[]
+  /**
+   * The break whoever edits the shift recorded, in minutes (ADR 0215): `0` =
+   * recorded as no break taken; `null` = nothing recorded, so a shift over 4
+   * hours is counted with the 4857 Art. 68 minimum and shown as assumed.
+   */
+  recorded_break_min?: number | null
 }
 
 export interface Schedule {
@@ -72,19 +139,59 @@ export interface CoverageDay {
   status: 'ok' | 'warn' | 'gap'
 }
 
+/** `time_off_requests.leave_type` (ADR 0215). `unknown` = nobody said. */
+export type LeaveType = 'unknown' | 'paid' | 'unpaid'
+
+/** The house's money, sent with the week to the owner only (ADR 0215). */
+export interface HouseMoney {
+  /** ISO 4217, or `null` when the house has not stated one — never dollars. */
+  currency: string | null
+  /** The house's country as recorded; the locale figures are printed in. */
+  country: string | null
+  /** False when the gateway could not read it — a different state from null. */
+  readable: boolean
+}
+
 export interface WeekPayload {
   schedule: Schedule | null
   shifts: Shift[]
   coverage: { days: CoverageDay[]; totalGaps: number }
   labor: {
     enabled: boolean
+    /** True for the owner only. Everyone else gets hours and no money. */
+    moneyVisible?: boolean
+    /** WORKED hours: each shift's span minus its breaks (4857 Art. 68). */
     totalHours: number
-    totalCost?: number
-    targetPct?: number
+    /** The break time taken out of `totalHours`. */
+    breakHours?: number
+    /**
+     * How much of `breakHours` is ASSUMED, and on how many shifts: a shift over
+     * 4 hours with no break on record is counted with the Art. 68 minimum.
+     */
+    assumedBreakHours?: number
+    assumedBreakShifts?: number
+    /** 45 — over it is a review, never a price. */
+    weeklyReviewHours?: number
+    /** People over `weeklyReviewHours` worked hours. The key is historical. */
     overtime?: Array<{ memberId: string; hours: number }>
+    // Owner only, below.
+    totalCost?: number | null
+    costComplete?: boolean
+    pricedShifts?: number
+    unpricedShifts?: number
+    targetPct?: number | null
+    costCovers?: 'scheduled_shifts'
+    leave?: {
+      readable: boolean
+      paid: Array<{ memberId: string; days: number }> | null
+      paidDays: number | null
+      unknownTypeDays: number | null
+    }
   }
   receipts: Array<{ member_id: string; seen_at: string }>
   settings: TeamSettings
+  /** Owner only. */
+  money?: HouseMoney
 }
 
 export interface MyWeekPayload {
@@ -108,8 +215,20 @@ export interface Certification {
 export interface TeamSettings {
   restaurant_id: string
   labor_tracking_enabled: boolean
-  wage_visible: boolean
-  labor_target_pct: number
+  labor_target_pct: number | null
+  /**
+   * Who sees wages and labour cost: the owner, by role (ADR 0215). It replaced
+   * `wage_visible`, which the gateway no longer returns or accepts.
+   */
+  moneyVisibleTo?: 'owner'
+  configured?: boolean
+  /**
+   * What this viewer may change (ADR 0215; founder 2026-09-21, "Take all
+   * five"): only the owner switches labour-cost tracking off or changes the
+   * target. Absent from an older gateway: the page then offers nothing it
+   * cannot promise.
+   */
+  mayChange?: { trackingOff: boolean; trackingOn: boolean; target: boolean }
 }
 
 export interface MemberPerformance {
@@ -136,6 +255,26 @@ export async function updateTeamMember(memberId: string, body: Record<string, an
   const { data } = await apiClient.patch(`${base(rid)}/members/${memberId}`, body)
   return data
 }
+/** Owner only: switch one manager's pay access on or off (ADR 0215, round 4). */
+export async function setMemberPayAccess(memberId: string, payAccess: boolean, rid?: string) {
+  const { data } = await apiClient.patch(`${base(rid)}/members/${memberId}/pay-access`, {
+    payAccess,
+  })
+  return data as {
+    memberId: string
+    payAccess: boolean
+    changed: boolean
+    audited: boolean
+    notified: boolean
+  }
+}
+
+/** Owner only: the former-staff history (ADR 0215, round 4). */
+export async function getFormerStaff(rid?: string): Promise<FormerStaffReadout> {
+  const { data } = await apiClient.get(`${base(rid)}/former-staff`)
+  return data
+}
+
 export async function deleteTeamMember(memberId: string, rid?: string) {
   await apiClient.delete(`${base(rid)}/members/${memberId}`)
 }
@@ -253,8 +392,16 @@ export async function createTimeOff(body: Record<string, any>, rid?: string) {
   const { data } = await apiClient.post(`${base(rid)}/time-off`, body)
   return data
 }
-export async function reviewTimeOff(requestId: string, status: 'approved' | 'denied', rid?: string) {
-  const { data } = await apiClient.patch(`${base(rid)}/time-off/${requestId}`, { status })
+export async function reviewTimeOff(
+  requestId: string,
+  status: 'approved' | 'denied',
+  leaveType?: LeaveType,
+  rid?: string,
+) {
+  const { data } = await apiClient.patch(`${base(rid)}/time-off/${requestId}`, {
+    status,
+    ...(leaveType ? { leaveType } : {}),
+  })
   return data
 }
 

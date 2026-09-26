@@ -91,6 +91,26 @@ export function makeStubDb(
   return db;
 }
 
+/**
+ * What PostgREST actually receives for a single-row write. supabase-js sends
+ * the payload as `JSON.stringify(values)`, which DROPS a key whose value is
+ * `undefined` -- so `{ leave_type: undefined }` leaves the column untouched
+ * (update) or at its own default (insert), exactly like omitting the key.
+ * The stub mirrors that, so a service may write an optional column as an
+ * inline key (readable by check_order_capture_contract.py) instead of a
+ * `...(x ? { col: x } : {})` spread, and the specs still see what the
+ * database would. Multi-row (array) payloads are left as given: supabase-js
+ * sends those with a `columns` list, which this stub does not model.
+ */
+function onTheWire(payload: any): any {
+  if (!payload || Array.isArray(payload) || typeof payload !== "object") {
+    return payload;
+  }
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, v]) => v !== undefined),
+  );
+}
+
 class Builder implements PromiseLike<any> {
   private op: RecordedOp["op"] | null = null;
   private filters: Filter[] = [];
@@ -143,12 +163,12 @@ class Builder implements PromiseLike<any> {
   }
   insert(payload: any) {
     this.op = "insert";
-    this.payload = payload;
+    this.payload = onTheWire(payload);
     return this;
   }
   update(payload: any) {
     this.op = "update";
-    this.payload = payload;
+    this.payload = onTheWire(payload);
     return this;
   }
   upsert(
@@ -156,7 +176,7 @@ class Builder implements PromiseLike<any> {
     opts?: { onConflict?: string; ignoreDuplicates?: boolean },
   ) {
     this.op = "upsert";
-    this.payload = payload;
+    this.payload = onTheWire(payload);
     this.upsertOpts = opts ?? null;
     return this;
   }
@@ -279,13 +299,19 @@ class Builder implements PromiseLike<any> {
         : [this.payload];
       const written: Row[] = [];
       for (const r of incoming) {
-        const hit = store.find((existing) =>
+        const hitIndex = store.findIndex((existing) =>
           keys.every((k) => existing[k] === r[k]),
         );
-        if (hit) {
+        if (hitIndex !== -1) {
           if (!this.upsertOpts.ignoreDuplicates) {
-            Object.assign(hit, r);
-            written.push(hit);
+            // A NEW object, not a mutation of the existing one: a caller that
+            // read this row earlier (an audit "before" snapshot, say) holds a
+            // real supabase-js response, which a later write never reaches
+            // back into. Object.assign(hit, r) used to, and it made a save's
+            // own before/after diff compare a row against itself.
+            const merged = { ...store[hitIndex], ...r };
+            store[hitIndex] = merged;
+            written.push(merged);
           }
           continue;
         }

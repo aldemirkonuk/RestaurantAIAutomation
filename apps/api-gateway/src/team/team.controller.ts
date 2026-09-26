@@ -39,6 +39,7 @@ import {
   OfferCoverDto,
   PublishScheduleDto,
   ReviewRequestDto,
+  SetPayAccessDto,
   UpdateCertDto,
   UpdateShiftDto,
   UpdateTeamMemberDto,
@@ -92,6 +93,31 @@ export class TeamController {
     @Body() dto: UpdateTeamMemberDto,
   ) {
     return this.team.updateMember(this.uid(req), rid, memberId, dto);
+  }
+
+  /**
+   * An owner switches one manager's pay access on or off (ADR 0215, founder
+   * 2026-09-25 round 4 item 19, "Pay visibility only"). Owner-only in the
+   * service, before any read of the member.
+   */
+  @Patch("members/:memberId/pay-access")
+  setPayAccess(
+    @Req() req: any,
+    @Param("restaurantId") rid: string,
+    @Param("memberId") memberId: string,
+    @Body() dto: SetPayAccessDto,
+  ) {
+    return this.team.setPayAccess(this.uid(req), rid, memberId, dto.payAccess);
+  }
+
+  /**
+   * The owner's former-staff history (ADR 0215, founder 2026-09-25 round 4
+   * item 19, "Owner-only history"): the shifts, leave, wage changes and
+   * credentials kept five years for people removed from the roster.
+   */
+  @Get("former-staff")
+  formerStaff(@Req() req: any, @Param("restaurantId") rid: string) {
+    return this.team.listFormerStaff(this.uid(req), rid);
   }
 
   @Delete("members/:memberId")

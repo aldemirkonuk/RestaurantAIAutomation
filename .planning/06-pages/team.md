@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: live
 status: documented
-updated: 2026-09-04
+updated: 2026-09-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -69,7 +69,7 @@ Mudavym redesign behind `mudavym_design_team` (OFF):
 - **Coverage gaps as the page's first object** — named countable rows ("2 unfilled · Saturday · line") with a real suggested cover and a one-tap Assign
 - **The page can start the staffing engine** — with `coverage_templates` empty (which is production) the panel says the engine is idle rather than claiming a staffed week, and carries the role/day/service/min-staff form that creates the first rule (ADR 0089)
 - **Role split on the redesigned half too** — a non-manager gets My Shifts, not the manager desk; previously `App.tsx:305` gated the whole route and `GET certifications` has no server-side role requirement (`team.service.ts:397`), so the credential file rendered to any member
-- **Labour cost as the week builds** — total vs target with overtime named before publish; withheld in words when tracking is off
+- **Labour cost as the week builds** — total vs target with overtime named before publish; withheld in words when tracking is off [2026-09-21, ADR 0215: the cost is the owner's alone; a manager sees worked hours, and the named people are those over 45 worked hours, a review with no price; a shift over 4 hours with no break recorded is counted with the 4857 Art. 68 minimum and said as assumed, and whoever edits the shift records the real break (founder, "Take all five")]
 - **Credentials as exposure** — an expired card names the member, how many shifts they hold this week, and that *which* shifts require it is not recorded, with a one-tap renewal request (ADR 0089; `team_certifications` has no role or applies-to column, baseline `:5609-5620`, so the old "blocks N shifts / should not be published" line asserted a link the schema does not have)
 - Week-at-a-glance day chips (staffed / open / status) — now the week grid's own column headers
 
@@ -361,6 +361,8 @@ nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`
 | Method | Path | Call site |
 |---|---|---|
 | GET/POST/PATCH/DELETE | `…/members` | ManagerShiftDesk + editors → `team.ts:127-141` |
+| PATCH | `…/members/:memberId/pay-access` | owner only — the manager pay switch on `MemberSheet` → `team.ts` `setMemberPayAccess` (ADR 0215 item 21, 2026-09-25) |
+| GET | `…/former-staff` | owner only — `FormerStaffSheet` → `team.ts` `getFormerStaff` (ADR 0215 item 22, 2026-09-25) |
 | GET | `…/week`, `…/my-week` | `team.ts:144,148` (ManagerShiftDesk / MyShifts) |
 | POST | `…/schedules`, `…/schedules/copy-week`, `…/schedules/:id/publish`, `…/schedules/:id/acknowledge` | `team.ts:152-203` |
 | POST/PATCH/DELETE | `…/shifts` (+ `/callout`, `/offer-cover`, `/assign`) | `team.ts:206-228` |
@@ -446,7 +448,9 @@ dashboard.md §7.
   the first restaurant to toggle `wage_visible` gets a stored 28% target it never
   chose. ADR 0088 fixed the code-side default (no row → `null` + `configured:
   false`); making the column nullable is a separate migration against a table
-  with 0 rows.
+  with 0 rows. [2026-09-21, ADR 0215: `wage_visible` is retired and a write to
+  it is refused, so the stored 28 now arrives with the first labour-tracking or
+  target save instead; wages and labour cost are the owner's by role.]
 - ~~**Three controls need a client half before they work again** (ADR 0088 T3/T7,
   owned by the `/team` page session, not the gateway): "Copy last week" and
   "Re-publish" now answer 409 until the client sends `replaceTarget` /
@@ -882,7 +886,7 @@ re-deriving it.
 
    | store | what it holds | provenance available today |
    |---|---|---|
-   | `team_settings` (`baseline:5653-5658`) | `labor_tracking_enabled`, `wage_visible`, `labor_target_pct`, `updated_at` | a date, no author. **0 rows in production** (§9) |
+   | `team_settings` (`baseline:5653-5658`) | `labor_tracking_enabled`, `wage_visible` [retired 2026-09-21, ADR 0215: not read, a write refused], `labor_target_pct`, `updated_at` | a date, no author [2026-09-21, ADR 0215: each change a save makes is now a `team_labour_settings_changed` row in `system_audit_log` naming who, as what role, from and to; only the owner may switch tracking off or change the target]. **0 rows in production** (§9) |
    | `coverage_templates` | the staffing rules the engine runs on | **0 rows in production** — the engine is idle, and the redesign already says so |
    | `team_certifications` (`baseline:5609-5620`) | credentials per member | no role and no applies-to column (§13.2a) |
    | `user_restaurant_access` | who may do what | `created_at`, `valid_from`, no update column — a role change moves nothing on the row |
@@ -894,7 +898,9 @@ re-deriving it.
    and `providers.payment_terms DEFAULT 'Net 30'` that the vendor-terms register
    exists to catch (`06-pages/settings.md` §9.12). The first house to toggle
    `wage_visible` acquires a 28% labour target it never chose, and nothing on the
-   page can tell that apart from a target somebody set. ADR 0088 fixed the
+   page can tell that apart from a target somebody set. [2026-09-21, ADR 0215:
+   `wage_visible` can no longer be toggled; the stored 28 now arrives with the
+   first labour-tracking or target save.] ADR 0088 fixed the
    *code-side* default (no row → `null` + `configured: false`); the column is
    still `NOT NULL DEFAULT 28`. A `/team` configuration register must read it the
    way `leadTimeCell` reads seven days: **unknown, with the default named**, and
@@ -966,3 +972,31 @@ re-deriving it.
    work, they are what the founder actually praised, and none of them can be
    wrong about a house that has no data.
 13. **The crew-text senders read was keyed without the house.** `TeamOverlays.tsx` `CrewTextLeg` cached `GET /team/text-senders` under `['team-next-text-senders']` alone; the gateway scopes that read by restaurant through a header the key never sees, so after a house switch the control would have said the PREVIOUS house's sender was connected (ADR 0051 clause 2 — the exact shape `check_windowed_figures.py` exists for, and it caught it: the only FAIL in the 2026-09-05 full verification). Fixed 2026-09-05: `useActiveRestaurantId()` is in the key and the read is disabled until a house is active; `CrewTextLeg.test.tsx` now mocks `AuthContext` like the page's other tests. Measured: guard PASS (`python3 scripts/check_windowed_figures.py`), `npx vitest run src/pages/team/next/CrewTextLeg.test.tsx` 5 passed / 5. The cb67d154 message's "every guard PASS" was wrong on this one guard; corrected here.
+
+## 14. Pay switch, former staff, credentials — BUILT 2026-09-25 (ADR 0215 round 4)
+
+The founder's three answers of 2026-09-25 (round 4, item 19), verbatim in ADR 0215
+"Answered, 2026-09-25 (round 4)"; built on PR #440 (`fix/team-pay-defects`).
+
+- **A manager's pay switch** ("Pay visibility only"). The owner opens a manager's
+  row (People → the person) and ticks **Sees and sets pay**. That manager then sees
+  wages, shift cost and labour totals, and can set a colleague's wage — never their
+  own (the page does not offer their own field; the gateway refuses it in words).
+  Their other rights are unchanged: labour tracking off and the target stay the
+  owner's. Stored as `user_restaurant_access.team_pay_access` (default off); each
+  switch is a `team_pay_access_changed` row on the trail ("What changed here") and
+  the manager is told. An unread switch is said as unread, not drawn as off.
+- **Former staff** ("Owner-only history"). "How this desk is configured" carries,
+  for the owner only, **Open the former-staff history**: one entry per person
+  removed from the roster, with their kept shifts (worked hours, cost), leave
+  (dates, status, type — never the reason), wage changes and credentials, and the
+  date the record ends (removal + five years). A name the removal's audit row did not
+  carry reads "Name not recorded". Reading / failed / nobody-has-left / list are four
+  different states. None of it appears in the week, the roster, the leave list or
+  the credential file.
+- **Credentials kept, availability not** ("Credentials yes, availability no"). A
+  removed person's credentials stay five years (shown only in the former-staff
+  history); their availability is deleted at removal, as it always was. The removal
+  confirmation now says both.
+- Tests: `TeamPayRound4.test.tsx` (web, 9), `team-pay-round4.spec.ts` (gateway, 29).
+  Not verified in a browser (the Mudavym /team is behind `mudavym_design_team`).

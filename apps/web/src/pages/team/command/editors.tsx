@@ -140,7 +140,7 @@ export function ShiftEditor({
   )
 }
 
-export function MemberEditor({ member, wageVisible = true, ownerCount = 1, onClose }: { member?: TeamMember | null; wageVisible?: boolean; ownerCount?: number; onClose: () => void }) {
+export function MemberEditor({ member, wageVisible = false, ownerCount = 1, onClose }: { member?: TeamMember | null; wageVisible?: boolean; ownerCount?: number; onClose: () => void }) {
   const qc = useQueryClient()
   const editing = !!member
   const isSoleOwner = member?.role === 'owner' && ownerCount <= 1;
@@ -242,7 +242,7 @@ export function MemberEditor({ member, wageVisible = true, ownerCount = 1, onClo
         </div>
         {wageVisible && (
           <div>
-            <label className={labelCls}>Hourly wage ($)</label>
+            <label className={labelCls}>Hourly wage (owner only)</label>
             <input type="number" min={0} value={form.hourlyWage} onChange={(e) => setForm({ ...form, hourlyWage: e.target.value })} placeholder="private" className={inputCls} />
           </div>
         )}

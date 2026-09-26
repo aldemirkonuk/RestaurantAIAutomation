@@ -12,9 +12,11 @@
  *    declared first object, the page can START the engine that produces them:
  *    with no coverage rule on file it says the engine is idle and offers the
  *    form that creates the first rule (ADR 0089).
- * 2. Labour cost as the week builds — total vs target with overtime named, only
- *    when labour tracking is on; withheld in words otherwise, and now saying
- *    HOW MANY shifts are unpriced when the total cannot be computed.
+ * 2. Labour cost as the week builds — total vs target, only when labour
+ *    tracking is on; withheld in words otherwise, and saying HOW MANY shifts
+ *    are unpriced when the total cannot be computed. Since ADR 0215 the money
+ *    is the OWNER's (founder 2026-09-21: "Owner only"): a manager sees the
+ *    week's worked hours and the 45-hour review, never a cost.
  * 3. Credentials as exposure — an expired card names the member and how much of
  *    their week is at stake, and says plainly that nothing records which shifts
  *    require it (`team_certifications` has no role or applies-to column).
@@ -58,10 +60,12 @@ import {
   EM,
   addDays,
   fmtDayShort,
+  fmtHours,
   fmtMoneyWhole,
   fmtWeekRange,
   fmtWeekday,
   mondayOf,
+  WEEKLY_REVIEW_HOURS,
 } from './tm-format';
 import { MutationError } from './tm-bits';
 import { LENSES, WeekGrid, type Lens } from './WeekGrid';
@@ -76,6 +80,7 @@ import {
   TimeOffSheet,
 } from './TeamOverlays';
 import { TeamRecordSection, TrailSheet } from './TeamRecord';
+import { FormerStaffSheet } from './FormerStaff';
 import {
   useActiveRestaurantId,
   useTeamNextData,
@@ -366,7 +371,7 @@ export default function TeamNext({ ground }: { ground?: 'charcoal' }) {
     );
   }
   return role === 'owner' || role === 'manager' ? (
-    <TeamNextManager ground={ground} />
+    <TeamNextManager ground={ground} viewerIsOwner={role === 'owner'} viewerUserId={user.userId ?? null} />
   ) : (
     <MyShiftsNext ground={ground} />
   );
@@ -381,9 +386,24 @@ type Overlay =
   | { kind: 'note'; only: string | null }
   | { kind: 'timeoff' }
   | { kind: 'trail' }
+  | { kind: 'former' }
   | { kind: 'export' };
 
-function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
+function TeamNextManager({
+  ground,
+  viewerIsOwner,
+  viewerUserId,
+}: {
+  ground?: 'charcoal';
+  /**
+   * The owner alone switches a manager's pay access and opens the former-staff
+   * history (ADR 0215, founder 2026-09-25 round 4 item 19). The gateway
+   * refuses both to anyone else; this only keeps the page from offering them.
+   */
+  viewerIsOwner: boolean;
+  /** `public.users.user_id` of the viewer: a manager's own wage row tells them the owner is told. */
+  viewerUserId: string | null;
+}) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
@@ -393,6 +413,35 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
 
   const data = useTeamNextData(weekStart);
   const labor = data.labor;
+  /**
+   * People over the Turkish week (45 worked hours). A review, never a price:
+   * whether it is overtime pay depends on agreements Mudavym does not hold
+   * (ADR 0215). Shown to owner and manager alike — it is hours, not money.
+   */
+  const reviewLine =
+    data.overtimeNamed.length > 0 ? (
+      <p style={{ fontSize: 12, color: 'var(--ink-2)', margin: '8px 0 0' }}>
+        {`Over ${WEEKLY_REVIEW_HOURS}h worked — review before publishing: `}
+        {data.overtimeNamed.map((o) => `${o.name} (${o.hours}h)`).join(', ')}
+      </p>
+    ) : (
+      <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '8px 0 0' }}>
+        {`No one is scheduled over ${WEEKLY_REVIEW_HOURS} worked hours.`}
+      </p>
+    );
+  /**
+   * The breaks the hours rest on (ADR 0215; founder 2026-09-21, "Take all
+   * five", and 2026-09-22 round 6y for shifts of 4 hours or less): a shift
+   * with no break recorded, any length, is counted with the 4857 Art. 68
+   * minimum, and the figure says so rather than passing an assumption off as
+   * a record. Hours, so owner and manager alike.
+   */
+  const assumedLine =
+    labor?.assumedBreak && labor.assumedBreak.shifts > 0 ? (
+      <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+        {`${labor.assumedBreak.shifts} shift${labor.assumedBreak.shifts === 1 ? ' has' : 's have'} no break recorded, so ${labor.assumedBreak.shifts === 1 ? 'it is' : 'each is'} counted with the legal minimum break (assumed, ${fmtHours(labor.assumedBreak.hours)} in all). Record the real break on the shift to replace it.`}
+      </p>
+    ) : null;
   const rules = data.coverageRules;
   // Three states, three sentences: the rule file has not answered, it is empty
   // (the engine has never been asked for anything), or it holds rules and the
@@ -525,25 +574,47 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           {/* ── 2 · cost as you build the week ────────────────────────────── */}
           <section aria-label="Labour cost" className="tm-panel">
             <h2 className="tm-panel__title">The week&apos;s labour</h2>
-            {!data.week ? (
+            {!data.week || !labor ? (
               <p className="tm-quiet">
                 {data.isError ? `${EM} — the week is unknown.` : 'Reaching the gateway…'}
               </p>
-            ) : !labor?.enabled ? (
-              <p className="tm-note">
-                Labour tracking is off for this restaurant, so no figure is shown — a
-                withheld number, not a zero. Turn it on in team settings to see cost build
-                with the week.
-              </p>
+            ) : !labor.moneyVisible ? (
+              // Hours, for anyone who is not the owner (ADR 0215). The cost is
+              // withheld by the gateway, not unknown, and the page says which.
+              <div>
+                <span className="tm-fig">{fmtHours(labor.totalHours)}</span>
+                <span style={{ fontSize: 12, color: 'var(--ink-3)', marginLeft: 8 }}>
+                  worked, breaks taken out
+                </span>
+                <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+                  Wages and labour cost are shown to the owner only.
+                </p>
+                {assumedLine}
+                {reviewLine}
+              </div>
+            ) : !labor.enabled ? (
+              <div>
+                <p className="tm-note">
+                  Labour tracking is off for this restaurant, so no cost is shown — a
+                  withheld number, not a zero. Turn it on in team settings to see cost build
+                  with the week.
+                </p>
+                {assumedLine}
+                {reviewLine}
+              </div>
             ) : (
               <div>
-                <span className="tm-fig">{fmtMoneyWhole(labor.totalCost)}</span>
+                <span className="tm-fig">{fmtMoneyWhole(labor.totalCost, data.money)}</span>
                 <span style={{ fontSize: 12, color: 'var(--ink-3)', marginLeft: 8 }}>
-                  {labor.totalHours}h scheduled
+                  {fmtHours(labor.totalHours)} worked
                   {data.target.pct === null
                     ? ' · no target set'
                     : ` · target ${data.target.pct}% of sales`}
                 </span>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+                  Wages only, for the shifts on the schedule — not SGK, meals or bonuses.
+                </p>
+                {assumedLine}
                 {data.target.pct === null && (
                   <p style={{ fontSize: 11.5, color: 'var(--ink-3)', margin: '6px 0 0' }}>
                     {data.target.why}
@@ -553,19 +624,29 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
                   <p style={{ fontSize: 12, color: 'var(--ink-2)', margin: '8px 0 0' }}>
                     {labor.unpricedShifts === null
                       ? 'The total cannot be computed, because at least one shift has no wage on file. A partial sum would read as the week.'
-                      : `${labor.unpricedShifts} of ${(labor.pricedShifts ?? 0) + labor.unpricedShifts} assigned shifts have no wage on file, so there is no week total to show — not a $0 week.`}
+                      : `${labor.unpricedShifts} of ${(labor.pricedShifts ?? 0) + labor.unpricedShifts} assigned shifts have no wage on file, so there is no week total to show — not a zero week.`}
                   </p>
                 )}
-                {data.overtimeNamed.length > 0 ? (
+                {labor.leave && !labor.leave.readable ? (
                   <p style={{ fontSize: 12, color: 'var(--ink-2)', margin: '8px 0 0' }}>
-                    Over 40h before publish:{' '}
-                    {data.overtimeNamed.map((o) => `${o.name} (${o.hours}h)`).join(', ')}
+                    Approved leave could not be read, so whether anyone is on paid leave this
+                    week is unknown.
                   </p>
                 ) : (
-                  <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '8px 0 0' }}>
-                    No one crosses an overtime threshold as scheduled.
-                  </p>
+                  <>
+                    {(labor.leave?.paidDays ?? 0) > 0 && (
+                      <p style={{ fontSize: 12, color: 'var(--ink-2)', margin: '8px 0 0' }}>
+                        {`Also ${labor.leave!.paidDays} day${labor.leave!.paidDays === 1 ? '' : 's'} of paid leave this week, not in this figure: a day of leave has no hours on file.`}
+                      </p>
+                    )}
+                    {(labor.leave?.unknownTypeDays ?? 0) > 0 && (
+                      <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '8px 0 0' }}>
+                        {`${labor.leave!.unknownTypeDays} day${labor.leave!.unknownTypeDays === 1 ? '' : 's'} of approved leave are not marked paid or unpaid.`}
+                      </p>
+                    )}
+                  </>
                 )}
+                {reviewLine}
               </div>
             )}
           </section>
@@ -720,6 +801,8 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           engineIdle={engineIdle}
           lens={lens}
           labourEnabled={labor?.enabled ?? false}
+          moneyVisible={data.moneyVisible}
+          money={data.money}
           scheduleId={data.scheduleId}
           onEditShift={(target) => setOverlay({ kind: 'shift', target })}
           onChanged={refreshWeek}
@@ -729,13 +812,15 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
 
         <TeamRecordSection
           labourEnabled={labor === null ? null : labor.enabled}
-          wageVisible={data.wageVisible}
+          moneyVisible={data.moneyVisible}
           target={data.target}
           settingsUpdatedAt={data.settingsUpdatedAt}
           settingsConfigured={data.settingsConfigured}
           coverageRuleCount={rules === null ? null : rules.length}
           certsOnFile={data.certsOnFile}
           onOpenTrail={() => setOverlay({ kind: 'trail' })}
+          viewerIsOwner={viewerIsOwner}
+          onOpenFormerStaff={() => setOverlay({ kind: 'former' })}
         />
       </div>
 
@@ -746,7 +831,8 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           shifts={data.shifts}
           certs={data.certs}
           timeOff={data.timeOff}
-          wageVisible={data.wageVisible}
+          moneyVisible={data.moneyVisible}
+          money={data.money}
           onClose={() => setOverlay(null)}
           onEdit={(m) => setOverlay({ kind: 'member', member: m })}
           onAdd={() => setOverlay({ kind: 'member', member: null })}
@@ -755,7 +841,9 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
       {overlay?.kind === 'member' && (
         <MemberSheet
           member={overlay.member}
-          wageVisible={data.wageVisible}
+          moneyVisible={data.moneyVisible}
+          viewerIsOwner={viewerIsOwner}
+          viewerUserId={viewerUserId}
           ownerCount={ownerCount}
           onClose={() => setOverlay(null)}
           onChanged={refreshWeek}
@@ -807,6 +895,9 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           onClose={() => setOverlay(null)}
         />
       )}
+      {overlay?.kind === 'former' && viewerIsOwner && (
+        <FormerStaffSheet onClose={() => setOverlay(null)} />
+      )}
       {overlay?.kind === 'timeoff' && (
         <TimeOffSheet
           requests={data.timeOff}
@@ -823,6 +914,8 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           weekStart={weekStart}
           shifts={data.shifts}
           members={data.members}
+          moneyVisible={data.moneyVisible}
+          money={data.money}
           onClose={() => setOverlay(null)}
         />
       )}

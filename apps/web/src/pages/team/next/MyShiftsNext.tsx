@@ -11,6 +11,11 @@
  * gateway was down (ADR 0089). A day with nothing on it says "Off" ONLY when
  * the week actually answered; otherwise it says the week is not known, and the
  * banner says which of the two happened.
+ *
+ * PAID OR UNPAID (ADR 0215; founder 2026-09-21, "Take all five"). The person
+ * asking may say whether the days are paid leave; whoever approves the request
+ * decides, and their word replaces this one. Left to the manager, the request
+ * is filed as not yet said.
  */
 
 import { useState } from 'react';
@@ -24,6 +29,7 @@ import {
   getMyWeek,
   getTeamNotes,
   openTeamNote,
+  type LeaveType,
   type MyWeekPayload,
 } from '../../../services/api/team';
 import { useActiveRestaurantId } from './useTeamNextData';
@@ -82,6 +88,8 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['team-next-notes', rid, weekStart] }),
   });
 
+  /** What the person says about pay; `unknown` = left to whoever approves. */
+  const [leaveType, setLeaveType] = useState<LeaveType>('unknown');
   const askOff = useMutation({
     mutationFn: (memberId: string) =>
       createTimeOff({
@@ -89,6 +97,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
         startDate: days[0],
         endDate: days[6],
         reason: 'Requested from My Shifts',
+        ...(leaveType !== 'unknown' ? { leaveType } : {}),
       }),
   });
 
@@ -188,7 +197,8 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
         {askOff.isSuccess && (
           <p className="tm-quiet" style={{ marginBottom: 14 }}>
             Your request went to your manager just now. You will see it decided on their
-            desk, not here — nothing on this page reads the request file back.
+            desk, not here — nothing on this page reads the request file back. Whoever
+            approves it decides whether the days are paid.
           </p>
         )}
 
@@ -295,6 +305,21 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
 
         {memberId ? (
           <div className="tm-actions" style={{ marginTop: 18 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="tm-label" style={{ margin: 0 }}>
+                Paid or unpaid?
+              </span>
+              <select
+                className="tm-select"
+                value={leaveType}
+                disabled={askOff.isPending}
+                onChange={(e) => setLeaveType(e.target.value as LeaveType)}
+              >
+                <option value="unknown">Leave it to my manager</option>
+                <option value="paid">Paid leave</option>
+                <option value="unpaid">Unpaid leave</option>
+              </select>
+            </label>
             <button
               type="button"
               className="tm-ctl tm-ctl--quiet"

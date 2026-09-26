@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -10,6 +11,22 @@ import { DatabaseService } from "../database/database.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { ExpoPushService } from "../push/expo-push.service";
 import { TeamService } from "./team.service";
+import {
+  breakCounted,
+  hoursBetween,
+  isWorked,
+  leaveInWeek,
+  onTheRoster,
+  priceShift,
+  recordedBreakMinutes,
+  seesMoney,
+  MoneyViewer,
+  shiftForViewer,
+  ShiftLike,
+  TeamRole,
+  WEEKLY_REVIEW_HOURS,
+  workedHours,
+} from "./pay-rules";
 import {
   AssignCoverDto,
   CalloutDto,
@@ -25,11 +42,6 @@ import {
 function toMinutes(t: string): number {
   const [h, m] = t.split(":").map((n) => parseInt(n, 10));
   return (h || 0) * 60 + (m || 0);
-}
-function hoursBetween(start: string, end: string): number {
-  let diff = toMinutes(end) - toMinutes(start);
-  if (diff < 0) diff += 24 * 60; // crosses midnight
-  return diff / 60;
 }
 function periodOf(start: string): "am" | "pm" {
   return toMinutes(start) < 15 * 60 ? "am" : "pm";
@@ -85,35 +97,61 @@ export class ScheduleService {
   /**
    * Full week payload: schedule row, shifts (+breaks), coverage analysis,
    * labor summary, receipts. Staff callers get a read-only slice via
-   * getMyWeek(); managers get everything here.
+   * getMyWeek(); owners and managers get the week here — and only the owner
+   * gets its money (ADR 0215, founder 2026-09-21: "Owner only").
    */
   async getWeek(
     userId: string,
     restaurantId: string,
     weekStart: string,
   ): Promise<any> {
-    // Manager-gated: the full week exposes labor cost + overtime.
-    await this.team.assertAccess(userId, restaurantId, "manager");
+    // Manager-gated: the full week. Its money is the owner's alone — a
+    // manager's copy carries hours and no `labor_cost`, because
+    // `labor_cost / (end - start)` is the wage (ADR 0215).
+    // Money in the reply follows the caller's pay access (ADR 0215, round 4
+    // item 19): the owner, or a manager an owner switched on.
+    const viewer = await this.team.assertAccess(
+      userId,
+      restaurantId,
+      "manager",
+      { payAccess: true },
+    );
     const weekEnd = addDays(weekStart, 6);
 
-    const [{ data: schedule }, { data: shifts }, settings] = await Promise.all([
-      this.sb
-        .from("schedules")
-        .select("*")
-        .eq("restaurant_id", restaurantId)
-        .eq("week_start", weekStart)
-        .maybeSingle(),
-      this.sb
-        .from("shifts")
-        .select("*, shift_breaks(*)")
-        .eq("restaurant_id", restaurantId)
-        .gte("shift_date", weekStart)
-        .lte("shift_date", weekEnd)
-        .order("shift_date", { ascending: true }),
-      this.team.getSettings(userId, restaurantId),
-    ]);
+    const [{ data: schedule }, { data: shifts, error: shiftsErr }, settings] =
+      await Promise.all([
+        this.sb
+          .from("schedules")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .eq("week_start", weekStart)
+          .maybeSingle(),
+        this.sb
+          .from("shifts")
+          .select("*, shift_breaks(*)")
+          .eq("restaurant_id", restaurantId)
+          .gte("shift_date", weekStart)
+          .lte("shift_date", weekEnd)
+          .order("shift_date", { ascending: true }),
+        this.team.getSettings(userId, restaurantId),
+      ]);
+    // A week whose shifts could not be read is not an empty week: it used to
+    // come back as zero hours and, for the owner, a complete zero cost.
+    if (shiftsErr) {
+      this.logger.error(
+        `getWeek: could not read the shifts of ${weekStart} for ` +
+          `restaurant ${restaurantId}: ${shiftsErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this week's shifts, so the week is not shown.",
+      );
+    }
 
-    const shiftRows = shifts ?? [];
+    // A removed person's shifts are kept five years, not shown (ADR 0215 item
+    // 20, `onTheRoster`): read as they were before the removal stopped
+    // deleting them, so a removed person's next week is not "covered" by them.
+    const roster = await this.team.rosterMemberIds(restaurantId);
+    const shiftRows = onTheRoster(shifts ?? [], roster);
     const receipts = schedule
       ? ((
           await this.sb
@@ -128,9 +166,56 @@ export class ScheduleService {
       weekStart,
       shiftRows,
     );
-    const labor = await this.computeLabor(restaurantId, shiftRows, settings);
+    const labor = await this.computeLabor(
+      restaurantId,
+      weekStart,
+      shiftRows,
+      settings,
+      viewer,
+      roster,
+    );
 
-    return { schedule, shifts: shiftRows, coverage, labor, receipts, settings };
+    return {
+      schedule,
+      shifts: shiftRows.map((s: any) => shiftForViewer(s, viewer)),
+      coverage,
+      labor,
+      receipts,
+      settings,
+      // The currency travels with the money, and only to whoever gets the
+      // money: /team printed every figure in US dollars (ADR 0215).
+      ...(seesMoney(viewer)
+        ? { money: await this.houseMoney(restaurantId) }
+        : {}),
+    };
+  }
+
+  /**
+   * The house's own currency and country, so a figure is printed in its money
+   * and its locale. `currency: null` is "not recorded" (ADR 0117 Q25), never
+   * dollars; a failed read says so rather than reading as not recorded.
+   */
+  private async houseMoney(restaurantId: string): Promise<{
+    currency: string | null;
+    country: string | null;
+    readable: boolean;
+  }> {
+    const { data, error } = await this.sb
+      .from("restaurants")
+      .select("currency, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `houseMoney: could not read the currency of ${restaurantId}: ${error.message}`,
+      );
+      return { currency: null, country: null, readable: false };
+    }
+    return {
+      currency: data?.currency ?? null,
+      country: data?.country ?? null,
+      readable: true,
+    };
   }
 
   /** Read-only week for a staff member: only their own shifts. */
@@ -197,7 +282,9 @@ export class ScheduleService {
    *  - a target week that already holds shifts is a **409** naming how many are
    *    in the way, unless the caller passes `replaceTarget: true`;
    *  - the response says `deleted`, always, so the caller can report the real
-   *    outcome rather than only the happy half of it.
+   *    outcome rather than only the happy half of it;
+   *  - a removed person's kept shifts, in either week, are neither copied nor
+   *    counted nor deleted (ADR 0215 item 20, `onTheRoster`).
    *
    * The confirmation dialog is the client's half of the same fix.
    */
@@ -218,7 +305,7 @@ export class ScheduleService {
     // is empty", and the caller has no way to tell those apart from that reply.
     const { data: src, error: srcErr } = await this.sb
       .from("shifts")
-      .select("*")
+      .select("*, shift_breaks(*)")
       .eq("restaurant_id", restaurantId)
       .gte("shift_date", dto.fromWeekStart)
       .lte("shift_date", fromEnd);
@@ -231,7 +318,14 @@ export class ScheduleService {
         "Could not read the week you are copying from, so nothing was copied.",
       );
     }
-    if (!src?.length) return { copied: 0, deleted: 0, schedule: target };
+    // A removed person's shifts are kept five years, never copied (ADR 0215
+    // item 20): a copy writes a NEW shift, and a new shift is only ever for
+    // someone on the roster — the check createShift makes, which the dropped
+    // foreign key used to make here. Nor is a kept shift in the target week
+    // "in the way": replacing the week does not delete it.
+    const roster = await this.team.rosterMemberIds(restaurantId);
+    const source = onTheRoster(src ?? [], roster);
+    if (!source.length) return { copied: 0, deleted: 0, schedule: target };
 
     // This read is what arms the "the target week is not empty" guard below.
     // supabase-js RESOLVES with { data, error }, so a failed query used to give
@@ -241,7 +335,7 @@ export class ScheduleService {
     // not knowing what is in the target week is not the same as it being empty.
     const { data: existing, error: existingErr } = await this.sb
       .from("shifts")
-      .select("id")
+      .select("id, member_id")
       .eq("restaurant_id", restaurantId)
       .gte("shift_date", dto.toWeekStart)
       .lte("shift_date", toEnd);
@@ -255,7 +349,10 @@ export class ScheduleService {
           "copy was not made. Nothing was changed.",
       );
     }
-    const inTheWay = existing?.length ?? 0;
+    const inTheWayIds = onTheRoster(existing ?? [], roster).map(
+      (s: any) => s.id as string,
+    );
+    const inTheWay = inTheWayIds.length;
 
     if (inTheWay > 0 && !dto.replaceTarget) {
       throw new ConflictException(
@@ -264,21 +361,68 @@ export class ScheduleService {
       );
     }
 
+    const copyable = source.filter(
+      (s: any) => s.state !== "callout" && s.state !== "open",
+    );
+
+    // Re-price from the wage on file NOW (ADR 0215). The copy used to carry the
+    // source row's `labor_cost`, so a week copied after a raise — every January
+    // minimum-wage rise, for a start — kept last year's cost. Read before
+    // anything is deleted: a copy that cannot price itself must not have
+    // emptied the target week first, and "could not read the wages" is not
+    // "nobody has a wage" (it would render every copied shift unpriced).
+    const memberIds = [
+      ...new Set(copyable.map((s: any) => s.member_id).filter(Boolean)),
+    ] as string[];
+    const wageOf = new Map<string, number | null>();
+    if (memberIds.length) {
+      const { data: wages, error: wagesErr } = await this.sb
+        .from("team_members")
+        .select("id, hourly_wage")
+        .eq("restaurant_id", restaurantId)
+        .in("id", memberIds);
+      if (wagesErr) {
+        this.logger.error(
+          `copyWeek: could not read wages to re-price the copy for ` +
+            `restaurant ${restaurantId}: ${wagesErr.message}`,
+        );
+        throw new InternalServerErrorException(
+          "Could not read the wages to price the copied week, so nothing was " +
+            "copied and nothing was changed.",
+        );
+      }
+      for (const w of wages ?? []) wageOf.set(w.id, w.hourly_wage ?? null);
+    }
+
     let deleted = 0;
     if (inTheWay > 0) {
-      await this.sb
+      // By id, the rows counted above: a date-range delete would also take a
+      // removed person's kept shifts in that week (ADR 0215 item 20).
+      const { error: deleteErr } = await this.sb
         .from("shifts")
         .delete()
         .eq("restaurant_id", restaurantId)
-        .gte("shift_date", dto.toWeekStart)
-        .lte("shift_date", toEnd);
+        .in("id", inTheWayIds);
+      if (deleteErr) {
+        this.logger.error(
+          `copyWeek: could not clear the target week ${dto.toWeekStart} for ` +
+            `restaurant ${restaurantId}: ${deleteErr.message}`,
+        );
+        throw new InternalServerErrorException(
+          "Could not clear the week you are copying into, so nothing was copied.",
+        );
+      }
       deleted = inTheWay;
     }
 
     const dayShift = daysBetween(dto.fromWeekStart, dto.toWeekStart);
-    const rows = src
-      .filter((s: any) => s.state !== "callout" && s.state !== "open")
-      .map((s: any) => ({
+    const rows = copyable.map((s: any) => {
+      // The copy carries the source's break ON RECORD as its own recorded
+      // break (the planned `shift_breaks` rows are not copied, as before; their
+      // minutes are). Nothing on record stays nothing on record, so the copy is
+      // counted with the Art. 68 minimum and shown as assumed, like its source.
+      const recorded = recordedBreakMinutes(s);
+      const copy = {
         restaurant_id: restaurantId,
         schedule_id: target.id,
         member_id: s.member_id,
@@ -289,8 +433,17 @@ export class ScheduleService {
         shift_type: s.shift_type === "open" ? "pm" : s.shift_type,
         state: "scheduled",
         note: s.note,
-        labor_cost: s.labor_cost,
-      }));
+        recorded_break_min: recorded,
+      };
+      return {
+        ...copy,
+        // A member who is no longer on the roster has no wage here and the
+        // shift is unpriced, not free.
+        labor_cost: s.member_id
+          ? priceShift(wageOf.get(s.member_id) ?? null, copy)
+          : null,
+      };
+    });
     if (!rows.length) return { copied: 0, deleted, schedule: target };
     const { error } = await this.sb.from("shifts").insert(rows);
     if (error) throw new InternalServerErrorException("Failed to copy week");
@@ -439,28 +592,83 @@ export class ScheduleService {
   }
 
   // ── Shifts ────────────────────────────────────────────────────────────────
+  /**
+   * A shift's planned cost: worked hours (span minus the break the shift is
+   * counted with — recorded, or the Art. 68 minimum for its length when none
+   * is on record) at the wage on file now. A failed wage read is an
+   * error, not an unpriced shift: "no wage on file" is what `null` says, and a
+   * database hiccup is not that.
+   */
   private async laborCost(
     restaurantId: string,
     memberId: string | null | undefined,
-    start: string,
-    end: string,
+    shift: ShiftLike,
   ): Promise<number | null> {
     if (!memberId) return null;
-    const { data: m } = await this.sb
+    const { data: m, error } = await this.sb
       .from("team_members")
       .select("hourly_wage")
       .eq("id", memberId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
-    const wage = m?.hourly_wage;
-    if (wage == null) return null;
-    return Math.round(hoursBetween(start, end) * Number(wage) * 100) / 100;
+    if (error) {
+      this.logger.error(
+        `laborCost: could not read the wage of member ${memberId} in ` +
+          `${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this person's wage to price the shift, so it was not saved.",
+      );
+    }
+    return priceShift(m?.hourly_wage ?? null, shift);
+  }
+
+  /**
+   * The break a writer records, checked against the shift it belongs to.
+   * `undefined` = the writer said nothing (no change); `null` = clear the
+   * record (the shift is then counted with the Art. 68 minimum for its
+   * length); a whole number of minutes, 0 included (no break taken), shorter
+   * than the shift. A break as long as the shift is refused in words, not
+   * clamped.
+   */
+  private recordedBreakFrom(
+    minutes: number | null | undefined,
+    start: string,
+    end: string,
+  ): number | null | undefined {
+    if (minutes === undefined) return undefined;
+    if (minutes === null) return null;
+    const span = Math.round(hoursBetween(start, end) * 60);
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes >= span) {
+      throw new BadRequestException(
+        `A break must be a whole number of minutes, from 0 up to less than the ` +
+          `shift's ${span} minutes. Nothing was saved.`,
+      );
+    }
+    return minutes;
   }
 
   async createShift(userId: string, restaurantId: string, dto: CreateShiftDto) {
-    await this.team.assertAccess(userId, restaurantId, "manager");
+    // Money in the reply follows the caller's pay access (ADR 0215, round 4
+    // item 19): the owner, or a manager an owner switched on.
+    const viewer = await this.team.assertAccess(
+      userId,
+      restaurantId,
+      "manager",
+      { payAccess: true },
+    );
     if (dto.memberId)
       await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
+    // The break whoever writes the shift records, if they record one (ADR
+    // 0215). Omitted, nothing is recorded, and the shift — any length,
+    // founder round 6y — is counted with the Art. 68 minimum and shown as
+    // assumed. Checked before the week row below can be created, so a
+    // refused break writes nothing.
+    const recordedBreak = this.recordedBreakFrom(
+      dto.breakMinutes,
+      dto.startTime,
+      dto.endTime,
+    );
     const schedule = await this.getOrCreateWeek(
       userId,
       restaurantId,
@@ -468,12 +676,11 @@ export class ScheduleService {
         ? await this.weekStartOfSchedule(restaurantId, dto.scheduleId)
         : mondayOf(dto.shiftDate),
     );
-    const cost = await this.laborCost(
-      restaurantId,
-      dto.memberId,
-      dto.startTime,
-      dto.endTime,
-    );
+    const cost = await this.laborCost(restaurantId, dto.memberId, {
+      start_time: dto.startTime,
+      end_time: dto.endTime,
+      recorded_break_min: recordedBreak ?? null,
+    });
     const { data, error } = await this.sb
       .from("shifts")
       .insert({
@@ -489,11 +696,15 @@ export class ScheduleService {
         state: dto.memberId ? "scheduled" : "open",
         note: dto.note ?? null,
         labor_cost: cost,
+        // Undefined is dropped from the JSON body, so an unsent break leaves
+        // the column's own default; an inline key keeps this write readable
+        // by check_order_capture_contract.py (no spread).
+        recorded_break_min: recordedBreak,
       })
       .select("*, shift_breaks(*)")
       .single();
     if (error) throw new InternalServerErrorException("Failed to create shift");
-    return data;
+    return shiftForViewer(data, viewer);
   }
 
   async updateShift(
@@ -502,7 +713,14 @@ export class ScheduleService {
     shiftId: string,
     dto: UpdateShiftDto,
   ) {
-    await this.team.assertAccess(userId, restaurantId, "manager");
+    // Money in the reply follows the caller's pay access (ADR 0215, round 4
+    // item 19): the owner, or a manager an owner switched on.
+    const viewer = await this.team.assertAccess(
+      userId,
+      restaurantId,
+      "manager",
+      { payAccess: true },
+    );
     if (dto.memberId)
       await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
     const patch: Record<string, any> = { updated_at: new Date().toISOString() };
@@ -515,13 +733,56 @@ export class ScheduleService {
     if (dto.state !== undefined) patch.state = dto.state;
     if (dto.note !== undefined) patch.note = dto.note;
 
-    const { data: cur } = await this.sb
+    // A failed read is an error, not a missing shift: it used to answer 404
+    // for a shift that exists.
+    const { data: cur, error: curErr } = await this.sb
       .from("shifts")
-      .select("member_id, start_time, end_time, shift_date")
+      .select(
+        "member_id, start_time, end_time, shift_date, recorded_break_min, shift_breaks(*)",
+      )
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    if (curErr) {
+      this.logger.error(
+        `updateShift: could not read shift ${shiftId} in ${restaurantId}: ` +
+          curErr.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this shift, so it was not changed.",
+      );
+    }
     if (!cur) throw new NotFoundException("Shift not found");
+
+    // The break, as whoever edits the shift records it (ADR 0215): a number of
+    // minutes records it (0 = no break taken); `null` clears the record, so
+    // the shift is counted with the Art. 68 minimum for its length again.
+    const nextStart = dto.startTime ?? cur.start_time;
+    const nextEnd = dto.endTime ?? cur.end_time;
+    const recordedBreak = this.recordedBreakFrom(
+      dto.breakMinutes,
+      nextStart,
+      nextEnd,
+    );
+    if (recordedBreak !== undefined) patch.recorded_break_min = recordedBreak;
+    // New times with the break left as it was: the break on record must still
+    // fit inside the shift. A 60-minute break kept on a shift cut to an hour
+    // would count it as no work at all, silently; it is refused in words.
+    if (
+      recordedBreak === undefined &&
+      (dto.startTime !== undefined || dto.endTime !== undefined) &&
+      cur.recorded_break_min != null
+    ) {
+      const kept = Number(cur.recorded_break_min);
+      const span = Math.round(hoursBetween(nextStart, nextEnd) * 60);
+      if (kept >= span) {
+        throw new BadRequestException(
+          `The break on record (${kept} minutes) is as long as the shift ` +
+            `would be (${span} minutes). Record a shorter break with the new ` +
+            `times. Nothing was saved.`,
+        );
+      }
+    }
 
     // Rebind schedule when the date moves into another week.
     const nextDate = dto.shiftDate ?? cur.shift_date;
@@ -537,17 +798,25 @@ export class ScheduleService {
       patch.schedule_id = schedule.id;
     }
 
-    // Recompute labor cost if member/time changed.
+    // Recompute labor cost if member, time or break changed.
     if (
       dto.memberId !== undefined ||
       dto.startTime !== undefined ||
-      dto.endTime !== undefined
+      dto.endTime !== undefined ||
+      recordedBreak !== undefined
     ) {
       patch.labor_cost = await this.laborCost(
         restaurantId,
         dto.memberId ?? cur.member_id,
-        dto.startTime ?? cur.start_time,
-        dto.endTime ?? cur.end_time,
+        {
+          start_time: nextStart,
+          end_time: nextEnd,
+          shift_breaks: cur.shift_breaks ?? [],
+          recorded_break_min:
+            recordedBreak !== undefined
+              ? recordedBreak
+              : (cur.recorded_break_min ?? null),
+        },
       );
     }
 
@@ -560,7 +829,7 @@ export class ScheduleService {
       .maybeSingle();
     if (error) throw new InternalServerErrorException("Failed to update shift");
     if (!data) throw new NotFoundException("Shift not found");
-    return data;
+    return shiftForViewer(data, viewer);
   }
 
   async deleteShift(userId: string, restaurantId: string, shiftId: string) {
@@ -579,7 +848,14 @@ export class ScheduleService {
     shiftId: string,
     dto: CalloutDto,
   ) {
-    await this.team.assertAccess(userId, restaurantId, "manager");
+    // Money in the reply follows the caller's pay access (ADR 0215, round 4
+    // item 19): the owner, or a manager an owner switched on.
+    const viewer = await this.team.assertAccess(
+      userId,
+      restaurantId,
+      "manager",
+      { payAccess: true },
+    );
     const { data: original } = await this.sb
       .from("shifts")
       .select("*")
@@ -619,6 +895,10 @@ export class ScheduleService {
         shift_type: "open",
         state: "open",
         note: `Cover for call-out (${original.member_id ?? "unassigned"})`,
+        // The same window keeps the break on record for it, so the cover is
+        // counted (and priced, once assigned) like the shift it replaces;
+        // nothing on record stays nothing on record (ADR 0215).
+        recorded_break_min: original.recorded_break_min ?? null,
         labor_cost: null,
       })
       .select()
@@ -635,7 +915,10 @@ export class ScheduleService {
       actionLabel: "Find cover",
       metadata: { shiftId: openShift.id, calloutShiftId: shiftId },
     });
-    return { callout: calloutShift, open: openShift };
+    return {
+      callout: shiftForViewer(calloutShift, viewer),
+      open: shiftForViewer(openShift, viewer),
+    };
   }
 
   /** Push the open shift to the selected (qualified/available) members. */
@@ -689,7 +972,10 @@ export class ScheduleService {
     shiftId: string,
     dto: AssignCoverDto,
   ) {
-    const { role } = await this.team.assertAccess(userId, restaurantId);
+    const viewer = await this.team.assertAccess(userId, restaurantId, undefined, {
+      payAccess: true,
+    });
+    const { role } = viewer;
     await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
 
     const { data: shift } = await this.sb
@@ -734,12 +1020,9 @@ export class ScheduleService {
       .maybeSingle();
     if (error || !data)
       throw new InternalServerErrorException("Failed to assign cover");
-    // Staff must never see labor_cost (wage proxy) in the claim response.
-    if (role === "staff") {
-      const { labor_cost: _omit, ...rest } = data;
-      return rest;
-    }
-    return data;
+    // Only the owner sees labor_cost — it is the wage times the hours, so it
+    // is the wage (ADR 0215). Staff never did; a manager no longer does.
+    return shiftForViewer(data, viewer);
   }
 
   private async recomputeCostForMember(
@@ -747,17 +1030,30 @@ export class ScheduleService {
     shiftId: string,
     memberId: string,
   ): Promise<number | null> {
-    const { data: s } = await this.sb
+    const { data: s, error } = await this.sb
       .from("shifts")
-      .select("start_time, end_time")
+      .select("start_time, end_time, recorded_break_min, shift_breaks(*)")
       // Scoped even though the only caller already proved ownership with a
       // scoped fetch: an unscoped read that is safe only because of what its
       // caller happens to do first is one refactor away from not being.
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    // A failed read is an error, not an unpriced cover: `null` here used to
+    // be written as the cover's labor_cost, which says "no wage on file"
+    // (ADR 0215; and before migration 20260927150100 applies, this read names
+    // a column the table lacks, so it would have priced every cover as null).
+    if (error) {
+      this.logger.error(
+        `assignCover: could not read shift ${shiftId} in ${restaurantId} to ` +
+          `price it: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this shift to price the cover, so it was not assigned.",
+      );
+    }
     if (!s) return null;
-    return this.laborCost(restaurantId, memberId, s.start_time, s.end_time);
+    return this.laborCost(restaurantId, memberId, s);
   }
 
   // ── Coverage engine ──────────────────────────────────────────────────────
@@ -839,17 +1135,72 @@ export class ScheduleService {
    * and the counts are returned so a caller can say *why* it is unknown
    * ("3 of 11 shifts have no wage on file") rather than only that it is.
    * An open shift has no member and therefore no cost to be missing.
+   *
+   * ADR 0215 changed four things here:
+   *
+   *  - **Hours are worked hours.** Every hour figure is the span minus the
+   *    shift's breaks (4857 Art. 68); `breakHours` says how much was taken out.
+   *  - **A called-out shift is not worked.** It kept its cost when its person
+   *    called out, and the cover shift was priced too, so the week paid twice
+   *    for one slot. It is out of the hours, the cost and the review flag.
+   *  - **Over 45 worked hours is a review.** `overtime` keeps its key (two
+   *    clients read it) but it is the Turkish week, not the US 40, and it never
+   *    carries a price. It is computed whether or not cost tracking is on: it is
+   *    about hours, and hours are not money.
+   *  - **Money is the owner's.** A manager's block carries hours and the review
+   *    and no cost, no priced/unpriced counts and no cost target. The owner's
+   *    block also says how much approved PAID leave falls in the week, because a
+   *    person on paid leave has no shift and so used to read as zero cost.
    */
   private async computeLabor(
     restaurantId: string,
+    weekStart: string,
     shifts: any[],
     settings: any,
+    viewer: MoneyViewer,
+    roster: ReadonlySet<string>,
   ): Promise<any> {
-    if (!settings?.labor_tracking_enabled) {
-      return { enabled: false, totalHours: hoursTotal(shifts) };
+    const worked = shifts.filter(isWorked);
+    let totalHours = 0;
+    let breakHours = 0;
+    let assumedBreakHours = 0;
+    let assumedBreakShifts = 0;
+    const byMember = new Map<string, number>();
+    for (const s of worked) {
+      const w = workedHours(s);
+      totalHours += w;
+      breakHours += hoursSpan(s) - w;
+      const b = breakCounted(s);
+      if (b.assumed) {
+        assumedBreakShifts += 1;
+        assumedBreakHours += b.minutes / 60;
+      }
+      if (s.member_id)
+        byMember.set(s.member_id, (byMember.get(s.member_id) ?? 0) + w);
     }
-    const totalHours = hoursTotal(shifts);
-    const assigned = shifts.filter((sh) => !!sh.member_id);
+    const overtime = [...byMember.entries()]
+      .filter(([, h]) => h > WEEKLY_REVIEW_HOURS)
+      .map(([memberId, h]) => ({ memberId, hours: Math.round(h * 10) / 10 }));
+    const moneyVisible = seesMoney(viewer);
+    const hours = {
+      moneyVisible,
+      totalHours: Math.round(totalHours * 10) / 10,
+      breakHours: Math.round(breakHours * 10) / 10,
+      /**
+       * How much of `breakHours` is ASSUMED (a shift with no break on record,
+       * any length, is counted with the Art. 68 minimum), so the figure
+       * says it rests on an assumption rather than passing it off as recorded.
+       */
+      assumedBreakHours: Math.round(assumedBreakHours * 10) / 10,
+      assumedBreakShifts,
+      weeklyReviewHours: WEEKLY_REVIEW_HOURS,
+      overtime,
+    };
+
+    if (!settings?.labor_tracking_enabled) return { enabled: false, ...hours };
+    if (!moneyVisible) return { enabled: true, ...hours };
+
+    const assigned = worked.filter((sh) => !!sh.member_id);
     const priced = assigned.filter((sh) => sh.labor_cost != null);
     const unpricedShifts = assigned.length - priced.length;
     const costComplete = unpricedShifts === 0;
@@ -858,22 +1209,9 @@ export class ScheduleService {
           priced.reduce((s, sh) => s + Number(sh.labor_cost), 0) * 100,
         ) / 100
       : null;
-    // Per-member overtime (>40h/week) flags.
-    const byMember = new Map<string, number>();
-    for (const s of shifts) {
-      if (!s.member_id) continue;
-      byMember.set(
-        s.member_id,
-        (byMember.get(s.member_id) ?? 0) +
-          hoursBetween(s.start_time, s.end_time),
-      );
-    }
-    const overtime = [...byMember.entries()]
-      .filter(([, h]) => h > 40)
-      .map(([memberId, h]) => ({ memberId, hours: Math.round(h * 10) / 10 }));
     return {
       enabled: true,
-      totalHours: Math.round(totalHours * 10) / 10,
+      ...hours,
       /** `null` = this week cannot be costed yet. Never a partial, never 0. */
       totalCost,
       costComplete,
@@ -888,7 +1226,46 @@ export class ScheduleService {
         settings.labor_target_pct == null
           ? null
           : Number(settings.labor_target_pct),
-      overtime,
+      /**
+       * What the total covers: the scheduled shifts, and nothing else. Paid
+       * leave is counted in days beside it and is NOT priced here — a day of
+       * leave has no hours on file, and pricing monthly pay is the labour
+       * page's work (ADR 0215), not a guess this block makes.
+       */
+      costCovers: "scheduled_shifts",
+      leave: await this.leaveThisWeek(restaurantId, weekStart, roster),
+    };
+  }
+
+  /**
+   * Approved leave in the week, by type, from dates alone. `reason` is never
+   * selected (KVKK: the minimum). A failed read says so rather than reading as
+   * "nobody is on leave".
+   */
+  private async leaveThisWeek(
+    restaurantId: string,
+    weekStart: string,
+    roster: ReadonlySet<string>,
+  ): Promise<any> {
+    const weekEnd = addDays(weekStart, 6);
+    const { data, error } = await this.sb
+      .from("time_off_requests")
+      .select("member_id, start_date, end_date, status, leave_type")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "approved")
+      .lte("start_date", weekEnd)
+      .gte("end_date", weekStart);
+    if (error) {
+      this.logger.error(
+        `leaveThisWeek: could not read approved leave for ${restaurantId} ` +
+          `week ${weekStart}: ${error.message}`,
+      );
+      return { readable: false, paid: null, paidDays: null, unknownTypeDays: null };
+    }
+    // A removed person's leave is kept, not counted (ADR 0215 item 20).
+    return {
+      readable: true,
+      ...leaveInWeek(onTheRoster(data ?? [], roster), weekStart),
     };
   }
 
@@ -938,9 +1315,7 @@ function mondayOf(date: string): string {
   d.setUTCDate(d.getUTCDate() + diff);
   return d.toISOString().slice(0, 10);
 }
-function hoursTotal(shifts: any[]): number {
-  return shifts.reduce(
-    (s, sh) => s + hoursBetween(sh.start_time, sh.end_time),
-    0,
-  );
+/** A shift's scheduled span, breaks included. */
+function hoursSpan(sh: any): number {
+  return hoursBetween(sh.start_time, sh.end_time);
 }
