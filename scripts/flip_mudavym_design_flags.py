@@ -152,6 +152,10 @@ LIVE_IN_CODE: frozenset[str] = frozenset(
         # never slugs here (see PAGES).
         "settings",
         "admin",
+        # [2026-09-25, lane W3-recs] `recommendations` joins LIVE_PAGES on ADR
+        # 0160 §108's round-5 bracket (sketch 122 fully answered); a flip of
+        # its column is now a no-op like the rest.
+        "recommendations",
     }
 )
 
@@ -317,11 +321,11 @@ def self_test() -> int:
             "dashboard", "orders", "receiving_door", "providers", "communications",
             "team", "inventory", "receipts", "documents_reports", "document",
             "reports", "calendar", "profile", "connections", "notifications", "logs",
-            "cellar", "settings", "admin",
+            "cellar", "settings", "admin", "recommendations",
         },
-        "LIVE_IN_CODE is the sixteen ADR 0149 row 36 names plus cellar, settings and admin",
+        "LIVE_IN_CODE is the sixteen ADR 0149 row 36 names plus cellar, settings, admin and recommendations",
     )
-    check(len(LIVE_IN_CODE) == 19, "nineteen live-in-code pages")
+    check(len(LIVE_IN_CODE) == 20, "twenty live-in-code pages")
     check(set(LIVE_IN_CODE) <= set(PAGES), "every live-in-code slug is a known page")
     check("receiving" not in LIVE_IN_CODE, "the receiving DESK is not live-in-code (only the door is)")
     if failures:

@@ -53,22 +53,24 @@ describe('useMudavymDesign precedence', () => {
   // These four exercise the FLAG path (step 3 of precedence), so — since
   // ADR 0149 row 36 (2026-09-17) resolves 'dashboard' via LIVE_PAGES without
   // ever spending a request, settings joined in PR #419, and cellar+menu go
-  // live in this PR — they run against 'recommendations', a held-back page
-  // that still reads restaurant_feature_flags. LIVE_PAGES' own behaviour is
-  // asserted in the LIVE_PAGES describe block below.
+  // live in this PR — they run against a held-back page that still reads
+  // restaurant_feature_flags: 'recommendations' until 2026-09-25, when it
+  // joined LIVE_PAGES (lane W3-recs, ADR 0160 §108), and 'receiving' (the
+  // desk) since. LIVE_PAGES' own behaviour is asserted in the LIVE_PAGES
+  // describe block below.
   it('without an override, an active+enabled server flag turns the page on', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockResolvedValue(checkResult(true, true));
-    const { result } = renderHook(() => useMudavymDesign('recommendations'));
+    const { result } = renderHook(() => useMudavymDesign('receiving'));
     expect(result.current).toBe(false); // legacy while the check is in flight
     await waitFor(() => expect(result.current).toBe(true));
-    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_recommendations');
+    expect(checkFlag).toHaveBeenCalledWith('r1', 'mudavym_design_receiving');
   });
 
   it('an inactive flag (unregistered in the gateway) stays legacy', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockResolvedValue(checkResult(true, false));
-    const { result } = renderHook(() => useMudavymDesign('recommendations'));
+    const { result } = renderHook(() => useMudavymDesign('receiving'));
     await act(async () => {});
     expect(result.current).toBe(false);
   });
@@ -76,13 +78,13 @@ describe('useMudavymDesign precedence', () => {
   it('an API failure stays legacy rather than breaking the page', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
     checkFlag.mockRejectedValue(new Error('network down'));
-    const { result } = renderHook(() => useMudavymDesign('recommendations'));
+    const { result } = renderHook(() => useMudavymDesign('receiving'));
     await act(async () => {});
     expect(result.current).toBe(false);
   });
 
   it('no active restaurant → legacy, no request', async () => {
-    const { result } = renderHook(() => useMudavymDesign('recommendations'));
+    const { result } = renderHook(() => useMudavymDesign('receiving'));
     await act(async () => {});
     expect(result.current).toBe(false);
     expect(checkFlag).not.toHaveBeenCalled();
@@ -108,23 +110,32 @@ describe('useMudavymDesign precedence', () => {
  * the 2026-09-25 production read, where every existing house had shell and
  * admin ON — gets them too.]
  *
- * Held back, still flag-gated: `recommendations`, `receiving` (the desk, not
- * the door) and `arrival` (/get-started, whose legacy slot is ADR 0213's plan
- * of record) — OFF until deliberately flipped.
+ * Held back, still flag-gated: `receiving` (the desk, not the door) and
+ * `arrival` (/get-started, whose legacy slot is ADR 0213's plan of record) —
+ * OFF until deliberately flipped.
+ *
+ * [2026-09-25, lane W3-recs: `recommendations` joins — ADR 0160 §108 is fully
+ * answered (sketch 122 direction B, questions 2-10, round 5). Until now it
+ * was the first of three held back.]
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
-  const HELD_BACK = ['arrival', 'recommendations', 'receiving'] as const;
-  const PROMOTED_2026_09_25 = ['shell', 'admin', 'authorize_integration'] as const;
+  const HELD_BACK = ['arrival', 'receiving'] as const;
+  const PROMOTED_2026_09_25 = [
+    'shell',
+    'admin',
+    'authorize_integration',
+    'recommendations',
+  ] as const;
 
   it('is exactly MUDAVYM_PAGES minus the held-back pages', () => {
     const held = new Set<string>(HELD_BACK);
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
-    expect(LIVE_PAGES.size).toBe(23);
+    expect(LIVE_PAGES.size).toBe(24);
     expect(MUDAVYM_PAGES.length).toBe(26);
   });
 
-  it('holds back arrival, recommendations and receiving', () => {
+  it('holds back arrival and receiving', () => {
     for (const page of HELD_BACK) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated
@@ -211,8 +222,8 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
 
   it('the QA override can force a held-back page on without a flag row', async () => {
     window.localStorage.setItem('activeRestaurantId', 'r1');
-    window.localStorage.setItem('mudavym.design.recommendations', 'on');
-    const { result } = renderHook(() => useMudavymDesign('recommendations'));
+    window.localStorage.setItem('mudavym.design.receiving', 'on');
+    const { result } = renderHook(() => useMudavymDesign('receiving'));
     expect(result.current).toBe(true);
     await act(async () => {});
     expect(checkFlag).not.toHaveBeenCalled();

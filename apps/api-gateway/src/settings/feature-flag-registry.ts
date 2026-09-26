@@ -72,13 +72,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
-  },
-  {
-    key: "mudavym_design_recommendations",
-    // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
-    defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:209",
   },
   {
     key: "enable_house_inbox_read",
@@ -100,7 +94,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:209",
   },
 ];
 
@@ -134,6 +128,14 @@ export function isActiveFeatureFlag(name: string): boolean {
  * move and "eighteen" before `cellar`/`menu`, both kept as written. `menu`,
  * like `help`, never had a column. The three moved keys' columns
  * (20260921114300, 20260922210200, 20260922220200) stay, unread.]
+ *
+ * [2026-09-25, lane W3-recs, ADR 0160 §108's round-5 bracket:
+ * `mudavym_design_recommendations` moved here from ACTIVE_FEATURE_FLAGS —
+ * twenty-four keys. §108 held the page dark "pending sketch 122"; the founder
+ * picked sketch 122's direction B (2026-09-25, item 24) and answered its
+ * questions 2-10 the same day (round 5), so §108 is fully answered and the
+ * same Q2/Q4 page-gap rule as the three keys above applies. Its column stays,
+ * unread.]
  *
  * Deliberately NOT in ACTIVE_FEATURE_FLAGS:
  *  - `GET /settings/feature-flags` returns only ACTIVE_FEATURE_FLAG_KEYS
@@ -181,6 +183,7 @@ export const LIVE_IN_CODE_FLAGS: readonly string[] = [
   "mudavym_design_shell",
   "mudavym_design_admin",
   "mudavym_design_authorize_integration",
+  "mudavym_design_recommendations",
 ];
 
 export function defaultActiveFlags(): Record<string, boolean> {
