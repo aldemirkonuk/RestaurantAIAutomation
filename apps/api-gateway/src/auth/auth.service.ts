@@ -7,12 +7,21 @@ import {
   ServiceUnavailableException,
   InternalServerErrorException,
   Logger,
+  Inject,
+  Optional,
+  forwardRef,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GmailService } from "../communications/gmail.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
+import {
+  SESSION_ENDED,
+  sessionIsCurrent,
+  sessionVersionOf,
+} from "./session-version";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import axios from "axios";
@@ -94,6 +103,14 @@ export interface JwtPayload {
    * production server even though the signature is valid there.
    */
   devBypass?: boolean;
+  /**
+   * The session version this token was minted under (ADR 0225). Every token
+   * `generateTokens` signs carries it; a token below the person's current
+   * `users.session_version` belongs to a session a password reset or change
+   * signed out, and is refused. Absent on tokens minted before ADR 0225, which
+   * read as version 0. See `session-version.ts`.
+   */
+  sv?: number;
   iat?: number;
   exp?: number;
 }
@@ -162,6 +179,21 @@ export class AuthService {
    * key set replace this field with a verifier over a stub fetcher.
    */
   private microsoftIdTokens = new MicrosoftIdTokenVerifier();
+
+  /**
+   * Closes a person's open sockets whose session a password reset or change
+   * just signed out (ADR 0225). Property injection, not a constructor
+   * parameter, for the same reason as `microsoftIdTokens` above: every
+   * existing spec builds `new AuthService(...)` with five positional
+   * arguments, and Nest still wires this one when the app boots through its
+   * own container. Left `undefined` by a spec that constructs directly, so it
+   * is always called through `?.`. A socket this misses (another gateway
+   * instance, or a spec) still cannot reconnect: the handshake checks the
+   * version too.
+   */
+  @Optional()
+  @Inject(forwardRef(() => WebsocketGateway))
+  private websocketGateway?: WebsocketGateway;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -394,6 +426,15 @@ export class AuthService {
         throw new UnauthorizedException("User not found");
       }
 
+      // ADR 0225: a refresh token from a session a password reset or change
+      // signed out mints nothing. Refused here, before any token is signed.
+      if (!sessionIsCurrent(payload, user)) {
+        throw new UnauthorizedException({
+          message: "This session was signed out. Sign in again.",
+          code: SESSION_ENDED,
+        });
+      }
+
       // Preserve the restaurant the user had switched to — the refresh token
       // encodes the scoped restaurantId, but user.restaurant_id is the DB default
       // (never updated on switch). Without this, every token refresh silently
@@ -421,6 +462,14 @@ export class AuthService {
         devBypass,
       );
     } catch (error) {
+      // A signed-out session says so (ADR 0225); every other failure stays
+      // the one opaque answer it always was.
+      if (
+        error instanceof UnauthorizedException &&
+        (error.getResponse() as { code?: string })?.code === SESSION_ENDED
+      ) {
+        throw error;
+      }
       throw new UnauthorizedException("Invalid refresh token");
     }
   }
@@ -521,6 +570,99 @@ export class AuthService {
    * Studio roles are fetched from user_roles table and embedded in app_metadata.roles
    * so FastAPI require_studio_role() can authorize studio API calls without a DB round-trip.
    */
+  /**
+   * The session version a new pair is minted under (ADR 0225).
+   *
+   * The caller's `users` row when it carries the column: that row is the one
+   * the credential was checked against, so a sign-in that verified the OLD
+   * password just before a change is minted under the OLD version and is
+   * refused on its first request. A caller that passes something else (a
+   * hand-built object, or a row read before the column existed) gets the
+   * current version from the database; a failed read mints nothing (503),
+   * since a guessed version is either a session a reset should have ended or
+   * one that dies on its first request.
+   */
+  private async sessionVersionFor(user: any): Promise<number> {
+    if (user && Object.prototype.hasOwnProperty.call(user, "session_version")) {
+      return sessionVersionOf(user);
+    }
+    const { data, error } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("user_id", user?.user_id)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `sessionVersionFor could not read ${user?.user_id}: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not start your session. Nothing was done; try again.",
+      );
+    }
+    return sessionVersionOf(data);
+  }
+
+  /**
+   * Set a new password and end every session minted before it, in ONE write
+   * (ADR 0225): `password_hash` and `session_version + 1` together,
+   * compare-and-set on the version read just before. Two changes racing each
+   * other both land, one version apart, so each ends the sessions the other
+   * started from; neither is lost. Returns the updated row (its new version
+   * is what the surviving session is minted under), and closes the person's
+   * sockets that are now stale.
+   *
+   * A write that cannot be made fails the whole change: a password that
+   * changed while the old sessions stayed open is the state this exists to
+   * prevent.
+   */
+  private async setPasswordEndingSessions(
+    userId: string,
+    passwordHash: string,
+    caller: string,
+  ): Promise<any> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: current, error: readErr } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("*")
+          .eq("user_id", userId)
+          .maybeSingle();
+      if (readErr || !current) {
+        this.logger.error(
+          `${caller} could not read ${userId} before the password write: ` +
+            `${readErr?.message ?? "no row"}`,
+        );
+        throw new BadRequestException("Failed to update password");
+      }
+
+      const from = sessionVersionOf(current);
+      const { data: written, error: writeErr } =
+        await this.databaseService.supabase
+          .from("users")
+          .update({ password_hash: passwordHash, session_version: from + 1 })
+          .eq("user_id", userId)
+          .eq("session_version", from)
+          .select("*");
+      if (writeErr) {
+        this.logger.error(`${caller} failed: ${writeErr.message}`);
+        throw new BadRequestException("Failed to update password");
+      }
+      if (Array.isArray(written) && written.length === 1) {
+        const row = written[0];
+        this.websocketGateway?.endStaleSessions(userId, sessionVersionOf(row));
+        return row;
+      }
+      // Another change moved the version between the read and the write.
+      // Read again and write on top of it.
+    }
+    this.logger.error(
+      `${caller}: the session version of ${userId} kept moving; gave up after 3 tries`,
+    );
+    throw new ConflictException(
+      "Your password was being changed somewhere else at the same moment. Try again.",
+    );
+  }
+
   private async generateTokens(
     user: any,
     devBypass = false,
@@ -568,6 +710,8 @@ export class AuthService {
       // session", and readers would have to handle both.
       ...(devBypass ? { devBypass: true } : {}),
       app_metadata: { roles: studioRoles },
+      // ADR 0225: the session version this pair is minted under.
+      sv: await this.sessionVersionFor(user),
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -716,6 +860,16 @@ export class AuthService {
 
     if (!user) {
       throw new UnauthorizedException("User not found");
+    }
+
+    // ADR 0225: a token from a session a password reset or change signed out
+    // is refused on its next request. The row above is read on every request
+    // already, so this costs no query.
+    if (!sessionIsCurrent(payload, user)) {
+      throw new UnauthorizedException({
+        message: "This session was signed out. Sign in again.",
+        code: SESSION_ENDED,
+      });
     }
 
     if (!house) {
@@ -2249,11 +2403,20 @@ export class AuthService {
     return this.getProfileForUser(userId);
   }
 
+  /**
+   * Change (or first set) the password of a signed-in person, and sign out
+   * every OTHER session of theirs (ADR 0225; the founder, 2026-09-25, round
+   * 4, item 17). The session that made the change is the one kept: it gets
+   * the returned pair, minted under the new version in the house it was in.
+   * Its own old tokens die with the others, so a client that ignores the
+   * returned pair is signed out too.
+   */
   async changePassword(
     userId: string,
     currentPassword: string | undefined,
     newPassword: string,
-  ): Promise<void> {
+    session: { restaurantId?: string | null; devBypass?: boolean } = {},
+  ): Promise<TokenPair> {
     if (!newPassword || newPassword.length < 8) {
       throw new BadRequestException(
         "New password must be at least 8 characters",
@@ -2281,17 +2444,21 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
-    const { error: updateErr } = await this.databaseService.supabase
-      .from("users")
-      .update({
-        password_hash: passwordHash,
-      })
-      .eq("user_id", userId);
+    const row = await this.setPasswordEndingSessions(
+      userId,
+      passwordHash,
+      "changePassword",
+    );
 
-    if (updateErr) {
-      this.logger.error(`changePassword failed: ${updateErr.message}`);
-      throw new BadRequestException("Failed to update password");
-    }
+    // The kept session: same house as the token that asked, same dev-bypass
+    // standing (already re-checked against the environment by the caller).
+    return this.generateTokens(
+      {
+        ...row,
+        restaurant_id: session.restaurantId ?? row.restaurant_id,
+      },
+      session.devBypass === true,
+    );
   }
 
   /** Minimum seconds between password-reset requests for the same email. */
@@ -2430,15 +2597,13 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
 
-    const { error: updateErr } = await this.databaseService.supabase
-      .from("users")
-      .update({ password_hash: passwordHash })
-      .eq("user_id", reset.user_id);
-
-    if (updateErr) {
-      this.logger.error(`resetPassword failed: ${updateErr.message}`);
-      throw new BadRequestException("Failed to update password");
-    }
+    // ADR 0225: the new password and the end of every session minted before
+    // it are one write. A reset is made from no session, so none is kept.
+    await this.setPasswordEndingSessions(
+      reset.user_id,
+      passwordHash,
+      "resetPassword",
+    );
 
     const usedAt = new Date().toISOString();
 
@@ -2451,14 +2616,11 @@ export class AuthService {
       .eq("user_id", reset.user_id)
       .is("used_at", null);
 
-    // Deliberately does not revoke existing sessions. changePassword() above —
-    // the existing, in-app password-change path — does not do this either, and
-    // TokenBlacklistService can only blacklist a token it is handed; nothing in
-    // this codebase tracks the set of tokens issued to a user, so "revoke every
-    // outstanding session" is a real feature this change does not build. If a
-    // reset should force other devices out, that is a follow-up against
-    // TokenBlacklistService, applied consistently to changePassword too — not
-    // a one-off here.
+    // Every session this person had is now signed out (ADR 0225): not by
+    // tracking the tokens issued to them (TokenBlacklistService can only
+    // deny a token it is handed), but by the session version the write above
+    // moved, which every token carries and every reader checks. See
+    // session-version.ts.
   }
 
   /**

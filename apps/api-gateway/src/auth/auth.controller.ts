@@ -281,12 +281,19 @@ export class AuthController {
     @Req() req: Request & { user: any },
     @Body() body: ChangePasswordDto,
   ) {
-    await this.authService.changePassword(
+    // ADR 0225: every other session of this person is signed out; this one
+    // is kept by the pair returned here, which the client must store (its old
+    // tokens are refused from now on).
+    const tokens = await this.authService.changePassword(
       req.user.userId,
       body.currentPassword,
       body.newPassword,
+      {
+        restaurantId: req.user.restaurantId ?? null,
+        devBypass: req.user.devBypass === true && devBypassEnvEnabled(),
+      },
     );
-    return { success: true, message: "Password updated" };
+    return { success: true, message: "Password updated", ...tokens };
   }
 
   /**

@@ -26,6 +26,9 @@ export function passwordResetEmailTemplate(
       Hi ${firstName}, we received a request to reset the password on your Mudavym account.
       This link is valid for <strong>1 hour</strong>.
     </p>
+    <p style="margin: 0 0 24px; color: #6b7280; font-size: 15px; line-height: 1.6;">
+      When you choose a new password, every device signed in to your account is signed out.
+    </p>
 
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom: 24px;">
       <tr>

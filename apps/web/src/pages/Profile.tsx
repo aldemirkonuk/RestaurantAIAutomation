@@ -238,7 +238,9 @@ export default function Profile() {
     setSavingPassword(true)
     try {
       await profileApi.changePassword({ currentPassword, newPassword })
-      toast.success('Password updated')
+      toast.success('Password updated', {
+        description: 'Every other device was signed out; this one stays signed in.',
+      })
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
