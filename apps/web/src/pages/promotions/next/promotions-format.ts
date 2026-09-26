@@ -210,6 +210,22 @@ export function fmtEstimate(amount: number, currency: string): string {
   return `about ${fmtPrice(rounded, currency)}`;
 }
 
+/**
+ * The rounded estimate as a headline figure, whole units only ("$164", never
+ * "$164.00") — a tray's total is drawn at hero/large size, where cents would
+ * claim a precision the estimate does not have. The caller prints "about"
+ * beside it; this returns the figure alone.
+ */
+export function fmtEstimateFigure(amount: number, currency: string): string {
+  const rounded = roundEstimate(amount);
+  const locale = CURRENCY_LOCALE[currency] ?? 'en-US';
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(rounded);
+  } catch {
+    return `${Math.round(rounded)} ${currency}`;
+  }
+}
+
 /** "-4.6%" / "+4.2%" — the sign always shown, never implied by colour alone. */
 export function fmtSignedPercent(pct: number): string {
   const sign = pct > 0 ? '+' : pct < 0 ? '' : '±';
@@ -366,13 +382,19 @@ export interface RankedOffer {
 }
 
 /**
- * The worth the whole offer ranks by: the bundle rollup when the offer is a
- * bundle with one, else the single largest per-wine `worth.amount` (a
- * multi-wine, non-bundle offer is ranked by its best line, since nothing
- * rolls those up — only a bundle gets one worth, offer-grade.ts's own rule).
+ * The worth the whole offer ranks by: a bundle's rolled-up total, else the
+ * single largest per-wine `worth.amount` (a multi-wine, non-bundle offer is
+ * ranked by its best line, since nothing rolls those up — only a bundle gets
+ * one worth, offer-grade.ts's own rule).
+ *
+ * A BUNDLE RANKS ONLY BY ITS TOTAL (founder, 2026-09-25, round 5, sketch 124
+ * questions 3 and 4 — ADR 0160 §113). When the rollup is withheld (a bottle
+ * with no worth, or a minimum whose unit is unknown), the bundle has NO rank
+ * worth: it is drawn compact, never sized by the best of its own bottles.
+ * That second rule was offered and not taken.
  */
 export function rankWorthOf(o: OfferDto): number | null {
-  if (o.promo_type === 'bundle' && o.bundle) return o.bundle.amount;
+  if (isBundleOffer(o)) return o.bundle ? o.bundle.amount : null;
   const amounts = o.grade.wines.map((w) => w.worth?.amount).filter((n): n is number => n != null);
   if (amounts.length === 0) return null;
   return Math.max(...amounts);
@@ -389,8 +411,9 @@ export function onTheTable(o: OfferDto): boolean {
  * ends-soonest (the stated fallback — sketch 113 README "Ranking by worth
  * falls back to ends-soonest when the worth is withheld"), and the whole set
  * stays dense enough to read ten-plus at once (direction C) by tiering
- * everything below the single top card as `regular`/`compact` rather than
- * repeating the hero treatment.
+ * everything below the single top card as `large`/`compact` rather than
+ * repeating the hero treatment. Bundles rank here with the single offers, by
+ * their rolled-up total (`rankWorthOf`).
  *
  * Takes no "today" — `onTheTable` already reads the state the gateway
  * computed (`offerState`, server clock), and the ends-soonest fallback
@@ -435,14 +458,27 @@ export function isBundleOffer(o: OfferDto): boolean {
 }
 
 /**
- * Bundles still on the table, whatever their grade — the page lists them in
- * their own fold, never in the docket: how a bundle is shown is a drawing ADR
- * 0160 §113 still owes (sketch 124), so no bundle card shape is built yet.
- * Oldest-ending first, the same order the docket uses for offers with no worth.
+ * DIRECTION A, "THE BAND" (founder, 2026-09-25, round 5 — sketch 124,
+ * ADR 0160 §113): a row per size tier. One hero band across the page, the
+ * large cards three across beneath it, then every compact tile five across.
+ * Rank order is strict top to bottom: `rankOffers` hands out tiers in rank
+ * order (hero, then up to three large, then compact), so splitting the ranked
+ * list by tier never reorders it — `bandsOf` keeps each band in rank order
+ * and asserts nothing new. Bundles sit in the same bands as single offers, at
+ * the tier their rolled-up total earns (a tray card, `OfferCard`).
  */
-export function bundlesOnTable(offers: OfferDto[]): OfferDto[] {
-  const endsValue = (o: OfferDto) => (o.end_date ? Date.parse(o.end_date) : Number.POSITIVE_INFINITY);
-  return offers.filter((o) => onTheTable(o) && isBundleOffer(o)).sort((a, b) => endsValue(a) - endsValue(b));
+export interface Bands {
+  hero: RankedOffer | null;
+  large: RankedOffer[];
+  compact: RankedOffer[];
+}
+
+export function bandsOf(ranked: RankedOffer[]): Bands {
+  return {
+    hero: ranked.find((r) => r.tier === 'hero') ?? null,
+    large: ranked.filter((r) => r.tier === 'large'),
+    compact: ranked.filter((r) => r.tier === 'compact'),
+  };
 }
 
 export function putAwayOffers(offers: OfferDto[]): OfferDto[] {

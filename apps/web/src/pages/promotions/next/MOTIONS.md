@@ -26,6 +26,10 @@ either a measured price or a labelled estimate, never a live meter, so
   is a projection already rounded down to a coarse estimate
   (`roundEstimate`); animating it into being would dress an estimate as a
   measurement arriving in real time.
+- **The bands do not animate a card between tiers** (sketch 124 direction A, 2026-09-25).
+  A card's size is its rank, read once; when a refetch moves an offer from the large row
+  to the compact row it simply re-renders there. Growing or shrinking a box in place would
+  dress a re-ranking as a live meter, the thing the worth figure already refuses.
 - **The docket does not stagger, tuck or re-lay-out on load.** Ranking is
   computed once from the read and rendered in place — there is no ribbon or
   filter here that changes which rows exist the way `/recommendations`'s day

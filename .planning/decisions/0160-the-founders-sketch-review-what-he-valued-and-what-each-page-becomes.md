@@ -617,6 +617,43 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
   answering both). Still owed: the founder's pick. The `/promotions` build on
   `feat/promotions-mudavym` ships dark behind `mudavym_design_promotions` and builds
   neither part until he picks (CLAIMS `PROMOTIONS-OWED-DRAWINGS-NOT-BUILT`).]**
+  **[ANSWERED and BUILT 2026-09-25 — founder, 2026-09-25, round 5 (`AskUserQuestion`,
+  session 6c6d8b93; recorded in memory `founder-answers-2026-09-25-web-rebuild.md` item 35).
+  The option text below is sketch 124's README question text
+  (`.planning/sketches/124-promotions-bundles-and-density/README.md`, "Founder
+  questions"); the question-round wording itself is not stored in the repo, so where the
+  two could differ the README's is the one quoted. Built on `feat/promotions-mudavym`
+  (PR #474, lane W3-promos), CLAIMS `PROMOTIONS-BAND-AND-TRAY-BUILT` supersedes
+  `PROMOTIONS-OWED-DRAWINGS-NOT-BUILT`.**
+  1. **Density — chosen: "A · The Band" ("A row per tier: hero band full width, three
+     large across, compact tiles five across"; rank order "Strict, top to bottom").**
+     Rejected: "B · The Span Grid" (tier = span in a packed 6-column grid — reading order
+     can differ from visual order) and "C · Lead and Ledger" (only the hero is a box;
+     "'Bigger box' becomes 'heavier row' — the founder's words were boxes"). Also not
+     taken: "a mix".
+  2. **Bundle — chosen: "tray" ("one card, its bottles set in as a small table; takes the
+     tier its total earns").** Rejected: "tied cells" (B) and "group row" (C).
+  3. **Where a bundle ranks — chosen: "At the tier its rolled-up worth earns (A and B as
+     drawn)".** Rejected: "always after the single offers". Built as: `rankOffers` ranks
+     bundles and single offers in one list; the separate bundle fold is gone.
+  4. **A bundle whose worth is withheld — chosen: "compact (as drawn)".** Rejected:
+     "sized by the best of its own bottles' worths" (the README's own note: "contradicts
+     nothing in ADR 0165 but is a new rule" — not adopted). Built as: `rankWorthOf`
+     returns the rollup or nothing for a bundle, so a withheld total (a bottle with no
+     worth, or ADR 0165's `unit_unknown` minimum) is a compact tray that names why.
+  5. **Sketch 113 question 6 ("Is an offer with no end date an offer?") — chosen: undated
+     offers stay on the table, labelled "no end date"** (directions A and B of sketch 113;
+     every sketch 124 direction drew it so). Rejected: sketch 113 direction C's "Filed as
+     a price, not an offer" (DESIGN-FOUNDATION.md's "an offer with no end date is not an
+     offer", bracketed there the same day). The service's `undated` state and the page's
+     `offerStateWord` already did this; the answer makes it a decision, not a default.
+  **Not built, on purpose:** filters. His words the same round — the owner searching
+  vendors/promotions "must see certain filters per their restaurant first … first filter
+  as everything you see on the menu at the moment. Bigger search for all the items they
+  use" — are under a research pass; the page leaves one seam for a scope bar
+  (`PromotionsNext.tsx`, the `scoped` list and the "scope bar" slot above the Offers
+  section). Still open from ADR 0165: items 2 (adaptive recency) and 3 (per-wine versus
+  mixed minimums), not asked this round.]**
 - **Two of his notes are deliberately not built now:** ~~the non-alcoholic heat map (110,
   Owed #9)~~ **[built 2026-09-22, Q9]** and A's register itself under live data (113).
 - **Open items — the founder's call, not decided here (CLAUDE.md §0.1):**

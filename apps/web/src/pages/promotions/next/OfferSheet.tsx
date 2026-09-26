@@ -6,15 +6,16 @@
  * because the card's whole point (direction C's density) is that the sheet
  * carries what the card cannot show ten of at once.
  *
- * A bundle opens here too, bottle by bottle. Its own total is not drawn yet
- * (2026-09-25: the bundle shape is a drawing ADR 0160 §113 still owes, sketch
- * 124), so the sheet prints each bottle's line and no bundle figure; the
- * gateway still computes `offer.bundle` (offer-grade.ts `bundleWorth`).
+ * A bundle opens here too, bottle by bottle, with its rolled-up total (or
+ * the sentence saying why the total is withheld) above the bottles — the
+ * same figure its tray card draws (sketch 124 direction A, founder
+ * 2026-09-25, round 5; offer-grade.ts `bundleWorth`).
  */
 
 import { useState } from 'react';
 import { Sheet } from '../../../components/mudavym';
 import {
+  bundleWorthReason,
   claimSentence,
   conditionsOf,
   discountOf,
@@ -98,6 +99,28 @@ export function OfferSheet({ offer, today, onClose, onDismiss, onRestore, busy }
             : 'no accepted invoice from this vendor in the ledger window'}
         </dd>
       </div>
+
+      {isBundle && (
+        <div className="pn-lineblk" data-testid="pn-sheet-bundle">
+          <div className="pn-lineblk__w">The bundle&rsquo;s worth</div>
+          {offer.bundle ? (
+            <>
+              <div className={`pn-lineblk__d pn-lineblk__d--${offer.bundle.amount < 0 ? 'above' : 'beats'}`}>
+                {fmtEstimate(offer.bundle.amount, offer.bundle.currency)}
+              </div>
+              <p>
+                The sum of its {offer.bundle.linesCounted} bottles&rsquo; own worths, each against your lowest other
+                vendor. Estimate at your rate, not a saving already banked.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="pn-lineblk__d pn-lineblk__d--none">worth withheld</div>
+              <p>{bundleWorthReason(offer.grade.wines)}</p>
+            </>
+          )}
+        </div>
+      )}
 
       <h3 className="pn-sheet__h3">Every named bottle</h3>
       {offer.grade.wines.map((w, i) => {

@@ -25,12 +25,22 @@
  * The ground follows the person's choice (ADR 0169); nothing here forces
  * charcoal any more.
  *
- * TWO PARTS NOT BUILT (ADR 0160 §113, "drawings owed before their builds"):
- * B's sized boxes at C's 10+ density, and the bundle's own shape. Both are
- * drawn in `.planning/sketches/124-promotions-bundles-and-density/` for the
- * founder to pick. Until then offers render one size in rank order
- * (`OfferCard`'s header), and bundles are listed in their own plain fold
- * below the docket, each opening the sheet bottle by bottle.
+ * THE BAND, AND BUNDLES AS TRAYS (founder, 2026-09-25, round 5 — sketch 124
+ * direction A; ADR 0160 §113). The docket is a row per size tier, in strict
+ * rank order top to bottom: the hero band across the page, the large cards
+ * three across, then every compact tile five across (`bandsOf`). A bundle is
+ * ranked with the single offers by its rolled-up total and drawn as a tray at
+ * the tier that total earns; a bundle whose total is withheld is compact.
+ * Undated offers stay on the table, labelled "no end date" (sketch 113 Q6).
+ *
+ * THE SCOPE-BAR SEAM (not built — founder 2026-09-25 asked for house-first
+ * filters, and a research pass on them is running). Two places, nothing else:
+ *   1. `scoped` below is the ONE list every fold derives from; a scope bar
+ *      narrows it there and every band, fold and count follows.
+ *   2. The JSX comment "scope bar — the seam …" between the header and the
+ *      Offers section is where the bar is drawn.
+ * The standing line reads the unscoped `data` on purpose: it states what is
+ * on the table, not what a filter shows.
  */
 
 import { useMemo, useState } from 'react';
@@ -40,15 +50,15 @@ import OfferCard from './OfferCard';
 import OfferSheet from './OfferSheet';
 import { useDismissOffer, usePromotionsRead, useRestoreOffer } from './usePromotionsNextData';
 import {
-  bundlesOnTable,
+  bandsOf,
   failureOf,
   failureSentence,
-  isBundleOffer,
   putAwayOffers,
   rankOffers,
   standingLine,
   ungradableOffers,
   type OfferDto,
+  type RankedOffer,
 } from './promotions-format';
 import './promotions-next.css';
 
@@ -71,14 +81,26 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
   const restore = useRestoreOffer();
 
   const offers: OfferDto[] = useMemo(() => data?.offers ?? [], [data]);
-  // Bundles leave the docket for their own fold: their shape is not drawn yet.
-  const singles = useMemo(() => offers.filter((o) => !isBundleOffer(o)), [offers]);
-  const ranked = useMemo(() => rankOffers(singles), [singles]);
-  const ungradable = useMemo(() => ungradableOffers(singles), [singles]);
-  const bundles = useMemo(() => bundlesOnTable(offers), [offers]);
-  const putAway = useMemo(() => putAwayOffers(offers), [offers]);
+  // SCOPE-BAR SEAM (see the header): the one list every fold derives from.
+  // Today it is every offer; a house-first scope bar narrows it here.
+  const scoped: OfferDto[] = offers;
+  const ranked = useMemo(() => rankOffers(scoped), [scoped]);
+  const bands = useMemo(() => bandsOf(ranked), [ranked]);
+  const ungradable = useMemo(() => ungradableOffers(scoped), [scoped]);
+  const putAway = useMemo(() => putAwayOffers(scoped), [scoped]);
   const selected = offers.find((o) => o.id === selectedId) ?? null;
   const busy = dismiss.isPending || restore.isPending;
+  const card = (r: RankedOffer) => (
+    <OfferCard
+      offer={r.offer}
+      tier={r.tier}
+      today={today}
+      onOpenDetail={setSelectedId}
+      onDismiss={(id) => dismiss.mutate(id)}
+      onRestore={(id) => restore.mutate(id)}
+      busy={busy}
+    />
+  );
 
   return (
     <div className="mudavym pn-page" data-ground={ground}>
@@ -102,11 +124,13 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
           )}
         </header>
 
+        {/* scope bar — the seam for the house-first filters (not built; see the header) */}
+
         <section aria-label="Offers" className="pn-offers">
           {isLoading && (
-            <div className="pn-docket">
+            <div className="pn-row-large" aria-busy="true">
               {[0, 1, 2].map((i) => (
-                <div className="pn-card" key={i} aria-hidden="true">
+                <div className="pn-card pn-card--large" key={i} aria-hidden="true">
                   <div className="pn-skel" style={{ margin: 0, height: 14, width: '50%' }} />
                   <div className="pn-skel" style={{ margin: 0, height: 52 }} />
                   <div className="pn-skel" style={{ margin: 0, height: 14, width: '80%' }} />
@@ -129,49 +153,35 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
 
           {!isLoading && !isError && data && (
             <>
-              {ranked.length === 0 && ungradable.length === 0 && bundles.length === 0 ? (
+              {ranked.length === 0 && ungradable.length === 0 ? (
                 <div className="pn-state">
                   <p>No offers are on the table right now. This lane is active and listening.</p>
                 </div>
               ) : (
-                <div className="pn-docket">
-                  {ranked.map((r) => (
-                    <OfferCard
-                      key={r.offer.id}
-                      offer={r.offer}
-                      tier={r.tier}
-                      today={today}
-                      onOpenDetail={setSelectedId}
-                      onDismiss={(id) => dismiss.mutate(id)}
-                      onRestore={(id) => restore.mutate(id)}
-                      busy={busy}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {bundles.length > 0 && (
-                <div className="pn-ungr" data-testid="pn-bundles">
-                  <h3>Bundles</h3>
-                  <p className="pn-lede">
-                    {bundles.length} offer{bundles.length === 1 ? '' : 's'} price several bottles together. Open one
-                    to see each bottle against what the house last paid.
-                  </p>
-                  <div className="pn-docket pn-docket--dense">
-                    {bundles.map((o) => (
-                      <article className="pn-card pn-card--compact" key={o.id}>
-                        <div className="pn-card__top">
-                          <span className="pn-card__vendor">{o.provider_name ?? 'Unnamed vendor'}</span>
+                <div className="pn-band" data-testid="pn-band">
+                  {bands.hero && (
+                    <div className="pn-row-hero" role="list" aria-label="The offer worth the most">
+                      <div role="listitem">{card(bands.hero)}</div>
+                    </div>
+                  )}
+                  {bands.large.length > 0 && (
+                    <div className="pn-row-large" role="list" aria-label="The next offers by worth">
+                      {bands.large.map((r) => (
+                        <div role="listitem" key={r.offer.id}>
+                          {card(r)}
                         </div>
-                        <span className="pn-mono" style={{ fontSize: 11, color: 'var(--ink-3)' }}>
-                          {o.name} · {o.grade.wines.length} bottle{o.grade.wines.length === 1 ? '' : 's'}
-                        </span>
-                        <button type="button" className="pn-btn pn-btn--quiet" onClick={() => setSelectedId(o.id)}>
-                          Details
-                        </button>
-                      </article>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
+                  {bands.compact.length > 0 && (
+                    <div className="pn-row-compact" role="list" aria-label="Every other offer, in rank order">
+                      {bands.compact.map((r) => (
+                        <div role="listitem" key={r.offer.id}>
+                          {card(r)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

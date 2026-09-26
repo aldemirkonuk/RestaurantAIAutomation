@@ -172,12 +172,12 @@ describe('PromotionsNext — a graded offer', () => {
   it('opening Details shows the offer sheet with the full per-wine breakdown', () => {
     loadOne(offer());
     renderPage();
-    fireEvent.click(screen.getAllByText('Details')[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /^Details/ })[0]);
     expect(screen.getByText('Every named bottle')).toBeInTheDocument();
   });
 });
 
-describe('PromotionsNext — the two owed drawings are not built (ADR 0160 §113, sketch 124)', () => {
+describe('PromotionsNext — the band and the tray (sketch 124 direction A, founder 2026-09-25, round 5)', () => {
   function load(offers: OfferDto[]) {
     mockRead.current = {
       data: { read_at: '2026-09-18T12:00:00Z', offers, ledger: { window_days: 540, since: '2025-03-12', paid_lines: 10, house_sightings: 2, market_sightings: 1, skipped_sightings: 0 } },
@@ -186,36 +186,113 @@ describe('PromotionsNext — the two owed drawings are not built (ADR 0160 §113
       error: null,
     };
   }
+  const worthOf = (amount: number) => ({ ...wine().worth!, amount });
+  const single = (id: string, amount: number, over: Partial<OfferDto> = {}) =>
+    offer({ id, name: `offer ${id}`, grade: { ...offer().grade, wines: [wine({ worth: worthOf(amount) })] }, ...over });
+  const bundleOffer = (id: string, total: number | null, bottles: Array<number | null>, over: Partial<OfferDto> = {}) =>
+    offer({
+      id,
+      name: `bundle ${id}`,
+      promo_type: 'bundle',
+      applicable_wines: bottles.map((_, i) => `Bottle ${i + 1}`),
+      grade: {
+        ...offer().grade,
+        wines: bottles.map((b, i) => wine({ wine: `Bottle ${i + 1}`, matchedAs: `Bottle ${i + 1}`, worth: b == null ? null : worthOf(b) })),
+      },
+      bundle: total == null ? null : { amount: total, currency: 'USD', linesCounted: bottles.length },
+      ...over,
+    });
+  const cardsIn = (root: ParentNode) => [...root.querySelectorAll('article[data-testid^="offer-card-"]')];
 
-  it('every offer card is one size: the rank tier is data, never a size class', () => {
-    const worths = [90, 70, 50, 30, 10];
-    load(worths.map((w, i) => offer({ id: `o${i}`, grade: { ...offer().grade, wines: [wine({ worth: { ...wine().worth!, amount: w } })] } })));
+  it('draws a row per tier — hero band, three large, compact tiles — and the tier is the size class', () => {
+    load([10, 90, 30, 70, 50].map((w, i) => single(`o${i}`, w)));
     const { container } = renderPage();
-    const cards = [...container.querySelectorAll('article[data-testid^="offer-card-"]')];
-    expect(cards).toHaveLength(5);
-    expect(cards.map((c) => c.getAttribute('data-tier'))).toEqual(['hero', 'large', 'large', 'large', 'compact']);
-    for (const c of cards) {
-      expect(c.className).toBe('pn-card');
-    }
+    const hero = container.querySelector('.pn-row-hero')!;
+    const large = container.querySelector('.pn-row-large')!;
+    const compact = container.querySelector('.pn-row-compact')!;
+    expect(cardsIn(hero).map((c) => c.getAttribute('data-testid'))).toEqual(['offer-card-o1']);
+    expect(cardsIn(large).map((c) => c.getAttribute('data-testid'))).toEqual(['offer-card-o3', 'offer-card-o4', 'offer-card-o2']);
+    expect(cardsIn(compact).map((c) => c.getAttribute('data-testid'))).toEqual(['offer-card-o0']);
+    expect(cardsIn(hero)[0].className).toBe('pn-card pn-card--hero');
+    expect(cardsIn(large)[0].className).toBe('pn-card pn-card--large');
+    expect(cardsIn(compact)[0].className).toBe('pn-card pn-card--compact');
   });
 
-  it('a bundle is listed in its own fold, never drawn as a docket card, and opens the sheet', () => {
-    const bundle = offer({
-      id: 'b1',
-      name: 'Rosé trio',
-      promo_type: 'bundle',
-      applicable_wines: ['A', 'B', 'C'],
-      grade: { ...offer().grade, wines: [wine({ wine: 'A' }), wine({ wine: 'B' }), wine({ wine: 'C' })] },
-      bundle: { amount: 93, currency: 'USD', linesCounted: 3 },
-    });
-    load([bundle, offer()]);
+  it('rank order is strict top to bottom: document order is worth order, band after band', () => {
+    const worths = [5, 120, 44, 81, 17, 63, 29, 98, 11, 72, 36, 58];
+    load(worths.map((w, i) => single(`o${i}`, w)));
+    const { container } = renderPage();
+    const cards = cardsIn(container.querySelector('[data-testid="pn-band"]')!);
+    // ten or more offers read at once: every one of the twelve is drawn
+    expect(cards).toHaveLength(12);
+    const order = cards.map((c) => worths[Number(c.getAttribute('data-testid')!.replace('offer-card-o', ''))]);
+    expect(order).toEqual([...worths].sort((a, b) => b - a));
+    expect(cards.map((c) => c.getAttribute('data-tier'))).toEqual(['hero', 'large', 'large', 'large', ...Array(8).fill('compact')]);
+  });
+
+  it('a bundle is a tray in the same bands, ranked by its rolled-up total, its bottles as a table', () => {
+    load([single('big', 120), single('small', 50), bundleOffer('b1', 93, [40, 30, 23])]);
+    const { container } = renderPage();
+    const cards = cardsIn(container.querySelector('[data-testid="pn-band"]')!);
+    expect(cards.map((c) => c.getAttribute('data-testid'))).toEqual(['offer-card-big', 'offer-card-b1', 'offer-card-small']);
+    const tray = screen.getByTestId('offer-card-b1');
+    expect(tray.className).toBe('pn-card pn-card--large pn-tray');
+    expect(tray).toHaveAttribute('data-bundle', 'true');
+    expect(within(tray).getByText('bundle · 3 bottles')).toBeInTheDocument();
+    expect(tray.querySelector('.pn-num')!.textContent).toBe('about $93');
+    const table = within(tray).getByRole('table');
+    expect(within(table).getAllByRole('rowheader').map((h) => h.textContent)).toEqual(['Bottle 1', 'Bottle 2', 'Bottle 3']);
+    expect(within(table).getByText('-4.6% · about $40')).toBeInTheDocument();
+    expect(within(table).getByText('-4.6% · about $23')).toBeInTheDocument();
+    expect(within(tray).getByText(/Estimate at your rate/)).toBeInTheDocument();
+    // no separate bundle fold any more
+    expect(screen.queryByTestId('pn-bundles')).toBeNull();
+  });
+
+  it('a bundle whose total is withheld is a COMPACT tray, never sized by its best bottle', () => {
+    // one bottle has no worth, so the rollup is withheld — its other bottle's 500 would have made it the hero
+    load([single('a', 60), single('b', 40), bundleOffer('w', null, [500, null], { end_date: null, state: 'undated' })]);
     renderPage();
-    expect(screen.queryByTestId('offer-card-b1')).not.toBeInTheDocument();
-    const fold = screen.getByTestId('pn-bundles');
-    expect(fold).toHaveTextContent('Rosé trio · 3 bottles');
-    // No bundle figure is drawn anywhere on the page — the bundle's shape is owed.
-    expect(screen.queryByText(/\$93/)).not.toBeInTheDocument();
-    fireEvent.click(within(fold).getByRole('button', { name: 'Details' }));
+    const tray = screen.getByTestId('offer-card-w');
+    expect(tray).toHaveAttribute('data-tier', 'compact');
+    expect(tray.closest('.pn-row-compact')).not.toBeNull();
+    expect(screen.getByTestId('offer-card-a')).toHaveAttribute('data-tier', 'hero');
+    expect(within(tray).getByText('worth withheld')).toBeInTheDocument();
+    expect(within(tray).getByText(/1 of 2 bottles in this bundle has no worth of its own/)).toBeInTheDocument();
+    // the bottle keeps its own figure in the table; the tray's headline is never that bottle's worth
+    expect(tray.querySelector('.pn-num')!.textContent).toBe('worth withheld');
+    expect(within(within(tray).getByRole('table')).getByText('-4.6% · about $500')).toBeInTheDocument();
+  });
+
+  it("a bundle whose minimum has no unit is compact and says why (ADR 0165 rule 1)", () => {
+    const reason = 'the offer states a minimum of 12 without saying bottles or cases';
+    const b = bundleOffer('u', null, [null, null]);
+    b.grade = {
+      ...b.grade,
+      qualification: { state: 'unit_unknown', minimum: { quantity: 12, unit: null }, largestOrder: null, reason },
+      wines: b.grade.wines.map((w) => ({ ...w, worthWithheld: reason })),
+    };
+    load([single('a', 60), b]);
+    renderPage();
+    const tray = screen.getByTestId('offer-card-u');
+    expect(tray).toHaveAttribute('data-tier', 'compact');
+    expect(within(tray).getByText(reason)).toBeInTheDocument();
+  });
+
+  it("an undated offer stays on the table, labelled 'no end date' (sketch 113 Q6)", () => {
+    load([single('d', 40, { end_date: null, state: 'undated' })]);
+    renderPage();
+    const card = screen.getByTestId('offer-card-d');
+    expect(within(card).getByText('no end date')).toBeInTheDocument();
+    expect(screen.getByText(/1 offer from 1 vendor/)).toBeInTheDocument();
+  });
+
+  it("a tray's Details opens the sheet with the bundle's total above its bottles", () => {
+    load([bundleOffer('b1', 93, [40, 30, 23])]);
+    renderPage();
+    fireEvent.click(within(screen.getByTestId('offer-card-b1')).getByRole('button', { name: /^Details/ }));
+    const block = screen.getByTestId('pn-sheet-bundle');
+    expect(block).toHaveTextContent('about $93');
     expect(screen.getByText('Every named bottle')).toBeInTheDocument();
   });
 

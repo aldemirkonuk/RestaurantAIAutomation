@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bandsOf,
   bundleWorthReason,
   claimSentence,
   conditionsOf,
@@ -7,6 +8,7 @@ import {
   failureOf,
   failureSentence,
   fmtEstimate,
+  fmtEstimateFigure,
   fmtPrice,
   fmtSignedPercent,
   headlineWineOf,
@@ -97,6 +99,13 @@ describe('money / percent formatting', () => {
 
   it('states plainly when currency was not recorded, never guesses one', () => {
     expect(fmtPrice(10, null)).toMatch(/currency not recorded/);
+  });
+
+  it('a tray headline is the rounded estimate in whole units, with no "about" of its own', () => {
+    expect(fmtEstimateFigure(63.7, 'USD')).toBe('$64');
+    expect(fmtEstimateFigure(163.7, 'USD')).toBe('$160');
+    expect(fmtEstimateFigure(1234, 'USD')).toBe('$1,200');
+    expect(fmtEstimateFigure(-42.4, 'USD')).toBe('-$42');
   });
 
   it('rounds a projection coarser as it grows, and labels it "about"', () => {
@@ -190,6 +199,24 @@ describe('rankWorthOf', () => {
   it('no line has a worth ⇒ null, never zero', () => {
     expect(rankWorthOf(offer())).toBeNull();
   });
+
+  it('a bundle whose total is withheld has NO rank worth — never the best of its own bottles (founder 2026-09-25, round 5)', () => {
+    const o = offer({
+      promo_type: 'bundle',
+      bundle: null,
+      grade: {
+        status: 'graded',
+        wines: [
+          wine({ worth: { amount: 500, currency: 'USD', quantity: 1, invoiceLines: 1, windowDays: 540, comparisonDate: '2026-09-01', comparisonAgeDays: 10, maxAgeDays: 180 } }),
+          wine({ wine: 'B', worth: null }),
+        ],
+        qualification: null, tally: { beats: 1, matches: 0, above: 0, ungraded: 1 },
+        vendor: { lastPurchaseDate: null, paidLines: 1 },
+      },
+    });
+    expect(rankWorthOf(o)).toBeNull();
+    expect(rankOffers([o])[0].tier).toBe('compact');
+  });
 });
 
 describe('rankOffers', () => {
@@ -242,6 +269,15 @@ describe('rankOffers', () => {
     const dismissed = offer({ id: 'd', state: 'dismissed' });
     const passed = offer({ id: 'p', state: 'passed', end_date: '2020-01-01' });
     expect(rankOffers([dismissed, passed])).toEqual([]);
+  });
+
+  it('a bundle ranks WITH the single offers, at the tier its rolled-up total earns', () => {
+    const worthy = (id: string, amount: number) =>
+      offer({ id, grade: { status: 'graded', qualification: null, wines: [wine({ worth: { amount, currency: 'USD', quantity: 1, invoiceLines: 1, windowDays: 540, comparisonDate: '2026-09-01', comparisonAgeDays: 10, maxAgeDays: 180 } })], tally: { beats: 1, matches: 0, above: 0, ungraded: 0 }, vendor: { lastPurchaseDate: null, paidLines: 1 } } });
+    const bundle = offer({ id: 'bundle', promo_type: 'bundle', bundle: { amount: 150, currency: 'USD', linesCounted: 2 } });
+    bundle.grade = worthy('x', 40).grade;
+    const ranked = rankOffers([worthy('a', 100), bundle, worthy('b', 60)]);
+    expect(ranked.map((r) => [r.offer.id, r.tier])).toEqual([['bundle', 'hero'], ['a', 'large'], ['b', 'large']]);
   });
 
   it('a non-graded offer never appears here — it belongs to ungradableOffers only, never both', () => {
@@ -352,5 +388,26 @@ describe('standingLine', () => {
     const b = offer({ id: 'b', provider_id: 'v2', applicable_wines: ['C'], state: 'dismissed', dismissed_at: '2026-09-01T00:00:00.000Z' });
     const s = standingLine(read([a, b]));
     expect(s).toBe('1 offer from 1 vendor · 2 bottle lines.');
+  });
+});
+
+describe('bandsOf — direction A, a row per tier in strict rank order', () => {
+  it('splits the ranked list by tier without reordering it', () => {
+    const worthy = (id: string, amount: number) =>
+      offer({ id, grade: { status: 'graded', qualification: null, wines: [wine({ worth: { amount, currency: 'USD', quantity: 1, invoiceLines: 1, windowDays: 540, comparisonDate: '2026-09-01', comparisonAgeDays: 10, maxAgeDays: 180 } })], tally: { beats: 1, matches: 0, above: 0, ungraded: 0 }, vendor: { lastPurchaseDate: null, paidLines: 1 } } });
+    const ranked = rankOffers([3, 9, 1, 7, 5, 8, 2].map((n) => worthy(`w${n}`, n)));
+    const bands = bandsOf(ranked);
+    expect(bands.hero?.offer.id).toBe('w9');
+    expect(bands.large.map((r) => r.offer.id)).toEqual(['w8', 'w7', 'w5']);
+    expect(bands.compact.map((r) => r.offer.id)).toEqual(['w3', 'w2', 'w1']);
+    // concatenating the bands IS the rank order
+    expect([bands.hero!, ...bands.large, ...bands.compact]).toEqual(ranked);
+  });
+
+  it('no positive worth anywhere ⇒ no hero and no large row, every offer a compact tile', () => {
+    const bands = bandsOf(rankOffers([offer({ id: 'a' }), offer({ id: 'b', end_date: '2026-09-20' })]));
+    expect(bands.hero).toBeNull();
+    expect(bands.large).toEqual([]);
+    expect(bands.compact.map((r) => r.offer.id)).toEqual(['b', 'a']);
   });
 });

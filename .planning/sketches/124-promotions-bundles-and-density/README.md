@@ -2,7 +2,7 @@
 sketch: 124
 name: promotions-bundles-and-density
 question: "How do B's sized boxes read at C's ten-plus density, and what shape is a bundle on /promotions?"
-winner: null
+winner: A
 tags: [promotions, mudavym, bundles, density, tiers, box-size, adr-0160, adr-0165, adr-0169, sketch-only]
 ---
 
@@ -81,3 +81,12 @@ rank order, the tier is carried only as `data-tier`, and bundles are listed in t
 plain fold that opens the offer sheet bottle by bottle, with no bundle total drawn. CLAIMS
 row `PROMOTIONS-OWED-DRAWINGS-NOT-BUILT` pins that, so a build that jumps ahead of the pick
 fails CI; the row is superseded by the build that follows his answer.
+
+**[PICKED and BUILT 2026-09-25 — founder, 2026-09-25, round 5: question 1 **A · The
+Band**, question 2 **tray**, question 3 **at the tier its rolled-up worth earns**,
+question 4 **compact (as drawn)**; sketch 113's question 6 answered as drawn here, undated
+offers kept, labelled "no end date". Recorded with the rejected options in ADR 0160
+§113's round-5 bracket. `feat/promotions-mudavym` (PR #474, lane W3-promos) builds it;
+CLAIMS `PROMOTIONS-BAND-AND-TRAY-BUILT` supersedes `PROMOTIONS-OWED-DRAWINGS-NOT-BUILT`.
+The section above describes the branch before the pick. The tray shows every bottle
+inline, as drawn (direction A's own third question, not asked separately).]**

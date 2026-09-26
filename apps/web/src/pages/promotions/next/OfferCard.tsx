@@ -1,34 +1,42 @@
 /**
- * OfferCard — one offer (sketch 113 direction B, ADR 0160 §113).
+ * OfferCard — one offer, drawn at the size its rank earns (sketch 124
+ * direction A "The Band", founder 2026-09-25, round 5; ADR 0160 §113).
  *
- * ONE SIZE FOR NOW (2026-09-25). ADR 0165 rule 4 decides WHICH offer earns
- * which tier (`rankOffers`: at most one hero, up to three large, the rest
- * compact) and the card carries that as `data-tier`. What ADR 0160 still owes
- * is the DRAWING of those sized boxes at C's 10+ density — "the two pull
- * against each other" — and it lists that drawing as owed before the build.
- * It is drawn in `.planning/sketches/124-promotions-bundles-and-density/`;
- * until the founder picks one, every card renders the same size, in rank
- * order, with the first three lines and the sheet for the rest. A bundle
- * never reaches this component (its shape is the other owed drawing; the
- * page lists bundles in their own fold).
+ * THREE SIZES. ADR 0165 rule 4 decides WHICH offer earns which tier
+ * (`rankOffers`: at most one hero, up to three large, the rest compact) and
+ * this card draws it: `pn-card--hero` is a two-column band across the page
+ * (the lead on the left, the worth, lines and acts on the right), `--large`
+ * is the full card three across, `--compact` a tile five across carrying the
+ * figure, one line of why, and its acts. The page lays the bands out
+ * (`PromotionsNext`); this component only draws one card.
  *
- * The number drawn is ALWAYS the verdict against the lowest OTHER vendor
- * (`grade.wines[].deltaPct`/`verdict`), never the vendor's own percentage off
- * its own price — that percentage is printed once, small, in the claim line,
- * labelled "their claim" (sketch README "the fact that settles most of fork
- * 1" — see `offer-grade.ts`'s own header for the arithmetic this repeats).
+ * A BUNDLE IS A TRAY (founder, 2026-09-25, round 5, sketch 124 question 2):
+ * one card, its bottles set into it as a small table, at the tier its
+ * rolled-up total earns. Its figure is that total (an estimate, labelled so);
+ * when the total is withheld (a bottle with no worth, or a minimum whose unit
+ * is unknown — ADR 0165) the tray says "worth withheld", names why, and is
+ * compact, never sized by its best bottle.
+ *
+ * The number drawn on a single offer is ALWAYS the verdict against the lowest
+ * OTHER vendor (`grade.wines[].deltaPct`/`verdict`), never the vendor's own
+ * percentage off its own price — that percentage is printed once, small, in
+ * the claim line, labelled "their claim" (sketch 113 README "the fact that
+ * settles most of fork 1" — see `offer-grade.ts`'s own header).
  */
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Popover } from '../../../components/mudavym';
 import {
+  bundleWorthReason,
   claimSentence,
   conditionsOf,
   discountOf,
   fmtEstimate,
+  fmtEstimateFigure,
   fmtPrice,
   fmtSignedPercent,
   headlineWineOf,
+  isBundleOffer,
   offerStateWord,
   verdictTone,
   verdictWord,
@@ -46,6 +54,7 @@ function CodeChip({ code }: { code: string }) {
       <button
         type="button"
         className="pn-chip__copy"
+        aria-label={`Copy code ${code}`}
         onClick={async () => {
           try {
             await navigator.clipboard.writeText(code);
@@ -63,7 +72,7 @@ function CodeChip({ code }: { code: string }) {
   );
 }
 
-function WineLine({ wine, showWhy }: { wine: WineGrade; showWhy: boolean }) {
+function WineLine({ wine }: { wine: WineGrade }) {
   const tone = verdictTone(wine.verdict);
   return (
     <div className="pn-line">
@@ -79,11 +88,125 @@ function WineLine({ wine, showWhy }: { wine: WineGrade; showWhy: boolean }) {
           verdictWord(wine.verdict)
         )}
       </span>
-      {showWhy && wine.skipped.length > 0 && (
-        <span className="pn-line__why">{wine.skipped.map((s) => s.reason).join('; ')}</span>
+    </div>
+  );
+}
+
+/** One bottle's figure inside a tray: its verdict, then its own worth when it has one. */
+function bottleFigure(w: WineGrade): string {
+  const parts: string[] = [];
+  if (w.deltaPct != null) parts.push(fmtSignedPercent(w.deltaPct));
+  if (w.worth) parts.push(`about ${fmtEstimateFigure(w.worth.amount, w.worth.currency)}`);
+  return parts.length > 0 ? parts.join(' · ') : verdictWord(w.verdict);
+}
+
+/** The tray's small table — every bottle, in the order the mail named them. */
+function BottleTable({ wines }: { wines: WineGrade[] }) {
+  return (
+    <table className="pn-bottles">
+      <caption className="pn-sr">Bottles in this bundle, each against the lowest other vendor</caption>
+      <tbody>
+        {wines.map((w, i) => {
+          const tone = verdictTone(w.verdict);
+          return (
+            <tr key={`${w.wine}-${i}`}>
+              <th scope="row">{w.matchedAs ?? w.wine}</th>
+              <td className={tone ? `pn-${tone}` : 'pn-withheld'}>{bottleFigure(w)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+interface FootProps {
+  offer: OfferDto;
+  showDraft: boolean;
+  onOpenDetail: (id: string) => void;
+  onDismiss: (id: string) => void;
+  onRestore: (id: string) => void;
+  busy: boolean;
+}
+
+function CardFoot({ offer, showDraft, onOpenDetail, onDismiss, onRestore, busy }: FootProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const conditions = conditionsOf(offer.conditions);
+  const dismissed = offer.state === 'dismissed';
+  const who = offer.provider_name ?? 'vendor';
+  return (
+    <div className="pn-foot">
+      <button
+        type="button"
+        className="pn-btn pn-btn--quiet"
+        aria-label={`Details — ${who}, ${offer.name}`}
+        onClick={() => onOpenDetail(offer.id)}
+      >
+        Details
+      </button>
+      {showDraft && !dismissed && (
+        <a className="pn-btn pn-btn--primary" href={`/orders?new=1&promo=${encodeURIComponent(offer.id)}`}>
+          Draft an order
+        </a>
       )}
-      {showWhy && wine.skipped.length === 0 && wine.verdict !== 'beats' && wine.verdict !== 'above' && wine.verdict !== 'matches' && (
-        <span className="pn-line__why">{worthReasonFor(wine)}</span>
+      <button
+        ref={menuBtnRef}
+        type="button"
+        className="pn-btn pn-btn--icon"
+        aria-label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => setMenuOpen((v) => !v)}
+      >
+        ⋯
+      </button>
+      {menuOpen && (
+        <Popover
+          open
+          onClose={() => setMenuOpen(false)}
+          anchorRef={menuBtnRef}
+          label={`Actions for the ${who} offer`}
+          showClose={false}
+          width={240}
+        >
+          {conditions.code && (
+            <button
+              type="button"
+              onClick={async () => {
+                await navigator.clipboard.writeText(conditions.code as string);
+                setMenuOpen(false);
+              }}
+            >
+              Copy code
+              <small>{conditions.code}</small>
+            </button>
+          )}
+          {dismissed ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                onRestore(offer.id);
+                setMenuOpen(false);
+              }}
+            >
+              Bring back to the table
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                onDismiss(offer.id);
+                setMenuOpen(false);
+              }}
+            >
+              Put away
+              <small>For the whole house — undoable just after</small>
+            </button>
+          )}
+        </Popover>
       )}
     </div>
   );
@@ -91,7 +214,7 @@ function WineLine({ wine, showWhy }: { wine: WineGrade; showWhy: boolean }) {
 
 export interface OfferCardProps {
   offer: OfferDto;
-  /** ADR 0165 rule 4's tier — carried as `data-tier`, not yet drawn as a size (see the header). */
+  /** ADR 0165 rule 4's tier — drawn as the card's size (direction A, sketch 124). */
   tier: OfferTier;
   today: string;
   onOpenDetail: (id: string) => void;
@@ -101,155 +224,186 @@ export interface OfferCardProps {
 }
 
 export function OfferCard({ offer, tier, today, onOpenDetail, onDismiss, onRestore, busy }: OfferCardProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuBtnRef = useRef<HTMLButtonElement>(null);
   const wines = offer.grade.wines;
-  const headline = headlineWineOf(wines);
   const state = offerStateWord(offer, today);
   const discount = discountOf(offer.discount_value);
   const conditions = conditionsOf(offer.conditions);
-  const dismissed = offer.state === 'dismissed';
+  const bundle = isBundleOffer(offer);
+  const compact = tier === 'compact';
 
-  return (
-    <article className="pn-card" data-tier={tier} data-testid={`offer-card-${offer.id}`}>
-      <div className="pn-card__top">
-        <span className="pn-card__vendor">
-          {offer.provider_name ?? 'Unnamed vendor'}
-          {offer.name && <span> · {offer.name}</span>}
+  const top = (
+    <div className="pn-card__top">
+      <span className="pn-card__vendor">
+        {offer.provider_name ?? 'Unnamed vendor'}
+        {offer.name && <span> · {offer.name}</span>}
+      </span>
+      <span className={`pn-card__ends${state.soon ? ' pn-warn' : ''}`}>{state.word}</span>
+    </div>
+  );
+  const foot = (
+    <CardFoot
+      offer={offer}
+      showDraft={bundle || !compact}
+      onOpenDetail={onOpenDetail}
+      onDismiss={onDismiss}
+      onRestore={onRestore}
+      busy={busy}
+    />
+  );
+
+  let lead: ReactNode;
+  let rest: ReactNode;
+
+  if (bundle) {
+    const total = offer.bundle;
+    const tone = total ? (total.amount > 0 ? 'beats' : total.amount < 0 ? 'above' : 'none') : 'none';
+    const n = wines.length;
+    lead = (
+      <>
+        {top}
+        <span className="pn-chip pn-chip--bundle">
+          bundle · {n} bottle{n === 1 ? '' : 's'}
         </span>
-        <span className={`pn-card__ends${state.soon ? ' pn-warn' : ''}`}>{state.word}</span>
-      </div>
-
-      {headline ? (
-        headline.deltaPct != null && headline.bestElsewhere ? (
+        {total ? (
           <>
-            <div className={`pn-num pn-num--${verdictTone(headline.verdict) ?? 'none'}`}>
-              {fmtSignedPercent(headline.deltaPct)}
+            <div className={`pn-num pn-num--${tone}`}>
+              <span className="pn-num__about">about </span>
+              {fmtEstimateFigure(total.amount, total.currency)}
             </div>
+            <div className="pn-against">
+              the bundle&rsquo;s worth — the sum of its {total.linesCounted} bottle{total.linesCounted === 1 ? '' : 's'}, each
+              against your lowest other vendor
+            </div>
+          </>
+        ) : (
+          <div className="pn-num pn-num--none">worth withheld</div>
+        )}
+      </>
+    );
+    rest = (
+      <>
+        {n > 0 && <BottleTable wines={wines} />}
+        <div className="pn-claimline">
+          <b>Their claim:</b> {claimSentence(discount)}
+          {conditions.code && <CodeChip code={conditions.code} />}
+        </div>
+        {total ? (
+          <span className="pn-est">Estimate at your rate, not a saving already banked.</span>
+        ) : (
+          <div className="pn-why">{bundleWorthReason(wines)}</div>
+        )}
+        {foot}
+      </>
+    );
+  } else {
+    const headline = headlineWineOf(wines);
+    const figure = headline ? (
+      headline.deltaPct != null && headline.bestElsewhere ? (
+        <div className={`pn-num pn-num--${verdictTone(headline.verdict) ?? 'none'}`}>
+          {fmtSignedPercent(headline.deltaPct)}
+        </div>
+      ) : (
+        <div className="pn-num pn-num--none">{verdictWord(headline.verdict)}</div>
+      )
+    ) : (
+      <div className="pn-num pn-num--none">not a price</div>
+    );
+
+    if (compact) {
+      // A tile: the figure and ONE line of why. Everything else is in the sheet.
+      const why = headline?.worth
+        ? `${fmtEstimate(headline.worth.amount, headline.worth.currency)} est. against ${headline.bestElsewhere?.providerName ?? 'the lowest other vendor'}`
+        : headline
+          ? worthReasonFor(headline) || verdictWord(headline.verdict)
+          : 'the mail states neither a percentage nor an amount off';
+      lead = (
+        <>
+          {top}
+          {figure}
+          <div className="pn-why">{why}</div>
+        </>
+      );
+      rest = foot;
+    } else {
+      lead = (
+        <>
+          {top}
+          {figure}
+          {headline && headline.deltaPct != null && headline.bestElsewhere && (
             <div className="pn-against">
               {headline.verdict === 'above' ? 'above' : headline.verdict === 'matches' ? 'matches' : 'under'}{' '}
               <b>
-                {headline.bestElsewhere.providerName ?? 'another vendor'}, {fmtPrice(headline.bestElsewhere.price, headline.bestElsewhere.currency)}
+                {headline.bestElsewhere.providerName ?? 'another vendor'},{' '}
+                {fmtPrice(headline.bestElsewhere.price, headline.bestElsewhere.currency)}
               </b>{' '}
               · {headline.bestElsewhere.source === 'receipt_verified' ? 'landed' : 'agreed'}{' '}
               {headline.bestElsewhere.date ?? 'no date'} · on {headline.matchedAs ?? headline.wine}
             </div>
-          </>
-        ) : (
-          <div className="pn-num pn-num--none">{verdictWord(headline.verdict)}</div>
-        )
-      ) : (
-        <div className="pn-num pn-num--none">not a price</div>
-      )}
-
-      <div className="pn-claimline">
-        <b>Their claim:</b> {claimSentence(discount)}
-        {headline?.baseline && headline.offered
-          ? ` ${fmtPrice(headline.baseline.price, headline.baseline.currency)} → ${fmtPrice(headline.offered.price, headline.offered.currency)}`
-          : headline?.verdict === 'no_baseline'
-            ? ' — no price from this vendor to take it from'
-            : ''}
-        {conditions.code && <CodeChip code={conditions.code} />}
-        {headline?.baseline && headline.baseline.source !== 'receipt_verified' && (
-          <span className="pn-chip pn-chip--agreed">agreed · not yet received</span>
-        )}
-      </div>
-
-      {headline && !headline.worth && (
-        <div className="pn-worth pn-worth--none">
-          <span className="pn-worth__amount">worth —</span> {worthReasonFor(headline)}
-        </div>
-      )}
-      {headline?.worth && (
-        <div className="pn-worth">
-          <span className="pn-worth__amount">{fmtEstimate(headline.worth.amount, headline.worth.currency)}</span>{' '}
-          against {headline.bestElsewhere?.providerName ?? 'the other vendor'}'s price of {headline.worth.comparisonDate} — {headline.worth.quantity} bottle
-          {headline.worth.quantity === 1 ? '' : 's'} bought in the last {headline.worth.windowDays} days across{' '}
-          {headline.worth.invoiceLines} invoice{headline.worth.invoiceLines === 1 ? '' : 's'}.
-          <span className="pn-est">Estimate at your rate, not a saving already banked.</span>
-        </div>
-      )}
-      {wines.length > 0 && (
-        <div className="pn-lines">
-          {wines.slice(0, 3).map((w, i) => (
-            <WineLine key={`${w.wine}-${i}`} wine={w} showWhy={false} />
-          ))}
-          {wines.length > 3 && (
-            <span className="pn-lines__more">+{wines.length - 3} more — see details</span>
           )}
-        </div>
-      )}
+          <div className="pn-claimline">
+            <b>Their claim:</b> {claimSentence(discount)}
+            {headline?.baseline && headline.offered
+              ? ` ${fmtPrice(headline.baseline.price, headline.baseline.currency)} → ${fmtPrice(headline.offered.price, headline.offered.currency)}`
+              : headline?.verdict === 'no_baseline'
+                ? ' — no price from this vendor to take it from'
+                : ''}
+            {conditions.code && <CodeChip code={conditions.code} />}
+            {headline?.baseline && headline.baseline.source !== 'receipt_verified' && (
+              <span className="pn-chip pn-chip--agreed">agreed · not yet received</span>
+            )}
+          </div>
+        </>
+      );
+      rest = (
+        <>
+          {headline && !headline.worth && (
+            <div className="pn-worth pn-worth--none">
+              <span className="pn-worth__amount">worth —</span> {worthReasonFor(headline)}
+            </div>
+          )}
+          {headline?.worth && (
+            <div className="pn-worth">
+              <span className="pn-worth__amount">{fmtEstimate(headline.worth.amount, headline.worth.currency)}</span>{' '}
+              against {headline.bestElsewhere?.providerName ?? 'the other vendor'}&rsquo;s price of{' '}
+              {headline.worth.comparisonDate} — {headline.worth.quantity} bottle
+              {headline.worth.quantity === 1 ? '' : 's'} bought in the last {headline.worth.windowDays} days across{' '}
+              {headline.worth.invoiceLines} invoice{headline.worth.invoiceLines === 1 ? '' : 's'}.
+              <span className="pn-est">Estimate at your rate, not a saving already banked.</span>
+            </div>
+          )}
+          {wines.length > 0 && (
+            <div className="pn-lines">
+              {wines.slice(0, 3).map((w, i) => (
+                <WineLine key={`${w.wine}-${i}`} wine={w} />
+              ))}
+              {wines.length > 3 && <span className="pn-lines__more">+{wines.length - 3} more — see details</span>}
+            </div>
+          )}
+          {foot}
+        </>
+      );
+    }
+  }
 
-      <div className="pn-foot">
-        <button type="button" className="pn-btn pn-btn--quiet" onClick={() => onOpenDetail(offer.id)}>
-          Details
-        </button>
-        {!dismissed && (
-          <a
-            className="pn-btn pn-btn--primary"
-            href={`/orders?new=1&promo=${encodeURIComponent(offer.id)}`}
-          >
-            Draft an order
-          </a>
-        )}
-        <button
-          ref={menuBtnRef}
-          type="button"
-          className="pn-btn pn-btn--icon"
-          aria-label="More actions"
-          aria-haspopup="menu"
-          onClick={() => setMenuOpen((v) => !v)}
-        >
-          ⋯
-        </button>
-        {menuOpen && (
-          <Popover
-            open
-            onClose={() => setMenuOpen(false)}
-            anchorRef={menuBtnRef}
-            label={`Actions for the ${offer.provider_name ?? 'vendor'} offer`}
-            showClose={false}
-            width={240}
-          >
-            {conditions.code && (
-              <button
-                type="button"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(conditions.code as string);
-                  setMenuOpen(false);
-                }}
-              >
-                Copy code
-                <small>{conditions.code}</small>
-              </button>
-            )}
-            {dismissed ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  onRestore(offer.id);
-                  setMenuOpen(false);
-                }}
-              >
-                Bring back to the table
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  onDismiss(offer.id);
-                  setMenuOpen(false);
-                }}
-              >
-                Put away
-                <small>For the whole house — undoable just after</small>
-              </button>
-            )}
-          </Popover>
-        )}
-      </div>
+  return (
+    <article
+      className={`pn-card pn-card--${tier}${bundle ? ' pn-tray' : ''}`}
+      data-tier={tier}
+      data-bundle={bundle ? 'true' : undefined}
+      data-testid={`offer-card-${offer.id}`}
+      aria-label={`${offer.provider_name ?? 'Unnamed vendor'} — ${offer.name}${bundle ? ', bundle' : ''}`}
+    >
+      {tier === 'hero' ? (
+        <>
+          <div className="pn-hero__lead">{lead}</div>
+          <div className="pn-hero__rest">{rest}</div>
+        </>
+      ) : (
+        <>
+          {lead}
+          {rest}
+        </>
+      )}
     </article>
   );
 }
