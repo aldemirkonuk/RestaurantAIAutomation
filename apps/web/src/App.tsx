@@ -120,6 +120,8 @@ const Recommendations = lazyWithRefresh(() => import('./pages/Recommendations'))
 const InsightCatalog = lazyWithRefresh(() => import('./pages/InsightCatalog'))
 const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
 const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
+// ADR 0145 — `/ask`, live for every house in code (LIVE_PAGES).
+const AskNext = lazyWithRefresh(() => import('./pages/ask/next/AskNext'))
 const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
 const AuthorizeIntegrationNext = lazyWithRefresh(() => import('./pages/authorize-integration/next/AuthorizeIntegrationNext'))
 const CompleteIntegrationConsent = lazyWithRefresh(() => import('./pages/authorize-integration/CompleteIntegrationConsent'))
@@ -503,9 +505,15 @@ function App() {
                       `/wine-agent` and `/wineagent` are retired (ADR 0019 §B): both
                       rendered the same under-construction placeholder with no
                       behaviour behind it. Everything that said "Wine Agent" in the
-                      UI already navigated to `/sommelier`, which is the real
-                      inventory & ordering help surface. */}
-                  <Route path="/sommelier" element={<SommelierAI />} />
+                      UI already navigated to `/sommelier`.
+                      [2026-09-25, ADR 0145: `/ask` is the page now — the
+                      founder's 2026-09-12 answer "/sommelier redirects here".
+                      `ask` is in LIVE_PAGES, so every house gets `AskNext`; the
+                      old chat stays mounted only as `legacy` (a per-browser QA
+                      override) until the ADR 0149 cutover deletes it.] */}
+                  <Route path="/ask" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
+                  <Route path="/ask/f/:folioId" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
+                  <Route path="/sommelier" element={<Navigate to="/ask" replace state={{ from: 'sommelier' }} />} />
                   <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   
                   {/* Dev/Test Pages */}

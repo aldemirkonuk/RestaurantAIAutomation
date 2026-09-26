@@ -30,7 +30,7 @@
  *   III  Questions people ask     — the FAQ (`hp-faq.ts`).
  *   IV   Reach a person           — one email, `hp-support.ts`. No Slack
  *        (founder: "Just emails, no Slack or anything for now").
- *   V    Ways back in             — the existing guide, the Sommelier, your
+ *   V    Ways back in             — the existing guide, Ask (/ask), your
  *        profile.
  *
  * THE STANDING MAIL-GRANT ALERT
@@ -577,9 +577,9 @@ export default function HelpNext({ ground }: HelpNextProps) {
               <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>The app guide</p>
               <Prose muted>The tours and the getting-started walkthrough, from the top.</Prose>
             </a>
-            <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/sommelier">
-              <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>The Sommelier</p>
-              <Prose muted>Wine, cellar and pairing questions, in a dedicated conversation.</Prose>
+            <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/ask">
+              <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>Ask</p>
+              <Prose muted>Questions about the house, answered from its own books, with your past questions kept.</Prose>
             </a>
             <a className="hp-card hp-ink hp-focus" style={{ textDecoration: 'none', display: 'block' }} href="/profile">
               <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>Your profile</p>

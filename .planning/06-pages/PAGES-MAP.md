@@ -115,7 +115,7 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 | `/simpos/:restaurantId` | [[simpos-terminal]] | dev | public | dev | none | 3 |
 | `/simpos/:restaurantId/orders` | [[simpos-order-log]] | dev | public | dev | none | 0 |
 | `/simpos/:restaurantId/scenarios` | [[simpos-scenarios]] | dev | public | dev | none | 0 |
-| `/sommelier` | [[sommelier]] | owner | core | chat | none | 0 |
+| `/ask` | [[ask]] | owner, manager, staff | core | reading | none | 0 |
 | `/studio` | [[studio]] | dev | core | command | none | 1 |
 | `/studio/certify` | [[studio-certify]] | dev | core | list+detail | none | 1 |
 | `/studio/invite/:token` | [[studio-invite-redeem]] | dev | core | focused | none | 1 |
@@ -130,7 +130,7 @@ The founder's tracking mandate lands here: page telemetry rides the NF spine (`s
 `PlaceholderPage` under two spellings, zero buttons, zero endpoints. Their notes
 are deleted rather than archived: the pages had no behaviour to preserve a record
 of. The sidebar "Wine Agent" item is gone; the Wine Agent FAB, Help card and Learn
-panel already opened [[sommelier]] and are unchanged.
+panel already opened [[RETIRED|sommelier (retired 2026-09-25)]] and are unchanged.
 
 ## Surface findings feed — raw material for the P2.3 proposal
 
@@ -162,7 +162,7 @@ panel already opened [[sommelier]] and are unchanged.
 (`/wine-agent`, `/wineagent`) are **retired**; the remaining 11 are modal/API-only
 surfaces — [[admin]], [[admin-health]], [[calendar]],
 [[dev-sandbox]], [[documents-reports]], [[logs]],
-[[receipts]], [[sommelier]], [[team]], [[vendor-prices]], [[vendor-public-page]].
+[[receipts]], [[ask]], [[team]], [[vendor-prices]], [[vendor-public-page]].
 (`/inventory-legacy` was on this list; **retired 2026-08-26** once its two parity
 blockers were ported onto [[inventory]] — ADR 0019 §B-parity. `/calendar-classic`
 likewise: **retired 2026-08-26** once its one blocker — reminders that actually

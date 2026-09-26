@@ -104,6 +104,9 @@ export const MUDAVYM_PAGES = [
   // [2026-09-25: superseded — now in LIVE_PAGES, live for every house in
   // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
+  // ADR 0145 `/ask` (2026-09-25 amendment): live in code from day one (Q2); no
+  // column exists. `legacy` is the retired /sommelier chat, until the cutover.
+  'ask',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
@@ -129,9 +132,11 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * which row a house has, or whether it has one. Their three columns stay,
  * unread (ADR 0149 never deletes a column).]
  *
- * 23 keys. Held back, still flag-gated: `recommendations`, `receiving`, and
+ * [2026-09-25, ADR 0145's 2026-09-25 amendment: `ask` joined on the same Q2.]
+ *
+ * 24 keys. Held back, still flag-gated: `recommendations`, `receiving`, and
  * `arrival` (the /get-started book, whose `legacy` slot is the ADR 0213 plan
- * of record — OFF until deliberately flipped). `MUDAVYM_PAGES.length` is 26;
+ * of record — OFF until deliberately flipped). `MUDAVYM_PAGES.length` is 27;
  * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
@@ -161,6 +166,7 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'shell',
   'admin',
   'authorize_integration',
+  'ask',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

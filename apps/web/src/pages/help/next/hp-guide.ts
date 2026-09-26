@@ -56,13 +56,13 @@ export const GUIDE_ENTRIES: readonly GuideEntry[] = [
       {
         text: 'It only proposes. Nothing sends, orders or changes stock until you read the proposal and confirm it — today that covers a reorder and a vendor message; everything else it is asked for, it declines to invent.',
       },
-      // pages/Help.tsx historic "Wine Agent" card; App.tsx mounts
-      // /sommelier directly (no PageGate).
+      // [2026-09-25] ADR 0145: /ask answers out of a reading of the house's
+      // books; /sommelier now redirects there (App.tsx).
       {
-        text: 'For wine, cellar and pairing questions specifically, the Sommelier has its own page — open it when you want a longer conversation rather than a one-line ask.',
+        text: 'For a question about the house itself — stock, orders, receipts, the calendar — open Ask. Every figure it shows comes from a reading of the house’s own books, and your past questions stay in your book there.',
       },
     ],
-    goes: { to: '/sommelier', label: 'Open the Sommelier' },
+    goes: { to: '/ask', label: 'Open Ask' },
   },
   {
     slug: 'moving-between-tasks',

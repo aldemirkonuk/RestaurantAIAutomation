@@ -12,7 +12,7 @@ rebrand_strings: 4
 maturity: partial
 status: documented
 updated: 2026-08-26
-links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[sommelier]]", "[[services]]", "[[get-started]]", "[[settings]]", "[[profile]]"]
+links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[ask]]", "[[services]]", "[[get-started]]", "[[settings]]", "[[profile]]"]
 ---
 
 # /help — Help & Support
@@ -69,7 +69,7 @@ links: ["[[PAGE-CONTRACT]]", "[[privacy]]", "[[sommelier]]", "[[services]]", "[[
 - **Slack** → external — WineOps support Slack workspace
 - **Open app guide** → [[get-started]] `/get-started?tab=use`
 - **Manage services** → [[settings]] `/settings?tab=services`
-- **Open Wine Agent** → [[sommelier]] `/sommelier` (`/wineagent` is still a placeholder)
+- **Open Wine Agent** → [[RETIRED|sommelier (retired 2026-09-25)]] `/sommelier` [2026-09-25: redirects to [[ask]] `/ask`] (`/wineagent` is still a placeholder)
 - **Profile link (footer)** → [[profile]] `/profile`
 
 ## 1. Purpose
@@ -164,7 +164,7 @@ a vacuum.
   (`:37`) with **zero listeners** anywhere in `apps/web/src` or `apps/api-gateway/src`.
   `signals_today: partial` is generous — the instrumentation exists and collects nothing.
 - The Wine Agent card links to a page whose backend does not exist
-  (see [[sommelier]] §10), so the recovery hub's most prominent AI affordance recovers
+  (see [[RETIRED|sommelier (retired 2026-09-25)]] §10), so the recovery hub's most prominent AI affordance recovers
   the user into a rules bot.
 
 ## 11. Data flow
@@ -217,7 +217,7 @@ exactly what the three events were meant to provide.
 3. **Three tracked interactions that look instrumented and are not** (§10). This is the
    contract's *hollow* pattern applied to telemetry rather than to data.
 4. **"Open Wine Agent"** (`:173-176`) promises an agent; the destination is
-   [[sommelier]], whose chat backend is unregistered.
+   [[RETIRED|sommelier (retired 2026-09-25)]], whose chat backend is unregistered.
 
 ## 13. Roadmap
 
@@ -234,7 +234,7 @@ exactly what the three events were meant to provide.
    `neural_footprint_event` table, or both.*
 3. **Rebrand the four visible `WineOps` strings** (`:36,67,79` and the default at `:18`),
    sequenced with #1 so the address and the copy change together.
-4. Relabel or re-point the Wine Agent card once [[sommelier]] has a backend, so "Open Wine
+4. Relabel or re-point the Wine Agent card once [[RETIRED|sommelier (retired 2026-09-25)]] has a backend, so "Open Wine
    Agent" stops overpromising (`:173-176`).
 5. Move `FAQS` (`:22-40`) somewhere editable without a deploy, once there are more than
    four.

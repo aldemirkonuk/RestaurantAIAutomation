@@ -12,7 +12,7 @@ agents: [sommelier_agent, menu_analyzer_agent]
 owner_unit: ""
 gap_reason: "Four units hold a slice each — catalogue-identity, agent-fleet, corpora-enrichment, taste-fingerprint — and every one disclaims the product"
 updated: 2026-09-01
-links: ["[[wines]]", "[[sommelier]]", "[[wine-studio]]", "[[catalogue-identity-charter]]", "[[SOFTWARE-MAP]]"]
+links: ["[[wines]]", "[[ask]]", "[[wine-studio]]", "[[catalogue-identity-charter]]", "[[SOFTWARE-MAP]]"]
 ---
 
 # Wine Library & Sommelier
@@ -51,7 +51,7 @@ Read it and it is real. Act on it and, today, mostly nothing happens.
 
 - [[wines]] (`/wines`, `App.tsx:289`) — the catalogue. `WineLibrary.tsx`, the larger of
   the two surfaces.
-- [[sommelier]] (`/sommelier`, `App.tsx:331`) — the chat. `SommelierAI.tsx`, 721 lines.
+- [[RETIRED|sommelier (retired 2026-09-25)]] (`/sommelier`, `App.tsx:331`) — the chat. [2026-09-25: `/sommelier` redirects to [[ask]] `/ask` (ADR 0145); the page note is retired.] `SommelierAI.tsx`, 721 lines.
 
 `/sommelier` is the terminus for every "Wine Agent" affordance in the product. The
 `/wine-agent` and `/wineagent` placeholder routes are **retired** — *"both rendered the
@@ -176,7 +176,7 @@ actions are not.
 - Enrichment arrives on the wire and is discarded — `description`, `tastingNotes`,
   `pairingNotes`, `imageUrl` are on the API type and unmapped (`services/api/types.ts:324-328`).
 
-**[[sommelier]]** (`sommelier.md:96-126`). *A 721-line chat product with no chat backend.*
+**[[RETIRED|sommelier (retired 2026-09-25)]]** (`sommelier.md:96-126`, recoverable at `e754b3a27`). *A 721-line chat product with no chat backend.*
 Everything around the model call is real; the model call is not. Every message takes the
 catch branch (`SommelierAI.tsx:188-241`) — the code says so at `:171-172`: *"This endpoint
 may not exist yet, so we'll handle gracefully."* What ships is a client-side rules bot: a
