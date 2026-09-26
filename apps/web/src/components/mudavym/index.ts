@@ -3,6 +3,8 @@
 export { Wordmark, type WordmarkProps } from './Wordmark';
 export { Seal, type SealProps } from './Seal';
 export { HoldToApprove, type HoldToApproveProps } from './HoldToApprove';
+export { Select, type SelectProps, type SelectOption } from './Select';
+export { CountInput, type CountInputProps } from './CountInput';
 /**
  * `StripeCardPanel` is deliberately NOT re-exported here.
  *

@@ -15,6 +15,7 @@ import {
   Min,
   Max,
   MaxLength,
+  IsDateString,
 } from "class-validator";
 
 /** Provenances accepted by inventory_lots.cost_provenance (see 20260729120000 migration). */
@@ -637,5 +638,139 @@ export class UnmappedToastItemResponseDto {
   isActive: boolean;
 
   @ApiProperty({ description: "Created timestamp" })
+  createdAt: string;
+}
+
+// ============================================================================
+// AUCTION LOT RECORDS — an auction lot's own details, kept. Built 2026-09-21
+// (founder answer 2) closing the "nowhere to live" gap AuctionLotStart.tsx and
+// inventory.md §9 named 2026-09-06 (ADR 0083). See
+// 20260926140400_an_auction_lot_keeps_its_own_details.sql for the full case.
+// ============================================================================
+
+export class CreateAuctionLotRecordDto {
+  @ApiProperty({
+    description: "The restaurant_inventory row this lot carried stock into",
+  })
+  @IsUUID()
+  inventoryId: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(200)
+  auctionHouse: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The auction's lot number, when the person has one. Optional since 2026-09-21 (founder answer 11); a blank is recorded as not stated.",
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  lotNumber?: string | null;
+
+  @ApiProperty({ description: "YYYY-MM-DD" })
+  @IsDateString()
+  saleDate: string;
+
+  @ApiProperty()
+  @IsNumber()
+  @Min(0)
+  hammerPrice: number;
+
+  @ApiProperty({
+    description:
+      "Never omitted and never a silent 0 — the sheet itself refuses to compute a cost without one",
+  })
+  @IsNumber()
+  @Min(0)
+  buyersPremium: number;
+
+  @ApiProperty({
+    description: "ISO-4217 code — never inferred (founder, 2026-09-21)",
+  })
+  @IsString()
+  @MaxLength(3)
+  currency: string;
+
+  @ApiProperty()
+  @IsInt()
+  @Min(1)
+  bottles: number;
+
+  @ApiPropertyOptional({
+    description:
+      "What the person said one unit of the lot's currency was worth in the house's currency. Stated, never looked up (founder answer 10, 2026-09-21).",
+    nullable: true,
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.00000001)
+  exchangeRate?: number | null;
+
+  @ApiPropertyOptional({
+    description:
+      "The per-bottle cost the person typed in the house's currency (people round). When present it is what is booked.",
+    nullable: true,
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  houseUnitCost?: number | null;
+
+  @ApiProperty({
+    description:
+      "The per-bottle cost, in the house's currency, the bottles were carried in at. Refused unless it is the one the stated figures give (auction-lot-cost.ts).",
+  })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  bookedUnitCost: number;
+}
+
+export class AuctionLotRecordResponseDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  inventoryId: string;
+
+  @ApiProperty()
+  auctionHouse: string;
+
+  @ApiPropertyOptional({ nullable: true })
+  lotNumber: string | null;
+
+  @ApiProperty()
+  saleDate: string;
+
+  @ApiProperty()
+  hammerPrice: number;
+
+  @ApiProperty()
+  buyersPremium: number;
+
+  @ApiProperty()
+  currency: string;
+
+  @ApiProperty()
+  bottles: number;
+
+  @ApiPropertyOptional({ nullable: true, description: "The house's currency when the lot was recorded; null on a record written before 2026-09-21." })
+  houseCurrency: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  exchangeRate: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  houseUnitCost: number | null;
+
+  @ApiPropertyOptional({ nullable: true, description: "What the book was given per bottle, in houseCurrency; null on an older record, which never recorded it." })
+  bookedUnitCost: number | null;
+
+  @ApiProperty()
+  recordedByName: string;
+
+  @ApiProperty()
   createdAt: string;
 }

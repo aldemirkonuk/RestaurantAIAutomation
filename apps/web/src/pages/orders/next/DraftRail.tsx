@@ -17,19 +17,36 @@
  *   cancel-scheduled-send endpoint.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { HoldToApprove } from '@/components/mudavym';
-import { ink, settle, turn, useReducedMotion } from '@/lib/mudavym/motion';
+import { useEffect, useRef, useState } from "react";
+import { getErrorMessage, getErrorStatus } from "@/services/api/client";
+import { HoldToApprove } from "@/components/mudavym";
+import { ink, settle, turn, useReducedMotion } from "@/lib/mudavym/motion";
+import { useQueryClient } from "@tanstack/react-query";
 import {
+  activeConversationKeys,
+  draftKeys,
   useActiveConversations,
   useApproveDraft,
+  issueDraftSendChallenge,
+  requestDraftSend,
   useCancelScheduledSend,
   useDiscardDraft,
+  useDraftStanding,
   useOrderConversations,
   type ActiveConversationDto,
   type OrderConversationDto,
-} from '@/hooks/queries/useDraftEmailQueries';
-import { EM, MONO, SANS, SERIF, fmtCountdown, fmtDate, fmtMoney, num } from './format';
+} from "@/hooks/queries/useDraftEmailQueries";
+import { SendStandingNote, holdAct } from "@/components/orders/SendStanding";
+import {
+  EM,
+  MONO,
+  SANS,
+  SERIF,
+  fmtCountdown,
+  fmtDate,
+  fmtMoney,
+  num,
+} from "./format";
 
 /* ── the scheduled-send countdown ───────────────────────────────────────── */
 
@@ -44,10 +61,15 @@ function CountdownBar({
 }) {
   const reduced = useReducedMotion();
   const barRef = useRef<HTMLDivElement | null>(null);
-  const [remaining, setRemaining] = useState(() => new Date(until).getTime() - Date.now());
+  const [remaining, setRemaining] = useState(
+    () => new Date(until).getTime() - Date.now(),
+  );
 
   useEffect(() => {
-    const id = setInterval(() => setRemaining(new Date(until).getTime() - Date.now()), 250);
+    const id = setInterval(
+      () => setRemaining(new Date(until).getTime() - Date.now()),
+      250,
+    );
     return () => clearInterval(id);
   }, [until]);
 
@@ -58,15 +80,18 @@ function CountdownBar({
     if (!el) return;
     const ms = new Date(until).getTime() - Date.now();
     if (ms <= 0) {
-      el.style.transform = 'scaleX(0)';
+      el.style.transform = "scaleX(0)";
       return;
     }
     if (reduced) return; // stepped width below, no travel
-    const anim = el.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], {
-      duration: ms,
-      easing: 'linear',
-      fill: 'forwards',
-    });
+    const anim = el.animate(
+      [{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }],
+      {
+        duration: ms,
+        easing: "linear",
+        fill: "forwards",
+      },
+    );
     return () => anim.cancel();
   }, [until, reduced]);
 
@@ -76,21 +101,28 @@ function CountdownBar({
   return (
     <div
       style={{
-        border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+        border: "1px solid var(--seal-ring, rgba(26,94,107,.32))",
         borderRadius: 10,
-        padding: '8px 10px',
-        background: 'var(--paper-0, #FAF7F1)',
+        padding: "8px 10px",
+        background: "var(--paper-0, #FAF7F1)",
         fontFamily: SANS,
       }}
     >
       <div className="flex items-center justify-between gap-3">
-        <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+        <span style={{ fontSize: 12, color: "var(--ink-2, #4F473C)" }}>
           {closed ? (
-            'The window has closed — the house is sending it.'
+            "The window has closed — the house is sending it."
           ) : (
             <>
-              Sends itself in{' '}
-              <span style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
+              Sends itself in{" "}
+              <span
+                style={{
+                  fontFamily: MONO,
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: 600,
+                  color: "var(--ink-1, #211C16)",
+                }}
+              >
                 {fmtCountdown(remaining)}
               </span>
             </>
@@ -102,34 +134,42 @@ function CountdownBar({
             onClick={onCancel}
             disabled={cancelling}
             style={{
-              flex: 'none',
-              padding: '5px 12px',
+              flex: "none",
+              padding: "5px 12px",
               borderRadius: 8,
               fontSize: 12,
               fontWeight: 600,
-              cursor: cancelling ? 'default' : 'pointer',
+              cursor: cancelling ? "default" : "pointer",
               // the cancel gets STRONGER as time runs out, never weaker
-              border: `1px solid ${urgent ? 'var(--seal, #1A5E6B)' : 'var(--seal-ring, rgba(26,94,107,.32))'}`,
-              background: urgent ? 'var(--seal, #1A5E6B)' : 'transparent',
-              color: urgent ? 'var(--paper-0, #FAF7F1)' : 'var(--seal-deep, #14515C)',
+              border: `1px solid ${urgent ? "var(--seal, #1A5E6B)" : "var(--seal-ring, rgba(26,94,107,.32))"}`,
+              background: urgent ? "var(--seal, #1A5E6B)" : "transparent",
+              color: urgent
+                ? "var(--paper-0, #FAF7F1)"
+                : "var(--seal-deep, #14515C)",
               opacity: cancelling ? 0.6 : 1,
               transition: `background ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}, border-color ${ink.ms}ms ${ink.easing}`,
             }}
           >
-            {cancelling ? 'Cancelling…' : 'Cancel auto-send'}
+            {cancelling ? "Cancelling…" : "Cancel auto-send"}
           </button>
         )}
       </div>
       <div
         aria-hidden
-        style={{ marginTop: 6, height: 3, borderRadius: 2, background: 'var(--paper-2, #EAE4D8)', overflow: 'hidden' }}
+        style={{
+          marginTop: 6,
+          height: 3,
+          borderRadius: 2,
+          background: "var(--paper-2, #EAE4D8)",
+          overflow: "hidden",
+        }}
       >
         <div
           ref={barRef}
           style={{
-            height: '100%',
-            background: 'var(--seal, #1A5E6B)',
-            transformOrigin: '0 50%',
+            height: "100%",
+            background: "var(--seal, #1A5E6B)",
+            transformOrigin: "0 50%",
             // reduced motion: a stepped, honest width instead of travel
             transform: reduced
               ? `scaleX(${closed ? 0 : Math.min(1, remaining / Math.max(remaining, 1))})`
@@ -144,28 +184,58 @@ function CountdownBar({
 /* ── one thread line inside an expanded draft ───────────────────────────── */
 
 function ThreadLine({ row }: { row: OrderConversationDto }) {
-  const isDraft = row.direction === 'OUTBOUND' && !row.sentAt;
+  const isDraft = row.direction === "OUTBOUND" && !row.sentAt;
   return (
     <div
       style={{
-        display: 'flex',
-        alignItems: 'baseline',
+        display: "flex",
+        alignItems: "baseline",
         gap: 8,
-        padding: '4px 8px',
+        padding: "4px 8px",
         borderRadius: 6,
         // a sent message earns a solid edge and a timestamp; a draft never does
-        border: isDraft ? '1px dashed var(--ink-3, #7C7365)' : '1px solid var(--paper-2, #EAE4D8)',
+        border: isDraft
+          ? "1px dashed var(--ink-3, #7C7365)"
+          : "1px solid var(--paper-2, #EAE4D8)",
         fontFamily: SANS,
         fontSize: 11.5,
-        color: 'var(--ink-2, #4F473C)',
+        color: "var(--ink-2, #4F473C)",
       }}
     >
-      <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.08em', color: 'var(--ink-3, #7C7365)', flex: 'none' }}>
-        {row.direction === 'INBOUND' ? '← vendor' : '→ house'}
+      <span
+        style={{
+          fontFamily: MONO,
+          fontSize: 9,
+          letterSpacing: "0.08em",
+          color: "var(--ink-3, #7C7365)",
+          flex: "none",
+        }}
+      >
+        {row.direction === "INBOUND" ? "← vendor" : "→ house"}
       </span>
-      <span className="min-w-0 flex-1 truncate">{row.emailType?.toLowerCase().replace(/_/g, ' ') ?? EM}</span>
-      <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)', flex: 'none' }}>
-        {isDraft ? 'draft — not sent' : row.sentAt ? `sent ${fmtDate(row.sentAt)}` : fmtDate(row.createdAt)}
+      <span className="min-w-0 flex-1 truncate">
+        {row.emailType?.toLowerCase().replace(/_/g, " ") ?? EM}
+      </span>
+      <span
+        style={{
+          fontFamily: MONO,
+          fontSize: 10,
+          color: "var(--ink-3, #7C7365)",
+          flex: "none",
+        }}
+      >
+        {isDraft
+          ? row.requestedByName || row.requestedBy
+            ? `draft — asked by ${row.requestedByName ?? "a colleague"}, not sent`
+            : "draft — not sent"
+          : row.sentAt
+            ? `sent ${fmtDate(row.sentAt)}${
+                // Who sent it (founder, 2026-09-21: "the staffer sees who
+                // sent it"). Only said when the gateway recorded it; rows
+                // sent before that day carry no sender and say nothing.
+                row.sentBy ? ` by ${row.sentByName ?? "someone whose name could not be read"}` : ""
+              }${row.sentBy && row.requestedBy ? `, asked by ${row.requestedByName ?? "a colleague"}` : ""}`
+            : fmtDate(row.createdAt)}
       </span>
     </div>
   );
@@ -175,6 +245,11 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
 
 function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
   const conversations = useOrderConversations(draft.orderId);
+  // WHO (founder, 2026-09-21): does this viewer's hold send, or ask a manager?
+  const standing = useDraftStanding(draft.orderId);
+  const act = holdAct(standing.data?.sendOrAsk);
+  const queryClient = useQueryClient();
+  const [asked, setAsked] = useState<string | null>(null);
   const approveDraft = useApproveDraft();
   const discardDraft = useDiscardDraft();
   const cancelSend = useCancelScheduledSend();
@@ -190,10 +265,10 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
     if (!el || reduced) return;
     const anim = el.animate(
       [
-        { opacity: 0, transform: 'translateY(4px)' },
-        { opacity: 1, transform: 'translateY(0)' },
+        { opacity: 0, transform: "translateY(4px)" },
+        { opacity: 1, transform: "translateY(0)" },
       ],
-      { duration: turn.ms, easing: turn.easing, fill: 'both' },
+      { duration: turn.ms, easing: turn.easing, fill: "both" },
     );
     return () => anim.cancel();
   }, [reduced]);
@@ -201,15 +276,28 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
   const rows = conversations.data ?? [];
   const scheduled = rows.find(
     (r) =>
-      r.direction === 'OUTBOUND' &&
+      r.direction === "OUTBOUND" &&
       !r.sentAt &&
       r.scheduledSendAt &&
       new Date(r.scheduledSendAt).getTime() > Date.now(),
   );
 
   const fail = (verb: string) => (err: unknown) => {
-    const msg = (err as { message?: string })?.message ?? 'request failed';
-    setActionError(`Not ${verb} — the gateway refused (${msg}).`);
+    // A 403 is the seal refusing — a definite "nothing was sent", not an
+    // unconfirmed one — and the gateway's own sentence (getErrorMessage reads
+    // the response body) is what says why, not axios's generic "Request
+    // failed with status code 403" (lane E audit D9).
+    if (getErrorStatus(err) === 403) {
+      setActionError(`The hold was refused, so nothing was sent: ${getErrorMessage(err)}`);
+      setAttempt((a) => a + 1);
+      return;
+    }
+    const msg = getErrorMessage(err);
+    setActionError(
+      verb === "sent"
+        ? `Send not confirmed (${msg}). Check the conversation before trying again.`
+        : `The action was not confirmed (${msg}).`,
+    );
     setAttempt((a) => a + 1);
   };
 
@@ -222,7 +310,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
           onCancel={() => {
             setActionError(null);
             cancelSend.mutate(draft.orderId, {
-              onError: fail('cancelled'),
+              onError: fail("cancelled"),
             });
           }}
         />
@@ -231,10 +319,10 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
       {/* the draft itself — dashed edge, no timestamp, incapable of "sent" */}
       <div
         style={{
-          border: '1.5px dashed var(--ink-3, #7C7365)',
+          border: "1.5px dashed var(--ink-3, #7C7365)",
           borderRadius: 10,
-          padding: '10px 12px',
-          background: 'var(--paper-0, #FAF7F1)',
+          padding: "10px 12px",
+          background: "var(--paper-0, #FAF7F1)",
         }}
       >
         <div className="mb-1 flex items-center justify-between">
@@ -243,17 +331,23 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
               fontFamily: MONO,
               fontSize: 8.5,
               fontWeight: 600,
-              letterSpacing: '0.14em',
-              textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
-              border: '1px dashed var(--ink-3, #7C7365)',
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              color: "var(--ink-3, #7C7365)",
+              border: "1px dashed var(--ink-3, #7C7365)",
               borderRadius: 3,
-              padding: '2px 6px',
+              padding: "2px 6px",
             }}
           >
             Draft · not sent
           </span>
-          <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)' }}>
+          <span
+            style={{
+              fontFamily: MONO,
+              fontSize: 10,
+              color: "var(--ink-3, #7C7365)",
+            }}
+          >
             round {draft.roundCount ?? EM}
           </span>
         </div>
@@ -262,14 +356,14 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
             fontFamily: SANS,
             fontSize: 12.5,
             lineHeight: 1.55,
-            color: 'var(--ink-2, #4F473C)',
-            whiteSpace: 'pre-wrap',
+            color: "var(--ink-2, #4F473C)",
+            whiteSpace: "pre-wrap",
             maxHeight: 180,
-            overflow: 'auto',
+            overflow: "auto",
             margin: 0,
           }}
         >
-          {draft.draftContent ?? 'The draft body has not arrived yet.'}
+          {draft.draftContent ?? "The draft body has not arrived yet."}
         </p>
       </div>
 
@@ -280,51 +374,121 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
             <ThreadLine key={r.id} row={r} />
           ))}
           {rows.length > 4 && (
-            <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)', paddingLeft: 8 }}>
+            <span
+              style={{
+                fontFamily: MONO,
+                fontSize: 10,
+                color: "var(--ink-3, #7C7365)",
+                paddingLeft: 8,
+              }}
+            >
               + {rows.length - 4} earlier in the thread
             </span>
           )}
         </div>
       )}
       {conversations.isError && (
-        <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
-          The thread could not be fetched — what is shown above is the draft alone.
+        <p style={{ fontSize: 11, color: "var(--ink-3, #7C7365)", margin: 0 }}>
+          The thread could not be fetched — what is shown above is the draft
+          alone.
         </p>
       )}
 
       <div className="grid gap-1">
-        <HoldToApprove
-          key={`send-${draft.orderId}-${attempt}`}
-          label={`Hold to approve & send to ${draft.providerName ?? 'the vendor'}`}
-          approvedLabel="Approved — leaving the house"
-          disabled={approveDraft.isPending || discardDraft.isPending}
-          onApprove={() => {
-            setActionError(null);
-            approveDraft.mutate({ orderId: draft.orderId }, { onError: fail('sent') });
-          }}
+        {act === "ask" ? (
+          <HoldToApprove
+            key={`ask-${draft.orderId}-${attempt}`}
+            label="Hold to ask a manager to send it"
+            approvedLabel="Asked — waiting for a manager"
+            disabled={discardDraft.isPending || !!asked || !(draft.draftContent ?? "").trim()}
+            onApprove={async () => {
+              setActionError(null);
+              try {
+                const out = await requestDraftSend({
+                  orderId: draft.orderId,
+                  content: draft.draftContent ?? "",
+                  ccEmails: [],
+                });
+                setAsked(out?.says ?? "Asked. Nothing has been sent.");
+                await queryClient.invalidateQueries({ queryKey: draftKeys.all });
+                await queryClient.invalidateQueries({ queryKey: activeConversationKeys.all });
+              } catch (error) {
+                setActionError(`Nobody was asked (${getErrorMessage(error)}). Nothing was sent.`);
+                setAttempt((a) => a + 1);
+                throw error;
+              }
+            }}
+          />
+        ) : (
+          <HoldToApprove
+            key={`send-${draft.orderId}-${attempt}`}
+            label={`Hold to approve & send to ${draft.providerName ?? "the vendor"}`}
+            approvedLabel="Approved — leaving the house"
+            disabled={approveDraft.isPending || discardDraft.isPending || act !== "send"}
+            onChallenge={() =>
+              issueDraftSendChallenge({
+                orderId: draft.orderId,
+                body: draft.draftContent ?? "",
+                to: draft.providerEmail,
+                // A staff member's request carries their copies, and the seal
+                // binds copies: release it over the same ones.
+                ccEmails: draft.sendRequest?.current ? draft.sendRequest.ccEmails : [],
+              })
+            }
+            onApprove={async (challenge) => {
+              setActionError(null);
+              if (!challenge) throw new Error("No draft seal was issued.");
+              try {
+                await approveDraft.mutateAsync({
+                  orderId: draft.orderId,
+                  modifiedContent: draft.draftContent ?? "",
+                  ccEmails: draft.sendRequest?.current ? draft.sendRequest.ccEmails : undefined,
+                  challenge,
+                });
+              } catch (error) {
+                fail("sent")(error);
+                throw error;
+              }
+            }}
+          />
+        )}
+        <SendStandingNote
+          standing={standing.data?.sendOrAsk}
+          request={standing.data?.draft?.send_request ?? draft.sendRequest ?? null}
+          loading={standing.isPending}
+          error={standing.isError ? getErrorMessage(standing.error) : null}
+          testId="rail-standing"
         />
+        {asked && (
+          <p role="status" style={{ fontSize: 11, color: "var(--ink-2, #4F473C)", margin: 0 }}>
+            {asked}
+          </p>
+        )}
         <button
           type="button"
           disabled={discardDraft.isPending || approveDraft.isPending}
           onClick={() => {
             setActionError(null);
-            discardDraft.mutate(draft.orderId, { onError: fail('discarded') });
+            discardDraft.mutate(draft.orderId, { onError: fail("discarded") });
           }}
           style={{
-            justifySelf: 'end',
+            justifySelf: "end",
             fontFamily: SANS,
             fontSize: 11.5,
-            color: 'var(--ink-3, #7C7365)',
-            textDecoration: 'underline',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
+            color: "var(--ink-3, #7C7365)",
+            textDecoration: "underline",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
           }}
         >
-          {discardDraft.isPending ? 'Discarding…' : 'Discard the draft'}
+          {discardDraft.isPending ? "Discarding…" : "Discard the draft"}
         </button>
         {actionError && (
-          <p role="alert" style={{ fontSize: 11, color: 'var(--ink-2, #4F473C)', margin: 0 }}>
+          <p
+            role="alert"
+            style={{ fontSize: 11, color: "var(--ink-2, #4F473C)", margin: 0 }}
+          >
             {actionError}
           </p>
         )}
@@ -344,10 +508,10 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
   return (
     <div
       style={{
-        border: '1px dashed var(--ink-3, #7C7365)',
+        border: "1px dashed var(--ink-3, #7C7365)",
         borderRadius: 12,
-        background: 'var(--paper-1, #F3EFE6)',
-        padding: '10px 12px',
+        background: "var(--paper-1, #F3EFE6)",
+        padding: "10px 12px",
       }}
     >
       <button
@@ -355,26 +519,41 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
         className="flex w-full items-baseline gap-3 text-left"
-        style={{ fontFamily: SANS, cursor: 'pointer' }}
+        style={{ fontFamily: SANS, cursor: "pointer" }}
       >
         <span className="min-w-0 flex-1">
           <span
             className="block truncate"
-            style={{ fontFamily: SERIF, fontSize: 14, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}
+            style={{
+              fontFamily: SERIF,
+              fontSize: 14,
+              fontWeight: 600,
+              color: "var(--ink-1, #211C16)",
+            }}
           >
             {draft.wineName ?? draft.orderNumber ?? EM}
           </span>
-          <span className="block truncate" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+          <span
+            className="block truncate"
+            style={{ fontSize: 11, color: "var(--ink-3, #7C7365)" }}
+          >
             {draft.providerName ?? EM} · drafted {fmtDate(draft.createdAt)}
+            {draft.sendRequest
+              ? ` · ${
+                  draft.sendRequest.current
+                    ? `asked by ${draft.sendRequest.requestedByName ?? "a colleague"}, waiting for a manager`
+                    : "asked for, since changed"
+                }`
+              : ""}
           </span>
         </span>
         <span
           style={{
             fontFamily: MONO,
             fontSize: 12,
-            fontVariantNumeric: 'tabular-nums',
-            color: 'var(--ink-1, #211C16)',
-            flex: 'none',
+            fontVariantNumeric: "tabular-nums",
+            color: "var(--ink-1, #211C16)",
+            flex: "none",
           }}
         >
           {qty !== null ? `${qty} × ${fmtMoney(price)}` : fmtMoney(total)}
@@ -382,10 +561,10 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
         <span
           aria-hidden
           style={{
-            flex: 'none',
-            color: 'var(--ink-3, #7C7365)',
+            flex: "none",
+            color: "var(--ink-3, #7C7365)",
             fontSize: 11,
-            transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
             transition: `transform ${settle.ms}ms ${settle.easing}`,
           }}
         >
@@ -394,12 +573,14 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
       </button>
       <div
         style={{
-          display: 'grid',
-          gridTemplateRows: expanded ? '1fr' : '0fr',
+          display: "grid",
+          gridTemplateRows: expanded ? "1fr" : "0fr",
           transition: `grid-template-rows ${settle.ms}ms ${settle.easing}`,
         }}
       >
-        <div style={{ overflow: 'hidden' }}>{expanded && <DraftDetail draft={draft} />}</div>
+        <div style={{ overflow: "hidden" }}>
+          {expanded && <DraftDetail draft={draft} />}
+        </div>
       </div>
     </div>
   );
@@ -417,25 +598,68 @@ export function DraftRail() {
   return (
     <section aria-label="Drafted orders awaiting approval">
       <div className="mb-2 flex items-baseline justify-between">
-        <h2 style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', margin: 0 }}>
+        <h2
+          style={{
+            fontFamily: SERIF,
+            fontSize: 16,
+            fontWeight: 600,
+            color: "var(--ink-1, #211C16)",
+            margin: 0,
+          }}
+        >
           Drafted by the house
         </h2>
-        <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+        <span
+          style={{
+            fontFamily: MONO,
+            fontSize: 11,
+            color: "var(--ink-3, #7C7365)",
+          }}
+        >
           {known ? list.length : EM} awaiting your hand
         </span>
       </div>
-      <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '0 0 10px' }}>
+      <p
+        style={{
+          fontFamily: SANS,
+          fontSize: 11,
+          color: "var(--ink-3, #7C7365)",
+          margin: "0 0 10px",
+        }}
+      >
         Nothing here can reach a vendor without your approval.
       </p>
       {drafts.isError ? (
-        <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-          The gateway could not be reached — whether drafts exist is unknown, not zero.
+        <p
+          style={{
+            fontFamily: SANS,
+            fontSize: 12,
+            color: "var(--ink-2, #4F473C)",
+          }}
+        >
+          The gateway could not be reached — whether drafts exist is unknown,
+          not zero.
         </p>
       ) : !known ? (
-        <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>Reaching the gateway…</p>
+        <p
+          style={{
+            fontFamily: SANS,
+            fontSize: 12,
+            color: "var(--ink-3, #7C7365)",
+          }}
+        >
+          Reaching the gateway…
+        </p>
       ) : list.length === 0 ? (
-        <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
-          No drafts waiting. When the house writes to a vendor, it stages the letter here first.
+        <p
+          style={{
+            fontFamily: SANS,
+            fontSize: 12,
+            color: "var(--ink-3, #7C7365)",
+          }}
+        >
+          No drafts waiting. When the house writes to a vendor, it stages the
+          letter here first.
         </p>
       ) : (
         <div className="grid gap-2">

@@ -30,6 +30,14 @@ links: ["[[PAGE-CONTRACT]]", "[[PAGE_MAP]]", "[[dashboard]]", "[[forgot-password
 - **Set a password** / **Forgot password?** → [[forgot-password]] `/forgot-password?email=…`
 - **Create one now** → [[register]] `/register`
 
+## Active branch and native session integrity — 2026-09-13 (pending release)
+
+~~Token minting, branch switching and JWT validation now share a current membership/role reader. Explicit inactive membership wins; another house requires its own active membership; unreadable membership refuses; the legacy home-house fallback remains at `staff`, following ADR 0088 T5. Organisation proximity does not mint sibling-house access.~~ **CORRECTED 2026-09-21 (round 5 fix pass, CLAUDE.md §5b): this described a gateway `auth.service.ts` rewrite (the shared membership/role reader, the ADR 0088 T5 staff fallback, the no-sibling-house rule) that was never shipped on this lane's tree.** It was lane B's rewrite; this lane's own main-sync dropped it, keeping `origin/main`'s `auth.service.ts` and removing the orphaned `active-branch-role.spec.ts` with it (recorded in ADR 0118's 2026-09-19 correction). Verified directly: `apps/api-gateway/src/auth/auth.service.ts` today has no "current membership/role reader", no ADR 0088 T5 reference, and no sibling-house concept; no `active-branch-role.spec.ts` file exists in the tree. Struck rather than deleted, since this is the same false content a dropped bullet elsewhere already recorded as struck — a silent rewrite here would look like it never happened.
+
+A failed web switch retains its previous token/house, and an older overlapping response cannot replace a later selection. **This part IS shipped, on the WEB side** (`AuthContext.tsx`'s `setActiveRestaurantId` — a per-call sequence number discards a stale response, and a failed switch's `catch` no longer falls through to setting the new branch). Proved by `AuthContext.branchSwitch.test.tsx` (2 tests, added this pass — the code had none before and is byte-identical to a sibling lane's dropped copy).
+
+Native saved actions retain actor and restaurant ownership. Only that principal's unlocked session can dispatch them, including after hydration; older unscoped work is held for review. API refresh/retry and late responses cannot cross session generations. Central sign-out clears private query persistence and local feed state immediately, including expiry-driven sign-outs, while leaving owned pending work saved for the original principal.
+
 ## 1. Purpose
 Sign in with the methods this identity actually has. Enter an address, and the page asks the gateway which methods exist for it — `password_hash` present, plus rows in `user_oauth_accounts` — and renders exactly those (`Login.tsx:70-79`, `auth.service.ts:1890`). Nothing is inferred from the address.
 

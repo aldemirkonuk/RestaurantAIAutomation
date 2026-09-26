@@ -12,6 +12,61 @@ import {
 import { ORG_OWNER } from "./org-role";
 import { DatabaseService } from "../database/database.service";
 
+/**
+ * What this person is at this restaurant — the ONE implementation of the
+ * two-step lookup (`user_restaurant_access`, then the legacy `users.role`).
+ *
+ * Module-level so the vendor-send authority (`vendor-send-authority.service.ts`,
+ * ADR 0175 D10) can use the same rule without importing this whole service and
+ * the module graph behind it. Lifted, not copied: a second copy of "what is
+ * this person here" is how a gate and the page that explains it drift apart
+ * (`decideApproval`'s header makes the same argument).
+ *
+ * `strict: false` is the historical behaviour `resolveRestaurantRole` keeps: a
+ * read that FAILS returns `null`, the same as a person with no row, and every
+ * caller must treat `null` as "not proven to outrank anything".
+ *
+ * `strict: true` throws on a failed read instead. The send gate needs that: a
+ * readout that turns "the role could not be read" into "ask a manager" would
+ * report an outage as a fact about the person (ADR 0020).
+ */
+export async function readRestaurantRole(
+  supabase: DatabaseService["supabase"],
+  userId: string,
+  restaurantId: string,
+  opts: { strict: boolean },
+): Promise<string | null> {
+  const { data: access, error: accessError } = await supabase
+    .from("user_restaurant_access")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("restaurant_id", restaurantId)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (accessError && opts.strict) {
+    throw new InternalServerErrorException(
+      `This person's role in the house could not be read (${accessError.message}).`,
+    );
+  }
+
+  const fromAccess = (access as { role?: string } | null)?.role;
+  if (fromAccess) return fromAccess;
+
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("role, restaurant_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (userError && opts.strict) {
+    throw new InternalServerErrorException(
+      `This person's role in the house could not be read (${userError.message}).`,
+    );
+  }
+  const legacy = user as { role?: string; restaurant_id?: string } | null;
+  if (legacy?.restaurant_id === restaurantId) return legacy.role ?? null;
+  return null;
+}
+
 export interface RestaurantBranch {
   id: string;
   name: string;
@@ -162,25 +217,9 @@ export class OrganizationsService {
     userId: string,
     restaurantId: string,
   ): Promise<string | null> {
-    const { data: access } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    const fromAccess = (access as { role?: string } | null)?.role;
-    if (fromAccess) return fromAccess;
-
-    const { data: user } = await this.databaseService.supabase
-      .from("users")
-      .select("role, restaurant_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    const legacy = user as { role?: string; restaurant_id?: string } | null;
-    if (legacy?.restaurant_id === restaurantId) return legacy.role ?? null;
-    return null;
+    return readRestaurantRole(this.databaseService.supabase, userId, restaurantId, {
+      strict: false,
+    });
   }
 
   /**

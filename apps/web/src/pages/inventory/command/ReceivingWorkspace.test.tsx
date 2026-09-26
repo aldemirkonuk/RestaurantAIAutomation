@@ -44,7 +44,23 @@ vi.mock('../../../components/ui/ThemedSelect', () => ({
   ThemedSelect: () => null,
 }))
 
-// 24 bottles agreed at $22, all 24 already stocked in at delivery.
+/** The gateway's ledger block (ADR 0192), readable, with every field stated. */
+const shelf = (over: Record<string, unknown> = {}) => ({
+  readable: true,
+  why: null,
+  quantityInStockUom: 24,
+  stockUom: 'bottle',
+  packUnit: null,
+  packSize: null,
+  packs: null,
+  looseInStockUom: null,
+  words: '24 bottles',
+  rejectedAtDoorBottles: 0,
+  countedNotBookedBottles: 0,
+  ...over,
+})
+
+// 24 bottles agreed at $22, all 24 already on the shelf per the stock ledger.
 const order = {
   id: 'order-1',
   orderNumber: 'PO-1042',
@@ -52,8 +68,9 @@ const order = {
   wineName: 'Produttori Barbaresco 2019',
   providerName: 'Vino Distributors',
   quantity: 24,
+  unitType: 'bottle',
   finalPrice: 22,
-  quantityReceived: 24,
+  received: shelf(),
 }
 
 /** A document as the API returns it, with the extraction the screen reads. */
@@ -838,5 +855,111 @@ describe('ReceivingWorkspace — a price says what it is in', () => {
     await user.type(invoicePriceInput(), '22')
     await screen.findByTestId('receiving-price-needs-currency')
     expect(screen.queryByRole('button', { name: /this house reports in/ })).toBeNull()
+  })
+})
+
+/*
+ * ADR 0192 — the count starts from what the stock LEDGER booked, and a part case
+ * is counted in bottles. Every fixture is a CASE OF 12: at pack 1 cases and
+ * bottles are the same number and none of these could fail.
+ */
+describe('ReceivingWorkspace — the count starts from the ledger (ADR 0192)', () => {
+  const caseOrder = (received: unknown, over: Record<string, unknown> = {}) => ({
+    ...order,
+    quantity: 5,
+    unitType: 'case',
+    finalPrice: 264,
+    priceUom: 'case',
+    pricePackSize: 12,
+    received,
+    ...over,
+  })
+
+  it('counts a part case in bottles, says so, and declares the unit it sends', async () => {
+    const user = userEvent.setup()
+    renderWorkspace({
+      order: caseOrder(
+        shelf({
+          quantityInStockUom: 65,
+          packUnit: 'case',
+          packSize: 12,
+          packs: 5,
+          looseInStockUom: 5,
+          words: '5 cases + 5 bottles',
+          rejectedAtDoorBottles: 1,
+        }),
+      ),
+    })
+
+    const note = screen.getByTestId('receiving-shelf-note')
+    expect(note).toHaveTextContent('5 cases + 5 bottles')
+    expect(note).toHaveTextContent('every number here is in bottles')
+    expect(note).toHaveTextContent('1 bottle was rejected at the door')
+    expect(screen.getByTestId('receiving-count-unit')).toHaveTextContent('Bottles')
+    // The ordered figure is restated in bottles so the screen holds one unit.
+    expect(screen.getByText('60')).toBeInTheDocument()
+
+    await user.click(submit())
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.acceptedQuantityInCountedUom).toBe(65)
+    expect(body.countedUom).toBe('bottle')
+  })
+
+  it('counts a whole number of cases in cases, and declares nothing', async () => {
+    const user = userEvent.setup()
+    renderWorkspace({
+      order: caseOrder(
+        shelf({
+          quantityInStockUom: 60,
+          packUnit: 'case',
+          packSize: 12,
+          packs: 5,
+          looseInStockUom: 0,
+          words: '5 cases',
+        }),
+      ),
+    })
+    expect(screen.getByTestId('receiving-count-unit')).toHaveTextContent('Cases')
+
+    await user.click(submit())
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.acceptedQuantityInCountedUom).toBe(5)
+    expect(body.countedUom).toBeUndefined()
+  })
+
+  it('never pre-fills from the retired column — the +660 bottle default is gone', async () => {
+    // The door wrote 60 BOTTLES into quantityReceived; this screen read it as 60
+    // CASES. With no ledger block the count starts from the ordered 5 and says so.
+    const user = userEvent.setup()
+    renderWorkspace({ order: caseOrder(undefined, { quantityReceived: 60 }) })
+    expect(screen.getByTestId('receiving-shelf-note')).toHaveTextContent(
+      'starts from the ordered quantity',
+    )
+
+    await user.click(submit())
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.acceptedQuantityInCountedUom).toBe(5)
+    expect(body.acceptedQuantityInCountedUom).not.toBe(60)
+  })
+
+  it('an unreadable ledger is said, with its reason, never read as zero', async () => {
+    const user = userEvent.setup()
+    renderWorkspace({
+      order: caseOrder({
+        ...shelf(),
+        readable: false,
+        why: 'The stock ledger could not be read (timeout).',
+        quantityInStockUom: null,
+        stockUom: null,
+        words: null,
+      }),
+    })
+    const note = screen.getByTestId('receiving-shelf-note')
+    expect(note).toHaveTextContent('could not be read')
+    expect(note).toHaveTextContent('timeout')
+
+    await user.click(submit())
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.acceptedQuantityInCountedUom).toBe(5)
   })
 })

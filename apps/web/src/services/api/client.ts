@@ -190,6 +190,34 @@ export function getErrorMessage(error: unknown): string {
   return 'An unexpected error occurred';
 }
 
+/**
+ * The HTTP status of a request failure, or null when there is none to read.
+ *
+ * Duck-typed on `response.status` rather than gated on `axios.isAxiosError` —
+ * that check requires the `isAxiosError` marker axios itself stamps on, which
+ * a plain `Object.assign(new Error(...), { response: { status } })` (how a
+ * live caller's status is read elsewhere, e.g. `ApproveFromBellPanel.tsx`,
+ * `SealedApproveDie.tsx`, `useBellBook.ts`) does not carry.
+ */
+export function getErrorStatus(error: unknown): number | null {
+  const status = (error as { response?: { status?: unknown } } | null)?.response?.status;
+  return typeof status === 'number' ? status : null;
+}
+
+/**
+ * True when a write's outcome is genuinely unknown: the server errored after
+ * it may have already committed (5xx), or the request went out and nothing
+ * came back at all (a live axios request with no response — a timeout or a
+ * dropped connection). Anything else (a 4xx, or no network evidence at all —
+ * a caller-side throw before any request was sent) is a real refusal, and a
+ * caller may say so with "nothing was written".
+ */
+export function isUnconfirmedWrite(error: unknown): boolean {
+  const status = getErrorStatus(error);
+  if (status != null) return status >= 500;
+  return Boolean(axios.isAxiosError(error) && error.request && !error.response);
+}
+
 export function getActiveRestaurantId(): string {
   return localStorage.getItem('activeRestaurantId') || '';
 }

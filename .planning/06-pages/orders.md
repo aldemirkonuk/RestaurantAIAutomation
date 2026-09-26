@@ -30,6 +30,23 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[providers]]"]
 - **Draft email approval panel** → (panel on this page — approve/send vendor email)
 - **The vendor's answers** (rebuilt ledger row) → (house Sheet on this page) → API `GET /api/v1/procurement/orders/:id/conversations`; its Confirm → `POST …/:id/approve`, its Reject → `DELETE /api/v1/procurement/orders/:id?reason=…`
 
+## Action integrity — 2026-09-13 (pending release)
+
+`markDelivered` resolves the order's unit and pack before its status write, books bottle quantities, and converts a stated agreement price to the same bottle unit. Unknown packs and opaque units refuse before booking; the historical order-unit display cache is retained. Native approval now opens order review and mints a challenge when the held approval gesture starts, then redeems it in the request header. A short release or background transition cancels; the screen reader path uses two explicit actions. These one-time seals are not stored in the durable outbox or refreshed by a background retry. The server's response, rather than an elapsed grace timer, determines approval success.
+
+## Send or ask — 2026-09-21 (ADR 0175 amendment, "Staff ask, manager sends")
+
+**[2026-09-21, ADR 0175 second amendment.]** A deal can now be asked for too
+(answer 3): the thread drawer reads `GET orders/:id/deal-request` (the waiting
+request, and this person's standing read with the deal's own money), a staff
+member's hold in the deal modal asks a manager (`POST orders/:id/confirm-deal-request`,
+the terms kept exactly), and a manager opens the waiting request on the asked-for
+terms, so one sealed hold confirms exactly them; dismissing the deal closes the waiting request (last call). A draft the gateway refused to
+build (ADR 0172 header refusal) is closed as `SEND_REFUSED` and the thread shows
+"Refused · not sent" with the reason (answer 6); approve-draft answers 422.
+
+Every hold on a vendor letter on this page says before the hold whether it sends or asks: the DraftRail card and detail, the legacy DraftEmailApprovalPanel, and the thread drawer's reply box read `sendOrAsk` beside the draft (`GET orders/:id/draft`). An owner, a manager or a grantee ("granted by …" shown) holds to send under a seal that is now always required; anybody else holds to ask, and their exact words wait for a manager, named on the card ("asked by …, waiting for a manager"). The thread shows who sent each letter and who asked for it. The drawer's reply and the deal confirmation are sealed holds (they were plain clicks); a deal has no request path, so a staff member is told who can confirm it **[superseded 2026-09-21 by answer 3, bracket above: a staff member now asks for a deal too]**. Proved by `DraftRail.test.tsx`, `DraftEmailApprovalPanel.test.tsx` and `CommsThreadDrawer.test.tsx`.
+
 ## 1. Purpose
 
 The procurement cockpit: draft, approve, cancel and track purchase orders through
@@ -41,6 +58,49 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 ## 1a. Features
 - See the purchase-order list with filters and per-order status through delivery (draft → approved → delivered)
 - Create an order: pick a vendor, build the item list, submit — then approve, edit, or cancel it
+- **A new order, on the rebuilt page — a SHEET with several lines** (built 2026-09-06,
+  packet 2 of the overlay layer; census 102 · fork F5 · ADR 0112).
+  `pages/orders/next/NewOrderSheet.tsx`, opened by *Write a new order* in the masthead.
+  Until it landed the rebuilt page had no manual create path at all: `AgreementSheet`
+  writes ONE line and `DraftRail` shows what the engine drafted, and the thing the
+  legacy desk could do that neither can is the CART.
+  - **One POST per line, because that is what the schema is.** `CreateOrderDto` carries
+    exactly one `inventoryId` and the writer stamps `line_no: 1`
+    (`procurement.service.ts:1263`), so four lines are four orders — exactly how the
+    legacy desk placed them (`pages/Orders.tsx:902-1046`). PARTIAL SUCCESS is therefore
+    the ordinary case and is reported as one: each line says whether it was placed and
+    under what order number, or was refused and with which sentence, and a refused line
+    stays in the composer with its words. Nothing is cleared on a failure.
+  - **The gateway's own refusals are said before the round trip** — a case order with no
+    pack size is refused in the composer with the sentence the gateway would answer.
+  - **A price that was not stated is not sent.** `quotedPrice` is omitted rather than
+    zeroed: a zero records that this vendor charges nothing, which nobody said.
+- **The agreement is offered, never applied, and needs a NEW route** (2026-09-06).
+  `GET /procurement/last-agreement?providerId=&inventoryId=` —
+  `procurement.controller.ts` (`lastAgreement`), service `lastAgreementFor`, pure part
+  `procurement/last-agreement.ts`, spec `last-agreement.spec.ts` (11 assertions,
+  re-measured 2026-09-19 — lane E audit D9 added the `ambiguous` state below plus
+  its tests). Nothing
+  could answer the census's "price and unit come from the agreement on the vendor's row":
+  `agreement-currency` answers which MONEY, `vendor-terms` carries no prices, and the
+  price register has no controller.
+  - **Three states, kept apart**: `found` (price, its unit pair, the currency, the date
+    and the order it was struck on), `none` (never agreed with this vendor for this item)
+    and `unreadable` (the read FAILED). Every state carries a sentence. A failed read
+    rendered as "no agreed price" would send a vendor a request to quote a wine they have
+    already quoted — absence reported as health, in one request.
+  - **It arrives GREY** (sketch 103, 2c). The figure sits beside the field as a proposal
+    with a *Take it* control and is ink only once a person has taken it. Nothing is
+    prefilled and no unit is converted — a price whose unit was never stated is reported
+    as UNSTATED, never as per bottle (ADR 0119).
+- **"Add a vendor to place orders" is a PANEL that travels with the composer** (built
+  2026-09-06). `pages/orders/next/VendorFirstPanel.tsx`. Two ways in, and the second is
+  the one a pre-flight read can never cover: the empty vendor list stops the composer
+  opening (the legacy desk's rule, `pages/Orders.tsx:296-302`), and the gateway's 403
+  `no_vendors` (`procurement.controller.ts:116-119`) is caught on a real write, where it
+  says **the order was not placed** before anything else. An UNREADABLE vendor list never
+  opens it — that is a different sentence on the composer, because sending a person off
+  to add a vendor they already have is the same fault wearing a different coat.
 - Book a delivered order into inventory in one step
 - AI vendor-email layer: one-tap approve an AI-drafted reply, write a manual reply, pause the AI, cancel a scheduled send
 - See active vendor conversation threads and open the chat/message thread drawer per conversation
@@ -98,7 +158,7 @@ delivery" (`apps/web/src/components/layout/Sidebar.tsx:75`).
 - **The order's header price can no longer disagree with its line** (2026-09-05, ADR 0119 Q2) — `procurement_orders.final_price` is maintained from `procurement_order_items.final_unit_price` by a database trigger, and a direct write to it that disagrees with the line is refused with a sentence naming both numbers. Confirming a deal at an edited price now writes the LINE — which is what the invoice matcher and the price register read — and the header follows. An order with no line yet may still take a price on the header, and the page and the log say so, because no invoice can be matched against a price that lives only on a unit-less header
 - **A split case is its own agreement line** (2026-09-05, ADR 0119 Q6) — `split_case` stopped being a bare word in the unit picker and became a rule: the line IS the broken case, priced as its own trade item, with its pack field holding the bottles actually in the broken pack. Whole cases quoted at a split-case price, or a split case quoted at the full case price, are refused in words before the database refuses them by constraint
 - **Every order route names the vendor** (2026-09-05, batch 40; closes `v3.0-TECH-DEBT` "The orders wire" item 1) — `GET /procurement/orders`, `/orders/history`, `/orders/pending` and `/orders/:id` select `provider:provider_id(name)` in the statement they were already making, and `OrderResponseDto.providerName` carries it with the three-state rule the price pair uses: a name; `null` (the join was made and answered nothing); the key ABSENT (this route does not join). Four surfaces that had been printing the literal word "vendor" or nothing at all now print the name — the dashboard's approvals queue and day detail, the receipts pairing line, the one-tap delivery card — and the receiving door's credit-note letter, which LEAVES THE BUILDING, is addressed to the distributor instead of "To the vendor". `apps/web/src/lib/mudavym/vendor.ts` is the one place the three states become words, so the surfaces cannot disagree about what a missing vendor means; `scripts/check_web_reads_gateway_dto_keys.py` pins the key
-- **The received count travels with its unit, or says it cannot** (2026-09-05, batch 40, ADR 0070; closes item 3) — `quantityReceived` and `quantityReceivedUom` are one fact on the DTO and never travel apart. `procurement_orders.quantity_received` has four writers and two units — three write the order's own `unit_type`, the receiving door writes BOTTLES (`receiving.service.ts:504`) — and nothing on the row says which. So the unit is stated only where the arithmetic makes the two agree (`bottle`, `each`, `keg`, `liter`, or an absent unit) and is `null` on a case, pack or split-case order, which is a refusal and not a default. The two-units defect itself is NOT repaired; the wire now reports it instead of handing a screen a number with no unit on it
+- **The received count travels with its unit, or says it cannot** (2026-09-05, batch 40, ADR 0070; closes item 3) — `quantityReceived` and `quantityReceivedUom` are one fact on the DTO and never travel apart. `procurement_orders.quantity_received` has four writers and two units — three write the order's own `unit_type`, the receiving door writes BOTTLES (`receiving.service.ts:504`) — and nothing on the row says which. So the unit is stated only where the arithmetic makes the two agree (`bottle`, `each`, `keg`, `liter`, or an absent unit) and is `null` on a case, pack or split-case order, which is a refusal and not a default. The two-units defect itself is NOT repaired; the wire now reports it instead of handing a screen a number with no unit on it **[SUPERSEDED 2026-09-21 by [ADR 0192](../decisions/0192-received-is-the-shelf-count-from-the-ledger.md), founder: *"Shelf count from ledger"* — the pair is gone from the DTO; `received` is a block read from the stock ledger (the order's item, live stock, never rounded, "5 cases + 5 bottles"), the app no longer reads or writes the column, and the two-units entry is closed.]**
 - **An order can be made to repeat, and the Recurring station fills from a real column** (2026-09-05, batch 40; ADR 0125's addendum; closes `v3.0-TECH-DEBT` "The orders wire" item 2) — a rule on the ORDER, not on a template, because an order carries the whole agreement (the price AND the unit it is stated in, the allowance, the deposit, the freight) and a recurrence repeats that. Nine additive columns on `procurement_orders`; the rule is one of the five frequencies `recurring_orders` already speaks plus an optional anchor (a weekday for weekly/fortnightly, a day 1-28 for monthly/quarterly — 28 so every month has one, and 29-31 are REFUSED rather than clamped silently). **The next date is derived, never typed**: the sheet takes a rule and a start, snaps the start onto the anchor, and every advance afterwards is one pure function the gateway re-derives before it writes. **A recurrence approves nothing** — each occurrence is raised as its own PENDING order that a person seals under the ADR 0116 gate and this ADR's `approve` act, and `order-recurrence.service.spec.ts` asserts a whole generator run never calls `approveOrder`. Pausing and ending are plain writes with an audit row naming who and when, deliberately NOT sealed: they commit no money. `procurement_orders.is_recurring` and `.cron_schedule` existed in the baseline and are **tombstoned unwritten** — measured zero writers and zero readers on this table in three languages, and a cron string can neither be read back by an operator nor clamp a month end.
 - **The Recurring station says "none" only from a measured read** (2026-09-05, batch 40) — it is handed the row count and the count of rows that actually CARRIED a recurrence reading, and prints one of four sentences. It will not say "there are none" off a book that never answered: absent on the wire (this route does not read recurrence) stays distinct from null (it read, and this order does not repeat), which is the distinction whose absence made the station structurally empty for its whole life. A row that repeats reads "recurs weekly on Tuesday, next 12 Sep"; a paused one says "paused" instead of printing "next —"; a child occurrence says it is one occurrence of a recurring order rather than looking like an order somebody raised by hand.
 - **The one-tap delivery card is reachable** (2026-09-05, batch 40, founder's call) — the Action Center asked for PENDING/APPROVAL_NEEDED and CONFIRMED while its own filter accepted `approved` and `in_transit`, two disjoint sets, so the card had **no reachable input from the API at all** and every delivery card on screen came from `localStorage`. It now fetches CONFIRMED and IN_TRANSIT and filters on exactly those two, so the sealed deliver path runs end to end from the wire. Double-delivery is refused at the gateway for every caller (`delivered-once.ts`), which is what made switching it on safe
@@ -128,6 +188,7 @@ this list is the note-side index (ADR 0044 §2).
 | `orders.draft.drain` | Auto-send countdown | scheduled sends drain linear over the exact remaining ms, cancel live |
 | `orders.agreement.panel` | The composer opens | "Write down an agreement" opens the house `Panel` on `settle`; the composer adds NO motion of its own — a refusal is stated in place, never announced with movement |
 | `orders.responses.sheet` / `.step` | The vendor's answers | the row's "The vendor's answers" opens the house `Sheet` on `tuck`; stepping moves only the position dot (`settle` width, `ink` colour) — the answers themselves do not slide, because three answers are three letters, not three pages of one |
+| `orders.neworder.sheet` | The order composer opens | *Write a new order* opens the house `Sheet` on `tuck` (440); the guard panel opens on `settle`. Neither adds a motion of its own, and `prefers-reduced-motion` renders none — both come from `components/mudavym/Sheet.tsx` |
 | `orders.micro.ink` | Micro-states | hovers, chips, deliver button; ≤2px travel |
 
 Not used, on purpose: no shake, no bouncing checkmarks, no skeleton shimmer for
@@ -205,8 +266,8 @@ The rule: an object gets a sheet, a question a panel, a choice a popover; the se
 | `/orders` | What was agreed | panel | Built | A question the house asks before it writes a price. | `pages/orders/next/AgreementSheet.tsx:349` |
 | `/orders` | Make this order repeat | panel | Built | A commitment about the future — a question, answered once. | `pages/orders/next/RecurrenceSheet.tsx:222` |
 | `/orders` | Vendor answers | sheet · wide | Built | One order's correspondence is one object, read at 640 because letters are prose — the wide case ADR 0112 anticipated. | `pages/orders/next/ResponsesSheet.tsx:353` |
-| `/orders` | A new order | sheet | Owed · fork F5 | The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext. | `pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903 (wine config); OrdersNext has only DraftRail (AI drafts) — no manual create path was found` |
-| `/orders` | Add a vendor first | panel | Owed | A question with two answers. Travels with the new-order sheet. | `components/orders/OrderGuardModal.tsx:27` |
+| `/orders` | A new order | sheet | Built · fork F5 | The order being written is one object. Decided 2026-09-05 (F5): this sheet is the manual entry; owed on OrdersNext. BUILT 2026-09-06 (packet 2): several lines, one POST per line because CreateOrderDto carries one, and a per-line account of what landed. The agreed price is OFFERED grey from the NEW route GET /procurement/last-agreement, never applied. | `BUILT 2026-09-06 as pages/orders/next/NewOrderSheet.tsx (was pages/orders/CreateOrderModal.tsx:123 and pages/Orders.tsx:2903)` |
+| `/orders` | Add a vendor first | panel | Built | A question with two answers. Travels with the new-order sheet. BUILT 2026-09-06: reached before the composer opens on an empty vendor list, and again on the gateway's 403 no_vendors, where it says the order was NOT placed. An unreadable vendor list never opens it. | `BUILT 2026-09-06 as pages/orders/next/VendorFirstPanel.tsx (was components/orders/OrderGuardModal.tsx:27)` |
 | `/orders` | Wine config | — | Retires | What was agreed (unit · price · currency) on the ledger row. | `pages/Orders.tsx:2903` |
 | `/orders` | Reject this order? | — | Retires | Vendor answers — 'Hold to reject', with the reason in words. | `pages/Orders.tsx:3359 (SealedRejectDie)` |
 | `/orders` | Provider comms thread | — | Retires · fork F4 | Vendor answers reads the thread; the composer writes. **Pause / resume the AI on this thread** becomes a control in the responses sheet's head (decided 2026-09-05, F4) — a switch, not an overlay. | `components/orders/CommsThreadDrawer.tsx:436` |
@@ -249,6 +310,7 @@ is stale; guarded at class level since 2026-08-24 (#31),
 | POST | `/procurement/orders/:id/cancel-seal-challenge` | `services/api/orders.ts::mintOrderCancelSeal`, called from both dies' `onChallenge`. Mints act `cancel`; refuses 422 for a cancellation the house would not perform, so the reason arrives at the START of the hold |
 | POST | `/procurement/orders/:id/approve` | `pages/Orders.tsx:514,3275`; `pages/orders/next/LedgerRow.tsx`, `BulkApproveBar.tsx`, `pages/dashboard/next/WaitingOnYou.tsx` — all via `services/api/orders.ts`. **Can answer 403** since ADR 0116 |
 | GET | `/procurement/order-approval-gate` | `pages/orders/next/useOrdersNextData.ts` — one call per house, not per row |
+| GET | `/procurement/last-agreement?providerId=&inventoryId=` | **NEW 2026-09-06** (packet 2). `pages/orders/next/NewOrderSheet.tsx`, once per (vendor, item) pair. Answers `found` / `none` / `unreadable` / `ambiguous` (fourth state added 2026-09-19, lane E audit D9: an order naming the same item twice is a real ambiguity, not a failed read) with a sentence for each; the restaurant is the token's and both ids are required (a 400 otherwise — an agreement resolved without a vendor is the last price from anybody) |
 | POST | `/procurement/orders/:id/recurrence` | `pages/orders/next/RecurrenceSheet.tsx`. Body is `{ frequency, anchorDay?, startsOn? }` and **there is no `nextDueOn` field** — the next date is derived. **400** on an order nobody has approved (`not_approved`), on an order that is itself an occurrence (`child_cannot_recur`), on an unknown rule or an anchor outside its frequency's range |
 | POST | `/procurement/orders/:id/recurrence/{pause,resume,end}` | same sheet. Plain acts with an audit row, deliberately NOT sealed — they commit no money. A resume rolls the next date FORWARD past every date the series slept through, so a rule paused in March and resumed in September does not mint one order a day until it catches up |
 | POST | `/procurement/orders/:id/deliver` | `pages/Orders.tsx:651` |
@@ -1036,14 +1098,15 @@ PRODUCTION; and the dev-bypass tenant has zero pending orders and zero conversat
 | `pages/Orders.tsx`, `pages/orders/useOrdersPage.ts` (legacy desk) | `providerName` | dead branch — `provider_name` fell through to `providerId`, which is the desk's own deliberate convention (`providerNameById` resolves a uuid at `useOrdersPage.ts:120`) | the dead branch is gone; the convention is named in a comment |
 | `hooks/queries/useOrderQueries.ts`, `hooks/useOrdersData.ts`, `hooks/useDashboardData.ts`, `pages/calendar/next/useCalendarNextData.ts`, `pages/dashboard/next/useDashboardNextData.ts`, `services/api/orders.ts` | none — they carry `Order[]` and read no price key | nothing to print | unchanged |
 | `apps/mobile` `components/supply/OrderRow.tsx`, `app/(tabs)/supply/[id].tsx` | `totalCost ?? finalPrice ?? negotiatedPrice ?? quotedPrice` | **`$2,100` — correct all along.** Mobile has read the DTO's own names since it was written | unchanged |
-| `apps/mobile/app/(tabs)/cellar/receive/[orderId].tsx` | `quantityReceived` | `quantity_received` is a COLUMN, not a wire key: `mapOrderRow` does not map it, so the physical count pre-filled from the ORDERED quantity on every partially-received order | ~~reads `quantity` and says why; the gateway fix is a `v3.0-TECH-DEBT` row~~ **the gateway sends it (batch 40), WITH its unit.** The screen pre-fills from `quantityReceived` only when `quantityReceivedUom` is stated and is this order's — it counts in the order's unit — and otherwise falls back to `quantity` and prints the reason under the count |
+| `apps/mobile/app/(tabs)/cellar/receive/[orderId].tsx` | `quantityReceived` | `quantity_received` is a COLUMN, not a wire key: `mapOrderRow` does not map it, so the physical count pre-filled from the ORDERED quantity on every partially-received order | ~~reads `quantity` and says why; the gateway fix is a `v3.0-TECH-DEBT` row~~ **the gateway sends it (batch 40), WITH its unit.** The screen pre-fills from `quantityReceived` only when `quantityReceivedUom` is stated and is this order's — it counts in the order's unit — and otherwise falls back to `quantity` and prints the reason under the count. **[2026-09-21, ADR 0192: it pre-fills from the gateway's ledger-derived `received` block, in bottles, with the door's rejections and any counted-not-booked bottles stated beside it; `quantityReceived` is no longer sent.]** |
 | `apps/mobile/src/api/types.ts` `ProcurementOrder` | — | carried `[key: string]: any`, so `order.totalPrice` would have compiled there exactly as it did on the web | the index signature is gone; the guard refuses one, because a type that declares everything cannot be checked against anything |
 
 **Three of the four gateway-shape gaps this audit filed are now closed (2026-09-05,
 batch 40).** The founder decided items 1 and 3 of `v3.0-TECH-DEBT`'s "The orders wire"
 and the one-tap fetch the same day: the orders routes join `providers` and the DTO
 carries `providerName`; `quantityReceived` travels with `quantityReceivedUom`; the
-Action Center fetches CONFIRMED and IN_TRANSIT. Items 2 (recurrence) and 4 (the write
+Action Center fetches CONFIRMED and IN_TRANSIT. **[2026-09-21: the `quantityReceived` pair
+is superseded by ADR 0192's ledger-derived `received` block.]** Items 2 (recurrence) and 4 (the write
 side) are untouched and still open. The "Prints now" column above is amended in place
 per row rather than rewritten, so the pre-fix measurement stays readable.
 
@@ -1153,6 +1216,10 @@ D13, sketch 089 direction C, `/documents/:id` — not a new layout.
   **[Superseded 2026-09-25 — OD-152 answered "depends on state"; see the next section.]**
 - Tests: `OrdersNext.receipt.test.tsx`, `services/api/deliveries.receipt.test.ts`, the
   embedded case in `CanonicalDocumentPage.test.tsx`, `delivery.service.spec.ts` "list".
+
+### Codex execution — overlay packet, 2026-09-13
+
+The recovered orders overlays and their interaction regressions were reconciled with current main. The cross-page seal, partial-result and validation account is appended to ADR 0118 under “overlay commitments”; the workspace immutable manifest records exactly what was integrated. This is implementation evidence, not a new design decision.
 
 ### The row click depends on state — BUILT 2026-09-25 (OD-152, founder)
 

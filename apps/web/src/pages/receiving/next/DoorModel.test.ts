@@ -352,11 +352,12 @@ describe('the second truck', () => {
     // PO that reads "ten short" and starts a vendor claim the paperwork
     // disproves; against the running total it reads "14 of 16 — two short".
     const order = caseOrder(16);
-    const line = matchLine(6, order, 8);
+    const eight = { bottles: 96, packSize: 12 };
+    const line = matchLine(6, order, eight);
     expect(line?.text).toBe('14 of 16 with the earlier 8 — two short.');
     expect(line?.deltaBoxes).toBe(-2);
 
-    const complete = matchLine(8, order, 8);
+    const complete = matchLine(8, order, eight);
     expect(complete?.tone).toBe('even');
     expect(complete?.text).toContain('all there');
   });
@@ -364,7 +365,71 @@ describe('the second truck', () => {
   it('keeps the ordinary delivery sentence unchanged', () => {
     const order = caseOrder(16);
     expect(matchLine(14, order)?.text).toBe('14 of 16 — two short.');
-    expect(matchLine(14, order, 0)?.text).toBe('14 of 16 — two short.');
+    expect(matchLine(14, order, null)?.text).toBe('14 of 16 — two short.');
+    expect(matchLine(14, order, { bottles: 0, packSize: 12 })?.text).toBe(
+      '14 of 16 — two short.',
+    );
+  });
+
+  // ADR 0192 — the earlier truck is BOTTLES, and a part box is never rounded.
+  it('never rounds a part box: 5 boxes + 7 bottles earlier is not "6 earlier"', () => {
+    const order = caseOrder(16);
+    const line = matchLine(10, order, { bottles: 67, packSize: 12 });
+    // 10 boxes + 67 bottles = 187 bottles against 192: five bottles short.
+    expect(line?.text).toBe(
+      '15 boxes + 7 bottles of 16 with the earlier 5 boxes + 7 bottles — 5 bottles short.',
+    );
+    expect(line?.tone).toBe('short');
+    expect(line?.deltaBottles).toBe(-5);
+    expect(line?.deltaBoxes).toBeNull();
+    expect(line?.text).not.toContain('earlier 6');
+  });
+
+  it('states a part-box shortfall as boxes and bottles', () => {
+    const order = caseOrder(16);
+    const line = matchLine(6, order, { bottles: 67, packSize: 12 });
+    // 6 boxes + 67 = 139 bottles against 192: 53 short = 4 boxes + 5 bottles.
+    expect(line?.text).toBe(
+      '11 boxes + 7 bottles of 16 with the earlier 5 boxes + 7 bottles — 4 boxes + 5 bottles short.',
+    );
+    expect(line?.deltaWords).toBe('4 boxes + 5 bottles');
+  });
+
+  it('claims no shortfall when what earlier trucks brought could not be read', () => {
+    const order = caseOrder(16);
+    const line = matchLine(6, order, 'unread');
+    expect(line?.tone).toBe('incomparable');
+    expect(line?.text).toContain('could not be read');
+    expect(suggestOutcome(line)).toBe('accepted');
+    const d = creditDraft({
+      outcome: 'short',
+      reason: null,
+      counted: 6,
+      order,
+      hasPhoto: false,
+      driverName: '',
+      initials: 'AK',
+      alreadyReceived: 'unread',
+    });
+    expect(d).toContain('could not be read at the door');
+    expect(d).not.toMatch(/ten short/);
+  });
+
+  it('drafts the credit in boxes and bottles, never a rounded box', () => {
+    const order = caseOrder(16);
+    const d = creditDraft({
+      outcome: 'short',
+      reason: null,
+      counted: 6,
+      order,
+      hasPhoto: false,
+      driverName: '',
+      initials: 'AK',
+      alreadyReceived: { bottles: 67, packSize: 12 },
+    });
+    expect(d).toContain(
+      'arrived 6 boxes, 11 boxes + 7 bottles of 16 boxes — 4 boxes + 5 bottles short at the door',
+    );
   });
 
   it('drafts the credit against the running total too', () => {
@@ -377,7 +442,7 @@ describe('the second truck', () => {
       hasPhoto: false,
       driverName: '',
       initials: 'AK',
-      alreadyReceivedBoxes: 8,
+      alreadyReceived: { bottles: 96, packSize: 12 },
     });
     expect(d).toContain('arrived 6 boxes, 14 of 16 boxes — two short');
     expect(d).not.toContain('ten short');

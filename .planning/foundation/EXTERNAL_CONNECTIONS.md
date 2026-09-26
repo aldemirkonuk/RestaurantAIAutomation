@@ -96,7 +96,7 @@ pricing rows only.
 | every 30 s | scheduled auto-sends | `procurement/procurement.service.ts:1902` |
 | every 60 s / 5 min | websocket heartbeat / cleanup | `websocket/websocket.gateway.ts:606,631` |
 
-**Orchestrator — Celery beat, 14 entries** (`services/agent-orchestrator/jobs/celery_app.py:77`),
+**Orchestrator — Celery beat, 14 entries [15 since 2026-09-22, ADR 0192]** (`services/agent-orchestrator/jobs/celery_app.py:78`),
 UTC, broker = RabbitMQ, backend = Redis:
 
 | Schedule | Task |
@@ -104,6 +104,7 @@ UTC, broker = RabbitMQ, backend = Redis:
 | every 60 s / 5 min | `dlq.process_pending` · `dlq.get_stats` |
 | hourly `:00` | `reports.refresh_views` · `spend.monthly_cap_check` · `research.daily_budget_check` |
 | hourly `:15` / `:30` | `drift.scan_sim_catalogs` · `research.dispatch_batch` (no-op unless `RESEARCH_DISPATCH_ENABLED`) |
+| hourly `:45` | `house_item_research.dispatch` (no-op unless `HOUSE_ITEM_RESEARCH_DISPATCH_ENABLED`) **[2026-09-22, ADR 0192 third amendment: the 15th entry]** |
 | 02:00 Sun | `research.staleness_reverify` |
 | 03:00 | `dlq.cleanup_old` · `score.rescore_stale_wines` |
 | 04:00 / 04:30 / 05:00 / 06:00 | `calibration.calibrate_field_thresholds` · `recrawl.scheduled` · `trend.compute_metrics` · `inventory.reconciliation` |

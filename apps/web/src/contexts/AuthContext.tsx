@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { errorTracking } from "../lib/error-tracking";
@@ -574,8 +575,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchAndSetBranches(user.restaurantId);
   }, [user, fetchAndSetBranches]);
 
+  // Two quick switches race: only the LAST one may land, or an earlier
+  // response arriving late would put the page back in the house it left.
+  const branchSwitchSequence = useRef(0);
   const setActiveRestaurantId = useCallback(
     async (restaurantId: string): Promise<boolean> => {
+      const sequence = ++branchSwitchSequence.current;
       if (!isUuid(restaurantId)) {
         return false;
       }
@@ -586,7 +591,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const response = await api.post("/api/v1/auth/switch-restaurant", {
           restaurantId,
         });
+        if (sequence !== branchSwitchSequence.current) return false;
         const { accessToken, refreshToken } = response.data;
+        if (!accessToken || !refreshToken)
+          throw new Error("The branch switch returned no session.");
         const house = storeSession(accessToken, refreshToken);
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
         if (house !== restaurantId) return false;

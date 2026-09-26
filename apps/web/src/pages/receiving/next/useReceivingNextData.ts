@@ -263,7 +263,13 @@ export interface QueueItemDto {
   orderNumber: string | null;
   verdict: string;
   summary: string | null;
-  backorderQty: number;
+  /**
+   * Ordered bottles the ledger does not hold yet, in BOTTLES (ADR 0192
+   * amendment, 2026-09-21: read from the ledger, not the order's retired
+   * backorder column). null when it could not be stated; `backorderWhy` says why.
+   */
+  backorderBottles: number | null;
+  backorderWhy: string | null;
   verifiedAt: string | null;
   dollarsAtRisk: number;
   selfEvidenced: boolean;
@@ -396,6 +402,9 @@ export function useManagerQueue(): ManagerQueueData {
           chip: verdictLabel(i.verdict),
           atRisk: num(i.dollarsAtRisk),
           openClaimsFloor: num(i.openClaims),
+          // An older gateway sent no bottle count: unknown, never zero.
+          backorderBottles: num(i.backorderBottles),
+          backorderWhy: i.backorderWhy ?? null,
         }))
       : [];
     const laneCounts: Record<OutcomeLane, number | null> = {

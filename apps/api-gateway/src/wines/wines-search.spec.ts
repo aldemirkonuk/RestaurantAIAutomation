@@ -213,6 +213,7 @@ describe("a failed library read is a clean 503, never a raw 500", () => {
           Promise.reject(new ServiceUnavailableException("library down")),
       } as any,
       {} as any,
+      {} as any,
     );
     const failure = await controller
       .searchWines({} as GetWinesQueryDto)
@@ -229,6 +230,7 @@ describe("a failed library read is a clean 503, never a raw 500", () => {
         searchWines: () =>
           Promise.reject(new Error('column "secret_col" does not exist')),
       } as any,
+      {} as any,
       {} as any,
     );
     const failure = await controller

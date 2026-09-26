@@ -895,10 +895,22 @@ export class TeamService {
     restaurantId: string,
   ): Promise<any[]> {
     await this.assertAccess(userId, restaurantId);
-    const { data } = await this.sb
+    // A failed read used to answer `[]`, which the page reads as "no coverage
+    // rule exists — the engine is idle" and offers to create the first rule.
+    // An unreadable rule file is not an empty one ([[absence-reported-as-health]]):
+    // the page has its own "could not be read" sentence for exactly this.
+    const { data, error } = await this.sb
       .from("coverage_templates")
       .select("*")
       .eq("restaurant_id", restaurantId);
+    if (error) {
+      this.logger.error(
+        `coverage_templates read failed for r=${restaurantId}: ${error.code ?? "?"} ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "The coverage rules could not be read.",
+      );
+    }
     return data ?? [];
   }
 
@@ -924,17 +936,42 @@ export class TeamService {
     return data;
   }
 
+  /**
+   * Remove one coverage rule of THIS house and return the row that went.
+   *
+   * This used to await the delete and discard its answer, so a failed write,
+   * or an id belonging to another house (scoped out by the restaurant filter),
+   * both returned 200 with nothing removed — and the page said "Rule removed"
+   * over a rule still in force. Now: a write error is a 500 that says the
+   * rule is still in force; no row of this house by that id is a 404; and the
+   * removed row comes back so the client can name what went (founder,
+   * 2026-09-26, round 8, item 51).
+   */
   async deleteCoverageTemplate(
     userId: string,
     restaurantId: string,
     id: string,
-  ): Promise<void> {
+  ): Promise<Record<string, unknown>> {
     await this.assertAccess(userId, restaurantId, "manager");
-    await this.sb
+    const { data, error } = await this.sb
       .from("coverage_templates")
       .delete()
       .eq("id", id)
-      .eq("restaurant_id", restaurantId);
+      .eq("restaurant_id", restaurantId)
+      .select();
+    if (error) {
+      this.logger.error(
+        `coverage_templates delete failed for r=${restaurantId} id=${id}: ${error.code ?? "?"} ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "The coverage rule was not removed — it is still in force.",
+      );
+    }
+    const removed = Array.isArray(data) ? data[0] : data;
+    if (!removed) {
+      throw new NotFoundException("No such coverage rule in this restaurant.");
+    }
+    return removed;
   }
 
   // ── Settings (labor toggle) ──────────────────────────────────────────────

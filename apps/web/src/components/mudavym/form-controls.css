@@ -1,0 +1,118 @@
+/* Select / CountInput — the house's boxed-control language, for a plain
+   in-page form rather than a Sheet's `.mdv-field` (that one is Fraunces/17px,
+   built for a single overlay question; these are compact, for a dense card).
+   Same tokens `HoldToApprove`'s track uses: `--paper-1` fill, `--paper-2`
+   border, `--seal`/`--seal-ring` on focus and hover. */
+
+.mdv-select {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mdv-select__label,
+.mdv-count__label {
+  font-family: var(--mdv-sans, inherit);
+  font-size: 11px;
+  color: var(--ink-3, #7c7365);
+}
+.mdv-select__control {
+  min-width: 200px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2, #e4ddcd);
+  background: var(--paper-1, #f3efe6);
+  color: var(--ink-1, #211c16);
+  font-family: var(--mdv-sans, inherit);
+  font-size: 13px;
+  line-height: 1.3;
+}
+.mdv-select__control:hover:not(:disabled) {
+  border-color: var(--seal-ring, rgba(26, 94, 107, 0.32));
+}
+.mdv-select__control:focus-visible {
+  outline: 2px solid var(--seal, #1a5e6b);
+  outline-offset: 1px;
+}
+.mdv-select__control:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.mdv-count {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mdv-count__control {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 8px;
+  border: 1px solid var(--paper-2, #e4ddcd);
+  background: var(--paper-1, #f3efe6);
+  overflow: hidden;
+}
+.mdv-count__control:focus-within {
+  border-color: var(--seal-ring, rgba(26, 94, 107, 0.32));
+}
+.mdv-count__btn {
+  flex: none;
+  width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--seal-deep, #14515c);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mdv-count__btn:hover:not(:disabled) {
+  background: var(--seal-tint, rgba(26, 94, 107, 0.1));
+}
+.mdv-count__btn:focus-visible {
+  outline: 2px solid var(--seal, #1a5e6b);
+  outline-offset: -2px;
+}
+.mdv-count__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.mdv-count__input {
+  width: 92px;
+  padding: 7px 4px;
+  border: 0;
+  border-left: 1px solid var(--paper-2, #e4ddcd);
+  border-right: 1px solid var(--paper-2, #e4ddcd);
+  background: transparent;
+  color: var(--ink-1, #211c16);
+  font-family: var(--mdv-sans, inherit);
+  font-size: 13px;
+  text-align: center;
+}
+.mdv-count__input:focus-visible {
+  outline: none;
+}
+.mdv-count__input::placeholder {
+  color: var(--ink-3, #7c7365);
+}
+.mdv-count__input:disabled {
+  opacity: 0.55;
+}
+
+/* Standard visually-hidden-but-accessible label, for a caller that draws its
+   own visible caption elsewhere on the row. Tailwind ships `sr-only` too;
+   this file does not depend on it, in case a bare .tsx-only bundle imports
+   this stylesheet without Tailwind's base layer. */
+.mdv-select .sr-only,
+.mdv-count .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

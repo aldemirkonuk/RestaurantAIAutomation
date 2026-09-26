@@ -18,6 +18,7 @@
  */
 import {
   ExecutionContext,
+  ForbiddenException,
   INestApplication,
   ValidationPipe,
 } from "@nestjs/common";
@@ -30,6 +31,8 @@ import { ROLES_KEY } from "../auth/decorators/roles.decorator";
 import { DatabaseService } from "../database/database.service";
 import { ConversationsController } from "./conversations.controller";
 import { ConversationsService } from "./conversations.service";
+import { SealChallengeService } from "../common/seal/seal-challenge.service";
+import { VendorSendAuthorityService } from "../organizations/vendor-send-authority.service";
 
 jest.mock("axios");
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -135,19 +138,54 @@ function makeBuilder() {
 
 const db = { supabase: { from: jest.fn(() => makeBuilder()) } };
 
+/*
+ * The approve route's two gates (ADR 0175 D9/D10, 2026-09-21). WHO is a stand-in
+ * keyed on the role this spec's token carries — the real rule is exercised in
+ * organizations/vendor-send-authority.spec.ts and
+ * procurement/staff-ask-manager-sends.spec.ts — and admits the three standings
+ * D10 names: owner, manager and grantee. The seal is a recorder that accepts
+ * exactly the token "good": what is asserted is that approve REACHES it, over
+ * the words it would release, before anything is written.
+ */
+let tokenRole = "manager";
+const authority = {
+  assertMaySend: jest.fn(async () => {
+    if (["owner", "manager", "grantee"].includes(tokenRole)) {
+      return {
+        mode: "send",
+        basis: tokenRole === "grantee" ? "grant" : tokenRole,
+        grant: tokenRole === "grantee" ? { id: "grant-1", grantorUserId: "owner-1", expiresAt: null, limitAmount: null, limitCurrency: null } : null,
+        role: tokenRole,
+      };
+    }
+    throw new ForbiddenException("Nothing was sent. Only an owner, a manager, or someone an owner has named may approve this message to the vendor with one hold. Ask an owner or a manager to do it.");
+  }),
+  // A release under a grant is written to the security ledger (founder answer 4).
+  witnessGrantUse: jest.fn(async () => undefined),
+};
+const seal = {
+  issue: jest.fn(async (p: any) => ({ challenge: "good", expiresAt: "t", action: p.action })),
+  redeem: jest.fn(async (p: any) => {
+    if (p.challenge !== "good") throw new ForbiddenException("That seal is absent or not this one. Nothing was changed.");
+    return { sealId: "seal-1" };
+  }),
+};
+
 let app: INestApplication;
 let base: string;
 
 async function call(
   method: "GET" | "POST" | "PUT",
   path: string,
-  as: { house?: string | null; role?: string },
+  as: { house?: string | null; role?: string; seal?: string | null },
   body?: unknown,
 ): Promise<{ status: number; body: any }> {
+  tokenRole = as.role ?? "manager";
   const headers: Record<string, string> = {
     "content-type": "application/json",
     "x-test-role": as.role ?? "manager",
   };
+  if (as.seal !== null) headers["x-seal-challenge"] = as.seal ?? "good";
   if (as.house !== null) headers["x-test-house"] = as.house ?? HOUSE_A;
   const res = await fetch(`${base}/conversations${path}`, {
     method,
@@ -172,6 +210,8 @@ beforeAll(async () => {
     providers: [
       ConversationsService,
       { provide: DatabaseService, useValue: db },
+      { provide: SealChallengeService, useValue: seal },
+      { provide: VendorSendAuthorityService, useValue: authority },
     ],
   })
     .overrideGuard(JwtAuthGuard)
@@ -437,22 +477,26 @@ describe("approve, edit and reject take an owner or a manager (ADR 0116, ADR 016
     );
   });
 
-  it("lists JwtAuthGuard BEFORE RolesGuard and declares the role on the three writes", () => {
+  it("lists JwtAuthGuard BEFORE RolesGuard and declares the role on edit and reject", () => {
     const guards: unknown[] =
       Reflect.getMetadata("__guards__", ConversationsController) ?? [];
     expect(guards.indexOf(JwtAuthGuard)).toBe(0);
     expect(guards.indexOf(RolesGuard)).toBe(1);
-    for (const name of [
-      "approveConversation",
-      "editMessage",
-      "rejectConversation",
-    ]) {
+    for (const name of ["editMessage", "rejectConversation"]) {
       expect(
         Reflect.getMetadata(
           ROLES_KEY,
           (ConversationsController.prototype as any)[name],
         ),
       ).toEqual(["owner", "manager"]);
+    }
+  });
+
+  it("approve carries no token role: a grantee is a row, not a role, so WHO is the service's gate (ADR 0175 D10)", () => {
+    for (const name of ["approveConversation", "issueApproveSeal"]) {
+      expect(
+        Reflect.getMetadata(ROLES_KEY, (ConversationsController.prototype as any)[name]),
+      ).toBeUndefined();
     }
   });
 });
@@ -476,5 +520,81 @@ describe("a failed by-id read is a failure, and its text does not leave", () => 
     );
     expect(appr.status).not.toBe(404);
     expect(appr.status).not.toBe(201);
+  });
+});
+
+describe("approve is sealed and admits a grantee (ADR 0175 D9/D10, 2026-09-21)", () => {
+  it("refuses an approve with no seal, before anything is written or published", async () => {
+    const res = await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A, seal: null }, APPROVE_BODY);
+    expect(res.status).toBe(403);
+    expect(applied).toEqual([]);
+    expect(rowOf(CONV_A).manager_approval_status).toBe("pending");
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
+  it("refuses a seal that is not the one minted, before anything is written", async () => {
+    const res = await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A, seal: "stale" }, APPROVE_BODY);
+    expect(res.status).toBe(403);
+    expect(applied).toEqual([]);
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
+  it("redeems the seal over the EDITED words it would release, on this conversation, as its own act", async () => {
+    await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A }, APPROVE_BODY);
+    const redeemed = seal.redeem.mock.calls[0][0];
+    expect(redeemed).toMatchObject({
+      restaurantId: HOUSE_A,
+      actorUserId: "user-1",
+      subjectKind: "procurement_conversation",
+      subjectId: CONV_A,
+      action: "approve_conversation",
+    });
+    expect(redeemed.args).toMatchObject({ body: APPROVE_BODY.modified_message, conversationId: CONV_A });
+  });
+
+  it("with no edit, the seal is over the agent's own words on the row", async () => {
+    await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A }, { approved: true, approval_channel: "web_app" });
+    expect(seal.redeem.mock.calls[0][0].args.body).toBe("House A asks the vendor for 12 cases");
+  });
+
+  it("admits a grantee — the standing a token role cannot express", async () => {
+    const res = await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A, role: "grantee" }, APPROVE_BODY);
+    expect(res.status).toBe(201);
+    expect(authority.assertMaySend).toHaveBeenCalled();
+    // The release under a grant is on the security ledger, after the seal and
+    // before the row is written (ADR 0112 F12; founder answer 4, 2026-09-21).
+    expect(authority.witnessGrantUse).toHaveBeenCalledWith(
+      "grant-1",
+      expect.objectContaining({ restaurantId: HOUSE_A, act: "approve_conversation", subject: `procurement_conversation:${CONV_A}` }),
+    );
+  });
+
+  it("the mint answers another house's conversation 404, before WHO is asked", async () => {
+    const res = await call("POST", `/${CONV_B}/approve-seal-challenge`, { house: HOUSE_A }, {});
+    expect(res.status).toBe(404);
+    expect(authority.assertMaySend).not.toHaveBeenCalled();
+    expect(seal.issue).not.toHaveBeenCalled();
+  });
+
+  it("the mint refuses staff and issues nothing", async () => {
+    const res = await call("POST", `/${CONV_A}/approve-seal-challenge`, { house: HOUSE_A, role: "staff" }, {});
+    expect(res.status).toBe(403);
+    expect(seal.issue).not.toHaveBeenCalled();
+  });
+
+  it("the mint seals the words the approve would release", async () => {
+    const res = await call(
+      "POST",
+      `/${CONV_A}/approve-seal-challenge`,
+      { house: HOUSE_A },
+      { modified_message: "Ten cases, please" },
+    );
+    expect(res.status).toBe(201);
+    expect(seal.issue.mock.calls[0][0]).toMatchObject({
+      subjectKind: "procurement_conversation",
+      subjectId: CONV_A,
+      action: "approve_conversation",
+      args: { body: "Ten cases, please", conversationId: CONV_A },
+    });
   });
 });

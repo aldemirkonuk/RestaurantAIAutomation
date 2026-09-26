@@ -24,6 +24,16 @@ import expected from "./route-access.expected.json";
  * `JwtAuthGuard`-only). Every other cell is the old measurement. A relabel
  * reverted, a route added or removed in one of these controllers, or the old
  * widening put back, all fail here.
+ *
+ * Two rows changed as decided by #436 (ADR 0175 D9/D10, founder 2026-09-21,
+ * recorded when #436 merged main 2026-09-26): `POST /conversations/:id/approve`
+ * lost its `@Roles("owner", "manager")` because a staff member holding a live
+ * grant may send, and a grant is a row, not a token role — WHO is checked in
+ * `VendorSendAuthorityService` and the send is sealed. Its new sibling
+ * `POST /conversations/:id/approve-seal-challenge` is gated the same way. Both
+ * therefore read "open" here; the gate they rely on is pinned by the
+ * `ADR-0171-CONVERSATION-ROUTES-HOUSE-SCOPED` claim and
+ * `vendor-send-authority.spec.ts`, not by `RolesGuard`.
  */
 
 const ctx = (handler: object, cls: object, role: string | null) =>

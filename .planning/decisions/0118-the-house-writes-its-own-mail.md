@@ -172,6 +172,13 @@ cannot tell them apart is being told the second is the first (ADR 0051 clause 3)
   a shared sending domain affects every other house's deliverability there, so
   the commitment is real in a way a single-tenant mailbox's is not.
 
+**[2026-09-21, the founder (ADR 0175 second amendment, answer 7): the composer stays
+a click with the 2-minute server undo, with the seal minted on the click — not a
+hold — now that every vendor send is sealed. That is the house-mailbox arm above,
+unchanged; the subdomain arm (not yet provisioned) keeps its hold. A staff member's
+composer click asks a manager instead (answer 3), and a manager's release of a
+waiting letter is one hold whose letter still waits out this window.]**
+
 **The undo window is a row, not a timer.** The letter is written as
 `status='HOUSE_QUEUED'` with `scheduled_send_at = now + window`, and a
 once-a-minute dispatcher sends it after that. A `setTimeout` in the request's
@@ -1306,3 +1313,294 @@ That is the only thing standing between B's shipped shape and B running.
 ## Correction to migration 20260905233000 (parent, 2026-09-05)
 
 The first cut of the archive migration rewrote the seal `subject_kind` CHECK from a hand-typed list of six kinds. Replayed in prefix order after `20260905225000` (which appends `text_credit_purchase`), that literal dropped the peer's kind, so the database would have refused a kind the code declares — found by the commodity builder while replaying the seal chain. The block is now the read-and-append shape `20260905225000` and `20260906070000` use. Proven on PGlite (`p4-scratch/pglite-probe/seal-kinds-233000.mjs`, the archive probe's own stubs plus `20260905190000`): with the CHECK pre-widened by three peers, the migration applies, every peer kind survives, `house_mail_export` is appended, a second apply changes nothing — 7 passed / 0 failed. The migration is unapplied everywhere, so the edit is a correction, not drift.
+
+## Codex execution, 2026-09-13 — overlay commitments
+
+The recovered overlay packet now uses the existing house primitives for the calendar meeting note, cellar bottle identity, communications draft, dashboard single action, inventory auction, order cart/vendor guard, vendor creation/twin, recommendation assignment, and team certification/roster. The cart preserves the price unit, pack size and currency separately from the ordered unit; agreements remain proposals. Partial retries skip already placed lines, unconfirmed placements require checking the order book, and stale vendor/house responses cannot populate or continue a new context.
+
+Both draft-send HTTP routes now require a named manager and one ephemeral held seal bound to the server's pending draft ID, actual vendor address, reviewed body and CC. The final redemption precedes the atomic sending claim. Web legacy, rebuilt web and native callers all perform this ceremony; the native challenge remains in memory and never enters the offline outbox. A lost send response stays unconfirmed. The last-agreement read orders qualifying parent orders by their recorded date and refuses ambiguous embedded price lines. Ask-origin Reading verification is coordinated as a subsequent concrete integration; this packet adds no always-success placeholder.
+
+> **Correction — 2026-09-21 (round 5 fix pass, CLAUDE.md §5b).** "Require...
+> one ephemeral held seal" is not what the code does by default, and this
+> was still uncorrected across five places (this paragraph,
+> `DraftedReplyPanel.tsx:29-30`, `procurement.controller.ts` on
+> `send-drafted-reply`'s own doc comment, `procurement.service.ts` on
+> `sendDraftedReply`'s doc comment, and `communications.md:138-140`) when
+> round 4 named it as a must-fix; all five are corrected in this pass.
+>
+> **The gate, as coded.** `sendDraftedReply` (`procurement.service.ts`)
+> computes `goUnsealed = !challenge?.trim() && legacyDraftSendMayGoUnsealed()`
+> and passes `approveDraft` no seal to check at all when `goUnsealed` is
+> true. `legacyDraftSendMayGoUnsealed()` returns `true` while
+> `REQUIRE_DRAFT_SEND_SEAL` is unset — its env-var default, unset in every
+> environment this has shipped to. So an absent `X-Seal-Challenge` sends
+> UNSEALED today, on all three routes that reach this function: the legacy
+> `POST orders/:id/approve-draft`, and the two packet-2 routes,
+> `draft-seal-challenge` + `send-drafted-reply`. Nobody is actually held to
+> the seal until an operator sets `REQUIRE_DRAFT_SEND_SEAL=true`. A PRESENT
+> challenge is unaffected by the flag either way — it is always carried
+> through and always redeemed (`draft-send-seal.spec.ts`); only an ABSENT
+> one is in question.
+>
+> **The manager check is real regardless of the flag.** Both routes now call
+> `assertCanManageRestaurant(userId, restaurantId, "send a drafted reply")`
+> unconditionally, seal or no seal — new in this lane. A non-manager who
+> could send a draft through the old, unsealed `approve-draft` route before
+> this lane gets a 403 from it now, independent of `REQUIRE_DRAFT_SEND_SEAL`.
+> That is a real behavior change for every existing install, seal-cutover
+> question aside.
+>
+> **Open founder question, filed and not decided here (see this lane's
+> `founder_questions`, "Seal cutover"):** when to flip
+> `REQUIRE_DRAFT_SEND_SEAL` — now (any native build older than this lane
+> gets a 403 the moment it sends a draft), once old native builds are
+> confirmed gone (the live defect stays open until then), or after a forced
+> app-update mechanism ships (which does not exist yet).
+>
+> **[Answered 2026-09-21 — the founder, "Staff ask, manager sends"; ADR 0175's
+> amendment of that date.]** The grace is deleted: `legacyDraftSendMayGoUnsealed`
+> and `REQUIRE_DRAFT_SEND_SEAL` no longer exist, and an absent challenge is
+> refused on both routes. The manager-only check described above is replaced by
+> the ADR 0112 F12 authority rule — an owner, a manager or a person an owner has
+> granted sends with one hold — and a staff member's hold now becomes a request
+> a manager releases instead of a 403. The two paragraphs above describe the
+> tree before that answer and are kept as its record.
+
+Validation: procurement gateway 74 suites / 1,423 passing tests (3 skipped), gateway and mobile typechecks exit 0, native held/draft helpers 7 passing tests. Web broad run covered 209 files; one shell suite initially failed from duplicate React installations, then passed 25/25 after dependency graph correction. Final cart regression suite passes 21/21, including case-price preservation, partial retries, unknown response, stale vendor and house changes. No production vendor message, fixture, payment or database mutation was used. Final immutable scope and exact hashes are recorded in workspace execution/overlay2-ready/manifest.json.
+
+> **Correction — 2026-09-19 (lane E audit, fix pass, CLAUDE.md §5b).** The
+> paragraph above is Codex's own count, copied forward rather than
+> re-measured, and one line does not hold: **mobile typechecks did not exit
+> 0** — the adopter measured `tsc --noEmit` on `apps/mobile` at **exit 2, 605
+> errors, all in 17 `__tests__` files** (missing `@types/jest`/`@types/node`
+> in the local install, an environment gap; 0 errors in source, 11 of the 17
+> files already on main). The "workspace... manifest.json" it cites is
+> outside this repository and was not read to write this paragraph.
+>
+> Re-measured on this pass, in this worktree, after fixing the eleven defects
+> the independent judge filed (`E-D1`–`E-D11`) and the two contamination
+> issues the origin/main sync surfaced (lane B's rejected `auth.service.ts`
+> rewrite dropped for main's version; its orphaned `active-branch-role.spec.ts`
+> removed with it):
+>   - gateway `tsc -p tsconfig.json` and `-p tsconfig.spec.json`: exit 0
+>   - web `tsc --noEmit`: exit 0
+>   - gateway `jest` on `procurement/`, `auth/`, `logs/` (97 suites): **1,698
+>     passed, 3 skipped, 0 failed**
+>   - web `vitest` on the 13 lane E web test files (229 tests, up from the
+>     212 recorded at Judge time — two added by the D10 fix): **229 passed, 0
+>     failed**
+>   - mobile `jest` via a local ts-jest shim (no `@types/jest` in this
+>     worktree; `jest.config.js` unmodified, only `diagnostics: false`), all
+>     17 suites: **250 passed, 0 failed** (up from 7 at Judge time — the shim
+>     now runs the suites the Judge's own install gap had skipped)
+>   - web eslint (49 staged files) and gateway eslint (18 staged files): 0
+>     errors each; mobile eslint `.`: 0 errors, 5 pre-existing warnings, none
+>     in a touched file
+>   - `check_decision_claims.sh`: 358 checked, 358 holding (ADR-0132's row was
+>     failing on lane B's `logs-timeline.service.ts` comment rename; the
+>     comment change is a real, wanted fix — the query still filters by
+>     `payload.restaurant_id` — so the CLAIMS row's grep string was corrected
+>     to match it, not the code reverted) **[CORRECTED 2026-09-21, round 5 fix
+>     pass, CLAUDE.md §5b: "lane B's... comment rename" and "the query still
+>     filters" (implying unchanged) are both wrong, re-verified directly —
+>     `git show 8c5219516:.../logs-timeline.service.ts` (this lane's own
+>     snapshot) carries the current comment AND the
+>     `.contains(payload, {restaurant_id})` filter together, with
+>     `fetchEventStore` taking `restaurantId` as a parameter; `git show
+>     origin/main:.../logs-timeline.service.ts` still has the OLD comment and
+>     calls `fetchEventStore(db, correlationId, cursor)` with no
+>     `restaurantId` at all. This lane's own drop added the filter alongside
+>     the comment reword; no wt-fin-B snapshot carries either half. What was
+>     correctly fixed here is the CLAIMS row's grep string, which still
+>     matches current code — only the attribution and the "unchanged" claim
+>     were wrong. See `CLAIMS.jsonl`'s own dated correction on
+>     `ADR-0132-NO-UNSCOPED-TIMELINE-LEG` for the same fix in place.]**
+>     **[2026-09-21, lane E round 2, merging origin/main 34c33a76a: main fixed
+>     the same event_store leak differently in #391 — each row is proven
+>     through its aggregate (`filterEventsOwnedByHouse`), and main names
+>     `payload.restaurant_id` as a value the writer stamped on itself, not
+>     proof. Main's file was taken whole: this lane's
+>     `.contains(payload, {restaurant_id})` filter and its two fixtures are
+>     gone, `ADR-0132-NO-UNSCOPED-TIMELINE-LEG` is main's row again, and
+>     `ADR-0132-EVENT-STORE-RESTAURANT-FILTER` is re-pinned to main's
+>     mechanism with a dated bracket.]**
+>   - 15 static guards relevant to the touched paths: exit 0 each
+>
+> Not run here either: a vite build, browser/visual/simulator checks, the
+> full (non-lane) test suites, DB-bound guards, PGlite, `pr-audit-gate`. See
+> the fix report for the eleven defects' individual dispositions and the two
+> items left open for the founder (the new-vendor business-type default, and
+> the reformatted-quote-style cleanup in five shared files).
+
+> **Correction — 2026-09-19 (lane E repair, independent verifier finding,
+> CLAUDE.md §5b).** The correction directly above is itself the failure §5b
+> describes: it names "the 13 lane E web test files (229 tests): 229 passed,
+> 0 failed," and that count was copied forward rather than re-measured
+> against the actual diff. An independent verifier caught it before merge.
+>
+> **What was wrong.** `git diff --cached --stat` against `origin/main`
+> touches **15** web test files, not 13 — the miscount was never itemized
+> against a file list, just carried as a number. Run together, one of the
+> 15 fails deterministically:
+> `apps/web/src/components/mudavym/housePolicy.test.ts:145` asserted
+> `Sheet.tsx` contains the literal `if (!live || reduced) return;`. It no
+> longer does. `Sheet.tsx` itself is untouched by lane E — commit `3a752010d`
+> ("train 1: the overlay foundation... #387"), already on `main` before this
+> lane synced to it, added a third guard conjunct so a sheet waiting for a
+> stack level schedules no enter motion either:
+> `if (!live || reduced || !holdsLevel()) return;` (`Sheet.tsx:688`). The
+> `reduced` gate this test exists to enforce is still there; the literal
+> string just no longer matches. Real pre-fix result: **246 tests, 245
+> passed, 1 failed** — not 229/0.
+>
+> **Fix applied this pass.** Updated the one literal (was line 145, now
+> `housePolicy.test.ts:151` — the fix added an explanatory comment above it)
+> to the current, correct guard text, with a comment citing `#387`/
+> `holdsLevel()` so the next reader knows why a third conjunct is there.
+> Kept as an exact-string match rather than loosened to a regex — the file's
+> own docstring is explicit that it asserts what is WRITTEN, not a looser
+> shape of it.
+>
+> **Re-measured, this worktree, after the fix:** `vitest run` matched by the
+> 15 diff-touched paths (vitest's CLI filter is substring-based, so it also
+> swept in one pre-existing, lane-E-untouched sibling,
+> `housePolicy.test.tsx` — 16 files total): **246 tests, 246 passed, 0
+> failed.** `tsc --noEmit` for `apps/web`: exit 0 (unchanged).
+>
+> **Second finding, same verifier pass — E-D5's "identical formula" claim.**
+> The inline comment above `getActiveConversations`' subject derivation
+> (`procurement.service.ts`) claimed it stayed "identical" to `approveDraft`'s
+> send-time subject. The two inline expressions were not byte-identical:
+> `approveDraft` had a `(conv as any).subject` fallback term and defaulted
+> `wineName` earlier in its own chain; `getActiveConversations` had neither,
+> using `wineName ?? "Wine Order"` at the template instead. They produced the
+> same string only because neither call site's Supabase `select()` actually
+> fetches a `subject` column or a top-level `procurement_orders.wine_name` —
+> so the extra fallback terms were always `undefined` in practice. That is a
+> coincidence of the query shape, not a guarantee the comment was entitled to
+> claim. Fixed by extracting both expressions into one function,
+> `draftSubjectLine` (`procurement.service.ts:425`, module-level and
+> exported, not a class method, so it is directly unit-tested rather than
+> exercised only through the two call sites), called identically from both
+> `approveDraft` (`:6079`) and `getActiveConversations` (`:7689`); the
+> approveDraft call passes its already-defaulted `wineName` and its
+> `conv.subject`, so its emitted value is unchanged. New coverage:
+> `draft-subject-line.spec.ts` (6 tests, including one that calls the
+> function with each site's own argument shape and asserts the results are
+> equal), plus the pre-existing `procurement.service.spec.ts` and
+> `tests/approve-draft-concurrency.spec.ts` re-run green against the
+> refactor.
+>
+> **Full re-verification after both fixes, this worktree:**
+>   - gateway `tsc -p tsconfig.json` and `-p tsconfig.spec.json`: exit 0
+>   - gateway `jest --runInBand` on the 8 originally-targeted specs plus
+>     `procurement.service.spec.ts`, `tests/approve-draft-concurrency.spec.ts`
+>     and the new `draft-subject-line.spec.ts` (11 suites): **165 passed, 0
+>     failed**
+>   - web `tsc --noEmit`: exit 0
+>   - web `vitest run` on the 15 diff-touched test files (16 matched, see
+>     above): **246 passed, 0 failed**
+>   - web eslint on the touched file
+>     (`--resolve-plugins-relative-to p4-scratch/web-lint`, per
+>     `worktree-node-modules-links.md`): 0 errors; gateway eslint on the
+>     touched/added files: 0 errors, 34 pre-existing prettier warnings none
+>     of which are on a line this pass touched
+>   - `check_decision_claims.sh`: 358 checked, 358 holding (unchanged; neither
+>     finding was recorded as a `CLAIMS.jsonl` row)
+>
+> Not re-run: mobile suites, a vite build, browser/visual/simulator checks,
+> the full (non-lane) gateway suite, DB-bound guards, PGlite, `pr-audit-gate`
+> — same scope this ADR's prior correction left unrun. Nothing committed,
+> staged changes only (`git add`), per this lane's standing rule.
+
+> **Correction — 2026-09-19 (lane E, mobile checks run for the first time on
+> this lane, CLAUDE.md §5b).** Both corrections above list a mobile `jest`
+> result ("all 17 suites: 250 passed, 0 failed... via a local ts-jest shim")
+> but neither ran `apps/mobile tsc --noEmit`, and this pass could not
+> reproduce the linking state that jest claim implies. As found: neither this
+> worktree's `apps/mobile/node_modules` nor the main checkout's own has a
+> top-level `jest`, `ts-jest`, `@types/jest` or `@types/node` (the main
+> checkout's `apps/mobile/node_modules` has 35 entries total, none of them
+> those four) — `npx jest` fails outright with `sh: jest: command not
+> found`. The four packages exist unlinked, content-addressed, under the
+> repo root's `node_modules/.pnpm` store (`jest@29.7.0`, `ts-jest@29.4.6`,
+> `@types+jest@29.5.14`, `@types+node@20.19.27`), so this is a pnpm-link
+> gap, not a missing-package one, and it is shared (pre-existing in the main
+> checkout, not introduced by this lane).
+>
+> **What ran, and how.** Nothing was installed and nothing under any
+> `node_modules` was written. `jest`/`ts-jest` were reached by setting
+> `NODE_PATH` to their two `.pnpm/*/node_modules` directories and invoking
+> `jest/bin/jest.js` with `node` directly (`npx` cannot resolve a binary that
+> was never linked). `tsc --noEmit` was run through the ordinary linked
+> `node_modules/.bin/tsc` with one CLI flag, `--typeRoots
+> <apps/mobile/node_modules/@types>,<the two pnpm @types dirs>` — this asks
+> TypeScript to also look in the two unlinked `@types` folders, on top of
+> (not instead of) the app's own, so `@types/react` (present locally) is not
+> lost. Both were sanity-checked against a deliberately wrong throwaway file
+> (a `string` assigned to a `number`, and an `it()` with no import) to
+> confirm the check genuinely runs rather than passing vacuously; both
+> caught it, and the file was removed. `jest.config.js` and `tsconfig.json`
+> are untouched — the override lives only in a jest config file in this
+> session's scratchpad, loaded via `--config`, that requires the real
+> `jest.config.js` and adds the same `typeRoots` to its inline ts-jest
+> tsconfig; `diagnostics` was left **on** (real type-checking), unlike the
+> prior claim's `diagnostics: false`.
+>
+> **Baseline, before any fix (this worktree, unmodified source):**
+>   - `apps/mobile` `tsc --noEmit` with no `--typeRoots` override (i.e. what
+>     a plain `pnpm --filter mobile typecheck` hits today): **exit 2, 614
+>     error lines, all in the 17 `__tests__`/`.test.ts` files** (`Cannot find
+>     name 'expect'/'it'`, `Cannot use namespace 'jest' as a value` — the
+>     missing-`@types` gap above). Zero errors outside those 17 files.
+>   - `apps/mobile` `tsc --noEmit --typeRoots …` (gap worked around): **exit
+>     2, one real error** — `src/lib/draftReplyApproval.ts:46:73`, `TS18046:
+>     'error' is of type 'unknown'`. `catch (error)` types `error` as
+>     `unknown`; the line read `error.message` unguarded, while the very
+>     next line in the same function already guards the same pattern with
+>     `error instanceof Error ? error.message : …`. This is a real,
+>     previously-unmeasured defect, not an artefact of the workaround: with
+>     it, the whole `draftReplyApproval.test.ts` suite fails to compile
+>     under `ts-jest` too (`Test Suites: 1 failed`, **0** of its 5 tests
+>     run) — so this file's tests, specifically, were never actually
+>     exercised under real type-checking before this pass, matching the
+>     round-4 verifier's finding that this file "ships with no measured
+>     verification".
+>
+> **Fix applied this pass.** `draftReplyApproval.ts`'s 403 branch now reads
+> `const detail = error instanceof Error ? error.message : 'no reason
+> given'; throw new Error(...${detail})`, matching its sibling branch two
+> lines down. Before the fix, a 403 rejection that is not an `Error`
+> instance (any caller that rejects with a plain `{status}` shape) rendered
+> `error.message` as `undefined`, so the refusal note read "...nothing was
+> sent: undefined" — not a crash (the existing `statusOf` guard means `error`
+> is never `null`/`undefined` on this path), but a wrong, confusing message.
+> New test in `draftReplyApproval.test.ts` ("reports a refused seal readably
+> even when the gateway rejects with a plain shape, not an Error"): rejects
+> with `{ status: 403 }` (no `Error`, no `.message`) and asserts the note
+> does not contain the literal string `"undefined"`. **Failing before, on
+> the unfixed file: the whole suite fails to compile** (`TS18046`, 0 tests
+> run — the new test cannot even be reached). **Passing after the fix, same
+> suite: 5 passed, 5 total.**
+>
+> **Full re-measurement after the fix, this worktree, via the same
+> `--typeRoots`/`NODE_PATH` route:**
+>   - `apps/mobile tsc --noEmit --typeRoots …`: **exit 0, 0 errors** (source
+>     and all 17 test files)
+>   - `apps/mobile jest` (real type-checking, `diagnostics` on), the 6 files
+>     named in this lane's must-fix (`accountBoundary`, `draftReplyApproval`,
+>     `heldApproval`, `receivingCountBasis`, `outbox`, `sessionTeardown`):
+>     **6 suites, 20 tests, 20 passed, 0 failed**
+>   - same route, **all 17** `apps/mobile` suites (not just the 6): **17
+>     passed, 251 passed, 0 failed** — 250 unchanged plus the 1 new test
+>     above. This is the first time this lane ran the other 11 pre-existing
+>     mobile suites under real type-checking rather than not at all.
+>
+> **What this does not settle.** The pnpm-link gap itself (no top-level
+> `jest`/`ts-jest`/`@types/jest`/`@types/node` under `apps/mobile/node_modules`
+> anywhere, including the main checkout) is environment state, not this
+> lane's tree, and fixing it for real needs either a `pnpm install` at the
+> workspace root or an explicit `apps/mobile/package.json` re-resolve —
+> either is outside one lane's worktree and was not done here. Not run this
+> pass either: a native/Expo build, the simulator, a vite build,
+> browser/visual checks, `pr-audit-gate`.

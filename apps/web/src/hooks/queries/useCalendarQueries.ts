@@ -18,9 +18,13 @@ import {
   updateRecurringEventOccurrence,
   deleteRecurringEventFuture,
   checkEventConflicts,
+  createDayNote,
+  fetchDayNotes,
+  fetchDayNotesInRange,
   type CalendarEvent,
   type CreateEventInput,
   type UpdateEventInput,
+  type CreateDayNoteInput,
 } from '../../services/api/calendar'
 import { useNotificationStore } from '../../stores'
 import { offlineStorage } from '../../lib/offline-storage'
@@ -458,6 +462,55 @@ export function useDeleteRecurringEventFuture() {
     },
     onError: (error: any) => {
       toast.error('Failed to delete future events', error.response?.data?.message || error.message)
+    },
+  })
+}
+
+/**
+ * A day's meeting memos / call logs / tasting notes — ADR 0111 §1, its own
+ * table, never `calendar_events.description`. Built 2026-09-21 (founder
+ * answer 2) to close the gap `MeetingMemoPrompt` left: notes it collected
+ * were dropped by `handleMemoSave` since the prompt shipped.
+ */
+export function useDayNotes(businessDate: string | null) {
+  // The house is in the key: the gateway scopes by the token's house, and a
+  // branch switch re-issues the token without clearing this cache, so a key
+  // of the date alone would show one house's notes under another's name.
+  const { activeRestaurantId } = useAuth()
+  return useQuery({
+    queryKey: queryKeys.calendar.dayNotes(activeRestaurantId ?? '', businessDate ?? ''),
+    queryFn: () => fetchDayNotes(businessDate as string),
+    enabled: !!businessDate,
+  })
+}
+
+/**
+ * Every note across an inclusive range of days — the rebuilt calendar's way to
+ * know which ended meetings ALREADY carry a note (2026-09-21), so it does not
+ * list them as "without a note" after a reload. Disabled with no range.
+ */
+export function useDayNotesInRange(range: { from: string; to: string } | null) {
+  const { activeRestaurantId } = useAuth()
+  return useQuery({
+    queryKey: queryKeys.calendar.dayNotesRange(activeRestaurantId ?? '', range?.from ?? '', range?.to ?? ''),
+    queryFn: () => fetchDayNotesInRange(range!.from, range!.to),
+    enabled: !!range,
+  })
+}
+
+export function useCreateDayNote() {
+  const queryClient = useQueryClient()
+  const toast = useNotificationStore()
+
+  return useMutation({
+    mutationFn: (data: CreateDayNoteInput) => createDayNote(data),
+    onSuccess: () => {
+      // Every day-notes read — the one day and any range covering it.
+      queryClient.invalidateQueries({ queryKey: [...queryKeys.calendar.all, 'day-notes'] })
+      toast.success('Note saved')
+    },
+    onError: (error: any) => {
+      toast.error('Failed to save note', error.response?.data?.message || error.message)
     },
   })
 }

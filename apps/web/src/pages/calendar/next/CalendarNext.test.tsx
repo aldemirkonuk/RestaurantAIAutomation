@@ -23,6 +23,19 @@ vi.mock('./useCalendarNextData', async (importOriginal) => {
   return { ...actual, useCalendarNextData: () => state.current };
 });
 
+// MeetingNotePanel (always mounted, `open` merely gates its content) reads
+// `useDayNotes` for its "already recorded" line, and the page reads
+// `useDayNotesInRange` to keep meetings that already carry a note off the
+// "without a note" list (2026-09-21, calendar_day_notes). `notesRange.current`
+// is what that range read answers; by default it answered, with no notes.
+const notesRange = vi.hoisted(() => ({
+  current: { data: [] as unknown[] | undefined, isError: false, error: null as unknown },
+}));
+vi.mock('@/hooks/queries', () => ({
+  useDayNotes: () => ({ data: [], isLoading: false }),
+  useDayNotesInRange: () => notesRange.current,
+}));
+
 import CalendarNext from './CalendarNext';
 import { SEAL_HEX } from './cal-format';
 import type { CalEvent } from './useCalendarNextData';
@@ -254,6 +267,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(2026, 8, 15, 12, 0, 0));
   state.current = mkData();
+  notesRange.current = { data: [], isError: false, error: null };
 });
 
 afterEach(() => {
@@ -481,6 +495,45 @@ describe('CalendarNext — honesty', () => {
 
 
 /* ── the reminder job: server-side, and honest about itself (ADR 0109) ─────── */
+
+describe('CalendarNext — the note question reads the notes table (2026-09-21)', () => {
+  const ENDED = event({ id: 'm1', title: 'Tasting with Álvaro', date: '2026-09-10', type: 'tasting' });
+
+  it('asks about an ended meeting that carries no note', () => {
+    state.current = mkData({ events: [ENDED] });
+    draw();
+    expect(screen.getByTestId('cn-note-prompt')).toHaveTextContent('Tasting with Álvaro ended 2026-09-10');
+  });
+
+  it('does not list a meeting a kept note already answers — after a reload as much as before', () => {
+    state.current = mkData({ events: [ENDED] });
+    notesRange.current = {
+      data: [{ id: 'n1', businessDate: '2026-09-10', eventTitle: 'Tasting with Álvaro', body: 'x' }],
+      isError: false,
+      error: null,
+    };
+    draw();
+    expect(screen.queryByTestId('cn-note-prompt')).not.toBeInTheDocument();
+  });
+
+  it('says the notes could not be read rather than listing the meeting as noteless', () => {
+    state.current = mkData({ events: [ENDED] });
+    notesRange.current = { data: undefined, isError: true, error: new Error('Network Error') };
+    draw();
+    expect(screen.getByTestId('cn-note-unread')).toHaveTextContent(
+      /could not be read \(Network Error\)/,
+    );
+    expect(screen.getByRole('region', { name: 'Meetings whose notes could not be read' })).toBeInTheDocument();
+    expect(screen.getByTestId('cn-note-prompt')).toBeInTheDocument();
+  });
+
+  it('lists nothing while the notes have not answered', () => {
+    state.current = mkData({ events: [ENDED] });
+    notesRange.current = { data: undefined, isError: false, error: null };
+    draw();
+    expect(screen.queryByTestId('cn-note-prompt')).not.toBeInTheDocument();
+  });
+});
 
 describe('CalendarNext — reminders are kept by the house, not by this browser', () => {
   it('no longer claims reminders live in this browser, anywhere on the page', () => {

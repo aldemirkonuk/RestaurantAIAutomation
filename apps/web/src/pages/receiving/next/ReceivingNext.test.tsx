@@ -119,7 +119,8 @@ const queueItem = (over: Record<string, unknown> = {}) => ({
   orderNumber: 'PO-1',
   verdict: 'qty_short',
   summary: 'Two bottles short',
-  backorderQty: 0,
+  backorderBottles: 0,
+  backorderWhy: null,
   verifiedAt: '2026-08-30T09:00:00.000Z',
   dollarsAtRisk: 120,
   selfEvidenced: false,
@@ -423,6 +424,23 @@ describe('F6 — $0 measured and $— unknown are different facts', () => {
     harness(ManagerBody)
     await screen.findByRole('tab', { name: /Short/ })
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+  })
+
+  it('states what is still owed in bottles, from the ledger (ADR 0192 amendment)', async () => {
+    get.mockResolvedValue(queuePayload({ items: [queueItem({ backorderBottles: 2 })], totalAtRisk: 120 }))
+    harness(ManagerBody)
+    expect(await screen.findByText(/2 bottles still on backorder/)).toBeInTheDocument()
+  })
+
+  it('an unreadable backorder says it is not known, never that nothing is owed', async () => {
+    get.mockResolvedValue(
+      queuePayload({
+        items: [queueItem({ backorderBottles: null, backorderWhy: 'The stock ledger could not be read (offline).' })],
+        totalAtRisk: 120,
+      }),
+    )
+    harness(ManagerBody)
+    expect(await screen.findByText(/What is still owed is not known: The stock ledger could not be read/)).toBeInTheDocument()
   })
 
   it('marks the open-claim count as a floor — the link query is capped and unordered', async () => {

@@ -24,6 +24,14 @@ links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 - **Delivery card** (staff view) → [[receiving-door]] `/receiving/:orderId/door`
 - **Issue row** (manager view) → [[orders]] `/orders?order=<id>`
 
+## Action integrity — 2026-09-13 (pending release)
+
+`verifyReceipt` now measures previously booked quantity from immutable `inventory_transactions`, scoped by restaurant, order, inventory item and live stock, paginated through all rows. The new matcher operand names bottles explicitly; it never multiplies this total by the receiving unit again. The mixed historical `quantity_received` cache is retained for display compatibility and no longer authorizes a stock correction. An unreadable ledger refuses before any receipt write. Five twelve-bottle cases recorded at the door and verified at the desk now compare accepted 60 to stocked 60 with or without an invoice; a physical count of 58 corrects by −2.
+
+The native receiving form counts individual bottles in its steppers, scanner and request payload. It uses `bottlesTotal` for case orders, refuses an unknown pack/opaque unit, names the prefill as a suggested count, and requires explicit invoice figures and currency instead of copying the purchase order into invoice evidence. Its local result is labelled a preview; the gateway owns the document verdict. Scanning adds a count, not proof of product identity.
+
+Remaining limits: the legacy desk adjustment still has one idempotency key per order/item; changing quantities after a prior verification needs an atomic revision design. This patch does not backfill ambiguous historical cache units or reconcile prior production receipts, and the native preview does not implement the gateway's packing-slip, free-goods or credit ledger.
+
 ## 1. Purpose
 
 "One event, three renderings, chosen by role" (`ReceivingHome.tsx:17-33`, echoed at
@@ -36,7 +44,11 @@ the cost-free staff view on purpose.
 ## 1a. Features
 One event, three renderings by role:
 - **Staff**: pick which delivery you're receiving → the door flow; no prices shown
-- **Manager**: the decision queue, worst money first
+- **Manager**: the decision queue, worst money first. **[2026-09-21, ADR 0192
+  amendment: what is still owed is read from the ledger, in bottles
+  (`backorderBottles`, "N bottles still on backorder"), not from the order's
+  retired backorder column, and a queue that cannot be read is an error, not an
+  empty queue.]**
 - **Owner**: money that actually came back (recovered credits), **plus the manager
   decision queue since 2026-09-18** (ADR 0149 row 44, §12) — no longer one number alone
 - **Verification settles COST, never quantity (ADR 0103 A1).** The bottles arrived on the shelf at the door; pressing verify posts the agreed price — an accepted proposal beats the invoice line it is about — onto that delivery's lots and flips them from `provisional` to `final`. The response's `costNote` says what could not be costed and why, rather than reporting a silent success.
@@ -114,7 +126,10 @@ Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/
   403 that names the item; a failed ownership *lookup* is a 422, never a pass.
 - **Marking a delivery at the door cannot book it twice.** `quantity_received`
   now records what was actually booked instead of NULL, so `recordDoorReceipt`'s
-  `alreadyBooked` sees it. `?quantityReceived=` is validated: a non-numeric,
+  `alreadyBooked` sees it. **[2026-09-21, ADR 0192: no longer through the column —
+  `recordDoorReceipt` reads what was already booked from the stock ledger
+  (`readBookedOrderBottles`), and the app neither reads nor writes
+  `quantity_received`.]** `?quantityReceived=` is validated: a non-numeric,
   fractional or negative value is a 400 that says which, not a 200 that marks
   the order delivered with no stock booked.
 

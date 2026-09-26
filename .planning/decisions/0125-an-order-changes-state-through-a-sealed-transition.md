@@ -486,6 +486,13 @@ Three things about that body are decisions:
   multiplies. A bare count is the unitless quantity [ADR 0119](0119-an-agreed-price-states-its-unit.md)
   spent a whole pass removing, and `summary` renders "5 cases (60 bottles)"
   rather than "5" or an invented "60".
+  **[SUPERSEDED 2026-09-21 by [ADR 0192](0192-received-is-the-shelf-count-from-the-ledger.md),
+  founder: *"Shelf count from ledger"*. `earlierDelivery` now carries `received` —
+  the stock ledger's count for the order's item, with its unit and pack view, the
+  door's rejections and anything counted but not booked — in place of
+  `quantityReceived` and `unitType`; `summary` reads "…, 5 cases + 5 bottles on the
+  shelf." and leaves the count out when the ledger could not be read. Still built in
+  one place (`earlierDeliveryOf`) and thrown by every end.]**
 * **A name that could not be looked up is not "no name".** `received_by` holds a
   `public.users.user_id`; the name is resolved through the house idiom
   (`users.user_id` / `users.name`). A failed read of `users` and an order nobody
