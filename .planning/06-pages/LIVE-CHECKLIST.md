@@ -81,13 +81,15 @@ updated: 2026-09-26
 
 **[2026-09-26T03:10Z: 23 keys and 31 routes since #463 (`f7630c08b`) — `shell`, `admin` and `authorize_integration` moved here from the gated table below, where their rows stay with the bracket that moved them. Merge train 1 has since merged #416 (`e754b3a27`), #412 (`4e7c5b5a6`) and #446 (`e4f81d748`); all three change only `apps/api-gateway` (`git diff --name-only f7630c08b e4f81d748 -- apps`), so no key and no route changed. mudavym.com still serves `assets/index-2txKbWJ0.js`; the gateway serves `e4f81d748` (`/api/v1/health/live`, booted 02:16:38Z). [web-rebuild census](../07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md) §13.2.]**
 
+**[2026-09-26T04:25Z: train 1 has also merged #451 (`932bd83af`), #450 (`0d4498d1d`) and #425 (`72690130d`); none adds a key or a route (`git diff --name-only e4f81d748 72690130d -- apps/web/src/lib/mudavym`). The gateway serves `932bd83af` (booted 03:18:30Z); mudavym.com still serves `assets/index-2txKbWJ0.js`. Census §14.2.]**
+
 *Rebuilt 2026-09-25.* The rows for the sixteen original keys (seventeen routes, counting `/orders/:id`) went live with #421 (merged 2026-09-21, deployed 2026-09-22); `settings`, `help`, `cellar` and `menu` joined in code with #419, #413 and #434 (2026-09-22/23 UTC). None reads a `restaurant_feature_flags` row.
 
 | Route | Page | Design | Design locked? | Built on main? | Live for every house? | Deployed proof | Legacy deleted? | Notes |
 |---|---|---|---|---|---|---|---|---|
 | `/` | dashboard | Mudavym | Yes — ADR 0149 row 36 | Yes (`DashboardNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:361` |
 | `/inventory` | inventory | Mudavym | Yes — ADR 0149 row 36 | Yes (`InventoryCommandPage.tsx`, same component both branches) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | Gate exists only to mount `HouseHeader` (`App.tsx:362-369`) |
-| `/orders` | orders | Mudavym | Yes — ADR 0149 row 36 | Yes (`OrdersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:376`; the bare row click is OD-152 (OPEN-DECISIONS.md:93) |
+| `/orders` | orders | Mudavym | Yes — ADR 0149 row 36 | Yes (`OrdersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:376`; the bare row click is OD-152 (OPEN-DECISIONS.md:96) |
 | `/orders/:id` | orders | Mudavym | Yes — ADR 0149 row 36 | Yes (`OrdersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:383`; not tracked by this file before 2026-09-25 |
 | `/receiving/:orderId/door` | receiving_door | Mudavym | Yes — ADR 0149 row 36 | Yes (`DoorNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | Outside `DashboardLayout` on purpose; `NO_CHROME`. `App.tsx:289-292` |
 | `/providers` | providers | Mudavym | Yes — ADR 0149 row 36 | Yes (`ProvidersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:430`. **Not every surface rebuilt:** vendor sentiment renders through the legacy `ProviderIntelligencePanel` inside the sheet (`TwinSheet.tsx:33-35,155`), and distributor discovery exists only in legacy `Providers.tsx:152-246` — `ProvidersNext` reads no search params, so `/distributors` lands on the roster (ADR 0149 row 22). **[2026-09-26: the page's reads answer only for the caller's house on `main` and in production — provider intelligence by #416 (`e754b3a27`), the provider sub-resources by #412 (`4e7c5b5a6`); the gateway serves `e4f81d748`. The rename to `/vendors` (ADR 0221) is #481, OPEN.]** |
@@ -208,6 +210,8 @@ Sweep harness (`apps/web/sweep.html`, `apps/web/src/__sweep__/`) deleted after u
 per its own header's promise; the three leftover dev/storybook processes wave4
 left running are stopped.
 ## Gated — built on main, still behind a per-house flag
+
+**[2026-09-26T04:25Z, Wave 3 — built, OPEN, waiting for train 2 (census §14.3): `/recommendations` and `/recommendations/catalog` go live in code for every house when #483 merges (`LIVE_PAGES` to 24; after #467). The receiving desk's Approach 1 is #480 on #436, still flag-gated, and still owes item 38's one-tap history line (lane W4-receiving). `/providers` becomes `/vendors` with #481; old routes redirect. `/vendor-prices` (#473) may be switched on for a house only after #473 and #482 both merge (founder item 30). `/promotions` (#474) stays dark until `/communications`' "Who is writing" (#470) is live (the W3-promos lane's rule, unchanged since Wave 2). Nothing in this table changed on `main`.]**
 
 | Route | Page | Design | Design locked? | Built on main? | Live for every house? | Flag in production (2026-09-25T21:11Z) | Legacy deleted? | Notes |
 |---|---|---|---|---|---|---|---|---|
