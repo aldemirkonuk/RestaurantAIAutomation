@@ -342,7 +342,7 @@ reports a dark machine, `groundChoice.test.ts` asserts the store never calls `ma
 open JSONB blob per person with `UNIQUE (user_id)`, and the endpoint's DTO takes
 `Record<string, any>` while its service deep-merges partials — so `{"ground":"charcoal"}` merges
 in as a scalar. Deliberately *not* `notification_preferences`: that table is per person **per
-house** (`20260921090000_a_preference_is_kept_once_per_person_per_house.sql`), and a ground is
+house** (`20260925160500_a_preference_is_kept_once_per_person_per_house.sql`), and a ground is
 not a property of a house. This also keeps the lane clear of PR #411, which is rewriting the
 preferences controller's handler signatures at the same time — this change touches zero files in
 `apps/api-gateway`.

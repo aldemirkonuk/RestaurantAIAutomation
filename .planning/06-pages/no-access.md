@@ -33,7 +33,7 @@ Dead-end card for a signed-in user with no restaurant membership: shows their em
 - 🚧 Nothing actually routes users here today (see §9)
 
 ## 2. Entry
-**Orphaned.** The route exists (`App.tsx:155`) but *nothing navigates to it* — grep for `no-access` across `apps/web/src` finds only the route binding and a comment in `AuthShell.tsx:18`. Neither `ProtectedRoute.tsx` nor `AuthContext.tsx` redirects membership-less users here. [PAGE_MAP](../foundation/PAGE_MAP.md) omits it from the entry-points list (it only records the outbound `n_no_access --> n_login` edge) — a map inconsistency worth knowing about.
+**Orphaned.** The route exists (`App.tsx:155`) but *nothing navigates to it* — grep for `no-access` across `apps/web/src` finds only the route binding and a comment in `AuthShell.tsx:18`. Neither `ProtectedRoute.tsx` nor `AuthContext.tsx` redirects membership-less users here. [PAGE_MAP](../foundation/PAGE_MAP.md) omits it from the entry-points list (it only records the outbound `n_no_access --> n_login` edge) — a map inconsistency worth knowing about. **[No longer orphaned, 2026-09-18 (ADR 0164, `fix/sessions-follow-membership`): `ProtectedRoute` sends a session in no house to `/choose-house`, and the chooser sends a person with no houses here (`pages/ChooseHouse.tsx`). The page now speaks of houses, not workspaces, and shows "Your access to {house} has ended." when that is why the person arrived. The invented `'My Restaurant'` stub in `AuthContext` now appears only when the branch list cannot be read and the token names a house; it is never shown for a session in no house.]**
 
 ## 3. Files
 - Route binding: `apps/web/src/App.tsx:155` (eager, `App.tsx:70`)

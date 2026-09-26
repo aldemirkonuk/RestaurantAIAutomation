@@ -1,3 +1,4 @@
+import { stateBookFrom } from "./insights/item-state";
 import * as fs from "fs";
 import * as path from "path";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
@@ -216,7 +217,7 @@ function makeGenerator(client: any) {
   return new InsightGeneratorService(
     { getClient: () => client } as any,
     { load: async () => ({ dates: new Set<string>(), readable: true, problem: null }) } as any,
-    { listSuppressions: async () => ({ keys: new Set<string>(), readable: true, problem: null }) } as any,
+    { readState: async () => ({ book: stateBookFrom([]), readable: true, problem: null }) } as any,
   );
 }
 
