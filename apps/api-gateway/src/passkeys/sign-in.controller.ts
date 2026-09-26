@@ -105,9 +105,12 @@ export class SignInController {
   @ApiOperation({ summary: "Sign in with an emailed code; returns a session." })
   async emailCodeVerify(@Body() dto: EmailCodeVerifyDto) {
     const userId = await this.codes.verify("sign_in", dto.email, dto.code);
+    // The address the code was just checked against: an emailed-code sign-in
+    // proves that mailbox, so AuthService marks it verified (ADR 0229, item 37).
     const tokens = await this.auth.issueSessionForVerifiedSignIn(
       userId,
       "email_code",
+      dto.email,
     );
     return { success: true, ...tokens };
   }

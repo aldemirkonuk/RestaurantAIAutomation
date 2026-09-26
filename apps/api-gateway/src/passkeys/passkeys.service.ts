@@ -6,6 +6,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import {
   generateAuthenticationOptions,
@@ -19,6 +20,8 @@ import type {
   PublicKeyCredentialRequestOptionsJSON,
   RegistrationResponseJSON,
 } from "@simplewebauthn/server";
+import { GmailService } from "../communications/gmail.service";
+import { passkeyAddedEmailTemplate } from "../communications/email-templates/passkey-added.template";
 import { DatabaseService } from "../database/database.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { SignInCodesService } from "./sign-in-codes.service";
@@ -38,16 +41,22 @@ import {
  *   1. **WebAuthn, per user.** One row per credential in `user_passkeys`, keyed
  *      on `public.users.user_id` from the signed token -- never a house, never
  *      a device, never an id from the body.
- *   2. **Owner and manager only.** Enrolling and checking resolve the caller's
- *      role IN THIS HOUSE (`OrganizationsService.resolveRestaurantRole`) and
- *      refuse anything else. Listing and revoking your own passkeys are not
- *      gated: someone who stopped being a manager must still be able to see and
- *      remove what they enrolled.
+ *   2. **Anyone in the house** -- owner and manager only as first recorded;
+ *      staff too since the founder, 2026-09-26, round 6, item 37 ("staff may
+ *      enrol passkeys too"), because a passkey is now a sign-in method, not an
+ *      approval. Enrolling and checking resolve the caller's role IN THIS HOUSE
+ *      (`OrganizationsService.resolveRestaurantRole`) and refuse only when
+ *      there is none (not a member here, or unreadable). Listing and revoking
+ *      your own passkeys are not gated: someone who left the house must still
+ *      be able to see and remove what they enrolled.
  *   3. **Enrolment and revocation on /profile, audited.** Every enrolment,
  *      revocation and check files a `system_audit_log` row
  *      (`passkey_enrolled` / `passkey_revoked` / `passkey_checked`), and the
- *      person gets an in-app notice when one is added or removed. The receipt
- *      comes back as `audited` / `notified`, so a failed record is visible.
+ *      person gets an in-app notice when one is added or removed. An added
+ *      passkey ALSO emails the account's own address (item 37: "every new
+ *      passkey emails the account") -- the one channel an intruder inside the
+ *      session does not control. The receipt comes back as `audited` /
+ *      `notified` / `mailed`, so a failed record is visible.
  *   4. **A peer path, not built as one yet.** The manager passcode it sits
  *      beside (ADR 0112 F11) does not exist, so nothing in the product accepts
  *      a passkey as approval today. `check` proves an enrolled passkey still
@@ -145,6 +154,11 @@ export interface PasskeyReceipt {
   audited: boolean;
   auditReason: string | null;
   notified: boolean;
+  /**
+   * Enrolment only: whether the "a passkey was added" mail went to the
+   * account's address. Absent on removal (no mail is sent for one).
+   */
+  mailed?: boolean;
 }
 
 interface PasskeyRow {
@@ -213,6 +227,7 @@ export class PasskeysService {
     private readonly databaseService: DatabaseService,
     private readonly organizations: OrganizationsService,
     private readonly codes: SignInCodesService,
+    @Optional() private readonly gmail?: GmailService,
   ) {}
 
   private get db() {
@@ -377,7 +392,65 @@ export class PasskeysService {
         message: `${view.nickname ?? "A passkey"} was added on ${challenge.origin}. If this was not you, remove it on your profile and change your password.`,
       },
     );
-    return { passkey: view, ...receipt };
+    const mailed = await this.mailEnrolment(userId, view, challenge.origin);
+    return { passkey: view, ...receipt, mailed };
+  }
+
+  /**
+   * "A passkey was added to your account", to the account's own address, read
+   * from the row -- never an address from the request (ADR 0229, item 37).
+   * Awaited so the receipt is honest; never throws, because the passkey is
+   * already added. No secret goes in the mail (see the template).
+   */
+  private async mailEnrolment(
+    userId: string,
+    passkey: PasskeyView,
+    origin: string,
+  ): Promise<boolean> {
+    if (!this.gmail) {
+      this.logger.error(
+        `passkey ${passkey.id} was added but no mail service is wired, so the account was not emailed`,
+      );
+      return false;
+    }
+    try {
+      const { data, error } = await this.db
+        .from("users")
+        .select("email, name")
+        .eq("user_id", userId)
+        .maybeSingle();
+      const person = data as { email: string | null; name: string | null };
+      const to = typeof person?.email === "string" ? person.email.trim() : "";
+      if (error || !to) {
+        this.logger.error(
+          `passkey ${passkey.id} was added but the account's address could not be read: ${error?.message ?? "no address"}`,
+        );
+        return false;
+      }
+      const result = await this.gmail.sendEmail({
+        to: [to],
+        subject: "A passkey was added to your Mudavym account",
+        html: passkeyAddedEmailTemplate({
+          name: person.name,
+          nickname: passkey.nickname,
+          deviceType: passkey.deviceType,
+          origin,
+          addedAt: passkey.createdAt,
+        }),
+      });
+      if (!result?.success) {
+        this.logger.warn(
+          `passkey ${passkey.id} was added but the mail was not delivered: ${result?.error}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (e) {
+      this.logger.error(
+        `passkey ${passkey.id} was added but the mail threw: ${(e as Error).message}`,
+      );
+      return false;
+    }
   }
 
   /* ── revocation ──────────────────────────────────────────────────────── */
@@ -744,18 +817,14 @@ export class PasskeysService {
     } catch {
       role = null;
     }
-    if (role === "owner" || role === "manager")
+    // The founder, 2026-09-26, round 6, item 37: "staff may enrol passkeys
+    // too". Any role in this house is enough; only no role at all refuses.
+    if (typeof role === "string" && role.trim().length > 0)
       return { eligible: true, eligibilityReason: null };
-    if (role === null) {
-      return {
-        eligible: false,
-        eligibilityReason:
-          "Your role in this house could not be read, so a passkey cannot be added right now.",
-      };
-    }
     return {
       eligible: false,
-      eligibilityReason: "Passkeys are for the house's owners and managers.",
+      eligibilityReason:
+        "Your place in this house could not be read, so a passkey cannot be added right now.",
     };
   }
 

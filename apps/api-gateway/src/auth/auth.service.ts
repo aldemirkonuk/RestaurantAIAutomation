@@ -13,6 +13,10 @@ import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GmailService } from "../communications/gmail.service";
+import {
+  PASSWORD_RESET_REASON,
+  retireEveryPasskey,
+} from "../passkeys/retire-passkeys";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import axios from "axios";
@@ -558,6 +562,7 @@ export class AuthService {
   async issueSessionForVerifiedSignIn(
     userId: string,
     method: "passkey" | "email_code",
+    provedEmail: string | null = null,
   ): Promise<TokenPair> {
     const { data: user, error } = await this.databaseService.supabase
       .from("users")
@@ -570,7 +575,55 @@ export class AuthService {
       );
     }
     this.logger.log(`Signed in by ${method}: ${user.user_id}`);
-    return this.generateTokens(user, false, signedInNow());
+    const signedIn = await this.verifyEmailProvedByCode(
+      user,
+      method,
+      provedEmail,
+    );
+    return this.generateTokens(signedIn, false, signedInNow());
+  }
+
+  /**
+   * An emailed-code sign-in proves the mailbox, so it verifies the address
+   * (ADR 0229; the founder, 2026-09-26, round 6, item 37: "emailed-code sign-in
+   * marks email verified"). Written only when ALL hold:
+   *   * the method is `email_code` -- a passkey proves the device, not the
+   *     mailbox, and verifies nothing;
+   *   * the caller passes the address the code was checked against
+   *     (`SignInCodesService.verify` has already succeeded for it);
+   *   * that address is still the account's address -- a code mailed to an
+   *     address the account moved away from within its ten minutes proves the
+   *     old mailbox, not the current one.
+   * The write is a compare-and-set on the same address, so an email change
+   * racing the sign-in cannot be verified by the old mailbox either. A failed
+   * write is logged and the session is minted unverified: the person lands on
+   * /verify-email as before, which is the state they were already in.
+   */
+  private async verifyEmailProvedByCode(
+    user: any,
+    method: "passkey" | "email_code",
+    provedEmail: string | null,
+  ): Promise<any> {
+    if (method !== "email_code" || user.email_verified === true) return user;
+    const proved = (provedEmail ?? "").trim().toLowerCase();
+    const current =
+      typeof user.email === "string" ? user.email.trim().toLowerCase() : "";
+    if (!proved || proved !== current) return user;
+    const { data, error } = await this.databaseService.supabase
+      .from("users")
+      .update({ email_verified: true })
+      .eq("user_id", user.user_id)
+      .eq("email", user.email)
+      .select("*")
+      .maybeSingle();
+    if (error || !data) {
+      this.logger.error(
+        `An emailed-code sign-in could not mark ${user.user_id} verified: ${error?.message ?? "the address changed"}`,
+      );
+      return user;
+    }
+    this.logger.log(`Email verified by an emailed code: ${user.user_id}`);
+    return data;
   }
 
   /**
@@ -2504,6 +2557,28 @@ export class AuthService {
     if (updateErr) {
       this.logger.error(`resetPassword failed: ${updateErr.message}`);
       throw new BadRequestException("Failed to update password");
+    }
+
+    // ADR 0229 (the founder, 2026-09-26, round 6, item 37): a reset retires
+    // every passkey of the account -- kept as revoked, never deleted. Before
+    // the link is consumed: if the passkeys cannot be retired, the reset is
+    // not reported as done and the same link still works to finish it.
+    try {
+      const { retired } = await retireEveryPasskey(
+        this.databaseService.supabase,
+        reset.user_id,
+        PASSWORD_RESET_REASON,
+      );
+      if (retired > 0) {
+        this.logger.log(
+          `resetPassword retired ${retired} passkey(s) of ${reset.user_id}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(`resetPassword: ${(err as Error).message}`);
+      throw new ServiceUnavailableException(
+        "Your new password is saved, but your passkeys could not be removed. Open the same reset link again to finish.",
+      );
     }
 
     const usedAt = new Date().toISOString();

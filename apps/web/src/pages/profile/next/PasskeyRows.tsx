@@ -3,8 +3,10 @@
  *
  * THE FOUNDER, 2026-09-21, round 6r, his pick verbatim: **"Passkey + paste
  * (Recommended)"** (ADR 0134 §7). As recorded there: WebAuthn, per user,
- * owners and managers only, a peer path beside the manager passcode,
- * enrolment and revocation here on /profile, audited.
+ * a peer path beside the manager passcode, enrolment and revocation here on
+ * /profile, audited. Anyone in the house may add one -- staff too since the
+ * founder's 2026-09-26 round-6 answer (ADR 0229), which also mails the
+ * account on every new passkey and retires every passkey on a password reset.
  *
  * What this draws, and the honesty rules it keeps:
  *   - **Every passkey is a `ConnectionRow`**, like every other attachment on
@@ -60,10 +62,13 @@ export function describePasskeyError(e: unknown, what: string): string {
   return `${what} — ${getErrorMessage(e)}`;
 }
 
-/** What the audit and notice receipts say, when either did not happen. */
+/** What the audit and mail receipts say, when either did not happen. */
 function receiptNote(r: PasskeyReceipt): string {
-  if (!r.audited) return ` The change was made, but it was not written to the trail — ${r.auditReason ?? 'no reason was given'}.`;
-  return '';
+  const trail = !r.audited
+    ? ` The change was made, but it was not written to the trail — ${r.auditReason ?? 'no reason was given'}.`
+    : '';
+  const mail = r.mailed === false ? ' The email to your account about it could not be sent.' : '';
+  return `${trail}${mail}`;
 }
 
 function passkeySubtitle(p: Passkey): string {
@@ -163,7 +168,7 @@ export function PasskeyRows() {
 
   // Why "Add a passkey" is disabled, in words. Null exactly when it is not.
   const addReason = !readout.eligible
-    ? (readout.eligibilityReason ?? 'Passkeys are for the house’s owners and managers.')
+    ? (readout.eligibilityReason ?? 'A passkey cannot be added in this house right now.')
     : !supported
       ? 'This browser cannot make a passkey. Open Mudavym in a current Safari, Chrome, Edge or Firefox.'
       : null;

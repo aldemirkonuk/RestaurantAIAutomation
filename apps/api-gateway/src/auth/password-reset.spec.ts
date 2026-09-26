@@ -257,8 +257,17 @@ describe("AuthService#resetPassword", () => {
       update: () => usersChain,
       eq: () => Promise.resolve({ error: updateError }),
     };
+    // ADR 0229 (round 6, item 37): a reset retires every passkey. This
+    // account has none; passkey-reset.spec.ts drives the real retirement.
+    const passkeysChain: any = {
+      update: () => passkeysChain,
+      eq: () => passkeysChain,
+      is: () => passkeysChain,
+      select: () => Promise.resolve({ data: [], error: null }),
+    };
 
     const from = jest.fn((table: string) => {
+      if (table === "user_passkeys") return passkeysChain;
       if (table === "password_resets") {
         return {
           select: resetsSelectChain.select,

@@ -41,6 +41,11 @@ export interface PasskeyReceipt {
   audited: boolean
   auditReason: string | null
   notified: boolean
+  /**
+   * Adding only: whether the "a passkey was added" email reached the account's
+   * address (ADR 0229, founder 2026-09-26 round 6). Absent on remove and check.
+   */
+  mailed?: boolean
 }
 
 export const PASSKEYS_QUERY_KEY = ['passkeys'] as const

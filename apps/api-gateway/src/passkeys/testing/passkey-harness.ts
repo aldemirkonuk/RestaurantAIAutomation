@@ -37,6 +37,7 @@ export class FakeDb {
   };
   failInsertOn: string | null = null;
   failReadOn: string | null = null;
+  failUpdateOn: string | null = null;
   seq = 0;
 
   from(table: string) {
@@ -147,6 +148,8 @@ class Query implements PromiseLike<{ data: any; error: any }> {
       rows.push(row);
       out = [row];
     } else if (this.op === "update") {
+      if (this.db.failUpdateOn === this.table)
+        return { data: null, error: { message: "update refused" } };
       out = rows.filter(match);
       out.forEach((r) => Object.assign(r, this.payload));
     } else if (this.op === "delete") {

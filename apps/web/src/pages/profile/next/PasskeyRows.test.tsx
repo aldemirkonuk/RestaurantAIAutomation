@@ -117,12 +117,22 @@ describe('PasskeyRows — the list', () => {
 });
 
 describe('PasskeyRows — who may add one, in words', () => {
-  it('a staff member sees why, and the control is disabled', async () => {
-    api.readout = readout({ eligible: false, eligibilityReason: 'Passkeys are for the house’s owners and managers.' });
+  it('someone with no role in this house sees why, and the control is disabled', async () => {
+    api.readout = readout({
+      eligible: false,
+      eligibilityReason: 'Your place in this house could not be read, so a passkey cannot be added right now.',
+    });
     draw();
     const header = await waitFor(() => row('Passkeys'));
-    await screen.findByText(/owners and managers/);
+    await screen.findByText(/could not be read/);
     expect(within(header).getByRole('button', { name: 'Add a passkey' })).toBeDisabled();
+  });
+
+  it('a staff member may add one (ADR 0229, round 6) -- the gateway says eligible, nothing here narrows it', async () => {
+    api.readout = readout({ eligible: true, eligibilityReason: null });
+    draw();
+    expect(await screen.findByRole('button', { name: 'Add a passkey' })).toBeEnabled();
+    expect(screen.queryByText(/owners and managers/)).toBeNull();
   });
 
   it('an account with no password (Google only) may add one -- nothing asks it to set a password', async () => {
@@ -196,6 +206,14 @@ describe('PasskeyRows — adding, removing, checking', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue on this device' }));
     expect(await screen.findByText(/not written to the trail — insert refused/)).toBeInTheDocument();
+  });
+
+  it('says when the email about a new passkey could not be sent (ADR 0229, round 6)', async () => {
+    api.addPasskey.mockResolvedValue({ passkey: LIVE, audited: true, auditReason: null, notified: true, mailed: false });
+    draw();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add a passkey' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue on this device' }));
+    expect(await screen.findByText(/email to your account about it could not be sent/)).toBeInTheDocument();
   });
 
   it('describes a closed device prompt as that, not as a fault', async () => {

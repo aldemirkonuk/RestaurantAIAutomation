@@ -49,12 +49,20 @@ async function setup(
   const organizations = { resolveRestaurantRole: jest.fn(async () => role) };
   const mail = { sendEmail: jest.fn(async () => ({ success: true })) };
   const codes = new SignInCodesService({ client: db } as any, mail as any);
+  // The "a passkey was added" mail, kept apart from the code mails above.
+  const enrolMail = {
+    sendEmail: jest.fn(
+      async (_m: { to: string[]; subject: string; html: string }) =>
+        ({ success: true }) as { success: boolean; error?: string },
+    ),
+  };
   const service = new PasskeysService(
     { client: db } as any,
     organizations as any,
     codes,
+    enrolMail as any,
   );
-  return { db, service, organizations, codes, mail };
+  return { db, service, organizations, codes, mail, enrolMail };
 }
 
 async function enrol(
@@ -180,16 +188,24 @@ describe("PasskeysService — enrolment", () => {
     ]);
   });
 
-  it.each([["staff"], ["admin"], [null]])(
-    "refuses a %s in this house before anything starts",
+  // The founder, 2026-09-26, round 6, item 37: "staff may enrol passkeys too".
+  it.each([["staff"], ["admin"]])(
+    "lets a %s in this house enrol (ADR 0229, round 6)",
     async (role) => {
-      const { db, service } = await setup(role as string | null);
+      const { service } = await setup(role);
       await expect(
-        service.startRegistration(USER, HOUSE, ORIGIN, FRESH(), undefined),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-      expect(db.tables.webauthn_challenges).toHaveLength(0);
+        enrol(service, new SoftAuthenticator()),
+      ).resolves.toMatchObject({ audited: true });
     },
   );
+
+  it("refuses someone with no role in this house before anything starts", async () => {
+    const { db, service } = await setup(null);
+    await expect(
+      service.startRegistration(USER, HOUSE, ORIGIN, FRESH(), undefined),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.tables.webauthn_challenges).toHaveLength(0);
+  });
 
   it("lets an owner enrol", async () => {
     const { service } = await setup("owner");
@@ -403,14 +419,21 @@ describe("PasskeysService — list and revoke", () => {
     expect(mine.passkeys).toHaveLength(1);
   });
 
-  it("still lists a former manager's passkeys, and says why they cannot add one", async () => {
+  it("still lists the passkeys of someone who left the house, and says why they cannot add one", async () => {
     const { service, organizations } = await setup();
     await enrol(service, new SoftAuthenticator());
-    organizations.resolveRestaurantRole.mockResolvedValue("staff");
+    organizations.resolveRestaurantRole.mockResolvedValue(null);
     const readout = await service.list(USER, HOUSE);
     expect(readout.passkeys).toHaveLength(1);
     expect(readout.eligible).toBe(false);
-    expect(readout.eligibilityReason).toMatch(/owners and managers/);
+    expect(readout.eligibilityReason).toMatch(/could not be read/);
+  });
+
+  it("a staff member is eligible on the readout too", async () => {
+    const { service } = await setup("staff");
+    const readout = await service.list(USER, HOUSE);
+    expect(readout.eligible).toBe(true);
+    expect(readout.eligibilityReason).toBeNull();
   });
 
   it("revokes, keeps the row marked, audits, tells the person — and a revoked passkey no longer checks", async () => {
@@ -433,10 +456,10 @@ describe("PasskeysService — list and revoke", () => {
     );
   });
 
-  it("lets a former manager remove what they enrolled", async () => {
+  it("lets someone who left the house remove what they enrolled", async () => {
     const { service, organizations } = await setup();
     const { passkey } = await enrol(service, new SoftAuthenticator());
-    organizations.resolveRestaurantRole.mockResolvedValue("staff");
+    organizations.resolveRestaurantRole.mockResolvedValue(null);
     await expect(
       service.revoke(USER, HOUSE, passkey.id),
     ).resolves.toMatchObject({ audited: true });

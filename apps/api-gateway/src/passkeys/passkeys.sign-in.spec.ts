@@ -228,7 +228,7 @@ describe("adding a passkey: fresh sign-in, or an emailed code", () => {
   });
 
   it("does not mail a code to someone who may not add a passkey here", async () => {
-    const { service, mail } = setup("staff");
+    const { service, mail } = setup(null);
     await expect(
       service.sendStepUpCode(USER, HOUSE, null),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -449,9 +449,12 @@ describe("SignInController: the proof decides, AuthService mints", () => {
     ).rejects.toThrow(CODE_REFUSAL);
     expect(minted.issueSessionForVerifiedSignIn).not.toHaveBeenCalled();
     await controller.emailCodeVerify({ email: "m@example.com", code });
+    // The address the code was checked against goes along: AuthService marks
+    // it verified (ADR 0229, round 6, item 37).
     expect(minted.issueSessionForVerifiedSignIn).toHaveBeenCalledWith(
       USER,
       "email_code",
+      "m@example.com",
     );
   });
 });
