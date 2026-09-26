@@ -132,6 +132,10 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **166 as of 2026-09-25, on #440 (`fix/team-pay-defects`) merged onto `origin/main` 4e7c5b5a6 (#412)** (`check_read_errors_not_swallowed.py` on that tree: 1656 files scanned, 166 sites, 166 baselined, 0 allowlisted). Both 167 lines below counted from 168: #412 retired `providers.service.ts` providers/existingProvider and ADR 0215 retires `schedule.service.ts` team_members/m. Re-measure before citing.
+
+> **167 as of 2026-09-25, on #412 merged up to main e754b3a27 (#416)** (`check_read_errors_not_swallowed.py` on `fix/provider-subresources-house-scoped`: `providers.service.ts` `providers/existingProvider` actual=0 — `softDeleteProvider` now reads through `getProvider`, which throws on a failed read; retired, rows sum to 167). Re-measure before citing.
+
 > **167 as of 2026-09-25, on #440 (`fix/team-pay-defects`) merged onto `origin/main` 059169a5** (`check_read_errors_not_swallowed.py` on that tree: 1656 files scanned, 167 sites, 167 baselined, 0 allowlisted). ADR 0215 retires `schedule.service.ts` team_members/m. Re-measure before citing.
 
 > **168 as of 2026-09-23, on #455 after #414** (`check_read_errors_not_swallowed.py` on `feat/arrival-first-proof`: `auth.service.ts` `users/existing` actual=0 after account-only signup; retired, rows sum to 168). Re-measure before citing.
