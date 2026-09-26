@@ -679,7 +679,7 @@ citations across ~89 files — see the register-row memo); the parent files them
       same way — is not built here; it is another lane's work. See the review
       trail entry of that date.]*
     - A returning person connects again. The old address never serves again.
-    - Migration `20260925180400_a_person_who_leaves_loses_their_calendar_link.sql`
+    - Migration `20260926130100_a_person_who_leaves_loses_their_calendar_link.sql`
       widens the revoke-reason CHECK to allow `left_house`. It is additive and
       idempotent.
   - **(2) Owners manage owners** (ADR 0162's owner rule).
@@ -802,8 +802,8 @@ citations across ~89 files — see the register-row memo); the parent files them
   again"*. This supersedes the entry below wherever they differ.
 
   Built (`calendar-links.service.ts`, `feed-scope.ts`, `ical-render.ts`,
-  migration `20260925180300_a_calendar_link_belongs_to_one_person.sql`):
-  **[Renumbered 2026-09-25, merging `origin/main` 059169a5 into #438: the two migrations were `20260921170600` and `20260921170700`, below main's newest `20260922231300`, which ADR 0212's `check_migration_order.py` refuses. Moved by `git mv` to `20260925180300` and `20260925180400`, same order, content unchanged except the versions they cite (including the `'migration'` value in 180300's audit row); every citation in this ADR, CLAIMS, the page notes and the calendar code was rewritten. No main migration after `20260921170600` touches `calendar_feed_links`, `calendar_ical_token`, `user_restaurant_access` or `team_members`.]**
+  migration `20260926130000_a_calendar_link_belongs_to_one_person.sql`):
+  **[Renumbered 2026-09-25, merging `origin/main` 059169a5 into #438: the two migrations were `20260921170600` and `20260921170700`, below main's newest `20260922231300`, which ADR 0212's `check_migration_order.py` refuses. Moved by `git mv` to `20260926130000` and `20260926130100`, same order, content unchanged except the versions they cite (including the `'migration'` value in 180300's audit row); every citation in this ADR, CLAIMS, the page notes and the calendar code was rewritten. No main migration after `20260921170600` touches `calendar_feed_links`, `calendar_ical_token`, `user_restaurant_access` or `team_members`.]**
   - `calendar_feed_links`: one row per person per house, at most one live
     (partial unique index on `(restaurant_id, user_id) WHERE revoked_at IS
     NULL`), actor FKs to `public.users(user_id)`, RLS on, service_role only.
@@ -896,7 +896,7 @@ citations across ~89 files — see the register-row memo); the parent files them
   existing tokens stay valid until an owner or manager revokes or rotates
   them.** *[Superseded later the same day — see the entry above: links are
   personal, any member makes their own, the shared house tokens were retired
-  by migration `20260925180300`, and a dead link answers one notice event
+  by migration `20260926130000`, and a dead link answers one notice event
   instead of an empty 200. `ical-token-no-mint-on-read.spec.ts` and
   `ical-token-role-gate.spec.ts`, cited below, were replaced by
   `calendar-links.service.spec.ts` and `calendar-links.gate.spec.ts`.]* Measured by the merge-train session: `GET /calendar/ical-token`

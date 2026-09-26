@@ -10,7 +10,7 @@
 -- membership that ended outside those doors). A returning person connects
 -- again: an old address never serves again.
 --
--- Migration 20260925180300 allowed only two revoke reasons. This file adds the
+-- Migration 20260926130000 allowed only two revoke reasons. This file adds the
 -- third, 'left_house', so those stops can be written and told apart from a
 -- person stopping their own link or an owner/manager stopping someone's.
 --
@@ -24,7 +24,7 @@
 
 BEGIN;
 
--- The inline CHECK of 20260925180300 takes Postgres's default name
+-- The inline CHECK of 20260926130000 takes Postgres's default name
 -- <table>_<column>_check.
 ALTER TABLE public.calendar_feed_links
   DROP CONSTRAINT IF EXISTS calendar_feed_links_revoke_reason_check;

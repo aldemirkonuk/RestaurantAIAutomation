@@ -174,7 +174,10 @@ describe("orderCurrencySource — the provenance the order records", () => {
 // "this vendor has stated none".
 // ---------------------------------------------------------------------------
 describe("ProvidersController — the vendor's usual currency", () => {
-  const user = { id: "u1", restaurantId: "rest-1" };
+  // `userId`, as JwtStrategy.validate returns it. This fixture used to say
+  // `id` — a field no real token carries — which is how the controller's
+  // read of that missing field passed here and refused every manager live.
+  const user = { userId: "u1", restaurantId: "rest-1" };
 
   function build(opts: {
     role?: string | null;

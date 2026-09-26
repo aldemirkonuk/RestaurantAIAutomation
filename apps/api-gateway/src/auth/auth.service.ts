@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   UnauthorizedException,
   BadRequestException,
@@ -7,12 +8,17 @@ import {
   ServiceUnavailableException,
   InternalServerErrorException,
   Logger,
+  Optional,
+  forwardRef,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
 import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GmailService } from "../communications/gmail.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { cancelPendingInvitesFrom } from "./cancel-house-invites";
+import { endedBySomeoneElse, markMembershipLeft } from "./membership-ended";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import axios from "axios";
@@ -24,9 +30,19 @@ import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 import { devBypassEnvEnabled } from "./dev-bypass.util";
 import { grantRefusal } from "./role-grant";
+import {
+  ORG_ROW_INSERT_ONLY,
+  orgRoleForHouseGrant,
+} from "../organizations/org-role";
 import { roleInHouse, tokenHouse } from "./house-role";
 import { canonicalOrigin } from "../communications/email-templates/template-config";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
+import {
+  HOUSE_ACCESS_ENDED,
+  hintFor,
+  parseLastHouseHints,
+  signInHouse,
+} from "./house-choice";
 import {
   IDENTITY_PROVIDERS,
   IdentityProviderDescriptor,
@@ -77,9 +93,18 @@ export interface SignInMethodsResult {
 export interface JwtPayload {
   sub: string; // user_id
   email: string;
-  role: "owner" | "manager" | "staff";
-  /** Present on all tokens issued by this API; omit on very old tokens */
-  restaurantId?: string;
+  /**
+   * The role in `restaurantId` at issue time, or null when the token names no
+   * house. A snapshot for readers outside this gateway; `JwtStrategy.validate`
+   * never reads it (ADR 0164: `users.role` and this claim decide nothing).
+   */
+  role: "owner" | "manager" | "staff" | null;
+  /**
+   * The house this session is in, or null/absent for a session in no house
+   * (someone with no membership, or with several who has not chosen yet).
+   * Minted only for a house with an active membership row (ADR 0164).
+   */
+  restaurantId?: string | null;
   /**
    * Signed into every token by `generateTokens`, but was never declared here
    * and never read back out — see OD-79. Consumers should prefer the database
@@ -102,11 +127,48 @@ export interface JwtPayload {
 export interface TokenPair {
   accessToken: string;
   refreshToken: string;
+  /**
+   * The house the pair names, or null. Every minter goes through
+   * `generateTokens`, which names a house only where the person holds an active
+   * membership row (ADR 0164, "Membership only").
+   */
+  restaurantId: string | null;
+}
+
+/** One of the person's houses, as the chooser shows it: no role, no numbers. */
+export interface HouseSummary {
+  id: string;
+  name: string;
+  city: string | null;
+}
+
+/**
+ * What a sign-in answers (ADR 0164). When `chooseHouse` is present the person
+ * has two or more houses and none was used on this device within the return
+ * window; the pair names no house, and the client asks them which, then calls
+ * `POST /auth/switch-restaurant`.
+ */
+export interface SignInResult extends TokenPair {
+  chooseHouse?: { houses: HouseSummary[] };
+}
+
+/**
+ * What a refresh answers. `houseAccessEnded` names the house the old token
+ * named when the person is no longer a member of it: the new pair names no
+ * house, and the client shows the chooser with one sentence (ADR 0164, R5).
+ */
+export interface RefreshResult extends TokenPair {
+  houseAccessEnded?: { restaurantId: string };
 }
 
 export interface LoginCredentials {
   email: string;
   password: string;
+  /**
+   * What this device remembers about the houses it last used, per person:
+   * `[{ userId, houseId, usedAt }]`. A hint only; see `house-choice.ts`.
+   */
+  lastHouses?: unknown;
 }
 
 /** "Google", "Google and Microsoft", "Google, Microsoft and Apple". */
@@ -163,6 +225,21 @@ export class AuthService {
    * key set replace this field with a verifier over a stub fetcher.
    */
   private microsoftIdTokens = new MicrosoftIdTokenVerifier();
+
+  /**
+   * Evicts a person's open sockets from a house's live room the moment
+   * `leaveRestaurant` ends their membership there (44.1r's websocket
+   * sibling). Property injection, not a constructor parameter, for the same
+   * reason as `microsoftIdTokens` above: every existing spec builds
+   * `new AuthService(...)` with five positional arguments, and Nest still
+   * wires this one when the app boots through its own container. Left
+   * `undefined` by a spec that constructs directly — `evictFromHouse` is
+   * always called through `?.`, so that is a silent no-op there, never a
+   * throw.
+   */
+  @Optional()
+  @Inject(forwardRef(() => WebsocketGateway))
+  private websocketGateway?: WebsocketGateway;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -274,7 +351,7 @@ export class AuthService {
   /**
    * Login with email/password
    */
-  async login(credentials: LoginCredentials): Promise<TokenPair> {
+  async login(credentials: LoginCredentials): Promise<SignInResult> {
     const user = await this.validateUser(
       credentials.email,
       credentials.password,
@@ -282,7 +359,116 @@ export class AuthService {
 
     this.logger.log(`User logged in: ${user.email}`);
 
-    return this.generateTokens(user);
+    return this.signIn(user, false, credentials.lastHouses);
+  }
+
+  /**
+   * The house a sign-in lands in, and the pair for it (ADR 0164, R1): no
+   * membership, no house; one, that house; two or more, the house this device
+   * used last if it did so within the return window, otherwise the person
+   * chooses. Every sign-in door (password, Google, Microsoft, dev bypass) comes
+   * through here, so they cannot disagree.
+   */
+  private async signIn(
+    user: any,
+    devBypass: boolean,
+    lastHouses: unknown,
+  ): Promise<SignInResult> {
+    const houses = await this.memberHouses(user.user_id);
+    const pick = signInHouse(
+      houses.map((h) => h.id),
+      hintFor(parseLastHouseHints(lastHouses), user.user_id),
+      Date.now(),
+    );
+    const tokens = await this.generateTokens(user, devBypass, pick.house);
+    return pick.choose ? { ...tokens, chooseHouse: { houses } } : tokens;
+  }
+
+  /**
+   * The houses this person is a member of: an active `user_restaurant_access`
+   * row each, and nothing else (ADR 0164, "Membership only"). Sorted by name so
+   * the list does not shuffle between visits. A failed read is a 503, never an
+   * empty list: "you have no houses" is a claim, and a read that failed cannot
+   * make it.
+   */
+  async memberHouses(userId: string): Promise<HouseSummary[]> {
+    const { data: rows, error } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("restaurant_id")
+      .eq("user_id", userId)
+      .eq("is_active", true);
+    if (error) {
+      this.logger.error(
+        `memberHouses could not read the houses of ${userId}: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was done; try again.",
+      );
+    }
+
+    const ids = [
+      ...new Set(
+        (rows ?? [])
+          .map((r: { restaurant_id?: string | null }) => r.restaurant_id)
+          .filter((id: unknown): id is string => typeof id === "string"),
+      ),
+    ];
+    if (ids.length === 0) return [];
+
+    const { data: restaurants, error: restaurantsError } =
+      await this.databaseService.supabase
+        .from("restaurants")
+        .select("id, name, city")
+        .in("id", ids);
+    if (restaurantsError) {
+      this.logger.error(
+        `memberHouses could not read the names of ${userId}'s houses: ${restaurantsError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was done; try again.",
+      );
+    }
+
+    return (restaurants ?? [])
+      .filter((r: { id?: string }) => typeof r.id === "string")
+      .map((r: { id: string; name?: string | null; city?: string | null }) => ({
+        id: r.id,
+        name: r.name ?? "",
+        city: r.city ?? null,
+      }))
+      .sort((a: HouseSummary, b: HouseSummary) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Whether someone else ended a membership of this person's: a row in
+   * `house_memberships_ended` (a trigger writes one whenever an active
+   * `user_restaurant_access` row is deleted or deactivated, migration
+   * 20260926120000) that `endedBySomeoneElse` does not read as self-ended.
+   * This is what tells a person removed from a house apart from an account
+   * that never had one, or that ended its own (ADR 0164, brackets 2026-09-25;
+   * the founder, round 4, item 16, and round 5, item 26: "Owner deletes own
+   * only house -> /get-started (only people removed by someone else see
+   * /no-access)"). With no house, the first sees `/no-access`; the others go
+   * straight to `/get-started`.
+   *
+   * A failed read is a 503, like `memberHouses`: "not removed" is a claim,
+   * and a read that failed cannot make it — reading it as `false` would send
+   * a removed person to open a restaurant.
+   */
+  async hasEndedMembership(userId: string): Promise<boolean> {
+    const { data, error } = await this.databaseService.supabase
+      .from("house_memberships_ended")
+      .select("restaurant_id, end_reason, ended_role")
+      .eq("user_id", userId);
+    if (error) {
+      this.logger.error(
+        `hasEndedMembership could not read ${userId}'s ended memberships: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was done; try again.",
+      );
+    }
+    return (data ?? []).some(endedBySomeoneElse);
   }
 
   /**
@@ -302,7 +488,7 @@ export class AuthService {
    * every other endpoint — refresh, /me, /me/role, tenant scoping — needs no
    * bypass-awareness of its own.
    */
-  async devBypassLogin(): Promise<TokenPair> {
+  async devBypassLogin(lastHouses?: unknown): Promise<SignInResult> {
     if (
       process.env.NODE_ENV === "production" ||
       process.env.DEV_AUTH_BYPASS !== "true"
@@ -335,13 +521,16 @@ export class AuthService {
     // (apps/web/src/components/ProtectedRoute.tsx:42) sends every route to
     // /verify-email on that. Changing the row instead would edit real data to
     // work around a dev tool, and would follow the account into production.
-    return this.generateTokens(user, true);
+    return this.signIn(user, true, lastHouses);
   }
 
   /**
    * Login with Google OAuth
    */
-  async loginWithGoogle(googleToken: string): Promise<TokenPair> {
+  async loginWithGoogle(
+    googleToken: string,
+    lastHouses?: unknown,
+  ): Promise<SignInResult> {
     // Verify Google token
     const googleUser = await this.verifyGoogleToken(googleToken);
 
@@ -354,13 +543,16 @@ export class AuthService {
 
     this.logger.log(`Google OAuth login: ${user.email}`);
 
-    return this.generateTokens(user);
+    return this.signIn(user, false, lastHouses);
   }
 
   /**
    * Login with Microsoft OAuth
    */
-  async loginWithMicrosoft(microsoftToken: string): Promise<TokenPair> {
+  async loginWithMicrosoft(
+    microsoftToken: string,
+    lastHouses?: unknown,
+  ): Promise<SignInResult> {
     // Verify Microsoft token
     const microsoftUser = await this.verifyMicrosoftToken(microsoftToken);
 
@@ -373,57 +565,80 @@ export class AuthService {
 
     this.logger.log(`Microsoft OAuth login: ${user.email}`);
 
-    return this.generateTokens(user);
+    return this.signIn(user, false, lastHouses);
   }
 
   /**
-   * Refresh access token
+   * Refresh a session, re-checking membership (ADR 0164, "Membership only";
+   * v3.0-TECH-DEBT 44.1r).
+   *
+   * The new pair names the house the old one named, and only if the person is
+   * still an active member there: `generateTokens` checks. If they are not,
+   * they are signed out of THAT house, not out of Mudavym: the pair names no
+   * house and `houseAccessEnded` says which one ended, so the client can show
+   * the chooser with one sentence (R5). It never moves them to another house on
+   * its own, even when exactly one is left: the next order or count would land
+   * in a house they did not pick.
+   *
+   * Until 2026-09-18 this carried `payload.restaurantId ?? users.restaurant_id`
+   * forward with no check, so a person removed from a house kept minting tokens
+   * for it for as long as they kept refreshing (44.1r), and a token naming no
+   * house was given the `users` row's.
+   *
+   * Only a bad or expired refresh token is a 401. A read that failed is a 503:
+   * it says nothing about who the person is, and signing them out for it would
+   * turn "the database blinked" into "you are not a member" (code map finding 2).
    */
-  async refreshAccessToken(refreshToken: string): Promise<TokenPair> {
+  async refreshAccessToken(refreshToken: string): Promise<RefreshResult> {
+    let payload: JwtPayload;
     try {
-      const payload = this.jwtService.verify(refreshToken, {
+      payload = this.jwtService.verify(refreshToken, {
         secret: this.jwtRefreshSecret,
       });
-
-      const { data: user } = await this.databaseService.supabase
-        .from("users")
-        .select("*")
-        .eq("user_id", payload.sub)
-        .single();
-
-      if (!user) {
-        throw new UnauthorizedException("User not found");
-      }
-
-      // Preserve the restaurant the user had switched to — the refresh token
-      // encodes the scoped restaurantId, but user.restaurant_id is the DB default
-      // (never updated on switch). Without this, every token refresh silently
-      // reverts the tenant to the default restaurant, causing 500s on resources
-      // that belong to the switched-to restaurant.
-      const scopedRestaurantId = payload.restaurantId ?? user.restaurant_id;
-
-      // Carry the dev-bypass marker across the refresh. Without this the
-      // override silently lapsed after 15 minutes: the new payload is rebuilt
-      // from the row, the row says false, and the founder was bounced to
-      // /verify-email mid-session with no event to point at. A lapse on a
-      // timer is the worst shape of this bug — it looks like the fix never
-      // worked rather than like it expired.
-      //
-      // Both gates are re-checked HERE, at refresh time, not inherited: a
-      // marked refresh token presented to a production server mints an
-      // ordinary session, exactly as if the marker were absent.
-      const devBypass = payload.devBypass === true && devBypassEnvEnabled();
-
-      return this.generateTokens(
-        {
-          ...user,
-          restaurant_id: scopedRestaurantId,
-        },
-        devBypass,
-      );
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException("Invalid refresh token");
     }
+
+    const { data: user, error: userError } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("user_id", payload.sub)
+      .maybeSingle();
+
+    if (userError) {
+      this.logger.error(
+        `refreshAccessToken could not read ${payload.sub}: ${userError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not refresh your session right now. Nothing was done; try again.",
+      );
+    }
+    if (!user) {
+      throw new UnauthorizedException("User not found");
+    }
+
+    // Carry the dev-bypass marker across the refresh. Without this the
+    // override silently lapsed after 15 minutes: the new payload is rebuilt
+    // from the row, the row says false, and the founder was bounced to
+    // /verify-email mid-session with no event to point at. A lapse on a
+    // timer is the worst shape of this bug — it looks like the fix never
+    // worked rather than like it expired.
+    //
+    // Both gates are re-checked HERE, at refresh time, not inherited: a
+    // marked refresh token presented to a production server mints an
+    // ordinary session, exactly as if the marker were absent.
+    const devBypass = payload.devBypass === true && devBypassEnvEnabled();
+
+    const house = tokenHouse(payload);
+    const tokens = await this.generateTokens(user, devBypass, house);
+    if (house && tokens.restaurantId !== house) {
+      this.logger.log(
+        `refreshAccessToken: ${payload.sub} is no longer a member of ${house}; ` +
+          `the new session names no house`,
+      );
+      return { ...tokens, houseAccessEnded: { restaurantId: house } };
+    }
+    return tokens;
   }
 
   /**
@@ -443,78 +658,58 @@ export class AuthService {
   }
 
   /**
-   * Re-issue tokens scoped to a different restaurant the user has access to.
-   * Validates that targetRestaurantId belongs to the same organisation(s) as the user.
+   * Re-issue the session in another house the person is a member of. This is
+   * also how a person with several houses chooses one after signing in (ADR
+   * 0164): their session names no house until they do.
+   *
+   * Membership only (ADR 0164, founder 2026-09-18): an active
+   * `user_restaurant_access` row in the target, and nothing else. Until
+   * 2026-09-18 an organisation fallback opened any house of the person's
+   * organisation(s) with no row there (7 person-house pairs in production, all
+   * simulation accounts; it served 2 sessions, both the Sim Bistro owner on
+   * 2026-09-03). It opens nothing now. `generateTokens` does the check, as it
+   * does for every minter, so this route cannot disagree with them.
+   *
+   * The dev-bypass marker survives a switch only where it would survive a
+   * refresh: the session carried it and this server honours it. Without that, a
+   * dev-bypass account with several houses would choose one and be sent to
+   * /verify-email.
    */
   async switchRestaurant(
     userId: string,
     targetRestaurantId: string,
+    devBypass = false,
   ): Promise<TokenPair> {
     const { data: user, error: userErr } = await this.databaseService.supabase
       .from("users")
       .select("*")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
 
-    if (userErr || !user) {
+    if (userErr) {
+      this.logger.error(
+        `switchRestaurant could not read ${userId}: ${userErr.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not switch houses right now. Nothing was done; try again.",
+      );
+    }
+    if (!user) {
       throw new UnauthorizedException("User not found");
     }
 
-    const { data: uraAccess } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("restaurant_id", targetRestaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
-
-    if (uraAccess) {
-      return this.generateTokens({
-        ...user,
-        restaurant_id: targetRestaurantId,
+    const tokens = await this.generateTokens(
+      user,
+      devBypass && devBypassEnvEnabled(),
+      targetRestaurantId,
+    );
+    if (tokens.restaurantId !== targetRestaurantId) {
+      throw new ForbiddenException({
+        message: "You are not a member of that house.",
+        code: "NOT_A_MEMBER",
       });
     }
-
-    // Legacy fallback: org-level check for users who have no URA row yet
-    // Also handles legacy users (no org row) by checking via restaurant → org path.
-    const { data: orgMemberships } = await this.databaseService.supabase
-      .from("organization_members")
-      .select("organization_id")
-      .eq("user_id", userId);
-
-    let orgIds: string[] = (orgMemberships ?? []).map(
-      (m: any) => m.organization_id,
-    );
-
-    if (orgIds.length === 0) {
-      // Legacy fallback: derive org from the user's own restaurant
-      const { data: ownRestaurant } = await this.databaseService.supabase
-        .from("restaurants")
-        .select("organization_id")
-        .eq("id", user.restaurant_id)
-        .maybeSingle();
-      if (ownRestaurant?.organization_id) {
-        orgIds = [ownRestaurant.organization_id];
-      }
-    }
-
-    if (orgIds.length === 0) {
-      throw new ForbiddenException("No organisation membership found");
-    }
-
-    const { data: targetRestaurant } = await this.databaseService.supabase
-      .from("restaurants")
-      .select("id, organization_id")
-      .eq("id", targetRestaurantId)
-      .in("organization_id", orgIds)
-      .maybeSingle();
-
-    if (!targetRestaurant) {
-      throw new ForbiddenException("Access denied to requested restaurant");
-    }
-
-    // Issue new tokens with the switched restaurant_id
-    return this.generateTokens({ ...user, restaurant_id: targetRestaurantId });
+    return tokens;
   }
 
   /**
@@ -524,7 +719,8 @@ export class AuthService {
    */
   private async generateTokens(
     user: any,
-    devBypass = false,
+    devBypass: boolean,
+    house: string | null,
   ): Promise<TokenPair> {
     // Fetch active studio roles for this user
     let studioRoles: string[] = [];
@@ -539,19 +735,36 @@ export class AuthService {
       // Non-critical — studio endpoints will just reject with 403
     }
 
-    let restaurantRole = user.role as string;
-    if (user.restaurant_id) {
-      try {
-        const { data: membership } = await this.databaseService.supabase
+    // Membership only (ADR 0164): the pair names `house` only where the person
+    // holds an active access row there, and its role is that row's role. With
+    // no row it names no house and carries no role. This is the one place a
+    // token is minted, so every door (sign-in, refresh, switch, join,
+    // register, verify) is held to it. Until 2026-09-18 it minted whatever
+    // house the caller passed, with the account-wide `users.role` when no row
+    // existed and a swallowed read error besides.
+    let restaurantId: string | null = null;
+    let restaurantRole: string | null = null;
+    if (house) {
+      const { data: membership, error: membershipError } =
+        await this.databaseService.supabase
           .from("user_restaurant_access")
           .select("role")
           .eq("user_id", user.user_id)
-          .eq("restaurant_id", user.restaurant_id)
+          .eq("restaurant_id", house)
           .eq("is_active", true)
           .maybeSingle();
-        if (membership?.role) restaurantRole = membership.role;
-      } catch {
-        // Legacy fallback
+      if (membershipError) {
+        this.logger.error(
+          `generateTokens could not read ${user.user_id}'s membership of ${house}: ` +
+            membershipError.message,
+        );
+        throw new ServiceUnavailableException(
+          "Could not confirm your membership of this house. Nothing was done; try again.",
+        );
+      }
+      if (membership) {
+        restaurantId = house;
+        restaurantRole = membership.role ?? null;
       }
     }
 
@@ -559,7 +772,7 @@ export class AuthService {
       sub: user.user_id,
       email: user.email,
       role: restaurantRole,
-      restaurantId: user.restaurant_id,
+      restaurantId,
       // `devBypass` is only ever true on the one call from `devBypassLogin`,
       // which has already re-checked the env gate itself. The database row is
       // untouched; this is a claim about the SESSION, not about the account.
@@ -584,6 +797,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
+      restaurantId,
     };
   }
 
@@ -681,29 +895,33 @@ export class AuthService {
    *
    * `JwtStrategy.validate` builds `req.user` from this on every request, and
    * `RolesGuard` gates every `@Roles` route on its `role`. That role used to be
-   * the global `users.role`, one value for every house, so a role changed in a
-   * house the `users` row does not name never reached `@Roles`, and someone with
-   * no membership in a house carried their other house's role into it (PR #393
-   * round-3 audit, finding 1; v3.0-TECH-DEBT 44.1q; ADR 0162 answer A). Now the
-   * role is read in the token's house, as `MembersService.assertMembership`
-   * reads it (`house-role.ts`), and returned as `house_role`: null is no role.
+   * the global `users.role`, one value for every house (PR #393 round-3 audit,
+   * finding 1; v3.0-TECH-DEBT 44.1q; ADR 0162 answer A). It is read in the
+   * token's house and returned as `house_role`: null is no role.
    *
-   * A token that names no house returns the `users` row as it always did, and
-   * `JwtStrategy.validate` keeps `users.role` for it. That is today's behaviour,
-   * kept on purpose: such a session has no house to be a member of.
+   * Membership only (ADR 0164, founder 2026-09-18): a token that names a house
+   * where the person holds no active access row is refused, 401 with code
+   * `HOUSE_ACCESS_ENDED` and the house it named, so a person removed from a
+   * house is out of it on their next request, not at their next sign-in
+   * (44.1r). The client refreshes, the refresh names no house and says which
+   * one ended, and the person chooses. [Until 2026-09-18 such a token was
+   * admitted with no role, and every route without `@Roles` still answered it;
+   * a `users` row naming the house also counted as membership.]
    *
-   * The access read runs beside the `users` read, not after it, so the check
-   * adds no round trip. A failed access read is a 503, never a role: a guess
-   * either way would be a claim about the person that nothing measured.
+   * A token that names no house carries no house and no role (ADR 0164, R4;
+   * 44.1t): `users.role` is never read for a session.
+   *
+   * Both reads run side by side, so the check adds no round trip. A failed
+   * read is a 503, never an answer about the person.
    */
   async validateJwtPayload(payload: JwtPayload): Promise<any> {
     const house = tokenHouse(payload);
-    const [{ data: user }, houseAccess] = await Promise.all([
+    const [{ data: user, error: userError }, houseAccess] = await Promise.all([
       this.databaseService.supabase
         .from("users")
         .select("*")
         .eq("user_id", payload.sub)
-        .single(),
+        .maybeSingle(),
       house
         ? this.databaseService.supabase
             .from("user_restaurant_access")
@@ -715,12 +933,20 @@ export class AuthService {
         : Promise.resolve(null),
     ]);
 
+    if (userError) {
+      this.logger.error(
+        `validateJwtPayload could not read ${payload.sub}: ${userError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not confirm who you are right now. Nothing was done; try again.",
+      );
+    }
     if (!user) {
       throw new UnauthorizedException("User not found");
     }
 
     if (!house) {
-      return user;
+      return { ...user, house_role: null };
     }
 
     if (!houseAccess || houseAccess.error) {
@@ -733,9 +959,17 @@ export class AuthService {
       );
     }
 
+    if (!houseAccess.data) {
+      throw new UnauthorizedException({
+        message: "Your access to this house has ended.",
+        code: HOUSE_ACCESS_ENDED,
+        restaurantId: house,
+      });
+    }
+
     return {
       ...user,
-      house_role: roleInHouse(houseAccess.data, user, house),
+      house_role: roleInHouse(houseAccess.data),
     };
   }
 
@@ -824,7 +1058,9 @@ export class AuthService {
         `queueEmailVerification failed (non-fatal): ${err.message}`,
       ),
     );
-    return this.generateTokens(user);
+    // A new account has no house yet (ADR 0213), so its session names none
+    // (ADR 0164): no house, no role, until createFirstHouse opens one.
+    return this.generateTokens(user, false, null);
   }
 
   /**
@@ -878,7 +1114,9 @@ export class AuthService {
       );
     }
 
-    return this.generateTokens(user);
+    // A new account has no house yet (ADR 0213), so its session names none
+    // (ADR 0164): no house, no role, until createFirstHouse opens one.
+    return this.generateTokens(user, false, null);
   }
 
   /**
@@ -976,11 +1214,14 @@ export class AuthService {
       const failed = writes.find((write) => write.error);
       if (failed?.error) throw new Error(failed.error.message);
 
-      const tokens = await this.generateTokens({
-        ...user,
-        restaurant_id: restaurantId,
-        role: "owner",
-      });
+      // The membership row above is written before this mint, so
+      // generateTokens finds it and names the new house with its owner role
+      // (ADR 0164: every mint is membership-checked in one place).
+      const tokens = await this.generateTokens(
+        { ...user, restaurant_id: restaurantId, role: "owner" },
+        false,
+        restaurantId,
+      );
       return { ...tokens, restaurantId: restaurantId as string };
     } catch (error) {
       if (restaurantId)
@@ -1162,7 +1403,9 @@ export class AuthService {
           ),
         );
 
-      return this.generateTokens(user);
+      // Registering lands in the house it opened (ADR 0164, R1); the owner
+      // row above is what lets `generateTokens` name it.
+      return this.generateTokens(user, false, restaurantId);
     } catch (err) {
       if (userId)
         await this.databaseService.supabase
@@ -1607,7 +1850,7 @@ export class AuthService {
   async acceptInviteAsExistingUser(
     userId: string,
     code: string,
-  ): Promise<{ restaurant: string; role: string }> {
+  ): Promise<{ restaurant: string; role: string; restaurantId: string }> {
     const { data: actor } = await this.databaseService.supabase
       .from("users")
       .select("email")
@@ -1624,12 +1867,47 @@ export class AuthService {
         .eq("code", code.toUpperCase())
         .is("used_at", null)
         .gt("expires_at", new Date().toISOString())
-        .select("id, organization_id, restaurant_id, role, restaurants(name)")
+        .select(
+          "id, organization_id, restaurant_id, role, invited_by, restaurants(name)",
+        )
         .single();
 
     if (inviteErr || !invite) {
       throw new BadRequestException(
         "Invite code is invalid, expired, or already used",
+      );
+    }
+
+    // ADR 0162's ceiling holds at acceptance, not only at the moment the
+    // invite was minted (item 5, 2026-09-19; v3.0-TECH-DEBT probe P8): the
+    // issuer may since have been removed from this house (which also expires
+    // this invite outright via `cancelPendingInvitesFrom` — this is the
+    // backstop for a demotion, which is not a removal, and for any race
+    // between the two) or demoted below what they granted. An invite an
+    // owner made while an owner does not keep an owner's reach once they are
+    // a manager, or gone. Left consumed rather than given back: retrying
+    // would only meet the same refusal again.
+    const { data: issuerAccess, error: issuerErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", invite.invited_by)
+        .eq("restaurant_id", invite.restaurant_id)
+        .eq("is_active", true)
+        .maybeSingle();
+    if (issuerErr) {
+      throw new ServiceUnavailableException(
+        "Could not confirm this invite is still good. Nothing was done; try again.",
+      );
+    }
+    const issuerRefusal = grantRefusal(
+      roleInHouse(issuerAccess),
+      invite.role,
+      "invite",
+    );
+    if (issuerRefusal) {
+      throw new BadRequestException(
+        "This invite's issuer can no longer grant that role in this house. Ask them for a new invite.",
       );
     }
 
@@ -1668,15 +1946,29 @@ export class AuthService {
       );
     }
 
-    await this.databaseService.supabase.from("organization_members").upsert(
-      {
-        organization_id: invite.organization_id,
-        user_id: userId,
-        role: invite.role,
-        invited_via: invite.id,
-      },
-      { onConflict: "organization_id,user_id" },
-    );
+    // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164): a
+    // house grant must not make anyone an owner of the organisation, nor stop
+    // an existing owner being one.
+    const { error: orgRowError } = await this.databaseService.supabase
+      .from("organization_members")
+      .upsert(
+        {
+          organization_id: invite.organization_id,
+          user_id: userId,
+          role: orgRoleForHouseGrant(invite.role),
+          invited_via: invite.id,
+        },
+        ORG_ROW_INSERT_ONLY,
+      );
+    if (orgRowError) {
+      // The house membership above is the grant; the organisation row only
+      // lists the person there. Logged, not fatal: refusing now would leave an
+      // accepted invite whose membership exists.
+      this.logger.error(
+        `acceptInviteAsExistingUser could not add ${userId} to organisation ` +
+          `${invite.organization_id}: ${orgRowError.message}`,
+      );
+    }
 
     await this.claimTeamMemberFromInvite({
       restaurantId: invite.restaurant_id,
@@ -1688,7 +1980,14 @@ export class AuthService {
     });
 
     const restaurantName = (invite.restaurants as any)?.name ?? "restaurant";
-    return { restaurant: restaurantName, role: invite.role };
+    // `restaurantId` so the client can land the person in the house they just
+    // joined (ADR 0164, R1): this route mints nothing, and the session still
+    // names whatever house it named before.
+    return {
+      restaurant: restaurantName,
+      role: invite.role,
+      restaurantId: invite.restaurant_id,
+    };
   }
 
   async getUserRoleAtRestaurant(
@@ -1717,12 +2016,47 @@ export class AuthService {
         .eq("code", dto.code.toUpperCase())
         .is("used_at", null)
         .gt("expires_at", new Date().toISOString())
-        .select("id, organization_id, restaurant_id, role")
+        .select("id, organization_id, restaurant_id, role, invited_by")
         .single();
 
     if (inviteErr || !invite) {
       throw new BadRequestException(
         "Invite code is invalid, expired, or already used",
+      );
+    }
+
+    // Same ceiling as `acceptInviteAsExistingUser` (item 5, 2026-09-19),
+    // closed there but missed here: this is Path A, the OTHER door an invite
+    // is accepted through (@Public, no JWT — the joiner has no session yet).
+    // Without this check an issuer demoted or removed after minting still
+    // grants exactly what the invite said, forever (up to its 7-day expiry),
+    // because nothing before this re-read their CURRENT standing. Left
+    // consumed on refusal rather than given back: retrying meets the same
+    // refusal again.
+    const { data: issuerAccess, error: issuerErr } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", invite.invited_by)
+        .eq("restaurant_id", invite.restaurant_id)
+        .eq("is_active", true)
+        .maybeSingle();
+    if (issuerErr) {
+      throw new ServiceUnavailableException(
+        "Could not confirm this invite is still good. Nothing was done; try again.",
+      );
+    }
+    const issuerRefusal = grantRefusal(
+      roleInHouse(issuerAccess),
+      invite.role,
+      "invite",
+    );
+    if (issuerRefusal) {
+      // Left consumed, not given back — same as `acceptInviteAsExistingUser`
+      // (auth.service.ts, above): retrying would only meet the same refusal
+      // again, since the issuer's standing does not change by refusing.
+      throw new BadRequestException(
+        "This invite's issuer can no longer grant that role in this house. Ask them for a new invite.",
       );
     }
 
@@ -1826,15 +2160,24 @@ export class AuthService {
       );
     }
 
-    await this.databaseService.supabase.from("organization_members").upsert(
-      {
-        organization_id: invite.organization_id,
-        user_id: user.user_id,
-        role: invite.role,
-        invited_via: invite.id,
-      },
-      { onConflict: "organization_id,user_id" },
-    );
+    // Insert-only, and never `owner` (organizations/org-role.ts, ADR 0164).
+    const { error: orgRowError } = await this.databaseService.supabase
+      .from("organization_members")
+      .upsert(
+        {
+          organization_id: invite.organization_id,
+          user_id: user.user_id,
+          role: orgRoleForHouseGrant(invite.role),
+          invited_via: invite.id,
+        },
+        ORG_ROW_INSERT_ONLY,
+      );
+    if (orgRowError) {
+      this.logger.error(
+        `joinViaInvite could not add ${user.user_id} to organisation ` +
+          `${invite.organization_id}: ${orgRowError.message}`,
+      );
+    }
 
     await this.claimTeamMemberFromInvite({
       restaurantId: invite.restaurant_id,
@@ -1845,10 +2188,8 @@ export class AuthService {
       role: invite.role,
     });
 
-    return this.generateTokens({
-      ...user,
-      restaurant_id: invite.restaurant_id,
-    });
+    // Joining lands in the house the invite names (ADR 0164, R1).
+    return this.generateTokens(user, false, invite.restaurant_id);
   }
 
   /**
@@ -1898,7 +2239,10 @@ export class AuthService {
       .single();
 
     if (!user) throw new BadRequestException("User not found");
-    return this.generateTokens(user);
+    // The house the person signed up into, membership-checked like every
+    // other mint (ADR 0164): verifying follows a register or a join, which
+    // name their house.
+    return this.generateTokens(user, false, user.restaurant_id ?? null);
   }
 
   /**
@@ -2872,6 +3216,22 @@ export class AuthService {
       this.logger.error(`leaveRestaurant failed: ${error.message}`);
       throw new BadRequestException("Failed to leave restaurant");
     }
+
+    // They ended it themselves (ADR 0164, round 5, item 26): with no house
+    // left they go to /get-started, not /no-access.
+    await markMembershipLeft(
+      this.databaseService.supabase,
+      userId,
+      restaurantId,
+      this.logger,
+    );
+    this.websocketGateway?.evictFromHouse(userId, restaurantId);
+    await cancelPendingInvitesFrom(
+      this.databaseService.supabase,
+      userId,
+      restaurantId,
+      this.logger,
+    );
   }
 
   async deleteAccount(userId: string): Promise<void> {
@@ -2912,6 +3272,34 @@ export class AuthService {
       },
     );
 
+    // Read every house this account can still be evicted from, and can still
+    // have its pending invites cancelled in, BEFORE the access rows go — the
+    // fourth removal path (P9, round 3, 2026-09-19), alongside
+    // `leaveRestaurant`, `MembersService.removeMember` and
+    // `TeamService.deleteMember`, all three of which already call both
+    // `evictFromHouse` and `cancelPendingInvitesFrom` per house. Without
+    // this, a socket already subscribed to a house's room at the moment its
+    // own owner self-deletes stays subscribed — `evictFromHouse` is never
+    // invoked — and any invite the deleted account issued keeps granting
+    // exactly what it said until it lapses on its own.
+    const { data: activeHouses, error: activeHousesError } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("restaurant_id")
+        .eq("user_id", userId)
+        .eq("is_active", true);
+
+    if (activeHousesError) {
+      this.logger.error(
+        `deleteAccount could not read ${userId}'s active houses before deleting ` +
+          `— refusing rather than deleting without knowing what to evict/cancel-invites-from: ` +
+          `${activeHousesError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was deleted; try again.",
+      );
+    }
+
     await this.databaseService.supabase
       .from("user_oauth_accounts")
       .delete()
@@ -2930,6 +3318,16 @@ export class AuthService {
     if (error) {
       this.logger.error(`deleteAccount failed: ${error.message}`);
       throw new BadRequestException("Failed to delete account");
+    }
+
+    for (const house of activeHouses ?? []) {
+      this.websocketGateway?.evictFromHouse(userId, house.restaurant_id);
+      await cancelPendingInvitesFrom(
+        this.databaseService.supabase,
+        userId,
+        house.restaurant_id,
+        this.logger,
+      );
     }
 
     this.logger.log(`Account deleted: ${userId}`);

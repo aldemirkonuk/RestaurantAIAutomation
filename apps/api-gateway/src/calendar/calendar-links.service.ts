@@ -49,7 +49,7 @@ import { stopCalendarLinksOnLeaving } from "./stop-links-on-leaving";
  *     (`create`). Reading (`getMine`) never writes — a page view does not
  *     mint a credential (the defect this lane first closed).
  *  2. One live link per person per house (a partial unique index,
- *     migration 20260925180300). The secret is stored as a SHA-256 hash and
+ *     migration 20260926130000). The secret is stored as a SHA-256 hash and
  *     shown once, the way `mcp_server_credentials` keeps its keys.
  *  3. What a link serves is decided when the calendar app ASKS, from the
  *     person's role in the house at that moment (`feed-scope.ts`). A person
@@ -116,8 +116,8 @@ export interface HouseLinkRow {
   userId: string;
   name: string | null;
   /**
-   * The person's role in the house now, read the way the ADR 0162 doors read
-   * it (`house-role.ts`); null when they are no longer a member.
+   * The person's role in the house now, read membership-only (ADR 0164;
+   * `house-role.ts`); null when they are no longer a member.
    */
   role: FeedRole | null;
   /** Whether the caller may stop this link (owners manage owners). */
@@ -477,10 +477,9 @@ export class CalendarLinksService {
       const access = accessRows.get(r.user_id) ?? null;
       // An active access row proves membership even with a NULL role (the
       // column's CHECK lets NULL through): such a person reads as staff here,
-      // never as "no longer in this house".
-      const role = narrowRole(
-        access ? (access.role ?? "staff") : roleInHouse(null, u, restaurantId),
-      );
+      // never as "no longer in this house". No active row is no membership at
+      // all (ADR 0164, membership only) — never a `users`-row fallback.
+      const role = narrowRole(access ? (access.role ?? "staff") : null);
       return {
         userId: r.user_id,
         name: u?.name?.trim() || u?.email?.trim() || null,
@@ -522,11 +521,10 @@ export class CalendarLinksService {
    * controller's `assertCanManageRestaurant` is the outer door, this is the
    * owner rule it cannot express: a manager stops a manager's or staff's link,
    * never an owner's, and only an owner stops an owner's (`mayStop`). Both
-   * roles are read the way the ADR 0162 removal doors read them
-   * (`house-role.ts` `roleInHouse`: the active access row, else a `users` row
-   * naming the house at its role), so a person who is an owner there is an
-   * owner here too. A refused stop writes nothing. The audit row of a stop
-   * records both roles.
+   * roles are read membership-only (ADR 0164; `house-role.ts` `roleInHouse`):
+   * the active access row, or no role at all — never a `users` row naming the
+   * house. A refused stop writes nothing. The audit row of a stop records
+   * both roles.
    */
   async revokeFor(
     restaurantId: string,
@@ -877,11 +875,13 @@ export class CalendarLinksService {
   // ==========================================================================
 
   /**
-   * The person's role word here, read the way the ADR 0162 doors read it
-   * (`house-role.ts` `roleInHouse`). Used ONLY for the owner rule on stopping
-   * someone else's link, never for what a feed serves (`roleOf`, which reads a
-   * `users`-row member as staff). A failed read throws: it is never "not an
-   * owner".
+   * The person's role word here, read the way the ADR 0164 doors read it —
+   * membership only (`house-role.ts` `roleInHouse`): an active
+   * `user_restaurant_access` row in the house is the only thing that makes
+   * someone a member of it, and a NULL role is no role. Used ONLY for the
+   * owner rule on stopping someone else's link, never for what a feed serves
+   * (`roleOf`, which reads a `users`-row member as staff). A failed read
+   * throws: it is never "not an owner".
    */
   private async houseRoleOf(
     restaurantId: string,
@@ -899,24 +899,7 @@ export class CalendarLinksService {
         `Could not read a role in this house, so nothing was changed: ${accessErr.message}`,
       );
     }
-    const { data: user, error: userErr } = await this.db
-      .from("users")
-      .select("restaurant_id, role")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (userErr) {
-      throw new Error(
-        `Could not read a role in this house, so nothing was changed: ${userErr.message}`,
-      );
-    }
-    return roleInHouse(
-      (access as { role?: string | null } | null) ?? null,
-      (user as {
-        restaurant_id?: string | null;
-        role?: string | null;
-      } | null) ?? null,
-      restaurantId,
-    );
+    return roleInHouse((access as { role?: string | null } | null) ?? null);
   }
 
   private async requireRole(
@@ -970,7 +953,7 @@ export class CalendarLinksService {
     };
   }
 
-  /** Whether migration 20260925180300 switched off this house's shared link. */
+  /** Whether migration 20260926130000 switched off this house's shared link. */
   private async houseLinkWasRetired(restaurantId: string): Promise<boolean> {
     const { data, error } = await this.db
       .from("system_audit_log")

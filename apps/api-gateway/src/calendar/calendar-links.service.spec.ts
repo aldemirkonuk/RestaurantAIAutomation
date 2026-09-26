@@ -15,7 +15,7 @@ import { CalendarService } from "./calendar.service";
 /**
  * Personal calendar links (ADR 0111, review trail 2026-09-21), run against the
  * shared in-memory store that ENFORCES the two unique indexes of migration
- * 20260925180300 (`fake-db.ts`) — so "one live link per person" and the
+ * 20260926130000 (`fake-db.ts`) — so "one live link per person" and the
  * create race are measured, not assumed.
  *
  * The founder's example is the fixture: Ayse works the bar, Bora the kitchen,
@@ -854,7 +854,6 @@ describe("an owner or manager stops someone's link", () => {
 describe("stopping someone's link: owners manage owners", () => {
   const OWNER2 = "77777777-7777-4777-8777-777777777777";
   const MANAGER2 = "88888888-8888-4888-8888-888888888888";
-  const LEGACY_OWNER = "99999999-9999-4999-8999-999999999999";
 
   function house(): FakeDb {
     const db = seed();
@@ -877,14 +876,6 @@ describe("stopping someone's link: owners manage owners", () => {
     db.tables.users.push(
       { user_id: OWNER2, name: "Co-owner", restaurant_id: null },
       { user_id: MANAGER2, name: "Second manager", restaurant_id: null },
-      // An owner known only by a `users` row naming the house — the ADR 0162
-      // doors read them as an owner, so this one does too.
-      {
-        user_id: LEGACY_OWNER,
-        name: "Setup-era owner",
-        restaurant_id: HOUSE,
-        role: "owner",
-      },
     );
     return db;
   }
@@ -893,10 +884,7 @@ describe("stopping someone's link: owners manage owners", () => {
     return (await svc.create(HOUSE, user)).secret as string;
   }
 
-  it.each([
-    ["an owner's", OWNER],
-    ["a users-row owner's", LEGACY_OWNER],
-  ])(
+  it.each([["an owner's", OWNER]])(
     "a manager may NOT stop %s link: refused, nothing written, and it still serves",
     async (_label, target) => {
       const db = house();
@@ -948,7 +936,6 @@ describe("stopping someone's link: owners manage owners", () => {
 
   it.each([
     ["a co-owner's", OWNER2, "owner"],
-    ["a users-row owner's", LEGACY_OWNER, "owner"],
     ["a manager's", MANAGER, "manager"],
     ["a staff member's", AYSE, "staff"],
   ])("an owner MAY stop %s link", async (_label, target, targetRole) => {
@@ -1038,7 +1025,7 @@ describe("stopping someone's link: owners manage owners", () => {
   it("the register says, per row and per caller, who may stop what", async () => {
     const db = house();
     const svc = service(db);
-    for (const u of [OWNER, OWNER2, MANAGER, MANAGER2, AYSE, LEGACY_OWNER]) {
+    for (const u of [OWNER, OWNER2, MANAGER, MANAGER2, AYSE]) {
       await linkOf(svc, u);
     }
     const byManager = new Map(
@@ -1050,7 +1037,6 @@ describe("stopping someone's link: owners manage owners", () => {
     expect(Object.fromEntries(byManager)).toEqual({
       [OWNER]: ["owner", false],
       [OWNER2]: ["owner", false],
-      [LEGACY_OWNER]: ["owner", false],
       [MANAGER]: ["manager", true],
       [MANAGER2]: ["manager", true],
       [AYSE]: ["staff", true],

@@ -134,6 +134,12 @@ reads as *"nothing to report"* forever.
 
 > **167 as of 2026-09-25, on #438 (`fix/ical-token-minted-on-act`) merged onto `origin/main` 059169a5** (`check_read_errors_not_swallowed.py` on that tree: 1661 files scanned, 167 sites, 167 baselined, 0 allowlisted). ADR 0111 retires `calendar.service.ts` calendar_recurrence_rules/rules. Re-measure before citing.
 
+> **162 as of 2026-09-25, on `fix/sessions-follow-membership-r6` after merging main `4e7c5b5a6` (#412)** (`check_read_errors_not_swallowed.py` on that tree: 162 sites, 162 baselined, 0 allowlisted): the two lines below, combined — ADR 0164's five retirements and #412's one. Re-measure before citing.
+
+> **163 as of 2026-09-25, on `fix/sessions-follow-membership-r6`** (`check_read_errors_not_swallowed.py` on that tree: 163 sites, 163 baselined, 0 allowlisted). ADR 0164 retired five: `switchRestaurant` lost its organisation fallback (`organization_members/orgMemberships`, `restaurants/ownRestaurant`) and its own access read (`user_restaurant_access/uraAccess`); `generateTokens` binds its membership read's error and answers 503 (`user_restaurant_access/membership`); `createLocation` drops one `organizations/ownedOrg` read (2 -> 1). Re-measure before citing.
+
+> **167 as of 2026-09-25, on #412 merged up to main e754b3a27 (#416)** (`check_read_errors_not_swallowed.py` on `fix/provider-subresources-house-scoped`: `providers.service.ts` `providers/existingProvider` actual=0 — `softDeleteProvider` now reads through `getProvider`, which throws on a failed read; retired, rows sum to 167). Re-measure before citing.
+
 > **168 as of 2026-09-23, on #455 after #414** (`check_read_errors_not_swallowed.py` on `feat/arrival-first-proof`: `auth.service.ts` `users/existing` actual=0 after account-only signup; retired, rows sum to 168). Re-measure before citing.
 
 > **170 as of 2026-09-23, on #434 after #430** (`check_read_errors_not_swallowed.py` on `serial-pr434-after-430`: two already-fixed baseline rows retired — `integrations-oauth.service.ts` `integration_oauth_connections/data` and `inventory.service.ts` `inventory_analytics/data`). Re-measure before citing.
