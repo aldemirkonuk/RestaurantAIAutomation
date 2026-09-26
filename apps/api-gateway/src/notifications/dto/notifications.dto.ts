@@ -8,6 +8,8 @@ import {
   IsArray,
   IsUUID,
   IsObject,
+  IsIn,
+  Matches,
   Min,
   Max,
   ValidateNested,
@@ -17,6 +19,32 @@ import { Type, Transform } from "class-transformer";
 // ============================================================================
 // ENUMS
 // ============================================================================
+
+/**
+ * The only values a sender reads for `orders_mode` / `reports_mode`
+ * (`scheduled-tasks.service.ts` getEffectiveCategoryMode: "off" silences,
+ * "both" adds the email, anything else is in-app). Until 2026-09-16 the DTO
+ * took any string, so a typo was stored and then read as "in-app only"
+ * (ADR 0147 "Named, not fixed").
+ */
+export const DELIVERY_MODES = ["both", "in_app", "off"] as const;
+export type DeliveryMode = (typeof DELIVERY_MODES)[number];
+
+/**
+ * The only values the low-stock digest reads for `digest_frequency`
+ * (`low-stock-alerts.service.ts` treats "off" as off and "daily" as daily).
+ */
+export const DIGEST_FREQUENCIES = ["daily", "off"] as const;
+export type DigestFrequency = (typeof DIGEST_FREQUENCIES)[number];
+
+/**
+ * A 24-hour wall-clock time, `HH:mm`, which is what `<input type="time">`
+ * sends and what the readers split on ":" (`low-stock-alerts.service.ts`
+ * digestTime, `notification_agent.py` quiet hours). "25:00", "8:00", "noon"
+ * and "" were all accepted and stored before 2026-09-16.
+ */
+export const HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const HH_MM_MESSAGE = "$property must be a 24-hour time written HH:mm, e.g. 08:30";
 
 export enum NotificationType {
   INVENTORY_LOW_STOCK = "inventory_low_stock",
@@ -209,13 +237,15 @@ export class QuietHoursDto {
   @IsOptional()
   enabled?: boolean;
 
-  @ApiPropertyOptional({ description: "Start time HH:mm" })
+  @ApiPropertyOptional({ description: "Start time HH:mm (24-hour)" })
   @IsString()
+  @Matches(HH_MM, { message: HH_MM_MESSAGE })
   @IsOptional()
   startTime?: string;
 
-  @ApiPropertyOptional({ description: "End time HH:mm" })
+  @ApiPropertyOptional({ description: "End time HH:mm (24-hour)" })
   @IsString()
+  @Matches(HH_MM, { message: HH_MM_MESSAGE })
   @IsOptional()
   endTime?: string;
 }
@@ -267,13 +297,17 @@ export class LowStockPrefsDto {
 
   @ApiPropertyOptional({
     description: "'daily' | 'off' — reminder for still-low wines",
+    enum: DIGEST_FREQUENCIES,
   })
-  @IsString()
+  @IsIn(DIGEST_FREQUENCIES, {
+    message: `$property must be one of: ${DIGEST_FREQUENCIES.join(", ")}`,
+  })
   @IsOptional()
-  digestFrequency?: string;
+  digestFrequency?: DigestFrequency;
 
-  @ApiPropertyOptional({ description: "Daily digest send time HH:mm" })
+  @ApiPropertyOptional({ description: "Daily digest send time HH:mm (24-hour)" })
   @IsString()
+  @Matches(HH_MM, { message: HH_MM_MESSAGE })
   @IsOptional()
   digestTime?: string;
 }
@@ -322,15 +356,25 @@ export class UpdatePreferencesDto {
   @IsOptional()
   lowStock?: LowStockPrefsDto;
 
-  @ApiPropertyOptional({ description: "'both' | 'in_app' | 'off'" })
-  @IsString()
+  @ApiPropertyOptional({
+    description: "'both' | 'in_app' | 'off'",
+    enum: DELIVERY_MODES,
+  })
+  @IsIn(DELIVERY_MODES, {
+    message: `$property must be one of: ${DELIVERY_MODES.join(", ")}`,
+  })
   @IsOptional()
-  ordersMode?: string;
+  ordersMode?: DeliveryMode;
 
-  @ApiPropertyOptional({ description: "'both' | 'in_app' | 'off'" })
-  @IsString()
+  @ApiPropertyOptional({
+    description: "'both' | 'in_app' | 'off'",
+    enum: DELIVERY_MODES,
+  })
+  @IsIn(DELIVERY_MODES, {
+    message: `$property must be one of: ${DELIVERY_MODES.join(", ")}`,
+  })
   @IsOptional()
-  reportsMode?: string;
+  reportsMode?: DeliveryMode;
 }
 
 export class PushSubscribeDto {

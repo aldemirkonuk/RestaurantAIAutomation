@@ -332,16 +332,25 @@ export class NotificationsController {
     }
   }
 
+  /**
+   * Preferences are per person PER HOUSE (ADR 0149 row 39, 2026-09-18): the
+   * house comes from the same verified token as the user, never from a
+   * query or body field, exactly like every other route in this controller.
+   */
   @Get("preferences")
   async getPreferences(
     @Query() query: GetPreferencesQueryDto,
-    @Req() req: Request & { user?: { userId?: string | null } },
+    @Req() req: ScopedRequest,
   ) {
     // Outside the try: the catch below turns every error into a 500, and a
     // refused scope must stay a 401/403.
     const userId = scopeOwnUserId(req, query?.userId);
+    const restaurantId = scopeRestaurantId(req);
     try {
-      return await this.notificationsService.getPreferences(userId);
+      return await this.notificationsService.getPreferences(
+        userId,
+        restaurantId,
+      );
     } catch (error) {
       this.logger.error(`Failed to get preferences: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -352,14 +361,16 @@ export class NotificationsController {
   async updatePreferences(
     @Query() query: GetPreferencesQueryDto,
     @Body() body: UpdatePreferencesDto,
-    @Req() req: Request & { user?: { userId?: string | null } },
+    @Req() req: ScopedRequest,
   ) {
     // Both places are compared: `body.userId || query.userId` used to let the
     // body win and ignore a query naming someone else.
     const userId = scopeOwnUserId(req, body?.userId, query?.userId);
+    const restaurantId = scopeRestaurantId(req);
     try {
       return await this.notificationsService.updatePreferences({
         userId,
+        restaurantId,
         email: body.email,
         push: body.push,
         sms: body.sms,
@@ -543,7 +554,7 @@ export class NotificationsController {
   }
 
   // =========================================================================
-  // EXISTING SENDING ENDPOINTS (preserved from original)
+  // THE TEST SEND — to the caller only
   // =========================================================================
 
   @Post("test")
@@ -565,81 +576,18 @@ export class NotificationsController {
     return { success: true, message: "Test notification sent" };
   }
 
-  @Post("order-approval")
-  async notifyOrderApproval(
-    @Body()
-    body: {
-      userId: string;
-      orderId: string;
-      wineName: string;
-      quantity: number;
-      providerName: string;
-      price?: number;
-    },
-  ) {
-    await this.notificationsService.sendOrderApprovalNotification(body);
-    return { success: true };
-  }
-
-  @Post("low-stock")
-  async notifyLowStock(
-    @Body()
-    body: {
-      restaurantId: string;
-      wineId: string;
-      wineName: string;
-      currentStock: number;
-      threshold: number;
-    },
-  ) {
-    await this.notificationsService.sendLowStockAlert(body);
-    return { success: true };
-  }
-
-  @Post("delivery")
-  async notifyDelivery(
-    @Body()
-    body: {
-      restaurantId: string;
-      orderId: string;
-      wineName: string;
-      quantity: number;
-      providerName: string;
-    },
-  ) {
-    await this.notificationsService.sendDeliveryNotification(body);
-    return { success: true };
-  }
-
-  @Post("price-negotiation")
-  async notifyPriceNegotiation(
-    @Body()
-    body: {
-      userId: string;
-      orderId: string;
-      wineName: string;
-      currentPrice: number;
-      proposedPrice: number;
-      providerName: string;
-    },
-  ) {
-    await this.notificationsService.sendPriceNegotiationNotification(body);
-    return { success: true };
-  }
-
-  @Post("system-alert")
-  async sendSystemAlert(
-    @Body()
-    body: {
-      restaurantId: string;
-      title: string;
-      message: string;
-      severity: "info" | "warning" | "error";
-    },
-  ) {
-    await this.notificationsService.sendSystemAlert(body);
-    return { success: true };
-  }
+  // =========================================================================
+  // WHO MAY NOTIFY WHOM (ADR 0149 answer 15, 2026-09-16; ADR 0147)
+  // =========================================================================
+  //
+  // CLOSED 2026-09-16: POST /notifications/order-approval, /low-stock,
+  // /delivery, /price-negotiation and /system-alert. Each sent to whatever user
+  // id, restaurant id or wording its body named, for any signed-in caller, and
+  // none had a caller: `git grep` over apps/web/src, apps/mobile and services/
+  // found no request to any of the five (the orchestrator included, so none
+  // needed an internal service-key door instead). Their service methods stay on
+  // NotificationsService for internal producers; they are no longer reachable
+  // over HTTP. `notification-senders-are-closed.spec.ts` pins the absence.
 
   /**
    * Closed 2026-09-20. This route used to take `to`/`cc`/`bcc` and `body_html`
