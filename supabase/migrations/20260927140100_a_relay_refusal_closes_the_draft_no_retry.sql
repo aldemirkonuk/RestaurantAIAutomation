@@ -27,7 +27,7 @@
 -- (`RELAY_REFUSED`) needs no schema change to become legal data:
 -- `procurement_conversations.status` is `character varying(20)` with NO
 -- CHECK constraint at all — confirmed again here, the same fact the
--- previous migration (20260925160000) already found and recorded in its own
+-- previous migration (20260927140000) already found and recorded in its own
 -- header ("that table's status column carries no CHECK constraint at all,
 -- so the value never had to be declared"). That gap is NOT closed here: the
 -- column is written from 20+ call sites across apps/api-gateway/src and
@@ -75,7 +75,7 @@ COMMENT ON COLUMN public.procurement_conversations.relay_refusal_reason IS
   'The relay gateway''s own sentence for a definite, terminal 400/403/422 refusal (ADR 0099, founder 2026-09-21: "Close, no retry") — set only alongside status = RELAY_REFUSED (procurement_conversations_relay_refusal_reason_scoped enforces the pairing). Written by ProviderConversationAgent._close_relay_refused (services/agent-orchestrator/agents/provider_conversation_agent.py); read as relayRefusalReason by ProcurementService.getConversationHistory (the /communications ledger) and getOrderConversations (the /orders thread drawer).';
 
 COMMENT ON COLUMN public.procurement_conversations.status IS
-  'Free-text lifecycle, no CHECK constraint (confirmed 2026-09-21, unchanged from 20260925160000''s own finding) — written from many services, so a single enum is a cross-cutting change filed as an open item, not guessed at in this migration. RELAY_REFUSED (added 2026-09-21, ADR 0099) is a TERMINAL state: the relay''s own doors refused this exact request (400/403/422) before, or instead of, any transport, and the send claim is NOT released for retry — a person must edit the draft and send a new one. See relay_refusal_reason for why.';
+  'Free-text lifecycle, no CHECK constraint (confirmed 2026-09-21, unchanged from 20260927140000''s own finding) — written from many services, so a single enum is a cross-cutting change filed as an open item, not guessed at in this migration. RELAY_REFUSED (added 2026-09-21, ADR 0099) is a TERMINAL state: the relay''s own doors refused this exact request (400/403/422) before, or instead of, any transport, and the send claim is NOT released for retry — a person must edit the draft and send a new one. See relay_refusal_reason for why.';
 
 -- ---------------------------------------------------------------------------
 -- Assert the outcome rather than reporting success.
