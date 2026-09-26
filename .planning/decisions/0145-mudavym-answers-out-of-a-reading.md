@@ -1452,6 +1452,12 @@ panel are the two doors (ADR 0149 row 33).
   the pick after the answer, from the saved folio.
 - A per-step **feedback** control (`POST /ask/folios/:id/feedback`) is not on
   the page.
+- **R5 / build task 4 not re-verified.** The nightly manifest held `/ask` in
+  `pending_pages` "until its readings pass a per-reading fixture test". The
+  page is enrolled now (the manifest guard fails otherwise). All sixteen
+  reading ids appear in `reading-runner.spec.ts`, but this lane did not check
+  that each has both of build task 4's tests (a fixture figure, a forced
+  query error). `ASK_LAUNCHED` stays the production gate either way.
 
 ## Review trail
 

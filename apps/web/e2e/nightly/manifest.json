@@ -470,6 +470,24 @@
         "The folio history could not be read.",
         "failure to read, not an empty menu"
       ]
+    },
+    {
+      "slug": "ask",
+      "flag": "mudavym_design_ask",
+      "route": "/ask",
+      "legacy": "page",
+      "source": "apps/web/src/pages/ask/next",
+      "empty": [
+        "No asks yet in this house."
+      ],
+      "failed_read": [
+        "The book could not be read",
+        "The shelf could not be read"
+      ],
+      "failed_read_testids": [
+        "ak-book-failure",
+        "ak-shelf-failure"
+      ]
     }
   ],
   "public_pages": [
@@ -576,12 +594,6 @@
       "route": "/recommendations/catalog",
       "file": "apps/web/src/pages/InsightCatalog.tsx",
       "held_by": "ADR 0143 (open fork)"
-    },
-    {
-      "slug": "ask",
-      "route": "/ask",
-      "file": null,
-      "held_by": "ADR 0145 (not shipped until its readings pass a per-reading fixture test)"
     }
   ]
 }
