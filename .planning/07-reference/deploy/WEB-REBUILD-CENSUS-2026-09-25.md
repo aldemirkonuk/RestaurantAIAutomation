@@ -124,7 +124,7 @@ are `/authorize/complete`, `/deliveries/:id`, `/house`, `/house/menu`, `/menu` a
    answers they held are copied into §8.
 3. **Cursor PRs never audited.** #412 and #410 are open security fixes with no audit verdict (no comment on either mentions `pr-audit-gate` or a `verdict=`, `gh pr view --json comments`).
 4. **#457 is BLOCKed** on locked ADR 0083 (F1); its useful half moved to #458.
-5. **Codex #374** dropped the OD-123 filing; it was re-filed (`OPEN-DECISIONS.md:77`) and is
+5. **Codex #374** dropped the OD-123 filing; it was re-filed (`OPEN-DECISIONS.md:78`) and is
    now answered in place (Q10).
 
 ---
@@ -140,7 +140,7 @@ asked to review, and the deletion manifest, group by group. Web only this deploy
 
 **DONE =** every route in §1a on a Mudavym design at the full-purpose bar, *every surface on
 it* rebuilt (G8: a live route is not the same as a rebuilt route), live for every house
-including houses created later, captions at AA (OD-112 (OPEN-DECISIONS.md:70): 322
+including houses created later, captions at AA (OD-112 (OPEN-DECISIONS.md:71): 322
 `var(--ink-3)` uses against 183 `var(--ink-4)` in `apps/web/src` today), the manifest
 approved group by group, one cutover PR merged and deployed, production verified at that
 commit.
@@ -173,7 +173,7 @@ resolved by L2 at merge time. Flag files (`useMudavymDesign.ts` + test,
 | **L11** `/ask`, `/terms`, retire `/sommelier` | Record the 2026-09-21 `/ask` layout in ADR 0145 first (§8.2), then build the page, the non-modal quick ask and the `/admin` requests list; add a `/terms` route | **Unblocked**: ADR 0145:264 "all five forks this record named are answered"; sketch 114 is on `…/fin-sketches` | The layout decision is not on main (no "Reading Room" or "requests list" in ADR 0145) |
 | **L12** Sessions | ADR 0164 | **Base `origin/wip/2026-09-21/sessions` `900266b7c`** (contains `wt-sessions`) | Add passkey enrolment on `/profile` (ProfileNext says "Not built", round 6r §7) and the real-switch consent panel (round 6r fork 14; supersedes ADR 0149 row 14); "reset/change revokes sessions" (ADR 0173 lane) |
 | **L13** Audit of unlanded work | Classify each tree as landed, unique or abandoned, with a diff | Feeds L2, L16 | Add the 15 trees no census file classified (critic G4), `origin/test/nightly-e2e-modernised` `d84e86ba9` (likely superseded, one diff settles it) |
-| **L14** Pipeline | (a) `provider_conversation_agent` from the log line and #415's diff; (b) CLAIMS walkers scan tracked files only; (c) unshallow the shared clone; (d) Production E2E exits on named missing secrets; (e) CodeQL with L7; (f) #432 | | Push `wt-r5-gate`'s local `c59d8f71b` ("close the four remaining gate8c residuals") into #432 before its last call; `wt-gate-rule` is superseded (its 46 files equal `origin/wip/2026-09-19/gate`, an ancestor of #432's head `d45147f42`). Add OD-122 (OPEN-DECISIONS.md:76) |
+| **L14** Pipeline | (a) `provider_conversation_agent` from the log line and #415's diff; (b) CLAIMS walkers scan tracked files only; (c) unshallow the shared clone; (d) Production E2E exits on named missing secrets; (e) CodeQL with L7; (f) #432 | | Push `wt-r5-gate`'s local `c59d8f71b` ("close the four remaining gate8c residuals") into #432 before its last call; `wt-gate-rule` is superseded (its 46 files equal `origin/wip/2026-09-19/gate`, an ancestor of #432's head `d45147f42`). Add OD-122 (OPEN-DECISIONS.md:77) |
 | **L15** Jev | (a) Keep `check_jev_never_blocks.py` green; (b) measure subagent egress without contacting TypeSafe; (c) land #431 via L2; (d) #435's product egress fails open, with a never-blocks spec for `jev-tone.client`; (e) masking covers names and sensitive topics (round 6y) | F4 | Partial measurement: an Agent-SDK subagent context carried no Jev annotation (critic G7); Task-tool subagents unmeasured |
 | **L16** Worktree hygiene | Step 1 preserves only what no ref holds (next table); step 2 removes, on the founder's word | After L13 | The old preservation list protected trees already on origin (J6) |
 | **L17** Cutover | The manifest as file groups, each with an import-graph proof (a trial delete plus tsc/vitest), special-casing `/get-started` (R14) and `/inventory` | Last; his approval per group | `ReceiptsPage.tsx`, `Providers.tsx` and the provider intelligence/sentiment components stay off the manifest until G8's three surfaces are rebuilt |
@@ -196,12 +196,12 @@ has something to show, except F1, which is live.
 
 | # | Fork | Options and cost | Recommendation |
 |---|---|---|---|
-| F1 | `/communications` shows an error to every house because `public.scheduled_reports` is created by no migration (ADR 0083:58-68; production `to_regclass` is null). #457 removed the source and was BLOCKed on ADR 0083 | (a) Amend ADR 0083: the page names the three sources it owns; schedules leave until a table exists; the Gmail-watch line moves to `/admin`. (b) Build the table and feature. (c) Render the missing table as "not set up" | (a), matching his 2026-09-22 ruling to strip technical detail from the restaurant UI (§8.1, preview ruling 2). OD-91 (OPEN-DECISIONS.md:61) and OD-92 (OPEN-DECISIONS.md:62) bear on (b) **[ANSWERED 2026-09-25: (a), amend ADR 0083 (§11 item 1). The amendment is the comms lane's (W1 comms-a), not written here.]** |
-| F2 | OD-152 (OPEN-DECISIONS.md:97): what a bare click on an `/orders` row does | (A) opens the receipt sheet as ruled; (B) keep the expansion; (C) receipt when one exists, expansion while pending | (C) **[ANSWERED 2026-09-25: (C) (§11 item 3). OD-152 moved to Resolved.]** |
+| F1 | `/communications` shows an error to every house because `public.scheduled_reports` is created by no migration (ADR 0083:58-68; production `to_regclass` is null). #457 removed the source and was BLOCKed on ADR 0083 | (a) Amend ADR 0083: the page names the three sources it owns; schedules leave until a table exists; the Gmail-watch line moves to `/admin`. (b) Build the table and feature. (c) Render the missing table as "not set up" | (a), matching his 2026-09-22 ruling to strip technical detail from the restaurant UI (§8.1, preview ruling 2). OD-91 (OPEN-DECISIONS.md:62) and OD-92 (OPEN-DECISIONS.md:63) bear on (b) **[ANSWERED 2026-09-25: (a), amend ADR 0083 (§11 item 1). The amendment is the comms lane's (W1 comms-a), not written here.]** |
+| F2 | OD-152 (OPEN-DECISIONS.md:25): what a bare click on an `/orders` row does | (A) opens the receipt sheet as ruled; (B) keep the expansion; (C) receipt when one exists, expansion while pending | (C) **[ANSWERED 2026-09-25: (C) (§11 item 3). OD-152 moved to Resolved.]** |
 | F3 | OD-140 (OPEN-DECISIONS.md:24): return the not-placed lines, not only their count | Yes: a gateway field plus the control sketch 121 draws. No: a count with no follow-through | Yes **[ANSWERED 2026-09-25: yes, as a separate list endpoint (OD-140's option (a); §11 item 5). OD-140 bracketed ANSWERED in place; it stays in the Open table until lane W1-orders-cellar's build merges.]** |
-| F4 | OD-133 (OPEN-DECISIONS.md:98): **only the retention and DPA terms** remain. Egress is decided (ADR 0182) and the register was widened to add TypeSafe as a subprocessor (round 6y, §8.2) | (a) DPA; (b) accept retention as-is, in writing; (c) scope the gate | (a) **[ANSWERED 2026-09-25: (a), by his word "TypeSafe is already done" (§11 item 8). OD-133 moved to Resolved. The DPA document itself was not seen by this lane.]** |
+| F4 | OD-133 (OPEN-DECISIONS.md:89): **only the retention and DPA terms** remain. Egress is decided (ADR 0182) and the register was widened to add TypeSafe as a subprocessor (round 6y, §8.2) | (a) DPA; (b) accept retention as-is, in writing; (c) scope the gate | (a) **[ANSWERED 2026-09-25: (a), by his word "TypeSafe is already done" (§11 item 8). OD-133 moved to Resolved. The DPA document itself was not seen by this lane.]** |
 | F5 | #414's dormant Arrival book (1413 lines) | (A) its own manifest group; (B) revert now; (C) keep as an alternative | (A), after confirming sketch 121 §7.3's binding three counts are carried by `/house/menu` or superseded by ADR 0213: `HouseMenu.tsx` shows no read/placed/not-placed counts today (critic G16) **[ANSWERED 2026-09-25: (A) (§11 item 4). Recorded as ADR 0149's deletion-manifest note. The sketch 121 §7.3 three-count check in this row's recommendation is still unmeasured.]** |
-| F6 | OD-151 (OPEN-DECISIONS.md:25): a Google Calendar grant | Build (new scope, consent copy, sync) or defer | Defer until L13 reports on the two calendar-push trees |
+| F6 | OD-151 (OPEN-DECISIONS.md:26): a Google Calendar grant | Build (new scope, consent copy, sync) or defer | Defer until L13 reports on the two calendar-push trees |
 | F7 | **Receiving history paging vs the verdict-ledger strip.** Q7's Approach 1 (2026-09-22) includes "a line's full verdict history … paged 10-at-a-time"; on 2026-09-21 he ruled the verdict ledger stripped because it was not bulletproof | (a) Approach 1 without per-line verdict history until a ledger passes his bar; (b) rebuild a bulletproof ledger first; (c) history from existing receipt rows only | Ask with L6's first draft **[ANSWERED 2026-09-25: (c), history from the door receipts already recorded; the ledger strip stands (§11 item 2). Recorded in ADR 0160 §107 / Open item 4.]** |
 | F8 | **The receiving desk's binding** (ADR 0104 D13: re-key on `deliveries`, or stay on `procurement_orders`; is the queue finished as B+). Filed on `origin/wip/2026-09-21/receiving` only | as filed there | Carry the row to main with L6 |
 | F9 | **#405's Gmail classification**: 5xx/429 kept ambiguous, 403/404 made definite — "a choice flagged to the founder in the PR, not locked" (memory `send-refusal-typed-classification-pr-405.md:12`) | as the PR states | Ask at #405's re-audit **[ANSWERED 2026-09-25: keep the split (§11 item 6). Recorded by #405's lane, not here.]** |
@@ -466,7 +466,7 @@ Built on branch `fix/preview-notes-2026-09-22` (not merged).
 shell and admin in the database only (J1), `arrival` is overridden by ADR 0213; Q7 not built
 (F7); Q8 built (`ConnectionsNext.tsx:319`, ADR 0149 row 53); Q9 built on #434; Q10 recorded
 on OD-123 in this PR; Q11 recorded on OD-132 in this PR (see C22); §7.2 superseded by ADR
-0213 F7 (OD-141 (OPEN-DECISIONS.md:106)); preview rulings 1–3 merged via #458–#462, ruling 4
+0213 F7 (OD-141 (OPEN-DECISIONS.md:107)); preview rulings 1–3 merged via #458–#462, ruling 4
 is F2.
 
 ### 8.2 Round-5/6 rulings the corrections above rely on (memory `founder-answers-2026-09-21-round5.md`)
@@ -557,7 +557,7 @@ The verdict-ledger strip ruling cited in §0 (L6(b)) is in memory
 
 | Retired | Recover with | Why |
 |---|---|---|
-| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:106), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
+| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:107), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
 
 ---
 
