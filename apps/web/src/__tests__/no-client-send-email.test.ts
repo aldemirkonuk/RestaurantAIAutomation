@@ -8,8 +8,10 @@
  *
  * - `lib/email-scheduler.ts` (started on every page load from `main.tsx`,
  *   draining a localStorage queue nothing has written since 2026-05-14);
- * - `components/emails/QuickGmailModal.tsx` (legacy /providers under the QA
- *   override, and the One-Tap center, which nothing mounts);
+ * - `components/emails/QuickGmailModal.tsx` (legacy /providers, and the
+ *   One-Tap center, which legacy Dashboard and legacy Notifications mount;
+ *   all three pages are in LIVE_PAGES, so each renders only under the QA
+ *   override);
  * - `pages/RecurringOrders.tsx` (no route in App.tsx).
  *
  * None is reachable from a Mudavym page, so each hands the writer to the

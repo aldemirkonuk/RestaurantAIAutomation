@@ -203,7 +203,7 @@ composer (ADR 0118), which checks the recipient against the house's book and
 sends from the house's own mailbox. None of the three callers was reachable
 from a Mudavym page (App.tsx: `/providers` renders `ProvidersNext` for every
 house because `providers` is in `LIVE_PAGES`, legacy only under the QA
-override; `OneTapActionCenter` is mounted nowhere; `RecurringOrders` has no
+override; `OneTapActionCenter` is mounted nowhere **[corrected 2026-09-25, lane W2-fix-comms: false. `pages/Dashboard.tsx:42,486` and `pages/Notifications.tsx:46,1088` import and mount it; `pages/DevSandbox.tsx:35` imports only the `addOneTapAction` function. Both hosting pages sit behind `PageGate` (App.tsx:361, :482) on keys in `LIVE_PAGES` (`useMudavymDesign.ts:141,155`), so legacy Dashboard and Notifications, and the One-Tap center with them, render only under the per-browser QA override (`useMudavymDesign.ts:6-11,256`). The conclusion stands: no Mudavym page reaches `QuickGmailModal`.]**; `RecurringOrders` has no
 route), so each was retired rather than rebuilt, and none was deleted (ADR
 0149: legacy files go in the one cutover, on the founder's manifest):
 `main.tsx` no longer starts `email-scheduler` (its queue has had no producer

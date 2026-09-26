@@ -161,9 +161,12 @@ export function QuickGmailModal({
    * send is the Communications composer (`POST /communications/letters`),
    * which checks the recipient against the house's book and sends from the
    * house's own mailbox. This legacy modal is not reachable from any Mudavym
-   * page (legacy /providers shows only under the QA override; the One-Tap
-   * center is mounted nowhere), so it hands the writer to the composer
-   * instead of being rebuilt, and goes with the ADR 0149 cutover.
+   * page: its two hosts are legacy /providers and the One-Tap center, which
+   * only legacy Dashboard (`/`) and legacy Notifications mount. `providers`,
+   * `dashboard` and `notifications` are all in LIVE_PAGES, so each legacy
+   * page renders only under the per-browser QA override. It hands the writer
+   * to the composer instead of being rebuilt, and goes with the ADR 0149
+   * cutover.
    */
   const openComposer = () => {
     window.location.assign(COMPOSER_PATH)
