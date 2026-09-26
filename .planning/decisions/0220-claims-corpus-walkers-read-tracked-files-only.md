@@ -92,11 +92,11 @@ requirements.txt` run by any of them silently becomes part of every guard's
 
 ## Decision
 
-**Option 2.** `check_fk_repoint_by_referenced_column.py:143-178` (`_git_tracked_files`
+**Option 2.** `check_fk_repoint_by_referenced_column.py:143-183` (`_git_tracked_files`
 + rewritten `sql_files()`), `check_task_types_are_graded.py:98-154` (`_git_tracked_files`,
 `_read`, `gateway_files`, `python_files`, listed once in `main()` and passed to
 `scan_gateway`, `scan_python` and the `all_types` sweep), and
-`check_a_count_is_recorded.py:136-172` (`collect()`, rewritten in place) now
+`check_a_count_is_recorded.py:136-179` (`collect()`, rewritten in place) now
 enumerate their corpus with `git ls-files -z -- <dirs>` instead of `os.walk` /
 `Path.rglob`. A `git ls-files` failure (not a git checkout, `git` unavailable, a
 scan root outside the repository) is treated the same way an unreadable file
@@ -194,11 +194,24 @@ instead of at the checkout.
 - **Mutation test 4 (empty corpus).** `check_task_types_are_graded.py` with
   `git ls-files` returning nothing exits **2** "corpus is 0 … that is not this
   repo"; with the floor removed it exits 1 on dead exemptions.
-- `./scripts/check_fk_repoint_by_referenced_column.py --self-test` and
-  `python3 scripts/check_a_count_is_recorded.py --self-test` both still PASS
-  unmodified (all five self-test arms of the latter, including the
-  outside-the-repository empty-corpus case, which now fails one step earlier — at
-  `git ls-files` — but is still correctly `CannotCheck`, never a pass).
+- `./scripts/check_fk_repoint_by_referenced_column.py --self-test` PASSes
+  unmodified. `python3 scripts/check_a_count_is_recorded.py --self-test`
+  PASSes, but its arm 5(b) had to change. Before this ADR, it pointed `SCAN_DIRS`
+  at a temporary directory **outside** the repository: `rglob` found 0 files and
+  the `MIN_CORPUS` floor fired. Under `git ls-files` the same arm fails earlier,
+  because `git ls-files` exits 128 on a path outside the repository. That still
+  raises `CannotCheck`, but the floor is **never reached**. Deleting the floor
+  block from `run()` left the self-test printing `SELF-TEST PASSED` (rc 0). The
+  arm had become a NO-OP mutation, and the floor had no executable test. The
+  2026-09-26 PR #465 audit found this.
+  **Fixed:** arm 5(b) now creates its empty directory inside `ROOT` and passes
+  it repo-relative. `git ls-files` then succeeds with an empty listing, and the
+  arm asserts on the floor's own message (`corpus is 0 files`). Asserting only
+  that `CannotCheck` was raised is not enough: without the floor, arm A's
+  zero-call-sites check still raises. **Mutation test 5 (the floor is tested):**
+  after deleting the floor block from `run()`, the self-test prints
+  `SELF-TEST FAILED (1)` and exits 1. With the floor restored it exits 0. The same
+  deletion against the pre-fix self-test exits 0.
 
 ## Review trail
 
@@ -207,3 +220,5 @@ instead of at the checkout.
 | 2026-09-25 | L14b (Sonnet 5, this lane) | Created; both mutation directions verified in `/Users/aldemirkonuk/Projects/wt-w0-claims` |
 | 2026-09-25 | PR #465 audit (ADR 0090) | BLOCK at `ac44d1946`: unguarded `open()` exits 1 on a tracked-but-deleted file; Consequences overstated the change ("no longer see uncommitted changes at all"); self-locked without the founder; no empty-corpus floor in the task-types guard |
 | 2026-09-25 | Audit fix-up (Opus 5.5) | All four fixed: `_read()` + fk `None` path, corpus floor, "What changed, precisely" + rewritten Consequences, status back to Proposed; Mutation tests 3–4 added; `check_decision_claims.sh` 488 checked, 488 holding at the fix head |
+| 2026-09-26 | PR #465 audit (ADR 0090) | BLOCK at `69f4abc00`: ac self-test arm 5(b) had become a NO-OP mutation of the `MIN_CORPUS` floor (`git ls-files` exits 128 outside the repo before the floor is reached), and Verification called that benign; the line ranges for fk and ac were stale |
+| 2026-09-26 | Audit fix-up (Opus 5.5) | Arm 5(b) now uses an empty directory inside `ROOT`, repo-relative, and asserts on the floor's message; Mutation test 5 shows that deleting the floor fails the self-test (rc 1, and rc 0 before the fix); citations corrected to fk `:143-183` and ac `:136-179` |

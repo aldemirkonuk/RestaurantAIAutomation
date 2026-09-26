@@ -440,15 +440,33 @@ def self_test() -> int:
     # (b) a root that exists but is empty — the FLOOR must catch it. Run the real
     # entry point against it so the exit-2 path executes rather than being
     # described.
-    with tempfile.TemporaryDirectory() as tmp:
+    #
+    # The directory is created INSIDE ROOT and passed repo-relative, so that
+    # `git ls-files` succeeds (rc 0) with an empty listing and the MIN_CORPUS
+    # floor is what fires. A directory outside the repo makes `git ls-files`
+    # exit 128 first, which raises CannotCheck before the floor is reached —
+    # and then deleting the floor still passes this arm (a NO-OP mutation,
+    # ADR 0220). The assertion is on the floor's OWN message for the same
+    # reason: without the floor an empty corpus still raises, via arm A's
+    # zero-call-sites check, and that must not count as the floor holding.
+    floor_msg = "corpus is 0 files"
+    with tempfile.TemporaryDirectory(dir=ROOT, prefix=".selftest-empty-") as tmp:
+        rel = Path(tmp).relative_to(ROOT).as_posix()
         saved = list(SCAN_DIRS)
-        SCAN_DIRS[:] = [tmp]
+        SCAN_DIRS[:] = [rel]
         try:
             run()
             print("  FAIL — an empty corpus reached a verdict instead of CANNOT CHECK")
             failures += 1
         except CannotCheck as e:
-            print(f"  ok — empty corpus raises (-> exit 2): {e}")
+            if floor_msg in str(e):
+                print(f"  ok — empty corpus trips the MIN_CORPUS floor (-> exit 2): {e}")
+            else:
+                print(
+                    "  FAIL — an empty corpus raised, but NOT at the MIN_CORPUS floor "
+                    f"(expected {floor_msg!r}): {e}"
+                )
+                failures += 1
         finally:
             SCAN_DIRS[:] = saved
 
