@@ -176,6 +176,24 @@ describe("suppression keys", () => {
       );
       expect(effectiveScope(noPeriod, "insight")).toBe("subject");
     });
+
+    /**
+     * A period with no subject silences ONE period, not the rule. It read as
+     * "rule" before ADR 0191's gate: a wider claim than the key stores, and a
+     * one-finding dismiss that the owner/manager gate would have refused to
+     * staff as if it were rule-wide.
+     */
+    it("a period with no subject is this finding, not the whole rule", () => {
+      const noSubject = {
+        ruleId: "insight:overall.revenue.vs_prev_period_7d",
+        periodKey: "p7:2026-09-02",
+      };
+      expect(buildSuppressionKey(noSubject, "insight")).toBe(
+        "insight:overall.revenue.vs_prev_period_7d#*#p7:2026-09-02",
+      );
+      expect(effectiveScope(noSubject, "insight")).toBe("insight");
+      expect(effectiveScope(noSubject, "subject")).toBe("rule");
+    });
   });
 
   describe("slugging and grains", () => {
