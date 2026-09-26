@@ -71,6 +71,9 @@ export const GOTO_MAP: Record<string, { href: string; label: string }> = {
   o: { href: "/orders", label: "Orders" },
   w: { href: "/wines", label: "Wine Library" },
   r: { href: "/reports", label: "Reports" },
+  // `v` is the vendors letter; `p` (providers) keeps working so nobody's habit
+  // breaks (founder, 2026-09-26, round 6: "'g v', keep 'g p' working").
+  v: { href: "/vendors", label: "Vendors" },
   p: { href: "/vendors", label: "Vendors" },
   c: { href: "/calendar", label: "Calendar" },
   t: { href: "/team", label: "Team" },
@@ -88,7 +91,7 @@ const NAVIGATION: Command[] = [
   // breadcrumb rendering the raw segment.
   { id: "nav-receiving", title: "Receiving", section: "Navigation", icon: PackageCheck, href: "/receiving", keywords: "delivery deliveries door goods in receive truck arrived packing slip" },
   { id: "nav-wines", title: "Wine Library", section: "Navigation", icon: Wine, href: "/wines", shortcut: "g w", keywords: "catalog bottles list" },
-  { id: "nav-providers", title: "Vendors", section: "Navigation", icon: Truck, href: "/vendors", shortcut: "g p", keywords: "providers suppliers distributors" },
+  { id: "nav-providers", title: "Vendors", section: "Navigation", icon: Truck, href: "/vendors", shortcut: "g v", keywords: "providers suppliers distributors" },
   { id: "nav-promotions", title: "Promotions", section: "Navigation", icon: Tag, href: "/promotions", keywords: "offers deals prospects" },
   { id: "nav-reports", title: "Reports", section: "Navigation", icon: BarChart3, href: "/reports", shortcut: "g r", keywords: "analytics charts dashboard kpi" },
   { id: "nav-recs", title: "Recommendations", section: "Navigation", icon: Lightbulb, href: "/recommendations", keywords: "actions insights suggestions" },

@@ -258,7 +258,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
                 }}
               >
                 <strong>{stats.selfEvidencedOpen}</strong> open claim
-                {stats.selfEvidencedOpen === 1 ? ' is' : 's are'} provable from the distributor's
+                {stats.selfEvidencedOpen === 1 ? ' is' : 's are'} provable from the vendor's
                 own packing slip. Those are the ones worth a phone call.
               </p>
             )}

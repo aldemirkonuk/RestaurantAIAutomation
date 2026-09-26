@@ -20,7 +20,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
       ["⌘ ⇧ O", "Jump back to a recently-viewed page"],
       ["?", "Show this shortcut sheet"],
       ["g then d / i / o", "Go to Dashboard / Inventory / Orders"],
-      ["g then w / r / p", "Go to Wines / Reports / Vendors"],
+      ["g then w / r / v", "Go to Wines / Reports / Vendors (g then p still works)"],
       ["g then c / t / n / s", "Go to Calendar / Team / Notifications / Settings"],
       ["Esc", "Close the topmost overlay"],
     ],
