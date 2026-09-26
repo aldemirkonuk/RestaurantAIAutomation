@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -10,6 +11,7 @@ import {
   Logger,
   UseGuards,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { WinesService } from "./wines.service";
 import {
@@ -36,6 +38,7 @@ export class WinesController {
   constructor(
     private readonly winesService: WinesService,
     private readonly wineSubmissionsService: WineSubmissionsService,
+    private readonly configService: ConfigService,
   ) {}
 
   @Get()
@@ -118,11 +121,43 @@ export class WinesController {
     );
   }
 
+  /**
+   * Process pending submissions (dedup worker), by hand. Runs on its own
+   * schedule too (`WineSubmissionsService.scheduledProcessPendingSubmissions`,
+   * every five minutes) — the founder's answer of 2026-09-22 (round 6z),
+   * verbatim pick (4): "Schedule + admin only (Recommended)".
+   *
+   * PLATFORM ADMIN ONLY: this route settles `master_wine_library_submissions`
+   * rows across every house at once (no `restaurant_id` is read from the
+   * caller, and the table itself is shared, not tenant-scoped) — the same
+   * shape of gap `ProspectsController.assertPlatformAdmin`
+   * (common/orchestrator/prospects.controller.ts) closed for `/triage`, for
+   * the same reason: "it crosses houses". Before this any authenticated
+   * member of any house could trigger it. Mirrors that gate's allowlist
+   * (`PLATFORM_ADMIN_USER_IDS`), fail-closed on an unset or empty list.
+   */
   @Post("submissions/process")
-  @ApiOperation({ summary: "Process pending submissions (dedup worker)" })
-  async processSubmissions(@Body() dto: ProcessSubmissionsDto) {
+  @ApiOperation({ summary: "Process pending submissions (dedup worker); platform admin only" })
+  @ApiResponse({ status: 403, description: "The caller is not a platform admin" })
+  async processSubmissions(
+    @Body() dto: ProcessSubmissionsDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    this.assertPlatformAdmin(user.userId);
     return await this.wineSubmissionsService.processPendingSubmissions(
       dto.limit,
     );
+  }
+
+  private assertPlatformAdmin(userId: string): void {
+    const allow = (this.configService.get<string>("PLATFORM_ADMIN_USER_IDS") || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!allow.length || !allow.includes(userId)) {
+      throw new ForbiddenException(
+        "Only a platform admin may run the wine-submissions dedup worker by hand; it crosses every house.",
+      );
+    }
   }
 }

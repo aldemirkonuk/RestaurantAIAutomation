@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
 import { CreateWineSubmissionDto } from "./dto/wine-submissions.dto";
 import {
@@ -182,6 +183,42 @@ export class WineSubmissionsService {
     const { data, error } = await query;
     if (error) throw error;
     return data || [];
+  }
+
+  /**
+   * The dedup worker runs on a schedule, not only when a browser calls
+   * `POST /wines/submissions/process` — the founder's answer of 2026-09-22
+   * (round 6z), verbatim pick (4): "Schedule + admin only (Recommended)".
+   *
+   * CADENCE: every five minutes, the same as this codebase's one other
+   * background "process whatever is pending, no per-item urgency" sweep —
+   * `DocumentIntakeService.sweepUningestedAttachments`
+   * (procurement/documents/document-intake.service.ts,
+   * `"procurement-document-intake-sweep"`, every five minutes). A submission
+   * sitting a few minutes before it is merged, accepted, or settles the
+   * house_item_research chain (20260921170520) blocks nobody: contrast
+   * `house-letters.cron.ts`'s `"* * * * *"`, which is every minute because a
+   * RELEASED letter waiting to send IS the thing the house is watching for.
+   * Every-two-minutes (`low-stock-alerts.service.ts`'s edge sweep) was the
+   * other candidate; five minutes was picked because it names an existing,
+   * reasoned precedent for this exact shape of job rather than inventing a
+   * third cadence for the same kind of work.
+   *
+   * Never throws: a scheduler run that failed is logged, never an unhandled
+   * rejection — the crash-on-error `processPendingSubmissions` keeps for its
+   * own callers (a bad read there is a bug worth surfacing) would otherwise
+   * take the whole scheduler queue down with it.
+   */
+  @Cron("*/5 * * * *", { name: "wine-submissions-process-pending" })
+  async scheduledProcessPendingSubmissions(): Promise<void> {
+    try {
+      const result = await this.processPendingSubmissions();
+      if (result.processed > 0) {
+        this.logger.log(`wine-submissions-process-pending: settled ${result.processed} submission(s).`);
+      }
+    } catch (err: any) {
+      this.logger.error(`wine-submissions-process-pending failed: ${err?.message ?? String(err)}`);
+    }
   }
 
   async processPendingSubmissions(limit = 50) {

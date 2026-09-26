@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  MinLength,
   Min,
 } from "class-validator";
 
@@ -125,4 +126,18 @@ export class ConfirmDealDto {
   @IsOptional()
   @IsBoolean()
   sendConfirmation?: boolean;
+}
+
+/**
+ * Why a waiting deal request is declined (`POST orders/:id/deal-request/
+ * decline`) — the person who asked reads it. Founder, 2026-09-22 (round
+ * 6z), verbatim pick (1): "Yes, same as letters (Recommended)", so this
+ * mirrors DeclineLetterRequestDto (house-letters.dto.ts) exactly.
+ */
+export class DeclineDealRequestDto {
+  @ApiProperty({ description: "Why it is declined; the person who asked reads it." })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason: string;
 }

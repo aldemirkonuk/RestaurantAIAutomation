@@ -54,7 +54,9 @@ export type NameAskWhy = "no_item" | "zero_bottles";
 export const NAMED_BOTTLES_MAX = 100_000;
 
 export const DELIVERY_ITEM_TO_NAME_COLUMNS =
-  "id, restaurant_id, order_id, why, bottles_resolved, status, raised_by, raised_at, named_by, named_at, named_inventory_id, bottles_booked, updated_at";
+  "id, restaurant_id, order_id, why, bottles_resolved, status, raised_by, raised_at, named_by, named_at, named_inventory_id, bottles_booked, updated_at, closed_at, closed_reason";
+
+export type DeliveryItemToNameStatus = "open" | "named" | "booked_elsewhere";
 
 export interface DeliveryItemToNameRow {
   id: string;
@@ -62,7 +64,7 @@ export interface DeliveryItemToNameRow {
   order_id: string;
   why: NameAskWhy;
   bottles_resolved: number;
-  status: "open" | "named";
+  status: DeliveryItemToNameStatus;
   raised_by: string | null;
   raised_at: string;
   named_by: string | null;
@@ -70,6 +72,9 @@ export interface DeliveryItemToNameRow {
   named_inventory_id: string | null;
   bottles_booked: number | null;
   updated_at: string;
+  // 20260922020020 (founder, 2026-09-22: "Close by itself").
+  closed_at: string | null;
+  closed_reason: string | null;
 }
 
 export type RaiseOutcome =
@@ -116,6 +121,52 @@ export function nameAskWords(o: RaiseOutcome | null): string | null {
     return `An owner or a manager could not be asked to name it: ${o.error}. Nothing books this delivery's stock until it is named.`;
   }
   return "An owner or a manager is asked to name the item on Inventory; naming it books the stock then, once.";
+}
+
+export type CloseElsewhereOutcome =
+  | { ok: true; closed: boolean }
+  | { ok: false; error: string };
+
+/** What booked the order's stock instead of naming; the ask's `closed_reason` names it. */
+export type BookedElsewhereVia = "receiving_door" | "verification";
+
+const BOOKED_ELSEWHERE_REASON: Record<BookedElsewhereVia, string> = {
+  receiving_door: "The receiving door booked this order's stock before its item was named.",
+  verification: "A verification booked this order's stock before its item was named.",
+};
+
+/**
+ * When the receiving door or a verification books an order's stock, any
+ * open `delivery_item_to_name` ask for that order is stale: the order no
+ * longer needs naming to get its stock in. Closed once, conditional on
+ * `open` — the founder's answer of 2026-09-22 (round 6z), verbatim pick (2):
+ * "Close by itself (Recommended)". Never throws: the booking already
+ * happened, and a failure to close is not a failure to book. A no-op
+ * (`closed: false`) is not an error — most orders never had an ask.
+ */
+export async function closeDeliveryItemToNameBookedElsewhere(
+  client: Pick<Client, "from">,
+  input: { restaurantId: string; orderId: string; via: BookedElsewhereVia },
+): Promise<CloseElsewhereOutcome> {
+  try {
+    const { data, error } = await client
+      .from("delivery_item_to_name")
+      .update({
+        status: "booked_elsewhere",
+        closed_at: new Date().toISOString(),
+        closed_reason: BOOKED_ELSEWHERE_REASON[input.via],
+      })
+      .eq("restaurant_id", input.restaurantId)
+      .eq("order_id", input.orderId)
+      .eq("status", "open")
+      .select("id");
+    if (error) {
+      return { ok: false, error: `the ask to name the item could not be closed (${error.message})` };
+    }
+    return { ok: true, closed: Array.isArray(data) && data.length > 0 };
+  } catch (err: any) {
+    return { ok: false, error: `the ask to name the item could not be closed (${err?.message ?? String(err)})` };
+  }
 }
 
 /** What an owner or a manager sees per open ask. */
@@ -245,6 +296,17 @@ export async function nameDeliveredItem(
     throw new NotFoundException("This delivery is not waiting for its item to be named in this house. Nothing was booked.");
   }
   const ask = askData as DeliveryItemToNameRow;
+  // A stale ask says WHY, instead of the generic "already named" 409 that
+  // used to cover it silently (founder, 2026-09-22, round 6z, verbatim pick
+  // 2: "Close by itself (Recommended)").
+  if (ask.status === "booked_elsewhere") {
+    throw new ConflictException({
+      reason: "delivery_item_booked_elsewhere",
+      orderId: input.orderId,
+      closedAt: ask.closed_at,
+      message: `${ask.closed_reason ?? "This order's stock was booked elsewhere before its item was named."} Nothing was booked.`,
+    });
+  }
   if (ask.status !== "open") {
     throw new ConflictException({
       reason: "delivery_item_already_named",
@@ -326,9 +388,21 @@ export async function nameDeliveredItem(
     throw new InternalServerErrorException(`${door.error} The item was not named.`);
   }
   if (door.value.booked) {
-    throw new ConflictException(
-      "The receiving door has booked this order's stock since it was delivered, so naming it would book the same bottles twice. Nothing was booked.",
-    );
+    // The proactive close (receiving.service.ts, delivery-stock.service.ts)
+    // should already have closed this ask the moment the door booked it; this
+    // is the fallback for whatever race gets here first, so the ask never
+    // stays `open` after this read reports it stale.
+    await closeDeliveryItemToNameBookedElsewhere(client, {
+      restaurantId: input.restaurantId,
+      orderId: input.orderId,
+      via: "receiving_door",
+    });
+    throw new ConflictException({
+      reason: "delivery_item_booked_elsewhere",
+      orderId: input.orderId,
+      message:
+        "The receiving door has booked this order's stock since it was delivered, so naming it would book the same bottles twice. Nothing was booked.",
+    });
   }
   const { data: earlier, error: earlierError } = await client
     .from("inventory_transactions")
@@ -343,9 +417,23 @@ export async function nameDeliveredItem(
     );
   }
   if (Array.isArray(earlier) && earlier.length > 0) {
-    throw new ConflictException(
-      "This order's stock was booked since it was delivered (at the door, at its verification, or by an earlier delivery). Nothing was booked twice.",
-    );
+    // Same fallback close as the door.value.booked branch above, for the
+    // rows that check does not see: the door's own case count (`door-receipt:`
+    // keys carry no delivery id) and a verification correction
+    // (`receipt-verify:`). Best-effort on WHICH one, from the key it booked
+    // under; either way the ask stops being listed as open.
+    const bookedKey = String((earlier[0] as { idempotency_key?: string })?.idempotency_key ?? "");
+    await closeDeliveryItemToNameBookedElsewhere(client, {
+      restaurantId: input.restaurantId,
+      orderId: input.orderId,
+      via: bookedKey.startsWith("receipt-verify:") ? "verification" : "receiving_door",
+    });
+    throw new ConflictException({
+      reason: "delivery_item_booked_elsewhere",
+      orderId: input.orderId,
+      message:
+        "This order's stock was booked since it was delivered (at the door, at its verification, or by an earlier delivery). Nothing was booked twice.",
+    });
   }
 
   // ONCE: open -> named, conditional on open. A second naming matches nothing.

@@ -230,6 +230,34 @@ export class VendorSendRequestsService {
   }
 
   /**
+   * The most recent request of one kind on this order, ANY state — not only
+   * `waiting`. Used by a decline/withdraw that is reached by order id rather
+   * than by a request id a list screen already holds (`confirm_deal`'s decline
+   * and withdraw routes): a bare "nothing is waiting" 404 would say the same
+   * thing for "never asked" and "already released a moment ago", and the
+   * second one has a truer refusal (`assertStillWaiting`'s "already released,
+   * so it was not declined"). Null only when nothing was ever asked for this
+   * order. A failed read is an error, never a silent null.
+   */
+  async latestForOrder(
+    restaurantId: string,
+    orderId: string,
+    kind: VendorSendRequestKind,
+  ): Promise<VendorSendRequestRow | null> {
+    const { data, error } = await this.db
+      .from("vendor_send_requests")
+      .select(REQUEST_COLUMNS)
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("kind", kind)
+      .order("requested_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException(`Whether a request waits on this order could not be read (${error.message}).`);
+    return (data as unknown as VendorSendRequestRow) ?? null;
+  }
+
+  /**
    * A release takes the request, once. Conditional on `waiting`, so two
    * managers releasing together cannot both send it: the loser gets a 409 and
    * sends nothing. `asWritten` says whether the release is over exactly the
@@ -665,10 +693,16 @@ export class VendorSendRequestsService {
     try {
       const who = (await this.authority.namesOf([input.by])).get(input.by) ?? "A manager";
       const what = input.row.kind === "confirm_deal" ? "your request to confirm a deal" : "your letter";
+      // Round 6z (founder, 2026-09-22, verbatim pick 1): "Yes, same as
+      // letters (Recommended)" wired deal decline/withdraw onto this shared
+      // path, which surfaced this: the deal branch was still saying "nothing
+      // was sent" — true for a letter, not for a deal that was never
+      // confirmed. Fixed in place, same file this pass is already in.
+      const nothing = input.row.kind === "confirm_deal" ? "Nothing was confirmed." : "Nothing was sent.";
       await this.bell(input.restaurantId, [requester], {
         type: input.row.kind === "confirm_deal" ? "vendor_deal_declined" : "vendor_letter_declined",
         title: `${who} declined ${what}`,
-        message: `${who} declined ${what}. Why: ${input.reason} Nothing was sent.`,
+        message: `${who} declined ${what}. Why: ${input.reason} ${nothing}`,
         actionUrl: input.row.kind === "confirm_deal" ? "/orders" : "/communications",
         actionLabel: "See it",
         metadata: { requestId: input.row.id, closedBy: input.by, closedHow: input.how },
@@ -689,10 +723,11 @@ export class VendorSendRequestsService {
       if (audience.length === 0) return;
       const who = (await this.authority.namesOf([input.by])).get(input.by) ?? "A member of the team";
       const what = input.row.kind === "confirm_deal" ? "their request to confirm a deal" : "their letter";
+      const nothing = input.row.kind === "confirm_deal" ? "nothing was confirmed" : "nothing was sent";
       await this.bell(input.restaurantId, audience, {
         type: input.row.kind === "confirm_deal" ? "vendor_deal_withdrawn" : "vendor_letter_withdrawn",
         title: `${who} withdrew ${what}`,
-        message: `${who} withdrew ${what}. It no longer waits for you, and nothing was sent.`,
+        message: `${who} withdrew ${what}. It no longer waits for you, and ${nothing}.`,
         actionUrl: input.row.kind === "confirm_deal" ? "/orders" : "/communications",
         actionLabel: "See it",
         metadata: { requestId: input.row.id, closedBy: input.by, closedHow: "withdrawn" },

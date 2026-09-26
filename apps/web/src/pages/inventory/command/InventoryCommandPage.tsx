@@ -79,7 +79,10 @@ import {
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
 import { HouseItemResearchUnread, NameThisWineHint } from "./NameThisWine";
-import { DeliveriesToName } from "./DeliveriesToName";
+// Moved to components/mudavym (founder, 2026-09-22, round 6z, verbatim pick 8:
+// "Queue it; Mudavym + hold (Recommended)") — the card is now built on the
+// house's Select/CountInput/HoldToApprove controls, not by path from a page.
+import { DeliveriesToName } from "../../../components/mudavym/DeliveriesToName";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
 import { CellarMapView } from "./CellarMapView";
 

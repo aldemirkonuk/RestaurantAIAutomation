@@ -3,9 +3,16 @@
  * (founder, 2026-09-22, verbatim pick: "Deliver, flag to name it
  * (Recommended)"). The gateway's rules are proved in
  * procurement/delivery-item-to-name.spec.ts; proved here: an owner or manager
- * names by the item's id and states the count a zero-bottle delivery lacks,
- * anyone else is told who can, the gateway's sentence is what is said after,
- * and a failed read is never "nothing waiting".
+ * names by the item's id (`Select`) and states the count a zero-bottle
+ * delivery lacks (`CountInput`), the naming act is a hold
+ * (`HoldToApprove` — two Enter presses is its keyboard two-step confirm, the
+ * same path HoldToApprove.test.tsx exercises), anyone else is told who can,
+ * the gateway's sentence is what is said after, and a failed read is never
+ * "nothing waiting".
+ *
+ * Moved from pages/inventory/command/DeliveriesToName.test.tsx alongside the
+ * component (founder, 2026-09-22, round 6z, verbatim pick 8: "Queue it;
+ * Mudavym + hold (Recommended)").
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -13,7 +20,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
-vi.mock('../../../services/api/client', () => ({
+vi.mock('../../services/api/client', () => ({
   apiClient: {
     get: (...a: unknown[]) => api.get(...a),
     post: (...a: unknown[]) => api.post(...a),
@@ -48,6 +55,13 @@ function draw(url = '/inventory') {
   )
 }
 
+/** HoldToApprove's keyboard path: Enter arms it, Enter again (while armed) commits. */
+const holdViaKeyboard = () => {
+  const button = screen.getByRole('button', { name: 'Book the stock' })
+  fireEvent.keyDown(button, { key: 'Enter' }) // arm
+  fireEvent.keyDown(button, { key: 'Enter' }) // commit
+}
+
 beforeEach(() => {
   api.get.mockReset()
   api.post.mockReset()
@@ -63,7 +77,7 @@ describe('deliveries waiting for their item', () => {
     )
     expect(screen.getByText('Item: Kavaklıdere Yakut 2019')).toBeInTheDocument()
     fireEvent.change(screen.getByPlaceholderText('Bottles that came in'), { target: { value: '6' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Book the stock' }))
+    holdViaKeyboard()
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith('/procurement/orders/ord-1/name-item', { inventoryId: 'inv-1', bottles: 6 }),
     )
@@ -85,7 +99,7 @@ describe('deliveries waiting for their item', () => {
     draw()
     await screen.findByTestId('deliveries-to-name')
     fireEvent.change(screen.getByPlaceholderText('Bottles that came in'), { target: { value: '6' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Book the stock' }))
+    holdViaKeyboard()
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(screen.queryByPlaceholderText('Bottles that came in')).toBeNull())
     expect(screen.getByTestId('delivery-to-name-says')).toHaveTextContent('so it is queued for research.')
@@ -99,7 +113,7 @@ describe('deliveries waiting for their item', () => {
     draw()
     await screen.findByTestId('deliveries-to-name')
     fireEvent.change(screen.getByPlaceholderText('Bottles that came in'), { target: { value: '6' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Book the stock' }))
+    holdViaKeyboard()
     expect(await screen.findByTestId('deliveries-to-name-unread')).toHaveTextContent('network down')
     expect(screen.getByTestId('delivery-to-name-says')).toHaveTextContent('6 bottles were booked.')
   })
@@ -109,7 +123,7 @@ describe('deliveries waiting for their item', () => {
     draw()
     await screen.findByTestId('deliveries-to-name')
     fireEvent.change(screen.getByPlaceholderText('Bottles that came in'), { target: { value: '2.5' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Book the stock' }))
+    holdViaKeyboard()
     expect(await screen.findByTestId('delivery-to-name-problem')).toHaveTextContent('as a whole number')
     expect(api.post).not.toHaveBeenCalled()
   })
@@ -126,8 +140,22 @@ describe('deliveries waiting for their item', () => {
     await screen.findByTestId('deliveries-to-name')
     expect(screen.queryByPlaceholderText('Bottles that came in')).toBeNull()
     fireEvent.change(screen.getByLabelText('The item this delivery was for'), { target: { value: 'inv-2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Book the stock' }))
+    holdViaKeyboard()
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/procurement/orders/ord-1/name-item', { inventoryId: 'inv-2' }))
+  })
+
+  it('choosing no item is refused on the page; nothing is sent', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        viewer: { mayName: true, mayNameReason: null },
+        deliveries: [{ ...ZERO, why: 'no_item', bottlesResolved: 12, orderInventoryId: null }],
+      },
+    })
+    draw()
+    await screen.findByTestId('deliveries-to-name')
+    holdViaKeyboard()
+    expect(await screen.findByTestId('delivery-to-name-problem')).toHaveTextContent('Choose the item')
+    expect(api.post).not.toHaveBeenCalled()
   })
 
   it('someone who may not name it is told who can, and offered nothing to book', async () => {
@@ -141,14 +169,17 @@ describe('deliveries waiting for their item', () => {
     expect(screen.queryByRole('button', { name: 'Book the stock' })).toBeNull()
   })
 
-  it("the gateway's refusal is said", async () => {
+  it("the gateway's refusal is said, and the hold does not seal over it", async () => {
     api.get.mockResolvedValue({ data: { viewer: { mayName: true, mayNameReason: null }, deliveries: [ZERO] } })
     api.post.mockRejectedValue(new Error('Someone named this delivery’s item a moment ago. Nothing was booked twice.'))
     draw()
     await screen.findByTestId('deliveries-to-name')
     fireEvent.change(screen.getByPlaceholderText('Bottles that came in'), { target: { value: '6' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Book the stock' }))
+    holdViaKeyboard()
     expect(await screen.findByTestId('delivery-to-name-problem')).toHaveTextContent('Nothing was booked twice.')
+    // The control reverted to idle rather than showing "Booked" — a rejected
+    // write must never seal.
+    expect(await screen.findByRole('button', { name: 'Book the stock' })).toBeInTheDocument()
   })
 
   it('a failed read is said, never "nothing waiting"', async () => {

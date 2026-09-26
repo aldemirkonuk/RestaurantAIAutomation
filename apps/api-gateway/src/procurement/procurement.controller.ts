@@ -7,6 +7,7 @@ import {
   Get,
   Header,
   Headers,
+  HttpCode,
   HttpException,
   HttpStatus,
   Param,
@@ -31,6 +32,7 @@ import {
 import {
   ApproveDraftDto,
   ConfirmDealDto,
+  DeclineDealRequestDto,
   DraftSealChallengeDto,
   DraftSendRequestDto,
   ManualReplyDto,
@@ -1030,6 +1032,45 @@ export class ProcurementController {
       finalPrice: num(finalPrice),
       quantity: num(quantity),
     });
+  }
+
+  /**
+   * An owner or a manager declines this order's waiting deal request, saying
+   * why (founder, 2026-09-22, round 6z, verbatim pick 1: "Yes, same as
+   * letters (Recommended)"). Nothing is committed.
+   */
+  @Post("orders/:id/deal-request/decline")
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Decline the deal request waiting on this order, saying why; nothing is confirmed" })
+  @ApiResponse({ status: 403, description: "The caller is not an owner or a manager" })
+  @ApiResponse({ status: 404, description: "No deal request is waiting on this order" })
+  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  async declineDealRequest(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @Body() dto: DeclineDealRequestDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.declineDealRequest(user.restaurantId, orderId, user.userId, dto.reason);
+  }
+
+  /**
+   * The person who asked withdraws their own waiting deal request on this
+   * order (founder, 2026-09-22, round 6z, verbatim pick 1: "Yes, same as
+   * letters (Recommended)"). Nobody else may withdraw it.
+   */
+  @Post("orders/:id/deal-request/withdraw")
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Withdraw your own deal request waiting on this order; nothing is confirmed" })
+  @ApiResponse({ status: 403, description: "The caller did not ask for it" })
+  @ApiResponse({ status: 404, description: "No deal request is waiting on this order" })
+  @ApiResponse({ status: 409, description: "The request was already released or closed" })
+  async withdrawDealRequest(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    return this.procurementService.withdrawDealRequest(user.restaurantId, orderId, user.userId);
   }
 
   @Post("orders/:id/confirm-deal")
