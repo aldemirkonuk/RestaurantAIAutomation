@@ -1,9 +1,9 @@
 /**
  * An order's receipt, opened in a right sheet (founder, 2026-09-22).
  *
- *   1. opening a delivered row and choosing "Open the receipt" mounts the
- *      canonical document (`/documents/:id`'s page) for the document the
- *      order's delivery carries — not a new layout;
+ *   1. clicking a delivered row mounts the canonical document
+ *      (`/documents/:id`'s page) for the document the order's delivery
+ *      carries — not a new layout;
  *   2. an order with no document on any delivery says so in one sentence;
  *   3. a read that failed is said as a failure, never as "no receipt".
  */
@@ -117,8 +117,9 @@ function openReceipt() {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  fireEvent.click(screen.getByRole('button', { name: /Carvalha do Brico 2010/ }));
-  fireEvent.click(screen.getByTestId('open-receipt'));
+  // A delivered row's bare click opens the receipt (OD-152, founder
+  // 2026-09-25) — no expansion step in between.
+  fireEvent.click(screen.getByRole('button', { name: /Carvalha do Brico 2010.*open the receipt/ }));
 }
 
 afterEach(() => {

@@ -100,9 +100,16 @@ export function useUnreadCount(userId: string) {
 /**
  * Hook to fetch notification preferences
  */
-export function useNotificationPreferences(userId: string) {
+export function useNotificationPreferences(
+  userId: string,
+  restaurantId?: string | null,
+) {
   return useQuery({
-    queryKey: queryKeys.notifications.preferences(userId),
+    // restaurantId is cache-key-only: the server derives the house from the
+    // caller's token (ADR 0149 row 39), so it is not sent as a request param.
+    // It still has to be IN the key -- otherwise switching the active house
+    // keeps this query pinned to whichever house it first fetched under.
+    queryKey: queryKeys.notifications.preferences(userId, restaurantId),
     queryFn: () => fetchNotificationPreferences(userId),
     enabled: !!userId,
   })
@@ -337,12 +344,20 @@ export function useUpdateNotificationPreferences() {
   const toast = useNotificationStore()
   
   return useMutation({
-    mutationFn: ({ userId, preferences }: { userId: string; preferences: Partial<Omit<NotificationPreferences, 'userId'>> }) =>
-      updateNotificationPreferences(userId, preferences),
-    onSuccess: (updatedPreferences) => {
+    mutationFn: ({
+      userId,
+      preferences,
+    }: {
+      userId: string
+      // restaurantId is cache-key-only (see useNotificationPreferences); the
+      // server derives the house from the caller's token and never sees it.
+      restaurantId?: string | null
+      preferences: Partial<Omit<NotificationPreferences, 'userId'>>
+    }) => updateNotificationPreferences(userId, preferences),
+    onSuccess: (updatedPreferences, variables) => {
       // Update preferences cache
       queryClient.setQueryData(
-        queryKeys.notifications.preferences(updatedPreferences.userId),
+        queryKeys.notifications.preferences(updatedPreferences.userId, variables.restaurantId),
         updatedPreferences
       )
       

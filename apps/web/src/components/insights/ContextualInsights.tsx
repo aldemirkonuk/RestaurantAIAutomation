@@ -4,9 +4,19 @@
  * One component embedded on /inventory, /orders, /providers. It scopes the
  * engine's insight feed to the host page's categories (optionally to one
  * entity), and offers Act / Explain / Pin / Dismiss with the SAME disposition
- * store as Recommendations + the Reports panel (keyed `insight:<candidate_key>`),
- * so dismiss/snooze/pin sync across every surface. Deep-links to Browse-All and
- * Recommendations are stable. Deterministic sentences only — no fabricated %.
+ * store as Recommendations + the Reports panel, so dismiss/snooze/pin sync
+ * across every surface. Deep-links to Browse-All and Recommendations are
+ * stable. Deterministic sentences only — no fabricated %.
+ *
+ * ADR 0191 (founder, 2026-09-21): the gateway resolves ONE shared per-item
+ * state and withholds what it hides on the stored read this rail uses, so
+ * the rail no longer filters by itself — its old client-side filter matched
+ * `insight:<candidate>:<entity>`, a key nothing server-side ever wrote, so a
+ * rail dismissal held on this rail and nowhere else. Every act goes to the
+ * gateway-built key the row carries (`@/lib/recommendationState`), a
+ * dismissal carries the reason the person picked (a labelled signal, never a
+ * stamped `not_relevant`), and an item whose key is the whole type is not
+ * offered a one-item Dismiss: that is the catalogue's owner/manager On/Off.
  *
  * NEW-729/738/748 host rails · NEW-730/739/749 entity scope · NEW-731 act
  * NEW-735/745/755 Browse-All deep link · NEW-736/746/756 dismiss syncs
@@ -26,6 +36,14 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { apiClient, getErrorMessage } from "../../services/api/client";
+import {
+  DISMISS_CHOICES,
+  choiceSaid,
+  insightActKey,
+  patchForChoice,
+  undoOf,
+  type DismissChoiceId,
+} from "../../lib/recommendationState";
 
 export type InsightHost = "inventory" | "orders" | "providers";
 
@@ -82,6 +100,10 @@ interface Insight {
   entityKey: string | null;
   entityLabel: string | null;
   pinned: boolean;
+  /** The gateway-built key an act on this item writes; null = not actable. */
+  actKey: string | null;
+  /** That key silences the whole type — no one-item Dismiss is offered. */
+  ruleWide: boolean;
 }
 
 export function ContextualInsights({
@@ -106,13 +128,23 @@ export function ContextualInsights({
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(defaultOpen);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [undo, setUndo] = useState<string | null>(null);
+  // The last choice that landed, so Undo reverses the act it actually was
+  // (round 3: "Not right now" is this person's own snooze, woken — not a
+  // house restore).
+  const [undo, setUndo] = useState<{ key: string; choice: DismissChoiceId } | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
+  // Which item's reason row is open, and the last write that did not land.
+  const [reasonFor, setReasonFor] = useState<string | null>(null);
+  const [actError, setActError] = useState<string | null>(null);
+  // The gateway could not read what has been dismissed, snoozed or done, so
+  // the list below may hold items already put away. Said, never shown clean.
+  const [stateUnread, setStateUnread] = useState(false);
 
   const load = useCallback(async () => {
     if (!restaurantId) return;
     setLoading(true);
     setError(null);
+    setStateUnread(false);
     try {
       // allSettled, not all: the disposition call failing must not blank the
       // insight list (fetch never rejected on 4xx — axios does).
@@ -125,20 +157,16 @@ export function ContextualInsights({
         ),
       ]);
 
-      const hidden = new Set<string>();
+      // Pins only. What is hidden the gateway has already withheld from the
+      // list below, at every scope (ADR 0191) — filtering again here, on a
+      // key of this page's own making, is how a dismissal used to hold on
+      // one surface and nowhere else.
       const pinnedSet = new Set<string>();
       if (dispRes.status === "fulfilled") {
-        const now = Date.now();
         const items: any[] = dispRes.value.data?.items ?? [];
         for (const it of items) {
           if (!String(it.ruleKey ?? "").startsWith("insight:")) continue;
           if (it.pinned) pinnedSet.add(it.ruleKey);
-          const snoozed =
-            it.status === "snoozed" &&
-            it.snoozeUntil &&
-            new Date(it.snoozeUntil).getTime() > now;
-          if (it.status === "dismissed" || it.status === "done" || snoozed)
-            hidden.add(it.ruleKey);
         }
       }
 
@@ -150,11 +178,18 @@ export function ContextualInsights({
         const body = insRes.value.data ?? {};
         const rows: any[] = body.insights ?? [];
         setAvailable(rows.length > 0 || body.source === "stored");
+        // House state or this person's own snoozes (round 3): either unread
+        // means some of these may be ones already put away.
+        setStateUnread(
+          body.suppressionsReadable === false || body.personalSnoozesReadable === false,
+        );
         let mapped = rows
           .map((r) => {
             const candidateKey = r.candidate_key ?? r.candidateKey ?? "";
             const eKey = r.entity_key ?? r.entityKey ?? "";
+            // Display identity only (React key, deep link, "Explain").
             const ruleKey = `insight:${candidateKey}${eKey ? ":" + eKey : ""}`;
+            const item = insightActKey(r);
             return {
               sentence: r.sentence,
               category: r.category,
@@ -164,10 +199,12 @@ export function ContextualInsights({
               zScore: r.z_score ?? r.z ?? null,
               entityKey: eKey || null,
               entityLabel: r.entity_label ?? r.entityLabel ?? null,
-              pinned: pinnedSet.has(ruleKey),
+              pinned: item ? pinnedSet.has(item.key) : false,
+              actKey: item?.key ?? null,
+              ruleWide: item?.ruleWide ?? true,
             } as Insight;
           })
-          .filter((r) => r.sentence && !hidden.has(r.ruleKey));
+          .filter((r) => r.sentence);
 
         // Entity scope (NEW-730/739/749): narrow to one wine/vendor when given.
         if (entityKey) {
@@ -195,42 +232,60 @@ export function ContextualInsights({
     load();
   }, [load]);
 
+  /** One write at the item's own key. Resolves false when it did not land. */
   const action = useCallback(
-    async (ins: Insight, patch: Record<string, unknown>) => {
-      if (!restaurantId) return;
-      await apiClient
-        .post(`/analytics/recommendations/${restaurantId}/action`, {
-          ruleKey: ins.ruleKey,
+    async (ins: Insight, patch: Record<string, unknown>): Promise<boolean> => {
+      if (!restaurantId || !ins.actKey) return false;
+      try {
+        await apiClient.post(`/analytics/recommendations/${restaurantId}/action`, {
+          ruleKey: ins.actKey,
           ...patch,
           snapshot: {
             observation: ins.sentence,
             recommendation: ins.sentence,
             category: ins.category,
           },
-        })
-        .catch(() => {});
+        });
+        return true;
+      } catch (e) {
+        // Said, never swallowed: a write that did not land is not a dismissal.
+        setActError(getErrorMessage(e));
+        return false;
+      }
     },
     [restaurantId],
   );
 
-  const dismiss = async (ins: Insight) => {
+  /**
+   * One choice from the dismiss list (ADR 0191 round 3): a dismissal with its
+   * label, "Already handled" as done, or "Not right now" as this person's own
+   * snooze — `patchForChoice`, the same body every surface posts.
+   */
+  const dismiss = async (ins: Insight, choice: DismissChoiceId) => {
+    if (!ins.actKey || ins.ruleWide) return;
+    setReasonFor(null);
+    setActError(null);
     setInsights((prev) => prev.filter((i) => i.ruleKey !== ins.ruleKey));
-    setUndo(ins.ruleKey);
-    await action(ins, { status: "dismissed", reason: "not_relevant" });
+    const landed = await action(ins, patchForChoice(choice));
+    if (landed) setUndo({ key: ins.actKey, choice });
+    else load();
   };
 
-  const restore = async (ruleKey: string) => {
+  const restore = async (last: { key: string; choice: DismissChoiceId }) => {
     setUndo(null);
-    await apiClient
-      .post(`/analytics/recommendations/${restaurantId}/action`, {
-        ruleKey,
-        status: "active",
-      })
-      .catch(() => {});
+    setActError(null);
+    if (!restaurantId) return;
+    try {
+      const { path, body } = undoOf(restaurantId, last.key, last.choice);
+      await apiClient.post(path, body);
+    } catch (e) {
+      setActError(getErrorMessage(e));
+    }
     load();
   };
 
   const pin = async (ins: Insight) => {
+    if (!ins.actKey) return;
     const next = !ins.pinned;
     setInsights((prev) => {
       const u = prev.map((i) =>
@@ -241,7 +296,11 @@ export function ContextualInsights({
       );
       return u;
     });
-    await action(ins, { pinned: next });
+    const landed = await action(ins, { pinned: next });
+    if (!landed)
+      setInsights((prev) =>
+        prev.map((i) => (i.ruleKey === ins.ruleKey ? { ...i, pinned: !next } : i)),
+      );
   };
 
   const act = (ins: Insight) => {
@@ -345,21 +404,48 @@ export function ContextualInsights({
                             >
                               Explain
                             </button>
-                            <button
-                              onClick={() => pin(ins)}
-                              title={ins.pinned ? "Unpin" : "Pin"}
-                              className={`p-0.5 rounded-md hover:bg-gray-100 ${ins.pinned ? "text-amber-600" : "text-gray-300"}`}
-                            >
-                              <Pin className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => dismiss(ins)}
-                              title="Dismiss"
-                              className="p-0.5 rounded-md text-gray-300 hover:bg-gray-100 hover:text-gray-600"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
+                            {ins.actKey && (
+                              <button
+                                onClick={() => pin(ins)}
+                                title={ins.pinned ? "Unpin" : "Pin"}
+                                className={`p-0.5 rounded-md hover:bg-gray-100 ${ins.pinned ? "text-amber-600" : "text-gray-300"}`}
+                              >
+                                <Pin className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {ins.actKey && !ins.ruleWide && (
+                              <button
+                                onClick={() =>
+                                  setReasonFor(reasonFor === ins.ruleKey ? null : ins.ruleKey)
+                                }
+                                title="Dismiss"
+                                aria-label="Dismiss"
+                                aria-expanded={reasonFor === ins.ruleKey}
+                                className="p-0.5 rounded-md text-gray-300 hover:bg-gray-100 hover:text-gray-600"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
+                          {reasonFor === ins.ruleKey && (
+                            <div
+                              role="group"
+                              aria-label="Why dismiss it"
+                              className="mt-1 flex flex-wrap items-center gap-1 text-[11px]"
+                            >
+                              <span className="text-gray-500">Why?</span>
+                              {DISMISS_CHOICES.map((r) => (
+                                <button
+                                  key={r.id}
+                                  title={r.note}
+                                  onClick={() => void dismiss(ins, r.id)}
+                                  className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                >
+                                  {r.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           {isOpen && (
                             <div className="mt-1.5 p-2 bg-gray-50 rounded-lg text-xs text-gray-500 space-y-0.5">
                               {ins.effectPct != null && (
@@ -386,9 +472,22 @@ export function ContextualInsights({
             </>
           )}
 
+          {stateUnread && (
+            <p role="status" className="mt-2 text-xs text-amber-800">
+              What was dismissed, snoozed or marked done could not be read just
+              now, so some of these may be ones you already put away.
+            </p>
+          )}
+
+          {actError && (
+            <p role="alert" className="mt-2 text-xs text-red-700">
+              Not saved ({actError}) — the item is back where it was.
+            </p>
+          )}
+
           {undo && (
             <div className="mt-2 flex items-center justify-between gap-3 px-3 py-2 bg-gray-900 text-white rounded-lg text-xs">
-              <span>Insight dismissed</span>
+              <span>{choiceSaid(undo.choice)}</span>
               <button onClick={() => restore(undo)} className="flex items-center gap-1 font-semibold text-amber-300 hover:text-amber-200">
                 <Undo2 className="w-3.5 h-3.5" /> Undo
               </button>
