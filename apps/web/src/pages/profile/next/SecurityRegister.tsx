@@ -27,6 +27,10 @@
  *     matches for `2fa`, `totp`, `mfa`, `passkey`, `webauthn`, and no
  *     user-issued API token anywhere — every call this product makes is
  *     authenticated with the short-lived JWT.
+ *     **[2026-09-25, ADR 0222 (Proposed): passkeys are built — `PasskeyRows`,
+ *     over `apps/api-gateway/src/passkeys/` and `user_passkeys`
+ *     (20260926210000). Two-factor and API tokens are still `Not built`, and
+ *     the measurement above still holds for them.]**
  *
  * No fake toggles. A switch that flips and stores nothing is the same lie as a
  * Connect button with no endpoint, and it is worse here, because the thing it
@@ -38,6 +42,7 @@ import { KeyRound, MonitorSmartphone, ShieldCheck, Terminal } from 'lucide-react
 import { EM, MONO, SANS, fmtMoment } from './pf-format';
 import { Btn, Card, ConnectionRow, Field, Note, Rail, Register, StatusLine } from './pf-ui';
 import type { ProfileNextData } from './useProfileNextData';
+import { PasskeyRows } from './PasskeyRows';
 
 /** A label/value pair inside a row's expanded working. */
 function Fact({ label, value }: { label: string; value: string }) {
@@ -100,8 +105,8 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
       title="What protects this account"
       lead={
         <Note>
-          One credential, one session we can prove, and three protections that do not exist
-          yet. Each of the three says what is missing rather than offering a switch that
+          One credential, one session we can prove, your passkeys, and the protections that do
+          not exist yet. Each of those says what is missing rather than offering a switch that
           would store nothing.
         </Note>
       }
@@ -220,7 +225,7 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
       <Rail
         title="Second factor"
         icon={<KeyRound size={12} aria-hidden />}
-        lead="This account can seal a purchase order. Neither protection below exists behind it yet."
+        lead="This account can seal a purchase order. Passkeys are built; a two-factor code is not."
       >
         <ConnectionRow
           title="Two-factor authentication"
@@ -229,13 +234,7 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
           reason="No second factor exists in the gateway — no secret, no enrolment, no verification step, no recovery codes (measured 2026-09-03 across the whole auth module). A toggle here would turn nothing on, so there is not one."
           controls={<Btn disabled>Turn on two-factor</Btn>}
         />
-        <ConnectionRow
-          title="Passkeys"
-          subtitle="Sign in with the device you are already holding."
-          state="unbuilt"
-          reason="No WebAuthn registration or assertion route exists, and no credential store to put one in. Google sign-in is the only passwordless route this product has, and it is on the Connected accounts register."
-          controls={<Btn disabled>Add a passkey</Btn>}
-        />
+        <PasskeyRows hasPassword={data.hasPassword} />
       </Rail>
 
       <Rail

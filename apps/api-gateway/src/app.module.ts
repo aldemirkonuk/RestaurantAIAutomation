@@ -32,6 +32,7 @@ import { InventoryLedgerModule } from "./inventory-ledger/inventory-ledger.modul
 import { ProvidersModule } from "./providers/providers.module";
 import { CommunicationsModule } from "./communications/communications.module";
 import { SettingsModule } from "./settings/settings.module";
+import { PasskeysModule } from "./passkeys/passkeys.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
 import { RetentionModule } from "./communications/retention/retention.module";
 import { ArchiveModule } from "./communications/archive/archive.module";
@@ -129,6 +130,7 @@ import { HouseModule } from "./house/house.module";
     CommunicationsModule, // Gmail, SMS, and scheduled communications
     ConversationsModule, // Procurement conversation history, threads, summaries
     SettingsModule, // Restaurant settings and feature flags
+    PasskeysModule, // ADR 0222: passkey enrolment on /profile
     IntegrationsModule, // Third-party OAuth grants (Drive, Excel) + scope disclosure
     RetentionModule, // How long mirrored vendor mail is kept, and the sweep that deletes it
     ArchiveModule, // The house's own copy of that mail: its choice, its export, its counts (ADR 0118 D16)
