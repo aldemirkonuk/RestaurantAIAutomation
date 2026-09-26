@@ -14,7 +14,6 @@ import {
 } from "./dto/notifications.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NotificationProducersService } from "./producers/notification-producers.service";
-import { HouseEmailService } from "./house-email.service";
 
 /**
  * Notification reads are scoped to the restaurant on the VERIFIED token, not to
@@ -69,11 +68,6 @@ describe("NotificationsController", () => {
           provide: NotificationProducersService,
           useValue: mockProducersService,
         },
-        // POST /notifications/send-email's service is a REQUIRED dependency, so
-        // a server that cannot build it fails to boot. None of the handlers
-        // tested here reach it; notification-senders-are-closed.spec.ts runs
-        // the real one behind the real route.
-        { provide: HouseEmailService, useValue: {} },
       ],
     })
       // OD-20 guarded this controller at class level. A unit spec should not

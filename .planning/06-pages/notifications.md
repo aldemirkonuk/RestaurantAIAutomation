@@ -1013,7 +1013,10 @@ dashboard.md §7.
   the old `['sms','push']` default to match — a row someone customised away from
   it was left alone. Full record: the ADR 0147 amendment's Recipient routing
   (OD-121) bullet.]** The five uncalled POST senders are closed and
-  `send-email` is owner/manager-only to the house's own book.]**
+  `send-email` is owner/manager-only to the house's own book. **[2026-09-25: the
+  `send-email` half was dropped from this branch before merge; the founder closed the
+  endpoint instead (round 4 item 14), which PR #410 does. See ADR 0147's 2026-09-25
+  bracket.]**]**
 
 **Found while building the Mudavym redesign (2026-09-02).** All four are outside the
 page's own paths; none was built.

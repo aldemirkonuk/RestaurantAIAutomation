@@ -34,10 +34,8 @@ import {
   UpdatePreferencesDto,
   PushSubscribeDto,
   PushUnsubscribeDto,
-  SendHouseEmailDto,
 } from "./dto/notifications.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
-import { HouseEmailService } from "./house-email.service";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { NotificationProducersService } from "./producers/notification-producers.service";
 
@@ -179,10 +177,6 @@ export class NotificationsController {
     @Optional()
     @Inject(forwardRef(() => LowStockAlertsService))
     private readonly lowStockAlerts?: LowStockAlertsService,
-    // Required by the injector (no @Optional): a server that cannot resolve it
-    // fails to boot. Typed optional only because it follows an optional
-    // parameter; the route answers 503 if a hand-built instance omits it.
-    private readonly houseEmail?: HouseEmailService,
   ) {}
 
   // =========================================================================
@@ -595,45 +589,42 @@ export class NotificationsController {
   // NotificationsService for internal producers; they are no longer reachable
   // over HTTP. `notification-senders-are-closed.spec.ts` pins the absence.
 
-  /**
-   * Send one email as the house, to the house's own people.
-   *
-   * An owner or a manager of the ACTIVE house only, and every recipient must be
-   * one of the house's members or a contact in its vendor book — decided by
-   * `HouseEmailService` from the token, never from the body. It sent to any
-   * address for any signed-in user until 2026-09-16.
-   *
-   * No `RolesGuard` here, deliberately. It reads `request.user.role`, which
-   * `JwtStrategy.validate` takes from `users.role` BEFORE the token's
-   * per-house role — one value for every house the person belongs to. A
-   * manager of this house whose account row says `staff` would be refused, and
-   * a manager of another house would pass. The per-house role in
-   * `user_restaurant_access` is the only thing that answers "owner or manager
-   * of the active house", and `HouseEmailService` reads it on every send.
-   */
   @Post("send-email")
-  async sendEmail(@Body() body: SendHouseEmailDto, @Req() req: ScopedRequest) {
-    if (!this.houseEmail) {
-      throw new HttpException(
-        "Email sending is not wired on this server, so nothing was sent.",
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
-    }
+  async sendEmail(
+    @Body()
+    body: {
+      to: string[];
+      subject: string;
+      template_id?: string;
+      body_html: string;
+      body_text?: string;
+      cc?: string[];
+      bcc?: string[];
+    },
+  ) {
+    this.logger.log(`Sending email to ${body.to.join(", ")}`);
+
     try {
-      return await this.houseEmail.send(
-        { userId: req?.user?.userId, restaurantId: req?.user?.restaurantId },
-        {
-          to: body.to,
-          cc: body.cc,
-          bcc: body.bcc,
-          subject: body.subject,
-          bodyHtml: body.body_html,
-          bodyText: body.body_text,
-        },
-      );
+      const result = await this.notificationsService.sendEmail({
+        to: body.to,
+        subject: body.subject,
+        bodyHtml: body.body_html,
+        bodyText: body.body_text,
+        cc: body.cc,
+        bcc: body.bcc,
+      });
+
+      return {
+        success: true,
+        message_id: result.messageId,
+        timestamp: new Date().toISOString(),
+      };
     } catch (error) {
-      this.logger.error(`send-email refused or failed: ${error?.message}`);
-      rethrow(error);
+      this.logger.error(`Failed to send email: ${error.message}`, error.stack);
+      return {
+        success: false,
+        error: error.message,
+      };
     }
   }
 

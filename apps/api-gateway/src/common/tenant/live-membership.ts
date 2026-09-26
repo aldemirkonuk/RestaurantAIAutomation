@@ -5,8 +5,10 @@
  * this house right now" for a send (2026-09-17, notify-lane review, minor 2).
  * Before it the answer depended on who asked: `RecipientResolverService`
  * checked `is_active` only, so a manager past `valid_until` was still
- * notified; `HouseEmailService` checked `is_active` and `valid_until` but not
- * `valid_from`, so a grant dated in the future could already send.
+ * notified; the house-email sender this lane first built checked `is_active`
+ * and `valid_until` but not `valid_from`. [2026-09-25: that sender was dropped
+ * when the founder closed POST /notifications/send-email (PR #410); the
+ * recipient resolver is this predicate's reader.]
  *
  * A row is live when ALL of:
  *   - `is_active` is exactly `true`

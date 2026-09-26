@@ -9,12 +9,7 @@ import {
   IsUUID,
   IsObject,
   IsIn,
-  IsEmail,
-  IsNotEmpty,
-  ArrayMinSize,
-  ArrayMaxSize,
   Matches,
-  MaxLength,
   Min,
   Max,
   ValidateNested,
@@ -404,111 +399,4 @@ export class PushUnsubscribeDto {
   @IsOptional()
   @IsUUID()
   userId?: string;
-}
-
-// ============================================================================
-// POST /notifications/send-email — the house writes to its own people
-// ============================================================================
-
-/** Trim a string field before it is validated; leave anything else alone. */
-const trimmed = ({ value }: { value: unknown }) =>
-  typeof value === "string" ? value.trim() : value;
-/** Trim every string in an address list; leave anything else alone. */
-const trimmedList = ({ value }: { value: unknown }) =>
-  Array.isArray(value)
-    ? value.map((v) => (typeof v === "string" ? v.trim() : v))
-    : value;
-
-/**
- * An address that can only ever be ONE address in ONE header.
- *
- * `@IsEmail` alone is not enough: it accepts a quoted local part, and a quoted
- * local part may carry CR/LF — measured 2026-09-17,
- * `isEmail('"a\r\nBcc: x@evil.test"@vendor.test') === true` — while
- * `GmailService.createMimeMessage` joins To/Cc/Bcc into the header block. So
- * any book entry spelled that way (a vendor contact a manager typed, or a
- * `users.email` written through the unvalidated register body) could add
- * hidden recipients outside the book that the audit counts would never show.
- * Refused here: whitespace, control characters, quotes, backslashes, angle
- * brackets, commas and semicolons. No address in a house's book needs any of
- * them. The mail sender refuses a line break in any header on its own as well.
- */
-// The control-character range is the point: refusing CR/LF and friends in an
-// address is this pattern's job.
-// eslint-disable-next-line no-control-regex
-const SINGLE_ADDRESS = /^[^\s\u0000-\u001f\u007f"\\<>,;]+$/;
-
-/**
- * The body of the one notification sender still reachable over HTTP
- * (ADR 0149 answer 15, 2026-09-16). Who may send and to whom is decided by
- * `HouseEmailService` from the token, never from this body: the addresses named
- * here are only REQUESTS, each checked against the house's own members and its
- * vendors' contacts.
- *
- * Until 2026-09-16 this was an inline type with no validation at all: any
- * string reached Gmail as a recipient, and a subject carrying CR/LF reached the
- * MIME header block unescaped (`gmail.service.ts` createMimeMessage).
- */
-export class SendHouseEmailDto {
-  @ApiProperty({ type: [String], description: "Recipients (1-50)" })
-  @Transform(trimmedList)
-  @IsArray()
-  @ArrayMinSize(1, {
-    message:
-      "Name at least one recipient. Mudavym sends only to this house's members and the contacts in its vendor book.",
-  })
-  @ArrayMaxSize(50)
-  @IsEmail({}, { each: true, message: "Every recipient must be an email address" })
-  @Matches(SINGLE_ADDRESS, {
-    each: true,
-    message:
-      "A recipient may not contain spaces, line breaks, quotes, angle brackets, commas or semicolons",
-  })
-  to: string[];
-
-  @ApiPropertyOptional({ type: [String] })
-  @Transform(trimmedList)
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(50)
-  @IsEmail({}, { each: true, message: "Every cc address must be an email address" })
-  @Matches(SINGLE_ADDRESS, {
-    each: true,
-    message:
-      "A cc address may not contain spaces, line breaks, quotes, angle brackets, commas or semicolons",
-  })
-  cc?: string[];
-
-  @ApiPropertyOptional({ type: [String] })
-  @Transform(trimmedList)
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(50)
-  @IsEmail({}, { each: true, message: "Every bcc address must be an email address" })
-  @Matches(SINGLE_ADDRESS, {
-    each: true,
-    message:
-      "A bcc address may not contain spaces, line breaks, quotes, angle brackets, commas or semicolons",
-  })
-  bcc?: string[];
-
-  @ApiProperty()
-  @Transform(trimmed)
-  @IsString()
-  @IsNotEmpty({ message: "The email needs a subject" })
-  @MaxLength(300)
-  @Matches(/^[^\r\n]*$/, { message: "The subject must be a single line" })
-  subject: string;
-
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty({ message: "The email has no body" })
-  @MaxLength(500_000)
-  body_html: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(200_000)
-  body_text?: string;
 }

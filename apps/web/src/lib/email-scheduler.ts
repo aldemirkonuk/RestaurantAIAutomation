@@ -1,36 +1,12 @@
 /**
  * Email Scheduler Service
- * Handles scheduled email sending using localStorage and periodic checks.
- *
- * WHOSE QUEUE (2026-09-17, notify-lane review minor 4). Since `sendHouseEmail`
- * carries the session token, a due entry really sends — as whoever is signed
- * in when it comes due. So the queue is KEYED by the person and the house the
- * token names (`sub`, `restaurantId`, the same claims the gateway checks), a
- * tick sends only the signed-in owner's entries, and a session that changes
- * mid-send puts the rest back rather than sending them as someone else. The
- * old unkeyed `wineops_scheduled_emails` queue has no owner and is never sent.
- *
- * ONE SEND PER ENTRY. An entry is marked `sending` and saved BEFORE the
- * request is awaited, so an overlapping tick or another tab reading storage
- * skips it. Ticks in one tab do not overlap, and where the Web Locks API
- * exists one tab at a time runs a tick. An entry left `sending` (the tab
- * closed mid-request) is marked failed after `STALE_SENDING_MS` and is NOT
- * resent: whether it left is unknown, and a second copy is worse than none.
- * Without Web Locks two tabs can still both read a `pending` entry in the
- * same instant; the window is the few milliseconds between read and save.
+ * Handles scheduled email sending using localStorage and periodic checks
  */
 
-import { sendHouseEmail, houseEmailRefusal } from '../services/api/notifications'
+import axios from 'axios'
 
-/** The pre-2026-09-17 unkeyed queue. Never read for sending. */
-export const UNOWNED_QUEUE_KEY = 'wineops_scheduled_emails'
-const QUEUE_KEY_PREFIX = 'mudavym_scheduled_emails'
-const STALE_SENDING_MS = 10 * 60 * 1000
-
-export interface QueueOwner {
-  userId: string
-  restaurantId: string
-}
+const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
+const SCHEDULED_EMAILS_KEY = 'wineops_scheduled_emails'
 
 export interface ScheduledEmail {
   id: string
@@ -42,80 +18,31 @@ export interface ScheduledEmail {
   bcc?: string[]
   scheduledAt: number // Unix timestamp in ms
   createdAt: number
-  status: 'pending' | 'sending' | 'sent' | 'failed'
-  /** When the entry was claimed for sending. */
-  sendingSince?: number
-  /** Who scheduled it, and for which house. */
-  ownerUserId: string
-  ownerRestaurantId: string
+  status: 'pending' | 'sent' | 'failed'
   error?: string
 }
 
 /**
- * The person and house the current session token names, or null when there is
- * no readable token. Read from the token, not from `activeRestaurantId`: the
- * gateway decides the house from the token.
+ * Get all scheduled emails
  */
-export function currentQueueOwner(): QueueOwner | null {
+export function getScheduledEmails(): ScheduledEmail[] {
   try {
-    const token = localStorage.getItem('accessToken')
-    const part = token?.split('.')[1]
-    if (!part) return null
-    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
-    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
-    const payload = JSON.parse(atob(padded)) as {
-      sub?: unknown
-      restaurantId?: unknown
-    }
-    const userId = typeof payload.sub === 'string' ? payload.sub : ''
-    const restaurantId =
-      typeof payload.restaurantId === 'string' ? payload.restaurantId : ''
-    return userId && restaurantId ? { userId, restaurantId } : null
-  } catch {
-    return null
-  }
-}
-
-function queueKey(owner: QueueOwner): string {
-  return `${QUEUE_KEY_PREFIX}:${owner.userId}:${owner.restaurantId}`
-}
-
-function sameOwner(a: QueueOwner | null, b: QueueOwner): boolean {
-  return !!a && a.userId === b.userId && a.restaurantId === b.restaurantId
-}
-
-function readQueue(owner: QueueOwner): ScheduledEmail[] {
-  try {
-    const stored = localStorage.getItem(queueKey(owner))
-    const list = stored ? (JSON.parse(stored) as ScheduledEmail[]) : []
-    // Belt and braces: an entry that names another owner is never ours.
-    return Array.isArray(list)
-      ? list.filter(
-          (e) =>
-            e.ownerUserId === owner.userId &&
-            e.ownerRestaurantId === owner.restaurantId,
-        )
-      : []
+    const stored = localStorage.getItem(SCHEDULED_EMAILS_KEY)
+    return stored ? JSON.parse(stored) : []
   } catch {
     return []
   }
 }
 
-function saveQueue(owner: QueueOwner, emails: ScheduledEmail[]): void {
-  localStorage.setItem(queueKey(owner), JSON.stringify(emails))
-}
-
 /**
- * The signed-in owner's scheduled emails (none when nobody is signed in).
+ * Save scheduled emails
  */
-export function getScheduledEmails(): ScheduledEmail[] {
-  const owner = currentQueueOwner()
-  return owner ? readQueue(owner) : []
+function saveScheduledEmails(emails: ScheduledEmail[]): void {
+  localStorage.setItem(SCHEDULED_EMAILS_KEY, JSON.stringify(emails))
 }
 
 /**
- * Schedule an email to be sent at a specific time, as the signed-in person
- * for the signed-in house. Throws when there is no session to own it.
+ * Schedule an email to be sent at a specific time
  */
 export function scheduleEmail(
   to: string[],
@@ -126,14 +53,8 @@ export function scheduleEmail(
   cc?: string[],
   bcc?: string[]
 ): ScheduledEmail {
-  const owner = currentQueueOwner()
-  if (!owner) {
-    throw new Error(
-      'No signed-in house, so an email cannot be scheduled on nobody\'s behalf.',
-    )
-  }
   const scheduledAt = Date.now() + delayMinutes * 60 * 1000
-
+  
   const email: ScheduledEmail = {
     id: `email_${Date.now()}_${Math.random().toString(36).substring(7)}`,
     to,
@@ -145,27 +66,23 @@ export function scheduleEmail(
     scheduledAt,
     createdAt: Date.now(),
     status: 'pending',
-    ownerUserId: owner.userId,
-    ownerRestaurantId: owner.restaurantId,
   }
-
-  const emails = readQueue(owner)
+  
+  const emails = getScheduledEmails()
   emails.push(email)
-  saveQueue(owner, emails)
-
-  console.log(`Email scheduled for ${new Date(scheduledAt).toLocaleTimeString()}`)
-
+  saveScheduledEmails(emails)
+  
+  console.log(`📧 Email scheduled for ${new Date(scheduledAt).toLocaleTimeString()}`)
+  
   return email
 }
 
 /**
  * Send an email via the API
  */
-async function sendEmail(
-  email: ScheduledEmail,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+async function sendEmail(email: ScheduledEmail): Promise<boolean> {
   try {
-    await sendHouseEmail({
+    const response = await axios.post(`${API_URL}/api/v1/notifications/send-email`, {
       to: email.to,
       subject: email.subject,
       body_html: email.bodyHtml,
@@ -173,108 +90,42 @@ async function sendEmail(
       cc: email.cc,
       bcc: email.bcc,
     })
-    return { ok: true }
+    
+    return response.data.success
   } catch (error) {
     console.error('Failed to send scheduled email:', error)
-    // The gateway's own sentence (e.g. an address outside the house's book),
-    // kept on the entry instead of a generic "Failed to send email".
-    return { ok: false, error: houseEmailRefusal(error) }
+    return false
   }
 }
-
-/** One tick at a time in this tab. */
-let tickRunning = false
 
 /**
- * Check and send the signed-in owner's due emails.
+ * Check and send due emails
  */
 export async function checkAndSendDueEmails(): Promise<void> {
-  if (tickRunning) return
-  tickRunning = true
-  try {
-    const owner = currentQueueOwner()
-    if (!owner) return
-    const locks = (
-      typeof navigator !== 'undefined'
-        ? (navigator as Navigator & { locks?: LockManager }).locks
-        : undefined
-    )
-    if (locks?.request) {
-      await locks.request(
-        `${QUEUE_KEY_PREFIX}:tick`,
-        { ifAvailable: true },
-        async (lock) => {
-          if (lock) await sendDue(owner)
-        },
-      )
-    } else {
-      await sendDue(owner)
-    }
-  } finally {
-    tickRunning = false
-  }
-}
-
-async function sendDue(owner: QueueOwner): Promise<void> {
+  const emails = getScheduledEmails()
   const now = Date.now()
-
-  // Claim every due entry, and retire stale claims, in ONE read-modify-save
-  // with no await in between.
-  const emails = readQueue(owner)
-  const claimed: string[] = []
-  let changed = false
+  let updated = false
+  
   for (const email of emails) {
-    if (
-      email.status === 'sending' &&
-      (email.sendingSince ?? 0) + STALE_SENDING_MS <= now
-    ) {
-      email.status = 'failed'
-      email.error =
-        'The send was interrupted before its outcome was known, so it was not retried (a second copy could reach the recipient).'
-      delete email.sendingSince
-      changed = true
-    } else if (email.status === 'pending' && email.scheduledAt <= now) {
-      email.status = 'sending'
-      email.sendingSince = now
-      claimed.push(email.id)
-      changed = true
+    if (email.status === 'pending' && email.scheduledAt <= now) {
+      console.log(`📧 Sending scheduled email: ${email.subject}`)
+      
+      const success = await sendEmail(email)
+      email.status = success ? 'sent' : 'failed'
+      if (!success) {
+        email.error = 'Failed to send email'
+      }
+      updated = true
+      
+      // Show notification
+      if (success) {
+        showNotification('Email Sent', `"${email.subject}" sent to ${email.to.join(', ')}`)
+      }
     }
   }
-  if (changed) saveQueue(owner, emails)
-
-  for (let i = 0; i < claimed.length; i++) {
-    const id = claimed[i]
-    const entry = readQueue(owner).find((e) => e.id === id)
-    if (!entry || entry.status !== 'sending') continue
-
-    // The token decides who sends. If the session changed since the claim,
-    // put this and every later claim back instead of sending as someone else.
-    if (!sameOwner(currentQueueOwner(), owner)) {
-      const latest = readQueue(owner)
-      for (const e of latest) {
-        if (claimed.slice(i).includes(e.id) && e.status === 'sending') {
-          e.status = 'pending'
-          delete e.sendingSince
-        }
-      }
-      saveQueue(owner, latest)
-      return
-    }
-
-    console.log(`Sending scheduled email: ${entry.subject}`)
-    const result = await sendEmail(entry)
-
-    const latest = readQueue(owner)
-    const target = latest.find((e) => e.id === id)
-    if (!target) continue
-    target.status = result.ok ? 'sent' : 'failed'
-    delete target.sendingSince
-    if (!result.ok) target.error = result.error
-    saveQueue(owner, latest)
-
-    if (result.ok) {
-      showNotification('Email Sent', `"${entry.subject}" sent to ${entry.to.join(', ')}`)
-    }
+  
+  if (updated) {
+    saveScheduledEmails(emails)
   }
 }
 
@@ -288,25 +139,23 @@ function showNotification(title: string, body: string): void {
 }
 
 /**
- * Cancel one of the signed-in owner's pending scheduled emails
+ * Cancel a scheduled email
  */
 export function cancelScheduledEmail(emailId: string): boolean {
-  const owner = currentQueueOwner()
-  if (!owner) return false
-  const emails = readQueue(owner)
+  const emails = getScheduledEmails()
   const index = emails.findIndex(e => e.id === emailId)
-
+  
   if (index !== -1 && emails[index].status === 'pending') {
     emails.splice(index, 1)
-    saveQueue(owner, emails)
+    saveScheduledEmails(emails)
     return true
   }
-
+  
   return false
 }
 
 /**
- * Get the signed-in owner's pending scheduled emails
+ * Get pending scheduled emails
  */
 export function getPendingEmails(): ScheduledEmail[] {
   return getScheduledEmails().filter(e => e.status === 'pending')
@@ -315,38 +164,37 @@ export function getPendingEmails(): ScheduledEmail[] {
 /**
  * Start the email scheduler (call this on app init)
  */
-let schedulerInterval: ReturnType<typeof setInterval> | null = null
+let schedulerInterval: NodeJS.Timeout | null = null
 
 export function startEmailScheduler(): void {
   if (schedulerInterval) return
-
+  
   // Check every 30 seconds
   schedulerInterval = setInterval(() => {
-    void checkAndSendDueEmails()
+    checkAndSendDueEmails()
   }, 30000)
-
+  
   // Also check immediately
-  void checkAndSendDueEmails()
-
-  console.log('Email scheduler started')
+  checkAndSendDueEmails()
+  
+  console.log('📧 Email scheduler started')
 }
 
 export function stopEmailScheduler(): void {
   if (schedulerInterval) {
     clearInterval(schedulerInterval)
     schedulerInterval = null
-    console.log('Email scheduler stopped')
+    console.log('📧 Email scheduler stopped')
   }
 }
 
 /**
- * Schedule a test email. Set `VITE_SCHEDULED_TEST_EMAIL` (comma-separated) or this is a no-op;
- * also a no-op with nobody signed in, since the queue belongs to a person and a house.
+ * Schedule a test email. Set `VITE_SCHEDULED_TEST_EMAIL` (comma-separated) or this is a no-op.
  */
 export function scheduleTestEmail(): ScheduledEmail | null {
   const raw = import.meta.env.VITE_SCHEDULED_TEST_EMAIL as string | undefined
   const to = raw?.split(',').map(e => e.trim()).filter(e => e) ?? []
-  if (to.length === 0 || !currentQueueOwner()) {
+  if (to.length === 0) {
     return null
   }
   const testHtml = `

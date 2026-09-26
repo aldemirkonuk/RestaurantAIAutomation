@@ -115,9 +115,6 @@ import { HouseInboxCron } from "./inbox/house-inbox.cron";
     GmailWatchService,
     RecipientResolverService,
     ScheduledTenantsService,
-    // The vendor book, for `HouseEmailService` (POST /notifications/send-email):
-    // one definition of "an address this house may write to", not two.
-    HouseLettersService,
     // NotificationsModule's MailGrantAbsentProducer reads the same
     // `statusFor` this module's own `GET /communications/letters/sender`
     // uses, so the standing alert and the page's own reading of "is the

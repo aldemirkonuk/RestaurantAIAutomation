@@ -4,7 +4,6 @@ import { Plus, Edit2, Trash2, Calendar, RefreshCw, Check, X, AlertCircle, Dollar
 import { Header } from '../components/layout/Header'
 import { useAuth } from '../contexts/AuthContext'
 import axios from 'axios'
-import { sendHouseEmail, houseEmailRefusal } from '../services/api/notifications'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -135,16 +134,16 @@ export function RecurringOrders() {
     const emailBody = `Hi ${providerNames},\n\nI wanted to confirm our upcoming recurring order for ${order.wine_name} (${order.quantity} ${order.unit_type}s).\n\nCould you please confirm the current pricing for this order?\n\nThank you,\nMudavym`
     
     try {
-      // No recipients are named here, and the gateway resolves none on its
-      // own: it sends only to addresses in this house's members and vendor
-      // book (ADR 0149 answer 15). Until this page names a vendor contact the
-      // send is refused, and the refusal's own sentence is shown below — it
-      // used to claim "sent" for a request that could not reach anyone.
-      await sendHouseEmail({
-        to: [],
+      await axios.post(`${API_URL}/api/v1/notifications/send-email`, {
+        to: [], // Provider emails would be resolved by backend
         subject: `Price Confirmation - ${order.wine_name} Recurring Order`,
         body_text: emailBody,
         body_html: `<p>${emailBody.replace(/\n/g, '<br/>')}</p>`,
+        metadata: {
+          type: 'price_inquiry',
+          recurring_order_id: order.id,
+          wine_name: order.wine_name,
+        }
       })
       
       // Update order status
@@ -157,8 +156,8 @@ export function RecurringOrders() {
       ))
       
       alert(`Price inquiry sent for ${order.wine_name}`)
-    } catch (error) {
-      alert(`Price inquiry not sent. ${houseEmailRefusal(error)}`)
+    } catch {
+      alert('Failed to send price inquiry. Check your email configuration.')
     }
   }
 

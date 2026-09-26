@@ -488,11 +488,47 @@ export class NotificationsService {
     });
   }
 
-  // `sendEmail` was removed 2026-09-16. Its one caller was POST
-  // /notifications/send-email, which now goes through `HouseEmailService`
-  // (owner/manager of the active house, recipients limited to the house's book).
-  // It also answered `success: true` with a mock message id whenever Gmail was
-  // not injected, so a send that never happened read as one that did.
+  /**
+   * Send email via GmailService (OAuth2).
+   * Falls back to a logged mock when GmailService is not injected (e.g. isolated unit tests).
+   */
+  async sendEmail(data: {
+    to: string[];
+    subject: string;
+    bodyHtml: string;
+    bodyText?: string;
+    cc?: string[];
+    bcc?: string[];
+  }): Promise<{ success: boolean; messageId: string }> {
+    this.logger.log(
+      `Sending email to: ${data.to.join(", ")} — ${data.subject}`,
+    );
+
+    if (this.gmailService) {
+      const result = await this.gmailService.sendEmail({
+        to: data.to,
+        subject: data.subject,
+        html: data.bodyHtml,
+        text: data.bodyText,
+        cc: data.cc,
+        bcc: data.bcc,
+      });
+      this.logger.log(
+        `Email ${result.success ? "sent" : "failed"} — MessageID: ${result.messageId}`,
+      );
+      return {
+        success: result.success,
+        messageId: result.messageId ?? `err-${Date.now()}`,
+      };
+    }
+
+    // Fallback mock (no GmailService available)
+    const messageId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.logger.warn(
+      `GmailService not available — email mocked. MessageID: ${messageId}`,
+    );
+    return { success: true, messageId };
+  }
 
   /**
    * Create a persistent notification row in the notifications table.

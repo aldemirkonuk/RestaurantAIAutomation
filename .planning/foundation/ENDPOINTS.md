@@ -353,7 +353,7 @@ Rows are `Auth | Method | Path`, sorted by path then method.
 | ✅ | `DELETE` | `/notifications/read/all` |
 | ✅ | `PATCH` | `/notifications/read/all` |
 | ✅ | `PATCH` | `/notifications/read/bulk` |
-| ✅ | `POST` | `/notifications/send-email` — owner/manager of the token's house only; recipients limited to its members and vendor book (2026-09-17) |
+| ✅ | `POST` | `/notifications/send-email` |
 | — | ~~`POST`~~ | ~~`/notifications/system-alert`~~ — removed 2026-09-17 (ADR 0149 answer 15, ADR 0147 amendment: no web, mobile or orchestrator caller; the service method stays for internal producers) |
 | ✅ | `POST` | `/notifications/test` |
 | ✅ | `GET` | `/notifications/unread` |

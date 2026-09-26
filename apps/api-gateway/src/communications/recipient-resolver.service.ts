@@ -383,7 +383,7 @@ export class RecipientResolverService {
     // (`common/tenant/live-membership.ts`): active, `valid_from` not in the
     // future, `valid_until` null or in the future. Until 2026-09-17 this
     // checked `is_active` alone, so a manager past `valid_until` was still
-    // notified while `HouseEmailService` already refused them.
+    // notified.
     const { data, error } = await client
       .from("user_restaurant_access")
       .select("user_id, role, is_active, valid_from, valid_until")
