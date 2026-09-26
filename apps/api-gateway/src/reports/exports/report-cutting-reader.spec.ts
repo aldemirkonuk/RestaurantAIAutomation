@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { AnalyticsController } from "../../analytics/analytics.controller";
+import { RecommendationActionsService } from "../../analytics/recommendation-actions.service";
 import { ReportCuttingReader } from "./report-cutting-reader.service";
 import { EXPORTABLE_CUTTINGS, type ExportableCutting } from "./report-export-cuttings";
 
@@ -50,16 +51,32 @@ function build(stored: unknown[] | null = null) {
       to: "2026-09-17",
     })),
   };
+  // readStored answers the way the real one does: rows kept by the shared
+  // item state (ADR 0191), how many were READ (a cache whose every row is
+  // withheld is still an answer), what was withheld, and whether the state
+  // could be read. The rows echo the arguments, as every other double does.
   const insights = {
-    getStored: jest.fn(async (...args: unknown[]) => stored ?? [{ served: "getStored", args }]),
+    readStored: jest.fn(async (...args: unknown[]) => {
+      const rows = stored ?? [{ served: "readStored", args }];
+      return {
+        rows,
+        read: rows.length,
+        withheld: { dismissed: 1, snoozed: 2, done: 3 },
+        suppressionsReadable: true,
+      };
+    }),
     generate: echo("generate"),
   };
+  // The REAL service: with no one looking (Nest's @CurrentUser() is undefined
+  // on this direct call), viewFor never touches the database and hands the
+  // house's rows back unchanged.
+  const recommendationActions = new RecommendationActionsService(null as never);
 
   const controller = new AnalyticsController(
     analytics as never,
     advanced as never,
     null as never, // recommendations
-    null as never, // recommendation actions
+    recommendationActions,
     tables as never,
     goals as never,
     null as never, // goal scenario requests
@@ -128,6 +145,15 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
         const { consumption, ...rest } = fromPage;
         expect(consumption).toBeDefined();
         expect(fromExport).toEqual(rest);
+      } else if (id === "reading") {
+        // The page's last step is the person's own snoozes (ADR 0191 round 3);
+        // with no one looking it drops nothing and says it read no one's. The
+        // export is the house's answer: everything before that step, equal.
+        const { hiddenForYou, personalSnoozesReadable, ...rest } = fromPage;
+        expect(hiddenForYou).toBe(0);
+        expect(personalSnoozesReadable).toBe(false);
+        expect(fromExport).toEqual(rest);
+        expect((fromExport as { withheld?: unknown }).withheld).toEqual({ dismissed: 1, snoozed: 2, done: 3 });
       } else {
         expect(fromExport).toEqual(fromPage);
       }
@@ -141,6 +167,33 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     const fromExport = await exp.reader.read(RID, "reading", null);
     expect(fromExport).toEqual(fromPage);
     expect(exp.insights.generate).toHaveBeenCalledWith(RID, { categories: undefined, persist: true });
+  });
+
+  it("reading: a cache whose every row is withheld is an answer — neither side recomputes", async () => {
+    const page = build();
+    const exp = build();
+    const allWithheld = async () => ({
+      rows: [],
+      read: 3,
+      withheld: { dismissed: 2, snoozed: 1, done: 0 },
+      suppressionsReadable: true,
+    });
+    page.insights.readStored.mockImplementation(allWithheld);
+    exp.insights.readStored.mockImplementation(allWithheld);
+    const fromPage = (await page.controller.getInsights(RID, undefined, undefined, "40")) as Record<string, unknown>;
+    const fromExport = await exp.reader.read(RID, "reading", null);
+    const { hiddenForYou, personalSnoozesReadable, ...rest } = fromPage;
+    expect(fromExport).toEqual(rest);
+    expect(fromExport).toEqual({
+      source: "stored",
+      insights: [],
+      suppressed: 2,
+      withheld: { dismissed: 2, snoozed: 1, done: 0 },
+      suppressionsReadable: true,
+    });
+    expect(page.insights.generate).not.toHaveBeenCalled();
+    expect(exp.insights.generate).not.toHaveBeenCalled();
+    expect(exp.insights.readStored).toHaveBeenCalledWith(RID, { categories: undefined, limit: 40 });
   });
 
   it("does not swallow a register that throws: the export service fails the export with it", async () => {

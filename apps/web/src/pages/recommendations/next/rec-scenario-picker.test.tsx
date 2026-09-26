@@ -165,6 +165,8 @@ function renderSheet(
       expanded={false}
       team={[]}
       siblings={[]}
+      canActRuleWide
+      canSnoozeForEveryone
       exclusions={undefined}
       openDismiss={false}
       onDismissOpened={vi.fn()}
