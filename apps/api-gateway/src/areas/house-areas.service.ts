@@ -798,7 +798,7 @@ export class HouseAreasService {
     const { access, user } = await this.readMembership(restaurantId, userId);
     const member = !!access || user?.restaurant_id === restaurantId;
     if (!member) throw new NotFoundException("That person is not a member of this house.");
-    return { name: user?.name ?? null, role: roleInHouse(access, user, restaurantId) };
+    return { name: user?.name ?? null, role: roleInHouse(access) };
   }
 
   /**
@@ -808,7 +808,7 @@ export class HouseAreasService {
    */
   private async roleOf(restaurantId: string, userId: string): Promise<string | null> {
     const { access, user } = await this.readMembership(restaurantId, userId);
-    return roleInHouse(access, user, restaurantId);
+    return roleInHouse(access);
   }
 
   private async readMembership(

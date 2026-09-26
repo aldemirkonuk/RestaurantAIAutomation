@@ -247,7 +247,7 @@ export class AwayReleaseService {
       if (!out || out.inserted === 0) throw new Error("the inbox row was not written");
     }
     if (channels.includes("push")) {
-      const optOuts = await this.team.channelOptOuts([row.user_id]);
+      const optOuts = await this.team.channelOptOuts([row.user_id], row.restaurant_id);
       if (optOuts === null) {
         this.logger.warn(
           `AWAY_HOLD_PUSH_SKIPPED held=${row.id} — push preferences could not be read, so no push was sent.`,

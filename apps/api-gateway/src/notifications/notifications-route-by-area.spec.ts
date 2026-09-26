@@ -74,7 +74,6 @@ function build(db: StubDb, withRouting = true) {
     { get: () => undefined } as never,
     database,
     undefined,
-    undefined,
     expo as never,
     routing,
   );

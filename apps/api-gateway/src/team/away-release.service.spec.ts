@@ -354,7 +354,6 @@ function realFunnelHarness(db: StubDb) {
     { get: () => undefined } as never,
     dbs,
     undefined,
-    undefined,
     push,
     routing,
   );
