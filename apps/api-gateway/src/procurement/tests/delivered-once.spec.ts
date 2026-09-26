@@ -1016,6 +1016,17 @@ describe("markDelivered — an item with no master wine is booked, and queued fo
     expect(store.house_item_research[0]).toMatchObject({ status: "not_findable" });
   });
 
+  it("a real wine named only in display_name is queued for research, not flagged (the name comes back on the one item read)", async () => {
+    // Discriminates the display_name fallback: a null name would be
+    // classified not_findable, exactly like "wine 1" above.
+    const { db, store } = makeDb({
+      order: { ...baseOrder },
+      item: { master_wine_id: null, wine_name: null, display_name: "Kavaklıdere Yakut 2019" },
+    });
+    await withNotices(db).svc.markDelivered(REST, ORDER, USER_A);
+    expect(store.house_item_research[0]).toMatchObject({ status: "queued" });
+  });
+
   it("a second delivery of the same item finds its row by id instead of queuing it twice", async () => {
     const { db, store } = makeDb({
       order: { ...baseOrder },

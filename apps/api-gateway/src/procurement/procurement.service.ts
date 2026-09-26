@@ -4925,7 +4925,7 @@ export class ProcurementService {
             await this.databaseService.supabase
               .from("restaurant_inventory")
               .select(
-                "master_wine_id, wine_name, shadow_stock, in_transit_quantity",
+                "master_wine_id, wine_name, display_name, shadow_stock, in_transit_quantity",
               )
               .eq("restaurant_id", restaurantId)
               .eq("id", inventoryId)
@@ -4938,11 +4938,13 @@ export class ProcurementService {
           } else {
             const itemRow = item as Record<string, any>;
             masterWineId = itemRow.master_wine_id ?? null;
-            itemName =
-              typeof itemRow.wine_name === "string" &&
-              itemRow.wine_name.trim().length > 0
-                ? itemRow.wine_name.trim()
-                : null;
+            // The name is read only to classify an item the library lacks
+            // (research below). A house-declared item carries it in
+            // display_name (20260903171000) when wine_name is empty, so both
+            // come back on this one read — no second read decided by a value.
+            const nameOf = (v: unknown): string | null =>
+              typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
+            itemName = nameOf(itemRow.wine_name) ?? nameOf(itemRow.display_name);
             const currentShadow = Number(itemRow.shadow_stock ?? 0) || 0;
             const currentInTransit =
               Number(itemRow.in_transit_quantity ?? 0) || 0;
@@ -5096,43 +5098,17 @@ export class ProcurementService {
           // whether or not the queue can be written. A failed write is logged
           // and said in the verify notice (`researchWords`), not swallowed.
           if (!masterWineId) {
-            if (!itemName) {
-              // A house-declared item carries its name in display_name
-              // (20260903171000), a column that exists wherever an item may
-              // lack a master wine. Read only on this path, by id.
-              const { data: named, error: namedError } =
-                await this.databaseService.supabase
-                  .from("restaurant_inventory")
-                  .select("display_name")
-                  .eq("restaurant_id", restaurantId)
-                  .eq("id", inventoryId)
-                  .maybeSingle();
-              if (namedError) {
-                research = {
-                  ok: false,
-                  error: `the item's name could not be read (${namedError.message})`,
-                };
-              } else {
-                const dn = (named as Record<string, any> | null)?.display_name;
-                itemName =
-                  typeof dn === "string" && dn.trim().length > 0
-                    ? dn.trim()
-                    : null;
-              }
-            }
-            if (!research) {
-              research = await enqueueHouseItemResearch(
-                this.databaseService.supabase,
-                {
-                  restaurantId,
-                  inventoryId,
-                  name: itemName,
-                  queuedFrom: "delivery",
-                  sourceOrderId: orderId,
-                  queuedBy: userId,
-                },
-              );
-            }
+            research = await enqueueHouseItemResearch(
+              this.databaseService.supabase,
+              {
+                restaurantId,
+                inventoryId,
+                name: itemName,
+                queuedFrom: "delivery",
+                sourceOrderId: orderId,
+                queuedBy: userId,
+              },
+            );
             if (!research.ok) {
               this.logger.error(
                 `markDelivered: order ${orderId} booked, but its item ${inventoryId} (no wine-library row) was not queued for research: ${research.error}`,
