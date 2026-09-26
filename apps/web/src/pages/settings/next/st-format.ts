@@ -78,11 +78,6 @@ export const PROVENANCE_UNKNOWN = {
   memberChange: 'no column records a later change to this access',
   /** localStorage keeps a value, never a history. */
   browser: 'this browser keeps the value, not a history of it',
-  /** The token is a column on the restaurant row; that row's date is not its own. */
-  icalToken:
-    'the token has no date of its own — it is a column on the restaurant row, whose date moves for any change to the branch',
-  /** A regeneration is not recorded anywhere. */
-  icalRegen: 'no table records a regeneration',
   /** A test send writes no row. */
   testSend: 'a test send is not recorded',
   /** The preference row has never been written for this account. */

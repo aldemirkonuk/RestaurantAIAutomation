@@ -89,6 +89,8 @@ import { useEffect, useId, useMemo, useState } from 'react';
 // it). Declaring one is still disabled and still carries the server's reason.
 import { revokeTextSender } from '../../../services/api/textSenders';
 import { getErrorMessage } from '../../../services/api/client';
+import { subscribeAddress, type MyCalendarLink } from '../../../services/api/calendar';
+import { ON_LEAVING, SHOWN_ONCE } from '../../../components/calendar-link/calendar-link-copy';
 import {
   CalendarDays,
   CreditCard,
@@ -123,7 +125,6 @@ import {
   DASH,
   count,
   expiry,
-  feedUrl,
   onDate,
   personName,
   probeWord,
@@ -192,7 +193,17 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
     el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
   }, [hash, anchorReady]);
 
-  const feed = feedUrl(d.ical.data?.token);
+  /* The reader's own calendar link (ADR 0111, 2026-09-21). The address is on
+     the answer to the LATEST act that made a secret, and only there — the
+     read never carries it. */
+  const myLink = d.ical.data as MyCalendarLink | null | undefined;
+  const lastIssuing = [d.createFeed, d.regenerateFeed]
+    .filter((m) => (m.submittedAt ?? 0) > 0 && m.isSuccess)
+    .sort((a, b) => b.submittedAt - a.submittedAt)[0];
+  const stoppedSince =
+    (d.revokeFeed.submittedAt ?? 0) > (lastIssuing?.submittedAt ?? 0) && d.revokeFeed.isSuccess;
+  const issued = !stoppedSince ? (lastIssuing?.data as MyCalendarLink | undefined)?.issued : null;
+  const feed = issued ? subscribeAddress(issued) : null;
 
   /* ── Register II's add-a-card affordance ──────────────────────────────
    *
@@ -225,6 +236,20 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           'Card payments are not switched on yet, so no card can be added.',
         )
       : null;
+
+  /**
+   * What the gateway said about the LAST connect / new link / stop on the
+   * reader's own calendar link (ADR 0111, 2026-09-21). Each can be refused
+   * with a sentence; with no place to put it, a refused click left the row
+   * looking exactly as it did — a refusal reported as nothing. Only the most
+   * recent attempt speaks, so an old failure never sits under a later success.
+   */
+  const feedAlert = (): string | null => {
+    const latest = [d.createFeed, d.regenerateFeed, d.revokeFeed]
+      .filter((m) => (m.submittedAt ?? 0) > 0)
+      .sort((a, b) => b.submittedAt - a.submittedAt)[0];
+    return latest?.isError ? readError(latest.error) : null;
+  };
 
   /**
    * What the gateway said about the last attempt on THIS instrument.
@@ -599,62 +624,109 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
             </>
           )}
 
-          {/* — the calendar feed — (`/settings?tab=calendar` lands here) */}
+          {/* — the reader's own calendar link — (`/settings?tab=calendar` lands here) */}
           <span id="feed" aria-hidden />
           {d.ical.loading ? (
-            <LoadingRegister name="the calendar feed" />
+            <LoadingRegister name="your calendar link" />
           ) : d.ical.error ? (
             <UnreadRegister
-              name="The calendar feed"
+              name="Your calendar link"
               detail={d.ical.error}
               refused={d.ical.refused}
             />
           ) : (
             <AttachmentRow
               icon={<CalendarDays {...ICON} />}
-              title="Calendar feed"
-              owner="public to anyone with the link"
-              chips={[{ label: feed ? 'Published' : 'Not published', tone: feed ? 'on' : 'off' }]}
-              subtitle={feed ?? DASH}
+              title="My calendar link"
+              owner="yours alone — anyone holding the address can read it"
+              chips={[
+                {
+                  label: myLink?.connected ? 'Connected' : 'Not connected',
+                  tone: myLink?.connected ? 'on' : 'off',
+                },
+              ]}
+              subtitle={feed ?? myLink?.scope ?? DASH}
               subtitleIsSecret={Boolean(feed)}
               why={
-                <>
-                  A read-only calendar address. Outlook and Apple Calendar can
-                  subscribe to it, which means anyone holding the address reads
-                  this house&rsquo;s deliveries, deadlines and shifts.
-                </>
+                feed ? (
+                  <>
+                    This is your link. Copy it now. {SHOWN_ONCE} It needs no login, so
+                    treat it like a key: <em>anyone holding it</em> sees what you see.
+                  </>
+                ) : myLink?.houseLinkRetired && !myLink.connected ? (
+                  <>
+                    The shared calendar link for this house was switched off: everyone now
+                    connects their own, showing what they may see. Anyone still on the old
+                    link sees &ldquo;Calendar link expired - connect again&rdquo;. Connect
+                    yours here, or from the calendar page.
+                  </>
+                ) : (
+                  <>
+                    Each person connects their own calendar, and it shows what they may
+                    see. {myLink?.scope ?? ''} {myLink?.connected ? `${SHOWN_ONCE} ` : ''}
+                    {ON_LEAVING} Who else has connected, and stopping someone&rsquo;s link,
+                    is on the calendar page.
+                  </>
+                )
               }
               permissionsLabel="Grants"
-              permissions={[
-                { text: 'Read every calendar event', can: true },
-                { text: 'Cannot write, cannot see prices', can: false },
-              ]}
-              lastLabel="Last fetched"
-              last={null}
-              lastDetail="Feed fetches are not recorded, so who has subscribed and when they last read is unknown."
-              controls={[
-                {
-                  label: copied ? 'Copied' : 'Copy address',
-                  disabled: !feed,
-                  onClick: () => {
-                    if (!feed) return;
-                    void navigator.clipboard?.writeText(feed);
-                    setCopied(true);
-                    window.setTimeout(() => setCopied(false), 1600);
-                  },
-                },
-                {
-                  // No seal ring on this any more (audit, 2026-09-04). It is a
-                  // consequential click and it was wearing the seal's colour
-                  // for emphasis, which made the seal mean "this matters" on
-                  // one row and "this was proven" on another. Its weight is
-                  // carried by `stopNote` below, in words.
-                  label: 'Regenerate',
-                  busy: d.regenerateFeed.isPending,
-                  onClick: () => d.regenerateFeed.mutate(),
-                },
-              ]}
-              stopNote="Regenerating revokes every subscription at once, and nothing here can tell you how many that is."
+              permissions={
+                myLink?.connected
+                  ? [
+                      { text: 'Read what you may see on the calendar', can: true },
+                      { text: 'Cannot write, cannot see prices or pay', can: false },
+                    ]
+                  : []
+              }
+              lastLabel="Last read by a calendar app"
+              last={myLink?.lastFetchedAt ? onDate(myLink.lastFetchedAt) : null}
+              lastDetail={
+                myLink?.connected && !myLink.lastFetchedAt
+                  ? 'No calendar app has read this link yet.'
+                  : undefined
+              }
+              controls={
+                myLink?.connected
+                  ? [
+                      ...(feed
+                        ? [
+                            {
+                              label: copied ? 'Copied' : 'Copy address',
+                              onClick: () => {
+                                void navigator.clipboard?.writeText(feed);
+                                setCopied(true);
+                                window.setTimeout(() => setCopied(false), 1600);
+                              },
+                            },
+                          ]
+                        : []),
+                      {
+                        // No seal ring on this (audit, 2026-09-04): its weight
+                        // is carried by `stopNote` below, in words.
+                        label: 'Get a new link',
+                        busy: d.regenerateFeed.isPending,
+                        onClick: () => d.regenerateFeed.mutate(),
+                      },
+                      {
+                        label: 'Stop my link',
+                        busy: d.revokeFeed.isPending,
+                        onClick: () => d.revokeFeed.mutate(),
+                      },
+                    ]
+                  : [
+                      {
+                        label: 'Connect my calendar',
+                        busy: d.createFeed.isPending,
+                        onClick: () => d.createFeed.mutate(),
+                      },
+                    ]
+              }
+              stopNote={
+                myLink?.connected
+                  ? 'A new link or stopping this one ends your current address at once. Your calendar app then shows “Calendar link expired - connect again”. Nobody else’s link changes.'
+                  : `Nothing is made until you connect. ${SHOWN_ONCE}`
+              }
+              alert={feedAlert()}
             />
           )}
 

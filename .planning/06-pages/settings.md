@@ -748,7 +748,7 @@ changes, where the value is kept, and who may change it.
 | 07 | Map | The frame Find distributors opens at | `user_preferences.preferences.mapDefaultScope` | Anyone signed in — yours | **changed** — the whole record's date, shared |
 | 08 | Features | Turns capabilities on for **everyone at this restaurant** — including autonomous AI sending, mailbox reading, and this redesign | `restaurant_feature_flags`, one row per restaurant, one column per flag | Owner or manager — **enforced since 2026-09-05** (`assertCanManageRestaurant`, `settings.controller.ts:105-109`; this cell claimed it while only `JwtAuthGuard, TenantGuard` ran, §9.18) | never — no update column exists |
 | 09 | POS | Nothing to the till. It bookmarks whose connector documentation you are reading | `user_preferences.preferences.posConfig` | Anyone signed in | the preference record's date, shared |
-| 10 | Calendar | Regenerating **silently breaks every existing subscription**, with no undo | `restaurants.calendar_ical_token` | Owner or manager | never — the token has no date of its own |
+| 10 | Calendar | Regenerating **silently breaks every existing subscription**, with no undo *[corrected 2026-09-21: links are personal (ADR 0111 review trail) — a new link or stop ends only the reader's own address, which then answers "Calendar link expired - connect again"]* | `restaurants.calendar_ical_token` *[2026-09-21: `calendar_feed_links`, one live row per person per house, migration `20260926130000`; the house column is retired and no longer read]* | Owner or manager *[2026-09-21: any member, for their own link; owner/manager to stop someone else's]* *[round 6t, 2026-09-21: a manager never an owner's; any member may narrow their own by category; leaving stops the link for good]* | never — the token has no date of its own *[2026-09-21: `issued_at`, `last_fetched_at`]* |
 | 11 | Cellar | Declares which of the seven drinks registers the house carries, which decides which registers `/cellar` draws at all. Switching one on with nothing in the books behind it is allowed and asks you to confirm | `restaurant_cellar_registers`, one row per (restaurant, register) — and **only** where a person said something; an inference is computed at read time and never stored | Owner or manager (JWT on `/cellar`) | **changed** · — the readout carries no date per answer (§13.19) |
 | 12 | Vendor terms | Records what a vendor told this house: their cutoff, delivery days, minimum, lead time and payment terms. **The provider form now WRITES the delivery days here** (ADR 0116) instead of into `providers.regions_covered`; nothing else reads them yet — the calendar and orders contract is §13.24 | `restaurant_vendor_terms`, one row per (restaurant, provider), and **only** where a person said something. Every column independently nullable: five terms are five statements | Anyone signed in with a restaurant. Deliberately not owner-only — a cutoff is operational knowledge, and every write carries its author into the log (record it, do not restrict it, as ADR 0088 decided for access) | **stated** — real, with the person's name |
 | 13 | Approval thresholds | **Stops an order** (ADR 0116, 2026-09-04). `ProcurementService.assertApprovalAllowed` reads these rows, the order and the actor's role before any seal, refuses with the rule and the number in words, parks the order in `APPROVAL_NEEDED` and files `order_approval_refused`. The register still tells you how many of your own last 365 days' orders each rule would have caught — that is what makes a number choosable rather than guessed | `restaurant_approval_thresholds`, one row per (restaurant, rule) so each carries its own author and date. No rows are seeded: a house with none has set no policy, which is not "unlimited" — and the gate seals as before for such a house, saying so | **Owner or manager only** (`assertCanManageRestaurant`, server-side). Deliberately NOT the vendor-terms rule: a cutoff is knowledge about the world, a threshold is the house's own limit on spending, and a limit anybody may raise is not a limit | **set by · when** — real, per rule |
@@ -1290,7 +1290,7 @@ dashboard.md §9.
 | Chains / locations | This page; `assertManagerOrOwner` enforced (`organizations.service.ts:184`) | Yes |
 | POS status | Toast/SimPOS connector handshake (memory: pos-bridge-state) | Yes |
 | Notification prefs | This page; read by the alert senders | Yes |
-| iCal token | `calendar.service.getOrGenerateICalToken` | Yes |
+| iCal token | `calendar.service.getOrGenerateICalToken` *[corrected 2026-09-21: removed; each person's link is made by `CalendarLinksService.create` on their own click (ADR 0111 review trail)]* | Yes |
 | Consent object | This page only | Row: yes. Effect: none |
 
 ### Writes
@@ -1301,7 +1301,7 @@ dashboard.md §9.
 | The other 21 flags | **none** |
 | Notification prefs | Every scheduled cron checks the category before sending (`scheduled-tasks.service.ts:177-183`) |
 | Member role change / removal | Team access changes immediately; `/team` gates on it |
-| iCal token regenerate | **Invalidates every existing subscription** (`calendar.controller.ts:624`) — irreversible, and the UI should say so |
+| iCal token regenerate | **Invalidates every existing subscription** (`calendar.controller.ts:624`) — irreversible, and the UI should say so *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — "Get a new link" (`CalendarLinksService.rotate`) ends only the reader's own address, on every device that has it; that address then answers "Calendar link expired - connect again"]* |
 | POS connect | Unlocks the 429/573 POS-dependent insight types (TIER-MAP:91-93) — S14, "the true upgrade trigger" |
 | `servicePermissions` | **none** |
 
@@ -1388,7 +1388,7 @@ here. #391's sender mails only subscribed members and never reads `recipient_ema
    possible resolution of `v3.0-TECH-DEBT.md:346-348`; today the copy promises what
    nobody has verified.
 4. **Warn before regenerating the iCal token** — it silently breaks every existing
-   subscription (`calendar.controller.ts:624`).
+   subscription (`calendar.controller.ts:624`). *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — a new link ends only the reader's own address; the sheet on `/calendar` says so before the click]*
 5. **Either wire `servicePermissions` as a real gate or remove the consent UI.**
    Consent ahead of capability is the wrong-way-round failure: it teaches people the
    switch means something.

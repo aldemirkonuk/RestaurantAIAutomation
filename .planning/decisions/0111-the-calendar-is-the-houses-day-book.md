@@ -603,6 +603,413 @@ citations across ~89 files — see the register-row memo); the parent files them
 
 ## Review trail
 
+- 2026-09-26 (PR #438 audit at `7f964f611`) — **the feed reads membership
+  only; no `users`-row fallback.** The ADR 0090 audit blocked #438 because
+  `feedRoleOf` still admitted a person as `staff` when no current access row
+  existed but `users.restaurant_id` named the house. An access row deleted or
+  deactivated by hand-run SQL that left that column behind (a stale row,
+  v3.0-TECH-DEBT 44.1i) kept the link serving every house event plus own
+  shifts. That made this public, bearer-token surface looser than the app,
+  which ADR 0164 made membership-only (`house-role.ts` `roleInHouse`, #471),
+  against the founder's pick above, *"Feed stays stricter (Recommended)"*. So
+  the round-6t sentence below, that such a membership "is caught by the feed",
+  was false for the stale-row case, and the only test near it
+  (`calendar-links.service.spec.ts`, "the register shows a person with no role
+  here…") seeded `users.restaurant_id` as already null and so never met the
+  hazard.
+  - **Fixed, not put to the founder:** it follows two locked decisions (ADR
+    0164's "Membership only", and this ADR's "Feed stays stricter"), so no
+    new fork opens. `feedRoleOf(accessRows, now)` takes no `users` row, and
+    `CalendarLinksService.roleOf` no longer reads `users`. A `users` row with
+    no access row is not a member here: the feed answers the expired notice
+    and stops the link as `system`/`left_house`, and such a person cannot
+    connect a link (403). The precondition ADR 0164 relied on still holds for
+    this reader. On 2026-09-18, 0 `users` rows named a house with no active
+    row behind them, after the YAREN manager's row was written. The audit
+    measured 0 stale-row instances again. Neither count was re-measured in
+    this round.
+  - **Pinned by the stale-row case itself:** Ayse's seeded `users` row names
+    the house. Her access row is then deleted, or set `is_active = false`,
+    with that column left alone. Both cases must answer the notice and stop
+    the link (`calendar-links.service.spec.ts`). Mutation: putting the
+    `users` fallback back into `roleOf` fails 3 tests (those two, and "a
+    person known only by a users row is not a member"). Restored:
+    `jest src/calendar` passes, 13 suites and 277 tests. Claim
+    `ADR-0111-FEED-MEMBERSHIP-ONLY`.
+  - 44.1i gets a dated bracket: `feed-scope.ts` had been an eighth site, and
+    it retired inside #438 before merge, so nothing is added to the six still
+    open.
+  - **Migration citations corrected.** The path was `20260921170600`/`170700`
+    → `20260925180300`/`180400` (commit `eed34cd52`) → `20260926130000`/
+    `130100` (merge `7f964f611`). The files at head are the last pair. The
+    bracket below names the last hop only, and its "180300's audit row" now
+    reads 130000's. The commit message of `eed34cd52` and the PR body's round
+    notes still cite the middle pair. Those are records of that round and are
+    not rewritten (no force-push). The versions that apply on merge are
+    `20260926130000` and `20260926130100`. `20260926130000` sets every
+    house's `restaurants.calendar_ical_token` to NULL, with one audit row per
+    house.
+
+- 2026-09-22 (round 6y) — **the lapsed-`valid_until` fork, closed.** The
+  founder, 2026-09-22, verbatim: *"Feed stays stricter (Recommended)"*. The
+  calendar feed keeps reading a lapsed `valid_until` as the end of
+  membership: once it has passed, the link serves only the expired notice,
+  and the first fetch after it stops the link for good (as `system`,
+  `revoke_reason = 'left_house'`; a stop that fails is logged and tried
+  again on the next fetch, and the notice is served either way). The app's
+  role reads (`house-role.ts` `roleInHouse`,
+  `OrganizationsService.resolveRestaurantRole`) do not yet honour it, so
+  such a person keeps the app and loses the calendar link.
+  - No code changed this round; the pick and the build already agree.
+    `feedRoleOf` (`feed-scope.ts:117-135`) filters on `valid_until`,
+    `CalendarLinksService.roleOf` (`calendar-links.service.ts:172-178`)
+    selects it into that check, and `renderFor`
+    (`calendar-links.service.ts:631-634`) stops a live link when the role
+    comes back empty.
+  - Pinned by `feed-scope.spec.ts` and `calendar-links.service.spec.ts`.
+    Last-call mutation, 2026-09-22: dropping the `valid_until` filter from
+    `feedRoleOf` fails 3 cases across both files (86 run); restored, the
+    calendar suites pass, 12 suites and 264 tests.
+  - The app catching up is **not built here**: teaching `roleInHouse` and
+    `resolveRestaurantRole` to read `valid_until` the way the feed does is
+    another lane's work. The digest's recipient read
+    (`RecommendationDigestService.readMemberIds`) already honours it. It is
+    not filed as a new open decision, because no gateway code writes
+    `valid_until` (measured 2026-09-22), so the gap is latent, not live.
+
+- 2026-09-21 (round 6t) — **the five forks the personal links left open,
+  answered and built.** The founder, 2026-09-21, verbatim, one pick per fork:
+  1. On a person who leaves: *"Yes, revoke on leaving (Recommended)"*.
+  2. On who may stop an owner's link: *"No, owners only (Recommended)"*.
+  3. On the address being shown only once: *"Show once (Recommended)"*.
+  4. On who may narrow their link by category: *"Everyone can narrow
+     (Recommended)"*.
+  5. On what a staff link carries until areas exist: *"Same as the app
+     (Recommended)"*.
+
+  This supersedes the entry below wherever they differ.
+
+  Built:
+  - **(1) Leaving ends the link for good.** `calendar/stop-links-on-leaving.ts`
+    stops the leaver's live link in that house (`revoke_reason =
+    'left_house'`, `revoked_by` = whoever made them leave) and files one
+    `system_audit_log` row per link (`calendar_link_revoked`, with
+    `changes.via` naming the door and never the secret or its hash). The
+    doors that end a membership were found by reading every write in
+    `apps/api-gateway/src` that deletes a `user_restaurant_access` row or
+    clears `users.restaurant_id`: `MembersService.removeMember` (both
+    branches: the access row, and a member known only by the `users` row),
+    `TeamService.deleteMember`, `AuthService.leaveRestaurant`, and
+    `AuthService.deleteAccount` (every house at once; without this, the
+    `users` delete would cascade the rows away with no record). No gateway
+    code writes `is_active = false`, `deactivated_by` or `valid_until`.
+    - Each door calls the stop after its refusal checks and before its first
+      membership write. A refused removal stops nothing. A stop that fails
+      throws, and nothing about the membership has changed.
+    - A membership that ends outside those doors (a lapsed `valid_until`, a
+      hand-run delete) is caught by the feed: a live link whose person has no
+      role is stopped the same way, as `system`, before the notice is
+      answered. *[Corrected 2026-09-26, PR #438 audit: until
+      this date the feed still read a `users` row naming the house as staff,
+      so a hand-run delete or deactivation that left `users.restaurant_id`
+      behind was NOT caught. `feedRoleOf` is now membership-only. See the
+      review trail entry of that date.]* *[Last call, same day: only the feed reads a lapsed
+      `valid_until` as the end of membership (`feedRoleOf`, since the entry
+      below). The app's role reads (`house-role.ts` `roleInHouse`,
+      `OrganizationsService.resolveRestaurantRole`) do not read
+      `valid_until`, so such a person would keep the app and lose the link.
+      No gateway code writes `valid_until` (measured). Put to the founder,
+      not decided here.]* *[Closed 2026-09-22, round 6y — the founder,
+      verbatim: "Feed stays stricter (Recommended)". The calendar feed stops
+      the link once `valid_until` has passed, even though the app's role
+      reads do not yet honour it (`feedRoleOf` unchanged by this round — code
+      already matched the pick, confirmed by re-reading
+      `feed-scope.ts:117-135` and `stop-links-on-leaving.ts:29-32`). The app
+      catching up — `house-role.ts` `roleInHouse` and
+      `OrganizationsService.resolveRestaurantRole` reading `valid_until` the
+      same way — is not built here; it is another lane's work. See the review
+      trail entry of that date.]*
+    - A returning person connects again. The old address never serves again.
+    - Migration `20260926130100_a_person_who_leaves_loses_their_calendar_link.sql`
+      widens the revoke-reason CHECK to allow `left_house`. It is additive and
+      idempotent.
+  - **(2) Owners manage owners** (ADR 0162's owner rule).
+    `CalendarLinksService.revokeFor` reads BOTH roles before any write, the
+    way the ADR 0162 removal doors read them (`house-role.ts` `roleInHouse`:
+    the active access row, else a `users` row naming the house, at its role).
+    - An owner may stop anyone's link.
+    - A manager may stop a manager's or staff's link, never an owner's. This
+      includes an owner known only by a `users` row.
+    - Staff and non-members may stop nobody else's.
+    - A refusal writes nothing. A stop's audit row records `actor_role` and
+      `target_role`. The controller's `assertCanManageRestaurant` stays the
+      outer door.
+    - The register (`GET /calendar/ical-links`) now gives, per row, the
+      person's role now (null when they are no longer a member; an active
+      access row with a NULL role reads as staff) and whether the caller may
+      stop it. Where the caller may not, the sheet shows "Only
+      an owner can stop an owner's link." in place of the button.
+  - **(3) Shown once.** Storage stays hash-only. One sentence, `SHOWN_ONCE`
+    in `apps/web/src/components/calendar-link/calendar-link-copy.ts`, is used
+    on all five surfaces (the `/calendar` sheet, `/settings`, legacy
+    Settings, `/connections`, get-started): *"Your address is shown only
+    once, when it is made. If you lose it, "Get a new link" makes a new
+    address, and the old one stops working."*
+  - **(4) Everyone can narrow; a pick never shows more.**
+    - `feedScopeFor` now applies a saved pick for every role. The role alone
+      sets the ceiling (which shifts, which events). The pick is only a set
+      of known categories to keep, so every filter it adds removes rows.
+    - A staff pick naming "shifts" still serves only her own shifts. A pick
+      saved as an owner narrows a demoted person's lower ceiling and never
+      lifts it.
+    - The owner-only checks in `validatePick` and `setCategories` are gone.
+      `canPickCategories` is true for every member. The sheet tells them
+      *"Picking narrows your link. It can only show less than you may see
+      here, never more."*
+  - **(5) Same as the app.** Until a provider binds `PERSON_AREAS`, a staff
+    link carries exactly the house events that person sees in the app plus
+    their own shifts, never more.
+    - Measured: `GET /calendar/events` (`CalendarService.listEvents`) filters
+      by house and, by default, `parent_event_id IS NULL`, with no role
+      filter. The feed's `readEvents` reads the same set with no further
+      filter.
+    - That is every event of the house today, which is wider than "only
+      bar-area events". It narrows by itself the day areas are bound.
+
+  Evidence, measured 2026-09-21 in the lane worktree:
+  - Tests: gateway `src/calendar` 12 suites / 264 tests pass. With
+    `src/restaurants`, `src/team` and `src/auth` added, 41 suites / 637 tests
+    pass; `src/notifications` (which shares the fake store) 20 suites / 298.
+    The web's calendar-link surfaces pass 10 files / 284 tests. `tsc` is
+    clean on both apps, and the gateway boots.
+  - `calendar-links-leaving.spec.ts` drives every door for real over the
+    filter-honouring stub. It checks that the link is stopped for good and
+    audited, that nobody else's link is touched, that the stop comes before
+    the first membership write, that a failed stop refuses the whole
+    removal, that re-adding the person revives nothing, and that a link
+    stopped earlier keeps its record (who, when, why) with no second audit
+    row.
+  - The owner rule is tested both ways, plus a 16-cell truth table.
+  - The never-more rule is tested exhaustively: 3 roles x 1024 category
+    subsets x 2 area worlds, with junk words mixed in.
+  - The same-as-app test compares the staff feed's event UIDs with the real
+    `listEvents` over the same rows.
+  - Mutations, each failing its suite. 27 in the gateway:
+    - every door's stop removed, not awaited, or moved after the membership
+      write;
+    - a swallowed stop failure;
+    - a stop ignoring the house, or filing no audit row, or writing the wrong
+      reason, or rewriting a link stopped earlier (this one survived until
+      the lane's last call added the test);
+    - the feed backstop removed;
+    - a manager stopping an owner, staff stopping others;
+    - the target's role read the feed's way;
+    - the register saying everyone may stop, or showing an active NULL-role
+      member as someone who left;
+    - a failed role read passing;
+    - a staff pick widening shifts or areas;
+    - an unknown word turning the pick off;
+    - picks ignored for staff, or the owner-only pick restored;
+    - occurrences in the feed, or cancelled events hidden from staff.
+
+    6 in the web:
+    - Stop offered on an owner's row;
+    - the pick made owner-only again;
+    - the shown-once sentence dropped from the sheet, from `/settings`, or
+      from legacy Settings;
+    - the narrow-only sentence dropped.
+  - The migration was applied after the other 193 in PGlite (not Supabase),
+    and 13 checks held:
+    - `left_house` is refused before it and accepted after it;
+    - unknown reasons and the revoke pair are still refused;
+    - the earlier reasons are still accepted;
+    - a leaver can connect again;
+    - there is one named reason CHECK;
+    - a second run leaves the same constraints;
+    - the table comment is updated;
+    - RLS is on.
+  - CLAIMS row `ADR-0111-PERSONAL-CALENDAR-LINKS` gains a clause for each
+    answer. Each of its 21 new mutations fails the verify.
+
+  Not built, and why:
+  - A DB trigger on the membership tables. The doors are in code, carry the
+    actor, and are tested. A trigger would lose the actor and sit where no
+    spec reaches.
+  - One gap remains. If a membership ends outside the doors AND is restored
+    before any calendar app fetches the link, the link revives: the feed's
+    own stop only runs when the address is asked for. No gateway code can end
+    a membership that way today (measured above).
+
+- 2026-09-21 (later) — **a calendar link belongs to one person.** The founder,
+  2026-09-21, verbatim: *"every manager, staff and their labeled
+  taskforces/areas, owners have different calendar subscriptions, they can
+  connect their own. Soit should be personalized"*, confirmed on this example:
+  *"Ayse (bar staff) connects HER OWN link to her phone. It shows only her
+  shifts and bar-area events (deliveries to the bar, bar tasks). The owner
+  connects his own link, which shows everything, or just the parts he picks.
+  When Ayse leaves, only her link stops; nobody else re-subscribes."* ->
+  *"Yes, personal links"*. On a revoked or rotated link: *"an empty calendar
+  with a little text appeared, and saying calendar link expired, connect
+  again"*. This supersedes the entry below wherever they differ.
+
+  Built (`calendar-links.service.ts`, `feed-scope.ts`, `ical-render.ts`,
+  migration `20260926130000_a_calendar_link_belongs_to_one_person.sql`):
+  **[Renumbered 2026-09-25, merging `origin/main` 059169a5 into #438: the two migrations were `20260921170600` and `20260921170700`, below main's newest `20260922231300`, which ADR 0212's `check_migration_order.py` refuses. Moved by `git mv` to `20260926130000` and `20260926130100`, same order, content unchanged except the versions they cite (including the `'migration'` value in 130000's audit row) *[Corrected 2026-09-26: this said "180300's". The path had a middle hop, `20260925180300`/`180400` (commit `eed34cd52`); see the review trail entry of that date.]*; every citation in this ADR, CLAIMS, the page notes and the calendar code was rewritten. No main migration after `20260921170600` touches `calendar_feed_links`, `calendar_ical_token`, `user_restaurant_access` or `team_members`.]**
+  - `calendar_feed_links`: one row per person per house, at most one live
+    (partial unique index on `(restaurant_id, user_id) WHERE revoked_at IS
+    NULL`), actor FKs to `public.users(user_id)`, RLS on, service_role only.
+    The secret is stored as a SHA-256 hash and shown ONCE, on the answer to
+    the click that made it — the way `mcp_server_credentials` keeps its keys.
+    A returning reader is told that and offered a new link; they are never
+    shown a dash that reads as "no link".
+  - Made only by the person, by pressing "Connect my calendar"; reading
+    (`GET /calendar/ical-token`, now "my link") never writes. The person may
+    get a new link (rotate, one UPDATE) or stop theirs; an owner or manager
+    may list who has connected (`GET /calendar/ical-links`) and stop anyone's
+    (`DELETE /calendar/ical-links/:userId`), gated by
+    `assertCanManageRestaurant` *[round 6t, above: a manager never an
+    owner's, and every member may pick for their own link]*. Create, rotate,
+    stop and an owner's category pick are each filed to `system_audit_log` under the caller's
+    `public.users.user_id`, never with the secret or its hash.
+  - What a link serves is decided when the calendar app asks, from the
+    person's role in the house AT THAT MOMENT (`feedRoleOf`): owner —
+    everything, optionally narrowed to the categories they pick *[round 6t,
+    above: every member may narrow their own, never widen]*; manager —
+    the house calendar and every shift (`calendar_events` has no private or
+    owner-only column and `listEvents` has no role filter, measured on the
+    baseline, so "minus owner-private items" removes nothing today;
+    `selectEvents` is where such a flag would be honoured); staff — their own
+    shifts plus events for their areas. **The areas model is another lane's
+    build**: the typed hook is `PersonAreasSource` / `PERSON_AREAS`
+    (`feed-scope.ts`), and until a provider is bound a staff link carries
+    their own shifts plus the house events they already see in the app —
+    which today is every event, wider than the founder's "only bar-area
+    events". The page says so to the person. Labor cost is in no feed.
+  - A person removed from the house (access row deactivated, expired or
+    gone) has no role, so their link answers the notice from the next
+    request, with no revocation step and nobody else's link touched. *[Round
+    6t, above: leaving now also stops the link for good, audited.]*
+    Nothing expires on a timer.
+  - Every dead address — revoked, rotated away, removed from the house, the
+    retired shared link, never existed, malformed — answers ONE VCALENDAR
+    with exactly one all-day event, *Calendar link expired - connect again*,
+    carrying no data, byte-identical for every cause on a given day (so it is
+    no oracle for once-real secrets, T-30-09's reason). A read that FAILS is
+    not a dead address: it answers 503 with `Retry-After`, so a subscriber
+    keeps its last good copy instead of being told to reconnect.
+  - The shared house link is migrated away: the migration nulls every
+    `restaurants.calendar_ical_token` and files one `system_audit_log` row
+    (`calendar_ical_house_link_retired`) per house it switched off. The
+    column is kept (additive only) and no gateway code reads it. Owners and
+    managers of such a house are told on `/calendar`, `/settings`,
+    `/connections` and legacy Settings that it was switched off and to connect their own.
+  - UI: "Connect my calendar" on `/calendar` (a sheet: what my link shows,
+    connect, the address once with copy and open-in-app, get a new link,
+    stop; owners pick categories; owners and managers see who has connected
+    and can stop anyone's), and the same own-link row on `/settings`, legacy
+    Settings, `/connections` and get-started's `OptionalTail`, all through one
+    hook (`useMyCalendarLink`) that reads on mount and writes only on a
+    click. The dashboard's old copy-URL button opens the sheet
+    (`/calendar?connect=1`).
+
+  Evidence, measured 2026-09-21 in the lane worktree: gateway
+  `src/calendar` 11 suites / 220 tests pass; web calendar-link surfaces 10
+  files / 281 tests pass; `tsc --noEmit` clean on both. Mutations, each
+  failing its suite: staff link serving every shift (6 fail), an unknown role
+  word read as manager (6), a removed person still served (3), a revoked row
+  still found by the feed (2), `getMine` minting (1), the notice varying per
+  request (5), stop-for without the tenant filter (1), anyone picking
+  categories (1), the secret stored in clear (21), the register and stop-for
+  gates removed (2 and 3), the shared hook minting on mount (18 across four
+  surfaces), `OptionalTail` connecting on mount (2). The migration was
+  applied after the other 192 migrations in PGlite (not Supabase; see the
+  pglite-full-corpus-build recipe) and 16 checks held: tokens nulled, one
+  audit row for the one house that had a link and none on a second run, the
+  live-person index, the hash and category CHECKs, the revoke pair, RLS on,
+  no anon/authenticated SELECT, both actor FKs on `public.users`. CLAIMS row
+  `ADR-0111-PERSONAL-CALENDAR-LINKS` pins it statically (each of its
+  clauses mutation-tested; it fails on `origin/main`).
+
+  Not built: a `/profile` entry (connections live on `/connections` and
+  `/settings`, both done) and anything in the mobile app (it has no calendar
+  link surface). A person known only by `users.restaurant_id` with no access
+  row reads as staff in the feed, never by `users.role` (TeamService's rule,
+  not `resolveRestaurantRole`'s).
+
+  Open, for the founder (found by the lane's last-call review, 2026-09-21):
+  leaving the house stops what a link serves, but does not revoke its row. So
+  the register still lists a person who left, and if that person is added
+  back, the same old address serves again without them connecting. Whether
+  leaving should end the link for good is not decided here. *[Answered the
+  same day, round 6t, above: "Yes, revoke on leaving (Recommended)"; built.]*
+
+- 2026-09-21 — **a page view minted the feed's bearer credential; fixed, and
+  existing tokens stay valid until an owner or manager revokes or rotates
+  them.** *[Superseded later the same day — see the entry above: links are
+  personal, any member makes their own, the shared house tokens were retired
+  by migration `20260926130000`, and a dead link answers one notice event
+  instead of an empty 200. `ical-token-no-mint-on-read.spec.ts` and
+  `ical-token-role-gate.spec.ts`, cited below, were replaced by
+  `calendar-links.service.spec.ts` and `calendar-links.gate.spec.ts`.]* Measured by the merge-train session: `GET /calendar/ical-token`
+  (`getOrGenerateICalToken`) ran `crypto.randomBytes(32)` and `UPDATE
+  restaurants SET calendar_ical_token` whenever the house had none — a read
+  minting and persisting a permanent, unauthenticated bearer credential. It
+  was reached on mount by `/connections` (`useConnectionsNextData.ts:589-595`
+  pre-fix), by legacy `Settings.tsx:284-296` with no role gate at all, by the
+  `/settings` calendar section (`useSettingsNextData.ts`) and by get-started's
+  `OptionalTail.tsx`; `Dashboard.tsx`'s copy button reached it on a click.
+  Production baseline (that session's read-only census, not re-measured
+  here): 14 houses, 9 with `calendar_ical_token IS NULL`, 5 already set.
+
+  Fixed in `calendar.service.ts` / `calendar.controller.ts`: the GET
+  (`getICalToken`) is a pure read that returns the token or null and never
+  writes; a failed read is an error, not "no link" (pinned in
+  `ical-token-no-mint-on-read.spec.ts` on a stateful double that records every
+  UPDATE; mutation-tested — a write put back on the read path fails 5 of its
+  12 cases). Minting is `createICalToken`, reached only from the new `POST
+  /calendar/ical-token`, gated on manager/owner
+  (`OrganizationsService.assertCanManageRestaurant`, the helper
+  `SettingsController` uses) and audited to `system_audit_log` under the JWT's
+  `public.users.user_id`, never with the token's value. Its UPDATE is
+  conditional on the column still being NULL, so two racing creates cannot
+  both mint: the loser returns the winner's token, `created: false`, no audit
+  row. Two acts this feed never had: `DELETE /calendar/ical-token` (revoke —
+  nulls the token, audited) and the existing `POST
+  /calendar/ical-token/regenerate` (rotate), which had no role gate and no
+  audit and now has both. Every client surface now reads on open and creates
+  only on a click: `/connections` and `/settings` offer "Create a calendar
+  link", legacy Settings the same behind a client-side role check (the route
+  is the rule), and `OptionalTail` reads on mount with a create button — the
+  first cut of this fix had swapped its mount-time GET for a mount-time POST,
+  which moved the defect instead of closing it (caught at verify, fixed
+  before merge; pinned in `OptionalTail.calendar.test.tsx`). A refused create,
+  rotate or revoke on `/connections` now says so on the row.
+
+  **Revoke and rotate answer the old token the way T-30-09 answers any bad
+  token — an empty 200, not the 404 the lane brief asked for.** T-30-09 is
+  Phase 30's threat-model entry (`30-03-PLAN.md`, commit `9280954a6`,
+  retired with the phase trees under ADR 0032), not a clause of this ADR; it
+  survives as the comment at `calendar.service.ts`'s `getICalFeed` ("Return
+  empty calendar (not 404)") and the test at `ical-feed.spec.ts:132`: a
+  404-for-bad / 200-for-good split would make the feed URL an oracle for valid
+  tokens. Revoking or rotating makes the old token match no `restaurants` row,
+  so it gets the byte-identical empty calendar a never-issued token gets, and
+  stops serving events (pinned: events before revoke, none after; the new
+  token serves after a rotate). A visible "revoked" answer — which a
+  subscriber's calendar app would surface as an error instead of silently
+  showing nothing — is a founder question, not built either way.
+
+  **Existing tokens are unaffected.** The 5 houses already holding a token
+  keep it, and it keeps serving until an owner or manager revokes or rotates
+  it; nothing here expires, rotates or revokes on its own. Whether a token
+  should ever EXPIRE is a founder question — no expiry was built. The GET stays
+  open to any signed-in member of the house, staff included, as it was before
+  (reading is not the gated act); whether staff should see the address at all
+  is also a founder question.
+
+  No migration: `restaurants.calendar_ical_token` and `system_audit_log`
+  already existed (baseline, `20260805000000`); nothing new is stored.
+
 - 2026-09-04 — **observations recorded from today, and the forecast is scored.**
   `weather_observations` (`20260904140000`) stores what the nearest station
   measured; `day-record.service.ts` writes the first non-null `accuracy_score`

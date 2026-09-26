@@ -55,7 +55,6 @@ import {
   saveManualImportantDates,
 } from '../data/manualImportantDates'
 import { useDashboardPage } from './dashboard/index'
-import { apiClient } from '../services/api/client'
 
 // Animation variants
 const containerVariants = {
@@ -263,18 +262,13 @@ export function Dashboard() {
     toast.success('Date removed')
   }, [])
 
-  const handleCopyICalUrl = async () => {
-    try {
-      const { data: { token } } = await apiClient.get<{ token: string }>(
-        '/calendar/ical-token',
-      )
-      const fullUrl = `${window.location.origin}/api/v1/calendar/feed/${token}.ics`
-      await navigator.clipboard.writeText(fullUrl)
-      toast.success('Calendar subscription URL copied!')
-    } catch {
-      toast.error('Failed to copy subscription URL')
-    }
-  }
+  // Calendar links are personal since 2026-09-21 (ADR 0111 review trail: the
+  // founder, "they can connect their own"). A read never carries the address
+  // any more — it is shown once, on the answer to the click that makes it —
+  // so this button no longer copies anything: it opens "Connect my calendar"
+  // on the calendar page, which reads on open and makes a link only when the
+  // person presses Connect there.
+  const openConnectMyCalendar = () => navigate('/calendar?connect=1')
 
   const formatCurrency = (value: number) => formatMoney(value, 'compact')
   const formatNumber = (value: number) => fmtNumber(value)
@@ -581,8 +575,9 @@ export function Dashboard() {
 
               {/* Subscribe (copy iCal URL) */}
               <button
-                onClick={handleCopyICalUrl}
-                title="Copy calendar subscription URL"
+                onClick={openConnectMyCalendar}
+                title="Connect my calendar"
+                aria-label="Connect my calendar"
                 className="p-1.5 text-gray-400 hover:text-wine-600 rounded-md hover:bg-gray-100 transition-colors"
               >
                 <Link2 className="w-4 h-4" />

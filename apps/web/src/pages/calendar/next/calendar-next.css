@@ -740,3 +740,31 @@
   flex: 1;
   border-top: 1px solid var(--paper-2);
 }
+
+/* ── connect my calendar (CalendarLinkSheet, ADR 0111 2026-09-21) ────────── */
+.cn-address {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  word-break: break-all;
+  color: var(--ink-2);
+  background: var(--paper-1);
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  padding: 7px 9px;
+  margin: 0;
+}
+.cn-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cn-people li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--paper-2);
+  font-size: 12.5px;
+}

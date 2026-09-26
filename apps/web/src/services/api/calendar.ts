@@ -398,19 +398,135 @@ export async function deleteRecurringEventFuture(
   await apiClient.delete(`/calendar/events/${id}/recurring?fromDate=${fromDate}`)
 }
 
+/* ── Personal calendar links (ADR 0111, review trail 2026-09-21) ─────────────
+ *
+ * The founder, 2026-09-21: "every manager, staff and their labeled
+ * taskforces/areas, owners have different calendar subscriptions, they can
+ * connect their own." One link per person per house. Reading never makes one;
+ * the address is shown ONCE, on the answer to the act that made it (the
+ * gateway keeps only a hash), and a dead address answers one notice event —
+ * "Calendar link expired - connect again". */
+
 /**
- * Get (provisioning if needed) this user's iCal subscription token.
+ * The categories a person may pick to narrow their own link, in the order the
+ * page lists them. Every member may narrow; a pick never widens (round 6t).
  */
-export async function getIcalToken(): Promise<{ token: string }> {
-  const response = await apiClient.get<{ token: string }>('/calendar/ical-token')
+export const CALENDAR_LINK_CATEGORIES = [
+  { key: 'shifts', label: 'Shifts' },
+  { key: 'deliveries', label: 'Deliveries' },
+  { key: 'orders', label: 'Orders' },
+  { key: 'meetings', label: 'Meetings' },
+  { key: 'stock_counts', label: 'Stock counts' },
+  { key: 'tastings', label: 'Tastings' },
+  { key: 'reminders', label: 'Reminders' },
+  { key: 'suppliers', label: 'Supplier notes' },
+  { key: 'holidays', label: 'Holidays and busy days' },
+  { key: 'other', label: 'Everything else' },
+] as const
+
+export type CalendarLinkCategory = (typeof CALENDAR_LINK_CATEGORIES)[number]['key']
+
+/** The address — only on the answer to the act that made it. */
+export interface IssuedCalendarLink {
+  feedUrl: string
+  absoluteFeedUrl: string | null
+  webcalUrl: string | null
+  originSource: 'config' | 'request' | 'none'
+}
+
+export interface MyCalendarLink {
+  connected: boolean
+  createdAt: string | null
+  issuedAt: string | null
+  lastFetchedAt: string | null
+  role: 'owner' | 'manager' | 'staff'
+  /** One sentence: what this person's link shows. */
+  scope: string
+  categories: CalendarLinkCategory[] | null
+  canPickCategories: boolean
+  areasModelled: boolean
+  /** An owner or manager whose house's shared link was switched off. */
+  houseLinkRetired: boolean
+  issued?: IssuedCalendarLink | null
+}
+
+export interface HouseCalendarLink {
+  userId: string
+  name: string | null
+  /** Their role in this house now; null when they are no longer a member. */
+  role: 'owner' | 'manager' | 'staff' | null
+  /**
+   * Whether the reader may stop this link. Owners manage owners: a manager may
+   * stop a manager's or staff's link, never an owner's (round 6t).
+   */
+  canStop: boolean
+  createdAt: string
+  issuedAt: string
+  lastFetchedAt: string | null
+}
+
+/** The address a calendar app can take, from what the gateway issued. */
+export function subscribeAddress(issued: IssuedCalendarLink): string {
+  if (issued.absoluteFeedUrl) return issued.absoluteFeedUrl
+  const gateway = ((import.meta.env.VITE_API_GATEWAY_URL as string | undefined) ?? '').replace(/\/+$/, '')
+  const origin = gateway || (typeof window !== 'undefined' ? window.location.origin : '')
+  return `${origin}${issued.feedUrl}`
+}
+
+/** Read the caller's own link. Never creates one, never carries the address. */
+export async function getMyCalendarLink(): Promise<MyCalendarLink> {
+  const response = await apiClient.get<MyCalendarLink>('/calendar/ical-token')
   return response.data
 }
 
 /**
- * Regenerate the iCal subscription token, invalidating the previous feed URL.
+ * Connect my calendar — make the caller's own link. `issued` carries the
+ * address once; it is null when a link already existed (another tab).
  */
-export async function regenerateIcalToken(): Promise<{ token: string }> {
-  const response = await apiClient.post<{ token: string }>('/calendar/ical-token/regenerate')
+export async function connectMyCalendar(
+  categories?: CalendarLinkCategory[] | null,
+): Promise<MyCalendarLink> {
+  const response = await apiClient.post<MyCalendarLink>(
+    '/calendar/ical-token',
+    categories === undefined ? {} : { categories },
+  )
+  return response.data
+}
+
+/** Get a new link — the old address answers the expired notice from its next refresh. */
+export async function renewMyCalendarLink(): Promise<MyCalendarLink> {
+  const response = await apiClient.post<MyCalendarLink>('/calendar/ical-token/regenerate')
+  return response.data
+}
+
+/** Stop my link. */
+export async function stopMyCalendarLink(): Promise<{ revoked: boolean }> {
+  const response = await apiClient.delete<{ revoked: boolean }>('/calendar/ical-token')
+  return response.data
+}
+
+/** Narrow what my own link shows; null for everything my role allows. */
+export async function pickMyCalendarCategories(
+  categories: CalendarLinkCategory[] | null,
+): Promise<MyCalendarLink> {
+  const response = await apiClient.patch<MyCalendarLink>('/calendar/ical-token', { categories })
+  return response.data
+}
+
+/** Who has connected — owners and managers only. */
+export async function listHouseCalendarLinks(): Promise<HouseCalendarLink[]> {
+  const response = await apiClient.get<HouseCalendarLink[]>('/calendar/ical-links')
+  return response.data
+}
+
+/**
+ * Stop one person's link — owners and managers only, and a manager never an
+ * owner's. Only theirs stops.
+ */
+export async function stopCalendarLinkFor(userId: string): Promise<{ revoked: boolean }> {
+  const response = await apiClient.delete<{ revoked: boolean }>(
+    `/calendar/ical-links/${encodeURIComponent(userId)}`,
+  )
   return response.data
 }
 

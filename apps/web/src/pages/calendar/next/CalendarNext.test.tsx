@@ -23,6 +23,33 @@ vi.mock('./useCalendarNextData', async (importOriginal) => {
   return { ...actual, useCalendarNextData: () => state.current };
 });
 
+/* The caller's own calendar link (ADR 0111, 2026-09-21). Its behaviour —
+   read on open, make only on a click — is `CalendarLinkSheet.test.tsx`'s;
+   here it is a fixed state so the page renders without a gateway. */
+const calLink = vi.hoisted(() => ({
+  current: {
+    link: null as null | Record<string, unknown>,
+    loading: false,
+    readError: null,
+    justIssued: null,
+    alreadyMade: false,
+    busy: null,
+    actError: null,
+    connect: async () => {},
+    renew: async () => {},
+    stop: async () => {},
+    pick: async () => {},
+    reload: () => {},
+  },
+}));
+vi.mock('@/components/calendar-link/useMyCalendarLink', () => ({
+  useMyCalendarLink: () => calLink.current,
+}));
+vi.mock('../../../services/api/calendar', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../services/api/calendar')>();
+  return { ...actual, listHouseCalendarLinks: vi.fn(async () => []) };
+});
+
 import CalendarNext from './CalendarNext';
 import { SEAL_HEX } from './cal-format';
 import type { CalEvent } from './useCalendarNextData';
@@ -972,5 +999,56 @@ describe('CalendarNext — a drafted entry handed over by another page', () => {
     );
     expect(seen[0]).toContain('new=');
     expect(seen[seen.length - 1]).not.toContain('new=');
+  });
+});
+
+describe('connect my calendar (ADR 0111, 2026-09-21)', () => {
+  const LINK = {
+    connected: false,
+    createdAt: null,
+    issuedAt: null,
+    lastFetchedAt: null,
+    role: 'manager',
+    scope: 'Your link shows the house calendar and every shift.',
+    categories: null,
+    canPickCategories: false,
+    areasModelled: false,
+    houseLinkRetired: false,
+  };
+
+  afterEach(() => {
+    calLink.current = { ...calLink.current, link: null, connect: async () => {} };
+  });
+
+  it('offers "Connect my calendar", and the button opens the sheet', async () => {
+    calLink.current.link = { ...LINK };
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect my calendar' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(LINK.scope)).toBeInTheDocument();
+    // A manager's sheet reads who has connected; let that read land.
+    expect(await within(dialog).findByText(/nobody in this house has connected/i)).toBeInTheDocument();
+  });
+
+  it('?connect=1 opens the sheet — and opening it makes nothing', async () => {
+    const connect = vi.fn(async () => {});
+    calLink.current = { ...calLink.current, link: { ...LINK }, connect };
+    draw('/calendar?connect=1');
+    const dialog = screen.getByRole('dialog');
+    expect(await within(dialog).findByText(/nobody in this house has connected/i)).toBeInTheDocument();
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('tells an owner or manager the shared link was switched off, until they connect', () => {
+    calLink.current.link = { ...LINK, houseLinkRetired: true };
+    draw();
+    expect(screen.getByText(/shared calendar link for this house was switched off/i)).toBeInTheDocument();
+  });
+
+  it('a connected person sees "My calendar link" and no switched-off notice', () => {
+    calLink.current.link = { ...LINK, connected: true, houseLinkRetired: true };
+    draw();
+    expect(screen.getByRole('button', { name: 'My calendar link' })).toBeInTheDocument();
+    expect(screen.queryByText(/shared calendar link for this house was switched off/i)).toBeNull();
   });
 });

@@ -94,7 +94,7 @@ default restaurant, and the table is empty in production.
 
 From `calendar/calendar.service.ts`: `calendar_events`, `calendar_event_types`,
 `calendar_recurrence_rules`, `calendar_recurrence_exceptions`, and `restaurants` (read,
-for the iCal token). `events/events.service.ts` writes `events` — **shared, not owned**.
+for the iCal token). *[corrected 2026-09-21: calendar links are personal (ADR 0111 review trail) — the feed moved to `calendar/calendar-links.service.ts`, which owns `calendar_feed_links` (migration `20260926130000`) and no longer reads `restaurants.calendar_ical_token`]* `events/events.service.ts` writes `events` — **shared, not owned**.
 
 Owned outright: the four `calendar_*` tables.
 

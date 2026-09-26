@@ -561,17 +561,17 @@ export class UpdateEventStatusDto {
 }
 
 // ============================================================================
-// iCAL TOKEN RESPONSE DTO
+// PERSONAL CALENDAR LINKS (ADR 0111, review trail 2026-09-21)
 // ============================================================================
 
-export class ICalTokenResponseDto {
-  @ApiProperty({ description: "64-char hex token", example: "abc123..." })
-  token: string;
-
+/**
+ * The address a calendar app subscribes to. Present ONLY on the answer to the
+ * act that made the secret (create or a new link) — the secret is stored as a
+ * hash and is never readable again.
+ */
+export class IssuedCalendarLinkDto {
   @ApiProperty({
-    description:
-      "Subscription path, relative to the gateway. Kept for the callers that " +
-      "already read it; a calendar client cannot subscribe to a relative path.",
+    description: "Subscription path, relative to the gateway.",
     example: "/api/v1/calendar/feed/abc123.ics",
   })
   feedUrl: string;
@@ -604,4 +604,107 @@ export class ICalTokenResponseDto {
     example: "config",
   })
   originSource: "config" | "request" | "none";
+}
+
+export class MyCalendarLinkDto {
+  @ApiProperty({ description: "Whether the caller has a live link in this house." })
+  connected: boolean;
+
+  @ApiProperty({ nullable: true, description: "When the caller first connected." })
+  createdAt: string | null;
+
+  @ApiProperty({ nullable: true, description: "When the current secret was made." })
+  issuedAt: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "When a calendar app last read this link. NULL means it never has.",
+  })
+  lastFetchedAt: string | null;
+
+  @ApiProperty({ enum: ["owner", "manager", "staff"] })
+  role: "owner" | "manager" | "staff";
+
+  @ApiProperty({ description: "One sentence: what this link shows." })
+  scope: string;
+
+  @ApiProperty({
+    nullable: true,
+    type: [String],
+    description:
+      "The caller's pick of categories, or null for everything their role allows.",
+  })
+  categories: string[] | null;
+
+  @ApiProperty({
+    description:
+      "Every member may narrow their own link by category; a pick only ever shows less than the role allows.",
+  })
+  canPickCategories: boolean;
+
+  @ApiProperty({ description: "Whether the house's areas model is live yet." })
+  areasModelled: boolean;
+
+  @ApiProperty({
+    description:
+      "True for an owner or manager of a house whose shared calendar link " +
+      "was switched off on 2026-09-21 — the page tells them to connect their own.",
+  })
+  houseLinkRetired: boolean;
+
+  @ApiPropertyOptional({
+    type: IssuedCalendarLinkDto,
+    nullable: true,
+    description:
+      "The address, only on the answer to the act that made it. NULL on a " +
+      "create that found a link already made (another tab): that secret cannot " +
+      "be shown again, so the page offers a new link instead.",
+  })
+  issued?: IssuedCalendarLinkDto | null;
+}
+
+export class CalendarLinkCategoriesDto {
+  @ApiPropertyOptional({
+    type: [String],
+    nullable: true,
+    description:
+      "Any member, for their own link. The categories it keeps; null or absent " +
+      "for everything the caller's role allows. A pick only ever narrows.",
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  categories?: string[] | null;
+}
+
+export class HouseCalendarLinkDto {
+  @ApiProperty() userId: string;
+  @ApiProperty({ nullable: true }) name: string | null;
+  @ApiProperty({
+    nullable: true,
+    enum: ["owner", "manager", "staff"],
+    description:
+      "The person's role in this house now; null when they are no longer a member.",
+  })
+  role: "owner" | "manager" | "staff" | null;
+  @ApiProperty({
+    description:
+      "Whether the caller may stop this link: an owner may stop anyone's, a " +
+      "manager a manager's or staff's, never an owner's.",
+  })
+  canStop: boolean;
+  @ApiProperty() createdAt: string;
+  @ApiProperty() issuedAt: string;
+  @ApiProperty({ nullable: true }) lastFetchedAt: string | null;
+}
+
+export class CalendarLinkRevokedResponseDto {
+  @ApiProperty({
+    description:
+      "Whether a live link was actually stopped. False when there was none — " +
+      "a no-op, not an error.",
+    example: true,
+  })
+  revoked: boolean;
 }
