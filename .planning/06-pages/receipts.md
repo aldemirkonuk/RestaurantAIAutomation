@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-04
+updated: 2026-09-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -38,7 +38,8 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
 - Select a document → its stored image beside the extracted lines for side-by-side verification; unknown values render as "—", never as a pass
 - Verify a document
 - **Credits** tab: the vendor credit-claim ledger with stats; move a claim through its states
-- Deep-linkable tab (`?tab=credits` — where `/credits` lands)
+  [2026-09-25: rebuilt on Mudavym as a lane of `ReceiptsNext` — `pages/receipts/next/ReceiptsCredits.tsx`; see §1c. The legacy `ReceiptsPage` is no longer loaded by any live route.]
+- Deep-linkable tab (`?tab=credits` — where `/credits` lands). [2026-09-25: offered to the owner and managers of the house only (ADR 0167); a staff member who follows `/credits` lands on Receipts with one sentence saying why.]
 - **Mudavym redesign behind `mudavym_design_receipts` (OFF)** — the founder's four-requirement brief: the review queue + the door's paperless deliveries on one surface; **the stored scan rendered inline beside the lines** (images and PDFs; the 3600s signed link is treated as spent five minutes early and offers a refetch, and each not-shown state names which one it is — no stored file / no signable link / aged out / did not load); the linked order above the lines ("the right invoice"); qty/unit/total editable in place pre-verification with the tie-out recomputed in the same response (new gateway route `PATCH /procurement/documents/:id/lines/:lineId`), **the extracted figure kept beside a corrected cell with an undo until verify**; the swipe-up confirm ceremony firing verify
 - **Honesty, per [[0063-a-certification-screen-shows-the-thing-being-certified|ADR 0063]]** — every query key carries the active restaurant id (an unresolved restaurant is refused, not given a shared `''` cache bucket); the awaiting-review count renders as a floor (`≥`) at its server window; all three list failures are named individually, and an unanswered uncounted-deliveries query says it is unknown rather than rendering as a caught-up door; a failed detail fetch says the failure in the **server's** words and never claims an empty invoice; document `extraction_confidence` and per-suggestion `confidence` are shown, `—` when unrecorded
 - **The canonical document — this page's second face, behind `mudavym_design_document` (OFF)** (ADR 0104 D12 slice 2, D13). `/documents/:id` renders any incoming document as ONE canonical Mudavym document: B's verdict block first (named exceptions in words and numbers, **never a confidence as a number**), C's delivery spine (cards per document on the event, state ladder `DELIVERED → RECONCILING → AGREED → VERIFIED`, the permanent `UNORDERED` mark; collapsed at ≤ 2 documents and absent when the document sits on no delivery), A's typeset sheet as the selected frame (EN 16931 header order, the four-way `ordered · shipped · received · billed` table where `received` prints the words **"not counted"**, the printed price base as a sub-line, allowances/charges with their reason names, the VAT breakdown, totals). Money is **absent** on a delivery note; the claim block appears **only** on a credit memo. Per-field provenance is a hover (and a footnote column in print); `as printed` says "not kept" rather than inventing a literal. Read-only: no corrections, no claims, no mapping memory — slices 3–4. `?view=door` opens the same component as the door frame with **no money at all** (D11), read-only until slice 5's `receiving_advice` write. Reached from this page by "Open as the canonical document →", which appears only where the gate is on.
@@ -100,6 +101,57 @@ documents that prove the claims" (`ReceiptsPage.tsx:1-10`, decisions E48/E49).
   they are weak: link moves an invoice price between cost lots, door count books provisional
   stock), and a write nobody has named still prints under NOT IN ANY SEAL CENSUS
 - **Pairing** — matcher suggestions carry their reason **and their confidence** for one-tap confirmation. The matcher **does** auto-write unambiguous vendor-SKU pairings server-side (`line-matcher.ts:282-296`); the page names them as written-without-asking, and every paired row has **Unlink**. The `Paired with` column names its target (ordered wine · quantity · order-line ref · method · confidence) and says "not paired" in words
+
+## 1c. The credit ledger lane (2026-09-25, ADR 0149 row 22)
+
+`/receipts?tab=credits` renders `ReceiptsCredits` inside the same `.mudavym` root,
+header and ground as the receipts lane. Until this change the tab lazy-loaded the
+legacy `ReceiptsPage` (`ReceiptsNext.tsx:75-79,1312-1315` at `059169a5`), so a LIVE
+page still showed the old design for one tab — CRITIC §G8, ADR 0149 row 22.
+
+- **Who sees it — ADR 0167** (Locked 2026-09-19, the record lives on PR #395's branch
+  until that PR merges). The tab is offered when the role IN THIS HOUSE (`activeRole`,
+  falling back to the global `user.role` only when no house is active) is owner,
+  manager or admin — `canSeeCreditLedger` in `ReceiptsNext.tsx`. Staff get no tab and
+  spend no request; `?tab=credits` lands them on Receipts with one sentence. A 403 from
+  the gateway (the server half of ADR 0167, PR #395) renders as a refusal in words,
+  never as an empty ledger.
+- **Figures per currency, never summed.** `GET /procurement/credits/stats` now also
+  returns `byCurrency` (`recoveryStatsByCurrency` in `credit-ledger.ts`) plus
+  `rowsCounted` and `capped`. The lane prints one group of four figures per currency
+  (Recovered · Outstanding · Promised · Refused), labelled "kept apart, nothing is
+  converted" when there is more than one. The combined top-level figures are
+  unchanged for their existing readers (/receiving's owner ledger). Each claim prints
+  in its own `procurement_credits.currency`, which the web type now carries.
+- **Windows are floors** (ADR 0051 clause 2): the list is the gateway's oldest 200
+  (`CREDITS_LIST`), the figures are computed behind 5,000 rows (`RECOVERY_STATS`, a
+  floor unless the server says `capped: false`), and the memo picker shows the newest
+  100 credit memos (`CREDIT_MEMOS`). All three are in `RECEIPTS_SERVER_WINDOWS` and
+  guarded by `scripts/check_windowed_figures.py` (the renderer and the imported
+  `useProviders` hook are registered there).
+- **"Requested" says nothing was sent.** The move is labelled *I asked the vendor*, and
+  its confirmation says "Mudavym sends nothing to the vendor" — because the gateway's
+  `requested` branch stamps `requested_at`/`requested_by` and nothing else (§10).
+- **Settling names a real memo.** The legacy `window.prompt` for a UUID is gone. The
+  settle form picks from the house's credit memos (`GET /procurement/documents?docType=credit_memo`),
+  the claim's own vendor first, each marked when it is unverified, in another currency,
+  or already settling another claim; the amount allowed is typed blank (the claimed
+  figure is only the placeholder) because vendors routinely allow part of a claim.
+  With no memo on file the form says so and cannot submit.
+- **Every move is armed, then recorded**: a click shows the sentence the move writes,
+  a second click writes it. The server's refusal is printed in its own words with
+  "the claim is unchanged". The move table mirrors the gateway's `TRANSITIONS`
+  (`CREDIT_MOVES`; a test reads `credit-ledger.ts` and fails on drift) — the legacy
+  tab had `rejected: []` and so hid "ask again", which the server allows.
+- **Claims are rows, the claim is a Sheet** (ADR 0112): reason in words, vendor
+  (resolved through `useProviders`), claimed amount and bottles, the matcher's own
+  sentence, evidence, dates, a link to the invoice at `/documents/:id` and to the
+  credit memo once settled.
+- **Honest states**: no house selected; reaching the gateway; a failed list, figures or
+  memo read each named; an empty ledger said only after the gateway answered.
+
+Not built here (not decided): sending the claim to the vendor (§13 item 1), and
+sealing credit moves (the credits routes are not in the money-seal census).
 
 ## 1b. Motions used — Mudavym redesign (flag `mudavym_design_receipts`)
 
@@ -237,7 +289,7 @@ applies (see dashboard.md §7).
 
 ## 9. Gaps
 
-- ReceiptsNext (flag ON) has no credits lane yet — `?tab=credits` renders the LEGACY page even with the flag on (guarded in `ReceiptsNext.tsx`), so `/credits` keeps working; a native credits lane is a later pass (§1b).
+- ~~ReceiptsNext (flag ON) has no credits lane yet — `?tab=credits` renders the LEGACY page even with the flag on (guarded in `ReceiptsNext.tsx`), so `/credits` keeps working; a native credits lane is a later pass (§1b).~~ [2026-09-25: built — §1c. `ReceiptsNext` no longer imports the legacy page.]
 
 - Line-match **suggestions** from `POST /procurement/documents/:id/match` have no UI
   on the LEGACY page — deferred by design (`v3.0-TECH-DEBT.md:447`). ReceiptsNext
@@ -327,7 +379,7 @@ recovered without both an amount and a memo (`documents/credits.controller.ts:16
 | Gap | Evidence |
 |---|---|
 | Credit claims are never *sent* | `transition(→ requested)` stamps `requested_at`/`requested_by` and returns (`credits.controller.ts:218-221`). No email, no notification, no queue. This is the TIER-MAP S03 "opened-never-sent" row, confirmed in code |
-| Settling a claim asks the operator to type a UUID | `window.prompt("Credit-memo document id (required…)")` (`ReceiptsPage.tsx:129-137`) — the credit memo is a document this page already lists, and there is no picker |
+| ~~Settling a claim asks the operator to type a UUID~~ [2026-09-25: fixed on the live route — a memo picker, §1c; the legacy page keeps its prompt until the cutover deletes it] | `window.prompt("Credit-memo document id (required…)")` (`ReceiptsPage.tsx:129-137`) — the credit memo is a document this page already lists, and there is no picker |
 | Line-match suggestions have no UI | `POST /procurement/documents/:id/match` exists (`documents.controller.ts:208-223`); nothing renders it. Deferred by design (`v3.0-TECH-DEBT.md:447`) |
 | Recovery metrics not built | `v3.0-TECH-DEBT.md:446` |
 | No error state | `listQuery.isError` / `creditsQuery.isError` are never branched (`ReceiptsPage.tsx:210-214`, `:427-429`) — a 500 renders "No documents in this lane" |
@@ -347,6 +399,11 @@ recovered without both an amount and a memo (`documents/credits.controller.ts:16
 | GET | `/procurement/credits` | JWT (class, `credits.controller.ts:89`) | `:94-121` | Claims for the restaurant |
 | GET | `/procurement/credits/stats` | JWT | `:123-162` | `claimed` vs `recovered` vs `selfEvidencedOpen` — deliberately different fields (`:75-82`) |
 | POST | `/procurement/credits/:id/transition` | JWT | `:164-240` | Refuses `credited` without amount **and** memo |
+
+[2026-09-25: the credits rows above describe the legacy tab. The live lane (§1c) calls
+the same three routes plus `GET /procurement/documents?docType=credit_memo&limit=100`
+for the memo picker; `/stats` additionally returns `byCurrency`, `rowsCounted`,
+`capped`. Line numbers above predate both changes.]
 
 Unused by the page: `POST /procurement/documents` (manual upload, `:53-96`),
 `POST /:id/match` (:208), `POST /:id/lines/:lineId/link` (:225).
@@ -579,9 +636,10 @@ its own pass. The first answer below confirms that choice rather than making it.
    approve-then-send path procurement already uses — the guardrail is decided
    (memory: autonomous-email-replies; never auto-send). Highest-value item on the page:
    it converts a ledger into recovery.
-2. **Credit-memo picker** replacing the UUID prompt (`ReceiptsPage.tsx:129-137`) —
-   the documents are already listed two tabs away.
+2. ~~**Credit-memo picker** replacing the UUID prompt (`ReceiptsPage.tsx:129-137`) —
+   the documents are already listed two tabs away.~~ [2026-09-25: built on the live lane, §1c.]
 3. **Error branches** on both queries; a failed lane must not read as an empty one.
+   [2026-09-25: the credits lane names each failed source (§1c); the receipts lane already did.]
 4. **Link out**: document → its order, credit → its document. The page is a dead end
    by the brief's own finding.
 5. Render `POST /:id/match` suggestions (`documents.controller.ts:208`). Blocked:

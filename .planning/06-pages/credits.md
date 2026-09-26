@@ -67,6 +67,10 @@ lives at the destination, not in this redirect.
 
 `apps/web/src/App.tsx:282` is `<Navigate to="/receipts?tab=credits" replace />`; the
 destination reads that param at `ReceiptsPage.tsx:59-63` and opens the Credits tab.
+[2026-09-25: the live destination is `ReceiptsNext`, which reads the param and renders the
+Mudavym credits lane (`ReceiptsCredits.tsx`, receipts.md §1c) for the owner and managers of
+the house; staff land on Receipts with a sentence saying why (ADR 0167). The route itself
+is now `App.tsx:464`.]
 The round trip works. `replace` keeps it out of history, so Back does not bounce.
 
 Verdict scope note: the destination tab is **partial** (see receipts.md §10 — claims

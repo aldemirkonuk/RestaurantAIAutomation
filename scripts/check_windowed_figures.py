@@ -283,7 +283,10 @@ PAGES = (
     PageSpec(
         name="/receipts",
         hooks=_RECEIPTS / "useReceiptsNextData.ts",
-        renderers=(_RECEIPTS / "ReceiptsNext.tsx",),
+        # The credit ledger lane (ADR 0149 row 22, 2026-09-25) renders the
+        # list, the recovery figures and the memo picker behind three windows
+        # of its own; its reads live in the same hooks file so W6 sees them.
+        renderers=(_RECEIPTS / "ReceiptsNext.tsx", _RECEIPTS / "ReceiptsCredits.tsx"),
         register="RECEIPTS_SERVER_WINDOWS",
         floor_markers=("GE",),
         nullable_contract={
@@ -291,9 +294,16 @@ PAGES = (
             # renders identically to a caught-up door. It must be able to say
             # it does not know.
             "ReceiptsNextData": ["deliveriesWithoutPaper", "verifiedCount"],
+            # The ledger's list, figures and memos must each be able to say
+            # they have not answered; `[]` would read as "no claims".
+            "ReceiptsCreditsData": ["claims", "stats", "memos"],
         },
         tenant_tokens=("rid", "restaurantId"),
         tenant_keyed=True,
+        imported_query_hooks=(
+            # Vendor names on the credit ledger's rows.
+            (Path("apps/web/src/hooks/queries/useProviderQueries.ts"), "useProviders"),
+        ),
     ),
     PageSpec(
         name="/communications",
@@ -921,6 +931,12 @@ export interface ReceiptsNextData {
   verifiedCount: number | null;
 }
 
+export interface ReceiptsCreditsData {
+  claims: ProcurementCredit[] | null;
+  stats: CreditStats | null;
+  memos: ProcurementDocument[] | null;
+}
+
 export function useReceiptsNextData() {
   const rid = useActiveRestaurantId();
   const queueQ = useQuery({
@@ -938,6 +954,17 @@ import { RECEIPTS_SERVER_WINDOWS } from './useReceiptsNextData';
 export function R() {
   const q = useQuery({ queryKey: ['receipts-next', 'doc', rid, id], queryFn: f });
   return <span title={`${RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS}`}>{cap ? GE : ''}{n}</span>;
+}
+"""
+
+# The shared vendor-name hook the credit ledger lane imports (W7).
+_PROVIDER_HOOKS = Path("apps/web/src/hooks/queries/useProviderQueries.ts")
+CLEAN_PROVIDER_HOOKS = """
+export function useProviders(restaurantId: string, filters?: ProviderFilters) {
+  return useQuery({
+    queryKey: queryKeys.providers.list(restaurantId, filters),
+    queryFn: () => fetchProviders(restaurantId, filters),
+  });
 }
 """
 
@@ -1312,6 +1339,7 @@ def _scaffold(tmp: Path) -> None:
         (tmp / r).write_text(CLEAN_SO_RENDERER, encoding="utf-8")
     (tmp / _QUERY_HOOKS).write_text(CLEAN_QUERY_HOOKS, encoding="utf-8")
     (tmp / _DRAFT_HOOKS).write_text(CLEAN_DRAFT_HOOKS, encoding="utf-8")
+    (tmp / _PROVIDER_HOOKS).write_text(CLEAN_PROVIDER_HOOKS, encoding="utf-8")
     (tmp / GATEWAY_ROOT / "procurement" / "receiving.service.ts").write_text(
         CLEAN_GATEWAY, encoding="utf-8"
     )
@@ -1540,6 +1568,30 @@ def self_test() -> int:
             encoding="utf-8",
         ),
         "violation",
+    )
+    case(
+        "W4 the credit ledger's claims widened away from | null",
+        lambda t: (t / _RCP.hooks).write_text(
+            CLEAN_RECEIPTS_HOOKS.replace(
+                "claims: ProcurementCredit[] | null;",
+                "claims: ProcurementCredit[];",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        "ReceiptsCreditsData.claims",
+    )
+    case(
+        "W7 the vendor-name hook the credit ledger imports lost its tenant",
+        lambda t: (t / _PROVIDER_HOOKS).write_text(
+            CLEAN_PROVIDER_HOOKS.replace(
+                "queryKeys.providers.list(restaurantId, filters)",
+                "queryKeys.providers.all",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        "useProviders",
     )
     case(
         "W1 the documents controller's clamp fell below the declared cap",
@@ -1833,9 +1885,14 @@ def self_test() -> int:
             (t / _RCP.hooks).write_text(
                 CLEAN_RECEIPTS_HOOKS.replace("useQuery({", "notAQuery({"), encoding="utf-8"
             ),
-            (t / _RCP.renderers[0]).write_text(
-                CLEAN_RECEIPTS_RENDERER.replace("useQuery({", "notAQuery({"), encoding="utf-8"
-            ),
+            # EVERY renderer: the page has two since the credit ledger lane,
+            # and one left holding a useQuery would keep the matcher fed.
+            [
+                (t / r).write_text(
+                    CLEAN_RECEIPTS_RENDERER.replace("useQuery({", "notAQuery({"), encoding="utf-8"
+                )
+                for r in _RCP.renderers
+            ],
         )
         and None,
         "cannot-check",
