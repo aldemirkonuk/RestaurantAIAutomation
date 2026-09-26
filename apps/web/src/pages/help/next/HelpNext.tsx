@@ -127,12 +127,12 @@ function Section({ n, id, title, children }: { n: string; id: string; title: str
 }
 
 function Mono({ children, dim }: { children: React.ReactNode; dim?: boolean }) {
-  return <span style={{ fontFamily: MONO, fontSize: 12, color: dim ? 'var(--ink-3)' : 'var(--ink-2)' }}>{children}</span>;
+  return <span style={{ fontFamily: MONO, fontSize: 12, color: dim ? 'var(--ink-4)' : 'var(--ink-2)' }}>{children}</span>;
 }
 
 function Prose({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
   return (
-    <p style={{ fontFamily: SANS, fontSize: 13.5, lineHeight: 1.6, color: muted ? 'var(--ink-3)' : 'var(--ink-2)', margin: '6px 0 0' }}>
+    <p style={{ fontFamily: SANS, fontSize: 13.5, lineHeight: 1.6, color: muted ? 'var(--ink-4)' : 'var(--ink-2)', margin: '6px 0 0' }}>
       {children}
     </p>
   );
@@ -238,7 +238,7 @@ function NextUpRail({
           </ul>
         )}
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--paper-2)' }}>
-          <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3)', margin: '0 0 8px' }}>{supportLabel}</p>
+          <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4)', margin: '0 0 8px' }}>{supportLabel}</p>
           <button type="button" className="hp-btn hp-btn--seal hp-ink hp-focus" onClick={onWriteToSupport}>
             Write to support
           </button>
@@ -363,9 +363,9 @@ export default function HelpNext({ ground }: HelpNextProps) {
 .mudavym .hp-focus:focus-visible { outline: 2px solid var(--seal); outline-offset: 3px; border-radius: 8px }
 .mudavym .hp-link { color: var(--seal-deep); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px }
 .mudavym .hp-link:hover { color: var(--seal) }
-.mudavym .hp-btn { font: 500 13px/1 ${SANS}; color: var(--ink-1); background: transparent; border: 1px solid var(--ink-3); border-radius: 8px; padding: 9px 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px }
+.mudavym .hp-btn { font: 500 13px/1 ${SANS}; color: var(--ink-1); background: transparent; border: 1px solid var(--ink-4); border-radius: 8px; padding: 9px 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px }
 .mudavym .hp-btn:hover { background: var(--paper-1); border-color: var(--ink-2) }
-.mudavym .hp-btn:disabled { color: var(--ink-3); cursor: default; background: transparent; border-color: var(--paper-2) }
+.mudavym .hp-btn:disabled { color: var(--ink-4); cursor: default; background: transparent; border-color: var(--paper-2) }
 .mudavym .hp-btn--seal { color: var(--seal-deep); border-color: var(--seal-ring) }
 .mudavym .hp-btn--seal:hover { background: var(--seal-tint); border-color: var(--seal) }
 .mudavym .hp-card { border: 1px solid var(--paper-2); border-radius: 12px; padding: 15px 17px; background: var(--paper-0) }
@@ -375,7 +375,7 @@ export default function HelpNext({ ground }: HelpNextProps) {
 .mudavym .hp-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows ${motionMs}ms ${settle.easing} }
 .mudavym .hp-fold[data-open="true"] { grid-template-rows: 1fr }
 .mudavym .hp-fold > div { overflow: hidden; min-height: 0 }
-.mudavym .hp-chev { transition: transform ${motionMs}ms ${settle.easing}; color: var(--ink-3) }
+.mudavym .hp-chev { transition: transform ${motionMs}ms ${settle.easing}; color: var(--ink-4) }
 .mudavym .hp-chev[data-open="true"] { transform: rotate(180deg) }
 .mudavym .hp-faq-q { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; background: none; border: 0; padding: 13px 0; cursor: pointer; color: var(--ink-1); font: 500 14.5px/1.4 ${SANS} }
 .mudavym .hp-faq-q:hover { color: var(--seal-deep) }
@@ -425,7 +425,7 @@ export default function HelpNext({ ground }: HelpNextProps) {
                 {pendingActs.slice(0, 6).map((a) => (
                   <div key={a.id} className="hp-act-card">
                     <p style={{ margin: 0, fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1)' }}>{a.title}</p>
-                    <p style={{ margin: '4px 0 0', fontFamily: MONO, fontSize: 10.5, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+                    <p style={{ margin: '4px 0 0', fontFamily: MONO, fontSize: 10.5, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
                       {a.priority}
                     </p>
                   </div>
@@ -562,7 +562,7 @@ export default function HelpNext({ ground }: HelpNextProps) {
             </div>
 
             <details style={{ marginTop: 14 }}>
-              <summary style={{ cursor: 'pointer', fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3)' }}>What "Write to support" sends</summary>
+              <summary style={{ cursor: 'pointer', fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4)' }}>What "Write to support" sends</summary>
               <pre style={{ marginTop: 8, padding: 12, background: 'var(--paper-1)', border: '1px solid var(--paper-2)', borderRadius: 8, fontFamily: MONO, fontSize: 11.5, lineHeight: 1.6, color: 'var(--ink-2)', whiteSpace: 'pre-wrap', overflowX: 'auto' }}>
                 {block}
               </pre>

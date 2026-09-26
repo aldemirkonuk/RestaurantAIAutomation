@@ -26,7 +26,7 @@
 .ar-header > span {
   flex: 1;
   font: 13px var(--mono);
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ar-page a {
   color: var(--accent);
@@ -74,12 +74,12 @@
 .ar-meta {
   font: 11px/1.6 var(--mono) !important;
   letter-spacing: 0.075em;
-  color: var(--ink-3);
+  color: var(--ink-4);
   text-transform: uppercase;
 }
 .ar-note {
   font-size: 12px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   line-height: 1.7;
 }
 .ar-flyleaf {
@@ -134,12 +134,12 @@
 .ar-way small {
   display: block;
   font-size: 12.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin-top: 3px;
 }
 .ar-numeral {
   font: 12px var(--mono);
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ar-way[data-primary] .ar-numeral {
   color: var(--seal);
@@ -158,7 +158,7 @@
 }
 .ar-way-choose {
   font: 12.5px var(--sans);
-  color: var(--ink-3);
+  color: var(--ink-4);
   border-bottom: 1px solid var(--rule);
   padding-bottom: 2px;
   cursor: pointer;
@@ -198,7 +198,7 @@
   border: 0;
   border-bottom: 1px solid var(--rule);
   font: 13px var(--sans);
-  color: var(--ink-3);
+  color: var(--ink-4);
   padding: 2px 0;
   min-height: 0;
 }
@@ -234,14 +234,14 @@
   animation: ar-turn var(--ar-turn-duration) var(--ar-turn-easing);
 }
 .ar-writing > div[data-waiting] {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ar-writing em {
   font: 11px var(--mono);
   font-style: normal;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ar-writing > div[data-done] em {
   color: var(--seal);
@@ -269,7 +269,7 @@
   font: 11px var(--mono);
   letter-spacing: 0.075em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ar-count dd {
   margin: 4px 0 0;
@@ -307,10 +307,10 @@
   max-width: 62ch;
 }
 .mudavym.ar-page .ar-register p {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .mudavym.ar-page .ar-register[data-silent] h3 {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ar-mark {
   font: 11px var(--mono);
@@ -320,14 +320,14 @@
   white-space: nowrap;
 }
 .ar-register[data-silent] .ar-mark {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ar-page button.ar-ask {
   background: none;
   border: 0;
   border-bottom: 1px solid var(--rule);
   font: 12px var(--mono);
-  color: var(--ink-3);
+  color: var(--ink-4);
   padding: 2px 0;
   min-height: 0;
   white-space: nowrap;
@@ -395,13 +395,13 @@
 .ar-book aside small {
   display: block;
   font: 11px/1.6 var(--mono);
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin-top: 8px;
 }
 .ar-number {
   font: 11px var(--mono);
   padding-top: 5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ar-book article {
   min-width: 0;
@@ -463,7 +463,7 @@
   display: block;
   font-size: 11px;
   line-height: 1.6;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin: 7px 0;
 }
 .ar-feedback {
@@ -533,7 +533,7 @@
 }
 .ar-batch small {
   font: 11px/1.6 var(--mono);
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ar-threshold {
   margin: 30px 0;
@@ -555,7 +555,7 @@
 }
 .ar-folio-footer span {
   font: 11px var(--mono);
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 @keyframes ar-turn {
   from {
@@ -688,7 +688,7 @@
 }
 .mudavym.ar-page p.ar-meta,
 .mudavym.ar-page p.ar-note {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .mudavym.ar-page p.ar-intro {
   color: var(--ink-2);

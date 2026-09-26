@@ -84,8 +84,8 @@ html .mudavym.mdv-auth select option {
    on paper-0 and 5.09:1 on charcoal paper-0 (authpages-report.md). */
 html .mudavym.mdv-auth input::placeholder,
 html .mudavym.mdv-auth textarea::placeholder {
-  color: var(--ink-3) !important;
-  -webkit-text-fill-color: var(--ink-3) !important;
+  color: var(--ink-4) !important;
+  -webkit-text-fill-color: var(--ink-4) !important;
 }
 
 /* The auth page root paints its own ground from the house tokens, so the

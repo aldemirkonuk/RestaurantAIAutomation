@@ -220,7 +220,7 @@ function TargetMarginBody({
 
   const field = (id: string, label: string, value: string, set: (v: string) => void, unit: string, placeholder: string) => (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-      <label htmlFor={id} style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
+      <label htmlFor={id} style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)' }}>
         {label}
       </label>
       <input
@@ -235,7 +235,7 @@ function TargetMarginBody({
         className="st-ink st-focus"
         style={{ ...fieldStyle, opacity: canManage ? 1 : 0.45, width: 76, textAlign: 'right' }}
       />
-      <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3)' }}>{unit}</span>
+      <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4)' }}>{unit}</span>
     </span>
   );
 
@@ -284,16 +284,16 @@ function TargetMarginBody({
           </span>
         }
       >
-        <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+        <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
           {read.sentence}
         </p>
         {reg.statedBy?.name && (
-          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '6px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '6px 0 0' }}>
             set by · {reg.statedBy.name}
           </p>
         )}
         {!canManage && (
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
             Only managers and owners can state the margin this restaurant needs. The fields stay legible so you can read
             the target, and the gateway refuses anyone else independently of this page.
           </p>
@@ -339,7 +339,7 @@ function TargetMarginBody({
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <label
                 htmlFor="st-pour-ml"
-                style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)' }}
+                style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)' }}
               >
                 pour
               </label>
@@ -355,7 +355,7 @@ function TargetMarginBody({
                 className="st-ink st-focus"
                 style={{ ...fieldStyle, opacity: canManage ? 1 : 0.45, width: 76, textAlign: 'right' }}
               />
-              <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3)' }}>ml</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4)' }}>ml</span>
             </span>
             <Action disabled={!canManage || pourBusy || !pourRead.canConfirm} onClick={() => void confirmPour()}>
               {pourBusy ? 'Confirming…' : 'Confirm'}
@@ -363,11 +363,11 @@ function TargetMarginBody({
           </span>
         }
       >
-        <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+        <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
           {pourRead.sentence}
         </p>
         {reg.pour.confirmedBy?.name && (
-          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '6px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '6px 0 0' }}>
             confirmed by · {reg.pour.confirmedBy.name}
           </p>
         )}
@@ -382,7 +382,7 @@ function TargetMarginBody({
         </p>
       )}
 
-      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '14px 0 0' }}>
+      <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '14px 0 0' }}>
         How the advice is worked out: price = cost ÷ (1 − target). A bottle that cost 20 at a 65 percent target is
         57.14. A glass costs its share of the bottle (cost × the house's confirmed pour ÷ bottle size). A wine with no
         recorded cost gets no advice and says so. Close enough is measured as a percent of the advised price: at 3

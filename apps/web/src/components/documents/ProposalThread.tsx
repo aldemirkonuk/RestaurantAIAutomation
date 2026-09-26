@@ -71,7 +71,7 @@ const KICK: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '.12em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #7C7365)',
 }
 
 export function ProposalThread({
@@ -181,7 +181,7 @@ export function ProposalThread({
                 ? ` · ${currency === 'TRY' ? '₺' : ''}${p.money_at_risk}`
                 : ''}
             </span>
-            <span style={{ display: 'block', fontFamily: MONO, fontSize: 9, color: 'var(--ink-3, #7C7365)' }}>
+            <span style={{ display: 'block', fontFamily: MONO, fontSize: 9, color: 'var(--ink-4, #7C7365)' }}>
               {fmtStamp(p.proposed_at, jurisdiction, currency)} · {p.status}
               {p.counters_proposal_id ? ' · answers an earlier position' : ''}
             </span>

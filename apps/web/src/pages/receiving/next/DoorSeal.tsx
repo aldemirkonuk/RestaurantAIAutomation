@@ -271,7 +271,7 @@ export function DoorSeal({
           marginTop: 6,
           fontSize: 12.5,
           textAlign: 'center',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
         }}
       >
         {note ?? (armed ? 'Press again to seal — Esc cancels.' : '')}

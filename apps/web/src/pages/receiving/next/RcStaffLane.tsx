@@ -57,7 +57,7 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
       </p>
 
       {!hasData && !isError && (
-        <p style={{ fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>Reaching the gateway…</p>
+        <p style={{ fontSize: 12.5, color: 'var(--ink-4, #7C7365)' }}>Reaching the gateway…</p>
       )}
 
       {isError && (
@@ -96,7 +96,7 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
               style={{
                 fontFamily: MONO,
                 fontSize: 10.5,
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #7C7365)',
                 margin: '6px 0 0',
               }}
             >
@@ -139,7 +139,7 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
             padding: '18px 16px',
             textAlign: 'center',
             fontSize: 12.5,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
           }}
         >
           Nothing is out for delivery right now. When an order is confirmed or in transit, it
@@ -183,7 +183,7 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
                 <p
                   style={{
                     fontSize: 11,
-                    color: 'var(--ink-3, #7C7365)',
+                    color: 'var(--ink-4, #7C7365)',
                     margin: '3px 0 0',
                     fontStyle: 'italic',
                   }}
@@ -203,7 +203,7 @@ export function RcStaffLane({ data }: { data: StaffLaneData }) {
               >
                 PO {d.po ?? EM} · {d.lineCount} line · {countSentence(d)}
               </p>
-              <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '4px 0 0' }}>
+              <p style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)', margin: '4px 0 0' }}>
                 {d.vendor && d.line ? `${d.line} · ` : ''}ordered {fmtDate(d.requestedAt)}
               </p>
             </div>

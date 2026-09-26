@@ -88,7 +88,7 @@ export function OriginalPane({
         >
           Bring the original
         </button>
-        <span style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+        <span style={{ fontSize: 10.5, color: 'var(--ink-4, #7C7365)' }}>
           {reason ??
             `${contentType ?? 'the stored file'} — fetched only when you ask, through a one-hour link.`}
         </span>
@@ -105,7 +105,7 @@ export function OriginalPane({
             fontWeight: 600,
             letterSpacing: '.13em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
           }}
         >
           The original · on demand
@@ -114,7 +114,7 @@ export function OriginalPane({
           type="button"
           onClick={() => setOpen(false)}
           aria-label="Put the original away"
-          style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ink-3, #7C7365)' }}
+          style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--ink-4, #7C7365)' }}
         >
           ×
         </button>

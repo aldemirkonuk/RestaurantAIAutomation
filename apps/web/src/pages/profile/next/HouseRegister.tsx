@@ -160,7 +160,7 @@ export function HouseRegister({ data }: { data: ProfileNextData }) {
                     <span style={{ display: 'block', fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1)' }}>
                       {r.name}
                     </span>
-                    <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
+                    <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
                       {r.city || EM}
                       {active ? ` · ${roleLabel(data.role)}` : ''}
                       {r.chain_name ? ` · ${r.chain_name}` : ''}
@@ -180,7 +180,7 @@ export function HouseRegister({ data }: { data: ProfileNextData }) {
             })}
           </ul>
         )}
-        <p style={{ margin: '10px 0 0', fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
+        <p style={{ margin: '10px 0 0', fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
           Invitations and roles live in{' '}
           <Link to="/settings?tab=team" style={{ color: 'var(--seal-deep)' }}>
             Settings → Team

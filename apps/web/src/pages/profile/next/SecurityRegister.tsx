@@ -44,7 +44,7 @@ function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: 'contents' }}>
       <dt style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{label}</dt>
-      <dd style={{ margin: 0, color: 'var(--ink-3)', fontFamily: MONO, fontSize: 11.5 }}>
+      <dd style={{ margin: 0, color: 'var(--ink-4)', fontFamily: MONO, fontSize: 11.5 }}>
         {value}
       </dd>
     </div>
@@ -200,7 +200,7 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
                 <Fact label="Token expires" value={fmtMoment(session.expiresAt)} />
                 <Fact label="Address" value={EM} />
               </dl>
-              <p style={{ margin: '8px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>
+              <p style={{ margin: '8px 0 0', fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>
                 The address is a dash because the browser cannot see the address the gateway
                 saw, and no endpoint reports it back.
               </p>

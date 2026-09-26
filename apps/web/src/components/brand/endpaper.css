@@ -58,7 +58,7 @@
   margin: 0;
   text-align: center;
   font-size: 12px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* ── the book: a 340px endpaper (verso) + a leaf (recto) ─────────────────── */
@@ -126,7 +126,7 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   white-space: nowrap;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .mdv-ep-body {
   position: relative;
@@ -149,7 +149,7 @@
 .mdv-ep-tagline {
   font-size: 12.5px;
   line-height: 19px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   max-width: 240px;
 }
 
@@ -188,7 +188,7 @@
   font: 500 10px/1.4 'JetBrains Mono', ui-monospace, monospace;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .mdv-ep-leaf-title,
 .mdv-ep-leaf-lede {
@@ -226,14 +226,14 @@
   font: 500 10.5px/1.5 'JetBrains Mono', ui-monospace, monospace;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-endpaper .mdv-ep-leaf .mdv-ep-caps {
   font: 500 10.5px/1.5 'JetBrains Mono', ui-monospace, monospace;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .mdv-endpaper .mdv-ep-leaf .mdv-ep-caps > * {
   font: 400 12px/1.5 'DM Sans', system-ui, sans-serif;
@@ -419,7 +419,7 @@ html .mudavym.mdv-endpaper .mdv-ep-leaf input.mdv-ep-code[class*='border-red'] {
 }
 .mdv-ep-cover-pos {
   font-style: italic;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin-right: 2px;
 }
 .mdv-ep-cover-card--inline {

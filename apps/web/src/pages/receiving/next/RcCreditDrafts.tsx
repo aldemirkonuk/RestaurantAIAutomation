@@ -120,7 +120,7 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
           </span>
         )}
       </p>
-      <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '3px 0 0' }}>
+      <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '3px 0 0' }}>
         Opened {fmtDate(draft.opened_at)} when the count was saved
         {draft.order_id ? ` · order ${draft.order_id.slice(0, 8)}` : ''} — a person has not sent
         anything to the vendor.
@@ -238,14 +238,14 @@ export function RcCreditDrafts({ data }: { data: CreditDraftsData }) {
       )}
 
       {!hasData && !isError && (
-        <p style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>Reaching the gateway…</p>
+        <p style={{ fontSize: 12, color: 'var(--ink-4, #7C7365)' }}>Reaching the gateway…</p>
       )}
 
       {hasData && drafts.length === 0 && (
         <p
           style={{
             fontSize: 12,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
             border: '1px dashed var(--paper-2, #EAE4D8)',
             borderRadius: 10,
             padding: '10px 12px',

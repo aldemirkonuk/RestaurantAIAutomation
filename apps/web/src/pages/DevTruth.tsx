@@ -53,7 +53,7 @@ function Cell({
           : good
             ? 'var(--ok, #1b6e4b)'
             : dim
-              ? 'var(--ink-3, #736B5D)'
+              ? 'var(--ink-4, #736B5D)'
               : 'inherit',
         whiteSpace: 'nowrap',
       }}
@@ -124,7 +124,7 @@ export default function DevTruth() {
   return (
     <div style={{ padding: 24, ...mono, maxWidth: 1100 }}>
       <h1 style={{ fontSize: 18, margin: '0 0 4px' }}>dev / truth</h1>
-      <p style={{ margin: '0 0 16px', color: 'var(--ink-3, #736B5D)', maxWidth: 760 }}>
+      <p style={{ margin: '0 0 16px', color: 'var(--ink-4, #736B5D)', maxWidth: 760 }}>
         Instruments, not product. Each tab answers one question and shows the inputs behind
         the answer — which is the part every other surface omits.
       </p>
@@ -146,7 +146,7 @@ export default function DevTruth() {
             {t}
           </button>
         ))}
-        <span style={{ marginLeft: 'auto', color: 'var(--ink-3, #736B5D)' }}>
+        <span style={{ marginLeft: 'auto', color: 'var(--ink-4, #736B5D)' }}>
           r={restaurantId ? `${restaurantId.slice(0, 8)}…` : 'none'}
         </span>
       </div>
@@ -161,7 +161,7 @@ export default function DevTruth() {
         <p style={{ color: 'var(--danger, #b3261e)' }}>
           request failed: {err}
           <br />
-          <span style={{ color: 'var(--ink-3, #736B5D)' }}>
+          <span style={{ color: 'var(--ink-4, #736B5D)' }}>
             This is a failure, not an empty result. The distinction is the point.
           </span>
         </p>
@@ -184,7 +184,7 @@ function Reach({ d }: { d: any }) {
           <div style={{ fontSize: 28 }}>
             {d.reachedByPresence} <span style={{ fontSize: 16 }}>/ {d.total}</span>
           </div>
-          <div style={{ color: 'var(--ink-3, #736B5D)' }}>
+          <div style={{ color: 'var(--ink-4, #736B5D)' }}>
             {d.presencePct}% — what the product reports
           </div>
         </div>
@@ -192,7 +192,7 @@ function Reach({ d }: { d: any }) {
           <div style={{ fontSize: 28 }}>
             {d.reachedBySufficiency} <span style={{ fontSize: 16 }}>/ {d.total}</span>
           </div>
-          <div style={{ color: 'var(--ink-3, #736B5D)' }}>
+          <div style={{ color: 'var(--ink-4, #736B5D)' }}>
             {d.sufficiencyPct}% — with a stated row minimum
           </div>
         </div>
@@ -200,7 +200,7 @@ function Reach({ d }: { d: any }) {
           <div style={{ fontSize: 28, color: 'var(--danger, #b3261e)' }}>
             −{d.overstatement}
           </div>
-          <div style={{ color: 'var(--ink-3, #736B5D)' }}>types the presence test adds</div>
+          <div style={{ color: 'var(--ink-4, #736B5D)' }}>types the presence test adds</div>
         </div>
       </div>
 
@@ -303,7 +303,7 @@ function AsOf({
             <div>checks &nbsp;<Num v={d.known?.checks} /></div>
             <div>revenue <Num v={d.known?.revenue} /></div>
             <div>covers &nbsp;<Num v={d.known?.covers} /></div>
-            <div style={{ color: 'var(--ink-3, #736B5D)', marginTop: 6 }}>
+            <div style={{ color: 'var(--ink-4, #736B5D)', marginTop: 6 }}>
               {d.known?.firstAt?.slice(0, 10) ?? '—'} → {d.known?.lastAt?.slice(0, 10) ?? '—'}
             </div>
           </div>
@@ -317,7 +317,7 @@ function AsOf({
             <div>checks &nbsp;<Num v={d.happened?.checks} /></div>
             <div>revenue <Num v={d.happened?.revenue} /></div>
             <div>covers &nbsp;<Num v={d.happened?.covers} /></div>
-            <div style={{ color: 'var(--ink-3, #736B5D)', marginTop: 6 }}>
+            <div style={{ color: 'var(--ink-4, #736B5D)', marginTop: 6 }}>
               cover this pane to judge the left one honestly
             </div>
           </div>
@@ -327,7 +327,7 @@ function AsOf({
       {d.limits && (
         <>
           <h2 style={{ fontSize: 14, margin: '24px 0 6px' }}>what this screen cannot do</h2>
-          <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--ink-3, #736B5D)' }}>
+          <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--ink-4, #736B5D)' }}>
             {d.limits.map((l: string, i: number) => (
               <li key={i} style={{ marginBottom: 4 }}>
                 {l}
@@ -382,7 +382,7 @@ function Note({ children }: { children: React.ReactNode }) {
   return (
     <p
       style={{
-        color: 'var(--ink-3, #736B5D)',
+        color: 'var(--ink-4, #736B5D)',
         maxWidth: 760,
         borderTop: '1px solid var(--line, #e5e5e5)',
         paddingTop: 10,

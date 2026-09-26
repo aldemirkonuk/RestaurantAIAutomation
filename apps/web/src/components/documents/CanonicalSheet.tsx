@@ -52,7 +52,7 @@ const KICK: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '.15em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #8E8576)',
+  color: 'var(--ink-4, #8E8576)',
 }
 
 const TH: React.CSSProperties = {
@@ -595,7 +595,7 @@ export function CanonicalSheet({
                     adj && adj.verdict !== 'ok' ? 'rgba(148,102,26,.07)' : undefined,
                 }}
               >
-                <td style={{ ...TD, textAlign: 'left', color: 'var(--ink-3, #ABA294)' }}>
+                <td style={{ ...TD, textAlign: 'left', color: 'var(--ink-4, #ABA294)' }}>
                   {i + 1}
                 </td>
                 <td style={{ ...TD, fontFamily: 'inherit', textAlign: 'left', fontSize: 11.5 }}>
@@ -612,7 +612,7 @@ export function CanonicalSheet({
                     (line.description.value ?? EM)
                   )}
                   {line.vintage.value != null && (
-                    <span style={{ color: 'var(--ink-3, #7C7365)' }}> · {line.vintage.value}</span>
+                    <span style={{ color: 'var(--ink-4, #7C7365)' }}> · {line.vintage.value}</span>
                   )}
                   {onLinkItem && resolvedByIndex.get(i) && (
                     <RememberedShelf
@@ -633,7 +633,7 @@ export function CanonicalSheet({
                     fontSize: adj?.received === 'not_counted' ? 10 : 10.5,
                     color:
                       adj?.received === 'not_counted'
-                        ? 'var(--ink-3, #7C7365)'
+                        ? 'var(--ink-4, #7C7365)'
                         : undefined,
                   }}
                   data-testid="received-cell"
@@ -671,7 +671,7 @@ export function CanonicalSheet({
                           style={{
                             display: 'block',
                             fontSize: 8,
-                            color: 'var(--ink-3, #7C7365)',
+                            color: 'var(--ink-4, #7C7365)',
                           }}
                         >
                           per {fmtQty(base.value, currency)}{' '}
@@ -680,7 +680,7 @@ export function CanonicalSheet({
                       )}
                     </>
                   ) : (
-                    <span style={{ color: 'var(--ink-3, #7C7365)' }}>{line.unit.value ?? EM}</span>
+                    <span style={{ color: 'var(--ink-4, #7C7365)' }}>{line.unit.value ?? EM}</span>
                   )}
                 </td>
                 {money && (
@@ -716,7 +716,7 @@ export function CanonicalSheet({
           <div>
             <span style={KICK}>Allowances and charges</span>
             {l1.allowancesCharges.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-4, #7C7365)' }}>
                 None on this document.
               </p>
             ) : (
@@ -737,7 +737,7 @@ export function CanonicalSheet({
                           deposit and freight are different things to argue. */}
                       {ac.reason.value ?? 'reason not stated'}
                       {ac.reasonCode.value && (
-                        <span style={{ color: 'var(--ink-3, #7C7365)' }}>
+                        <span style={{ color: 'var(--ink-4, #7C7365)' }}>
                           {' '}
                           · {ac.reasonCode.value}
                         </span>
@@ -754,7 +754,7 @@ export function CanonicalSheet({
 
             <span style={{ ...KICK, marginTop: 6 }}>VAT breakdown</span>
             {l1.vatBreakdown.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ margin: 0, fontSize: 10.5, color: 'var(--ink-4, #7C7365)' }}>
                 The document states no VAT breakdown.
               </p>
             ) : (
@@ -772,7 +772,7 @@ export function CanonicalSheet({
                     <span>
                       {v.category.value ?? 'category not stated'}
                       {v.rate.value != null ? ` ${v.rate.value}%` : ''}
-                      <span style={{ color: 'var(--ink-3, #7C7365)' }}>
+                      <span style={{ color: 'var(--ink-4, #7C7365)' }}>
                         {' '}
                         · on {fmtMoney(v.taxableAmount.value, currency)}
                       </span>
@@ -803,7 +803,7 @@ export function CanonicalSheet({
                   {/* A number WE added up says so. It is not the paper's, so it
                       gets no provenance hover claiming the paper printed it. */}
                   {summed && (
-                    <span style={{ color: 'var(--ink-3, #7C7365)' }}>
+                    <span style={{ color: 'var(--ink-4, #7C7365)' }}>
                       {' '}
                       · summed from the {l1.allowancesCharges.length} above
                     </span>
@@ -850,7 +850,7 @@ export function CanonicalSheet({
       ) : nothingRead ? null : (
         <p
           data-testid="no-money-note"
-          style={{ marginTop: 10, fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}
+          style={{ marginTop: 10, fontSize: 10.5, color: 'var(--ink-4, #7C7365)' }}
         >
           No money on this document — a {DOC_TYPE_LABELS[doc.docType]?.toLowerCase() ?? 'document'}{' '}
           travels with the goods and prints no prices. The money block is empty,

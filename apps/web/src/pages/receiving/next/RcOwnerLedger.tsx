@@ -53,7 +53,7 @@ function Figure({
       >
         {value}
       </p>
-      <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '2px 0 0' }}>{hint}</p>
+      <p style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)', margin: '2px 0 0' }}>{hint}</p>
     </div>
   );
 }
@@ -128,7 +128,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
             )}
           </span>
         </div>
-        <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '4px 0 0' }}>
+        <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '4px 0 0' }}>
           Credit memos actually issued. Money asked for is not counted here.
         </p>
 
@@ -141,7 +141,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
             {trendFailure?.forbidden
               ? 'This account is not permitted to read the settled-claims list, so the month-on-month trend is unavailable — not zero.'
               : 'The settled-claims list did not load, so the two months above are unknown — not zero, and not "nothing settled".'}{' '}
-            <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+            <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #7C7365)' }}>
               {trendFailure?.status === null ? 'no status' : `HTTP ${trendFailure?.status}`} ·{' '}
               {trendFailure?.message}
             </span>
@@ -182,7 +182,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
                 display: 'block',
                 fontFamily: MONO,
                 fontSize: 10.5,
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #7C7365)',
                 marginTop: 4,
               }}
             >
@@ -193,7 +193,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
         )}
 
         {!hasData && !isError && (
-          <p style={{ fontSize: 12.5, color: 'var(--ink-3, #7C7365)', marginTop: 12 }}>
+          <p style={{ fontSize: 12.5, color: 'var(--ink-4, #7C7365)', marginTop: 12 }}>
             Reaching the gateway…
           </p>
         )}
@@ -239,7 +239,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
             {/* The denominator. A recovery figure with nothing to divide it by
                 flatters — this sentence is the whole point, and it is about
                 every resolved claim, not the refused ones. */}
-            <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '10px 0 0' }}>
+            <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '10px 0 0' }}>
               {settlement == null
                 ? 'Nothing has resolved yet, so there is no settlement rate to report.'
                 : `${settlement}% of resolved claims settled — that is credited claims over everything credited or refused, not a property of the refusals above.`}
@@ -264,7 +264,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
             )}
 
             {stats.recovered === 0 && stats.openClaims === 0 && (
-              <p style={{ marginTop: 14, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ marginTop: 14, fontSize: 12.5, color: 'var(--ink-4, #7C7365)' }}>
                 No discrepancies found yet. This fills in as deliveries are matched against their
                 invoices.
               </p>

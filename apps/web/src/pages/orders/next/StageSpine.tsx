@@ -75,7 +75,7 @@ export function StageSpine({ counts, recurringCount, active, onSelect }: StageSp
                 fontWeight: 500,
                 letterSpacing: '0.12em',
                 textTransform: 'uppercase',
-                color: isActive ? 'var(--seal, #1A5E6B)' : 'var(--ink-3, #7C7365)',
+                color: isActive ? 'var(--seal, #1A5E6B)' : 'var(--ink-4, #7C7365)',
                 transition: `color ${ink.ms}ms ${ink.easing}`,
               }}
             >

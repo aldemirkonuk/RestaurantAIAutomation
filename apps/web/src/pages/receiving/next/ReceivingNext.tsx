@@ -101,7 +101,7 @@ function RolePreview({
           fontWeight: 700,
           letterSpacing: '0.14em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
         }}
       >
         Preview · dev only · account unchanged
@@ -123,7 +123,7 @@ function RolePreview({
               borderRadius: 5,
               border: `1px solid ${active ? 'var(--seal, #1A5E6B)' : 'var(--paper-2, #EAE4D8)'}`,
               background: active ? 'var(--seal-tint, rgba(26,94,107,.10))' : 'transparent',
-              color: active ? 'var(--seal-deep, #14515C)' : 'var(--ink-3, #7C7365)',
+              color: active ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #7C7365)',
               cursor: 'pointer',
               transition: `border-color ${ink.ms}ms ${ink.easing}, background ${ink.ms}ms ${ink.easing}`,
             }}
@@ -265,7 +265,7 @@ export default function ReceivingNext() {
             >
               Receiving
             </h1>
-            <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)', margin: '4px 0 0' }}>
+            <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #7C7365)', margin: '4px 0 0' }}>
               {RENDERING_SENTENCE[rendering]}
             </p>
           </div>

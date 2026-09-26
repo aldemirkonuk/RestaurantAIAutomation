@@ -313,8 +313,8 @@ html .mudavym input[type]::-webkit-datetime-edit-ampm-field {
 
 /* The separators between the fields sit back, the way a rule sits back. */
 html .mudavym input[type]::-webkit-datetime-edit-text {
-  color: var(--ink-3) !important;
-  -webkit-text-fill-color: var(--ink-3) !important;
+  color: var(--ink-4) !important;
+  -webkit-text-fill-color: var(--ink-4) !important;
 }
 
 /* NOTHING for `::-webkit-calendar-picker-indicator`, deliberately. The obvious

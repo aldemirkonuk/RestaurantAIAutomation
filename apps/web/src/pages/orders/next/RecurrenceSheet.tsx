@@ -228,7 +228,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
       closeLabel="Put it down"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>
             {/* The one sentence an operator must not have to discover. */}
             Every occurrence is raised for approval. Nothing is ever bought without a hold.
           </span>
@@ -250,7 +250,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
               borderRadius: 3,
               border: '1px solid var(--seal, #1A5E6B)',
               background: canSave ? 'var(--seal, #1A5E6B)' : 'transparent',
-              color: canSave ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-3, #7C7365)',
+              color: canSave ? 'var(--paper-0, #FBF8F1)' : 'var(--ink-4, #7C7365)',
               cursor: canSave ? 'pointer' : 'not-allowed',
             }}
           >
@@ -323,7 +323,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
                 </button>
               )}
             </div>
-            <p className="mt-2" style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+            <p className="mt-2" style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>
               {/* Why these three are plain buttons and the approval is a hold. */}
               Pausing and ending are recorded with your name and the time. They are not
               sealed: neither spends money — each occurrence is still approved on its own.
@@ -334,7 +334,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
         {!blockedReason && (
           <>
             <fieldset className="flex flex-col gap-2" style={{ border: 0, padding: 0, margin: 0 }}>
-              <legend style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>How often</legend>
+              <legend style={{ color: 'var(--ink-4, #7C7365)', fontSize: 11.5 }}>How often</legend>
               <div className="flex flex-wrap gap-2">
                 {RECURRENCE_FREQUENCIES.map((f) => (
                   <button
@@ -360,7 +360,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
 
             {kind === 'weekday' && (
               <fieldset className="flex flex-col gap-2" style={{ border: 0, padding: 0, margin: 0 }}>
-                <legend style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>
+                <legend style={{ color: 'var(--ink-4, #7C7365)', fontSize: 11.5 }}>
                   On which day (optional — leave it and the rule runs from the start date)
                 </legend>
                 <div className="flex flex-wrap gap-2">
@@ -382,7 +382,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
 
             {kind === 'monthday' && (
               <label className="flex flex-col gap-1">
-                <span style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>
+                <span style={{ color: 'var(--ink-4, #7C7365)', fontSize: 11.5 }}>
                   On which day of the month (1 to 28, so that every month has one)
                 </span>
                 <input
@@ -396,7 +396,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
                   data-testid="recurrence-monthday"
                   style={field}
                 />
-                <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                <span style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
                   {/* Why the ceiling is 28 and not 31, stated where it is imposed. */}
                   29, 30 and 31 are refused rather than clamped: a date that silently
                   moves twice a year is not a rule anybody agreed to.
@@ -405,7 +405,7 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
             )}
 
             <label className="flex flex-col gap-1">
-              <span style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>
+              <span style={{ color: 'var(--ink-4, #7C7365)', fontSize: 11.5 }}>
                 Starting from
               </span>
               <input
@@ -422,14 +422,14 @@ export function RecurrenceSheet({ open, onClose, row }: RecurrenceSheetProps) {
                 data-testid="recurrence-projection"
                 style={{ color: 'var(--ink-2, #4A4237)', lineHeight: 1.55 }}
               >
-                <p style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>
+                <p style={{ color: 'var(--ink-4, #7C7365)', fontSize: 11.5 }}>
                   What this will ask for
                 </p>
                 <p>
                   {projection.map((d) => shortDate(d)).filter(Boolean).join(' · ')}
                   {' …'}
                 </p>
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>
                   {frequency === 'monthly' || frequency === 'quarterly'
                     ? anchorDay === null
                       ? 'Measured from the start date.'

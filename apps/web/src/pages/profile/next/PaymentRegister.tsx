@@ -168,7 +168,7 @@ function Standing({ label, value }: { label: string; value: string }) {
           fontFamily: MONO,
           fontVariantNumeric: 'tabular-nums',
           fontSize: 12,
-          color: unknown ? 'var(--ink-3)' : 'var(--ink-1)',
+          color: unknown ? 'var(--ink-4)' : 'var(--ink-1)',
         }}
       >
         {value}
@@ -194,7 +194,7 @@ function Secret({
       <KeyRound
         size={12}
         aria-hidden
-        style={{ marginTop: 2, color: present ? 'var(--seal-deep)' : 'var(--ink-3)', flex: 'none' }}
+        style={{ marginTop: 2, color: present ? 'var(--seal-deep)' : 'var(--ink-4)', flex: 'none' }}
       />
       <div>
         <span
@@ -544,7 +544,7 @@ export function PaymentRegister({ data }: { data: ProfileNextData }) {
                   fontSize: 11,
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
-                  color: 'var(--ink-3)',
+                  color: 'var(--ink-4)',
                 }}
               >
                 Stripe card fields

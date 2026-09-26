@@ -463,7 +463,7 @@ export function HoldToApprove({
           marginTop: 4,
           fontSize: 11.5,
           textAlign: 'center',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
         }}
       >
         {releaseNote ?? (armed ? copy.armedHint : '')}

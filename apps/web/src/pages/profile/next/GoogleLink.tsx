@@ -72,7 +72,7 @@ export function GoogleLink({
   }, [clientId, onLinked, onError]);
 
   const word = (t: string) => (
-    <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3)' }}>{t}</span>
+    <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4)' }}>{t}</span>
   );
 
   if (phase === 'unconfigured') {

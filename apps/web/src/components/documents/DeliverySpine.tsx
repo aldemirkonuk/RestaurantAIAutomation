@@ -48,7 +48,7 @@ function Ladder({ state }: { state: string }) {
         const here = reached === i
         return (
           <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            {i > 0 && <span style={{ color: 'var(--ink-3, #ABA294)', fontSize: 9 }}>▸</span>}
+            {i > 0 && <span style={{ color: 'var(--ink-4, #ABA294)', fontSize: 9 }}>▸</span>}
             <span
               style={{
                 fontFamily: MONO,
@@ -62,7 +62,7 @@ function Ladder({ state }: { state: string }) {
                   ? 'var(--paper-0, #FAF7F1)'
                   : done
                     ? 'var(--ink-2, #4F473C)'
-                    : 'var(--ink-3, #ABA294)',
+                    : 'var(--ink-4, #ABA294)',
               }}
             >
               {s}
@@ -113,7 +113,7 @@ function Card({
       </span>
       <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600 }}>
         {doc.docNumber ?? (
-          <span style={{ color: 'var(--ink-3, #7C7365)', fontWeight: 400 }}>
+          <span style={{ color: 'var(--ink-4, #7C7365)', fontWeight: 400 }}>
             number not read
           </span>
         )}
@@ -123,7 +123,7 @@ function Card({
           display: 'block',
           fontFamily: MONO,
           fontSize: 9,
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
         }}
       >
         {fmtDate(doc.docDate ?? doc.createdAt)} · {doc.status ?? 'status unrecorded'}
@@ -222,7 +222,7 @@ export function DeliverySpine({
                     fontWeight: 600,
                     letterSpacing: '.13em',
                     textTransform: 'uppercase',
-                    color: 'var(--ink-3, #7C7365)',
+                    color: 'var(--ink-4, #7C7365)',
                   }}
                 >
                   One delivery ·{' '}
@@ -304,7 +304,7 @@ export function DeliverySpine({
               </ul>
             )}
             {!open && (
-              <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ margin: '3px 0 0', fontSize: 10.5, color: 'var(--ink-4, #7C7365)' }}>
                 {d.documents
                   .map((doc) => ROLE_LABELS[doc.role] ?? doc.role)
                   .join(' · ') || EM}

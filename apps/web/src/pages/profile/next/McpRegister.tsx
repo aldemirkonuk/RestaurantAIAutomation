@@ -135,7 +135,7 @@ function Dates({ rows }: { rows: [string, string][] }) {
       {rows.map(([term, value]) => (
         <div key={term} style={{ display: 'contents' }}>
           <dt style={{ color: 'var(--ink-2)', fontWeight: 600 }}>{term}</dt>
-          <dd style={{ margin: 0, color: 'var(--ink-3)' }}>{value}</dd>
+          <dd style={{ margin: 0, color: 'var(--ink-4)' }}>{value}</dd>
         </div>
       ))}
     </dl>
@@ -395,7 +395,7 @@ export function McpRegister({ data }: { data: ProfileNextData }) {
                     {p.serverName ?? 'An unnamed server'}
                     {p.serverVersion ? ` ${p.serverVersion}` : ''}
                     {p.protocolVersion ? (
-                      <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-3)' }}>
+                      <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-4)' }}>
                         {'  '}
                         {p.protocolVersion}
                       </span>
@@ -581,7 +581,7 @@ export function McpRegister({ data }: { data: ProfileNextData }) {
       {msg && <StatusLine tone={msg.tone}>{msg.text}</StatusLine>}
 
       {data.mcpState === 'ok' && servers.length > 0 && (
-        <p style={{ margin: '10px 0 0', fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
+        <p style={{ margin: '10px 0 0', fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
           {live === 1 ? 'One server is live' : `${live} servers are live`} in this restaurant;
           revoked rows are kept above.{' '}
           {runtime

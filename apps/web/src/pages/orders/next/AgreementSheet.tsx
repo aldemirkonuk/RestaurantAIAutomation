@@ -92,7 +92,7 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.13em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #7C7365)',
   marginBottom: 4,
 };
 
@@ -113,7 +113,7 @@ function Note({
         fontSize: 11.5,
         lineHeight: 1.45,
         margin: '6px 0 0',
-        color: tone === 'said' ? 'var(--ink-2, #4F473C)' : 'var(--ink-3, #7C7365)',
+        color: tone === 'said' ? 'var(--ink-2, #4F473C)' : 'var(--ink-4, #7C7365)',
         ...(tone === 'said'
           ? {
               borderLeft: '2px solid var(--seal-ring, rgba(26,94,107,.32))',
@@ -362,7 +362,7 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
       closeLabel="Put it down"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>
             {stated
               ? `The register will read this as ${PRICE_UOM_LABEL[stated.priceUom]}.`
               : 'No price unit stated.'}
@@ -749,7 +749,7 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
               fontFamily: SERIF,
               fontSize: 12,
               fontStyle: 'italic',
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #7C7365)',
               margin: '8px 0 0',
             }}
           >

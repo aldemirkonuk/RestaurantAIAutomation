@@ -99,15 +99,15 @@ function BucketCard({
       </div>
       <dl style={{ margin: 0, display: 'grid', gap: 2, fontSize: 11.5, color: 'var(--ink-2, #4F473C)' }}>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: 'var(--ink-3, #7C7365)' }}>Open orders</dt>
+          <dt style={{ color: 'var(--ink-4, #7C7365)' }}>Open orders</dt>
           <dd style={{ margin: 0, fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>{open}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: 'var(--ink-3, #7C7365)' }}>Lead time</dt>
+          <dt style={{ color: 'var(--ink-4, #7C7365)' }}>Lead time</dt>
           <dd style={{ margin: 0 }}>{fmtDays(vm.leadTimeDays)}</dd>
         </div>
         <div className="flex justify-between gap-3">
-          <dt style={{ color: 'var(--ink-3, #7C7365)' }}>Contact</dt>
+          <dt style={{ color: 'var(--ink-4, #7C7365)' }}>Contact</dt>
           <dd style={{ margin: 0 }}>{fmtLastContact(vm.lastContact)}</dd>
         </div>
       </dl>
@@ -179,7 +179,7 @@ export default function ProvidersNext() {
               Providers
             </h1>
           </div>
-          <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+          <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #7C7365)' }}>
             {data.hasData
               ? `${data.cards.length} vendors — the learned detail lives inside each card`
               : 'Reaching the gateway…'}
@@ -225,13 +225,13 @@ export default function ProvidersNext() {
         <UsualCurrencyCoveragePanel knownIds={knownIds} onOpenVendor={openById} />
 
         {data.hasData && data.cards.length === 0 && !data.isError && (
-          <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+          <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #7C7365)' }}>
             No vendors yet — the book is open and empty.
           </p>
         )}
 
         {!data.ordersKnown && data.hasData && data.cards.length > 0 && (
-          <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '0 0 10px' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #7C7365)', margin: '0 0 10px' }}>
             The orders book hasn’t answered yet — open-order counts show {EM} until it does.
           </p>
         )}

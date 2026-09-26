@@ -176,6 +176,13 @@ export default function Privacy() {
                 .
               </li>
               <li>
+                Read the{' '}
+                <Link className="mdv-link" to="/terms">
+                  Terms of Service
+                </Link>{' '}
+                for what using Mudavym means.
+              </li>
+              <li>
                 Questions about this notice:{' '}
                 <a className="mdv-link" href={`mailto:${SUPPORT_EMAIL}`}>
                   {SUPPORT_EMAIL}

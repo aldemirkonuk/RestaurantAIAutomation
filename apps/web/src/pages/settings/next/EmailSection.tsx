@@ -86,7 +86,7 @@ export function EmailSection({ data }: { data: SettingsNextData }) {
           />
 
           <SaveFailure failed={writer.failed} what="Nothing was changed or sent." />
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '12px 0 0' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '12px 0 0' }}>
             The date above is the template row’s own, kept by the database on every write
             (<code>communication_templates_updated_at</code>). It does not say <em>who</em> wrote it — no table behind
             this page does.

@@ -68,8 +68,8 @@ import type {
 const SOURCE_TONE: Record<TermSource, string> = {
   stated: 'var(--seal-deep)',
   vendor_record: 'var(--seal-deep)',
-  inferred: 'var(--ink-3)',
-  unknown: 'var(--ink-3)',
+  inferred: 'var(--ink-4)',
+  unknown: 'var(--ink-4)',
 };
 
 function Cell<T>({ cell, render }: { cell: TermCell<T>; render: (v: T) => React.ReactNode }) {
@@ -80,7 +80,7 @@ function Cell<T>({ cell, render }: { cell: TermCell<T>; render: (v: T) => React.
         style={{
           fontFamily: known ? MONO : SANS,
           fontSize: 12.5,
-          color: known ? 'var(--ink-1)' : 'var(--ink-3)',
+          color: known ? 'var(--ink-1)' : 'var(--ink-4)',
           fontVariantNumeric: 'tabular-nums',
         }}
       >
@@ -148,7 +148,7 @@ function DayStrip({ days }: { days: number[] }) {
               textAlign: 'center',
               borderRadius: 5,
               background: on ? 'var(--seal-tint)' : 'var(--paper-2)',
-              color: on ? 'var(--seal-deep)' : 'var(--ink-3)',
+              color: on ? 'var(--seal-deep)' : 'var(--ink-4)',
               fontWeight: on ? 600 : 400,
               boxShadow: on ? 'inset 0 0 0 1px var(--seal-ring)' : undefined,
             }}
@@ -229,7 +229,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
           fontWeight: 600,
           letterSpacing: '0.11em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3)',
+          color: 'var(--ink-4)',
           marginBottom: 3,
         }}
       >
@@ -309,7 +309,7 @@ function Editor({
                     cursor: 'pointer',
                     border: `1px solid ${on ? 'var(--seal)' : 'var(--paper-2)'}`,
                     background: on ? 'var(--seal-tint)' : 'transparent',
-                    color: on ? 'var(--seal-deep)' : 'var(--ink-3)',
+                    color: on ? 'var(--seal-deep)' : 'var(--ink-4)',
                     fontWeight: on ? 600 : 400,
                   }}
                 >
@@ -389,7 +389,7 @@ function Editor({
         <Action tone="quiet" onClick={onClose}>
           Close
         </Action>
-        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
+        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
           {nothingChanged
             ? 'Nothing has changed, so there is nothing to record.'
             : `Your name and the time are kept with ${word(Object.keys(body).length)} of these.`}
@@ -453,7 +453,7 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
           )}
 
           {reg.zone.isColumnDefault && (
-            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '0 0 6px' }}>
+            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '0 0 6px' }}>
               Weekdays and closing times below are read in <strong>{reg.zone.zone}</strong>,
               which is this restaurant&rsquo;s stored timezone and also that
               column&rsquo;s default value — so it may simply never have been set.
@@ -465,13 +465,13 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
               one: `restaurants.currency` defaulted to USD, so "nobody answered"
               and "this house is American" were the same row (ADR 0117 Q25). */}
           {reg.currency.code === null ? (
-            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '0 0 12px' }}>
+            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '0 0 12px' }}>
               This house has not recorded the money it reports in, so amounts
               below are shown as bare numbers. Set it on the sign-up form or ask
               us to record it — nothing here is in dollars by default any more.
             </p>
           ) : reg.currency.isColumnDefault ? (
-            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '0 0 12px' }}>
+            <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '0 0 12px' }}>
               Money is shown in <strong>{reg.currency.code}</strong>, which was
               also that column&rsquo;s default until 2026-09-05, so on a house
               created before then it may never have been chosen.
@@ -496,7 +496,7 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
                         scope="col"
                         style={{
                           textAlign: 'left', fontFamily: MONO, fontSize: 9.5, fontWeight: 600,
-                          letterSpacing: '0.11em', textTransform: 'uppercase', color: 'var(--ink-3)',
+                          letterSpacing: '0.11em', textTransform: 'uppercase', color: 'var(--ink-4)',
                           padding: '0 10px 8px 0', borderBottom: '1px solid var(--ink-1)', verticalAlign: 'bottom',
                         }}
                       >
@@ -517,7 +517,7 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
                         <div style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1)' }}>
                           {v.providerName}
                         </div>
-                        <div style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+                        <div style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4)', marginTop: 2 }}>
                           {v.ordersInWindow === 0
                             ? 'no orders in the window'
                             : `${v.ordersInWindow} order${v.ordersInWindow === 1 ? '' : 's'} · last ${
@@ -629,7 +629,7 @@ const cellStyle: React.CSSProperties = {
 
 function LegendItem({ tone, label, children }: { tone: string; label: string; children: React.ReactNode }) {
   return (
-    <span style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', maxWidth: 260 }}>
+    <span style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', maxWidth: 260 }}>
       <Micro tone={tone === 'var(--seal-deep)' ? 'seal' : undefined}>{label}</Micro>{' '}
       — {children}
     </span>

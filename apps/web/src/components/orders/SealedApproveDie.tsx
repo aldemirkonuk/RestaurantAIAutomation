@@ -221,7 +221,7 @@ export function SealedApproveDie({
       {running && (
         <p
           role="status"
-          style={{ marginTop: 4, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3, #7C7365)' }}
+          style={{ marginTop: 4, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4, #7C7365)' }}
         >
           Sealing {orderIds.length} {noun}…
         </p>
@@ -251,7 +251,7 @@ export function SealedApproveDie({
       {outcome && outcome.refused === 0 && outcome.approved > 0 && (
         <p
           role="status"
-          style={{ marginTop: 4, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3, #7C7365)' }}
+          style={{ marginTop: 4, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4, #7C7365)' }}
         >
           {outcome.approved} {outcome.approved === 1 ? 'order' : 'orders'} sealed.
         </p>

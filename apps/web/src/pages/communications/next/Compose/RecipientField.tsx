@@ -114,7 +114,7 @@ export function RecipientField({
           fontWeight: 600,
           letterSpacing: '0.14em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
           marginBottom: 4,
         }}
       >
@@ -159,7 +159,7 @@ export function RecipientField({
           not empty — it is unknown, and nothing may be addressed until it can be read.
         </p>
       ) : book === null ? (
-        <p style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
+        <p style={{ fontSize: 12, color: 'var(--ink-4, #7C7365)', margin: 0 }}>
           Reading the vendor book…
         </p>
       ) : (
@@ -180,7 +180,7 @@ export function RecipientField({
             }}
           />
           {book.length === 0 && (
-            <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+            <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '6px 0 0' }}>
               This house has no vendor address on record yet. Add one on /providers, or add a
               contact below — a letter is never sent to an address the book does not hold.
             </p>
@@ -216,7 +216,7 @@ export function RecipientField({
                       {e.email}
                     </span>
                     {e.contactName ? (
-                      <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                      <span style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
                         {' '}
                         · {e.contactName}
                       </span>
@@ -259,7 +259,7 @@ export function RecipientField({
               </p>
               <label
                 htmlFor="cmp-new-provider"
-                style={{ display: 'block', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}
+                style={{ display: 'block', fontSize: 11, color: 'var(--ink-4, #7C7365)' }}
               >
                 Which vendor
               </label>
@@ -287,7 +287,7 @@ export function RecipientField({
               </select>
               <label
                 htmlFor="cmp-new-name"
-                style={{ display: 'block', fontSize: 11, color: 'var(--ink-3, #7C7365)', marginTop: 8 }}
+                style={{ display: 'block', fontSize: 11, color: 'var(--ink-4, #7C7365)', marginTop: 8 }}
               >
                 Contact name
               </label>

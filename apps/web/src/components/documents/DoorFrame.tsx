@@ -116,7 +116,7 @@ export function DoorFrame({
           fontWeight: 600,
           letterSpacing: '.12em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
         }}
       >
         At the door · no prices on this screen
@@ -153,7 +153,7 @@ export function DoorFrame({
                   fontSize: 8,
                   fontWeight: 600,
                   letterSpacing: '.1em',
-                  color: 'var(--ink-3, #7C7365)',
+                  color: 'var(--ink-4, #7C7365)',
                 }}
               >
                 Line {i + 1} of {doc.layer1.lines.length}
@@ -181,7 +181,7 @@ export function DoorFrame({
                     fontFamily: MONO,
                     fontSize: 8,
                     letterSpacing: '.1em',
-                    color: 'var(--ink-3, #7C7365)',
+                    color: 'var(--ink-4, #7C7365)',
                   }}
                 >
                   RECEIVED
@@ -257,7 +257,7 @@ export function DoorFrame({
                       fontWeight: 600,
                       color:
                         adj?.received === 'not_counted'
-                          ? 'var(--ink-3, #7C7365)'
+                          ? 'var(--ink-4, #7C7365)'
                           : 'var(--ink-1, #211C16)',
                     }}
                   >
@@ -301,7 +301,7 @@ export function DoorFrame({
               {error}
             </p>
           )}
-          <p style={{ margin: 0, fontSize: 9.5, color: 'var(--ink-3, #7C7365)' }}>
+          <p style={{ margin: 0, fontSize: 9.5, color: 'var(--ink-4, #7C7365)' }}>
             {touched === 0
               ? 'Nothing counted yet. A line you do not touch is not a zero — it stays “not counted”, and the delivery says so.'
               : `${touched} of ${doc.layer1.lines.length} line(s) counted. The rest stay “not counted”.`}
@@ -318,7 +318,7 @@ export function DoorFrame({
               borderRadius: 8,
               border: 0,
               background: touched === 0 ? 'var(--paper-2, #EAE4D8)' : 'var(--seal, #1A5E6B)',
-              color: touched === 0 ? 'var(--ink-3, #7C7365)' : '#FFFDF8',
+              color: touched === 0 ? 'var(--ink-4, #7C7365)' : '#FFFDF8',
               cursor: busy ? 'wait' : touched === 0 ? 'not-allowed' : 'pointer',
             }}
           >
@@ -326,7 +326,7 @@ export function DoorFrame({
           </button>
         </div>
       ) : (
-        <p style={{ margin: '7px 0 0', fontSize: 9.5, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '7px 0 0', fontSize: 9.5, color: 'var(--ink-4, #7C7365)' }}>
           {anyCounted
             ? 'This count is on the record. Correcting it means recording another one — a count is never edited.'
             : 'Nothing has been counted at this door. Every “received” above says so in words, and none of them is a zero.'}

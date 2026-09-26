@@ -142,6 +142,7 @@ const HelpNext = lazyWithRefresh(() => import('./pages/help/next/HelpNext'))
 const Profile = lazyWithRefresh(() => import('./pages/Profile'))
 const AuthorizeIntegration = lazyWithRefresh(() => import('./pages/AuthorizeIntegration'))
 const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
+const Terms = lazyWithRefresh(() => import('./pages/Terms'))
 // Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
@@ -209,6 +210,11 @@ function App() {
                 {/* Public: linked from the auth screens and the consent page, so
                     it must be readable before you have an account. */}
                 <Route path="/privacy" element={<Privacy />} />
+                {/* Public, same reason as /privacy. G9 (census, 2026-09-25):
+                    required by ADR 0145's round-6r notice and the owner
+                    data-terms acceptance work; placeholder text per OD-132/
+                    OD-124 until a lawyer reviews it (founder Q11, 2026-09-22). */}
+                <Route path="/terms" element={<Terms />} />
                 {/* Public vendor catalogue. No auth: this is what a vendor chose
                     to publish, and our own ingester reads it back as structured data. */}
                 <Route path="/v/:slug" element={<VendorPortal />} />

@@ -143,7 +143,7 @@ export default function RegisterNotice({
         borderColor: variant === 'interrupt' ? 'var(--seal-ring)' : 'var(--paper-2)',
       }}
     >
-      <Icon size={16} aria-hidden style={{ color: 'var(--ink-3)', flex: '0 0 auto', marginTop: 1 }} />
+      <Icon size={16} aria-hidden style={{ color: 'var(--ink-4)', flex: '0 0 auto', marginTop: 1 }} />
       <div style={{ minWidth: 0 }}>
         <p className="cl-said" style={{ color: 'var(--ink-1)' }}>
           <strong style={{ fontWeight: 600 }}>{headline}</strong>

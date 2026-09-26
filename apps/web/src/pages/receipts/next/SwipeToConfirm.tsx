@@ -241,7 +241,7 @@ export function SwipeToConfirm({
           fontSize: 9.5,
           letterSpacing: '0.1em',
           textTransform: 'uppercase',
-          color: done ? 'var(--seal-deep, #14515C)' : 'var(--ink-3, #7C7365)',
+          color: done ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #7C7365)',
           margin: '6px 0 0',
         }}
       >
@@ -251,7 +251,7 @@ export function SwipeToConfirm({
             (receipts-audit.md, BLOCKER 2). */}
         {done ? 'Confirming…' : label}
       </p>
-      <p style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--ink-3, #7C7365)', margin: '2px 0 0', maxWidth: 220, marginLeft: 'auto', marginRight: 'auto' }}>
+      <p style={{ textAlign: 'center', fontSize: 10.5, color: 'var(--ink-4, #7C7365)', margin: '2px 0 0', maxWidth: 220, marginLeft: 'auto', marginRight: 'auto' }}>
         {assertion}
       </p>
       {/* A failed mint is a failure IN WORDS, never a silent unsealed call. */}

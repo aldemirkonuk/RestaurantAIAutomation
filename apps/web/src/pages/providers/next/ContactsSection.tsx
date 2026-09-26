@@ -40,7 +40,7 @@ const LABEL: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.14em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #7C7365)',
   margin: '14px 0 6px',
 };
 
@@ -84,7 +84,7 @@ const TONE: Record<Tone, React.CSSProperties> = {
     boxShadow: 'inset 0 0 0 1px var(--seal-ring, rgba(26,94,107,.32))',
   },
   off: {
-    color: 'var(--ink-3, #7C7365)',
+    color: 'var(--ink-4, #7C7365)',
     background: 'transparent',
     boxShadow: 'inset 0 0 0 1px var(--paper-2, #EAE4D8)',
   },
@@ -238,7 +238,7 @@ export function ContactsList({
 
               {/* The server's own sentence. Never re-worded here. */}
               {c.reachSays && (
-                <p style={{ ...BODY, fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '2px 0 0' }}>
+                <p style={{ ...BODY, fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '2px 0 0' }}>
                   {c.reachSays}
                 </p>
               )}
@@ -261,7 +261,7 @@ export function ContactsList({
                       fontWeight: 600,
                       letterSpacing: '0.11em',
                       textTransform: 'uppercase',
-                      color: 'var(--ink-3, #7C7365)',
+                      color: 'var(--ink-4, #7C7365)',
                     }}
                   >
                     Type of line
@@ -298,7 +298,7 @@ export function ContactsList({
 
       {/* The write is in flight: said, not only dimmed. */}
       {saving && (
-        <p role="status" style={{ ...BODY, fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+        <p role="status" style={{ ...BODY, fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '6px 0 0' }}>
           Saving the type of line{savingName ? ` for ${savingName}` : ''}…
         </p>
       )}

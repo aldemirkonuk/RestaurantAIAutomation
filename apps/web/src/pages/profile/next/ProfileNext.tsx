@@ -298,7 +298,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
               fontSize: 9.5,
               letterSpacing: '0.14em',
               textTransform: 'uppercase',
-              color: 'var(--ink-3)',
+              color: 'var(--ink-4)',
             }}
           >
             {roleLabel(data.role)} · {activeBranch?.name ?? EM}
@@ -430,7 +430,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
             )}
           </Card>
           {exitMsg && <StatusLine tone={exitMsg.tone}>{exitMsg.text}</StatusLine>}
-          <p style={{ margin: '12px 0 0', fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
+          <p style={{ margin: '12px 0 0', fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
             Looking for restaurant settings instead?{' '}
             <Link to="/settings" style={{ color: 'var(--seal-deep)' }}>
               Open Settings
@@ -452,7 +452,7 @@ export default function ProfileNext({ ground }: ProfileNextProps) {
           }}
         >
           <Wordmark size={14} />
-          <p style={{ margin: 0, fontFamily: SANS, fontSize: 11, color: 'var(--ink-3)' }}>
+          <p style={{ margin: 0, fontFamily: SANS, fontSize: 11, color: 'var(--ink-4)' }}>
             Every state on this page is read from the gateway; anything unread says so.
           </p>
         </footer>

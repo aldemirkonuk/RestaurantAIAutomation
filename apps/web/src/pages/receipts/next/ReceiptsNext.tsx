@@ -97,7 +97,7 @@ const TYPE_LABELS: Record<string, string> = {
 function TieOutLine({ doc }: { doc: ProcurementDocument }) {
   if (doc.ties_out === null)
     return (
-      <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+      <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
         tie-out {EM} (no stated total to test against)
       </span>
     );
@@ -202,7 +202,7 @@ function CurrencyBlock({
         background: held.length ? 'var(--paper-2, #EAE4D8)' : undefined,
       }}
     >
-      <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-3, #7C7365)', margin: 0 }}>
+      <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-4, #7C7365)', margin: 0 }}>
         this invoice&rsquo;s money
       </p>
       <p style={{ fontSize: 12.5, color: 'var(--ink-1, #211C16)', margin: '3px 0 0' }}>
@@ -315,7 +315,7 @@ function CurrencyBlock({
           Ask a manager or an owner.
         </p>
       )}
-      <p style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)', margin: '5px 0 0' }}>
+      <p style={{ fontSize: 10.5, color: 'var(--ink-4, #7C7365)', margin: '5px 0 0' }}>
         Nothing is converted: there is no exchange rate in this system. The vendor&rsquo;s own
         figures stay as they are and only the money they are stated in changes. Who changed it,
         when, and what it was before are recorded.
@@ -564,7 +564,7 @@ export function PaperPane({
             fontWeight: 600,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
           }}
         >
           The paper
@@ -620,7 +620,7 @@ function PairedCell({
 }) {
   if (!line.order_line_id)
     return (
-      <span style={{ color: 'var(--ink-3, #7C7365)' }}>
+      <span style={{ color: 'var(--ink-4, #7C7365)' }}>
         not paired
       </span>
     );
@@ -859,7 +859,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
           </span>
           <h2 style={{ fontFamily: SERIF, fontSize: 19, fontWeight: 600, margin: '2px 0 0' }}>
             {shownDoc.total == null ? 'No stated total' : fmtMoney(shownDoc.total, shownDoc.currency)}
-            <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--ink-3, #7C7365)', marginLeft: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--ink-4, #7C7365)', marginLeft: 10 }}>
               <TieOutLine doc={shownTieOut} />
             </span>
           </h2>
@@ -869,7 +869,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             an unqualified ask. `—` when the record holds no score: an
             unrecorded confidence is not a low one, and not a high one either.
           */}
-          <p style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-3, #7C7365)', margin: '3px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #7C7365)', margin: '3px 0 0' }}>
             extraction confidence {fmtConfidence(shownDoc.extraction_confidence)}
             {shownDoc.extraction_confidence == null ? ' (none recorded for this document)' : ''}
           </p>
@@ -930,7 +930,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                 The linked order could not be read — the pairing is unverified, not wrong.
               </p>
             ) : (
-              <p style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)', margin: '4px 0 0' }}>
+              <p style={{ fontSize: 12, color: 'var(--ink-4, #7C7365)', margin: '4px 0 0' }}>
                 Reading the linked order…
               </p>
             )
@@ -988,7 +988,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
               </button>
             </div>
           ) : lines === undefined ? (
-            <p style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>Reading the lines…</p>
+            <p style={{ fontSize: 12, color: 'var(--ink-4, #7C7365)' }}>Reading the lines…</p>
           ) : lines.length === 0 ? (
             <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
               No lines were extracted from this document.
@@ -997,7 +997,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3, #7C7365)' }}>
+                  <tr style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4, #7C7365)' }}>
                     <th style={{ textAlign: 'left', padding: '4px 6px' }}>Line</th>
                     <th style={{ textAlign: 'right', padding: '4px 6px' }}>Qty</th>
                     <th style={{ textAlign: 'right', padding: '4px 6px' }}>Unit</th>
@@ -1029,7 +1029,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                               }}
                             />
                             {changed && (
-                              <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-3, #7C7365)', marginTop: 2 }}>
+                              <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #7C7365)', marginTop: 2 }}>
                                 <span>
                                   extracted {was == null ? EM : f.key === 'qty' ? was : fmtMoney(was, shownDoc.currency)}
                                 </span>{' '}
@@ -1097,7 +1097,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
             </div>
           )}
           {!editable && (
-            <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
+            <p style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)', margin: '6px 0 0' }}>
               This document is verified — the record a dispute leans on. Lines are read-only.
             </p>
           )}
@@ -1131,7 +1131,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                   {pending.to == null ? EM : pending.to}
                 </span>
               </p>
-              <p style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)', margin: '2px 0 8px' }}>
+              <p style={{ fontSize: 10.5, color: 'var(--ink-4, #7C7365)', margin: '2px 0 8px' }}>
                 Nothing has been written yet. The hold takes a one-time seal over this
                 line as it stands and this exact change.
               </p>
@@ -1199,14 +1199,14 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                 padding: '5px 12px',
                 borderRadius: 8,
                 border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                color: doc.order_id ? 'var(--seal-deep, #14515C)' : 'var(--ink-3, #7C7365)',
+                color: doc.order_id ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #7C7365)',
                 cursor: doc.order_id ? 'pointer' : 'not-allowed',
               }}
             >
               {runMatch.isPending ? 'Checking the pairing…' : 'Check line pairing'}
             </button>
             {!doc.order_id && (
-              <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', alignSelf: 'center' }}>
+              <span style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)', alignSelf: 'center' }}>
                 needs a linked order first
               </span>
             )}
@@ -1235,7 +1235,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                       {s.reason}
                       {s.substitution ? ' — a substitution; accept it knowingly' : ''}
                     </span>
-                    <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+                    <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #7C7365)' }}>
                       confidence {fmtConfidence(s.confidence)}
                     </span>
                     <button
@@ -1340,7 +1340,7 @@ export default function ReceiptsNext() {
             </h1>
           </div>
           <span
-            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}
+            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #7C7365)' }}
             title={
               data.queueCapped || data.verifiedCapped
                 ? `The gateway returns at most ${RECEIPTS_SERVER_WINDOWS.QUEUE_ITEMS} documents per list, so a count marked ${GE} is a floor.`
@@ -1404,7 +1404,7 @@ export default function ReceiptsNext() {
         {data.deliveriesWithoutPaper === null && !data.noRestaurant && (
           <p
             className="mb-4"
-            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}
+            style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #7C7365)' }}
           >
             Deliveries counted at the door: unknown — that list has not answered, so this page is
             not claiming the door is caught up.
@@ -1415,7 +1415,7 @@ export default function ReceiptsNext() {
             className="mb-4 rounded-xl px-4 py-3"
             style={{ fontFamily: SANS, border: '1px dashed var(--ink-3, #7C7365)', background: 'var(--paper-1, #F3EFE6)' }}
           >
-            <span style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-3, #7C7365)' }}>
+            <span style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-4, #7C7365)' }}>
               Counted at the door, no paperwork yet
             </span>
             <div style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', marginTop: 4 }}>
@@ -1460,7 +1460,7 @@ export default function ReceiptsNext() {
                     <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
                       {TYPE_LABELS[d.doc_type] ?? d.doc_type} · {d.doc_number || EM}
                     </span>
-                    <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                    <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
                       {fmtDate(d.doc_date)} · {fmtMoney(d.total, d.currency)} ·{' '}
                       {d.ties_out === null ? `tie-out ${EM}` : d.ties_out ? 'ties out' : 'does not tie out'}
                     </span>
@@ -1485,7 +1485,7 @@ export default function ReceiptsNext() {
                     fontWeight: 600,
                     letterSpacing: '0.14em',
                     textTransform: 'uppercase',
-                    color: 'var(--ink-3, #7C7365)',
+                    color: 'var(--ink-4, #7C7365)',
                     border: 'none',
                     padding: '4px 0',
                     cursor: 'pointer',
@@ -1535,7 +1535,7 @@ export default function ReceiptsNext() {
                 <DocView key={selected.id} doc={selected} onVerified={() => setSelectedId(null)} />
               </>
             ) : (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #7C7365)' }}>
                 Choose a document from the queue — its lines, its order, and the confirm ceremony
                 live here.
               </p>

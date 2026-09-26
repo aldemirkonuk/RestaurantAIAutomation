@@ -51,8 +51,8 @@ import { useProviderTerms } from './useProviderTerms';
 const SOURCE_TONE: Record<TermSource, string> = {
   stated: 'var(--seal-deep, #14515C)',
   vendor_record: 'var(--seal-deep, #14515C)',
-  inferred: 'var(--ink-3, #7C7365)',
-  unknown: 'var(--ink-3, #7C7365)',
+  inferred: 'var(--ink-4, #665D50)',
+  unknown: 'var(--ink-4, #665D50)',
 };
 
 function Cell<T>({
@@ -80,7 +80,7 @@ function Cell<T>({
           fontWeight: 600,
           letterSpacing: '0.12em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
         }}
       >
         {label}
@@ -90,7 +90,7 @@ function Cell<T>({
           fontFamily: known ? MONO : SANS,
           fontSize: 12.5,
           marginTop: 2,
-          color: known ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+          color: known ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #7C7365)',
           fontVariantNumeric: 'tabular-nums',
         }}
       >
@@ -116,7 +116,7 @@ function Cell<T>({
       {/* An unknown says WHY in words on the row itself — a tooltip is not an
           answer for someone who cannot hover. */}
       {cell.source === 'unknown' && why && (
-        <span style={{ display: 'block', fontFamily: SANS, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-3, #7C7365)', marginTop: 2 }}>
+        <span style={{ display: 'block', fontFamily: SANS, fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4, #7C7365)', marginTop: 2 }}>
           {why}
         </span>
       )}
@@ -252,7 +252,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
           fontWeight: 600,
           letterSpacing: '0.11em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
           marginBottom: 3,
         }}
       >
@@ -317,7 +317,7 @@ function Editor({
                     cursor: 'pointer',
                     border: `1px solid ${on ? 'var(--seal, #1A5E6B)' : 'var(--paper-2, #EAE4D8)'}`,
                     background: on ? 'var(--seal-tint, rgba(26,94,107,.10))' : 'transparent',
-                    color: on ? 'var(--seal-deep, #14515C)' : 'var(--ink-3, #7C7365)',
+                    color: on ? 'var(--seal-deep, #14515C)' : 'var(--ink-4, #7C7365)',
                     fontWeight: on ? 600 : 400,
                   }}
                 >
@@ -397,7 +397,7 @@ function Editor({
         <Btn quiet onClick={onClose}>
           Close
         </Btn>
-        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+        <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>
           {nothingChanged
             ? 'Nothing has changed, so there is nothing to record.'
             : 'Your name and the time are filed with this, on the provider row.'}
@@ -449,7 +449,7 @@ export function TermsSection({ providerId, providerName }: { providerId: string;
           fontWeight: 600,
           letterSpacing: '0.14em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
           margin: '14px 0 4px',
         }}
       >
@@ -541,7 +541,7 @@ export function TermsSection({ providerId, providerName }: { providerId: string;
             <Cell label="Payment" cell={row.paymentTerms} render={(t) => t} />
           </div>
 
-          <p style={{ fontFamily: SANS, fontSize: 11, lineHeight: 1.5, color: 'var(--ink-3, #7C7365)', margin: '8px 0 0' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11, lineHeight: 1.5, color: 'var(--ink-4, #7C7365)', margin: '8px 0 0' }}>
             {row.statedBy || row.statedAt
               ? `Last written down by ${row.statedBy?.name ?? 'someone whose name is not on the row'} ${fmtWhen(row.statedAt)}.`
               : 'Nobody has written these down for this house yet.'}{' '}
