@@ -846,3 +846,35 @@ the two half-open answers here: neither is a bare founder pick a lane can build
 directly, and neither changes an existing Resolved row. Everything else in this
 round either matches the build already (47, most of 46) or names a small, concrete
 gap for its own lane (44 fork 5, 45, 48).
+
+## 16. Founder answers, round 8 (2026-09-26, deletion manifest)
+
+Copied **verbatim** from project memory `founder-answers-2026-09-25-web-rebuild.md`,
+lines 79-83 (its "Round 8" heading), as that file stood 2026-09-26 (its mtime,
+unchanged since §15). Quoted words inside are his; the surrounding text is the
+recording session's note. These four answer the Wave 6 deletion-manifest prep
+(`scratchpad/deletion-manifest-draft.md`, G0.3 and G8) rather than a Wave-numbered
+lane's own fork.
+
+**Round 8 (2026-09-26, deletion manifest):**
+51. Three legacy-only features are BUILT into the new pages before cutover: vendor branch-locations edit, held low-stock queue on notifications, team coverage-template delete + hand-entered sales.
+52. Legacy vendor world map is DELETED at cutover; the new map comes later as "a more futuristic globe draw, and tab" (its own tab on the vendors page). FUTURES entry.
+53. Promotions and vendor-prices go live in code at cutover (flags-to-code PR, every house incl. new ones).
+54. Promo-expiring alert: add `alerted_at` column to provider_promotions (additive migration) and fix `_check_expiring_promos` (PR #485 lane).
+
+### 16.1 Where each answer lands
+
+Verified here against each PR's own head, fetched and read 2026-09-26 (`gh pr view
+--json state,headRefOid`; `git ls-tree`/`git grep` on each fetched head); a lane's
+own report is not re-verified beyond what is cited.
+
+| # | Answer (short) | Lands in | State, verified |
+|---|---|---|---|
+| 51 | Build, not waive, the three capability gaps the deletion manifest found (G0.3): vendor branch-locations CRUD, the held low-stock queue, team coverage-template delete + hand-entered sales | Held low-stock: a **new W7 lane PR, not yet opened**. Vendor locations: **#484** (`/vendors`, lane W4-vendors-filters). Team ops: **#436** (seal/grants, lane W3-receiving's sibling) | #484 OPEN `84901e5231`: no `Location` file or string under `apps/web/src/pages/vendors` on this head (`git ls-tree -r pr-484-check -- apps/web/src/pages/vendors`) — gap confirmed, owed. #436 OPEN `068434fd39`: the gateway endpoints exist (`team.controller.ts:293,298,307` coverage-templates, `:326,335` sales/sales-batch) but `team/next/` has no caller of them (`git grep coverage-templates\|sales/batch` on `pr-436-check -- apps/web/src/pages/team/next` = no hits) — gap confirmed, owed, matches `deletion-manifest-draft.md:46`. Held low-stock has no PR at all yet (manifest's own line 45: "`NotificationsNext` has no reader") |
+| 52 | The legacy vendor world map (G8, `distributors/command/*`) is deleted at cutover, not ported or held; its replacement is a later, separate build — his words, "a more futuristic globe draw, and tab" (its own tab on the vendors page) | [FUTURES.md](../FUTURES.md) §9 "Vendors map — a more futuristic globe draw" (new entry, this PR); resolves `deletion-manifest-draft.md`'s G8 fork in favor of option (A) | Recorded only — no lane builds the new map now. Confirms the manifest's own recommendation (`deletion-manifest-draft.md:667`, "Recommendation: A") with his word; G8's 8 files / 2,346 lines (`:669`) proceed to the cutover PR's deletion set |
+| 53 | Promotions (#474) and vendor-prices (#473/#482) both go live in code at cutover, for every house including new ones, via one flags-to-code PR | **The flags-to-code PR — not yet opened** (`deletion-manifest-draft.md:41`: "No such PR exists" for receiving; the same gap applies to promotions and vendor-prices) | Not built. Preconditions per the manifest: promotions waits on #470 ("Who is writing") being live; vendor-prices waits on #482 (provenance) merging, per his earlier item 30 ("provenance … must land before the flag goes live for any house") |
+| 54 | Fix the promo-expiring alert: add an additive `alerted_at` column to `provider_promotions` and fix `_check_expiring_promos` to use it | **#485** (`fix/conversation-agent-promotions-columns`) | OPEN `8fb484476b`. #485's own CLAIMS row (`CLAIMS.jsonl:544`, `PROVIDER-PROMOTIONS-AGENT-REAL-COLUMNS`) already names this gap: "Not covered: `_check_expiring_promos` still reads `status` and `alerted_at` (strict xfail in that file) pending a decision on the alert ledger" — `_check_expiring_promos` at `provider_conversation_agent.py:2041`, the xfail at `test_conversation_agent_promotions_columns.py:335,342`. No `alerted_at` column exists yet: `provider_promotions`' only definition is the 2026-08-05 baseline (`20260805000000_baseline_from_production.sql:4808-4826`), which has none |
+
+None of 51-54 resolves an existing register row or closes a CLAIMS entry; each names
+work still owed to a lane (three to an open PR, one to a PR not yet opened) — matching
+CLAUDE.md §5b, nothing here is written as done until its lane's own citation says so.

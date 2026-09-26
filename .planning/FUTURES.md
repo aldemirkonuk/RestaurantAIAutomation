@@ -308,6 +308,30 @@ signal already at the sell-through/POS depth this repo has for wine
 range" (the same `price-index` /`commodity` machinery Wave 4 built for
 produce and spirits, not yet wine-scoped). Candidate register row: OD-164.
 
+### Vendors map — a more futuristic globe draw (2026-09-26)
+
+Said in the 2026-09-26 web-rebuild deletion-manifest session (round 8, item
+52; project memory `founder-answers-2026-09-25-web-rebuild.md` item 52), his
+words recorded verbatim: *"a more futuristic globe draw, and tab"* — its own
+tab on the `/vendors` page. This decides the ADR 0149 cutover manifest's G8
+fork (`scratchpad/deletion-manifest-draft.md:664-684`, option (A), his word):
+the legacy vendor world map — `apps/web/src/pages/distributors/command/*`
+(`DistributorMap.tsx`, `DistributorMapPage.tsx`, `DistributorDrawer.tsx`,
+`mapCamera.ts`, `bits.tsx`, `customProvider.ts`, `useDistributorsPage.ts`,
+`RangeSlider.tsx`; 8 files, 2,346 lines, plus 5 test/story files) — is
+**deleted at cutover**, not ported into `/vendors` and not held as dead
+reference. Git history keeps it recoverable (ADR 0032's tombstone pattern),
+per the manifest's own recommendation.
+
+The replacement is a separate, later build, not this cutover: a new map,
+drawn in Mudavym's own style, as its own tab alongside `/vendors`' existing
+"Supplies my menu" → "All my vendors" → "Find new vendors" scopes (#484,
+ADR 0221). ADR 0221 already names the shared/canonical vendor layer this map
+is meant to surface as a "later" fork, gathered "when we have enough data"
+(his 2026-09-21 words, carried in ADR 0221) — this entry is that later map's
+placeholder, not its spec. Nothing about its shape (globe library, data
+source, per-house vs shared markers) is designed here.
+
 ---
 
 ## 10. Non-goals (for now)
