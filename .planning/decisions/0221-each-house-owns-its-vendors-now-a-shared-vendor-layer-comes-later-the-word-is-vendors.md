@@ -119,6 +119,16 @@ the scope bar (`apps/web/src/pages/providers/next/vendor-scope.ts`, `VendorScope
 The "Find new vendors" rung is the curated `vendor_catalogue` search. It is **not** the
 "later" shared layer this ADR defers.
 
+**[2026-09-26, founder, round 6, item 39 — built on #481 (`8cc557974`), carried by #484.]**
+Shortcut, asked *"Command palette: the 'go to vendors' shortcut is still 'g p'
+(providers). Change it?"* — **chosen** *"'g v', keep 'g p' working (Recommended)"*;
+**rejected** *"Keep 'g p' only"*. The word, asked *"'distributor' is also the legal term
+for the licensed wholesaler in the three-tier system (e.g. /connections: 'Licensed
+distributors'). Rename those to 'vendor' too?"* — **chosen** *"Keep the legal term
+(Recommended)"* ('distributor' stays only where it names the licensed tier);
+**rejected** *"Vendor everywhere"*. Texts as quoted in `.planning/06-pages/providers.md`'s
+W4 bracket.
+
 **[2026-09-26, founder, round 7, item 48 — built on #484 by lane W5-vendors.]** As
 recorded in project memory `founder-answers-2026-09-25-web-rebuild.md` item 48, his
 answer: *"/vendors 'Supplies my menu' = exact vintage; a NAME-ONLY search (menu filter
@@ -189,4 +199,4 @@ records lane's (L1).
 
 | Date | Reviewer | Outcome |
 |---|---|---|
-| 2026-09-26 | Lane W5-vendors (Opus 5.5), PR #484 | Items 36 and 48 recorded as built; item 49 recorded as future. Code facts are cited at #484's head. The verbatim option texts of round 7 were not available; this is stated above. |
+| 2026-09-26 | Lane W5-vendors (Opus 5.5), PR #484 | Items 36, 39 and 48 recorded as built; item 49 recorded as future. Code facts are cited at #484's head. The verbatim option texts of round 7 were not available; this is stated above. |
