@@ -10,6 +10,8 @@ type Agent = { agent_name: string; version: string | null; status: string; healt
 type Agents = { agents: Agent[]; observedAt: string; scope: 'platform' };
 type Provider = { id: string; name: string; desc: string; status: string; configured: boolean };
 type Readiness = { status: string; checkedAt: string; commit: string; bootedAt: string; checks: { database: string } };
+/** `GET /communications/webhooks/gmail/status` — GmailWatchService.isReady(): the gateway obtained a Gmail access token at boot. */
+type MailWatch = { configured: boolean };
 type RemoteCheck = 'settled' | 'running' | 'absent' | 'unreadable' | 'unchanged' | 'expired' | null;
 type Receipt = { id: string; agent_name: string; action: string; status: string; requested_at: string; completed_at: string | null; remote: RemoteCheck };
 type AgentDetail = {
@@ -52,6 +54,10 @@ export default function AdminDesk() {
   const [providers, setProviders] = useState<Read<{ providers: Provider[] }>>(unread);
   const [ready, setReady] = useState<Read<Readiness>>(unread);
   const [receipts, setReceipts] = useState<Read<{ operations: Receipt[] }>>(unread);
+  // ADR 0083, amended 2026-09-25: the Gmail inbound-watch line left the house
+  // /communications page for this desk. It is one deployment-wide credential,
+  // not a fact about any one house, so it belongs beside the other services.
+  const [mailWatch, setMailWatch] = useState<Read<MailWatch>>(unread);
   const [selection, setSelection] = useState<{ agent: Agent; action: 'restart' | 'stop' } | null>(null);
   const [confirmation, setConfirmation] = useState('');
   const [sending, setSending] = useState(false);
@@ -92,17 +98,19 @@ export default function AdminDesk() {
       if (user?.role !== 'owner' && !knownOperator) {
         setInitialLoading(false); setRefreshing(false); return;
       }
-      const [health, configuration, readiness, history] = await Promise.all([
+      const [health, configuration, readiness, history, watch] = await Promise.all([
         read<Agents>('/health/agents'), read<{ providers: Provider[] }>('/health/providers'),
         // A 503 carries a measured not-ready result; keep that evidence visible.
         apiClient.get<Readiness>('/health/ready', { signal, validateStatus: status => status === 200 || status === 503 })
           .then(response => ({ value: response.data, error: null }), error => ({ value: null, error: getErrorMessage(error) })),
         knownOperator ? read<{ operations: Receipt[] }>('/health/agent-operations') : Promise.resolve({ value: null, error: null }),
+        read<MailWatch>('/communications/webhooks/gmail/status'),
       ]);
       if (signal.aborted) return;
       setAgents(previous => settle(previous, health));
       setProviders(previous => settle(previous, configuration));
       setReady(previous => settle(previous, readiness));
+      setMailWatch(previous => settle(previous, watch));
       if (knownOperator) setReceipts(previous => settle(previous, history));
       setInitialLoading(false); setRefreshing(false);
     })();
@@ -195,9 +203,13 @@ export default function AdminDesk() {
       <section aria-labelledby="desk-services"><div className="admin-desk__section-head"><h2 id="desk-services">Behind the desk</h2><span>OBSERVATION & CONFIGURATION</span></div>
         <div className="admin-desk__register"><article className="admin-desk__row"><div><h3>Database</h3><p>A bounded read from the gateway to the database.</p></div><span>{initialLoading ? 'Reading…' : ready.value?.checks?.database ?? 'Unavailable'}</span></article>
           {!initialLoading && ready.error && !ready.value && <p role="alert">The database reading could not be fetched. {ready.error}</p>}
+          <article className="admin-desk__row" data-testid="desk-mail-watch"><div><h3>Gmail inbound watch</h3><p>The deployment mailbox's push subscription. Vendor replies to that mailbox reach Mudavym through it, for every house.</p></div>
+            <span>{mailWatch.value ? (mailWatch.value.configured ? 'Configured' : 'Not configured') : initialLoading ? 'Reading…' : mailWatch.error ? 'Unavailable' : 'No reading yet'}</span></article>
+          {!initialLoading && mailWatch.error && !mailWatch.value && <p role="alert">The Gmail watch status could not be read. {mailWatch.error}</p>}
           {initialLoading ? <p>Reading provider configuration…</p> : providers.error && !providers.value ? <p role="alert">Provider configuration is unavailable. {providers.error}</p> : providers.value?.providers.filter(provider => provider.id !== 'supabase').map(provider => <article key={provider.id} className="admin-desk__row"><div><h3>{provider.name}</h3><p>{provider.desc}</p></div><span>{provider.status}</span></article>)}
         </div><p className="admin-desk__caption">A configured key is not a successful model call. This reading does not spend model credits.</p>
         {providers.error && providers.value && <p className="admin-desk__caption admin-desk__stale">Provider re-read failed, showing the last reading.</p>}
+        {mailWatch.value && <p className="admin-desk__caption">Gmail watch read {stamp(mailWatch.asOf)}. Configured means the gateway holds working Gmail credentials; it does not prove a reply has arrived.{mailWatch.error && <span className="admin-desk__stale"> · Gmail watch re-read failed, showing the last reading</span>}</p>}
         {ready.value && <p className="admin-desk__caption">Gateway {ready.value.commit === 'unknown' ? 'revision not recorded' : ready.value.commit.slice(0, 12)} · started {stamp(ready.value.bootedAt)} · database read {stamp(ready.value.checkedAt)}{ready.error && <span className="admin-desk__stale"> · re-read failed, showing the last reading</span>}</p>}
       </section>
       {operator && <section aria-labelledby="desk-receipts"><div className="admin-desk__section-head"><h2 id="desk-receipts">Operation receipts</h2><span>LATEST 25 · PLATFORM</span></div>

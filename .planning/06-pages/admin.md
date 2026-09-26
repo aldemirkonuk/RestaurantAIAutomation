@@ -487,3 +487,17 @@ or process restart, not past one, and the gateway's operate-call timeout stays a
 read "unknown" on a bad day; raising it further remains a smaller, separately-decidable
 follow-up, not reopened by this ruling. Whether the legacy `/admin` and `/admin/health`
 pages may degrade on merge while the flag is off is answered above (no — reverted).
+
+## The Gmail inbound watch moved here — 2026-09-25 (ADR 0083 amendment)
+
+`/communications` stopped printing "Gmail inbound watch: NOT configured" to every
+house (census F1, founder: "amend ADR 0083", option a). The same reading —
+`GET /communications/webhooks/gmail/status`, i.e. `GmailWatchService.isReady()`,
+true once the gateway obtained a Gmail access token at boot — is now a row under
+"Behind the desk" (`data-testid="desk-mail-watch"`): Configured / Not configured /
+Unavailable with the error in words, the last reading kept and marked stale on a
+failed re-read, and a caption that "configured" does not prove a reply arrived.
+Read on the same 30-second cycle as the rest of the desk, for owners and platform
+operators only. The gateway route itself is unchanged: it answers any signed-in
+user (class-level `JwtAuthGuard` only, `communications.controller.ts:78,1390`).
+Nightly manifest: two admin `failed_read` sentences added.

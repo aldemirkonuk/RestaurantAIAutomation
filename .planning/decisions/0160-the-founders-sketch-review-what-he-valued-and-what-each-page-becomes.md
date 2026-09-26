@@ -543,6 +543,13 @@ if the sections stay on `/promotions`).]**
 records his 2026-09-18 `AskUserQuestion` answer (move to `/communications`) and its
 2026-09-19 build (`WhoIsWriting.tsx` + `SenderActs.tsx`, gated on
 `mudavym_design_communications`).]**
+**[COMMITTED 2026-09-25, branch `fix/comms-house-sources`: the 2026-09-19 build,
+byte-identical to its only copy (`origin/wip/2026-09-19/others/reverent-lamarr-4a8be2`
+`5b575e403`, which matches the live `reverent-lamarr-4a8be2` worktree file for file),
+lands on `/communications` with the ADR 0083 amendment. The flag caveat is moot:
+`communications` is in `LIVE_PAGES` (`apps/web/src/lib/mudavym/useMudavymDesign.ts`),
+so every house renders the section. The `/promotions` cut (`wt-pg-promos`) is still
+separate and must merge after this.]**
 
 **Owed:** decide and draw how a bundle is graded and shown (his open question, *"If
 bundles, well, how would you react? How should we react? Maybe add another part for

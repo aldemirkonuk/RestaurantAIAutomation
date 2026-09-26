@@ -128,8 +128,7 @@
       ],
       "failed_read": [
         "The conversation book could not be refreshed",
-        "The conversation book could not be reached",
-        "Saved schedules could not be loaded"
+        "The conversation book could not be reached"
       ]
     },
     {
@@ -453,7 +452,9 @@
         "This agent's counters could not be read",
         "re-read failed, showing the last reading",
         "The final receipt could not be saved",
-        "no record of this request any more"
+        "no record of this request any more",
+        "The Gmail watch status could not be read",
+        "Gmail watch re-read failed, showing the last reading"
       ]
     },
     {

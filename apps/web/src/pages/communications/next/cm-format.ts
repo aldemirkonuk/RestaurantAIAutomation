@@ -31,15 +31,6 @@ export function fmtWhen(iso: string | null | undefined): string {
   return sameDay ? time.format(d) : day.format(d);
 }
 
-/** Human line for a schedule row: "Weekly · Mondays 09:00" style, EM-honest. */
-export function fmtCadence(frequency: string, dayOfWeek?: number | null, timeOfDay?: string | null): string {
-  const days = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
-  const parts = [frequency.charAt(0).toUpperCase() + frequency.slice(1)];
-  if (typeof dayOfWeek === 'number' && days[dayOfWeek]) parts.push(days[dayOfWeek]);
-  if (timeOfDay) parts.push(timeOfDay.slice(0, 5));
-  return parts.join(' · ');
-}
-
 /**
  * The outbound lifecycle, collapsed to what a manager needs to know.
  * APPROVED is PRE-send — approval authorises dispatch, it is not dispatch

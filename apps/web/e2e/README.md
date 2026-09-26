@@ -102,7 +102,7 @@ the pages reported in words:
 
 | Page | What the page said | Measured cause |
 |---|---|---|
-| `/communications` | "Saved schedules could not be loaded" | `GET /reports/schedules` → 500: `public.scheduled_reports` does not exist in production. First seen 2026-09-11, still live. |
+| `/communications` | "Saved schedules could not be loaded" | `GET /reports/schedules` → 500: `public.scheduled_reports` does not exist in production. First seen 2026-09-11. [2026-09-25: the Mudavym page no longer reads or renders the schedules (ADR 0083 amendment), so the walk cannot see this any more. The missing table stays in front of CI through `scripts/check_queried_tables_exist.py` KNOWN_MISSING and the v3.0-TECH-DEBT entry "Scheduled reports is a dead feature".] |
 | `/profile` | "Your own agreement could not be read" | `GET /communications/text-senders` returns `myConsent.reason` "invalid input syntax for type uuid: \"undefined\"". `text-senders.controller.ts` reads `user.id`, but the JWT user carries `userId`. |
 
 ## 4. The files
