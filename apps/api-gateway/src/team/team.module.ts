@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -13,6 +13,7 @@ import { TextSendersModule } from "../communications/text/text-senders.module";
 import { AreaRoutingModule } from "../areas/area-routing.module";
 import { AwayHoldService } from "./away-hold.service";
 import { AwayReleaseService } from "./away-release.service";
+import { WebsocketModule } from "../websocket/websocket.module";
 import { TeamController } from "./team.controller";
 import { TeamService } from "./team.service";
 import { NotesService } from "./notes.service";
@@ -28,6 +29,7 @@ import { PerformanceService } from "./performance.service";
     CommunicationsModule,
     TextSendersModule,
     AreaRoutingModule,
+    forwardRef(() => WebsocketModule),
   ],
   controllers: [TeamController],
   providers: [

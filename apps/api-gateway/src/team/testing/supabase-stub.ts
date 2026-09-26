@@ -101,6 +101,10 @@ class Builder implements PromiseLike<any> {
   private orderBy: { column: string; ascending: boolean } | null = null;
   private limitTo: number | null = null;
   private recorded: RecordedOp | null = null;
+  private upsertOpts: {
+    onConflict?: string;
+    ignoreDuplicates?: boolean;
+  } | null = null;
 
   constructor(
     private readonly db: StubDb,
@@ -147,9 +151,13 @@ class Builder implements PromiseLike<any> {
     this.payload = payload;
     return this;
   }
-  upsert(payload: any, _opts?: any) {
+  upsert(
+    payload: any,
+    opts?: { onConflict?: string; ignoreDuplicates?: boolean },
+  ) {
     this.op = "upsert";
     this.payload = payload;
+    this.upsertOpts = opts ?? null;
     return this;
   }
   delete() {
@@ -257,6 +265,39 @@ class Builder implements PromiseLike<any> {
           message: `column ${this.table}.${unknown} does not exist`,
         },
       };
+    }
+
+    if (this.op === "upsert" && this.upsertOpts?.onConflict) {
+      // PostgREST's `on_conflict`: a row that matches an existing one on the
+      // named columns is updated in place, or left alone entirely when
+      // `ignoreDuplicates` is set. Without this the stub appended a second row,
+      // so no test could tell an upsert that overwrites from one that does not
+      // (ADR 0164: the organisation role must not be overwritten by a grant).
+      const keys = this.upsertOpts.onConflict.split(",").map((k) => k.trim());
+      const incoming: Row[] = Array.isArray(this.payload)
+        ? this.payload
+        : [this.payload];
+      const written: Row[] = [];
+      for (const r of incoming) {
+        const hit = store.find((existing) =>
+          keys.every((k) => existing[k] === r[k]),
+        );
+        if (hit) {
+          if (!this.upsertOpts.ignoreDuplicates) {
+            Object.assign(hit, r);
+            written.push(hit);
+          }
+          continue;
+        }
+        const row = {
+          id: `stub-${store.length + 1}`,
+          created_at: new Date().toISOString(),
+          ...r,
+        };
+        store.push(row);
+        written.push(row);
+      }
+      return { data: written, error: null };
     }
 
     if (this.op === "insert" || this.op === "upsert") {
