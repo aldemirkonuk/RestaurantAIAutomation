@@ -109,5 +109,7 @@ All in `apps/api-gateway/src/ask-ai/bound-ask.controller.ts`, guarded
 - **Feedback labels** (`POST /ask/folios/:id/feedback`) have no control on the page.
 - **Not-built question classes** (forecast, landed cost, sales revenue, lot expiry) are not
   listed on the shelf; asking one returns its own "Not built yet" or refusal folio.
+- ADR 0145 R5 / build task 4 (two fixture tests per reading) was the nightly manifest's
+  hold on `/ask`; it was not re-verified when the page enrolled (ADR 0145, 2026-09-25).
 - Verified by vitest and jest only; no browser render against a live gateway (the launch
   gate is off everywhere).
