@@ -26,7 +26,7 @@
 -- database rather than trusted to the service's own read-then-write.
 --
 -- Additive and idempotent: the CHECK widen is read-and-append (never a
--- hand-typed list — the same shape 20260925191200 used for the seal kind),
+-- hand-typed list — the same shape 20260926150200 used for the seal kind),
 -- and the index is CREATE ... IF NOT EXISTS. No row is written, moved or
 -- deleted; no RLS change (procurement_credits' existing policies are
 -- untouched).
@@ -146,7 +146,7 @@ BEGIN
   -- procurement_credits.order_id carries a real FK to procurement_orders (ON
   -- DELETE SET NULL) — a synthetic uuid would 23503 here, so the probe needs
   -- a real order row, which needs a real inventory row and a real provider
-  -- (the same three-row requirement 20260925191100's own self-test names;
+  -- (the same three-row requirement 20260926150100's own self-test names;
   -- skipped, never a hard failure, on a database that starts empty — the
   -- PGlite full-corpus build, never a real deployment target).
   SELECT id INTO probe_house FROM public.restaurants LIMIT 1;

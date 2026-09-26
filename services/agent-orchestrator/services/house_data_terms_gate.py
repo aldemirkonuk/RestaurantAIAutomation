@@ -9,7 +9,7 @@ house has accepted data terms that NAME the host it goes to (ADR 0224, the
 narrowed `public` rule; ADR 0207 round 4 for the acceptance itself).
 
 How "accepted" is read: the house's latest row in
-`house_data_terms_acceptances` (migration 20260925191200) carries the exact
+`house_data_terms_acceptances` (migration 20260926150200) carries the exact
 terms the owner accepted in `terms_snapshot`, subprocessors included. The
 look-up is allowed when that snapshot names the host -- itself or a parent
 domain, the same rule `scripts/check_data_terms_name_every_host.py` uses. Reading

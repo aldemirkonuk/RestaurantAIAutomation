@@ -106,7 +106,7 @@ export const STATEMENTS: readonly DataTermStatement[] = [
       "Jev's own reading of a message — a point on a scale, never the text — is kept as Mudavym's " +
       "internal data.",
     evidence: [
-      "supabase/migrations/20260925191000_an_overdue_order_is_asked_and_vendor_tone_is_ml_data.sql:137",
+      "supabase/migrations/20260926150000_an_overdue_order_is_asked_and_vendor_tone_is_ml_data.sql:137",
     ],
   },
   {

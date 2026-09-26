@@ -27,8 +27,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // re-issues tokens with a new `restaurantId` but does not update
     // `users.restaurant_id` in the database — using the DB column here overwrote
     // the active restaurant and broke tenant-scoped reads (e.g. getPendingDraft).
+    //
+    // A token that names no house is a session in no house (ADR 0164, R4):
+    // someone with no membership, or with several who has not chosen yet. It
+    // used to act in the `users` row's house; that is how a leaver kept a house
+    // and a role after leaving (44.1t). `validateJwtPayload` has already
+    // refused a token naming a house the person is not a member of.
     const house = tokenHouse(payload);
-    const restaurantId = house ?? user.restaurant_id;
+    const restaurantId = house;
 
     // OD-79: sourced from the database row, not `payload.emailVerified`.
     // Tokens are signed with the flag as it was at issue time, so a user who
@@ -52,16 +58,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const devBypass = payload.devBypass === true && devBypassEnvEnabled();
 
     // The role IN THE HOUSE THIS TOKEN NAMES (ADR 0162, answer A: "Only that
-    // house"), read by `validateJwtPayload` the way `assertMembership` reads a
-    // member. `RolesGuard` gates every `@Roles` route on this field, and it
-    // used to be the global `users.role`, so a role changed in one house
-    // decided what the person could do in another (v3.0-TECH-DEBT 44.1q). Null
-    // is no role, and `@Roles` refuses it; it never falls back to `users.role`
-    // or to the token's own snapshot. A token that names no house keeps
-    // today's behaviour: `users.role`, then the token's claim.
-    const role = house
-      ? (user.house_role ?? null)
-      : (user.role ?? payload.role);
+    // house"), from the person's active access row there. `RolesGuard` gates
+    // every `@Roles` route on this field, and it used to be the global
+    // `users.role`, so a role changed in one house decided what the person
+    // could do in another (v3.0-TECH-DEBT 44.1q). Null is no role, and `@Roles`
+    // refuses it; it never falls back to `users.role` or to the token's own
+    // snapshot. A session in no house has no role (ADR 0164; the founder:
+    // users.role "stops mattering" for a session).
+    const role = house ? (user.house_role ?? null) : null;
 
     return {
       userId: user.user_id,

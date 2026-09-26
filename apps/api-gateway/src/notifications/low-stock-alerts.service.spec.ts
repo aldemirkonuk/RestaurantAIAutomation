@@ -10,10 +10,18 @@ function makeDbMock(
   prefsRows: any[] | null = null,
   opts: { upsertError?: boolean } = {},
 ) {
+  // (D5, 2026-09-19) Recorded, not enforced: existing tests never varied
+  // restaurant_id, so making `eq` actually filter would change their fixture
+  // semantics. Recording lets a new test assert the filter is REQUESTED
+  // without touching what every other test in this file already relies on.
+  const eqCalls: Array<[string, any]> = [];
   const makeChain = (table: string): any => {
     const chain: any = {
       select: () => chain,
-      eq: () => chain,
+      eq: (col: string, val: any) => {
+        if (table === "notification_preferences") eqCalls.push([col, val]);
+        return chain;
+      },
       neq: () => chain,
       in: () => chain,
       update: () => chain,
@@ -38,6 +46,8 @@ function makeDbMock(
     supabase: { from: (t: string) => makeChain(t) },
     getClient: () => ({ from: (t: string) => makeChain(t) }),
     getRestaurantMemberIds: jest.fn().mockResolvedValue(["user-1"]),
+    // Test-only escape hatch, not part of the real DatabaseService shape.
+    _eqCallsOnNotificationPreferences: eqCalls,
   } as any;
 }
 
@@ -269,6 +279,28 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
     expect(newCrossings).toHaveLength(1); // still detected
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled(); // but NOT alerted
     expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+  });
+
+  it("(D5, 2026-09-19) scopes the notification_preferences read to this restaurant", async () => {
+    // notification_preferences is per (restaurant_id, user_id) since ADR 0149
+    // row 39 -- getEffectiveLowStockPrefs used to read `.in("user_id", …)`
+    // with no restaurant_id filter, so a member of two houses had the OTHER
+    // house's row mixed into this one's aggregate (e.g. its digest_frequency
+    // or enabled flag).
+    const db = makeDbMock([], []);
+    const svc = new LowStockAlertsService(
+      db,
+      notifications as any,
+      config as any,
+      gmail as any,
+      recipientResolver as any,
+    );
+    await svc.evaluateRestaurant("r1", [makeRow()], "R1");
+
+    expect(db._eqCallsOnNotificationPreferences).toContainEqual([
+      "restaurant_id",
+      "r1",
+    ]);
   });
 });
 

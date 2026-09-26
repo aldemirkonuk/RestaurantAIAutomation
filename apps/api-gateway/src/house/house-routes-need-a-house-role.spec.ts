@@ -67,7 +67,7 @@ describe.each(ROUTES)("%s", (_name, controller, handler) => {
     ]);
   });
 
-  it.each(["owner", "manager", "staff", "admin", "STAFF"])(
+  it.each(["owner", "manager", "staff", "STAFF"])(
     "admits a %s of the house",
     (role) => {
       expect(guard.canActivate(contextFor(controller, handler, role))).toBe(
@@ -81,6 +81,11 @@ describe.each(ROUTES)("%s", (_name, controller, handler) => {
     ["undefined", undefined],
     ["an empty string", ""],
     ["an unknown role", "guest"],
+    // ADR 0164 ("Keep managers in"): RolesGuard is exact, so `admin` is no
+    // longer widened to on an owner-or-manager route. No row in users,
+    // user_restaurant_access or organization_members holds it (measured
+    // read-only 2026-09-18, ADR 0164's Context).
+    ["admin, which no house role is", "admin"],
   ])("refuses a session whose role is %s", (_label, role) => {
     expect(guard.canActivate(contextFor(controller, handler, role))).toBe(
       false,

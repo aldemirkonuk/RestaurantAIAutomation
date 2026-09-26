@@ -501,6 +501,7 @@ PACKAGES: dict[str, tuple[str, str]] = {
             "js:multer",
             "js:passport-jwt",
             "js:pdf-lib",
+            "js:reflect-metadata",
             "js:rxjs",
             "js:socket.io",
             "py:PIL",
