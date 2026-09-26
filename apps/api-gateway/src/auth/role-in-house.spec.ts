@@ -1,5 +1,8 @@
 import "reflect-metadata";
-import { ServiceUnavailableException } from "@nestjs/common";
+import {
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { AuthService, JwtPayload } from "./auth.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
@@ -28,6 +31,12 @@ import {
  * through `MembersService.updateMemberRole`, then `JwtStrategy.validate` (which
  * calls the real `AuthService.validateJwtPayload`), then the real `RolesGuard`
  * against a handler carrying the real `@Roles("owner", "manager")`.
+ *
+ * [ADR 0164, 2026-09-18: "Membership only". A token naming a house where the
+ * person holds no active access row is now refused outright, 401
+ * HOUSE_ACCESS_ENDED, rather than admitted with no role; a `users` row naming
+ * the house no longer counts; and a token naming no house carries no house and
+ * no role. The four tests that pinned the old answers now pin the new ones.]
  */
 
 const A = "house-a";
@@ -92,6 +101,19 @@ async function sessionIn(db: StubDb, house: string | undefined) {
     ...(house ? { restaurantId: house } : {}),
   };
   return strategy.validate(payload);
+}
+
+/** The 401 a session gets in a house it is not a member of (ADR 0164). */
+async function expectAccessEnded(db: StubDb, house: string) {
+  const err = await sessionIn(db, house).then(
+    () => null,
+    (e: unknown) => e,
+  );
+  expect(err).toBeInstanceOf(UnauthorizedException);
+  expect((err as UnauthorizedException).getResponse()).toMatchObject({
+    code: "HOUSE_ACCESS_ENDED",
+    restaurantId: house,
+  });
 }
 
 /** Does `@Roles("owner", "manager")` let this session through? */
@@ -178,8 +200,7 @@ describe("@Roles answers for the token's house only (ADR 0162 answer A, 44.1q)",
       ],
     });
 
-    expect(await passesManagersOnly(db, C)).toBe(false);
-    expect((await sessionIn(db, C)).role).toBeNull();
+    await expectAccessEnded(db, C);
   });
 
   it("refuses when the only row in the house is inactive", async () => {
@@ -198,7 +219,7 @@ describe("@Roles answers for the token's house only (ADR 0162 answer A, 44.1q)",
       ],
     });
 
-    expect(await passesManagersOnly(db, B)).toBe(false);
+    await expectAccessEnded(db, B);
   });
 
   it("refuses an access row whose role is NULL, whatever the users row says", async () => {
@@ -245,9 +266,10 @@ describe("@Roles answers for the token's house only (ADR 0162 answer A, 44.1q)",
     );
   });
 
-  it("reads a member known only by a users row naming the house at users.role (the setup-era manager)", async () => {
-    // Unchanged by this fix: until migration 20260918153000 is applied, the
-    // YAREN manager holds that house by their users row alone.
+  it("refuses a person known only by a users row naming the house: membership only", async () => {
+    // Until ADR 0164 this read users.role (the setup-era manager of YAREN held
+    // the house by that row alone; migration 20260918153000 gave them an
+    // access row, applied in production before this change).
     const db = world({
       users: [
         {
@@ -260,11 +282,10 @@ describe("@Roles answers for the token's house only (ADR 0162 answer A, 44.1q)",
       ],
     });
 
-    expect(await passesManagersOnly(db, B)).toBe(true);
-    expect((await sessionIn(db, B)).role).toBe("manager");
+    await expectAccessEnded(db, B);
   });
 
-  it("reads a users row naming the house with no role as staff, which @Roles(owner, manager) refuses", async () => {
+  it("refuses a users row naming the house with no role, as it refuses any users row", async () => {
     const db = world({
       users: [
         {
@@ -277,8 +298,7 @@ describe("@Roles answers for the token's house only (ADR 0162 answer A, 44.1q)",
       ],
     });
 
-    expect((await sessionIn(db, B)).role).toBe("staff");
-    expect(await passesManagersOnly(db, B)).toBe(false);
+    await expectAccessEnded(db, B);
   });
 
   it("treats a blank restaurantId as a token that names no house", async () => {
@@ -295,11 +315,11 @@ describe("@Roles answers for the token's house only (ADR 0162 answer A, 44.1q)",
     });
 
     const user = await sessionIn(db, "   ");
-    expect(user.role).toBe("manager");
-    expect(user.restaurantId).toBe(A);
+    expect(user.role).toBeNull();
+    expect(user.restaurantId).toBeNull();
   });
 
-  it("keeps today's behaviour for a token that names no house: users.role, and the users row's house", async () => {
+  it("gives a token that names no house no house and no role, whatever users.role says (44.1t)", async () => {
     const db = world({
       access: [
         { user_id: P, restaurant_id: A, role: "staff", is_active: true },
@@ -316,8 +336,9 @@ describe("@Roles answers for the token's house only (ADR 0162 answer A, 44.1q)",
     });
 
     const user = await sessionIn(db, undefined);
-    expect(user.role).toBe("manager");
-    expect(user.restaurantId).toBe(A);
+    expect(user.role).toBeNull();
+    expect(user.restaurantId).toBeNull();
+    expect(await passesManagersOnly(db, undefined)).toBe(false);
     // No house named, so no access read was made.
     expect(db.opsOn("user_restaurant_access", "select")).toHaveLength(0);
   });

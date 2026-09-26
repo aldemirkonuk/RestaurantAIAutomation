@@ -60,7 +60,7 @@ export const mockAuthValue: AuthContextType = {
       chain_name: 'Auberge Group',
     },
   ],
-  setActiveRestaurantId: noop,
+  setActiveRestaurantId: async () => true,
   login: noop,
   register: noop,
   registerAccount: noop,

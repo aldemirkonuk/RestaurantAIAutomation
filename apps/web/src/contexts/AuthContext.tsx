@@ -12,6 +12,15 @@ import {
   fallbackSignInMethods,
   type SignInMethodsResult,
 } from "../lib/identityProviders";
+import {
+  clearHouseEnded,
+  goToChooser,
+  lastHouseHintFor,
+  storeSession,
+  tokenClaims,
+  tokenHouse,
+} from "../lib/houseMemory";
+import { doRefresh } from "../lib/sessionRefresh";
 
 /**
  * Thrown by `login()` for backend auth failures. `code`/`provider` carry the
@@ -56,7 +65,13 @@ export interface User {
   userId: string;
   email: string;
   name: string;
-  role: "owner" | "manager" | "staff";
+  /**
+   * The role IN THE SESSION'S HOUSE, from `/auth/me` (ADR 0164): the person's
+   * access row there. Null for a session in no house. It is no longer the
+   * account-wide `users.role`.
+   */
+  role: "owner" | "manager" | "staff" | null;
+  /** The session's house, from its token; "" for a session in no house. */
   restaurantId: string;
   emailVerified?: boolean;
   studioRoles?: ("developer" | "certified_contributor" | "review_admin")[];
@@ -147,7 +162,13 @@ export interface AuthContextType {
   /** Role at the active branch from user_restaurant_access; null if unknown */
   activeRole: "owner" | "manager" | "staff" | null;
   availableRestaurants: RestaurantBranch[];
-  setActiveRestaurantId: (restaurantId: string) => Promise<void>;
+  /**
+   * Move the session into another of the person's houses (or choose one when
+   * it names none). Resolves true when the server issued the new session;
+   * false, with nothing changed, when it refused. The page never relabels
+   * itself on a refusal (ADR 0164, R6).
+   */
+  setActiveRestaurantId: (restaurantId: string) => Promise<boolean>;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   registerAccount: (data: RegisterAccountData) => Promise<void>;
@@ -193,30 +214,16 @@ const isUuid = (value: string) =>
   );
 
 // ── 401 Interceptor: auto-refresh with deduplication ───────────────
-let refreshPromise: Promise<string | null> | null = null;
-
-async function doRefresh(): Promise<string | null> {
-  const refresh = localStorage.getItem("refreshToken");
-  if (!refresh) return null;
-  try {
-    const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, {
-      refreshToken: refresh,
-    });
-    const { accessToken, refreshToken: newRefresh } = response.data;
-    localStorage.setItem("accessToken", accessToken);
-    localStorage.setItem("refreshToken", newRefresh);
-    api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-    return accessToken;
-  } catch {
-    // Refresh failed — clear tokens
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("activeRestaurantId");
-    delete api.defaults.headers.common["Authorization"];
-    delete api.defaults.headers.common["X-Restaurant-Id"];
-    return null;
-  }
-}
+// The refresh itself lives in `lib/sessionRefresh.ts` — the one
+// implementation this interceptor, `refreshTokenFn` below, and
+// `stores/authStore.ts`'s `loadUser` all call, so a 401 on this axios
+// instance and a concurrent refresh started from a different module share
+// one in-flight request and one outcome rather than racing (ADR 0164, item
+// 2/3: three separate refresh implementations used to disagree on whether a
+// 503 keeps the session, and could double-spend one refresh token).
+// Re-exported so existing importers of `doRefresh` from this module (the
+// axios interceptor's own tests) keep working unchanged.
+export { doRefresh };
 
 api.interceptors.response.use(
   (response) => response,
@@ -234,21 +241,56 @@ api.interceptors.response.use(
     ) {
       originalRequest._retry = true;
 
-      // Deduplicate: share a single refresh promise across concurrent 401s
-      if (!refreshPromise) {
-        refreshPromise = doRefresh().finally(() => {
-          refreshPromise = null;
-        });
-      }
-      const newToken = await refreshPromise;
+      // `doRefresh` is single-flight on its own now, shared with every other
+      // caller in the app — no local dedup wrapper needed here any more.
+      const newToken = await doRefresh();
       if (newToken) {
         originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
+        api.defaults.headers.common["Authorization"] = `Bearer ${newToken}`;
         return api(originalRequest);
       }
+      if (!localStorage.getItem("refreshToken")) {
+        delete api.defaults.headers.common["Authorization"];
+      }
+    }
+    // A session in no house asked for something that belongs to a house (ADR
+    // 0164, R4): the person has not chosen one yet.
+    if (
+      error.response?.status === 403 &&
+      (error.response.data as { code?: string } | undefined)?.code ===
+        "HOUSE_REQUIRED"
+    ) {
+      goToChooser();
     }
     return Promise.reject(error);
   },
 );
+
+/** `/auth/me`'s person, with the session's house taken from its token. */
+function userFrom(
+  me: Record<string, unknown>,
+  accessToken: string | null,
+): User {
+  const studioRoles = (() => {
+    try {
+      const payload = accessToken
+        ? JSON.parse(atob(accessToken.split(".")[1]))
+        : null;
+      return payload?.app_metadata?.roles ?? [];
+    } catch {
+      return [];
+    }
+  })();
+  return {
+    ...(me as unknown as User),
+    studioRoles,
+    role: (me.role as User["role"]) ?? null,
+    restaurantId:
+      (typeof me.restaurantId === "string" && me.restaurantId) ||
+      tokenHouse(accessToken) ||
+      "",
+  };
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -305,31 +347,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const response = await api.get("/api/v1/auth/me");
-        // Extract studio roles from the JWT itself (app_metadata.roles) — avoids cross-service call
-        const token = localStorage.getItem("accessToken");
-        let studioRoles: (
-          | "developer"
-          | "certified_contributor"
-          | "review_admin"
-        )[] = [];
-        let jwtRestaurantId: string | undefined;
-        if (token) {
-          try {
-            const payload = JSON.parse(atob(token.split(".")[1]));
-            studioRoles = payload?.app_metadata?.roles ?? [];
-            if (payload?.restaurantId && isUuid(payload.restaurantId)) {
-              jwtRestaurantId = payload.restaurantId;
-            }
-          } catch {
-            /* malformed token — no studio roles */
-          }
-        }
-        setUser({
-          ...response.data.user,
-          studioRoles,
-          restaurantId:
-            response.data.user.restaurantId || jwtRestaurantId || "",
-        });
+        // Studio roles come from the JWT itself (app_metadata.roles), and the
+        // session's house from the token when /auth/me names none.
+        setUser(
+          userFrom(response.data.user, localStorage.getItem("accessToken")),
+        );
       } catch (err) {
         console.error("Failed to load user:", err);
         // Only a 401 means the token is invalid (POS lens, absence-as-health 9).
@@ -347,8 +369,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const status = (err as { response?: { status?: number } })?.response
           ?.status;
         if (status === 401) {
-          localStorage.removeItem("accessToken");
-          localStorage.removeItem("refreshToken");
+          // ADR 0164, item 2/3 (round 2, 2026-09-19): by the time this catch
+          // runs, the response interceptor above has ALREADY awaited
+          // `doRefresh()` for this exact 401 — it sits between the request
+          // and this catch in the same promise chain, on this same `api`
+          // instance. `doRefresh` removes the stored refresh token only on a
+          // genuine sign-out (the refresh token itself was rejected); a
+          // `houseAccessEnded` refresh stores a fresh, no-house pair and
+          // sends the person to the chooser, and a 503 or a dropped
+          // connection while refreshing leaves the original pair untouched —
+          // both keep a session on disk. This used to delete both tokens
+          // whenever the ORIGINAL request 401'd, with no such check, which
+          // silently discarded whichever of those two `doRefresh` had just
+          // decided to keep — the ordinary way anyone reloads a page after
+          // their house access ended, not just the tab-stayed-open case.
+          if (!localStorage.getItem("refreshToken")) {
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("refreshToken");
+          } else {
+            console.warn(
+              "Keeping the session: the shared refresh kept a session on " +
+                "disk (houseAccessEnded, or a transient refresh failure), " +
+                "not a sign-out.",
+            );
+          }
         } else {
           console.warn(
             `Keeping the session: /auth/me failed with ${status ?? "no status (network)"}, ` +
@@ -401,14 +445,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAvailableRestaurants(branches);
         localStorage.setItem("availableRestaurants", JSON.stringify(branches));
 
-        const savedId = localStorage.getItem("activeRestaurantId");
-        const validSaved = savedId && branches.some((b) => b.id === savedId);
-        const resolvedActive = validSaved ? savedId : branches[0].id;
+        // The active house is the one the session's TOKEN names, and nothing
+        // else (ADR 0164, R1). This used to take the id saved in localStorage
+        // when it was in the list, else `branches[0]` from an unordered query,
+        // without asking the server for a token: after signing out and in, a
+        // person with several houses could see one house's name while every
+        // read came from another (research §1 b). A session in no house has
+        // no active house; ProtectedRoute sends it to the chooser.
+        const resolvedActive = resolveJwtRestaurantId();
 
         setActiveRestaurantIdState(resolvedActive);
-        localStorage.setItem("activeRestaurantId", resolvedActive);
-        api.defaults.headers.common["X-Restaurant-Id"] = resolvedActive;
-        useAuthStore.getState().setActiveRestaurantId(resolvedActive);
+        if (resolvedActive) {
+          localStorage.setItem("activeRestaurantId", resolvedActive);
+          api.defaults.headers.common["X-Restaurant-Id"] = resolvedActive;
+          useAuthStore.getState().setActiveRestaurantId(resolvedActive);
+        } else {
+          localStorage.removeItem("activeRestaurantId");
+          delete api.defaults.headers.common["X-Restaurant-Id"];
+          useAuthStore.setState({ activeRestaurantId: null });
+        }
       };
 
       try {
@@ -442,19 +497,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // Fallback: org-less / legacy user — NEVER use userId as restaurantId
-      const savedId = localStorage.getItem("activeRestaurantId");
+      // Fallback when the list could not be read: the token's house, and only
+      // that. NEVER a saved id, the first cached branch or the userId: the
+      // page must not show a house the session is not in.
       const candidate =
+        resolveJwtRestaurantId() ||
         (fallbackRestaurantId && isUuid(fallbackRestaurantId)
           ? fallbackRestaurantId
-          : null) ||
-        resolveJwtRestaurantId() ||
-        (savedId && isUuid(savedId) ? savedId : null) ||
-        cached[0]?.id ||
-        null;
+          : null);
 
       if (!candidate) {
-        console.warn("No restaurant context available for branch fallback");
+        applyBranches(cached);
         return;
       }
 
@@ -521,59 +574,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchAndSetBranches(user.restaurantId);
   }, [user, fetchAndSetBranches]);
 
-  const setActiveRestaurantId = useCallback(async (restaurantId: string) => {
-    if (!isUuid(restaurantId)) {
-      return;
-    }
+  const setActiveRestaurantId = useCallback(
+    async (restaurantId: string): Promise<boolean> => {
+      if (!isUuid(restaurantId)) {
+        return false;
+      }
 
-    try {
-      // Re-issue JWT scoped to the new restaurant so backend API calls use the correct tenant.
-      const response = await api.post("/api/v1/auth/switch-restaurant", {
-        restaurantId,
-      });
-      const { accessToken, refreshToken } = response.data;
+      try {
+        // Re-issue the session in that house. The server mints it only where
+        // the person holds an active membership (ADR 0164).
+        const response = await api.post("/api/v1/auth/switch-restaurant", {
+          restaurantId,
+        });
+        const { accessToken, refreshToken } = response.data;
+        const house = storeSession(accessToken, refreshToken);
+        api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+        if (house !== restaurantId) return false;
+        clearHouseEnded();
 
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("refreshToken", refreshToken);
-      api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-    } catch (err) {
-      console.warn(
-        "switch-restaurant failed, proceeding with X-Restaurant-Id header only",
-        err,
-      );
-    }
+        setActiveRestaurantIdState(house);
+        api.defaults.headers.common["X-Restaurant-Id"] = house;
+        // Sync Zustand store so all consumers (Providers, Dashboard, etc.) re-render immediately
+        useAuthStore.getState().setActiveRestaurantId(house);
 
-    setActiveRestaurantIdState(restaurantId);
-    localStorage.setItem("activeRestaurantId", restaurantId);
-    api.defaults.headers.common["X-Restaurant-Id"] = restaurantId;
-    // Sync Zustand store so all consumers (Providers, Dashboard, etc.) re-render immediately
-    useAuthStore.getState().setActiveRestaurantId(restaurantId);
-  }, []);
+        // The role is the role in THIS house now; `/auth/me` reads it from the
+        // new session.
+        const me = await api.get("/api/v1/auth/me");
+        setUser(userFrom(me.data.user, accessToken));
+        return true;
+      } catch (err) {
+        // A refused switch stays in the current house and says so. This used
+        // to relabel the page anyway, "proceeding with X-Restaurant-Id header
+        // only", a header the gateway reads nowhere: the page showed the new
+        // house while every read still came from the old one (ADR 0164, R6).
+        console.warn("switch-restaurant refused; staying in this house", err);
+        return false;
+      }
+    },
+    [],
+  );
 
   const login = useCallback(async (email: string, password: string) => {
     try {
       setError(null);
       setLoading(true);
+      // `lastHouses` is this device's memory of the house THIS email used on
+      // it; the server lands the person by it or asks them to choose (ADR
+      // 0164). A pair naming no house means "choose": ProtectedRoute sends
+      // the person to /choose-house. Only the entry for the email being
+      // submitted is ever sent, never any other account this device
+      // remembers (item 8, 2026-09-19).
+      const hint = lastHouseHintFor(email);
       const response = await api.post("/api/v1/auth/login", {
         email,
         password,
+        lastHouses: hint ? [hint] : [],
       });
 
       const { accessToken, refreshToken: refresh } = response.data;
 
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("refreshToken", refresh);
+      storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
 
       const userResponse = await api.get("/api/v1/auth/me");
-      let studioRoles: string[] = [];
-      try {
-        const payload = JSON.parse(atob(accessToken.split(".")[1]));
-        studioRoles = payload?.app_metadata?.roles ?? [];
-      } catch {
-        /* malformed token */
-      }
-      setUser({ ...userResponse.data.user, studioRoles });
+      setUser(userFrom(userResponse.data.user, accessToken));
     } catch (err: any) {
       // A network-level failure says what the person can do about it, and
       // nothing else. It used to read "Start the API Gateway: cd
@@ -638,11 +702,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         });
         const { accessToken, refreshToken: refresh } = response.data;
-        localStorage.setItem("accessToken", accessToken);
-        localStorage.setItem("refreshToken", refresh);
+        storeSession(accessToken, refresh);
         api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
         const userResponse = await api.get("/api/v1/auth/me");
-        setUser(userResponse.data.user);
+        setUser(userFrom(userResponse.data.user, accessToken));
       } catch (err: any) {
         const message = err.response?.data?.message || "Registration failed";
         setError(message);
@@ -658,11 +721,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     data: { accessToken: string; refreshToken: string };
   }) => {
     const { accessToken, refreshToken: refresh } = response.data;
-    localStorage.setItem("accessToken", accessToken);
-    localStorage.setItem("refreshToken", refresh);
+    // One helper stores every session (ADR 0164): a new account names no
+    // house yet (ADR 0213), so this also clears any house an earlier session
+    // on this device left in `activeRestaurantId`.
+    storeSession(accessToken, refresh);
     api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
     const userResponse = await api.get("/api/v1/auth/me");
-    setUser(userResponse.data.user);
+    setUser(userFrom(userResponse.data.user, accessToken));
   }, []);
 
   const registerAccount = useCallback(
@@ -708,16 +773,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (data: CreateFirstHouseData): Promise<string> => {
       const response = await api.post("/api/v1/auth/register/house", data);
       const { restaurantId, accessToken, refreshToken: refresh } = response.data;
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("refreshToken", refresh);
-      localStorage.setItem("activeRestaurantId", restaurantId);
+      // `activeRestaurantId` follows the TOKEN's house (ADR 0164), and the
+      // device remembers it as this person's last house.
+      const house = storeSession(accessToken, refresh) ?? restaurantId;
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-      api.defaults.headers.common["X-Restaurant-Id"] = restaurantId;
-      setActiveRestaurantIdState(restaurantId);
-      useAuthStore.getState().setActiveRestaurantId(restaurantId);
+      api.defaults.headers.common["X-Restaurant-Id"] = house;
+      clearHouseEnded();
+      setActiveRestaurantIdState(house);
+      useAuthStore.getState().setActiveRestaurantId(house);
       const userResponse = await api.get("/api/v1/auth/me");
-      setUser(userResponse.data.user);
-      return restaurantId;
+      setUser(userFrom(userResponse.data.user, accessToken));
+      return house;
     },
     [],
   );
@@ -728,11 +794,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       const response = await api.post("/api/v1/auth/join", data);
       const { accessToken, refreshToken: refresh } = response.data;
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("refreshToken", refresh);
+      storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
       const userResponse = await api.get("/api/v1/auth/me");
-      setUser(userResponse.data.user);
+      setUser(userFrom(userResponse.data.user, accessToken));
     } catch (err: any) {
       const message =
         err.response?.data?.message || "Failed to join restaurant";
@@ -777,18 +842,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
       setLoading(true);
+      // Only this device's memory of the email inside Google's own ID token
+      // is sent, never any other account it remembers (item 8, 2026-09-19).
+      const hint = lastHouseHintFor(tokenClaims(token)?.email);
       const response = await api.post("/api/v1/auth/oauth/google", {
         token,
+        lastHouses: hint ? [hint] : [],
       });
 
       const { accessToken, refreshToken: refresh } = response.data;
 
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("refreshToken", refresh);
+      storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
 
       const userResponse = await api.get("/api/v1/auth/me");
-      setUser(userResponse.data.user);
+      setUser(userFrom(userResponse.data.user, accessToken));
     } catch (err: any) {
       const message = err.response?.data?.message || "Google login failed";
       setError(message);
@@ -802,18 +870,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setError(null);
       setLoading(true);
+      // Only this device's memory of the email inside Microsoft's own ID
+      // token is sent, never any other account it remembers (item 8,
+      // 2026-09-19).
+      const hint = lastHouseHintFor(tokenClaims(token)?.email);
       const response = await api.post("/api/v1/auth/oauth/microsoft", {
         token,
+        lastHouses: hint ? [hint] : [],
       });
 
       const { accessToken, refreshToken: refresh } = response.data;
 
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("refreshToken", refresh);
+      storeSession(accessToken, refresh);
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
 
       const userResponse = await api.get("/api/v1/auth/me");
-      setUser(userResponse.data.user);
+      setUser(userFrom(userResponse.data.user, accessToken));
     } catch (err: any) {
       const message = err.response?.data?.message || "Microsoft login failed";
       setError(message);
@@ -834,6 +906,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("demoMode");
       localStorage.removeItem("activeRestaurantId");
       localStorage.removeItem("availableRestaurants");
+      // `mudavym.lastHouse.v1` is kept on purpose (ADR 0164, R3): it holds
+      // only ids and times, and it is what lets this person go straight back
+      // into their house tomorrow.
+      clearHouseEnded();
       delete api.defaults.headers.common["Authorization"];
       delete api.defaults.headers.common["X-Restaurant-Id"];
       setUser(null);
@@ -841,24 +917,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Delegates to the same single-flight `doRefresh` the axios interceptor and
+  // `authStore.ts` use (ADR 0164, item 2/3) — this used to be a fourth,
+  // independent refresh implementation with its own copy of the
+  // houseAccessEnded/503 rules, and could fire its own `POST /auth/refresh`
+  // at the same moment the interceptor did.
+  //
+  // `doRefresh` returns `null` for three different reasons — a genuinely
+  // refused refresh token, a kept-session 503, or a houseAccessEnded redirect
+  // that already stored a new (no-house) pair and navigated away — and only
+  // the first should sign this context out. `doRefresh` removes the stored
+  // refresh token itself on (and only on) that first case, so checking for
+  // its absence afterward tells the three apart without needing its own copy
+  // of the HTTP status logic.
   const refreshTokenFn = useCallback(async () => {
-    try {
-      const refresh = localStorage.getItem("refreshToken");
-      if (!refresh) {
-        throw new Error("No refresh token");
-      }
-
-      const response = await api.post("/api/v1/auth/refresh", {
-        refreshToken: refresh,
-      });
-
-      const { accessToken, refreshToken: newRefresh } = response.data;
-
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("refreshToken", newRefresh);
+    const hadRefreshToken = !!localStorage.getItem("refreshToken");
+    if (!hadRefreshToken) {
+      await logout();
+      return;
+    }
+    const accessToken = await doRefresh();
+    if (accessToken) {
       api.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
-    } catch (err) {
-      console.error("Token refresh failed:", err);
+      return;
+    }
+    if (!localStorage.getItem("refreshToken")) {
       await logout();
     }
   }, [logout]);
