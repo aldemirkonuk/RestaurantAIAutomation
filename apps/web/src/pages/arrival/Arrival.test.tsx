@@ -33,7 +33,6 @@ vi.mock('./arrival-api', async () => {
     ...actual,
     arrivalApi: {
       read: vi.fn(),
-      unplaced: vi.fn(),
       skip: vi.fn(),
       typed: vi.fn(),
       propose: vi.fn(),
@@ -572,95 +571,6 @@ describe('The reveal', () => {
     expect(count).toHaveTextContent(/Not placed\s*7/)
     // Nine is a small number and the page says nine. No praise, no ring.
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
-  })
-
-  /**
-   * OD-140 (founder 2026-09-25: "Separate list endpoint") — the control beside
-   * the not-placed count, and its four states.
-   */
-  const UNPLACED = {
-    restaurantId: 'house',
-    read: 9,
-    lines: [
-      { id: 'l1', category: 'Kitchen', name: 'Mixed olives' },
-      { id: 'l2', category: null, name: "Today's plate" },
-      { id: 'l3', category: null, name: null },
-    ],
-  }
-
-  it('offers "Show me the N" and lists the lines only when asked', async () => {
-    withReading({ read: 9, placed: 6, notPlaced: 3 })
-    vi.mocked(arrivalApi.unplaced).mockResolvedValue(UNPLACED)
-    mount()
-    await openPour()
-    const show = await screen.findByRole('button', {
-      name: 'Show me the 3 it could not place',
-    })
-    expect(show).toHaveAttribute('aria-expanded', 'false')
-    expect(arrivalApi.unplaced).not.toHaveBeenCalled()
-
-    fireEvent.click(show)
-    expect(show).toHaveAttribute('aria-expanded', 'true')
-    const region = await screen.findByTestId('not-placed-lines')
-    await waitFor(() => expect(region).toHaveTextContent('Mixed olives'))
-    expect(arrivalApi.unplaced).toHaveBeenCalledWith('house')
-    expect(region).toHaveTextContent(/under “Kitchen”/)
-    expect(region).toHaveTextContent("Today's plate")
-    expect(region).toHaveTextContent('A line with no name')
-    expect(region.querySelectorAll('li')).toHaveLength(3)
-    expect(region).not.toHaveTextContent(/menu changed/)
-  })
-
-  it('offers no control when every line was placed', async () => {
-    withReading({ read: 9, placed: 9, notPlaced: 0 })
-    mount()
-    await openPour()
-    await screen.findByRole('group', { name: 'The reading count' })
-    expect(
-      screen.queryByRole('button', { name: /could not place/ }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('says the lines are being read while they are', async () => {
-    withReading({ read: 9, placed: 6, notPlaced: 3 })
-    vi.mocked(arrivalApi.unplaced).mockReturnValue(new Promise(() => {}))
-    mount()
-    await openPour()
-    fireEvent.click(
-      await screen.findByRole('button', { name: /Show me the 3/ }),
-    )
-    expect(
-      await screen.findByText(/Reading the lines it could not place/),
-    ).toBeInTheDocument()
-  })
-
-  it('says a failed list read failed, never that there are none', async () => {
-    withReading({ read: 9, placed: 6, notPlaced: 3 })
-    vi.mocked(arrivalApi.unplaced).mockRejectedValue(new Error('503'))
-    mount()
-    await openPour()
-    fireEvent.click(
-      await screen.findByRole('button', { name: /Show me the 3/ }),
-    )
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      /could not be read \(503\)/,
-    )
-    expect(
-      screen.queryByText(/places every line/),
-    ).not.toBeInTheDocument()
-  })
-
-  it('says so when the list no longer matches the count', async () => {
-    withReading({ read: 9, placed: 5, notPlaced: 4 })
-    vi.mocked(arrivalApi.unplaced).mockResolvedValue(UNPLACED)
-    mount()
-    await openPour()
-    fireEvent.click(
-      await screen.findByRole('button', { name: /Show me the 4/ }),
-    )
-    expect(
-      await screen.findByText(/menu changed since the count above/),
-    ).toHaveTextContent('3 of 9')
   })
 
   it('says a failed read failed instead of substituting three zeroes', async () => {

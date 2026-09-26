@@ -74,25 +74,6 @@ export type Register = {
  * at all, which the gateway is careful never to report as three zeroes.
  */
 export type MenuLines = { read: number; placed: number; notPlaced: number }
-/**
- * One menu line the register reader could not place, and the rows behind
- * `MenuLines.notPlaced` — `GET /cellar/:restaurantId/registers/unplaced`
- * (OD-140, founder 2026-09-25: "Separate list endpoint"). Mirrors
- * `UnplacedMenuLinesReadout` in `apps/api-gateway/src/cellar/
- * cellar-registers.service.ts`. The gateway computes the list with the same
- * query and the same `placeMenuLine` rule as the count, and a failed read is
- * an error response, never an empty list.
- */
-export type UnplacedLine = {
-  id: string
-  category: string | null
-  name: string | null
-}
-export type UnplacedLines = {
-  restaurantId: string
-  read: number
-  lines: UnplacedLine[]
-}
 export type Term = { value: unknown; source: string; reason?: string }
 export type Vendor = {
   providerId: string
@@ -167,12 +148,6 @@ export type Book = {
 }
 export const arrivalApi = {
   read: async () => (await apiClient.get<Book>('/arrival')).data,
-  unplaced: async (restaurantId: string): Promise<UnplacedLines> =>
-    (
-      await apiClient.get<UnplacedLines>(
-        `/cellar/${encodeURIComponent(restaurantId)}/registers/unplaced`,
-      )
-    ).data,
   skip: async (folio: Folio) =>
     (await apiClient.post('/arrival/skip', { folio })).data,
   typed: async (

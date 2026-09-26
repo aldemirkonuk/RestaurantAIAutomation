@@ -319,6 +319,33 @@ describe('CellarNext — the parent surface', () => {
     expect(screen.queryByTestId('register-beer')).not.toBeInTheDocument();
   });
 
+  it('puts the not-placed count and "Show me the N" in the registers section on /cellar (OD-140)', () => {
+    // Founder 2026-09-25, round 4 item 18: the control lives on /cellar, next
+    // to the registers. The count is the readout's own `menuLines`; nothing
+    // is fetched until the control is pressed.
+    mock.current = {
+      ...base,
+      bottles: [bottle()],
+      registers: readout({ menuLines: { read: 40, placed: 37, notPlaced: 3 } }),
+    };
+    draw();
+    const section = screen.getByRole('heading', { name: 'The registers' }).closest('section')!;
+    expect(within(section).getByTestId('menu-lines-not-placed')).toHaveTextContent(
+      /3 of the 40 menu lines could not be placed in any register/,
+    );
+    expect(
+      within(section).getByRole('button', { name: 'Show me the 3 it could not place' }),
+    ).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('says nothing about menu lines when the registers readout itself is unread', () => {
+    mock.current = { ...base, bottles: [bottle()], registers: null, registersError: 'HTTP 500' };
+    draw();
+    expect(screen.queryByTestId('menu-lines-not-placed')).toBeNull();
+    expect(screen.queryByTestId('menu-lines-unread')).toBeNull();
+    expect(screen.queryByRole('button', { name: /could not place/ })).toBeNull();
+  });
+
   it('asks for the rows when a register is switched on with nothing behind it', () => {
     // The founder's change-over-time case, and premortem M1: an inline,
     // dismissible notice — never a modal, and never a doubt cast on the house.
