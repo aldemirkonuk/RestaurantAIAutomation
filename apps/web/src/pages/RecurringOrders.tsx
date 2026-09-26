@@ -129,36 +129,16 @@ export function RecurringOrders() {
     return `in ${days} days`
   }
 
-  const handleSendPriceInquiry = async (order: RecurringOrder) => {
-    const providerNames = order.preferred_providers.join(', ') || 'your provider'
-    const emailBody = `Hi ${providerNames},\n\nI wanted to confirm our upcoming recurring order for ${order.wine_name} (${order.quantity} ${order.unit_type}s).\n\nCould you please confirm the current pricing for this order?\n\nThank you,\nMudavym`
-    
-    try {
-      await axios.post(`${API_URL}/api/v1/notifications/send-email`, {
-        to: [], // Provider emails would be resolved by backend
-        subject: `Price Confirmation - ${order.wine_name} Recurring Order`,
-        body_text: emailBody,
-        body_html: `<p>${emailBody.replace(/\n/g, '<br/>')}</p>`,
-        metadata: {
-          type: 'price_inquiry',
-          recurring_order_id: order.id,
-          wine_name: order.wine_name,
-        }
-      })
-      
-      // Update order status
-      setRecurringOrders(orders => orders.map(o =>
-        o.id === order.id ? {
-          ...o,
-          last_price_inquiry_date: new Date().toISOString(),
-          price_inquiry_status: 'sent' as const,
-        } : o
-      ))
-      
-      alert(`Price inquiry sent for ${order.wine_name}`)
-    } catch {
-      alert('Failed to send price inquiry. Check your email configuration.')
-    }
+  /**
+   * The price inquiry used to POST to `/notifications/send-email` with
+   * `to: []` — no recipient, so it never reached a vendor even before that
+   * route closed (ADR 0147, PR #410; it now refuses a client's HTML and
+   * recipients). This page has no route in App.tsx (orphaned; see
+   * ECOSYSTEM-E0-MEASUREMENTS.md), so the button hands the writer to the
+   * house's composer instead of marking an inquiry "sent" that never left.
+   */
+  const handleSendPriceInquiry = (_order: RecurringOrder) => {
+    window.location.assign('/communications')
   }
 
   const handleOverridePrice = (orderId: string) => {

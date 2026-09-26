@@ -77,7 +77,13 @@
 #
 set -uo pipefail
 
-cd "$(dirname "$0")/.." || { echo "FAIL — cannot reach repo root"; exit 2; }
+# Resolve this script's own directory to an ABSOLUTE path before the `cd` below.
+# `dirname "$0"` is lexical: run as `./check_decision_claims.sh` from inside
+# scripts/, it is `.`, and after `cd ..` that `.` names the repo root — so each
+# helper path built from it pointed at a file that is not there, python exited
+# 2, and (for the claims parser) nothing caught it.
+HERE="$(cd "$(dirname "$0")" && pwd)" || { echo "FAIL — cannot resolve this script's directory"; exit 2; }
+cd "$HERE/.." || { echo "FAIL — cannot reach repo root"; exit 2; }
 
 CLAIMS=".planning/decisions/CLAIMS.jsonl"
 [ -f "$CLAIMS" ] || { echo "FAIL — $CLAIMS is missing; this guard has nothing to check"; exit 2; }
@@ -86,48 +92,35 @@ command -v python3 >/dev/null 2>&1 || { echo "FAIL — python3 unavailable"; exi
 
 # Parse once, emit a tab-separated plan. A malformed line is a hard failure:
 # silently skipping it is how a claim stops being checked without anyone noticing.
-PLAN="$(python3 - "$CLAIMS" <<'PY'
-import json, re, sys
-bad = 0
-muzzled = 0
-rows = []
-for n, line in enumerate(open(sys.argv[1]), 1):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        o = json.loads(line)
-    except Exception as e:
-        print(f"MALFORMED\t{n}\t{e}", file=sys.stderr); bad = 1; continue
-    if "_comment" in o:
-        continue
-    missing = [k for k in ("id", "status", "claim", "verify", "verified") if k not in o]
-    if missing:
-        print(f"MALFORMED\t{n}\t{o.get('id','?')} missing {missing}", file=sys.stderr); bad = 1; continue
-    if o["status"] not in ("open", "resolved"):
-        print(f"MALFORMED\t{n}\t{o['id']} status must be open|resolved, got {o['status']!r}", file=sys.stderr); bad = 1; continue
-    # Strict mode reads stderr to tell "ran and disagreed" from "never ran". A claim
-    # that redirects its own stderr blinds that, and the ONE broken claim found when
-    # this was measured did exactly that.
-    if re.search(r"2\s*>", o["verify"]):
-        print(f"MUZZLED\t{n}\t{o['id']} redirects stderr: {o['verify']}", file=sys.stderr); muzzled = 1; continue
-    rows.append("\t".join([o["id"], o["status"], o["verify"], o["claim"]]))
-if bad:
-    sys.exit(3)
-if muzzled:
-    sys.exit(5)
-if not rows:
-    print("EMPTY", file=sys.stderr); sys.exit(4)
-print("\n".join(rows))
-PY
-)"
-case $? in
+# Delegated to _claims_parse.py, its own file for the same reason
+# _od_collisions.py and _migration_versions.py are (see that file's docstring):
+# a nested heredoc's shell quoting breaks silently, and this parser is load-
+# bearing enough to need its own self-test independent of the real register.
+PLAN="$(python3 "$HERE/_claims_parse.py" "$CLAIMS")"
+plan_status=$?
+# Every exit code is named, and anything unnamed is exit 2. Until 2026-09-26 this
+# case had no `0)` and no `*)`: a parser that crashed (exit 1 — e.g. a TypeError on
+# a hand-typed unquoted number) or could not open its input (exit 2 — an unreadable
+# register, or the helper itself not found) matched no arm, PLAN stayed empty, the
+# loop below counted 0 claims, and the run printed PASS with exit 0. `set -u` is
+# not `set -e`; an unmatched case is silence, so the default arm has to fail.
+case $plan_status in
+  0) ;;
   3) echo "FAIL — $CLAIMS has malformed lines (see above). A claim that cannot be parsed is not being checked."; exit 2 ;;
   4) echo "FAIL — $CLAIMS parsed to zero claims. A guard with nothing to check must not report success."; exit 2 ;;
   5) echo "FAIL — a claim suppresses its own stderr (see above). Strict mode reads stderr to"
      echo "       tell 'ran and disagreed' from 'never ran'; a muzzled claim certifies itself."
      echo "       Drop the '2>' redirect. Ordinary noise is fine — only stderr is inspected,"
      echo "       and only for cannot-run signatures."; exit 2 ;;
+  6) echo "FAIL — a claim's field contains an embedded newline or tab (see above). This"
+     echo "       parser frames each claim as one tab-separated line; a raw newline or tab"
+     echo "       inside id/status/verify/claim splits that framing into unrelated garbage"
+     echo "       rows, which were then silently miscounted as REGRESSED/STALE claims."
+     echo "       Join a multi-line verify command onto one physical line —"
+     echo "       semicolon-separated Python statements is the established convention."; exit 2 ;;
+  *) echo "FAIL — the claims parser exited $plan_status (see above) without a verdict this"
+     echo "       guard knows. It crashed, or could not read $CLAIMS or itself. No claim"
+     echo "       was checked, so this is exit 2, never a PASS over zero claims."; exit 2 ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -145,7 +138,7 @@ esac
 REGISTER=".planning/decisions/OPEN-DECISIONS.md"
 [ -f "$REGISTER" ] || { echo "FAIL — $REGISTER is missing"; exit 2; }
 
-dupes="$(python3 "$(dirname "$0")/_od_collisions.py" "$REGISTER")"
+dupes="$(python3 "$HERE/_od_collisions.py" "$REGISTER")"
 dupe_status=$?
 if [ "$dupe_status" -ne 0 ]; then
   echo "FAIL — could not check $REGISTER for id collisions (exit $dupe_status)"
@@ -173,7 +166,7 @@ fi
 #
 # Same class as the OD-id collision above: two sessions each pick a number that
 # looks free off the same trunk, and git merges both silently.
-migdupes="$(python3 "$(dirname "$0")/_migration_versions.py" supabase/migrations)"
+migdupes="$(python3 "$HERE/_migration_versions.py" supabase/migrations)"
 mig_status=$?
 if [ "$mig_status" -ne 0 ]; then
   echo "FAIL — could not check supabase/migrations for duplicate versions (exit $mig_status)"
@@ -229,6 +222,14 @@ while IFS=$'\t' read -r id status verify claim; do
 done <<< "$PLAN"
 
 echo "== Decision claims: $total checked, $held holding"
+
+# Second line of defence for the same fail-open: whatever went wrong upstream, a
+# run that checked nothing does not get to say every claim holds.
+if [ "$total" -eq 0 ]; then
+  echo
+  echo "FAIL — zero claims were checked. A guard with nothing to check must not report success."
+  exit 2
+fi
 
 if [ "$unrunnable" -gt 0 ]; then
   echo
