@@ -971,6 +971,50 @@ export class MenusService {
   }
 
   /**
+   * The house's CURRENT menu(s) and every live line on them — the set
+   * `/promotions`' "On my menu" rung reads (founder item 36; research-filters
+   * adversarial pass F1/F2). Only `status = 'active'` versions: a draft (read,
+   * never chosen) or an archived menu (current once) is not "on my menu".
+   * Production can hold more than one active menu for a house (ADR 0193's
+   * migration adds no unique index), so this TOLERATES several and returns the
+   * union — `getMenu`'s `.maybeSingle()` would throw there — and says so in
+   * the log. Every line is read through `readLines` (keyset-paged; discarded
+   * lines excluded), so a list past PostgREST's 1000-row stop is read whole.
+   * `readAt` is when the menu became current, else when it was read, else its
+   * own date — never a draft's `created_at` (F8).
+   */
+  async readCurrentMenus(restaurantId: string): Promise<{
+    menus: Array<{ menuId: string; name: string | null; readAt: string | null }>;
+    lines: Array<Record<string, unknown> & { menu_id: string }>;
+  }> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, name, made_current_at, extracted_at, menu_date")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active");
+    if (error) throw new Error(`The current menu (restaurant_menus) could not be read: ${error.message}`);
+    const actives = (data ?? []) as Array<{
+      id: string;
+      name: string | null;
+      made_current_at: string | null;
+      extracted_at: string | null;
+      menu_date: string | null;
+    }>;
+    if (actives.length > 1) {
+      this.logger.warn(
+        `Restaurant ${restaurantId} has ${actives.length} active menus; reading their lines as one union`,
+      );
+    }
+    const menus: Array<{ menuId: string; name: string | null; readAt: string | null }> = [];
+    const lines: Array<Record<string, unknown> & { menu_id: string }> = [];
+    for (const m of actives) {
+      menus.push({ menuId: m.id, name: m.name ?? null, readAt: m.made_current_at ?? m.extracted_at ?? m.menu_date ?? null });
+      for (const line of await this.readLines(m.id, restaurantId)) lines.push({ ...line, menu_id: m.id });
+    }
+    return { menus, lines };
+  }
+
+  /**
    * Every live line of one menu of this house, keyset-paged on id and then
    * ordered for reading (section, then name). A failed page is an error, never
    * a shorter menu.

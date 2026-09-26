@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>124c · /promotions · Lead and Ledger</title>
+<style>
+.mudavym{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --alarm:#A33A2B;--paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;--ink-4:#665d50;
+  --warn:#96601A;--warn-tint:rgba(150,96,26,.14);--loss:#A8402C;--loss-tint:rgba(168,64,44,.14);
+  color-scheme:light;background:var(--paper-0);color:var(--ink-1)}
+
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{background:#f7f3ea;font-family:"DM Sans","Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.serif{font-family:Fraunces,"Iowan Old Style",Georgia,serif;letter-spacing:-.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.banner{background:var(--seal);color:#fffdf8;font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:8px 16px;display:flex;gap:14px;flex-wrap:wrap}
+.note{max-width:1200px;margin:18px auto 0;padding:0 16px;color:var(--ink-3);font-size:12.5px}
+.note b{color:var(--ink-2);font-weight:500}
+.frame{max-width:1200px;margin:14px auto 40px;border:1px solid var(--paper-2);border-radius:10px;overflow:hidden}
+.page{padding:24px 24px 40px}
+.eyebrow{font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3);margin:0}
+h1{font-family:Fraunces,Georgia,serif;font-weight:420;font-size:34px;line-height:1.08;margin:6px 0 0}
+.standing{font-family:Fraunces,Georgia,serif;font-style:italic;font-size:15px;color:var(--ink-2);margin:10px 0 0;max-width:860px}
+.standing b{font-style:normal;font-weight:500;color:var(--ink-1)}
+.readat{font:10.5px "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3);margin-top:4px}
+.chip{display:inline-flex;align-items:center;gap:4px;font:500 9.5px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--paper-2);border-radius:3px;padding:1px 6px;color:var(--ink-3);white-space:nowrap}
+.chip.agreed{border-color:rgba(150,96,26,.45);color:var(--warn)}
+.chip.bundle{border-color:var(--seal-ring);color:var(--seal-deep)}
+.chip.code{text-transform:none;color:var(--ink-2)}
+.beats{color:var(--seal-deep)} .above{color:var(--loss)} .withheld{color:var(--ink-3);font-style:italic}
+.btn{border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1);border-radius:8px;padding:5px 10px;font:12px inherit;font-family:inherit;display:inline-flex;gap:4px;align-items:center}
+.btn.primary{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--ink-3)}
+.est{display:block;font-size:11px;color:var(--ink-3)}
+.forks{max-width:1200px;margin:0 auto 60px;padding:0 16px;color:var(--ink-2);font-size:13px}
+.forks h2{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:18px;margin:0 0 6px}
+.forks li{margin:4px 0}
+@media (max-width:780px){ h1{font-size:26px} .page{padding:18px 16px 32px} }
+
+.lead{margin-top:22px;border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);padding:18px 22px;display:grid;grid-template-columns:auto 1fr auto;gap:6px 26px;align-items:end}
+.lead .fig{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:84px;letter-spacing:-.04em;line-height:.9}
+.lead .vendor{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:18px}
+.lead .meta{font-size:12.5px;color:var(--ink-2)}
+.ledger{margin-top:14px;border:1px solid var(--paper-2);border-radius:12px;overflow:hidden;background:var(--paper-0)}
+.lh,.lr{display:grid;grid-template-columns:90px 1.2fr 1.4fr 1fr 110px 90px;gap:12px;align-items:center;padding:0 14px}
+.lh{font:500 10px "JetBrains Mono",ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding-top:8px;padding-bottom:8px;border-bottom:1px solid var(--paper-2);background:var(--paper-1)}
+.lr{border-bottom:1px solid var(--paper-2);font-size:12.5px}
+.lr.large{min-height:58px}.lr.compact{min-height:34px}
+.lr .fig{font-family:Fraunces,Georgia,serif;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.lr.large .fig{font-size:30px}.lr.compact .fig{font-size:15px}
+.lr .v b{font-weight:500} .lr .v span{color:var(--ink-3)}
+.lr .amt{font:13px "JetBrains Mono",ui-monospace,monospace}
+.lr .why{font-size:11px;color:var(--ink-3);font-style:italic}
+.lr .ends{font:10.5px "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3)} .lr .ends.soon{color:var(--warn)}
+/* the bundle: a GROUP ROW with its bottles as indented sub-rows under a rule */
+.grp{border-left:3px solid var(--seal);background:var(--seal-tint)}
+.sub{font-size:11.5px;color:var(--ink-2);min-height:26px;border-bottom:1px dashed var(--paper-2);border-left:3px solid var(--seal-ring)}
+.sub .v{padding-left:14px}
+@media (max-width:780px){.lead{grid-template-columns:1fr}.lead .fig{font-size:54px}.lh{display:none}.lr{grid-template-columns:1fr 1fr;padding:8px 12px;gap:4px 10px}.lr .v{grid-column:1/-1}}
+</style></head>
+<body class="mudavym">
+<div class="banner"><b>Sketch 124 · C · Lead and Ledger</b><span>one box, then rows · bundle as a group row</span><span>example data</span></div><p class="note"><b>The idea.</b> Only the hero is a box. Everything else is a ledger row, and "size" becomes row weight: a large offer is a tall row with a 30px figure, a compact one a short row with a 15px figure. Eleven rows fit under the lead on one screen and read in strict rank order — C's density taken literally, with B's size kept as weight rather than area. A bundle is a <b>group row</b> carrying its total, with its bottles as indented sub-rows beneath it.</p><div class="frame"><div class="page"><p class="eyebrow">The house's vendors</p>
+<h1>Promotions.</h1>
+<p class="standing"><b>12 offers from 7 vendors on the table</b> — five carry a worth the house qualifies for, against a comparison no older than 180 days.</p>
+<p class="readat">Read Sep 25, 14:02 · 312 paid lines, 40 house sightings over 540 days · example data</p>
+<section class="lead"><div class="fig beats">−11.8%</div><div><div class="vendor">Empire Merchants · September rosé close-out</div><div class="meta">under <b>Winebow, $13.10</b> · their claim 12% off · ends Sep 30</div><div class="meta"><span class="mono">$412</span> est. — 96 bottles over 540 days across 11 invoices</div></div><div style="display:flex;gap:6px"><span class="btn quiet">Details</span><span class="btn primary">Draft an order</span></div></section><div class="ledger"><div class="lh"><span>verdict</span><span>vendor · offer</span><span>against</span><span>their claim</span><span>worth est.</span><span>ends</span></div><div class="lr large"><span class="fig beats">−7.2%</span><span class="v"><b>Winebow</b><br><span>Burgundy allocation</span></span><span>against Empire, $41.80</span><span>8% off 6+</span><span class="amt">$188</span><span class="ends">ends Oct 4</span></div><div class="lr large grp"><span class="chip bundle">bundle · 3</span><span class="v"><b>Southern Glazer&#x27;s</b><br><span>Rakı &amp; meze trio</span></span><span>3 bottles, $96 together</span><span></span><span class="amt beats">$164</span><span class="ends">ends Oct 12</span></div><div class="lr sub"><span></span><span class="v">Yeni Rakı 70cl</span><span class="beats">−9.1% vs lowest other</span><span></span><span class="amt">$61</span><span></span></div><div class="lr sub"><span></span><span class="v">Tekirdağ Gold 70cl</span><span class="beats">−6.4% vs lowest other</span><span></span><span class="amt">$58</span><span></span></div><div class="lr sub"><span></span><span class="v">Efe Yaş Üzüm 70cl</span><span class="beats">−5.0% vs lowest other</span><span></span><span class="amt">$45</span><span></span></div><div class="lr large"><span class="fig beats">−5.5%</span><span class="v"><b>Martignetti</b><br><span>Loire whites</span></span><span>against Winebow, $17.40</span><span>10% off</span><span class="amt">$96</span><span class="ends">ends Oct 1</span></div><div class="lr compact"><span class="fig beats">−3.1%</span><span class="v"><b>Empire Merchants</b><br><span>Prosecco case deal</span></span><span>against RNDC, $10.90</span><span>$12 off a case</span><span class="amt">$58</span><span class="ends soon">ends Sep 28 · 3 days</span></div><div class="lr compact"><span class="fig beats">−2.0%</span><span class="v"><b>RNDC</b><br><span>Whiskey month</span></span><span>against Empire, $29.00</span><span>5% off</span><span class="amt">$31</span><span class="ends">ends Oct 31</span></div><div class="lr compact"><span class="fig above">+1.8%</span><span class="v"><b>Winebow</b><br><span>Napa cabernet</span></span><span>against Martignetti, $38.20<br><span class="why">above the lowest other vendor</span></span><span>6% off</span><span class="why">—</span><span class="ends">ends Oct 15</span></div><div class="lr compact"><span class="fig beats">−8.0%</span><span class="v"><b>Kobrand</b><br><span>Champagne 12+</span></span><span>against Empire, $48.00<br><span class="why">the minimum of 12 does not say bottles or cases — not sized</span></span><span>15% off 12+</span><span class="why">—</span><span class="ends">ends Nov 1</span></div><div class="lr compact grp"><span class="chip bundle">bundle · 2</span><span class="v"><b>Empire Merchants</b><br><span>Aperitivo pair</span></span><span>2 bottles, $44 together<br><span class="why">1 of 2 bottles has no comparison — no partial sum</span></span><span></span><span class="why">withheld</span><span class="ends">no end date</span></div><div class="lr sub"><span></span><span class="v">Aperol 1L</span><span class="beats">−4.2% vs lowest other</span><span></span><span class="amt">$22</span><span></span></div><div class="lr sub"><span></span><span class="v">Campari 1L</span><span class="why">no comparison</span><span></span><span class="amt">—</span><span></span></div><div class="lr compact"><span class="fig beats">−6.1%</span><span class="v"><b>Martignetti</b><br><span>Rioja reserva</span></span><span>against RNDC, $19.80<br><span class="why">the other vendor&#x27;s price is 212 days old — past 180</span></span><span>7% off</span><span class="why">—</span><span class="ends">ends Oct 20</span></div><div class="lr compact"><span class="fig beats">−4.0%</span><span class="v"><b>Southern Glazer&#x27;s</b><br><span>Mezcal intro</span></span><span>against RNDC, $44.00<br><span class="why">your largest single order is 4 bottles; the minimum is 6</span></span><span>$5 off</span><span class="why">—</span><span class="ends">ends Oct 9</span></div><div class="lr compact"><span class="fig matches">±0.0%</span><span class="v"><b>RNDC</b><br><span>House gin</span></span><span>against Empire, $21.50<br><span class="why">matches the lowest other vendor</span></span><span>matches</span><span class="why">—</span><span class="ends">no end date</span></div></div></div></div><section class="forks"><h2>What this direction asks you</h2><ul><li>Is a row with a bigger figure still "the bigger the sale, the bigger the box" — or does the founder's word need boxes?</li><li>Only one box (the hero): or the three large offers as boxes too, with the ledger starting at the compact tier?</li><li>Group rows: always expanded (here), or collapsed to the bundle's row with a count, opening in place?</li></ul></section></body></html>

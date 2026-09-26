@@ -256,6 +256,19 @@
       ]
     },
     {
+      "slug": "promotions",
+      "flag": "mudavym_design_promotions",
+      "route": "/promotions",
+      "legacy": "page",
+      "source": "apps/web/src/pages/promotions/next",
+      "empty": [
+        "No offers are on the table right now."
+      ],
+      "failed_read": [
+        "The offers could not be read."
+      ]
+    },
+    {
       "slug": "calendar",
       "flag": "mudavym_design_calendar",
       "route": "/calendar",
@@ -559,12 +572,6 @@
     }
   ],
   "pending_pages": [
-    {
-      "slug": "promotions",
-      "route": "/promotions",
-      "file": "apps/web/src/pages/Promotions.tsx",
-      "held_by": "ADR 0143 (open fork)"
-    },
     {
       "slug": "vendor_prices",
       "route": "/vendor-prices",

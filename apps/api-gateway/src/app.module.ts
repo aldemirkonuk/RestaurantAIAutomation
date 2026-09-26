@@ -30,6 +30,7 @@ import { EventsModule } from "./events/events.module";
 import { CalendarModule } from "./calendar/calendar.module";
 import { InventoryLedgerModule } from "./inventory-ledger/inventory-ledger.module";
 import { ProvidersModule } from "./providers/providers.module";
+import { PromotionsModule } from "./promotions/promotions.module";
 import { CommunicationsModule } from "./communications/communications.module";
 import { SettingsModule } from "./settings/settings.module";
 import { IntegrationsModule } from "./integrations/integrations.module";
@@ -121,6 +122,7 @@ import { HouseModule } from "./house/house.module";
     ReportsModule,
     EventsModule,
     ProvidersModule,
+    PromotionsModule,
     WinesModule,
     StorageLocationsModule, // Storage locations and wine-to-location mappings
     CellarModule, // Which cellar registers a house carries (inferred → confirmed)
