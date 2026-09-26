@@ -28,6 +28,7 @@ import {
   provenanceIds,
 } from "./own-paper-sighting";
 import { priceBelowAverage } from "../vendor-intel/price-below-average";
+import * as ownPaperSighting from "./own-paper-sighting";
 
 type Row = Record<string, any>;
 
@@ -61,6 +62,8 @@ function makeDb(opts: {
   dealRows?: Row[];
   /** The outlier population read fails (supabase resolves with an error). */
   priorReadFails?: boolean;
+  /** `restaurant_inventory.master_wine_id` for the shelf slot; default WINE. */
+  inventoryMasterWineId?: string | null;
 }) {
   const calls: Calls = { sightingInserts: [], priceHistoryInserts: [], reads: [] };
   const existing = opts.existingSightings ?? [];
@@ -100,7 +103,8 @@ function makeDb(opts: {
             return { data: { id: filters.id }, error: null };
           return {
             data: {
-              master_wine_id: WINE,
+              master_wine_id:
+                "inventoryMasterWineId" in opts ? opts.inventoryMasterWineId : WINE,
               bottle_size_ml:
                 "bottleSizeMl" in opts ? opts.bottleSizeMl : 750,
               wine_name: "Barolo Riserva",
@@ -510,6 +514,51 @@ describe("own paper reaches vendor_price_observations", () => {
     expect(said).toContain("statement timeout");
     warn.mockRestore();
   });
+
+  // PR #473 audit (81f7a6abf) and PR #482 audit (cd2dc58f6): a line with no
+  // product identity used to get `[]` from `priorSightingUnitPrices` without
+  // any read, and was stored as "Not judged: only 0 earlier sighting(s) of
+  // this product exist..." — a count nobody took, next to a sighting sheet
+  // that says the product is "Unidentified". Five priors are seeded so a
+  // count, had one been taken, could not honestly be 0.
+  it("a line with no product identity writes no flag and NO reason, never 'only 0'", async () => {
+    const seeded = [18, 18.5, 19, 18.2, 18.8].map((p, i) => ({
+      master_wine_id: WINE,
+      raw_price: p,
+      source_type: "invoice",
+      observed_at: `2026-08-0${i + 1}T00:00:00.000Z`,
+      pack_size: 1,
+      unit_volume_ml: 750,
+      yield_factor: 1,
+    }));
+    const decide = jest.spyOn(ownPaperSighting, "decideOwnPaperSighting");
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, final_price: 380 },
+      existingSightings: seeded,
+      inventoryMasterWineId: null,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...verifyBody,
+      invoiceUnitPrice: 380,
+    });
+
+    // Still evidence of what this vendor charged, so still written...
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.master_wine_id).toBeNull();
+    // ...but no judgement is claimed: no flag, no count, no basis, no time.
+    expect(row.is_outlier).toBe(false);
+    expect(row.outlier_reason).toBeNull();
+    expect(row.outlier_basis).toBeNull();
+    expect(row.outlier_judged_at).toBeNull();
+    // The service itself passes no count (not just the pure decision
+    // discarding one): the final decision call gets `priorCount: undefined`.
+    const withOpts = decide.mock.calls.filter((c) => c[1] !== undefined);
+    expect(withOpts).toHaveLength(1);
+    expect(withOpts[0][1]).toEqual({ isOutlier: false, priorCount: undefined });
+    decide.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -545,6 +594,29 @@ describe("decideOwnPaperSighting", () => {
     expect(d.row.pack_size).toBe(12);
     // The ladder gets the conversion, done once, by the engine.
     expect(d.normalizedUnitPrice).toBeCloseTo(20, 6);
+  });
+
+  // An unidentified row has no group, so a count passed for it is ignored:
+  // the pure decision alone never writes "only 0 ... of this product" for it.
+  it("never judges a row with no product identity, whatever count it is given", () => {
+    const unidentified = { ...base, masterWineId: null };
+    for (const opts of [
+      { isOutlier: false, priorCount: 0 },
+      { isOutlier: true, priorCount: 12 },
+    ]) {
+      const d = decideOwnPaperSighting(unidentified, opts);
+      if (!d.write) throw new Error(d.reason);
+      expect(d.row.master_wine_id).toBeNull();
+      expect(d.row.is_outlier).toBe(false);
+      expect(d.row.outlier_reason).toBeNull();
+      expect(d.row.outlier_basis).toBeNull();
+      expect(d.row.outlier_judged_at).toBeNull();
+    }
+    // The same count on an identified row IS a judgement, so the guard is
+    // about identity and nothing else.
+    const identified = decideOwnPaperSighting(base, { isOutlier: false, priorCount: 0 });
+    if (!identified.write) throw new Error(identified.reason);
+    expect(identified.row.outlier_reason).toMatch(/^Not judged: only 0 earlier sighting/);
   });
 
   it("refuses a tenant-less sighting", () => {

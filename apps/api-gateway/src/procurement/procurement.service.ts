@@ -1896,7 +1896,8 @@ export class ProcurementService {
         args.restaurantId,
         args.masterWineId,
       );
-      // `null` is a register we could not read. It is not an empty one: no
+      // `null` is a register we could not read, or a row with no product
+      // identity to read one for. Neither is an empty register: no
       // flag, and no reason either — `priorCount: undefined` leaves
       // `outlier_reason`/`outlier_basis`/`outlier_judged_at` null, so the row
       // reads "No judge has looked at this row", which is the truth. Passing
@@ -2015,23 +2016,28 @@ export class ProcurementService {
    * = this tenant`, `vendor-comparison.service.ts:341`) so the MAD test is run
    * over the same population the ladder will later read. `master_wine_id` is
    * the key `priceBelowAverage` groups on (`price-below-average.ts:141-144`);
-   * with no identity there is no group, so there is nothing to be an outlier
-   * against and the answer is an empty list.
+   * with no identity there is no group and nothing is read, so the answer is
+   * `null` — "nothing was counted" — never `[]`. An empty list is a register
+   * that was read and holds nothing, and the writer turns it into a stored
+   * "only 0 earlier sighting(s) of this product" beside a sheet that says the
+   * product is "Unidentified" (PR #473 audit at 81f7a6abf, PR #482 audit at
+   * cd2dc58f6). `decideOwnPaperSighting` also ignores a count for an
+   * unidentified row, so neither layer alone can write that sentence.
    *
    * The population is every source type — invoices, quotes, scrapes, typed
    * prices — on this house's rows and the public register's. There is no
    * `source_type` filter, and the reason `decideOwnPaperSighting` writes says
    * exactly that rather than "own-paper trail".
    *
-   * `null` means the read FAILED. It is never folded into `[]`: an empty list
-   * becomes a stored "only 0 sightings" sentence, and a failed read is not a
-   * register with nothing in it.
+   * `null` also means the read FAILED. It is never folded into `[]`: an empty
+   * list becomes a stored "only 0 sightings" sentence, and a failed read is not
+   * a register with nothing in it.
    */
   private async priorSightingUnitPrices(
     restaurantId: string,
     masterWineId: string | null,
   ): Promise<number[] | null> {
-    if (!masterWineId) return [];
+    if (!masterWineId) return null;
     try {
       const { data, error } = await this.databaseService.supabase
         .from("vendor_price_observations")

@@ -45,10 +45,22 @@
 --     the parents. So the database refuses a sighting naming another house's
 --     document or message, whatever a writer does.
 --   * `document_line_id` carries a composite foreign key with `document_id`,
---     so whenever both are set the line is a line of the document the row
---     names (and a plain key of its own, so a deleted line never dangles —
---     see section 2).
---   * CHECKs refuse any of the four on a row with no house.
+--     so whenever BOTH are set the line is a line of the document the row
+--     names, and so of the row's house (and a plain key of its own, so a
+--     deleted line never dangles — see section 2).
+--   * NOT ENFORCED HERE: a house row that names a line with `document_id`
+--     NULL. The composite key is MATCH SIMPLE, so it is not checked when
+--     `document_id` is NULL, and the plain line key has no house. The
+--     database alone would accept another house's line on such a row. The
+--     CHECK that would close it ("no line without its document") is refused
+--     by the delete ordering in section 2. Both writers refuse a line named
+--     without its document before any write (`own-paper-sighting.ts`
+--     `provenanceIds`, `vendor-comparison.service.ts`
+--     `assertProvenanceIsThisHouses`), and the reader reads lines only
+--     from the viewer's own house (`vendor-comparison.service.ts`
+--     `loadProvenance`). This is named, not hidden (PR #482 audit,
+--     2026-09-26).
+--   * Four CHECKs refuse each of the four on a row with no house.
 --   * `source_contact_id` cannot be composite: `provider_contacts` has no
 --     `restaurant_id` (it hangs off `providers`). The writer verifies the
 --     contact's vendor belongs to the house before writing it, and the reader
@@ -83,7 +95,7 @@
 --
 -- ADDITIVE ONLY: four nullable columns, three unique indexes on parents (each
 -- over a column that is already the primary key, so no existing row can
--- violate them), five foreign keys, three CHECKs, three partial indexes and
+-- violate them), five foreign keys, four CHECKs, three partial indexes and
 -- comments. No row is written, no column dropped, no type changed, no RLS
 -- change (`vendor_price_observations` keeps its posture).
 set local statement_timeout = '120s';
@@ -172,6 +184,14 @@ ALTER TABLE public.vendor_price_observations
   ADD CONSTRAINT vpo_document_needs_a_house
   CHECK (document_id IS NULL OR restaurant_id IS NOT NULL);
 
+-- The line's own. Unlike "no line without its document" (section 2), this one
+-- survives every delete order: no delete rule here ever nulls restaurant_id.
+ALTER TABLE public.vendor_price_observations
+  DROP CONSTRAINT IF EXISTS vpo_document_line_needs_a_house;
+ALTER TABLE public.vendor_price_observations
+  ADD CONSTRAINT vpo_document_line_needs_a_house
+  CHECK (document_line_id IS NULL OR restaurant_id IS NOT NULL);
+
 ALTER TABLE public.vendor_price_observations
   DROP CONSTRAINT IF EXISTS vpo_message_needs_a_house;
 ALTER TABLE public.vendor_price_observations
@@ -202,7 +222,7 @@ CREATE INDEX IF NOT EXISTS idx_vpo_source_contact
 COMMENT ON COLUMN public.vendor_price_observations.document_id IS
   'ADR 0160 §112 fork 6(a): the procurement_documents row this price was read from — a verified invoice (receipt_verified writer) or a paper a person attached when recording it. Same house as the row (composite FK). NULL means no paper is linked; if raw.provenance.documentId is set while this is NULL, the paper was deleted after the price was recorded.';
 COMMENT ON COLUMN public.vendor_price_observations.document_line_id IS
-  'ADR 0160 §112 fork 6(a): the line on document_id this price is. Always a line of that document (composite FK). NULL means the price is tied to the paper but not to one line of it.';
+  'ADR 0160 §112 fork 6(a): the line on document_id this price is. When document_id is set, always a line of that document (composite FK, MATCH SIMPLE: not checked while document_id is NULL, so the writers refuse a line without its document). Never on a public-register row (CHECK). NULL means the price is tied to the paper but not to one line of it.';
 COMMENT ON COLUMN public.vendor_price_observations.conversation_message_id IS
   'ADR 0160 §112 fork 6(a): the procurement_conversations row (one message) this price came from — the vendor reply a confirmed deal was read from (order_confirmed writer) or a message a person named. Same house as the row (composite FK).';
 COMMENT ON COLUMN public.vendor_price_observations.source_contact_id IS
@@ -237,6 +257,7 @@ BEGIN
     ('vpo_message_same_house_fkey', 'f'),
     ('vpo_source_contact_fkey', 'f'),
     ('vpo_document_needs_a_house', 'c'),
+    ('vpo_document_line_needs_a_house', 'c'),
     ('vpo_message_needs_a_house', 'c'),
     ('vpo_contact_needs_a_house', 'c')
   ) AS k(conname, kind)
@@ -276,6 +297,6 @@ BEGIN
     RAISE EXCEPTION 'provenance foreign key(s) % do not null only their own id on delete — a plain SET NULL would null restaurant_id and publish a house''s price', missing;
   END IF;
 
-  RAISE NOTICE 'vendor_price_observations: 4 provenance columns, 5 foreign keys, 3 house checks present.';
+  RAISE NOTICE 'vendor_price_observations: 4 provenance columns, 5 foreign keys, 4 house checks present.';
 END
 $$;

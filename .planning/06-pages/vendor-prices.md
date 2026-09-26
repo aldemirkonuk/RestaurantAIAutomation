@@ -147,9 +147,21 @@ merged. What it adds:
     parents. The database itself refuses a sighting that names another house's
     paper or message.
   - The line is a line *of* the named document: a composite key with
-    `document_id`, plus a plain key of its own.
+    `document_id`, plus a plain key of its own. **[corrected 2026-09-26, PR #482
+    audit at cd2dc58f6: only when `document_id` is set. The composite key is
+    MATCH SIMPLE, so a house row naming a line with `document_id` NULL is not
+    house-checked by the database: another house's line is ACCEPTED there
+    (PGlite probe P2, below). The CHECK that would close it, "no line without
+    its document", fails a document's deletion (migration section 2). Both
+    writers refuse a line without its document before any write, and the
+    reader reads lines only from the viewer's house. Filed in
+    `v3.0-TECH-DEBT.md`.]**
   - Three CHECKs refuse all four ids on a public-register row
-    (`restaurant_id IS NULL`).
+    (`restaurant_id IS NULL`). **[corrected 2026-09-26, PR #482 audit at
+    cd2dc58f6: there were three CHECKs and they covered three ids, not
+    `document_line_id`. A fourth, `vpo_document_line_needs_a_house`, is added
+    in the same migration, and the migration's own assertions now require
+    it.]**
   - Delete rules are `ON DELETE SET NULL (<the id column only>)`. A deleted
     paper never deletes a price, never nulls `restaurant_id` (a plain `SET NULL`
     on a composite key would publish the house's price), and never blocks a
@@ -159,7 +171,27 @@ merged. What it adds:
     mutations (scratch harness, not in the repo):
     - same-house insert succeeds;
     - another house's document, message or line is refused with `23503`;
+      **[corrected 2026-09-26: a line only when the row also names a
+      document]**
     - a public row naming any of the four is refused with `23514`;
+      **[corrected 2026-09-26: not the line alone until
+      `vpo_document_line_needs_a_house` was added]**
+  - Re-measured 2026-09-26 after that fix (PR #482 audit), PGlite build of all
+    230 migrations in `wt-w3-provenance` (superuser, no Supabase platform;
+    scratch harness `p4-scratch/pglite-probe/w3-provenance-482/probe.mjs`):
+    - P1: a public row naming only a line is refused, `23514`
+      `vpo_document_line_needs_a_house`;
+    - P2: a house row naming another house's line with no document is
+      ACCEPTED. This is the named gap above;
+    - P3: a house row naming its own document and another house's line is
+      refused, `23503` `vpo_document_line_on_document_fkey`;
+    - P4, P5: a same-house document and line is accepted, and a public row
+      naming a document is refused (`23514`);
+    - P6, P7: deleting a named document still succeeds, nulls the document and
+      the line, and keeps the house;
+    - mutations: dropping the new CHECK fails the build on the migration's own
+      assertion, and dropping the CHECK and its assertion together flips P1 to
+      ACCEPTED.
     - deleting the document nulls both the document and the line and keeps the
       house;
     - deleting the house succeeds, and its sightings keep `restaurant_id`.

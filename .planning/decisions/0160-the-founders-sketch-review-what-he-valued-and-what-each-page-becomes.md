@@ -503,7 +503,12 @@ the page.]** **[built 2026-09-25, lane W3-provenance, branch
 `document_id`, `document_line_id`, `conversation_message_id` and `source_contact_id`
 (`20260927130000_a_price_names_its_paper_and_its_messenger.sql` — composite keys with
 `restaurant_id`, so the database refuses another house's paper or message, and a
-public-register row can carry none); the two writer changes (`procurement.service.ts`
+public-register row can carry none **[corrected 2026-09-26, PR #482 audit at
+cd2dc58f6: a line is house-checked by the database only when the row also names its
+document (MATCH SIMPLE); a line named alone is refused by both writers and read
+house-scoped, not refused by the database. "Can carry none" held for three of the four
+ids until `vpo_document_line_needs_a_house` was added in the same migration.
+`06-pages/vendor-prices.md` has the measurements.]**); the two writer changes (`procurement.service.ts`
 `receiptPaperFor` names the one live invoice linked to a verified receipt's order and
 the line paired with the order's line, `dealMessageFor` names the vendor reply a
 confirmed deal was read from); the attach-a-paper upload in Record a price (the file

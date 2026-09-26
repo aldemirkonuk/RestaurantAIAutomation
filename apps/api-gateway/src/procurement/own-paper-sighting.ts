@@ -250,6 +250,8 @@ function positiveInt(v: unknown): number | null {
  * omits it gets `outlier_reason: null` (this file's own field goes unwritten,
  * not a guessed sentence) rather than a claim this function cannot back up —
  * and the caller MUST omit it when its register read failed, never pass 0.
+ * A row with no `masterWineId` is never judged: there is no group, so any
+ * `priorCount` is ignored and the row is stored unflagged with no reason.
  *
  * The sentence names the population the caller really reads: this house's
  * rows plus the public register's, every source type. It does NOT copy the
@@ -441,17 +443,25 @@ export function decideOwnPaperSighting(
   // row and a never-judged one both used to read "No judge has looked at
   // this row" on the register (review finding). `priorCount` recovers the
   // distinction the same way the manual writer already draws it.
+  //
+  // No product identity means no group: there is nothing this row could be
+  // compared with, so nothing was counted and no count may be stated. A
+  // `priorCount` for an unidentified row is ignored, whatever the caller
+  // passes — otherwise the register would store "Not judged: only 0 earlier
+  // sighting(s) of this product" beside a sheet that says the product is
+  // "Unidentified" (PR #473 audit at 81f7a6abf, PR #482 audit at cd2dc58f6).
+  const priorCount = input.masterWineId ? opts.priorCount : undefined;
   const judged =
-    opts.priorCount !== undefined && opts.priorCount + 1 >= MIN_OUTLIER_SAMPLE;
+    priorCount !== undefined && priorCount + 1 >= MIN_OUTLIER_SAMPLE;
   const outlierReason =
-    opts.priorCount === undefined
+    priorCount === undefined
       ? null
       : !judged
-        ? `Not judged: only ${opts.priorCount} earlier sighting(s) of this product exist on this house's register and the public one (every source type counted), below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
+        ? `Not judged: only ${priorCount} earlier sighting(s) of this product exist on this house's register and the public one (every source type counted), below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
         : opts.isOutlier
-          ? `Flagged at write time against ${opts.priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted): it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
-          : `Judged clean at write time against ${opts.priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted).`;
-  const judgedAt = opts.priorCount === undefined ? null : new Date().toISOString();
+          ? `Flagged at write time against ${priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted): it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
+          : `Judged clean at write time against ${priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted).`;
+  const judgedAt = priorCount === undefined ? null : new Date().toISOString();
 
   // Fork 6(a). Deliberately NOT part of `contentHash` above: the hash answers
   // "is this the same evidence about the price", and finding the paper a
@@ -483,9 +493,10 @@ export function decideOwnPaperSighting(
       normalized_unit_price: normalized,
       normalization_note: note,
       content_hash: contentHash,
-      is_outlier: opts.isOutlier === true,
+      // An unidentified row has no group to sit outside of.
+      is_outlier: input.masterWineId ? opts.isOutlier === true : false,
       outlier_reason: outlierReason,
-      outlier_basis: opts.priorCount === undefined ? null : "write_time",
+      outlier_basis: priorCount === undefined ? null : "write_time",
       outlier_judged_at: judgedAt,
       document_id: prov.documentId,
       document_line_id: prov.documentLineId,
