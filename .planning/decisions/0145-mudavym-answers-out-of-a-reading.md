@@ -1696,15 +1696,16 @@ Rejected, with reasons:
 
 ### The founder's answer
 
-Founder item 45, recorded verbatim in
-[`founder-answers-2026-09-25-web-rebuild.md`](../../../.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-automation/memory/founder-answers-2026-09-25-web-rebuild.md)
-(round 7, 2026-09-26 morning, after Wave 4) -- the whole of item 45, quoted in
-full because nothing else is on record for it: *"/ask panel opens in the
-person's LAST USED mode; first time = Ask the books."* No rejected
-alternative is on record for this item -- unlike the round-6 and fork-3
-entries above, this one was not put to him as an A/B choice; it is recorded
-here as a plain instruction, and this amendment does not invent an option he
-never saw.
+Founder item 45, recorded verbatim in the founder's-answers session memory
+`founder-answers-2026-09-25-web-rebuild.md` (not a repo file -- it lives in
+this account's `~/.claude/projects/` memory store, outside version control,
+so it is cited by name rather than linked) -- round 7, 2026-09-26 morning,
+after Wave 4 -- the whole of item 45, quoted in full because nothing else is
+on record for it: *"/ask panel opens in the person's LAST USED mode; first
+time = Ask the books."* No rejected alternative is on record for this item
+-- unlike the round-6 and fork-3 entries above, this one was not put to him
+as an A/B choice; it is recorded here as a plain instruction, and this
+amendment does not invent an option he never saw.
 
 ### Where the choice is kept, and why
 
