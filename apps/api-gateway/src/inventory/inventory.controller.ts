@@ -15,6 +15,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { InventoryService } from "./inventory.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { OrganizationsService } from "../organizations/organizations.service";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -37,7 +38,31 @@ export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,
     private readonly auctionLotRecords: AuctionLotRecordsService,
+    // ADR 0193: a wine's selling price is the manager's to change ("it should
+    // be changed whenever the manager wants", founder 2026-09-21). The role
+    // is resolved from the house's access rows, not from the token's claim.
+    private readonly organizations: OrganizationsService,
   ) {}
+
+  /**
+   * The one gate on every price a route here writes (ADR 0193; founder,
+   * 2026-09-21: price edits are owner/manager only, audited, and every price
+   * version names who set it). A session naming nobody is refused before the
+   * role is even read.
+   */
+  private async assertMayPrice(userId: string | undefined, restaurantId: string) {
+    if (!userId) {
+      throw new HttpException(
+        "A price change names the person who made it, and this session names nobody. Nothing was changed.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "change a wine's price",
+    );
+  }
 
   // ==========================================================================
   // AUCTION LOT RECORDS — an auction lot's own details, kept. Built
@@ -149,9 +174,20 @@ export class InventoryController {
   async createInventoryItem(
     @Param("restaurantId") restaurantId: string,
     @Body() dto: CreateInventoryItemDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    // A price set when the wine is added is a price edit: owner or manager
+    // only, and it names the person (founder, 2026-09-21, answers 1 and 5).
+    // Checked before anything is written.
+    if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
+      await this.assertMayPrice(user?.userId, restaurantId);
+    }
     try {
-      return await this.inventoryService.createInventoryItem(restaurantId, dto);
+      return await this.inventoryService.createInventoryItem(
+        restaurantId,
+        dto,
+        user?.userId ?? null,
+      );
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
@@ -175,11 +211,22 @@ export class InventoryController {
   async bulkCreateInventoryItems(
     @Param("restaurantId") restaurantId: string,
     @Body() dto: BulkCreateInventoryItemsDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    // Same rule as one wine: a batch that names any price is an owner's or a
+    // manager's, refused whole before any line is received otherwise.
+    if (
+      (dto.items ?? []).some(
+        (l) => l.menuPriceBottle !== undefined || l.menuPriceGlass !== undefined,
+      )
+    ) {
+      await this.assertMayPrice(user?.userId, restaurantId);
+    }
     try {
       return await this.inventoryService.bulkCreateInventoryItems(
         restaurantId,
         dto,
+        user?.userId ?? null,
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -382,6 +429,12 @@ export class InventoryController {
     @Body() dto: UpdateInventoryItemDto,
     @CurrentUser() user?: { userId?: string },
   ) {
+    // Only an owner or a manager may change the house's own bottle or glass
+    // price. Checked before anything in this PATCH is written, so a refused
+    // price change does not half-apply the other fields beside it.
+    if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
+      await this.assertMayPrice(user?.userId, restaurantId);
+    }
     try {
       return await this.inventoryService.updateInventoryItem(
         restaurantId,

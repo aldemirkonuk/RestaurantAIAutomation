@@ -47,6 +47,8 @@ export interface InventoryItem {
   pourSizeMl?: number;
   pourSizeOz?: number;
   menuPriceGlass?: number;
+  /** This house's own bottle price — never the wine library's reference price. ADR 0193: stored in `restaurant_inventory.menu_price_current` (one bottle-price column); changed by a manager on /inventory or by a menu update. */
+  menuPriceBottle?: number;
   glassesPerBottle?: number;
   glassesPerBottleOverride?: number;
   // Joined fields
@@ -71,6 +73,15 @@ export interface InventoryItem {
   abcClass?: 'A' | 'B' | 'C';
   deadStock?: boolean;
   daysSinceSale?: number;
+  /**
+   * False means the `inventory_analytics` join itself could not be read for
+   * this batch — a failed read, told apart from a row with genuinely no
+   * analytics yet (`velocityPerDay`/`daysSinceSale` both `undefined` with
+   * this `true`). Absent on any response from before this field existed,
+   * which callers should treat the same as `true` (the read-before-this-flag
+   * behaviour, never worse than it was).
+   */
+  analyticsReadable?: boolean;
   locations?: WineLocationBreakdown[];
 }
 
@@ -109,7 +120,10 @@ export interface UpdateInventoryItemRequest {
   bottleSizeMl?: number;
   saleType?: SaleType;
   pourSizeMl?: number;
-  menuPriceGlass?: number;
+  /** null clears it (owner/manager only; ADR 0193). */
+  menuPriceGlass?: number | null;
+  /** This house's own bottle price — never the wine library's reference price. ADR 0193: stored in `restaurant_inventory.menu_price_current` (one bottle-price column); changed by a manager on /inventory or by a menu update. null clears it (owner/manager only). */
+  menuPriceBottle?: number | null;
   glassesPerBottleOverride?: number;
 }
 
@@ -128,6 +142,8 @@ export interface CreateInventoryItemRequest {
   saleType?: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
+  /** This house's own bottle price — never the wine library's reference price. ADR 0193: stored in `restaurant_inventory.menu_price_current` (one bottle-price column); changed by a manager on /inventory or by a menu update. */
+  menuPriceBottle?: number;
   glassesPerBottleOverride?: number;
 }
 
@@ -165,6 +181,8 @@ export interface BulkInventoryLine {
   saleType?: SaleType;
   pourSizeMl?: number;
   menuPriceGlass?: number;
+  /** This house's own bottle price — never the wine library's reference price. ADR 0193: stored in `restaurant_inventory.menu_price_current` (one bottle-price column); changed by a manager on /inventory or by a menu update. */
+  menuPriceBottle?: number;
 }
 
 export interface BulkCreateInventoryRequest {

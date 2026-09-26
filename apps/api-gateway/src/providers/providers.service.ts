@@ -1,6 +1,8 @@
+import { restoreArrivalEntry } from "../arrival/restore-entry";
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -99,8 +101,25 @@ interface ProviderRow {
   known_personnel: string[] | null;
 }
 
+/**
+ * Every method that reads or writes a house's vendors takes the house as a
+ * required argument (ADR 0147, the ADR 0171 shape). A blank one is refused
+ * here rather than turned into an unfiltered query or a row that belongs to
+ * nobody; the controller's `houseOf` answers 403 before this is reached.
+ */
+function requireHouse(restaurantId: string | null | undefined): void {
+  if (!restaurantId || String(restaurantId).trim() === "") {
+    throw new ForbiddenException("This session names no restaurant.");
+  }
+}
+
 @Injectable()
 export class ProvidersService {
+  /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
+  restoreArrival(restaurantId: string, actorId: string, batchId: string, rowId: string) {
+    return restoreArrivalEntry(this.databaseService, "vendor_currency", restaurantId, actorId, batchId, rowId);
+  }
+
   private readonly logger = new Logger(ProvidersService.name);
 
   constructor(
@@ -115,9 +134,10 @@ export class ProvidersService {
 
   async createProvider(
     dto: CreateProviderDto,
-    restaurantId?: string,
+    restaurantId: string,
     userId?: string,
   ): Promise<ProviderResponseDto> {
+    requireHouse(restaurantId);
     let payload: Record<string, any>;
 
     if (dto.catalogue_vendor_id) {
@@ -440,9 +460,10 @@ export class ProvidersService {
   async updateProvider(
     providerId: string,
     dto: UpdateProviderDto,
-    restaurantId?: string,
+    restaurantId: string,
     userId?: string,
   ): Promise<ProviderResponseDto> {
+    requireHouse(restaurantId);
     const updatePayload: Record<string, any> = {
       name: dto.name ?? undefined,
       company_name: dto.companyName ?? undefined,
@@ -482,19 +503,16 @@ export class ProvidersService {
       (k) => updatePayload[k] === undefined && delete updatePayload[k],
     );
 
-    // Build the query; only apply the restaurant_id guard when we actually have
-    // a non-empty restaurantId — passing '' would match no UUID rows and cause
-    // .single() to throw PGRST116 even when the provider exists.
-    let updateQuery = this.databaseService.supabase
+    // The house filter is unconditional (ADR 0147). It used to be applied only
+    // when a restaurantId was present, so a session that named no house
+    // updated ANY provider by id — the one fail-open write on this controller.
+    const { data, error } = await this.databaseService.supabase
       .from("providers")
       .update(updatePayload)
-      .eq("id", providerId);
-
-    if (restaurantId) {
-      updateQuery = updateQuery.eq("restaurant_id", restaurantId);
-    }
-
-    const { data, error } = await updateQuery.select("*").maybeSingle();
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .select("*")
+      .maybeSingle();
 
     if (error) {
       this.logger.error("Failed to update provider", {
@@ -548,16 +566,13 @@ export class ProvidersService {
 
   async softDeleteProvider(
     providerId: string,
-    restaurantId?: string,
+    restaurantId: string,
     userId?: string,
   ): Promise<void> {
-    // First get the provider name for the event
-    const { data: existingProvider } = await this.databaseService.supabase
-      .from("providers")
-      .select("name")
-      .eq("id", providerId)
-      .eq("restaurant_id", restaurantId ?? "")
-      .single();
+    // The house's own provider or a 404 (ADR 0147). This used to read with
+    // `.single()` and ignore the error, so another house's id answered
+    // `{ success: true }` while nothing was deleted.
+    const existingProvider = await this.getProvider(providerId, restaurantId);
 
     const { error } = await this.databaseService.supabase
       .from("providers")
@@ -566,7 +581,7 @@ export class ProvidersService {
         deleted_at: new Date().toISOString(),
       })
       .eq("id", providerId)
-      .eq("restaurant_id", restaurantId ?? "");
+      .eq("restaurant_id", restaurantId);
 
     if (error) {
       this.logger.error("Failed to delete provider", {
@@ -600,11 +615,13 @@ export class ProvidersService {
     }
   }
 
-  async getProviderOrders(providerId: string) {
+  async getProviderOrders(providerId: string, restaurantId: string) {
+    await this.getProvider(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select("*")
       .eq("provider_id", providerId)
+      .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -633,7 +650,8 @@ export class ProvidersService {
     return data ?? [];
   }
 
-  async getProviderPerformance(providerId: string) {
+  async getProviderPerformance(providerId: string, restaurantId: string) {
+    await this.getProvider(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_performance_metrics")
       .select("*")
@@ -654,6 +672,7 @@ export class ProvidersService {
     providerId: string,
     dto: ProviderRatingDto,
   ): Promise<void> {
+    await this.getProvider(providerId, restaurantId);
     const payload = {
       provider_id: providerId,
       restaurant_id: restaurantId,
@@ -682,7 +701,9 @@ export class ProvidersService {
 
   async getProviderContacts(
     providerId: string,
+    restaurantId: string,
   ): Promise<ProviderContactResponseDto[]> {
+    await this.getProvider(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_contacts")
       .select("*")
@@ -704,7 +725,9 @@ export class ProvidersService {
   async addProviderContact(
     providerId: string,
     dto: CreateProviderContactDto,
+    restaurantId: string,
   ): Promise<ProviderContactResponseDto> {
+    await this.getProvider(providerId, restaurantId);
     // Demote any existing primary contact before inserting a new primary
     if (dto.isPrimary) {
       await this.databaseService.supabase
@@ -754,7 +777,9 @@ export class ProvidersService {
     providerId: string,
     contactId: string,
     dto: UpdateProviderContactDto,
+    restaurantId: string,
   ): Promise<ProviderContactResponseDto> {
+    await this.getProvider(providerId, restaurantId);
     const updatePayload: Record<string, any> = {};
     if (dto.name !== undefined) updatePayload.name = dto.name;
     if (dto.email !== undefined) updatePayload.email = dto.email;
@@ -772,7 +797,7 @@ export class ProvidersService {
       .eq("id", contactId)
       .eq("provider_id", providerId)
       .select("*")
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error("Failed to update provider contact", {
@@ -781,6 +806,13 @@ export class ProvidersService {
       });
       throw error;
     }
+    // A contact id that is not this vendor's is the same 404 as a missing one,
+    // not a PGRST116 500.
+    if (!data) {
+      throw new NotFoundException(
+        `No contact with id ${contactId} belongs to this vendor.`,
+      );
+    }
 
     return this.mapContactRow(data);
   }
@@ -788,7 +820,9 @@ export class ProvidersService {
   async deleteProviderContact(
     providerId: string,
     contactId: string,
+    restaurantId: string,
   ): Promise<void> {
+    await this.getProvider(providerId, restaurantId);
     const { error } = await this.databaseService.supabase
       .from("provider_contacts")
       .delete()
@@ -860,17 +894,20 @@ export class ProvidersService {
     restaurantId: string,
     wineId?: string,
   ): Promise<{ primary: any | null; alternatives: any[] }> {
-    let query = this.databaseService.supabase
+    if (!restaurantId || String(restaurantId).trim() === "") {
+      throw new BadRequestException(
+        "Recommendations cannot be listed without a restaurant.",
+      );
+    }
+
+    const query = this.databaseService.supabase
       .from("providers")
       .select("*")
       .is("deleted_at", null)
       .eq("is_active", true)
+      .eq("restaurant_id", restaurantId)
       .order("reliability_score", { ascending: false })
       .limit(5);
-
-    if (restaurantId) {
-      query = query.eq("restaurant_id", restaurantId);
-    }
 
     const { data, error } = await query;
 
@@ -899,6 +936,7 @@ export class ProvidersService {
     dto: UpdateContactDateDto,
     restaurantId: string,
   ): Promise<ProviderResponseDto> {
+    await this.getProvider(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("providers")
       .update({
@@ -927,14 +965,20 @@ export class ProvidersService {
 
   async bulkImportProviders(
     dto: BulkImportProvidersDto,
+    restaurantId: string,
+    userId?: string,
   ): Promise<BulkImportResultDto> {
+    requireHouse(restaurantId);
     let imported = 0;
     let failed = 0;
     const errors: string[] = [];
 
     for (const providerDto of dto.providers) {
       try {
-        await this.createProvider(providerDto);
+        // The caller's house, from the token. Called with no house, every
+        // imported vendor was written with restaurant_id NULL (the column is
+        // nullable) and belonged to nobody.
+        await this.createProvider(providerDto, restaurantId, userId);
         imported++;
       } catch (err: any) {
         failed++;
@@ -962,7 +1006,7 @@ export class ProvidersService {
       .select("profile_foundational, profile_dynamic")
       .eq("id", providerId)
       .eq("restaurant_id", restaurantId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error("getIntelligence failed", {
@@ -970,6 +1014,11 @@ export class ProvidersService {
         error: error.message,
       });
       throw error;
+    }
+    if (!data) {
+      throw new NotFoundException(
+        `No provider with id ${providerId} belongs to this restaurant.`,
+      );
     }
 
     return {
@@ -983,6 +1032,9 @@ export class ProvidersService {
     restaurantId: string,
     dto: UpdateIntelligenceDto,
   ): Promise<{ success: boolean }> {
+    // Another house's id used to answer `{ success: true }` with nothing
+    // written; it is now the same 404 as a missing one (ADR 0147).
+    await this.getProvider(providerId, restaurantId);
     const updatePayload: Record<string, any> = {};
     if (dto.profile_foundational !== undefined) {
       updatePayload.profile_foundational = dto.profile_foundational;
@@ -1074,6 +1126,11 @@ export class ProvidersService {
     orderNumber: string;
     conversationId: string;
   }> {
+    // The vendor must be this house's (ADR 0147). `createOrder` never checks
+    // the provider id against the house, so another house's vendor would have
+    // been booked onto this house's order and conversation.
+    await this.getProvider(providerId, restaurantId);
+
     // Pack size first: it decides how many bottles the invoice total is spread
     // across, and `createOrder` refuses a case order that does not state one.
     // Resolving it here rather than after the order exists means an invoice we
@@ -1176,6 +1233,7 @@ export class ProvidersService {
   // =========================================================================
 
   async getProviderLocations(providerId: string, restaurantId: string) {
+    await this.getProvider(providerId, restaurantId);
     const { data, error } = await this.databaseService.supabase
       .from("provider_locations")
       .select("*")
@@ -1221,6 +1279,9 @@ export class ProvidersService {
     restaurantId: string,
     dto: CreateProviderLocationDto,
   ) {
+    // The row is stamped with the caller's house either way, but without this
+    // a house could hang a location off ANOTHER house's provider id.
+    await this.getProvider(providerId, restaurantId);
     if (dto.isPrimary) {
       await this.databaseService.supabase
         .from("provider_locations")
@@ -1287,6 +1348,7 @@ export class ProvidersService {
     restaurantId: string,
     dto: UpdateProviderLocationDto,
   ) {
+    await this.getProvider(providerId, restaurantId);
     if (dto.isPrimary) {
       await this.databaseService.supabase
         .from("provider_locations")
@@ -1315,7 +1377,7 @@ export class ProvidersService {
       .eq("provider_id", providerId)
       .eq("restaurant_id", restaurantId)
       .select("*")
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error("Failed to update provider location", {
@@ -1323,6 +1385,11 @@ export class ProvidersService {
         error: error.message,
       });
       throw error;
+    }
+    if (!data) {
+      throw new NotFoundException(
+        `No location with id ${locationId} belongs to this vendor.`,
+      );
     }
 
     const row = data as any;
@@ -1350,6 +1417,7 @@ export class ProvidersService {
     locationId: string,
     restaurantId: string,
   ) {
+    await this.getProvider(providerId, restaurantId);
     const { error } = await this.databaseService.supabase
       .from("provider_locations")
       .delete()

@@ -43,7 +43,6 @@ import {
   addMonths,
   countPhrase,
   dayKey,
-  ensureFraunces,
   parseDayKey,
   periodLabel,
   sinceOrUntil,
@@ -186,7 +185,7 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     }
     return `Sky by ${win.issuer}${
       win.horizonDays !== null ? `, ${win.horizonDays} days ahead` : ''
-    }; each day names its own issue time. Beyond that the cells say so.`;
+    }; each day names its own issue time.`;
   })();
 
   /** True when `skyLine` is reporting a failure rather than describing one. */
@@ -211,10 +210,6 @@ export default function CalendarNext({ ground }: CalendarNextProps) {
     }
     return null;
   })();
-
-  useEffect(() => {
-    ensureFraunces();
-  }, []);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
   useEffect(() => {

@@ -13,7 +13,10 @@ import { BadRequestException } from "@nestjs/common";
  * them. The bug was an absence, which is the kind a test can silently agree
  * with.
  */
-function makeService(rows: Array<Record<string, unknown>>) {
+function makeService(
+  rows: Array<Record<string, unknown>>,
+  configOverrides: Record<string, unknown> = {},
+) {
   const ordered = [...rows];
   const chain: any = {
     _pendingOnly: false,
@@ -55,7 +58,7 @@ function makeService(rows: Array<Record<string, unknown>>) {
 
   const service = new AuthService(
     { sign: jest.fn(), verify: jest.fn(), decode: jest.fn() } as any,
-    { get: jest.fn() } as any,
+    { get: jest.fn((key: string) => configOverrides[key]) } as any,
     databaseService,
     { blacklistToken: jest.fn() } as any,
     gmail,
@@ -87,6 +90,24 @@ describe("resendVerification — an account with no verification row", () => {
       service.resendVerification("u1", "a@b.com"),
     ).resolves.toEqual({ sent: true });
     expect(sent).toHaveLength(1);
+  });
+
+  it("uses only the first origin when FRONTEND_URL is a comma-separated allow-list (R1/F5)", async () => {
+    // `this.configService.get("FRONTEND_URL")` hands back the whole
+    // CORS allow-list (cors-origins.ts's shape); before this test, an
+    // AuthService that read it raw here still passed every resend test in
+    // this file (they all leave configService.get returning undefined).
+    const { service, sent } = makeService([], {
+      FRONTEND_URL: "https://mudavym.com,https://www.mudavym.com",
+    });
+
+    await service.resendVerification("u1", "a@b.com");
+
+    expect(sent).toHaveLength(1);
+    const html = sent[0].html as string;
+    expect(html).toContain('href="https://mudavym.com/verify-email?token=fresh-token"');
+    // The raw comma-joined string must never leak into a mailed verify link.
+    expect(html).not.toContain(",https://www.mudavym.com");
   });
 
   it("still honours the cooldown when the last row is recent", async () => {

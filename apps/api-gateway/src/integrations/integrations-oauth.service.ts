@@ -7,9 +7,13 @@ import {
   NotFoundException,
   Optional,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
+import { currentRestaurantRole } from "../auth/current-restaurant-access";
+import { digestsMatch, hashSealToken } from "../common/seal/seal-token";
+import { PRODUCTION_ORIGINS } from "../cors-origins";
 import { DatabaseService } from "../database/database.service";
 import { TokenCryptoService } from "../common/crypto/token-crypto.service";
 // The SERVICE file, not `retention.module`. Importing the module here would put
@@ -29,6 +33,36 @@ import {
 } from "./integrations-oauth.constants";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+
+export interface RedeemedIntegrationConsent {
+  sealId: string;
+  snapshot: Record<string, unknown>;
+  digest: string;
+  browserProofHash: string;
+  browserRequestId: string;
+  frontendOrigin: string;
+}
+
+const BROWSER_STATE_COLUMNS =
+  "state, user_id, restaurant_id, provider, integration_id, return_path, consent_receipt_id, browser_proof_hash, browser_request_id, browser_delivery_secret_hash, frontend_origin, pkce_verifier_encrypted, callback_payload_encrypted, callback_received_at";
+
+/** A 256-bit base64url state, exactly as `createAuthorizationUrl` mints it. */
+const STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+/** A sha256 hex digest or a 256-bit hex browser proof. */
+const HEX_256_PATTERN = /^[a-f0-9]{64}$/;
+
+/**
+ * Why a completed provider round trip still connected nothing, when the cause
+ * is the PERSON's standing rather than the provider exchange. A revoked
+ * membership is not an exchange failure, and a membership that could not be
+ * READ is not a refusal: three causes, three reasons on the return URL.
+ */
+class ConsentMembershipRefusal extends Error {
+  constructor(readonly reason: "membership_refused" | "membership_unreadable") {
+    super(reason);
+    this.name = "ConsentMembershipRefusal";
+  }
+}
 
 /** Refresh a little early so a call never races the expiry boundary. */
 const EXPIRY_SKEW_MS = 60 * 1000;
@@ -114,6 +148,8 @@ export interface HouseGrantsResponse {
 @Injectable()
 export class IntegrationsOauthService {
   private readonly logger = new Logger(IntegrationsOauthService.name);
+  /** FRONTEND_URL entries already reported as unparseable, so each warns once. */
+  private readonly reportedFrontendEntries = new Set<string>();
 
   constructor(
     private readonly db: DatabaseService,
@@ -156,12 +192,44 @@ export class IntegrationsOauthService {
     return `${base}/api/v1/integrations/oauth/${provider}/callback`;
   }
 
+  /**
+   * FRONTEND_URL entries that parse as http(s) URLs, in order.
+   *
+   * FRONTEND_URL is a hand-edited, comma-separated CORS allow-list. One entry
+   * written as `mudavym.com`, a trailing comma, or a space-separated second
+   * host used to reach `new URL()` unguarded and turn every consent call into a
+   * 500 (KL audit J2). An unparseable entry is skipped and named in the log
+   * once; it never decides whether the product works.
+   */
+  private configuredFrontendUrls(): URL[] {
+    const raw = this.config.get<string>("FRONTEND_URL") ?? "http://localhost:3000";
+    const parsed: URL[] = [];
+    for (const entry of raw.split(",")) {
+      const trimmed = entry.trim();
+      if (!trimmed) continue;
+      let url: URL | null = null;
+      try {
+        url = new URL(trimmed);
+      } catch {
+        url = null;
+      }
+      if (url && (url.protocol === "https:" || url.protocol === "http:")) {
+        parsed.push(url);
+      } else if (!this.reportedFrontendEntries.has(trimmed)) {
+        this.reportedFrontendEntries.add(trimmed);
+        this.logger.warn(`FRONTEND_URL entry is not an http(s) URL and is ignored: "${trimmed.slice(0, 120)}"`);
+      }
+    }
+    return parsed;
+  }
+
   private webAppUrl(): string {
-    const raw =
-      this.config.get<string>("FRONTEND_URL") ?? "http://localhost:3000";
-    // FRONTEND_URL is a comma-separated CORS allow-list; the first entry is the
-    // canonical app origin.
-    return raw.split(",")[0].trim().replace(/\/$/, "");
+    // The first PARSEABLE entry is the canonical app origin. With none, the
+    // customer-facing domain (which cors-origins.ts keeps out of env's reach
+    // for the same reason) is the honest fallback, not a crash.
+    const first = this.configuredFrontendUrls()[0];
+    if (!first) return PRODUCTION_ORIGINS[0];
+    return `${first.origin}${first.pathname}`.replace(/\/$/, "");
   }
 
   /**
@@ -220,11 +288,45 @@ export class IntegrationsOauthService {
     restaurantId?: string | null;
     integrationId: IntegrationId;
     returnPath?: string;
+    consent: RedeemedIntegrationConsent;
   }): Promise<{ authorizationUrl: string }> {
     const definition = INTEGRATION_DEFINITIONS[params.integrationId];
     this.assertAvailable(definition);
 
+    // ADR 0144: no provider flow opens without a redeemed seal, a house, and a
+    // browser proof hash the initiating tab holds the preimage of.
+    const consent = params.consent;
+    if (
+      !consent?.sealId ||
+      !params.restaurantId ||
+      !HEX_256_PATTERN.test(consent.browserProofHash)
+    ) {
+      throw new ForbiddenException(
+        "Read and seal the integration permission in this browser first.",
+      );
+    }
+    const frontendOrigin = this.consentFrontendOrigin(consent.frontendOrigin);
+
+    // The receipt is filed BEFORE the state row: a provider flow must never be
+    // open for a consent the house has no record of.
+    const { error: receiptError } = await this.db.client
+      .from("integration_consent_receipts")
+      .insert({
+        seal_id: consent.sealId,
+        user_id: params.userId,
+        restaurant_id: params.restaurantId,
+        integration_id: params.integrationId,
+        disclosure_digest: consent.digest,
+        disclosure_snapshot: consent.snapshot,
+      });
+    if (receiptError) {
+      throw new ServiceUnavailableException(
+        "The consent receipt could not be filed. No provider flow was opened; read and hold again.",
+      );
+    }
+
     const state = randomBytes(32).toString("base64url");
+    const verifier = randomBytes(32).toString("base64url");
     const { error } = await this.db.client
       .from("integration_oauth_states")
       .insert({
@@ -235,6 +337,11 @@ export class IntegrationsOauthService {
         integration_id: definition.id,
         return_path: this.safeReturnPath(params.returnPath),
         expires_at: new Date(Date.now() + STATE_TTL_MS).toISOString(),
+        consent_receipt_id: consent.sealId,
+        browser_proof_hash: consent.browserProofHash,
+        browser_request_id: consent.browserRequestId,
+        frontend_origin: frontendOrigin,
+        pkce_verifier_encrypted: this.crypto.encrypt(verifier),
       });
 
     if (error) {
@@ -245,22 +352,68 @@ export class IntegrationsOauthService {
     }
 
     return {
-      authorizationUrl: this.buildProviderUrl(definition, state),
+      authorizationUrl: this.buildProviderUrl(definition, state, verifier),
     };
   }
 
-  /** Only same-site paths may be used as a post-callback destination. */
-  private safeReturnPath(returnPath?: string): string {
-    if (!returnPath) return "/settings";
-    if (!returnPath.startsWith("/") || returnPath.startsWith("//")) {
-      return "/settings";
+  /**
+   * Only same-site paths may be used as a post-callback destination.
+   *
+   * The check is purely syntactic, so it resolves against a fixed placeholder
+   * origin rather than FRONTEND_URL: whether `/x` stays on the base it was
+   * resolved against does not depend on which base that is, and a malformed
+   * FRONTEND_URL must not turn a path check into a 500 (KL audit J2).
+   */
+  safeReturnPath(returnPath?: string): string {
+    const fallback = "/settings";
+    if (!returnPath || !returnPath.startsWith("/") || returnPath.startsWith("//")) {
+      return fallback;
     }
-    return returnPath;
+    // Control characters and backslashes are the point of the check: browsers
+    // normalise `/\evil.test` to a protocol-relative URL.
+    // eslint-disable-next-line no-control-regex
+    if (/[\\\x00-\x20\x7f]/.test(returnPath)) return fallback;
+    const base = "https://return-path.invalid";
+    try {
+      const parsed = new URL(returnPath, base);
+      if (parsed.origin !== base) return fallback;
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    } catch {
+      return fallback;
+    }
+  }
+
+  /**
+   * The browser origin a consent flow may return to, or a 403.
+   *
+   * The allow-list is the production domain from `cors-origins.ts` (kept in
+   * code because an env-only list broke production on 2026-09-01) plus every
+   * FRONTEND_URL entry that parses. An entry that does not parse is skipped,
+   * never thrown on (KL audit J2). Regex CORS entries such as `*.vercel.app`
+   * are deliberately NOT admitted: this origin is where the completion page
+   * receives its state, so it is an exact list, not a pattern.
+   */
+  consentFrontendOrigin(origin: string | undefined): string {
+    const allowed = new Set<string>(PRODUCTION_ORIGINS);
+    for (const url of this.configuredFrontendUrls()) allowed.add(url.origin);
+    if (!origin || !allowed.has(origin)) {
+      throw new ForbiddenException(
+        "Open this permission in a configured Mudavym browser origin.",
+      );
+    }
+    return origin;
+  }
+
+  authorizationTarget(integrationId: IntegrationId): string {
+    const url = new URL(this.buildProviderUrl(INTEGRATION_DEFINITIONS[integrationId], ""));
+    url.searchParams.delete("state");
+    return url.toString();
   }
 
   private buildProviderUrl(
     definition: IntegrationDefinition,
     state: string,
+    verifier?: string,
   ): string {
     const { clientId } = this.credentialsFor(definition.provider);
     const redirectUri = this.redirectUriFor(definition.provider);
@@ -273,6 +426,10 @@ export class IntegrationsOauthService {
       url.searchParams.set("response_type", "code");
       url.searchParams.set("scope", scope);
       url.searchParams.set("state", state);
+      if (verifier) {
+        url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
+        url.searchParams.set("code_challenge_method", "S256");
+      }
       // access_type=offline is the only way to get a refresh token from Google,
       // and it only returns one when prompt=consent forces the consent screen.
       url.searchParams.set("access_type", "offline");
@@ -291,6 +448,10 @@ export class IntegrationsOauthService {
     url.searchParams.set("response_mode", "query");
     url.searchParams.set("scope", scope);
     url.searchParams.set("state", state);
+    if (verifier) {
+      url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
+      url.searchParams.set("code_challenge_method", "S256");
+    }
     url.searchParams.set("prompt", "consent");
     return url.toString();
   }
@@ -298,11 +459,13 @@ export class IntegrationsOauthService {
   // ── callback ────────────────────────────────────────────────────────────
 
   /**
-   * Completes the handshake and returns the browser destination.
+   * The provider redirect target. It only PARKS an encrypted result and never
+   * exchanges a code: the initiating tab supplies its separately held proof on
+   * the completion POST. No cross-site cookie assumption, and no provider code
+   * in the frontend URL.
    *
-   * Never throws for provider-side failures: the user is mid-redirect in a
-   * browser, so problems have to come back as a status on the return URL
-   * rather than a JSON error they would never see.
+   * Never throws for provider-side failures: the person is mid-redirect in a
+   * browser, so problems come back as a status on the return URL.
    */
   async handleCallback(params: {
     provider: string;
@@ -311,79 +474,206 @@ export class IntegrationsOauthService {
     error?: string;
   }): Promise<string> {
     const fallback = `${this.webAppUrl()}/settings`;
-
-    if (!params.state) {
-      return this.resultUrl(fallback, "error", "missing_state");
-    }
-
-    const stateRow = await this.consumeState(params.state);
-    if (!stateRow) {
+    if (!params.state) return this.resultUrl(fallback, "error", "missing_state");
+    if (!STATE_PATTERN.test(params.state)) {
       return this.resultUrl(fallback, "error", "invalid_state");
     }
 
-    const returnBase = `${this.webAppUrl()}${stateRow.return_path ?? "/settings"}`;
+    const { data: stateRow, error } = await this.db.client
+      .from("integration_oauth_states")
+      .select(BROWSER_STATE_COLUMNS)
+      .eq("state", params.state)
+      .is("consumed_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .maybeSingle();
+    // A legacy state minted before ADR 0144 carries no receipt and no proof
+    // hash, so nothing could ever complete it; refuse it here.
+    if (error || !stateRow?.consent_receipt_id || !stateRow.browser_proof_hash) {
+      return this.resultUrl(fallback, "error", "invalid_state");
+    }
+    if (params.provider !== stateRow.provider || (!params.code && !params.error)) {
+      return this.resultUrl(fallback, "error", "invalid_callback");
+    }
 
-    if (params.error) {
-      // The user clicking "Deny" lands here; it is a normal outcome.
-      const reason = params.error === "access_denied" ? "denied" : params.error;
-      return this.resultUrl(
-        returnBase,
-        "error",
-        reason,
-        stateRow.integration_id,
+    let frontendOrigin: string;
+    try {
+      frontendOrigin = this.consentFrontendOrigin(stateRow.frontend_origin);
+    } catch {
+      return this.resultUrl(fallback, "error", "invalid_browser_origin");
+    }
+
+    // Provider prose is untrusted and may contain tokens. Keep only the code
+    // and a fixed denial/failure code, encrypted until the sealing tab claims it.
+    const payload = this.crypto.encrypt(
+      JSON.stringify({
+        code: params.error ? null : params.code,
+        error: params.error
+          ? params.error === "access_denied"
+            ? "denied"
+            : "provider_error"
+          : null,
+      }),
+    );
+    // Minted fresh for THIS callback, never earlier: unlike browser_proof_hash
+    // (chosen by the sealer before the provider redirect even exists),
+    // deliverySecret exists only from here on, and only this response ever
+    // carries the raw value. A sealer who leaks the provider URL to someone
+    // else, without leaking this redirect back, can never learn it (KL audit
+    // D1 — see completeCallback/consumeBrowserState for the other half).
+    const deliverySecret = randomBytes(32).toString("hex");
+    const { data: parked, error: parkError } = await this.db.client
+      .from("integration_oauth_states")
+      .update({
+        callback_payload_encrypted: payload,
+        callback_received_at: new Date().toISOString(),
+        browser_delivery_secret_hash: hashSealToken(deliverySecret),
+      })
+      .eq("state", params.state)
+      .is("consumed_at", null)
+      .is("callback_received_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .select("state");
+    if (parkError) return this.resultUrl(fallback, "error", "invalid_state");
+
+    if (!parked?.length) {
+      // A SECOND provider callback for a state that was live a moment ago: the
+      // provider URL is in someone else's hands too. Whichever callback arrived
+      // first, nobody can tell whose account its code names, and PKCE cannot
+      // either, because a leaked URL carries the same code_challenge. So the
+      // grant dies: consume the state and erase the parked code and verifier,
+      // so the sealing tab cannot complete with an attacker's code (KL audit
+      // J1). A state that was consumed or expired in the meantime matches
+      // nothing here, which is also correct.
+      await this.poisonState(params.state);
+      return this.resultUrl(fallback, "error", "invalid_state");
+    }
+
+    const destination = new URL("/authorize/complete", frontendOrigin);
+    destination.hash = new URLSearchParams({
+      state: params.state,
+      request: stateRow.browser_request_id,
+      delivery: deliverySecret,
+    }).toString();
+    return destination.toString();
+  }
+
+  /** Kill a live state: nothing parked in it can ever be exchanged. */
+  private async poisonState(state: string, reason = "A second provider callback arrived for one state; the grant was voided."): Promise<void> {
+    const { error } = await this.db.client
+      .from("integration_oauth_states")
+      .update({
+        consumed_at: new Date().toISOString(),
+        callback_payload_encrypted: null,
+        pkce_verifier_encrypted: null,
+        browser_delivery_secret_hash: null,
+      })
+      .eq("state", state)
+      .is("consumed_at", null);
+    if (error) {
+      // Logged as an error, not swallowed quietly: a parked code from a
+      // duplicated callback survives until the state expires (10 minutes).
+      this.logger.error(`A live state could not be poisoned: ${error.message}`);
+    } else {
+      this.logger.warn(reason);
+    }
+  }
+
+  async completeCallback(params: {
+    state: string;
+    browserProof: string;
+    deliverySecret: string;
+  }): Promise<{ destination: string }> {
+    const stateRow = await this.consumeBrowserState(
+      params.state,
+      params.browserProof,
+      params.deliverySecret,
+    );
+    if (!stateRow) {
+      throw new ForbiddenException(
+        "This permission must finish in the tab that sealed it, before it expires. Start again from your profile.",
       );
     }
-
-    if (!params.code || params.provider !== stateRow.provider) {
-      return this.resultUrl(
-        returnBase,
-        "error",
-        "invalid_callback",
-        stateRow.integration_id,
-      );
-    }
-
-    const definition =
-      INTEGRATION_DEFINITIONS[stateRow.integration_id as IntegrationId];
-    if (!definition) {
-      return this.resultUrl(returnBase, "error", "unknown_integration");
-    }
+    const returnBase = `${stateRow.frontend_origin}${this.safeReturnPath(stateRow.return_path)}`;
+    const refused = (reason: string) => ({
+      destination: this.resultUrl(returnBase, "error", reason, stateRow.integration_id),
+    });
 
     try {
-      const tokens = await this.exchangeCode(definition, params.code);
+      const payload = JSON.parse(this.crypto.decrypt(stateRow.callback_payload_encrypted));
+      if (payload.error) return refused(payload.error);
 
-      if (!tokens.access_token) {
-        throw new Error(
-          tokens.error_description ||
-            tokens.error ||
-            "No access token returned",
-        );
-      }
+      const definition = INTEGRATION_DEFINITIONS[stateRow.integration_id as IntegrationId];
+      if (!definition || !payload.code) throw new Error("Invalid callback payload");
 
-      const account = await this.fetchAccountEmail(
-        definition.provider,
-        tokens.access_token,
+      // Membership is checked on BOTH sides of the exchange: the provider round
+      // trip can outlast a revocation, and nothing is stored for a person who
+      // no longer works in the house.
+      await this.assertConsentMembership(stateRow.user_id, stateRow.restaurant_id);
+      const verifier = this.crypto.decrypt(stateRow.pkce_verifier_encrypted);
+      const tokens = await this.exchangeCode(definition, payload.code, verifier);
+      if (!tokens.access_token) throw new Error("No access token returned");
+
+      const namesAccount = definition.scopes.some(({ scope }) =>
+        ["email", "https://www.googleapis.com/auth/userinfo.email", "User.Read"].includes(scope),
       );
+      const account = namesAccount
+        ? await this.fetchAccountEmail(definition.provider, tokens.access_token)
+        : null;
 
+      await this.assertConsentMembership(stateRow.user_id, stateRow.restaurant_id);
       await this.storeConnection({
         userId: stateRow.user_id,
         restaurantId: stateRow.restaurant_id,
         definition,
         tokens,
         account,
+        consentReceiptId: stateRow.consent_receipt_id,
       });
-
-      return this.resultUrl(returnBase, "connected", undefined, definition.id);
+      return { destination: this.resultUrl(returnBase, "connected", undefined, definition.id) };
     } catch (err) {
-      this.logger.error(
-        `Integration OAuth callback failed for ${definition.id}: ${(err as Error).message}`,
+      if (err instanceof ConsentMembershipRefusal) {
+        this.logger.warn(
+          `Integration grant for ${stateRow.integration_id} stopped: ${err.reason}`,
+        );
+        return refused(err.reason);
+      }
+      // The error CLASS and the provider's own code/description (postToken
+      // throws only payload.error_description / payload.error / the HTTP
+      // status — never a token or a client secret) are logged so a real
+      // exchange failure stays diagnosable in production (KL audit D11);
+      // main previously logged only the integration id.
+      const errorClass = err instanceof Error ? err.constructor.name : typeof err;
+      const errorDetail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Integration exchange could not be completed for ${stateRow.integration_id}: ${errorClass}: ${errorDetail}`,
       );
-      return this.resultUrl(
-        returnBase,
-        "error",
-        "exchange_failed",
-        definition.id,
-      );
+      return refused("exchange_failed");
+    }
+  }
+
+  /**
+   * The person must still be verified and still hold a membership in the house
+   * the grant was sealed in. Throws `ConsentMembershipRefusal` with the cause.
+   */
+  private async assertConsentMembership(userId: string, restaurantId: string) {
+    const { data: user, error } = await this.db.client
+      .from("users")
+      .select("user_id, restaurant_id, email_verified")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) throw new ConsentMembershipRefusal("membership_unreadable");
+    if (!user || user.email_verified !== true || !restaurantId) {
+      throw new ConsentMembershipRefusal("membership_refused");
+    }
+    try {
+      await currentRestaurantRole(this.db.client, user, restaurantId);
+    } catch (err) {
+      if (err instanceof UnauthorizedException) {
+        throw new ConsentMembershipRefusal("membership_refused");
+      }
+      // ServiceUnavailableException (the access row could not be read) and
+      // anything unexpected: the standing is UNKNOWN, which is not a refusal.
+      throw new ConsentMembershipRefusal("membership_unreadable");
     }
   }
 
@@ -400,29 +690,100 @@ export class IntegrationsOauthService {
     return url.toString();
   }
 
-  /** Atomically claims the state row so a replayed callback finds nothing. */
-  private async consumeState(state: string) {
-    const { data, error } = await this.db.client
-      .from("integration_oauth_states")
-      .update({ consumed_at: new Date().toISOString() })
-      .eq("state", state)
-      .is("consumed_at", null)
-      .gt("expires_at", new Date().toISOString())
-      .select(
-        "state, user_id, restaurant_id, provider, integration_id, return_path",
-      )
-      .maybeSingle();
-
-    if (error) {
-      this.logger.error(`Failed to consume OAuth state: ${error.message}`);
+  /**
+   * Read the parked payload, then atomically claim and erase it.
+   *
+   * Racing completions can both READ the row, but the claim is a conditional
+   * update on `consumed_at is null`, so exactly one of them may exchange.
+   *
+   * Two independent secrets must both match (KL audit D1). `browserProof` is
+   * chosen by the SEALER, before the provider redirect exists — a dishonest
+   * sealer who forwards the provider URL to someone else keeps holding it, so
+   * it alone cannot tell the sealer's own tab apart from an attacker's. The
+   * `deliverySecret` is minted only once a provider callback actually parks a
+   * result (`handleCallback`) and travels only in that redirect's fragment —
+   * only the browser that returned from the provider ever sees it. A sealer
+   * who never completes the provider flow herself has the first secret and
+   * not the second; whoever's browser did complete it has the second and not
+   * the first (unless they are the same browser, which is the honest case).
+   * The row is READ by state alone, not filtered by either secret, precisely
+   * so a wrong secret can be told apart from "no such live state" and the
+   * state poisoned rather than left live for a retry.
+   */
+  private async consumeBrowserState(state: string, browserProof: string, deliverySecret: string) {
+    if (
+      !STATE_PATTERN.test(state) ||
+      !HEX_256_PATTERN.test(browserProof) ||
+      !HEX_256_PATTERN.test(deliverySecret)
+    ) {
       return null;
     }
-    return data;
+    const proofHash = hashSealToken(browserProof);
+    const deliveryHash = hashSealToken(deliverySecret);
+    const now = new Date().toISOString();
+
+    const { data, error } = await this.db.client
+      .from("integration_oauth_states")
+      .select(BROWSER_STATE_COLUMNS)
+      .eq("state", state)
+      .is("consumed_at", null)
+      .gt("expires_at", now)
+      .maybeSingle();
+    if (
+      error ||
+      !data?.consent_receipt_id ||
+      !data.callback_payload_encrypted ||
+      !data.pkce_verifier_encrypted ||
+      !data.browser_delivery_secret_hash
+    ) {
+      // Not sealed, not yet parked by a provider callback, expired, or already
+      // consumed: nothing live to poison, and nothing to complete.
+      return null;
+    }
+
+    const proofOk = digestsMatch(data.browser_proof_hash ?? "", proofHash);
+    const deliveryOk = digestsMatch(data.browser_delivery_secret_hash ?? "", deliveryHash);
+    if (!proofOk || !deliveryOk) {
+      // A live, parked state that this attempt could not correctly claim.
+      // Poison it immediately so a later attempt — the sealer retrying with
+      // her real proof but no delivery secret, or the reverse — can never
+      // complete it either (KL audit D1: this is what closes the account-
+      // injection path, not merely a courtesy for a mistyped value).
+      await this.poisonState(
+        state,
+        proofOk
+          ? "A completion attempt held the sealing proof but not the delivery secret from the provider redirect; the grant was voided."
+          : "A completion attempt did not hold the sealing browser's proof; the grant was voided.",
+      );
+      return null;
+    }
+
+    try {
+      this.consentFrontendOrigin(data.frontend_origin);
+    } catch {
+      return null;
+    }
+
+    const { data: claimed, error: claimError } = await this.db.client
+      .from("integration_oauth_states")
+      .update({
+        consumed_at: new Date().toISOString(),
+        callback_payload_encrypted: null,
+        pkce_verifier_encrypted: null,
+      })
+      .eq("state", state)
+      .eq("browser_proof_hash", proofHash)
+      .eq("browser_delivery_secret_hash", deliveryHash)
+      .is("consumed_at", null)
+      .gt("expires_at", now)
+      .select("state");
+    return !claimError && claimed?.length === 1 ? data : null;
   }
 
   private async exchangeCode(
     definition: IntegrationDefinition,
     code: string,
+    verifier: string,
   ): Promise<TokenResponse> {
     const { clientId, clientSecret } = this.credentialsFor(definition.provider);
     const body = new URLSearchParams({
@@ -431,6 +792,7 @@ export class IntegrationsOauthService {
       client_secret: clientSecret!,
       redirect_uri: this.redirectUriFor(definition.provider),
       grant_type: "authorization_code",
+      code_verifier: verifier,
     });
 
     return this.postToken(definition.provider, body);
@@ -448,6 +810,7 @@ export class IntegrationsOauthService {
 
     const response = await fetch(url, {
       method: "POST",
+      signal: AbortSignal.timeout(10_000),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
     });
@@ -474,6 +837,7 @@ export class IntegrationsOauthService {
           : "https://graph.microsoft.com/v1.0/me";
 
       const response = await fetch(url, {
+        signal: AbortSignal.timeout(10_000),
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!response.ok) return null;
@@ -494,11 +858,21 @@ export class IntegrationsOauthService {
     definition: IntegrationDefinition;
     tokens: TokenResponse;
     account: string | null;
+    consentReceiptId: string;
   }) {
     const { tokens, definition } = params;
 
+    // Google's authorize call sets include_granted_scopes=true (needed so a
+    // second integration on the same Google account does not re-prompt for
+    // scopes the person already granted the first one). That means
+    // tokens.scope can legitimately carry scopes from an EARLIER, DIFFERENT
+    // integration's consent. The stored receipt promises the digest of what
+    // THIS integration disclosed, so only scopes this integration's own
+    // definition names are ever kept; anything else the token carries is
+    // dropped here, never stored (KL audit D3).
+    const definedScopes = new Set(definition.scopes.map((s) => s.scope));
     const grantedScopes = tokens.scope
-      ? tokens.scope.split(" ").filter(Boolean)
+      ? tokens.scope.split(" ").filter((scope) => definedScopes.has(scope))
       : definition.scopes.map((s) => s.scope);
 
     const expiresAt = tokens.expires_in
@@ -508,11 +882,12 @@ export class IntegrationsOauthService {
     // Google omits refresh_token when the user already granted these scopes to
     // an earlier connection; keeping the stored one avoids downgrading a
     // working connection to access-token-only.
-    const existingRefresh = await this.storedRefreshToken(
+    const refreshToken = tokens.refresh_token ?? await this.storedRefreshToken(
       params.userId,
       definition.id,
+      params.restaurantId,
+      params.account,
     );
-    const refreshToken = tokens.refresh_token ?? existingRefresh;
 
     const { error } = await this.db.client
       .from("integration_oauth_connections")
@@ -523,6 +898,7 @@ export class IntegrationsOauthService {
           provider: definition.provider,
           integration_id: definition.id,
           account_email: params.account,
+          consent_receipt_id: params.consentReceiptId,
           scopes: grantedScopes,
           access_token_encrypted: this.crypto.encrypt(tokens.access_token!),
           refresh_token_encrypted: refreshToken
@@ -543,13 +919,20 @@ export class IntegrationsOauthService {
   private async storedRefreshToken(
     userId: string,
     integrationId: IntegrationId,
+    restaurantId: string | null,
+    account: string | null,
   ): Promise<string | null> {
-    const { data } = await this.db.client
+    if (!restaurantId || !account) return null;
+    const { data, error } = await this.db.client
       .from("integration_oauth_connections")
       .select("refresh_token_encrypted")
       .eq("user_id", userId)
       .eq("integration_id", integrationId)
+      .eq("restaurant_id", restaurantId)
+      .eq("account_email", account)
+      .is("revoked_at", null)
       .maybeSingle();
+    if (error) throw new ServiceUnavailableException("The prior connection could not be read.");
 
     return this.crypto.tryDecrypt(data?.refresh_token_encrypted);
   }

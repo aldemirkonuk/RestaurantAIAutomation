@@ -72,19 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:147",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:147",
-  },
-  {
-    key: "mudavym_design_settings",
-    // OFF by default: the Mudavym redesign of `/settings` (ADR 0044 p4 wave, KEEP Editorial + "there should be more").
-    defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:147",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
   },
   {
     key: "enable_house_inbox_read",
@@ -98,10 +92,15 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     readBy: "communications/inbox/house-inbox.service.ts:339",
   },
   {
-    key: "mudavym_design_cellar",
-    // OFF by default: the Mudavym `/cellar` parent surface and its `/wines` `/beer` `/whiskey` `/cocktails` children (ADR 0044 p4 wave; IA decided 2026-08-30, the crowded redesign rejected — "more character", keep "see everything").
+    key: "mudavym_design_arrival",
+    // OFF by default: the Arrival book at /get-started (ADR 0113/0143/0144;
+    // sketch 121). Held back from LIVE_PAGES so every house keeps today's
+    // GetStarted until this column is deliberately turned on. Column added by
+    // 20260922231300 — ships in the same change as this registry entry so the
+    // Settings `.select()` of every ACTIVE key cannot 42703 before the
+    // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:147",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
   },
 ];
 
@@ -114,13 +113,27 @@ export function isActiveFeatureFlag(name: string): boolean {
 
 /**
  * LIVE IN CODE, 2026-09-17 (live-review.md defect 2; ADR 0149 row 36, "16
- * locked pages"). These sixteen `mudavym_design_*` keys used to be ACTIVE —
- * real columns AND real gating code — but `useMudavymDesign.ts`'s `LIVE_PAGES`
- * now resolves every one of these pages for every house before `fetchFlag`
- * (the `.checkFeatureFlag` call these entries used to cite) ever runs. The
- * cited line still exists and still says `checkFeatureFlag`, but it is
- * UNREACHABLE for these sixteen keys, so the ACTIVE contract — "a real column
- * AND real code that branches on it" — no longer holds for them.
+ * locked pages"; `settings` joined 2026-09-19 / PR #419 after its sketch
+ * review; `help` joined 2026-09-21 / PR #413 / ADR 0149 row 52). These
+ * twenty `mudavym_design_*` keys used to be ACTIVE — real columns AND real
+ * gating code — but `useMudavymDesign.ts`'s `LIVE_PAGES` now resolves every
+ * one of these pages for every house before `fetchFlag` (the
+ * `.checkFeatureFlag` call these entries used to cite) ever runs. The cited
+ * line still exists and still says `checkFeatureFlag`, but it is UNREACHABLE
+ * for these eighteen keys, so the ACTIVE contract — "a real column AND real
+ * code that branches on it" — no longer holds for them. (`help` never had a
+ * column; it is listed here so the LIVE_PAGES ↔ LIVE_IN_CODE_FLAGS guard
+ * stays exact.)
+ *
+ * [2026-09-25, ADR 0149 row 36's bracket: `mudavym_design_shell`,
+ * `mudavym_design_admin` and `mudavym_design_authorize_integration` moved here
+ * from ACTIVE_FEATURE_FLAGS, on the founder's 2026-09-22 page-gap answers Q2
+ * ("I want all locked pages to be live (production)") and Q4 ("turn on for
+ * every house the instant each PR merges — no staged single-house rollout").
+ * The list is now twenty-three keys; "twenty" above was counted before this
+ * move and "eighteen" before `cellar`/`menu`, both kept as written. `menu`,
+ * like `help`, never had a column. The three moved keys' columns
+ * (20260921114300, 20260922210200, 20260922220200) stay, unread.]
  *
  * Deliberately NOT in ACTIVE_FEATURE_FLAGS:
  *  - `GET /settings/feature-flags` returns only ACTIVE_FEATURE_FLAG_KEYS
@@ -161,6 +174,13 @@ export const LIVE_IN_CODE_FLAGS: readonly string[] = [
   "mudavym_design_connections",
   "mudavym_design_notifications",
   "mudavym_design_logs",
+  "mudavym_design_settings",
+  "mudavym_design_help",
+  "mudavym_design_cellar",
+  "mudavym_design_menu",
+  "mudavym_design_shell",
+  "mudavym_design_admin",
+  "mudavym_design_authorize_integration",
 ];
 
 export function defaultActiveFlags(): Record<string, boolean> {

@@ -29,6 +29,7 @@
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
+import AccountSheet from './AccountSheet';
 import {
   EM,
   SCOPE_ORDER,
@@ -40,6 +41,7 @@ import {
   fmtDay,
   fmtWakes,
   readKey,
+  receiptFor,
   scopeLabel,
   scopePromise,
   standingOf,
@@ -160,6 +162,12 @@ export interface EntryProps {
    * the same as "no levers" and is said in `words`.
    */
   goalSlip?: { slip: GoalSlip; levers: EntryVM[] | null; words: string } | null;
+  /**
+   * The whole loaded book, so a subject's account sheet (sketch 120 item 4)
+   * can count sibling entries on the same subject without a second fetch.
+   * Only read when `entry.subject` is set — today that is two rules.
+   */
+  siblings: EntryVM[];
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -599,7 +607,7 @@ export default function Entry(props: EntryProps) {
   /** The control the assignment popover hangs off. */
   const assignRef = useRef<HTMLButtonElement | null>(null);
   const [menu, setMenu] = useState<
-    'dismiss' | 'snooze' | 'assign' | 'goal' | 'daybook' | null
+    'dismiss' | 'snooze' | 'assign' | 'goal' | 'daybook' | 'account' | null
   >(null);
   const rootRef = useRef<HTMLElement | null>(null);
 
@@ -624,6 +632,11 @@ export default function Entry(props: EntryProps) {
         ? props.goals.filter((g) => g.sourceRuleKey === e.ruleKey)
         : [],
     [props.goals, e.ruleKey],
+  );
+
+  const receipt = useMemo(
+    () => receiptFor(e, watching.length > 0),
+    [e, watching.length],
   );
 
   /* ── the dismissal sheet's own state ──────────────────────────────────── */
@@ -743,6 +756,19 @@ export default function Entry(props: EntryProps) {
         )}
 
         {/*
+          THE RECEIPT (sketch 120 item 3) — what this entry's stored state
+          actually says, under every act: acted, snoozed, ruled off, watched,
+          pinned. Read from the entry itself, so it is true after a reload,
+          not only in the second after the click. The dismissed/history
+          leaves keep their own fuller sentence above rather than this one.
+        */}
+        {!silenced && receipt.length > 0 && (
+          <p className="rc-said rc-receipt" data-testid="rc-receipt">
+            {receipt.join(' ')}
+          </p>
+        )}
+
+        {/*
           ── controls, classified by what they DO ─────────────────────────
           The founder, fourth pass: "we need everything in a categorized
           classified section in order for people to understand what to do as
@@ -816,6 +842,11 @@ export default function Entry(props: EntryProps) {
               </Quiet>
               <Quiet onClick={() => setMenu(menu === 'snooze' ? null : 'snooze')}>Snooze</Quiet>
               <Quiet onClick={() => setMenu(menu === 'dismiss' ? null : 'dismiss')}>Dismiss</Quiet>
+              {e.subject && (
+                <Quiet onClick={() => setMenu(menu === 'account' ? null : 'account')}>
+                  Its account
+                </Quiet>
+              )}
               <Quiet onClick={props.onPin} pressed={e.pinned}>
                 {e.pinned ? 'Pinned' : 'Pin'}
               </Quiet>
@@ -954,6 +985,10 @@ export default function Entry(props: EntryProps) {
               return res;
             }}
           />
+        )}
+
+        {menu === 'account' && e.subject && (
+          <AccountSheet entry={e} siblings={props.siblings} onClose={() => setMenu(null)} />
         )}
 
         {menu === 'dismiss' && (

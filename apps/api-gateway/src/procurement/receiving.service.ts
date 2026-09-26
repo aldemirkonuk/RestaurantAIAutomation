@@ -171,6 +171,12 @@ export interface UnverifiedDelivery {
 /** Past this, an uncounted delivery stops being normal and starts being a risk. */
 const STALE_AFTER_HOURS = 12;
 const OVERDUE_AFTER_HOURS = 48;
+/**
+ * `arrivedToday`'s page size: PostgREST's `max_rows` (`supabase/config.toml`),
+ * written here so a read that lands on it is visible as capped rather than
+ * silently truncated by the server.
+ */
+const ARRIVED_READ_CAP = 1000;
 
 @Injectable()
 export class ReceivingService {
@@ -714,6 +720,23 @@ export class ReceivingService {
    * indistinguishable from theft and cannot be claimed from the vendor.
    */
   async listUnverified(restaurantId: string): Promise<UnverifiedDelivery[]> {
+    return (await this.listUnverifiedCapped(restaurantId)).rows;
+  }
+
+  /**
+   * Same read as `listUnverified`, plus whether the underlying
+   * `procurement_receipt_events` read hit its 500-row cap.
+   *
+   * `capped: true` means `rows` is a floor, not a total — the exact sense
+   * `complete` carries for every other register (`house-counter.types.ts`).
+   * An order whose only qualifying event fell outside the newest-500 window
+   * is silently absent from `rows`, not truncated, so a caller that needs to
+   * claim completeness (the house counter) must read this, not the plain
+   * array `listUnverified` and the `/unverified` page route keep using.
+   */
+  async listUnverifiedCapped(
+    restaurantId: string,
+  ): Promise<{ rows: UnverifiedDelivery[]; capped: boolean }> {
     // Newest-first: the cap below is a lifetime-event-count safety valve, not a
     // recency window, and a restaurant well past 500 lifetime events must still
     // see today's delivery. Ascending order here previously meant the cap kept
@@ -727,6 +750,11 @@ export class ReceivingService {
       .order("occurred_at", { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);
+    // A read that returned exactly the page size may have dropped an older
+    // event that a still-open order needed — the register reading this must
+    // say so rather than claim `complete: true` over a read that stopped,
+    // not a read that finished.
+    const capped = (data ?? []).length === 500;
 
     const byOrder = new Map<
       string,
@@ -762,9 +790,9 @@ export class ReceivingService {
     }
 
     const open = [...byOrder.entries()].filter(([, v]) => !v.verified);
-    if (!open.length) return [];
+    if (!open.length) return { rows: [], capped };
 
-    const { data: orders } = await this.db
+    const { data: orders, error: ordersError } = await this.db
       .getClient()
       .from("procurement_orders")
       .select("id, order_number, status")
@@ -772,6 +800,12 @@ export class ReceivingService {
         "id",
         open.map(([id]) => id),
       );
+    // A failed read of the orders is not "none of them closed". Ignoring the
+    // error left `numbers` empty, so the COMPLETED/CANCELLED filter below let
+    // every closed order through and printed each without its number — an
+    // inflated queue built from a read that did not happen. The house counter
+    // (sketch 119 D) reads this register, so the failure must reach it.
+    if (ordersError) throw new Error(ordersError.message);
     const numbers = new Map(
       (orders ?? []).map((o) => [
         o.id,
@@ -780,7 +814,7 @@ export class ReceivingService {
     );
 
     const now = Date.now();
-    return open
+    const rows = open
       .filter(([id]) => {
         // A delivery closed through the ordinary one-shot path is verified even
         // without a bottle_count event; only genuinely open ones belong here.
@@ -807,6 +841,83 @@ export class ReceivingService {
         };
       })
       .sort((a, b) => b.ageHours - a.ageHours);
+    return { rows, capped };
+  }
+
+  /**
+   * Deliveries counted at the door in `[start, end)` — house-local "today" as
+   * the caller defines it.
+   *
+   * Unlike `listUnverified`, this counts every `case_count` event in the
+   * window regardless of what happened to the order afterward: "arrived" is
+   * a fact about the door, not about whether anyone has finished checking it
+   * since. `house-day.service.ts`'s "Deliveries that arrived" line reads
+   * this, not `listUnverified` — `listUnverified` drops an order the moment
+   * it is bottle-counted or reconciled, so a delivery counted AND checked on
+   * the same day used to vanish from "arrived today" entirely, the better
+   * the door did its job.
+   *
+   * Scoped by a day-wide date range rather than `listUnverified`'s 500-event
+   * lifetime window — but a range read is still a capped read: PostgREST
+   * never returns more than `max_rows` (1000, `supabase/config.toml`) and
+   * says nothing when it stops there. So the cap is written here, and a read
+   * that lands on it reports `capped: true`, the same floor-not-total signal
+   * `listUnverifiedCapped` gives the counter. No real house counts a thousand
+   * deliveries in a day; the point is that the day line cannot claim
+   * `complete: true` over a read it did not finish, however unlikely.
+   */
+  async arrivedToday(
+    restaurantId: string,
+    start: Date,
+    end: Date,
+  ): Promise<{
+    rows: Array<{ orderId: string; orderNumber: string | null; countedAt: string }>;
+    capped: boolean;
+  }> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_receipt_events")
+      .select("order_id, occurred_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("stage", "case_count")
+      .gte("occurred_at", start.toISOString())
+      .lt("occurred_at", end.toISOString())
+      .order("occurred_at", { ascending: false })
+      .limit(ARRIVED_READ_CAP);
+    if (error) throw new Error(error.message);
+    const capped = (data ?? []).length === ARRIVED_READ_CAP;
+
+    // One tick per order: an order counted by more than one truck today still
+    // arrived once as far as this line is concerned; keep its latest event.
+    const byOrder = new Map<string, string>();
+    for (const e of data ?? []) {
+      if (!e.order_id) continue;
+      if (!byOrder.has(e.order_id)) byOrder.set(e.order_id, e.occurred_at);
+    }
+    const orderIds = [...byOrder.keys()];
+    if (!orderIds.length) return { rows: [], capped };
+
+    const { data: orders, error: ordersError } = await this.db
+      .getClient()
+      .from("procurement_orders")
+      .select("id, order_number")
+      .in("id", orderIds);
+    // Same rule as `listUnverifiedCapped`: a failed read of the order numbers
+    // is not "no orders arrived" — it must reach the day line as unreadable,
+    // not print an empty or numberless queue built from a read that failed.
+    if (ordersError) throw new Error(ordersError.message);
+    const numbers = new Map((orders ?? []).map((o) => [o.id, o.order_number ?? null]));
+
+    const rows = orderIds
+      .map((orderId) => ({
+        orderId,
+        orderNumber: numbers.get(orderId) ?? null,
+        countedAt: byOrder.get(orderId) as string,
+      }))
+      .sort(
+        (a, b) => new Date(b.countedAt).getTime() - new Date(a.countedAt).getTime(),
+      );
+    return { rows, capped };
   }
 
   /**

@@ -121,7 +121,56 @@ export interface ProposalBody {
   note?: string;
 }
 
+/** A document on a delivery, as the spine (`GET /procurement/deliveries/:id`) lists it. */
+export interface SpineDocumentRef {
+  documentId: string;
+  role: DeliveryRole;
+  docNumber: string | null;
+  docDate: string | null;
+}
+
+/**
+ * The vendor's paper, most useful first. A purchase order is the house's own
+ * document and a door count is the house's own count — neither is a receipt.
+ */
+const RECEIPT_ROLES: DeliveryRole[] = [
+  "invoice",
+  "despatch_advice",
+  "credit_memo",
+  "statement",
+  "other",
+];
+
+export type OrderReceipt =
+  | { state: "found"; document: SpineDocumentRef }
+  | { state: "none" };
+
 export const deliveriesApi = {
+  /**
+   * The receipt for one purchase order: the deliveries that fulfil it, then the
+   * vendor's documents on them. A failed read throws — it never comes back as
+   * "no receipt".
+   */
+  async receiptForOrder(orderId: string): Promise<OrderReceipt> {
+    const { data } = await apiClient.get(`/procurement/deliveries`, {
+      params: { orderId, limit: 200 },
+    });
+    const rows = (data?.deliveries ?? []) as Array<{ id: string }>;
+    const spines = await Promise.all(
+      rows.map((r) => apiClient.get(`/procurement/deliveries/${r.id}`)),
+    );
+    const docs = spines.flatMap(
+      (s) => (s.data?.delivery?.documents ?? []) as SpineDocumentRef[],
+    );
+    for (const role of RECEIPT_ROLES) {
+      const match = docs
+        .filter((d) => d.role === role)
+        .sort((a, b) => (b.docDate ?? "").localeCompare(a.docDate ?? ""))[0];
+      if (match) return { state: "found", document: match };
+    }
+    return { state: "none" };
+  },
+
   async event(id: string): Promise<DeliveryEvent> {
     const { data } = await apiClient.get(`/procurement/deliveries/${id}`);
     return toEvent(data.event);

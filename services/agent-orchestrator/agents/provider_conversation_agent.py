@@ -304,6 +304,7 @@ class ProviderConversationAgent(BaseAgent):
 
         # Active sessions (in-memory index, Redis is source of truth)
         self._active_sessions: Dict[str, ConversationSession] = {}
+        self._proactive_monitor_task: Optional[asyncio.Task] = None
         self._session_semaphore = asyncio.Semaphore(self.max_sessions)
 
     # =========================================================================
@@ -330,7 +331,9 @@ class ProviderConversationAgent(BaseAgent):
         self.email_composer.database = self.database
 
         # Start background tasks for proactive intelligence
-        asyncio.create_task(self._proactive_monitor_loop())
+        self._proactive_monitor_task = asyncio.create_task(
+            self._proactive_monitor_loop(), name=f"{self.agent_name}-proactive-monitor"
+        )
 
         self.logger.info("Provider Conversation Agent initialized")
 
@@ -423,6 +426,14 @@ class ProviderConversationAgent(BaseAgent):
             raise
 
     async def cleanup(self) -> None:
+        # The shutdown event wakes idle monitors. Let an in-flight check finish;
+        # cancelling it can interrupt a database write or published notification.
+        if self._proactive_monitor_task:
+            await self._drain_tasks(
+                {self._proactive_monitor_task},
+                asyncio.get_running_loop().time() + self.config.task_timeout_seconds,
+            )
+            self._proactive_monitor_task = None
         self._active_sessions.clear()
         self.llm_client = None
         self.embedding_client = None
@@ -3286,7 +3297,11 @@ class ProviderConversationAgent(BaseAgent):
 
     async def _proactive_monitor_loop(self) -> None:
         """Background loop for proactive intelligence checks."""
-        await asyncio.sleep(30)  # Initial delay
+        try:
+            await asyncio.wait_for(self._shutdown_event.wait(), timeout=30)
+            return
+        except asyncio.TimeoutError:
+            pass
 
         while not self._shutdown_event.is_set():
             try:

@@ -50,11 +50,23 @@ function makeDb(opts: {
   const client: any = {
     from(tableName: string) {
       const filters: Array<[string, any]> = [];
+      // Range filters (`gte`/`lt`), kept separate from `filters`'
+      // equality checks — `arrivedToday` scopes by a date range, not a
+      // single value, on the same `occurred_at` column `eq` never touches.
+      const ranges: Array<["gte" | "lt", string, any]> = [];
       const q: any = {
         _table: tableName,
         select: () => q,
         eq: (col: string, val: any) => {
           filters.push([col, val]);
+          return q;
+        },
+        gte: (col: string, val: any) => {
+          ranges.push(["gte", col, val]);
+          return q;
+        },
+        lt: (col: string, val: any) => {
+          ranges.push(["lt", col, val]);
           return q;
         },
         in: () => q,
@@ -127,9 +139,21 @@ function makeDb(opts: {
       // Terminal awaits for list queries. Mirrors real Supabase: sort by the
       // requested column/direction, then cap — so a test that supplies more
       // rows than the cap actually exercises which end of the table survives.
+      // Equality and range filters, applied to both terminal shapes below so
+      // a read is scoped to one order/stage, or one house-local day, exactly
+      // as the real query is. A fixture row without the column (the older
+      // fixtures carry no `restaurant_id`) is not filtered on it.
+      const matches = (r: Row) =>
+        filters.every(([c, v]) => r[c] === undefined || r[c] === v) &&
+        ranges.every(([op, c, v]) => {
+          if (r[c] === undefined) return true;
+          const rv = new Date(r[c]).getTime();
+          const cv = new Date(v).getTime();
+          return op === "gte" ? rv >= cv : rv < cv;
+        });
       if (tableName === "procurement_receipt_events") {
         (q as any).limit = async (n: number) => {
-          const rows = [...table];
+          const rows = table.filter(matches);
           const dir = q._ascending === false ? -1 : 1;
           rows.sort(
             (a, b) =>
@@ -139,16 +163,9 @@ function makeDb(opts: {
           );
           return { data: rows.slice(0, n), error: null };
         };
-        // `doorTotals` awaits the builder directly, with no .limit(). Filters
-        // are applied so a sum is scoped to one order and one stage, exactly as
-        // the real query is.
+        // `doorTotals` awaits the builder directly, with no `.limit()`.
         (q as any).then = (resolve: (v: any) => void) =>
-          resolve({
-            data: table.filter((r) =>
-              filters.every(([c, v]) => r[c] === undefined || r[c] === v),
-            ),
-            error: null,
-          });
+          resolve({ data: table.filter(matches), error: null });
       }
       if (tableName === "procurement_orders" && opts.orders)
         (q as any).in = async () => ({ data: opts.orders, error: null });
@@ -1062,5 +1079,216 @@ describe("recordDoorReceipt — the same research rule at the door", () => {
     const { db, calls } = makeDb({ order, item: { master_wine_id: null, wine_name: "Barolo" }, rpcError: { message: "boom" } });
     await expect(new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 12, countedUom: "bottle" })).rejects.toThrow();
     expect(researchInserts(calls)).toHaveLength(0);
+  });
+});
+
+describe("listUnverifiedCapped", () => {
+  const hoursAgo = (h: number) =>
+    new Date(Date.now() - h * 3_600_000).toISOString();
+
+  it("reports capped: false under the 500-event ceiling", async () => {
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "o1",
+          stage: "case_count",
+          counted_qty_bottles: 12,
+          occurred_at: hoursAgo(1),
+        },
+      ],
+      orders: [{ id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" }],
+    });
+
+    const { rows, capped } = await new ReceivingService(db).listUnverifiedCapped("r1");
+    expect(capped).toBe(false);
+    expect(rows).toHaveLength(1);
+  });
+
+  it("reports capped: true when the read hits exactly the 500-row page", async () => {
+    // 500 events, none of them closed — the read returns exactly 500 rows,
+    // so the register does not know whether an order's qualifying event was
+    // pushed out past the window. `complete` (house-counter.service.ts) must
+    // derive from THIS, not print `true` unconditionally.
+    const events = Array.from({ length: 500 }, (_, i) => ({
+      order_id: `o-${i}`,
+      stage: "case_count",
+      counted_qty_bottles: 6,
+      occurred_at: hoursAgo(500 - i),
+    }));
+    const orders = events.map((e) => ({
+      id: e.order_id,
+      order_number: `PO-${e.order_id}`,
+      status: "PARTIALLY_RECEIVED",
+    }));
+    const { db } = makeDb({ events, orders });
+
+    const { rows, capped } = await new ReceivingService(db).listUnverifiedCapped("r1");
+    expect(capped).toBe(true);
+    expect(rows).toHaveLength(500);
+  });
+});
+
+describe("arrivedToday", () => {
+  const hoursAgo = (h: number) =>
+    new Date(Date.now() - h * 3_600_000).toISOString();
+
+  it("counts a delivery counted today even after it was fully bottle-verified today", async () => {
+    // This is the exact defect `listUnverified` has for "today": a delivery
+    // that arrived AND was checked on the same day used to disappear from
+    // "Deliveries that arrived" entirely, because `listUnverified` drops any
+    // order with a bottle_count/reconciled event. `arrivedToday` reads the
+    // door event directly and must not care what happened to the order since.
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "o1",
+          stage: "case_count",
+          counted_qty_bottles: 24,
+          occurred_at: hoursAgo(3),
+        },
+        {
+          order_id: "o1",
+          stage: "bottle_count",
+          counted_qty_bottles: 22,
+          occurred_at: hoursAgo(1),
+        },
+      ],
+      orders: [{ id: "o1", order_number: "PO-1", status: "PARTIALLY_RECEIVED" }],
+    });
+
+    const start = new Date(Date.now() - 12 * 3_600_000);
+    const end = new Date(Date.now() + 12 * 3_600_000);
+    const { rows: items, capped } = await new ReceivingService(db).arrivedToday(
+      "r1",
+      start,
+      end,
+    );
+    expect(capped).toBe(false);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ orderId: "o1", orderNumber: "PO-1" });
+  });
+
+  it("counts an order closed through the one-shot path the same as any other — it still arrived", async () => {
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "o1",
+          stage: "case_count",
+          counted_qty_bottles: 24,
+          occurred_at: hoursAgo(3),
+        },
+      ],
+      orders: [{ id: "o1", order_number: "PO-1", status: "COMPLETED" }],
+    });
+
+    const start = new Date(Date.now() - 12 * 3_600_000);
+    const end = new Date(Date.now() + 12 * 3_600_000);
+    const { rows: items, capped } = await new ReceivingService(db).arrivedToday(
+      "r1",
+      start,
+      end,
+    );
+    expect(capped).toBe(false);
+
+    // Unlike `listUnverified`, order status is irrelevant here: the door
+    // event happened today regardless of where the order ended up.
+    expect(items).toHaveLength(1);
+  });
+
+  it("excludes a case count from outside the window", async () => {
+    const { db } = makeDb({
+      events: [
+        {
+          order_id: "o-yesterday",
+          stage: "case_count",
+          counted_qty_bottles: 6,
+          occurred_at: hoursAgo(30),
+        },
+        {
+          order_id: "o-today",
+          stage: "case_count",
+          counted_qty_bottles: 6,
+          occurred_at: hoursAgo(1),
+        },
+      ],
+      orders: [
+        { id: "o-yesterday", order_number: "PO-Y", status: "PARTIALLY_RECEIVED" },
+        { id: "o-today", order_number: "PO-T", status: "PARTIALLY_RECEIVED" },
+      ],
+    });
+
+    const start = new Date(Date.now() - 12 * 3_600_000);
+    const end = new Date(Date.now() + 12 * 3_600_000);
+    const { rows: items, capped } = await new ReceivingService(db).arrivedToday(
+      "r1",
+      start,
+      end,
+    );
+    expect(capped).toBe(false);
+
+    expect(items.map((i) => i.orderId)).toEqual(["o-today"]);
+  });
+
+  it("reports capped: true when the day's read lands on its 1000-row page", async () => {
+    // A range read is still a capped read — PostgREST stops at `max_rows`
+    // without saying so. 1000 door counts inside the window fill the page,
+    // so the day line must be told this is a floor, not a total.
+    const events = Array.from({ length: 1000 }, (_, i) => ({
+      order_id: `o-${i}`,
+      stage: "case_count",
+      counted_qty_bottles: 6,
+      occurred_at: new Date(Date.now() - (i + 1) * 1000).toISOString(),
+    }));
+    const { db } = makeDb({
+      events,
+      orders: events.map((e) => ({
+        id: e.order_id,
+        order_number: `PO-${e.order_id}`,
+        status: "PARTIALLY_RECEIVED",
+      })),
+    });
+
+    const start = new Date(Date.now() - 12 * 3_600_000);
+    const end = new Date(Date.now() + 12 * 3_600_000);
+    const { rows, capped } = await new ReceivingService(db).arrivedToday(
+      "r1",
+      start,
+      end,
+    );
+
+    expect(capped).toBe(true);
+    expect(rows).toHaveLength(1000);
+  });
+
+  it("does not report capped for a full day that stays under the page", async () => {
+    // 999 door counts today plus one from yesterday: the window, not the
+    // table, decides what the page holds.
+    const events = [
+      ...Array.from({ length: 999 }, (_, i) => ({
+        order_id: `o-${i}`,
+        stage: "case_count",
+        counted_qty_bottles: 6,
+        occurred_at: new Date(Date.now() - (i + 1) * 1000).toISOString(),
+      })),
+      {
+        order_id: "o-yesterday",
+        stage: "case_count",
+        counted_qty_bottles: 6,
+        occurred_at: hoursAgo(30),
+      },
+    ];
+    const { db } = makeDb({ events, orders: [] });
+
+    const start = new Date(Date.now() - 12 * 3_600_000);
+    const end = new Date(Date.now() + 12 * 3_600_000);
+    const { rows, capped } = await new ReceivingService(db).arrivedToday(
+      "r1",
+      start,
+      end,
+    );
+
+    expect(capped).toBe(false);
+    expect(rows).toHaveLength(999);
   });
 });

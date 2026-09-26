@@ -771,14 +771,14 @@ describe('CalendarNext — the weather overlay', () => {
     expect(screen.getByText(/Sky by NOAA\/NWS, 7 days ahead/)).toBeInTheDocument();
   });
 
-  it('says why a cell has no reading, never leaving it blank', () => {
-    // A silently empty weather column is indistinguishable from a week of
-    // clear skies. Every cell without a reading carries a reason.
+  it('leaves a cell with no reading blank (founder ruling 2026-09-22)', () => {
     draw();
-    const dark = document.querySelectorAll('.cn-sky[data-dark="true"]');
-    expect(dark.length).toBeGreaterThan(0);
-    expect(dark[0].textContent).toContain('no reading');
-    expect(dark[0].getAttribute('title')).toBeTruthy();
+    const cells = document.querySelectorAll('.cn-cell');
+    const marks = document.querySelectorAll('.cn-sky');
+    expect(marks.length).toBeGreaterThan(0);
+    expect(marks.length).toBeLessThan(cells.length);
+    expect(screen.queryByText(/no reading/)).toBeNull();
+    marks.forEach((m) => expect(m.getAttribute('data-dark')).toBeNull());
   });
 
   it('prints the gateway’s refusal when the house has no coordinate', () => {
