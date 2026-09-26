@@ -457,21 +457,6 @@
       ]
     },
     {
-      "slug": "arrival",
-      "flag": "mudavym_design_arrival",
-      "route": "/get-started",
-      "legacy": "page",
-      "source": "apps/web/src/pages/arrival",
-      "empty": [
-        "Nothing is written yet. Give the book a menu and it opens already written."
-      ],
-      "failed_read": [
-        "This part of the book could not be read.",
-        "The folio history could not be read.",
-        "failure to read, not an empty menu"
-      ]
-    },
-    {
       "slug": "vendor_prices",
       "flag": "mudavym_design_vendor_prices",
       "route": "/vendor-prices",
@@ -484,6 +469,21 @@
       "failed_read": [
         "Newest below the earlier mean: could not be read",
         "The register could not be read"
+      ]
+    },
+    {
+      "slug": "arrival",
+      "flag": "mudavym_design_arrival",
+      "route": "/get-started",
+      "legacy": "page",
+      "source": "apps/web/src/pages/arrival",
+      "empty": [
+        "Nothing is written yet. Give the book a menu and it opens already written."
+      ],
+      "failed_read": [
+        "This part of the book could not be read.",
+        "The folio history could not be read.",
+        "failure to read, not an empty menu"
       ]
     }
   ],
