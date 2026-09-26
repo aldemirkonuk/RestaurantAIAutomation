@@ -140,6 +140,12 @@ export const READ_BACK_ACTIONS = [
   ...SETTINGS_AUDIT_ACTIONS,
   "member_role_changed",
   "team_member_removed",
+  /**
+   * An owner switched a manager's /team pay access (ADR 0215, founder
+   * 2026-09-25 round 4 item 19, "Pay visibility only"). Filed by
+   * `team/access-audit.ts`, read back so /team's trail shows who switched it.
+   */
+  "team_pay_access_changed",
   "configuration_step_skipped",
   "configuration_folio_recorded",
   "configuration_batch_undone",
@@ -470,7 +476,11 @@ export class SettingsAuditService {
     }
     // The two pre-existing access actions carry no register; they belong to the
     // team roster and are labelled as such rather than left unfiled.
-    if (action === "member_role_changed" || action === "team_member_removed") {
+    if (
+      action === "member_role_changed" ||
+      action === "team_member_removed" ||
+      action === "team_pay_access_changed"
+    ) {
       return null;
     }
     return null;

@@ -254,3 +254,9 @@ export class UpdateTeamSettingsDto {
   @Max(100)
   laborTargetPct?: number;
 }
+
+// ── Pay access (ADR 0215, founder 2026-09-25 round 4 item 19) ──────────────
+/** An owner switches one manager's pay access on or off. */
+export class SetPayAccessDto {
+  @IsBoolean() payAccess!: boolean;
+}

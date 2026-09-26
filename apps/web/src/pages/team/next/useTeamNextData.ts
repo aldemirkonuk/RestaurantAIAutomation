@@ -119,8 +119,15 @@ export interface TeamTrail {
   recordingSince: string;
 }
 
-/** The two actions on that trail that are about people, not about settings. */
-export const TEAM_TRAIL_ACTIONS = ['member_role_changed', 'team_member_removed'] as const;
+/**
+ * The actions on that trail that are about people, not about settings. The
+ * third, a manager's pay switch, since 2026-09-25 (ADR 0215 round 4 item 19).
+ */
+export const TEAM_TRAIL_ACTIONS = [
+  'member_role_changed',
+  'team_member_removed',
+  'team_pay_access_changed',
+] as const;
 
 /**
  * What `/team` can and cannot say about where a value came from.

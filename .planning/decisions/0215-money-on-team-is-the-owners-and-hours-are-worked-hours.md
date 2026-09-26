@@ -5,9 +5,12 @@
   answers 2026-09-22, round 6y, to the five questions round 2 in turn left
   open — see "Answered, 2026-09-22 (round 6y)"). All five of "Open, for the
   founder"'s questions are answered; the round-3 last call returned two new
-  ones, listed there and not decided here.
+  ones, listed there and not decided here. **[2026-09-25: the founder answered
+  the three questions round 3 returned (round 4, item 19) — see "Answered,
+  2026-09-25 (round 4)" and Decision items 21–23. One new question is returned
+  there: a switched-on manager setting their OWN wage.]**
 - **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
-  2026-09-22)
+  2026-09-22; round 4 answers 2026-09-25)
 - **Decider:** Aldemir (founder) — four picks and one answer to five forks
   (2026-09-21), and five more answers (2026-09-22, round 6y), quoted verbatim
   below
@@ -25,12 +28,18 @@
   `supabase/migrations/20260925180100_a_shift_over_four_hours_has_a_break.sql`,
   `supabase/migrations/20260925180110_a_wage_record_is_kept_five_years_after_leaving.sql`,
   `supabase/migrations/20260925180200_a_persons_shifts_and_leave_outlive_their_removal.sql`,
+  `supabase/migrations/20260925180210_a_removed_persons_credentials_are_kept_their_availability_is_not.sql`,
+  `supabase/migrations/20260925180220_an_owner_may_let_a_manager_see_and_set_pay.sql`
+  (both added 2026-09-25, round 4),
   **[Renumbered 2026-09-25, merging `origin/main` 059169a5 into #440: the four files were `20260921170200`, `20260921170900`, `20260921170910` and `20260922013000`, all below main's newest `20260922231300`, which ADR 0212's `check_migration_order.py` refuses. Moved by `git mv` to `20260925180000`, `…180100`, `…180110`, `…180200`, same order, content unchanged except the version numbers they cite; every citation in this ADR, CLAIMS and the code was rewritten to the new numbers. No main migration after `20260921170200` touches `team_members`, `shifts`, `leave_requests` or `team_member_*`, so the later apply position changes nothing they depend on.]**
   `apps/api-gateway/src/team/pay-rules.ts`,
   `apps/api-gateway/src/team/wage-record-retention.service.ts`,
   `apps/api-gateway/src/team/team-pay.spec.ts`,
   `apps/web/src/pages/team/next/TeamPay.test.tsx`,
   `apps/web/src/pages/team/next/TeamBreaks.test.tsx`,
+  `apps/api-gateway/src/team/team-pay-round4.spec.ts`,
+  `apps/web/src/pages/team/next/TeamPayRound4.test.tsx`,
+  `apps/web/src/pages/team/next/FormerStaff.tsx`,
   `p4-scratch/pglite-probe/teamfix-r3-shifts-and-leave-outlive-removal.mjs`
 
 ## The founder's words
@@ -235,7 +244,12 @@ wage, and the labour page built on a figure that is wrong in both directions.
 
 **Money on /team — wages, a shift's cost, and every total derived from them — is
 returned to the owner only, by role, on every endpoint that carries it. A
-manager sees hours.** And the week's hours are worked hours.
+manager sees hours.** And the week's hours are worked hours. **[2026-09-25,
+founder round 4 item 19, "Pay visibility only (Recommended)": the owner may
+switch an individual manager's pay access on; that manager then sees the
+money and sets a colleague's wage (never their own), with their other rights
+unchanged. Default off, so every manager stays as the 2026-09-21 pick left
+them until an owner acts. Item 21.]**
 
 What changed, each with a test that fails on `origin/main` 9cfc4e96d:
 
@@ -369,7 +383,19 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     record" — a manager switches it on, only the owner switches it off (item
     13). Read literally, "on and off" could instead mean a manager may also
     switch it OFF, which would reverse item 13, a pick of 2026-09-21. That
-    reading is returned to the founder to confirm, not built.]**
+    reading is returned to the founder to confirm, not built.]** **[2026-09-25,
+    round 4 item 19: the question put to the founder was "what does turning a
+    manager 'on/off' mean?", and he picked "Pay visibility only (Recommended)"
+    — "The switch decides whether that manager can see and edit pay; their
+    other rights are unchanged." Built as item 21: a per-manager pay switch.
+    Read against this item: "their other rights are unchanged" leaves the
+    labour settings exactly as items 13 and 16 have them (a manager switches
+    tracking ON, only the owner switches it OFF or changes the target); a
+    switched-on manager gets no labour-settings right from it
+    (`team-pay-round4.spec.ts` PA, "the other manager rights are unchanged").
+    The question as asked did not name the labour-tracking switch, so if the
+    founder meant the literal "and off" of item 16, that is still his to say —
+    reported as a candidate open decision, not filed.]**
 17. *(Item 10, above, carries the Art. 68-at-any-length correction — no
     separate item here to avoid saying it twice.)*
 18. **The Art. 68 minimum is measured on the work the break leaves, not the
@@ -451,13 +477,94 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
       nobody reads them through the product at all. Whether a PAST week
       should show a removed person's hours, and what a removed person's
       unworked FUTURE shifts should become, are returned to the founder —
-      not decided here. `team-pay.spec.ts` K1, 10 of 10 targeted mutations
+      not decided here. **[2026-09-25, round 4 item 19: answered, "Owner-only
+      history (Recommended)" — "Hidden from the team views; the owner can open
+      a 'former staff' history for pay and legal records." So no team view
+      (past week included) shows them, and the owner reads them in the
+      former-staff history — item 22. A removed person's unworked future
+      shifts are kept and shown there like any other kept shift; nothing
+      reassigns them.]** `team-pay.spec.ts` K1, 10 of 10 targeted mutations
       killed; CLAIMS row
       `ADR-0215-TEAM-A-REMOVED-PERSONS-KEPT-ROWS-ARE-NOT-IN-THE-WEEK`.
     - Additive and idempotent: two constraints dropped (`IF EXISTS`,
       re-dropping a no-op), three functions replaced/added
       (`CREATE OR REPLACE`), no row written or deleted by the migration
       itself.
+
+21. **A manager's pay switch (round 4, 2026-09-25).** Founder pick: "Pay
+    visibility only (Recommended)" — "The switch decides whether that manager
+    can see and edit pay; their other rights are unchanged."
+    `user_restaurant_access.team_pay_access` (migration `20260925180220`,
+    `BOOLEAN NOT NULL DEFAULT false`) is the switch, per manager, per house,
+    on the membership row that already decides the role here — so it goes
+    when the membership goes. `seesMoney` takes a viewer: the owner always; a
+    manager only when the switch is literally `true`; staff never, whatever
+    the column says. Every money path listed in item 2 follows it (the week,
+    shift writes, cover, callout, roster, and `week.money`). A switched-on
+    manager may set a colleague's wage (`wageWriteRefusal`), and each write
+    still names its writer in the same statement; **their own wage stays
+    refused** — the 2026-09-21 rule refused it "their own included", the
+    round-4 answer did not address it, and a raise someone gives themselves
+    is the one write the switch should not open unasked (returned, below).
+    Only the owner writes the switch (`PATCH …/members/:memberId/pay-access`,
+    `setPayAccess`): the target must be an ACTIVE MANAGER of the house by
+    membership (an owner sees pay already, staff never do, a roster row with
+    no account has no membership), every change is a `team_pay_access_changed`
+    row in `system_audit_log` with from/to, the manager is told, and a save
+    that moves nothing records nothing. The switch is read APART from the
+    membership read (`managerPayAccess`, `payAccessByUser`): until the
+    migration applies the column does not exist, and folding it into
+    `assertAccess` would have locked every owner and manager out of /team for
+    the deploy window; an unread switch answers OFF (money withheld, never
+    shown on a guess) and the owner's roster says it could not be read. No
+    client can write it: `user_restaurant_access` has RLS with SELECT
+    policies only, and the migration asserts anon/authenticated hold no
+    write grant. The web offers the switch on a manager's row to the owner
+    only ("Sees and sets pay"), and never offers a manager their own wage
+    field. Rejected: a whole-account on/off (the founder's other option);
+    a house-wide flag (that was `wage_visible`, retired in item 3 because a
+    single flag cannot tell one manager from another); a separate grants
+    table (one more table to keep in step with membership, for a boolean the
+    membership row can carry).
+22. **The owner's former-staff history (round 4, 2026-09-25).** Founder pick:
+    "Owner-only history (Recommended)" — "Hidden from the team views; the
+    owner can open a 'former staff' history for pay and legal records."
+    `GET /restaurants/:rid/team/former-staff` (`listFormerStaff`, owner
+    only) returns one entry per recorded departure: the kept shifts (worked
+    hours on item 10's rule, cost, called-out marked), leave (dates, status,
+    type — the free-text `reason` is never read), wage changes and
+    credentials, with "kept until" (removal + five years). The NAME comes
+    from the removal's own audit row (`team_member_removed`,
+    `changes.display_name`, written by `deleteMember` since ADR 0088); the
+    departure row holds no name on purpose (KVKK: the minimum,
+    `20260925180110`), so none was added — a missing audit row reads "Name not
+    recorded". A total is `null` when any worked shift had no cost on file,
+    never a partial. Every read binds its error: a failed read is a 500 in
+    words, never an empty list that would read as "nobody has left". The team
+    views are unchanged (item 20's `onTheRoster`); credentials join them
+    (item 23). The web opens it from "How this desk is configured" (owner
+    only) in a sheet with reading / failed / empty / list states. Rejected:
+    "Shown, marked former" and "Never shown" (the founder's other options).
+23. **Credentials are kept, availability is not (round 4, 2026-09-25).**
+    Founder pick: "Credentials yes, availability no (Recommended)" —
+    "Certificates can matter for audits; availability has no value once
+    someone leaves." Migration `20260925180210` drops
+    `team_certifications_member_id_fkey`; a departure is stamped for a
+    person with a credential; `purge_expired_credential_records()` (SECURITY
+    INVOKER, service_role only) deletes a departed person's credentials past
+    five years; `purge_expired_wage_records()`'s departure cleanup and
+    `tmd_guard()` wait for credentials too; the nightly job runs the
+    credential purge first (then shifts-and-leave, then wages) and stops on
+    its failure. `listCertifications` leaves a removed person's credentials
+    out of every team view, the owner's included — they are in the
+    former-staff history. **Availability:** `team_availability_member_id_fkey`
+    stays `ON DELETE CASCADE`, so a removal still deletes it the same second —
+    which already is "availability no". Nothing was deleted to get there, and
+    nothing needs stopping: the cascade has always taken it, so no retained
+    availability row of a removed person can exist (the migration asserts the
+    cascade is still in place). ADR 0149's never-delete rule is therefore
+    not engaged — there were no retained rows to stop retaining. A kept
+    credential's `doc_url` document is not touched (no path ever deleted it).
 
 ## Consequences
 
@@ -506,7 +613,10 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   UNCHANGED by item 20 (the founder's pick, verbatim, named shifts and leave
   requests only): a removal still deletes those two the same second. That is
   a residual of item 20, not a decision — restated so it is not mistaken for
-  one.] (k) A departure is stamped once
+  one.] **[Resolved 2026-09-25, round 4 item 19, "Credentials yes,
+  availability no (Recommended)": credentials are now kept on the same clock
+  (`team_certifications_member_id_fkey` dropped, migration
+  `20260925180210`); availability still cascades, on purpose — item 23.]** (k) A departure is stamped once
   (`ON CONFLICT DO NOTHING`): a roster row removed, re-inserted under the SAME
   id and removed again would keep the first date. No product path re-inserts
   an id (every insert takes a generated one), so this is noted, not guarded.
@@ -604,7 +714,11 @@ returned two new questions to the orchestrator, not filed as OD rows and not
 decided here: whether "Yes, on and off" means a manager may also switch
 tracking OFF (item 16's reading note), and how a removed person's kept rows
 should appear, if at all — their hours on a past week, their unworked future
-shifts (item 20, "Kept, not shown").
+shifts (item 20, "Kept, not shown"). **[2026-09-25: the founder answered three
+questions on these (round 4, item 19) — see "Answered, 2026-09-25 (round 4)"
+below and items 21–23. Returned by that round, not decided: whether a
+switched-on manager may set their OWN wage (built: refused), and — only if
+the founder meant it — the literal "and off" of item 16.]**
 
 ## Answered, 2026-09-22 (round 6y)
 
@@ -630,7 +744,59 @@ function's departure cleanup broadened, one service reordered to call both,
 in that order, for the reason given in item 20 and the file header of
 `wage-record-retention.service.ts`.
 
+## Answered, 2026-09-25 (round 4)
+
+The three questions round 3 returned, put to the founder on 2026-09-25 (the
+web-rebuild goal's round 4, item 19), each with a recommended option; he took
+all three. Verbatim question, option label and option description:
+
+| # | Question (as put) | Pick |
+|---|---|---|
+| 1 | "Team pay/hours (#440) returned three questions. First: what does turning a manager 'on/off' mean?" | **"Pay visibility only (Recommended)"** — "The switch decides whether that manager can see and edit pay; their other rights are unchanged." — item 21 |
+| 2 | "#440: a removed person's kept rows (shifts, leave, kept five years): how should they appear?" | **"Owner-only history (Recommended)"** — "Hidden from the team views; the owner can open a 'former staff' history for pay and legal records." — item 22 |
+| 3 | "#440: should a removed person's availability and credentials (certificates etc.) also be kept like shifts and leave?" | **"Credentials yes, availability no (Recommended)"** — "Certificates can matter for audits; availability has no value once someone leaves." — item 23 |
+
+**How question 1 relates to what round 3 returned.** Round 3 returned the
+literal reading of item 16's "Yes, on and off" — may a manager switch labour
+TRACKING off? — but the question put asked what turning a MANAGER on/off
+means, and the answer is a per-manager pay switch. Both are built consistently
+(item 16's bracket): the pay switch is item 21, and "their other rights are
+unchanged" keeps the labour-settings rights of items 13 and 16 as they are. If
+the founder meant the tracking switch's "and off", that remains his.
+
+**Returned by this round (not decided here):** may a manager whose pay access
+is on set their OWN wage? The answer said "see and edit pay"; the 2026-09-21
+rule refused a manager's wage write "their own included". Built: refused
+(`wageWriteRefusal`), in words, and the web never offers it.
+
 ## Evidence
+
+- **Round 4 (2026-09-25).** Gateway `team-pay-round4.spec.ts` 29 cases (PA
+  pay switch 13, FS former-staff history 12, CR credentials 4) and R1 in
+  `team-pay.spec.ts` extended to the credential purge (+2 cases); `jest
+  src/team` 171 of 171 (8 files). 17 targeted gateway mutations each fail at
+  least one case (switch ignored; every manager sees pay; self-wage allowed;
+  staff switch honoured; switch read for staff; former staff not owner-only;
+  leave `reason` read; leave `reason` returned; credentials not filtered;
+  switch on a non-manager; a no-op audited; a switch read failure thrown;
+  a failed shifts read swallowed; a manager switching pay; own row not
+  checked; the credential purge's error ignored; `getWeek` ignoring the
+  switch — one, "leave `reason` read", survived the first pass and was killed
+  by asserting the select's columns). Web `TeamPayRound4.test.tsx` 9 cases,
+  `vitest src/pages/team` 103 of 103 (8 files); 6 of 6 web mutations killed.
+  SQL: a PGlite build of all 223 migrations (superuser, stub vector/postgis,
+  no Supabase platform — not a local-stack measurement), 12 checks: a
+  removed person's credential kept and availability gone, a departure stamped
+  for a credential-only person, nothing purged inside five years, an aged
+  departure not deletable and not cleared while a credential remains, the
+  credential purged then the departure cleared past five years, a live
+  person's credential untouched, the purge service_role only, the pay column
+  NOT NULL default false, no client write grant on `user_restaurant_access`.
+  Control (build stopped before `20260925180210`): 3 failures, as it must.
+  Two SQL mutations (the credential clause removed from `tmd_guard`, and from
+  the wage purge's departure cleanup) each fail the probe. Probe:
+  `scratchpad/w2ct440/probe.mjs` of session 6c6d8b93 (not committed; the
+  p4-scratch harness it imports is not in the repo either).
 
 - Gateway: `apps/api-gateway/src/team/team-pay.spec.ts`, 34 cases; 27 fail
   against `origin/main` 9cfc4e96d (re-measured at last call, with `origin/main`'s
@@ -843,3 +1009,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-21 | Round 2 Opus last call | The sheet's under-minimum warning said "60 minutes for this shift" on an 8-hour shift whose minimum it also said was 30; it now names the minimum owed for the work the typed break leaves (fixed, test + killed mutation). The ADR's "safer side" sentence read as if the chosen break were the larger one (reworded). `assignCover`'s price read (`recomputeCostForMember`, whose select this round had widened) swallowed its error and wrote the cover as unpriced, which also made residual (g) untrue for that path (fixed: a 500 in words, nothing assigned; test + killed mutation). Found and recorded, not changed: a removal still cascades a person's shifts and leave (residual (j), question 5), and a departure is stamped once (residual (k)). Re-run: `team-pay.spec.ts` 63 of 63, one new mutation (an empty `shift_breaks` embed read as a recorded 0) killed by 4 cases, the PGlite probe ALL PASS |
 | 2026-09-22 | Round 3 build (founder round 6y, five answers, verbatim in "Answered, 2026-09-22") | Items 16–20 built or recorded; the "Open, for the founder" section's five questions are all struck, answered. Item 10 corrected in place (the "over 4 hours" gate removed; `ASSUME_BREAK_OVER_MIN` deleted from `pay-rules.ts` and its `tm-format.ts` mirror; boundary tests at 4h00/4h01/7h30/7h31 the founder named). Item 20 is the substantial change: `shifts.member_id` and `time_off_requests.member_id` drop their foreign key to `team_members` (migration `20260925180200`); `team_member_departure_recorded()` broadened to shifts and leave, not wage records alone; a new `purge_expired_shift_and_leave_records()` (service_role only, SECURITY INVOKER); `purge_expired_wage_records()`'s departure cleanup broadened the same way; `tmd_guard()` broadened identically; `WageRecordRetentionService` reordered to call the new purge first, then the wage purge, with a short-circuit on the first's failure (this was the one piece left unfinished from an earlier, interrupted pass of this session — found via `grep purge_expired_shift_and_leave_records apps/**/*.ts` turning up only the migration and comments, never a call site). Residual (j) struck (resolved), not deleted. New PGlite probe `teamfix-r3-shifts-and-leave-outlive-removal.mjs`, 31 checks, reproduces the pre-migration cascade defect first, then proves the fix and isolates the broadened `tmd_guard` from the purge functions (a departure with no wage row at all, past five years, with a live shift, refused). 8 of 8 migration mutations and 3 of 3 service mutations killed. Full `/team` suites re-measured: gateway 135 of 135 (7 files), web 105 of 105 (9 files). |
 | 2026-09-22 | Round 3 Opus last call | Item 20 dropped the foreign keys but nothing read the week any differently, so a removed person's kept rows entered it: their next week counted as covered and costed, "Copy last week" wrote them into new weeks, replacing a week deleted their kept shifts, and a pending leave request waited in the manager's list. Fixed as "kept, not shown" (`onTheRoster`; K1, 10 of 10 mutations killed; new CLAIMS row), the week reading as it did before the change; how kept rows should appear is returned to the founder. Records corrected in place: "never had a grant" (OD-72 revoked them), the retention job's header said the other order could clear a departure on live rows (it cannot; the order finishes the job in one night) and that "the tables refuse" an early delete of shifts and leave (no guard on them; the purge's clause is the rule), the Answered table's question 1 carried an "(and off)" the question never had, and "changed no page a person looks at". Returned: the literal reading of "on and off". Residuals (l) and (m) added. |
+| 2026-09-25 | W2-fix-cellar-team lane (founder round 4 item 19, three answers, verbatim in "Answered, 2026-09-25 (round 4)") | Items 21–23 built: the per-manager pay switch (`team_pay_access`, migration `20260925180220`; `seesMoney`/`wageWriteRefusal` take a viewer; owner-only `setPayAccess`, audited and notified; read apart from the membership read for the deploy window), the owner-only former-staff history (`listFormerStaff`, names from the removal's audit row, no name column added), and credentials kept / availability not (migration `20260925180210`; credential purge first in the nightly job; `listCertifications` filtered). Brackets added to Status, the Decision lead, item 16, item 20, residual (j) and "Open, for the founder". Two CLAIMS rows re-pointed with dated brackets (MONEY-IS-THE-OWNERS, A-WAGE-IS-WRITTEN-BY-AN-OWNER-AND-KEPT: their `role === "owner"` / `assertMayWriteWage(role)` literals are gone by design) and three added (R4-*), each mutation-tested. Returned: a switched-on manager's own wage; the literal "and off" of item 16 if meant. Not run: a browser pass; `check_migration_ledger` / definer end-state checks (need a DB URL). |

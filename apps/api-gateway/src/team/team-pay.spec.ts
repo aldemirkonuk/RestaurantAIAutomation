@@ -888,7 +888,7 @@ describe("L3 — whoever approves marks leave paid or unpaid; staff may say so",
   });
 });
 
-describe("R1 — the retention job: shifts and leave, then wages, same clock", () => {
+describe("R1 — the retention job: credentials, shifts and leave, then wages, same clock", () => {
   const svcWith = (rpc: jest.Mock) =>
     new WageRecordRetentionService({ supabase: { rpc } } as any);
 
@@ -902,6 +902,10 @@ describe("R1 — the retention job: shifts and leave, then wages, same clock", (
         : { data: null, error: { message: `unexpected rpc ${name}` } },
     );
 
+  const CRED_OK = (creds = 0) => ({
+    data: [{ credentials_deleted: creds }],
+    error: null,
+  });
   const SL_OK = (shifts = 0, leave = 0) => ({
     data: [{ shifts_deleted: shifts, leave_rows_deleted: leave }],
     error: null,
@@ -911,18 +915,21 @@ describe("R1 — the retention job: shifts and leave, then wages, same clock", (
     error: null,
   });
 
-  it("calls the shifts-and-leave purge, then the wage purge, in that order, and reports all four counts (founder 2026-09-22 round 6y)", async () => {
+  it("calls the credential purge, the shifts-and-leave purge, then the wage purge, in that order, and reports all five counts (founder 2026-09-22 round 6y; credentials 2026-09-25 round 4)", async () => {
     const rpc = rpcOf({
+      purge_expired_credential_records: CRED_OK(4),
       purge_expired_shift_and_leave_records: SL_OK(2, 1),
       purge_expired_wage_records: WAGE_OK(3, 1),
     });
     const run = await svcWith(rpc).purgeExpired();
     expect(rpc.mock.calls.map((c) => c[0])).toEqual([
+      "purge_expired_credential_records",
       "purge_expired_shift_and_leave_records",
       "purge_expired_wage_records",
     ]);
     expect(run).toMatchObject({
       ok: true,
+      credentialsDeleted: 4,
       shiftsDeleted: 2,
       leaveRowsDeleted: 1,
       wageRowsDeleted: 3,
@@ -932,12 +939,14 @@ describe("R1 — the retention job: shifts and leave, then wages, same clock", (
 
   it("does not call the wage purge at all when the shifts-and-leave purge fails", async () => {
     const rpc = rpcOf({
+      purge_expired_credential_records: CRED_OK(),
       purge_expired_shift_and_leave_records: { data: null, error: { message: "boom" } },
     });
     const run = await svcWith(rpc).purgeExpired();
-    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledTimes(2);
     expect(run).toMatchObject({
       ok: false,
+      credentialsDeleted: null,
       shiftsDeleted: null,
       leaveRowsDeleted: null,
       wageRowsDeleted: null,
@@ -948,31 +957,62 @@ describe("R1 — the retention job: shifts and leave, then wages, same clock", (
 
   it("reports a failed wage purge as failed, never as nothing due, after a successful shifts-and-leave purge", async () => {
     const rpc = rpcOf({
+      purge_expired_credential_records: CRED_OK(),
       purge_expired_shift_and_leave_records: SL_OK(),
       purge_expired_wage_records: { data: null, error: { message: "boom" } },
     });
     const run = await svcWith(rpc).purgeExpired();
-    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(rpc).toHaveBeenCalledTimes(3);
     expect(run).toMatchObject({ ok: false, wageRowsDeleted: null, departuresDeleted: null, error: "boom" });
   });
 
   it("reports the shifts-and-leave purge answering without its counts as failed, not as 0 deleted", async () => {
-    const rpc = rpcOf({ purge_expired_shift_and_leave_records: { data: [{}], error: null } });
+    const rpc = rpcOf({
+      purge_expired_credential_records: CRED_OK(),
+      purge_expired_shift_and_leave_records: { data: [{}], error: null },
+    });
     const run = await svcWith(rpc).purgeExpired();
     expect(run.ok).toBe(false);
     expect(run.shiftsDeleted).toBeNull();
     expect(run.leaveRowsDeleted).toBeNull();
-    expect(rpc).toHaveBeenCalledTimes(1); // never reaches the wage purge
+    expect(rpc).toHaveBeenCalledTimes(2); // never reaches the wage purge
   });
 
   it("reports the wage purge answering without its counts as failed, not as 0 deleted", async () => {
     const rpc = rpcOf({
+      purge_expired_credential_records: CRED_OK(),
       purge_expired_shift_and_leave_records: SL_OK(),
       purge_expired_wage_records: { data: [{}], error: null },
     });
     const run = await svcWith(rpc).purgeExpired();
     expect(run.ok).toBe(false);
     expect(run.wageRowsDeleted).toBeNull();
+  });
+
+  it("calls nothing else when the credential purge fails, and reports every count as unknown (round 4)", async () => {
+    const rpc = rpcOf({
+      purge_expired_credential_records: { data: null, error: { message: "boom" } },
+    });
+    const run = await svcWith(rpc).purgeExpired();
+    expect(rpc.mock.calls.map((c) => c[0])).toEqual(["purge_expired_credential_records"]);
+    expect(run).toMatchObject({
+      ok: false,
+      credentialsDeleted: null,
+      shiftsDeleted: null,
+      leaveRowsDeleted: null,
+      wageRowsDeleted: null,
+      departuresDeleted: null,
+      error: "boom",
+    });
+  });
+
+  it("reads the credential purge answering without its count (or a null count) as failed, not 0 deleted", async () => {
+    for (const data of [[{}], [{ credentials_deleted: null }]]) {
+      const rpc = rpcOf({ purge_expired_credential_records: { data, error: null } });
+      const run = await svcWith(rpc).purgeExpired();
+      expect(run).toMatchObject({ ok: false, credentialsDeleted: null });
+      expect(rpc).toHaveBeenCalledTimes(1);
+    }
   });
 
   it("reports a thrown call as failed", async () => {
@@ -986,6 +1026,7 @@ describe("R1 — the retention job: shifts and leave, then wages, same clock", (
   it("reads null counts as no answer, not as 0 deleted — both purges", async () => {
     // Number(null) is 0: without the guard this run would report "0 deleted".
     const rpcSL = rpcOf({
+      purge_expired_credential_records: CRED_OK(),
       purge_expired_shift_and_leave_records: {
         data: [{ shifts_deleted: null, leave_rows_deleted: null }],
         error: null,
@@ -995,6 +1036,7 @@ describe("R1 — the retention job: shifts and leave, then wages, same clock", (
     expect(runSL).toMatchObject({ ok: false, shiftsDeleted: null, leaveRowsDeleted: null });
 
     const rpcWage = rpcOf({
+      purge_expired_credential_records: CRED_OK(),
       purge_expired_shift_and_leave_records: SL_OK(),
       purge_expired_wage_records: {
         data: [{ wage_rows_deleted: null, departures_deleted: null }],
@@ -1005,7 +1047,7 @@ describe("R1 — the retention job: shifts and leave, then wages, same clock", (
     expect(runWage).toMatchObject({ ok: false, wageRowsDeleted: null, departuresDeleted: null });
   });
 
-  it("is scheduled nightly, and the scheduled run is shifts-and-leave then wages, in order", async () => {
+  it("is scheduled nightly, and the scheduled run is credentials, shifts-and-leave, then wages, in order", async () => {
     const opts = Reflect.getMetadata(
       "SCHEDULE_CRON_OPTIONS",
       WageRecordRetentionService.prototype.scheduled,
@@ -1013,11 +1055,13 @@ describe("R1 — the retention job: shifts and leave, then wages, same clock", (
     expect(opts?.cronTime).toBe(WAGE_RETENTION_CRON);
     expect(WAGE_RETENTION_CRON).toBe("23 3 * * *");
     const rpc = rpcOf({
+      purge_expired_credential_records: CRED_OK(),
       purge_expired_shift_and_leave_records: SL_OK(),
       purge_expired_wage_records: WAGE_OK(),
     });
     await svcWith(rpc).scheduled();
     expect(rpc.mock.calls.map((c) => c[0])).toEqual([
+      "purge_expired_credential_records",
       "purge_expired_shift_and_leave_records",
       "purge_expired_wage_records",
     ]);

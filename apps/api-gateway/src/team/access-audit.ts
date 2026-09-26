@@ -47,7 +47,7 @@ export interface AccessChange {
   actorUserId: string;
   /** `public.users.user_id` of the person it happens to, when they have an account. */
   targetUserId: string | null;
-  action: "team_member_removed" | "member_role_changed";
+  action: "team_member_removed" | "member_role_changed" | "team_pay_access_changed";
   entityType: "team_member" | "restaurant_member";
   entityId: string;
   /** Before → after, as it will be read back off the /logs timeline. */

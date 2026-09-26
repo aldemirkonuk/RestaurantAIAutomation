@@ -27,6 +27,7 @@ import { Sheet } from '@/components/mudavym';
 import {
   createTeamMember,
   deleteTeamMember,
+  setMemberPayAccess,
   updateTeamMember,
   type Certification,
   type HouseMoney,
@@ -336,6 +337,8 @@ export function RosterSheet({
 export function MemberSheet({
   member,
   moneyVisible,
+  viewerIsOwner = false,
+  viewerUserId = null,
   ownerCount,
   onClose,
   onChanged,
@@ -348,6 +351,13 @@ export function MemberSheet({
    * a control that would be refused.
    */
   moneyVisible: boolean;
+  /**
+   * The owner switches a manager's pay access here (ADR 0215, founder
+   * 2026-09-25 round 4 item 19, "Pay visibility only").
+   */
+  viewerIsOwner?: boolean;
+  /** The viewer's `user_id`: a manager with pay access cannot set their own wage. */
+  viewerUserId?: string | null;
   /** `null` when the roster has not answered — the sole-owner rule then abstains. */
   ownerCount: number | null;
   onClose: () => void;
@@ -370,6 +380,17 @@ export function MemberSheet({
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const isSoleOwner = member?.role === 'owner' && ownerCount !== null && ownerCount <= 1;
+  // A manager the owner switched on sets a colleague's wage, never their own;
+  // the gateway refuses it, so the page does not offer it.
+  const ownRowAsManager =
+    !viewerIsOwner && viewerUserId !== null && member?.user_id === viewerUserId;
+  const mayWriteWage = moneyVisible && !ownRowAsManager;
+  const hasPaySwitch = viewerIsOwner && member?.role === 'manager';
+  const paySwitch = useMutation({
+    mutationFn: (on: boolean) => setMemberPayAccess(member!.id, on),
+    onSuccess: () => onChanged(),
+  });
+  const payOn = paySwitch.isSuccess ? paySwitch.data.payAccess : (member?.payAccess ?? null);
 
   const save = useMutation({
     mutationFn: () => {
@@ -384,7 +405,7 @@ export function MemberSheet({
         // would be a priced hour that costs nothing (ADR 0088). Only an owner
         // sends one at all (ADR 0215).
         hourlyWage:
-          !moneyVisible || form.hourlyWage.trim() === '' ? undefined : Number(form.hourlyWage),
+          !mayWriteWage || form.hourlyWage.trim() === '' ? undefined : Number(form.hourlyWage),
         skills: form.skills
           .split(',')
           .map((s) => s.trim())
@@ -497,7 +518,7 @@ export function MemberSheet({
               onChange={(e) => setForm({ ...form, homeLocation: e.target.value })}
             />
           </label>
-          {moneyVisible ? (
+          {mayWriteWage ? (
             <label>
               <span className="tm-label">Hourly wage</span>
               <input
@@ -518,10 +539,17 @@ export function MemberSheet({
           ) : (
             <div>
               <span className="tm-label">Hourly wage</span>
-              <p className="tm-hint">
-                Wages are the owner&apos;s to see and to set, so this field is withheld
-                rather than blank.
-              </p>
+              {ownRowAsManager && moneyVisible ? (
+                <p className="tm-hint">
+                  Your own wage is set by an owner of this house, not by you.
+                </p>
+              ) : (
+                <p className="tm-hint">
+                  Wages are the owner&apos;s to see and to set, and a manager&apos;s only when
+                  the owner switches their pay access on, so this field is withheld rather than
+                  blank.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -566,6 +594,36 @@ export function MemberSheet({
           />
         </label>
 
+        {hasPaySwitch && (
+          <div data-testid="pay-access">
+            <span className="tm-label">Pay access</span>
+            {payOn === null ? (
+              <p className="tm-hint" role="status">
+                Whether this manager&apos;s pay access is on could not be read, so it is not
+                offered here. Nothing about their access changed.
+              </p>
+            ) : (
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={payOn}
+                  disabled={paySwitch.isPending}
+                  onChange={(e) => paySwitch.mutate(e.target.checked)}
+                />
+                <span style={{ fontSize: 12.5 }}>Sees and sets pay</span>
+              </label>
+            )}
+            <p className="tm-hint">
+              On, this manager sees wages, shift cost and labour totals, and can set a
+              colleague&apos;s wage but never their own. Their other rights are unchanged. Each
+              switch is written to the record, and they are told.
+            </p>
+            <MutationError when={paySwitch.isError}>
+              The switch did not save, so this manager&apos;s pay access is as it was.
+            </MutationError>
+          </div>
+        )}
+
         {editing && isSoleOwner && (
           <p className="tm-hint">
             This is the restaurant&apos;s only owner, so they cannot be removed here. Make
@@ -578,7 +636,9 @@ export function MemberSheet({
             <p style={{ margin: 0 }}>
               Removing {resolved?.known ? resolved.text : 'this person'} deletes their
               roster row and revokes their access to this restaurant. It is written to the
-              audit log and they are notified. This cannot be undone.
+              audit log and they are notified. This cannot be undone. Their shifts, leave, wage
+              changes and credentials are kept for five years, for an owner only, in the
+              former-staff history; their availability is not kept.
             </p>
             <div className="tm-actions">
               <button

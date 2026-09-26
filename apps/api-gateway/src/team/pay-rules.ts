@@ -18,6 +18,11 @@
  * rule for every response that carries money: a wage (`hourly_wage`), a shift's
  * cost (`labor_cost`), and every total derived from them. A caller who is not
  * the owner gets the hours and not the money. The flag is no longer read.
+ * [2026-09-25, founder round 4 item 19: an owner may switch a manager's pay
+ * access on ("Pay visibility only" — "The switch decides whether that manager
+ * can see and edit pay; their other rights are unchanged"). The rule is now
+ * the role plus that per-manager switch, still applied where a response is
+ * built; see `seesMoney` and `wageWriteRefusal`.]
  *
  * HOURS ARE WORKED HOURS
  * ----------------------
@@ -59,9 +64,55 @@ export type TeamRole = "owner" | "manager" | "staff";
 /** The Turkish statutory week (4857 Art. 63). Over it is a review, not a price. */
 export const WEEKLY_REVIEW_HOURS = 45;
 
-/** The one test. Every money-carrying /team response goes through it. */
-export function seesMoney(role: TeamRole): boolean {
-  return role === "owner";
+/**
+ * Who is looking, as far as money is concerned: their role here and, for a
+ * manager, whether an owner switched their pay access on
+ * (`user_restaurant_access.team_pay_access`). A bare role is a viewer with the
+ * switch off.
+ */
+export type MoneyViewer = TeamRole | { role: TeamRole; payAccess?: boolean | null };
+
+function viewerRole(v: MoneyViewer): TeamRole {
+  return typeof v === "string" ? v : v.role;
+}
+
+/**
+ * The one test. Every money-carrying /team response goes through it.
+ *
+ * The owner always. A manager only when an owner switched their pay access on
+ * — the founder, 2026-09-25 (round 4 item 19), on what turning a manager
+ * "on/off" means: "Pay visibility only (Recommended)" — "The switch decides
+ * whether that manager can see and edit pay; their other rights are
+ * unchanged." Staff never, whatever a switch says. Only a literal `true`
+ * counts: an unread or missing switch is off.
+ */
+export function seesMoney(viewer: MoneyViewer): boolean {
+  const role = viewerRole(viewer);
+  if (role === "owner") return true;
+  if (role !== "manager" || typeof viewer === "string") return false;
+  return viewer.payAccess === true;
+}
+
+/**
+ * Who may set a wage, and whose. The owner sets anyone's. A manager whose pay
+ * access is on sets a colleague's ("see and edit pay", round 4 item 19) but
+ * NOT their own: the 2026-09-21 rule refused a manager's wage write "their own
+ * included", the round-4 answer did not address self-pay, and a raise the
+ * person gives themselves is the one write the switch must not open without
+ * being asked (returned to the founder, ADR 0215). Returns the refusal, in
+ * words, or `null` when the write may go ahead.
+ */
+export function wageWriteRefusal(
+  viewer: MoneyViewer,
+  targetIsSelf: boolean,
+): string | null {
+  if (!seesMoney(viewer)) {
+    return "Only an owner of this house, or a manager the owner allowed to see pay, can set or change a wage. Nothing was saved.";
+  }
+  if (viewerRole(viewer) !== "owner" && targetIsSelf) {
+    return "A manager cannot set their own wage; an owner of this house can. Nothing was saved.";
+  }
+  return null;
 }
 
 /**
@@ -110,17 +161,17 @@ function without<T extends Record<string, any>>(
  */
 export function shiftForViewer<T extends Record<string, any>>(
   shift: T,
-  role: TeamRole,
+  viewer: MoneyViewer,
 ): T {
-  return seesMoney(role) ? shift : without(shift, SHIFT_MONEY);
+  return seesMoney(viewer) ? shift : without(shift, SHIFT_MONEY);
 }
 
 /** A roster row as this viewer may receive it. Same rule, same reason. */
 export function memberForViewer<T extends Record<string, any>>(
   member: T,
-  role: TeamRole,
+  viewer: MoneyViewer,
 ): T {
-  return seesMoney(role) ? member : without(member, MEMBER_MONEY);
+  return seesMoney(viewer) ? member : without(member, MEMBER_MONEY);
 }
 
 /** Minutes since midnight from an "HH:MM" string. */

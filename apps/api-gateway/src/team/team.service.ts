@@ -15,6 +15,9 @@ import {
   onTheRoster,
   seesMoney,
   TeamRole,
+  wageWriteRefusal,
+  workedHours,
+  isWorked,
 } from "./pay-rules";
 import {
   ChannelPreferences,
@@ -32,6 +35,14 @@ import {
 } from "./dto/team.dto";
 
 type Role = "owner" | "manager" | "staff";
+
+/**
+ * How long a removed person's records are kept: `wage_record_retention()` in
+ * the database (migration `20260925180110`, founder 2026-09-21/22, five years).
+ * Stated here only to print "kept until"; the database's clock is the one that
+ * deletes.
+ */
+export const FORMER_STAFF_RETENTION_YEARS = 5;
 
 /**
  * Team ops service: the operational staff profile that sits on top of the
@@ -69,7 +80,8 @@ export class TeamService {
     userId: string,
     restaurantId: string,
     required?: "owner" | "manager",
-  ): Promise<{ role: Role }> {
+    opts?: { payAccess?: boolean },
+  ): Promise<{ role: Role; payAccess: boolean }> {
     let accessRole: string | null = null;
 
     const { data: access } = await this.sb
@@ -106,7 +118,45 @@ export class TeamService {
         "Only owners and managers can perform this action",
       );
 
-    return { role };
+    // Read only where money is at stake, and only for a manager: an owner
+    // sees pay regardless and staff never do (ADR 0215, round 4 item 19).
+    const payAccess =
+      opts?.payAccess === true && role === "manager"
+        ? await this.managerPayAccess(userId, restaurantId)
+        : false;
+
+    return { role, payAccess };
+  }
+
+  /**
+   * Whether an owner switched this manager's pay access on
+   * (`user_restaurant_access.team_pay_access`, ADR 0215, founder 2026-09-25
+   * round 4 item 19: "Pay visibility only"). Read on its own, never folded
+   * into `assertAccess`'s membership read: until migration `20260925180220`
+   * applies, the column does not exist, and a membership read that failed on
+   * it would lock every manager and owner out of /team. A failed read here is
+   * logged and answers OFF — the money is withheld, never shown on a guess —
+   * and the page already says withheld money is the owner's.
+   */
+  private async managerPayAccess(
+    userId: string,
+    restaurantId: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.sb
+      .from("user_restaurant_access")
+      .select("team_pay_access")
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `managerPayAccess: could not read the pay switch for ${userId} in ` +
+          `${restaurantId}, so pay is withheld: ${error.message}`,
+      );
+      return false;
+    }
+    return data?.team_pay_access === true;
   }
 
   /**
@@ -169,7 +219,10 @@ export class TeamService {
   async listMembers(userId: string, restaurantId: string): Promise<any[]> {
     // Manager-gated: the roster exposes linked accounts. Its wages are the
     // owner's alone (ADR 0215).
-    const { role } = await this.assertAccess(userId, restaurantId, "manager");
+    const viewer = await this.assertAccess(userId, restaurantId, "manager", {
+      payAccess: true,
+    });
+    const { role } = viewer;
 
     // Ensure every active URA membership has a team_members ops profile.
     await this.ensureRosterFromAccess(restaurantId);
@@ -241,32 +294,195 @@ export class TeamService {
       (access ?? []).map((a: any) => [a.user_id, a.role]),
     );
     const userMap = new Map((users ?? []).map((u: any) => [u.user_id, u]));
+    // The owner is the one who switches a manager's pay access, so only the
+    // owner's roster carries it; `null` on a row = the switch could not be read.
+    const switches = role === "owner" ? await this.payAccessByUser(restaurantId) : null;
 
-    return (members ?? []).map((m: any) =>
-      memberForViewer(
+    return (members ?? []).map((m: any) => {
+      const memberRole = m.user_id ? (roleMap.get(m.user_id) ?? null) : null;
+      return memberForViewer(
         {
           ...m,
-          role: m.user_id ? (roleMap.get(m.user_id) ?? null) : null,
+          role: memberRole,
           linkedUser: m.user_id ? (userMap.get(m.user_id) ?? null) : null,
           accountLinked: !!m.user_id,
+          ...(role === "owner" && memberRole === "manager"
+            ? {
+                payAccess:
+                  switches === null ? null : switches.get(m.user_id) === true,
+              }
+            : {}),
         },
-        role,
-      ),
+        viewer,
+      );
+    });
+  }
+
+  /**
+   * Every membership's pay switch in this house, or `null` when it could not
+   * be read (before migration `20260925180220`, or a failed read). Read apart
+   * from the roster's own membership read for the same reason as
+   * `managerPayAccess`: a missing column must not take the roster down.
+   */
+  private async payAccessByUser(
+    restaurantId: string,
+  ): Promise<Map<string, boolean> | null> {
+    const { data, error } = await this.sb
+      .from("user_restaurant_access")
+      .select("user_id, team_pay_access")
+      .eq("restaurant_id", restaurantId);
+    if (error) {
+      this.logger.warn(
+        `payAccessByUser: could not read the pay switches of ${restaurantId}: ${error.message}`,
+      );
+      return null;
+    }
+    return new Map(
+      (data ?? []).map((a: any) => [a.user_id as string, a.team_pay_access === true]),
     );
   }
 
   /**
-   * Only an owner writes a wage (ADR 0215). A manager could set anyone's wage,
-   * their own included, with no record; this refuses before anything is
-   * written, and it refuses in words — a wage silently dropped from a save
-   * would read as saved.
+   * Switch a manager's pay access on or off — the owner's alone (ADR 0215,
+   * founder 2026-09-25 round 4 item 19, "Pay visibility only": "The switch
+   * decides whether that manager can see and edit pay; their other rights are
+   * unchanged"). Only a person who is a MANAGER of this house by an active
+   * membership has the switch: an owner sees pay regardless, staff never do,
+   * and a roster row with no account has no membership to carry it. Every
+   * change is a `team_pay_access_changed` audit row, and the manager is told;
+   * a save that moves nothing records nothing. Each read binds its error: a
+   * switch whose before-state cannot be read is not written.
    */
-  private assertMayWriteWage(role: "owner" | "manager" | "staff"): void {
-    if (!seesMoney(role)) {
-      throw new ForbiddenException(
-        "Only an owner of this house can set or change a wage. Nothing was saved.",
+  async setPayAccess(
+    userId: string,
+    restaurantId: string,
+    memberId: string,
+    payAccess: boolean,
+  ): Promise<{
+    memberId: string;
+    payAccess: boolean;
+    changed: boolean;
+    audited: boolean;
+    notified: boolean;
+  }> {
+    await this.assertAccess(userId, restaurantId, "owner");
+    const { data: member, error: memberErr } = await this.sb
+      .from("team_members")
+      .select("user_id, display_name")
+      .eq("id", memberId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (memberErr) this.cannotReadPaySwitch(memberId, memberErr);
+    if (!member) throw new NotFoundException("Team member not found");
+    if (!member.user_id) {
+      throw new BadRequestException(
+        "This person has no account in this house, so there is no manager access to switch. Nothing was saved.",
       );
     }
+    const { data: access, error: accessErr } = await this.sb
+      .from("user_restaurant_access")
+      .select("role, is_active, team_pay_access")
+      .eq("user_id", member.user_id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (accessErr) this.cannotReadPaySwitch(memberId, accessErr);
+    if (!access || access.is_active !== true || access.role !== "manager") {
+      throw new BadRequestException(
+        "Only a manager of this house has a pay switch: an owner sees pay already and staff never do. Nothing was saved.",
+      );
+    }
+    const before = access.team_pay_access === true;
+    if (before === payAccess) {
+      return { memberId, payAccess, changed: false, audited: false, notified: false };
+    }
+    const { error: writeErr } = await this.sb
+      .from("user_restaurant_access")
+      .update({ team_pay_access: payAccess })
+      .eq("user_id", member.user_id)
+      .eq("restaurant_id", restaurantId)
+      .eq("role", "manager")
+      .eq("is_active", true);
+    if (writeErr) {
+      this.logger.error(
+        `setPayAccess could not write the pay switch for member ${memberId}: ${writeErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "The pay switch was not saved, so this manager's access to pay is unchanged.",
+      );
+    }
+    const receipt = await recordAccessChange(this.sb, this.logger, {
+      restaurantId,
+      actorUserId: userId,
+      targetUserId: member.user_id,
+      action: "team_pay_access_changed",
+      entityType: "team_member",
+      entityId: memberId,
+      changes: { team_pay_access: { from: before, to: payAccess } },
+      notice: payAccess
+        ? {
+            title: "You can now see and set pay on Team",
+            message:
+              "An owner of this restaurant switched your pay access on: you now see wages, shift cost and labour totals on Team, and can set a colleague's wage. Your other rights are unchanged.",
+          }
+        : {
+            title: "Your pay access on Team was switched off",
+            message:
+              "An owner of this restaurant switched your pay access off: Team now shows you hours, not wages or cost. Your other rights are unchanged.",
+          },
+    });
+    return { memberId, payAccess, changed: true, ...receipt };
+  }
+
+  /** A pay switch whose before-state cannot be read is not written. */
+  private cannotReadPaySwitch(memberId: string, err: { message: string }): never {
+    this.logger.error(
+      `setPayAccess could not read member ${memberId}: ${err.message}`,
+    );
+    throw new InternalServerErrorException(
+      "Could not read this person's access here, so the pay switch was not changed.",
+    );
+  }
+
+  /**
+   * Only an owner writes a wage (ADR 0215) — and, since 2026-09-25 (round 4
+   * item 19), a manager the owner switched on, for anyone but themselves
+   * (`wageWriteRefusal`). A manager could set anyone's wage, their own
+   * included, with no record; this refuses before anything is written, and it
+   * refuses in words — a wage silently dropped from a save would read as
+   * saved.
+   */
+  private assertMayWriteWage(
+    viewer: { role: Role; payAccess: boolean },
+    targetIsSelf: boolean,
+  ): void {
+    const refusal = wageWriteRefusal(viewer, targetIsSelf);
+    if (refusal) throw new ForbiddenException(refusal);
+  }
+
+  /**
+   * Whether roster row `memberId` is the caller's own. Read only when a
+   * manager with pay access sets a wage. A failed read refuses the write.
+   */
+  private async isOwnRow(
+    userId: string,
+    restaurantId: string,
+    memberId: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.sb
+      .from("team_members")
+      .select("user_id")
+      .eq("id", memberId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `isOwnRow could not read member ${memberId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read whose row this is, so the wage was not saved.",
+      );
+    }
+    return data?.user_id === userId;
   }
 
   /**
@@ -424,9 +640,12 @@ export class TeamService {
     restaurantId: string,
     dto: CreateTeamMemberDto,
   ): Promise<any> {
-    const { role } = await this.assertAccess(userId, restaurantId, "manager");
+    const viewer = await this.assertAccess(userId, restaurantId, "manager", {
+      payAccess: true,
+    });
     const setsWage = dto.hourlyWage !== undefined && dto.hourlyWage !== null;
-    if (setsWage) this.assertMayWriteWage(role);
+    // A new roster row is nobody's own yet: it has no account linked.
+    if (setsWage) this.assertMayWriteWage(viewer, false);
     const { data, error } = await this.sb
       .from("team_members")
       .insert({
@@ -454,7 +673,7 @@ export class TeamService {
       this.logger.error(`createMember failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to create team member");
     }
-    return memberForViewer(data, role);
+    return memberForViewer(data, viewer);
   }
 
   async updateMember(
@@ -463,10 +682,20 @@ export class TeamService {
     memberId: string,
     dto: UpdateTeamMemberDto,
   ): Promise<any> {
-    const { role } = await this.assertAccess(userId, restaurantId, "manager");
+    const viewer = await this.assertAccess(userId, restaurantId, "manager", {
+      payAccess: true,
+    });
     // Before any write: a manager may still edit everything else about a
-    // person, and nothing about their pay — their own included (ADR 0215).
-    if (dto.hourlyWage !== undefined) this.assertMayWriteWage(role);
+    // person, and nothing about their pay unless an owner switched their pay
+    // access on — and never their own (ADR 0215; round 4 item 19).
+    if (dto.hourlyWage !== undefined) {
+      this.assertMayWriteWage(
+        viewer,
+        viewer.role !== "owner" && seesMoney(viewer)
+          ? await this.isOwnRow(userId, restaurantId, memberId)
+          : false,
+      );
+    }
     const patch: Record<string, any> = { updated_at: new Date().toISOString() };
     if (dto.displayName !== undefined) patch.display_name = dto.displayName;
     if (dto.email !== undefined) patch.email = dto.email || null;
@@ -504,7 +733,7 @@ export class TeamService {
       throw new InternalServerErrorException("Failed to update team member");
     }
     if (!data) throw new NotFoundException("Team member not found");
-    return memberForViewer(data, role);
+    return memberForViewer(data, viewer);
   }
 
   /**
@@ -682,6 +911,207 @@ export class TeamService {
     return { removed: true, accessRevoked, ...receipt };
   }
 
+  /**
+   * The owner's FORMER-STAFF HISTORY (ADR 0215, founder 2026-09-25 round 4
+   * item 19, "Owner-only history (Recommended)": "Hidden from the team views;
+   * the owner can open a 'former staff' history for pay and legal records").
+   *
+   * One entry per person whose departure is recorded
+   * (`team_member_departures`): the shifts, leave requests, wage changes and
+   * credentials kept for them, each for five years after the removal
+   * (`wage_record_retention()`), then deleted by the nightly job. The team
+   * views never show these rows (`onTheRoster`); this is the one place that
+   * reads them, and only an owner may.
+   *
+   * THE NAME comes from the removal's own audit row
+   * (`system_audit_log`, `team_member_removed`, `changes.display_name`),
+   * which `deleteMember` has written since ADR 0088. The departure row holds
+   * no name, on purpose (KVKK: the minimum; `20260925180110`), so none is
+   * added here: when the audit row is missing, the entry says the name was
+   * not recorded rather than inventing one.
+   *
+   * Leave carries dates, status and type, never the free-text `reason`.
+   * Every read binds its error: a history that could not be read is a 500 in
+   * words, never an empty list that would read as "nobody has left".
+   */
+  async listFormerStaff(
+    userId: string,
+    restaurantId: string,
+  ): Promise<{
+    retentionYears: number;
+    money: { currency: string | null; country: string | null; readable: boolean };
+    people: any[];
+  }> {
+    await this.assertAccess(userId, restaurantId, "owner");
+    const fail = (what: string, err: { message: string }): never => {
+      this.logger.error(
+        `listFormerStaff could not read ${what} for ${restaurantId}: ${err.message}`,
+      );
+      throw new InternalServerErrorException(
+        `Could not read the former-staff history (${what}), so it is not shown.`,
+      );
+    };
+
+    const { data: departures, error: depErr } = await this.sb
+      .from("team_member_departures")
+      .select("member_id, left_at")
+      .eq("restaurant_id", restaurantId)
+      .order("left_at", { ascending: false });
+    if (depErr) fail("departures", depErr);
+
+    const { data: house, error: houseErr } = await this.sb
+      .from("restaurants")
+      .select("currency, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    const money = houseErr
+      ? { currency: null, country: null, readable: false }
+      : {
+          currency: house?.currency ?? null,
+          country: house?.country ?? null,
+          readable: true,
+        };
+    if (houseErr) {
+      this.logger.warn(
+        `listFormerStaff could not read the currency of ${restaurantId}: ${houseErr.message}`,
+      );
+    }
+
+    const ids = (departures ?? []).map((d: any) => d.member_id as string);
+    if (ids.length === 0) {
+      return { retentionYears: FORMER_STAFF_RETENTION_YEARS, money, people: [] };
+    }
+
+    const [shiftsQ, leaveQ, wagesQ, certsQ, removalsQ] = await Promise.all([
+      this.sb
+        .from("shifts")
+        .select("*, shift_breaks(*)")
+        .eq("restaurant_id", restaurantId)
+        .in("member_id", ids)
+        .order("shift_date", { ascending: false }),
+      this.sb
+        .from("time_off_requests")
+        .select("id, member_id, start_date, end_date, status, leave_type")
+        .eq("restaurant_id", restaurantId)
+        .in("member_id", ids)
+        .order("start_date", { ascending: false }),
+      this.sb
+        .from("team_member_wage_changes")
+        .select("member_id, old_wage, new_wage, currency, changed_by_role, changed_at")
+        .eq("restaurant_id", restaurantId)
+        .in("member_id", ids)
+        .order("changed_at", { ascending: false }),
+      this.sb
+        .from("team_certifications")
+        .select("id, member_id, cert_type, issued_at, expires_at, doc_url, status")
+        .eq("restaurant_id", restaurantId)
+        .in("member_id", ids)
+        .order("expires_at", { ascending: true }),
+      this.sb
+        .from("system_audit_log")
+        .select("entity_id, changes, created_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("action", "team_member_removed")
+        .in("entity_id", ids),
+    ]);
+    if (shiftsQ.error) fail("shifts", shiftsQ.error);
+    if (leaveQ.error) fail("leave requests", leaveQ.error);
+    if (wagesQ.error) fail("wage changes", wagesQ.error);
+    if (certsQ.error) fail("credentials", certsQ.error);
+    if (removalsQ.error) fail("the removal records", removalsQ.error);
+
+    const byMember = <T extends { member_id: string }>(rows: T[] | null) => {
+      const m = new Map<string, T[]>();
+      for (const r of rows ?? []) {
+        const list = m.get(r.member_id) ?? [];
+        list.push(r);
+        m.set(r.member_id, list);
+      }
+      return m;
+    };
+    const shifts = byMember((shiftsQ.data ?? []) as any[]);
+    const leave = byMember((leaveQ.data ?? []) as any[]);
+    const wages = byMember((wagesQ.data ?? []) as any[]);
+    const certs = byMember((certsQ.data ?? []) as any[]);
+    const removal = new Map<string, any>();
+    for (const r of (removalsQ.data ?? []) as any[]) {
+      const seen = removal.get(r.entity_id);
+      if (!seen || String(r.created_at) > String(seen.created_at)) {
+        removal.set(r.entity_id, r);
+      }
+    }
+
+    const people = (departures ?? []).map((d: any) => {
+      const id = d.member_id as string;
+      const said = removal.get(id)?.changes ?? null;
+      const name =
+        typeof said?.display_name === "string" && said.display_name.trim()
+          ? said.display_name.trim()
+          : null;
+      const kept = shifts.get(id) ?? [];
+      const worked = kept.filter(isWorked);
+      const hours = worked.reduce((n: number, s: any) => n + workedHours(s), 0);
+      const unpriced = worked.filter((s: any) => s.labor_cost == null).length;
+      const keptUntil = new Date(d.left_at);
+      keptUntil.setUTCFullYear(keptUntil.getUTCFullYear() + FORMER_STAFF_RETENTION_YEARS);
+      return {
+        memberId: id,
+        name,
+        position:
+          typeof said?.position === "string" && said.position.trim()
+            ? said.position.trim()
+            : null,
+        leftAt: d.left_at,
+        keptUntil: keptUntil.toISOString(),
+        shifts: kept.map((s: any) => ({
+          id: s.id,
+          shift_date: s.shift_date,
+          start_time: s.start_time,
+          end_time: s.end_time,
+          state: s.state,
+          role: s.role ?? null,
+          workedHours: Math.round(workedHours(s) * 100) / 100,
+          labor_cost: s.labor_cost ?? null,
+        })),
+        totals: {
+          shiftsWorked: worked.length,
+          workedHours: Math.round(hours * 10) / 10,
+          /** `null` when any worked shift has no cost on file — never a partial. */
+          cost:
+            unpriced > 0
+              ? null
+              : Math.round(
+                  worked.reduce((n: number, s: any) => n + Number(s.labor_cost), 0) * 100,
+                ) / 100,
+          unpricedShifts: unpriced,
+        },
+        leave: (leave.get(id) ?? []).map((l: any) => ({
+          id: l.id,
+          start_date: l.start_date,
+          end_date: l.end_date,
+          status: l.status,
+          leave_type: l.leave_type ?? "unknown",
+        })),
+        wageChanges: (wages.get(id) ?? []).map((w: any) => ({
+          old_wage: w.old_wage,
+          new_wage: w.new_wage,
+          currency: w.currency ?? null,
+          changed_by_role: w.changed_by_role ?? null,
+          changed_at: w.changed_at,
+        })),
+        credentials: (certs.get(id) ?? []).map((c: any) => ({
+          id: c.id,
+          cert_type: c.cert_type,
+          issued_at: c.issued_at,
+          expires_at: c.expires_at,
+          doc_url: c.doc_url ?? null,
+          status: c.status,
+        })),
+      };
+    });
+    return { retentionYears: FORMER_STAFF_RETENTION_YEARS, money, people };
+  }
+
   /** A member whose role here cannot be read is not removed. */
   private cannotReadRemovalTarget(
     memberId: string,
@@ -766,7 +1196,14 @@ export class TeamService {
       q = q.eq("member_id", mine);
     }
     const { data } = await q.order("expires_at", { ascending: true });
-    return (data ?? []).map((c: any) => ({
+    // A removed person's credentials are kept five years, not listed (ADR
+    // 0215, founder 2026-09-25 round 4 item 19): they appear only in the
+    // owner's former-staff history. A staff caller's list is already their own.
+    const rows =
+      role === "staff"
+        ? (data ?? [])
+        : onTheRoster(data ?? [], await this.rosterMemberIds(restaurantId));
+    return rows.map((c: any) => ({
       ...c,
       status: this.certStatus(c.expires_at),
     }));

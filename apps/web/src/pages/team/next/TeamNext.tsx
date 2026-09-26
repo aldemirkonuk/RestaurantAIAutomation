@@ -80,6 +80,7 @@ import {
   TimeOffSheet,
 } from './TeamOverlays';
 import { TeamRecordSection, TrailSheet } from './TeamRecord';
+import { FormerStaffSheet } from './FormerStaff';
 import {
   useActiveRestaurantId,
   useTeamNextData,
@@ -370,7 +371,7 @@ export default function TeamNext({ ground }: { ground?: 'charcoal' }) {
     );
   }
   return role === 'owner' || role === 'manager' ? (
-    <TeamNextManager ground={ground} />
+    <TeamNextManager ground={ground} viewerIsOwner={role === 'owner'} viewerUserId={user.userId ?? null} />
   ) : (
     <MyShiftsNext ground={ground} />
   );
@@ -385,9 +386,24 @@ type Overlay =
   | { kind: 'note'; only: string | null }
   | { kind: 'timeoff' }
   | { kind: 'trail' }
+  | { kind: 'former' }
   | { kind: 'export' };
 
-function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
+function TeamNextManager({
+  ground,
+  viewerIsOwner,
+  viewerUserId,
+}: {
+  ground?: 'charcoal';
+  /**
+   * The owner alone switches a manager's pay access and opens the former-staff
+   * history (ADR 0215, founder 2026-09-25 round 4 item 19). The gateway
+   * refuses both to anyone else; this only keeps the page from offering them.
+   */
+  viewerIsOwner: boolean;
+  /** `public.users.user_id` of the viewer: a manager cannot set their own wage. */
+  viewerUserId: string | null;
+}) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
@@ -803,6 +819,8 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           coverageRuleCount={rules === null ? null : rules.length}
           certsOnFile={data.certsOnFile}
           onOpenTrail={() => setOverlay({ kind: 'trail' })}
+          viewerIsOwner={viewerIsOwner}
+          onOpenFormerStaff={() => setOverlay({ kind: 'former' })}
         />
       </div>
 
@@ -824,6 +842,8 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
         <MemberSheet
           member={overlay.member}
           moneyVisible={data.moneyVisible}
+          viewerIsOwner={viewerIsOwner}
+          viewerUserId={viewerUserId}
           ownerCount={ownerCount}
           onClose={() => setOverlay(null)}
           onChanged={refreshWeek}
@@ -874,6 +894,9 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           members={data.members}
           onClose={() => setOverlay(null)}
         />
+      )}
+      {overlay?.kind === 'former' && viewerIsOwner && (
+        <FormerStaffSheet onClose={() => setOverlay(null)} />
       )}
       {overlay?.kind === 'timeoff' && (
         <TimeOffSheet

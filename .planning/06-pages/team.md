@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: live
 status: documented
-updated: 2026-09-04
+updated: 2026-09-25
 links: ["[[PAGE-CONTRACT]]"]
 ---
 
@@ -361,6 +361,8 @@ nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`
 | Method | Path | Call site |
 |---|---|---|
 | GET/POST/PATCH/DELETE | `…/members` | ManagerShiftDesk + editors → `team.ts:127-141` |
+| PATCH | `…/members/:memberId/pay-access` | owner only — the manager pay switch on `MemberSheet` → `team.ts` `setMemberPayAccess` (ADR 0215 item 21, 2026-09-25) |
+| GET | `…/former-staff` | owner only — `FormerStaffSheet` → `team.ts` `getFormerStaff` (ADR 0215 item 22, 2026-09-25) |
 | GET | `…/week`, `…/my-week` | `team.ts:144,148` (ManagerShiftDesk / MyShifts) |
 | POST | `…/schedules`, `…/schedules/copy-week`, `…/schedules/:id/publish`, `…/schedules/:id/acknowledge` | `team.ts:152-203` |
 | POST/PATCH/DELETE | `…/shifts` (+ `/callout`, `/offer-cover`, `/assign`) | `team.ts:206-228` |
@@ -970,3 +972,31 @@ re-deriving it.
    work, they are what the founder actually praised, and none of them can be
    wrong about a house that has no data.
 13. **The crew-text senders read was keyed without the house.** `TeamOverlays.tsx` `CrewTextLeg` cached `GET /team/text-senders` under `['team-next-text-senders']` alone; the gateway scopes that read by restaurant through a header the key never sees, so after a house switch the control would have said the PREVIOUS house's sender was connected (ADR 0051 clause 2 — the exact shape `check_windowed_figures.py` exists for, and it caught it: the only FAIL in the 2026-09-05 full verification). Fixed 2026-09-05: `useActiveRestaurantId()` is in the key and the read is disabled until a house is active; `CrewTextLeg.test.tsx` now mocks `AuthContext` like the page's other tests. Measured: guard PASS (`python3 scripts/check_windowed_figures.py`), `npx vitest run src/pages/team/next/CrewTextLeg.test.tsx` 5 passed / 5. The cb67d154 message's "every guard PASS" was wrong on this one guard; corrected here.
+
+## 14. Pay switch, former staff, credentials — BUILT 2026-09-25 (ADR 0215 round 4)
+
+The founder's three answers of 2026-09-25 (round 4, item 19), verbatim in ADR 0215
+"Answered, 2026-09-25 (round 4)"; built on PR #440 (`fix/team-pay-defects`).
+
+- **A manager's pay switch** ("Pay visibility only"). The owner opens a manager's
+  row (People → the person) and ticks **Sees and sets pay**. That manager then sees
+  wages, shift cost and labour totals, and can set a colleague's wage — never their
+  own (the page does not offer their own field; the gateway refuses it in words).
+  Their other rights are unchanged: labour tracking off and the target stay the
+  owner's. Stored as `user_restaurant_access.team_pay_access` (default off); each
+  switch is a `team_pay_access_changed` row on the trail ("What changed here") and
+  the manager is told. An unread switch is said as unread, not drawn as off.
+- **Former staff** ("Owner-only history"). "How this desk is configured" carries,
+  for the owner only, **Open the former-staff history**: one entry per person
+  removed from the roster, with their kept shifts (worked hours, cost), leave
+  (dates, status, type — never the reason), wage changes and credentials, and the
+  date the record ends (removal + five years). A name the removal's audit row did not
+  carry reads "Name not recorded". Reading / failed / nobody-has-left / list are four
+  different states. None of it appears in the week, the roster, the leave list or
+  the credential file.
+- **Credentials kept, availability not** ("Credentials yes, availability no"). A
+  removed person's credentials stay five years (shown only in the former-staff
+  history); their availability is deleted at removal, as it always was. The removal
+  confirmation now says both.
+- Tests: `TeamPayRound4.test.tsx` (web, 9), `team-pay-round4.spec.ts` (gateway, 29).
+  Not verified in a browser (the Mudavym /team is behind `mudavym_design_team`).

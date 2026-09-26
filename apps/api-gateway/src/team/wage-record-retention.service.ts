@@ -37,6 +37,14 @@
  * and leave requests carry no guard of their own; the purge's clause is the
  * rule, held by the PGlite probe named in ADR 0215).
  *
+ * CREDENTIALS, 2026-09-25 (founder round 4 item 19, "Credentials yes,
+ * availability no"): `team_certifications` stopped cascading on a removal
+ * (`20260925180210`), a departure is stamped for a person with a credential
+ * too, and `purge_expired_credential_records()` is the same rule for them. It
+ * runs FIRST of the three, for the same finishing reason: the wage purge's
+ * departure cleanup now waits for credentials as well. Availability is not
+ * kept (still ON DELETE CASCADE), so nothing here purges it.
+ *
  * A failed run is logged as an error and reported as failed, never as "nothing
  * was due": an unreadable answer is not an empty one. The two purges are not
  * one transaction (two RPC calls): if the shifts-and-leave purge fails, the
@@ -60,6 +68,8 @@ export interface WageRetentionRun {
   shiftsDeleted: number | null;
   /** Leave requests deleted on the same clock (ADR 0215, round 6y). `null` when the run failed. */
   leaveRowsDeleted: number | null;
+  /** Credentials deleted on the same clock (ADR 0215, round 4 2026-09-25). `null` when the run failed. */
+  credentialsDeleted: number | null;
   /** Departure records deleted once nothing of theirs was left. `null` when the run failed. */
   departuresDeleted: number | null;
   at: string;
@@ -83,9 +93,9 @@ export class WageRecordRetentionService {
   }
 
   /**
-   * Delete every shift, leave request and wage record whose person left the
-   * roster more than five years ago — the shifts-and-leave purge FIRST, then
-   * the wage purge (see the file header for why the order matters). Counts
+   * Delete every credential, shift, leave request and wage record whose person
+   * left the roster more than five years ago — the credential purge and the
+   * shifts-and-leave purge FIRST, then the wage purge (see the file header for why the order matters). Counts
    * only are logged: no person, no house, no figure (KVKK).
    */
   async purgeExpired(): Promise<WageRetentionRun> {
@@ -97,12 +107,28 @@ export class WageRecordRetentionService {
         wageRowsDeleted: null,
         shiftsDeleted: null,
         leaveRowsDeleted: null,
+        credentialsDeleted: null,
         departuresDeleted: null,
         at,
         error,
       };
     };
     try {
+      // Credentials first (ADR 0215, founder 2026-09-25 round 4 item 19,
+      // "Credentials yes, availability no"): the wage purge's departure
+      // cleanup waits for them to be gone, so run before it.
+      const { data: cData, error: cError } = await this.db.supabase.rpc(
+        "purge_expired_credential_records",
+      );
+      if (cError) return failed(cError.message);
+      const cRow = Array.isArray(cData) ? cData[0] : cData;
+      const credentialsDeleted = readCount(cRow?.credentials_deleted);
+      if (!Number.isInteger(credentialsDeleted) || credentialsDeleted < 0) {
+        // An answer without its count is not "0 deleted", and nothing after
+        // it runs this night.
+        return failed("the credential purge answered without its count");
+      }
+
       const { data: slData, error: slError } = await this.db.supabase.rpc(
         "purge_expired_shift_and_leave_records",
       );
@@ -139,8 +165,8 @@ export class WageRecordRetentionService {
         return failed("the wage purge answered without its counts");
       }
       this.logger.log(
-        `${WAGE_RETENTION_JOB_NAME}: ${shiftsDeleted} shift(s), ${leaveRowsDeleted} ` +
-          `leave row(s), ${wageRowsDeleted} wage change row(s) and ${departuresDeleted} ` +
+        `${WAGE_RETENTION_JOB_NAME}: ${credentialsDeleted} credential(s), ${shiftsDeleted} shift(s), ` +
+          `${leaveRowsDeleted} leave row(s), ${wageRowsDeleted} wage change row(s) and ${departuresDeleted} ` +
           `departure record(s) past five years deleted.`,
       );
       return {
@@ -148,6 +174,7 @@ export class WageRecordRetentionService {
         wageRowsDeleted,
         shiftsDeleted,
         leaveRowsDeleted,
+        credentialsDeleted,
         departuresDeleted,
         at,
       };

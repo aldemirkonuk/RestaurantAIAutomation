@@ -20,6 +20,7 @@ import {
   priceShift,
   recordedBreakMinutes,
   seesMoney,
+  MoneyViewer,
   shiftForViewer,
   ShiftLike,
   TeamRole,
@@ -107,10 +108,13 @@ export class ScheduleService {
     // Manager-gated: the full week. Its money is the owner's alone — a
     // manager's copy carries hours and no `labor_cost`, because
     // `labor_cost / (end - start)` is the wage (ADR 0215).
-    const { role } = await this.team.assertAccess(
+    // Money in the reply follows the caller's pay access (ADR 0215, round 4
+    // item 19): the owner, or a manager an owner switched on.
+    const viewer = await this.team.assertAccess(
       userId,
       restaurantId,
       "manager",
+      { payAccess: true },
     );
     const weekEnd = addDays(weekStart, 6);
 
@@ -167,20 +171,20 @@ export class ScheduleService {
       weekStart,
       shiftRows,
       settings,
-      role,
+      viewer,
       roster,
     );
 
     return {
       schedule,
-      shifts: shiftRows.map((s: any) => shiftForViewer(s, role)),
+      shifts: shiftRows.map((s: any) => shiftForViewer(s, viewer)),
       coverage,
       labor,
       receipts,
       settings,
       // The currency travels with the money, and only to whoever gets the
       // money: /team printed every figure in US dollars (ADR 0215).
-      ...(seesMoney(role)
+      ...(seesMoney(viewer)
         ? { money: await this.houseMoney(restaurantId) }
         : {}),
     };
@@ -645,10 +649,13 @@ export class ScheduleService {
   }
 
   async createShift(userId: string, restaurantId: string, dto: CreateShiftDto) {
-    const { role } = await this.team.assertAccess(
+    // Money in the reply follows the caller's pay access (ADR 0215, round 4
+    // item 19): the owner, or a manager an owner switched on.
+    const viewer = await this.team.assertAccess(
       userId,
       restaurantId,
       "manager",
+      { payAccess: true },
     );
     if (dto.memberId)
       await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
@@ -697,7 +704,7 @@ export class ScheduleService {
       .select("*, shift_breaks(*)")
       .single();
     if (error) throw new InternalServerErrorException("Failed to create shift");
-    return shiftForViewer(data, role);
+    return shiftForViewer(data, viewer);
   }
 
   async updateShift(
@@ -706,10 +713,13 @@ export class ScheduleService {
     shiftId: string,
     dto: UpdateShiftDto,
   ) {
-    const { role } = await this.team.assertAccess(
+    // Money in the reply follows the caller's pay access (ADR 0215, round 4
+    // item 19): the owner, or a manager an owner switched on.
+    const viewer = await this.team.assertAccess(
       userId,
       restaurantId,
       "manager",
+      { payAccess: true },
     );
     if (dto.memberId)
       await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
@@ -819,7 +829,7 @@ export class ScheduleService {
       .maybeSingle();
     if (error) throw new InternalServerErrorException("Failed to update shift");
     if (!data) throw new NotFoundException("Shift not found");
-    return shiftForViewer(data, role);
+    return shiftForViewer(data, viewer);
   }
 
   async deleteShift(userId: string, restaurantId: string, shiftId: string) {
@@ -838,10 +848,13 @@ export class ScheduleService {
     shiftId: string,
     dto: CalloutDto,
   ) {
-    const { role } = await this.team.assertAccess(
+    // Money in the reply follows the caller's pay access (ADR 0215, round 4
+    // item 19): the owner, or a manager an owner switched on.
+    const viewer = await this.team.assertAccess(
       userId,
       restaurantId,
       "manager",
+      { payAccess: true },
     );
     const { data: original } = await this.sb
       .from("shifts")
@@ -903,8 +916,8 @@ export class ScheduleService {
       metadata: { shiftId: openShift.id, calloutShiftId: shiftId },
     });
     return {
-      callout: shiftForViewer(calloutShift, role),
-      open: shiftForViewer(openShift, role),
+      callout: shiftForViewer(calloutShift, viewer),
+      open: shiftForViewer(openShift, viewer),
     };
   }
 
@@ -959,7 +972,10 @@ export class ScheduleService {
     shiftId: string,
     dto: AssignCoverDto,
   ) {
-    const { role } = await this.team.assertAccess(userId, restaurantId);
+    const viewer = await this.team.assertAccess(userId, restaurantId, undefined, {
+      payAccess: true,
+    });
+    const { role } = viewer;
     await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
 
     const { data: shift } = await this.sb
@@ -1006,7 +1022,7 @@ export class ScheduleService {
       throw new InternalServerErrorException("Failed to assign cover");
     // Only the owner sees labor_cost — it is the wage times the hours, so it
     // is the wage (ADR 0215). Staff never did; a manager no longer does.
-    return shiftForViewer(data, role);
+    return shiftForViewer(data, viewer);
   }
 
   private async recomputeCostForMember(
@@ -1141,7 +1157,7 @@ export class ScheduleService {
     weekStart: string,
     shifts: any[],
     settings: any,
-    role: TeamRole,
+    viewer: MoneyViewer,
     roster: ReadonlySet<string>,
   ): Promise<any> {
     const worked = shifts.filter(isWorked);
@@ -1165,7 +1181,7 @@ export class ScheduleService {
     const overtime = [...byMember.entries()]
       .filter(([, h]) => h > WEEKLY_REVIEW_HOURS)
       .map(([memberId, h]) => ({ memberId, hours: Math.round(h * 10) / 10 }));
-    const moneyVisible = seesMoney(role);
+    const moneyVisible = seesMoney(viewer);
     const hours = {
       moneyVisible,
       totalHours: Math.round(totalHours * 10) / 10,

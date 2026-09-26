@@ -138,6 +138,8 @@ export function TeamRecordSection({
   coverageRuleCount,
   certsOnFile,
   onOpenTrail,
+  viewerIsOwner = false,
+  onOpenFormerStaff,
 }: {
   /** `null` when the week has not answered. */
   labourEnabled: boolean | null;
@@ -149,6 +151,9 @@ export function TeamRecordSection({
   coverageRuleCount: number | null;
   certsOnFile: number | null;
   onOpenTrail: () => void;
+  /** The owner alone opens the former-staff history (ADR 0215, round 4 item 19). */
+  viewerIsOwner?: boolean;
+  onOpenFormerStaff?: () => void;
 }) {
   const whenUnknown = settingsConfigured
     ? 'the settings row has no changed-at value'
@@ -180,18 +185,26 @@ export function TeamRecordSection({
 
       <Record
         label="Wages and labour cost"
-        value={moneyVisible ? 'owner only · you' : 'owner only'}
+        value={
+          viewerIsOwner
+            ? 'the owner · and managers you switch on'
+            : moneyVisible
+              ? 'the owner · and you, switched on'
+              : 'the owner · and managers the owner switches on'
+        }
         consequence={
-          moneyVisible
-            ? 'Only an owner sees wages, shift cost and totals, and only an owner can change a wage. Managers see hours. Every wage change is kept: who, when, the old and the new figure.'
-            : 'Only an owner sees wages, shift cost and totals, so this page shows you hours. The gateway leaves the money out before it is sent, so nothing here could show it.'
+          viewerIsOwner
+            ? "You see wages, shift cost and totals. A manager sees them only if you switch their pay access on (open the manager's row), and can then set a colleague's wage but never their own; their other rights stay as they are. Every wage change is kept: who, when, the old and the new figure."
+            : moneyVisible
+              ? 'An owner switched your pay access on: you see wages, shift cost and totals, and can set a colleague’s wage, not your own. Every wage change is kept: who, when, the old and the new figure.'
+              : 'Wages, shift cost and totals are the owner’s, and a manager’s only when the owner switches their pay access on, so this page shows you hours. The gateway leaves the money out before it is sent, so nothing here could show it.'
         }
         provenance={
           <p
             className="tm-fact__k"
             style={{ marginTop: 5, letterSpacing: '0.1em', fontWeight: 500, textTransform: 'none' }}
           >
-            {`kept · the gateway, by role — not a setting ${EM} decided by the owner of Mudavym on 2026-09-21 (ADR 0215)`}
+            {`kept · the gateway, by role and each manager's pay switch ${EM} decided by the owner of Mudavym on 2026-09-21 and 2026-09-25 (ADR 0215)`}
           </p>
         }
       />
@@ -241,6 +254,28 @@ export function TeamRecordSection({
           />
         }
       />
+
+      {viewerIsOwner && onOpenFormerStaff ? (
+        <div style={{ padding: '10px 0', borderTop: '1px solid var(--paper-2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <p className="tm-label" style={{ margin: 0 }}>
+              Former staff
+            </p>
+            <button
+              type="button"
+              className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+              onClick={onOpenFormerStaff}
+            >
+              Open the former-staff history
+            </button>
+          </div>
+          <p className="tm-note" style={{ fontSize: 12, marginTop: 3 }}>
+            When someone is removed from the roster, their shifts, leave, wage changes and
+            credentials are kept for five years for pay and legal records, and shown only here,
+            to an owner. Their availability is not kept.
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -250,6 +285,7 @@ export function TeamRecordSection({
 function describe(action: string): string {
   if (action === 'member_role_changed') return 'changed what someone may do';
   if (action === 'team_member_removed') return 'removed someone from the team';
+  if (action === 'team_pay_access_changed') return "switched a manager's pay access";
   return action.replace(/_/g, ' ');
 }
 

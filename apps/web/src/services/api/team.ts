@@ -34,6 +34,62 @@ export interface TeamMember {
   role: 'owner' | 'manager' | 'staff' | null
   accountLinked: boolean
   linkedUser?: { name?: string; email?: string; avatar_url?: string } | null
+  /**
+   * A MANAGER's pay switch, on the owner's roster only (ADR 0215, founder
+   * 2026-09-25 round 4 item 19, "Pay visibility only"): `true`/`false` is the
+   * switch; `null` = it could not be read; absent = not the owner's roster, or
+   * not a manager.
+   */
+  payAccess?: boolean | null
+}
+
+/** One person removed from the roster, as the owner's former-staff history has them. */
+export interface FormerStaffPerson {
+  memberId: string
+  /** From the removal's audit row; `null` = the name was not recorded. */
+  name: string | null
+  position: string | null
+  leftAt: string
+  keptUntil: string
+  shifts: {
+    id: string
+    shift_date: string
+    start_time: string
+    end_time: string
+    state: string
+    role: string | null
+    workedHours: number
+    labor_cost: number | null
+  }[]
+  totals: {
+    shiftsWorked: number
+    workedHours: number
+    /** `null` when any worked shift had no cost on file — never a partial. */
+    cost: number | null
+    unpricedShifts: number
+  }
+  leave: { id: string; start_date: string; end_date: string; status: string; leave_type: string }[]
+  wageChanges: {
+    old_wage: number | null
+    new_wage: number | null
+    currency: string | null
+    changed_by_role: string | null
+    changed_at: string
+  }[]
+  credentials: {
+    id: string
+    cert_type: string
+    issued_at: string | null
+    expires_at: string | null
+    doc_url: string | null
+    status: string
+  }[]
+}
+
+export interface FormerStaffReadout {
+  retentionYears: number
+  money: { currency: string | null; country: string | null; readable: boolean }
+  people: FormerStaffPerson[]
 }
 
 export interface ShiftBreak {
@@ -199,6 +255,26 @@ export async function updateTeamMember(memberId: string, body: Record<string, an
   const { data } = await apiClient.patch(`${base(rid)}/members/${memberId}`, body)
   return data
 }
+/** Owner only: switch one manager's pay access on or off (ADR 0215, round 4). */
+export async function setMemberPayAccess(memberId: string, payAccess: boolean, rid?: string) {
+  const { data } = await apiClient.patch(`${base(rid)}/members/${memberId}/pay-access`, {
+    payAccess,
+  })
+  return data as {
+    memberId: string
+    payAccess: boolean
+    changed: boolean
+    audited: boolean
+    notified: boolean
+  }
+}
+
+/** Owner only: the former-staff history (ADR 0215, round 4). */
+export async function getFormerStaff(rid?: string): Promise<FormerStaffReadout> {
+  const { data } = await apiClient.get(`${base(rid)}/former-staff`)
+  return data
+}
+
 export async function deleteTeamMember(memberId: string, rid?: string) {
   await apiClient.delete(`${base(rid)}/members/${memberId}`)
 }
