@@ -42,6 +42,18 @@ import {
   VENDOR_PRICE_OBSERVATIONS,
   scopePriceRegisterRead,
 } from "../price-register/visibility";
+import {
+  ContactRow,
+  EMPTY_PROVENANCE,
+  MessageRow,
+  ObservationProvenance,
+  ProvenanceDocument,
+  ProvenanceDocumentLine,
+  ProvenanceReads,
+  messageOf,
+  provenanceFor,
+  provenanceIdsOf,
+} from "./price-provenance";
 
 export interface VendorComparison {
   productKey: { masterWineId?: string; signatureHash?: string };
@@ -122,6 +134,14 @@ export interface VendorComparison {
      * free or infinite.
      */
     normalizedUnitPrice: number | null;
+    /**
+     * ADR 0160 §112 fork 6(a): the paper, its line, the message and the person
+     * this price came from — READ FRESH on every compare, never stored beyond
+     * the four ids (the founder's fork 6 answer, "Always on the record, loaded
+     * fresh"). A public-register row carries none (the database refuses it,
+     * `vpo_*_needs_a_house`), so its provenance is empty.
+     */
+    provenance: ObservationProvenance;
   }>;
   /**
    * False when the 500-row window this read is capped at (`loadObservations`)
@@ -235,7 +255,7 @@ export class VendorComparisonService {
       this.databaseService.supabase
         .from("vendor_price_observations")
         .select(
-          "id, provider_id, vendor_name_raw, product_name_raw, source_type, source_url, source_ref, raw_price, currency, trust_tier, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at, is_outlier, outlier_reason, identity_id, raw",
+          "id, restaurant_id, provider_id, vendor_name_raw, product_name_raw, source_type, source_url, source_ref, raw_price, currency, trust_tier, pack_size, unit_volume_ml, yield_factor, parse_confidence, observed_at, is_outlier, outlier_reason, identity_id, document_id, document_line_id, conversation_message_id, source_contact_id, raw",
         ),
       VENDOR_PRICE_OBSERVATIONS,
       restaurantId
@@ -327,6 +347,12 @@ export class VendorComparisonService {
     restaurantId: string;
     userId?: string;
     currency?: string;
+    /** ADR 0160 §112 fork 6(a) — the attached paper, its line, the message
+     * and the person. Each is checked against THIS house before the write. */
+    documentId?: string;
+    documentLineId?: string;
+    conversationMessageId?: string;
+    contactId?: string;
   }) {
     const sourceType = params.sourceType ?? "manual";
     const TRUST_BY_SOURCE: Record<string, number> = {
@@ -356,6 +382,17 @@ export class VendorComparisonService {
     const wine = params.masterWineId
       ? await this.resolveWine(params.masterWineId)
       : { identityHash: null, label: null };
+
+    // Fork 6(a): refuse a paper, line, message or person that is not this
+    // house's BEFORE anything is written. The database would refuse another
+    // house's document or message on its own; the contact it cannot, so this
+    // check is the only thing between a price and another house's person.
+    await this.assertProvenanceIsThisHouses(params.restaurantId, {
+      documentId: params.documentId ?? null,
+      documentLineId: params.documentLineId ?? null,
+      conversationMessageId: params.conversationMessageId ?? null,
+      contactId: params.contactId ?? null,
+    });
 
     // Fall back to what the user typed when no library wine was picked, so an
     // off-catalogue bottle is still comparable against other observations of
@@ -470,11 +507,24 @@ export class VendorComparisonService {
         outlier_reason: outlierReason,
         outlier_basis: "write_time",
         outlier_judged_at: judgedAt,
+        document_id: params.documentId ?? null,
+        document_line_id: params.documentLineId ?? null,
+        conversation_message_id: params.conversationMessageId ?? null,
+        source_contact_id: params.contactId ?? null,
         raw: {
           enteredBy: params.userId ?? null,
           note: params.note ?? null,
           producer: params.producer ?? null,
           vintage: params.vintage ?? null,
+          // Copied beside the columns, which are cleared if the paper, the
+          // message or the contact is later deleted — so the register can
+          // say "deleted since" instead of reading as a row that had none.
+          provenance: {
+            documentId: params.documentId ?? null,
+            documentLineId: params.documentLineId ?? null,
+            conversationMessageId: params.conversationMessageId ?? null,
+            contactId: params.contactId ?? null,
+          },
         },
       })
       .select("id, observed_at")
@@ -699,6 +749,13 @@ export class VendorComparisonService {
       }
     }
 
+    // Fork 6(a): the paper, message and person, read fresh for this house's
+    // own rows only. Never cached (the founder's fork 6 answer).
+    const provenanceById = await this.loadProvenance(
+      params.restaurantId ?? null,
+      rows,
+    );
+
     return {
       productKey: {
         masterWineId: params.masterWineId,
@@ -753,6 +810,7 @@ export class VendorComparisonService {
         identityId: r.identity_id ?? null,
         identityLabel: r.identity_id ? (identityLabels[r.identity_id] ?? null) : null,
         normalizedUnitPrice: normalizeUnitPrice(observations[i]).unitPrice,
+        provenance: provenanceById.get(r.id) ?? EMPTY_PROVENANCE,
       })),
       // `loadObservations` caps at 500 rows, newest first (see its own
       // comment). Hitting the cap means older sightings within the window
@@ -761,4 +819,295 @@ export class VendorComparisonService {
       windowDays: params.windowDays ?? 365,
     };
   }
+
+  /**
+   * Fork 6(a)'s read: every paper, line, message and person the compare's
+   * rows name, read FRESH and house-scoped, one query per table.
+   *
+   * Only rows whose `restaurant_id` is THIS house are looked up — a
+   * public-register row cannot carry provenance (`vpo_*_needs_a_house`), and
+   * another house's row never reaches this read (`scopePriceRegisterRead`).
+   * Every parent read also filters `restaurant_id` itself, so a stray id
+   * could not pull another house's paper even if both of those failed.
+   *
+   * A failed read is recorded per table and said on each row it touches
+   * (`provenanceFor`); it never throws the compare, and it never reads as
+   * "no paper".
+   */
+  private async loadProvenance(
+    restaurantId: string | null,
+    rows: any[],
+  ): Promise<Map<string, ObservationProvenance>> {
+    const out = new Map<string, ObservationProvenance>();
+    if (!restaurantId) return out;
+    const own = rows.filter((r) => r.restaurant_id === restaurantId);
+    const ids = own.map((r) => ({ id: r.id as string, ids: provenanceIdsOf(r) }));
+    const uniq = (xs: Array<string | null>) =>
+      [...new Set(xs.filter((x): x is string => !!x))];
+    const documentIds = uniq(ids.map((x) => x.ids.documentId));
+    const lineIds = uniq(ids.map((x) => x.ids.documentLineId));
+    const messageIds = uniq(ids.map((x) => x.ids.conversationMessageId));
+    const contactIds = uniq(ids.map((x) => x.ids.sourceContactId));
+    if (!documentIds.length && !messageIds.length && !contactIds.length) {
+      for (const x of ids) {
+        if (x.ids.recorded.documentId || x.ids.recorded.conversationMessageId || x.ids.recorded.contactId || x.ids.recorded.sentence)
+          out.set(x.id, provenanceFor(x.ids, emptyReads()));
+      }
+      return out;
+    }
+
+    const reads: ProvenanceReads = emptyReads();
+    const db = this.databaseService.supabase;
+
+    if (documentIds.length) {
+      const { data, error } = await db
+        .from("procurement_documents")
+        .select("id, doc_type, doc_number, doc_date, source_channel, status")
+        .eq("restaurant_id", restaurantId)
+        .in("id", documentIds);
+      if (error) reads.failed.documents = error.message;
+      else
+        for (const d of (data ?? []) as any[])
+          (reads.documents as Map<string, ProvenanceDocument>).set(d.id, {
+            id: d.id,
+            docType: d.doc_type ?? null,
+            docNumber: d.doc_number ?? null,
+            docDate: d.doc_date ?? null,
+            sourceChannel: d.source_channel ?? null,
+            status: d.status ?? null,
+          });
+    }
+
+    if (lineIds.length) {
+      const { data, error } = await db
+        .from("procurement_document_lines")
+        .select("id, document_id, line_no, description, unit_price, qty, uom")
+        .eq("restaurant_id", restaurantId)
+        .in("id", lineIds);
+      if (error) reads.failed.lines = error.message;
+      else
+        for (const l of (data ?? []) as any[])
+          (reads.lines as Map<string, ProvenanceDocumentLine & { documentId: string }>).set(l.id, {
+            id: l.id,
+            documentId: l.document_id,
+            lineNo: l.line_no ?? null,
+            description: l.description ?? null,
+            unitPrice: l.unit_price === null || l.unit_price === undefined ? null : Number(l.unit_price),
+            qty: l.qty === null || l.qty === undefined ? null : Number(l.qty),
+            uom: l.uom ?? null,
+          });
+    }
+
+    if (messageIds.length) {
+      const { data, error } = await db
+        .from("procurement_conversations")
+        .select(
+          "id, provider_id, order_id, channel, direction, message_text, email_headers, received_at, sent_at, created_at, raw_deleted_at",
+        )
+        .eq("restaurant_id", restaurantId)
+        .in("id", messageIds);
+      if (error) reads.failed.messages = error.message;
+      else
+        for (const m of (data ?? []) as MessageRow[])
+          (reads.messages as Map<string, MessageRow>).set(m.id, m);
+    }
+
+    // The people: the contacts a person NAMED, plus every contact of the
+    // vendors whose messages are named (to put a name to a header address).
+    // `provider_contacts` has no `restaurant_id`, so the house check is the
+    // inner join to the contact's vendor — the same boundary the writer
+    // checked (`assertProvenanceIsThisHouses`).
+    const messageVendorIds = uniq(
+      [...(reads.messages as Map<string, MessageRow>).values()].map((m) => m.provider_id),
+    );
+    if (contactIds.length || messageVendorIds.length) {
+      let q = db
+        .from("provider_contacts")
+        .select("id, provider_id, name, email, role, providers!inner(restaurant_id)")
+        .eq("providers.restaurant_id", restaurantId);
+      const clauses: string[] = [];
+      if (contactIds.length) clauses.push(`id.in.(${contactIds.join(",")})`);
+      if (messageVendorIds.length)
+        clauses.push(`provider_id.in.(${messageVendorIds.join(",")})`);
+      q = q.or(clauses.join(","));
+      const { data, error } = await q;
+      if (error) reads.failed.contacts = error.message;
+      else {
+        const list = ((data ?? []) as any[]).map(
+          (c): ContactRow => ({
+            id: c.id,
+            provider_id: c.provider_id ?? null,
+            name: c.name ?? null,
+            email: c.email ?? null,
+            role: c.role ?? null,
+          }),
+        );
+        for (const c of list) (reads.contacts as Map<string, ContactRow>).set(c.id, c);
+        reads.vendorContacts = list;
+      }
+    }
+
+    for (const x of ids) out.set(x.id, provenanceFor(x.ids, reads));
+    return out;
+  }
+
+  /**
+   * Refuse, before any write, a paper, line, message or person that is not
+   * this house's. A failed check refuses too: a price is not written against
+   * a reference nobody could verify.
+   */
+  private async assertProvenanceIsThisHouses(
+    restaurantId: string,
+    p: {
+      documentId: string | null;
+      documentLineId: string | null;
+      conversationMessageId: string | null;
+      contactId: string | null;
+    },
+  ): Promise<void> {
+    const db = this.databaseService.supabase;
+    const cannotCheck = (what: string, message: string) => {
+      this.logger.error(`Could not check the ${what} named on a recorded price: ${message}`);
+      return new InternalServerErrorException(
+        `The ${what} named with this price could not be checked (${message}), so the price was not recorded. Try again.`,
+      );
+    };
+
+    if (p.documentLineId && !p.documentId) {
+      throw new BadRequestException(
+        "A line of a paper was named without the paper itself. Name the document the line is on.",
+      );
+    }
+    if (p.documentId) {
+      const { data, error } = await db
+        .from("procurement_documents")
+        .select("id")
+        .eq("id", p.documentId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (error) throw cannotCheck("paper", error.message);
+      if (!data)
+        throw new BadRequestException(
+          "That paper is not one of this house's documents, so it cannot be attached to this price.",
+        );
+    }
+    if (p.documentLineId) {
+      const { data, error } = await db
+        .from("procurement_document_lines")
+        .select("id")
+        .eq("id", p.documentLineId)
+        .eq("document_id", p.documentId as string)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (error) throw cannotCheck("line", error.message);
+      if (!data)
+        throw new BadRequestException(
+          "That line is not on the paper named with this price.",
+        );
+    }
+    if (p.conversationMessageId) {
+      const { data, error } = await db
+        .from("procurement_conversations")
+        .select("id")
+        .eq("id", p.conversationMessageId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (error) throw cannotCheck("message", error.message);
+      if (!data)
+        throw new BadRequestException(
+          "That message is not one of this house's conversations, so this price cannot name it.",
+        );
+    }
+    if (p.contactId) {
+      const { data, error } = await db
+        .from("provider_contacts")
+        .select("id, providers!inner(restaurant_id)")
+        .eq("id", p.contactId)
+        .eq("providers.restaurant_id", restaurantId)
+        .maybeSingle();
+      if (error) throw cannotCheck("person", error.message);
+      if (!data)
+        throw new BadRequestException(
+          "That person is not a contact of one of this house's vendors, so this price cannot name them.",
+        );
+    }
+  }
+
+  /**
+   * What the "Record a price" form may name for one vendor: the house's
+   * recent messages with them and their contacts. House-scoped: the vendor
+   * must be this house's (founder 2026-09-25, item 11 — each house owns its
+   * vendor rows), and the messages are filtered by `restaurant_id` as well.
+   */
+  async observationSources(params: {
+    restaurantId: string;
+    providerId: string;
+    limit?: number;
+  }): Promise<{
+    providerId: string;
+    messages: Array<ReturnType<typeof messageOf>>;
+    contacts: Array<{ id: string; name: string | null; email: string | null; role: string | null }>;
+  }> {
+    const db = this.databaseService.supabase;
+    const { data: provider, error: providerError } = await db
+      .from("providers")
+      .select("id")
+      .eq("id", params.providerId)
+      .eq("restaurant_id", params.restaurantId)
+      .maybeSingle();
+    if (providerError)
+      throw new InternalServerErrorException(
+        `Could not read the vendor: ${providerError.message}`,
+      );
+    if (!provider)
+      throw new BadRequestException("That vendor is not one of this house's vendors.");
+
+    const limit = Math.min(Math.max(params.limit ?? 20, 1), 50);
+    const [{ data: msgs, error: msgError }, { data: contacts, error: contactError }] =
+      await Promise.all([
+        db
+          .from("procurement_conversations")
+          .select(
+            "id, provider_id, order_id, channel, direction, message_text, email_headers, received_at, sent_at, created_at, raw_deleted_at",
+          )
+          .eq("restaurant_id", params.restaurantId)
+          .eq("provider_id", params.providerId)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+        db
+          .from("provider_contacts")
+          .select("id, name, email, role")
+          .eq("provider_id", params.providerId)
+          .order("name", { ascending: true }),
+      ]);
+    if (msgError)
+      throw new InternalServerErrorException(
+        `Could not read this vendor's messages: ${msgError.message}`,
+      );
+    if (contactError)
+      throw new InternalServerErrorException(
+        `Could not read this vendor's contacts: ${contactError.message}`,
+      );
+    return {
+      providerId: params.providerId,
+      messages: ((msgs ?? []) as MessageRow[]).map(messageOf),
+      contacts: ((contacts ?? []) as any[]).map((c) => ({
+        id: c.id,
+        name: c.name ?? null,
+        email: c.email ?? null,
+        role: c.role ?? null,
+      })),
+    };
+  }
+}
+
+function emptyReads(): ProvenanceReads {
+  return {
+    documents: new Map(),
+    lines: new Map(),
+    messages: new Map(),
+    contacts: new Map(),
+    vendorContacts: [],
+    failed: {},
+  };
 }

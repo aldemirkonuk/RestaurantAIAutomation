@@ -15,16 +15,17 @@
  * crossing one; the trail is chronological because a paper trail is. A
  * struck row stays on the trail, marked, never dropped.
  *
- * What a line can open today: the order and its receipt for the house's own
- * paper (fork 6b) and a recorded source link. What it cannot open yet is
- * named on the line rather than hidden (ADR 0020): fork 6(a)'s document
- * excerpt and the conversation's message and person are not built — see
- * `vendor-prices.md`.
+ * What a line can open: the order and its receipt for the house's own paper
+ * (fork 6b), a recorded source link, and — fork 6(a), built 2026-09-25 — the
+ * paper itself with its line, the message and the person, all as the gateway
+ * read them fresh for this opening (`ProvenanceList`). An absence is the
+ * gateway's own sentence, never a guess made here (ADR 0020).
  */
 
 import type { VendorObservationRow } from '../../../services/api/vendorIntel'
 import { MONO, SANS, dateWords } from './vp-format'
 import { provenanceOf } from './vp-register'
+import { ProvenanceList } from './ProvenanceList'
 
 /** Newest first; ties keep the order the gateway sent. Exported for tests. */
 export function trailOrder(rows: VendorObservationRow[]): VendorObservationRow[] {
@@ -82,7 +83,6 @@ export function PaperTrail({
         <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
           {ordered.map((r) => {
             const p = provenanceOf(r)
-            const conversational = r.sourceType === 'chat' || r.sourceType === 'social'
             return (
               <li
                 key={r.id}
@@ -136,9 +136,6 @@ export function PaperTrail({
                     </a>
                   )}
                   {p.unlinked && <span style={{ color: 'var(--ink-4, #665D50)' }}>{p.unlinked}</span>}
-                  {conversational && (
-                    <span style={{ color: 'var(--ink-4, #665D50)' }}>The message and the person it came from are not linked yet.</span>
-                  )}
                   <button
                     type="button"
                     onClick={() => onOpen(r)}
@@ -159,6 +156,7 @@ export function PaperTrail({
                     Details
                   </button>
                 </div>
+                <ProvenanceList lines={p.lines} compact />
               </li>
             )
           })}

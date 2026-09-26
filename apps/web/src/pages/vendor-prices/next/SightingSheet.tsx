@@ -24,6 +24,7 @@ import { useAuth } from '../../../contexts/AuthContext'
 import type { VendorObservationRow } from '../../../services/api/vendorIntel'
 import { candidateMethodLabel, EM, MONO, SANS, dateWords } from './vp-format'
 import { provenanceOf } from './vp-register'
+import { ProvenanceList } from './ProvenanceList'
 import { useDecideCandidate, useSightingIdentity, useUndoDecision, type ProductRef } from './useVendorPricesNextData'
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
@@ -109,15 +110,14 @@ export function SightingSheet({
         {prov.unlinked && (
           <p style={{ fontSize: 12.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>{prov.unlinked}</p>
         )}
-        {!prov.orderId && !prov.sourceUrl && !prov.unlinked && !prov.paper && (
+        {!prov.orderId && !prov.sourceUrl && !prov.unlinked && !prov.paper && prov.lines.length === 0 && (
           <p style={{ fontSize: 12.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>No paper attached. This row has nothing to open.</p>
         )}
-        {(row.sourceType === 'chat' || row.sourceType === 'social') && (
-          <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
-            Named absence: the message this came from is not linked. Recording a price does not yet capture
-            which conversation — the WhatsApp thread, the email — it came from.
-          </p>
-        )}
+        {/* Fork 6(a): the paper, its line, the message and the person, read
+            fresh by the gateway when this record opened. */}
+        <div style={{ marginTop: 6 }}>
+          <ProvenanceList lines={prov.lines} />
+        </div>
 
         {row.identityId && (
           <>

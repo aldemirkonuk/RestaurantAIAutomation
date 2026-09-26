@@ -22,6 +22,9 @@ import {
   decideOwnPaperSighting,
   isOutlierAgainstPriors,
   MIN_OUTLIER_SAMPLE,
+  pickDealMessage,
+  pickReceiptPaper,
+  provenanceIds,
 } from "./own-paper-sighting";
 import { priceBelowAverage } from "../vendor-intel/price-below-average";
 
@@ -36,6 +39,8 @@ const WINE = "55555555-5555-4555-8555-555555555555";
 interface Calls {
   sightingInserts: Row[];
   priceHistoryInserts: Row[];
+  /** Every settled read, with the equality filters it carried. */
+  reads: Array<{ table: string; filters: Record<string, any> }>;
 }
 
 function makeDb(opts: {
@@ -45,8 +50,16 @@ function makeDb(opts: {
   bottleSizeMl?: number | null;
   /** Rows already on the register for this wine. */
   existingSightings?: Row[];
+  /** Fork 6(a): the order's document links, documents and invoice lines. */
+  docLinks?: Row[];
+  documents?: Row[];
+  docLines?: Row[];
+  /** A read error for one of the paper tables, by table name. */
+  failTable?: string;
+  /** Inbound `procurement_conversations` rows, newest first. */
+  dealRows?: Row[];
 }) {
-  const calls: Calls = { sightingInserts: [], priceHistoryInserts: [] };
+  const calls: Calls = { sightingInserts: [], priceHistoryInserts: [], reads: [] };
   const existing = opts.existingSightings ?? [];
 
   const supabase: any = {
@@ -56,6 +69,22 @@ function makeDb(opts: {
       const filters: Record<string, any> = {};
 
       const settle = (shape: "one" | "many"): Row => {
+        if (op === "select") calls.reads.push({ table, filters: { ...filters } });
+        if (opts.failTable === table && op === "select")
+          return { data: null, error: { message: `${table} unreachable` } };
+        if (table === "procurement_document_links")
+          return { data: opts.docLinks ?? [], error: null };
+        if (table === "procurement_documents")
+          return { data: opts.documents ?? [], error: null };
+        if (table === "procurement_document_lines")
+          return { data: opts.docLines ?? [], error: null };
+        // Only the deal readers select `conversation_context`; the
+        // "newer reply still analysing" gate selects `id` and must see none.
+        if (table === "procurement_conversations" && op === "select")
+          return {
+            data: selectedColumns.includes("conversation_context") ? (opts.dealRows ?? []) : [],
+            error: null,
+          };
         if (table === "procurement_orders") {
           if (op === "update") return { data: opts.orderRow ?? {}, error: null };
           return { data: opts.orderRow ?? null, error: null };
@@ -652,4 +681,213 @@ describe("priceBelowAverage over own-paper rows", () => {
       yield_factor: 1,
     };
   }
+});
+
+// ---------------------------------------------------------------------------
+// ADR 0160 §112 fork 6(a): the paper, its line and the message, on the row.
+// ---------------------------------------------------------------------------
+const DOC = "66666666-6666-4666-8666-666666666666";
+const DOC2 = "77777777-7777-4777-8777-777777777777";
+const LINE = "88888888-8888-4888-8888-888888888888";
+const ORDER_LINE = "99999999-9999-4999-8999-999999999999";
+const MSG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+describe("fork 6(a): a verified receipt names the invoice and the line it was read from", () => {
+  const invoice = { id: DOC, doc_type: "invoice", doc_number: "F-2201", status: "verified", currency: "TRY", extracted: {} };
+
+  it("names the one linked invoice and its paired line, and reads house-scoped", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      orderLineRow: { id: ORDER_LINE },
+      docLinks: [{ document_id: DOC }],
+      documents: [invoice],
+      docLines: [{ id: LINE, document_id: DOC, line_no: 3, order_line_id: ORDER_LINE }],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.document_id).toBe(DOC);
+    expect(row.document_line_id).toBe(LINE);
+    expect(row.conversation_message_id).toBeNull();
+    expect(row.raw.provenance).toEqual({
+      documentId: DOC,
+      documentLineId: LINE,
+      conversationMessageId: null,
+      sentence: "Read from invoice F-2201, line 3, the line paired with this order's line.",
+    });
+    // Every paper read carries this house's id — the database's composite
+    // keys are the second wall, not the only one.
+    for (const t of ["procurement_document_links", "procurement_documents", "procurement_document_lines"]) {
+      const r = calls.reads.filter((x) => x.table === t);
+      expect(r.length).toBeGreaterThan(0);
+      for (const x of r) expect(x.filters.restaurant_id).toBe(REST);
+    }
+  });
+
+  it("names no paper when two invoices are linked, and says so rather than picking one", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      orderLineRow: { id: ORDER_LINE },
+      docLinks: [{ document_id: DOC }, { document_id: DOC2 }],
+      documents: [invoice, { ...invoice, id: DOC2, doc_number: "F-2202" }],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    const row = calls.sightingInserts[0];
+    expect(row.document_id).toBeNull();
+    expect(row.document_line_id).toBeNull();
+    expect(row.raw.provenance.sentence).toBe(
+      `2 invoices are attached to order ${ORDER}; the price is not tied to one of them rather than to a guess.`,
+    );
+  });
+
+  it("still writes the verified price when the paper cannot be read, and calls it a failed read", async () => {
+    const second = makeDb({
+      orderRow: deliveredOrder,
+      docLinks: [{ document_id: DOC }],
+      failTable: "procurement_documents",
+    });
+
+    await service(second.db).verifyReceipt(REST, ORDER, USER, verifyBody);
+
+    expect(second.calls.sightingInserts).toHaveLength(1);
+    const row = second.calls.sightingInserts[0];
+    expect(row.document_id).toBeNull();
+    expect(row.raw.provenance.sentence).toMatch(/could not be read .*That is a failed read, not an order without paper\.$/);
+  });
+});
+
+describe("fork 6(a): a confirmed deal names the vendor message it was read from", () => {
+  it("names the newest unresolved deal-proposal message, read house-scoped", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      orderLineRow: {
+        id: ORDER_LINE,
+        price_uom: "bottle",
+        price_pack_size: 1,
+        currency: "EUR",
+        unit_type: "bottle",
+        bottles_per_unit: 1,
+      },
+      dealRows: [
+        { id: "resolved-newer", conversation_context: { deal_proposal: {}, deal_resolved_at: "2026-09-20" } },
+        { id: MSG, conversation_context: { deal_proposal: { price: 36 } } },
+      ],
+    });
+
+    await service(db).confirmDeal(REST, ORDER, { finalPrice: 36, sendConfirmation: false });
+
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.source_ref).toBe(`order_confirmed:${ORDER}`);
+    expect(row.conversation_message_id).toBe(MSG);
+    expect(row.document_id).toBeNull();
+    expect(row.raw.provenance.sentence).toBe("Read from the vendor's reply this deal was confirmed from.");
+    const convReads = calls.reads.filter((x) => x.table === "procurement_conversations" && x.filters.restaurant_id !== undefined);
+    expect(convReads.length).toBeGreaterThan(0);
+    for (const x of convReads) expect(x.filters.restaurant_id).toBe(REST);
+  });
+});
+
+describe("pickReceiptPaper", () => {
+  const inv = (id: string, over: Partial<Record<string, any>> = {}) => ({
+    id, doc_type: "invoice", doc_number: null, status: "received", ...over,
+  });
+  it("names no paper when nothing is attached", () => {
+    const p = pickReceiptPaper({ orderId: "o", orderLineId: null, documents: [], lines: [] });
+    expect(p.documentId).toBeNull();
+    expect(p.sentence).toBe("No document is attached to order o, so this price names its order but no paper.");
+  });
+  it("ignores packing slips, credit memos, rejected and superseded invoices", () => {
+    const p = pickReceiptPaper({
+      orderId: "o",
+      orderLineId: null,
+      documents: [
+        inv("a", { doc_type: "packing_slip" }),
+        inv("b", { doc_type: "credit_memo" }),
+        inv("c", { status: "rejected" }),
+        inv("d", { status: "superseded" }),
+      ],
+      lines: [],
+    });
+    expect(p.documentId).toBeNull();
+    expect(p.sentence).toMatch(/^The 4 document\(s\) attached to order o include no live invoice/);
+  });
+  it("names the invoice but no line when the order has no line row", () => {
+    const p = pickReceiptPaper({ orderId: "o", orderLineId: null, documents: [inv("a")], lines: [] });
+    expect(p).toMatchObject({ documentId: "a", documentLineId: null });
+  });
+  it("names the invoice but no line when none is paired, or when several are", () => {
+    const none = pickReceiptPaper({ orderId: "o", orderLineId: "L", documents: [inv("a")], lines: [] });
+    expect(none).toMatchObject({ documentId: "a", documentLineId: null });
+    expect(none.sentence).toMatch(/no line on it has been paired/);
+    const two = pickReceiptPaper({
+      orderId: "o",
+      orderLineId: "L",
+      documents: [inv("a")],
+      lines: [
+        { id: "x", document_id: "a", line_no: 1, order_line_id: "L" },
+        { id: "y", document_id: "a", line_no: 2, order_line_id: "L" },
+      ],
+    });
+    expect(two).toMatchObject({ documentId: "a", documentLineId: null });
+    expect(two.sentence).toMatch(/2 of its lines are paired/);
+  });
+  it("never names a line of a different document", () => {
+    const p = pickReceiptPaper({
+      orderId: "o",
+      orderLineId: "L",
+      documents: [inv("a")],
+      lines: [{ id: "x", document_id: "other", line_no: 1, order_line_id: "L" }],
+    });
+    expect(p.documentLineId).toBeNull();
+  });
+});
+
+describe("pickDealMessage", () => {
+  it("takes the first unresolved proposal in newest-first order", () => {
+    expect(
+      pickDealMessage([
+        { id: "plain", conversation_context: {} },
+        { id: "done", conversation_context: { deal_proposal: {}, deal_resolved_at: "x" } },
+        { id: "open", conversation_context: { deal_proposal: {} } },
+        { id: "older", conversation_context: { deal_proposal: {} } },
+      ])?.id,
+    ).toBe("open");
+    expect(pickDealMessage([{ id: "a", conversation_context: null }])).toBeNull();
+  });
+});
+
+describe("provenance on decideOwnPaperSighting", () => {
+  const base = {
+    restaurantId: REST,
+    orderId: ORDER,
+    providerId: null,
+    vendorName: null,
+    masterWineId: WINE,
+    productName: "x",
+    source: "receipt_verified" as const,
+    unitPrice: 40,
+    unitLabel: "bottle",
+    packSize: 1,
+    unitVolumeMl: 750,
+    observedAt: "2026-09-20T10:00:00.000Z",
+    currency: "EUR",
+  };
+  it("does not change the content hash — finding the paper is not new price evidence", () => {
+    const a = decideOwnPaperSighting(base);
+    const b = decideOwnPaperSighting({ ...base, provenance: { documentId: DOC, documentLineId: LINE } });
+    if (!a.write || !b.write) throw new Error("expected writes");
+    expect(b.contentHash).toBe(a.contentHash);
+    expect(b.row.document_id).toBe(DOC);
+    expect(a.row.document_id).toBeNull();
+  });
+  it("drops a line named without its document, and a malformed id, saying why", () => {
+    const ids = provenanceIds({ documentId: "not-a-uuid", documentLineId: LINE, conversationMessageId: "x" });
+    expect(ids).toMatchObject({ documentId: null, documentLineId: null, conversationMessageId: null });
+    expect(ids.sentence).toMatch(/line reference was found without its document/);
+  });
 });

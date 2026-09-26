@@ -59,6 +59,7 @@ function row(over: Partial<VendorObservationRow> = {}): VendorObservationRow {
     identityId: null,
     identityLabel: null,
     normalizedUnitPrice: 30,
+    provenance: { document: null, documentLine: null, message: null, person: null, sentences: [] },
     ...over,
   }
 }
@@ -250,5 +251,32 @@ describe('SightingSheet — vendor and note (review finding: neither was shown f
       />,
     )
     expect(screen.getByText('a vendor the row does not name')).toBeInTheDocument()
+  })
+})
+
+describe('SightingSheet — fork 6(a): the paper, the message and the person', () => {
+  it('shows the attached paper as the thing to open, not "No paper attached"', () => {
+    render(
+      <SightingSheet
+        row={row({
+          provenance: {
+            document: { id: 'doc-1', docType: 'price_list', docNumber: null, docDate: null, sourceChannel: 'upload', status: 'received' },
+            documentLine: null,
+            message: { id: 'm-1', channel: 'whatsapp', direction: 'inbound', at: '2026-09-18T08:00:00Z', subject: null, excerpt: null, textDeletedAt: '2026-09-22T00:00:00Z', orderId: null },
+            person: { name: 'Ayşe Demir', address: null, role: null, basis: 'named_contact' },
+            sentences: ["The message's own words were deleted on 2026-09-22 under this house's mail retention; the price and the fact that it came from this message are kept."],
+          },
+        })}
+        productName="Chablis"
+        productRef={null}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText(/No paper attached/)).toBeNull()
+    expect(screen.getByRole('link', { name: 'Open the paper' })).toHaveAttribute('href', '/documents/doc-1')
+    expect(screen.getByText('Price list with no number read')).toBeInTheDocument()
+    expect(screen.getByText(/WhatsApp message received/)).toBeInTheDocument()
+    expect(screen.getByText('Given by Ayşe Demir')).toBeInTheDocument()
+    expect(screen.getByText(/deleted on 2026-09-22 under this house's mail retention/)).toBeInTheDocument()
   })
 })

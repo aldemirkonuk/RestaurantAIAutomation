@@ -152,6 +152,33 @@ export class VendorIntelController {
   }
 
   /**
+   * What "Record a price" may name as where a price came from, for one of this
+   * house's vendors: the house's recent messages with them and their contacts
+   * (ADR 0160 §112 fork 6(a)). Owner/manager, like the write it feeds.
+   */
+  @Get("observation-sources")
+  @ApiOperation({
+    summary:
+      "This house's recent messages with one vendor and that vendor's contacts, for naming where a recorded price came from",
+  })
+  async observationSources(
+    @CurrentUser() user: { restaurantId: string },
+    @Query("providerId") providerId?: string,
+    @Query("limit") limit?: string,
+  ) {
+    if (!providerId || !UUID_RE.test(providerId)) {
+      throw new BadRequestException("providerId must be a vendor id.");
+    }
+    const n = limit === undefined ? undefined : Number(limit);
+    const result = await this.comparison.observationSources({
+      restaurantId: user.restaurantId,
+      providerId,
+      limit: n !== undefined && Number.isFinite(n) ? Math.trunc(n) : undefined,
+    });
+    return { success: true, ...result };
+  }
+
+  /**
    * Kick a scrape manually. Owner-only: it makes outbound requests in the
    * restaurant's name and costs model tokens, so it should not be a
    * one-click action for every manager.

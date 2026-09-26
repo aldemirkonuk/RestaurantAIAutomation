@@ -13,6 +13,16 @@
  * stated currency, falls back to the honest floor this form always had:
  * required, no default, never a guess.
  *
+ * Fork 6(a) (ADR 0160 §112, founder 2026-09-18 "full provenance ... in the
+ * FIRST build"; 2026-09-25 item 30: before the flag goes live for any house):
+ * the ATTACH-A-PAPER step uploads the file through the house's one document
+ * door (`POST /procurement/documents`, `attachPaper`) and records the price
+ * with the id it returns; and, once the vendor is one of this house's rows,
+ * the form offers this house's recent messages with them and their contacts,
+ * so a price names the message and the person it came from. A failed upload
+ * records nothing — a price is never saved as "with this paper" when the
+ * paper did not arrive.
+ *
  * The vendor field itself stays free text on purpose (`ManualObservationDto`:
  * "the vendor who quoted a price is frequently one we have no row for yet,
  * and refusing the observation until the vendor is onboarded loses the
@@ -24,9 +34,23 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Panel } from '../../../components/mudavym/Sheet'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useProviders } from '../../../hooks/queries/useProviderQueries'
-import { apiErrorMessage, type ManualObservationInput } from '../../../services/api/vendorIntel'
-import { COMMON_CURRENCIES, HAND_SOURCES, MONO, SANS } from './vp-format'
-import { useProviderUsualCurrency, useRecordPrice } from './useVendorPricesNextData'
+import { apiErrorMessage, attachPaper, type ManualObservationInput } from '../../../services/api/vendorIntel'
+import { SCAN_ACCEPT, resolveMimeType } from '../../../lib/uploadAccept'
+import { COMMON_CURRENCIES, HAND_SOURCES, MONO, SANS, dateWords } from './vp-format'
+import { useObservationSources, useProviderUsualCurrency, useRecordPrice } from './useVendorPricesNextData'
+
+/** File to bare base64 (no data: prefix, which the document door does not want). */
+function toBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result)
+      resolve(result.slice(result.indexOf(',') + 1))
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
 
 const inputStyle: CSSProperties = {
   width: '100%',
@@ -73,6 +97,12 @@ export function RecordPriceForm({
   const [unitVolumeMl, setUnitVolumeMl] = useState('750')
   const [note, setNote] = useState('')
   const [sourceUrl, setSourceUrl] = useState('')
+  // Fork 6(a): the paper, the message and the person.
+  const [paper, setPaper] = useState<File | null>(null)
+  const [messageId, setMessageId] = useState('')
+  const [contactId, setContactId] = useState('')
+  const [attaching, setAttaching] = useState(false)
+  const [attachError, setAttachError] = useState<string | null>(null)
 
   const { activeRestaurantId } = useAuth()
   const providersQuery = useProviders(activeRestaurantId ?? '')
@@ -83,6 +113,13 @@ export function RecordPriceForm({
     return providers.find((p) => p.name.trim().toLowerCase() === typed) ?? null
   }, [providers, vendorName])
   const usualCurrency = useProviderUsualCurrency(matchedProvider?.id ?? null)
+  const sources = useObservationSources(matchedProvider?.id ?? null)
+
+  // A message or person picked for one vendor never rides along to another.
+  useEffect(() => {
+    setMessageId('')
+    setContactId('')
+  }, [matchedProvider?.id])
 
   useEffect(() => {
     if (currencyTouched) return
@@ -115,6 +152,10 @@ export function RecordPriceForm({
     setUnitVolumeMl('750')
     setNote('')
     setSourceUrl('')
+    setPaper(null)
+    setMessageId('')
+    setContactId('')
+    setAttachError(null)
     mutation.reset()
   }
 
@@ -123,9 +164,28 @@ export function RecordPriceForm({
       <form
         className="px-4 py-4"
         style={{ display: 'grid', gap: 12 }}
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault()
-          if (!canSubmit) return
+          if (!canSubmit || attaching) return
+          setAttachError(null)
+          let documentId: string | undefined
+          if (paper) {
+            setAttaching(true)
+            try {
+              const stored = await attachPaper({
+                contentBase64: await toBase64(paper),
+                filename: paper.name,
+                mimeType: resolveMimeType(paper),
+                providerId: matchedProvider?.id,
+              })
+              documentId = stored.documentId
+            } catch (err) {
+              setAttachError(apiErrorMessage(err, 'The paper was not stored, so the price was not recorded.'))
+              return
+            } finally {
+              setAttaching(false)
+            }
+          }
           mutation.mutate(
             {
               masterWineId: wineId,
@@ -138,6 +198,9 @@ export function RecordPriceForm({
               sourceType,
               sourceUrl: sourceUrl.trim() || undefined,
               note: note.trim() || undefined,
+              documentId,
+              conversationMessageId: matchedProvider && messageId ? messageId : undefined,
+              contactId: matchedProvider && contactId ? contactId : undefined,
             },
             { onSuccess: () => { reset(); onClose() } },
           )
@@ -273,18 +336,79 @@ export function RecordPriceForm({
         </div>
 
         <div>
-          {/* NOT fork 6(a)'s "attach-a-paper step" (ADR 0160 §112; sketch 112
-              README:400-401 defines that as an upload plus `document_id` on
-              `POST /vendor-intel/observations` — neither exists yet, and this
-              field sets no `document_id`). [Corrected 2026-09-19, must-fix
-              closure pass, wt-pg-vprices: an earlier version of this comment
-              called this field that attach step, which an independent
-              verifier's must-fix finding named as wrong.] This is a plain
-              optional link to wherever the price came from — useful on its
-              own, and the honest "No paper attached" state (the sighting
-              sheet) is not a bug for a price that truly has no document
-              behind it, only for one that does and was not asked. */}
-          <label style={labelStyle} htmlFor="vp-url">Source document, if there is one (a link to the invoice, quote, or listing)</label>
+          {/* Fork 6(a)'s attach-a-paper step (ADR 0160 §112; sketch 112
+              README: "an upload plus `document_id` on `POST
+              /vendor-intel/observations`"). The file goes through the house's
+              document door and the price is recorded with the id it returns. */}
+          <label style={labelStyle} htmlFor="vp-paper">Attach the paper, if there is one (a photo or PDF of the invoice, quote or price list)</label>
+          <input
+            id="vp-paper"
+            type="file"
+            accept={SCAN_ACCEPT}
+            onChange={(e) => setPaper(e.target.files?.[0] ?? null)}
+            style={{ ...inputStyle, padding: '6px 8px' }}
+          />
+          {paper && (
+            <p style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: '4px 0 0' }}>
+              {paper.name} will be stored with this house's documents and named on the price.
+            </p>
+          )}
+        </div>
+
+        {matchedProvider && (
+          <div className="grid grid-cols-1 gap-3">
+            {sources.isError ? (
+              <p role="status" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: 0 }}>
+                {matchedProvider.name}’s messages and contacts could not be read ({apiErrorMessage(sources.error, 'no reason given')}). The
+                price can still be recorded; it will name no message or person.
+              </p>
+            ) : sources.isLoading ? (
+              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #665D50)', margin: 0 }}>
+                Reading {matchedProvider.name}’s messages and contacts…
+              </p>
+            ) : (
+              <>
+                <div>
+                  <label style={labelStyle} htmlFor="vp-message">The message it came from</label>
+                  <select id="vp-message" style={inputStyle} value={messageId} onChange={(e) => setMessageId(e.target.value)}>
+                    <option value="">
+                      {(sources.data?.messages.length ?? 0) === 0
+                        ? `No messages with ${matchedProvider.name} on record`
+                        : 'Not from a message on record'}
+                    </option>
+                    {(sources.data?.messages ?? []).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {`${m.direction === 'outbound' ? 'Sent' : 'Received'} ${dateWords(m.at)} · ${m.channel ?? 'message'} · ${
+                          m.excerpt ? m.excerpt.slice(0, 60) : m.textDeletedAt ? 'words deleted under retention' : m.subject ?? 'no text'
+                        }`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle} htmlFor="vp-contact">Who gave the price</label>
+                  <select id="vp-contact" style={inputStyle} value={contactId} onChange={(e) => setContactId(e.target.value)}>
+                    <option value="">
+                      {(sources.data?.contacts.length ?? 0) === 0
+                        ? `No contacts on record for ${matchedProvider.name}`
+                        : 'Not named'}
+                    </option>
+                    {(sources.data?.contacts ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {[c.name ?? c.email ?? 'Unnamed contact', c.role].filter(Boolean).join(', ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <div>
+          {/* A plain optional link to wherever the price came from — not the
+              attach step above, and it sets no `document_id`. */}
+          <label style={labelStyle} htmlFor="vp-url">A link to it, if there is one (the invoice, quote, or listing online)</label>
           <input
             id="vp-url"
             style={inputStyle}
@@ -304,6 +428,11 @@ export function RecordPriceForm({
           />
         </div>
 
+        {attachError && (
+          <p role="alert" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-1, #211C16)', background: 'var(--paper-1, #F3EFE6)', padding: '8px 10px', borderRadius: 8, margin: 0 }}>
+            {attachError}
+          </p>
+        )}
         {mutation.isError && (
           <p role="alert" style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-1, #211C16)', background: 'var(--paper-1, #F3EFE6)', padding: '8px 10px', borderRadius: 8, margin: 0 }}>
             {apiErrorMessage(mutation.error, 'The price was not recorded.')}
@@ -312,7 +441,7 @@ export function RecordPriceForm({
 
         <button
           type="submit"
-          disabled={!canSubmit || mutation.isPending}
+          disabled={!canSubmit || mutation.isPending || attaching}
           style={{
             fontFamily: SANS,
             fontSize: 13,
@@ -325,7 +454,7 @@ export function RecordPriceForm({
             cursor: canSubmit && !mutation.isPending ? 'pointer' : 'default',
           }}
         >
-          {mutation.isPending ? 'Recording…' : 'Record this price'}
+          {attaching ? 'Storing the paper…' : mutation.isPending ? 'Recording…' : 'Record this price'}
         </button>
       </form>
     </Panel>
