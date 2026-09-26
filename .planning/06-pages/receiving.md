@@ -810,7 +810,11 @@ ledger. The history needs both, so this branch merges #436's head (`9c5a3541f`) 
 based on `feat/finish-action-integrity`. Two limits come with it: a verification writes its event
 only when it has a match and an exact bottle count (`procurement.service.ts:5860`, `if (match &&
 bottles)`), so a unit-less verification still leaves no entry; and verifications made before #436
-lands have none (named on the sheet, above).
+lands have none (named on the sheet, above). **[2026-09-25, W3-receiving: narrowed. A PART PACK
+now verifies and writes its event — the founder's round-5 answer *"Yes, in base units"* (ADR 0192
+fourth amendment): the back-derived count that used to be refused as a fraction of a case is
+re-read in bottles. What still writes no entry is a verification that carries no count at all,
+the mobile one-tap "Counts match" (`{ adjustments: [] }`); stated in that amendment as a fork.]**
 
 **Does the door record satisfy §107's "the verdict history stays append-only" (ADR 0149 row 23)?
 By convention only, not by enforcement.** Measured on this branch (`main` + #436):
@@ -822,14 +826,23 @@ By convention only, not by enforcement.** Measured on this branch (`main` + #436
 - **Only the gateway can write.** RLS is on with a service-role-only policy, and `anon` and
   `authenticated` hold no privilege (`20260825200000_od73_close_anon_dml.sql:204-208`).
 - **Nothing in the database refuses a change.** No migration defines a trigger on the table, and
-  the service role can `UPDATE` or `DELETE` any row. A migration has already rewritten rows once:
+  the service role can `UPDATE` or `DELETE` any row. **[Superseded 2026-09-25 by [ADR 0227](../decisions/0227-the-door-record-is-append-only-in-the-database.md)
+  (founder, round 5: *"Trigger, no cascade"*): migration `20260927120000` refuses UPDATE, DELETE and
+  TRUNCATE by trigger.]** A migration has already rewritten rows once:
   the `rejected_qty_bottles` backfill (`20260901220000_door_facts_are_columns.sql:64`).
 - **The history dies with its parent.** `order_id` and `restaurant_id` are `ON DELETE CASCADE`
-  (`baseline:13182`, `:13190`), so deleting an order or a house erases its receipts.
+  (`baseline:13182`, `:13190`), so deleting an order or a house erases its receipts. **[Superseded
+  2026-09-25 by ADR 0227: both keys, and the document key, are `ON DELETE RESTRICT`; an order or a
+  house with receipts cannot be hard-deleted, and every path that deletes one today meets no
+  receipt (ADR 0227's table).]**
 So the record is append-only in practice (one writer, insert-only paths, closed to clients) and
 not append-only by construction. Making it so is a schema decision this lane did not take (see the
 fork below); an immutability trigger would also meet the cascade conflict the stripped ledger hit
-(a trigger that refuses every `DELETE` makes deleting a house abort).
+(a trigger that refuses every `DELETE` makes deleting a house abort). **[Decided and built 2026-09-25 — [ADR
+0227](../decisions/0227-the-door-record-is-append-only-in-the-database.md): the founder chose
+*"Trigger, no cascade"*, so the keys became RESTRICT instead of the trigger meeting a cascade; a
+house with a door history is removed by soft delete (`restaurants.deleted_at`), and no path that
+deletes a house or an order today reaches a receipt.]**
 
 **Who may read it.** `GET …/history` is `@Roles("owner","manager")` on the method, the same rule
 ADR 0167 set for the queue and the credit ledger ("Refuse staff on all four"); staff and a session
