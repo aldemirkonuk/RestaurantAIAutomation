@@ -77,6 +77,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // session this server refuses to honour" into one value, and the second
       // is the one worth being able to see in a log.
       devBypass: payload.devBypass === true,
+      // When this session last proved who it is (ADR 0229; founder 2026-09-25
+      // item 29): seconds since the epoch, stamped at an interactive sign-in
+      // and carried by refresh and house switch. Null on a token minted before
+      // the claim existed -- which reads as "not recent", never as "now".
+      authTime:
+        typeof payload.auth_time === "number" ? payload.auth_time : null,
     };
   }
 }

@@ -2,13 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth, LoginError } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
-import { Mail, Lock, AlertCircle, ArrowRight, KeyRound } from 'lucide-react'
+import { Mail, Lock, AlertCircle, ArrowRight, KeyRound, Fingerprint } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import '../components/brand/auth-house.css'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
 import { GoogleSignInButton, type GoogleSignInHandle } from '../components/auth/GoogleSignInButton'
+import {
+  passkeysSupported,
+  requestSignInCode,
+  signInWithEmailCode,
+  signInWithPasskey,
+} from '../services/api/passkeys'
+import { getErrorMessage } from '../services/api/client'
 import {
   canRender,
   type IdentityProviderDescriptor,
@@ -106,7 +113,7 @@ const SHOW_DECLARED_PROVIDERS = false
 export function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, error: authError, clearError, resolveSignInMethods } = useAuth()
+  const { login, error: authError, clearError, resolveSignInMethods, signInWithSession } = useAuth()
   const googleRef = useRef<GoogleSignInHandle>(null)
   const on = usePublicDesign()
 
@@ -122,6 +129,67 @@ export function Login() {
   const [identity, setIdentity] = useState<SignInMethodsResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<Refusal>(null)
+  // The two doors that are not a password (ADR 0222 / ADR 0229; founder
+  // 2026-09-25, item 29): a passkey on this device, or an emailed code.
+  const canUsePasskey = passkeysSupported()
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
+  const [codeSentTo, setCodeSentTo] = useState<{ email: string; notice: string } | null>(null)
+  const [code, setCode] = useState('')
+  const [codeBusy, setCodeBusy] = useState(false)
+
+  const resetNotes = () => {
+    setError(null)
+    setRefusal(null)
+    clearError()
+  }
+
+  const handlePasskey = async () => {
+    resetNotes()
+    setPasskeyBusy(true)
+    try {
+      await signInWithSession(await signInWithPasskey())
+      navigate(from, { replace: true })
+    } catch (err: any) {
+      // A prompt the person closed, or a device with no passkey for Mudavym:
+      // not a fault, and the way forward is the emailed code.
+      setError(
+        err?.name === 'NotAllowedError' || err?.name === 'AbortError'
+          ? 'No passkey was used. If this device has none, type your email, continue, and choose “Email me a sign-in code”.'
+          : getErrorMessage(err),
+      )
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
+  const sendCode = async (address: string) => {
+    resetNotes()
+    setCodeBusy(true)
+    try {
+      const res = await requestSignInCode(address)
+      setCodeSentTo({ email: address, notice: res.message })
+      setCode('')
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setCodeBusy(false)
+    }
+  }
+
+  const handleCode = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!codeSentTo) return
+    resetNotes()
+    setCodeBusy(true)
+    try {
+      await signInWithSession(await signInWithEmailCode(codeSentTo.email, code))
+      navigate(from, { replace: true })
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setCodeBusy(false)
+    }
+  }
 
   const resolve = useCallback(
     async (address: string) => {
@@ -292,6 +360,25 @@ export function Login() {
           </form>
         )}
 
+        {/* A passkey names nobody in advance: the device offers the one it
+            holds, so it needs no address. Drawn only where the browser can
+            run the ceremony at all. */}
+        {!atMethodStep && canUsePasskey && (
+          <button
+            type="button"
+            onClick={() => void handlePasskey()}
+            disabled={passkeyBusy || resolving}
+            className={
+              on
+                ? 'mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-paper-2 bg-paper-0 px-4 py-2 text-sm font-medium text-inkm-1 hover:bg-paper-1 disabled:opacity-60'
+                : 'mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60'
+            }
+          >
+            <Fingerprint className={on ? 'h-[18px] w-[18px] text-seal' : 'h-[18px] w-[18px] text-wine-600'} strokeWidth={1.75} />
+            {passkeyBusy ? 'Waiting for your device…' : 'Sign in with a passkey'}
+          </button>
+        )}
+
         {/* ── Step 2: the methods this identity actually has ───────── */}
         {atMethodStep && (
           <div className="space-y-5">
@@ -302,6 +389,8 @@ export function Login() {
                 onClick={() => {
                   setIdentity(null)
                   setPassword('')
+                  setCodeSentTo(null)
+                  setCode('')
                   setError(null)
                   setRefusal(null)
                   clearError()
@@ -324,8 +413,8 @@ export function Login() {
                       This account has no sign-in method set up
                     </p>
                     <p className={on ? 'text-sm !text-amber-800' : 'text-sm text-amber-800'}>
-                      There is no password on it and no connected sign-in provider. Set a password to
-                      get in.
+                      There is no password on it and no connected sign-in provider. Email yourself a
+                      sign-in code below, or set a password.
                     </p>
                     {/* A status plate has no token, so its link keeps a fixed dark
                         seal: under `.dark`, globals.css lifts `.text-wine-700`
@@ -346,7 +435,67 @@ export function Login() {
               </div>
             )}
 
-            {showPassword && (
+            {codeSentTo && (
+              <form onSubmit={handleCode} className="space-y-5">
+                <p className={on ? 'text-sm !text-inkm-4' : 'text-sm text-gray-600'}>{codeSentTo.notice}</p>
+                <div>
+                  <label htmlFor="sign-in-code" className={on ? 'block text-sm font-medium text-inkm-2 mb-2' : 'block text-sm font-medium text-gray-700 mb-2'}>
+                    Sign-in code
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <KeyRound className={on ? 'h-[18px] w-[18px] text-seal' : 'h-[18px] w-[18px] text-wine-400'} strokeWidth={1.75} />
+                    </div>
+                    <input
+                      id="sign-in-code"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      required
+                      autoFocus
+                      maxLength={7}
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      className={on ? houseFieldClass : fieldClass}
+                      placeholder="123456"
+                      disabled={codeBusy}
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="submit"
+                  variant="default"
+                  size="lg"
+                  className={on ? `w-full ${HOUSE_BUTTON}` : 'w-full'}
+                  disabled={codeBusy || code.replace(/\s+/g, '').length !== 6}
+                >
+                  {codeBusy ? 'Checking…' : 'Sign In'}
+                </Button>
+                <div className="flex justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => void sendCode(codeSentTo.email)}
+                    disabled={codeBusy}
+                    className={on ? 'text-sm font-medium text-seal hover:text-seal-deep' : 'text-sm font-medium text-wine-600 hover:text-wine-700'}
+                  >
+                    Send a new code
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCodeSentTo(null)
+                      setCode('')
+                      resetNotes()
+                    }}
+                    className={on ? 'text-sm font-medium text-seal hover:text-seal-deep' : 'text-sm font-medium text-wine-600 hover:text-wine-700'}
+                  >
+                    Sign in another way
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {!codeSentTo && showPassword && (
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
                   <label htmlFor="password" className={on ? 'block text-sm font-medium text-inkm-2 mb-2' : 'block text-sm font-medium text-gray-700 mb-2'}>
@@ -404,7 +553,7 @@ export function Login() {
               </form>
             )}
 
-            {showPassword && showGoogle && (
+            {!codeSentTo && showPassword && showGoogle && (
               <div className="flex items-center gap-3" aria-hidden>
                 <span className={on ? 'h-px flex-1 bg-seal-tint' : 'h-px flex-1 bg-wine-100'} />
                 <span className={on ? 'text-xs font-medium uppercase tracking-wide text-inkm-3' : 'text-xs font-medium uppercase tracking-wide text-gray-400'}>or</span>
@@ -442,12 +591,32 @@ export function Login() {
 
             {nothingWorks && (
               <div className={on ? 'rounded-xl border border-paper-2 bg-paper-0 p-4 text-sm text-inkm-4' : 'rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600'}>
-                No sign-in method on this account works from this page yet.{' '}
+                No password or sign-in provider on this account works from this page yet. Email yourself a
+                sign-in code below, or{' '}
                 <Link to={setPasswordHref} className={on ? 'font-semibold text-seal-deep underline' : 'font-semibold text-wine-700 underline'}>
-                  Set a password
-                </Link>{' '}
-                to get in.
+                  set a password
+                </Link>
+                .
               </div>
+            )}
+
+            {/* The emailed code: always offered once an address is typed.
+                The gateway answers the same whether or not the address has
+                an account (ADR 0229), so offering it reveals nothing. */}
+            {!codeSentTo && (
+              <button
+                type="button"
+                onClick={() => void sendCode(identity?.email ?? email)}
+                disabled={codeBusy || loading}
+                className={
+                  on
+                    ? 'flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-paper-2 bg-paper-0 px-4 py-2 text-sm font-medium text-inkm-1 hover:bg-paper-1 disabled:opacity-60'
+                    : 'flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-60'
+                }
+              >
+                <Mail className={on ? 'h-[18px] w-[18px] text-seal' : 'h-[18px] w-[18px] text-wine-600'} strokeWidth={1.75} />
+                {codeBusy ? 'Sending…' : 'Email me a sign-in code'}
+              </button>
             )}
           </div>
         )}

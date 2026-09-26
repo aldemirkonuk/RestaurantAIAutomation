@@ -157,7 +157,9 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
 
     expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
     const html = (gmail.sendEmail as jest.Mock).mock.calls[0][0].html as string;
-    expect(html).toContain('href="https://mudavym.com/reset-password?token=tok-1"');
+    expect(html).toContain(
+      'href="https://mudavym.com/reset-password?token=tok-1"',
+    );
     // The raw comma-joined string must never leak into a mailed reset link.
     expect(html).not.toContain(",https://www.mudavym.com");
   });
@@ -257,8 +259,18 @@ describe("AuthService#resetPassword", () => {
       update: () => usersChain,
       eq: () => Promise.resolve({ error: updateError }),
     };
+    // ADR 0229 (round 7, item 44): a reset keeps every passkey and mails the
+    // account the ones that still sign it in; it only READS user_passkeys.
+    // This account has none; founder-round-six.spec.ts drives the real notice.
+    const passkeysChain: any = {
+      select: () => passkeysChain,
+      eq: () => passkeysChain,
+      is: () => passkeysChain,
+      order: () => Promise.resolve({ data: [], error: null }),
+    };
 
     const from = jest.fn((table: string) => {
+      if (table === "user_passkeys") return passkeysChain;
       if (table === "password_resets") {
         return {
           select: resetsSelectChain.select,

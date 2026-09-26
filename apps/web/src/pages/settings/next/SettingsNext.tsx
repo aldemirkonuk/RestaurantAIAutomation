@@ -97,6 +97,7 @@ import { CarryingCostSection } from './CarryingCostSection';
 import { HoursSection } from './HoursSection';
 import { DigestRow } from './DigestRow';
 import { AskTrainingSection } from './AskTrainingSection';
+import { ConsentPanelOpener } from './ConsentPanel';
 
 const CSS = `
 .st-ink, .st-ink * { transition: border-color ${ink.ms}ms ${ink.easing}, background-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}, transform ${ink.ms}ms ${ink.easing} }
@@ -431,6 +432,8 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                       {KEPT_NOTE.restaurant}
                     </p>
                     <AskTrainingSection data={data} />
+                    {/* ADR 0134 fork 14, "Bring back, real switches" (ADR 0222). */}
+                    <ConsentPanelOpener data={data} />
                   </div>
                 )}
 

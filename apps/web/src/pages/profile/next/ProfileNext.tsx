@@ -36,6 +36,8 @@ import { IntegrationReturnNotice } from '../../authorize-integration/Integration
  *                browser holds, and three protections (other devices, two-factor
  *                and passkeys, API tokens) rendered `Not built` with the
  *                measurement behind each claim. No fake toggles.
+ *                [2026-09-25, ADR 0222: passkeys are built — enrol, remove,
+ *                check — over `apps/api-gateway/src/passkeys/`.]
  *
  * And the plan is a figure: `GET /organizations/locations/:id` now returns
  * `subscription_tier` — and gained the manager/owner check its write already
@@ -51,7 +53,12 @@ import { IntegrationReturnNotice } from '../../authorize-integration/Integration
  * spread across Registers II-VI (5 · 4 · 1 · 4 · 1), two of them inside a
  * `.map()`, and there is no second row component anywhere on the page. What separates a live Google link from a passkey with
  * no backend is its state chip and whether its control is live or `disabled`
- * carrying its reason in words — never the amount of design spent on it. The
+ * carrying its reason in words — never the amount of design spent on it.
+ * **[2026-09-25, ADR 0222 (Proposed): passkeys have a backend now. Register
+ * II's Passkeys row became `PasskeyRows.tsx` — its own four `ConnectionRow`
+ * call sites (reading, unreadable, the header, one per passkey) — so the
+ * fifteen above is no longer the count; the claim it supports, one row
+ * component and no second, still holds.]** The
  * page therefore cannot flatter an empty section by drawing it richer than its
  * evidence, and there is no control on it that can appear to succeed.
  *
