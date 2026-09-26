@@ -617,10 +617,11 @@ export class NotificationsService {
       /**
        * Set by a caller that already sends its OWN push, with its own
        * opt-out and audience filtering — team broadcast is the first
-       * (`team.controller.ts` T5). Without this, this funnel's own "Mobile
-       * fan-out" below fired a SECOND push at every non-`"low"` priority,
-       * to the full write audience, reading no preference at all: an
-       * inbox-only send still pushed, and a push opt-out was ignored.
+       * (`team.controller.ts` `broadcast()`, "One push path"). Without this,
+       * this funnel's own "Mobile fan-out" below fired a SECOND push at
+       * every non-`"low"` priority, to the full write audience, reading no
+       * preference at all: an inbox-only send still pushed, and a push
+       * opt-out was ignored.
        * Two push paths for one message; this keeps it to one.
        */
       skipMobilePush?: boolean;

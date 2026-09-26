@@ -3,6 +3,7 @@ import { BadRequestException } from "@nestjs/common";
 import { TeamController } from "./team.controller";
 import { TeamService } from "./team.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { DatabaseService } from "../database/database.service";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 
 /**
@@ -536,7 +537,11 @@ describe("TeamController.broadcast — the channel gate", () => {
 });
 
 /**
- * TeamController.broadcast — T6: one push path, against the REAL funnel.
+ * TeamController.broadcast — one push path, against the REAL funnel.
+ *
+ * Not an ADR 0088 item (that ADR's T1-T7 are other defects; its T6 is "two
+ * unscoped reads and a dead route"). Recorded in `.planning/v3.0-TECH-DEBT.md`
+ * as "A team broadcast pushed every recipient twice…".
  *
  * Every test above hands the controller a `notifications` object whose
  * `persistForRestaurant` is `jest.fn(async () => ({ inserted: 0 }))` — so
@@ -558,16 +563,42 @@ describe("TeamController.broadcast — the channel gate", () => {
  * `ExpoPushService` to both), so a double push shows up as two calls on one
  * spy, exactly like it would on one real device.
  */
-function realFunnelHarness(db: StubDb) {
+/**
+ * WHICH ROSTER READ THE FUNNEL USES. `asDatabaseService`'s
+ * `getRestaurantMemberIds` THROWS on a failed read (so a spec cannot pass on a
+ * silent empty roster); production's `DatabaseService.getRestaurantMemberIds`
+ * (database.service.ts:70-90) ignores each read's `error` and swallows a throw
+ * to `[]`. `roster: "production"` binds that real method to the stub's client,
+ * so the funnel runs production's failure-absorption path, not the harness's.
+ * `funnelErrors` fails reads for the FUNNEL only (a second stub over the same
+ * tables), because `assertAccess` reads `user_restaurant_access` too.
+ */
+function realFunnelHarness(
+  db: StubDb,
+  opts: {
+    roster?: "stub" | "production";
+    funnelErrors?: Record<string, { message: string }>;
+  } = {},
+) {
   const team = new TeamService(asDatabaseService(db));
   const websocketGateway = {
     server: { to: jest.fn(() => ({ emit: jest.fn() })) },
   } as any;
   const configService = { get: () => undefined } as any;
+  const funnelDb = opts.funnelErrors
+    ? makeStubDb(db.tables, opts.funnelErrors, db.schema)
+    : db;
+  const funnelDatabase = asDatabaseService(funnelDb);
+  if (opts.roster === "production") {
+    funnelDatabase.getRestaurantMemberIds =
+      DatabaseService.prototype.getRestaurantMemberIds.bind({
+        supabase: funnelDb.supabase,
+      });
+  }
   const notifications = new NotificationsService(
     websocketGateway,
     configService,
-    asDatabaseService(db),
+    funnelDatabase,
   ) as any;
   const push = {
     sendToUsers: jest.fn(async (userIds: string[]) => ({
@@ -595,7 +626,7 @@ function realFunnelHarness(db: StubDb) {
   return { controller, notifications, push };
 }
 
-describe("TeamController.broadcast — T6: one push path, against the real funnel", () => {
+describe("TeamController.broadcast — one push path, against the real funnel", () => {
   it("[REVERT-FAILS] pushes an addressed, opted-in member exactly once", async () => {
     const db = seed();
     const { controller, push } = realFunnelHarness(db);
@@ -605,7 +636,7 @@ describe("TeamController.broadcast — T6: one push path, against the real funne
       audience: "everyone",
     } as any);
 
-    // Reverting T6 (dropping `skipMobilePush`) makes this 2: the funnel's own
+    // Reverting the fix (dropping `skipMobilePush`) makes this 2: the funnel's own
     // fan-out AND the controller's `this.push.sendToUsers(pushIds, …)` each
     // fire once.
     expect(push.sendToUsers).toHaveBeenCalledTimes(1);
@@ -629,7 +660,7 @@ describe("TeamController.broadcast — T6: one push path, against the real funne
       audience: "everyone",
     } as any);
 
-    // Reverting T6: the controller's own send still excludes RAY (T4 already
+    // Reverting the fix: the controller's own send still excludes RAY (T4 already
     // pins that), but the funnel's unfiltered fan-out pushes RAY anyway — so
     // this call's ids would include RAY even though `sendToUsers` was called
     // only once (the controller's `pushIds` is empty on THIS push and the
@@ -668,5 +699,66 @@ describe("TeamController.broadcast — T6: one push path, against the real funne
     } as any);
 
     expect(db.tables.notifications).toHaveLength(3);
+  });
+
+  it("[REVERT-FAILS] pushes nobody when the preference register could not be read — the funnel does not push around it", async () => {
+    // A BEHAVIOUR CHANGE, stated: before the fix a failed preference read left
+    // the controller's own leg empty (T4 fails closed) while the funnel's
+    // unfiltered leg still pushed all three — including anyone who may have
+    // opted out. Now the failure reaches nobody by push; the inbox still lands.
+    const db = seed({
+      "notification_preferences:select": { message: "connection reset" },
+    });
+    const { controller, push } = realFunnelHarness(db);
+
+    const res: any = await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+    } as any);
+
+    expect(push.sendToUsers).not.toHaveBeenCalled();
+    expect(res.preferencesUnavailable).toBe(true);
+    expect(res.recipients.notified).toBe(0);
+    expect(db.tables.notifications).toHaveLength(3);
+  });
+
+  it("[REVERT-FAILS] pushes once through production's own roster read, not only the harness's", async () => {
+    const db = seed();
+    const { controller, push } = realFunnelHarness(db, { roster: "production" });
+
+    await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+    } as any);
+
+    expect(push.sendToUsers).toHaveBeenCalledTimes(1);
+    const pushedIds: string[] = push.sendToUsers.mock.calls[0][0];
+    expect(pushedIds.sort()).toEqual([MANAGER, RAY, SAM].sort());
+    expect(db.tables.notifications).toHaveLength(3);
+  });
+
+  it("when production's roster read fails it absorbs to no inbox rows, and the push is still exactly one", async () => {
+    // NOT a revert-fails test: with the roster absorbed to `[]` the funnel
+    // returns before its fan-out on either side of the fix. It pins what the
+    // harness's throwing stub cannot show — production's path — so a change
+    // to either leg's failure handling has to be made on purpose.
+    const db = seed();
+    const { controller, push } = realFunnelHarness(db, {
+      roster: "production",
+      funnelErrors: {
+        "user_restaurant_access:select": { message: "connection reset" },
+        "users:select": { message: "connection reset" },
+      },
+    });
+
+    await controller.broadcast(req, RID, {
+      message: "Hello",
+      audience: "everyone",
+    } as any);
+
+    expect(db.tables.notifications).toHaveLength(0);
+    expect(push.sendToUsers).toHaveBeenCalledTimes(1);
+    const pushedIds: string[] = push.sendToUsers.mock.calls[0][0];
+    expect(pushedIds.sort()).toEqual([MANAGER, RAY, SAM].sort());
   });
 });
