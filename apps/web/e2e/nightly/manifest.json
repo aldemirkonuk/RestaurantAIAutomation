@@ -457,21 +457,6 @@
       ]
     },
     {
-      "slug": "arrival",
-      "flag": "mudavym_design_arrival",
-      "route": "/get-started",
-      "legacy": "page",
-      "source": "apps/web/src/pages/arrival",
-      "empty": [
-        "Nothing is written yet. Give the book a menu and it opens already written."
-      ],
-      "failed_read": [
-        "This part of the book could not be read.",
-        "The folio history could not be read.",
-        "failure to read, not an empty menu"
-      ]
-    },
-    {
       "slug": "ask",
       "flag": "mudavym_design_ask",
       "route": "/ask",
@@ -487,6 +472,21 @@
       "failed_read_testids": [
         "ak-book-failure",
         "ak-shelf-failure"
+      ]
+    },
+    {
+      "slug": "arrival",
+      "flag": "mudavym_design_arrival",
+      "route": "/get-started",
+      "legacy": "page",
+      "source": "apps/web/src/pages/arrival",
+      "empty": [
+        "Nothing is written yet. Give the book a menu and it opens already written."
+      ],
+      "failed_read": [
+        "This part of the book could not be read.",
+        "The folio history could not be read.",
+        "failure to read, not an empty menu"
       ]
     }
   ],
