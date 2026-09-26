@@ -865,6 +865,14 @@ class MessageBus:
                     body = normalize_event_envelope(
                         body, message.routing_key, exchange_name
                     )
+                    # The AMQP `timestamp` property is the only publish time a
+                    # flat gateway body carries. Forwarded AFTER normalization so
+                    # it never leaks into a flat body's `payload` mirror. Agents
+                    # that must not act on an old message read it
+                    # (provider_conversation_agent.message_published_at).
+                    published = getattr(message, "timestamp", None)
+                    if isinstance(body, dict) and isinstance(published, datetime):
+                        body.setdefault("amqp_timestamp", published.isoformat())
 
                     await callback(body)
 
@@ -927,6 +935,9 @@ class MessageBus:
                                 content_type=message.content_type,
                                 message_id=message.message_id,
                                 correlation_id=message.correlation_id,
+                                # Keep the ORIGINAL publish time: a retry is the
+                                # same message, not a newer one.
+                                timestamp=getattr(message, "timestamp", None),
                                 headers=new_headers,
                             )
 

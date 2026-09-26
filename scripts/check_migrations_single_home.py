@@ -194,9 +194,28 @@ CONSTRAINT_KEYWORDS = {
     "period",
 }
 
-ADD_COLUMN_RE = re.compile(
+# Split in two, like the shared parse check_order_capture_contract.py uses: one
+# ALTER TABLE may ADD several columns as comma-separated clauses in a single
+# statement ("ALTER TABLE t ADD COLUMN a text, ADD COLUMN b text;"). A single
+# regex requiring "ALTER TABLE ... ADD COLUMN" as one literal run only ever
+# matches the FIRST clause, so column_census() below would miss every column
+# after the first in a multi-column statement and report it as an "extra"
+# column the outside copy has and the live migrations don't — a false
+# positive on this report-only check.
+#
+# `\s+` after the name is load-bearing: without it `ALTER TABLE auth.users`
+# binds "auth" as the table and reads users' clauses into it. `[^;]*` stops at
+# the statement's `;`; comments are already blanked by g.strip_sql_comments
+# before this runs, so a `;` inside a `--` comment cannot cut a statement short
+# (the same defect the jest specs' shared reader closes in
+# apps/api-gateway/src/common/testing/migration-alter-clauses.ts).
+ALTER_TABLE_STMT_RE = re.compile(
     r"\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:\"?public\"?\.)?\"?([a-z_][a-z0-9_]*)\"?"
-    r"\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?\"?([a-z_][a-z0-9_]*)\"?",
+    r"\s+([^;]*);",
+    re.I,
+)
+ADD_COLUMN_CLAUSE_RE = re.compile(
+    r"\bADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?\"?([a-z_][a-z0-9_]*)\"?",
     re.I,
 )
 
@@ -261,8 +280,10 @@ def column_census(g, outside_files: list[str], queried: set[str]) -> list[tuple[
         for f in sorted((REPO / LIVE_HOME).glob("*.sql"))
     )
     live_added: dict[str, set[str]] = {}
-    for m in ADD_COLUMN_RE.finditer(live_text):
-        live_added.setdefault(m.group(1).lower(), set()).add(m.group(2).lower())
+    for stmt in ALTER_TABLE_STMT_RE.finditer(live_text):
+        table_name = stmt.group(1).lower()
+        for m in ADD_COLUMN_CLAUSE_RE.finditer(stmt.group(2)):
+            live_added.setdefault(table_name, set()).add(m.group(1).lower())
 
     rows: list[tuple[str, str, list[str]]] = []
     for rel_path in outside_files:
