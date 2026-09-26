@@ -128,7 +128,7 @@ export const ONBOARDING_STEPS: { id: OnboardingStep; title: string; description:
   { id: 'manager', title: 'Your Profile', description: 'Set up your account preferences' },
   { id: 'team', title: 'Team Setup', description: 'Invite your team members' },
   { id: 'inventory', title: 'Wine Inventory', description: 'Import your wine list' },
-  { id: 'providers', title: 'Providers', description: 'Set up your wine suppliers' },
+  { id: 'providers', title: 'Vendors', description: 'Set up your wine vendors' },
   { id: 'pos', title: 'POS Integration', description: 'Connect your point of sale' },
   { id: 'review', title: 'Review', description: 'Review and confirm setup' },
   { id: 'complete', title: 'Complete', description: 'You\'re all set!' },

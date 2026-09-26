@@ -52,7 +52,7 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
     rooms: [
       { name: 'Orders', path: '/orders' },
       { name: 'Receiving', path: '/receiving' },
-      { name: 'Providers', path: '/providers' },
+      { name: 'Vendors', path: '/vendors' },
       { name: 'Promotions', path: '/promotions' },
       // The gateway refuses staff every /vendor-intel read (owner/manager).
       { name: 'Vendor prices', path: '/vendor-prices', minRole: 'manager' },

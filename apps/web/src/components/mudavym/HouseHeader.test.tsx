@@ -132,7 +132,7 @@ function answer({
   });
 }
 
-function mount(ui: ReactNode, route = '/providers') {
+function mount(ui: ReactNode, route = '/vendors') {
   return render(
     <MemoryRouter initialEntries={[route]}>
       <ThemeProvider>
@@ -161,7 +161,7 @@ beforeEach(() => {
 describe('the bar', () => {
   it('names the page from its slug', async () => {
     mount(<HouseHeader page="providers" />);
-    expect(await screen.findByText('Providers')).toBeTruthy();
+    expect(await screen.findByText('Vendors')).toBeTruthy();
   });
 
   it('names the ROUTE for the cellar family, because one slug serves eight', async () => {
@@ -479,7 +479,7 @@ describe('PageGate', () => {
       // The round-4 reviewer's own repro: rerender with a DIFFERENT `page`,
       // which already sat in the effect's dependency array before this fix.
       rerender(
-        <MemoryRouter initialEntries={['/providers']}>
+        <MemoryRouter initialEntries={['/vendors']}>
           <ThemeProvider>
             <AuthContext.Provider value={auth as unknown as never}>
               <PageGate
@@ -510,7 +510,7 @@ describe('PageGate', () => {
   it('a LIVE_PAGES page (providers) shows the Mudavym header with zero setup — no override, no flag row', async () => {
     const { container } = mount(
       <PageGate page="providers" legacy={<p>legacy</p>} next={<main data-testid="next">the page</main>} />,
-      '/providers',
+      '/vendors',
     );
     expect(screen.getByTestId('next')).toBeTruthy();
     expect(screen.queryByText('legacy')).toBeNull();

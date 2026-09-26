@@ -57,7 +57,7 @@ export const TOUR_LABELS: Record<PageTourId, string> = {
   dashboard: 'Dashboard overview',
   inventory: 'Inventory command',
   orders: 'Orders workflow',
-  providers: 'Providers & sourcing',
+  providers: 'Vendors & sourcing',
   'orders-create': 'Building an order',
   communications: 'Communications',
   reports: 'Reports dashboard',

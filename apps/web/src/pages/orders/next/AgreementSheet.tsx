@@ -639,7 +639,7 @@ export function AgreementSheet({ open, onClose, onSaved }: AgreementSheetProps) 
                 This vendor has stated no usual currency —{' '}
                 <a
                   data-testid="state-usual-currency-link"
-                  href={`/providers?vendor=${encodeURIComponent(providerId)}`}
+                  href={`/vendors?vendor=${encodeURIComponent(providerId)}`}
                   style={{ color: 'var(--seal-deep, #14515C)' }}
                 >
                   state it on the vendor&rsquo;s profile

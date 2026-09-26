@@ -54,6 +54,7 @@ import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { HousePageLoader } from './components/mudavym/HousePageLoader'
 import { RouteHead } from './lib/seo/RouteHead'
+import { RenamedRoute } from './lib/renamedRoute'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
 
@@ -427,7 +428,14 @@ function App() {
                       />
                     }
                   />
-                  <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
+                  {/* ADR 0221: the word is "vendors". The page slug and flag stay
+                      `providers` (mudavym_design_providers), as do the gateway's
+                      /providers API paths; only the address and the words moved. */}
+                  <Route path="/vendors" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
+                  {/* The old address, kept for good: stored notifications, bookmarks
+                      and mail carry it. The rest of the path, the query
+                      (`?vendor=<id>` opens that card) and the hash come along. */}
+                  <Route path="/providers/*" element={<RenamedRoute from="/providers" to="/vendors" />} />
                   {/* Vendor price comparison. Role gate is enforced server-side
                       too (owner/manager on /vendor-intel/*) — a hidden route is
                       not access control. */}
@@ -438,11 +446,12 @@ function App() {
                       own failure there rather than a blank screen. Throwaway:
                       delete when the claims stop needing checking. */}
                   <Route path="/dev/truth" element={<DevTruth />} />
-                  {/* Discovery moved into Providers as a tab; keep the old path
-                      working so existing links and bookmarks land in the right place. */}
+                  {/* Discovery moved into Vendors as a tab; keep the old path
+                      working so existing links and bookmarks land in the right place
+                      (ADR 0221 renamed the target from /providers to /vendors). */}
                   <Route
-                    path="/distributors"
-                    element={<Navigate to="/providers?tab=discover" replace />}
+                    path="/distributors/*"
+                    element={<RenamedRoute from="/distributors" to="/vendors" defaults={{ tab: 'discover' }} />}
                   />
                   <Route path="/promotions" element={<Promotions />} />
                   {/* Both halves split by role INSIDE the element: the legacy
