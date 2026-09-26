@@ -43,6 +43,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarDays,
   ChevronLeft,
+  ClipboardList,
   ChevronRight,
   Download,
   Megaphone,
@@ -53,7 +54,7 @@ import {
 import { Wordmark } from '@/components/mudavym';
 import { useAuth } from '../../../contexts/AuthContext';
 import { MyShiftsNext } from './MyShiftsNext';
-import { broadcast, createCoverageTemplate, createShift, type TeamMember } from '../../../services/api/team';
+import { broadcast, createShift, type TeamMember } from '../../../services/api/team';
 import {
   EM,
   addDays,
@@ -67,6 +68,9 @@ import { MutationError } from './tm-bits';
 import { LENSES, WeekGrid, type Lens } from './WeekGrid';
 import { RosterSheet, MemberSheet } from './RosterSheet';
 import { CertificationsSheet } from './CertificationsSheet';
+import { CoverageRuleForm, CoverageRulesSheet } from './CoverageRulesSheet';
+import { periodLabel } from './coverage-words';
+import { SalesSheet } from './SalesSheet';
 import { ShiftSheet, type ShiftSheetTarget } from './ShiftSheet';
 import {
   CopyWeekPanel,
@@ -85,107 +89,6 @@ import {
   type GapVM,
 } from './useTeamNextData';
 import './team-next.css';
-
-/** Coverage rules speak "am"/"pm" — said as service language on screen. */
-function periodLabel(period: string): string {
-  if (period === 'am') return 'day';
-  if (period === 'pm') return 'evening';
-  return period;
-}
-
-const DOW_JS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-/**
- * The control that starts the staffing engine.
- *
- * Before this existed, a page whose declared first object is "coverage gaps"
- * could not create the only thing that produces one; the sole route was the
- * legacy Ops drawer this page's flag replaces.
- */
-function CoverageRuleForm({ weekStart }: { weekStart: string }) {
-  const qc = useQueryClient();
-  const rid = useActiveRestaurantId();
-  const [form, setForm] = useState({ role: '', dayOfWeek: '', shiftPeriod: 'pm', minStaff: '1' });
-
-  const add = useMutation({
-    mutationFn: () =>
-      createCoverageTemplate({
-        dayOfWeek: form.dayOfWeek === '' ? undefined : Number(form.dayOfWeek),
-        shiftPeriod: form.shiftPeriod,
-        role: form.role.trim(),
-        minStaff: Math.max(0, Number(form.minStaff) || 0),
-      }),
-    onSuccess: () => {
-      setForm({ role: '', dayOfWeek: '', shiftPeriod: 'pm', minStaff: '1' });
-      void qc.invalidateQueries({ queryKey: ['team-next-coverage-rules', rid] });
-      void qc.invalidateQueries({ queryKey: ['team-next-week', rid, weekStart] });
-    },
-  });
-
-  return (
-    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--paper-2)' }}>
-      <div className="flex flex-wrap items-end gap-2">
-        <label style={{ flex: '1 1 150px' }}>
-          <span className="tm-label">Role</span>
-          <input
-            className="tm-input"
-            value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value })}
-            placeholder="Floor, Bar, Host…"
-          />
-        </label>
-        <label>
-          <span className="tm-label">Day</span>
-          <select
-            className="tm-select"
-            value={form.dayOfWeek}
-            onChange={(e) => setForm({ ...form, dayOfWeek: e.target.value })}
-          >
-            <option value="">Every day</option>
-            {DOW_JS.map((d, i) => (
-              <option key={d} value={i}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span className="tm-label">Service</span>
-          <select
-            className="tm-select"
-            value={form.shiftPeriod}
-            onChange={(e) => setForm({ ...form, shiftPeriod: e.target.value })}
-          >
-            <option value="am">day</option>
-            <option value="pm">evening</option>
-          </select>
-        </label>
-        <label>
-          <span className="tm-label">People</span>
-          <input
-            type="number"
-            min={0}
-            className="tm-input"
-            style={{ width: 74 }}
-            value={form.minStaff}
-            onChange={(e) => setForm({ ...form, minStaff: e.target.value })}
-          />
-        </label>
-        <button
-          type="button"
-          className="tm-ctl"
-          disabled={!form.role.trim() || add.isPending}
-          onClick={() => add.mutate()}
-        >
-          {add.isPending ? 'Adding…' : 'Add coverage rule'}
-        </button>
-      </div>
-      <MutationError when={add.isError}>
-        The rule was not saved — the engine is still idle. Try again.
-      </MutationError>
-    </div>
-  );
-}
 
 function GapRow({
   gap,
@@ -384,7 +287,9 @@ type Overlay =
   | { kind: 'note'; only: string | null }
   | { kind: 'timeoff' }
   | { kind: 'trail' }
-  | { kind: 'export' };
+  | { kind: 'export' }
+  | { kind: 'rules' }
+  | { kind: 'sales' };
 
 function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
   const qc = useQueryClient();
@@ -457,6 +362,14 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
             </button>
             <button
               type="button"
+              className="tm-ctl tm-ctl--quiet"
+              onClick={() => setOverlay({ kind: 'sales' })}
+            >
+              <ClipboardList className="tm-icon" aria-hidden="true" />
+              Log sales
+            </button>
+            <button
+              type="button"
               className="tm-ctl tm-ctl--seal"
               onClick={() => setOverlay({ kind: 'publish', republish: data.published })}
             >
@@ -481,7 +394,18 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
 
         {/* ── 1 · the founder's first object: what is unfilled ─────────────── */}
         <section aria-label="Coverage gaps" className="tm-panel" style={{ marginBottom: 16 }}>
-          <h2 className="tm-panel__title">Unfilled — the week&apos;s first job</h2>
+          <div className="tm-head" style={{ marginBottom: 6, alignItems: 'center' }}>
+            <h2 className="tm-panel__title" style={{ margin: 0 }}>
+              Unfilled — the week&apos;s first job
+            </h2>
+            <button
+              type="button"
+              className="tm-ctl tm-ctl--quiet tm-ctl--sm"
+              onClick={() => setOverlay({ kind: 'rules' })}
+            >
+              Coverage rules · {data.rulesFailed ? EM : rules === null ? EM : rules.length}
+            </button>
+          </div>
           {data.rulesFailed ? (
             <p className="tm-note" role="alert">
               The coverage rules could not be read, so whether anything is required this
@@ -837,6 +761,22 @@ function TeamNextManager({ ground }: { ground?: 'charcoal' }) {
           weekStart={weekStart}
           onClose={() => setOverlay(null)}
           onChanged={refreshWeek}
+        />
+      )}
+      {overlay?.kind === 'rules' && (
+        <CoverageRulesSheet
+          rules={rules}
+          failed={data.rulesFailed}
+          weekStart={weekStart}
+          onClose={() => setOverlay(null)}
+        />
+      )}
+      {overlay?.kind === 'sales' && (
+        <SalesSheet
+          members={data.members}
+          rosterFailed={data.membersFailed}
+          restaurantId={rid ?? null}
+          onClose={() => setOverlay(null)}
         />
       )}
       {overlay?.kind === 'export' && (

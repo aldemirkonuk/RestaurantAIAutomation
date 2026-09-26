@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -304,11 +305,17 @@ export class TeamController {
     return this.team.createCoverageTemplate(this.uid(req), rid, dto);
   }
 
+  /**
+   * Answers with the removed rule, 404 when this house has no rule by that id,
+   * and 400 for an id that is not a uuid (it used to reach Postgres and come
+   * back a 500). The house is the path's, admitted by `assertAccess` as a
+   * manager of THAT house — never a body field.
+   */
   @Delete("coverage-templates/:id")
   deleteCoverageTemplate(
     @Req() req: any,
     @Param("restaurantId") rid: string,
-    @Param("id") id: string,
+    @Param("id", new ParseUUIDPipe()) id: string,
   ) {
     return this.team.deleteCoverageTemplate(this.uid(req), rid, id);
   }

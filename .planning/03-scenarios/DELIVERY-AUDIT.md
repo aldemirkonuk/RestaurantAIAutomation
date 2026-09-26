@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **155 as of 2026-09-26, on #436 after the W7-team commit** (`check_read_errors_not_swallowed.py`: 1721 files scanned, 155 sites, 155 baselined, 0 allowlisted, PASS). Three retired in `apps/api-gateway/src/team/`: `team.service.ts` `coverage_templates/data` (the rule list read), `performance.service.ts` `team_members/valid` (the sales-batch roster read) and `server_sales/rows` (the performance read) — each now throws instead of reading as empty (ADR 0088 amendment, 2026-09-26).
+
 > **158 as of 2026-09-26, on #436 (`feat/finish-action-integrity`) merged up to main 387475342 (#471)** (`check_read_errors_not_swallowed.py` on that tree: 1721 files scanned, 158 sites, 158 baselined, 0 allowlisted, PASS). Supersedes the two 163 lines below for this branch; re-measure before citing.
 
 > **163 as of 2026-09-25, on #436 (`feat/finish-action-integrity`) merged up to main 4e7c5b5a6** (`check_read_errors_not_swallowed.py` on that tree: 1703 files scanned, 163 sites, 163 baselined, 0 allowlisted, PASS). The branch's round-3/round-4 strict reads and main's retirements together; the two `r5/E` notes below are that branch's own, pre-merge. Re-measure before citing.
