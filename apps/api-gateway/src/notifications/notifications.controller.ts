@@ -641,43 +641,24 @@ export class NotificationsController {
     return { success: true };
   }
 
+  /**
+   * Closed 2026-09-20. This route used to take `to`/`cc`/`bcc` and `body_html`
+   * from the client and hand them to Gmail, so any signed-in user could send
+   * arbitrary HTML from the house's domain (ADR 0147 named gap). ADR 0149
+   * row 15 asked for owner/manager plus house recipients — a constrained
+   * open send is still an open send of client HTML, which ADR 0170 refuses
+   * for vendor mail. Gmail is never called. A 200 `{success:false}` would
+   * look like a failed send; this is a refusal. The house's own send is
+   * `POST /communications/letters` (the Communications composer). The three
+   * web callers this route had (QuickGmailModal, email-scheduler,
+   * RecurringOrders, none reachable from a Mudavym page) were retired in the
+   * same PR, and `no-client-send-email.test.ts` keeps a fourth from appearing.
+   */
   @Post("send-email")
-  async sendEmail(
-    @Body()
-    body: {
-      to: string[];
-      subject: string;
-      template_id?: string;
-      body_html: string;
-      body_text?: string;
-      cc?: string[];
-      bcc?: string[];
-    },
-  ) {
-    this.logger.log(`Sending email to ${body.to.join(", ")}`);
-
-    try {
-      const result = await this.notificationsService.sendEmail({
-        to: body.to,
-        subject: body.subject,
-        bodyHtml: body.body_html,
-        bodyText: body.body_text,
-        cc: body.cc,
-        bcc: body.bcc,
-      });
-
-      return {
-        success: true,
-        message_id: result.messageId,
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error) {
-      this.logger.error(`Failed to send email: ${error.message}`, error.stack);
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
+  async sendEmail(): Promise<never> {
+    throw new ForbiddenException(
+      "This route does not send mail. A client cannot supply HTML or recipients here.",
+    );
   }
 
   // =========================================================================

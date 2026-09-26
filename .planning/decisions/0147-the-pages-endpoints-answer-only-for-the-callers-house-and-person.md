@@ -80,13 +80,15 @@ By module (details and failing output in the named report):
   always end it, an ex-member included, and the ADR 0118 mail sweep runs on that
   disconnect (0118 D15). Until built, the spec above still pins the refusal.]
 - **Notification senders.** POST `/notifications/order-approval`, `low-stock`,
-  `delivery`, `price-negotiation`, `system-alert` and `send-email` still send to any
-  user id or email address the body names. Who may notify whom is a product rule,
-  not a scoping bug.
-  [FOUNDER ANSWERED 2026-09-16, build pending (not merged) — ADR 0149 row 15: the five uncalled POST
-  senders are closed (internal only); `send-email` is owner/manager, with recipients
-  limited to the house's members and its vendors' contacts; and the resolver sites
-  are mapped to categories, an unmapped category refused (OD-121).]
+  `delivery`, `price-negotiation` and `system-alert` still send to any user id
+  or restaurant the body names. Who may notify whom is a product rule, not a
+  scoping bug. `POST /notifications/send-email` is closed (addendum 2026-09-20):
+  it 403s and never calls Gmail. ADR 0149 row 15's constrained send (owner/manager,
+  house members and vendor contacts) was not built — a constrained open send of
+  client HTML is still an open send, which ADR 0170 refuses for vendor mail.
+  [FOUNDER ANSWERED 2026-09-16, the five uncalled POST senders still pending —
+  ADR 0149 row 15: closed (internal only); resolver sites mapped to categories,
+  an unmapped category refused (OD-121).]
 - **Notification preferences.** `ordersMode`, `reportsMode` and `digestFrequency` are
   free strings with no allowlist. `startTime`, `endTime` and `digestTime` have no HH:mm
   check, and the columns have no CHECK constraint.
@@ -179,3 +181,35 @@ row does not name never reaches `RolesGuard`) was filed in its fifth.
 | 2026-09-12 | Adversarial pass | OVERTURNED the notifications fix: the push subscribe and unsubscribe siblings still wrote a victim's row |
 | 2026-09-12 | Orchestrating session | Every notification route scoped; two read-error baseline rows retired. Not re-audited: the founder's decision "Your word as PASS, no agents" |
 | 2026-09-16 | Aldemir, via ADR 0149 | Rows 15, 17, 18, 19 answered: notification senders and categories, public-register rows, the ex-member disconnect, and the `/communications/email` relay. Brackets beside "Named and not fixed"; being built, none claimed built |
+| 2026-09-20 | Endpoint-universe session | `POST /notifications/send-email` closed: 403, Gmail never called. ADR 0149 row 15's constrained send not built. Spec: `send-email-refuses-client-html.spec.ts`. The five other named POST senders are unchanged. |
+
+## Addendum 2026-09-20: send-email is refused, not constrained
+
+`POST /notifications/send-email` took `to`, `cc`, `bcc` and `body_html` from the
+client and handed them to Gmail. Any signed-in user could send arbitrary HTML
+from the house's domain. Three web callers still post to it
+(`QuickGmailModal`, `email-scheduler`, `RecurringOrders`); they now receive 403.
+
+ADR 0149 row 15 asked to keep the route as owner/manager with recipients limited
+to the house's members and its vendors' contacts. That is not this close. A
+route that still sends client-supplied HTML is the hole, whoever is allowed to
+call it. The handler throws `ForbiddenException` and
+`NotificationsService.sendEmail` is deleted so nothing else can reopen it.
+House mail gets a send of its own later; this route is not that send.
+
+**[2026-09-25, PR #410 wave-1 rework: "three web callers still post to it" and
+"house mail gets a send of its own later" are both superseded. The house's own
+send already exists: `POST /communications/letters`, the Communications
+composer (ADR 0118), which checks the recipient against the house's book and
+sends from the house's own mailbox. None of the three callers was reachable
+from a Mudavym page (App.tsx: `/providers` renders `ProvidersNext` for every
+house because `providers` is in `LIVE_PAGES`, legacy only under the QA
+override; `OneTapActionCenter` is mounted nowhere **[corrected 2026-09-25, lane W2-fix-comms: false. `pages/Dashboard.tsx:42,486` and `pages/Notifications.tsx:46,1088` import and mount it; `pages/DevSandbox.tsx:35` imports only the `addOneTapAction` function. Both hosting pages sit behind `PageGate` (App.tsx:361, :482) on keys in `LIVE_PAGES` (`useMudavymDesign.ts:141,155`), so legacy Dashboard and Notifications, and the One-Tap center with them, render only under the per-browser QA override (`useMudavymDesign.ts:6-11,256`). The conclusion stands: no Mudavym page reaches `QuickGmailModal`.]**; `RecurringOrders` has no
+route), so each was retired rather than rebuilt, and none was deleted (ADR
+0149: legacy files go in the one cutover, on the founder's manifest):
+`main.tsx` no longer starts `email-scheduler` (its queue has had no producer
+since 2026-05-14) and its send returns false; `QuickGmailModal`'s send button
+opens `/communications`; `RecurringOrders`' price inquiry (which posted
+`to: []` and never reached a vendor) does the same.
+`apps/web/src/__tests__/no-client-send-email.test.ts` fails if any web code
+names the route outside a comment.]**
