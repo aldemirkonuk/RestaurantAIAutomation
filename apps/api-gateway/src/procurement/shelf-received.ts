@@ -86,6 +86,41 @@ export function isCountsConfirmation(e: {
   return e.stage === "reconciled" && e.outcome === COUNTS_CONFIRMED_OUTCOME;
 }
 
+/**
+ * A REPEATED "COUNTS MATCH" TAP WRITES NOTHING NEW (ADR 0192, sixth
+ * amendment; founder, 2026-09-26, round 7, item 47, from the record at
+ * `~/.claude/projects/.../memory/founder-answers-2026-09-25-web-rebuild.md`:
+ * "a repeated identical 'Counts match' tap on an already-completed/verified
+ * order writes NOTHING new (idempotent — detect that the latest reconciled
+ * event already states the same accepted counts and no invoice change;
+ * return success without a new row); an earlier full check's rejected count
+ * stays visible (as built)").
+ *
+ * The one-tap confirmation never carries an invoice — this whole path only
+ * runs when `hasMatchFields` is false — so "no invoice change" is true of
+ * every tap on this path by construction; the one fact a second identical tap
+ * COULD restate is the accepted bottle count, and this is that comparison.
+ *
+ * `null` counts as equal to `null`: an order with no item, or a count that
+ * cannot be read as a whole non-negative number of bottles, records "no
+ * accepted count recorded" every time (`verifyReceipt`'s `confirmedBottles`),
+ * and a second line saying that again is not new information either.
+ *
+ * A DIFFERENT accepted count — the ledger moved between taps, from a
+ * correction, a delivery, or another verification — is not a repeat, and
+ * still gets its own line: this guards an UNCHANGED fact, not every tap.
+ */
+export function repeatsTheLatestConfirmation(
+  latest: { counted_qty_bottles?: number | string | null } | null | undefined,
+  confirmedBottles: number | null,
+): boolean {
+  if (!latest) return false;
+  const latestCounted =
+    latest.counted_qty_bottles == null ? null : Number(latest.counted_qty_bottles);
+  if (latestCounted !== null && !Number.isFinite(latestCounted)) return false;
+  return latestCounted === confirmedBottles;
+}
+
 /** The `reason` code when a caller tries to type a received count onto an order. */
 export const RECEIVED_IS_NOT_TYPED_IN = "received_is_the_ledger";
 

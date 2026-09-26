@@ -67,6 +67,7 @@ import {
   readShelfReceived,
   RECEIVED_IS_NOT_TYPED_IN,
   RECEIVED_IS_THE_LEDGER,
+  repeatsTheLatestConfirmation,
   shelfUnreadable,
   type ShelfReceived,
 } from "./shelf-received";
@@ -5921,6 +5922,15 @@ export class ProcurementService {
     //
     // Every legacy adjustment's item is proven to be this house's FIRST, so a
     // refused adjustment (403) leaves no line claiming a verification happened.
+    //
+    // A REPEATED IDENTICAL TAP WRITES NOTHING NEW (ADR 0192, sixth amendment;
+    // founder, 2026-09-26, round 7, item 47): before the insert below, the
+    // latest `reconciled` event for this order is read, and the insert is
+    // skipped when it already states this same accepted bottle count
+    // (`repeatsTheLatestConfirmation`, `shelf-received.ts`) — the tap still
+    // reports success, the order's status write below still runs, and an
+    // earlier full check's rejected count and invoice stay exactly as they
+    // were, read from that same still-latest row.
     if (!hasMatchFields) {
       for (const adj of adjustments)
         await assertInventoryBelongsToRestaurant(
@@ -5947,27 +5957,54 @@ export class ProcurementService {
         // ("no accepted count recorded"), never rounded into one.
         confirmedBottles = Number.isSafeInteger(held) && held >= 0 ? held : null;
       }
-      const { error: confirmError } = await this.databaseService.supabase
-        .from("procurement_receipt_events")
-        .insert({
-          restaurant_id: restaurantId,
-          order_id: orderId,
-          stage: "reconciled",
-          outcome: COUNTS_CONFIRMED_OUTCOME,
-          counted_qty: confirmedBottles,
-          counted_uom: "bottle",
-          counted_qty_bottles: confirmedBottles,
-          rejected_qty: 0,
-          rejected_qty_bottles: 0,
-          invoice_qty_bottles: null,
-          received_by: userId,
-          notes: null,
-        });
-      if (confirmError) {
+
+      // IDEMPOTENCE (ADR 0192, sixth amendment; founder, 2026-09-26, round 7,
+      // item 47): a repeated identical "Counts match" tap writes nothing new.
+      // Read the latest `reconciled` event for THIS order before writing
+      // another one — the same read a re-verify would need anyway — and skip
+      // the insert when it already states this same accepted count. A read
+      // failure refuses rather than guesses: better a rejected tap than a
+      // duplicate line neither the desk nor the founder asked for.
+      const { data: latestReconciledRows, error: latestReconciledError } =
+        await this.databaseService.supabase
+          .from("procurement_receipt_events")
+          .select("counted_qty_bottles")
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .eq("stage", "reconciled")
+          .order("occurred_at", { ascending: false })
+          .limit(1);
+      if (latestReconciledError) {
         throw new InternalServerErrorException(
-          `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
-            "no stock was corrected and the order is as it was. Try again.",
+          `Whether this order was already verified could not be checked ` +
+            `(${latestReconciledError.message}), so nothing was changed. Try again.`,
         );
+      }
+      const latestReconciled = latestReconciledRows?.[0] ?? null;
+
+      if (!repeatsTheLatestConfirmation(latestReconciled, confirmedBottles)) {
+        const { error: confirmError } = await this.databaseService.supabase
+          .from("procurement_receipt_events")
+          .insert({
+            restaurant_id: restaurantId,
+            order_id: orderId,
+            stage: "reconciled",
+            outcome: COUNTS_CONFIRMED_OUTCOME,
+            counted_qty: confirmedBottles,
+            counted_uom: "bottle",
+            counted_qty_bottles: confirmedBottles,
+            rejected_qty: 0,
+            rejected_qty_bottles: 0,
+            invoice_qty_bottles: null,
+            received_by: userId,
+            notes: null,
+          });
+        if (confirmError) {
+          throw new InternalServerErrorException(
+            `This verification could not be recorded (${confirmError.message}), so nothing was changed: ` +
+              "no stock was corrected and the order is as it was. Try again.",
+          );
+        }
       }
     }
 
