@@ -203,3 +203,31 @@ So the software loads and acts. What remains:
   there.
 - Memory `recommendations-actions-ux-optimizer` carries what shipped in P0 (UX paths
   NEW-284–308, 434, 303) and the UX-optimizer foundation's human-gated constraint.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Impressions without actions — the engine runs, is seen, and is never acted on.
+
+**Coverage.** `analytics` 76.4%/54.3%; `one-tap-actions` 68.3%/59.6%; `ux-optimizer` 55.8%/40.0%.
+
+**Runs in production.** Route is flag OFF; `recommendation_impressions`=75, `actions`=0.
+
+**Promised vs. built.** `partial` holds; this is the sharpest capacity gap found in this pass (75 impressions, 0 actions), and see the `insight-generator`/`forecasting-engine`/`recommendations-actions-ux-optimizer` model and service entries below for the engine underneath this number.
+
+**Gaps.** An impression-generating engine with a zero-action floor: `recommendation_impressions`=75 against `actions`=0.
+
+*Evidence:* Supabase row counts above.
+
+### recommendations-actions-ux-optimizer (service)
+
+**Capacity.** Recommendation act/dismiss/snooze store with a scheduled digest; a UX proposal/experiment engine on a daily cron.
+
+**Coverage.** 8 spec files found across both areas (`recommendation-digest*.spec.ts`, `recommendation-suppression.spec.ts`, `ux-optimizer.experiments.spec.ts`, `ux-proposal-grounding.spec.ts`, `experiments.spec.ts`, `admin-routes.spec.ts`).
+
+**Runs in production.** **Not verified this pass** — cron registration is confirmed in source (`ux-optimizer.service.ts:775`) but no production row count was taken for either area.
+
+**Promised vs. built.** Not assessed — see the not-checked note above.
+
+**Gaps.** Live production activity for both areas was not queried; this is a stated scope cut, not a finding of dormancy.
+
+*Evidence:* `ux-optimizer.service.ts:775` (`@Cron('17 4 * * *')`); `wc -l` on `ux-optimizer.service.ts`=1,798, `recommendations.service.ts`=614.

@@ -339,3 +339,31 @@ gateway built from `origin/main` `417474e6`. What this software gained, and what
   (finding 2). Nothing here closes the middle of the four-way match automatically yet.
   **Both halves of that sentence stopped being true on 2026-09-06** — see the A1/A5 stop
   above; a delivery counted at the door now moves lots, and they land `provisional`.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Shares the procurement module's size/risk profile (40,442 LOC, 79 endpoints, 5 crons, 72 specs); `document-intake.service.ts` cron runs every 5 minutes.
+
+**Coverage.** 79.0%/66.2% at the module level (same procurement module as [[orders]]).
+
+**Runs in production.** Yes, both routes flag ON.
+
+**Promised vs. built.** `partial` holds.
+
+**Gaps.** None new beyond the procurement-module-wide N+1 lead (see [[orders]]).
+
+*Evidence:* Supabase `procurement_documents`=33, `document_revisions`=23.
+
+### document-extraction-ocr (model)
+
+**Capacity.** Vision extraction via `claude-haiku-4-5` for procurement documents; two sibling call sites exist for menu OCR ([[wine-library-sommelier]]) and photo-based inventory counting ([[inventory-command]]), on the same model tier with no shared abstraction beyond the common router.
+
+**Coverage.** `document-extractor.spec.ts` covers the primary extractor here; the menu and photo-count call sites' coverage was not separately verified this pass.
+
+**Runs in production.** Yes, for the procurement-documents call site. `neural_footprint_event` holds 23 `subject_id='DocumentExtractor'` rows, the last on 2026-09-11 (SQL, 2026-09-26). `cost_usd` is NULL on all 23 (see the `model-client-router` entry in [[SOFTWARE-MAP]]). The menu-OCR and photo-count sites have no production rows.
+
+**Promised vs. built.** Three independent vision call sites on the same model tier with no shared abstraction is a maintenance gap, not itself a behavioral discrepancy.
+
+**Gaps.** No eval/golden-set harness exists for extraction accuracy at any of the three call sites.
+
+*Evidence:* `apps/api-gateway/src/procurement/documents/document-extractor.service.ts:58,178`; sibling sites: `menus/parsers/scan-parser.service.ts:289`, `inventory/photo-count.service.ts:77`.
