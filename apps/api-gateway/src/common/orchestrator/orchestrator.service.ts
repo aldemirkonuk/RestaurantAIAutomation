@@ -107,6 +107,11 @@ export class OrchestratorService implements OnModuleDestroy {
     channel.publish(exchange, routingKey, Buffer.from(JSON.stringify(event)), {
       persistent: true,
       contentType: "application/json",
+      // AMQP `timestamp` is whole seconds. The flat body carries no publish time
+      // of its own, and the orchestrator will not send a vendor email from a
+      // message whose age it cannot prove (provider_conversation_agent,
+      // send_hold_for) — so an unstamped approval is held for re-approval.
+      timestamp: Math.floor(Date.now() / 1000),
     });
   }
 

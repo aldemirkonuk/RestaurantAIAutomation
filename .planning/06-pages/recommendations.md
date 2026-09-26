@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-19
+updated: 2026-09-21
 links: ["[[PAGE-CONTRACT]]", "[[orders]]", "[[promotions]]", "[[reports]]", "[[providers]]", "[[inventory]]", "[[team]]", "[[recommendations-catalog]]"]
 ---
 
@@ -386,7 +386,18 @@ back as a sentence ("Silenced: this one finding about wednesday on Wed 2 Sep. Th
 reads every other day.") beside **Return it to the book**. The `d` key now *opens* the sheet
 rather than dismissing — a keystroke cannot choose a scope on the manager's behalf. Bulk
 dismiss cannot ask per entry, so it takes the widest scope and says so on the control itself:
-**"Dismiss them — whole rules"**.
+**"Dismiss them — whole rules"**. [**2026-09-21, ADR 0191 round 2 (founder):** the whole-rule
+scope, the bulk bar's "whole rules" and "Return it to the book" on a whole-rule dismissal
+are owner/manager only (403 from the gateway, audited in `system_audit_log`); staff see them
+dark or absent, with why. Every dismissal carries one of four reason labels — the bulk bar
+now asks instead of stamping `not_now`. Snooze and rule-off write the finding's own key, and
+one shared per-item state (`item-state.ts`) decides what every surface hides.] [**2026-09-21,
+ADR 0191 round 3 (founder):** a rule that names no subject and no period is keyed by its
+firing ("Each firing is one card"), so staff dismiss or finish this firing and it returns
+when the rule fires again; the dismiss list keeps four choices but "Already handled" records
+done and "Not right now" hides it from you alone; Snooze offers "Just for you" to everyone
+and "For everyone" to owners and managers; every house act is kept in
+`recommendation_action_history` ("Keep every label").]
 
 **Verified, not asserted — and which endpoints.** Against the running local gateway on :4000,
 for `550e8400-…`, **both** readers of this generator were checked, because the first attempt at
@@ -853,7 +864,51 @@ settled:**
   the only shape ADR 0112 allows, and not a founder choice.
 - **The catalogue's read-only-ness** is a standing open fork, not a build
   default: `.planning/handoff/PROGRESS.md` §6 still lists "Recommendations
-  catalog: is it actionable?" among the forks not yet asked.
+  catalog: is it actionable?" among the forks not yet asked. [**CLOSED
+  2026-09-21 by the founder, recorded in [[0191-the-recommendations-catalogue-is-actionable-not-a-read-only-leaf]]:**
+  actionable, not a read-only leaf. Each type can be turned on or off for the
+  house (owner/manager, audited in `system_audit_log`) and opened to its
+  live recommendations with the feed's own one-tap acts (Pin/Dismiss). The
+  owner/manager gate holds on the catalogue's door only — the feed's "whole
+  rule" dismiss and the Dismissed tab's Restore still write the same row for
+  any member; ADR 0191 "The gate holds on one door" leaves that to the
+  founder. Both writes reuse the SAME
+  `recommendation_actions` store NEW-434 already keys `insight:<candidate_key>`
+  — no new table, no migration. Built in `CatalogView.tsx`/`rec-catalog.ts`
+  (lane `recs-catalogue`, `wt-recs-cat`) and `analytics.controller.ts`'s new
+  `PUT insight-catalog/types/:restaurantId/:candidateKey/toggle`.] [**Both
+  follow-up forks CLOSED 2026-09-21** (ADR 0191 "Round 2"): the gate and the
+  audit now hold on every door, and the live-items panel offers Snooze, Done
+  and Dismiss-with-a-reason, because one shared per-item state is now read by
+  the feed, the catalogue, Reports (live and stored) and the rails.] [**Round
+  3, 2026-09-21** (ADR 0191 "Round 3"): the live-items panel's Snooze asks
+  who it is for (staff: themselves alone), its dismiss list records "Already
+  handled" as done and "Not right now" as your own snooze, and it says how
+  many of the type are hidden just for you.] [**Round 4, 2026-09-21** (ADR
+  0191 "Round 4", the founder: "Take all seven"): staff return only their own
+  acts. The Dismissed, Done and Snoozed leaves darken "Return it to the book"
+  on anyone else's and say why (`undoableByYou`, `not_your_act`). The gateway
+  refuses every house act from the platform `admin`. The page no longer
+  offers them snooze for everyone, the whole-rule acts or the catalogue's
+  on/off. It still offers them a card's Done and Dismiss: the gateway refuses
+  these, and the page puts the card back with the gateway's sentence. The
+  history keeps a name two years.] [**Round 5, 2026-09-22** (ADR 0191 "Round
+  5", the founder: three "Recommended" picks): a pin, a rating or an
+  assignment is now gated the same way an act is — the platform admin makes
+  none at all; staff change or clear only their own note; owners and
+  managers change or clear anyone's; every note change is audited
+  (`system_audit_log`, `recommendation_note_changed`, each field as
+  `{ from, to, from_by }` — what it replaced and whose note it was). A
+  refused note says the gateway's own sentence and is put back as it was —
+  on the legacy page too, which until the last call said the whole-house
+  dismiss sentence for a refused pin and toasted a refused assignment as
+  done. No page yet darkens a note control ahead of time the way it
+  darkens Restore. `recommendation_actions.created_by`
+  is now cleared on the same two-year sweep as the history's names;
+  `system_audit_log` keeps every name, "an audit trail that forgets who
+  acted is no longer an audit trail" (the founder, verbatim). Acts made
+  before the history existed still name nobody and are still owner/manager
+  only to return — kept as built, on the founder's word.]
 
 **The handoff to sketch 122 (lane `recs-sketch`).** The founder's sketch-120
 feedback (`founder-sketch-decisions-106-115.md:146-151`, batch 3
