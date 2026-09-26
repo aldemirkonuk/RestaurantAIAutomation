@@ -14,8 +14,12 @@
  *  - a consensus never crosses a comparison class OR a currency — a mixed
  *    class draws one ladder lane per currency with its figures suppressed,
  *    never a blend (`laneGroups`, fork 1 and fork 2);
- *  - every price opens to its source document or conversation on demand,
- *    never pre-fetched (`SightingSheet`, `useSightingIdentity`);
+ *  - C's paper trail on every record, no extra click (`PaperTrail`) — fork 6's
+ *    load behaviour as the founder answered it 2026-09-18: "Always on the
+ *    record, loaded fresh", so the compare read that feeds it is never
+ *    served from cache (`useCompare`'s `gcTime: 0` / `staleTime: 0`); a
+ *    sighting's identity panel still reads only when its sheet opens
+ *    (`SightingSheet`, `useSightingIdentity`);
  *  - the house's own paper is badged landed/agreed for free, and links to
  *    the order and its receipt (`paperBadge`/`orderIdOf`, fork 6b);
  *  - currency is required with no default on a hand-typed price (fork 2,
@@ -64,6 +68,7 @@ import {
   wineLabel,
 } from './vp-format'
 import { classSortKey, laneGroups, paperBadge } from './vp-register'
+import { PaperTrail } from './PaperTrail'
 import { PriceHistoryChart } from './PriceHistoryChart'
 import { RecordPriceForm } from './RecordPriceForm'
 import { SightingSheet } from './SightingSheet'
@@ -623,7 +628,8 @@ function ComparisonPanel({ productRef, wineId }: { productRef: ProductRef; wineI
 
       {buckets.length === 0 && (
         <p style={{ fontFamily: SANS, fontSize: 13, color: 'var(--ink-4, #665D50)' }}>
-          No usable price observations for this bottle yet. Add one below, or wait for the next sighting.
+          No price has been seen for this bottle in the last {data.windowDays} days — nothing to rank yet. Record one
+          with “Add a price you were quoted”, or it will appear here when a quote, receipt or public listing is read.
         </p>
       )}
 
@@ -661,6 +667,10 @@ function ComparisonPanel({ productRef, wineId }: { productRef: ProductRef; wineI
           </section>
         )
       })}
+
+      {data.observations.length > 0 && (
+        <PaperTrail rows={data.observations} windowDays={data.windowDays} complete={data.complete} onOpen={setOpenRow} />
+      )}
 
       {openRow && (
         <SightingSheet
@@ -748,7 +758,17 @@ function BelowAverageBox({ role, onPick }: { role: 'owner' | 'manager' | 'staff'
       </p>
     )
   }
-  if (!q.data || q.data.items.length === 0) return null
+  if (!q.data) return null
+  if (q.data.items.length === 0) {
+    // ADR 0020: an empty answer is said, not left as a blank space the reader
+    // cannot tell from "still loading" or "not built".
+    return (
+      <p style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>
+        Newest below the earlier mean: none in the {q.data.window.days} day window —{' '}
+        {countWords(q.data.scanned.observations, 'sighting')} scanned, no bottle's newest price sits below its earlier mean.
+      </p>
+    )
+  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-4, #665D50)' }}>

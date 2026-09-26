@@ -1,14 +1,15 @@
 /**
- * The sighting sheet — one row on the register, opened on demand.
+ * The sighting sheet — one row on the register, in full.
  *
- * ADR 0160 §112: the detail behind a rung is "opened after real interest and
- * is NOT pre-fetched or eagerly cached." This component only exists in the
- * tree while a row is open (`VendorPricesNext` mounts it conditionally), and
- * its identity panel fetches nothing until then either
+ * ADR 0160 §112. The row's paper is already on the record without a click
+ * (`PaperTrail`, fork 6: "Always on the record, loaded fresh"); this sheet
+ * adds what the trail line has no room for — the verdict, the bottle
+ * identity, and that identity's decisions and pending candidate. It only
+ * exists in the tree while a row is open (`VendorPricesNext` mounts it
+ * conditionally), and its identity panel fetches nothing until then
  * (`useSightingIdentity`'s `enabled`) — closing the sheet drops the query
- * (`gcTime: 0` on both reads), reopening it fetches fresh rather than
- * trusting a stale cache the founder explicitly ruled out caching in the
- * first place.
+ * (`gcTime: 0` on both reads), reopening it fetches fresh, never from a
+ * cache the founder ruled out.
  *
  * ADR 0149 answer 17, the founder in session: "A new nullable
  * deciding-house column; the person's name and undo only inside that

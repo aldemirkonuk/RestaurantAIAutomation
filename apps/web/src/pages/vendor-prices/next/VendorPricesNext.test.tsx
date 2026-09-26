@@ -16,6 +16,7 @@ const mock = vi.hoisted(() => ({
   search: { results: [], isLoading: false, isError: false },
   role: 'owner' as 'owner' | 'manager' | 'staff' | null,
   houseCandidates: { data: { items: [] as Array<{ id: string }>, count: 0, limit: 20, complete: true }, isLoading: false, isError: false },
+  belowAverage: null as null | Record<string, unknown>,
   masthead: null as null | {
     identity: Record<string, unknown>
     priceIndex: Record<string, unknown>
@@ -47,7 +48,7 @@ vi.mock('./useVendorPricesNextData', () => ({
   useRecordPrice: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),
   useProviderUsualCurrency: () => ({ data: undefined, isLoading: false }),
   useMastheadStatus: () => mock.masthead ?? IDLE_MASTHEAD,
-  useBelowAverage: () => ({ ...IDLE_STATUS_QUERY, isLoading: true }),
+  useBelowAverage: () => mock.belowAverage ?? { ...IDLE_STATUS_QUERY, isLoading: true },
   useHouseIdentityCandidates: () => mock.houseCandidates,
 }))
 
@@ -126,7 +127,12 @@ beforeEach(() => {
   mock.role = 'owner'
   mock.houseCandidates = { data: { items: [], count: 0, limit: 20, complete: true }, isLoading: false, isError: false }
   mock.masthead = null
+  mock.belowAverage = null
 })
+
+function compareWith(data: Record<string, unknown>) {
+  return { data, isLoading: false, isError: false, error: null, refetch: vi.fn(), isFetching: false }
+}
 
 describe('VendorPricesNext', () => {
   it('prompts for a wine when none is picked', () => {
@@ -400,5 +406,84 @@ describe('VendorPricesNext', () => {
     expect(details).not.toBeNull()
     expect(details).not.toHaveAttribute('open')
     expect(details!.querySelector('summary')).toHaveTextContent('How this was calculated')
+  })
+
+  // ADR 0160 §112 fork 6, answered 2026-09-18: "Always on the record, loaded
+  // fresh" — the trail is on the record the moment it opens, no click.
+  it('shows the paper trail on the record without a click', () => {
+    mock.ref = { kind: 'wine', id: 'wine-1' }
+    mock.compare = compareWith({
+      productName: 'Chablis 1er Cru',
+      consensus: { ...emptyConsensus },
+      consensusByClass: { quoted: { ...emptyConsensus, consensusPrice: 30, admittedCount: 1 } },
+      trends: [],
+      trendsByClass: { quoted: [] },
+      observations: [obs({ id: 'a', sourceType: 'invoice', sourceRef: 'receipt_verified:ord-7' })],
+      complete: true,
+      windowDays: 365,
+    })
+    render(<VendorPricesNext />)
+    expect(screen.getByRole('heading', { name: 'Paper trail' })).toBeInTheDocument()
+    expect(screen.getAllByTestId('vp-trail-line')).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'Open the order and its receipt' })).toHaveAttribute('href', '/receiving/ord-7/door')
+  })
+
+  it('says an empty record is empty and where a price would come from', () => {
+    mock.ref = { kind: 'wine', id: 'wine-1' }
+    mock.compare = compareWith({
+      productName: 'Chablis 1er Cru',
+      consensus: { ...emptyConsensus },
+      consensusByClass: {},
+      trends: [],
+      trendsByClass: {},
+      observations: [],
+      complete: true,
+      windowDays: 365,
+    })
+    render(<VendorPricesNext />)
+    expect(screen.getByText(/No price has been seen for this bottle in the last 365 days/)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Paper trail' })).not.toBeInTheDocument()
+  })
+
+  // The price-movement colour pair is an open founder question (ADR 0160
+  // :600-603). Until he picks one, a rise and a fall are drawn in the same
+  // ink — the sign and the words carry the direction, no colour judges it.
+  it('draws a rise and a fall in the same ink until a colour pair is chosen', () => {
+    mock.ref = { kind: 'wine', id: 'wine-1' }
+    mock.compare = compareWith({
+      productName: 'Chablis 1er Cru',
+      consensus: { ...emptyConsensus },
+      consensusByClass: { quoted: { ...emptyConsensus, consensusPrice: 30, admittedCount: 6 } },
+      trends: [],
+      trendsByClass: {
+        quoted: [
+          { windowDays: 7, pctChange: 12, note: 'up', currentCount: 6 },
+          { windowDays: 30, pctChange: -12, note: 'down', currentCount: 6 },
+        ],
+      },
+      observations: [obs({ id: 'a' })],
+      complete: true,
+      windowDays: 365,
+    })
+    render(<VendorPricesNext />)
+    const up = screen.getByRole('group', { name: /^7 day trend/ })
+    const down = screen.getByRole('group', { name: /^30 day trend/ })
+    const upInk = (up.lastElementChild as HTMLElement).style.color
+    const downInk = (down.lastElementChild as HTMLElement).style.color
+    // Not vacuous: both carry a real colour value, and it is the same one.
+    expect(upInk).not.toBe('')
+    expect(upInk).toBe(downInk)
+    expect(up.style.background).toBe(down.style.background)
+  })
+
+  it('says the below-average box found nothing rather than leaving a blank', () => {
+    mock.belowAverage = {
+      data: { items: [], window: { days: 90 }, scanned: { observations: 14 } },
+      isLoading: false,
+      isError: false,
+      error: null,
+    }
+    render(<VendorPricesNext />)
+    expect(screen.getByText(/Newest below the earlier mean: none in the 90 day window/)).toBeInTheDocument()
   })
 })

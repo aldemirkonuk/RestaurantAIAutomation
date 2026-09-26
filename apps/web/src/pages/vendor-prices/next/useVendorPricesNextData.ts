@@ -1,17 +1,18 @@
 /**
  * VendorPricesNext data — live data through the real endpoints only.
  *
- * The founder's rule for this page (ADR 0160 §112, the sketch's design
- * question): the detail behind a rung — the sighting sheet, its identity
- * decisions, its pending candidate — "opens on demand after real interest
- * and is NOT pre-fetched or eagerly cached." Concretely: `useCompare` runs as
- * soon as a wine is picked (the ladder IS the page), but
- * `useSightingIdentity` only runs once a sheet is actually open for a row
- * that names an identity — `enabled` is threaded through for exactly that —
- * and `gcTime: 0` / `staleTime: 0` on those two queries mean closing the
- * sheet actually drops the query rather than leaving it warm in the cache
- * for the next row that happens to share an identity (review finding,
- * 2026-09-18: reopening showed a stale decision within 20ms of closing).
+ * The founder's rule for this page (ADR 0160 §112, fork 6, answered
+ * 2026-09-18 via AskUserQuestion — "Always on the record, loaded fresh"):
+ * the paper trail is shown on every price record without extra clicks, and
+ * read fresh each time the record opens, never served from a cache.
+ * Concretely: `useCompare` runs as soon as a wine is picked (the ladder and
+ * its trail ARE the record) with `gcTime: 0` / `staleTime: 0`, so reopening
+ * a record re-reads it instead of painting the previous copy first.
+ * `useSightingIdentity` — a sighting's identity decisions and pending
+ * candidate, which are not the trail — still only runs once a sheet is open
+ * for a row that names an identity, also with `gcTime: 0` / `staleTime: 0`
+ * (review finding, 2026-09-18: reopening showed a stale decision within 20ms
+ * of closing).
  *
  * Every query key here carries `activeRestaurantId`. Switching the active
  * house re-issues the token without remounting this page
@@ -124,11 +125,12 @@ export function useWineSearch(query: string) {
   }
 }
 
-/** The ladder itself. A failed read is an error, never an empty comparison —
- * `retry` skips a 4xx (a bad id will say the same thing again) but a 5xx or
- * a dropped connection gets one retry before the page says so. Keyed by the
- * active house so a switch never serves the previous house's ladder from
- * cache. */
+/** The ladder itself, and the paper trail drawn from the same read. A
+ * failed read is an error, never an empty comparison — `retry` skips a 4xx
+ * (a bad id will say the same thing again) but a 5xx or a dropped connection
+ * gets one retry before the page says so. Keyed by the active house so a
+ * switch never serves the previous house's ladder from cache, and never
+ * cached at all (`gcTime: 0`, `staleTime: 0`): fork 6, "loaded fresh". */
 export function useCompare(ref: ProductRef | null) {
   const { activeRestaurantId } = useAuth()
   const enabled = !!ref && ref.kind !== 'identity'
@@ -139,6 +141,8 @@ export function useCompare(ref: ProductRef | null) {
         ref?.kind === 'signature' ? { signatureHash: ref.id } : { masterWineId: (ref as { id: string }).id },
       ),
     enabled,
+    gcTime: 0,
+    staleTime: 0,
     retry: retryUnlessClientError,
   })
 }
