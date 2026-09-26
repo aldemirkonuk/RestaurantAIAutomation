@@ -94,6 +94,21 @@ describe('mudavym.com security headers (ADR 0185)', () => {
     }
   });
 
+  it.each([...PAGE_SAMPLES, ...TOKEN_SAMPLES])('the second Vercel project (repo-root vercel.json, a full SPA build on its own public host) carries the same set: %s', (path) => {
+    const root: { headers: HeaderRule[] } = JSON.parse(readFileSync(join(WEB, '..', '..', 'vercel.json'), 'utf8'));
+    const values = (key: string) =>
+      root.headers
+        .filter((rule) => !rule.has?.length && new RegExp(`^${rule.source}$`).test(path))
+        .flatMap((rule) => rule.headers.filter((h) => h.key.toLowerCase() === key.toLowerCase()).map((h) => h.value));
+    expect(values('X-Content-Type-Options')).toEqual(['nosniff']);
+    expect(values('X-Frame-Options')).toEqual(['SAMEORIGIN']);
+    expect(values('Strict-Transport-Security')).toEqual(['max-age=63072000; includeSubDomains']);
+    expect(values('Cross-Origin-Opener-Policy')).toEqual(['same-origin-allow-popups']);
+    expect(values('Permissions-Policy')).toHaveLength(1);
+    const isToken = TOKEN_SAMPLES.includes(path);
+    expect(values('Referrer-Policy')).toEqual([isToken ? 'no-referrer' : 'strict-origin-when-cross-origin']);
+  });
+
   it('HSTS is not preloaded: preload is effectively irreversible and binds every future subdomain', () => {
     for (const rule of config.headers) {
       for (const h of rule.headers) {
