@@ -137,8 +137,11 @@ export interface UploadedDocument {
  */
 export interface LineHistoryEntry {
   id: string
-  /** door_count · door_refused · desk_verified · other (an unworded stage, shown by `stage`). */
-  kind: 'door_count' | 'door_refused' | 'desk_verified' | 'other'
+  /**
+   * door_count · door_refused · desk_verified · desk_confirmed (the one-tap "Counts match",
+   * ADR 0192 fifth amendment) · other (an unworded stage, shown by `stage`).
+   */
+  kind: 'door_count' | 'door_refused' | 'desk_verified' | 'desk_confirmed' | 'other'
   stage: string
   occurredAt: string
   outcome: string | null

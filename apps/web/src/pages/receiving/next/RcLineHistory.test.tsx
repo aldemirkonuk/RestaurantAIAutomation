@@ -191,6 +191,25 @@ describe('entryWords — every entry says one true sentence', () => {
     expect(entryWords(desk)).toMatch(/No invoice was verified\.$/)
   })
 
+  it("a one-tap 'Counts match' says it confirmed, with no invoice or refusal stated (ADR 0192, fifth amendment)", () => {
+    const tap = entry(1, {
+      kind: 'desk_confirmed',
+      stage: 'reconciled',
+      outcome: 'accepted',
+      countedQtyInCountedUom: 58,
+      countedUom: 'bottle',
+      countedBottles: 58,
+      rejectedBottles: 0,
+      invoiceBottles: null,
+    })
+    expect(entryWords(tap)).toBe(
+      'The desk confirmed the counts match: 58 bottles on the shelf. No invoice or refusal was stated.',
+    )
+    expect(entryWords({ ...tap, countedQtyInCountedUom: null, countedBottles: null })).toBe(
+      'The desk confirmed the counts match: no count recorded. No invoice or refusal was stated.',
+    )
+  })
+
   it('an unworded stage is named by its own stage, never hidden', () => {
     expect(entryWords(entry(1, { kind: 'other', stage: 'bottle_count' }))).toBe(
       'Recorded as "bottle_count": 2 cases (24 bottles).',
@@ -307,6 +326,19 @@ describe("a line's history, ten at a time", () => {
   it("names a desk check that left no entry, once every page is read", async () => {
     serve([queueItem()], async () =>
       page([entry(1)], { matchVerifiedAt: '2026-09-20T09:00:00.000Z' }),
+    )
+    harness()
+    const sheet = await openHistory()
+    expect(await within(sheet).findByTestId('line-history-unrecorded-check')).toHaveTextContent(
+      /before a check was kept as an entry/,
+    )
+  })
+
+  it('a one-tap confirmation does not stand in for an older full check that left no entry', async () => {
+    serve([queueItem()], async () =>
+      page([entry(2, { kind: 'desk_confirmed', stage: 'reconciled', outcome: 'accepted' }), entry(1)], {
+        matchVerifiedAt: '2026-09-20T09:00:00.000Z',
+      }),
     )
     harness()
     const sheet = await openHistory()

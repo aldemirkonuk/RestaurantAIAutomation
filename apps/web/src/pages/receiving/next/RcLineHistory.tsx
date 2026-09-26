@@ -125,6 +125,8 @@ export function RcLineHistory({
   const shown = entries.length;
   const olderCount =
     h.total !== null ? Math.min(10, Math.max(0, h.total - shown)) : 10;
+  // Full checks only: `matchVerifiedAt` is set by a full verification, never by the one-tap
+  // "Counts match" (ADR 0192 fifth amendment), so a confirmation entry cannot stand in for it.
   const deskEntryShown = entries.some((e) => e.kind === 'desk_verified');
 
   return (

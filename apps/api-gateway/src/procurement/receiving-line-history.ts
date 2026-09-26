@@ -8,13 +8,17 @@
  * The record is `procurement_receipt_events`, one row per thing that happened
  * to the line: the door's count (`case_count`), a refusal at the door (the same
  * stage with `outcome = 'refused'`), and — since #436 (ADR 0192 amendment) —
- * the desk's verification (`reconciled`, with the invoice's bottles). Nothing
+ * the desk's verification (`reconciled`, with the invoice's bottles) or its
+ * one-tap confirmation (`reconciled`, `outcome = 'accepted'`, ADR 0192 fifth
+ * amendment). Nothing
  * here is a second copy of any of it: these helpers only page and word the
  * rows the door and the desk already wrote.
  *
  * Kept apart from `receiving.service.ts` so the cursor and the row shape can be
  * tested without a database.
  */
+
+import { isCountsConfirmation } from "./shelf-received";
 
 /** The founder's page size (Q7 Approach 1, 2026-09-22): ten entries per page. */
 export const LINE_HISTORY_PAGE = 10;
@@ -74,6 +78,12 @@ export type LineHistoryKind =
   | "door_refused"
   /** The desk verified the line against its paperwork (#436, ADR 0192). */
   | "desk_verified"
+  /**
+   * The desk confirmed the counts match with one tap, stating no invoice and no
+   * refusal (ADR 0192, fifth amendment: a `reconciled` row marked
+   * `outcome = 'accepted'`). Its own kind so it never reads as a full check.
+   */
+  | "desk_confirmed"
   /** A stage the desk does not word yet (`signed_at_door`, `bottle_count`): shown by its own name. */
   | "other";
 
@@ -114,7 +124,10 @@ function s(v: unknown): string | null {
 }
 
 export function kindOf(stage: unknown, outcome: unknown): LineHistoryKind {
-  if (stage === "reconciled") return "desk_verified";
+  if (stage === "reconciled")
+    return isCountsConfirmation({ stage, outcome: typeof outcome === "string" ? outcome : null })
+      ? "desk_confirmed"
+      : "desk_verified";
   if (stage === "case_count") return outcome === "refused" ? "door_refused" : "door_count";
   return "other";
 }

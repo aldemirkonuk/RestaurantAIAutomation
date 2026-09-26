@@ -815,6 +815,11 @@ now verifies and writes its event — the founder's round-5 answer *"Yes, in bas
 fourth amendment): the back-derived count that used to be refused as a fraction of a case is
 re-read in bottles. What still writes no entry is a verification that carries no count at all,
 the mobile one-tap "Counts match" (`{ adjustments: [] }`); stated in that amendment as a fork.]**
+**[2026-09-26, W4-receiving: closed. The founder answered *"Yes, keep last invoice
+(Recommended)"* (ADR 0192 fifth amendment): the one-tap now writes a `reconciled` entry marked
+`outcome = 'accepted'` with the ledger's bottles and no invoice, and the desk reads the invoice and
+its refusal from the latest entry that states them. The line history words it as its own kind,
+`desk_confirmed` ("The desk confirmed the counts match: …"), so it never reads as a full check.]**
 
 **Does the door record satisfy §107's "the verdict history stays append-only" (ADR 0149 row 23)?
 By convention only, not by enforcement.** Measured on this branch (`main` + #436):
@@ -869,6 +874,9 @@ answered-before-empty rule turns at least one test red.
   2026-09-21, not yet on `main`): does ADR 0104 D13 bind `/receiving` to the canonical `deliveries`
   domain? The desk still keys on `procurement_orders`. With no append-only table keyed to it, the
   answer is no longer irreversible. Rows 126 and 127 (resolved by the strip) are also only on the
-  lane ref; the three rows are handed to the register lane.
+  lane ref; the three rows are handed to the register lane. **[answered 2026-09-26, founder, round
+  6: *"Stay on orders now (Recommended)"* — the desk stays keyed on `procurement_orders`; moving to
+  `deliveries` is its own later migration, when deliveries with no order need handling. Recorded in
+  ADR 0160 §107.]**
 - **Browser check** of the sheet at 390 and 1440 against a real house was not run (no local
   gateway with receipt data in this session).

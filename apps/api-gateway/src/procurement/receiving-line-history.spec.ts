@@ -159,6 +159,13 @@ describe("the history cursor", () => {
     expect(kindOf("reconciled", null)).toBe("desk_verified");
     expect(kindOf("bottle_count", null)).toBe("other");
   });
+
+  it("names the one-tap confirmation apart from a full check (ADR 0192, fifth amendment)", () => {
+    expect(kindOf("reconciled", "accepted")).toBe("desk_confirmed");
+    // A full verification carries no outcome; the door's own 'accepted' is a door count.
+    expect(kindOf("reconciled", null)).toBe("desk_verified");
+    expect(kindOf("case_count", "accepted")).toBe("door_count");
+  });
 });
 
 describe("ReceivingService.lineHistory", () => {
@@ -271,6 +278,44 @@ describe("ReceivingService.lineHistory", () => {
       refusalReason: "broken_case",
       rejectedBottles: 24,
     });
+  });
+
+  it("words a one-tap 'Counts match' as a confirmation with no invoice (ADR 0192, fifth amendment)", async () => {
+    // Founder, 2026-09-26, round 6: "Yes, keep last invoice (Recommended) — It
+    // writes a history line with the counted bottles."
+    const { db } = fakeDb(
+      tables([
+        event(1, {
+          stage: "reconciled",
+          outcome: null,
+          counted_qty: 58,
+          counted_uom: "bottle",
+          counted_qty_bottles: 58,
+          rejected_qty_bottles: 2,
+          invoice_qty_bottles: 60,
+          received_by: "user-desk",
+        }),
+        event(2, {
+          stage: "reconciled",
+          outcome: "accepted",
+          counted_qty: 58,
+          counted_uom: "bottle",
+          counted_qty_bottles: 58,
+          rejected_qty_bottles: 0,
+          invoice_qty_bottles: null,
+          received_by: "user-desk",
+        }),
+      ]),
+    );
+    const page = await new ReceivingService(db).lineHistory(REST, ORDER, null);
+    expect(page.entries[0]).toMatchObject({
+      kind: "desk_confirmed",
+      countedBottles: 58,
+      invoiceBottles: null,
+      outcome: "accepted",
+    });
+    // The earlier full check is still its own entry, with its invoice.
+    expect(page.entries[1]).toMatchObject({ kind: "desk_verified", invoiceBottles: 60 });
   });
 
   it("a failed read of the events is an error, never an empty history", async () => {

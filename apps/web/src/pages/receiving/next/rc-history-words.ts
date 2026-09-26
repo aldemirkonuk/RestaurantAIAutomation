@@ -74,6 +74,12 @@ export function entryWords(e: LineHistoryEntry): string {
         e.invoiceBottles !== null ? ` The invoice billed ${bottles(e.invoiceBottles)}.` : ' No invoice was verified.';
       return `The desk verified the line: ${parts.join(', ')}.${invoice}`;
     }
+    case 'desk_confirmed':
+      // The one-tap "Counts match" (ADR 0192, fifth amendment): it states no invoice and no
+      // refusal, so it says so, and an earlier check's invoice stays on that check's entry.
+      return `The desk confirmed the counts match: ${
+        e.countedBottles !== null ? `${bottles(e.countedBottles)} on the shelf` : 'no count recorded'
+      }. No invoice or refusal was stated.`;
     default:
       return `Recorded as "${e.stage || 'no stage'}"${got ? `: ${got}` : ''}.`;
   }
