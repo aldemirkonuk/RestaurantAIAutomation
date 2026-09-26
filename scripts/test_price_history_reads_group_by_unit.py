@@ -12,6 +12,7 @@ the guard fails and names it. Nothing is ever planted into the worktree.
 from __future__ import annotations
 
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -307,12 +308,24 @@ def test_the_self_test_passes():
     assert self_test() == 0
 
 
-def test_the_shipped_tree_passes_with_zero_readers():
+def test_the_shipped_tree_passes_and_every_reader_states_a_unit():
+    """The real tree passes, and the count line says every reader is compliant.
+
+    [2026-09-25, feat/promotions-mudavym: this test used to pin "0 readers
+    today". The /promotions grade (apps/api-gateway/src/promotions/
+    promotions.service.ts) is the first real reader of price_history and it
+    states its unit, so the honest pin is "N/N state a unit" -- never a
+    reader that does not.]
+    """
     proc = subprocess.run(
         [sys.executable, str(GUARD)], cwd=REPO_ROOT, capture_output=True, text=True
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    assert "0 readers today" in proc.stdout, proc.stdout
+    if "0 readers today" in proc.stdout:
+        return
+    m = re.search(r"\((\d+)/(\d+) state a unit;", proc.stdout)
+    assert m, proc.stdout
+    assert m.group(1) == m.group(2) and int(m.group(2)) > 0, proc.stdout
 
 
 def test_a_planted_read_in_a_copy_of_the_tree_fails(tmp_path):
