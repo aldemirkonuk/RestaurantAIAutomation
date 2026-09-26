@@ -27,12 +27,18 @@ vi.mock('../command/CommandProvider', () => ({
   CommandProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 // The Ask panel is the shell's own (it docks in the counter's slot), so it is
-// mounted for real; only its network is mocked.
+// mounted for real; only its network is mocked. `useUserPreferences` is
+// react-query underneath and this file has no `QueryClientProvider` — mocked
+// to a fixed no-preference-yet shape (this file is about docking, not the
+// panel's remembered mode; `AskPanel.test.tsx` covers that).
 vi.mock('../../services/api/askAi', async (orig) => ({
   ...(await orig<typeof import('../../services/api/askAi')>()),
   listOpenProposals: vi.fn(async () => []),
   listCandidates: vi.fn(async () => null),
   proposeAction: vi.fn(),
+}));
+vi.mock('../../hooks/useUserPreferences', () => ({
+  useUserPreferences: () => ({ preferences: {}, isPlaceholderData: false, updatePreferences: vi.fn() }),
 }));
 vi.mock('../../guidance/GuidanceProvider', () => ({
   GuidanceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,

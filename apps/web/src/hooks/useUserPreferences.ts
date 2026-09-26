@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '../lib/query-keys'
 import { apiClient } from '../services/api/client'
 import { useAuthStore } from '../stores'
+import type { AskMode } from '../components/askai/ask-mode'
 
 export interface UserPreferences {
   providerFavorites?: string[]
@@ -79,6 +80,20 @@ export interface UserPreferences {
    * can go out of step with the account.
    */
   ground?: 'paper' | 'charcoal'
+  /**
+   * The Ask panel's LAST USED mode — founder, 2026-09-26 round 7 (ADR 0145,
+   * "the Ask panel opens in the person's last used mode; a person's first
+   * open is 'Ask the books'"). Absent means either they have never chosen a
+   * mode, or every open so far has run in `'ask'` (the default), which is
+   * never written back — see `AskPanel.tsx`'s hydrate/persist effects.
+   *
+   * Stored here, in the account's JSONB blob, for the same reason `ground`
+   * and `mapDefaultScope` above are: it should follow the person to another
+   * browser and device, which is what "last used" implies, not just this
+   * device (`localStorage` was the fallback CLAUDE.md's task allowed only in
+   * the absence of a server-side store; this one already exists).
+   */
+  askLastMode?: AskMode
   [key: string]: unknown
 }
 

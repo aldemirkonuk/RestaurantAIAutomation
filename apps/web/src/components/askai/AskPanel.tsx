@@ -21,6 +21,16 @@
  * there — a folio that matched no reading, a proposal the proposer declined.
  * Each offer is a click.
  *
+ * WHICH MODE IT OPENS ON. The person's LAST USED mode (ADR 0145, founder,
+ * 2026-09-26 round 7: "the Ask panel opens in the person's last used mode; a
+ * person's first open is 'Ask the books'"). Kept as `askLastMode` in the
+ * account's `user_preferences` row (`useUserPreferences`) — the same
+ * server-side store `ground` already rides in, not a device-only
+ * `localStorage` key, so the choice follows the person to another device. A
+ * mode is written back only once it differs from what the account already
+ * holds, so the ordinary case (nobody has ever switched away from Ask) never
+ * spends a write. See the `hydratedModeRef` / `baselineModeRef` block below.
+ *
  * WHERE IT SITS (ADR 0145, 2026-09-21 layout and 2026-09-25 fork 3):
  *   docked   at ≥ ~1280 px, in the counter's slot beside a live page; the
  *            counter folds to its counted strip. Not modal: no scrim, no
@@ -39,6 +49,7 @@ import { useCallback, useContext, useEffect, useRef, useState, type KeyboardEven
 import { Link, useLocation } from 'react-router-dom'
 import { AlertCircle, CornerDownLeft, Loader2, MapPin, Sparkles } from 'lucide-react'
 import { AuthContext } from '../../contexts/AuthContext'
+import { useUserPreferences } from '../../hooks/useUserPreferences'
 import {
   type AskAiCandidates,
   type AskAiProposal,
@@ -175,6 +186,33 @@ function AskPanelBody({
   const [mode, setMode] = useState<AskMode>('ask')
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // Which mode this open starts on: the person's LAST USED mode, never a
+  // per-device guess (ADR 0145, founder round 7). `askLastMode` lives on the
+  // account (`useUserPreferences`), so it follows the person to another
+  // device the same way `ground` already does.
+  const { preferences, isPlaceholderData: prefsUnknown, updatePreferences } = useUserPreferences()
+  /** Set once this open has read (or given up reading) the account's mode. */
+  const [hydratedMode, setHydratedMode] = useState(false)
+  /** The mode this open started on (or last wrote back) — writes fire only
+   *  when `mode` has moved past this, so the ordinary all-Ask session never
+   *  spends one. */
+  const baselineModeRef = useRef<AskMode>('ask')
+
+  useEffect(() => {
+    if (hydratedMode || prefsUnknown) return
+    const stored: AskMode = preferences.askLastMode === 'propose' ? 'propose' : 'ask'
+    baselineModeRef.current = stored
+    if (stored !== mode) setMode(stored)
+    setHydratedMode(true)
+  }, [hydratedMode, prefsUnknown, preferences.askLastMode, mode])
+
+  useEffect(() => {
+    if (!hydratedMode) return
+    if (mode === baselineModeRef.current) return
+    baselineModeRef.current = mode
+    updatePreferences({ askLastMode: mode })
+  }, [hydratedMode, mode, updatePreferences])
 
   // Ask the books.
   const [folios, setFolios] = useState<AskFolio[]>([])

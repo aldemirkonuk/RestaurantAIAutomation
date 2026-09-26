@@ -1692,6 +1692,105 @@ Rejected, with reasons:
   at `/ask`).
 - No browser render against a live gateway: vitest and tsc only.
 
+## Amendment, 2026-09-26, round 7 -- the panel remembers its last used mode (W5-ask lane)
+
+### The founder's answer
+
+Founder item 45, recorded verbatim in
+[`founder-answers-2026-09-25-web-rebuild.md`](../../../.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-automation/memory/founder-answers-2026-09-25-web-rebuild.md)
+(round 7, 2026-09-26 morning, after Wave 4) -- the whole of item 45, quoted in
+full because nothing else is on record for it: *"/ask panel opens in the
+person's LAST USED mode; first time = Ask the books."* No rejected
+alternative is on record for this item -- unlike the round-6 and fork-3
+entries above, this one was not put to him as an A/B choice; it is recorded
+here as a plain instruction, and this amendment does not invent an option he
+never saw.
+
+### Where the choice is kept, and why
+
+The lane brief that carried this item forward set the rule: keep it per
+person (device-local `localStorage` is acceptable) *"unless a per-user
+preference store already exists server-side, then use it."* One already
+does -- `user_preferences` (`supabase/migrations/20260805000000_baseline_from_production.sql:5797`,
+`UNIQUE (user_id)` at `:8135`), reached through `GET`/`PATCH
+/users/:userId/preferences` (`apps/api-gateway/src/user-preferences/`), whose
+DTO already takes an open `Record<string, any>` merged with the caller's
+partial. `GroundChoiceSync.tsx` already rides the ADR 0169 ground choice in
+the same blob, for the same reason stated there: a choice kept in the
+account, not a device, follows the person to another browser and to the
+mobile app. So `askLastMode` is a new key in that same blob
+(`apps/web/src/hooks/useUserPreferences.ts`) -- no new table, no migration, no
+gateway change.
+
+- **Rejected: a `localStorage` key, per device.** The brief's own fallback,
+  offered only for the case with no server store. That case does not hold
+  here, so building it would be keeping a second, weaker copy of a choice the
+  account already has a home for -- the same reasoning `GroundChoiceSync.tsx`
+  gives for `ground`, reused rather than re-argued.
+- **Rejected: a dedicated column or table.** `user_preferences.preferences`
+  is exactly this shape already (a JSONB blob, deep-merged, one row per
+  person) -- a new column would be a second preferences system for no gain.
+
+### Built (this lane, PR #475, `feat/ask-page`, on top of the round-6 build)
+
+- `apps/web/src/hooks/useUserPreferences.ts`: `askLastMode?: AskMode` added to
+  `UserPreferences`.
+- `apps/web/src/components/askai/AskPanel.tsx` (`AskPanelBody`): two effects.
+  One hydrates `mode` from `preferences.askLastMode` the first time this open
+  has a real (non-placeholder) read -- a stored value other than `'propose'`
+  (including absent, or anything the app does not recognise) reads as
+  `'ask'`, never a crash. The other writes `{ askLastMode: mode }` back only
+  once `mode` has moved past the value that was hydrated (or last written),
+  so the ordinary session that never leaves Ask spends no write at all.
+- The write is `updatePreferences` (fire-and-forget), the same call
+  `TeamGoalsSettings.tsx` and the Quick Actions hook already make for a
+  preference that is a convenience, not a correctness fact -- unlike
+  `ground`, a lost write here only means the NEXT open falls back to Ask
+  rather than Propose; nothing on screen is wrong in the meantime.
+
+### Tests
+
+`apps/web/src/components/askai/AskPanel.test.tsx`, new describe block "opens
+on the person's last used mode" (6 tests): opens on Ask with no write when
+the account has never chosen; opens on Propose when that is what the account
+last held; a stored value the app does not recognise reads as Ask, not a
+crash; a still-loading (placeholder) read is not decided from, and the panel
+adopts the account's answer once it resolves; a switch to Propose (by the
+mode radio, and separately by taking the suggestion) is written back; and no
+write happens when the account already holds the mode in view. Because
+`AskPanel` now calls `useUserPreferences` (react-query) and three of this
+codebase's existing suites render it with no `QueryClientProvider` in the
+tree, the hook is mocked in those three the same way
+`GroundChoiceSync.test.tsx` already mocks it (a reconciliation test, not a
+react-query test): `AskPanel.test.tsx` itself (a controllable mock, for the
+tests above), `AskPanel.shortcut.test.tsx`, and `HouseShell.test.tsx`
+(fixed, no-preference-yet shapes -- their own suites are about the ⌘⇧K chord
+and the docking layout, not this). `shellOverlays.test.tsx` gets the same
+mock for the one case that renders `AskPanel` with no provider at all.
+
+Web vitest on the affected suites (`src/components/askai`,
+`src/components/mudavym/HouseShell.test.tsx`,
+`src/components/mudavym/shellOverlays.test.tsx`, `src/hooks`): 14 files, 168
+tests, all pass. The wider run this lane's brief asks for
+(`src/components src/pages/ask src/pages/help src/lib/mudavym src/__tests__
+src/services/api src/hooks`): 125 files, 1305 tests, all pass. Web `tsc
+--noEmit` exits 0; web eslint on the six changed files (the two source files,
+and `AskPanel.test.tsx`, `AskPanel.shortcut.test.tsx`, `HouseShell.test.tsx`,
+`shellOverlays.test.tsx`) exits 0.
+
+### Not built, not verified (say so plainly, CLAUDE.md §0.5)
+
+- No optimistic-rollback handling for a failed write, unlike `ground`'s
+  `writeError` machinery -- a shortcut, taken because the consequence of a
+  lost write here (falling back to Ask next time) does not warrant that
+  machinery's weight. If that turns out wrong, the fix is in
+  `AskPanel.tsx`'s persist effect, not a new store.
+- No browser render against a live gateway: vitest and tsc only, same
+  standing gap as the rest of this record.
+- The build task 4 fixture-test hold, and `ASK_LAUNCHED` in production,
+  remain as the round-5/round-6 amendments left them -- unrelated to this
+  item, not re-verified here.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -1710,4 +1809,6 @@ Rejected, with reasons:
 | 2026-09-25 | Aldemir (founder), round 5, relayed by the orchestrating session | Fork 3, his pick verbatim: "Lie over it (Recommended)" (rejected: "Push the page"). `ASK_LAUNCHED`, his words verbatim: "aded to the railway" (offered: "After fixture proof (Recommended)", "Right after #475 merges"). See "Amendment, 2026-09-25, round 5". |
 | 2026-09-25 | W3-ask lane (build, PR #475) | Fork 3 pinned on the built ⌘⇧K panel by vitest (mutation-tested); the Ask face stays unbuilt. Build task 4 audited: sixteen of sixteen readings have both tests; a per-source block forces all thirty (Reading, relation) pairs and ties them to the shelves (jest mutation on the receipts' linked order lines caught only by it). Guard `check_ask_readings_have_fixtures.py` added, self-test 11/11, wired through `check_ask_field_classes.py` and a CLAIMS row; on-disk mutations flip it to exit 1 (a deleted `known` row, a narrowed fixture loop) and exit 2 (spec missing), files restored byte-identically. `ASK_LAUNCHED` in production not verified. |
 | 2026-09-26 | Aldemir (founder), round 6, relayed by the orchestrating session | ⌘⇧K and the Ask panel, his pick verbatim: "One panel, two modes (Recommended)" (rejected: "Two surfaces"). See "Amendment, 2026-09-26, round 6". |
+| 2026-09-26 | Aldemir (founder), round 7, item 45, relayed by the orchestrating session | His words verbatim: "/ask panel opens in the person's LAST USED mode; first time = Ask the books." No rejected alternative on record. See "Amendment, 2026-09-26, round 7". |
+| 2026-09-26 | W5-ask lane (build, PR #475) | Built `askLastMode` in the existing `user_preferences` blob (no new store, no migration -- the lane brief's own fallback, a `localStorage` key, did not apply once this was found); hydrate/persist effects in `AskPanel.tsx`. `AskPanel.test.tsx` +6 tests; three other suites that render `AskPanel` with no `QueryClientProvider` gained the same `useUserPreferences` mock `GroundChoiceSync.test.tsx` already uses. Measured: affected suites 14 files / 168 tests, the lane's wider run 125 files / 1305 tests, web `tsc` and eslint (6 changed files) both exit 0 -- all green. Not built: optimistic rollback on a failed write (a stated shortcut; see the amendment); no browser render. |
 | 2026-09-26 | W4-ask lane (build, PR #475) | Built one Ask panel with an explicit mode switch and a suggestion that never acts; docked in the counter slot at ≥ ~1280 px, lying over below; `AskAiBar` retired; build task 14 closed. Measured in the section above and in the PR. |

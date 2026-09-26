@@ -55,6 +55,20 @@ vi.mock('../../services/api/ask', async () => {
   return { ...actual, askApi: { ...actual.askApi, submit: vi.fn(), folio: vi.fn() } }
 })
 
+// `useUserPreferences` is react-query underneath and this file renders
+// `AskPanel` with no `QueryClientProvider` in the tree — mocked the same way
+// `GroundChoiceSync.test.tsx` mocks it, so what is under test is the panel's
+// hydrate/persist logic, not react-query itself. `prefsState` is mutable so
+// each test can steer what the "account" already holds.
+const prefsState = {
+  preferences: {} as { askLastMode?: 'ask' | 'propose' },
+  isPlaceholderData: false,
+  updatePreferences: vi.fn(),
+}
+vi.mock('../../hooks/useUserPreferences', () => ({
+  useUserPreferences: () => prefsState,
+}))
+
 const api = {
   propose: vi.mocked(proposeAction),
   list: vi.mocked(listOpenProposals),
@@ -142,6 +156,9 @@ beforeEach(() => {
   api.list.mockResolvedValue([])
   api.candidates.mockResolvedValue(CANDIDATES)
   api.mint.mockResolvedValue('seal-1')
+  prefsState.preferences = {}
+  prefsState.isPlaceholderData = false
+  prefsState.updatePreferences = vi.fn()
 })
 
 describe('two modes, one box — the mode that runs is the one shown', () => {
@@ -428,6 +445,71 @@ describe('"Keep asking" carries a folio', () => {
     await user.type(screen.getByLabelText(/your question for the books/i), 'and the white?{Enter}')
     await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1))
     expect(api.submit.mock.calls[0][0].previousFolioId).toBe('f-1')
+  })
+})
+
+describe('opens on the person’s last used mode (ADR 0145, founder round 7)', () => {
+  it('opens on Ask the books when the account has never chosen, and writes nothing back', () => {
+    renderPanel()
+    expect(modeRadio(/ask the books/i)).toHaveAttribute('aria-checked', 'true')
+    expect(prefsState.updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it('opens on Propose an action when that is what the account last held', () => {
+    prefsState.preferences = { askLastMode: 'propose' }
+    renderPanel()
+    expect(modeRadio(/propose an action/i)).toHaveAttribute('aria-checked', 'true')
+    expect(prefsState.updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it('treats a garbage stored value the same as never having chosen (a safe default, never a crash)', () => {
+    prefsState.preferences = { askLastMode: 'sing-a-song' as never }
+    renderPanel()
+    expect(modeRadio(/ask the books/i)).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('does not decide from a still-loading read, and adopts the account’s answer once it resolves', async () => {
+    prefsState.isPlaceholderData = true
+    const view = render(
+      <AuthContext.Provider value={{ activeRole: 'owner', activeRestaurantId: 'r-1' } as never}>
+        <MemoryRouter initialEntries={['/inventory']}>
+          <AskPanel placement="overlay" open onClose={() => {}} />
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+    expect(screen.getByRole('radio', { name: /ask the books/i })).toHaveAttribute('aria-checked', 'true')
+
+    prefsState.isPlaceholderData = false
+    prefsState.preferences = { askLastMode: 'propose' }
+    view.rerender(
+      <AuthContext.Provider value={{ activeRole: 'owner', activeRestaurantId: 'r-1' } as never}>
+        <MemoryRouter initialEntries={['/inventory']}>
+          <AskPanel placement="overlay" open onClose={() => {}} />
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    )
+    await waitFor(() => expect(screen.getByRole('radio', { name: /propose an action/i })).toHaveAttribute('aria-checked', 'true'))
+  })
+
+  it('remembers a switch to Propose, for the next open', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await user.click(modeRadio(/propose an action/i))
+    await waitFor(() => expect(prefsState.updatePreferences).toHaveBeenCalledWith({ askLastMode: 'propose' }))
+  })
+
+  it('remembers taking the suggestion into Propose, the same as an explicit switch', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await user.type(screen.getByLabelText(/your question for the books/i), 'draft a follow-up to Acme')
+    await user.click(screen.getByRole('button', { name: /switch to propose an action/i }))
+    await waitFor(() => expect(prefsState.updatePreferences).toHaveBeenCalledWith({ askLastMode: 'propose' }))
+  })
+
+  it('does not write back a mode that already matches what the account holds', () => {
+    prefsState.preferences = { askLastMode: 'ask' }
+    renderPanel()
+    expect(prefsState.updatePreferences).not.toHaveBeenCalled()
   })
 })
 

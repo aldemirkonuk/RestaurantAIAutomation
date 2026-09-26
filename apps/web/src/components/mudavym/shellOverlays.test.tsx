@@ -57,6 +57,13 @@ vi.mock('../../services/api/askAi', async (orig) => ({
   listCandidates: vi.fn(async () => []),
   proposeAction: vi.fn(),
 }));
+// `useUserPreferences` is react-query underneath; one case in this file
+// renders `AskPanel` with no `QueryClientProvider` at all (plain `render`,
+// not `renderShell`). This file is about markup, not the Ask panel's mode, so
+// a fixed no-preference-yet shape is enough.
+vi.mock('../../hooks/useUserPreferences', () => ({
+  useUserPreferences: () => ({ preferences: {}, isPlaceholderData: false, updatePreferences: vi.fn() }),
+}));
 vi.mock('../../stores/uiStore', () => ({
   useUIStore: vi.fn((selector: (s: unknown) => unknown) =>
     selector({ sidebarOpen: true, sidebarCollapsed: false, setSidebarOpen: vi.fn() }),

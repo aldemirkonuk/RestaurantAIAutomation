@@ -22,6 +22,12 @@ vi.mock('../../services/api/askAi', async (orig) => ({
   listCandidates: vi.fn(async () => null),
   proposeAction: vi.fn(),
 }))
+// `useUserPreferences` is react-query underneath and this file has no
+// `QueryClientProvider` in its tree — mocked to a fixed no-preference-yet
+// shape, same as `AskPanel.test.tsx`, so ⌘⇧K keeps opening on Ask the books.
+vi.mock('../../hooks/useUserPreferences', () => ({
+  useUserPreferences: () => ({ preferences: {}, isPlaceholderData: false, updatePreferences: vi.fn() }),
+}))
 
 function pressAskChord() {
   act(() => {

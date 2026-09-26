@@ -121,6 +121,13 @@ All in `apps/api-gateway/src/ask-ai/bound-ask.controller.ts`, guarded
   (`no_reading_matched`, a declined proposal) is offered as the other mode, a click each.
   `AskAiBar` is deleted. Still not built: quick-ask context from an open act sheet, and
   the requests list at `/admin`. ADR 0145, "Amendment, 2026-09-26, round 6".]**
+  **[BUILT 2026-09-26, founder, round 7, item 45, his words verbatim: "/ask panel opens
+  in the person's LAST USED mode; first time = Ask the books." Kept as `askLastMode` in
+  the account's existing `user_preferences` row (`useUserPreferences`), the same store
+  `ground` already rides in -- not a device-only `localStorage` key, so it follows the
+  person to another device. Written back only once the mode on screen differs from what
+  the account already holds, so an all-Ask session spends no write. ADR 0145, "Amendment,
+  2026-09-26, round 7".]**
 - **Shelf counts** per register (sketch 114 A): no shelf endpoint exists (ADR 0145 build
   item 5); the page shows no count rather than an invented one.
 - **The pick before spend**: the pick runs inside the one `POST`; the page shows it after.
