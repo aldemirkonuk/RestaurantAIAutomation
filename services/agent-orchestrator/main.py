@@ -38,9 +38,11 @@ else:
         environment=_environment,
         # Already the SDK default, stated explicitly because it is a privacy
         # control and a silent default is not a control anyone can audit. Keeps
-        # the SDK from attaching request bodies, cookies and client IPs on its
-        # own. It does not cover anything set through set_user(), which is why
-        # SentryClient.set_user takes opaque identifiers only.
+        # the SDK from attaching cookies and client IPs on its own; it does NOT
+        # withhold request bodies (max_request_body_size governs those), which
+        # is why scrub_sentry_event drops request["data"]. It does not cover
+        # anything set through set_user(), which is why SentryClient.set_user
+        # takes opaque identifiers only.
         send_default_pii=False,
         # Founder 2026-09-25 (PR #427 round 3): stop sending locals. scrub_text
         # cannot catch a bare token quoted inside a frame local's repr (no URL

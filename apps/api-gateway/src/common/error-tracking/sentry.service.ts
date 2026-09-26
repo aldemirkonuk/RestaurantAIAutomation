@@ -98,7 +98,8 @@ function scrubSpanData(data: Record<string, unknown> | undefined): void {
  * - reduces `request.url` to origin+path, drops `request.query_string`,
  *   redacts a path-borne token, and scrubs the interceptor's `extra.url`
  * - reduces `user` to a pseudonymous id (+ non-PII custom keys like restaurant_id)
- * - strips common PII keys from free-form extra/contexts/request payloads
+ * - strips common PII keys from free-form extra/contexts, and drops the
+ *   request body (`request.data`) whole
  *
  * The containers covered here are the contract all three runtimes share;
  * scripts/check_sentry_pii_scope.py fails the build if one of them stops
@@ -296,6 +297,19 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
     // takes INBOUND_WEBHOOK_SECRET as @Query("secret") and the OAuth callback
     // takes @Query("code"), so this field carries real credentials on a 5xx.
     delete (event.request as Record<string, unknown>).query_string;
+    // The request BODY, dropped whole -- never key-scrubbed. @sentry/node-core's
+    // httpServerIntegration (a default, `maxIncomingRequestBodySize` 'medium')
+    // copies every incoming body into `request.data` as a raw utf-8 STRING of
+    // up to 10 KB, and requestDataIntegration attaches it whatever
+    // sendDefaultPii says. scrubPiiKeys returns early on a string, so
+    // `POST /auth/reset-password` carried its token and new password to Sentry
+    // on a 5xx or a sampled transaction; `/auth/refresh` its refreshToken,
+    // the OAuth sign-in routes the provider token. ADR 0040 was decided on
+    // the premise that "the SDK defaults already withheld bodies"; this makes
+    // it true.
+    // Proven on the wire (sentry-wire.spec.ts) and against a live http server
+    // (PR #427 round 5).
+    delete event.request.data;
   }
   // The interceptor puts its own copy of the URL in `extra.url`, and
   // `scrubPiiKeys` never touches it because PII_KEYS has no `url`.
@@ -309,7 +323,6 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
     }
   }
   scrubPiiKeys(event.extra as Record<string, any>);
-  scrubPiiKeys(event.request?.data as Record<string, any>);
   if (event.contexts) {
     for (const ctx of Object.values(event.contexts)) {
       scrubPiiKeys(ctx as Record<string, any>);
@@ -379,11 +392,19 @@ export class SentryService implements OnModuleInit {
         profilesSampleRate: environment === "production" ? 0.1 : 1.0,
         // Already the SDK default, stated explicitly because it is a privacy
         // control and a silent default is not a control anyone can audit.
-        // Keeps the SDK from attaching request bodies, cookies and client IPs
-        // of its own accord. It does NOT cover anything we set ourselves —
-        // Sentry's own docs are explicit that `setUser` bypasses it — which is
-        // why SentryUserScope above exists as well.
+        // Keeps the SDK from attaching cookies and client IPs of its own
+        // accord. It does NOT withhold request bodies on @sentry/node 10
+        // (requestDataIntegration's `data: true` default ignores it) — that is
+        // why scrubSentryEvent drops `request.data` — and it does not cover
+        // anything we set ourselves (`setUser` bypasses it), which is why
+        // SentryUserScope above exists as well.
         sendDefaultPii: false,
+        // Already the SDK default: @sentry/node-core's localVariablesIntegration
+        // is in the default set but its setup() returns early unless this is
+        // truthy (local-variables-async.js:108, local-variables-sync.js:275).
+        // Stated so the Node side of ADR 0040's "stop sending locals" is a line
+        // a guard can read rather than an absence. PR #427 round 5.
+        includeLocalVariables: false,
         integrations: [
           // Add integrations as needed
         ],

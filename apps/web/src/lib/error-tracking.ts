@@ -109,7 +109,8 @@ function scrubSpanData(data: Record<string, unknown> | undefined): void {
  * - reduces `request.url` to origin+path, drops `request.query_string`,
  *   redacts a path-borne token, and does the same to breadcrumb URLs
  * - reduces `user` to a pseudonymous id (+ non-PII custom keys like restaurantId)
- * - strips common PII keys from free-form extra/contexts/request payloads
+ * - strips common PII keys from free-form extra/contexts, and drops the
+ *   request body (`request.data`) whole
  *
  * The containers covered here are the contract all three runtimes share;
  * scripts/check_sentry_pii_scope.py fails the build if one of them stops
@@ -329,6 +330,11 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
     // shape this whole fix exists to remove. The founder's ruling is that the
     // query goes, so it goes here too rather than being redacted key by key.
     delete (event.request as Record<string, unknown>).query_string
+    // Dropped whole, never key-scrubbed: the Node SDK attaches a request body as
+    // a raw string, which a key-name scrub cannot touch. The browser SDK does not
+    // set it today; dropping it here keeps the three runtimes' rule identical so
+    // no runtime can start leaking a body by an SDK default. PR #427 round 5.
+    delete event.request.data
   }
   scrubBreadcrumbs(event.breadcrumbs)
   // Free text that can quote a URL: the event's own message, a log record, and
@@ -342,7 +348,6 @@ export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
     }
   }
   scrubPiiKeys(event.extra as Record<string, any>)
-  scrubPiiKeys(event.request?.data as Record<string, any>)
   if (event.contexts) {
     for (const ctx of Object.values(event.contexts)) {
       scrubPiiKeys(ctx as Record<string, any>)
@@ -387,10 +392,11 @@ class ErrorTrackingService {
       tracesSampleRate: config.tracesSampleRate ?? 0.1,
       // Already the SDK default, stated explicitly because it is a privacy
       // control and a silent default is not a control anyone can audit.
-      // Keeps the SDK from attaching request bodies, cookies and client IPs of
-      // its own accord. It does NOT cover anything we set ourselves — Sentry's
-      // own docs are explicit that `setUser` bypasses it — which is why the
-      // SentryUser type above is narrowed as well.
+      // Keeps the SDK from attaching cookies and client IPs of its own accord;
+      // it is not what withholds a request body — scrubSentryEvent drops
+      // `request.data` for that. It does NOT cover anything we set ourselves —
+      // Sentry's own docs are explicit that `setUser` bypasses it — which is
+      // why the SentryUser type above is narrowed as well.
       sendDefaultPii: false,
       integrations: [],
       // Last line of defense: strip PII from every event, whatever set it.

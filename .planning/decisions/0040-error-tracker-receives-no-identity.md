@@ -127,6 +127,19 @@ What ships:
   database, search Sentry by its UUID. This is a real cost and it is the point.
 - **Given up.** Not much else — the SDK defaults already withheld bodies and IPs;
   what changed is that we now say so and check it.
+  **[2026-09-26, PR #427 round 5 — false for bodies on Node.** `@sentry/node`
+  10.36 attaches every incoming request body, as a raw utf-8 string of up to
+  10 KB, to `request.data` whatever `sendDefaultPii` says
+  (`@sentry/node-core` `integrations/http/httpServerIntegration.js:34,333-346`;
+  `@sentry/core` `integrations/requestdata.js:8-13`, `data: true` by default),
+  and the key-name scrub returned early on a string — so a reset token, a
+  refresh token or a password in a POST body reached Sentry on any 5xx or
+  sampled transaction. Measured, not inferred: a live `http` server with
+  `Sentry.init` after `http` was loaded (as `SentryService.onModuleInit` does)
+  put `{"token":…,"password":…}` in `event.request.data`. All three scrubbers
+  now drop `request.data` whole, which is what makes this premise true;
+  pinned by `sentry-wire.spec.ts` and the claim
+  `ADR-0040-REQUEST-BODY-DROPPED-IN-ALL-THREE-RUNTIMES`.]**
 - **A new duplication, deliberately.** `PII_USER_KEYS` now exists three times
   with no shared module, because the three runtimes have no shared build. This is
   the same shape as the defect at `compliance-privacy-charter.md:177`, so it is
@@ -201,6 +214,7 @@ agreeing *constant* is the easy half to check and the half that matters least.
 | 2026-09-21 | PR #427 (self-authored; its own security and compliance audits BLOCKED v1) | Amended — `before_send` never scrubbed `request.url`; `query_string`, a path-borne credential (`@Public()` `/calendar/feed/<token>.ics`) and breadcrumbs were all missed. See the amendment below the trail |
 | 2026-09-22 | PR #427 round 2 (self-authored; its own correctness and security audits independently reproduced the same leak via the real SDK and BLOCKED v2) | Amended — the `beforeSendTransaction`/`before_send_transaction` fix from the row above scrubbed `event.request` but not `event.transaction` or `contexts.trace.data`/`spans[].data`, an OpenTelemetry-populated copy of the same URL one level deeper than the existing `contexts` key-name pass reaches. Same two secrets (calendar feed token, inbound-webhook secret) leaked through the new field. See the fifth-gap paragraph below |
 | 2026-09-25 | PR #427 round 3 (lane L3a; closes the round-2 audit's non-blocking breadcrumb finding and this record's own "still open" list) | Amended — breadcrumbs, free text (message, log record, exception message, frame locals) and `Referer` now scrubbed in all three runtimes and pinned in the guard; a real-SDK wire test per runtime found `frames[].vars`. See the sixth-gap paragraph below |
+| 2026-09-26 | PR #427 round 5 (its ADR 0090 audit at `67644e23` BLOCKED: the correctness and security reviewers both found the Node local-variables paragraph false against the installed SDK, and security found request bodies unscrubbed) | Amended — `request.data` dropped whole in all three runtimes (the Node SDK attaches it as a raw string a key scrub cannot touch; measured on the wire and on a live server); the Node local-variables paragraph and the "Given up" premise corrected in place by dated brackets; `includeLocalVariables: false` stated on the gateway |
 
 ---
 
@@ -419,3 +433,22 @@ this record treats the Node gap as **not yet ruled on** and files it as a
 candidate OD for L1 rather than fixing it inside PR #427, per §0.1: an
 unverified, untested, string-matched change to production Sentry
 configuration is not what "one line" was meant to license.
+
+**[2026-09-26, PR #427 round 5 — the paragraph above is wrong on both of its
+load-bearing facts; corrected, not deleted.]** (1) `includeLocalVariables`
+**does** exist on the Node SDK: it is a typed init option
+(`@sentry/node-core` `build/types/types.d.ts:76`, `@sentry/node`
+`build/types/types.d.ts:52`). (2) The default local-variables integration is
+**inert** on the gateway, not active: it is in the default set, but its
+`setup()` returns early unless that option is truthy
+(`integrations/local-variables/local-variables-async.js:108`,
+`local-variables-sync.js:275`), no `getClientOptions` defaults it to `true`,
+and `sentry.service.ts` never set it. So no frame locals have left the gateway,
+and the "only lever is a name-matching `integrations` function" remedy is moot.
+`sentry.service.ts` now states `includeLocalVariables: false` explicitly — the
+same default, written down for the same reason `sendDefaultPii: false` is: a
+silent default is not a control a guard can read, and it keeps the Node side
+in step with the founder's "stop sending locals". No behaviour changes, so no
+candidate OD is owed for it. The claim
+`ADR-0040-FRAME-LOCALS-DISABLED-AT-BOTH-PYTHON-INIT-SITES` carried the wrong
+Node sentence and now checks the Node line too.

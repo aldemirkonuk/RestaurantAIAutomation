@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 PII_USER_KEYS = ("email", "username", "name", "ip_address")
 
 # Identity keys stripped from every *free-form* container an event can carry
-# (`extra`, `request.data`, each entry of `contexts`). Wider than
+# (`extra`, each entry of `contexts`; `request.data` is dropped whole). Wider than
 # PII_USER_KEYS because these bags are assembled ad hoc by callers and nothing
 # types them. Kept byte-identical with PII_KEYS in the two TypeScript scrubbers.
 PII_KEYS = (
@@ -290,7 +290,8 @@ def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dic
 
     Registered as `before_send` on every sentry_sdk.init() in this service. It is
     the last line of defence, not the first: `send_default_pii=False` keeps the
-    SDK from attaching bodies and IPs of its own accord, and the narrowed
+    SDK from attaching cookies and IPs of its own accord (not bodies -- those are
+    dropped below), and the narrowed
     `set_user` signature keeps identity out at the source. This catches whatever
     reached the event by a path neither of those covers.
 
@@ -325,7 +326,12 @@ def scrub_sentry_event(event: Dict, hint: Optional[Dict] = None) -> Optional[Dic
         # put here instead -- so scrubbing only `url` would have been a no-op for
         # the thing this fix is named after. Found by PR #427's security audit.
         request.pop("query_string", None)
-        _scrub_pii_keys(request.get("data"))
+        # The request BODY, dropped whole -- never key-scrubbed. The SDKs attach
+        # it by default (sentry_sdk's max_request_body_size "medium"; on Node a
+        # raw string a key-name scrub cannot touch), so a reset token, refresh
+        # token or password in a body reached Sentry. ADR 0040 assumed "the SDK
+        # defaults already withheld bodies"; this makes it true. PR #427 round 5.
+        request.pop("data", None)
 
     user = event.get("user")
     if isinstance(user, dict):

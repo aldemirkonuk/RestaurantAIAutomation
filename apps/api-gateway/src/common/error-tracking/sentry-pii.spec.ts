@@ -139,7 +139,7 @@ describe("sentry — what reaches the error tracker", () => {
       expect(event.user).toEqual({ id: "user-1", restaurant_id: "rest-1" });
     });
 
-    it("strips identity from free-form extra, request body and contexts", () => {
+    it("strips identity from free-form extra and contexts, and drops the request body whole", () => {
       const event = scrubSentryEvent({
         extra: {
           email: "chef@restaurant.example",
@@ -155,9 +155,23 @@ describe("sentry — what reaches the error tracker", () => {
         },
       });
       expect(event.extra).toEqual({ orderId: "ord-9" });
-      expect(event.request.data).toEqual({ note: "keep" });
+      // Dropped, not key-scrubbed: the SDK sets it as a raw string (below).
+      expect(event.request).not.toHaveProperty("data");
       expect(event.contexts.order).toEqual({ total: 42 });
       expect(event.contexts.account).toEqual({ plan: "pro" });
+    });
+
+    it("drops a request body the SDK attached as a raw string", () => {
+      // @sentry/node-core's httpServerIntegration stores the body as utf-8 text;
+      // a key-name scrub returns early on a string. PR #427 round 5.
+      const event = scrubSentryEvent({
+        request: {
+          method: "POST",
+          data: '{"token":"3f1c9a52-7d4e-4b8a-9c21-6e0f5a7d2b84","password":"hunter2"}',
+        },
+      });
+      expect(event.request).not.toHaveProperty("data");
+      expect(JSON.stringify(event)).not.toContain("3f1c9a52");
     });
   });
 

@@ -82,7 +82,8 @@ class TestScrubSentryEvent:
             }
         )
         assert event["extra"] == {"order_id": "ord-9"}
-        assert event["request"]["data"] == {"note": "keep"}
+        # Dropped whole, not key-scrubbed. PR #427 round 5.
+        assert "data" not in event["request"]
         assert event["contexts"]["order"] == {"total": 42}
         assert event["contexts"]["account"] == {"plan": "pro"}
 

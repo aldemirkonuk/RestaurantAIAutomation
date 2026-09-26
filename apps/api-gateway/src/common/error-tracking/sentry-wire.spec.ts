@@ -18,11 +18,11 @@ const INVITE = "k7Qm2VxP9rTzL4nW";
 const UNSUBSCRIBE = "u5b1e0c8f2a4d6b9e3c7f1a5d8b2e6c0f";
 const INBOUND = "whsec_3JfK8mQ2pL9vX5tR";
 
-function clientCapturingEnvelopes() {
+function clientCapturingEnvelopes(integrations: Sentry.Integration[] = []) {
   const sent: string[] = [];
   const client = new Sentry.NodeClient({
     dsn: "https://public@example.test/1",
-    integrations: [],
+    integrations,
     stackParser: Sentry.defaultStackParser,
     sendDefaultPii: false,
     transport: (options) =>
@@ -97,6 +97,57 @@ describe("Sentry wire — the real SDK merges, the scrubber still wins", () => {
     expect(wire).toContain("/calendar/feed/<redacted>");
     for (const token of [FEED, INVITE, UNSUBSCRIBE, INBOUND]) {
       expect(wire).not.toContain(token);
+    }
+  });
+
+  // The SDK's OWN request body. @sentry/node-core's httpServerIntegration
+  // (default on, `maxIncomingRequestBodySize` 'medium') copies every incoming
+  // body it sees into the isolation scope as normalizedRequest.data -- a raw
+  // utf-8 STRING of up to 10 KB, not a parsed object
+  // (integrations/http/httpServerIntegration.js:333-346) -- and
+  // requestDataIntegration's DEFAULT_INCLUDE has `data: true` whatever
+  // sendDefaultPii says (@sentry/core integrations/requestdata.js:8-13). A key-name
+  // scrub is a no-op on a string, so a POST /auth/reset-password body carried its
+  // token and new password to Sentry on any 5xx or sampled transaction. ADR 0040
+  // assumed "the SDK defaults already withheld bodies"; on Node they do not.
+  it("no request body leaves: the SDK attaches it as a raw string", async () => {
+    const RESET = "3f1c9a52-7d4e-4b8a-9c21-6e0f5a7d2b84";
+    const REFRESH = "rt_Zk3pQ9wL2mX7vB4nH8sD";
+    const { client, scope, sent } = clientCapturingEnvelopes([
+      Sentry.requestDataIntegration(),
+    ]);
+    scope.setSDKProcessingMetadata({
+      normalizedRequest: {
+        method: "POST",
+        url: "https://api.mudavym.com/api/v1/auth/reset-password",
+        headers: { "content-type": "application/json" },
+        data: JSON.stringify({ token: RESET, password: "hunter2hunter2" }),
+      },
+    });
+    client.captureException(new Error("reset failed"), {}, scope);
+
+    const second = clientCapturingEnvelopes([Sentry.requestDataIntegration()]);
+    second.scope.setSDKProcessingMetadata({
+      normalizedRequest: {
+        method: "POST",
+        url: "https://api.mudavym.com/api/v1/auth/refresh",
+        data: { refreshToken: REFRESH },
+      },
+    });
+    second.client.captureException(
+      new Error("refresh failed"),
+      {},
+      second.scope,
+    );
+    await client.flush(2000);
+    await second.client.flush(2000);
+
+    const wire = [...sent, ...second.sent].join("\n");
+    expect(sent.length).toBe(1);
+    expect(second.sent.length).toBe(1);
+    expect(wire).toContain("/auth/reset-password");
+    for (const secret of [RESET, REFRESH, "hunter2hunter2"]) {
+      expect(wire).not.toContain(secret);
     }
   });
 });

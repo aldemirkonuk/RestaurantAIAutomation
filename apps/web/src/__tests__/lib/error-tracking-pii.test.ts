@@ -169,7 +169,8 @@ describe('error tracking — what reaches Sentry', () => {
       } as never) as Record<string, any>
 
       expect(event.extra).toEqual({ orderId: 'ord-9' })
-      expect(event.request.data).toEqual({ note: 'keep' })
+      // Dropped whole, not key-scrubbed. PR #427 round 5.
+      expect(event.request).not.toHaveProperty('data')
       expect(event.contexts.order).toEqual({ total: 42 })
       expect(event.contexts.account).toEqual({ plan: 'pro' })
     })
