@@ -79,7 +79,7 @@ FLAGS_TABLE = "restaurant_feature_flags"
 SETTINGS_ROW_FLAG_NAME = "restaurant_settings"
 AUDIT_TABLE = "system_audit_log"
 
-# The twenty-one pages of ADR 0044 + 0114 + 0133 (logs) + 0143 (admin),
+# The twenty-two pages of ADR 0044 + 0114 + 0133 (logs) + 0143 (admin) + 0165 (promotions),
 # in MUDAVYM_PAGES order (apps/web/src/lib/mudavym/useMudavymDesign.ts).
 # A slug not in this list is a typo, not a page; the script refuses it rather
 # than inventing a column. (shell / help live only in MUDAVYM_PAGES — shell is
@@ -111,6 +111,9 @@ PAGES: tuple[str, ...] = (
     # ADR 0143 — the Mudavym admin desk. [2026-09-25: live in code now — see
     # LIVE_IN_CODE below; still a known slug so a flip of it reports NO-OP.]
     "admin",
+    # ADR 0160 §113 / ADR 0165 (2026-09-25) — /promotions, flag-gated and OFF
+    # by default (column 20260926160000). Not live in code: a flip is real.
+    "promotions",
 )
 
 # ADR 0149 row 36 (2026-09-17, "16 locked pages"), live-review.md defect 2.

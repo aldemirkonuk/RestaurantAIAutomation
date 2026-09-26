@@ -72,13 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:211",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:211",
   },
   {
     key: "enable_house_inbox_read",
@@ -100,7 +100,20 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:211",
+  },
+  {
+    key: "mudavym_design_promotions",
+    // OFF by default: `/promotions` on Mudavym (ADR 0160 §113, sketch 113
+    // direction B with C's density; ADR 0165's sizing rule). Held back from
+    // LIVE_PAGES so every house keeps today's three-tab Promotions page until
+    // the founder turns this on — and it should not be turned on before
+    // "Who is writing" (PR #470) is live on /communications, because the
+    // legacy page is today's only home for Trusted senders and Prospects.
+    // Column added by 20260926160000, in the same change as this entry, so
+    // the Settings `.select()` of every ACTIVE key cannot 42703.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:211",
   },
 ];
 

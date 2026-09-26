@@ -89,6 +89,9 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // ADR 0160 sec110 item 7 — a new route with no sidebar entry yet; named
   // directly, same footing as `recommendations` and `cellar` above.
   menu: 'Menu',
+  // ADR 0160 §113 / ADR 0165 — /promotions (sketch 113 direction B),
+  // flag-gated on `mudavym_design_promotions`, held back from LIVE_PAGES.
+  promotions: 'Promotions',
 };
 
 /**

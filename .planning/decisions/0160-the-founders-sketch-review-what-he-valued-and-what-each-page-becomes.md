@@ -612,6 +612,11 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 - **Drawings owed before their builds can start:** the wine detail surface (110, Owed
   #4), the bundle shape (113), the guide collection for `/help` (111, must-have), B's
   sized boxes at C's 10+ density (113), and — if it wins — sketch 119's shell.
+  **[2026-09-25, lane W2-promos: both 113 drawings are drawn — sketch 124
+  (`.planning/sketches/124-promotions-bundles-and-density/`, three directions each
+  answering both). Still owed: the founder's pick. The `/promotions` build on
+  `feat/promotions-mudavym` ships dark behind `mudavym_design_promotions` and builds
+  neither part until he picks (CLAIMS `PROMOTIONS-OWED-DRAWINGS-NOT-BUILT`).]**
 - **Two of his notes are deliberately not built now:** ~~the non-alcoholic heat map (110,
   Owed #9)~~ **[built 2026-09-22, Q9]** and A's register itself under live data (113).
 - **Open items — the founder's call, not decided here (CLAUDE.md §0.1):**

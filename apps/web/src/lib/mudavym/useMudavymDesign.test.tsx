@@ -113,7 +113,7 @@ describe('useMudavymDesign precedence', () => {
  * of record) — OFF until deliberately flipped.
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
-  const HELD_BACK = ['arrival', 'recommendations', 'receiving'] as const;
+  const HELD_BACK = ['arrival', 'recommendations', 'receiving', 'promotions'] as const;
   const PROMOTED_2026_09_25 = ['shell', 'admin', 'authorize_integration'] as const;
 
   it('is exactly MUDAVYM_PAGES minus the held-back pages', () => {
@@ -121,10 +121,10 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
     expect(LIVE_PAGES.size).toBe(23);
-    expect(MUDAVYM_PAGES.length).toBe(26);
+    expect(MUDAVYM_PAGES.length).toBe(27);
   });
 
-  it('holds back arrival, recommendations and receiving', () => {
+  it('holds back arrival, recommendations, receiving and promotions', () => {
     for (const page of HELD_BACK) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated
