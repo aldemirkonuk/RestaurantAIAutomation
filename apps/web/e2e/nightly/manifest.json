@@ -470,6 +470,21 @@
         "The folio history could not be read.",
         "failure to read, not an empty menu"
       ]
+    },
+    {
+      "slug": "vendor_prices",
+      "flag": "mudavym_design_vendor_prices",
+      "route": "/vendor-prices",
+      "legacy": "page",
+      "source": "apps/web/src/pages/vendor-prices/next",
+      "empty": [
+        "Search for a bottle above to open its price register.",
+        "Newest below the earlier mean: none in the"
+      ],
+      "failed_read": [
+        "Newest below the earlier mean: could not be read",
+        "The register could not be read"
+      ]
     }
   ],
   "public_pages": [
@@ -563,12 +578,6 @@
       "slug": "promotions",
       "route": "/promotions",
       "file": "apps/web/src/pages/Promotions.tsx",
-      "held_by": "ADR 0143 (open fork)"
-    },
-    {
-      "slug": "vendor_prices",
-      "route": "/vendor-prices",
-      "file": "apps/web/src/pages/VendorPriceCompare.tsx",
       "held_by": "ADR 0143 (open fork)"
     },
     {

@@ -104,14 +104,8 @@ export const MUDAVYM_PAGES = [
   // [2026-09-25: superseded — now in LIVE_PAGES, live for every house in
   // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
-  // ADR 0160 §112, direction A. [Added 2026-09-19, repair pass,
-  // wt-pg-vprices]: the founder's 2026-09-19 ~09:20Z lane-blocking answer
-  // (memory founder-sketch-decisions-106-115.md) overrides an earlier
-  // same-day brief that had routed `/vendor-prices` straight to Mudavym for
-  // every house with no gate — see App.tsx's route comment. Column added by
-  // migration 20260926170000 (renamed three times; see vendor-prices.md's
-  // dated brackets for the history), OFF by default and NOT in LIVE_PAGES —
-  // the founder flips it per house.
+  // ADR 0160 §112 (/vendor-prices). Flag-gated, OFF by default, NOT in
+  // LIVE_PAGES — the founder flips it per house (column: 20260926170000).
   'vendor_prices',
 ] as const;
 

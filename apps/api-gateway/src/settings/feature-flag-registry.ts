@@ -72,13 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
   },
   {
     key: "enable_house_inbox_read",
@@ -100,7 +100,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
   },
   {
     key: "mudavym_design_vendor_prices",
@@ -115,7 +115,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // reserved range — every earlier version sorted below main's ceiling;
     // see vendor-prices.md's dated brackets for the rename history).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:228",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
   },
 ];
 

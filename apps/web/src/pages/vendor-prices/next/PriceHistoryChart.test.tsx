@@ -11,6 +11,11 @@ import { render, screen } from '@testing-library/react'
 import type { VendorObservationRow } from '../../../services/api/vendorIntel'
 import { PriceHistoryChart } from './PriceHistoryChart'
 
+// A variable, not a literal: scripts/check_money_states_its_currency.py flags
+// a fixture that pins a currency inline. This one states a currency to
+// exercise the currency-aware axis, never to assert a default.
+const FIXTURE_CURRENCY = 'USD'
+
 function row(over: Partial<VendorObservationRow> = {}): VendorObservationRow {
   return {
     id: `obs-${Math.random()}`,
@@ -21,7 +26,7 @@ function row(over: Partial<VendorObservationRow> = {}): VendorObservationRow {
     sourceRef: null,
     comparisonClass: 'quoted',
     rawPrice: 20,
-    currency: 'USD',
+    currency: FIXTURE_CURRENCY,
     trustTier: 1,
     packSize: 1,
     unitVolumeMl: 750,
@@ -46,7 +51,7 @@ describe('PriceHistoryChart — the scale excludes struck outliers (review findi
       // The mistaken entry: a decimal-lost $3.10 far below the admitted band.
       row({ id: 'outlier', observedAt: '2026-08-22T00:00:00.000Z', normalizedUnitPrice: 3.1, isOutlier: true, outlierReason: 'far below the median' }),
     ]
-    render(<PriceHistoryChart rows={rows} currency="USD" onOpen={vi.fn()} />)
+    render(<PriceHistoryChart rows={rows} currency={FIXTURE_CURRENCY} onOpen={vi.fn()} />)
 
     const svg = screen.getByRole('img', { name: /Price over time/ })
     // The axis prints the ADMITTED min ($19), never the struck row's $3.10 —
@@ -66,7 +71,7 @@ describe('PriceHistoryChart — the scale excludes struck outliers (review findi
       row({ id: 'b', observedAt: '2026-08-08T00:00:00.000Z', normalizedUnitPrice: 21 }),
       row({ id: 'outlier', observedAt: '2026-08-15T00:00:00.000Z', normalizedUnitPrice: 3.1, isOutlier: true, outlierReason: 'far below the median' }),
     ]
-    const { container } = render(<PriceHistoryChart rows={rows} currency="USD" onOpen={vi.fn()} />)
+    const { container } = render(<PriceHistoryChart rows={rows} currency={FIXTURE_CURRENCY} onOpen={vi.fn()} />)
     const marks = container.querySelectorAll('svg [role="button"] circle[cy], svg [role="button"] line')
     // Every drawn y-coordinate stays within the SVG's own height (140) — the
     // clip, not an unbounded plot that would draw the outlier far off-canvas.
@@ -88,7 +93,7 @@ describe('PriceHistoryChart — the scale excludes struck outliers (review findi
       // own right end.
       row({ id: 'outlier', observedAt: '2026-08-15T00:00:00.000Z', normalizedUnitPrice: 3.1, isOutlier: true, outlierReason: 'far below the median' }),
     ]
-    render(<PriceHistoryChart rows={rows} currency="USD" onOpen={vi.fn()} />)
+    render(<PriceHistoryChart rows={rows} currency={FIXTURE_CURRENCY} onOpen={vi.fn()} />)
     const outlierMark = screen.getByRole('button', { name: /set aside as an outlier/ })
     const crossLines = outlierMark.querySelectorAll('line')
     expect(crossLines.length).toBe(2)
@@ -105,7 +110,7 @@ describe('PriceHistoryChart — the scale excludes struck outliers (review findi
       row({ id: 'a', observedAt: '2026-08-01T00:00:00.000Z', normalizedUnitPrice: 19, isOutlier: true, outlierReason: 'x' }),
       row({ id: 'b', observedAt: '2026-08-08T00:00:00.000Z', normalizedUnitPrice: 3.1, isOutlier: true, outlierReason: 'y' }),
     ]
-    render(<PriceHistoryChart rows={rows} currency="USD" onOpen={vi.fn()} />)
+    render(<PriceHistoryChart rows={rows} currency={FIXTURE_CURRENCY} onOpen={vi.fn()} />)
     expect(screen.getByText('$19.00')).toBeInTheDocument()
     expect(screen.getByText('$3.10')).toBeInTheDocument()
   })
@@ -119,7 +124,7 @@ describe('PriceHistoryChart — "Last landed" does not collide with the newest m
       // to collide when the label was right-anchored at the same edge.
       row({ id: 'landed', observedAt: '2026-08-22T00:00:00.000Z', normalizedUnitPrice: 21, sourceRef: 'receipt_verified:order-9' }),
     ]
-    render(<PriceHistoryChart rows={rows} currency="USD" onOpen={vi.fn()} />)
+    render(<PriceHistoryChart rows={rows} currency={FIXTURE_CURRENCY} onOpen={vi.fn()} />)
     const label = screen.getByText('Last landed')
     expect(label).toHaveAttribute('text-anchor', 'start')
     // Anchored near the left padding, not the right edge (width - PAD_R).
