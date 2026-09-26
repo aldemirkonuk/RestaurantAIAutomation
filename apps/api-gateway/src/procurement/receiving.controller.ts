@@ -5,7 +5,9 @@ import {
   HttpException,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
@@ -20,10 +22,13 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   Min,
 } from "class-validator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import {
   DOOR_OUTCOMES,
@@ -33,8 +38,21 @@ import {
   type DoorRefusalReason,
 } from "./receiving.service";
 import { ORDER_UNIT_TYPES } from "./order-units";
+import { LINE_HISTORY_CURSOR_RE } from "./receiving-line-history";
 
 type AuthedUser = { userId: string; restaurantId: string };
+
+export class LineHistoryQueryDto {
+  @ApiPropertyOptional({
+    description:
+      "The page marker the previous page returned as nextBefore (`<occurred_at>|<id>`). Omit for the newest page.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  @Matches(LINE_HISTORY_CURSOR_RE, { message: "before must be a page marker this history gave out" })
+  before?: string;
+}
 
 export class DoorReceiptDto {
   @ApiProperty({ description: "What was counted at the door, in countedUom" })
@@ -338,6 +356,38 @@ export class ReceivingController {
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to load the receiving queue",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  // Owner or manager only: this is a desk route (ADR 0167's rule, founder
+  // 2026-09-19, "Refuse staff on all four", applied to the desk's newest
+  // route). The door routes above stay open to staff; the person holding the
+  // hand truck records the receipts this reads back.
+  @Get("orders/:id/history")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "One line's history, newest first, ten at a time",
+    description:
+      "Built from the door receipts already recorded (procurement_receipt_events: the door's counts and refusals, and the desk's verifications), never from a table of its own (founder, 2026-09-25). Pages of 10 on (occurred_at desc, id desc); pass nextBefore back as before for the next, older page. total is an exact count, or null when it could not be read. The first page also carries the line's received block from the stock ledger (ADR 0192). An order from another house answers 404.",
+  })
+  async lineHistory(
+    @Param("id", new ParseUUIDPipe()) orderId: string,
+    @Query() query: LineHistoryQueryDto,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    try {
+      return await this.receiving.lineHistory(
+        user.restaurantId,
+        orderId,
+        query.before ?? null,
+      );
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "This line's history could not be read",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }

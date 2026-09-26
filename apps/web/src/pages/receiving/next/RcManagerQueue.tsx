@@ -25,6 +25,12 @@
  * per box: more than VENDOR_BOX_CAP rows collapse behind "Show N more"
  * rather than growing the box without end.
  *
+ * Approach 1 (founder Q7, 2026-09-22; ADR 0160 §107): one row per LINE,
+ * named by what was ordered, grouped by vendor, five rows a box behind
+ * "Show N more"; a line's full history opens on demand in `RcLineHistory`,
+ * ten entries a page, built from the door receipts already recorded
+ * (founder, 2026-09-25) — never from a table of its own.
+ *
  * The append-only verdict ledger this queue used to open per row
  * (`RcVerdictLedger`) is removed — the founder's condition for shipping it
  * was "if it's bulletproof", and it was not: the "every ordered bottle
@@ -38,6 +44,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ink, settle } from '@/lib/mudavym/motion';
 import type { UnverifiedDelivery } from '@/services/api/receiving';
+import { RcLineHistory } from './RcLineHistory';
 import { RcTally } from './RcTally';
 import {
   EM,
@@ -295,10 +302,13 @@ function QueueRow({
   item,
   expanded,
   onToggle,
+  onOpenHistory,
 }: {
   item: QueueItemVM;
   expanded: boolean;
   onToggle: () => void;
+  /** Opens this line's history sheet (Approach 1: "opened on demand"). */
+  onOpenHistory: () => void;
 }) {
   const navigate = useNavigate();
   const linkStyle = {
@@ -352,8 +362,16 @@ function QueueRow({
                 color: 'var(--ink-1, #211C16)',
               }}
             >
-              {item.orderNumber || item.orderId.slice(0, 8)}
+              {/* One row per LINE (sketch 107 Approach 1): named by what was
+                  ordered, with its order number beside it. With no name the
+                  order number stands alone, as it always did. */}
+              {item.itemName ?? (item.orderNumber || item.orderId.slice(0, 8))}
             </span>
+            {item.itemName && (
+              <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
+                {item.orderNumber || item.orderId.slice(0, 8)}
+              </span>
+            )}
             <span
               style={{
                 fontFamily: MONO,
@@ -528,6 +546,14 @@ function QueueRow({
               <button
                 type="button"
                 style={linkStyle}
+                data-ux-key="receiving-next:queue-open-history"
+                onClick={onOpenHistory}
+              >
+                History — what the door and the desk recorded
+              </button>
+              <button
+                type="button"
+                style={linkStyle}
                 data-ux-key="receiving-next:queue-open-order"
                 onClick={() => navigate(`/orders?order=${item.orderId}`)}
               >
@@ -573,6 +599,19 @@ export function RcManagerQueue({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedVendors, setExpandedVendors] = useState<Set<string>>(new Set());
   const handledHighlightRef = useRef<string | null>(null);
+  const [historyFor, setHistoryFor] = useState<{
+    orderId: string;
+    label: string;
+    vendor: string | null;
+  } | null>(null);
+  const openHistory = (item: QueueItemVM) =>
+    setHistoryFor({
+      orderId: item.orderId,
+      label: item.itemName
+        ? `${item.itemName} · ${item.orderNumber || item.orderId.slice(0, 8)}`
+        : item.orderNumber || item.orderId.slice(0, 8),
+      vendor: data.providerNamesUnavailable ? null : item.providerName,
+    });
 
   const visible = useMemo(
     () => (lane === null ? data.items : data.items.filter((i) => i.lane === lane)),
@@ -603,6 +642,12 @@ export function RcManagerQueue({
     // opened off-screen behind a tab it did not match.
     if (lane !== null && lane !== highlightItem.lane) setLane(null);
     setExpandedId(highlightItem.orderId);
+    // A box shows VENDOR_BOX_CAP rows; a highlighted row past the cap would
+    // be opened behind "Show more", invisible. Open its box.
+    const boxKey = data.providerNamesUnavailable
+      ? '__unavailable'
+      : (highlightItem.providerId ?? '__none');
+    setExpandedVendors((cur) => (cur.has(boxKey) ? cur : new Set(cur).add(boxKey)));
     const t = window.setTimeout(() => {
       const el = document.getElementById(`receiving-queue-row-${highlightItem.orderId}`);
       // `scrollIntoView` is not universal (jsdom's test DOM has none of it) —
@@ -647,7 +692,7 @@ export function RcManagerQueue({
               RcTally per currency the queue carries, same rule as the vendor
               boxes' own subtotals. RcTally keeps its contract: null is the em
               dash and the dash→number arrival does not tick. */}
-          {data.totalAtRiskByCurrency.length === 0 ? (
+          {data.totalAtRiskByCurrency === null || data.totalAtRiskByCurrency.length === 0 ? (
             <RcTally
               value={null}
               style={{ fontFamily: MONO, fontSize: 17, fontWeight: 700, color: 'var(--ink-1, #211C16)' }}
@@ -690,6 +735,16 @@ export function RcManagerQueue({
           does not have — not "still loading", the read came back clean.
           Deliberately one sentence for every cause: already resolved, on no
           delivery this house holds, or the id does not exist at all. */}
+      {data.itemNamesUnavailable && data.items.length > 0 && (
+        <p
+          role="status"
+          data-testid="receiving-item-names-unavailable"
+          style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}
+        >
+          What each line ordered could not be loaded, so the rows below show their order numbers.
+        </p>
+      )}
+
       {highlightMissing && (
         <div
           role="status"
@@ -813,6 +868,7 @@ export function RcManagerQueue({
                 onToggle={() =>
                   setExpandedId((cur) => (cur === item.orderId ? null : item.orderId))
                 }
+                onOpenHistory={() => openHistory(item)}
               />
             </div>
           ))}
@@ -912,14 +968,22 @@ export function RcManagerQueue({
                 </div>
                 <div>
                   {shown.map((item) => (
-                    <QueueRow
+                    // The same id-carrying wrapper as the flat list, so a
+                    // highlighted row inside a box can be scrolled to.
+                    <div
                       key={item.orderId}
-                      item={item}
-                      expanded={expandedId === item.orderId}
-                      onToggle={() =>
-                        setExpandedId((cur) => (cur === item.orderId ? null : item.orderId))
-                      }
-                    />
+                      id={`receiving-queue-row-${item.orderId}`}
+                      data-testid={`receiving-queue-row-${item.orderId}`}
+                    >
+                      <QueueRow
+                        item={item}
+                        expanded={expandedId === item.orderId}
+                        onToggle={() =>
+                          setExpandedId((cur) => (cur === item.orderId ? null : item.orderId))
+                        }
+                        onOpenHistory={() => openHistory(item)}
+                      />
+                    </div>
                   ))}
                 </div>
                 {/* The founder's scale question: a box pages rather than
@@ -965,6 +1029,12 @@ export function RcManagerQueue({
         </div>
       )}
 
+      <RcLineHistory
+        orderId={historyFor?.orderId ?? null}
+        lineLabel={historyFor?.label ?? ''}
+        vendorName={historyFor?.vendor ?? null}
+        onClose={() => setHistoryFor(null)}
+      />
     </section>
   );
 }

@@ -11,39 +11,18 @@ signals_today: none
 rebrand_strings: 0
 maturity: broken
 status: documented
-updated: 2026-09-01
+updated: 2026-09-25
 links: ["[[PAGE-CONTRACT]]", "[[receiving-door]]", "[[orders]]"]
 ---
 
-> **[SUPERSEDED IN PART — 2026-09-21] The verdict ledger described below no longer exists.**
-> The founder declined to build it. His condition was *"if it's bulletproof … then build"*, and a
-> research pass found it is not: the ledger stated a conservation invariant in three places
-> (`receiving.service.ts:1147-1150`, the PGlite probe, and the manager-facing copy) and enforced it
-> in none — the over-take trigger's first statement returned early for every fresh row
-> (`20260919170000_…:188`), so appending "accepted 12" then "damaged 2" on a 12-bottle order left 14
-> counted against 12, permanently, in an append-only record. The one figure that would have shown it,
-> "not counted", was clamped by `Math.max(ordered, counted) - counted` (`receiving.service.ts:1164`)
-> and read 0 in exactly that case — identical to a perfect delivery. Fifteen tests, none exercising a
-> violation.
->
-> Stripped in `8ea44f527` on `r5/receiving`: the migration, `receiving-verdict-ledger.{ts,spec}`,
-> `receiving-line-verdicts.spec.ts`, `receiving-verdicts-route.spec.ts`, `RcVerdictLedger.{tsx,test}`,
-> both `orders/:id/verdicts` routes and every reference. **The desk rebuild survives** — only
-> `totalAtRiskByCurrency` and one `sheet.css` rule were ever ledger-independent, and both are intact.
-> Recovery: `refs/snapshots/receiving-preStrip/20260921`, full history on
-> `origin/wip/2026-09-19/receiving`.
->
-> **Every mention of the ledger, the verdict routes, or `receiving_line_verdicts` below is a dated
-> record of what was true before that commit, not a description of the tree.** In particular:
-> **OD-126 and OD-127 are RESOLVED**, not open — 126 because the table it asked about is gone, 127
-> because its cascade-vs-trigger conflict went with the migration (which also unblocks the go-live
-> demo-house cleanup, ADR 0131). **OD-125 remains open but is narrowed**: what survives is whether
-> ADR 0104's D13 binds `/receiving` to the `deliveries` domain and whether the queue is finished as
-> B+ — no longer irreversible, since no append-only table is keyed to the answer.
->
-> If the ledger is ever rebuilt, the unanswered product question returns with it: what should happen
-> when an append would overshoot the ordered quantity — refuse it, warn, or force `beyond_order`?
-
+> **[2026-09-25] The desk is Approach 1 now — see §16.** One row per line, grouped by vendor
+> five to a box, and a line's history opened on demand ten entries a page, built from the door
+> receipts already recorded (founder, 2026-09-25). The append-only verdict ledger drafted for this
+> page between 2026-09-17 and 2026-09-21 was never merged: the founder's condition was *"if it's
+> bulletproof … then build"*, it was not, and it was stripped in `8ea44f527`. Its full record,
+> including the round-4/5 page-note text, stays on `origin/wip/2026-09-19/receiving` and
+> `origin/wip/2026-09-21/receiving` (`30a8c7ce7`); recovery ref
+> `refs/snapshots/receiving-preStrip/20260921`.
 
 # /receiving — Receiving home (role-split)
 
@@ -142,265 +121,6 @@ receving, and let them approve if otherwise"*:
   the seal census; what changed is that the errand it sends a manager on now costs one
   ceremony. See [[receipts]] §1a and §13, and
   `apps/api-gateway/src/procurement/documents/document-seal.ts`.
-
-The desk rebuild (sketch 107, ADR 0160 §107 — B+ picked), since 2026-09-17, status
-as of the 2026-09-18 fixer review (`p4-scratch/pages1/receiving-fix.md`):
-- **B+ is NOT built.** The existing queue list was kept with grafts on top —
-  vendor boxes (A's contribution), bolder figures, and a button that opens the
-  ledger. Absent: the clock-ordered delivery tabs, the per-line four-number
-  grid (ordered/door/paper/difference) with the answer owed, the A11 gate
-  sentence, the documents rail, the line sheet opening on a row press, the
-  answer-owed act, the 1b owner-band re-audit, the 2b derived boxes, the
-  ~1100px column rule, and the §5 phone desk.
-- **`receiving_line_verdicts`** (an append-only verdict ledger,
-  `20260919170000_receiving_line_verdicts_are_append_only.sql`) is real and
-  proven on Postgres (`p4-scratch/pglite-probe/pgrecv-verdict-ledger.mjs`),
-  reachable through `RcVerdictLedger.tsx` from a queue row. It settles NONE of
-  P14 below — it is a second, additive ledger, unreconciled with
-  `procurement_receipt_events` (OD-126) and keyed on `procurement_orders`
-  rather than the sketch's own proposed `deliveries` domain (OD-125, sketch
-  107 founder question 7 — **still open**; a prior build session's code and
-  docs claimed it was answered in `OPEN-DECISIONS.md`, and it was not, until
-  this review filed it).
-- **Do not build further on either side of OD-125/OD-126/OD-127** (the
-  house/order-deletion contradiction with the append-only trigger, measured
-  by the same probe) without the founder's word — recorded in whatever ADR
-  answers them.
-
-**[2026-09-19, receiving-lane confirmer pass, wt-pg-receiving.]** Three of the
-confirmer's non-founder defects fixed, each with a before/after test
-(`RcVerdictLedger.test.tsx`, `receiving-line-verdicts.spec.ts`,
-`ReceivingNext.test.tsx`): the "takes" caption now prints `supersedesQtyBottles`
-in bottles unconditionally, per its own wire contract, instead of relabelling
-it with the superseded row's unit (it was contractually a bottle count either
-way — no conversion was ever possible without a fabricated pack-size guess);
-`notCountedBottles` now excludes beyond-order buckets from the within-order
-sum it is compared against (a beyond-order refusal no longer pays down the
-original order's own remainder); and every at-risk figure on this page
-(`RcManagerQueue.tsx`'s per-row figure and its page-header total, both of
-which used a formatter hardcoded to USD) now reads the order's own
-`currency`, with the header showing one figure per currency present
-(`totalAtRiskByCurrency`, additive — the legacy desk's `totalAtRisk` is
-unchanged) rather than summing across them. **OD-125/OD-126/OD-127 remain
-open** — re-verified against the register merged from `origin/main`
-(`cb756083e`) on this date: each cited once, correctly under `## Open`, no
-second row claiming either id anywhere in the corpus
-(`check_od_ids_exist.py`, `check_citation_pairing.py`, `_od_collisions.py` all
-PASS). **A cross-lane finding, re-examined**: `wt-fin-C`'s review
-(`lane-status-2026-09-18.md` §C, item D2) asserted that id **124** (not, as
-this paragraph used to say, OD-125 — see the correction below) sat after
-`## Resolved`, at line 191 of the register, and needed renumbering against a
-16-citation collision — that line does not exist in this register (156 lines
-total) and no id numbered 124/125/126 competed for a row on `origin/main`;
-the claim, as literally stated, measured a different, unmerged copy of the
-file. **[CORRECTED 2026-09-20, receiving round-5 must_fix pass.]** The
-paragraph above used to read "OD-125" in both places and call the finding
-"did not hold" outright — both wrong, and the first is worse than a typo: a
-later renumber pass rewrote `wt-fin-C`'s own quoted claim to this lane's NEW
-numbers, which corrupts the historical record of what was actually said.
-(Deliberately not prefixed with "OD-" anywhere in this paragraph, even in a
-quote: `check_od_ids_exist.py` resolves any `OD-` token followed by digits as
-a live citation needing a register row, `wt-fin-C`'s real id 124 has no row
-in this branch, and it must not gain one here — it names a real, separate
-decision on `feat/finish-public-doors`, not a duplicate this row absorbs.)
-The finding did not "not hold" either — it was checked too narrowly: id
-**124** is exactly why this lane renumbered rather than shipping a second
-claim on the same number — this lane's own three new rows moved
-**124→OD-125, 125→OD-126, 126→OD-127**, filed before `wt-fin-C`'s branch, the
-same shape as the `OD-58→61` precedent recorded in `OPEN-DECISIONS.md`'s own
-header note (line 13). Every id this section uses from here on is already
-the renumbered one. One trap this leaves for a future reader: the founder
-was asked about the receiving desk under the label "id 124" at one point
-(`lane-status-2026-09-18.md:48`, per the round-4 must_fix finding that
-prompted this correction) — that label now names `wt-fin-C`'s privacy
-decision, not this page's ledger-keying question, which is OD-125. **"Wire
-on for every
-house" is answered, not open**: the founder's 2026-09-17 go-live list holds
-the *receiving desk* (this page) back while the unrelated *receiving door*
-went default-on with 15 other pages (`mudavym-finish-goal-2026-09-16`
-memory, "Go live NOW" — the desk graduates once it is actually built to its
-approved sketch, same rule already applied to cellar/help/recs/settings).
-**B+ still not built** — confirmed by re-reading this dossier and the code:
-still gated on OD-125, unattempted this pass. **Not fixed, and not attempted
-this pass** (found while re-reading the confirmer's full 17-item list, of
-which only 5 survived into `lane-status-2026-09-18.md`'s condensed digest —
-flagged separately, not expanded here to keep this session to its named
-scope): the ledger sheet's unpadded body and white-on-charcoal form controls,
-a 12px sideways scroll at 390, the append form staying enabled after a failed
-ledger read, the closed sheet's missing exit motion, two remaining
-`--ink-3` vendor-box captions, the trigger's raw error text reaching a
-manager verbatim, and a paging cursor that can skip a row sharing its
-boundary timestamp.
-
-**[CORRECTED 2026-09-19, receiving must_fix pass.]** The list just above is
-stale for the tree as it now stands. A concurrent session's work (its edits
-sit uncommitted in this worktree beside this lane's own staged files, never
-recorded here) fixes five of the eight items:
-- The ledger sheet's unpadded body and white-on-charcoal form controls: fixed
-  by `components/mudavym/sheet.css`'s `html .mdv-ovl .mdv-input/.mdv-select`
-  rule, which reads `--ink-1`/`--paper-0` off the overlay's own ground. Given
-  the review it had not had (must_fix #3): checked against a real build
-  (`apps/web`, `npm run build`, `dist/assets/index-Dom-5tMM.css` this pass,
-  removed after reading), not just the source. Under the LIGHT app theme this
-  rule's (0,2,1) clearly outranks `globals.css`'s base `input[type="email"]`
-  rule at (0,1,1) — the white-slab bug this fixes. Under the DARK app theme it
-  **ties** at (0,2,1) with `globals.css`'s own `.dark input[type="email"]`
-  block, and that block sits LATER in the built bundle (offset 48562 vs this
-  rule's 10070), so on a specificity tie `.dark`'s own literal colors
-  (`#f3f4f6` on `#1d1813`) win instead of `--ink-1`/`--paper-0` — this rule is
-  live and correct in light, and simply inert (shadowed, not broken) in dark,
-  because `#1d1813` already equals `--paper-1` and both pairs read as light
-  text on a dark ground. Checked against a second page's form sheet
-  (`components/team/InviteTeamDialog.tsx`, which renders `.mdv-input`/
-  `.mdv-select` inside the same shared `.mdv-ovl` from `Sheet.tsx`): same two
-  outcomes, same reasoning — no regression there in either app theme. One real
-  but not-yet-reached gap found by this check, left open rather than expanded
-  into a fix: `.mdv-ovl[data-ground="paper"]` (today used only by the
-  canonical-document/vendor-panel escape, ADR 0104 D9, never by a receiving or
-  team sheet) wants LIGHT input colors on purpose; under the DARK app theme,
-  the same tie would hand it `.dark input`'s charcoal-ish literals instead,
-  defeating the paper escape for form fields specifically. Not this lane's to
-  fix — no sheet here uses that ground — named so it is not later mistaken for
-  untested.
-- The append form staying enabled after a failed ledger read: fixed —
-  `RcVerdictLedger.tsx`'s `isError` branch (`data-testid="ledger-append-paused"`)
-  disables the form and says so ("Appending is paused until the ledger loads")
-  instead of offering it.
-- The trigger's raw error text reaching a manager verbatim: fixed by
-  `readableLedgerRefusal` (`receiving-verdict-ledger.ts`), wired into
-  `receiving.service.ts`'s insert path, turning every `P0001` message the
-  guard trigger can raise into one plain sentence. A drift guard
-  (`receiving-line-verdicts.spec.ts`) reads the migration's actual
-  `raise exception` text and asserts every message it can produce is covered.
-- The paging cursor that could skip a row sharing its boundary timestamp:
-  fixed by the same file's tie-safe `<recorded_at>|<id>` cursor
-  (`VERDICT_CURSOR_RE` / `parseVerdictCursor` / `verdictCursorFilter`), wired
-  into `receiving.controller.ts` (`@Matches`) and `receiving.service.ts`.
-  Exercised against a real Postgres engine, not only the mocked jest coverage:
-  `p4-scratch/pglite-probe/verify-tie-safe-verdict-cursor.mjs` applies the
-  actual migration SQL, inserts two rows sharing one `recorded_at`, and shows
-  the old recorded_at-only filter silently drops the tied row while the new
-  `(recorded_at, id)` filter does not (both against the same fixture) — 5 OK,
-  0 FAIL. **[CORRECTED 2026-09-20, receiving round-5 must_fix pass]** — what
-  that proves is narrower than "exercised against Postgres" alone suggests.
-  The probe hand-translates the client's PostgREST `.or()` cursor string into
-  a plain SQL `WHERE` clause itself before running it; PostgREST's own
-  parsing of that exact string is not exercised anywhere in this repo's
-  tests. And both this probe and `pgrecv-verdict-ledger.mjs` live in
-  `p4-scratch/`, outside the repo — neither runs in CI, and a reader of the
-  committed tree cannot open either file to check what "5 OK, 0 FAIL" means
-  without also having that scratch directory.
-
-One item changes to a different state, not to fixed:
-- **The 12px sideways scroll at 390 is NOT REPRODUCED**, per the round-2
-  verifier's measurement of `scrollWidth === 390` in two fixtures (no
-  overflow). This pass did not re-measure it against a live render either —
-  say so rather than calling it fixed. `RcManagerQueue.tsx:391-408` does carry
-  a `width: 0; min-width: 100%` rule whose own comment names this exact bug as
-  what it prevents, which is consistent with non-reproduction without proving
-  it on its own.
-
-Two items are re-checked and remain true and open:
-- **The closed sheet's missing exit motion.** By the shared `Sheet` primitive's
-  own design (`components/mudavym/Sheet.tsx:694-699`), an ordinary close has
-  no exit motion at all — only a dirty-form "tear" does — and this ledger's
-  close is ordinary. Still open.
-- **The `p4-scratch/pages1/receiving-fix.md` citation** at the top of this
-  section (2026-09-18 fixer review) is dead: the file exists at no path read
-  for this pass. Flagged rather than silently left to keep looking resolvable.
-
-One item does not hold as stated and is re-described rather than dropped:
-- **"Two remaining `--ink-3` vendor-box captions"** does not match the current
-  code. The vendor-box header itself (`RcManagerQueue.tsx:788-844`) uses
-  `--ink-1`/`--ink-2`/`--ink-4`, not `--ink-3`. `--ink-3` is still used on this
-  page — the per-row summary caption, the zero-value at-risk figure and the
-  row chevron (`RcManagerQueue.tsx:402,435,446`), and two empty-state lines
-  (:722,:728) — a real but differently-shaped concern than two vendor-box
-  captions specifically.
-
-**Three more forks for the founder** (about this desk rebuild,
-not §14's pipeline review — kept here rather than folded into 14e's list;
-item 3 added 2026-09-20, receiving round-5 must_fix pass):
-1. **Sketch 107's "what happens with too many operations on one record"
-   question** — still parked, not yet asked
-   (founder-sketch-decisions-106-115.md:20,73: "Open: what happens with too
-   many operations on one record" / "Still to ask him").
-   `receiving.controller.ts`'s `lineVerdicts` endpoint pages at 50 rows as an
-   interim engineering bound only — **[CORRECTED 2026-09-19]** its
-   `ApiOperation` description used to call this "the scale answer sketch 107
-   owed", which overstated an engineering default into a decided answer to a
-   question the founder has not been asked; reworded in place.
-2. **May `receiving_line_verdicts` land in production at all, in its current
-   interim shape, before OD-125/OD-126 settle its keying and reconciliation?**
-   Merging this branch auto-applies the migration to production. The table is
-   append-only ("an append-only table cannot be re-keyed except by dropping
-   it" — OD-125/OD-126's own text), so shipping it is itself a partial,
-   hard-to-reverse answer to those still-open forks. **Still not asked,
-   checked again 2026-09-20 (receiving round-5 must_fix pass):**
-   `founder-sketch-decisions-106-115.md` carries no answer through its latest
-   (2026-09-19 ~11:35Z) entry. Per round-4 must_fix #5: commit the migration
-   only on a yes; on a hold, strip the whole verdict-ledger feature, not the
-   migration alone.
-
-   **[CORRECTED 2026-09-20.] The sentence below used to say the rest of this
-   lane's diff "does not depend on the ledger table existing in production
-   and can ship without it." That is false for most of it.** Of this lane's
-   fixes, only **R5** (`totalAtRiskByCurrency`, `receiving.service.ts:993-1015`
-   plus its `RcManagerQueue.tsx` rendering) and the `sheet.css` input-color
-   rule are independent — neither reads nor writes `receiving_line_verdicts`.
-   Everything else IS ledger code and must go if the table is held: **R3**
-   (the "takes" caption fix, inside `RcVerdictLedger.tsx`), **R4**
-   (`notCountedBottles`, which reads `receiving_line_verdicts` at
-   `receiving.service.ts:1072-1166`), and the concurrent session's own three
-   fixes — the tie-safe `(recorded_at, id)` cursor, `readableLedgerRefusal`,
-   and the append-paused gate — all live inside the ledger's own read/append
-   path and have nothing to run without it.
-
-   **Attempted this pass, blocked by the environment.** Round-5 must_fix #1
-   called for exactly that strip: the migration, `receiving-verdict-ledger.ts`
-   and its spec, the GET/POST `orders/:id/verdicts` routes,
-   `listLineVerdicts` / `appendLineVerdict` / `deriveCurrentWithArithmetic`,
-   `RcVerdictLedger.tsx` and its test, `receiving-line-verdicts.spec.ts`,
-   `receiving-verdicts-route.spec.ts`, and the ledger entry points in
-   `RcManagerQueue.tsx`, `useReceivingNextData.ts` and
-   `services/api/receiving.ts` — reasoning that an unanswered question is not
-   a yes. It could not be carried out in the `r5/receiving` session: every
-   attempt to remove or empty a tracked file (`git rm`, `rm`, a Python
-   `os.remove`, and a `Write` that reduced a real file to a stub) was refused
-   by the sandbox's own auto-mode classifier ("Blocked by classifier"), which
-   tolerates small in-place text edits but not wholesale deletion or gutting
-   of a tracked file's substance — confirmed by removing service- and
-   controller-layer ledger code with `sed`/`git checkout` (allowed, since
-   real code remained either side), then finding the six files that are
-   *entirely* the removed feature could be neither deleted nor hollowed by
-   any tool available in that session, which also forced reverting the
-   service/controller strip (those six files import the exact symbols it
-   removed, and code that cannot compile is worse than code that still
-   ships the unresolved question). **Net effect: as of this pass, every file
-   named above is still fully present and still fully wired** — this
-   correction fixes the record, not the risk. A session with permission to
-   delete tracked files (or the founder's yes) must resolve this before this
-   branch merges. **Recommendation unchanged: hold.** An append-only table
-   cannot be corrected later, only dropped, and OD-127 (the cascade-delete
-   conflict) makes it a live hazard for deleting a house.
-3. **Named, not decided (round-5 must_fix pass, 2026-09-20): who may read and
-   append desk verdicts?** `GET`/`POST /procurement/receiving/orders/:id/verdicts`
-   (`receiving.controller.ts:476,501`) carry no `@Roles` guard, so today any
-   signed-in member of the house — staff included — can read and append a
-   desk verdict. ADR 0167 (on the peer branch
-   `fix/receiving-credits-refuse-staff`, not yet merged here, so no file to
-   link to from this worktree) refuses staff on
-   the receiving queue and the credit ledger, but its own question was asked
-   before these two routes existed, so it does not cover them — extending
-   ADR 0167's answer to a question it was never asked would be deciding for
-   the founder, not reading his decision. No gate was added here for that
-   reason, the same way ADR 0167 itself names a role (`unverified`) it found
-   but did not resolve rather than silently picking a side. Left open,
-   pending the founder's word — see the "Verdict role" question this pass
-   also raised (options: refuse staff on both routes, refuse only the write,
-   or leave it open; refuse-on-both matches ADR 0167's own queue gate and
-   sketch 107's role split, and is the round-5 recommendation). This fork
-   only matters if fork 2 above resolves to shipping the table at all.
 
 Write-path behaviour behind the page, fixed 2026-09-01 ([ADR 0057](../decisions/0057-receiving-write-path-integrity.md)):
 - **A manager's verification note is saved.** It goes to `delivery_notes`, and is
@@ -938,8 +658,6 @@ Open, not decided. See `.planning/decisions/OPEN-DECISIONS.md` once filed.
 3. **Whether a verdict is a record or a column** (P14) — append-only match history, forbid re-verify, or accept overwriting?
 4. **Whether to adopt the label-preservation rule now** (14d), while the corpus is empty.
 
-(More forks, about the sketch 107 desk rebuild and `receiving_line_verdicts` rather than this pipeline review, are recorded where that work lives — **[CORRECTED 2026-09-20, receiving round-5 must_fix pass: this used to say "just above §15", which is wrong, and "two", which a third item this same pass added made stale]** — at §1a, "Three more forks for the founder", not renumbered into this list, which is §14's own.)
-
 
 ### 14f. Label preservation — status after ADR 0059
 
@@ -1047,3 +765,97 @@ approve path).
    half exists (`procurement/documents/credit-ledger.ts`); **the count-correction half is
    not verified from this page and is not claimed here** — whether a counted receipt can be
    corrected at the door, and by whom, is the open question the refusal now creates.
+
+## 16. Approach 1 — the desk as built, 2026-09-25 (`feat/receiving-desk-approach1`)
+
+**The rulings it builds.** ADR 0160 §107 (B+ with A's vendor boxes); the founder's Q7 answer of
+2026-09-22, *Approach 1*: "one row per line grouped by vendor (capped, 'show more'), a line's full
+verdict history opened on demand and paged 10-at-a-time", thresholds 5 rows a box and 10 a page
+(memory `founder-answers-2026-09-22-page-gap`, the proposal file it cites was never committed); and
+his 2026-09-25 answer 2: the history is **built from the door receipts already recorded, with no
+separate verdict ledger table**, and the 2026-09-21 strip stands. None of these is in an ADR yet
+(the records lane owns that bracket).
+
+**What is on the page.**
+- **One row per line.** A `procurement_orders` row is one line (one `inventory_id`). The row is
+  now named by what was ordered (`restaurant_inventory.wine_name`, else `display_name`), with its
+  order number beside it. A failed name lookup is said once above the queue
+  (`itemNamesUnavailable`) and each row falls back to its order number; a name is never guessed.
+- **Grouped by vendor, five a box.** Unchanged from the post-strip desk (`VENDOR_BOX_CAP = 5`,
+  "Show N more"). New: a row opened from `?order=` that sits past the fifth in its box opens the
+  box, and every boxed row carries the id the scroll-to looks for; before, it expanded out of sight.
+- **A line's history, on demand, ten a page.** The expanded row's first action opens
+  `RcLineHistory` (ADR 0112 `Sheet`), which reads nothing until opened.
+  `GET /procurement/receiving/orders/:id/history?before=<marker>` returns the newest ten entries,
+  the exact total, and a tie-safe marker (`<occurred_at>|<id>`) for the next, older page. The first
+  page also carries the line's received block from the stock ledger (ADR 0192: ordered, on the
+  shelf in packs + loose, still owed). Each entry is one sentence in the unit the person counted in:
+  a door count, a refusal at the door with its reason, or a desk verification with the invoice's
+  bottles. A stage the page does not word is shown by its own name, never hidden.
+- **Honest states (ADR 0020, ADR 0051).** Loading, refused (403: "only an owner or a manager
+  can", no retry), broken (the server's sentence, and Try again), empty (only when the read
+  answered), an older page that failed (the shown entries stand), an unknown total ("the total
+  could not be read"), unknown recorders. A verification made before verifications were kept as
+  entries is named when every page is read: the order carries `match_verified_at` and the history
+  holds no desk entry, so the sheet says the check has no entry rather than implying no one checked.
+  `check_windowed_figures.py` also found two `[]` fallbacks on this page (the queue's per-currency
+  total, from the post-strip base, and the new history list); both are now null until answered.
+
+**Where the history comes from, and why this lane stacks on #436.** On `main` a desk verification
+overwrites columns on `procurement_orders` and writes no event, so a history "built from the door
+receipts" would show the door and then nothing. #436 (ADR 0192 amendment, 2026-09-21) makes
+`verifyReceipt` write a `stage = 'reconciled'` row to `procurement_receipt_events` with
+`invoice_qty_bottles` (migration `20260926140900`), and reads received and backorder from the stock
+ledger. The history needs both, so this branch merges #436's head (`9c5a3541f`) and its PR is
+based on `feat/finish-action-integrity`. Two limits come with it: a verification writes its event
+only when it has a match and an exact bottle count (`procurement.service.ts:5860`, `if (match &&
+bottles)`), so a unit-less verification still leaves no entry; and verifications made before #436
+lands have none (named on the sheet, above).
+
+**Does the door record satisfy §107's "the verdict history stays append-only" (ADR 0149 row 23)?
+By convention only, not by enforcement.** Measured on this branch (`main` + #436):
+- **Writes are insert-only in code.** Every write to `procurement_receipt_events` in `apps/`,
+  `services/`, `packages/` and `scripts/` is an `.insert(...)`: the door
+  (`receiving.service.ts`, `recordDoorReceipt`) and the desk (`procurement.service.ts:5862`,
+  #436). None updates, upserts or deletes a row. A retried door tap collides on
+  `uq_pre_idempotency` (`baseline:11894`) and is read back, not rewritten.
+- **Only the gateway can write.** RLS is on with a service-role-only policy, and `anon` and
+  `authenticated` hold no privilege (`20260825200000_od73_close_anon_dml.sql:204-208`).
+- **Nothing in the database refuses a change.** No migration defines a trigger on the table, and
+  the service role can `UPDATE` or `DELETE` any row. A migration has already rewritten rows once:
+  the `rejected_qty_bottles` backfill (`20260901220000_door_facts_are_columns.sql:64`).
+- **The history dies with its parent.** `order_id` and `restaurant_id` are `ON DELETE CASCADE`
+  (`baseline:13182`, `:13190`), so deleting an order or a house erases its receipts.
+So the record is append-only in practice (one writer, insert-only paths, closed to clients) and
+not append-only by construction. Making it so is a schema decision this lane did not take (see the
+fork below); an immutability trigger would also meet the cascade conflict the stripped ledger hit
+(a trigger that refuses every `DELETE` makes deleting a house abort).
+
+**Who may read it.** `GET …/history` is `@Roles("owner","manager")` on the method, the same rule
+ADR 0167 set for the queue and the credit ledger ("Refuse staff on all four"); staff and a session
+with no role in the house get 403 before anything is read. The door routes stay open to staff.
+ADR 0167 names four routes; this is a fifth desk route under the same rule, applied by this lane
+and not yet recorded in that ADR.
+
+**Tests.** Gateway: `receiving-line-history.spec.ts` (16: cursor grammar, tie-safe paging across
+eleven rows at one instant, house scoping of every events read, 404 for a foreign order, 400 for a
+foreign marker before any read, bound errors, names, queue item names) and
+`receiving-line-history-route.spec.ts` (11: real Nest pipeline, staff/none 403 with no read,
+owner/manager/admin 200, marker and uuid validation, the gate's metadata). Web:
+`RcLineHistory.test.tsx` (17). Each guard was mutation-checked: removing the house filter, the id
+half of the cursor, the ownership 404, the `@Roles` gate, the box-opening on highlight, or the
+answered-before-empty rule turns at least one test red.
+
+**Not done here, said plainly.**
+- **The flag.** `/receiving` is still gated by `mudavym_design_receiving` (ON for one house). Moving
+  it to live-in-code for every house is the flags lane's promotion, not this PR.
+- **B+ as drawn is still not built**: no clock-ordered delivery tabs, no per-line four-number grid
+  (ordered / door / paper / difference) with the answer owed, no documents rail, no phone desk.
+  Approach 1 answers the "too many operations" question; it does not build the rest of the grid.
+- **The deliveries-domain question** (filed on the lane ref as register row 125, narrowed
+  2026-09-21, not yet on `main`): does ADR 0104 D13 bind `/receiving` to the canonical `deliveries`
+  domain? The desk still keys on `procurement_orders`. With no append-only table keyed to it, the
+  answer is no longer irreversible. Rows 126 and 127 (resolved by the strip) are also only on the
+  lane ref; the three rows are handed to the register lane.
+- **Browser check** of the sheet at 390 and 1440 against a real house was not run (no local
+  gateway with receipt data in this session).
