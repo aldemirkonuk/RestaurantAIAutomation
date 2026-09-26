@@ -1,11 +1,14 @@
 /* The Ask panel (ADR 0145, "One panel, two modes", 2026-09-26).
-   House tokens only; the ground comes from the page or the shell. */
+   House tokens only. It paints its own paper ground (see .mdv-askp). */
 
 .mdv-askp {
   --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
   --mdv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
   font-family: var(--mdv-sans);
   color: var(--ink-2);
+  /* The panel paints its own ground (mudavym-ground.test.ts: a .mudavym
+     scope root paints a ground or names one). */
+  background: var(--paper-0);
 }
 
 /* Docked: the counter's slot, beside a live page (≥ ~1280 px). */
