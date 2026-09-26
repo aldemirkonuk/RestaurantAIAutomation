@@ -12,6 +12,8 @@ disagrees with the tree, the tree wins. Re-measure before acting on any line her
 marked "agent died" has partial or no edits in its worktree. Inspect `git status` there
 before continuing.
 
+**2026-09-25 — read the [web-rebuild census](../07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md) first.** It is the current record of the finish goal: every route's state at `059169a59` (what production serves), the 17-lane plan with corrected lane bases (`origin/wip/2026-09-21/<lane>`, not the dirty `wt-pg-*` and `wt-sessions` trees), the open founder forks, and his 2026-09-22 answers that had lived only in memory. It retires `07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md`. Every section below is the record of its own date; where one disagrees with the census, the census wins, and the tree wins over both.
+
 ## 0b. Public pages on PublicShell, 2026-09-13 — fixed 2026-09-17
 
 All seven public pages now have a shared-shell path; page dossiers record their behavior and remaining decisions. The counts below are this fixer pass's own re-measurement on this tree, not Codex's 2026-09-13 numbers (CLAUDE.md §5b — those are struck, not carried forward). **[CORRECTED 2026-09-19, wave-5 lane C: this line pointed at "the evidence doc's FIXER NOTE" for the superseded count, but that evidence doc (`.planning/handoff/evidence/public-pages-2026-09-13/IMPLEMENTATION-AND-VALIDATION.md`) was retired 2026-09-18 (see "Folded from" below) and was never committed to git on any ref — it has no recovery commit, and the count it held is not recoverable. What else it recorded is preserved in the "Folded from" subsection below.]**
@@ -33,7 +35,9 @@ That file was Codex's own 2026-09-13 delivery record for this line item; its cou
 - **Original visual coverage (Safari, temporary same-origin harness, 2026-09-13):** forgot-password rendered clean at 1080/375 on both grounds with no horizontal overflow; reset-password's missing-token state rendered clean at 375. Coverage did not include the other five pages or any email/invite mutation — this pass's own browser coverage (Chromium, `/v/:slug` and `/forgot-password`, wave4) and the mutation-proven regression tests (wave5) are what supersede it for those two pages; the other five still rely on `publicPages.recovery.test.tsx` and `authPages.publicDesign.test.tsx`, not a live render.
 - **Not retained:** the temporary `.public-qa.html`/`.public-preview.config.ts` harness and the `07-reference/mudavym-transition-2026-09-13/` vault-import bundle it described were adoption-time artifacts specific to the Codex worktree; neither exists on this tree, and nothing here depends on them.
 
-## 0c. The finish goal, 2026-09-16/17 (supersedes 0a and 0 wherever they differ)
+## 0e. The finish goal: lanes and worktrees at the #421 go-live, 2026-09-21 (supersedes 0a and 0 wherever they differ)
+
+**[Heading renamed 2026-09-25: #421 (`34c33a76a`) added this section as a second "## 0c." above the existing one, which #391 (`11c501d26`) had carried and which now sits below 0a. STATE.md's "§0c" pointers were added by #391 and mean that older section. Content unchanged.]**
 
 The founder set a new, larger goal 2026-09-16, superseding the 2026-09-12 merge-queue
 push below: finish every remaining page to the Mudavym design, then one cutover merge
@@ -305,6 +309,7 @@ detail surface (ADR 0160 §110 item 4) and the bundle shape (§113) still need d
 **What has not started:** `/get-started` (the arrival), `/ask` and the `/sommelier` redirect,
 `/authorize`'s page, the app-shell build, the deletion manifest itself, and the security-headers
 block in `apps/web/vercel.json` (the SEO session owns that file until its PR lands; it has).
+**[2026-09-25, [web-rebuild census](../07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md) §1a: since landed — `/get-started` (#455 `ddc5e094b`, ADR 0213), `/ask`'s backend (#430 `e2abd7844`; the page and the `/sommelier` redirect are still not built), `/authorize`'s page (#430, flag-gated), the app shell (#437 `7022434f7`, ON in the database for 14 of 14 houses) and the security headers (#418 `2bf07c6dc`). Only the deletion manifest has not started.]**
 
 ## 0. Latest state (supersedes section 3 wherever they differ)
 
