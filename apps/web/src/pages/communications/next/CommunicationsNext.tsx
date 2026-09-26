@@ -144,9 +144,19 @@ function GlanceFigure({
 function StateChip({
   status,
   direction,
+  reason,
 }: {
   status: string | null | undefined;
   direction?: 'INBOUND' | 'OUTBOUND' | null;
+  /**
+   * The gateway's own sentence for why this closed (ADR 0099, founder
+   * 2026-09-21) — `relay_refusal_reason`, set only when `status` is
+   * `RELAY_REFUSED`. A native tooltip on the chip, so the collapsed row stays
+   * simple (the chip already says "Not sent"); the same sentence is printed
+   * in the opened row too, because a tooltip never shows on a touch screen or
+   * to a keyboard — the row is where "why" is actually readable.
+   */
+  reason?: string | null;
 }) {
   if (direction === 'INBOUND') {
     return (
@@ -210,6 +220,7 @@ function StateChip({
                 };
   return (
     <span
+      title={reason ?? undefined}
       style={{
         fontFamily: MONO,
         fontSize: 8.5,
@@ -222,6 +233,7 @@ function StateChip({
         color: looks.fg,
         border: looks.dashed ? '1px dashed var(--ink-3, #7C7365)' : '1px solid transparent',
         whiteSpace: 'nowrap',
+        cursor: reason ? 'help' : undefined,
       }}
     >
       {looks.text}
@@ -257,7 +269,7 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           {item.quantity !== null ? ` · ${item.quantity}` : ''}
         </span>
         <span className="ml-auto" />
-        <StateChip status={item.status} direction={item.direction} />
+        <StateChip status={item.status} direction={item.direction} reason={item.relayRefusalReason} />
       </button>
       {open && (
         <div
@@ -294,6 +306,13 @@ function LedgerRow({ item }: { item: ProcurementHistoryItem }) {
           >
             {item.draftContent || 'No message body was recorded for this exchange.'}
           </p>
+          {item.direction !== 'INBOUND' && item.status === 'RELAY_REFUSED' && (
+            // ADR 0099, founder 2026-09-21: the draft closed, not retried, and
+            // the manager sees why — the gateway's own sentence, verbatim.
+            <p style={{ fontSize: 12, color: 'var(--alarm-deep, #8C3322)', maxWidth: '68ch', margin: '6px 0 0' }}>
+              Not sent — the relay refused it: {item.relayRefusalReason || 'no reason was recorded with this refusal.'}
+            </p>
+          )}
           {item.constraintFlags && item.constraintFlags.hard.length > 0 && (
             <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '6px 0 0' }}>
               Held by rule: {item.constraintFlags.hard.join(', ')}

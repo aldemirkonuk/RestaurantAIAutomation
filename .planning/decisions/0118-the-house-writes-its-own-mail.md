@@ -187,6 +187,40 @@ The status word matters. `processScheduledAutoSends` selects
 be dispatched by the **AI's** cron through the **deployment** mailbox — exactly
 what this build exists to stop. The spec asserts the two are different.
 
+[EXTENDED 2026-09-17, founder: `POST /communications/email`'s person door
+(ADR 0149 #19, ADR 0147) was built the same day to send from this house's own
+connected mailbox — the same `gmail_send` grant D2 already governs — but did
+so **immediately**, with no undo window, because #19 never named this route
+as one of D2's senders. `GET /communications/letters/sender` publishes D2's
+`ceremony: "undo"` / `undoMs` / sentence for this mailbox regardless of which
+route asks, so an immediate send from it made that publication false for this
+door's own callers. The founder's answer: **the person door queues like every
+other send from the house's own mailbox**, so D2's rule is a property of the
+*mailbox*, not of any one composer built on top of it. Built the same day
+(`relay-email.service.ts`'s `queueForHouse`/`dispatchQueued`/`cancelQueued`,
+`relay-email.cron.ts`, migration
+`20260927140000_a_persons_mail_queues_like_the_houses_own.sql`): a
+`relay_email_queue` row — door-agnostic sibling of this composer's own
+`HOUSE_QUEUED` row on `procurement_conversations`, not the same table, because
+`procurement_conversations.provider_id` is `NOT NULL` and the person door also
+reaches this house's own members with no vendor at all — carries `status`,
+`scheduled_send_at = now + undoMs` and the already-signed body, dispatched by
+the same once-a-minute-cron shape this section already argues for, and
+cancellable the same way. See ADR 0147 and
+`.planning/decisions/CLAIMS.jsonl` (`ADR-0149-MAILBOX-QUEUE`) for the built
+shape.] [CORRECTED 2026-09-18, relay3 confirmer: the migration as built
+declared `scheduled_send_at NOT NULL`, and `cancelQueued`'s update and both of
+`dispatchQueued`'s terminal updates all set it to `null` on the row's way out
+— Postgres rejected every one of the three with 23502, so the undo above
+never actually cancelled anything and every dispatched row stayed
+`HOUSE_SENDING` forever. The in-memory spec double did not enforce
+`NOT NULL`, so the tests this section cites passed regardless. Fixed by
+making the column nullable, matching `procurement_conversations`' own; a
+PGlite replay of the migration and every write the service makes now prints
+`PROBE: all held`. `dispatchQueued`'s own status-update failures are no
+longer discarded either — see CLAIMS.jsonl's `ADR-0149-MAILBOX-QUEUE` entry
+for the corrected shape.]
+
 ### D3 — Recipients come from the book, with "add to the book" inline
 
 The composer has **no free-text To**. It searches the vendor book
@@ -997,9 +1031,25 @@ rule.
 3. **Does `max_rounds` block a human, or only inform one?** Built as a stated
    fact. If a fourth letter on one order should require a second person, that is a
    policy decision, not a guardrail decision.
-4. **Should a queued letter be visible to the whole house, or only its author?**
-   Built house-wide (`GET /communications/letters/queued` is tenant-scoped), so a
-   second manager can pull back a letter they did not write.
+4. ~~**Should a queued letter be visible to the whole house, or only its author?**~~
+   **ANSWERED 2026-09-18, ADR 0149 row 43** — his words, typo kept: *"only
+   author is the best option but I also belirve the pool inbox is a good
+   idea."* Cancel is
+   the author's alone, on both queues: `HouseLettersService.cancel` (this
+   composer's `procurement_conversations` queue) and
+   `RelayEmailService.cancelQueued` (`relay_email_queue`, ADR 0149 #19) each
+   now read the row's own written-by/`actor_user_id`, refuse a non-author with
+   403 before any state or window check, and are proved by
+   `house-letters.spec.ts` and `relay-email.doors.spec.ts`. *Visibility* was
+   not narrowed — `GET /communications/letters/queued` stays tenant-wide, per
+   the founder's own second half of the answer: a pooled inbox — several
+   owners sharing a view of what left or is queued, while each still sends
+   from and is named as the author of their own mailbox grant — is a good
+   idea he wants kept as a direction (`.planning/06-pages/communications.md`'s
+   relay section), not built. ("Owners share while keeping their own
+   accounts" is this corpus's own gloss on that half of the answer, not a
+   further quote from him — his words are the sentence quoted in item 4
+   above, nothing past the period.)
 5. ~~**Who may switch the reading on, and where does that control live?**~~
    **ANSWERED 2026-09-05: an owner or a manager, from `/settings`.** The founder
    took the first of the two paths — role-gate `PUT /settings/feature-flags` with

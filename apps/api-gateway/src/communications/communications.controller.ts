@@ -30,7 +30,6 @@ import {
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { DatabaseService } from "../database/database.service";
 import {
-  SendEmailDto,
   LowStockAlertDto,
   DailySummaryDto,
   SendTemplateTestDto,
@@ -41,7 +40,6 @@ import {
 import { Public } from "../auth/decorators/public.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
-import { ServiceKeyGuard } from "../auth/guards/service-key.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 
@@ -173,90 +171,28 @@ export class CommunicationsController {
     return this.communicationsService.getStatus();
   }
 
-  /**
-   * Send a raw email.
-   *
-   * ⚠️ KEPT DELIBERATELY. 2026-09-02, ADR 0084 — narrowed to a service caller
-   * 2026-09-02 by ADR 0099.
-   *
-   * This route had the same shape as the raw-SMS route deleted below — body
-   * only, no `@CurrentUser()`, no tenant, no ownership check on the
-   * destination address, and no record written — so any authenticated user of
-   * any tenant could send arbitrary HTML to any address on the internet from
-   * the OAuth-verified sender domain, leaving no trace. It was scheduled for
-   * deletion for exactly that reason.
-   *
-   * It was not deleted because it has a caller:
-   *
-   *   services/agent-orchestrator/services/email_composer_service.py:354
-   *     `send_via_gateway()` POSTs `{api_gateway_url}/communications/email`
-   *   ← agents/provider_conversation_agent.py:3074 (`_send_message`)
-   *
-   * ADR 0099 CORRECTION. 0084 called it a LIVE caller and said "that is the
-   * path every approved vendor email travels". Measured against production
-   * 2026-09-02, it is neither. That caller had been refused since `fdaa7fa0`
-   * (2026-08-25) added the class-level JwtAuthGuard above, and it sends no
-   * `Authorization` header. And before that: of 17 outbound
-   * `procurement_conversations` rows, **zero** carry the row shape this Python
-   * path writes on success (`message_id` like `<wineops-…@wineops.ai>`,
-   * `email_headers.gmail_message_id`, `delivery_status='sent'`). All 17 carry
-   * the gateway-native shape written by `procurement.service.ts`, which calls
-   * `GmailService` in process and never touches this route. Real vendor mail
-   * travels THAT path. `agent_activity_logs` is empty. Deleting this route
-   * would have stopped nothing — but keeping it needed a reason better than a
-   * caller that was already 401ing.
-   *
-   * The caller identity 0084 asked for is now the `X-Admin-Key` service key
-   * (see ServiceKeyGuard below). Still NOT fixed: this route writes no
-   * `procurement_conversations` row of its own — the caller does that — and
-   * it still carries no tenant.
-   */
-  @Post("email")
-  @HttpCode(HttpStatus.OK)
-  // ADR 0099 — the caller identity this route was waiting for.
+  // POST /communications/email MOVED 2026-09-17 to
+  // `relay/relay-email.controller.ts` (ADR 0149 #19 — "Two doors, both locked").
   //
-  // The note above ends "do not delete this route until that caller has
-  // somewhere else to go". It now does: `X-Admin-Key`, the ADMIN_API_KEY the
-  // gateway and the orchestrator already share in the other direction.
-  //
-  // @Public() does NOT mean unauthenticated here. Nest runs class guards before
-  // method guards and requires all of them to pass, so a method-level guard can
-  // only ADD to the class-level JwtAuthGuard, never stand in for it. @Public()
-  // short-circuits the JWT check so ServiceKeyGuard — which fails closed on an
-  // unset key — is what actually decides. Same shape as POST /webhooks/gmail
-  // below (ADR 0019 D3), which is @Public() and authenticated by a Google OIDC
-  // token.
-  @Public()
-  @UseGuards(ServiceKeyGuard)
-  @ApiOperation({
-    summary: "Send an email via Gmail API (service callers only)",
-  })
-  @ApiHeader({ name: "X-Admin-Key", required: true })
-  @ApiResponse({ status: 200, type: CommunicationResultDto })
-  async sendEmail(@Body() dto: SendEmailDto): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending email to: ${dto.to.join(", ")}`);
-
-    const result = await this.gmailService.sendEmail({
-      to: dto.to,
-      subject: dto.subject,
-      html: dto.bodyHtml,
-      text: dto.bodyText,
-      cc: dto.cc,
-      bcc: dto.bcc,
-      replyTo: dto.replyTo,
-      threadId: dto.threadId,
-      inReplyTo: dto.inReplyTo,
-      references: dto.references,
-    });
-
-    return {
-      success: result.success,
-      messageId: result.messageId,
-      threadId: result.threadId,
-      error: result.error,
-      channel: "email",
-    };
-  }
+  // History, kept because every earlier record cites this spot: ADR 0084
+  // (2026-09-02) wrote the route down as an open relay — body only, no tenant,
+  // no destination check, no record. ADR 0099 (same day) put the orchestrator's
+  // `X-Admin-Key` in front of it and nothing else, so a key holder could still
+  // send any HTML to any address for no house and leave no trace. It now has two
+  // doors: the service key, naming the house, the vendor and the conversation or
+  // order, with every recipient checked against that vendor's addresses in the
+  // house's book; and a person's JWT, owner or manager of the session's house,
+  // to its members and its vendors' contacts — which, after those checks,
+  // refuses 409, because a person's mail may not leave from the deployment's
+  // shared mailbox (ADR 0118 D1/D2) and no other sender is decided for it.
+  // [SUPERSEDED 2026-09-17: the founder answered which mailbox; the person
+  // door sends through the house's own connected gmail_send grant, naming
+  // the acting person as author, and refuses with house_mailbox_not_connected
+  // only when the house has none.]
+  // Every send writes `system_audit_log` rows before and after the provider is
+  // called.
+  // Moved rather than grown in place so the doors can be proved over HTTP
+  // against a controller whose only dependency is the relay itself.
 
   // POST /communications/sms was DELETED 2026-09-02 (ADR 0084).
   //

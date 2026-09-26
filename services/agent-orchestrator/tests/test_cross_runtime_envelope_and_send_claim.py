@@ -33,6 +33,7 @@ missing an update.
 
 import asyncio
 import json
+import re
 import types
 from unittest.mock import AsyncMock, MagicMock
 
@@ -193,8 +194,6 @@ class TestEnvelopeNormalization:
 class _FakeQuery:
     """Just enough PostgREST to honour the conditional filters the claim uses."""
 
-    _BLOCKED = ("SENDING", "SENT", "AUTO_SENT", "SEND_UNCONFIRMED")
-
     def __init__(self, table, row):
         self._table = table
         self._row = row
@@ -238,9 +237,22 @@ class _FakeQuery:
                 and self._row.get("status") != self._filters["status"]
             ):
                 return types.SimpleNamespace(data=[])
-            # the claim's NOT-IN arm
-            if self._or and self._row.get("status") in self._BLOCKED:
-                return types.SimpleNamespace(data=[])
+            # The claim's NOT-IN arm: parsed from the REAL `.or_()` filter
+            # string the agent built (`status.is.null,status.not.in.(A,B,C)`)
+            # rather than a hardcoded mirror of
+            # `ProviderConversationAgent._SEND_TERMINAL_STATUSES` — a
+            # constant this fake predates would otherwise be free to drift
+            # from with no test noticing (found mutation-testing ADR 0099's
+            # RELAY_REFUSED addition, 2026-09-21: a hardcoded mirror here left
+            # the removal of RELAY_REFUSED from that constant invisible to
+            # every test in this file).
+            if self._or:
+                blocked_match = re.search(r"status\.not\.in\.\(([^)]*)\)", self._or)
+                blocked = (
+                    set(blocked_match.group(1).split(",")) if blocked_match else set()
+                )
+                if self._row.get("status") in blocked:
+                    return types.SimpleNamespace(data=[])
             self._row.update(self._payload)
             return types.SimpleNamespace(data=[dict(self._row)])
         if self._table == "procurement_conversations":
@@ -304,6 +316,17 @@ AMBIGUOUS_FAILURES = [
         id="smtp-4xx-is-transient-not-a-refusal",
     ),
     pytest.param({"success": False, "error": ""}, id="unnameable-failure"),
+    # ADR 0099 (2026-09-19, founder decision, lane answers batch 4): unlike
+    # 400/403/422 above, a relay 401 means the ORCHESTRATOR's own service key
+    # is wrong or missing at the gateway — a fixable config problem, not proof
+    # about the vendor — so it stays ambiguous and parks for a person.
+    pytest.param(
+        {
+            "success": False,
+            "error": "gateway refused the send: HTTP 401 — Unauthorized",
+        },
+        id="relay-401-service-key-problem-is-ambiguous",
+    ),
 ]
 
 
@@ -365,7 +388,11 @@ class TestDefiniteRefusalIsReleased:
         ],
     )
     async def test_definite_refusal_releases_the_claim_and_raises(self, error):
-        """Proven undelivered: safe to hand back, and a retry is the right outcome."""
+        """Proven undelivered: safe to hand back, and a retry is the right
+        outcome. NONE of these carry the relay's own 'gateway refused the
+        send: HTTP ...' sentence, so `_relay_final_refusal_code` must leave
+        them alone (see TestRelayFinalRefusalCloses below for the three that
+        do)."""
         agent = _conversation_agent({"success": False, "error": error})
 
         with pytest.raises(RuntimeError):
@@ -393,6 +420,80 @@ class TestDefiniteRefusalIsReleased:
             ProviderConversationAgent._is_definite_send_refusal("550 user unknown")
             is True
         )
+
+
+class TestRelayFinalRefusalCloses:
+    """ADR 0099, founder 2026-09-21: "a 400/403/422 relay refusal is FINAL =
+    'Close, no retry'" — narrowing the 2026-09-19 answer
+    (TestDefiniteRefusalIsReleased's own header once said these three codes
+    too, before this correction). These three still satisfy
+    `_is_definite_send_refusal` (unchanged, see the classifier tests above) —
+    what changed is that `_handle_conversation_approved` now checks
+    `_relay_final_refusal_code` FIRST and, for exactly these codes, CLOSES
+    the row instead of releasing its claim, and does not raise."""
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            pytest.param(
+                "gateway refused the send: HTTP 400 — This mail has no words: bodyText is empty. Nothing was sent.",
+                id="relay-400-malformed-request",
+            ),
+            pytest.param(
+                "gateway refused the send: HTTP 403 — Conversation is not one of this house's conversations. Nothing was sent.",
+                id="relay-403-doors-own-refusal",
+            ),
+            pytest.param(
+                "gateway refused the send: HTTP 422 — A guardrail refused this content. Nothing was sent.",
+                id="relay-422-guardrail-refusal",
+            ),
+            # ADR 0172, founder 2026-09-21: "a header refusal on the relay
+            # path answers a FINAL 422 (not 200 success:false), so both send
+            # paths behave alike". Same code, different underlying cause — a
+            # 422 minted by RelayEmailService.sendAsOrchestrator when
+            # GmailService reports `refusedBeforeSend` rather than by a door
+            # check — and this classifier cannot and need not tell the two
+            # apart: both are decided before any transport reached the
+            # vendor, so both close.
+            pytest.param(
+                "gateway refused the send: HTTP 422 — Could not fold the Subject header. Nothing was sent — the provider was never called. Fix the header named above and try again.",
+                id="relay-422-header-refusal-before-send",
+            ),
+        ],
+    )
+    async def test_relay_final_refusal_closes_and_does_not_raise(self, error):
+        """CLOSED, not released: a retry would refuse the same request again,
+        identically, so nothing must raise to trigger one."""
+        agent = _conversation_agent({"success": False, "error": error})
+
+        # No raise — this is the whole point of "no retry".
+        await ProviderConversationAgent._handle_conversation_approved(
+            agent, {"conversation_id": CONV_ID}
+        )
+
+        assert agent.row["status"] == "RELAY_REFUSED"
+        assert agent.row["relay_refusal_reason"] == error
+        assert agent.sends, "the send must still have been attempted once"
+
+    async def test_relay_final_refusal_produces_no_second_send_on_replay(self):
+        """A closed row must never become re-sendable — the same replay trap
+        `TestAmbiguousSendIsParkedNotRetried` guards for the parked case."""
+        error = "gateway refused the send: HTTP 403 — refused. Nothing was sent."
+        agent = _conversation_agent({"success": False, "error": error})
+
+        await ProviderConversationAgent._handle_conversation_approved(
+            agent, {"conversation_id": CONV_ID}
+        )
+        await ProviderConversationAgent._handle_conversation_approved(
+            agent, {"conversation_id": CONV_ID}
+        )
+        await ProviderConversationAgent._handle_conversation_approved(
+            agent, {"conversation_id": CONV_ID}
+        )
+
+        assert (
+            len(agent.sends) == 1
+        ), f"replay sent {len(agent.sends)} vendor messages — RELAY_REFUSED did not hold as a claim"
 
 
 class TestSuccessfulSend:

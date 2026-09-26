@@ -6,8 +6,32 @@ import {
   IsEmail,
   Min,
   IsBoolean,
+  ArrayNotEmpty,
+  ArrayMaxSize,
+  IsUUID,
+  Matches,
+  MaxLength,
 } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+
+/**
+ * ADR 0147 / 0149 #19 — no CR or LF in any value that becomes a MIME header.
+ *
+ * `GmailService.createMimeMessage` joins `Subject`, `In-Reply-To` and
+ * `References` into the header block with `\r\n` and no escaping. A subject of
+ * `"hi\r\nBcc: someone@elsewhere"` therefore ADDS A RECIPIENT that no
+ * recipient check ever saw — the relay's allow-list would be bypassed by the
+ * one field nobody treats as an address. The orchestrator's subject carries a
+ * wine name read from the database, which a vendor can influence, so this is
+ * not a browser-only concern.
+ */
+const SINGLE_HEADER_LINE = /^[^\r\n]*$/;
+const HEADER_LINE_MESSAGE =
+  "must be a single line: a line break in a mail header would let it add a recipient nobody checked";
+
+/** Characters. See the note on `bodyHtml` below. */
+export const SEND_EMAIL_BODY_HTML_MAX = 500_000;
+export const SEND_EMAIL_BODY_TEXT_MAX = 100_000;
 
 export class SendEmailDto {
   @ApiProperty({
@@ -15,6 +39,8 @@ export class SendEmailDto {
     example: ["ops@your-restaurant.com"],
   })
   @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(50)
   @IsEmail({}, { each: true })
   to: string[];
 
@@ -23,28 +49,98 @@ export class SendEmailDto {
     example: "Low Stock Alert: Chateau Margaux 2015",
   })
   @IsString()
+  @MaxLength(500)
+  @Matches(SINGLE_HEADER_LINE, { message: `subject ${HEADER_LINE_MESSAGE}` })
   subject: string;
 
-  @ApiProperty({ description: "HTML body content" })
+  // Optional in the CONTRACT since 2026-09-17 (ADR 0149 #19): the orchestrator's
+  // door still requires it, and the person door refuses it — a person's mail is
+  // never taken as raw HTML. (Nor, since the same day's review, does a person's
+  // mail leave this route at all: its sender is undecided and the door answers
+  // 409 — relay-email.service.ts.) Each door states its own refusal.
+  // [SUPERSEDED 2026-09-17: the founder answered which mailbox; the person
+  // door sends through the house's own connected gmail_send grant, naming
+  // the acting person as author, and refuses with house_mailbox_not_connected
+  // only when the house has none.]
+  //
+  // Both bodies are bounded (2026-09-17, ADR 0149 #19 review). The JSON body
+  // limit is 15 MB (main.ts), and an unbounded body is what made guessing the
+  // old time-based MIME boundary cheap: a 10-second window of guesses was
+  // 1.58 MB. The boundary is random and both parts are base64 now
+  // (gmail.service.ts createMimeMessage), which closes the injection on its
+  // own; these limits bound what one request may cost. A vendor email the
+  // orchestrator writes is a few kilobytes, so both sit far above any real one.
+  @ApiPropertyOptional({
+    description:
+      "HTML body — service door only. A person's mail is never taken as HTML.",
+  })
+  @IsOptional()
   @IsString()
-  bodyHtml: string;
+  @MaxLength(SEND_EMAIL_BODY_HTML_MAX)
+  bodyHtml?: string;
 
   @ApiPropertyOptional({ description: "Plain text body content" })
   @IsOptional()
   @IsString()
+  @MaxLength(SEND_EMAIL_BODY_TEXT_MAX)
   bodyText?: string;
 
   @ApiPropertyOptional({ description: "CC recipients" })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(50)
   @IsEmail({}, { each: true })
   cc?: string[];
 
   @ApiPropertyOptional({ description: "BCC recipients" })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(50)
   @IsEmail({}, { each: true })
   bcc?: string[];
+
+  // ADR 0149 #19 — what the send is FOR. The orchestrator's door must name the
+  // house, the vendor, and the conversation or order; the gateway checks every
+  // one against the rows before anything leaves. On the person door the house
+  // comes from the token (a body `restaurantId` naming another house is refused
+  // by JwtAuthGuard's tenant match), and the rest is optional but checked when
+  // given.
+
+  @ApiPropertyOptional({
+    description:
+      "The house this mail is sent for. Required on the service door; on the person door it must equal the session's house.",
+  })
+  @IsOptional()
+  @IsUUID("all")
+  restaurantId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The vendor this mail is sent to. Required on the service door; every recipient must be one of this vendor's addresses in the house's book.",
+  })
+  @IsOptional()
+  @IsUUID("all")
+  providerId?: string;
+
+  @ApiPropertyOptional({
+    description: "The procurement conversation this mail sends.",
+  })
+  @IsOptional()
+  @IsUUID("all")
+  conversationId?: string;
+
+  @ApiPropertyOptional({ description: "The procurement order this mail is about." })
+  @IsOptional()
+  @IsUUID("all")
+  orderId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "A house letter template (communication_templates, type 'letter') this mail was written from. Recorded on the audit row.",
+  })
+  @IsOptional()
+  @IsUUID("all")
+  templateId?: string;
 
   // ADR 0099 — the four threading fields.
   //
@@ -67,16 +163,22 @@ export class SendEmailDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
+  @Matches(SINGLE_HEADER_LINE, { message: `threadId ${HEADER_LINE_MESSAGE}` })
   threadId?: string;
 
   @ApiPropertyOptional({ description: "RFC 5322 In-Reply-To message id" })
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
+  @Matches(SINGLE_HEADER_LINE, { message: `inReplyTo ${HEADER_LINE_MESSAGE}` })
   inReplyTo?: string;
 
   @ApiPropertyOptional({ description: "RFC 5322 References chain" })
   @IsOptional()
   @IsString()
+  @MaxLength(8000)
+  @Matches(SINGLE_HEADER_LINE, { message: `references ${HEADER_LINE_MESSAGE}` })
   references?: string;
 }
 

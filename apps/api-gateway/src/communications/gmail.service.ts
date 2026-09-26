@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { randomBytes } from "node:crypto";
 import { google, gmail_v1 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import * as nodemailer from "nodemailer";
@@ -662,10 +663,27 @@ This is an automated alert from Mudavym.
   }
 
   /**
-   * Create a MIME message for Gmail API
+   * Create a MIME message for Gmail API.
+   *
+   * NO BODY LINE CAN END A PART (ADR 0149 #19 review, 2026-09-17). Until that
+   * day the boundary was `boundary_${Date.now()}` and both bodies went out raw,
+   * with no transfer encoding. A body — the orchestrator's text, a manager's
+   * approved draft, any caller's `bodyText` — that carried a line
+   * `--boundary_<a guessed millisecond>` therefore CLOSED the part it was in and
+   * opened its own: an injected `text/html` part or an attachment, with the
+   * gateway's own HTML part pushed into the epilogue where no client renders it.
+   * A 10-second guess window was 1.58 MB of text, well inside the 15 MB body
+   * limit, and a stdlib RFC 2046 parser rendered the injected link.
+   *
+   * Closed twice, independently:
+   *   - the boundary is 128 random bits, so it cannot be guessed;
+   *   - both parts are `Content-Transfer-Encoding: base64`, so every body line
+   *     is drawn from `[A-Za-z0-9+/=]` and can never begin with `--` — no body
+   *     line can be a delimiter even if the boundary were known.
+   * Proved by relay-email.doors.spec.ts, which parses the MIME this builds.
    */
   private createMimeMessage(options: EmailOptions): string {
-    const boundary = `boundary_${Date.now()}`;
+    const boundary = `mudavym_alt_${randomBytes(16).toString("hex")}`;
     // The house's own name (ADR 0149 / PR #391) reaches the From header, and it
     // is handed to ADR 0172's encoder RAW: mailboxPieces already collapses
     // control characters and escapes `"` and `\` inside the quoted form, so a
@@ -709,7 +727,9 @@ This is an automated alert from Mudavym.
 
     // base64, not 8bit: the parts carry ₺, —, and Turkish letters, and 7bit is
     // the default when no Content-Transfer-Encoding is declared. The base64
-    // alphabet has no "_", so no part can contain the `boundary_…` delimiter.
+    // alphabet has no "_", so no part can contain the `mudavym_alt_…` delimiter.
+    // One encoder for every hand-built message: mime-headers.ts's base64Body
+    // (ADR 0172), not a second copy here.
     const body = [
       `--${boundary}`,
       'Content-Type: text/plain; charset="UTF-8"',

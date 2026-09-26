@@ -419,3 +419,62 @@ describe("getConversationHistory — the ledger sees its own rows (ADR 0084)", (
     );
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR 0099, founder 2026-09-21: a 400/403/422 relay refusal CLOSES the draft
+// as RELAY_REFUSED ("Close, no retry") and the manager sees why on the draft.
+// Both reads that put a relay draft in front of a manager — the ledger on
+// /communications and the order's thread drawer on /orders — must carry the
+// gateway's own sentence. The stub returns every column whatever is selected,
+// so each test also pins the select: dropping the column from either query
+// would otherwise pass here and ship a panel with no reason on it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("a relay refusal carries its reason to both panels (ADR 0099)", () => {
+  const SENTENCE =
+    "gateway refused the send: HTTP 403 — Conversation refused-0 is not one of this house's conversations. Nothing was sent.";
+
+  function withRefusal(): Row[] {
+    const rows = productionShapedRows();
+    rows.push({
+      id: "refused-0",
+      restaurant_id: REST,
+      order_id: "ord-0",
+      provider_id: "prov-0",
+      direction: "outbound",
+      status: "RELAY_REFUSED",
+      relay_refusal_reason: SENTENCE,
+      content: "Could you hold 6 at 18.40?",
+      message_text: "Could you hold 6 at 18.40?",
+      created_at: new Date(2026, 8, 21).toISOString(),
+      outbound_email_type: "PRICE_INQUIRY",
+      round_count: 1,
+    });
+    return rows;
+  }
+
+  it("the ledger shows the closed row with the gateway's sentence", async () => {
+    const { service, captured } = serviceOver(withRefusal());
+    const out = await service.getConversationHistory(REST);
+
+    expect(captured.select).toContain("relay_refusal_reason");
+    const refused = out.find((r) => r.id === "refused-0");
+    expect(refused).toBeDefined();
+    expect(refused!.status).toBe("RELAY_REFUSED");
+    expect(refused!.relayRefusalReason).toBe(SENTENCE);
+    // Every other row names no reason — null, never an invented one.
+    expect(
+      out.filter((r) => r.id !== "refused-0").every((r) => r.relayRefusalReason === null),
+    ).toBe(true);
+  });
+
+  it("the order's thread drawer read carries the same sentence", async () => {
+    const { service, captured } = serviceOver(withRefusal());
+    const out = await service.getOrderConversations(REST, "ord-0");
+
+    expect(captured.select).toContain("relay_refusal_reason");
+    const refused = out.find((r) => r.id === "refused-0");
+    expect(refused).toBeDefined();
+    expect(refused!.relayRefusalReason).toBe(SENTENCE);
+  });
+});

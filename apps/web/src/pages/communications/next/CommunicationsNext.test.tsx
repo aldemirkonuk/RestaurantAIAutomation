@@ -55,6 +55,7 @@ function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
     draftContent: 'Dear Bodega, could you hold 6 at $18.40?',
     constraintFlags: null,
     rollingSummary: null,
+    relayRefusalReason: null,
     orderNumber: 'PO-014',
     quantity: 6,
     wineName: 'Albariño 2022',
@@ -116,6 +117,26 @@ describe('CommunicationsNext', () => {
     render(<CommunicationsNext />);
     expect(screen.getByText('AI draft · not sent')).toBeInTheDocument();
     expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
+  });
+
+  // ADR 0099, founder 2026-09-21: a 400/403/422 relay refusal CLOSES the
+  // draft ("Close, no retry") and the manager sees why on the draft. The chip
+  // says it did not leave; the gateway's sentence is on the chip as a tooltip
+  // AND printed in the opened row, since a tooltip never shows on touch.
+  it('a relay refusal says Not sent and shows the gateway\'s sentence', () => {
+    const said =
+      "gateway refused the send: HTTP 403 — Conversation c1 is not one of this house's conversations. Nothing was sent.";
+    mockData.current = {
+      ...base,
+      rows: [item({ status: 'RELAY_REFUSED', relayRefusalReason: said })],
+    };
+    render(<CommunicationsNext />);
+    const chip = screen.getByText('Not sent');
+    expect(chip).toHaveAttribute('title', said);
+    expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/the relay refused it/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Bodega Álvaro'));
+    expect(screen.getByText(/Not sent — the relay refused it: gateway refused the send: HTTP 403/)).toBeInTheDocument();
   });
 
   it('APPROVED is approval, never dispatch (the audit blocker case)', () => {

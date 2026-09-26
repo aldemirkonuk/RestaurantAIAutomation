@@ -67,6 +67,13 @@ run on the result:
 | #434 | `20260922230000`..`…115100` | passes | **fails, 3** |
 | #429 | `20260921110000`, `…113000` | passes | n/a |
 
+[2026-09-26, PR #429 audit at `e38d7d5b`: the #429 row is kept as it was measured on
+2026-09-21. It no longer names that PR's files. Under this ADR's guard they were renamed
+twice: on 2026-09-25 to `20260925160000` and `…160100`, and on 2026-09-26 to
+`20260927140000` and `…140100`, past main's ceiling `20260925160700` at `fc2d40f96`. So the
+right-hand column, which measures what happens after #429 merges, describes files that no
+longer exist.]
+
 The same day, one lane renamed its migration to one step past the ceiling. That was
 checked by hand against every branch it could see, and it still lost the race twice.
 

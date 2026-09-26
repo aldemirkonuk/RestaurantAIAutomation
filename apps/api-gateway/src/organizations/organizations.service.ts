@@ -11,6 +11,17 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 
+/**
+ * A role read that FAILED, as opposed to a person with no role. Thrown only by
+ * `OrganizationsService.readRestaurantRole`; its message says which read.
+ */
+export class RestaurantRoleUnreadableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RestaurantRoleUnreadableError";
+  }
+}
+
 export interface RestaurantBranch {
   id: string;
   name: string;
@@ -161,25 +172,70 @@ export class OrganizationsService {
     userId: string,
     restaurantId: string,
   ): Promise<string | null> {
-    const { data: access } = await this.databaseService.supabase
-      .from("user_restaurant_access")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true)
-      .maybeSingle();
+    return (await this.lookupRestaurantRole(userId, restaurantId)).role;
+  }
+
+  /**
+   * The same answer, for a caller that must not read an outage as "no role".
+   *
+   * Added 2026-09-17 (ADR 0149 #19 review): the mail relay's person door said
+   * "could not be shown to hold any role" — a 403 — when the database was down,
+   * because `resolveRestaurantRole` above returns `null` for both. Here a
+   * failed read THROWS `RestaurantRoleUnreadableError`, so the caller can say
+   * 503; `null` still means a genuine absence.
+   *
+   * One lookup, two readings of it: the rule for "what is this person here"
+   * stays in one place (`lookupRestaurantRole`), and the permissive reading's
+   * behaviour is unchanged for its existing callers.
+   */
+  async readRestaurantRole(
+    userId: string,
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { role, readError } = await this.lookupRestaurantRole(
+      userId,
+      restaurantId,
+    );
+    if (readError) throw new RestaurantRoleUnreadableError(readError);
+    return role;
+  }
+
+  /**
+   * The two-step lookup itself. `readError` is set whenever a read the answer
+   * depends on failed: the access row (whose absence is what sends us to the
+   * legacy home, so an unreadable one leaves the answer unknown even when the
+   * legacy row names a role), or the legacy row when it was needed.
+   */
+  private async lookupRestaurantRole(
+    userId: string,
+    restaurantId: string,
+  ): Promise<{ role: string | null; readError: string | null }> {
+    const { data: access, error: accessError } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .maybeSingle();
 
     const fromAccess = (access as { role?: string } | null)?.role;
-    if (fromAccess) return fromAccess;
+    if (fromAccess) return { role: fromAccess, readError: null };
 
-    const { data: user } = await this.databaseService.supabase
+    const { data: user, error: userError } = await this.databaseService.supabase
       .from("users")
       .select("role, restaurant_id")
       .eq("user_id", userId)
       .maybeSingle();
     const legacy = user as { role?: string; restaurant_id?: string } | null;
-    if (legacy?.restaurant_id === restaurantId) return legacy.role ?? null;
-    return null;
+    const role =
+      legacy?.restaurant_id === restaurantId ? (legacy.role ?? null) : null;
+    const readError = accessError
+      ? `this house's access register could not be read (${accessError.message})`
+      : userError
+        ? `the person's home house could not be read (${userError.message})`
+        : null;
+    return { role, readError };
   }
 
   /**

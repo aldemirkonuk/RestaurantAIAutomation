@@ -190,7 +190,10 @@ describe("GmailService.createMimeMessage — headers (ADR 0172)", () => {
     expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/); // url-safe alphabet, no padding
     expect(Buffer.from(raw, "latin1").toString("base64url")).toBe(encoded);
     expect(raw.startsWith("From: ")).toBe(true);
-    expect(raw).toMatch(/--boundary_\d+--$/); // ends on the close delimiter
+    // Ends on the close delimiter. The boundary is 128 random bits since the
+    // relay lane's ADR 0149 #19 fix (merged with this file 2026-09-21); it was
+    // `boundary_${Date.now()}`, which a body line could guess and close.
+    expect(raw).toMatch(/--mudavym_alt_[0-9a-f]{32}--$/);
   });
 
   it.each([LIRA, SARAP])(
