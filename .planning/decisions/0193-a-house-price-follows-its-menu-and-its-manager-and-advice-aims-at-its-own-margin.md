@@ -101,7 +101,12 @@ What that is, concretely:
    `/inventory`, edited in place, `change_source = 'manual'`.
 6. **Fixed first: `PATCH /menus/items/:id` is house-scoped** -- the house from the JWT, the
    line read and written with `restaurant_id` = that house, a foreign id a 404, a session
-   with no house a 403.
+   with no house a 403. **[2026-09-25, PR #446: `POST /menus/items` now has the same shape.
+   The menu is read with the token's house inside the query. Another house's menu id is the
+   same 404 "Menu not found" as a missing one; this build had answered it 403 "does not
+   belong", which confirmed the id was a real menu (ADR 0147). A failed read is a 500, not a
+   404. No house is still a 403. The follow-up line update and the discard route's write also
+   filter on the house. Claim `MENU-ITEMS-PATCH-404-HOUSE-SCOPED`.]**
 7. **The house's target margin**: `restaurants.target_margin_bottle_pct`,
    `target_margin_glass_pct`, `target_margin_band_pts` ("close enough"),
    `target_margin_set_by`, `target_margin_set_at`. No default, no backfill (asserted by the
