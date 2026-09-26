@@ -20,7 +20,7 @@ import { VendorSendAuthorityService } from "./vendor-send-authority.service";
  * WHAT THIS SERVICE OWNS, AND WHAT IT DOES NOT
  * -------------------------------------------
  * It owns the REQUEST: who may ask (a member whose own hold would ask, never
- * a person who may send), the row (`vendor_send_requests`, 20260921114900)
+ * a person who may send), the row (`vendor_send_requests`, 20260926140700)
  * with the exact terms or letter and their hash, the claim a release takes on
  * it, and the notices. It does not own the RELEASE: that is the ordinary
  * sealed door — `confirm-deal` for a deal, the composer's `queue` for a letter
@@ -48,10 +48,10 @@ export type VendorSendRequestKind = "confirm_deal" | "house_letter";
 const REQUEST_COLUMNS =
   "id, restaurant_id, kind, order_id, provider_id, requested_by, requested_at, payload, payload_sha256, state, released_by, released_at, released_as_written, closed_reason, conversation_id, closed_how, closed_by, closed_at, undone_count, last_undone_at, last_undone_by, send_failed_count, last_send_failed_at, last_send_failure, last_send_failed_by";
 
-/** The longest failure reason kept on a request and shown to people (20260921170540). */
+/** The longest failure reason kept on a request and shown to people (20260926141400). */
 export const SEND_FAILURE_MAX = 300;
 
-/** How a request was closed (20260921170510). */
+/** How a request was closed (20260926141100). */
 export type VendorSendRequestCloseHow = "declined" | "withdrawn" | "deal_dismissed";
 
 /** The longest reason a decline may carry; the requester reads it on the bell. */
@@ -73,14 +73,14 @@ export interface VendorSendRequestRow {
   released_as_written: boolean | null;
   closed_reason: string | null;
   conversation_id: string | null;
-  // 20260921170510 (founder, 2026-09-21: "Decline/withdraw; undo re-waits").
+  // 20260926141100 (founder, 2026-09-21: "Decline/withdraw; undo re-waits").
   closed_how?: VendorSendRequestCloseHow | null;
   closed_by?: string | null;
   closed_at?: string | null;
   undone_count?: number | null;
   last_undone_at?: string | null;
   last_undone_by?: string | null;
-  // 20260921170540 (founder, 2026-09-22: "Back to waiting").
+  // 20260926141400 (founder, 2026-09-22: "Back to waiting").
   send_failed_count?: number | null;
   last_send_failed_at?: string | null;
   last_send_failure?: string | null;
@@ -359,14 +359,14 @@ export class VendorSendRequestsService {
    * will not be confirmed on the asked-for terms, and a request left waiting
    * would mislead the next reader (a manager would open it on stale terms) and
    * refuse the next ask on the same order (at most one waiting deal request per
-   * order, 20260921114900). The drafted-reply twin is a discarded draft, which
+   * order, 20260926140700). The drafted-reply twin is a discarded draft, which
    * takes its request with it. Returns how many were closed; a failed write
    * throws. [Last call, 2026-09-21: nothing closed a request before this.]
    */
   async closeWaitingDeal(restaurantId: string, orderId: string, reason: string): Promise<number> {
     const { data, error } = await this.db
       .from("vendor_send_requests")
-      // How and when are on the record since 20260921170510 (a CHECK); the
+      // How and when are on the record since 20260926141100 (a CHECK); the
       // dismissal path names nobody, so closed_by stays NULL here.
       .update({ state: "closed", closed_reason: reason, closed_how: "deal_dismissed", closed_at: new Date().toISOString() })
       .eq("restaurant_id", restaurantId)
@@ -388,7 +388,7 @@ export class VendorSendRequestsService {
   // The founder, 2026-09-21, on ADR 0175's stated gap (verbatim): "Decline/
   // withdraw; undo re-waits". An owner or a manager declines a waiting
   // request with a reason; the person who asked withdraws their own; both
-  // close it on the record (how, by whom, when: 20260921170510) and tell the
+  // close it on the record (how, by whom, when: 20260926141100) and tell the
   // other side on the bell. A released letter pulled back inside the
   // composer's undo window puts its request back to waiting, and the person
   // who asked is told.

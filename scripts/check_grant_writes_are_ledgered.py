@@ -9,10 +9,10 @@ verifications, break-glass uses and grant checks write to one tamper-evident
 The founder's answer (4) of 2026-09-21 asked for it now: every grant event is
 written to that ledger, with the owners told.
 
-The grant functions of `20260921114800_a_grant_waits_for_an_owner_when_its_voucher_goes.sql`
+The grant functions of `20260926140600_a_grant_waits_for_an_owner_when_its_voucher_goes.sql`
 (`authority_grant_issue`, `_revoke`, `_reapprove`, `_delete`,
 `_set_owner_only`) change the grant AND append its event in one transaction,
-and `append_security_event` (20260921114700) is the chain's only writer. That
+and `append_security_event` (20260926140500) is the chain's only writer. That
 holds only while nothing else writes either table: one
 `.from("authority_grants").update(...)` in a service is a grant change the
 ledger never hears of, and one `.from("security_events").insert(...)` is a row

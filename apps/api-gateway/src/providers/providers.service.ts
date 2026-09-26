@@ -95,7 +95,7 @@ interface ProviderRow {
   // `vendor_type` was declared here for years against a column that has never
   // existed in any migration (confirmed 2026-09-21 against baseline:4854-4901
   // and every migration since — `match_restaurant_providers.sql:87-89` already
-  // recorded the same finding). `primary_business_type` (20260921113700) is
+  // recorded the same finding). `primary_business_type` (20260926140200) is
   // the real column; kept nullable, no default, never assumed.
   primary_business_type: string | null;
   known_personnel: string[] | null;

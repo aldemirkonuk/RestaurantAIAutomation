@@ -2,7 +2,7 @@
 -- pulled back inside its undo window waits again — the founder's answer of
 -- 2026-09-21 on ADR 0175's stated gap: *"Decline/withdraw; undo re-waits"*.
 --
--- WHAT CHANGES ON vendor_send_requests (20260921114900)
+-- WHAT CHANGES ON vendor_send_requests (20260926140700)
 -- -----------------------------------------------------
 --   closed_how      declined | withdrawn | deal_dismissed — who closed it, in
 --                   one word; `closed_reason` keeps the words (a manager's
@@ -21,7 +21,7 @@
 --
 -- Additive (nullable columns and a defaulted counter), idempotent, actor
 -- columns on public.users(user_id), assertions at the bottom. RLS is
--- unchanged (on, service_role only, from 20260921114900).
+-- unchanged (on, service_role only, from 20260926140700).
 
 ALTER TABLE public.vendor_send_requests
   ADD COLUMN IF NOT EXISTS closed_how TEXT,

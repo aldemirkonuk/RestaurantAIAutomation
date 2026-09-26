@@ -13,7 +13,7 @@
 -- it stays listed, and naming it returns 409"). The house kept seeing a
 -- waiting ask for an order that no longer needed naming.
 --
--- WHAT CHANGES ON delivery_item_to_name (20260921170530)
+-- WHAT CHANGES ON delivery_item_to_name (20260926141300)
 -- --------------------------------------------------------
 --   status         widens to open | named | booked_elsewhere
 --   closed_at      when the order was found already booked
@@ -38,7 +38,7 @@
 -- CHECK), idempotent, actor-free (the closer names no person — neither
 -- booking path that triggers it carries a "who closed this ask" concept of
 -- its own; the reason names what closed it). RLS is unchanged (on,
--- service_role only, from 20260921170530). Assertions at the bottom.
+-- service_role only, from 20260926141300). Assertions at the bottom.
 
 ALTER TABLE public.delivery_item_to_name
   ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ,

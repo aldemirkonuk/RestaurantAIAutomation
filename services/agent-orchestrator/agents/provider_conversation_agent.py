@@ -2611,7 +2611,7 @@ class ProviderConversationAgent(BaseAgent):
     # already happened", or that it is closed. A claim must never be granted
     # over one of these. SEND_REFUSED is the gateway's own in-process send
     # closing a draft it refused before anything left (founder, 2026-09-21,
-    # answer 6; migration 20260921114950): a replayed approval must not
+    # answer 6; migration 20260926140800): a replayed approval must not
     # re-open it through this path.
     _SEND_TERMINAL_STATUSES = (
         "SENDING",

@@ -107,7 +107,7 @@ export type RegisterViewer = "owner" | "manager" | "other";
  *     (`authority_grant`, keyed on the grant, or on the house for an issue)
  *     before the write. The seal's id travels into the ledger row.
  *   - WRITE + LEDGER: every change is ONE database function
- *     (20260921114800) that changes the grant and appends the security event
+ *     (20260926140600) that changes the grant and appends the security event
  *     in one transaction. This service never writes `authority_grants`
  *     directly; `scripts/check_grant_writes_are_ledgered.py` keeps it so.
  *   - TOLD: every event is written to every owner's bell, and the grantee's.

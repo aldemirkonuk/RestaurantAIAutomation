@@ -6,7 +6,7 @@ The founder, 2026-09-22 (round 6u), verbatim pick: "Existing enrich chain
 (Recommended)" (ADR 0192, third amendment).
 
 A house item the wine library lacks waits in ``house_item_research``
-(migrations 20260921170500, 20260921170520), keyed by the house item's id.
+(migrations 20260926141000, 20260926141200), keyed by the house item's id.
 This sweep hands the queued rows to the EXISTING submission chain,
 ``haiku_enrich_task`` -> ``web_verify_task``, linked by id:
 

@@ -51,7 +51,7 @@ operator (`Sidebar.tsx:110`).
     event `metadata` column were both rejected: each needs a migration, and
     migrations auto-apply on merge. [**UPDATED 2026-09-21, lane E-limits, founder answer 2** ("meeting notes get their own table (not the calendar event description)"): the note now goes to
     `POST /calendar/day-notes` → `calendar_day_notes`
-    (`20260921113800_a_meeting_note_gets_its_own_table.sql`), keyed on the day with the
+    (`20260926140300_a_meeting_note_gets_its_own_table.sql`), keyed on the day with the
     event title as a plain snapshot; nothing is written to `description` any more. The
     legacy prompt's `handleMemoSave` writes there too. See ADR 0083's addendum.]
   - **It never overwrites.** `appendNote` is pure and separately tested for exactly

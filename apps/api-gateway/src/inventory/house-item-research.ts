@@ -23,7 +23,7 @@
  * enrich chain (Recommended)"): the existing submission chain. The
  * orchestrator's sweep (`house_item_research.dispatch`,
  * `services/agent-orchestrator/jobs/house_item_research_tasks.py`) claims
- * queued rows through `claim_house_item_research()` (20260921170520), which
+ * queued rows through `claim_house_item_research()` (20260926141200), which
  * files ONE `master_wine_library_submissions` row per item and keeps its id
  * on the queue row (`submission_id`), and hands that submission id to
  * `haiku_enrich_task` -> `web_verify_task`. The row flips to `matched` when
@@ -44,7 +44,7 @@
  * The unique index on the item id is the "once". Still not wired, stated in
  * ADR 0192: count corrections and POS sales.
  *
- * Tables: `house_item_research` (20260921170500, 20260921170520).
+ * Tables: `house_item_research` (20260926141000, 20260926141200).
  */
 
 /** The flag the house sees on an item whose name cannot identify a wine (lane brief, 2026-09-21). */
@@ -205,7 +205,7 @@ export interface HouseItemResearchRow {
   queued_by: string | null;
   created_at: string;
   updated_at: string;
-  // 20260921170520 (founder, 2026-09-22: "Existing enrich chain").
+  // 20260926141200 (founder, 2026-09-22: "Existing enrich chain").
   /** The name the classifier judged researchable; the only name ever filed. */
   classified_name?: string | null;
   /** The library submission the enrich chain works for this item, by id. */
@@ -252,7 +252,7 @@ export async function enqueueHouseItemResearch(
       ? "This wine is not in the wine library yet, so it waits for research by its item id."
       : verdict.reason;
     // The name this verdict was reached on. For a queued row it is the ONLY
-    // name the enrich chain is ever given (20260921170520's claim files it,
+    // name the enrich chain is ever given (20260926141200's claim files it,
     // never the item's current name), so a placeholder is never researched.
     const classifiedName = (input.name ?? "").trim() || null;
 

@@ -6,7 +6,7 @@ import { CalendarDayNoteDocType } from "./dto/calendar.dto";
 /**
  * `calendar_day_notes` — its own table, never `calendar_events.description`
  * (founder, 2026-09-21). See the service's own header and
- * `20260921113800_a_meeting_note_gets_its_own_table.sql`.
+ * `20260926140300_a_meeting_note_gets_its_own_table.sql`.
  *
  * What this suite pins:
  *  - an empty body and a name-by-nobody are both refused with a 400 that

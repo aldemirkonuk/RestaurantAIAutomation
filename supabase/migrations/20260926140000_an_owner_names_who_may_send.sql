@@ -20,7 +20,7 @@
 -- scope, limit or expiry: an owner who wants a different limit revokes and
 -- issues again, so the row a send was made under still says what it allowed at
 -- the time. `procurement_conversations.sent_under_grant_id`
--- (20260921113500) points here for exactly that reason.
+-- (20260926140100) points here for exactly that reason.
 --
 -- WHAT THE COLUMNS REFUSE, AND WHY IN THE DATABASE
 -- -----------------------------------------------

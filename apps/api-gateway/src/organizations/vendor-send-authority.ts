@@ -44,7 +44,7 @@
  *     owner's re-approval; *"no owner grant, no activation, or no going back
  *     once grant author gone"*. The latch is set by the database the moment
  *     the voucher stops being an owner
- *     (20260921114800_a_grant_waits_for_an_owner_when_its_voucher_goes.sql),
+ *     (20260926140600_a_grant_waits_for_an_owner_when_its_voucher_goes.sql),
  *     so a voucher promoted again does not bring the grant back; the role
  *     read here is the second lock, for a write that ever got past the
  *     triggers.
@@ -68,7 +68,7 @@ export interface AuthorityGrantRow {
   expires_at: string | null;
   created_at: string;
   revoked_at: string | null;
-  /** The owner the grant rests on now (20260921114800). NULL once they were deleted. */
+  /** The owner the grant rests on now (20260926140600). NULL once they were deleted. */
   vouched_by_user_id: string | null;
   /** The latch: set when the voucher stopped being an owner; cleared only by a re-approval. */
   suspended_at: string | null;

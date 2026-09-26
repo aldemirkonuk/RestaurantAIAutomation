@@ -8,7 +8,7 @@
  * truthful notice AND raises a flag asking an owner/manager to name the item;
  * naming it books the stock then, once, audited. (ADR 0192, third amendment.)
  *
- * - The flag is one `delivery_item_to_name` row per order (20260921170530),
+ * - The flag is one `delivery_item_to_name` row per order (20260926141300),
  *   raised by `markDelivered` after its delivered write, never instead of it.
  * - Naming is by the house item's ID, never by a name. Only an owner or a
  *   manager names (the role read strictly; a failed read refuses).
@@ -72,7 +72,7 @@ export interface DeliveryItemToNameRow {
   named_inventory_id: string | null;
   bottles_booked: number | null;
   updated_at: string;
-  // 20260922020020 (founder, 2026-09-22: "Close by itself").
+  // 20260926141700 (founder, 2026-09-22: "Close by itself").
   closed_at: string | null;
   closed_reason: string | null;
 }

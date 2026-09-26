@@ -281,7 +281,7 @@ describe("staff ask a manager to confirm a deal (founder answer 3, 2026-09-21)",
     const t = build();
     await t.service.requestConfirmDeal(HOUSE, ORDER, STAFF, terms);
     // The partial unique index on (order_id) WHERE kind = 'confirm_deal' AND
-    // state = 'waiting' (20260921114900), modelled on this store's inserts.
+    // state = 'waiting' (20260926140700), modelled on this store's inserts.
     const insert = t.db.from.bind(t.db);
     (t.db as any).from = (table: string) => {
       const q = insert(table);

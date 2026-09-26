@@ -146,13 +146,13 @@ export const SEAL_SUBJECT_KINDS = [
   "text_credit_purchase",
   "commodity_exposure",
   "procurement_document",
-  // ADR 0175 D9 (sealed 2026-09-21; admitted by 20260921113500): the AI
+  // ADR 0175 D9 (sealed 2026-09-21; admitted by 20260926140100): the AI
   // negotiation's pause-for-approval, keyed on the conversation row, and the
   // house composer's letter, keyed on the vendor it is written to.
   "procurement_conversation",
   "house_letter",
   // ADR 0175 amendment, founder answer (4), 2026-09-21 (admitted by
-  // 20260921114800): issuing, revoking, re-approving and deleting a send
+  // 20260926140600): issuing, revoking, re-approving and deleting a send
   // grant are sealed on the server. Keyed on the grant; an issue, which has
   // no grant row yet, is keyed on the house (the `payment_method` create
   // shape).

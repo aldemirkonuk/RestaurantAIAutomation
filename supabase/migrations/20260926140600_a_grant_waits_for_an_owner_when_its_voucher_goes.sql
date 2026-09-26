@@ -11,7 +11,7 @@
 -- (2) Managers see the register by default; an owner may mark a grant
 --     owner-only (hidden from managers); staff see only grants naming them.
 -- (4) Issue, revoke and re-approve are sealed on the server, and every grant
---     event is written to the one security ledger (20260921114700), with the
+--     event is written to the one security ledger (20260926140500), with the
 --     owners told.
 --
 -- WHY "NOTHING RE-ACTIVATES BY ITSELF" IS A DATABASE FACT HERE

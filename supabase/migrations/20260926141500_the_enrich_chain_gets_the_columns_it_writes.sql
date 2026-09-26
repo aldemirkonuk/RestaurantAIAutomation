@@ -43,7 +43,7 @@
 -- HOUSE_ITEM_RESEARCH_DISPATCH_ENABLED (founder, 2026-09-22, verbatim,
 -- round 6z, item 3): "stays as it is (the flip is his keystroke)" — this file
 -- touches no flag and no application code; the sweep still requires that
--- env var to run at all (20260921170520's comment, house_item_research.py).
+-- env var to run at all (20260926141200's comment, house_item_research.py).
 --
 -- Additive (nullable columns only, no defaults that change existing rows'
 -- meaning beyond ai_enriched's natural "not yet" default), idempotent,

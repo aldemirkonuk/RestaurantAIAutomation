@@ -14,7 +14,7 @@ import {
  * Built 2026-09-21 (founder answer 2, "Build all now") to close the gap
  * `AuctionLotStart.tsx` and `inventory.md` §9 already named 2026-09-06: "An
  * auction lot's own details have nowhere to live". See
- * `20260921113900_an_auction_lot_keeps_its_own_details.sql` for why this is
+ * `20260926140400_an_auction_lot_keeps_its_own_details.sql` for why this is
  * its own table, linked to `restaurant_inventory` rather than to a specific
  * `inventory_lots` row.
  */

@@ -12,7 +12,7 @@
 -- WHY A TABLE OF ITS OWN, NOT A STATUS ON procurement_conversations
 -- ----------------------------------------------------------------
 -- A drafted reply's request lives on its own PENDING_APPROVAL row
--- (20260921113500) because that row IS the letter the release sends. A deal
+-- (20260926140100) because that row IS the letter the release sends. A deal
 -- confirmation's letter is composed on the server from the terms at release,
 -- and a composer letter becomes a conversation row only when it is queued. A
 -- request parked as an outbound conversation row would be read as a letter by

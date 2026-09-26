@@ -5,7 +5,7 @@ import { DatabaseService } from "../database/database.service";
 /**
  * `auction_lot_records` — an auction lot's own details, kept WITH a currency
  * (founder, 2026-09-21). See the service's own header and
- * `20260921113900_an_auction_lot_keeps_its_own_details.sql`.
+ * `20260926140400_an_auction_lot_keeps_its_own_details.sql`.
  *
  * What this suite pins:
  *  - currency is checked for real ISO-4217 MEMBERSHIP, not merely three

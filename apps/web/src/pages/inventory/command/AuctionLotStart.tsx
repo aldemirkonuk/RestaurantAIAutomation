@@ -37,7 +37,7 @@
  * 0083 — a control may not claim a write it never makes). They are now
  * written to `auction_lot_records`, a table of their own, linked to the
  * `restaurant_inventory` row the carry produced — see
- * `20260921113900_an_auction_lot_keeps_its_own_details.sql` for why that
+ * `20260926140400_an_auction_lot_keeps_its_own_details.sql` for why that
  * table and not a column on `inventory_lots`. `inventory.md` §9 is amended to
  * match.
  *

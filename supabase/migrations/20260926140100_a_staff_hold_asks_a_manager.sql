@@ -115,7 +115,7 @@ COMMENT ON COLUMN public.procurement_conversations.send_requested_sha256 IS
 COMMENT ON COLUMN public.procurement_conversations.send_requested_cc IS
   'The copies the requester chose. NULL = none were chosen (a request always writes an array, possibly empty).';
 COMMENT ON COLUMN public.procurement_conversations.sent_by_user_id IS
-  'The person whose sealed hold sent this outbound letter. NULL on every row sent before 20260921113500 (not recorded, not "nobody").';
+  'The person whose sealed hold sent this outbound letter. NULL on every row sent before 20260926140100 (not recorded, not "nobody").';
 COMMENT ON COLUMN public.procurement_conversations.sent_under_grant_id IS
   'The ADR 0112 F12 grant the sender held when they were neither an owner nor a manager. NULL when the sender sent by their own role.';
 

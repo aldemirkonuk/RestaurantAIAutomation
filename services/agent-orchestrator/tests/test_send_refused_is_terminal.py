@@ -3,7 +3,7 @@
 Founder, 2026-09-21 (answer 6): both send paths close a draft on a definite
 refusal, with the reason shown. The gateway's own in-process send
 (`approveDraft`, an ADR 0172 header refusal) now closes the draft as
-`SEND_REFUSED` (migration 20260921114950). The orchestrator claims a
+`SEND_REFUSED` (migration 20260926140800). The orchestrator claims a
 conversation for a send with a NOT-IN block-list
 (`ProviderConversationAgent._claim_conversation_for_send`), so a status that is
 not on the list is claimable — a replayed approval event would re-open a closed

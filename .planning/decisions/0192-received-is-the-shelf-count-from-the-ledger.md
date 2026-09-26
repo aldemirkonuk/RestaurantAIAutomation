@@ -216,7 +216,7 @@ Built:
   (the stage `procurement_receipt_events` has admitted since the baseline and no
   code wrote), in **bottles**: `counted_qty_bottles` (accepted), `rejected_qty_bottles`,
   and the new `invoice_qty_bottles` (NULL when no invoice was verified; a CHECK keeps
-  it on `reconciled` rows only, `20260921114960`). The event is written **before**
+  it on `reconciled` rows only, `20260926140900`). The event is written **before**
   anything else moves; if it cannot be written the verification changes nothing. It
   no longer writes `accepted_quantity`, `rejected_quantity`, `invoice_quantity` or
   `backorder_quantity`. The latest `reconciled` event is the verification of record (a
@@ -309,13 +309,13 @@ race), web receiving tests; PGlite probe for the new column and CHECK. CLAIMS ro
    - The submission chain (`haiku_enrich_task` then `web_verify_task`) is dispatched only
      from onboarding imports, and it keys a submission by its payload, which is a name.
 
-   So `house_item_research` (20260921170500) holds one row per house item, keyed by
+   So `house_item_research` (20260926141000) holds one row per house item, keyed by
    `restaurant_inventory.id`, with RLS on (service_role only) and a trigger that refuses an
    item from another house. Its fields are `status` (`queued` | `matched` | `not_findable`),
    `reason`, `queued_from` (`delivery` | `rename`), the source order, and `queued_by` on
    `public.users(user_id)`. The name is read off the item, by id, only to classify it.
    **[E4, 2026-09-22: the classified name is now also kept on the row (`classified_name`,
-   20260921170520) as the only name research is ever given, so a name changed after the
+   20260926141200) as the only name research is ever given, so a name changed after the
    decision is never researched in its place. It is never a lookup key; every read and
    write is still by the item's id.]**
 5. **A name that cannot identify a wine is skipped and flagged.** `classifyHouseItemName`
@@ -383,7 +383,7 @@ queues research once per item id, idempotently.
 
 **Built (lane E round 4):**
 
-1. **The enrich chain works the queue, by id** (20260921170520).
+1. **The enrich chain works the queue, by id** (20260926141200).
    - `claim_house_item_research()` (service_role only; anon and authenticated revoked)
      takes the oldest `queued` rows not yet handed off, under a 30-minute lease and
      `FOR UPDATE SKIP LOCKED`. It files ONE `master_wine_library_submissions` row per item,
@@ -408,7 +408,7 @@ queues research once per item id, idempotently.
    - **Off by default.** The sweep does nothing unless `HOUSE_ITEM_RESEARCH_DISPATCH_ENABLED=true`,
      the same pattern as `research.dispatch_batch`, because the chain spends money on model
      calls and web searches. Switching it on is the founder's keystroke.
-2. **A delivery with nothing booked asks for its item** (20260921170530).
+2. **A delivery with nothing booked asks for its item** (20260926141300).
    - `markDelivered` keeps the order delivered with nothing booked and the notice's words,
      and raises one `delivery_item_to_name` row per order (why: `no_item` | `zero_bottles`,
      the bottles it resolved to, who marked it delivered). The notice adds: "An owner or a

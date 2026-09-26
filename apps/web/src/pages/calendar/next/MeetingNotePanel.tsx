@@ -21,7 +21,7 @@
  * inside `description`, reasoning at the time that a documents table or a new
  * event column were both worse. The founder's own words override that: a
  * migration is exactly the right size for this, `calendar_day_notes`
- * (`20260921113800_a_meeting_note_gets_its_own_table.sql`) is additive, and
+ * (`20260926140300_a_meeting_note_gets_its_own_table.sql`) is additive, and
  * folding an independent fact into a column two authors race to overwrite —
  * "what this event is" and "what was actually discussed" — was never right
  * either. `appendNote` / `hasNoteFor` below are KEPT (read by

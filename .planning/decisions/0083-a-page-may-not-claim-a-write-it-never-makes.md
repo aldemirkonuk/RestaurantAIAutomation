@@ -237,7 +237,7 @@ app's global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`
 `AddProviderModal.tsx`) additionally defaulted their local state to `'Distributor'`, so a
 vendor added by clicking straight through read back, on screen, as a distributor nobody
 said it was — the exact fault this ADR names, one layer up from the database.
-Closed: migration `20260921113700_a_vendors_business_type_is_stated_or_not_stated.sql`
+Closed: migration `20260926140200_a_vendors_business_type_is_stated_or_not_stated.sql`
 adds `providers.primary_business_type` (nullable, no default — same rule as
 [[0116-a-threshold-stops-an-order-and-a-default-is-not-an-answer]]'s `payment_terms`
 fix on the same table). `CreateProviderDto`/`UpdateProviderDto` now carry
@@ -266,7 +266,7 @@ appending the note into `calendar_events.description` under a dated heading. [[0
 §1 had already named this exact design and its own replacement ("the note gets its own
 table … rather than waiting on documents") before today; the founder's answer today
 locks that design in against the shipped code that had gone the other way. Closed:
-migration `20260921113800_a_meeting_note_gets_its_own_table.sql` creates
+migration `20260926140300_a_meeting_note_gets_its_own_table.sql` creates
 `calendar_day_notes` (`restaurant_id, business_date, doc_type, event_title, body,
 author, author_name, created_at`) — `event_title` a plain display snapshot, never a
 foreign key, so editing or deleting the event a note was written against cannot destroy
@@ -291,7 +291,7 @@ collected.** `AuctionLotStart.tsx`'s own header, `inventory.md` §9 and the shee
 were used only to compute `(hammer + premium) / bottles`, and were printed back "to be
 copied somewhere that keeps them" — this ADR's own second sentence, "nor call a failure
 a wait," applies in spirit: the honesty was real, but the gap it was honest about was
-still a gap. Closed: migration `20260921113900_an_auction_lot_keeps_its_own_details.sql`
+still a gap. Closed: migration `20260926140400_an_auction_lot_keeps_its_own_details.sql`
 creates `auction_lot_records`, linked to `restaurant_inventory` (never to a specific
 `inventory_lots` row — `apply_stock_movement` creates that row internally and hands the
 caller no id for it). Currency is `NOT NULL`, shape-checked in Postgres and
@@ -383,14 +383,14 @@ lane brief (round 2); the wording is the relay's, not a verbatim quotation.
    sheet asks for the rate and the typed cost only when the lot's currency is not the
    house's, carries the stock at the booked cost, and the record keeps
    `house_currency`, `exchange_rate`, `house_unit_cost` and `booked_unit_cost`
-   (`20260921114960`, with a CHECK that a foreign lot states one of the two). The
+   (`20260926140900`, with a CHECK that a foreign lot states one of the two). The
    gateway reads the house's currency itself and refuses a record whose booked cost is
    not the rule's. **A consequence, stated:** a house that has not stated its currency
    (or whose currency could not be read) cannot book an auction lot until it does — the
    sheet cannot tell a foreign lot from a home one without it, and nothing is inferred.
    The item's card shows what was booked and how.
 2. **The lot number is optional; the auction house and the sale date stay required**
-   (answer 11). `20260921114960` drops its NOT NULL (the non-blank CHECK stays, so a blank
+   (answer 11). `20260926140900` drops its NOT NULL (the non-blank CHECK stays, so a blank
    is refused and NULL is "not stated") and asserts the other two are still required; the
    gateway records a blank as NULL; the sheet no longer holds the carry for it, and the
    item's card says "lot number not stated".

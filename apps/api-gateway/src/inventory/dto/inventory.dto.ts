@@ -645,7 +645,7 @@ export class UnmappedToastItemResponseDto {
 // AUCTION LOT RECORDS — an auction lot's own details, kept. Built 2026-09-21
 // (founder answer 2) closing the "nowhere to live" gap AuctionLotStart.tsx and
 // inventory.md §9 named 2026-09-06 (ADR 0083). See
-// 20260921113900_an_auction_lot_keeps_its_own_details.sql for the full case.
+// 20260926140400_an_auction_lot_keeps_its_own_details.sql for the full case.
 // ============================================================================
 
 export class CreateAuctionLotRecordDto {

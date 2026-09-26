@@ -7,7 +7,7 @@
 --
 -- (7) A MATCHED ITEM IS LINKED
 -- -----------------------------
--- `house_item_research_follows_its_submission()` (20260921170520) already
+-- `house_item_research_follows_its_submission()` (20260926141200) already
 -- flips the queue row to `matched` when its submission settles `merged` or
 -- `accepted` with a `matched_master_id`. It never wrote that id anywhere the
 -- item itself: `restaurant_inventory.master_wine_id` stayed null, so menus,

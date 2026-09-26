@@ -12,7 +12,7 @@
  * UPDATED 2026-09-21 (founder answer 2, "Build all now"): the lot's own
  * details — auction house, lot number, sale date, hammer price and premium
  * WITH a currency — are now written to `auction_lot_records`, a table of
- * their own (`20260921113900_an_auction_lot_keeps_its_own_details.sql`),
+ * their own (`20260926140400_an_auction_lot_keeps_its_own_details.sql`),
  * linked to the `restaurant_inventory` row `onCarry` hands back. The old
  * "must never look like it saved them" line is now the opposite: it must
  * never look like it did NOT save them, and it must never let a lot without
