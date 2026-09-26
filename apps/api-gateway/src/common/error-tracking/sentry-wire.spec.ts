@@ -18,7 +18,11 @@ const INVITE = "k7Qm2VxP9rTzL4nW";
 const UNSUBSCRIBE = "u5b1e0c8f2a4d6b9e3c7f1a5d8b2e6c0f";
 const INBOUND = "whsec_3JfK8mQ2pL9vX5tR";
 
-function clientCapturingEnvelopes(integrations: Sentry.Integration[] = []) {
+type NodeClientOptions = ConstructorParameters<typeof Sentry.NodeClient>[0];
+
+function clientCapturingEnvelopes(
+  integrations: NonNullable<NodeClientOptions["integrations"]> = [],
+) {
   const sent: string[] = [];
   const client = new Sentry.NodeClient({
     dsn: "https://public@example.test/1",
