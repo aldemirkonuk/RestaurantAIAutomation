@@ -22,7 +22,7 @@ describe("minimumOf — the offer's stated minimum, read from conditions", () =>
   });
 });
 
-describe("saysMixed — does the OFFER say its minimum may be mixed (OD-154)", () => {
+describe("saysMixed — does the OFFER say its minimum may be mixed (ADR 0165 open item 3)", () => {
   it("reads a stated flag first", () => {
     expect(saysMixed({ mixed: true }, null)).toBe(true);
     expect(saysMixed({ mixed_case: true }, null)).toBe(true);

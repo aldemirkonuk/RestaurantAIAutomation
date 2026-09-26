@@ -285,7 +285,7 @@ describe("readForHouse — no silent caps (F12) and the house's own rows only", 
   });
 });
 
-describe("readForHouse — OD-154 reaches the grade through the offer's own words", () => {
+describe("readForHouse — the per-wine minimum reaches the grade through the offer's own words", () => {
   const ledgerRows = (wines: Array<[string, string]>) =>
     wines.map(([name, key], i) => ({
       id: `p${i}`,

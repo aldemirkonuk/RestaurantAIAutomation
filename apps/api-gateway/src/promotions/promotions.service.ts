@@ -313,7 +313,7 @@ export function minimumOf(
 }
 
 /**
- * Does the OFFER say its minimum may be mixed across its wines (OD-154)?
+ * Does the OFFER say its minimum may be mixed across its wines (ADR 0165 open item 3)?
  * A stated flag first (`conditions.mixed` / `conditions.mixed_case`, which no
  * writer sets yet), then the offer's own words — its name, its summary and the
  * validity text the extractor kept — for a mixed-case phrase. Any negation

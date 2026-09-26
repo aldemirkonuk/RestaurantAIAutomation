@@ -66,7 +66,7 @@
  *     is compared with the house's LARGEST SINGLE ORDER — one vendor on one
  *     day, in the minimum's own unit, never converted — of EACH named wine on
  *     its own, unless the offer says the wines may be mixed, when one order's
- *     named wines are summed (OD-154, founder 2026-09-26; `qualifyOffer`). The stored quantity is a floor, so
+ *     named wines are summed (ADR 0165 open item 3, founder 2026-09-26; `qualifyOffer`). The stored quantity is a floor, so
  *     the answer is "qualifies" or "not shown to qualify", never "does not".
  *     A minimum with no unit (every row the extractor writes today) cannot be
  *     compared at all and withholds the worth (ADR 0119: a quantity states
@@ -156,8 +156,8 @@ export interface OfferMinimum {
   unit: string | null;
   /**
    * Whether the OFFER says its minimum may be made up of several of its wines
-   * (a "mixed case"). Absent or false, the minimum counts PER WINE (OD-154,
-   * founder 2026-09-26, round 6 — ADR 0165): twelve bottles means twelve of
+   * (a "mixed case"). Absent or false, the minimum counts PER WINE (ADR 0165
+   * open item 3, founder 2026-09-26, round 6): twelve bottles means twelve of
    * one wine, not six and six. Optional so an older caller that never read it
    * gets the stricter reading, never the more permissive one.
    */
@@ -261,10 +261,10 @@ export type QualificationState =
   | "unit_unknown";
 
 /**
- * How the minimum is counted (OD-154, ADR 0165 open item 3, answered 2026-09-26):
+ * How the minimum is counted (ADR 0165 open item 3, answered 2026-09-26):
  * `per_wine` — each named wine must reach it on its own in one order (the
  * default); `mixed` — the offer says the wines may be mixed, so one order's
- * named wines are summed (the rule before OD-154, now only on the offer's word).
+ * named wines are summed (the rule before that answer, now only on the offer's word).
  */
 export type QualificationBasis = "per_wine" | "mixed";
 
@@ -521,8 +521,8 @@ function comparisonFreshness(
  * it alone can only understate). Lines in another unit contribute nothing
  * and are never converted.
  *
- * PER WINE UNLESS THE OFFER SAYS MIXED (OD-154; founder, 2026-09-26, round 6;
- * ADR 0165 open item 3). A vendor's "12 bottles" is, unless the offer says
+ * PER WINE UNLESS THE OFFER SAYS MIXED (founder, 2026-09-26, round 6; ADR 0165
+ * open item 3). A vendor's "12 bottles" is, unless the offer says
  * the case may be mixed, twelve of ONE wine. So by default each named wine is
  * measured alone — its own largest single order must reach the minimum — and
  * each wine's worth is gated by its own answer. Only when the offer says
@@ -777,7 +777,7 @@ export function gradeOffer(
   if (qualification && qualification.state !== "qualifies") {
     wines.forEach((g, i) => {
       if (!g.worth) return;
-      // Per wine (OD-154): a wine that reached the minimum on its own keeps
+      // Per wine (ADR 0165 open item 3): a wine that reached the minimum on its own keeps
       // its worth; only the ones that fell short are withheld, each with its
       // own sentence. Mixed or unit-unknown: the whole offer's answer.
       const own = qualification.perWine?.[i] ?? null;

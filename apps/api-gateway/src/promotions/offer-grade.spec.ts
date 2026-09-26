@@ -424,9 +424,44 @@ describe("gradeOffer — the offer must qualify before it can size a box (ADR 01
     expect(mixed?.perWine).toBeNull();
     expect(run({ quantity: 13, unit: "bottle", mixed: true }, orders, wines).qualification?.state).toBe("not_shown");
   });
+
+  it("never converts units: a big CASE order does not satisfy a minimum stated in bottles", () => {
+    const g = run({ quantity: 12, unit: "bottle" }, [{ quantity: 99, unit: "case", price: 4000, date: "2026-02-01" }]);
+    expect(g.qualification?.state).toBe("not_shown");
+  });
+
+  it("an unrecorded (null) quantity counts for nothing, so the state can only understate", () => {
+    const g = run({ quantity: 12, unit: "bottle" }, [{ quantity: null, date: "2026-02-01" }]);
+    expect(g.qualification?.state).toBe("not_shown");
+  });
+
+  it("a minimum with no unit cannot be compared: worth withheld with the reason, and no order size is claimed", () => {
+    const g = run({ quantity: 12, unit: null }, [{ quantity: 500, date: "2026-02-01" }]);
+    expect(g.qualification?.state).toBe("unit_unknown");
+    expect(g.qualification?.largestOrder).toBeNull();
+    expect(g.qualification?.reason).toContain("without saying bottles or cases");
+    expect(g.wines[0].worth).toBeNull();
+    expect(g.wines[0].worthWithheld).toBe(g.qualification?.reason);
+  });
+
+  it("a unit outside the seven the ledger holds is treated as no unit", () => {
+    expect(run({ quantity: 12, unit: "pallet" }, [{ quantity: 500, date: "2026-02-01" }]).qualification?.state).toBe(
+      "unit_unknown",
+    );
+  });
+
+  it("a bundle's rollup is withheld when the offer does not qualify (no partial worth survives)", () => {
+    const wines = ["Kalecik Karası 2021"];
+    const g = run({ quantity: 12, unit: null }, [{ quantity: 500, date: "2026-02-01" }], wines);
+    expect(bundleWorth(g.wines)).toBeNull();
+  });
+
+  it("a non-positive minimum states no qualification (the caller normalises, the grader still does not divide by it)", () => {
+    expect(run({ quantity: 0, unit: "bottle" }, [{ quantity: 1, date: "2026-02-01" }]).qualification).toBeNull();
+  });
 });
 
-describe("gradeOffer — a minimum counts PER WINE unless the offer says mixed (OD-154, founder 2026-09-26)", () => {
+describe("gradeOffer — a minimum counts PER WINE unless the offer says mixed (ADR 0165 open item 3, founder 2026-09-26)", () => {
   const ledger = (orders: Array<Partial<LedgerLine>>): LedgerLine[] => [
     line({ ref: "price_history:base-k", price: 420, quantity: 1, date: "2026-03-14" }),
     line({ ref: "price_history:else-k", providerId: "vendor-b", price: 380, quantity: 1, date: "2026-03-01" }),
@@ -489,41 +524,6 @@ describe("gradeOffer — a minimum counts PER WINE unless the offer says mixed (
     expect(g.qualification?.state).toBe("unit_unknown");
     expect(g.qualification?.basis).toBe("per_wine");
     expect(g.qualification?.perWine).toBeNull();
-  });
-
-  it("never converts units: a big CASE order does not satisfy a minimum stated in bottles", () => {
-    const g = run({ quantity: 12, unit: "bottle" }, [{ quantity: 99, unit: "case", price: 4000, date: "2026-02-01" }]);
-    expect(g.qualification?.state).toBe("not_shown");
-  });
-
-  it("an unrecorded (null) quantity counts for nothing, so the state can only understate", () => {
-    const g = run({ quantity: 12, unit: "bottle" }, [{ quantity: null, date: "2026-02-01" }]);
-    expect(g.qualification?.state).toBe("not_shown");
-  });
-
-  it("a minimum with no unit cannot be compared: worth withheld with the reason, and no order size is claimed", () => {
-    const g = run({ quantity: 12, unit: null }, [{ quantity: 500, date: "2026-02-01" }]);
-    expect(g.qualification?.state).toBe("unit_unknown");
-    expect(g.qualification?.largestOrder).toBeNull();
-    expect(g.qualification?.reason).toContain("without saying bottles or cases");
-    expect(g.wines[0].worth).toBeNull();
-    expect(g.wines[0].worthWithheld).toBe(g.qualification?.reason);
-  });
-
-  it("a unit outside the seven the ledger holds is treated as no unit", () => {
-    expect(run({ quantity: 12, unit: "pallet" }, [{ quantity: 500, date: "2026-02-01" }]).qualification?.state).toBe(
-      "unit_unknown",
-    );
-  });
-
-  it("a bundle's rollup is withheld when the offer does not qualify (no partial worth survives)", () => {
-    const wines = ["Kalecik Karası 2021"];
-    const g = run({ quantity: 12, unit: null }, [{ quantity: 500, date: "2026-02-01" }], wines);
-    expect(bundleWorth(g.wines)).toBeNull();
-  });
-
-  it("a non-positive minimum states no qualification (the caller normalises, the grader still does not divide by it)", () => {
-    expect(run({ quantity: 0, unit: "bottle" }, [{ quantity: 1, date: "2026-02-01" }]).qualification).toBeNull();
   });
 });
 

@@ -79,13 +79,13 @@ export interface WineGrade {
 
 export type QualificationState = 'qualifies' | 'not_shown' | 'unit_unknown';
 
-/** OD-154 (founder 2026-09-26): a minimum counts per wine unless the offer says the case may be mixed. */
+/** ADR 0165 open item 3 (founder 2026-09-26): a minimum counts per wine unless the offer says the case may be mixed. */
 export type QualificationBasis = 'per_wine' | 'mixed';
 
 export interface OfferQualification {
   state: QualificationState;
   minimum: { quantity: number | null; unit: string | null; mixed?: boolean };
-  /** Optional on the wire only for a read made before OD-154; absent reads as per wine. */
+  /** Optional on the wire only for a read made before the per-wine rule; absent reads as per wine. */
   basis?: QualificationBasis;
   largestOrder: number | null;
   perWine?: Array<{ wine: string; largestOrder: number; qualifies: boolean }> | null;
