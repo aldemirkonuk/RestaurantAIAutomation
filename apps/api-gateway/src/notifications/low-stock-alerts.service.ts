@@ -20,6 +20,47 @@ import { canonicalOrigin } from "../communications/email-templates";
 
 type AlertLevel = "ok" | "low" | "critical";
 
+interface EffectiveLowStockPrefs {
+  enabled: boolean;
+  instantFirstAlert: boolean;
+  criticalImmediate: boolean;
+  digestFrequency: string;
+  digestTime: string;
+}
+
+const LOW_STOCK_PREF_DEFAULTS: EffectiveLowStockPrefs = {
+  enabled: true,
+  instantFirstAlert: true,
+  criticalImmediate: true,
+  digestFrequency: "daily",
+  digestTime: "12:00",
+};
+
+/** `GET /notifications/low-stock/held/:restaurantId` — the held queue. */
+export interface HeldCrossingsView {
+  restaurant_id: string;
+  held: Array<{
+    inventory_id: string;
+    wine_name: string | null;
+    level: string;
+    held_at: string;
+    reason: string | null;
+  }>;
+  summary: { count: number; critical: number; oldest_held_at: string | null };
+  /**
+   * When the held wines will be told, as the digest cron will actually keep
+   * it. `null` when the house's preferences could not be read.
+   */
+  digest: {
+    /** False when every member turned low-stock alerts off. */
+    low_stock_enabled: boolean;
+    frequency: "daily" | "off";
+    /** 0-23; the cron matches the hour only. */
+    hour: number;
+    timezone: "America/New_York";
+  } | null;
+}
+
 /**
  * What a low-stock email attempt actually did, written to
  * `notifications.delivery_status.email` (ADR 0093 D5).
@@ -265,7 +306,13 @@ export class LowStockAlertsService {
       await this.recordAlertOutcome(
         restaurantId,
         immediate,
-        delivered ? { alertedAt: nowIso } : { heldAt: nowIso, reason: "prefs" },
+        // A failed inbox write is held with NO reason rather than "prefs":
+        // the held queue writes "prefs" to a person as "this house's settings
+        // save low stock for the digest", which is not why this one waited
+        // (held-queue lane, 2026-09-26). The column's check allows only the
+        // two chosen reasons or NULL, so NULL — "not recorded" — is the
+        // honest value without a migration.
+        delivered ? { alertedAt: nowIso } : { heldAt: nowIso, reason: null },
       );
     } else if (immediate.length > 0) {
       this.logger.log(
@@ -305,34 +352,65 @@ export class LowStockAlertsService {
    * A failed read throws rather than returning an empty list (ADR 0067): an
    * empty held-queue is good news, and good news must be measured.
    */
-  async listHeldCrossings(restaurantId: string): Promise<{
-    restaurant_id: string;
-    held: Array<{
-      inventory_id: string;
-      wine_name: string | null;
-      level: string;
-      held_at: string;
-      reason: string | null;
-    }>;
-    summary: { count: number; critical: number; oldest_held_at: string | null };
-  }> {
+  async listHeldCrossings(restaurantId: string): Promise<HeldCrossingsView> {
     const { data, error } = await this.db.supabase
       .from("inventory_alert_state")
       .select(
-        "inventory_id, wine_name, last_alert_level, last_held_at, last_held_reason",
+        "inventory_id, wine_name, last_alert_level, last_held_at, last_held_reason, last_digest_at",
       )
       .eq("restaurant_id", restaurantId)
       .not("last_held_at", "is", null)
       .order("last_held_at", { ascending: false });
     if (error) throw new Error(error.message);
 
-    const held = (data || []).map((r: any) => ({
-      inventory_id: r.inventory_id,
-      wine_name: r.wine_name ?? null,
-      level: r.last_alert_level ?? "low",
-      held_at: r.last_held_at,
-      reason: r.last_held_reason ?? null,
-    }));
+    // (2026-09-26, held-queue lane) Two kinds of row carry a `last_held_at`
+    // and are NOT waiting on anybody, and until today both were listed:
+    //   - a wine back above par (`last_alert_level = 'ok'`): recovery reset
+    //     the level and never cleared the hold;
+    //   - a wine the digest already covered (`last_digest_at >= last_held_at`):
+    //     the digest stamped its own column and never cleared the hold.
+    // The writers now clear the hold in both places. This read-side filter is
+    // for the rows written before that fix, which nothing backfills.
+    const held = (data || [])
+      .filter((r: any) => (r.last_alert_level ?? "low") !== "ok")
+      .filter(
+        (r: any) =>
+          !r.last_digest_at ||
+          new Date(r.last_digest_at).getTime() <
+            new Date(r.last_held_at).getTime(),
+      )
+      .map((r: any) => ({
+        inventory_id: r.inventory_id,
+        wine_name: r.wine_name ?? null,
+        level: r.last_alert_level ?? "low",
+        held_at: r.last_held_at,
+        reason: r.last_held_reason ?? null,
+      }));
+
+    // When — or whether — the held wines will be told. A digest that is off
+    // means a held crossing is never sent on its own, and the page has to say
+    // so rather than promise "the next digest". A preferences read that fails
+    // is `null`, never the defaults: "12:00, daily" invented over a failed
+    // read would be a claim about this house nobody measured.
+    let digest: HeldCrossingsView["digest"] = null;
+    try {
+      const prefs = await this.readLowStockPrefs(restaurantId);
+      const hour = parseInt((prefs.digestTime || "12:00").split(":")[0], 10);
+      digest = {
+        low_stock_enabled: prefs.enabled,
+        frequency: prefs.digestFrequency === "daily" ? "daily" : "off",
+        // The digest cron fires on the hour (`0 * * * *`) and matches only the
+        // HOUR of `digest_time`, so a 12:30 setting goes out at 12:00. The
+        // time reported is the one the cron will actually keep.
+        hour: Number.isFinite(hour) ? hour : 12,
+        timezone: "America/New_York",
+      };
+    } catch (e: any) {
+      this.logger.warn(
+        `held crossings: preferences unreadable for ${restaurantId}: ${e?.message}`,
+      );
+    }
+
     return {
       restaurant_id: restaurantId,
       held,
@@ -341,6 +419,7 @@ export class LowStockAlertsService {
         critical: held.filter((h) => h.level === "critical").length,
         oldest_held_at: held.length > 0 ? held[held.length - 1].held_at : null,
       },
+      digest,
     };
   }
 
@@ -358,7 +437,7 @@ export class LowStockAlertsService {
     wines: LowStockRow[],
     outcome:
       | { alertedAt: string }
-      | { heldAt: string; reason: "instant_cooldown" | "prefs" },
+      | { heldAt: string; reason: "instant_cooldown" | "prefs" | null },
   ): Promise<void> {
     for (const w of wines) {
       await this.upsertState(restaurantId, {
@@ -421,6 +500,9 @@ export class LowStockAlertsService {
           .from("inventory_alert_state")
           .update({
             last_alert_level: "ok",
+            // A wine back above par is not waiting to be told about anything.
+            last_held_at: null,
+            last_held_reason: null,
             updated_at: new Date().toISOString(),
           })
           .eq("restaurant_id", restaurantId)
@@ -502,8 +584,16 @@ export class LowStockAlertsService {
     // The INBOX row is what "we told them" means here — email delivery is
     // recorded separately and is allowed to fail (the lens run's two alerts
     // both carried `email = {ok:false, error:"no_recipients"}` and that was
-    // correct). A falsy `persisted` means no inbox row, so nothing was told.
-    return Boolean(persisted);
+    // correct). No inbox row means nothing was told.
+    //
+    // (2026-09-26, held-queue lane) This read `Boolean(persisted)`, which is
+    // true for EVERY answer `persistForRestaurant` gives: it never resolves
+    // falsy — a failed insert, a house with no members and a dedupe hit all
+    // come back as `{ inserted: 0, ids: [] }`, an object. So a crossing whose
+    // inbox write failed was stamped alerted and dropped out of the held
+    // queue — the fault the `last_held_at` column exists to prevent, one layer
+    // down. The count is the fact.
+    return (persisted?.inserted ?? 0) > 0;
   }
 
   /**
@@ -553,7 +643,22 @@ export class LowStockAlertsService {
     );
     await this.recordEmailOutcome(persisted?.ids, outcome);
 
-    // Stamp the digest time on the ledger.
+    // Stamp the digest on the ledger — and end every hold it answered.
+    //
+    // (2026-09-26, held-queue lane) Before this, the digest stamped
+    // `last_digest_at` and left `last_held_at` alone, so a wine the digest had
+    // just told the house about still read "held — nobody has been told" on
+    // /notifications until it happened to cross again. And it stamped even
+    // when the inbox write was deduped or failed (`inserted: 0`), which made
+    // "a digest went out" a claim about an intention. Both halves now follow
+    // the same rule as the instant path: only a written inbox row counts.
+    const told = (persisted?.inserted ?? 0) > 0;
+    if (!told) {
+      this.logger.warn(
+        `Low-stock digest for ${restaurantId} wrote no inbox row — holds are left in place.`,
+      );
+      return;
+    }
     const nowIso = new Date().toISOString();
     for (const row of rows) {
       await this.upsertState(restaurantId, {
@@ -561,6 +666,7 @@ export class LowStockAlertsService {
         wineName: row.wineName,
         level: row.severity,
         digestAt: nowIso,
+        clearHold: true,
       });
     }
   }
@@ -736,6 +842,9 @@ export class LowStockAlertsService {
             .from("inventory_alert_state")
             .update({
               last_alert_level: "ok",
+              // Recovered: the hold ends with the crossing (held-queue lane).
+              last_held_at: null,
+              last_held_reason: null,
               updated_at: new Date().toISOString(),
             })
             .eq("restaurant_id", s.restaurant_id)
@@ -779,54 +888,53 @@ export class LowStockAlertsService {
    * to all-on defaults when no prefs exist. This is what makes the Settings
    * page actually change behaviour.
    */
-  private async getEffectiveLowStockPrefs(restaurantId: string): Promise<{
-    enabled: boolean;
-    instantFirstAlert: boolean;
-    criticalImmediate: boolean;
-    digestFrequency: string;
-    digestTime: string;
-  }> {
-    const DEFAULTS = {
-      enabled: true,
-      instantFirstAlert: true,
-      criticalImmediate: true,
-      digestFrequency: "daily",
-      digestTime: "12:00",
-    };
+  private async getEffectiveLowStockPrefs(
+    restaurantId: string,
+  ): Promise<EffectiveLowStockPrefs> {
     try {
-      const memberIds = await this.db.getRestaurantMemberIds(restaurantId);
-      if (memberIds.length === 0) return DEFAULTS;
-      const { data } = await this.db.supabase
-        .from("notification_preferences")
-        .select(
-          "low_stock_enabled, instant_first_alert, critical_immediate, digest_frequency, digest_time",
-        )
-        // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since
-        // ADR 0149 row 39 -- a member of two houses has a row per house, and
-        // an unscoped `.in("user_id", ...)` mixed the OTHER house's row into
-        // this restaurant's aggregate.
-        .eq("restaurant_id", restaurantId)
-        .in("user_id", memberIds);
-      if (!data || data.length === 0) return DEFAULTS;
-
-      const dailyTimes = data
-        .filter((p: any) => (p.digest_frequency ?? "daily") === "daily")
-        .map((p: any) => p.digest_time || "12:00")
-        .sort();
-      return {
-        enabled: data.some((p: any) => p.low_stock_enabled !== false),
-        instantFirstAlert: data.some(
-          (p: any) => p.instant_first_alert !== false,
-        ),
-        criticalImmediate: data.some(
-          (p: any) => p.critical_immediate !== false,
-        ),
-        digestFrequency: dailyTimes.length > 0 ? "daily" : "off",
-        digestTime: dailyTimes[0] || "12:00",
-      };
+      return await this.readLowStockPrefs(restaurantId);
     } catch {
-      return DEFAULTS;
+      return { ...LOW_STOCK_PREF_DEFAULTS };
     }
+  }
+
+  /**
+   * The same aggregate as `getEffectiveLowStockPrefs`, but a failed read
+   * THROWS. The senders fall back to the defaults (a missed alert is worse
+   * than a default one); a page that reports the digest time to a person must
+   * not (held-queue lane, 2026-09-26).
+   */
+  private async readLowStockPrefs(
+    restaurantId: string,
+  ): Promise<EffectiveLowStockPrefs> {
+    const DEFAULTS = { ...LOW_STOCK_PREF_DEFAULTS };
+    const memberIds = await this.db.getRestaurantMemberIds(restaurantId);
+    if (memberIds.length === 0) return DEFAULTS;
+    const { data, error } = await this.db.supabase
+      .from("notification_preferences")
+      .select(
+        "low_stock_enabled, instant_first_alert, critical_immediate, digest_frequency, digest_time",
+      )
+      // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since
+      // ADR 0149 row 39 -- a member of two houses has a row per house, and
+      // an unscoped `.in("user_id", ...)` mixed the OTHER house's row into
+      // this restaurant's aggregate.
+      .eq("restaurant_id", restaurantId)
+      .in("user_id", memberIds);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) return DEFAULTS;
+
+    const dailyTimes = data
+      .filter((p: any) => (p.digest_frequency ?? "daily") === "daily")
+      .map((p: any) => p.digest_time || "12:00")
+      .sort();
+    return {
+      enabled: data.some((p: any) => p.low_stock_enabled !== false),
+      instantFirstAlert: data.some((p: any) => p.instant_first_alert !== false),
+      criticalImmediate: data.some((p: any) => p.critical_immediate !== false),
+      digestFrequency: dailyTimes.length > 0 ? "daily" : "off",
+      digestTime: dailyTimes[0] || "12:00",
+    };
   }
 
   /** Currently-low wines for a single restaurant (used by the real-time path). */
@@ -918,7 +1026,7 @@ export class LowStockAlertsService {
       digestAt?: string;
       /** A crossing detected and deliberately not sent yet. */
       heldAt?: string;
-      heldReason?: "instant_cooldown" | "prefs";
+      heldReason?: "instant_cooldown" | "prefs" | null;
       /** Something was sent, so the hold is over. */
       clearHold?: boolean;
     },
@@ -1049,7 +1157,8 @@ export class LowStockAlertsService {
       }
     } else if (report) {
       // No resolver in this module is a wiring fault, not an empty house.
-      report.lookupFailed = "no recipient resolver is available to this service";
+      report.lookupFailed =
+        "no recipient resolver is available to this service";
     }
 
     if (!isLegacyDefault) {
@@ -1069,7 +1178,9 @@ export class LowStockAlertsService {
   }
 
   private inventoryUrl(): string {
-    const base = canonicalOrigin(this.config.get<string>("FRONTEND_URL")) || "https://mudavym.com";
+    const base =
+      canonicalOrigin(this.config.get<string>("FRONTEND_URL")) ||
+      "https://mudavym.com";
     return `${base}/inventory?filter=low-stock`;
   }
 }
