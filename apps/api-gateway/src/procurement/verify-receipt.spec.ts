@@ -1112,25 +1112,25 @@ describe("receipt quantity follows the booked ledger", () => {
 });
 
 // ---------------------------------------------------------------------------
-// D5 (ADR 0168) — a derived count that is not whole is refused, not written
+// A derived count that is not a whole pack verifies in BASE UNITS (founder,
+// 2026-09-25, round 5: "Yes, in base units"). It used to be refused (D5, ADR
+// 0168 — then kept "as a follow-up" by ADR 0192's amendment), and a refused
+// verification left no history line.
 // ---------------------------------------------------------------------------
 /**
- * `procurement_orders.quantity_received` and `.accepted_quantity` are INTEGER
- * columns (baseline_from_production.sql:4539, :4560). When a caller states no
- * accepted count but does state other match fields, `acceptedQtyInCountedUom`
- * is BACK-DERIVED as `stockedQtyInBottles / bottlesPerUnit` — and that division
- * is not guaranteed to land on a whole pack. 59 bottles already booked on a
- * 12-pack case order derives 4.9167 cases, and pre-fix that fraction reached
- * both integer columns: `openCreditClaim` runs before the update that would
- * fail, so a retry could raise a claim against an order whose own write then
- * 500s on its column type.
+ * When a caller states no accepted count but does state other match fields,
+ * `acceptedQtyInCountedUom` is BACK-DERIVED from the ledger's booked bottles.
+ * 59 bottles booked on a 12-pack case order is 4.9167 cases. Since 2026-09-25
+ * that reading is re-stated as the whole physical count in bottles (accepted,
+ * rejected and free goods together), so every operand is an integer in a
+ * stated unit (ADR 0070) and the verification writes its `reconciled` event.
  *
  * Today's web and mobile desks always send an accepted count
- * (`useOrdersData.ts`, the mobile receive screen), so only a direct API caller
- * can reach this branch — which is exactly why a mock-level test is the only
- * kind that exercises it at all.
+ * (`ReceivingWorkspace.tsx` sends a part case as `countedUom: 'bottle'`, the
+ * mobile receive screen counts bottles), so only a direct API caller reaches
+ * this branch — which is why a mock-level test is the kind that exercises it.
  */
-describe("verifyReceipt — a non-whole derived count is refused before any write", () => {
+describe("verifyReceipt — a part-pack derived count verifies in bottles", () => {
   const casesOf12 = {
     ...deliveredOrder,
     quantity: 5,
@@ -1139,45 +1139,55 @@ describe("verifyReceipt — a non-whole derived count is refused before any writ
     quantity_received: 5,
   };
 
-  it("refuses with a 400 rather than writing a fraction into an integer column", async () => {
+  it("verifies 59 booked bottles on a 12-pack order and records them in bottles", async () => {
     const { db, calls } = makeDb({
       orderRow: casesOf12,
       bookedBottles: 59, // 59 / 12 = 4.9166... — not a whole number of cases
     });
 
-    await expect(
-      service(db).verifyReceipt(REST, ORDER, USER, {
-        invoiceQuantity: 59,
-        invoiceUnitPrice: 40,
-        invoiceCurrency: "USD",
-        // No acceptedQuantity: the derivation this guards is the one that
-        // only runs when the caller states no count of its own.
-      } as any),
-    ).rejects.toThrow(/does not divide evenly/);
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 59,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 40,
+      invoiceCurrency: "USD",
+      // No acceptedQuantity: the derivation this covers is the one that
+      // only runs when the caller states no count of its own.
+    } as any);
+
+    // One history line, every quantity in bottles, nothing rounded.
+    expect(calls.receiptEvents).toHaveLength(1);
+    expect(calls.receiptEvents[0]).toMatchObject({
+      stage: "reconciled",
+      counted_uom: "bottle",
+      counted_qty: 59,
+      counted_qty_bottles: 59,
+      rejected_qty_bottles: 0,
+      invoice_qty_bottles: 59,
+    });
+    // The count is the ledger's own: no correction is booked for it.
+    expect(
+      calls.rpc.filter(
+        (c) => c.name === "apply_stock_movement" && c.args?.p_delta !== 0,
+      ),
+    ).toEqual([]);
   });
 
-  it("writes nothing and raises no claim when the derived count is a fraction", async () => {
-    // The guard must run BEFORE `openCreditClaim`, not after: a claim raised
-    // ahead of a write that then fails leaves a claim standing against an
-    // order whose own correction never landed.
+  it("converts a stated rejection in packs with the part pack, never only one of the pair", async () => {
     const { db, calls } = makeDb({
       orderRow: casesOf12,
       bookedBottles: 59,
     });
 
-    await expect(
-      service(db).verifyReceipt(REST, ORDER, USER, {
-        invoiceQuantity: 59,
-        invoiceUnitPrice: 40,
-        invoiceCurrency: "USD",
-      } as any),
-    ).rejects.toThrow();
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      rejectedQuantity: 1, // one case refused, stated in the order's unit
+      rejectedReason: "broken case",
+    } as any);
 
-    expect(calls.orderUpdates).toEqual([]);
-    expect(calls.creditInserts).toEqual([]);
-    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toEqual(
-      [],
-    );
+    expect(calls.receiptEvents[0]).toMatchObject({
+      counted_uom: "bottle",
+      counted_qty_bottles: 59,
+      rejected_qty_bottles: 12,
+    });
   });
 
   it("still derives normally when the booked total divides evenly", async () => {

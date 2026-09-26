@@ -244,6 +244,8 @@ Built:
   `verifyReceipt` was motivated by `accepted_quantity`'s integer type; the column is no
   longer written, so the refusal has lost that reason. It is kept unchanged in
   behaviour; whether a part pack should now verify is a follow-up, not decided here.
+  **[Decided 2026-09-25 by the founder (round 5): a part pack verifies, in base units — see
+  the fourth amendment below. The refusal is gone.]**
 
 **(9) When mark-delivered's stock booking is refused, revert the order's status so
 it can be retried, keeping the conditional-update race guard.** Built: `markDelivered`
@@ -504,6 +506,48 @@ block), `receiving.spec.ts`, `delivery-stock.service.spec.ts`,
 `ADR-0192-EVERY-BOOKING-PATH-QUEUES-RESEARCH`; `ADR-0192-UNMATCHED-ITEM-IS-BOOKED` re-pinned
 with a dated bracket.
 
+## Fourth amendment 2026-09-25 — a part pack verifies in base units
+
+**Source.** The founder, 2026-09-25, round 5, asked via AskUserQuestion: *"Receiving
+(#436/#480): verifyReceipt no longer writes accepted_quantity. Should it accept a part-pack
+count (e.g. 7 of a case of 12) as the accepted amount? Today a part-pack verification writes
+no history entry."* **[founder, 2026-09-25, round 5]** chose, verbatim: *"Yes, in base units
+(Recommended) — Accept any count in the item's base unit (ADR 0070 integer qty + uom), so every
+verification leaves a history line."* Rejected: *"Whole packs only — Part-packs are refused at
+the door; the count must be whole cases."*
+
+**Built.** The one place a part pack was refused is the back-derivation in `verifyReceipt`: a
+caller that states no accepted count has it derived from the ledger's booked bottles, and 59
+bottles on a 12-pack case order derives 4.9167 cases, which answered 400 (*"does not divide
+evenly"*) and wrote no `reconciled` event. It now re-reads that verification's whole physical
+count in **bottles** (`countedUom: "bottle"`): accepted = the ledger's booked bottles, and the
+stated rejection and free goods are multiplied by the pack size with it (converting only one of
+a counted trio is the defect ADR 0062 records). Every operand stays an integer in a stated unit
+(ADR 0070); nothing is rounded; a whole number of packs is unchanged; the reading is settled
+before `openCreditClaim` and the event, as before. A caller that STATES a part pack already
+could: the DTO takes integer counts with a unit, the web desk sends a part case as
+`countedUom: 'bottle'` (`ReceivingWorkspace.tsx`), and the mobile receive screen counts bottles.
+
+**What "every verification" does not yet cover, said plainly.** A verification that carries
+**no count at all** — the mobile Today card's one-tap *"Counts match"*, which posts
+`{ adjustments: [] }` (`apps/mobile/src/components/today/DecisionCard.tsx`) — takes no match
+path (`hasMatchFields` is false), so it completes the order and writes no `reconciled` event.
+Writing one would make it the verification of record and blank an earlier verification's
+invoice quantity (the latest `reconciled` row answers "invoiced", 2026-09-21 amendment), so it
+is not built here; it is a fork for the founder, reported by the W3-receiving lane.
+
+**Also in this round (a code fix, not a ruling).** CodeQL alert #1505
+(`js/user-controlled-bypass`) flagged `markDelivered`'s put-back guard `if (stockNotMoved)`.
+The alert's own path (SARIF of analysis 1842981122) starts at the ORDER ID path parameter,
+not the quantity: the id is interpolated into `deliveryHasBookedOrder`'s error sentence, which
+became `stockNotMoved`, which decided the condition over the put-back write. Whether the
+booking was refused is now its own boolean, set only to a literal `true` beside each reason;
+the reason is only said. Behaviour is unchanged (`delivered-once.spec.ts`, 44 tests; removing
+the `true` on the delivery-read branch turns its "cannot be read … put back" case red).
+
+**Evidence.** `verify-receipt.spec.ts`, block *"a part-pack derived count verifies in bottles"*
+(3 tests; both part-pack cases go red when the refusal is put back).
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -521,3 +565,5 @@ with a dated bracket.
 | 2026-09-22 | Claude (Opus 5), lane E round 4 | Built the three (third amendment): the claim, the sweep (off by default) and the flip; the ask, the naming act and the /inventory card; research from both doors and the naming; the enrich chain's persist defect, the unscheduled promotion and the near-miss reading stated |
 | 2026-09-22 | Claude (Opus 5), lane E round 4 last call | A verification correction that booked bottles in did not queue research; it now does, with tests and mutants (item 4). The /inventory card lost the gateway's sentence when the refetch dropped the named delivery; the card now holds it. Two residuals stated: an ask outlives a booking made elsewhere, and a handed-off row holds its submission |
 | 2026-09-22 | Claude (Opus 5), lane E round 4 last call 2 | Record narrowed to the code: the API-only ledger endpoint does not queue research (item 4 bracket, the CLAIMS row text, the module comment), and the /inventory card is not in Mudavym components (Not built). No behaviour changed |
+| 2026-09-25 | Aldemir (founder), round 5 | *"Yes, in base units (Recommended)"* on the part pack (fourth amendment, verbatim with the rejected option) |
+| 2026-09-25 | Claude (Opus 5), lane W3-receiving | Built (fourth amendment): the derived part pack verifies in bottles and writes its event; the no-count one-tap verification stated as not covered; CodeQL #1505 restructured (flag split from reason) |

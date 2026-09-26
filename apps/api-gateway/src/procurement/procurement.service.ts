@@ -4842,6 +4842,13 @@ export class ProcurementService {
     // after the booking block); it used to stay DELIVERED with nothing on the
     // shelf, which no screen offered a way out of.
     let stockNotMoved: string | null = null;
+    // WHETHER the booking was refused is its own flag, set only to a literal
+    // `true` beside each reason. The reason is a sentence that can carry
+    // request values (the order id is in `deliveryHasBookedOrder`'s error),
+    // so it is only ever SAID, never tested: a condition that guards the
+    // put-back write below must not be decided by what a caller sent
+    // (CodeQL js/user-controlled-bypass, alert #1505).
+    let bookingRefused = false;
     // What this call did to the shelf. The verify notice says exactly this and
     // nothing more (`delivered-notice.ts`): it used to say "N bottles stocked
     // in" on every path, also when nothing moved.
@@ -4864,6 +4871,7 @@ export class ProcurementService {
       // delivered only when its booking succeeded). It is put back below like
       // any refused booking. This used to throw a 503 AFTER the delivered
       // write, leaving the order delivered with nothing booked.
+      bookingRefused = true;
       stockNotMoved = deliveryOwns.error;
       booking = { kind: "nothing", why: deliveryOwns.error };
     } else if (deliveryOwns.value.booked) {
@@ -4897,6 +4905,7 @@ export class ProcurementService {
       if (existingEventError) {
         // A failed read is an error, never "not booked before": it refuses the
         // booking and the order is put back below (founder, 2026-09-21).
+        bookingRefused = true;
         stockNotMoved = `whether this order's stock was already booked could not be read (${existingEventError.message})`;
         booking = { kind: "nothing", why: stockNotMoved };
       } else if (existingEvent) {
@@ -4932,8 +4941,10 @@ export class ProcurementService {
               .maybeSingle();
 
           if (itemError) {
+            bookingRefused = true;
             stockNotMoved = `the order's item could not be read (${itemError.message})`;
           } else if (!item) {
+            bookingRefused = true;
             stockNotMoved = "the order's item is not an item of this house";
           } else {
             const itemRow = item as Record<string, any>;
@@ -5022,6 +5033,7 @@ export class ProcurementService {
             );
 
             if (live?.error) {
+              bookingRefused = true;
               stockNotMoved = live.error.message ?? String(live.error);
             } else {
               // in_transit_quantity is a separate denormalized display counter.
@@ -5043,15 +5055,16 @@ export class ProcurementService {
             }
           }
         } catch (bookingError: any) {
+          bookingRefused = true;
           stockNotMoved = `the booking failed (${bookingError?.message ?? String(bookingError)})`;
         }
 
-        if (stockNotMoved) {
+        if (bookingRefused) {
           this.logger.error(
             `markDelivered: order ${orderId}'s stock movement was refused (${stockNotMoved}) — nothing was booked`,
           );
           // Unused: the refusal below throws before the notice is written.
-          booking = { kind: "nothing", why: stockNotMoved };
+          booking = { kind: "nothing", why: stockNotMoved ?? "the booking was refused" };
         } else {
           booking = { kind: "booked", bottles: receivedBottles };
 
@@ -5132,7 +5145,7 @@ export class ProcurementService {
     // change, no calendar change and no verify task happen for it. The shadow
     // release above is idempotent on its own key, so a later delivery of the
     // same order does not release it twice.
-    if (stockNotMoved) {
+    if (bookingRefused) {
       const { data: putBack, error: putBackError } = await this.databaseService.supabase
         .from("procurement_orders")
         .update(priorDelivery)
@@ -5157,7 +5170,7 @@ export class ProcurementService {
         reverted,
         message: refuseUnbookedDelivery({
           orderNumber: existingRow.order_number ?? null,
-          why: stockNotMoved,
+          why: stockNotMoved ?? "the booking was refused",
           revertedTo: reverted ? currentStatus : null,
         }),
       });
@@ -5794,33 +5807,39 @@ export class ProcurementService {
               "The ledger counts bottles; this receipt must state a physical count in bottles or a known bottle pack.",
             );
           }
-          const derivedAcceptedQty =
-            stockedQtyInBottles / unitReading.units.counted.bottlesPerUnit;
-          // `procurement_orders.accepted_quantity` is an INTEGER column
-          // (baseline_from_production.sql:4560).
-          // Nobody stated an accepted count in the counted unit here, so it is
-          // BACK-DERIVED from what the ledger already booked — and that
-          // division does not always land on a whole pack: 59 bottles already
-          // booked on a 12-pack case order derives 4.9167 cases. Refused HERE,
-          // before `openCreditClaim` (which runs ahead of the update below and
-          // does not roll back) can raise a claim against a write that is
-          // about to fail its own column type (ADR 0190 D5 — filed as 0168).
-          // [2026-09-21, ADR 0192 amendment: that column is no longer written —
-          // the verification is a `reconciled` event in bottles — so the
-          // column type is no longer this refusal's reason. It is kept as it
-          // was, unchanged in behaviour; whether a part pack should now verify
-          // is recorded in ADR 0192 as a follow-up, not decided here.]
-          if (!Number.isInteger(derivedAcceptedQty)) {
-            throw new BadRequestException(
-              `Cannot verify this receipt: ${stockedQtyInBottles} bottles ` +
-                `already booked does not divide evenly into ` +
-                `${unitReading.units.counted.uom} packs of ` +
-                `${unitReading.units.counted.bottlesPerUnit} ` +
-                `(${derivedAcceptedQty.toFixed(4)} derived). State the ` +
-                `accepted count in ${unitReading.units.counted.uom} directly.`,
-            );
+          const bottlesPerPack = unitReading.units.counted.bottlesPerUnit;
+          const derivedAcceptedQty = stockedQtyInBottles / bottlesPerPack;
+          // Nobody stated an accepted count here, so it is BACK-DERIVED from
+          // what the ledger already booked — and that division does not always
+          // land on a whole pack: 59 bottles booked on a 12-pack case order is
+          // 4.9167 cases. This used to be refused (400), first because
+          // `procurement_orders.accepted_quantity` is an INTEGER column (ADR
+          // 0190 D5 — filed as 0168), then, after the 2026-09-21 amendment
+          // stopped writing that column, unchanged "as a follow-up" — and a
+          // refused verification left no history line.
+          //
+          // PART PACKS VERIFY IN BASE UNITS (founder, 2026-09-25, round 5,
+          // verbatim option: "Yes, in base units (Recommended) — Accept any
+          // count in the item's base unit (ADR 0070 integer qty + uom), so
+          // every verification leaves a history line"). A part pack is
+          // re-read as the WHOLE physical count in bottles — accepted,
+          // rejected and free goods together, because they share one counted
+          // unit and converting only one of the three is how a door-refused
+          // delivery once booked 33 bottles — so every operand stays an
+          // integer in a stated unit (ADR 0070) and nothing is rounded. A
+          // whole number of packs is unchanged. Still decided before any
+          // write: `openCreditClaim` and the event below see one reading.
+          if (Number.isInteger(derivedAcceptedQty)) {
+            matchInput.acceptedQtyInCountedUom = derivedAcceptedQty;
+          } else {
+            matchInput.countedUom = "bottle";
+            matchInput.countedBottlesPerUnit = 1;
+            matchInput.acceptedQtyInCountedUom = stockedQtyInBottles;
+            matchInput.rejectedQtyInCountedUom =
+              (rejectedQuantity ?? 0) * bottlesPerPack;
+            matchInput.freeGoodsQtyInCountedUom =
+              (freeGoodsQuantity ?? 0) * bottlesPerPack;
           }
-          matchInput.acceptedQtyInCountedUom = derivedAcceptedQty;
         }
         match = computeMatch(matchInput);
         bottles = toBottleOperands(matchInput);
