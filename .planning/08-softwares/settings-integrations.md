@@ -206,6 +206,6 @@ Structural seams:
 
 **Promised vs. built.** `partial` holds; the payment/billing sub-surface sits closer to `hollow` than the note-level status suggests.
 
-**Gaps.** The distributor-feed module is missing from this note's `api_modules` list — see finding F5.
+**Gaps.** None specific to this software's own modules. One catalog-level gap was found while measuring this note: `apps/api-gateway/src/distributor-feed/` (price codes and catalogue ingest, ADR 0126) appears in no software note's `api_modules` (`grep -rn distributor-feed .planning/08-softwares/` returns only this line). This pass does not decide which software owns it.
 
 *Evidence:* Supabase row counts above; `apps/web/src/App.tsx:388,396`.

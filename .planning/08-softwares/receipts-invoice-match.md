@@ -360,7 +360,7 @@ gateway built from `origin/main` `417474e6`. What this software gained, and what
 
 **Coverage.** `document-extractor.spec.ts` covers the primary extractor here; the menu and photo-count call sites' coverage was not separately verified this pass.
 
-**Runs in production.** Model id and code path are confirmed in source; production invocation volume was not verified — `api_spend` is stale (see `model-client-router` entry in [[SOFTWARE-MAP]]).
+**Runs in production.** Yes, for the procurement-documents call site. `neural_footprint_event` holds 23 `subject_id='DocumentExtractor'` rows, the last on 2026-09-11 (SQL, 2026-09-26). `cost_usd` is NULL on all 23 (see the `model-client-router` entry in [[SOFTWARE-MAP]]). The menu-OCR and photo-count sites have no production rows.
 
 **Promised vs. built.** Three independent vision call sites on the same model tier with no shared abstraction is a maintenance gap, not itself a behavioral discrepancy.
 

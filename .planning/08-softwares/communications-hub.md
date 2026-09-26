@@ -210,7 +210,7 @@ Seams:
 
 **Runs in production.** Flag ON; templating is hollow and the credit-metering tables are all 0 rows.
 
-**Promised vs. built.** `hollow` holds and is worse than this note's own framing implies on the metering layer specifically — see finding F4.
+**Promised vs. built.** `hollow` holds, and the metering layer is worse than this note's own framing implies: both credit-metering tables are empty in production (evidence below), so no message has ever been metered.
 
 **Gaps.** Credit-metering layer (`message_templates`, `house_message_meter`) is unpopulated in production.
 

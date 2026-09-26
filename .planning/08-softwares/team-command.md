@@ -159,7 +159,7 @@ Seams:
 
 **Runs in production.** Flag ON; the roster half is live, the scheduling subsystem is entirely unused.
 
-**Promised vs. built.** **Finding F3:** this note claims the software is live; the measured evidence supports only the roster half of that claim. 7 scheduling-related tables sit at 0 rows.
+**Promised vs. built.** This note claims the software is live; the measured evidence supports only the roster half of that claim. 7 scheduling-related tables sit at 0 rows.
 
 **Gaps.** Scheduling subsystem (7 tables) has never been used in production.
 

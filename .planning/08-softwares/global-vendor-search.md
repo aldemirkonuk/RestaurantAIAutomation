@@ -115,7 +115,7 @@ Seams:
 
 **Runs in production.** `/distributors` is now a redirect, not a standalone page.
 
-**Promised vs. built.** `partial` holds; this note's page list is stale — see finding F9.
+**Promised vs. built.** `partial` holds; this note's page list is stale — frontmatter still lists `distributors` as a page and `/distributors` as a route, but that path is now a redirect (evidence below).
 
 **Gaps.** `distributor_directory`=0, `distributor_crawl_log`=0 rows — the discovery pipeline has never produced a row.
 

@@ -196,7 +196,7 @@ Seams:
 
 **Runs in production.** Route is ungated; `provider_promotions`=0, `vendor_promotions`=0.
 
-**Promised vs. built.** `partial` per this note, but the evidence leans `hollow` — see finding F5, which directly conflicts with the catalog's own finding #4 (which called `provider_promotions` live). This session's SELECT found 0 rows; the discrepancy is unresolved, not adjudicated here.
+**Promised vs. built.** `partial` per this note, but the evidence leans `hollow` — this session's 0-row count directly conflicts with [[SOFTWARE-MAP]] cross-cutting finding 4 (`SOFTWARE-MAP.md:113-115`), which calls `provider_promotions` live (written on every provider-matched inbound plus a 09:00 cron). This session's SELECT found 0 rows; the discrepancy is unresolved, not adjudicated here.
 
 **Gaps.** Same discrepancy as above — needs a founder or maintainer call on which measurement is current.
 

@@ -174,6 +174,6 @@ Seams:
 
 **Promised vs. built.** `hollow` holds.
 
-**Gaps.** See finding F8 (public unauthenticated surface with no production data and near-zero branch coverage).
+**Gaps.** A public unauthenticated surface with no production data and 7.9% branch coverage.
 
 *Evidence:* Supabase `vendor_portal_pages`=0, `vendor_portal_listings`=0.

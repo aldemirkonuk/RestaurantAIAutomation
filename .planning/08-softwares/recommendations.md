@@ -212,9 +212,9 @@ So the software loads and acts. What remains:
 
 **Runs in production.** Route is flag OFF; `recommendation_impressions`=75, `actions`=0.
 
-**Promised vs. built.** `partial` holds; this is the sharpest capacity gap found in this pass — see finding F6, and the `insight-generator`/`forecasting-engine`/`recommendations-actions-ux-optimizer` model and service entries below for the engine underneath this number.
+**Promised vs. built.** `partial` holds; this is the sharpest capacity gap found in this pass (75 impressions, 0 actions), and see the `insight-generator`/`forecasting-engine`/`recommendations-actions-ux-optimizer` model and service entries below for the engine underneath this number.
 
-**Gaps.** See finding F6: an impression-generating engine with a zero-action floor.
+**Gaps.** An impression-generating engine with a zero-action floor: `recommendation_impressions`=75 against `actions`=0.
 
 *Evidence:* Supabase row counts above.
 

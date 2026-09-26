@@ -489,8 +489,8 @@ In order:
 
 **Runs in production.** Code is deployed; 0 rows across all 6 backing tables.
 
-**Promised vs. built.** **Roster/note desync found (finding F1):** the [[SOFTWARE-MAP]] roster says `planned`, this note says `partial`, and the measured code is fully built-and-unused. All three describe a different state; only the code measurement is verified this pass.
+**Promised vs. built.** **Roster/note desync found:** the [[SOFTWARE-MAP]] roster says `planned` (`SOFTWARE-MAP.md:52`), this note says `partial` (frontmatter `status`), and the measured code is fully built-and-unused. All three describe a different state; only the code measurement is verified this pass.
 
-**Gaps.** No production adoption; the roster/note/code three-way disagreement in F1 should be resolved by whoever owns this note next, not silently picked here.
+**Gaps.** No production adoption; the roster/note/code three-way disagreement above should be resolved by whoever owns this note next, not silently picked here.
 
 *Evidence:* `.planning/decisions/CLAIMS.jsonl` ADR-0132 rows; Supabase row counts (0 across 6 tables).
