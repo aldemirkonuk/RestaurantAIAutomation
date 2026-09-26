@@ -1,14 +1,14 @@
 # 0220 — CLAIMS corpus walkers read tracked files only
 
-- **Status:** Locked 2026-09-25
+- **Status:** Proposed — implemented, awaiting a founder lock
 - **Date:** 2026-09-25
-- **Decider:** lane L14b, dispatched from the 2026-09-25 web-rebuild census
-  (`SYNTHESIS.md` lane L14(b); `CRITIC.md` §G13.2 supplied the root cause and the
-  "guard hardening still stands" recommendation; `pipeline.md`'s own scan reproduced
-  it independently). Mechanical guard-implementation fix, not a product or policy
-  fork — no founder ruling is needed to pick "read the corpus git actually tracks"
-  over "keep walking whatever sits on a contributor's disk." Recorded per CLAUDE.md
-  §0.2 because it changes what three CLAIMS verify commands consider their corpus.
+- **Decider:** Aldemir (founder) — not yet locked. Proposed by lane L14b, dispatched
+  from the 2026-09-25 web-rebuild census (`SYNTHESIS.md` lane L14(b); `CRITIC.md`
+  §G13.2 supplied the root cause and the "guard hardening still stands"
+  recommendation; `pipeline.md`'s own scan reproduced it independently). Per the
+  template, a decision is locked by the founder, never by a session — a lane calling
+  its own fork "mechanical" does not change that. Recorded per CLAUDE.md §0.2
+  because it changes what three CLAIMS verify commands consider their corpus.
 - **Keywords:** CLAIMS, check_decision_claims.sh, corpus walk, git ls-files, venv,
   gitignored, false positive, os.walk, shared checkout
 - **Links:** [[0025-claims-must-be-checkable]] (the strict-mode contract this
@@ -93,8 +93,9 @@ requirements.txt` run by any of them silently becomes part of every guard's
 ## Decision
 
 **Option 2.** `check_fk_repoint_by_referenced_column.py:143-178` (`_git_tracked_files`
-+ rewritten `sql_files()`), `check_task_types_are_graded.py:92-115` (`_git_tracked_files`,
-reused by `scan_gateway`, `scan_python`, and `main()`'s `all_types` sweep), and
++ rewritten `sql_files()`), `check_task_types_are_graded.py:98-154` (`_git_tracked_files`,
+`_read`, `gateway_files`, `python_files`, listed once in `main()` and passed to
+`scan_gateway`, `scan_python` and the `all_types` sweep), and
 `check_a_count_is_recorded.py:136-172` (`collect()`, rewritten in place) now
 enumerate their corpus with `git ls-files -z -- <dirs>` instead of `os.walk` /
 `Path.rglob`. A `git ls-files` failure (not a git checkout, `git` unavailable, a
@@ -104,12 +105,30 @@ empty corpus reported as PASS. This is the same contract `check_no_conflict_mark
 already established; these three scripts now follow it instead of diverging from
 it.
 
-This does change what these three claims consider "the code": before, an
-*uncommitted* edit to a tracked file's directory tree could incidentally trip or
-silence a check before its author ever ran `git add`; now it cannot. That is a
-tightening toward what the scripts already claimed to test (self-test language:
-"the tree as committed"), not a loosening — see the mutation tests below, which
-prove a real, committed regression is still caught exactly as before.
+**What changed, precisely.** Only the *path list* comes from git; every file's
+*content* is still read from the working copy with a plain `open()`. So:
+
+- an **untracked** file (never `git add`ed) — a local `venv`, a scratch file, a new
+  migration not yet staged — is no longer part of the corpus;
+- a **staged** new file is listed (`git ls-files` reads the index, not `HEAD`);
+- an **uncommitted edit to a tracked file** is still seen, exactly as before —
+  Mutation test 2 below depends on that;
+- a **tracked file deleted from the working copy** (or unreadable) is listed and
+  then fails to open. That is a new input the `os.walk` version never produced, and
+  all three guards answer it `CANNOT CHECK` (exit 2): `check_a_count_is_recorded.py`'s
+  `read()` raises `CannotCheck`, `check_task_types_are_graded.py`'s `_read()` raises
+  into `main()`'s `CANNOT CHECK` branch, and both passes of
+  `check_fk_repoint_by_referenced_column.py` (`check_shape`,
+  `check_index_reconstruction`) return `None`, which `main()` maps to 2 — by the
+  scripts' own exit-code contract, not by `check_decision_claims.sh`'s
+  `CANNOT_RUN` regex happening to match a traceback's wording.
+
+`check_task_types_are_graded.py` also gained a corpus floor by design
+(`MIN_TS_FILES = 100`, `MIN_PY_FILES = 50`, plus "no task type emits anywhere"),
+matching `check_a_count_is_recorded.py`'s `MIN_CORPUS` and the fk guard's
+`covered == 0`. Before it, an empty listing reached a FAIL only by accident —
+every `EXEMPT` entry turned "dead" — which points the reader at the exemption list
+instead of at the checkout.
 
 ## Consequences
 
@@ -118,13 +137,13 @@ prove a real, committed regression is still caught exactly as before.
   `packages/`, `scripts/`, `apps/api-gateway/src`, or `services/agent-orchestrator`
   can no longer flip a CLAIMS row to REGRESSED or CANNOT CHECK. A contributor no
   longer needs a scratch clone to trust a local `check_decision_claims.sh` run.
-- **Harder / given up.** These three guards no longer see uncommitted changes at
-  all, including a genuine, not-yet-committed fix or regression in a tracked
-  file's own working-tree content — they answer for `HEAD`'s tree via the index,
-  not the working copy. Every other claim in `CLAIMS.jsonl` already worked this
-  way implicitly (a `grep` on a specific path reads the working copy, but nothing
-  in this repo's guards intentionally depended on scanning uncommitted content),
-  so this brings these three in line rather than introducing a new asymmetry.
+- **Harder / given up.** These three guards no longer see **untracked** files:
+  a new file that carries a real regression is invisible to a local run until it
+  is `git add`ed. CI is unaffected (its checkout has no untracked files), so the
+  blind spot is local-only. They do still see uncommitted edits to tracked files,
+  and a tracked file missing from the working copy now makes them exit 2 (CANNOT
+  CHECK) where the walk silently skipped it — a checkout mid-rebase or with a
+  hand-`rm`ed file can no longer be graded, by design.
 - **A sharp edge worth recording.** `git check-ignore` matches a gitignored
   *directory* pattern (`venv/`) against a real directory, but not against a
   *symlink* of the same name pointing at one — `git status` reports a symlinked
@@ -164,6 +183,17 @@ prove a real, committed regression is still caught exactly as before.
   `ADR-0141` rows that share the same call site) as REGRESSED —
   `484 checked, 481 holding`. The file was restored immediately afterward and the
   checker re-confirmed at `484 checked, 484 holding`.
+- **Mutation test 3 (a tracked file missing from disk is CANNOT CHECK, not
+  REGRESSED).** In a scratch worktree at the fixed head, with
+  `services/agent-orchestrator/adapters/__init__.py` and the first tracked
+  migration `rm`ed (not `git rm`ed), all three guards exit **2**. With
+  `_read()` reverted to a bare `open()`, `check_task_types_are_graded.py` exits
+  **1** on an uncaught `FileNotFoundError` — the defect the 2026-09-25 PR #465
+  audit found. The fk guard's `check_index_reconstruction` guard is proven
+  directly (called on a list naming a missing path → `None`; reverted → raises).
+- **Mutation test 4 (empty corpus).** `check_task_types_are_graded.py` with
+  `git ls-files` returning nothing exits **2** "corpus is 0 … that is not this
+  repo"; with the floor removed it exits 1 on dead exemptions.
 - `./scripts/check_fk_repoint_by_referenced_column.py --self-test` and
   `python3 scripts/check_a_count_is_recorded.py --self-test` both still PASS
   unmodified (all five self-test arms of the latter, including the
@@ -175,3 +205,5 @@ prove a real, committed regression is still caught exactly as before.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-25 | L14b (Sonnet 5, this lane) | Created; both mutation directions verified in `/Users/aldemirkonuk/Projects/wt-w0-claims` |
+| 2026-09-25 | PR #465 audit (ADR 0090) | BLOCK at `ac44d1946`: unguarded `open()` exits 1 on a tracked-but-deleted file; Consequences overstated the change ("no longer see uncommitted changes at all"); self-locked without the founder; no empty-corpus floor in the task-types guard |
+| 2026-09-25 | Audit fix-up (Opus 5.5) | All four fixed: `_read()` + fk `None` path, corpus floor, "What changed, precisely" + rewritten Consequences, status back to Proposed; Mutation tests 3–4 added; `check_decision_claims.sh` 488 checked, 488 holding at the fix head |

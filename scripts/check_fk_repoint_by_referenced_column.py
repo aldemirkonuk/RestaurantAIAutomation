@@ -245,7 +245,14 @@ def check_index_reconstruction(paths):
     """C: no live SQL rebuilds a unique index's equality test by hand."""
     violations = []
     for path in paths:
-        text = open(path, encoding="utf-8", errors="replace").read()
+        # Same contract as check_shape: a tracked path that cannot be read
+        # (deleted in the working tree, or gone between the two passes) is
+        # CANNOT CHECK (None -> exit 2), never an uncaught traceback (exit 1).
+        try:
+            text = open(path, encoding="utf-8", errors="replace").read()
+        except OSError as exc:
+            print(f"cannot read {path}: {exc}", file=sys.stderr)
+            return None
         if "indkey" not in text.lower():
             continue
         if path.endswith(".sql"):
@@ -660,10 +667,11 @@ def self_test():
             "C fired on a bare read of indkey with no pg_attribute join -- that is "
             "counting, not reconstructing, and the ADR 0081 assertion itself does it")
 
-    if check_index_reconstruction(sql_files()):
-        failures.append(
-            f"C fails on the tree as committed: "
-            f"{check_index_reconstruction(sql_files())}")
+    idx = check_index_reconstruction(sql_files())
+    if idx is None:
+        failures.append("C could not read the tree")
+    elif idx:
+        failures.append(f"C fails on the tree as committed: {idx}")
 
     # The real tree must satisfy both, or the guard is testing nothing.
     got = check_shape(sql_files())
@@ -734,6 +742,8 @@ def main():
     if live is None:
         return 2
     idx_violations = check_index_reconstruction(files)
+    if idx_violations is None:
+        return 2
     return 0 if report(violations, covered, live, idx_violations) else 1
 
 
