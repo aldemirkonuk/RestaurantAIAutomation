@@ -26,6 +26,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AskAiBar } from './AskAiBar'
 import { completeHold } from '../../__tests__/utils/seal'
+import { claimMudavymShell, releaseMudavymShell } from '../../lib/mudavym/shellGround'
 import {
   AskAiActionError,
   applyProposalSealed,
@@ -335,5 +336,38 @@ describe('candidates', () => {
     await waitFor(() =>
       expect(api.apply).toHaveBeenCalledWith(reorder.actionId, 'seal-1', undefined),
     )
+  })
+})
+
+// ADR 0145 fork 3, answered 2026-09-25 (founder, round 5): below about 1280 px
+// the Ask panel lies over the page -- "The page keeps its width, and the
+// panel is a sheet you close." The Ask face in the counter's slot is not built
+// yet; the one Ask surface the shell mounts today is this panel, so this pins
+// the answer on it: it is portalled out of the page's tree (a push would have
+// to live inside the shell's columns), and it closes with words.
+describe('below ~1280 px the Ask panel lies over the page', () => {
+  it('opens outside the page, so the page keeps its width, and is closed by the person', async () => {
+    const before = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1024 })
+    const token = Symbol('ask-fork-3')
+    claimMudavymShell(token, 'paper')
+    const onClose = vi.fn()
+    try {
+      render(
+        <MemoryRouter>
+          <div data-testid="page-column">
+            <AskAiBar open onClose={onClose} />
+          </div>
+        </MemoryRouter>,
+      )
+      const dialog = await screen.findByRole('dialog', { name: 'Ask AI' })
+      expect(screen.getByTestId('page-column').contains(dialog)).toBe(false)
+      expect(document.body.contains(dialog)).toBe(true)
+      await userEvent.keyboard('{Escape}')
+      expect(onClose).toHaveBeenCalled()
+    } finally {
+      releaseMudavymShell(token)
+      Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: before })
+    }
   })
 })

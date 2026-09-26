@@ -99,10 +99,17 @@ All in `apps/api-gateway/src/ask-ai/bound-ask.controller.ts`, guarded
 
 - **`ASK_LAUNCHED` is not set** on the deployed gateway by this build. Until the founder
   sets it, every ask answers "Ask has not opened yet. Nothing was asked and nothing was
-  spent." The shelf and the book still read.
+  spent." The shelf and the book still read. **[2026-09-25, founder, round 5: asked when it
+  should turn on, he answered, verbatim, "aded to the railway" -- he has set it himself. Not
+  verified by any lane: no read of the Railway environment was made, and a live ask spends.
+  ADR 0145, "Amendment, 2026-09-25, round 5".]**
 - **The layout's other three pieces** (ADR 0145, 2026-09-25 amendment): the Ask face in the
   shell's right-hand slot, the non-modal quick-ask popover (AskAiBar is still a modal), the
-  requests list at `/admin`. The judge's fork 3 (push or overlay below ~1280 px) is open.
+  requests list at `/admin`. The judge's fork 3 (push or overlay below ~1280 px) is open. **[ANSWERED 2026-09-25,
+  founder, round 5, his pick verbatim: "Lie over it (Recommended)" -- the page keeps its
+  width, and the panel is a sheet you close. Of the built surfaces only the ⌘⇧K panel
+  exists, and it already lies over the page (now pinned by `AskAiBar.test.tsx`); the Ask
+  face is still unbuilt and must follow this below ~1280 px. ADR 0145, same amendment.]**
 - **Shelf counts** per register (sketch 114 A): no shelf endpoint exists (ADR 0145 build
   item 5); the page shows no count rather than an invented one.
 - **The pick before spend**: the pick runs inside the one `POST`; the page shows it after.
@@ -111,5 +118,9 @@ All in `apps/api-gateway/src/ask-ai/bound-ask.controller.ts`, guarded
   listed on the shelf; asking one returns its own "Not built yet" or refusal folio.
 - ADR 0145 R5 / build task 4 (two fixture tests per reading) was the nightly manifest's
   hold on `/ask`; it was not re-verified when the page enrolled (ADR 0145, 2026-09-25).
+  **[AUDITED 2026-09-25, W3-ask lane: all sixteen readings have both tests, and every
+  relation each one reads is now forced to fail too; `scripts/check_ask_readings_have_fixtures.py`
+  fails CI when one is lost. The per-reading table is in ADR 0145, "Amendment, 2026-09-25,
+  round 5".]**
 - Verified by vitest and jest only; no browser render against a live gateway (the launch
   gate is off everywhere).

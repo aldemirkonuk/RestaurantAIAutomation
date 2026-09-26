@@ -1,6 +1,6 @@
 # 0145 — Mudavym answers out of a reading, and only the query that ran may mint one
 
-- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]** **[2026-09-21, KL round 5, later again -- the founder chose the option "Rules in code, label rows": permissions and spend never live in the model. Built: a staff refusal is now SAVED (the folio CHECK lacked `not_permitted`, so every refusal was a 503 on a real database); every field a Reading shows carries a data class and one role-policy table decides who sees what, which answer kinds each role gets and each role's share of the house's daily ask allowance -- the seven restricted Readings are now DERIVED from their fields, not hand-set; every ask is captured once (role snapshot, who chose the Reading, the raw pick, model ids, content hashes); a labels table with `POST /ask/folios/:id/feedback`; a redacted export view. No training. Who may open `/ask` itself stays open. See "Amendment, 2026-09-21 -- rules in code, label rows" below.]** **[2026-09-21, KL round 6 -- two founder answers. Staff on `/ask`: his pick, verbatim, "Yes, own-work only" -- staff reach `/ask`, see stock, receiving and today's deliveries, and are refused money, supplier prices and people data with a one-line reason; general knowledge is allowed and counts toward the house's daily limit. Trace counts: his pick, verbatim, "Hide by data type" -- a Finding's source trace shows a table's row count only to a role that sees that table's class. Built. See "Amendment, 2026-09-21 -- staff own work, and a trace that hides by data type" and the review trail at the end.]** **[2026-09-21, KL round 4 -- six founder answers (round 6r), his picks verbatim: "J4 wins, hide size (Recommended)", "Classify now, forecast=sales (Recommended)", "Same as the wine pool (Recommended)", "Two labels (Recommended)", "Stays stock (Recommended)", "No, user+house (Recommended)". Built: staff are told a failed read's source and never why or how big; the unbuilt money and sales questions refuse staff with the class's line; an owner-only, audited per-house training opt-out, and an export with no free text that leaves opted-out houses out; re-asks labelled `follow_up` or `correction`. `reading_version` answered from the code. Area-gated staff order lookup waits for PR #441. See "Amendment, 2026-09-21 -- round 6r".]** **[2026-09-22, KL round 5 -- the three forks round 6r left open, his picks verbatim: "Never (Recommended)" (opting back in never releases a question asked while opted out -- each folio snapshots the house's answer at ask time), "Text-free until lawyer (Recommended)" (the export stays as built, no free text; a name remover is the first training lane's job), "Add to /privacy now" (a short training notice, his own choice over the lawyer route). Built: migration 20260922220600 adds `ask_reading_folios.asked_while_opted_out`, derived and written once like `asked_as_role`, backfilled from each house's current answer; the export excludes a snapshot-true folio forever, on top of the existing current-state check, and (last call) no longer carries a re-ask label or `reask_kind` drawn from a folio asked while opted out; `/privacy` gained the notice. See "Amendment, 2026-09-22 -- round 6y".]** **[2026-09-25, W2-ask lane -- the `/ask` layout the founder decided on 2026-09-21 (one right-hand slot, counter or Ask; the quick ask a non-modal popover; a requests list at `/admin`; never a write without the seal) was recorded only in session memory; it is now recorded here verbatim, and the `/ask` page is built, live in code for every house. See "Amendment, 2026-09-25".]**
+- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]** **[2026-09-21, KL round 5, later again -- the founder chose the option "Rules in code, label rows": permissions and spend never live in the model. Built: a staff refusal is now SAVED (the folio CHECK lacked `not_permitted`, so every refusal was a 503 on a real database); every field a Reading shows carries a data class and one role-policy table decides who sees what, which answer kinds each role gets and each role's share of the house's daily ask allowance -- the seven restricted Readings are now DERIVED from their fields, not hand-set; every ask is captured once (role snapshot, who chose the Reading, the raw pick, model ids, content hashes); a labels table with `POST /ask/folios/:id/feedback`; a redacted export view. No training. Who may open `/ask` itself stays open. See "Amendment, 2026-09-21 -- rules in code, label rows" below.]** **[2026-09-21, KL round 6 -- two founder answers. Staff on `/ask`: his pick, verbatim, "Yes, own-work only" -- staff reach `/ask`, see stock, receiving and today's deliveries, and are refused money, supplier prices and people data with a one-line reason; general knowledge is allowed and counts toward the house's daily limit. Trace counts: his pick, verbatim, "Hide by data type" -- a Finding's source trace shows a table's row count only to a role that sees that table's class. Built. See "Amendment, 2026-09-21 -- staff own work, and a trace that hides by data type" and the review trail at the end.]** **[2026-09-21, KL round 4 -- six founder answers (round 6r), his picks verbatim: "J4 wins, hide size (Recommended)", "Classify now, forecast=sales (Recommended)", "Same as the wine pool (Recommended)", "Two labels (Recommended)", "Stays stock (Recommended)", "No, user+house (Recommended)". Built: staff are told a failed read's source and never why or how big; the unbuilt money and sales questions refuse staff with the class's line; an owner-only, audited per-house training opt-out, and an export with no free text that leaves opted-out houses out; re-asks labelled `follow_up` or `correction`. `reading_version` answered from the code. Area-gated staff order lookup waits for PR #441. See "Amendment, 2026-09-21 -- round 6r".]** **[2026-09-22, KL round 5 -- the three forks round 6r left open, his picks verbatim: "Never (Recommended)" (opting back in never releases a question asked while opted out -- each folio snapshots the house's answer at ask time), "Text-free until lawyer (Recommended)" (the export stays as built, no free text; a name remover is the first training lane's job), "Add to /privacy now" (a short training notice, his own choice over the lawyer route). Built: migration 20260922220600 adds `ask_reading_folios.asked_while_opted_out`, derived and written once like `asked_as_role`, backfilled from each house's current answer; the export excludes a snapshot-true folio forever, on top of the existing current-state check, and (last call) no longer carries a re-ask label or `reask_kind` drawn from a folio asked while opted out; `/privacy` gained the notice. See "Amendment, 2026-09-22 -- round 6y".]** **[2026-09-25, W2-ask lane -- the `/ask` layout the founder decided on 2026-09-21 (one right-hand slot, counter or Ask; the quick ask a non-modal popover; a requests list at `/admin`; never a write without the seal) was recorded only in session memory; it is now recorded here verbatim, and the `/ask` page is built, live in code for every house. See "Amendment, 2026-09-25".]** **[2026-09-25, founder, round 5, W3-ask lane -- the judge's fork 3 answered, his pick verbatim: "Lie over it (Recommended)" (below ~1280 px the Ask panel lies over the page; the page keeps its width); `ASK_LAUNCHED`, his words verbatim, "aded to the railway" (he set it; not verified by any lane); build task 4 audited: all sixteen readings have both tests, every relation each one reads is now forced to fail as well, and `scripts/check_ask_readings_have_fixtures.py` fails CI when one is lost. See "Amendment, 2026-09-25, round 5".]**
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Date:** 2026-09-12
 - **Keywords:** ask, /ask, Mudavym, assistant, reading, finding, provenance, hollow build, refusal shapes, seal, ask-ai, sommelier
@@ -1404,7 +1404,9 @@ change* request lands) is the requests list at `/admin`; fork 4 (does "it
 performs it" mean writing without the seal) is **no**, matching the round-6k
 pick *"Never without the seal"* recorded in ADR 0160's 2026-09-21 row. The
 judge's fork 3 -- below ~1280 px, does the Ask face push the page or lie over
-it -- is **not answered by this record** and stays open.
+it -- is **not answered by this record** and stays open. **[ANSWERED 2026-09-25,
+founder, round 5: "Lie over it (Recommended)" -- see "Amendment, 2026-09-25, round
+5" below.]**
 
 Standing rulings the page obeys, each already recorded above or in ADR 0149:
 posted targets (`goals.targets`) are owner/manager only (round 5); staff reach
@@ -1458,6 +1460,109 @@ panel are the two doors (ADR 0149 row 33).
   reading ids appear in `reading-runner.spec.ts`, but this lane did not check
   that each has both of build task 4's tests (a fixture figure, a forced
   query error). `ASK_LAUNCHED` stays the production gate either way.
+  **[AUDITED 2026-09-25, W3-ask lane: every reading has both, and more -- see
+  "Amendment, 2026-09-25, round 5", "Build task 4, audited".]**
+
+## Amendment, 2026-09-25, round 5 -- fork 3 answered, `ASK_LAUNCHED`, and build task 4 audited (W3-ask lane)
+
+### Fork 3: below ~1280 px the Ask panel lies over the page
+
+Asked by the orchestrating session on 2026-09-25 (round 5, via its question
+tool), the question verbatim: *"/ask (#475): on screens narrower than about
+1280px, does the Ask panel push the page aside or lie over it?"*
+
+- **Chosen, founder, 2026-09-25, round 5:** "Lie over it (Recommended)" -- its
+  option text, verbatim: "The page keeps its width, and the panel is a sheet
+  you close. Pushing a narrow page crushes its tables."
+- **Rejected:** "Push the page" -- "Both stay visible side by side; the page
+  reflows narrower."
+
+At and above ~1280 px the recorded layout above stands unchanged (option A,
+one slot: the Ask face swaps into the counter's column beside a live page).
+
+**What is built, and what changed.** The Ask face in the counter's slot -- the
+thing this fork governs -- is still not built (listed under "Not built by this
+lane" above), so there is no push to remove. The one Ask surface the shell
+mounts is the ⌘⇧K panel (`AskAiBar.tsx`, the Mudavym `Panel` shape, portalled
+to `document.body`); it lies over the page at every width, which matches this
+answer below ~1280 px. Nothing in the product changed; the answer is pinned on
+what exists by a new vitest (`AskAiBar.test.tsx`, "below ~1280 px the Ask panel
+lies over the page": at 1024 px the dialog is outside the page's tree and
+closes on the person's Escape; mutation-tested -- without the shell the inline
+modal renders inside the page and the test fails). At ≥1280 px the built panel
+still differs from the recorded layout, and that difference IS the unbuilt Ask
+face and non-modal quick popover; building them needs one more of his calls
+first (which door opens which: the record lists ⌘⇧K among the Ask face's
+summoners AND as the quick popover's key), so this lane did not build them.
+
+### `ASK_LAUNCHED`
+
+Asked the same round, verbatim: *"/ask (#475) is live in code but answers
+nothing until ASK_LAUNCHED=true is set on Railway (your keystroke). ADR 0145
+build task 4 said no reading ships until it has two fixture tests (a known
+figure and a forced query error). When should it turn on?"* -- options "After
+fixture proof (Recommended)" and "Right after #475 merges". **He chose neither;
+his answer, verbatim, typed as the other: "aded to the railway"** -- he had
+already set it. Read as: the fixture-proof hold is waived by his act, and the
+bound-ask backend on `main` answers in production now. **Not verified by this
+lane:** no read of the Railway environment was made, and a live ask would spend.
+The env value stays the kill switch.
+
+### Build task 4, audited
+
+The bound ask runs exactly the Readings in `reading-catalogue.ts` DECLARED,
+through `ReadingRunner` (`bound-ask.service.ts:255-260`; no other `.from(` in
+that file). Sixteen on 2026-09-25. For each: the fixture figure (a value
+hand-computed from the fixture's rows, asserted with outcome `read`), the
+table the original floor forces to fail (asserting `could_not_read`, the table
+in `failedSources`, no rows, no scanned count), and the relations the new
+per-source block forces -- which must equal the Reading's declared shelves.
+
+| Reading | Fixture figure | Forced-error table (floor) | Relations forced (new), = shelves |
+|---|---|---|---|
+| `inventory.position` | `item-a:stock_live` = 2 | `restaurant_inventory` | 1: `restaurant_inventory` |
+| `inventory.low_stock` | `below:count` = 1 | `restaurant_inventory` | 2: `restaurant_inventory`, `restaurants` |
+| `inventory.in_transit` | `item-a:in_transit_quantity` = 12 | `restaurant_inventory` | 1: `restaurant_inventory` |
+| `inventory.locations` | `cellar:live:qty` = 10 | `inventory_lots` | 3: `restaurant_inventory`, `inventory_lots`, `storage_locations` |
+| `inventory.movements` | `lane:live:net` = 9 | `inventory_transactions` | 2: `restaurant_inventory`, `inventory_transactions` |
+| `orders.open` | `orders:count` = 4 | `procurement_orders` | 1: `procurement_orders` |
+| `orders.lines` | `order-line-1:quantity` = 2 | `procurement_order_items` | 2: `procurement_orders`, `procurement_order_items` |
+| `orders.late_deliveries` | `orders:count` = 1 | `procurement_orders` | 1: `procurement_orders` |
+| `receipts.verified_line` | `receipt-line:unit_price` = 360 | `procurement_document_lines` | 6: `restaurant_inventory`, `procurement_documents`, `procurement_document_lines`, `procurement_document_links`, `procurement_orders`, `procurement_order_items` |
+| `sales.check_activity` | `covers:sum` = 5 | `pos_checks` | 1: `pos_checks` |
+| `sales.consumption` | `consumption:volume` = 1050 | `wine_consumption_log` | 2: `restaurant_inventory`, `wine_consumption_log` |
+| `calendar.upcoming` | `events:count` = 1 | `calendar_events` | 3: `calendar_events`, `calendar_recurrence_rules`, `calendar_recurrence_exceptions` |
+| `vendors.active` | `vendors:count` = 2 | `providers` | 2: `providers`, `restaurant_providers` |
+| `documents.waiting` | `documents:count` = 2 | `procurement_documents` | 1: `procurement_documents` |
+| `goals.targets` | `goal-a:target_value` = 40 | `analytics_goals` | 1: `analytics_goals` |
+| `orders.due_today` | `deliveries:count` = 1 | `procurement_orders` | 1: `procurement_orders` |
+
+**Finding.** Both of task 4's tests existed for all sixteen
+(`reading-runner.spec.ts`, the `known` table and its two `test.each`). The gap
+was narrower: the floor forced ONE table per Reading, so fourteen of the thirty
+(Reading, relation) pairs were never forced to fail by the floor (one,
+`calendar_recurrence_exceptions`, was by a separate calendar test) -- among them the linked
+order lines behind a receipt, which the base fixture never reaches. Proof it
+mattered: making `receipts.verified_line` swallow its linked order-lines error
+(`.catch(() => null)`) left the sixteen-row floor green and failed only the new
+block. **Added:** a per-source `describe` that, for every Reading, forces every
+relation it queries in the base fixture and in a richer one (a receipt linked
+to an owned order; a recurring series in the window), and requires the union
+to equal the declared shelves -- 16 tests, all passing. **No reading was found
+untestable.** A second mutation (swallowing a recurring series' exceptions
+error) failed the new block and the existing calendar test.
+
+**The guard.** `scripts/check_ask_readings_have_fixtures.py` (static; exit 0
+pass, 1 finding, 2 cannot check) fails on a declared Reading with no `known`
+row, an extra or duplicate row, a forced-error table off the Reading's
+shelves, either `test.each(known)` block lost or weakened (including one that
+would accept `not_in_your_books`), the per-source block lost or weakened, and
+the coverage test lost; `--self-test` runs 11 in-memory mutations, all caught.
+It rides on `scripts/check_ask_field_classes.py` (both of its existing CI
+steps now run it; combined exit is the worse of the two), because
+`.github/workflows/ci.yml` is gate-owned -- a dedicated CI step with its own
+name is cleaner and is left to the gate owner. CLAIMS row
+`ADR-0145-ASK-EVERY-READING-HAS-BOTH-FIXTURE-TESTS` runs it too.
 
 ## Review trail
 
@@ -1474,3 +1579,5 @@ panel are the two doors (ADR 0149 row 33).
 | 2026-09-22 | KL lane, round 5 (build, on HEAD a04aaa4e1, no merge in progress) | Built all three. Migration `20260922220600` adds `ask_reading_folios.asked_while_opted_out` (derived, written once, backfilled) and a second export clause; `/privacy` gained the "Questions you ask Mudavym" section; `Privacy.test.tsx` added. Measured on staged index tree `bf3b2744a7393a3a7fb5ec0e7e0051570e32334a`: `verify_index.sh` ALL GREEN across `gw_tsc`, `gw_tsc_spec`, `web_tsc`, `web_eslint`, `claims` (435/435), `boots`, `prefixes`, PGlite `KL5-opt-out-snapshot.mjs` (19/19), `vitest` (`Privacy.test.tsx`, 5/5); eleven product guards and four git-reading guards all PASS; `check_migration_ledger.py` / `check_definer_functions_closed.py` CANNOT CHECK (no database reachable), the honest-failure shape. Mutations: 2 on the migration file (dropping the export's snapshot clause; letting the trigger trust the client's value) each flip the new CLAIMS verify and 2-4 PGlite assertions from PASS/OK to FAIL; both restored byte-identically, md5 `7c2ddbdfd5c827cb8a5ac9c75f7209c9` confirmed before and after. CLAIMS: one row added (`ADR-0145-ASK-TRAINING-OPT-OUT-SNAPSHOT-AT-ASK-TIME`), one re-pointed at the new migration file (`...-EXPORT-LEAVES-OUT-OPTED-OUT-HOUSES-AND-FREE-TEXT`, its checks unchanged on the recreated view). Not built: the Terms page and `/ask` page still do not exist (their notice lines from round 6r remain unlanded); the name remover (explicitly out of scope, answer 2); no production query, no browser render of `/privacy` (vitest only). |
 | 2026-09-22 | KL lane, round 5 (verify) | Re-ran the build's checks on its tree and matched every number. Fixed: the Settings copy still said names are removed before an export; it now says the export carries no question text, matching `/privacy` ("Fixed on verify" above). Re-measured on staged index tree 858487c3: `verify_index.sh` ALL GREEN, vitest 2 files / 11 tests. |
 | 2026-09-22 | Opus last call, KL round 5 (round 6y), HEAD a04aaa4e1, no merge in progress | Not ready as built: a re-ask carried a question asked while opted out into the export through another folio, both ways (PGlite `KL5-lastcall-reask-optout.mjs`, the build's 19 assertions plus 7 re-ask ones: 2 FAILED on the build's migration). Fixed in the view, with an all-opted-in control kept: 26 of 26. `verify_index.sh` on staged index tree 06c38532: `web_tsc`, `web_eslint` (the 4 changed web files), `claims` 435/435, `prefixes`, that PGlite probe, vitest 2 files / 11 tests -- ALL GREEN; the later edits are to this record only, after which the four git-reading guards and CLAIMS (435/435) were re-run. Gateway tsc and jest not re-run: no gateway file changed. Mutations: dropping the re-ask label clause, and exporting `reask_kind` unguarded, each fail one PGlite assertion; the strengthened CLAIMS verify fails on those two, on a missing `create trigger`, and on a later file redefining the view; all restored byte-identically. Also corrected: the migration header's unsourced quotation, the backfill's "only information" wording, the Settings On/Off lines, and the round-6r Terms and `/ask` drafts (bracketed). Recorded, not decided: the Settings switch is reachable only on the new Settings page; a person's label given while opted out; `/privacy` does not name the AI model provider. |
+| 2026-09-25 | Aldemir (founder), round 5, relayed by the orchestrating session | Fork 3, his pick verbatim: "Lie over it (Recommended)" (rejected: "Push the page"). `ASK_LAUNCHED`, his words verbatim: "aded to the railway" (offered: "After fixture proof (Recommended)", "Right after #475 merges"). See "Amendment, 2026-09-25, round 5". |
+| 2026-09-25 | W3-ask lane (build, PR #475) | Fork 3 pinned on the built ⌘⇧K panel by vitest (mutation-tested); the Ask face stays unbuilt. Build task 4 audited: sixteen of sixteen readings have both tests; a per-source block forces all thirty (Reading, relation) pairs and ties them to the shelves (jest mutation on the receipts' linked order lines caught only by it). Guard `check_ask_readings_have_fixtures.py` added, self-test 11/11, wired through `check_ask_field_classes.py` and a CLAIMS row; on-disk mutations flip it to exit 1 (a deleted `known` row, a narrowed fixture loop) and exit 2 (spec missing), files restored byte-identically. `ASK_LAUNCHED` in production not verified. |
