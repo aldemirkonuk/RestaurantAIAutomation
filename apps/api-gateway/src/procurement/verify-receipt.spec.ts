@@ -171,6 +171,19 @@ function makeDb(opts: {
   receiptEventError?: { message: string } | null;
   /** The item's wine-library id; null = a wine the library lacks. Default: a library wine. */
   libraryWineId?: string | null;
+  /**
+   * The order's existing latest `reconciled` event, read back before the
+   * one-tap confirmation's insert (the idempotence check). `undefined` (the
+   * default) falls back to the last row this same fixture has already
+   * recorded in `calls.receiptEvents`, so calling `verifyReceipt` twice on one
+   * `db`/`calls` pair models a real double-tap. Pass `null` explicitly for "no
+   * prior verification" even after an insert, or a row to model one seeded
+   * outside this test (e.g. a full verification an earlier, unrelated call
+   * wrote).
+   */
+  latestReconciledEvent?: Row | null;
+  /** The idempotence check's read of the latest `reconciled` event fails with this. */
+  latestReconciledReadError?: { message: string } | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -226,6 +239,19 @@ function makeDb(opts: {
 
         if (table === "procurement_receipt_events" && op === "insert" && opts.receiptEventError)
           return { data: null, error: opts.receiptEventError };
+
+        // The idempotence check's read of the latest `reconciled` event,
+        // before the one-tap confirmation's own insert (never reached on the
+        // `insert` op above, which the branch above already answered).
+        if (table === "procurement_receipt_events" && op !== "insert") {
+          if (opts.latestReconciledReadError)
+            return { data: null, error: opts.latestReconciledReadError };
+          const latest =
+            opts.latestReconciledEvent !== undefined
+              ? opts.latestReconciledEvent
+              : (calls.receiptEvents[calls.receiptEvents.length - 1] ?? null);
+          return { data: latest ? [latest] : [], error: null };
+        }
 
         if (table === "restaurant_inventory") {
           // The ownership probe: select("id") filtered by restaurant_id + id.
@@ -1372,6 +1398,103 @@ describe("verifyReceipt — a one-tap 'Counts match' leaves a history line (ADR 
     await expect(
       service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
     ).rejects.toThrow(/could not be read/);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+  });
+});
+
+describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothing new (ADR 0192, sixth amendment)", () => {
+  // Founder, 2026-09-26, round 7, item 47 (record:
+  // `~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-automation/memory/founder-answers-2026-09-25-web-rebuild.md`):
+  // "a repeated identical 'Counts match' tap on an already-completed/verified
+  // order writes NOTHING new (idempotent — detect that the latest reconciled
+  // event already states the same accepted counts and no invoice change;
+  // return success without a new row); an earlier full check's rejected count
+  // stays visible (as built)."
+  const bottleOrder = {
+    id: ORDER,
+    order_number: "ORD-2026-00008",
+    restaurant_id: REST,
+    inventory_id: OWN_INVENTORY,
+    provider_id: "prov-1",
+    quantity: 24,
+    bottles_total: 24,
+    unit_type: "bottle",
+    final_price: 22,
+    status: "DELIVERED",
+    delivery_notes: null,
+  };
+
+  it("a double-tap — the same request twice in a row — writes exactly one line", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
+    expect(calls.receiptEvents[0]).toMatchObject({
+      outcome: "accepted",
+      counted_qty_bottles: 24,
+    });
+    // Still reports success both times, and the order still completes: the
+    // tap is a no-op on the EVENTS table only, not a refusal to the caller.
+    expect(calls.orderUpdates).toHaveLength(2);
+    expect(calls.orderUpdates[1]).toMatchObject({ status: "COMPLETED" });
+  });
+
+  it("a third identical tap still writes nothing, beyond the second", async () => {
+    const { db, calls } = makeDb({ orderRow: bottleOrder, bookedBottles: 24 });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
+  });
+
+  it("a tap that follows a ledger change is not a repeat, and writes its own line", async () => {
+    const fixture = { orderRow: bottleOrder, bookedBottles: 24 };
+    const { db, calls } = makeDb(fixture);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    // Two more bottles landed on the shelf between taps (a delivery, or a
+    // desk correction) — the ledger the second tap reads is not the ledger
+    // the first one did, so this is not the same fact restated.
+    fixture.bookedBottles = 26;
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toHaveLength(2);
+    expect(calls.receiptEvents.map((e) => e.counted_qty_bottles)).toEqual([24, 26]);
+  });
+
+  it("a tap after a full verification that already states the same accepted count is also a repeat", async () => {
+    // The full check (not this branch) already wrote its own `reconciled`
+    // event — outcome null, an invoice on it — before the one-tap runs. The
+    // founder's wording covers an "already-completed/verified" order, not
+    // only a prior one-tap.
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      bookedBottles: 24,
+      latestReconciledEvent: { counted_qty_bottles: 24, invoice_qty_bottles: 22 },
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toEqual([]);
+    // The order still completes; only the events table saw nothing new.
+    expect(calls.orderUpdates).toHaveLength(1);
+    expect(calls.orderUpdates[0]).toMatchObject({ status: "COMPLETED" });
+  });
+
+  it("a repeat on an order with no item is still a repeat: 'no count recorded' twice is not new information", async () => {
+    const { db, calls } = makeDb({ orderRow: { ...bottleOrder, inventory_id: null } });
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    await service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
+    expect(calls.receiptEvents[0].counted_qty_bottles).toBeNull();
+  });
+
+  it("if whether this order was already verified could not be checked, nothing is changed", async () => {
+    const { db, calls } = makeDb({
+      orderRow: bottleOrder,
+      bookedBottles: 24,
+      latestReconciledReadError: { message: "connection reset" },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
+    ).rejects.toThrow(/could not be checked.*nothing was changed/);
     expect(calls.receiptEvents).toEqual([]);
     expect(calls.orderUpdates).toEqual([]);
   });

@@ -610,6 +610,55 @@ the invoice from the latest event turns 3 red; reading the refusal from the late
 2 red; dropping `outcome` from the reader's select turns 1 red; skipping the tenancy pre-check
 turns 1 red. The desk's history words for the line (*desk_confirmed*) are on #480.
 
+## Sixth amendment 2026-09-26 — a repeated identical "Counts match" tap writes nothing new
+
+**Source.** The founder, 2026-09-26, round 7, item 47 (relayed via the record at
+`~/.claude/projects/-Users-aldemirkonuk-Projects-restaurant-ai-automation/memory/founder-answers-2026-09-25-web-rebuild.md`,
+not itself put to him as a quoted AskUserQuestion option, so this bracket carries the
+record's own words rather than a chosen A/B/C — the fork was reported already answered,
+not asked here): *"a repeated identical 'Counts match' tap on an already-completed/verified
+order writes NOTHING new (idempotent — detect that the latest reconciled event already
+states the same accepted counts and no invoice change; return success without a new row);
+an earlier full check's rejected count stays visible (as built)."*
+
+**Built.**
+
+1. **The check.** `verifyReceipt`'s no-count path (`!hasMatchFields` — the fifth amendment's
+   one-tap confirmation) reads the order's latest `reconciled` event
+   (`procurement_receipt_events`, newest `occurred_at` first) BEFORE inserting its own, and
+   skips the insert when `repeatsTheLatestConfirmation` (`shelf-received.ts`) says the two
+   agree: the latest event's `counted_qty_bottles` equals what this tap would write
+   (`confirmedBottles`, the ledger's booked bottles plus any adjustment on the payload).
+   `null` counts as equal to `null` (an order with no item, or an unreadable count, states
+   "no accepted count recorded" every time). The read runs before any write, like the
+   line's own insert: a failed read refuses (500) rather than guessing, so a check that
+   cannot be answered never silently duplicates — or silently skips — a line.
+2. **"No invoice change."** This path never carries an invoice (`hasMatchFields` is false
+   by definition here), so nothing it could insert differs from the latest event on that
+   axis — the phrase describes why the accepted-count comparison is the whole check, not a
+   second condition to test against the latest event's own `invoice_qty_bottles`. A tap
+   that follows a FULL verification (an invoice, a refusal) is still a repeat when the
+   counted bottles agree — the founder's wording names "already-completed/verified", not
+   only "already one-tap-confirmed" — and skipping never touches that verification's own
+   row, so its invoice and its refusal stay exactly as the fifth amendment already reads
+   them ("as built": nothing here changes `composeShelfReceived`).
+3. **Still success.** A skipped insert is not a refusal: the order's status write
+   (`COMPLETED`, unconditional on this path since `match` is always null here) still runs,
+   and the caller sees the same response either way. Idempotence is invisible on the wire;
+   it is provable only from the events table.
+4. **Not a repeat.** A DIFFERENT accepted count — the ledger moved between taps, from a
+   correction, another delivery, or another verification — still writes its own line. This
+   guards an unchanged fact, not every tap on the same order.
+
+**Evidence.** `verify-receipt.spec.ts`, block *"a repeated identical 'Counts match' tap
+writes nothing new (ADR 0192, sixth amendment)"* (7 tests): a double-tap and a triple-tap
+each leave exactly one line; a ledger change between taps writes two; a repeat after a
+FULL verification with the same count is also a repeat; an order with no item is
+idempotent on `null`; a failed idempotence read changes nothing. `shelf-received.spec.ts`'s
+existing fifth-amendment coverage (rejected-at-desk and invoiced read from the latest event
+that states them) is unchanged and still green — this amendment adds a read, not a change
+to that reader.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -631,3 +680,5 @@ turns 1 red. The desk's history words for the line (*desk_confirmed*) are on #48
 | 2026-09-25 | Claude (Opus 5), lane W3-receiving | Built (fourth amendment): the derived part pack verifies in bottles and writes its event; the no-count one-tap verification stated as not covered; CodeQL #1505 restructured (flag split from reason) |
 | 2026-09-26 | Aldemir (founder), round 6 | *"Yes, keep last invoice (Recommended)"* on the one-tap "Counts match" (fifth amendment, verbatim with both rejected options) |
 | 2026-09-26 | Claude (Opus 5), lane W4-receiving | Built (fifth amendment): the no-count verification writes a `reconciled` line marked `outcome = 'accepted'`; the invoice and the desk's refusal read from the latest event that states them; the refusal half stated as this lane's reading |
+| 2026-09-26 | Aldemir (founder), round 7, item 47 | *"a repeated identical 'Counts match' tap ... writes NOTHING new (idempotent) ... an earlier full check's rejected count stays visible (as built)"* (sixth amendment, verbatim per the round-7 record) |
+| 2026-09-26 | Claude (Sonnet 5), lane W5-receiving | Built (sixth amendment): `repeatsTheLatestConfirmation` (`shelf-received.ts`) gates the one-tap's insert on the latest `reconciled` event's `counted_qty_bottles`; a failed idempotence read refuses rather than guessing; 7 new tests incl. double- and triple-tap |
