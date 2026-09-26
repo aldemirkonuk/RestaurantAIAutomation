@@ -249,6 +249,113 @@ def _age_in_words(age_seconds: Optional[float]) -> str:
     return f"about {hours // 24} days"
 
 
+# =============================================================================
+# provider_promotions — the row this agent writes
+# =============================================================================
+#
+# The table's columns are the baseline CREATE TABLE
+# (supabase/migrations/20260805000000_baseline_from_production.sql:4808) and no
+# later migration alters it. Until 2026-09-26 this agent wrote `status`,
+# `is_recurring` and `source_message_text` — none of which exist — and read
+# `status` to dedupe, so PostgREST refused every call, the `except` logged it,
+# and not one offer a vendor wrote in conversation ever reached the house.
+#
+# The reference writer is the gateway's PromotionExtractorService
+# (apps/api-gateway/src/common/orchestrator/promotion-extractor.service.ts):
+# `is_active` is the lifecycle, `discount_value` carries `percent` / `amount` /
+# `free_shipping`, thresholds go in `conditions` as `min_qty` / `min_amount`.
+# The /promotions page and the digest read exactly those keys.
+
+PROMO_TYPES = (
+    "volume_discount",
+    "seasonal",
+    "bundle",
+    "loyalty",
+    "closeout",
+    "new_vintage",
+    "free_shipping",
+    "sample",
+    "early_payment",
+    "referral",
+)
+
+
+def _promo_number(value: Any) -> Optional[float]:
+    """A model-extracted number ("15", "15%", 15.0) as a float, else None."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip().rstrip("%").strip())
+    except ValueError:
+        return None
+
+
+def _promo_date(value: Any) -> Optional[str]:
+    """An ISO date (YYYY-MM-DD) or None. `date` columns refuse free text."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).strip()[:10]).date().isoformat()
+    except ValueError:
+        return None
+
+
+def promotion_terms(promo: Dict[str, Any]) -> Tuple[str, Dict, Dict]:
+    """(promo_type, discount_value, conditions) in the reference writer's shape."""
+    promo_type = promo.get("type") or "volume_discount"
+    if promo_type not in PROMO_TYPES:
+        promo_type = "volume_discount"
+
+    discount_value: Dict[str, Any] = {}
+    percent = _promo_number(promo.get("discount_percentage"))
+    amount = _promo_number(promo.get("discount_fixed"))
+    if percent is not None:
+        discount_value["percent"] = percent
+    if amount is not None:
+        discount_value["amount"] = amount
+    if promo_type == "free_shipping":
+        discount_value["free_shipping"] = True
+
+    raw_conditions = promo.get("conditions")
+    if isinstance(raw_conditions, dict):
+        conditions: Dict[str, Any] = dict(raw_conditions)
+    elif raw_conditions:
+        conditions = {"text": str(raw_conditions)[:500]}
+    else:
+        conditions = {}
+    min_qty = _promo_number(promo.get("min_quantity"))
+    min_amount = _promo_number(promo.get("min_spend"))
+    if min_qty is not None:
+        conditions["min_qty"] = min_qty
+    if min_amount is not None:
+        conditions["min_amount"] = min_amount
+    return promo_type, discount_value, conditions
+
+
+def promotion_insert_row(
+    provider_id: str, restaurant_id: str, promo: Dict[str, Any]
+) -> Dict[str, Any]:
+    """The provider_promotions row for one extracted offer, for one house."""
+    promo_type, discount_value, conditions = promotion_terms(promo)
+    wines = promo.get("applicable_wines")
+    return {
+        "provider_id": provider_id,
+        "restaurant_id": restaurant_id,
+        "name": str(promo.get("name") or "Unnamed Promotion")[:200],
+        "promo_type": promo_type,
+        "description": promo.get("description"),
+        "conditions": conditions,
+        "discount_value": discount_value,
+        "applicable_wines": [str(w) for w in wines] if isinstance(wines, list) else [],
+        "start_date": _promo_date(promo.get("start_date"))
+        or datetime.utcnow().date().isoformat(),
+        "end_date": _promo_date(promo.get("end_date")),
+        "is_active": True,
+    }
+
+
 SUMMARY_PROMPT = """Summarize this conversation session in exactly 3 lines:
 Line 1: What was discussed
 Line 2: What was agreed or decided
@@ -1830,81 +1937,51 @@ class ProviderConversationAgent(BaseAgent):
         promos: List[Dict[str, Any]],
         source_message: str,
     ) -> None:
-        """Process promotions discovered from conversation."""
+        """Process promotions discovered from conversation.
+
+        Every read and write is the house's own: provider rows are per house
+        (ADR 0221), and the dedupe, the insert and the update all carry
+        `restaurant_id`. Columns are the table's real ones — see
+        promotion_insert_row. The source message is not copied onto the row;
+        the conversation itself is stored by _store_conversation_embedding.
+        """
+        if not restaurant_id:
+            self.logger.warning(
+                "Promotions from provider %s not stored: no house on the message",
+                provider_id,
+            )
+            return
         for promo in promos:
-            promo_name = promo.get("name", "Unnamed Promotion")
-            promo_type = promo.get("type", "volume_discount")
-            valid_types = [
-                "volume_discount",
-                "seasonal",
-                "bundle",
-                "loyalty",
-                "closeout",
-                "new_vintage",
-                "free_shipping",
-                "sample",
-                "early_payment",
-                "referral",
-            ]
-            if promo_type not in valid_types:
-                promo_type = "volume_discount"
+            row = promotion_insert_row(provider_id, restaurant_id, promo)
+            promo_name = row["name"]
+            promo_type = row["promo_type"]
 
             try:
-                # Check if promo already exists
+                # Same house, same vendor, same offer name, still running.
                 existing = (
                     self.database.supabase.table("provider_promotions")
-                    .select("id, status")
+                    .select("id")
+                    .eq("restaurant_id", restaurant_id)
                     .eq("provider_id", provider_id)
                     .eq("name", promo_name)
-                    .eq("status", "active")
+                    .eq("is_active", True)
                     .limit(1)
                     .execute()
                 )
 
                 if existing.data:
-                    # Update existing promo
                     self.database.supabase.table("provider_promotions").update(
                         {
-                            "conditions": promo.get("conditions", {}),
-                            "discount_value": {
-                                "type": (
-                                    "percentage"
-                                    if promo.get("discount_percentage")
-                                    else "fixed"
-                                ),
-                                "value": promo.get("discount_percentage")
-                                or promo.get("discount_fixed"),
-                            },
-                            "source_message_text": source_message[:500],
+                            "conditions": row["conditions"],
+                            "discount_value": row["discount_value"],
+                            "updated_at": datetime.utcnow().isoformat(),
                         }
-                    ).eq("id", existing.data[0]["id"]).execute()
+                    ).eq("id", existing.data[0]["id"]).eq(
+                        "restaurant_id", restaurant_id
+                    ).execute()
                 else:
-                    # Insert new promo
-                    insert_data = {
-                        "provider_id": provider_id,
-                        "restaurant_id": restaurant_id,
-                        "name": promo_name,
-                        "promo_type": promo_type,
-                        "description": promo.get("description"),
-                        "conditions": promo.get("conditions", {}),
-                        "discount_value": {
-                            "type": (
-                                "percentage"
-                                if promo.get("discount_percentage")
-                                else "fixed"
-                            ),
-                            "value": promo.get("discount_percentage")
-                            or promo.get("discount_fixed"),
-                        },
-                        "applicable_wines": promo.get("applicable_wines", []),
-                        "start_date": promo.get("start_date"),
-                        "end_date": promo.get("end_date"),
-                        "is_recurring": False,
-                        "status": "active",
-                        "source_message_text": source_message[:500],
-                    }
                     self.database.supabase.table("provider_promotions").insert(
-                        insert_data
+                        row
                     ).execute()
 
                     # Publish promo discovered event
@@ -1918,7 +1995,7 @@ class ProviderConversationAgent(BaseAgent):
                                 "restaurant_id": restaurant_id,
                                 "promo_name": promo_name,
                                 "promo_type": promo_type,
-                                "end_date": promo.get("end_date"),
+                                "end_date": row["end_date"],
                             },
                         },
                     )
@@ -1945,13 +2022,16 @@ class ProviderConversationAgent(BaseAgent):
     async def _get_active_promos(
         self, provider_id: str, restaurant_id: str
     ) -> List[Dict[str, Any]]:
-        """Get all active promotions for a provider."""
+        """Get this house's running promotions from one provider."""
+        if not restaurant_id:
+            return []
         try:
             result = (
                 self.database.supabase.table("provider_promotions")
                 .select("*")
+                .eq("restaurant_id", restaurant_id)
                 .eq("provider_id", provider_id)
-                .eq("status", "active")
+                .eq("is_active", True)
                 .execute()
             )
             return result.data or []
@@ -3735,12 +3815,15 @@ class ProviderConversationAgent(BaseAgent):
             self.logger.error(f"Error checking relationship health: {e}")
 
     async def _expire_old_promos(self) -> None:
-        """Mark expired promotions."""
+        """Close promotions past their end date (every house: a system sweep).
+
+        `is_active` is the table's lifecycle column; there is no `status`.
+        """
         try:
-            today = datetime.utcnow().date().isoformat()
+            now = datetime.utcnow()
             self.database.supabase.table("provider_promotions").update(
-                {"status": "expired"}
-            ).eq("status", "active").lt("end_date", today).execute()
+                {"is_active": False, "updated_at": now.isoformat()}
+            ).eq("is_active", True).lt("end_date", now.date().isoformat()).execute()
         except Exception as e:
             self.logger.error(f"Error expiring promos: {e}")
 
