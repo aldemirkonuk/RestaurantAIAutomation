@@ -166,6 +166,7 @@ spectrum, not a shape (see Consequences).
 | 2026-09-05 | founder | **Ratified (F1) — status → Locked.** F2: the studio invite reuses `InviteTeamDialog` with a second opener. F5: the manual order starts in the owed 'A new order' sheet. F7: a dashboard figure expands in place, no overlay. F3: a 640 sheet. F4: every legacy act is rebuilt to its full purpose (the founder's bar recorded below). F6: HouseHeader's bell and menu survive. All seven answered. |
 | 2026-09-19 | Aldemir (founder, chat, ~11:35Z) + Sonnet 5 (PR #391 audit M4) | **Amended F10** — a WhatsApp message a person sends by clicking Send does not need `HoldToApprove` first; the click is the consent. Scoped to person-sent WhatsApp sends only; every other item on F10's closed list (money, other sends, ledger rows) is unchanged. Named, not built here: people can delete their own sent messages, and the surface reads like WhatsApp Web inside the house frame — both filed as follow-ups on ADR 0121. Meta's WhatsApp Cloud API was checked against its public docs and does not support a business deleting/recalling a message it sent for the recipient (see ADR 0121 item 9). |
 | 2026-09-19 | founder | **Amended by 0176:** phone swipe as the intent gesture; tap-to-seal-sheet and the Phase 2 in-shade hold (ADR 0175). |
+| 2026-09-25 | Aldemir (founder, round 5, sketch 122 Q2) + lane W3-recs (Opus 5.5) | **Amended F10** — snooze, pin and "Mark as briefed" on a recommendation join the undo-after list ("Add all three (Recommended)"); a hand-off that only opens another page records nothing. Money, sends, ledger rows and a recommendation's order keep the seal before. |
 
 ## Founder answers (2026-09-04)
 
@@ -281,6 +282,24 @@ agent resolving its own threads — that claim did not survive re-fetch; the rul
   `HoldToApprove` first. Everything else F10 covers (money, other sends, ledger rows) is
   unchanged; this is a named, scoped carve-out for one channel, not a repeal of the rule. This
   answers ADR 0121 item 9's "the reply seal" fork — see its bracket there.]**
+  **[AMENDED 2026-09-25, founder, round 5 (`AskUserQuestion`, session 6c6d8b93) — sketch 122 Q2.
+  The question, verbatim: *"Sketch 122 Q2: snooze, pin and mark-as-briefed are one tap with Undo
+  and no confirmation seal. ADR 0112 F10's undo list is closed, so adding them is an amendment. Add
+  them? (A hand-off that only opens another page records nothing.)"* His answer: *"Add all three
+  (Recommended)"* — whose option read *"They only change the recommendation's own status (no
+  money, no send, no ledger), the same reasoning F10 already uses. Amend ADR 0112 F10."* Rejected:
+  *"Keep F10 closed"* (these acts get the hold-to-seal like every other act) and *"Add snooze + pin
+  only"* (mark-as-briefed keeps a seal). F10's closed list is now: dismiss an entry, archive a
+  thread, remove a shift, a note, a door count within ten minutes, **and on a recommendation a
+  snooze, a pin and a "Mark as briefed"**. Money, sends and ledger rows keep the seal before; a
+  recommendation's "Order it" keeps the hold in Orders (sketch 122 Q3, two-step). A hand-off that
+  only opens another page is not on the list because it is not an act: it records nothing and has
+  nothing to undo. Built on `feat/recs-round6-direction-b`: the briefing's Undo takes the stamp
+  back (`acted: false`), gated like clearing a pin under ADR 0191 round 5 — staff their own,
+  owners and managers anyone's, the platform admin none — which needed a new `acted_by` column
+  (migration `20260927100000`). That column joins the two-year author sweep ADR 0191 round 6 put
+  `created_by`/`pinned_by`/`rated_by`/`assigned_by` on; that is the lane's reading of round 6 for
+  a column that did not exist when it was answered, not a separate founder answer.]**
 - **F11 — all three, as the house's own rules.** A manager's passcode at the point of action for
   staff → manager acts (the manager's name goes on the line); presence on shared records; and a
   two-person rule for money — the initiator is mechanically excluded from approving their own

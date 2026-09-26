@@ -175,6 +175,9 @@ export interface NoteOwnership {
   assignedTo: string | null;
   assignedName: string | null;
   assignedBy: string | null;
+  /** Whether the card carries an "acted" stamp now, and whose (sketch 122 Q2). */
+  acted: boolean;
+  actedBy: string | null;
 }
 
 const NO_NOTES: NoteOwnership = {
@@ -187,6 +190,8 @@ const NO_NOTES: NoteOwnership = {
   assignedTo: null,
   assignedName: null,
   assignedBy: null,
+  acted: false,
+  actedBy: null,
 };
 
 /**
@@ -465,7 +470,17 @@ export class RecommendationActionsService {
       row.pinned = patch.pinned;
       row.pinned_by = createdBy ?? null;
     }
-    if (patch.acted) row.acted_at = new Date().toISOString();
+    // The stamp names who made it (migration 20260927100000), so its Undo can
+    // be gated like a pin's — the founder, 2026-09-25, sketch 122 Q2: "Mark as
+    // briefed" joins ADR 0112 F10's undo-after list. `false` is that Undo:
+    // the stamp and its author go together.
+    if (patch.acted === true) {
+      row.acted_at = new Date().toISOString();
+      row.acted_by = createdBy ?? null;
+    } else if (patch.acted === false) {
+      row.acted_at = null;
+      row.acted_by = null;
+    }
     if (patch.feedback !== undefined) {
       row.feedback = patch.feedback;
       row.rated_by = createdBy ?? null;
@@ -1033,7 +1048,7 @@ export class RecommendationActionsService {
       .getClient()
       .from("recommendation_actions")
       .select(
-        "pinned,pinned_by,feedback,rated_by,assigned_to,assigned_name,assigned_by",
+        "pinned,pinned_by,feedback,rated_by,assigned_to,assigned_name,assigned_by,acted_at,acted_by",
       )
       .eq("restaurant_id", restaurantId)
       .eq("rule_key", ruleKey)
@@ -1056,7 +1071,7 @@ export class RecommendationActionsService {
       .getClient()
       .from("recommendation_actions")
       .select(
-        "rule_key,pinned,pinned_by,feedback,rated_by,assigned_to,assigned_name,assigned_by",
+        "rule_key,pinned,pinned_by,feedback,rated_by,assigned_to,assigned_name,assigned_by,acted_at,acted_by",
       )
       .eq("restaurant_id", restaurantId)
       .in("rule_key", keys);
@@ -1081,6 +1096,8 @@ export class RecommendationActionsService {
       assignedTo: d.assigned_to ?? null,
       assignedName: d.assigned_name ?? null,
       assignedBy: d.assigned_by ?? null,
+      acted: d.acted_at != null,
+      actedBy: d.acted_by ?? null,
     };
   }
 
@@ -1088,6 +1105,7 @@ export class RecommendationActionsService {
   private fieldState(o: NoteOwnership, field: NoteField): [boolean, string | null] {
     if (field === "pinned") return [o.pinned, o.pinnedBy];
     if (field === "feedback") return [o.hasFeedback, o.ratedBy];
+    if (field === "acted") return [o.acted, o.actedBy];
     return [o.assigned, o.assignedBy];
   }
 
@@ -1171,6 +1189,12 @@ export class RecommendationActionsService {
         from: before.feedback,
         to: patch.feedback,
         from_by: before.ratedBy,
+      };
+    if (fields.includes("acted"))
+      changes.acted = {
+        from: before.acted,
+        to: false,
+        from_by: before.actedBy,
       };
     if (fields.includes("assignment")) {
       // What `setAction` writes: a cleared assignee clears the name too, and

@@ -299,15 +299,26 @@ export interface StateWriteIn {
   feedback?: string | null;
   assignedTo?: string | null;
   assignedName?: string | null;
+  /**
+   * `true` stamps that the act was carried out (`acted_at`, and since
+   * 2026-09-25 `acted_by`); `false` takes that stamp back. Only the take-back
+   * is a note CHANGE: sketch 122 Q2 (the founder, 2026-09-25, round 5, "Add
+   * all three (Recommended)") puts "Mark as briefed" on ADR 0112 F10's
+   * undo-after list, so its Undo clears the stamp — and clearing someone
+   * else's briefing is gated exactly like clearing their pin (round 5).
+   * Stamping it again is anyone's (not the admin's), the same as a first pin.
+   */
+  acted?: boolean;
 }
 
-/** Whether a patch touches any note field — pin, rating or assignment. */
+/** Whether a patch touches any note field — pin, rating, assignment, or a briefing taken back. */
 export function touchesNotes(patch: StateWriteIn): boolean {
   return (
     patch.pinned !== undefined ||
     patch.feedback !== undefined ||
     patch.assignedTo !== undefined ||
-    patch.assignedName !== undefined
+    patch.assignedName !== undefined ||
+    patch.acted === false
   );
 }
 
@@ -557,7 +568,7 @@ export function undoRefusal(unknownAuthor: boolean, n: number): string {
 // ---- Touching someone's note (round 5, answer 2 — "Gate like acts") --------
 
 /** One note field a patch can touch. */
-export type NoteField = "pinned" | "feedback" | "assignment";
+export type NoteField = "pinned" | "feedback" | "assignment" | "acted";
 
 /** Which note field(s) a patch touches, for the gate and the audit. */
 export function notesTouchedBy(patch: StateWriteIn): NoteField[] {
@@ -566,6 +577,9 @@ export function notesTouchedBy(patch: StateWriteIn): NoteField[] {
   if (patch.feedback !== undefined) out.push("feedback");
   if (patch.assignedTo !== undefined || patch.assignedName !== undefined)
     out.push("assignment");
+  // Only the take-back (sketch 122 Q2): stamping "acted" is not a change to
+  // anyone's note, clearing it is.
+  if (patch.acted === false) out.push("acted");
   return out;
 }
 
