@@ -10,9 +10,14 @@ import { describe, expect, it } from 'vitest';
 import {
   countsByDimension,
   headSentence,
+  isTypeEnabled,
+  liveInsightsForType,
   matchesQuery,
   missingRequirements,
+  normalizeLiveInsight,
+  offTypeKeys,
   readinessOf,
+  typeRuleKey,
   type CatalogCandidate,
   type CatalogComparator,
   type CatalogDimension,
@@ -139,5 +144,111 @@ describe('headSentence', () => {
     );
     expect(s).toContain('6 with data present');
     expect(s).toContain('18 built but missing data');
+  });
+});
+
+// ADR 0191 — on/off + live items.
+
+describe('typeRuleKey', () => {
+  it('is the bare insight:<candidateKey> string the gateway also computes', () => {
+    expect(typeRuleKey('overall.revenue.vs_same_weekday')).toBe(
+      'insight:overall.revenue.vs_same_weekday',
+    );
+  });
+});
+
+describe('offTypeKeys / isTypeEnabled', () => {
+  it('collects only dismissed, bare-key (rule-scope) rows', () => {
+    const off = offTypeKeys([
+      { ruleKey: 'insight:overall.revenue.vs_same_weekday', status: 'dismissed' },
+      // An individual instance dismissed from the feed — narrower scope, must
+      // NOT read as the whole type being off.
+      { ruleKey: 'insight:wine.revenue.trend#caymus#d:2026-09-02', status: 'dismissed' },
+      { ruleKey: 'insight:wine.revenue.trend', status: 'active' },
+    ]);
+    expect(off.has('insight:overall.revenue.vs_same_weekday')).toBe(true);
+    expect(off.has('insight:wine.revenue.trend')).toBe(false);
+    // The instance key is NOT in the set, and nothing else is.
+    expect(off.has('insight:wine.revenue.trend#caymus#d:2026-09-02')).toBe(false);
+    expect(off.size).toBe(1);
+  });
+
+  it('isTypeEnabled is null (unknown) until the dispositions read lands', () => {
+    expect(isTypeEnabled('overall.revenue.vs_same_weekday', null)).toBeNull();
+  });
+
+  it('isTypeEnabled is false only for a type in the off set', () => {
+    const off = offTypeKeys([
+      { ruleKey: 'insight:overall.revenue.vs_same_weekday', status: 'dismissed' },
+    ]);
+    expect(isTypeEnabled('overall.revenue.vs_same_weekday', off)).toBe(false);
+    expect(isTypeEnabled('wine.revenue.trend', off)).toBe(true);
+  });
+});
+
+describe('normalizeLiveInsight', () => {
+  it('keeps a well-formed live row', () => {
+    const row = normalizeLiveInsight({
+      candidateKey: 'overall.revenue.vs_same_weekday',
+      category: 'sales',
+      sentence: 'Tuesday sales were 12% below average Tuesdays.',
+      score: 1.4,
+      entityKey: null,
+      entityLabel: null,
+      suppression: { key: 'insight:overall.revenue.vs_same_weekday#tuesday#d:2026-09-02' },
+    });
+    expect(row).toEqual({
+      candidateKey: 'overall.revenue.vs_same_weekday',
+      category: 'sales',
+      sentence: 'Tuesday sales were 12% below average Tuesdays.',
+      score: 1.4,
+      entityKey: null,
+      entityLabel: null,
+      suppressionKey: 'insight:overall.revenue.vs_same_weekday#tuesday#d:2026-09-02',
+    });
+  });
+
+  it('drops a stored row with no computed suppression key rather than fake one', () => {
+    // `persist()` never writes `suppression` — see insight-generator.service.ts.
+    expect(
+      normalizeLiveInsight({
+        candidateKey: 'overall.revenue.vs_same_weekday',
+        category: 'sales',
+        sentence: 'Tuesday sales were 12% below average Tuesdays.',
+      }),
+    ).toBeNull();
+  });
+
+  it('drops a row missing a sentence or a candidate key', () => {
+    expect(normalizeLiveInsight({ candidateKey: 'x', suppression: { key: 'k' } })).toBeNull();
+    expect(normalizeLiveInsight({ sentence: 'x', suppression: { key: 'k' } })).toBeNull();
+    expect(normalizeLiveInsight(null)).toBeNull();
+  });
+});
+
+describe('liveInsightsForType', () => {
+  it('filters to one type and ranks by score, highest first', () => {
+    const rows = [
+      {
+        candidateKey: 'a',
+        sentence: 'A',
+        score: 1,
+        suppression: { key: 'insight:a#x#d:2026-09-01' },
+      },
+      {
+        candidateKey: 'b',
+        sentence: 'B',
+        score: 9,
+        suppression: { key: 'insight:b#x#d:2026-09-01' },
+      },
+      {
+        candidateKey: 'a',
+        sentence: 'A2',
+        score: 5,
+        suppression: { key: 'insight:a#y#d:2026-09-01' },
+      },
+    ];
+    const items = liveInsightsForType(rows, 'a');
+    expect(items.map((i) => i.sentence)).toEqual(['A2', 'A']);
   });
 });
