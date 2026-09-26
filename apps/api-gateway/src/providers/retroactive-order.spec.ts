@@ -46,6 +46,9 @@ function makeDb(opts: {
   /** ADR 0141: what the ownership probe (`select("id")`) sees. `null` = the
    *  item is not this restaurant's, which is a 403 and not a missing wine. */
   ownedInventory?: Row | null;
+  /** ADR 0147: what `getProvider`'s house-scoped read (`select("*")`) sees.
+   *  `null` = the vendor is not this house's, which is a 404. */
+  ownedProvider?: Row | null;
 }) {
   const calls: Calls = {
     orderInserts: [],
@@ -62,8 +65,19 @@ function makeDb(opts: {
       let op: "select" | "insert" | "update" | "delete" = "select";
 
       const settle = (shape: "one" | "many") => {
-        if (table === "providers")
+        if (table === "providers") {
+          // `getProvider` (select "*") is the ownership read added for
+          // ADR 0147; every other providers read here is a count or a column.
+          if (lastSelect.trim() === "*" && shape === "one")
+            return {
+              data:
+                opts.ownedProvider === undefined
+                  ? { id: PROVIDER, name: "Vendor", restaurant_id: "rest-1" }
+                  : opts.ownedProvider,
+              error: null,
+            };
           return { data: null, count: opts.providerCount ?? 1, error: null };
+        }
         if (table === "restaurant_inventory") {
           // ADR 0141 split this table into TWO reads on the createOrder path,
           // and the mock has to tell them apart or the test cannot say what it
