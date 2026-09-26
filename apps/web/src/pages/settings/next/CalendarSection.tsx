@@ -60,7 +60,7 @@ export function CalendarSection({ data }: { data: SettingsNextData }) {
                 background: 'var(--paper-1)', border: '1px solid var(--paper-2)', borderRadius: 8, padding: '7px 9px', margin: '9px 0 0' }}>
                 {url}
               </p>
-              {copied && <p role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>{copied}</p>}
+              {copied && <p role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>{copied}</p>}
             </Row>
 
             <Row

@@ -48,7 +48,7 @@
 .admin-desk__row[role='button'] { cursor: pointer; }
 .admin-desk__row[role='button']:hover, .admin-desk__row[role='button']:focus-visible { background: var(--paper-1); }
 /* State is ink weight, not a hue the house doesn't have (ADR 0042). */
-.admin-desk__state[data-state='healthy'] { color: var(--ink-3); }
+.admin-desk__state[data-state='healthy'] { color: var(--ink-4); }
 .admin-desk__state[data-state='attention'] { color: var(--ink-1); font-weight: 600; }
 .admin-desk__state[data-state='unknown'] { color: var(--ink-4); }
 .admin-desk__actions { display: flex; gap: 8px; }
@@ -56,7 +56,7 @@
 .admin-desk__filter { padding: 6px 12px; font-size: 11px; }
 .admin-desk__filter[data-active='true'] { background: var(--paper-2); border-color: var(--ink-1); font-weight: 600; }
 .admin-desk__notice { padding: 18px; border-left: 2px solid var(--seal); background: var(--paper-1); margin-top: 20px !important; }
-.admin-desk__stale { color: var(--ink-3); font-style: italic; }
+.admin-desk__stale { color: var(--ink-4); font-style: italic; }
 .admin-desk__footer { margin-top: 64px; padding-top: 20px; border-top: 3px double var(--ink-4); font-size: 11px; color: var(--ink-2); }
 /* `.mdv-ovl__body` (sheet.css) deliberately carries no padding of its own — every
    page insets its own sheet content, the way TwinSheet.tsx:84 does with `px-4`. */
@@ -65,7 +65,7 @@
 .admin-desk__confirmation label { display: block; margin-top: 24px; }
 .admin-desk__confirmation input { display: block; width: 100%; padding: 12px; border: 1px solid var(--ink-3); background: var(--paper-0); color: var(--ink-1); margin: 12px 0 20px; font-family: var(--ad-sans); }
 .admin-desk__detail dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font: 12px/1.7 var(--ad-mono); }
-.admin-desk__detail dt { color: var(--ink-3); }
+.admin-desk__detail dt { color: var(--ink-4); }
 .admin-desk__detail dd { margin: 0; color: var(--ink-1); }
 @media (max-width: 680px) { .admin-desk__heading, .admin-desk__section-head, .admin-desk__row, .admin-desk__footer { flex-direction: column; align-items: flex-start; gap: 12px; } .admin-desk__masthead { flex-wrap: wrap; } .admin-desk__actions { width: 100%; } .admin-desk__actions button { flex: 1; } }
 @media (prefers-reduced-motion: reduce) {

@@ -76,6 +76,22 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
     ),
     sitemap: true,
   },
+  {
+    // G9 (census, 2026-09-25): required by ADR 0145's round-6r notice and the
+    // owner data-terms acceptance work. Title and sentence are the page's own
+    // words (Terms.tsx's PublicShell title and voice line); change them with
+    // the page. Placeholder text per OD-132/OD-124 — still indexable, since
+    // "placeholder" describes what the words settle, not whether the route
+    // is real.
+    path: '/terms',
+    file: 'crawl/heads/terms.html',
+    head: indexable(
+      '/terms',
+      titleWithSite('Terms of Service'),
+      'What using Mudavym means today, stated plainly, ahead of legal review.',
+    ),
+    sitemap: true,
+  },
 ];
 
 /**

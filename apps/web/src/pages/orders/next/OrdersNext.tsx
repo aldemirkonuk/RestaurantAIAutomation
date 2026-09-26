@@ -67,7 +67,7 @@ function RehearsalCard() {
             fontWeight: 600,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
             border: '1px dashed var(--ink-3, #7C7365)',
             borderRadius: 3,
             padding: '2px 6px',
@@ -76,7 +76,7 @@ function RehearsalCard() {
           Rehearsal · no order attached
         </span>
       </div>
-      <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '0 0 8px' }}>
+      <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '0 0 8px' }}>
         No pending order is loaded, so the ceremony has nothing to act on. Completing this hold approves
         nothing and sends nothing — it only shows the gesture.
       </p>
@@ -93,7 +93,7 @@ function RehearsalCard() {
           style={{
             marginTop: 4,
             fontSize: 11,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
             textDecoration: 'underline',
             background: 'none',
             border: 'none',
@@ -283,7 +283,7 @@ export default function OrdersNext() {
                 fontWeight: 500,
                 letterSpacing: '0.12em',
                 textTransform: 'uppercase',
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #7C7365)',
               }}
             >
               {monthName.format(now)} so far
@@ -301,7 +301,7 @@ export default function OrdersNext() {
                 color: 'var(--ink-1, #211C16)',
               }}
             />
-            <span style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            <span style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
               last month {data.month.lastMonth === null ? EM : fmtMoneyWhole(data.month.lastMonth)}
               {data.month.unpricedThisMonth > 0 &&
                 ` · ${data.month.unpricedThisMonth} unpriced — excluded, not zeroed`}
@@ -453,11 +453,11 @@ export default function OrdersNext() {
             />
 
             {!data.hasData && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #7C7365)' }}>
                 Reaching the gateway…
               </p>
             ) : visibleRows.length === 0 && !data.isError ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #7C7365)' }}>
                 {/*
                   * THE RECURRING STATION SAYS "NONE" ONLY FROM A MEASURED READ.
                   *
@@ -513,7 +513,7 @@ export default function OrdersNext() {
             )}
 
             {data.cancelledCount !== null && data.cancelledCount > 0 && (
-              <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3, #7C7365)', marginTop: 10 }}>
+              <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #7C7365)', marginTop: 10 }}>
                 {data.cancelledCount} cancelled — kept in the book, off the figures.
               </p>
             )}

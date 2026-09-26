@@ -95,12 +95,12 @@ export function InsightPicker({
             fontWeight: 600,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
           }}
         >
           What the house knows
         </span>
-        <span style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+        <span style={{ fontSize: 10.5, color: 'var(--ink-4, #7C7365)' }}>
           whole sentences, with their provenance
         </span>
       </div>
@@ -147,11 +147,11 @@ export function InsightPicker({
           and this composer will not pretend it does.
         </p>
       ) : insights === null ? (
-        <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '8px 0 0' }}>
+        <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '8px 0 0' }}>
           Reading what the house knows…
         </p>
       ) : insights.length === 0 ? (
-        <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '8px 0 0' }}>
+        <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '8px 0 0' }}>
           The engine is holding no sentence for this house right now. That is an answer, not a
           gap: a figure it withheld has no sentence, and there is deliberately no field here for
           typing one in.
@@ -159,7 +159,7 @@ export function InsightPicker({
       ) : (
         <>
           <div className="mt-2 flex items-center gap-2">
-            <Search {...ICON} aria-hidden style={{ color: 'var(--ink-3, #7C7365)' }} />
+            <Search {...ICON} aria-hidden style={{ color: 'var(--ink-4, #7C7365)' }} />
             <input
               aria-label="Search the house's sentences"
               value={query}
@@ -204,7 +204,7 @@ export function InsightPicker({
                         display: 'block',
                         fontFamily: MONO,
                         fontSize: 9.5,
-                        color: 'var(--ink-3, #7C7365)',
+                        color: 'var(--ink-4, #7C7365)',
                         marginTop: 2,
                       }}
                     >

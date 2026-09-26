@@ -71,7 +71,7 @@ export function DeliveryGates({
           fontWeight: 600,
           letterSpacing: '.12em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
         }}
       >
         Two gates, never one

@@ -202,7 +202,7 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
             disabled={asking}
           />
           {asking ? (
-            <Loader2 size={14} aria-hidden style={{ color: 'var(--ink-3)', flex: 'none' }} />
+            <Loader2 size={14} aria-hidden style={{ color: 'var(--ink-4)', flex: 'none' }} />
           ) : (
             <kbd className="mdv-kbd">esc</kbd>
           )}
@@ -228,7 +228,7 @@ export function AskAiBar({ open, onClose }: { open: boolean; onClose: () => void
             {pageContext.label}
             {pageContext.recordId ? ' · this record' : ''}
           </button>
-          <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+          <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
             {useContext
               ? 'sent with your ask so \u201cthis\u201d resolves'
               : 'context off — only your words are sent'}

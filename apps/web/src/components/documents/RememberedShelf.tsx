@@ -47,7 +47,7 @@ const ROW: React.CSSProperties = {
   marginTop: 3,
   fontSize: 10.5,
   lineHeight: 1.35,
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #7C7365)',
 }
 
 const TICK: React.CSSProperties = {

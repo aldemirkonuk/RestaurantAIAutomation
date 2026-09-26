@@ -112,7 +112,7 @@ function PinnedDrop({
             border: 'none',
             padding: 0,
             fontSize: 11,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
             textDecoration: 'underline',
             cursor: 'pointer',
             fontFamily: SANS,
@@ -201,7 +201,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
         <p
           style={{
             fontSize: 12,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
             border: '1px dashed var(--paper-2, #EAE4D8)',
             borderRadius: 10,
             padding: '10px 12px',
@@ -245,7 +245,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                   style={{
                     display: 'block',
                     fontSize: 10.5,
-                    color: 'var(--ink-3, #7C7365)',
+                    color: 'var(--ink-4, #7C7365)',
                   }}
                 >
                   saved {r.queuedAt ? timeShort.format(new Date(r.queuedAt)) : EM}
@@ -259,7 +259,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                   fontFamily: MONO,
                   fontSize: 11,
                   fontVariantNumeric: 'tabular-nums',
-                  color: r.retryCount >= 6 ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+                  color: r.retryCount >= 6 ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #7C7365)',
                   transition: `color ${ink.ms}ms ${ink.easing}`,
                 }}
               >
@@ -284,7 +284,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
             device is offline, and stamping that as a sync printed
             "last sync 14:32 · sent 0 · failed 0" directly under this rail's own
             header reading "offline — holding". A non-attempt now says so. */}
-        <span style={{ fontSize: 10.5, color: 'var(--ink-3, #7C7365)', fontFamily: MONO }}>
+        <span style={{ fontSize: 10.5, color: 'var(--ink-4, #7C7365)', fontFamily: MONO }}>
           {lastFlush === null
             ? 'no sync attempted yet this visit'
             : lastFlush.attempted

@@ -123,7 +123,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-rail__room {
@@ -207,7 +207,7 @@
   font-size: 9.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* The rooms inside the phone's sheet: the same list, no column chrome. */
@@ -261,7 +261,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-counter__read {
@@ -365,7 +365,7 @@
   margin-top: 2px;
   font-size: 11px;
   line-height: 1.4;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-counter__at {
@@ -384,7 +384,7 @@
   padding: 6px 0;
   font-size: 11.5px;
   line-height: 1.4;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-counter__again {
@@ -421,7 +421,7 @@
   margin: 4px 0 6px;
   font-size: 11.5px;
   line-height: 1.45;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-counter__saidlist {
@@ -455,7 +455,7 @@
 
 .mdv-counter__saidsub {
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-counter__foot {
@@ -497,7 +497,7 @@
   padding: 6px;
   font-size: 16px;
   line-height: 1;
-  color: var(--ink-3);
+  color: var(--ink-4);
   cursor: pointer;
 }
 
@@ -520,7 +520,7 @@
   border: 0;
   border-radius: 8px;
   background: none;
-  color: var(--ink-3);
+  color: var(--ink-4);
   cursor: pointer;
 }
 
@@ -646,7 +646,7 @@
   padding: 8px 4px 6px;
   border: 0;
   background: none;
-  color: var(--ink-3);
+  color: var(--ink-4);
   font-size: 11px;
   cursor: pointer;
 }
@@ -704,7 +704,7 @@
   font-size: 9.5px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-actsheet__facts dd {
@@ -751,7 +751,7 @@
 .mdv-errscreen__icon {
   width: 22px;
   height: 22px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-errscreen__eyebrow {
@@ -761,7 +761,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-errscreen__headline {
@@ -777,7 +777,7 @@
   margin: 0 0 6px;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-errscreen__detail {
@@ -787,7 +787,7 @@
   border-radius: 8px;
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   word-break: break-word;
   text-align: left;
 }
@@ -840,7 +840,7 @@
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-404__headline {
@@ -857,7 +857,7 @@
   margin: 0 0 20px;
   font-size: 13.5px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-404__links {

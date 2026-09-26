@@ -59,7 +59,7 @@ const heading = (
       fontWeight: 600,
       letterSpacing: '0.14em',
       textTransform: 'uppercase',
-      color: 'var(--ink-3, #7C7365)',
+      color: 'var(--ink-4, #7C7365)',
       margin: '0 0 6px',
     }}
   >
@@ -118,7 +118,7 @@ export function UsualCurrencyCoveragePanel({
     return (
       <section data-testid="usual-currency-coverage" style={shell}>
         {heading}
-        <p style={{ fontSize: 12, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
+        <p style={{ fontSize: 12, color: 'var(--ink-4, #7C7365)', margin: 0 }}>
           Counting how many vendors have stated a usual currency…
         </p>
       </section>
@@ -160,7 +160,7 @@ export function UsualCurrencyCoveragePanel({
               return (
                 <li
                   key={v.id}
-                  style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}
+                  style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}
                 >
                   {label} (not in the list below)
                 </li>

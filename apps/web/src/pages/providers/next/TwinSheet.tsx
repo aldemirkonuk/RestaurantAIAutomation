@@ -59,7 +59,7 @@ function FactRow({ label, value }: { label: string; value: string }) {
           fontWeight: 500,
           letterSpacing: '0.12em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #7C7365)',
         }}
       >
         {label}
@@ -128,7 +128,7 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
             fontWeight: 600,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
             margin: '14px 0 6px',
           }}
         >
@@ -147,7 +147,7 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency }: Props) {
         <div className="mudavym" data-ground="paper">
           <Suspense
             fallback={
-              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #7C7365)' }}>
                 Opening the vendor’s record…
               </p>
             }

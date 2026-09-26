@@ -98,7 +98,7 @@ const label = (text: string) => (
       fontWeight: 500,
       letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
-      color: 'var(--ink-3, #7C7365)',
+      color: 'var(--ink-4, #7C7365)',
     }}
   >
     {text}
@@ -108,7 +108,7 @@ const label = (text: string) => (
 /** The chevron's turn — the `settle` token, the same event as the expansion. */
 const chevronStyle = (expanded: boolean) => ({
   flex: 'none' as const,
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #7C7365)',
   fontSize: 11,
   transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
   transition: `transform ${settle.ms}ms ${settle.easing}`,
@@ -273,7 +273,7 @@ export function LedgerRow({
             >
               {row.wineName ?? EM}
             </span>
-            <span className="block truncate" style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+            <span className="block truncate" style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>
               {row.providerName ?? EM}
               {/*
                 * "recurs weekly, next 12 Sep". The clause is rendered whenever
@@ -303,7 +303,7 @@ export function LedgerRow({
               fontWeight: 500,
               letterSpacing: '0.1em',
               textTransform: 'uppercase',
-              color: row.stage === 'pending' ? 'var(--seal, #1A5E6B)' : 'var(--ink-3, #7C7365)',
+              color: row.stage === 'pending' ? 'var(--seal, #1A5E6B)' : 'var(--ink-4, #7C7365)',
               border: `1px solid ${row.stage === 'pending' ? 'var(--seal-ring, rgba(26,94,107,.32))' : 'var(--paper-2, #EAE4D8)'}`,
               borderRadius: 3,
               padding: '2px 6px',
@@ -413,7 +413,7 @@ export function LedgerRow({
                   {row.agreement && row.agreement.ok ? (
                     <>
                       <span data-testid="row-working">{row.agreement.working}</span>
-                      <span style={{ color: 'var(--ink-3, #7C7365)' }}> = </span>
+                      <span style={{ color: 'var(--ink-4, #7C7365)' }}> = </span>
                       <span style={{ color: 'var(--ink-1, #211C16)', fontWeight: 600 }}>
                         {fmtMoney(row.agreement.total)}
                       </span>
@@ -432,7 +432,7 @@ export function LedgerRow({
                       truth, in bold, beside the right one. It prints the
                       ledger's own number and nothing of its own.
                     */
-                    <span data-testid="row-no-working" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                    <span data-testid="row-no-working" style={{ color: 'var(--ink-4, #7C7365)' }}>
                       {row.quantity !== null ? row.quantity : EM}{' '}
                       {row.unitType ? `${row.unitType}(s)` : 'ordered'} —{' '}
                       {!row.priceUnit.read
@@ -453,7 +453,7 @@ export function LedgerRow({
                   (ADR 0119 invariant 6).
                 */}
                 {!row.priceUnit.read ? (
-                  <div data-testid="price-unit-unread" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                  <div data-testid="price-unit-unread" style={{ color: 'var(--ink-4, #7C7365)' }}>
                     {ROW_PRICE_UNIT_NOT_READ}
                   </div>
                 ) : row.priceUnit.stated === null ? (
@@ -487,7 +487,7 @@ export function LedgerRow({
                   not the absence of a deposit.
                 */}
                 {!row.fees.read ? (
-                  <div data-testid="fees-unread" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                  <div data-testid="fees-unread" style={{ color: 'var(--ink-4, #7C7365)' }}>
                     {ROW_FEES_NOT_READ}
                   </div>
                 ) : !(row.agreement && row.agreement.ok) && describeFees(row.fees.fees) ? (
@@ -499,7 +499,7 @@ export function LedgerRow({
                   row.unitType !== null &&
                   row.priceUnit.stated.priceUom !== row.unitType &&
                   !(row.agreement && !row.agreement.ok) && (
-                    <div data-testid="units-differ" style={{ color: 'var(--ink-3, #7C7365)' }}>
+                    <div data-testid="units-differ" style={{ color: 'var(--ink-4, #7C7365)' }}>
                       counted in {row.unitType}s, priced{' '}
                       {PRICE_UOM_LABEL[row.priceUnit.stated.priceUom]} — that is ordinary
                     </div>
@@ -510,11 +510,11 @@ export function LedgerRow({
                     what will be spent
                   </div>
                 )}
-                <div style={{ color: 'var(--ink-3, #7C7365)' }}>
+                <div style={{ color: 'var(--ink-4, #7C7365)' }}>
                   requested {fmtDate(row.requestedAt)} · approved {fmtDate(row.approvedAt)} · delivered{' '}
                   {fmtDate(row.deliveredAt)}
                 </div>
-                <div style={{ color: 'var(--ink-3, #7C7365)' }}>
+                <div style={{ color: 'var(--ink-4, #7C7365)' }}>
                   {row.orderNumber ? `no. ${row.orderNumber}` : `id ${row.id.slice(0, 8)}`}
                   {row.notes ? ` · ${row.notes}` : ''}
                 </div>
@@ -638,7 +638,7 @@ export function LedgerRow({
                     </p>
                   )}
                   {approval && approval.untestable.length > 0 && (
-                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-3, #7C7365)' }}>
+                    <p style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--ink-4, #7C7365)' }}>
                       {approval.untestable.length === 1 ? 'One rule' : `${approval.untestable.length} rules`}{' '}
                       could not be tested on this order ({approval.untestable.join(', ')}), so{' '}
                       {approval.untestable.length === 1 ? 'it' : 'they'} did not fire. An
@@ -660,7 +660,7 @@ export function LedgerRow({
                 </>
               )}
               {row.stage === 'approved' && (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', marginTop: 18 }}>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', marginTop: 18 }}>
                   Sealed {fmtDate(row.approvedAt)} — the house places it with{' '}
                   {row.providerName ?? 'the vendor'}.
                 </p>
@@ -699,12 +699,12 @@ export function LedgerRow({
                 </>
               )}
               {row.stage === 'delivered' && (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', marginTop: 18 }}>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', marginTop: 18 }}>
                   Delivered {fmtDate(row.deliveredAt)}.
                 </p>
               )}
               {row.stage === 'cancelled' && (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', marginTop: 18 }}>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', marginTop: 18 }}>
                   Cancelled — kept in the book, off the figures.
                 </p>
               )}

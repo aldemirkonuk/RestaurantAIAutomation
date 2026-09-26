@@ -25,7 +25,7 @@
 .rc-micro {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 8.5px; font-weight: 600; letter-spacing: 0.16em;
-  text-transform: uppercase; color: var(--ink-3, #7c7365);
+  text-transform: uppercase; color: var(--ink-4, #7c7365);
 }
 .rc-micro-dim { color: var(--ink-4, #665d50); }
 .rc-micro-seal { color: var(--seal-deep, #14515c); }
@@ -55,7 +55,7 @@
   font-weight: 600; border-color: var(--seal, #1a5e6b);
   background: var(--seal-tint, rgba(26, 94, 107, 0.1)); color: var(--seal-deep, #14515c);
 }
-.rc-leaf .rc-num { font-size: 11px; margin-left: 6px; color: var(--ink-3, #7c7365); }
+.rc-leaf .rc-num { font-size: 11px; margin-left: 6px; color: var(--ink-4, #7c7365); }
 
 /* ── failure, said in words ──────────────────────────────────────────────── */
 
@@ -76,7 +76,7 @@
 .rc-shell { display: grid; grid-template-columns: 1fr; gap: 20px; }
 @media (min-width: 900px) { .rc-shell { grid-template-columns: 208px minmax(0, 1fr); } }
 
-.rc-reg-note { font-size: 11px; color: var(--ink-3, #7c7365); margin: 4px 0 8px; line-height: 1.45; }
+.rc-reg-note { font-size: 11px; color: var(--ink-4, #7c7365); margin: 4px 0 8px; line-height: 1.45; }
 .rc-reg-list { display: grid; gap: 2px; }
 .rc-reg {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 6px;
@@ -88,41 +88,41 @@
 }
 .rc-reg span:first-child { font-size: 12.5px; font-weight: 500; color: var(--ink-1, #211c16); }
 .rc-reg[aria-pressed='true'] span:first-child { font-weight: 600; }
-.rc-reg .rc-num { font-size: 11px; color: var(--ink-3, #7c7365); }
+.rc-reg .rc-num { font-size: 11px; color: var(--ink-4, #7c7365); }
 
 .rc-aside-block { margin-top: 18px; }
-.rc-why { font-size: 10.5px; color: var(--ink-3, #7c7365); margin: 5px 0 0; line-height: 1.45; }
+.rc-why { font-size: 10.5px; color: var(--ink-4, #7c7365); margin: 5px 0 0; line-height: 1.45; }
 .rc-keys {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px; color: var(--ink-3, #7c7365); margin: 5px 0 0; line-height: 1.7;
+  font-size: 10.5px; color: var(--ink-4, #7c7365); margin: 5px 0 0; line-height: 1.7;
 }
 
 /* a control whose backend does not exist: dashed, dim, never pressable */
 .rc-dark {
   font: inherit; font-size: 11.5px; padding: 6px 10px; border-radius: 8px; text-align: left;
   border: 1px dashed var(--paper-2, #eae4d8); background: transparent;
-  color: var(--ink-3, #7c7365); cursor: not-allowed;
+  color: var(--ink-4, #7c7365); cursor: not-allowed;
 }
 .rc-dark-wide { margin-top: 6px; width: 100%; }
 .rc-dark-inline { padding: 4px 9px; border-radius: 7px; }
 
 /* ── the book ────────────────────────────────────────────────────────────── */
 
-.rc-loading { font-size: 12.5px; color: var(--ink-3, #7c7365); }
+.rc-loading { font-size: 12.5px; color: var(--ink-4, #7c7365); }
 .rc-ghost {
   height: 58px; margin-top: 10px; border-radius: 8px;
   border: 1px solid var(--paper-2, #eae4d8); background: var(--paper-1, #f3efe6);
 }
 .rc-empty { padding: 18px 0; }
 .rc-empty p:first-child { font-size: 17px; margin: 0; }
-.rc-empty-why { font-size: 12.5px; color: var(--ink-3, #7c7365); margin-top: 6px; max-width: 560px; line-height: 1.5; }
+.rc-empty-why { font-size: 12.5px; color: var(--ink-4, #7c7365); margin-top: 6px; max-width: 560px; line-height: 1.5; }
 .rc-empty-why a { color: var(--seal-deep, #14515c); }
 
 .rc-section { margin-bottom: 22px; }
 .rc-section-head { display: flex; align-items: baseline; gap: 8px; }
 .rc-section-head h2 { font-size: 15px; font-weight: 600; margin: 0; color: var(--ink-1, #211c16); }
-.rc-section-head .rc-blurb { font-size: 11px; color: var(--ink-3, #7c7365); }
-.rc-section-head .rc-num { margin-left: auto; font-size: 11px; color: var(--ink-3, #7c7365); }
+.rc-section-head .rc-blurb { font-size: 11px; color: var(--ink-4, #7c7365); }
+.rc-section-head .rc-num { margin-left: auto; font-size: 11px; color: var(--ink-4, #7c7365); }
 .rc-section .rc-double { margin-top: 5px; }
 .rc-section .rc-double i { opacity: 0.45; }
 
@@ -139,13 +139,13 @@
 .rc-entry:hover { border-left-color: var(--seal-ring, rgba(26, 94, 107, 0.32)); }
 
 .rc-gutter { text-align: right; padding-top: 2px; }
-.rc-gutter .rc-num { font-size: 11px; color: var(--ink-3, #7c7365); }
+.rc-gutter .rc-num { font-size: 11px; color: var(--ink-4, #7c7365); }
 .rc-gutter .rc-micro { margin-top: 4px; }
 .rc-body { min-width: 0; }
 .rc-stamps { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
 .rc-obs { font-size: 16.5px; line-height: 1.32; margin: 5px 0 0; color: var(--ink-1, #211c16); }
 .rc-do { font-size: 13px; line-height: 1.5; margin: 6px 0 0; color: var(--ink-2, #4f473c); }
-.rc-do-none { font-size: 12px; margin: 6px 0 0; color: var(--ink-3, #7c7365); }
+.rc-do-none { font-size: 12px; margin: 6px 0 0; color: var(--ink-4, #7c7365); }
 
 /* the three facts, in the same place on every entry */
 .rc-facts {
@@ -279,7 +279,7 @@
 .rc-workblock { margin-top: 10px; }
 .rc-prose { font-size: 12.5px; line-height: 1.55; margin: 4px 0 0; color: var(--ink-2, #4f473c); }
 .rc-rulekey { font-size: 11.5px; margin: 4px 0 0; color: var(--ink-1, #211c16); word-break: break-all; }
-.rc-said { font-size: 11px; margin: 3px 0 0; color: var(--ink-3, #7c7365); }
+.rc-said { font-size: 11px; margin: 3px 0 0; color: var(--ink-4, #7c7365); }
 /* CatalogView's expanded detail (CatalogView.tsx:255-273) puts bare <p> tags
    inside .rc-said: globals.css:157 sets a `p` element-selector color
    (slate-600) that beats an ancestor's inherited value, so each line needs
@@ -292,7 +292,7 @@
 
 /* ── what the page just wrote, and the bulk bar ──────────────────────────── */
 
-.rc-note { min-height: 20px; margin-top: 12px; font-size: 12px; color: var(--ink-3, #7c7365); }
+.rc-note { min-height: 20px; margin-top: 12px; font-size: 12px; color: var(--ink-4, #7c7365); }
 .rc-undo {
   margin-left: 8px; font: inherit; font-size: 12px; font-weight: 600;
   background: transparent; border: none; color: var(--seal-deep, #14515c);
@@ -308,7 +308,7 @@
   margin-top: 34px; padding-top: 12px; border-top: 1px solid var(--paper-2, #eae4d8);
   display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between;
 }
-.rc-foot p { font-size: 11px; color: var(--ink-3, #7c7365); margin: 0; }
+.rc-foot p { font-size: 11px; color: var(--ink-4, #7c7365); margin: 0; }
 
 
 /* ── the ribbon — the day strip as a selector, above the docket ──────────── */
@@ -316,7 +316,7 @@
 .rc-ribbon { margin: 0 0 18px; }
 .rc-ribbon-head { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
 .rc-ribbon-title { display: inline-flex; align-items: center; gap: 5px; }
-.rc-ribbon-title svg { color: var(--ink-3, #7c7365); }
+.rc-ribbon-title svg { color: var(--ink-4, #7c7365); }
 
 /* The strip itself is `components/mudavym/day-strip.css` since 2026-09-04 —
    the cell, the hatch, the strike, the today ring and the selected state are
@@ -363,12 +363,12 @@
 /* ── the docket — sections filed by the act your hands perform ───────────── */
 
 .rc-docket-note { max-width: 780px; margin-bottom: 14px; }
-.rc-act-ic { display: inline-flex; color: var(--ink-3, #7c7365); }
+.rc-act-ic { display: inline-flex; color: var(--ink-4, #7c7365); }
 .rc-section-head { gap: 9px; }
 .rc-section-head .rc-amt { margin-left: 0; font-size: 11px; color: var(--ink-4, #665d50); white-space: nowrap; }
 .rc-section-head .rc-num { margin-left: auto; }
 .rc-section-head .rc-num + .rc-amt { margin-left: 0; }
-.rc-act-say { display: block; font-size: 11.5px; line-height: 1.5; color: var(--ink-3, #7c7365); margin: 4px 0 0; max-width: 820px; }
+.rc-act-say { display: block; font-size: 11.5px; line-height: 1.5; color: var(--ink-4, #7c7365); margin: 4px 0 0; max-width: 820px; }
 .rc-dark-sect {
   border: 1.5px dashed var(--seal-ring, rgba(26, 94, 107, 0.32));
   border-radius: 12px;
@@ -464,5 +464,5 @@
   font: inherit;
 }
 .rc-catalog-row-head .rc-num { font-size: 12px; }
-.rc-catalog-row-head .rc-micro { color: var(--ink-3, #7c7365); white-space: nowrap; }
+.rc-catalog-row-head .rc-micro { color: var(--ink-4, #7c7365); white-space: nowrap; }
 [aria-disabled='true'] .rc-reg { opacity: 0.4; pointer-events: none; }

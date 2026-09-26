@@ -82,7 +82,7 @@ export function SenderLine({
             fontWeight: 600,
             letterSpacing: '0.14em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
           }}
         >
           Leaves from
@@ -93,7 +93,7 @@ export function SenderLine({
             fontFamily: MONO,
             fontSize: 12,
             fontWeight: 600,
-            color: address ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+            color: address ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #7C7365)',
           }}
         >
           {address ?? EM}
@@ -105,19 +105,19 @@ export function SenderLine({
           address every letter uses today, and the reader deserves to know the
           composer is refusing it rather than failing to find it. */}
       {sender && !failed && (
-        <p style={{ margin: '5px 0 0', fontSize: 11, lineHeight: 1.45, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '5px 0 0', fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4, #7C7365)' }}>
           Not {sender.deployment.address}: {sender.deployment.refusedBecause}
         </p>
       )}
 
       {sender && !failed && !sender.subdomain.provisioned && (
-        <p style={{ margin: '5px 0 0', fontSize: 11, lineHeight: 1.45, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '5px 0 0', fontSize: 11, lineHeight: 1.45, color: 'var(--ink-4, #7C7365)' }}>
           {sender.subdomain.words}
         </p>
       )}
 
       {sender && sender.ceremony === 'undo' && (
-        <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
           Send holds the letter for {fmtWindowLength(sender.undoMs)} before it leaves. Until then
           it can be pulled back, and the book shows it as queued, never as sent.
         </p>
@@ -126,7 +126,7 @@ export function SenderLine({
       {sender && sender.missing.length > 0 && (
         <ul style={{ margin: '6px 0 0', padding: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
           {sender.missing.map((line) => (
-            <li key={line} style={{ fontSize: 10.5, lineHeight: 1.45, color: 'var(--ink-3, #7C7365)' }}>
+            <li key={line} style={{ fontSize: 10.5, lineHeight: 1.45, color: 'var(--ink-4, #7C7365)' }}>
               {line}
             </li>
           ))}

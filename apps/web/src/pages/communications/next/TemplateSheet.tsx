@@ -163,11 +163,11 @@ export function TemplateSheet({ onClose }: Props) {
             {data.templatesError} This is a failed read — the library is unknown, not empty.
           </p>
         ) : templates === null ? (
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-4, #7C7365)' }}>
             Reading the library…
           </p>
         ) : templates.length === 0 ? (
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-4, #7C7365)' }}>
             This house has written no template yet. That is the honest state, not an empty shelf to
             be filled with guesses: seven templates written before anyone has sent a letter are
             seven guesses about what this house wants to say.
@@ -183,7 +183,7 @@ export function TemplateSheet({ onClose }: Props) {
                     fontWeight: 600,
                     letterSpacing: '0.14em',
                     textTransform: 'uppercase',
-                    color: 'var(--ink-3, #7C7365)',
+                    color: 'var(--ink-4, #7C7365)',
                     margin: '0 0 6px',
                   }}
                 >
@@ -220,7 +220,7 @@ export function TemplateSheet({ onClose }: Props) {
                             display: 'block',
                             fontFamily: MONO,
                             fontSize: 9.5,
-                            color: 'var(--ink-3, #7C7365)',
+                            color: 'var(--ink-4, #7C7365)',
                             marginTop: 3,
                           }}
                         >
@@ -275,7 +275,7 @@ export function TemplateSheet({ onClose }: Props) {
               fontWeight: 600,
               letterSpacing: '0.14em',
               textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #7C7365)',
               margin: '0 0 6px',
             }}
           >
@@ -286,9 +286,9 @@ export function TemplateSheet({ onClose }: Props) {
               The engine's sentences could not be read ({data.insightsError}).
             </p>
           ) : data.insights === null ? (
-            <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>Reading…</p>
+            <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>Reading…</p>
           ) : data.insights.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+            <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>
               The engine is holding no sentence for this house right now.
             </p>
           ) : (
@@ -338,7 +338,7 @@ export function TemplateSheet({ onClose }: Props) {
                 from {draft.from.candidateKey} · computed {fmtDay(draft.from.computedAt)}
               </p>
             )}
-            <label htmlFor="tpl-name" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            <label htmlFor="tpl-name" style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
               Name
             </label>
             <input
@@ -349,7 +349,7 @@ export function TemplateSheet({ onClose }: Props) {
             />
             <label
               htmlFor="tpl-category"
-              style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', display: 'block', marginTop: 8 }}
+              style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)', display: 'block', marginTop: 8 }}
             >
               Purpose
             </label>
@@ -367,7 +367,7 @@ export function TemplateSheet({ onClose }: Props) {
             </select>
             <label
               htmlFor="tpl-subject"
-              style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', display: 'block', marginTop: 8 }}
+              style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)', display: 'block', marginTop: 8 }}
             >
               Subject
             </label>
@@ -379,7 +379,7 @@ export function TemplateSheet({ onClose }: Props) {
             />
             <label
               htmlFor="tpl-body"
-              style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', display: 'block', marginTop: 8 }}
+              style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)', display: 'block', marginTop: 8 }}
             >
               The letter
             </label>
@@ -390,7 +390,7 @@ export function TemplateSheet({ onClose }: Props) {
               rows={8}
               style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.55 }}
             />
-            <p style={{ margin: '6px 0 0', fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+            <p style={{ margin: '6px 0 0', fontSize: 10.5, color: 'var(--ink-4, #7C7365)' }}>
               A field written as {'{{name}}'} is declared as a merge field. The composer refuses to
               send a letter that still contains one unfilled — a raw placeholder in a vendor's inbox
               says a figure exists when none was found.

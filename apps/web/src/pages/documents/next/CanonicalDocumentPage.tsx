@@ -533,7 +533,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               }
             />
           ) : (
-            <p data-testid="gates-unavailable" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            <p data-testid="gates-unavailable" style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
               {eventQ.isError
                 ? 'The delivery could not be read, so its gates are not shown. That is not “this delivery has no gates”.'
                 : 'Reading the delivery…'}
@@ -710,7 +710,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                 fontWeight: 600,
                 letterSpacing: '.12em',
                 textTransform: 'uppercase',
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #7C7365)',
               }}
             >
               Provenance

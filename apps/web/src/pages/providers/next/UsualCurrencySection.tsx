@@ -138,7 +138,7 @@ export function UsualCurrencySection({
         fontWeight: 600,
         letterSpacing: '0.14em',
         textTransform: 'uppercase',
-        color: 'var(--ink-3, #7C7365)',
+        color: 'var(--ink-4, #7C7365)',
         margin: '14px 0 6px',
       }}
     >
@@ -152,7 +152,7 @@ export function UsualCurrencySection({
         fontFamily: SANS,
         fontSize: 11.5,
         lineHeight: 1.45,
-        color: tone ?? 'var(--ink-3, #7C7365)',
+        color: tone ?? 'var(--ink-4, #7C7365)',
         margin: '6px 0 0',
       }}
     >
@@ -214,7 +214,7 @@ export function UsualCurrencySection({
             fontFamily: MONO,
             fontSize: 16,
             letterSpacing: '0.06em',
-            color: code ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+            color: code ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #7C7365)',
           }}
         >
           {code ?? EM}
@@ -224,7 +224,7 @@ export function UsualCurrencySection({
             style={{
               fontFamily: SANS,
               fontSize: 11,
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #7C7365)',
               textAlign: 'right',
             }}
           >

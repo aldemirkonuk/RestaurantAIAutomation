@@ -120,7 +120,7 @@ export function PosSection({ data }: { data: SettingsNextData }) {
               }
             />
             {provider && (
-              <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '8px 0 0' }}>
+              <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '8px 0 0' }}>
                 {provider.name} — adapter {provider.status}, {provider.authModel.replace('_', ' ')} authentication.
                 {provider.docsUrl && (
                   <> <a href={provider.docsUrl} target="_blank" rel="noreferrer" className="st-focus" style={{ color: 'var(--seal-deep)' }}>Provider documentation</a>.</>

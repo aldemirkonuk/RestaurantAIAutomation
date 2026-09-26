@@ -95,7 +95,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
               <button
                 type="button"
                 className="mdv-link"
-                style={{ color: 'var(--ink-3)' }}
+                style={{ color: 'var(--ink-4)' }}
                 onClick={() => {
                   navigate('/settings?tab=locations&action=add')
                   setOpen(false)

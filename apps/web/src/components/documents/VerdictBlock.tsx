@@ -277,7 +277,7 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
           say so before it reports on anybody else's arithmetic. */}
       <p
         data-testid="tie-out-sentence"
-        style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}
+        style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--ink-4, #7C7365)' }}
       >
         {nothingRead
           ? 'There are no lines to add up, so there is no arithmetic to check.'
@@ -321,7 +321,7 @@ export function VerdictBlock({ doc, states = [] }: VerdictBlockProps) {
                   fontWeight: 600,
                   letterSpacing: '.11em',
                   textTransform: 'uppercase',
-                  color: e.compared ? '#8A5F18' : 'var(--ink-3, #7C7365)',
+                  color: e.compared ? '#8A5F18' : 'var(--ink-4, #7C7365)',
                 }}
               >
                 {e.kind} · line {e.lineNo}

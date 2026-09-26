@@ -41,7 +41,7 @@ function DrawerLabel({ children }: { children: string }) {
         fontWeight: 600,
         letterSpacing: '0.12em',
         textTransform: 'uppercase',
-        color: 'var(--ink-3, #7C7365)',
+        color: 'var(--ink-4, #7C7365)',
       }}
     >
       {children}
@@ -247,7 +247,7 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
               fontWeight: 600,
               letterSpacing: '0.12em',
               textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #7C7365)',
             }}
           >
             File under
@@ -280,7 +280,7 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
             </button>
           ))}
           {filing === 'busy' && (
-            <span style={{ color: 'var(--ink-3, #7C7365)' }}>Filing…</span>
+            <span style={{ color: 'var(--ink-4, #7C7365)' }}>Filing…</span>
           )}
           {filing === 'failed' && (
             <span style={{ color: 'var(--ink-2, #4F473C)' }}>
@@ -301,7 +301,7 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
       >
         {report.title || 'Untitled report'}
       </h2>
-      <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)' }}>
+      <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4, #7C7365)' }}>
         {report.createdAt ? `written ${fmtDate(report.createdAt)}` : EM}
         {report.periodStart && report.periodEnd
           ? ` · covers ${fmtDate(report.periodStart)} – ${fmtDate(report.periodEnd)}`
@@ -324,7 +324,7 @@ function ReadingPane({ report, onRefiled }: { report: GeneratedReport; onRefiled
           </p>
         ))
       ) : (
-        <p style={{ margin: '6px 0 0', fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '6px 0 0', fontSize: 12.5, color: 'var(--ink-4, #7C7365)' }}>
           This report carries no written summary — only what the file would hold
           {fileUrl ? '.' : ', and its file was never attached (a recorded generation gap, not a missing download).'}
         </p>
@@ -528,7 +528,7 @@ export default function DocumentsReportsNext() {
               </button>
               {waitingOpen &&
                 (data.waiting === null ? (
-                  <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: '8px 0 0' }}>
+                  <p style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)', margin: '8px 0 0' }}>
                     Its registers haven’t all answered — the queue opens only when the debt order is
                     known.
                   </p>
@@ -551,8 +551,8 @@ export default function DocumentsReportsNext() {
                         }}
                       >
                         <span style={{ fontWeight: 600 }}>{w.title}</span>
-                        <span style={{ color: 'var(--ink-3, #7C7365)', fontSize: 11.5 }}>{w.detail}</span>
-                        <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)' }}>
+                        <span style={{ color: 'var(--ink-4, #7C7365)', fontSize: 11.5 }}>{w.detail}</span>
+                        <span className="ml-auto" style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4, #7C7365)' }}>
                           {fmtDate(w.since)}
                         </span>
                       </Link>
@@ -561,7 +561,7 @@ export default function DocumentsReportsNext() {
                       <p
                         style={{
                           fontSize: 11.5,
-                          color: 'var(--ink-3, #7C7365)',
+                          color: 'var(--ink-4, #7C7365)',
                           margin: '6px 0 0',
                           fontVariantNumeric: 'tabular-nums',
                         }}
@@ -582,7 +582,7 @@ export default function DocumentsReportsNext() {
                   <span
                     style={{
                       fontSize: 11.5,
-                      color: 'var(--ink-3, #7C7365)',
+                      color: 'var(--ink-4, #7C7365)',
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
@@ -626,7 +626,7 @@ export default function DocumentsReportsNext() {
                   <p
                     style={{
                       fontSize: 11.5,
-                      color: 'var(--ink-3, #7C7365)',
+                      color: 'var(--ink-4, #7C7365)',
                       margin: '4px 0 0',
                       fontVariantNumeric: 'tabular-nums',
                     }}
@@ -644,7 +644,7 @@ export default function DocumentsReportsNext() {
                   <span
                     style={{
                       fontSize: 11.5,
-                      color: 'var(--ink-3, #7C7365)',
+                      color: 'var(--ink-4, #7C7365)',
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
@@ -679,7 +679,7 @@ export default function DocumentsReportsNext() {
                   <span
                     style={{
                       fontSize: 11.5,
-                      color: 'var(--ink-3, #7C7365)',
+                      color: 'var(--ink-4, #7C7365)',
                       fontVariantNumeric: 'tabular-nums',
                     }}
                   >
@@ -703,7 +703,7 @@ export default function DocumentsReportsNext() {
                 <div className="flex items-baseline gap-2">
                   <Count value={data.timelineCount} capped={data.timelineCapped} />
                   <span
-                    style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}
+                    style={{ fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}
                     title={`the gateway returns at most ${SO_SERVER_WINDOWS.TIMELINE} events per read`}
                   >
                     {data.timelineCapped ? 'latest window' : 'recent entries'}
@@ -734,7 +734,7 @@ export default function DocumentsReportsNext() {
               <div className="flex flex-wrap items-baseline gap-3">
                 <DrawerLabel>Filed itself today</DrawerLabel>
                 {data.todayRoutine === null ? (
-                  <span style={{ fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>{EM}</span>
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-4, #7C7365)' }}>{EM}</span>
                 ) : data.todayRoutine.count === 0 ? (
                   <span style={{ fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                     nothing yet today
@@ -792,7 +792,7 @@ export default function DocumentsReportsNext() {
                 read.
               </p>
             ) : (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-3, #7C7365)' }}>
+              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #7C7365)' }}>
                 Choose a report from the drawer — it opens here, full width, with room to read.
               </p>
             )}

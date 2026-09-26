@@ -135,7 +135,7 @@ export function ProvenanceHover({
               fontWeight: 600,
               letterSpacing: '0.11em',
               textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #7C7365)',
             }}
           >
             Provenance · {label}

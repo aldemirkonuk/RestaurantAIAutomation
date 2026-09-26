@@ -160,11 +160,11 @@ function ThreadLine({ row }: { row: OrderConversationDto }) {
         color: 'var(--ink-2, #4F473C)',
       }}
     >
-      <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.08em', color: 'var(--ink-3, #7C7365)', flex: 'none' }}>
+      <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.08em', color: 'var(--ink-4, #7C7365)', flex: 'none' }}>
         {row.direction === 'INBOUND' ? '← vendor' : '→ house'}
       </span>
       <span className="min-w-0 flex-1 truncate">{row.emailType?.toLowerCase().replace(/_/g, ' ') ?? EM}</span>
-      <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)', flex: 'none' }}>
+      <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4, #7C7365)', flex: 'none' }}>
         {isDraft ? 'draft — not sent' : row.sentAt ? `sent ${fmtDate(row.sentAt)}` : fmtDate(row.createdAt)}
       </span>
     </div>
@@ -245,7 +245,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
               fontWeight: 600,
               letterSpacing: '0.14em',
               textTransform: 'uppercase',
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #7C7365)',
               border: '1px dashed var(--ink-3, #7C7365)',
               borderRadius: 3,
               padding: '2px 6px',
@@ -253,7 +253,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
           >
             Draft · not sent
           </span>
-          <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)' }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4, #7C7365)' }}>
             round {draft.roundCount ?? EM}
           </span>
         </div>
@@ -280,14 +280,14 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
             <ThreadLine key={r.id} row={r} />
           ))}
           {rows.length > 4 && (
-            <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)', paddingLeft: 8 }}>
+            <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4, #7C7365)', paddingLeft: 8 }}>
               + {rows.length - 4} earlier in the thread
             </span>
           )}
         </div>
       )}
       {conversations.isError && (
-        <p style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
+        <p style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)', margin: 0 }}>
           The thread could not be fetched — what is shown above is the draft alone.
         </p>
       )}
@@ -314,7 +314,7 @@ function DraftDetail({ draft }: { draft: ActiveConversationDto }) {
             justifySelf: 'end',
             fontFamily: SANS,
             fontSize: 11.5,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
             textDecoration: 'underline',
             background: 'none',
             border: 'none',
@@ -364,7 +364,7 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
           >
             {draft.wineName ?? draft.orderNumber ?? EM}
           </span>
-          <span className="block truncate" style={{ fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+          <span className="block truncate" style={{ fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
             {draft.providerName ?? EM} · drafted {fmtDate(draft.createdAt)}
           </span>
         </span>
@@ -383,7 +383,7 @@ function DraftCard({ draft }: { draft: ActiveConversationDto }) {
           aria-hidden
           style={{
             flex: 'none',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
             fontSize: 11,
             transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
             transition: `transform ${settle.ms}ms ${settle.easing}`,
@@ -420,11 +420,11 @@ export function DraftRail() {
         <h2 style={{ fontFamily: SERIF, fontSize: 16, fontWeight: 600, color: 'var(--ink-1, #211C16)', margin: 0 }}>
           Drafted by the house
         </h2>
-        <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+        <span style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>
           {known ? list.length : EM} awaiting your hand
         </span>
       </div>
-      <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3, #7C7365)', margin: '0 0 10px' }}>
+      <p style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #7C7365)', margin: '0 0 10px' }}>
         Nothing here can reach a vendor without your approval.
       </p>
       {drafts.isError ? (
@@ -432,9 +432,9 @@ export function DraftRail() {
           The gateway could not be reached — whether drafts exist is unknown, not zero.
         </p>
       ) : !known ? (
-        <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>Reaching the gateway…</p>
+        <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #7C7365)' }}>Reaching the gateway…</p>
       ) : list.length === 0 ? (
-        <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-4, #7C7365)' }}>
           No drafts waiting. When the house writes to a vendor, it stages the letter here first.
         </p>
       ) : (

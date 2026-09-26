@@ -358,7 +358,7 @@ export function ConsentRegister({ data }: { data: ProfileNextData }) {
 
       {msg && <StatusLine tone={msg.tone}>{msg.text}</StatusLine>}
 
-      <p style={{ margin: '10px 0 0', fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
+      <p style={{ margin: '10px 0 0', fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
         {data.isManagerOrOwner ? (
           <>
             Declaring a server, giving it a credential, checking it and revoking

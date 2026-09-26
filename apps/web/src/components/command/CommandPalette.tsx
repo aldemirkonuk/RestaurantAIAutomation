@@ -316,7 +316,7 @@ export function CommandPalette({
         }
       >
         <div className="mdv-field">
-          <Search size={15} aria-hidden style={{ color: "var(--ink-3)", flex: "none" }} />
+          <Search size={15} aria-hidden style={{ color: "var(--ink-4)", flex: "none" }} />
           <input
             ref={inputRef}
             value={query}

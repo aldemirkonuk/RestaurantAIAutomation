@@ -183,7 +183,7 @@ export function CorrectionDialog({
             fontWeight: 600,
             letterSpacing: '.12em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #7C7365)',
           }}
         >
           Correct one field
@@ -281,7 +281,7 @@ export function CorrectionDialog({
           </p>
         )}
 
-        <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--ink-4, #7C7365)' }}>
           This does not edit the document. It appends a new revision and keeps what was
           there before, permanently — which is why it takes a hold rather than a click.
         </p>
