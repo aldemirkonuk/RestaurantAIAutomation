@@ -7541,7 +7541,7 @@ export class ProcurementService {
       // founder 2026-09-21). Null for every other status — the column is
       // scoped to that status by
       // procurement_conversations_relay_refusal_reason_scoped (migration
-      // 20260925160100).
+      // 20260927140100).
       relayRefusalReason: row.relay_refusal_reason ?? null,
       orderNumber: row.procurement_orders?.order_number ?? null,
       quantity: row.procurement_orders?.quantity ?? null,

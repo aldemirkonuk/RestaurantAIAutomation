@@ -257,7 +257,7 @@ route) — so there is no second runtime for this one to disagree with.]
   addition alongside it. What changed, concretely:
 
   - **A new terminal status, `RELAY_REFUSED`, on `procurement_conversations`**
-    (migration `20260925160100_a_relay_refusal_closes_the_draft_no_retry.sql`; [renumbered 2026-09-25 from `20260921113000`, which sorted behind main's ceiling `20260922231300` — ADR 0212]).
+    (migration `20260927140100_a_relay_refusal_closes_the_draft_no_retry.sql`; [renumbered 2026-09-25 from `20260921113000`, which sorted behind main's ceiling `20260922231300` — ADR 0212]; [renumbered again 2026-09-26 from `20260925160100`, which by then sorted behind main's new ceiling `20260925160700` — same guard, PR #429 merge-train]).
     `_release_send_claim` (which set the row back to `prior_status` — DRAFT
     or PENDING_APPROVAL — so a person or a bus replay could try again) is no
     longer reached for these three codes; `_close_relay_refused` is, and it
@@ -271,7 +271,7 @@ route) — so there is no second runtime for this one to disagree with.]
     (same migration), scoped to `status = 'RELAY_REFUSED'` by a CHECK
     constraint. `procurement_conversations.status` itself still carries NO
     CHECK constraint of its own — confirmed again (the prior migration,
-    `20260925160000`, renumbered 2026-09-25 from `20260921110000` per ADR 0212, already found and recorded this) — and closing that
+    `20260927140000`, renumbered 2026-09-25 from `20260921110000` per ADR 0212 and again 2026-09-26 from `20260925160000` for the same reason, already found and recorded this) — and closing that
     gap for the whole column is a cross-cutting change spanning 20+ call
     sites across two services, filed as an open item in the migration's own
     header rather than guessed at here.
