@@ -52,6 +52,7 @@ An identity with no password **and** no linked provider now gets a stated answer
 - Sign in with Google (Gmail addresses are auto-routed to Google's chooser; 🚧 no Microsoft button though the backend supports it)
 - Return-to-where-you-were after signing in (`?redirect=`)
 - Links out: forgot password, create account
+- Lands in the right house (ADR 0164, 2026-09-18): one house, straight in; two or more, straight back into the house this device used within seven days, otherwise to `/choose-house` ("Which house today?", `pages/ChooseHouse.tsx`). Every sign-in call sends this device's memory (`lastHouses`, `lib/houseMemory.ts`); the server decides. No house at all goes to `/no-access`.
 
 ## 2. Entry
 Most-linked page in the app — in-degree 6 per [PAGE_MAP](../foundation/PAGE_MAP.md) (`/register`, `/forgot-password`, `/reset-password`, `/verify-email`, `/invite/:code`, `/no-access` all link back). Also the default redirect target of every `ProtectedRoute` when unauthenticated (`components/ProtectedRoute.tsx:16,38`), carrying `?redirect=` or router state so login returns you where you were (`Login.tsx:24-26`).

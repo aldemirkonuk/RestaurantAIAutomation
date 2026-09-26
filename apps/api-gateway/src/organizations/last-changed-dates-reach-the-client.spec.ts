@@ -169,17 +169,22 @@ describe("chains carry their own last-changed date", () => {
 });
 
 describe("branches carry their own last-changed date", () => {
-  it("asks for updated_at on the organisation path and maps it", async () => {
+  // [ADR 0164, 2026-09-18: the list is memberships only, so the access path is
+  // the only path. "asks for updated_at on the organisation path" and "asks for
+  // it on the legacy access path too" became the two tests below.]
+  it("asks for updated_at on the membership read and maps it", async () => {
     const { service, probe } = makeService({
-      orgMembers: ORG,
-      restaurants: [
+      ura: [
         {
-          id: "r1",
-          name: "Kadıköy",
-          city: "Istanbul",
-          chain_id: "c1",
-          updated_at: "2026-09-01T08:30:00.000Z",
-          restaurant_chains: { name: "Harbour Group" },
+          restaurant_id: "r1",
+          restaurants: {
+            id: "r1",
+            name: "Kadıköy",
+            city: "Istanbul",
+            chain_id: "c1",
+            updated_at: "2026-09-01T08:30:00.000Z",
+            restaurant_chains: { name: "Harbour Group" },
+          },
         },
       ],
     });
@@ -187,7 +192,7 @@ describe("branches carry their own last-changed date", () => {
     const branches = await service.getBranchesForUser("u1");
 
     expect(
-      probe.selects.find((s) => s.table === "restaurants")?.columns,
+      probe.selects.find((s) => s.table === "user_restaurant_access")?.columns,
     ).toContain("updated_at");
     expect(branches).toEqual([
       {
@@ -201,13 +206,8 @@ describe("branches carry their own last-changed date", () => {
     ]);
   });
 
-  it("asks for it on the legacy access path too", async () => {
-    // A branch reachable only through `user_restaurant_access` is exactly the
-    // account this fallback exists for; it must not be the one that loses the
-    // date and prints an em dash beside branches that have one.
-    const { service, probe } = makeService({
-      orgMembers: [],
-      restaurants: [],
+  it("keeps a house with no city and no chain as it is, date included", async () => {
+    const { service } = makeService({
       ura: [
         {
           restaurant_id: "r9",
@@ -225,10 +225,8 @@ describe("branches carry their own last-changed date", () => {
 
     const branches = await service.getBranchesForUser("u1");
 
-    expect(
-      probe.selects.find((s) => s.table === "user_restaurant_access")?.columns,
-    ).toContain("updated_at");
     expect(branches[0].updated_at).toBe("2026-08-11T12:00:00.000Z");
     expect(branches[0].city).toBeNull();
+    expect(branches[0].chain_name).toBeNull();
   });
 });

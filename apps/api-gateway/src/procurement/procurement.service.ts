@@ -22,6 +22,7 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { InboundResponderService } from "../common/orchestrator/inbound-responder.service";
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 import { GmailService } from "../communications/gmail.service";
+import type { SendRefusalKind } from "../communications/send-failure";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { NotificationsService } from "../notifications/notifications.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
@@ -500,12 +501,28 @@ export interface SendRequestView {
 }
 
 /**
- * GmailService refused to build the message (ADR 0172: `refusedBeforeSend`),
- * so Gmail was never called and the vendor provably has nothing. A distinct
- * type so `isDefiniteSendRefusal` can recognise it by `instanceof` — never by
- * its text, which embeds the vendor's own contact address.
+ * GmailService PROVED the vendor has nothing (`EmailResult.refusal`, typed —
+ * see communications/send-failure.ts): the message was never built (ADR 0172),
+ * no transport was configured, or the provider rejected the request outright.
+ * A distinct type so `isDefiniteSendRefusal` recognises it by `instanceof` and
+ * nothing else — never by the error text, which embeds the vendor's own
+ * contact address.
  */
-export class SendRefusedBeforeSendError extends BadRequestException {}
+export class SendRefusedBeforeSendError extends BadRequestException {
+  /**
+   * Which proven refusal this was (send-failure.ts). Only `"header"` refuses
+   * the SAME letter identically on every retry, so only it closes the draft as
+   * `SEND_REFUSED` (founder answer 6, 2026-09-21); the other kinds release it
+   * for another approval once the mailbox or address is fixed (ADR 0172
+   * addendum, #405). Defaults to "header" for the pre-#405 construction.
+   */
+  constructor(
+    message: string,
+    readonly refusalKind: SendRefusalKind = "header",
+  ) {
+    super(message);
+  }
+}
 
 /**
  * The `reason` a 422 carries when the in-process send refused a draft before
@@ -7184,7 +7201,10 @@ export class ProcurementService {
       // (6) of 2026-09-21, the in-process twin of the relay's RELAY_REFUSED.
       // Handing it back as PENDING_APPROVAL invited a tap that fails the same
       // way. 422: the request was well formed; this letter cannot be sent.
-      if (sendError instanceof SendRefusedBeforeSendError) {
+      if (
+        sendError instanceof SendRefusedBeforeSendError &&
+        sendError.refusalKind === "header"
+      ) {
         const reason = String(sendError.message ?? "").trim() || "The message could not be built.";
         const closed = await this.closeRefusedDraft(conversationId, reason);
         throw new UnprocessableEntityException({
@@ -7365,43 +7385,12 @@ export class ProcurementService {
    * refusals: anything unrecognised is ambiguous, because guessing wrong in
    * that direction sends a real vendor a second purchase order.
    */
-  private isDefiniteSendRefusal(error: any): boolean {
-    // A header refusal (ADR 0172) is identified by TYPE, not by text: the
-    // message embeds the vendor's contact address, which a vendor controls.
-    if (error instanceof SendRefusedBeforeSendError) return true;
-
-    const text = `${error?.message ?? ""} ${error?.response?.data ? JSON.stringify(error.response.data) : ""}`;
-    if (!text.trim()) return false;
-
-    // No transport was ever attempted — GmailService says so in as many words.
-    if (/No email delivery method available/i.test(text)) return true;
-
-    // Credentials refused: the request never became a message.
-    if (
-      /invalid_grant|invalid_client|unauthorized_client|authentication failed|invalid credentials|Username and Password not accepted/i.test(
-        text,
-      )
-    ) {
-      return true;
-    }
-
-    // SMTP permanent failures (5xx) and the recipient rejections they carry.
-    // Explicitly NOT 4xx — those are transient and may still have been queued.
-    if (
-      /\b5\d{2}[ -]/.test(text) ||
-      /\b5\.\d\.\d\b/.test(text) ||
-      /user unknown|no such user|recipient address rejected|mailbox unavailable|address rejected|does not exist/i.test(
-        text,
-      )
-    ) {
-      return true;
-    }
-
-    // A malformed request we built — nothing deliverable left the process.
-    if (/invalid recipient|no recipients defined|invalid to header/i.test(text))
-      return true;
-
-    return false;
+  private isDefiniteSendRefusal(error: unknown): boolean {
+    // By TYPE, never by text. GmailService.sendEmail classifies from typed
+    // error fields (send-failure.ts) and sendProviderEmail turns a proven
+    // refusal into this class; the message embeds the vendor's contact address,
+    // which a vendor controls, so no phrase in it may ever decide this.
+    return error instanceof SendRefusedBeforeSendError;
   }
 
   /**
@@ -7632,12 +7621,21 @@ export class ProcurementService {
       replyTo,
     });
     if (!result.success) {
-      // A header refusal (ADR 0172) happens before Gmail is called: the data is
-      // wrong, not the credentials, so do not send anyone to re-auth Gmail.
-      if (result.refusedBeforeSend) {
+      // A proven refusal (typed by GmailService, never read from text) means the
+      // vendor has nothing, so the draft may go back for another approval.
+      if (result.refusal) {
+        // A header refusal (ADR 0172) happens before Gmail is called: the data
+        // is wrong, not the credentials, so do not send anyone to re-auth Gmail.
         throw new SendRefusedBeforeSendError(
-          `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
-            "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address).",
+          result.refusal.kind === "header"
+            ? `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+              "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address)."
+            : result.refusal.kind === "rejected"
+              ? `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+                "The mail service rejected the request, so nothing was sent. Check the vendor's address and approve again."
+              : `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
+                "Nothing was sent. Check Gmail credentials (GMAIL_REFRESH_TOKEN may be expired — run scripts/gmail-reauth.js).",
+          result.refusal.kind,
         );
       }
       throw new BadRequestException(

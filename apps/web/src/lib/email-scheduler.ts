@@ -3,9 +3,6 @@
  * Handles scheduled email sending using localStorage and periodic checks
  */
 
-import axios from 'axios'
-
-const API_URL = import.meta.env?.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 const SCHEDULED_EMAILS_KEY = 'wineops_scheduled_emails'
 
 export interface ScheduledEmail {
@@ -78,24 +75,16 @@ export function scheduleEmail(
 }
 
 /**
- * Send an email via the API
+ * Retired 2026-09-25. This used to POST the stored HTML and recipients to
+ * `/notifications/send-email`, which no longer sends (it refuses a client's
+ * HTML and recipients: ADR 0147, PR #410). Nothing has written to this queue
+ * since 2026-05-14 (commit 4bbbdf0d8 removed `scheduleTestEmail()`, the only
+ * producer), and `main.tsx` no longer starts the scheduler. A scheduled send
+ * belongs to the house's own queue (`POST /communications/letters`), not to a
+ * browser's localStorage. The file stays for the ADR 0149 cutover manifest.
  */
-async function sendEmail(email: ScheduledEmail): Promise<boolean> {
-  try {
-    const response = await axios.post(`${API_URL}/api/v1/notifications/send-email`, {
-      to: email.to,
-      subject: email.subject,
-      body_html: email.bodyHtml,
-      body_text: email.bodyText,
-      cc: email.cc,
-      bcc: email.bcc,
-    })
-    
-    return response.data.success
-  } catch (error) {
-    console.error('Failed to send scheduled email:', error)
-    return false
-  }
+async function sendEmail(_email: ScheduledEmail): Promise<boolean> {
+  return false
 }
 
 /**
@@ -113,7 +102,7 @@ export async function checkAndSendDueEmails(): Promise<void> {
       const success = await sendEmail(email)
       email.status = success ? 'sent' : 'failed'
       if (!success) {
-        email.error = 'Failed to send email'
+        email.error = 'Scheduled mail from this browser was retired; write it in Communications.'
       }
       updated = true
       

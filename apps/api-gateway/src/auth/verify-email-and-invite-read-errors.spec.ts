@@ -276,6 +276,12 @@ describe("AuthService#verifyEmail — a failed read is not an invalid link", () 
     expect(chains.users[0].update).toHaveBeenCalledWith({
       email_verified: true,
     });
-    expect(gen).toHaveBeenCalledWith({ user_id: "u1", email_verified: true });
+    // ADR 0164: every mint names its house explicitly, membership-checked
+    // inside generateTokens; this users row names none.
+    expect(gen).toHaveBeenCalledWith(
+      { user_id: "u1", email_verified: true },
+      false,
+      null,
+    );
   });
 });
