@@ -166,8 +166,10 @@ export class CalendarLinksService {
   // ==========================================================================
 
   /**
-   * The person's role here, read the way the feed reads it. A failed read
-   * throws — it is never "not a member".
+   * The person's role here, read the way the feed reads it: membership only
+   * (`feedRoleOf`, ADR 0164). An active access row is the only thing that
+   * makes someone a member; a `users.restaurant_id` naming the house is never
+   * read. A failed read throws — it is never "not a member".
    */
   async roleOf(restaurantId: string, userId: string): Promise<FeedRole | null> {
     const { data: access, error: accessErr } = await this.db
@@ -181,21 +183,7 @@ export class CalendarLinksService {
         `Could not read this person's access to the house: ${accessErr.message}`,
       );
     }
-    let userRow: { restaurant_id?: string | null } | null = null;
-    if (!access || access.length === 0) {
-      const { data: user, error: userErr } = await this.db
-        .from("users")
-        .select("restaurant_id")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (userErr) {
-        throw new FeedUnavailableError(
-          `Could not read this person's user row: ${userErr.message}`,
-        );
-      }
-      userRow = user ?? null;
-    }
-    return feedRoleOf(access ?? [], userRow, restaurantId, this.clock());
+    return feedRoleOf(access ?? [], this.clock());
   }
 
   private async liveLinkOf(
@@ -880,8 +868,8 @@ export class CalendarLinksService {
    * `user_restaurant_access` row in the house is the only thing that makes
    * someone a member of it, and a NULL role is no role. Used ONLY for the
    * owner rule on stopping someone else's link, never for what a feed serves
-   * (`roleOf`, which reads a `users`-row member as staff). A failed read
-   * throws: it is never "not an owner".
+   * (`roleOf`, which also reads `valid_until`). A failed read throws: it is
+   * never "not an owner".
    */
   private async houseRoleOf(
     restaurantId: string,

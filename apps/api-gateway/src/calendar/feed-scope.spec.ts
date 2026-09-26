@@ -18,56 +18,40 @@ import * as path from "path";
  * areas branch the service cannot reach until the areas lane binds its hook.
  */
 
-const HOUSE = "house-1";
 const NOW = new Date("2026-09-21T12:00:00.000Z");
 
 describe("feedRoleOf — who the person is in this house, right now", () => {
   it("an active access row decides; owner and manager are themselves", () => {
-    expect(feedRoleOf([{ role: "owner" }], null, HOUSE, NOW)).toBe("owner");
-    expect(feedRoleOf([{ role: "manager" }], null, HOUSE, NOW)).toBe("manager");
+    expect(feedRoleOf([{ role: "owner" }], NOW)).toBe("owner");
+    expect(feedRoleOf([{ role: "manager" }], NOW)).toBe("manager");
   });
 
   it("any other word — or none — is staff: membership proven, privilege not", () => {
-    expect(feedRoleOf([{ role: "staff" }], null, HOUSE, NOW)).toBe("staff");
-    expect(feedRoleOf([{ role: null }], null, HOUSE, NOW)).toBe("staff");
-    expect(feedRoleOf([{ role: "sommelier" }], null, HOUSE, NOW)).toBe("staff");
+    expect(feedRoleOf([{ role: "staff" }], NOW)).toBe("staff");
+    expect(feedRoleOf([{ role: null }], NOW)).toBe("staff");
+    expect(feedRoleOf([{ role: "sommelier" }], NOW)).toBe("staff");
   });
 
   it("duplicate rows resolve to the LEAST of them", () => {
-    expect(
-      feedRoleOf([{ role: "owner" }, { role: "staff" }], null, HOUSE, NOW),
-    ).toBe("staff");
-    expect(
-      feedRoleOf([{ role: "owner" }, { role: "manager" }], null, HOUSE, NOW),
-    ).toBe("manager");
+    expect(feedRoleOf([{ role: "owner" }, { role: "staff" }], NOW)).toBe(
+      "staff",
+    );
+    expect(feedRoleOf([{ role: "owner" }, { role: "manager" }], NOW)).toBe(
+      "manager",
+    );
   });
 
   it("a row past its valid_until does not count; one still valid does", () => {
     expect(
-      feedRoleOf(
-        [{ role: "owner", valid_until: "2026-09-21T11:59:59Z" }],
-        null,
-        HOUSE,
-        NOW,
-      ),
+      feedRoleOf([{ role: "owner", valid_until: "2026-09-21T11:59:59Z" }], NOW),
     ).toBeNull();
     expect(
-      feedRoleOf(
-        [{ role: "owner", valid_until: "2026-09-21T12:00:01Z" }],
-        null,
-        HOUSE,
-        NOW,
-      ),
+      feedRoleOf([{ role: "owner", valid_until: "2026-09-21T12:00:01Z" }], NOW),
     ).toBe("owner");
   });
 
-  it("a users row naming the house is staff — never its role column", () => {
-    expect(feedRoleOf([], { restaurant_id: HOUSE }, HOUSE, NOW)).toBe("staff");
-  });
-
-  it("nothing naming the house is no role at all", () => {
-    expect(feedRoleOf([], { restaurant_id: "house-2" }, HOUSE, NOW)).toBeNull();
-    expect(feedRoleOf([], null, HOUSE, NOW)).toBeNull();
+  it("no current access row is no role at all — the feed reads no users row (ADR 0164)", () => {
+    expect(feedRoleOf([], NOW)).toBeNull();
   });
 });
 

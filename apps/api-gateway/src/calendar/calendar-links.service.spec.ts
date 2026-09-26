@@ -432,10 +432,16 @@ describe("what each person's link shows", () => {
     );
   });
 
-  it("a person known only by a users row reads as STAFF, whatever users.role says", async () => {
-    const shown = await feedFor(seed(), LEGACY);
-    expect(shown).toContain("Your shift · floor");
-    expect(shown.join("|")).not.toMatch(/Ayse|Bora|Open shift/);
+  // ADR 0164, membership only; ADR 0111 review trail 2026-09-26. A `users`
+  // row naming the house, with no access row, is not membership on this
+  // public surface, whatever its role column says.
+  it("a person known only by a users row is not a member: they cannot connect a link", async () => {
+    const db = seed();
+    const svc = service(db);
+    await expect(svc.create(HOUSE, LEGACY)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(db.tables.calendar_feed_links).toHaveLength(0);
   });
 
   it("labor cost never reaches any feed", async () => {
@@ -654,6 +660,42 @@ describe("a person removed from the house: their link stops, nobody else's", () 
       "Your shift · kitchen",
     );
   });
+
+  // The stale-row case (ADR 0111 review trail 2026-09-26): a hand-run delete
+  // or deactivation of the access row that leaves `users.restaurant_id`
+  // naming the house. Ayse's users row is seeded naming HOUSE, so this is the
+  // hazard itself, not a row that already stopped naming it.
+  for (const how of ["deleted", "deactivated"] as const) {
+    it(`an access row ${how} by hand, users.restaurant_id left naming the house: the feed stops the link`, async () => {
+      const db = seed();
+      const svc = service(db);
+      const { secret } = await svc.create(HOUSE, AYSE);
+      expect(summaries(await svc.renderFor(secret as string))).toContain(
+        "Your shift · bar",
+      );
+      expect(
+        db.tables.users.find((u) => u.user_id === AYSE)!.restaurant_id,
+      ).toBe(HOUSE);
+      if (how === "deleted") {
+        db.tables.user_restaurant_access =
+          db.tables.user_restaurant_access.filter((r) => r.user_id !== AYSE);
+      } else {
+        db.tables.user_restaurant_access.find(
+          (r) => r.user_id === AYSE,
+        )!.is_active = false;
+      }
+
+      expect(await svc.renderFor(secret as string)).toBe(
+        expiredNoticeFeed(NOW),
+      );
+      expect(
+        db.tables.calendar_feed_links.find((r) => r.user_id === AYSE),
+      ).toMatchObject({
+        revoked_at: NOW.toISOString(),
+        revoke_reason: "left_house",
+      });
+    });
+  }
 
   it("a failed stop by the feed is logged, never a 503: the dead address still answers the notice", async () => {
     const db = seed();

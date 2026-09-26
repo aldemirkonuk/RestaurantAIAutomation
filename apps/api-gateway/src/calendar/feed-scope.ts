@@ -99,39 +99,37 @@ export function categoryOfEventType(
 }
 
 /**
- * The person's role from the two rows the rest of the gateway reads.
+ * The person's role in this house, membership only (ADR 0164).
  *
  * - An ACTIVE `user_restaurant_access` row whose `valid_until` has not passed
  *   decides: `owner` and `manager` are themselves, anything else (a NULL role,
  *   an unknown word) is `staff` — membership is proven, privilege is not.
  *   Several such rows (a duplicate) resolve to the LEAST of them.
- * - With none, a `users` row whose `restaurant_id` names the house proves
- *   membership only and reads as `staff`. That is `TeamService.assertAccess`'s
- *   rule, deliberately not `house-role.ts`'s `users.role || "staff"`:
- *   `users.role` defaults to `manager` (baseline), and the shifts this feed
- *   serves are TeamService's data, where that default is never privilege.
  * - Anything else is `null`: not a member, and the link answers the expired
- *   notice. This is what makes "when Ayse leaves, only her link stops" hold
- *   the moment `MembersService.removeMember` runs, with no revocation step.
+ *   notice. A `users` row whose `restaurant_id` still names the house is NOT
+ *   membership here. That fallback (v3.0-TECH-DEBT 44.1i) admits a stale row
+ *   as well as a legacy one: an access row deleted or deactivated by hand-run
+ *   SQL that leaves `users.restaurant_id` behind would keep the link serving,
+ *   and this public, bearer-token surface would be looser than the app, which
+ *   ADR 0164 made membership-only (`house-role.ts` `roleInHouse`). The founder
+ *   picked "Feed stays stricter" (ADR 0111, round 6y), so the feed reads no
+ *   `users` row at all (ADR 0111, review trail 2026-09-26).
+ * - This is what makes "when Ayse leaves, only her link stops" hold the moment
+ *   her access row is gone, by any path, before any revocation step runs.
  */
 export function feedRoleOf(
   accessRows: Array<{ role?: string | null; valid_until?: string | null }>,
-  userRow: { restaurant_id?: string | null } | null,
-  restaurantId: string,
   now: Date,
 ): FeedRole | null {
   const current = accessRows.filter(
     (r) => !r.valid_until || new Date(r.valid_until).getTime() > now.getTime(),
   );
-  if (current.length > 0) {
-    const ranks = current.map((r) =>
-      r.role === "owner" ? 2 : r.role === "manager" ? 1 : 0,
-    );
-    const least = Math.min(...ranks);
-    return least === 2 ? "owner" : least === 1 ? "manager" : "staff";
-  }
-  if (userRow && userRow.restaurant_id === restaurantId) return "staff";
-  return null;
+  if (current.length === 0) return null;
+  const ranks = current.map((r) =>
+    r.role === "owner" ? 2 : r.role === "manager" ? 1 : 0,
+  );
+  const least = Math.min(...ranks);
+  return least === 2 ? "owner" : least === 1 ? "manager" : "staff";
 }
 
 /** The areas the house's areas model knows for kinds of work. */

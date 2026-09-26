@@ -27,9 +27,12 @@ import { InternalServerErrorException, Logger } from "@nestjs/common";
  *   - `AuthService.deleteAccount` — every house at once (`restaurantId: null`).
  * Nothing in the gateway writes `is_active = false`, `deactivated_by` or
  * `valid_until` on an access row. A membership that ends OUTSIDE these doors
- * (a lapsed `valid_until`, a hand-run SQL delete) is caught by the feed: when a
- * live link's person has no role, `CalendarLinksService.renderFor` stops the
- * link the same way (actor `system`) before answering the notice.
+ * (a lapsed `valid_until`, a hand-run SQL delete or deactivation of the access
+ * row) is caught by the feed: when a live link's person has no role,
+ * `CalendarLinksService.renderFor` stops the link the same way (actor
+ * `system`) before answering the notice. The feed reads membership only
+ * (`feedRoleOf`, ADR 0164), so a `users.restaurant_id` left naming the house
+ * does not keep the link alive (ADR 0111, review trail 2026-09-26).
  *
  * WHEN IT RUNS, AND WHAT A FAILURE MEANS
  * --------------------------------------

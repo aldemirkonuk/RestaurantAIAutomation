@@ -603,6 +603,53 @@ citations across ~89 files — see the register-row memo); the parent files them
 
 ## Review trail
 
+- 2026-09-26 (PR #438 audit at `7f964f611`) — **the feed reads membership
+  only; no `users`-row fallback.** The ADR 0090 audit blocked #438 because
+  `feedRoleOf` still admitted a person as `staff` when no current access row
+  existed but `users.restaurant_id` named the house. An access row deleted or
+  deactivated by hand-run SQL that left that column behind (a stale row,
+  v3.0-TECH-DEBT 44.1i) kept the link serving every house event plus own
+  shifts. That made this public, bearer-token surface looser than the app,
+  which ADR 0164 made membership-only (`house-role.ts` `roleInHouse`, #471),
+  against the founder's pick above, *"Feed stays stricter (Recommended)"*. So
+  the round-6t sentence below, that such a membership "is caught by the feed",
+  was false for the stale-row case, and the only test near it
+  (`calendar-links.service.spec.ts`, "the register shows a person with no role
+  here…") seeded `users.restaurant_id` as already null and so never met the
+  hazard.
+  - **Fixed, not put to the founder:** it follows two locked decisions (ADR
+    0164's "Membership only", and this ADR's "Feed stays stricter"), so no
+    new fork opens. `feedRoleOf(accessRows, now)` takes no `users` row, and
+    `CalendarLinksService.roleOf` no longer reads `users`. A `users` row with
+    no access row is not a member here: the feed answers the expired notice
+    and stops the link as `system`/`left_house`, and such a person cannot
+    connect a link (403). The precondition ADR 0164 relied on still holds for
+    this reader. On 2026-09-18, 0 `users` rows named a house with no active
+    row behind them, after the YAREN manager's row was written. The audit
+    measured 0 stale-row instances again. Neither count was re-measured in
+    this round.
+  - **Pinned by the stale-row case itself:** Ayse's seeded `users` row names
+    the house. Her access row is then deleted, or set `is_active = false`,
+    with that column left alone. Both cases must answer the notice and stop
+    the link (`calendar-links.service.spec.ts`). Mutation: putting the
+    `users` fallback back into `roleOf` fails 3 tests (those two, and "a
+    person known only by a users row is not a member"). Restored:
+    `jest src/calendar` passes, 13 suites and 277 tests. Claim
+    `ADR-0111-FEED-MEMBERSHIP-ONLY`.
+  - 44.1i gets a dated bracket: `feed-scope.ts` had been an eighth site, and
+    it retired inside #438 before merge, so nothing is added to the six still
+    open.
+  - **Migration citations corrected.** The path was `20260921170600`/`170700`
+    → `20260925180300`/`180400` (commit `eed34cd52`) → `20260926130000`/
+    `130100` (merge `7f964f611`). The files at head are the last pair. The
+    bracket below names the last hop only, and its "180300's audit row" now
+    reads 130000's. The commit message of `eed34cd52` and the PR body's round
+    notes still cite the middle pair. Those are records of that round and are
+    not rewritten (no force-push). The versions that apply on merge are
+    `20260926130000` and `20260926130100`. `20260926130000` sets every
+    house's `restaurants.calendar_ical_token` to NULL, with one audit row per
+    house.
+
 - 2026-09-22 (round 6y) — **the lapsed-`valid_until` fork, closed.** The
   founder, 2026-09-22, verbatim: *"Feed stays stricter (Recommended)"*. The
   calendar feed keeps reading a lapsed `valid_until` as the end of
@@ -662,7 +709,11 @@ citations across ~89 files — see the register-row memo); the parent files them
     - A membership that ends outside those doors (a lapsed `valid_until`, a
       hand-run delete) is caught by the feed: a live link whose person has no
       role is stopped the same way, as `system`, before the notice is
-      answered. *[Last call, same day: only the feed reads a lapsed
+      answered. *[Corrected 2026-09-26, PR #438 audit: until
+      this date the feed still read a `users` row naming the house as staff,
+      so a hand-run delete or deactivation that left `users.restaurant_id`
+      behind was NOT caught. `feedRoleOf` is now membership-only. See the
+      review trail entry of that date.]* *[Last call, same day: only the feed reads a lapsed
       `valid_until` as the end of membership (`feedRoleOf`, since the entry
       below). The app's role reads (`house-role.ts` `roleInHouse`,
       `OrganizationsService.resolveRestaurantRole`) do not read
@@ -803,7 +854,7 @@ citations across ~89 files — see the register-row memo); the parent files them
 
   Built (`calendar-links.service.ts`, `feed-scope.ts`, `ical-render.ts`,
   migration `20260926130000_a_calendar_link_belongs_to_one_person.sql`):
-  **[Renumbered 2026-09-25, merging `origin/main` 059169a5 into #438: the two migrations were `20260921170600` and `20260921170700`, below main's newest `20260922231300`, which ADR 0212's `check_migration_order.py` refuses. Moved by `git mv` to `20260926130000` and `20260926130100`, same order, content unchanged except the versions they cite (including the `'migration'` value in 180300's audit row); every citation in this ADR, CLAIMS, the page notes and the calendar code was rewritten. No main migration after `20260921170600` touches `calendar_feed_links`, `calendar_ical_token`, `user_restaurant_access` or `team_members`.]**
+  **[Renumbered 2026-09-25, merging `origin/main` 059169a5 into #438: the two migrations were `20260921170600` and `20260921170700`, below main's newest `20260922231300`, which ADR 0212's `check_migration_order.py` refuses. Moved by `git mv` to `20260926130000` and `20260926130100`, same order, content unchanged except the versions they cite (including the `'migration'` value in 130000's audit row) *[Corrected 2026-09-26: this said "180300's". The path had a middle hop, `20260925180300`/`180400` (commit `eed34cd52`); see the review trail entry of that date.]*; every citation in this ADR, CLAIMS, the page notes and the calendar code was rewritten. No main migration after `20260921170600` touches `calendar_feed_links`, `calendar_ical_token`, `user_restaurant_access` or `team_members`.]**
   - `calendar_feed_links`: one row per person per house, at most one live
     (partial unique index on `(restaurant_id, user_id) WHERE revoked_at IS
     NULL`), actor FKs to `public.users(user_id)`, RLS on, service_role only.
