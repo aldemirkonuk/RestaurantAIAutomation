@@ -68,8 +68,11 @@ not owner, manager or admin. This is `@UseGuards(JwtAuthGuard, RolesGuard)` with
   `ReceiptsPage` (also what `/receipts?tab=credits` renders with the Mudavym flag on, since `ReceiptsNext`
   hands that tab to the legacy page) stopped offering the Credits tab to staff and lands `?tab=credits` on
   the Receipts tab, so a staff member does not meet a ledger that can only show an error. It decides from
-  `activeRole`, the role in this house, and falls back to the global `user.role` only when no house is
-  active. The audit of PR #395 found the first cut read `user.role` alone, which is the global `users.role`;
+  `activeRole`, the role in this house, and falls back to the global `user.role` whenever `activeRole`
+  is null (`AuthContext.tsx:475-504`): no house active, `/auth/me/role` still pending or failed, or no role
+  there that it recognises. In those windows a person who is staff here but owner or manager globally
+  can be offered the tab and meet the gateway's `403`; the gateway is the guard, the tab only a courtesy.
+  The audit of PR #395 found the first cut read `user.role` alone, which is the global `users.role`;
   `ReceiptsPage.roles.test.tsx` now pins the difference (9 tests, 3 mutants caught).
 - `GET /procurement/receiving/unverified` is left as it was. It was not in the question put to the
   founder. Filed as an open question rather than assumed either way.
@@ -98,8 +101,8 @@ not owner, manager or admin. This is `@UseGuards(JwtAuthGuard, RolesGuard)` with
   `POST /procurement/orders/:id/verify-receipt` (`procurement.controller.ts:529`, no `@Roles` anywhere in that
   controller) is open to staff and opens the claim. The ledger totals and the queue are now hidden from
   staff; these per-unit figures may not be. Not decided here.
-- **Two pages still choose the view from the global role.** `ReceivingHome` (`:66`) and `ReceivingNext`
-  (`:160`) read `useAuth().user.role`, the global `users.role`, while the gateway decides on the role in the
+- **Two pages still choose the view from the global role.** `ReceivingHome` (`:67`) and `ReceivingNext`
+  (`:219`) read `useAuth().user.role`, the global `users.role`, while the gateway decides on the role in the
   house. A person whose global role differs from their role in the house would be shown the manager or owner
   view and meet a `403` on the queue and credits. Inherited, not introduced here, and not changed: `ReceivingNext`
   belongs to the receiving lane, and `ReceivingHome` is legacy under ADR 0149. Nobody is affected today (every

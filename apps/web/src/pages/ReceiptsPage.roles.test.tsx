@@ -5,8 +5,9 @@
  * caller is owner or manager IN THE HOUSE THE TOKEN NAMES (ADR 0162). The page must
  * decide from that same role, `activeRole`, and not from the global `users.role`
  * that `user.role` carries: the audit of PR #395 found the first cut read the
- * global one, which shows a manager-here-but-staff-elsewhere person a tab that can
- * only end in a 403, and hides it from someone staff-elsewhere-but-manager-here.
+ * global one, which shows a person who is staff here but manager globally a tab
+ * that can only end in a 403, and hides it from one who is manager here but staff
+ * globally.
  *
  * What is asserted is the observable pair: whether the tab is on the screen, and
  * whether the credit endpoints are ever asked. A test that checked only the button

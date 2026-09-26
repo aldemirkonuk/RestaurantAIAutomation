@@ -67,10 +67,12 @@ export function ReceiptsPage() {
   // rather than on a ledger that can only show an error. The role is the one IN
   // THIS HOUSE, `activeRole` (from /auth/me/role), because that is what the
   // gateway decides on (ADR 0162); `user.role` is the global `users.role`, one
-  // value for every house, and is only the fallback while no house is active.
-  // Reading it alone would show a manager-here-but-staff-elsewhere person the
-  // Credits tab and then a 403. An unrecognised role is treated as staff, as the
-  // server does.
+  // value for every house, and is the fallback whenever `activeRole` is null: no
+  // house active, /auth/me/role still pending or failed, or no role there that it
+  // recognises. In those windows a person who is staff here but manager
+  // globally can be offered the tab and meet the gateway's 403; the gateway is
+  // the guard, the tab only a courtesy. Reading `user.role` alone would do that
+  // always. An unrecognised role is treated as staff, as the server does.
   const { user, activeRole } = useAuth()
   const role = (activeRole ?? user?.role ?? '').toLowerCase()
   const canSeeCredits = role === 'owner' || role === 'manager' || role === 'admin'
