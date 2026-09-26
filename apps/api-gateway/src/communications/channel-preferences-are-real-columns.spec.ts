@@ -51,6 +51,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { RecipientResolverService } from "./recipient-resolver.service";
+import type { NotificationCategory } from "./recipient-resolver.service";
 
 type Row = Record<string, any>;
 
@@ -147,7 +148,12 @@ function makeClient(tables: Record<string, Row[]>) {
 function tablesWithPrefs(prefs: Row | null): Record<string, Row[]> {
   return {
     user_restaurant_access: [
-      { user_id: USER, role: "manager", restaurant_id: RESTAURANT },
+      {
+        user_id: USER,
+        role: "manager",
+        restaurant_id: RESTAURANT,
+        is_active: true,
+      },
     ],
     users: [
       {
@@ -189,12 +195,21 @@ function makeResolver(prefs: Row | null) {
 }
 
 /** Resolve for one restaurant with the env fallback OFF, so the only thing
- *  that can put an address in the result is the preference gate itself. */
-async function resolve(prefs: Row | null, channels: Array<"email" | "sms">) {
+ *  that can put an address in the result is the preference gate itself.
+ *
+ *  Since OD-121 (2026-09-16) the gate reads ONE category's array, so every
+ *  call names the category it is asserting about. The per-category routing
+ *  itself is pinned in `notification-categories-route-one-array.spec.ts`. */
+async function resolve(
+  prefs: Row | null,
+  channels: Array<"email" | "sms">,
+  category: NotificationCategory,
+) {
   const service = makeResolver(prefs);
   return service.resolveRecipients({
     restaurantId: RESTAURANT,
     roles: ["manager"],
+    category,
     channels,
     allowDefaultFallback: false,
   });
@@ -257,7 +272,9 @@ describe("checkChannelPreference — reads real columns", () => {
     // The headline symptom. `email_enabled` is true and email is in
     // `order_approval_channels`' default, so this user has email on by every
     // measure the product exposes. Pre-fix this returned zero addresses.
-    const res = await resolve(PRODUCTION_DEFAULTS, ["email"]);
+    // (Category-aware since OD-121: order approval is the category whose stock
+    // array carries email.)
+    const res = await resolve(PRODUCTION_DEFAULTS, ["email"], "order_approval");
     expect(res.emails).toEqual(["manager@one.test"]);
   });
 
@@ -265,7 +282,7 @@ describe("checkChannelPreference — reads real columns", () => {
     // The half a pure column rename does NOT fix. `sms_enabled` defaults to
     // false — SMS is the one opt-IN channel — yet `'sms'` sits in
     // `low_stock_channels`' default, so the array gate alone says yes.
-    const res = await resolve(PRODUCTION_DEFAULTS, ["sms"]);
+    const res = await resolve(PRODUCTION_DEFAULTS, ["sms"], "low_stock");
     expect(res.phones).toEqual([]);
   });
 
@@ -276,6 +293,7 @@ describe("checkChannelPreference — reads real columns", () => {
     const res = await resolve(
       { order_approval_channels: ["sms"], email_enabled: true },
       ["email"],
+      "order_approval",
     );
     expect(res.emails).toEqual([]);
   });
@@ -287,6 +305,7 @@ describe("checkChannelPreference — reads real columns", () => {
     const res = await resolve(
       { low_stock_channels: ["sms"], financial_reports_channels: ["email"] },
       ["email"],
+      "financial_reports",
     );
     expect(res.emails).toEqual(["manager@one.test"]);
   });
@@ -297,21 +316,24 @@ describe("checkChannelPreference — reads real columns", () => {
     const res = await resolve(
       { ...PRODUCTION_DEFAULTS, email_enabled: false },
       ["email"],
+      "financial_reports",
     );
     expect(res.emails).toEqual([]);
   });
 
   it("delivers SMS once the user opts in", async () => {
-    const res = await resolve({ ...PRODUCTION_DEFAULTS, sms_enabled: true }, [
-      "sms",
-    ]);
+    const res = await resolve(
+      { ...PRODUCTION_DEFAULTS, sms_enabled: true },
+      ["sms"],
+      "low_stock",
+    );
     expect(res.phones).toEqual(["+15551110000"]);
   });
 
   it("delivers on every channel when the user has no preferences row", async () => {
     // No row at all is not the same as a row full of defaults: the caller
     // short-circuits on `!prefs`. Guards that path against regression.
-    const res = await resolve(null, ["email", "sms"]);
+    const res = await resolve(null, ["email", "sms"], "delivery");
     expect(res.emails).toEqual(["manager@one.test"]);
     expect(res.phones).toEqual(["+15551110000"]);
   });
@@ -319,7 +341,11 @@ describe("checkChannelPreference — reads real columns", () => {
   it("[PRE-FIX-FAILS] falls through to the global switch when no category array is set", async () => {
     // A row that exists but expresses no category preference. Gate 1 decides:
     // email on by default, SMS off by default.
-    const res = await resolve({ email_enabled: true }, ["email", "sms"]);
+    const res = await resolve(
+      { email_enabled: true },
+      ["email", "sms"],
+      "calendar_reminders",
+    );
     expect(res.emails).toEqual(["manager@one.test"]);
     expect(res.phones).toEqual([]);
   });
