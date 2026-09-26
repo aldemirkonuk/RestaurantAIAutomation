@@ -201,7 +201,7 @@ function DaySheet({
                         // node), so it needs WCAG's 3:1 non-text minimum, not the
                         // 4.5:1 a caption needs — ink-3 already clears 3:1 on every
                         // paper ground (OD-112's own measurement).
-                        style={{ background: 'none', border: 0, color: 'var(--ink-4)', cursor: 'pointer', padding: 2 }}
+                        style={{ background: 'none', border: 0, color: 'var(--ink-3)', cursor: 'pointer', padding: 2 }}
                       >
                         <X size={12} />
                       </button>
@@ -218,7 +218,7 @@ function DaySheet({
                       // 1.4.3 exempts inactive-control text from the 4.5:1 caption
                       // minimum, and this button IS `disabled` at that point — a
                       // real disabled-state dim, not a caption OD-112 covers.
-                      color: ranges.length >= MAX_RANGES_PER_DAY ? 'var(--ink-4)' : 'var(--seal-deep)',
+                      color: ranges.length >= MAX_RANGES_PER_DAY ? 'var(--ink-3)' : 'var(--seal-deep)',
                       background: 'none', border: 0, cursor: ranges.length >= MAX_RANGES_PER_DAY ? 'default' : 'pointer', padding: 0,
                     }}
                   >
