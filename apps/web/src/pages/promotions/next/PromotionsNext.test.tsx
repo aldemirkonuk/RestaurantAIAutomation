@@ -13,7 +13,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { OfferDto } from './promotions-format';
 
 const mockRead = vi.hoisted(() => ({ current: { data: undefined as unknown, isLoading: false, isError: false, error: null as unknown } }));
@@ -35,6 +35,23 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 
 import PromotionsNext from './PromotionsNext';
+
+/** The ladder's footing on every read below: one current menu, some of the shelf counted. */
+const HOUSE = {
+  menus: [{ menu_id: 'm1', name: 'Autumn', read_at: '2026-09-10T00:00:00Z' }],
+  coverage: { lines: 10, drinkLines: 8, linked: 6, notLinked: 2, otherLines: 2 },
+  shelf: { rows: 20, active: 18, counted: 5 },
+};
+
+/** The default offer is on the menu, so the page's default rung ("On my menu") shows it. */
+const ON_MENU: NonNullable<OfferDto['scope']> = {
+  scope: 'menu',
+  wines: 1,
+  winesOnMenu: 1,
+  menuMatches: [{ wine: 'Ch. de Sours Rosé 2024', menuLineId: 'l1', menuLine: 'Sours Rosé (glass)' }],
+  categories: ['wine'],
+  runningLow: [],
+};
 
 function wine(over: Partial<OfferDto['grade']['wines'][number]> = {}) {
   return {
@@ -74,6 +91,7 @@ function offer(over: Partial<OfferDto> = {}): OfferDto {
     state: 'open',
     grade: { status: 'graded', wines: [wine()], qualification: null, tally: { beats: 1, matches: 0, above: 0, ungraded: 0 }, vendor: { lastPurchaseDate: '2026-06-02', paidLines: 8 } },
     bundle: null,
+    scope: ON_MENU,
     ...over,
   };
 }
@@ -102,7 +120,7 @@ describe('PromotionsNext — loading / failed / empty', () => {
 
   it('a real empty table says so, with the ledger window behind it', () => {
     mockRead.current = {
-      data: { read_at: '2026-09-18T12:00:00Z', offers: [], ledger: { window_days: 540, since: '2025-03-12', paid_lines: 0, house_sightings: 0, market_sightings: 0, skipped_sightings: 0 } },
+      data: { read_at: '2026-09-18T12:00:00Z', house: HOUSE, offers: [], ledger: { window_days: 540, since: '2025-03-12', paid_lines: 0, house_sightings: 0, market_sightings: 0, skipped_sightings: 0 } },
       isLoading: false,
       isError: false,
       error: null,
@@ -116,7 +134,7 @@ describe('PromotionsNext — loading / failed / empty', () => {
 describe('PromotionsNext — a graded offer', () => {
   function loadOne(o: OfferDto) {
     mockRead.current = {
-      data: { read_at: '2026-09-18T12:00:00Z', offers: [o], ledger: { window_days: 540, since: '2025-03-12', paid_lines: 10, house_sightings: 2, market_sightings: 1, skipped_sightings: 0 } },
+      data: { read_at: '2026-09-18T12:00:00Z', house: HOUSE, offers: [o], ledger: { window_days: 540, since: '2025-03-12', paid_lines: 10, house_sightings: 2, market_sightings: 1, skipped_sightings: 0 } },
       isLoading: false,
       isError: false,
       error: null,
@@ -180,7 +198,7 @@ describe('PromotionsNext — a graded offer', () => {
 describe('PromotionsNext — the band and the tray (sketch 124 direction A, founder 2026-09-25, round 5)', () => {
   function load(offers: OfferDto[]) {
     mockRead.current = {
-      data: { read_at: '2026-09-18T12:00:00Z', offers, ledger: { window_days: 540, since: '2025-03-12', paid_lines: 10, house_sightings: 2, market_sightings: 1, skipped_sightings: 0 } },
+      data: { read_at: '2026-09-18T12:00:00Z', house: HOUSE, offers, ledger: { window_days: 540, since: '2025-03-12', paid_lines: 10, house_sightings: 2, market_sightings: 1, skipped_sightings: 0 } },
       isLoading: false,
       isError: false,
       error: null,
@@ -308,7 +326,7 @@ describe('PromotionsNext — the band and the tray (sketch 124 direction A, foun
 describe('PromotionsNext — offers only (ADR 0160 §113, Open item 3)', () => {
   const emptyRead = () => {
     mockRead.current = {
-      data: { read_at: '2026-09-18T12:00:00Z', offers: [], ledger: { window_days: 540, since: '2025-03-12', paid_lines: 0, house_sightings: 0, market_sightings: 0, skipped_sightings: 0 } },
+      data: { read_at: '2026-09-18T12:00:00Z', house: HOUSE, offers: [], ledger: { window_days: 540, since: '2025-03-12', paid_lines: 0, house_sightings: 0, market_sightings: 0, skipped_sightings: 0 } },
       isLoading: false,
       isError: false,
       error: null,
@@ -349,5 +367,195 @@ describe('PromotionsNext — offers only (ADR 0160 §113, Open item 3)', () => {
       if (/from\s*['"][^'"]*(usePromotionsQueries|SendersProspectsPanel)['"]/.test(source)) offenders.push(name);
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('PromotionsNext — house-first filters (founder item 36, 2026-09-26)', () => {
+  const worthOf = (amount: number) => ({ ...wine().worth!, amount });
+  const scoped = (scope: 'menu' | 'stock' | 'other', over: Partial<NonNullable<OfferDto['scope']>> = {}) => ({
+    ...ON_MENU,
+    scope,
+    winesOnMenu: scope === 'menu' ? 1 : 0,
+    menuMatches: scope === 'menu' ? ON_MENU.menuMatches : [],
+    ...over,
+  });
+  const single = (id: string, amount: number, over: Partial<OfferDto> = {}) =>
+    offer({ id, name: `offer ${id}`, grade: { ...offer().grade, wines: [wine({ worth: worthOf(amount) })] }, ...over });
+  function load(offers: OfferDto[], house: typeof HOUSE | { menus: never[]; coverage: typeof HOUSE.coverage; shelf: typeof HOUSE.shelf } = HOUSE) {
+    mockRead.current = {
+      data: { read_at: '2026-09-18T12:00:00Z', house, offers, ledger: { window_days: 540, since: '2025-03-12', paid_lines: 10, house_sightings: 2, market_sightings: 1, skipped_sightings: 0 } },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+  }
+  let lastSearch = '';
+  function Probe() {
+    lastSearch = useLocation().search;
+    return null;
+  }
+  function renderAt(url = '/promotions') {
+    return render(
+      <MemoryRouter initialEntries={[url]}>
+        <PromotionsNext />
+        <Probe />
+      </MemoryRouter>,
+    );
+  }
+  const cardIds = () => [...document.querySelectorAll('article[data-testid^="offer-card-"]')].map((c) => c.getAttribute('data-testid')!.replace('offer-card-', ''));
+  const book = () => [
+    single('hero', 500, { scope: scoped('other') }),
+    single('stocked', 300, { scope: scoped('stock'), provider_id: 'v2', provider_name: 'Winebow' }),
+    single('menu1', 200),
+    single('menu2', 20, { end_date: '2026-09-20' }),
+  ];
+
+  it('opens on "On my menu" with live counts on all three rungs', () => {
+    load(book());
+    renderAt();
+    expect(screen.getByRole('radio', { name: /On my menu/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('pn-rung-count-menu')).toHaveTextContent('2');
+    expect(screen.getByTestId('pn-rung-count-stock')).toHaveTextContent('3');
+    expect(screen.getByTestId('pn-rung-count-all')).toHaveTextContent('4');
+    expect(cardIds()).toEqual(['menu1', 'menu2']);
+  });
+
+  it('keeps box sizes fixed: the menu offer stays LARGE when the hero is out of the rung', () => {
+    load(book());
+    renderAt();
+    expect(screen.getByTestId('offer-card-menu1')).toHaveAttribute('data-tier', 'large');
+    expect(document.querySelector('.pn-row-hero')).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: /All offers/ }));
+    expect(screen.getByTestId('offer-card-hero')).toHaveAttribute('data-tier', 'hero');
+    expect(screen.getByTestId('offer-card-menu1')).toHaveAttribute('data-tier', 'large');
+  });
+
+  it('keeps the rung in the URL, and a reload of that URL shows the same rung', () => {
+    load(book());
+    const { unmount } = renderAt();
+    fireEvent.click(screen.getByRole('radio', { name: /Everything I stock/ }));
+    expect(lastSearch).toBe('?scope=stock');
+    expect(cardIds()).toEqual(['stocked', 'menu1', 'menu2']);
+    unmount();
+    renderAt(`/promotions${lastSearch}`);
+    expect(screen.getByRole('radio', { name: /Everything I stock/ })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('a vendor chip narrows, lands in the URL, and the counts follow', () => {
+    load(book());
+    renderAt('/promotions?scope=all');
+    fireEvent.click(screen.getByRole('button', { name: /^Winebow/ }));
+    expect(lastSearch).toContain('vendor=v2');
+    expect(cardIds()).toEqual(['stocked']);
+    expect(screen.getByTestId('pn-rung-count-all')).toHaveTextContent('1');
+    expect(screen.getByTestId('pn-rung-count-menu')).toHaveTextContent('0');
+  });
+
+  it('names the menu line an offer matched, never a bare claim', () => {
+    load(book());
+    renderAt();
+    expect(within(screen.getByTestId('offer-card-menu1')).getByText('names a wine on your menu: Sours Rosé (glass)')).toBeInTheDocument();
+    expect(screen.getByTestId('pn-coverage')).toHaveTextContent('6 of 8 drink lines linked to a wine · 2 not linked');
+  });
+
+  it('no menu read yet: opens on everything stocked, under the banner', () => {
+    load(book().map((o) => ({ ...o, scope: o.scope!.scope === 'menu' ? scoped('stock') : o.scope })), { ...HOUSE, menus: [] });
+    renderAt();
+    expect(screen.getByTestId('pn-no-menu')).toHaveTextContent('No menu read yet — showing everything you stock');
+    expect(screen.getByRole('radio', { name: /Everything I stock/ })).toHaveAttribute('aria-checked', 'true');
+    expect(cardIds()).toEqual(['stocked', 'menu1', 'menu2']);
+  });
+
+  it('a menu with nothing on offer says so, one tap from everything stocked', () => {
+    load([single('stocked', 300, { scope: scoped('stock') })]);
+    renderAt();
+    expect(screen.getByTestId('pn-scope-empty')).toHaveTextContent('Nothing on your menu is on offer right now.');
+    fireEvent.click(screen.getByRole('button', { name: /See everything you stock/ }));
+    expect(cardIds()).toEqual(['stocked']);
+  });
+
+  it('scopes the "cannot be graded" fold too (F11)', () => {
+    const np = (id: string, scope: 'menu' | 'other') =>
+      offer({
+        id,
+        discount_value: {},
+        scope: scoped(scope),
+        grade: { status: 'not_a_price', wines: [], qualification: null, tally: { beats: 0, matches: 0, above: 0, ungraded: 0 }, vendor: { lastPurchaseDate: null, paidLines: 0 } },
+      });
+    load([single('menu1', 200), np('np-menu', 'menu'), np('np-other', 'other')]);
+    renderAt();
+    expect(screen.getByText(/1 offer\s+in “On my menu” name no wine/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: /All offers/ }));
+    expect(screen.getByText(/2 offers\s+on the table name no wine/)).toBeInTheDocument();
+  });
+
+  it('running low and ends soon are chips over the gateway’s tags', () => {
+    const low = single('low', 90, {
+      scope: scoped('menu', { runningLow: [{ wine: 'Ch. de Sours Rosé 2024', stockLive: 1, thresholdMin: 6, countedAt: '2026-09-20T10:00:00Z' }] }),
+    });
+    load([...book(), low]);
+    renderAt();
+    expect(within(screen.getByTestId('offer-card-low')).getByText(/running low · 1 of 6 par, counted 2026-09-20/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Running low/ }));
+    expect(cardIds()).toEqual(['low']);
+    expect(screen.getByText(/5 of the 18 wines you stock have a count/)).toBeInTheDocument();
+  });
+
+  it('a bundle on the menu by one bottle is tagged "n of m on your menu"', () => {
+    const b = offer({
+      id: 'b1',
+      promo_type: 'bundle',
+      applicable_wines: ['A', 'B', 'C'],
+      grade: { ...offer().grade, wines: ['A', 'B', 'C'].map((w) => wine({ wine: w, matchedAs: w, worth: worthOf(10) })) },
+      bundle: { amount: 30, currency: 'USD', linesCounted: 3 },
+      scope: scoped('menu', { wines: 3, winesOnMenu: 1 }),
+    });
+    load([b]);
+    renderAt();
+    expect(within(screen.getByTestId('offer-card-b1')).getByText('1 of 3 on your menu')).toBeInTheDocument();
+  });
+
+  it('a tray shows its first five bottles and "n more"; the sheet shows them all (founder 2026-09-26)', () => {
+    const names = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    const b = offer({
+      id: 'b7',
+      promo_type: 'bundle',
+      applicable_wines: names,
+      grade: { ...offer().grade, wines: names.map((w) => wine({ wine: w, matchedAs: w, worth: worthOf(10) })) },
+      bundle: { amount: 70, currency: 'USD', linesCounted: 7 },
+    });
+    load([b]);
+    renderAt();
+    const tray = screen.getByTestId('offer-card-b7');
+    const table = within(tray).getByRole('table');
+    expect(within(table).getAllByRole('rowheader').map((h) => h.textContent)).toEqual(['A', 'B', 'C', 'D', 'E']);
+    expect(within(table).getByText('2 more — see details')).toBeInTheDocument();
+    fireEvent.click(within(tray).getByRole('button', { name: /^Details/ }));
+    for (const n of names) expect(screen.getAllByText(n).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('G').length).toBeGreaterThan(0);
+  });
+
+  it('at a phone width the facets are staged until "Show N offers" (the apply step)', () => {
+    const mm = window.matchMedia;
+    window.matchMedia = ((q: string) => ({
+      matches: true,
+      media: q,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      load(book());
+      renderAt('/promotions?scope=all');
+      expect(screen.getByRole('radio', { name: /^All/ })).toHaveAttribute('aria-checked', 'true');
+      fireEvent.click(screen.getByRole('button', { name: /^Filters/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^Winebow/ }));
+      // staged: nothing has moved yet
+      expect(cardIds()).toEqual(['hero', 'stocked', 'menu1', 'menu2']);
+      fireEvent.click(screen.getByRole('button', { name: 'Show 1 offer' }));
+      expect(cardIds()).toEqual(['stocked']);
+      expect(screen.getByRole('button', { name: 'Filters · 1' })).toBeInTheDocument();
+    } finally {
+      window.matchMedia = mm;
+    }
   });
 });

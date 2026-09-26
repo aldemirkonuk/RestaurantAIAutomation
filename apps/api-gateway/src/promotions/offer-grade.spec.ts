@@ -361,8 +361,11 @@ describe("gradeOffer — the offer must qualify before it can size a box (ADR 01
     line({ ref: "price_history:else", providerId: "vendor-b", price: 380, quantity: 1, date: "2026-03-01" }),
     ...orders.map((o, i) => line({ ref: `price_history:o${i}`, providerId: "vendor-b", price: 380, ...o })),
   ];
-  const run = (minimum: { quantity: number | null; unit: string | null } | null, orders: Array<Partial<LedgerLine>>, wines = ["Kalecik Karası 2021"]) =>
-    gradeOffer(offer({ minimum, wines }), ledger(orders), [], WINDOW, AS_OF);
+  const run = (
+    minimum: { quantity: number | null; unit: string | null; mixed?: boolean } | null,
+    orders: Array<Partial<LedgerLine>>,
+    wines = ["Kalecik Karası 2021"],
+  ) => gradeOffer(offer({ minimum, wines }), ledger(orders), [], WINDOW, AS_OF);
 
   it("states no qualification, and keeps the worth, when the offer names no minimum", () => {
     const g = run(null, [{ quantity: 6, date: "2026-02-01" }]);
@@ -408,15 +411,84 @@ describe("gradeOffer — the offer must qualify before it can size a box (ADR 01
     expect(g.qualification?.largestOrder).toBe(6);
   });
 
-  it("sums the offer's NAMED wines inside one order, but no wine the offer does not name", () => {
+  it("MIXED (the offer says so): sums the offer's NAMED wines inside one order, but no wine the offer does not name", () => {
     const wines = ["Kalecik Karası 2021", "Öküzgözü 2022"];
     const orders = [
       { quantity: 6, date: "2026-02-01" },
       { ref: "price_history:o1", productName: "Öküzgözü 2022", quantity: 6, date: "2026-02-01" },
       { ref: "price_history:o2", productName: "Narince 2023", quantity: 50, date: "2026-02-01" },
     ];
-    expect(run({ quantity: 12, unit: "bottle" }, orders, wines).qualification?.state).toBe("qualifies");
-    expect(run({ quantity: 13, unit: "bottle" }, orders, wines).qualification?.state).toBe("not_shown");
+    const mixed = run({ quantity: 12, unit: "bottle", mixed: true }, orders, wines).qualification;
+    expect(mixed?.state).toBe("qualifies");
+    expect(mixed?.basis).toBe("mixed");
+    expect(mixed?.perWine).toBeNull();
+    expect(run({ quantity: 13, unit: "bottle", mixed: true }, orders, wines).qualification?.state).toBe("not_shown");
+  });
+});
+
+describe("gradeOffer — a minimum counts PER WINE unless the offer says mixed (OD-154, founder 2026-09-26)", () => {
+  const ledger = (orders: Array<Partial<LedgerLine>>): LedgerLine[] => [
+    line({ ref: "price_history:base-k", price: 420, quantity: 1, date: "2026-03-14" }),
+    line({ ref: "price_history:else-k", providerId: "vendor-b", price: 380, quantity: 1, date: "2026-03-01" }),
+    line({ ref: "price_history:base-o", productName: "Öküzgözü 2022", price: 500, quantity: 1, date: "2026-03-14" }),
+    line({ ref: "price_history:else-o", productName: "Öküzgözü 2022", providerId: "vendor-b", price: 450, quantity: 1, date: "2026-03-01" }),
+    ...orders.map((o, i) => line({ ref: `price_history:o${i}`, providerId: "vendor-b", price: 380, ...o })),
+  ];
+  const wines = ["Kalecik Karası 2021", "Öküzgözü 2022"];
+  const run = (minimum: { quantity: number; unit: string; mixed?: boolean }, orders: Array<Partial<LedgerLine>>) =>
+    gradeOffer(offer({ minimum, wines }), ledger(orders), [], WINDOW, AS_OF);
+
+  it("six and six of two wines in one order do NOT make a per-wine twelve", () => {
+    const orders = [
+      { quantity: 6, date: "2026-02-01" },
+      { ref: "price_history:o1", productName: "Öküzgözü 2022", quantity: 6, date: "2026-02-01" },
+    ];
+    const g = run({ quantity: 12, unit: "bottle" }, orders);
+    expect(g.qualification?.basis).toBe("per_wine");
+    expect(g.qualification?.state).toBe("not_shown");
+    expect(g.qualification?.perWine?.map((w) => [w.wine, w.largestOrder, w.qualifies])).toEqual([
+      ["Kalecik Karası 2021", 6, false],
+      ["Öküzgözü 2022", 6, false],
+    ]);
+    expect(g.qualification?.reason).toContain("of each wine");
+    expect(g.wines.every((w) => w.worth === null)).toBe(true);
+  });
+
+  it("the same orders qualify when the offer says the case may be mixed", () => {
+    const orders = [
+      { quantity: 6, date: "2026-02-01" },
+      { ref: "price_history:o1", productName: "Öküzgözü 2022", quantity: 6, date: "2026-02-01" },
+    ];
+    const g = run({ quantity: 12, unit: "bottle", mixed: true }, orders);
+    expect(g.qualification?.state).toBe("qualifies");
+    expect(g.wines.every((w) => w.worth !== null)).toBe(true);
+  });
+
+  it("a wine that reached the minimum on its own keeps its worth; the one that did not is withheld with its own sentence", () => {
+    const orders = [{ quantity: 12, date: "2026-02-01" }, { ref: "price_history:o1", productName: "Öküzgözü 2022", quantity: 2, date: "2026-02-01" }];
+    const g = run({ quantity: 12, unit: "bottle" }, orders);
+    expect(g.qualification?.state).toBe("not_shown");
+    expect(g.qualification?.reason).toContain("1 of its 2 wines");
+    const [k, o] = g.wines;
+    expect(k.worth).not.toBeNull();
+    expect(k.worthWithheld).toBeNull();
+    expect(o.worth).toBeNull();
+    expect(o.worthWithheld).toContain("of this wine in one order");
+    expect(o.worthWithheld).toContain("on record is 2");
+  });
+
+  it("every wine reaching it on its own qualifies the offer, per wine", () => {
+    const orders = [{ quantity: 12, date: "2026-02-01" }, { ref: "price_history:o1", productName: "Öküzgözü 2022", quantity: 12, date: "2026-02-05" }];
+    const g = run({ quantity: 12, unit: "bottle" }, orders);
+    expect(g.qualification?.state).toBe("qualifies");
+    expect(g.qualification?.reason).toBeNull();
+  });
+
+  it("a minimum with no unit is unit_unknown on either basis — the per-wine rule claims no order size", () => {
+    const g = gradeOffer(offer({ minimum: { quantity: 12, unit: null }, wines }), ledger([]), [], WINDOW, AS_OF);
+    expect(g.qualification?.state).toBe("unit_unknown");
+    expect(g.qualification?.basis).toBe("per_wine");
+    expect(g.qualification?.perWine).toBeNull();
   });
 
   it("never converts units: a big CASE order does not satisfy a minimum stated in bottles", () => {

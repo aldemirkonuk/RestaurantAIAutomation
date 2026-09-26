@@ -15,7 +15,17 @@
  * rolled-up total earns. Its figure is that total (an estimate, labelled so);
  * when the total is withheld (a bottle with no worth, or a minimum whose unit
  * is unknown — ADR 0165) the tray says "worth withheld", names why, and is
- * compact, never sized by its best bottle.
+ * compact, never sized by its best bottle. The tray shows its FIRST FIVE
+ * bottles and "n more" (founder, 2026-09-26, round 6); the sheet shows them
+ * all.
+ *
+ * WHERE IT SITS FOR THE HOUSE (founder item 36). A card whose wine is on a
+ * current menu line says so — "names a wine on your menu: <that line>", the
+ * menu line's own words, so the owner can check the match (the extractor
+ * matches a name inside the mail; research-filters F3). A tray says how many
+ * of its bottles are: "n of m on your menu". A wine whose COUNTED stock is
+ * below par says "running low", with the count's date — never for stock
+ * nobody counted.
  *
  * The number drawn on a single offer is ALWAYS the verdict against the lowest
  * OTHER vendor (`grade.wines[].deltaPct`/`verdict`), never the vendor's own
@@ -45,6 +55,36 @@ import {
   type OfferTier,
   type WineGrade,
 } from './promotions-format';
+import { menuTagOf } from './promotions-scope';
+
+/** Founder, 2026-09-26, round 6: a tray shows its first five bottles, then "n more"; the sheet shows all. */
+export const TRAY_BOTTLES_SHOWN = 5;
+
+/** The house-first tags: on the menu (named), n of m on the menu (a tray), running low (counted). */
+function HouseTags({ offer, bundle }: { offer: OfferDto; bundle: boolean }) {
+  const scope = offer.scope;
+  if (!scope) return null;
+  const menuTag = menuTagOf(offer);
+  const low = scope.runningLow[0] ?? null;
+  if (!menuTag && !low) return null;
+  return (
+    <div className="pn-tags">
+      {bundle && scope.winesOnMenu > 0 ? (
+        <span className="pn-tag pn-tag--menu" title={scope.menuMatches.map((m) => m.menuLine).join(' · ')}>
+          {scope.winesOnMenu} of {scope.wines} on your menu
+        </span>
+      ) : menuTag ? (
+        <span className="pn-tag pn-tag--menu">names a wine on your menu: {menuTag}</span>
+      ) : null}
+      {low && (
+        <span className="pn-tag pn-tag--low">
+          running low · {low.stockLive} of {low.thresholdMin} par, counted {low.countedAt.slice(0, 10)}
+          {scope.runningLow.length > 1 ? ` · +${scope.runningLow.length - 1} more` : ''}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function CodeChip({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
@@ -100,13 +140,14 @@ function bottleFigure(w: WineGrade): string {
   return parts.length > 0 ? parts.join(' · ') : verdictWord(w.verdict);
 }
 
-/** The tray's small table — every bottle, in the order the mail named them. */
+/** The tray's small table — the first five bottles, in the order the mail named them. */
 function BottleTable({ wines }: { wines: WineGrade[] }) {
+  const more = wines.length - TRAY_BOTTLES_SHOWN;
   return (
     <table className="pn-bottles">
       <caption className="pn-sr">Bottles in this bundle, each against the lowest other vendor</caption>
       <tbody>
-        {wines.map((w, i) => {
+        {wines.slice(0, TRAY_BOTTLES_SHOWN).map((w, i) => {
           const tone = verdictTone(w.verdict);
           return (
             <tr key={`${w.wine}-${i}`}>
@@ -115,6 +156,13 @@ function BottleTable({ wines }: { wines: WineGrade[] }) {
             </tr>
           );
         })}
+        {more > 0 && (
+          <tr className="pn-bottles__more">
+            <td colSpan={2}>
+              {more} more — see details
+            </td>
+          </tr>
+        )}
       </tbody>
     </table>
   );
@@ -261,6 +309,7 @@ export function OfferCard({ offer, tier, today, onOpenDetail, onDismiss, onResto
     lead = (
       <>
         {top}
+        <HouseTags offer={offer} bundle />
         <span className="pn-chip pn-chip--bundle">
           bundle · {n} bottle{n === 1 ? '' : 's'}
         </span>
@@ -321,6 +370,7 @@ export function OfferCard({ offer, tier, today, onOpenDetail, onDismiss, onResto
           {top}
           {figure}
           <div className="pn-why">{why}</div>
+          <HouseTags offer={offer} bundle={false} />
         </>
       );
       rest = foot;
@@ -328,6 +378,7 @@ export function OfferCard({ offer, tier, today, onOpenDetail, onDismiss, onResto
       lead = (
         <>
           {top}
+          <HouseTags offer={offer} bundle={false} />
           {figure}
           {headline && headline.deltaPct != null && headline.bestElsewhere && (
             <div className="pn-against">

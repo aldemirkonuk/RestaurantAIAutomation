@@ -79,10 +79,16 @@ export interface WineGrade {
 
 export type QualificationState = 'qualifies' | 'not_shown' | 'unit_unknown';
 
+/** OD-154 (founder 2026-09-26): a minimum counts per wine unless the offer says the case may be mixed. */
+export type QualificationBasis = 'per_wine' | 'mixed';
+
 export interface OfferQualification {
   state: QualificationState;
-  minimum: { quantity: number | null; unit: string | null };
+  minimum: { quantity: number | null; unit: string | null; mixed?: boolean };
+  /** Optional on the wire only for a read made before OD-154; absent reads as per wine. */
+  basis?: QualificationBasis;
   largestOrder: number | null;
+  perWine?: Array<{ wine: string; largestOrder: number; qualifies: boolean }> | null;
   reason: string | null;
 }
 
@@ -103,6 +109,27 @@ export interface BundleWorth {
 
 export type OfferState = 'open' | 'undated' | 'passed' | 'dismissed';
 
+/* ── the house-first ladder (founder item 36), mirrored from `offer-scope.ts` ── */
+
+export type OfferScope = 'menu' | 'stock' | 'other';
+
+export type CoarseCategory = 'wine' | 'beer' | 'spirits' | 'soft_drinks' | 'other_drinks' | 'not_classified';
+
+export interface OfferScopeTag {
+  scope: OfferScope;
+  wines: number;
+  winesOnMenu: number;
+  menuMatches: Array<{ wine: string; menuLineId: string; menuLine: string }>;
+  categories: CoarseCategory[];
+  runningLow: Array<{ wine: string; stockLive: number; thresholdMin: number; countedAt: string }>;
+}
+
+export interface HouseScopeDto {
+  menus: Array<{ menu_id: string; name: string | null; read_at: string | null }>;
+  coverage: { lines: number; drinkLines: number; linked: number; notLinked: number; otherLines: number };
+  shelf: { rows: number; active: number; counted: number };
+}
+
 export interface OfferDto {
   id: string;
   provider_id: string;
@@ -122,6 +149,8 @@ export interface OfferDto {
   state: OfferState;
   grade: OfferGrade;
   bundle: BundleWorth | null;
+  /** Absent only on a read from a gateway older than the ladder; the page then shows every offer, unscoped. */
+  scope?: OfferScopeTag;
 }
 
 export interface LedgerSummaryDto {
@@ -131,12 +160,19 @@ export interface LedgerSummaryDto {
   house_sightings: number;
   market_sightings: number;
   skipped_sightings: number;
+  /** The two capped ledger reads; `reached` means older lines in the window may not have been read. */
+  caps?: {
+    paid_lines: { cap: number; reached: boolean };
+    sightings: { cap: number; reached: boolean };
+  };
 }
 
 export interface PromotionsReadDto {
   read_at: string;
   offers: OfferDto[];
   ledger: LedgerSummaryDto;
+  /** What the ladder stood on; absent only from a gateway older than it. */
+  house?: HouseScopeDto;
 }
 
 /* ── failure, three sentences (401 / 403 / other) — never a blank list ──── */

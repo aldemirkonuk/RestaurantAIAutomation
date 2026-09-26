@@ -654,6 +654,66 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
   (`PromotionsNext.tsx`, the `scoped` list and the "scope bar" slot above the Offers
   section). Still open from ADR 0165: items 2 (adaptive recency) and 3 (per-wine versus
   mixed minimums), not asked this round.]**
+  **[ANSWERED and BUILT 2026-09-26 — house-first filters and the tray's length. Founder,
+  2026-09-25/26, rounds 5-6 (`AskUserQuestion`, session 6c6d8b93; recorded in memory
+  `founder-answers-2026-09-25-web-rebuild.md` items 35, 36 and 43 — the question-round
+  wording is not stored in the repo, so the text quoted here is that memory's, the only
+  record). Research behind it: session scratchpad `research-filters.md`, whose ADVERSARIAL
+  pass overturned its own first synthesis in six places (F1 menu versions, F2/F12 silent
+  caps, F3 generic names, F4 vintages, F6 uncounted stock, F9 coverage, F11 the fold); where
+  the two disagree, the adversary's corrected recommendation was built. Built on
+  `feat/promotions-mudavym` (PR #474, lane W4-promos-filters); CLAIMS
+  `PROMOTIONS-HOUSE-FIRST-LADDER`, `PROMOTIONS-RUNNING-LOW-COUNTED-ONLY`,
+  `PROMOTIONS-NO-SILENT-CAPS`, `PROMOTIONS-TRAY-FIRST-FIVE`.**
+  1. **Opening scope — chosen: "/promotions opens on On my menu (CURRENT active menu(s)
+     only, paged reads; tag shows the matched menu line) → Everything I stock → All
+     offers"** (he added the third rung). Rejected: the adversary's "two rungs plus the
+     existing fold, not three computed rungs"; opening on everything. Built as: the gateway
+     tags each offer with the narrowest rung (`offer-scope.ts` `scopeOffer`) — "menu" when
+     ANY shelf row whose folded `wine_name` equals the offer's wine has a `master_wine_id`
+     on a live line of an ACTIVE menu (drafts and archived versions excluded; several
+     active menus unioned; every line paged by `MenusService.readCurrentMenus`); "stock"
+     when the wine is on an active, undeleted shelf row; else "other". The card says only
+     "names a wine on your menu: <that menu line>", never more (F3).
+  2. **Facets — chosen: vendor, ends soon, search, "coarse product categories" (his words:
+     "fruit … drinks … soft drinks … whiskeys, maybe not that deep") and "Running low"
+     ("also works").** Rejected: the adversary's "Menu section" facet (the menu's own
+     serving styles, e.g. "By the glass") — his "not that deep" and the brief's "NOT
+     serving styles"; region/grape (the research's own "only past about 30 offers").
+     Categories come from `master_wine_library.beverage_kind` (the database's own
+     classifier, 20260817060000) folded to Wine / Beer / Spirits / Soft drinks / Other
+     drinks / Not classified. **Not built, and why:** a whiskey chip (`beverage_kind` has
+     no whiskey value — cellar-registers `NAME_ONLY_REGISTERS` — and "not that deep");
+     fruit & produce (the extractor only ever names shelf rows, so no offer could carry
+     it). Running low is built only over COUNTED stock: every active shelf row of that
+     wine has `last_counted_at` (stamped only by `record_stock_count`,
+     20260902190000:305-312) and is below par by `isBelowPar`; an uncounted row makes the
+     wine "not known", never low — the 0-vs-3 default (F6) cannot fire it.
+  3. **Box sizes across scopes — chosen: FIXED (rank once over everything; a scope only
+     hides).** Rejected: "re-rank inside each scope" (the research's fork A(b): the hero
+     changes with every tap and a small offer becomes a hero because the big ones were
+     hidden). Built as: `rankOffers(offers)` over every offer, then `visible(...)` filters
+     the ranked list; the "cannot be graded" fold is scoped the same way (F11); the
+     put-away fold is not.
+  4. **No menu read — chosen: open on Everything I stock with the banner "No menu read yet —
+     showing everything you stock".** Rejected: "open on Menu anyway, with an empty state"
+     (fork D(a)). A menu that IS read but has nothing on offer keeps its own empty state
+     ("Nothing on your menu is on offer right now" → one tap to everything stocked).
+  5. **Bundles — chosen: shown if any bottle is on the menu, tagged "n of m on your
+     menu".** Rejected: "only if all bottles are" (fork B(b)). The bundle's worth stays
+     all-or-nothing (ADR 0165), so nothing is overstated.
+  6. **State and phone width — the URL holds it** (`?scope=`, `?vendor=`, `?cat=`,
+     `?soon=1`, `?low=1`, `?q=`); at ≤ 780px the facets fold behind "Filters" and apply
+     only on **"Show N offers"** (the apply step); verified at 390px in the Browser pane
+     (no horizontal scroll, 390 = 390).
+  7. **Tray length — chosen: "first 5 bottles + 'n more' (sheet shows all)"** (item 43).
+     Rejected: every bottle on the card (as built in round 5). `TRAY_BOTTLES_SHOWN = 5`
+     in `OfferCard.tsx`; the offer sheet still lists every named bottle.
+  **Still open, not decided here:** `/vendors`' own ladder (lane W4-vendors-filters, on
+  PR #481); the grader's `bridgeKeyFor` still takes the first shelf row of a name when it
+  grades (F4 is fixed for the SCOPE, not for the price comparison); the extractor's
+  generic-name false positives and its 500-row unordered shelf read (candidate ODs for
+  lane L1).]**
 - **Two of his notes are deliberately not built now:** ~~the non-alcoholic heat map (110,
   Owed #9)~~ **[built 2026-09-22, Q9]** and A's register itself under live data (113).
 - **Open items — the founder's call, not decided here (CLAUDE.md §0.1):**
@@ -734,3 +794,4 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 | 2026-09-21 | Aldemir (founder), picks relayed verbatim in the shell lane's brief (this session did not re-read the dictation transcript) + Claude (branch `feat/shell-counter`, uncommitted at this row) | Picked — the shell is sketch 119 direction D, **the counter**, with E's day line as a PAGE element on the dashboard and the receiving page, not chrome. Forks answered: (3) a SEALED act may be completed from the counter's sheet on ANY page, with the same HoldToApprove ceremony and server seal as the owning page, nothing weaker; (4) the counter holds the person's own acts (Seal, Verify, Reply, Decide) plus "Mudavym proposes" (`ai_proposed_actions`), applied only by the seal; (5/6) the Judge/market row appears only once its register exists — no 501 placeholder row or route; (10) width is "Open first, then remember": open on a person's first visits at normal widths, tucked below ~1280 px and on `/reports` and `/inventory` to a ~52 px strip that still shows each verb with its count, then each person's choice per page remembered (per-device localStorage keyed by the person in this first version — the server preference route takes its user id from the URL, see the build note); (9) the phone is D's four doors, Counter · Rooms · Search · Ask; (11) the counter's session log, "the house said", clears on reload. Standing: ADR 0149 row 5 (shell rebuilt as house chrome), row 33 / ADR 0145 (WineAgentFab removed; `/ask` and ⌘⇧K are the doors), row 8 (support@mudavym.com), internal tools never in the rooms. Built behind `mudavym_design_shell` (OFF; migration 20260921114300; browser override `mudavym.design.shell`); the day line as a page element is NOT built on this branch. Claims: SHELL-COUNTER-NEVER-PRINTS-A-FAILED-READ-AS-ZERO, SHELL-GATE-IS-OFF-BY-DEFAULT-AND-THREE-LAYERED, SHELL-PROPOSAL-IS-APPLIED-ONLY-BY-THE-SEAL |
 | 2026-09-21 | Session (Sonnet 5; second pass on the same branch, `feat/shell-counter`, uncommitted at this row) — the rest of ADR 0149 row 5's house chrome, and E's day line | Built — ONE house toast (`AppToaster.tsx` + `ToastContext.tsx`'s `HouseToastProvider` [corrected at the lane's last call, 2026-09-21: now the hook `useHouseToastApi` inside ONE `ToastProvider` whose tree shape does not change with the gate — the two-component swap remounted the whole app when the flag answered; and the undo toast added, which this row had not built]: every `useToast()` call forwards to `sonner` under the gate, landing on the same `<Toaster/>` its ~30 direct callers use; legacy unchanged); the error boundary's screen (`HouseErrorScreen.tsx`, via a new render-function `fallback` on `ErrorBoundary` — one class, not two); the page loader and skeletons (`HousePageLoader.tsx`, a 400 ms/12 s ladder replacing the App-level Suspense fallback under the gate); the offline banner (`AppOfflineBanner.tsx`, sketch 103's queued-is-never-confirmed rule at the aggregate level — the full per-record four-rung ladder still needs a richer `useSyncManager`, not built); the in-app 404 (`ShellCatchAll.tsx` + `HouseNotFound.tsx`, NESTED under `DashboardLayout`'s route — fixes the "still deciding" race the first pass's build note flagged). `WineAgentFab` deleted outright (not merely unmounted), regardless of the gate, per row 33 — a static guard holds it deleted. E's day line built at REDUCED scope, stated: `GET /house/day` (`house-day.service.ts`) answers 3 of the sketch's 6 registers (deliveries that arrived, today's calendar, today's reminders — one shared read); `deliveryExpected` (an uncosted new capture surface, the sketch's own words), `shifts` (real schema, needs a timezone-aware week pick and a role-based service choice — a bounded follow-up) and `market` (the same no-placeholder rule as the counter's Judge row) are not built, so the head counts "N of 3", never a bigger denominator. Drawn as a wrapping tick-chip row, not the sketch's pixel-timed band with DOM-measured no-overlap labels (`DayLine.tsx`; `dashboard.md` and `receiving.md` carry the full reasoning). Claims: SHELL-WINE-AGENT-FAB-IS-DELETED-NOT-GATED, SHELL-DAY-LINE-NEVER-COUNTS-A-REGISTER-THIS-BUILD-DOES-NOT-READ, SHELL-TOAST-IS-ONE-SYSTEM-UNDER-THE-GATE, SHELL-404-IS-NESTED-UNDER-THE-LAYOUT-ROUTE, SHELL-OFFLINE-BANNER-NEVER-SAYS-WILL-SYNC-WHEN-QUEUED |
 | 2026-09-21 | Aldemir (founder), round 6k answers relayed verbatim in the shell lane's round-2 brief (this session did not re-read the question-round transcript) + Claude (Opus 5; branch `feat/shell-counter`, round 2, uncommitted at this row) | Answered and built — two forks this record's 2026-09-21 rows had left open. (a) On /ask, **"Never without the seal"**: the Ask panel's `ProposalCard` no longer applies a proposal with a click on the unsealed `POST /ask-ai/actions/:id/confirm`. It applies only through `HoldToApprove` bound to a server seal minted when the hold begins, after any edits: `POST /ask-ai/actions/:id/seal-challenge` now takes the operator's edited `payload`, checks it through the same allowlist and grounding an apply runs, and binds it into the seal (`args.edit`); `sealed-confirm` carries the same payload back and redeems before anything is written, so an edit made after the hold began, an untouched seal spent on an edit, or an edited seal spent untouched are all refused as "changed after the seal was issued" (the card also refuses the first case locally, before any request). The unsealed route answers **410** with a sentence naming both sealed routes and calls nothing; the service's public `confirm` is now the private `applyAfterSeal`, reached only from `confirmSealed`. Callers swept: the web client's `confirmAction` is deleted, `CounterActSheet` already used the seal (its "from the counter" copy scoping is removed), no other caller exists in `apps/`, `services/` or `scripts/`. Held by `scripts/check_ask_ai_is_gated.py` section 4 (rewritten; 10 guard mutations killed, one of which, a cast-spelled `(this.askAi as any).confirm(`, first survived and the guard was hardened for it) and the rewritten CLAIMS row SHELL-PROPOSAL-IS-APPLIED-ONLY-BY-THE-SEAL (13 of 13 mutations killed). (b) On the day line, **"Count what's built"**: the head stays "N of 3", the three registers this build reads, with no placeholder row for deliveries expected, shifts or the market; `house-day.spec.ts` and `DayLine.test.tsx` now pin it (a fourth register and a six denominator each fail a test). Merge note: `'shell'` joins the held-back list of `useMudavymDesign.test.tsx` beside settings, cellar, recommendations and receiving, never `LIVE_PAGES`; the shell stays flag-gated, default off. |
+| 2026-09-26 | Aldemir (founder), rounds 5-6 items 36 and 43, as recorded in memory `founder-answers-2026-09-25-web-rebuild.md` (the question-round wording is not in the repo) + Claude (Opus 5.5; lane W4-promos-filters, PR #474) | Answered and built — `/promotions`' house-first ladder (On my menu → Everything I stock → All offers, live counts, box sizes fixed), its facets (vendor, ends soon, search, coarse category, running low over counted stock only), the no-menu banner, bundles tagged n of m, URL state, the 390px apply step, and the tray's first five bottles. See §113's round-6 bracket. |

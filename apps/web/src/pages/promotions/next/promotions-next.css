@@ -77,6 +77,55 @@
   clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
+/* the tray's "n more" row: five bottles on the card, all of them in the sheet */
+.pn-bottles__more td { text-align: left; font-family: 'DM Sans', system-ui, sans-serif; font-size: 11.5px; color: var(--ink-3, #7c7365); font-style: italic; white-space: normal; }
+
+/* ── the house-first ladder (founder item 36) ─────────────────────────── */
+
+.pn-scope { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.pn-rungs {
+  display: inline-flex; align-self: flex-start; border: 1px solid var(--paper-2, #eae4d8); border-radius: 10px;
+  padding: 3px; gap: 2px; background: var(--paper-1, #f3efe6); max-width: 100%;
+}
+.pn-rung {
+  font: inherit; font-size: 13px; border: 0; background: transparent; color: var(--ink-2, #4f473c);
+  border-radius: 7px; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px;
+  min-height: 32px; white-space: nowrap;
+}
+.pn-rung[aria-checked="true"] { background: var(--paper-0, #faf7f1); color: var(--ink-1, #211c16); box-shadow: 0 0 0 1px var(--seal-ring, rgba(26,94,107,.32)); }
+.pn-rung__n { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--ink-3, #7c7365); font-variant-numeric: tabular-nums; }
+.pn-facets { display: flex; flex-direction: column; gap: 8px; }
+.pn-search {
+  font: inherit; font-size: 13px; border: 1px solid var(--paper-2, #eae4d8); border-radius: 8px; padding: 6px 10px;
+  background: var(--paper-0, #faf7f1); color: var(--ink-1, #211c16); max-width: 360px; width: 100%;
+}
+.pn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pn-fchip {
+  font: inherit; font-size: 12px; border: 1px solid var(--paper-2, #eae4d8); border-radius: 999px; padding: 4px 10px;
+  background: transparent; color: var(--ink-2, #4f473c); cursor: pointer; display: inline-flex; gap: 5px; align-items: baseline;
+  min-height: 28px;
+}
+.pn-fchip[aria-pressed="true"] { border-color: var(--seal, #1a5e6b); background: var(--seal-tint, rgba(26,94,107,.1)); color: var(--seal-deep, #14515c); }
+.pn-fchip__n { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10.5px; color: var(--ink-3, #7c7365); }
+.pn-facets__note { margin: 0; font-size: 11.5px; color: var(--ink-3, #7c7365); line-height: 1.45; }
+.pn-clear { align-self: flex-start; padding-left: 0; }
+.pn-filters-toggle { align-self: flex-start; }
+.pn-filters-panel { border: 1px solid var(--paper-2, #eae4d8); border-radius: 10px; padding: 12px; background: var(--paper-1, #f3efe6); }
+.pn-filters-panel__foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; }
+.pn-banner {
+  margin: 12px 0 0; padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(217,161,91,.5);
+  font-size: 12.5px; color: var(--ink-2, #4f473c); background: var(--paper-1, #f3efe6);
+}
+.pn-banner a, .pn-coverage a { color: var(--seal-deep, #14515c); font-weight: 500; }
+.pn-coverage { margin: 10px 0 0; font-size: 12px; color: var(--ink-3, #7c7365); line-height: 1.45; }
+.pn-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.pn-tag {
+  font-size: 11px; border-radius: 4px; padding: 1px 6px; border: 1px solid var(--paper-2, #eae4d8);
+  color: var(--ink-2, #4f473c); overflow-wrap: anywhere;
+}
+.pn-tag--menu { border-color: var(--seal-ring, rgba(26,94,107,.32)); color: var(--seal-deep, #14515c); }
+.pn-tag--low { border-color: rgba(217,161,91,.5); color: var(--warn); }
+
 /* ── the folds' grids (cannot be graded, put away) ─────────────────────── */
 
 .pn-docket { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
@@ -223,6 +272,10 @@
   .pn-card--large .pn-num { font-size: 32px; }
   .pn-card--hero .pn-num--none, .pn-card--large .pn-num--none { font-size: 22px; }
   .pn-title { font-size: 26px; }
+  /* 390px: the ladder spans the column; each rung keeps a 32px target. */
+  .pn-rungs { align-self: stretch; }
+  .pn-rung { flex: 1; justify-content: center; padding: 6px 8px; }
+  .pn-search { max-width: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

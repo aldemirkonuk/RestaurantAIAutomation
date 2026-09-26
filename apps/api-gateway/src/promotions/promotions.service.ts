@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { MenusService } from "../menus/menus.service";
 import {
   VENDOR_PRICE_OBSERVATIONS,
   scopePriceRegisterRead,
@@ -15,6 +16,16 @@ import {
   type OfferMinimum,
   type WineBridge,
 } from "./offer-grade";
+import {
+  indexMenu,
+  indexShelf,
+  menuCoverage,
+  scopeOffer,
+  type CurrentMenuLine,
+  type MenuCoverage,
+  type OfferScopeTag,
+  type ShelfRow,
+} from "./offer-scope";
 
 /**
  * The house's offers, graded against its own ledger — the read behind
@@ -90,6 +101,27 @@ export const LEDGER_WINDOW_DAYS = 540;
 const OFFER_COLUMNS =
   "id, provider_id, restaurant_id, name, promo_type, description, conditions, discount_value, applicable_wines, start_date, end_date, is_active, confidence, created_at, dismissed_at, dismissed_by, providers(id, name)";
 
+/**
+ * The shelf, as the grader's bridge AND the house-first scope read it
+ * (`offer-scope.ts`): the name the extractor matched, the library wine, whether
+ * the row is live, its classifier and whether its stock was ever counted.
+ */
+const SHELF_COLUMNS =
+  "id, wine_name, master_wine_id, is_active, deleted_at, stock_live, threshold_min, last_counted_at, master_wine_library(beverage_kind)";
+
+/**
+ * PostgREST stops at 1000 rows without saying so (menus.service.ts `readLines`
+ * says the same). The offers and the shelf are read in keyset pages of this
+ * size so a long list is read whole, never silently cut (research-filters
+ * F12). The two ledger reads keep their stated caps below instead, and the
+ * wire says when a cap was reached.
+ */
+const PAGE_ROWS = 1000;
+
+/** The ledger reads' caps — stated on the wire (`LedgerSummaryDto.caps`), never silent. */
+export const PAID_LINES_CAP = 2000;
+export const SIGHTINGS_CAP = 2000;
+
 const PAID_COLUMNS =
   "id, provider_id, master_wine_id, identity_id, price, unit, currency, quantity, effective_date, source, master_wine_library(name, vintage)";
 
@@ -123,6 +155,8 @@ export interface OfferDto {
    * `bundleWorth` doc for the grading rule and its open half).
    */
   bundle: BundleWorth | null;
+  /** Where the offer sits on the house-first ladder, and why (`offer-scope.ts`). */
+  scope: OfferScopeTag;
 }
 
 export interface LedgerSummaryDto {
@@ -133,12 +167,35 @@ export interface LedgerSummaryDto {
   market_sightings: number;
   /** Register rows that could not become a comparable line (no pack size or volume, or an outlier). */
   skipped_sightings: number;
+  /**
+   * The two ledger reads are capped (newest first). `reached` is true when a
+   * read came back AT its cap, so older lines may exist that were not read —
+   * the page says so rather than grade as if the window were whole.
+   */
+  caps: {
+    paid_lines: { cap: number; reached: boolean };
+    sightings: { cap: number; reached: boolean };
+  };
+}
+
+/**
+ * What the house-first ladder stood on for this read (founder item 36). The
+ * page prints it: which menu "On my menu" means, how much of it could be seen,
+ * and how much of the shelf was ever counted (the only rows "Running low" may
+ * speak for).
+ */
+export interface HouseScopeDto {
+  /** The house's CURRENT menus (status active). Empty = no menu read yet: the page opens on "Everything I stock". */
+  menus: Array<{ menu_id: string; name: string | null; read_at: string | null }>;
+  coverage: MenuCoverage;
+  shelf: { rows: number; active: number; counted: number };
 }
 
 export interface PromotionsReadDto {
   read_at: string;
   offers: OfferDto[];
   ledger: LedgerSummaryDto;
+  house: HouseScopeDto;
 }
 
 interface OfferRow {
@@ -159,6 +216,23 @@ interface OfferRow {
   dismissed_at: string | null;
   dismissed_by: string | null;
   providers: { id: string; name: string } | { id: string; name: string }[] | null;
+}
+
+/**
+ * The two counters are typed through a Record so no line here reads like a
+ * write to the projected stock column (`check_no_direct_stock_writes.sh`
+ * flags any `<column>:`); this module only READS them.
+ */
+type ShelfCounters = Record<"stock_live" | "threshold_min", number | string | null>;
+
+interface ShelfDbRow extends ShelfCounters {
+  id: string;
+  wine_name: string | null;
+  master_wine_id: string | null;
+  is_active: boolean | null;
+  deleted_at: string | null;
+  last_counted_at: string | null;
+  master_wine_library: { beverage_kind: string | null } | { beverage_kind: string | null }[] | null;
 }
 
 interface PaidRow {
@@ -227,12 +301,38 @@ function discountOf(dv: Record<string, unknown> | null) {
  * writer sets it yet, so today every stored minimum reads unit-less and
  * withholds the offer's worth — the grader says so rather than guess a unit.
  */
-export function minimumOf(conditions: Record<string, unknown> | null): OfferMinimum | null {
+export function minimumOf(
+  conditions: Record<string, unknown> | null,
+  offerText: string | null = null,
+): OfferMinimum | null {
   const c = conditions ?? {};
   const quantity = num(c.min_qty);
   if (quantity == null || !(quantity > 0)) return null;
   const unit = typeof c.min_qty_unit === "string" && c.min_qty_unit ? c.min_qty_unit : null;
-  return { quantity, unit };
+  return { quantity, unit, mixed: saysMixed(c, offerText) };
+}
+
+/**
+ * Does the OFFER say its minimum may be mixed across its wines (OD-154)?
+ * A stated flag first (`conditions.mixed` / `conditions.mixed_case`, which no
+ * writer sets yet), then the offer's own words — its name, its summary and the
+ * validity text the extractor kept — for a mixed-case phrase. Any negation
+ * ("no mixed cases", "cannot be mixed", "not mixable") reads as NOT mixed.
+ *
+ * Conservative on purpose: a missed "mixed" only understates qualification
+ * (per wine is the stricter reading), a false "mixed" would overstate it.
+ */
+const MIXED_PHRASE =
+  /\b(mixed\s+(case|cases|order|orders|lot|lots|pallet|pallets)|mix[\s-]*(and|&|n|'n')[\s-]*match|(may|can)\s+be\s+mixed|mixing\s+(allowed|permitted|welcome))\b/i;
+const MIXED_NEGATION = /\b(no|not|non|cannot|can't|never|without)[\s-]+(be\s+)?mix/i;
+
+export function saysMixed(conditions: Record<string, unknown> | null, offerText: string | null): boolean {
+  const c = conditions ?? {};
+  if (c.mixed === true || c.mixed_case === true) return true;
+  if (c.mixed === false || c.mixed_case === false) return false;
+  const words = [offerText ?? "", typeof c.valid_text === "string" ? c.valid_text : ""].join(" \n ");
+  if (MIXED_NEGATION.test(words)) return false;
+  return MIXED_PHRASE.test(words);
 }
 
 /** The offer's state, said as a word rather than left to the reader to infer. */
@@ -246,7 +346,31 @@ export function offerState(row: { end_date: string | null; dismissed_at: string 
 export class PromotionsService {
   private readonly logger = new Logger(PromotionsService.name);
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly menusService: MenusService,
+  ) {}
+
+  /**
+   * Every row of a house-scoped read, in keyset pages on `id` — a failed page
+   * is an error naming the register, never a shorter list.
+   */
+  private async readAll<T extends { id: string }>(
+    register: string,
+    page: (after: string | null) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  ): Promise<T[]> {
+    const out: T[] = [];
+    let after: string | null = null;
+    for (;;) {
+      const { data, error } = await page(after);
+      if (error) throw new Error(`${register} could not be read: ${error.message}`);
+      const rows = (data ?? []) as T[];
+      out.push(...rows);
+      if (rows.length < PAGE_ROWS) break;
+      after = rows[rows.length - 1].id;
+    }
+    return out;
+  }
 
   async readForHouse(
     restaurantId: string,
@@ -257,18 +381,26 @@ export class PromotionsService {
     const since = isoDate(new Date(now.getTime() - LEDGER_WINDOW_DAYS * 86_400_000));
     const db = this.databaseService.supabase;
 
-    // 1. The offers — this house's, live, on the table unless asked for the put-away ones too.
-    let offersQuery = db
-      .from("provider_promotions")
-      .select(OFFER_COLUMNS)
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true);
-    if (!opts.includeDismissed) offersQuery = offersQuery.is("dismissed_at", null);
-    const offersRes = await offersQuery.order("end_date", { ascending: true, nullsFirst: false });
-    if (offersRes.error) {
-      throw new Error(`The offers register (provider_promotions) could not be read: ${offersRes.error.message}`);
-    }
-    const offerRows = (offersRes.data ?? []) as unknown as OfferRow[];
+    // 1. The offers — this house's, live, on the table unless asked for the
+    //    put-away ones too. Read whole (keyset pages), then ordered ends-soonest
+    //    with undated last, as the single read used to return them.
+    const offerRows = (
+      await this.readAll<OfferRow>("The offers register (provider_promotions)", (after) => {
+        let q = db
+          .from("provider_promotions")
+          .select(OFFER_COLUMNS)
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true);
+        if (!opts.includeDismissed) q = q.is("dismissed_at", null);
+        if (after) q = q.gt("id", after);
+        return q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      })
+    ).sort((a, b) => {
+      if (a.end_date === b.end_date) return a.id.localeCompare(b.id);
+      if (a.end_date == null) return 1;
+      if (b.end_date == null) return -1;
+      return a.end_date.localeCompare(b.end_date);
+    });
 
     // 2. The vendors' names, for ledger lines that carry only an id.
     const providersRes = await db.from("providers").select("id, name").eq("restaurant_id", restaurantId);
@@ -278,18 +410,39 @@ export class PromotionsService {
     const providerName = new Map<string, string>();
     for (const p of (providersRes.data ?? []) as { id: string; name: string }[]) providerName.set(p.id, p.name);
 
-    // 3. The bridge the extractor's wine names came over: restaurant_inventory.wine_name → master_wine_id.
-    const bridgeRes = await db
-      .from("restaurant_inventory")
-      .select("wine_name, master_wine_id")
-      .eq("restaurant_id", restaurantId)
-      .limit(2000);
-    if (bridgeRes.error) {
-      throw new Error(`The shelf (restaurant_inventory) could not be read: ${bridgeRes.error.message}`);
-    }
-    const bridge: WineBridge[] = ((bridgeRes.data ?? []) as { wine_name: string | null; master_wine_id: string | null }[])
-      .filter((r) => typeof r.wine_name === "string" && r.wine_name.trim())
-      .map((r) => ({ name: r.wine_name as string, productKey: r.master_wine_id ?? null }));
+    // 3. The shelf: the bridge the extractor's wine names came over
+    //    (restaurant_inventory.wine_name → master_wine_id) and the rows the
+    //    house-first scope reads. Read whole — it used to stop at 2000 rows, a silent
+    //    cap every rung's count would have inherited (research-filters F12).
+    const shelfDb = await this.readAll<ShelfDbRow>("The shelf (restaurant_inventory)", (after) => {
+      let q = db.from("restaurant_inventory").select(SHELF_COLUMNS).eq("restaurant_id", restaurantId);
+      if (after) q = q.gt("id", after);
+      return q.order("id", { ascending: true }).limit(PAGE_ROWS);
+    });
+    const named = shelfDb.filter((r) => typeof r.wine_name === "string" && r.wine_name.trim());
+    const bridge: WineBridge[] = named.map((r) => ({ name: r.wine_name as string, productKey: r.master_wine_id ?? null }));
+    const shelf: ShelfRow[] = named.map((r) => ({
+      name: r.wine_name as string,
+      productKey: r.master_wine_id ?? null,
+      active: r.is_active !== false && r.deleted_at == null,
+      kind: one(r.master_wine_library)?.beverage_kind ?? null,
+      stockLive: num(r.stock_live),
+      thresholdMin: num(r.threshold_min),
+      lastCountedAt: r.last_counted_at ?? null,
+    }));
+
+    // 3b. The house's CURRENT menu(s) — active versions only, every line
+    //     (MenusService pages them), several actives unioned (F1/F2).
+    const current = await this.menusService.readCurrentMenus(restaurantId);
+    const menuLines: CurrentMenuLine[] = current.lines.map((l) => ({
+      id: String(l.id),
+      menuId: l.menu_id,
+      name: typeof l.name === "string" ? l.name : null,
+      category: typeof l.category === "string" ? l.category : null,
+      wineLibraryId: typeof l.wine_library_id === "string" && l.wine_library_id ? l.wine_library_id : null,
+    }));
+    const shelfIndex = indexShelf(shelf);
+    const menuIndex = indexMenu(menuLines);
 
     // 4. What the house PAID — price_history, this house, the window. Grouped
     //    by unit, currency and identity before anything is compared (ADR
@@ -301,12 +454,13 @@ export class PromotionsService {
       .eq("restaurant_id", restaurantId)
       .gte("effective_date", since)
       .order("effective_date", { ascending: false })
-      .limit(2000);
+      .limit(PAID_LINES_CAP);
     if (paidRes.error) {
       throw new Error(`The house's price series (price_history) could not be read: ${paidRes.error.message}`);
     }
+    const paidRows = (paidRes.data ?? []) as unknown as PaidRow[];
     const paid: LedgerLine[] = [];
-    for (const r of (paidRes.data ?? []) as unknown as PaidRow[]) {
+    for (const r of paidRows) {
       const price = num(r.price);
       if (price == null) continue;
       if (!(PRICE_SERIES_UNITS as readonly string[]).includes(r.unit)) continue;
@@ -342,15 +496,16 @@ export class PromotionsService {
     )
       .gte("observed_at", `${since}T00:00:00Z`)
       .order("observed_at", { ascending: false })
-      .limit(2000);
+      .limit(SIGHTINGS_CAP);
     if (sightingsRes.error) {
       throw new Error(`The price register (vendor_price_observations) could not be read: ${sightingsRes.error.message}`);
     }
+    const sightingRows = (sightingsRes.data ?? []) as unknown as SightingRow[];
     const sightings: LedgerLine[] = [];
     let skippedSightings = 0;
     let houseSightings = 0;
     let marketSightings = 0;
-    for (const r of (sightingsRes.data ?? []) as unknown as SightingRow[]) {
+    for (const r of sightingRows) {
       const price = num(r.raw_price);
       const pack = r.pack_size ?? null;
       const volume = r.unit_volume_ml ?? null;
@@ -410,7 +565,7 @@ export class PromotionsService {
           providerId: row.provider_id,
           wines,
           discount: discountOf(row.discount_value),
-          minimum: minimumOf(row.conditions),
+          minimum: minimumOf(row.conditions, [row.name, row.description].filter(Boolean).join(" \n ")),
         },
         ledger,
         bridge,
@@ -436,6 +591,7 @@ export class PromotionsService {
         state: offerState(row, today),
         grade,
         bundle: row.promo_type === "bundle" ? bundleWorth(grade.wines) : null,
+        scope: scopeOffer(wines, shelfIndex, menuIndex),
       };
     });
 
@@ -449,6 +605,19 @@ export class PromotionsService {
         house_sightings: houseSightings,
         market_sightings: marketSightings,
         skipped_sightings: skippedSightings,
+        caps: {
+          paid_lines: { cap: PAID_LINES_CAP, reached: paidRows.length >= PAID_LINES_CAP },
+          sightings: { cap: SIGHTINGS_CAP, reached: sightingRows.length >= SIGHTINGS_CAP },
+        },
+      },
+      house: {
+        menus: current.menus.map((m) => ({ menu_id: m.menuId, name: m.name, read_at: m.readAt })),
+        coverage: menuCoverage(menuLines),
+        shelf: {
+          rows: shelf.length,
+          active: shelf.filter((r) => r.active).length,
+          counted: shelf.filter((r) => r.active && r.lastCountedAt != null).length,
+        },
       },
     };
   }

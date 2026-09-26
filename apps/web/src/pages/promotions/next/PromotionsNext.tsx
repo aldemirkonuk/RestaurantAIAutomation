@@ -33,26 +33,37 @@
  * the tier that total earns; a bundle whose total is withheld is compact.
  * Undated offers stay on the table, labelled "no end date" (sketch 113 Q6).
  *
- * THE SCOPE-BAR SEAM (not built — founder 2026-09-25 asked for house-first
- * filters, and a research pass on them is running). Two places, nothing else:
- *   1. `scoped` below is the ONE list every fold derives from; a scope bar
- *      narrows it there and every band, fold and count follows.
- *   2. The JSX comment "scope bar — the seam …" between the header and the
- *      Offers section is where the bar is drawn.
- * The standing line reads the unscoped `data` on purpose: it states what is
- * on the table, not what a filter shows.
+ * HOUSE-FIRST, THEN WIDER (founder item 36, 2026-09-25/26 — ADR 0160 §113,
+ * round-6 bracket; research-filters.md's adversarial pass). The page opens on
+ * "On my menu" (the house's CURRENT menu(s)); "Everything I stock" and "All
+ * offers" are one tap wider, each with its live count. A house with no menu
+ * read yet opens on "Everything I stock" under a banner that says so. Facets:
+ * vendor, ends soon, search, coarse category, running low (counted stock
+ * only). Everything lives in the URL (`?scope=`, `?vendor=`, `?cat=`,
+ * `?soon=1`, `?low=1`, `?q=`), so a reload or a shared link shows the same.
+ *
+ * RANK ONCE, THEN HIDE. `rankOffers` runs over EVERY offer on the table and a
+ * rung or facet only hides cards (`visible`): a box keeps the size its worth
+ * earned against the whole book, so the hero of "All" is still drawn as the
+ * hero in "On my menu" if it is there, and a small offer never becomes a hero
+ * because the bigger ones were filtered away. The "cannot be graded" fold is
+ * scoped the same way (F11); the put-away fold is the house's own list and is
+ * not. The standing line reads the unscoped `data` on purpose: it states what
+ * is on the table, not what a filter shows.
  */
 
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { RestaurantBranchSwitcher } from '../../../components/layout/RestaurantBranchSwitcher';
 import OfferCard from './OfferCard';
 import OfferSheet from './OfferSheet';
+import ScopeBar, { useNarrow } from './ScopeBar';
 import { useDismissOffer, usePromotionsRead, useRestoreOffer } from './usePromotionsNextData';
 import {
   bandsOf,
   failureOf,
   failureSentence,
+  onTheTable,
   putAwayOffers,
   rankOffers,
   standingLine,
@@ -60,6 +71,21 @@ import {
   type OfferDto,
   type RankedOffer,
 } from './promotions-format';
+import {
+  NO_FACETS,
+  RUNGS,
+  activeFacetCount,
+  defaultRung,
+  facetOptions,
+  facetsFromParams,
+  parseRung,
+  rungCounts,
+  scopeReady,
+  visible,
+  writeParams,
+  type Facets,
+  type Rung,
+} from './promotions-scope';
 import './promotions-next.css';
 
 function todayIso(): string {
@@ -81,13 +107,38 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
   const restore = useRestoreOffer();
 
   const offers: OfferDto[] = useMemo(() => data?.offers ?? [], [data]);
-  // SCOPE-BAR SEAM (see the header): the one list every fold derives from.
-  // Today it is every offer; a house-first scope bar narrows it here.
-  const scoped: OfferDto[] = offers;
-  const ranked = useMemo(() => rankOffers(scoped), [scoped]);
-  const bands = useMemo(() => bandsOf(ranked), [ranked]);
-  const ungradable = useMemo(() => ungradableOffers(scoped), [scoped]);
-  const putAway = useMemo(() => putAwayOffers(scoped), [scoped]);
+  const narrow = useNarrow();
+
+  // The ladder and the facets are the URL (see the header).
+  const [params, setParams] = useSearchParams();
+  const ready = scopeReady(data);
+  const chosenRung = parseRung(params.get('scope'));
+  const rung: Rung = !ready || !data ? 'all' : (chosenRung ?? defaultRung(data));
+  const facets: Facets = useMemo(() => (ready ? facetsFromParams(params) : NO_FACETS), [params, ready]);
+  const setScope = useCallback(
+    (r: Rung | null, f: Facets) => setParams(writeParams(params, r, f), { replace: true }),
+    [params, setParams],
+  );
+  const menus = data?.house?.menus ?? [];
+  const noMenu = ready && menus.length === 0;
+
+  // RANK ONCE over everything on the table; the rung and facets only hide.
+  const ranked = useMemo(() => rankOffers(offers), [offers]);
+  const shown = useMemo(() => ranked.filter((r) => visible(r.offer, rung, facets, today)), [ranked, rung, facets, today]);
+  const bands = useMemo(() => bandsOf(shown), [shown]);
+  const ungradable = useMemo(
+    () => ungradableOffers(offers).filter((o) => visible(o, rung, facets, today)),
+    [offers, rung, facets, today],
+  );
+  const putAway = useMemo(() => putAwayOffers(offers), [offers]);
+  const onTable = useMemo(() => offers.filter(onTheTable), [offers]);
+  const counts = useMemo(() => rungCounts(onTable, facets, today), [onTable, facets, today]);
+  const options = useMemo(() => facetOptions(onTable, rung, facets, today), [onTable, rung, facets, today]);
+  const preview = useCallback(
+    (f: Facets) => onTable.filter((o) => visible(o, rung, f, today)).length,
+    [onTable, rung, today],
+  );
+  const rungLabel = RUNGS.find((r) => r.id === rung)?.label ?? 'All offers';
   const selected = offers.find((o) => o.id === selectedId) ?? null;
   const busy = dismiss.isPending || restore.isPending;
   const card = (r: RankedOffer) => (
@@ -119,12 +170,52 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
                 {data.ledger.house_sightings} house sightings, {data.ledger.market_sightings} market sightings over{' '}
                 {data.ledger.window_days} days
                 {data.ledger.skipped_sightings > 0 ? ` (${data.ledger.skipped_sightings} register rows skipped — no pack size or volume, or an outlier)` : ''}.
+                {data.ledger.caps?.paid_lines.reached
+                  ? ` Only the newest ${data.ledger.caps.paid_lines.cap} paid lines were read; older ones in the window were not graded.`
+                  : ''}
+                {data.ledger.caps?.sightings.reached
+                  ? ` Only the newest ${data.ledger.caps.sightings.cap} sightings were read.`
+                  : ''}
               </p>
             </>
           )}
         </header>
 
-        {/* scope bar — the seam for the house-first filters (not built; see the header) */}
+        {data && ready && (
+          <>
+            <ScopeBar
+              rung={rung}
+              counts={counts}
+              onRung={(r) => setScope(r, facets)}
+              facets={facets}
+              options={options}
+              onFacets={(f) => setScope(chosenRung, f)}
+              preview={preview}
+              counted={data.house ? { counted: data.house.shelf.counted, active: data.house.shelf.active } : null}
+              narrow={narrow}
+            />
+            {noMenu && rung !== 'all' ? (
+              <p className="pn-banner" role="status" data-testid="pn-no-menu">
+                No menu read yet — showing everything you stock.{' '}
+                <Link to="/house/menu">Read your menu →</Link>
+              </p>
+            ) : (
+              menus.length > 0 &&
+              data.house && (
+                <p className="pn-coverage" data-testid="pn-coverage">
+                  &ldquo;On my menu&rdquo; reads {menus.length === 1 ? 'your current menu' : `your ${menus.length} current menus`}
+                  {menus[0].read_at ? `, current since ${menus[0].read_at.slice(0, 10)}` : ''} ·{' '}
+                  {data.house.coverage.linked} of {data.house.coverage.drinkLines} drink line
+                  {data.house.coverage.drinkLines === 1 ? '' : 's'} linked to a wine
+                  {data.house.coverage.notLinked > 0
+                    ? ` · ${data.house.coverage.notLinked} not linked, so no offer can match ${data.house.coverage.notLinked === 1 ? 'it' : 'them'}`
+                    : ''}
+                  .
+                </p>
+              )
+            )}
+          </>
+        )}
 
         <section aria-label="Offers" className="pn-offers">
           {isLoading && (
@@ -153,11 +244,43 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
 
           {!isLoading && !isError && data && (
             <>
-              {ranked.length === 0 && ungradable.length === 0 ? (
+              {onTable.length === 0 ? (
                 <div className="pn-state">
                   <p>No offers are on the table right now. This lane is active and listening.</p>
                 </div>
-              ) : (
+              ) : shown.length === 0 && ungradable.length === 0 ? (
+                <div className="pn-state" data-testid="pn-scope-empty">
+                  {activeFacetCount(facets) > 0 ? (
+                    <>
+                      <p>No offer in &ldquo;{rungLabel}&rdquo; matches these filters.</p>
+                      <button type="button" className="pn-btn" onClick={() => setScope(chosenRung, NO_FACETS)}>
+                        Clear filters
+                      </button>
+                    </>
+                  ) : rung === 'menu' && noMenu ? (
+                    <>
+                      <p>No menu read yet, so no offer can be matched to it.</p>
+                      <button type="button" className="pn-btn" onClick={() => setScope('stock', facets)}>
+                        See everything you stock →
+                      </button>
+                    </>
+                  ) : rung === 'menu' ? (
+                    <>
+                      <p>Nothing on your menu is on offer right now.</p>
+                      <button type="button" className="pn-btn" onClick={() => setScope('stock', facets)}>
+                        See everything you stock →
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p>Nothing you stock is on offer right now.</p>
+                      <button type="button" className="pn-btn" onClick={() => setScope('all', facets)}>
+                        See all offers →
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : shown.length === 0 ? null : (
                 <div className="pn-band" data-testid="pn-band">
                   {bands.hero && (
                     <div className="pn-row-hero" role="list" aria-label="The offer worth the most">
@@ -189,9 +312,9 @@ export function PromotionsNext({ ground }: PromotionsNextProps = {}) {
                 <div className="pn-ungr">
                   <h3>Cannot be graded</h3>
                   <p className="pn-lede">
-                    {ungradable.length} offer{ungradable.length === 1 ? '' : 's'} on the table name no wine the
-                    ledger can price, or carry no percentage or amount off — in the vendor's own words below,
-                    never a fabricated figure.
+                    {ungradable.length} offer{ungradable.length === 1 ? '' : 's'}
+                    {rung === 'all' ? ' on the table' : ` in “${rungLabel}”`} name no wine the ledger can price, or
+                    carry no percentage or amount off — in the vendor's own words below, never a fabricated figure.
                   </p>
                   <div className="pn-docket pn-docket--dense">
                     {ungradable.map((o) => (

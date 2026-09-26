@@ -63,9 +63,10 @@
  * A `worth` drives a box's size, so three things must hold or it is withheld
  * (`worth: null`, with the sentence saying why in `worthWithheld`):
  *  1. The offer QUALIFIES. An offer's stated minimum (`OfferForGrade.minimum`)
- *     is compared with the house's LARGEST SINGLE ORDER of the offer's named
- *     wines — one vendor on one day, summed across those wines, in the
- *     minimum's own unit, never converted. The stored quantity is a floor, so
+ *     is compared with the house's LARGEST SINGLE ORDER — one vendor on one
+ *     day, in the minimum's own unit, never converted — of EACH named wine on
+ *     its own, unless the offer says the wines may be mixed, when one order's
+ *     named wines are summed (OD-154, founder 2026-09-26; `qualifyOffer`). The stored quantity is a floor, so
  *     the answer is "qualifies" or "not shown to qualify", never "does not".
  *     A minimum with no unit (every row the extractor writes today) cannot be
  *     compared at all and withholds the worth (ADR 0119: a quantity states
@@ -153,6 +154,14 @@ export interface OfferDiscount {
 export interface OfferMinimum {
   quantity: number | null;
   unit: string | null;
+  /**
+   * Whether the OFFER says its minimum may be made up of several of its wines
+   * (a "mixed case"). Absent or false, the minimum counts PER WINE (OD-154,
+   * founder 2026-09-26, round 6 — ADR 0165): twelve bottles means twelve of
+   * one wine, not six and six. Optional so an older caller that never read it
+   * gets the stricter reading, never the more permissive one.
+   */
+  mixed?: boolean;
 }
 
 export interface OfferForGrade {
@@ -251,11 +260,38 @@ export type QualificationState =
   /** A minimum was stated with no unit the ledger can be compared in. */
   | "unit_unknown";
 
+/**
+ * How the minimum is counted (OD-154, ADR 0165 open item 3, answered 2026-09-26):
+ * `per_wine` — each named wine must reach it on its own in one order (the
+ * default); `mixed` — the offer says the wines may be mixed, so one order's
+ * named wines are summed (the rule before OD-154, now only on the offer's word).
+ */
+export type QualificationBasis = "per_wine" | "mixed";
+
+export interface WineQualification {
+  wine: string;
+  /** This wine's largest single order in the minimum's unit (a floor). */
+  largestOrder: number;
+  qualifies: boolean;
+}
+
 export interface OfferQualification {
+  /**
+   * `qualifies` only when EVERY named wine is shown to qualify (per wine), or
+   * the mixed order does. When only some wines do, the offer is `not_shown`
+   * and each wine's own worth is gated by its own line in `perWine`.
+   */
   state: QualificationState;
   minimum: OfferMinimum;
-  /** The house's largest single order in the minimum's unit; null when the unit could not be compared. */
+  basis: QualificationBasis;
+  /**
+   * The house's largest single order in the minimum's unit — per wine, the
+   * largest of the wines' own; mixed, the largest summed order. Null when the
+   * unit could not be compared.
+   */
   largestOrder: number | null;
+  /** Per wine only: each named wine's own largest order. Null for `mixed` and for `unit_unknown`. */
+  perWine: WineQualification[] | null;
   /** The sentence that stands beside a withheld worth; null when the offer qualifies. */
   reason: string | null;
 }
@@ -482,9 +518,17 @@ function comparisonFreshness(
  * Whether the house can be shown to meet the offer's stated minimum — see
  * module doc "WHEN A WORTH MAY BE SHOWN". An ORDER is one vendor on one day
  * (a line with no date is its own order: it cannot be grouped, and treating
- * it alone can only understate). The order's size is the sum, in the
- * minimum's unit, of the offer's named wines bought in it; lines in another
- * unit contribute nothing and are never converted.
+ * it alone can only understate). Lines in another unit contribute nothing
+ * and are never converted.
+ *
+ * PER WINE UNLESS THE OFFER SAYS MIXED (OD-154; founder, 2026-09-26, round 6;
+ * ADR 0165 open item 3). A vendor's "12 bottles" is, unless the offer says
+ * the case may be mixed, twelve of ONE wine. So by default each named wine is
+ * measured alone — its own largest single order must reach the minimum — and
+ * each wine's worth is gated by its own answer. Only when the offer says
+ * mixed (`minimum.mixed`) are the named wines in one order summed, which was
+ * the rule for every offer before this answer and read more permissively
+ * than most vendors mean.
  */
 function qualifyOffer(
   offer: OfferForGrade,
@@ -495,36 +539,69 @@ function qualifyOffer(
   const minimum = offer.minimum;
   if (!minimum || minimum.quantity == null || !(minimum.quantity > 0)) return null;
   const { quantity, unit } = minimum;
+  const basis: QualificationBasis = minimum.mixed === true ? "mixed" : "per_wine";
   const shown = `${quantity}${unit ? ` ${unit.replace("_", " ")}${quantity === 1 ? "" : "s"}` : ""}`;
 
   if (!unit || !(PRICE_SERIES_UNITS as readonly string[]).includes(unit)) {
     return {
       state: "unit_unknown",
       minimum,
+      basis,
       largestOrder: null,
+      perWine: null,
       reason: `the offer states a minimum of ${quantity} without saying bottles or cases, so it cannot be shown whether the house qualifies — not sized`,
     };
   }
 
-  const keys = names.map((n) => ({ name: n, key: bridgeKeyFor(n, bridge) }));
-  const orders = new Map<string, number>();
-  for (const l of ledger) {
-    if (l.kind !== "paid" || l.scope !== "house" || l.unit !== unit || l.quantity == null) continue;
-    if (!keys.some(({ name, key }) => lineMatchesWine(l, name, key))) continue;
-    const order = l.date ? `${l.providerId ?? ""}|${l.date}` : `undated|${l.ref}`;
-    orders.set(order, (orders.get(order) ?? 0) + l.quantity);
-  }
-  const largestOrder = orders.size === 0 ? 0 : Math.max(...orders.values());
-
-  if (largestOrder >= quantity) {
-    return { state: "qualifies", minimum, largestOrder, reason: null };
-  }
-  return {
-    state: "not_shown",
-    minimum,
-    largestOrder,
-    reason: `the offer needs ${shown} in one order; the house's largest single order of these wines on record is ${largestOrder} (a floor), so it is not shown that the house qualifies — not sized`,
+  /** The largest single order, in `unit`, of the lines matching any of `wanted`. */
+  const largestOrderOf = (wanted: Array<{ name: string; key: string | null }>): number => {
+    const orders = new Map<string, number>();
+    for (const l of ledger) {
+      if (l.kind !== "paid" || l.scope !== "house" || l.unit !== unit || l.quantity == null) continue;
+      if (!wanted.some(({ name, key }) => lineMatchesWine(l, name, key))) continue;
+      const order = l.date ? `${l.providerId ?? ""}|${l.date}` : `undated|${l.ref}`;
+      orders.set(order, (orders.get(order) ?? 0) + l.quantity);
+    }
+    return orders.size === 0 ? 0 : Math.max(...orders.values());
   };
+  const keys = names.map((n) => ({ name: n, key: bridgeKeyFor(n, bridge) }));
+
+  if (basis === "mixed") {
+    const largestOrder = largestOrderOf(keys);
+    if (largestOrder >= quantity) {
+      return { state: "qualifies", minimum, basis, largestOrder, perWine: null, reason: null };
+    }
+    return {
+      state: "not_shown",
+      minimum,
+      basis,
+      largestOrder,
+      perWine: null,
+      reason: `the offer needs ${shown} in one order, mixed across its wines; the house's largest single order of these wines on record is ${largestOrder} (a floor), so it is not shown that the house qualifies — not sized`,
+    };
+  }
+
+  const perWine: WineQualification[] = keys.map((k) => {
+    const largestOrder = largestOrderOf([k]);
+    return { wine: k.name, largestOrder, qualifies: largestOrder >= quantity };
+  });
+  const largestOrder = perWine.length === 0 ? 0 : Math.max(...perWine.map((w) => w.largestOrder));
+  const qualifying = perWine.filter((w) => w.qualifies).length;
+  if (qualifying === perWine.length) {
+    return { state: "qualifies", minimum, basis, largestOrder, perWine, reason: null };
+  }
+  const reason =
+    perWine.length === 1
+      ? `the offer needs ${shown} of this wine in one order; the house's largest single order of it on record is ${largestOrder} (a floor), so it is not shown that the house qualifies — not sized`
+      : `the offer needs ${shown} of each wine in one order (it does not say the wines may be mixed); ${qualifying} of its ${perWine.length} wines reached that in a single order on record, so the rest are not shown to qualify — not sized`;
+  return { state: "not_shown", minimum, basis, largestOrder, perWine, reason };
+}
+
+/** The sentence beside ONE wine whose own order fell short of a per-wine minimum. */
+function perWineReason(q: OfferQualification, w: WineQualification): string {
+  const { quantity, unit } = q.minimum;
+  const shown = `${quantity}${unit ? ` ${unit.replace("_", " ")}${quantity === 1 ? "" : "s"}` : ""}`;
+  return `the offer needs ${shown} of this wine in one order; the house's largest single order of it on record is ${w.largestOrder} (a floor), so it is not shown that the house qualifies — not sized`;
 }
 
 export function gradeWine(
@@ -698,11 +775,19 @@ export function gradeOffer(
   // house could not take is withheld with the sentence saying why, never zeroed.
   const qualification = qualifyOffer(offer, names, ledger, bridge);
   if (qualification && qualification.state !== "qualifies") {
-    for (const g of wines) {
-      if (!g.worth) continue;
+    wines.forEach((g, i) => {
+      if (!g.worth) return;
+      // Per wine (OD-154): a wine that reached the minimum on its own keeps
+      // its worth; only the ones that fell short are withheld, each with its
+      // own sentence. Mixed or unit-unknown: the whole offer's answer.
+      const own = qualification.perWine?.[i] ?? null;
+      if (own && own.qualifies) return;
       g.worth = null;
-      g.worthWithheld = qualification.reason;
-    }
+      g.worthWithheld =
+        own && qualification.perWine && qualification.perWine.length > 1
+          ? perWineReason(qualification, own)
+          : qualification.reason;
+    });
   }
   for (const g of wines) {
     if (g.verdict === "beats") tally.beats += 1;
