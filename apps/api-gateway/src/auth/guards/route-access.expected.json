@@ -270,7 +270,17 @@
   ],
   "POST /conversations/:conversationId/approve (ConversationsController.approveConversation)": [
     "owner",
-    "manager"
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /conversations/:conversationId/approve-seal-challenge (ConversationsController.issueApproveSeal)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
   ],
   "PUT /conversations/:conversationId/message (ConversationsController.editMessage)": [
     "owner",
