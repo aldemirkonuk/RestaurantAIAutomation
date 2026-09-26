@@ -33,6 +33,7 @@ import {
   Credit,
   CreditState,
   recoveryStats,
+  recoveryStatsByCurrency,
   transition,
 } from "./credit-ledger";
 
@@ -131,7 +132,7 @@ export class CreditsController {
       .getClient()
       .from("procurement_credits")
       .select(
-        "state, claimed_amount, credited_amount, credit_document_id, opened_at, self_evidenced",
+        "state, claimed_amount, credited_amount, credit_document_id, opened_at, self_evidenced, currency",
       )
       .eq("restaurant_id", user.restaurantId)
       .limit(5000);
@@ -146,10 +147,20 @@ export class CreditsController {
       creditDocumentId: r.credit_document_id,
       openedAt: r.opened_at,
       selfEvidenced: !!r.self_evidenced,
+      currency: r.currency ?? null,
     }));
 
     return {
       ...recoveryStats(credits),
+      // The same figures kept apart by the claim's own currency. The combined
+      // ones above add lira to euros when a house claims in both; nothing here
+      // converts, so a screen reads these and shows each currency on its own.
+      byCurrency: recoveryStatsByCurrency(credits),
+      // How many rows the figures were computed from, and whether that filled
+      // the `.limit()` above. At the cap every figure is a floor, and only the
+      // server can know it reached the cap.
+      rowsCounted: credits.length,
+      capped: credits.length >= 5000,
       // Claims the vendor's own paperwork proves. Worth separating: these are
       // the ones worth a phone call, and a low settlement rate on them says
       // something about the distributor rather than about the claim.
