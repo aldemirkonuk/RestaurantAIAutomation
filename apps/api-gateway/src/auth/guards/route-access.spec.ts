@@ -82,9 +82,15 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // before this branch landed (conversations, the house counter and day,
     // report exports), each written with @Roles naming owner AND manager, so
     // the exact guard admits them what the old guard did, less admin
-    // (re-measured 2026-09-25). A fourteenth would be a new file whose routes
-    // are not in the table yet.
+    // (re-measured 2026-09-25). A fourteenth, analytics, reached main while
+    // this branch was in flight (PR #471's merge with main, 2026-09-26): it
+    // adds 52 new /analytics/* routes, 51 of them outside @Roles (recorded
+    // "open" below, `JwtAuthGuard`-only, same as the rest of this table's
+    // open rows) and exactly one, the insight-catalog toggle, naming owner
+    // AND manager like every other row here. A fifteenth would be a new file
+    // whose routes are not in the table yet.
     expect(controllersWithRoles()).toEqual([
+      "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
       "auth/auth.controller.ts",
       "commodity/commodity.controller.ts",

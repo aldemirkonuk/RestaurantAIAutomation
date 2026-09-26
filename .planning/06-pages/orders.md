@@ -1146,9 +1146,44 @@ D13, sketch 089 direction C, `/documents/:id` — not a new layout.
 - **Three states, kept apart** (`ReceiptSheet.tsx`): the canonical document
   (`CanonicalDocumentPage` with `documentId` + `embedded`), "No receipt has been attached
   to this order yet.", or a failed read said as a failure.
-- **Not literally a row click.** A row click still expands the row, because the approve
+- ~~**Not literally a row click.** A row click still expands the row, because the approve
   hold and "Mark delivered" live in that expansion; the sheet opens from **"Open the
   receipt"** in the expanded row, next to "The vendor's answers". Whether the row click
-  itself should open the sheet is his call — it would take the approve hold off the row.
+  itself should open the sheet is his call — it would take the approve hold off the row.~~
+  **[Superseded 2026-09-25 — OD-152 answered "depends on state"; see the next section.]**
 - Tests: `OrdersNext.receipt.test.tsx`, `services/api/deliveries.receipt.test.ts`, the
   embedded case in `CanonicalDocumentPage.test.tsx`, `delivery.service.spec.ts` "list".
+
+### The row click depends on state — BUILT 2026-09-25 (OD-152, founder)
+
+The founder, 2026-09-25, on OD-152: the row click **opens the receipt sheet when a
+receipt exists, and expands the row while the order is pending** (the approve hold and
+"Mark delivered" live in the expansion).
+
+- **What "a receipt exists" means here.** The row carries no document: `OrderResponseDto`
+  (`apps/api-gateway/src/procurement/dto/procurement.dto.ts:835`) has no document id and
+  no delivery id, and a receipt is found only by reading the deliveries that fulfil the
+  order (`deliveriesApi.receiptForOrder`). What the row does carry is its stage, and
+  `delivered` (status `delivered` / `partially_received` / `verified` / `completed`) is
+  the only stage at which goods — and the paper that came with them — have been booked
+  against the order. So `rowOpensReceipt(row)` (`orders/next/LedgerRow.tsx`) is
+  `row.stage === 'delivered'`. A delivered order with no document opens a sheet that says
+  "No receipt has been attached to this order yet." — the honest answer to the click;
+  knowing per row before the click would cost one delivery read per row.
+- **Every other stage expands** — pending (the approve hold), approved, ordered ("Mark
+  delivered"), cancelled. "Open the receipt" stays inside every expansion, because an
+  invoice can arrive before the goods do.
+- **A delivered row keeps its working.** The chevron becomes its own disclosure button
+  beside the row ("Show the working for …", `aria-expanded`), the only way into the
+  expansion once the row click opens a sheet.
+- **Keyboard and screen reader match the click.** One native button either way, so Enter
+  and Space do what the pointer does. On a delivered row it carries
+  `aria-haspopup="dialog"`, no `aria-expanded`, and its name ends "open the receipt"; on
+  every other row it is the disclosure it was. A shut row's body is now `inert`: at `0fr`
+  its buttons were invisible yet still in the tab order, so the keyboard reached "Mark
+  delivered" on a row the pointer could not see.
+- Tests: `OrdersNext.row-click.test.tsx` (10 — the rule per stage, click / Enter / Space,
+  the dialog semantics, the disclosure, pending and ordered expanding, `inert`);
+  `OrdersNext.receipt.test.tsx` now opens the sheet with the bare row click. Mutations
+  (rule → `false`, rule → every live stage, click → always toggle, `aria-haspopup`
+  dropped) each fail the suite.
