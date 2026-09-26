@@ -299,15 +299,30 @@ export interface StateWriteIn {
   feedback?: string | null;
   assignedTo?: string | null;
   assignedName?: string | null;
+  /**
+   * `true` stamps that the act was carried out (`acted_at`, and since
+   * 2026-09-25 `acted_by`); `false` takes that stamp back. BOTH are a note
+   * change, exactly like `pinned`: sketch 122 Q2 (the founder, 2026-09-25,
+   * round 5, "Add all three (Recommended)") puts "Mark as briefed" on ADR
+   * 0112 F10's undo-after list, so the stamp is someone's note, gated like a
+   * pin (round 5, "Gate like acts"). A first stamp on an unstamped card is
+   * anyone's (not the admin's), the same as a first pin; RE-stamping over
+   * someone else's stamp rewrites `acted_by`, so it is theirs or an owner's
+   * or manager's to make, and the admin makes neither (PR #483 audit, R2 —
+   * `acted === false` alone let a re-stamp overwrite `acted_by` unchecked and
+   * unaudited, and let the platform admin stamp any house's card).
+   */
+  acted?: boolean;
 }
 
-/** Whether a patch touches any note field — pin, rating or assignment. */
+/** Whether a patch touches any note field — pin, rating, assignment, or a briefing (stamped or taken back). */
 export function touchesNotes(patch: StateWriteIn): boolean {
   return (
     patch.pinned !== undefined ||
     patch.feedback !== undefined ||
     patch.assignedTo !== undefined ||
-    patch.assignedName !== undefined
+    patch.assignedName !== undefined ||
+    patch.acted !== undefined
   );
 }
 
@@ -557,7 +572,7 @@ export function undoRefusal(unknownAuthor: boolean, n: number): string {
 // ---- Touching someone's note (round 5, answer 2 — "Gate like acts") --------
 
 /** One note field a patch can touch. */
-export type NoteField = "pinned" | "feedback" | "assignment";
+export type NoteField = "pinned" | "feedback" | "assignment" | "acted";
 
 /** Which note field(s) a patch touches, for the gate and the audit. */
 export function notesTouchedBy(patch: StateWriteIn): NoteField[] {
@@ -566,6 +581,10 @@ export function notesTouchedBy(patch: StateWriteIn): NoteField[] {
   if (patch.feedback !== undefined) out.push("feedback");
   if (patch.assignedTo !== undefined || patch.assignedName !== undefined)
     out.push("assignment");
+  // Both directions, like `pinned` (sketch 122 Q2): a stamp names its author,
+  // so re-stamping over someone else's changes their note, and clearing it
+  // does too. A first stamp passes `mayTouchNote` because nothing is set.
+  if (patch.acted !== undefined) out.push("acted");
   return out;
 }
 

@@ -129,9 +129,15 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * which row a house has, or whether it has one. Their three columns stay,
  * unread (ADR 0149 never deletes a column).]
  *
- * 23 keys. Held back, still flag-gated: `recommendations`, `receiving`, and
- * `arrival` (the /get-started book, whose `legacy` slot is the ADR 0213 plan
- * of record — OFF until deliberately flipped). `MUDAVYM_PAGES.length` is 26;
+ * [2026-09-25, lane W3-recs, ADR 0160 §108's round-5 bracket:
+ * `recommendations` joined — 24 keys. §108 held it dark "pending sketch 122";
+ * the founder picked sketch 122 direction B and answered its questions 2-10
+ * the same day, so the same Q2/Q4 rule applies. Its column stays, unread.]
+ *
+ * 23 keys [24 since the bracket above]. Held back, still flag-gated:
+ * `receiving` and `arrival` (the /get-started book, whose `legacy` slot is
+ * the ADR 0213 plan of record — OFF until deliberately flipped)
+ * [`recommendations` was the third until the bracket above]. `MUDAVYM_PAGES.length` is 26;
  * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
@@ -161,6 +167,7 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'shell',
   'admin',
   'authorize_integration',
+  'recommendations',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

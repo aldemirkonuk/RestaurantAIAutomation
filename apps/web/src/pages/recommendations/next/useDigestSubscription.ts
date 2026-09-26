@@ -89,6 +89,26 @@ export interface DigestSubscriptionStatus {
     reason: string | null;
     entriesCount: number | null;
   } | null;
+  /**
+   * This reader's own last SENT letter and the rule keys it carried — the
+   * clock of the page's delta cutting (sketch 122 Q9, per reader). Optional:
+   * a gateway from before 2026-09-25 does not send it, and the page then
+   * claims no change.
+   */
+  lastLetter?: {
+    periodKey: string;
+    sentAt: string;
+    ruleKeys: string[] | null;
+  } | null;
+  /**
+   * The house's latest post date and how many letters went out on it — a
+   * count, never who (sketch 122 Q8). Optional for the same reason.
+   */
+  houseLastPost?: {
+    periodKey: string;
+    sent: number;
+    atCap: boolean;
+  } | null;
 }
 
 export type SubscriptionPhase = 'loading' | 'ready' | 'unreachable';

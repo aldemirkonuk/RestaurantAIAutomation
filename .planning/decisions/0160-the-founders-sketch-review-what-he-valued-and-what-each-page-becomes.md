@@ -162,6 +162,56 @@ bar; the letter as the page's identity; the quiet tier as proof of what is withh
 **Decision:** direction A with C's quiet tier, and a fourth round (sketch 120) that adds
 function without disturbing the experience Wave Four already earns.
 
+**[ANSWERED 2026-09-25, founder, round 5 (`AskUserQuestion`, session 6c6d8b93) — sketch 122 is
+decided, so this row is fully answered and the page goes live in code for every house
+(`LIVE_PAGES`, `LIVE_IN_CODE_FLAGS`; lane W3-recs, branch `feat/recs-round6-direction-b`).**
+
+- **Q1, the placement (item 24).** His words: *"direction B is better"*. Asked which "direction B"
+  he meant, he chose *"Recommendations (sketch 122)"* over *"Promotions (sketch 124)"*, *"Vendor
+  prices (§112)"* and *"Something you're viewing"*. So: **B — Goals in the Masthead** — the
+  house's goals as a narrow margin column at the masthead's right under "The Morning Letter", the
+  day strip spanning below both. Rejected: **A — Goals Rail** (the README's recommendation: a
+  second rail under the day strip). The cost README Q1 named is accepted with the pick: below
+  640px the masthead stacks, letter then goals, and the day strip follows both.
+- **Q2 (item 25), "Add all three (Recommended)":** snooze, pin and mark-as-briefed are one tap
+  with Undo and no seal — recorded as an amendment to ADR 0112 F10, where the list lives. The
+  question's own words carry the second half: *"A hand-off that only opens another page records
+  nothing."* Rejected: *"Keep F10 closed"*; *"Add snooze + pin only"*.
+- **Q3, "Two-step now (Recommended)":** the Order-it control opens Orders and the PO is drafted by
+  hand there, where the hold seals it; the in-place draft is a later round. Rejected: *"Build
+  in-place draft now"*.
+- **Q4, "Substitute now, field next (Recommended)":** the quiet tier ships as the engine's own
+  `sourcesUnread` (which sources did not answer); the per-rule `reading · threshold · state` field
+  is the next build. Rejected: *"Real field this round"*.
+- **Q5, "Keep it on the two (Recommended)":** the account door stays on the two baseline rules the
+  gateway can key (`sales_below_weekday_baseline`, `weekly_demand_slide` — the only rules that set
+  `subject`, `recommendations.service.ts`). Rejected: *"Every rule that could carry one"*.
+- **Q6, "(a) Side sheet (Recommended)":** the house's post is edited in the side sheet already
+  built (`DigestPost.tsx`). Rejected: *"(c) Read-only /settings tile"*; *"(b) Popover modal"*
+  (would reopen ADR 0112 F2).
+- **Q7, "Keep both verbs (Recommended)":** *Mark as briefed* (records, stays) on floor entries;
+  the hand-off (navigates, records nothing) everywhere else. Rejected: *"Force one verb"*.
+- **Q8, "Count, not who (Recommended)":** every member sees that the house's post went out and how
+  many letters — never to whom. Rejected: *"Nothing"*; *"Count and who"*.
+- **Q9, "Per reader (Recommended)":** the delta is measured from THIS reader's own last sent
+  letter. Rejected: *"One house clock"*.
+- **Q10, "Keep trimmed (Recommended)":** refusal copy stays on the entries actually refused; no
+  "not refused" line on every entry. Rejected: *"Explain every entry"*.
+
+Built, and what each answer became (page note `.planning/06-pages/recommendations.md`, "Round 6"):
+the masthead margin reads `GET /analytics/goals/:rid/progress` (recomputed progress; every state
+said, no currency symbol invented); one suggested goal from a standing entry whose rule maps to a
+metric no active goal holds, opening that entry's own goal sheet with the target blank; hand-offs
+no longer write `acted`; *Mark as briefed* stamps `acted_at` + a new `acted_by` (migration
+`20260927100000`), and the stamp is a note gated like a pin both ways — its Undo like clearing a
+pin, a re-stamp over someone else's like re-pinning theirs, the platform admin making neither
+(PR #483 audit R2, 2026-09-26); the delta cutting and the house's
+send count read two new fields of `GET /recommendations/digest/subscription` (`lastLetter`,
+`houseLastPost`). Not built here, by these answers: the in-place PO draft (Q3), the per-rule
+quiet-tier field (Q4), the account door on more rules (Q5). The one-line confirmation of the
+"fifth/sixth" reading in README's non-blocking flag is answered: the founder's 2026-09-25 answers,
+item 43, "Sketch 122 fifth/sixth reading confirmed".]**
+
 **[ADDED 2026-09-19, PR #391 audit M2 — his 2026-09-19 sketch-120 feedback (memory
 `founder-sketch-decisions-106-115.md`, lane-answers batch 3, "RECOMMENDATIONS"), the
 brief for the next round (sketch 122). He said only the first part below is a
@@ -692,3 +742,4 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
 | 2026-09-21 | Aldemir (founder), picks relayed verbatim in the shell lane's brief (this session did not re-read the dictation transcript) + Claude (branch `feat/shell-counter`, uncommitted at this row) | Picked — the shell is sketch 119 direction D, **the counter**, with E's day line as a PAGE element on the dashboard and the receiving page, not chrome. Forks answered: (3) a SEALED act may be completed from the counter's sheet on ANY page, with the same HoldToApprove ceremony and server seal as the owning page, nothing weaker; (4) the counter holds the person's own acts (Seal, Verify, Reply, Decide) plus "Mudavym proposes" (`ai_proposed_actions`), applied only by the seal; (5/6) the Judge/market row appears only once its register exists — no 501 placeholder row or route; (10) width is "Open first, then remember": open on a person's first visits at normal widths, tucked below ~1280 px and on `/reports` and `/inventory` to a ~52 px strip that still shows each verb with its count, then each person's choice per page remembered (per-device localStorage keyed by the person in this first version — the server preference route takes its user id from the URL, see the build note); (9) the phone is D's four doors, Counter · Rooms · Search · Ask; (11) the counter's session log, "the house said", clears on reload. Standing: ADR 0149 row 5 (shell rebuilt as house chrome), row 33 / ADR 0145 (WineAgentFab removed; `/ask` and ⌘⇧K are the doors), row 8 (support@mudavym.com), internal tools never in the rooms. Built behind `mudavym_design_shell` (OFF; migration 20260921114300; browser override `mudavym.design.shell`); the day line as a page element is NOT built on this branch. Claims: SHELL-COUNTER-NEVER-PRINTS-A-FAILED-READ-AS-ZERO, SHELL-GATE-IS-OFF-BY-DEFAULT-AND-THREE-LAYERED, SHELL-PROPOSAL-IS-APPLIED-ONLY-BY-THE-SEAL |
 | 2026-09-21 | Session (Sonnet 5; second pass on the same branch, `feat/shell-counter`, uncommitted at this row) — the rest of ADR 0149 row 5's house chrome, and E's day line | Built — ONE house toast (`AppToaster.tsx` + `ToastContext.tsx`'s `HouseToastProvider` [corrected at the lane's last call, 2026-09-21: now the hook `useHouseToastApi` inside ONE `ToastProvider` whose tree shape does not change with the gate — the two-component swap remounted the whole app when the flag answered; and the undo toast added, which this row had not built]: every `useToast()` call forwards to `sonner` under the gate, landing on the same `<Toaster/>` its ~30 direct callers use; legacy unchanged); the error boundary's screen (`HouseErrorScreen.tsx`, via a new render-function `fallback` on `ErrorBoundary` — one class, not two); the page loader and skeletons (`HousePageLoader.tsx`, a 400 ms/12 s ladder replacing the App-level Suspense fallback under the gate); the offline banner (`AppOfflineBanner.tsx`, sketch 103's queued-is-never-confirmed rule at the aggregate level — the full per-record four-rung ladder still needs a richer `useSyncManager`, not built); the in-app 404 (`ShellCatchAll.tsx` + `HouseNotFound.tsx`, NESTED under `DashboardLayout`'s route — fixes the "still deciding" race the first pass's build note flagged). `WineAgentFab` deleted outright (not merely unmounted), regardless of the gate, per row 33 — a static guard holds it deleted. E's day line built at REDUCED scope, stated: `GET /house/day` (`house-day.service.ts`) answers 3 of the sketch's 6 registers (deliveries that arrived, today's calendar, today's reminders — one shared read); `deliveryExpected` (an uncosted new capture surface, the sketch's own words), `shifts` (real schema, needs a timezone-aware week pick and a role-based service choice — a bounded follow-up) and `market` (the same no-placeholder rule as the counter's Judge row) are not built, so the head counts "N of 3", never a bigger denominator. Drawn as a wrapping tick-chip row, not the sketch's pixel-timed band with DOM-measured no-overlap labels (`DayLine.tsx`; `dashboard.md` and `receiving.md` carry the full reasoning). Claims: SHELL-WINE-AGENT-FAB-IS-DELETED-NOT-GATED, SHELL-DAY-LINE-NEVER-COUNTS-A-REGISTER-THIS-BUILD-DOES-NOT-READ, SHELL-TOAST-IS-ONE-SYSTEM-UNDER-THE-GATE, SHELL-404-IS-NESTED-UNDER-THE-LAYOUT-ROUTE, SHELL-OFFLINE-BANNER-NEVER-SAYS-WILL-SYNC-WHEN-QUEUED |
 | 2026-09-21 | Aldemir (founder), round 6k answers relayed verbatim in the shell lane's round-2 brief (this session did not re-read the question-round transcript) + Claude (Opus 5; branch `feat/shell-counter`, round 2, uncommitted at this row) | Answered and built — two forks this record's 2026-09-21 rows had left open. (a) On /ask, **"Never without the seal"**: the Ask panel's `ProposalCard` no longer applies a proposal with a click on the unsealed `POST /ask-ai/actions/:id/confirm`. It applies only through `HoldToApprove` bound to a server seal minted when the hold begins, after any edits: `POST /ask-ai/actions/:id/seal-challenge` now takes the operator's edited `payload`, checks it through the same allowlist and grounding an apply runs, and binds it into the seal (`args.edit`); `sealed-confirm` carries the same payload back and redeems before anything is written, so an edit made after the hold began, an untouched seal spent on an edit, or an edited seal spent untouched are all refused as "changed after the seal was issued" (the card also refuses the first case locally, before any request). The unsealed route answers **410** with a sentence naming both sealed routes and calls nothing; the service's public `confirm` is now the private `applyAfterSeal`, reached only from `confirmSealed`. Callers swept: the web client's `confirmAction` is deleted, `CounterActSheet` already used the seal (its "from the counter" copy scoping is removed), no other caller exists in `apps/`, `services/` or `scripts/`. Held by `scripts/check_ask_ai_is_gated.py` section 4 (rewritten; 10 guard mutations killed, one of which, a cast-spelled `(this.askAi as any).confirm(`, first survived and the guard was hardened for it) and the rewritten CLAIMS row SHELL-PROPOSAL-IS-APPLIED-ONLY-BY-THE-SEAL (13 of 13 mutations killed). (b) On the day line, **"Count what's built"**: the head stays "N of 3", the three registers this build reads, with no placeholder row for deliveries expected, shifts or the market; `house-day.spec.ts` and `DayLine.test.tsx` now pin it (a fourth register and a six denominator each fail a test). Merge note: `'shell'` joins the held-back list of `useMudavymDesign.test.tsx` beside settings, cellar, recommendations and receiving, never `LIVE_PAGES`; the shell stays flag-gated, default off. |
+| 2026-09-25 | Aldemir (founder, `AskUserQuestion`, session 6c6d8b93, items 24-25) + lane W3-recs (Opus 5.5) | Answered — §108: sketch 122 direction B ("direction B is better"), questions 2-10 all "Recommended" (verbatim options and rejected alternatives in §108's bracket); `/recommendations` joins `LIVE_PAGES` for every house |
