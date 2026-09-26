@@ -129,9 +129,13 @@ page still showed the old design for one tab — CRITIC §G8, ADR 0149 row 22.
   100 credit memos (`CREDIT_MEMOS`). All three are in `RECEIPTS_SERVER_WINDOWS` and
   guarded by `scripts/check_windowed_figures.py` (the renderer and the imported
   `useProviders` hook are registered there).
-- **"Requested" says nothing was sent.** The move is labelled *I asked the vendor*, and
-  its confirmation says "Mudavym sends nothing to the vendor" — because the gateway's
-  `requested` branch stamps `requested_at`/`requested_by` and nothing else (§10).
+- **"Requested" drafts a letter and sends nothing** (ADR 0230, founder 2026-09-25 round 5;
+  this bullet used to say the move stamped `requested_at`/`requested_by` and nothing else).
+  The move is labelled *Ask the vendor*; the gateway stamps who and when and drafts a
+  `HOUSE_DRAFT` letter to the vendor carrying the claim's facts. The claim sheet shows the
+  letter in the letter book's words ("Drafted to … — not sent", "Sent to … on …") and links
+  `/communications?draft=<id>`, where sending it from the composer is the approval. No
+  vendor, no booked address, and a failed read each say so rather than showing no letter.
 - **Settling names a real memo.** The legacy `window.prompt` for a UUID is gone. The
   settle form picks from the house's credit memos (`GET /procurement/documents?docType=credit_memo`),
   the claim's own vendor first, each marked when it is unverified, in another currency,

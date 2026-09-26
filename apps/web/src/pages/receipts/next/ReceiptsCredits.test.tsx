@@ -3,8 +3,9 @@
  *
  * What is pinned here: the tab is offered by the role IN THIS HOUSE (ADR 0167),
  * the legacy page is never loaded, figures are never added across currencies,
- * a window is a floor, an unknown is not an empty, "requested" says Mudavym
- * sent nothing, and a settlement names a real credit memo and an amount.
+ * a window is a floor, an unknown is not an empty, "requested" drafts a letter
+ * and says nothing was sent (ADR 0230), and a settlement names a real credit
+ * memo and an amount.
  */
 
 import { readFileSync } from 'node:fs';
@@ -249,14 +250,23 @@ describe('figures', () => {
 });
 
 describe('moves', () => {
-  it('"I asked the vendor" says Mudavym sends nothing, then records requested', async () => {
+  it('"Ask the vendor" says it drafts and sends nothing, then links the drafted letter', async () => {
     api.claims = [claim()];
-    api.transition.mockResolvedValue(claim({ state: 'requested' }));
+    api.transition.mockResolvedValue({
+      ...claim({ state: 'requested' }),
+      letter: {
+        state: 'drafted',
+        id: 'letter-9',
+        to: 'orders@bodega.example',
+        says: 'Drafted to orders@bodega.example, not sent. It waits in Communications until someone here sends it.',
+      },
+    });
     renderAt('/receipts?tab=credits');
     fireEvent.click(await screen.findByText('Billed for more than arrived'));
-    fireEvent.click(await screen.findByRole('button', { name: 'I asked the vendor' }));
-    expect(screen.getByText(/Mudavym sends nothing to the vendor/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Record: i asked the vendor/i }));
+    expect(screen.getByText(/Asking drafts a letter to the vendor in Communications/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask the vendor' }));
+    expect(screen.getByText(/Nothing is sent until someone opens the draft there and sends it/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Record: ask the vendor/i }));
     await waitFor(() =>
       expect(api.transition).toHaveBeenCalledWith('c1', {
         to: 'requested',
@@ -264,6 +274,74 @@ describe('moves', () => {
         creditDocumentId: undefined,
       }),
     );
+    expect(await screen.findByText(/Drafted to orders@bodega.example, not sent/)).toBeTruthy();
+    const link = screen.getByRole('link', { name: 'Open the draft' });
+    expect(link.getAttribute('href')).toBe('/communications?draft=letter-9');
+  });
+
+  it('a claim with no vendor says there is nobody to write to', async () => {
+    api.claims = [claim({ provider_id: null })];
+    api.transition.mockResolvedValue({
+      ...claim({ state: 'requested', provider_id: null }),
+      letter: {
+        state: 'no_vendor',
+        id: null,
+        to: null,
+        says: 'This claim names no vendor, so there is nobody to write to and no letter was drafted.',
+      },
+    });
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask the vendor' }));
+    fireEvent.click(screen.getByRole('button', { name: /Record: ask the vendor/i }));
+    expect(await screen.findByText(/names no vendor, so there is nobody to write to/)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Open the draft' })).toBeNull();
+  });
+
+  it("an asked claim names its letter in the letter book's words", async () => {
+    api.claims = [
+      claim({
+        state: 'requested',
+        letters: [
+          { id: 'letter-9', status: 'HOUSE_DRAFT', to: null, sentAt: null, createdAt: '2026-09-25T09:00:00Z' },
+        ],
+      }),
+    ];
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    expect(await screen.findByText(/Drafted — not sent; the vendor has no address in the book yet/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open the draft' }).getAttribute('href')).toBe(
+      '/communications?draft=letter-9',
+    );
+  });
+
+  it('a sent letter is said as sent, with no draft link', async () => {
+    api.claims = [
+      claim({
+        state: 'requested',
+        letters: [
+          {
+            id: 'letter-9',
+            status: 'SENT',
+            to: 'orders@bodega.example',
+            sentAt: '2026-09-25T09:05:00Z',
+            createdAt: '2026-09-25T09:00:00Z',
+          },
+        ],
+      }),
+    ];
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    expect(await screen.findByText(/Sent to orders@bodega.example on/)).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Open the draft' })).toBeNull();
+  });
+
+  it('letters that could not be read are unknown, never none', async () => {
+    api.claims = [claim({ state: 'requested', letters: null })];
+    renderAt('/receipts?tab=credits');
+    fireEvent.click(await screen.findByText('Billed for more than arrived'));
+    expect(await screen.findByText(/letters could not be read/)).toBeTruthy();
+    expect(screen.queryByText(/No letter was drafted/)).toBeNull();
   });
 
   it('states the gateway refusal in its words and leaves the claim as it was', async () => {
@@ -333,7 +411,7 @@ describe('moves', () => {
     renderAt('/receipts?tab=credits');
     fireEvent.click(await screen.findByText(/Closed ·/));
     fireEvent.click(await screen.findByText('Billed for more than arrived'));
-    expect(await screen.findByRole('button', { name: 'I asked the vendor again' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Ask the vendor again' })).toBeTruthy();
   });
 });
 

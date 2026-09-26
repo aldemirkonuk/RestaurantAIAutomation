@@ -120,6 +120,9 @@ import { HouseInboxCron } from "./inbox/house-inbox.cron";
     // uses, so the standing alert and the page's own reading of "is the
     // house's mail grant live" can never disagree (help.md §111).
     HouseInboxService,
+    // ADR 0230 — a credit claim asked for drafts its letter through the same
+    // service the composer queues through (procurement/credits).
+    HouseLettersService,
   ],
 })
 export class CommunicationsModule {}

@@ -26,6 +26,28 @@ export type CreditReason =
   | 'never_ordered'
   | 'other'
 
+/**
+ * One house letter that belongs to a claim (ADR 0230). Moving a claim to
+ * `requested` drafts one; its `status` is the letter book's own word —
+ * `HOUSE_DRAFT` (not sent), `HOUSE_QUEUED` (inside its undo window), `SENT`,
+ * `HOUSE_CANCELLED`, `HOUSE_FAILED`.
+ */
+export interface CreditLetterRef {
+  id: string
+  status: string
+  to: string | null
+  sentAt: string | null
+  createdAt: string | null
+}
+
+/** What asking the vendor did to the letter book, returned with the move. */
+export interface CreditLetterOutcome {
+  state: 'drafted' | 'drafted_no_address' | 'no_vendor' | 'existing' | 'failed'
+  id: string | null
+  to: string | null
+  says: string
+}
+
 export interface ProcurementCredit {
   id: string
   restaurant_id: string
@@ -57,6 +79,11 @@ export interface ProcurementCredit {
   requested_at: string | null
   promised_at: string | null
   settled_at: string | null
+  /**
+   * This claim's letters, newest first (ADR 0230). `null` means they could not
+   * be read — unknown, never "none". Absent from a gateway older than the field.
+   */
+  letters?: CreditLetterRef[] | null
 }
 
 export interface RecoveryFigures {
@@ -104,9 +131,15 @@ export const creditsApi = {
       creditDocumentId?: string
       notes?: string
     },
-  ): Promise<ProcurementCredit> {
+  ): Promise<ProcurementCredit & { letter?: CreditLetterOutcome }> {
     const { data } = await apiClient.post(`/procurement/credits/${id}/transition`, body)
     return data
+  },
+
+  /** Draft the letter again for a claim already asked for (ADR 0230). */
+  async requestLetter(id: string): Promise<CreditLetterOutcome> {
+    const { data } = await apiClient.post(`/procurement/credits/${id}/request-letter`)
+    return data.letter
   },
 }
 

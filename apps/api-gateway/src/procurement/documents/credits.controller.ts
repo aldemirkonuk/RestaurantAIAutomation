@@ -30,6 +30,10 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import {
+  HouseLettersService,
+  type CreditLetter,
+} from "../../communications/letters/house-letters.service";
+import {
   Credit,
   CreditState,
   recoveryStats,
@@ -78,6 +82,30 @@ export class TransitionCreditDto {
 }
 
 /**
+ * Draft the claim's letter, and say what happened in words rather than failing
+ * the move (ADR 0230). The claim IS requested by the time this runs; a letter
+ * that could not be drafted is reported beside it, and
+ * `POST :id/request-letter` drafts it again. A module function rather than a
+ * method so the controller's handler list stays its routes.
+ */
+async function draftLetter(
+  letters: HouseLettersService,
+  user: AuthedUser,
+  creditId: string,
+): Promise<CreditLetter> {
+  try {
+    return await letters.draftForCredit({
+      restaurantId: user.restaurantId,
+      userId: user.userId,
+      creditId,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { state: "failed", id: null, to: null, says: message };
+  }
+}
+
+/**
  * Vendor credit claims — the money a distributor owes back.
  *
  * The one thing this surface exists to keep honest: CLAIMED IS NOT RECOVERED.
@@ -90,7 +118,10 @@ export class TransitionCreditDto {
 @UseGuards(JwtAuthGuard)
 @Controller("procurement/credits")
 export class CreditsController {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly letters: HouseLettersService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -118,7 +149,57 @@ export class CreditsController {
     const { data, error } = await q;
     if (error)
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
-    return { items: data ?? [] };
+    const items = data ?? [];
+
+    // Each claim's letters (ADR 0230): the draft it links to, and what became
+    // of it. Read separately so a failure here is named rather than printed as
+    // "no letter" — `letters: null` + `lettersError` is unknown, never none.
+    let letters: Record<string, unknown[]> | null = null;
+    let lettersError: string | null = null;
+    try {
+      letters = await this.letters.lettersForCredits(
+        user.restaurantId,
+        items.map((r: { id: string }) => r.id),
+      );
+    } catch (err) {
+      lettersError = err instanceof Error ? err.message : String(err);
+    }
+    return {
+      items: items.map((r: { id: string }) => ({
+        ...r,
+        letters: letters ? (letters[r.id] ?? []) : null,
+      })),
+      lettersError,
+    };
+  }
+
+  @Post(":id/request-letter")
+  @ApiOperation({
+    summary:
+      "Draft the letter asking the vendor for this credit, for a claim already asked for (ADR 0230)",
+    description:
+      "Drafts only — nothing is sent until someone sends the draft from Communications. Returns the claim's existing unsent draft instead of making a second one.",
+  })
+  async requestLetter(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthedUser,
+  ) {
+    const { data: row, error } = await this.db
+      .getClient()
+      .from("procurement_credits")
+      .select("id, state")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (error)
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    if (!row) throw new HttpException("Claim not found", HttpStatus.NOT_FOUND);
+    if (!["requested", "promised"].includes(row.state))
+      throw new HttpException(
+        `This claim is "${row.state}". A letter is drafted when the claim is asked for — move it to requested first.`,
+        HttpStatus.CONFLICT,
+      );
+    return { letter: await draftLetter(this.letters, user, id) };
   }
 
   @Get("stats")
@@ -248,6 +329,13 @@ export class CreditsController {
 
     if (updErr)
       throw new HttpException(updErr.message, HttpStatus.INTERNAL_SERVER_ERROR);
+
+    // Asking the vendor drafts the letter that asks them (founder, 2026-09-25,
+    // round 5; ADR 0230). Drafted, never sent: it waits in /communications
+    // until a person sends it.
+    if (outcome.next.state === "requested") {
+      return { ...data, letter: await draftLetter(this.letters, user, id) };
+    }
     return data;
   }
 }

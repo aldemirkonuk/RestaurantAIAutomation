@@ -11,7 +11,9 @@
  *
  * There is no auto-send anywhere in this controller and no route that sends
  * immediately: `POST /letters` queues, the dispatcher sends, and
- * `POST /letters/:id/cancel` stops it in between.
+ * `POST /letters/:id/cancel` stops it in between. A draft (ADR 0230) leaves
+ * only through `POST /letters` with its `draftId` — the same refusals, the same
+ * undo window.
  */
 
 import {
@@ -95,6 +97,26 @@ export class HouseLettersController {
   async queued(@CurrentUser() user: TokenUser) {
     const { restaurantId } = houseActor(user);
     return { queued: await this.letters.queued(restaurantId) };
+  }
+
+  @Get("drafts")
+  @ApiOperation({
+    summary:
+      "Letters Mudavym drafted that nobody has sent (ADR 0230) — a credit claim asked for leaves one here",
+  })
+  async drafts(@CurrentUser() user: TokenUser) {
+    const { restaurantId } = houseActor(user);
+    return { drafts: await this.letters.drafts(restaurantId) };
+  }
+
+  @Post(":id/discard")
+  @ApiOperation({ summary: "Throw a draft away. It was never sent." })
+  async discard(
+    @CurrentUser() user: TokenUser,
+    @Param("id", new ParseUUIDPipe()) id: string,
+  ) {
+    const { restaurantId } = houseActor(user);
+    return this.letters.discardDraft({ restaurantId, id });
   }
 
   @Get("templates")

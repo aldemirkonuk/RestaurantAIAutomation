@@ -10,10 +10,12 @@
  *      vendor allowed. The settle form therefore asks for both, and picks the
  *      memo from the documents this house already holds instead of asking a
  *      person to type an id (the legacy tab's `window.prompt`).
- *   2. NOTHING LEAVES THE BUILDING. Moving a claim to `requested` stamps who and
- *      when; no email, no message, no queue (credits.controller.ts, the
- *      `requested` branch). So the move says "I asked the vendor", in the
- *      person's own voice, and the lane says plainly that Mudavym did not.
+ *   2. ASKING DRAFTS, IT NEVER SENDS (founder, 2026-09-25, round 5; ADR 0230).
+ *      Moving a claim to `requested` stamps who and when and drafts a letter to
+ *      the vendor in /communications carrying the claim's facts. The draft
+ *      leaves only when someone sends it from the composer, so the lane says
+ *      "drafted, not sent" until the letter book says otherwise, and names the
+ *      honest reasons there is no letter (no vendor, no address, a failed read).
  *   3. NO SUM ACROSS CURRENCIES. The gateway's combined figures add every claim
  *      whatever its currency; this lane prints `byCurrency`, one group per code,
  *      and each claim in its own code. Nothing is converted.
@@ -35,7 +37,13 @@ import { Sheet } from '@/components/mudavym/Sheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { VENDOR_UNNAMED } from '@/lib/mudavym/vendor';
-import type { CreditState, ProcurementCredit, RecoveryFigures } from '../../../services/api/credits';
+import type {
+  CreditLetterOutcome,
+  CreditLetterRef,
+  CreditState,
+  ProcurementCredit,
+  RecoveryFigures,
+} from '../../../services/api/credits';
 import type { ProcurementDocument } from '../../../services/api/documents';
 import { EM, GE, MONO, SANS, SERIF, fmtDate, fmtMoney, serverMessage } from './rc2-format';
 import {
@@ -69,7 +77,7 @@ export function reasonWords(code: string | null | undefined): string {
 /** What each state means, said so it cannot be mistaken for a sent letter. */
 export const STATE_WORDS: Record<CreditState, string> = {
   open: 'Opened — the vendor has not been asked',
-  requested: 'Asked — someone here asked the vendor',
+  requested: 'Asked — the vendor has been asked for it',
   promised: 'Promised — the vendor said yes; not money yet',
   credited: 'Recovered — settled by a credit memo',
   rejected: 'Refused by the vendor',
@@ -80,9 +88,9 @@ export const STATE_WORDS: Record<CreditState, string> = {
 export const MOVE_WORDS: Record<CreditState, { verb: string; writes: string }> = {
   open: { verb: 'Reopen', writes: '' },
   requested: {
-    verb: 'I asked the vendor',
+    verb: 'Ask the vendor',
     writes:
-      'Records that you asked the vendor for this credit, with your name and today’s date. Mudavym sends nothing to the vendor.',
+      'Records that this credit is asked for, with your name and today’s date, and drafts a letter to the vendor in Communications carrying the claim’s facts. Nothing is sent until someone opens the draft there and sends it.',
   },
   promised: {
     verb: 'The vendor promised it',
@@ -565,6 +573,76 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/**
+ * The claim's letter (ADR 0230), in the letter book's own words. A draft links
+ * to itself in /communications, where sending it is the approval. Every "no
+ * letter" says which kind: no vendor to write to, no address, a read that
+ * failed, or a claim asked for before letters were drafted.
+ */
+export function letterWords(l: CreditLetterRef): string {
+  switch (l.status) {
+    case 'HOUSE_DRAFT':
+      return l.to ? `Drafted to ${l.to} — not sent` : 'Drafted — not sent; the vendor has no address in the book yet';
+    case 'HOUSE_QUEUED':
+      return `Queued to ${l.to ?? 'the vendor'} — inside its undo window, not sent yet`;
+    case 'SENDING':
+      return 'Being handed to the mailbox — not confirmed sent yet';
+    case 'SENT':
+      return `Sent to ${l.to ?? 'the vendor'}${l.sentAt ? ` on ${fmtDate(l.sentAt)}` : ''}`;
+    case 'HOUSE_CANCELLED':
+      return 'Discarded — never sent';
+    case 'HOUSE_FAILED':
+      return 'Not sent — the mailbox refused it';
+    default:
+      return l.status.toLowerCase();
+  }
+}
+
+const LETTER_LINK: CSSProperties = { color: 'var(--seal-deep, #14515C)' };
+
+function ClaimLetter({ claim, outcome }: { claim: ProcurementCredit; outcome: CreditLetterOutcome | null }) {
+  const latest = claim.letters?.[0] ?? null;
+  // The move's own answer first: it is newer than the list the sheet opened on.
+  if (outcome && outcome.state !== 'existing') {
+    return (
+      <span>
+        {outcome.says}
+        {outcome.id && (
+          <>
+            {' '}
+            <Link to={`/communications?draft=${outcome.id}`} style={LETTER_LINK}>
+              Open the draft
+            </Link>
+          </>
+        )}
+      </span>
+    );
+  }
+  if (claim.letters === null) {
+    return <span>Unknown — this claim’s letters could not be read, so whether one was drafted is not known.</span>;
+  }
+  if (!latest) {
+    return claim.provider_id ? (
+      <span>No letter was drafted for this claim.</span>
+    ) : (
+      <span>This claim names no vendor, so there is nobody to write to.</span>
+    );
+  }
+  return (
+    <span>
+      {letterWords(latest)}
+      {latest.status === 'HOUSE_DRAFT' && (
+        <>
+          {' '}
+          <Link to={`/communications?draft=${latest.id}`} style={LETTER_LINK}>
+            Open the draft
+          </Link>
+        </>
+      )}
+    </span>
+  );
+}
+
 function ClaimSheet({
   claim,
   vendor,
@@ -577,6 +655,7 @@ function ClaimSheet({
   onClose: () => void;
 }) {
   const move = useCreditMove();
+  const [letter, setLetter] = useState<CreditLetterOutcome | null>(null);
   const [armed, setArmed] = useState<CreditState | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -591,8 +670,9 @@ function ClaimSheet({
     move.mutate(
       { id: claim.id, to, ...extra },
       {
-        onSuccess: () => {
+        onSuccess: (saved) => {
           setArmed(null);
+          if (saved?.letter) setLetter(saved.letter);
           setDone(`Recorded: ${STATE_WORDS[to]}.`);
         },
         onError: (e) =>
@@ -649,6 +729,11 @@ function ClaimSheet({
           </Fact>
         )}
         {claim.notes?.trim() && <Fact label="Notes">{claim.notes.trim()}</Fact>}
+        {(claim.state !== 'open' || letter) && (
+          <Fact label="Letter">
+            <ClaimLetter claim={claim} outcome={letter} />
+          </Fact>
+        )}
       </dl>
 
       <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
@@ -700,12 +785,14 @@ function ClaimSheet({
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {moves.map((to) => (
                 <button key={to} type="button" onClick={() => setArmed(to)} style={MOVE_BUTTON}>
-                  {claim.state === 'rejected' && to === 'requested' ? 'I asked the vendor again' : MOVE_WORDS[to].verb}
+                  {claim.state === 'rejected' && to === 'requested' ? 'Ask the vendor again' : MOVE_WORDS[to].verb}
                 </button>
               ))}
             </div>
             {claim.state === 'open' && (
-              <p style={NOTE}>Mudavym does not send this claim to the vendor. When you ask them, record it here.</p>
+              <p style={NOTE}>
+                Asking drafts a letter to the vendor in Communications. Nothing is sent until someone there sends it.
+              </p>
             )}
           </div>
         )}

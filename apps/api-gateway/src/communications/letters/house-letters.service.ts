@@ -65,6 +65,7 @@ import { composerGuardrails, type GuardrailHit } from "./composer-guardrails";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import type { IntegrationId } from "../../integrations/integrations-oauth.constants";
 import { HouseSenderService } from "./house-sender.service";
+import { composeCreditLetter } from "./credit-letter";
 import {
   addressListHeader,
   base64Body,
@@ -78,6 +79,13 @@ import type {
 
 /** The lifecycle words this path owns. Chosen so no other cron can claim them. */
 export const LETTER_STATUS = {
+  /**
+   * Written by Mudavym, decided by nobody yet (ADR 0230). A credit claim moved
+   * to `requested` leaves one of these; it becomes QUEUED only when a person
+   * sends it from the composer. No cron selects this word — the dispatcher
+   * reads QUEUED alone — so a draft cannot leave on its own.
+   */
+  DRAFT: "HOUSE_DRAFT",
   QUEUED: "HOUSE_QUEUED",
   CANCELLED: "HOUSE_CANCELLED",
   FAILED: "HOUSE_FAILED",
@@ -116,6 +124,23 @@ export type LetterCategory = (typeof LETTER_CATEGORIES)[number];
 export const LETTER_TEMPLATE_TYPE = "letter";
 
 export type { GuardrailHit } from "./composer-guardrails";
+
+/** A claim's letter, as the credits lane shows it (ADR 0230). */
+export interface CreditLetterRef {
+  id: string;
+  status: string;
+  to: string | null;
+  sentAt: string | null;
+  createdAt: string | null;
+}
+
+/** What asking a vendor for a credit did to the letter book (ADR 0230). */
+export interface CreditLetter {
+  state: "drafted" | "drafted_no_address" | "no_vendor" | "existing" | "failed";
+  id: string | null;
+  to: string | null;
+  says: string;
+}
 
 export interface BookEntry {
   providerId: string;
@@ -297,6 +322,19 @@ export class HouseLettersService {
       "queued and nothing was sent",
     );
 
+    // ── 0. a letter sent FROM a draft must still be that house's draft ─────
+    // Sending a draft is the approval (ADR 0230). It is refused when the row is
+    // not a draft any more (already sent, discarded, or another tab sent it),
+    // so one draft can never leave twice.
+    const draft = dto.draftId
+      ? await this.readDraft(restaurantId, dto.draftId)
+      : null;
+    if (draft && draft.providerId !== dto.providerId) {
+      throw new UnprocessableEntityException(
+        "That draft was written to a different vendor. Nothing was queued and nothing was sent.",
+      );
+    }
+
     // ── 1. the recipient must be in the book ────────────────────────────────
     // `book()` states the failure; this caller adds what it means HERE, because
     // a failed read on the way to a send is a letter that did not go.
@@ -376,34 +414,56 @@ export class HouseLettersService {
     const now = Date.now();
     const dispatchAt = new Date(now + (identity.undoMs ?? 0)).toISOString();
 
-    const { data, error } = await this.db.client
-      .from("procurement_conversations")
-      .insert({
-        order_id: dto.orderId ?? null,
-        restaurant_id: restaurantId,
-        provider_id: dto.providerId,
-        direction: "outbound",
-        channel: "email",
-        content: dto.body,
-        message_text: dto.body,
-        ai_generated: false,
-        status: LETTER_STATUS.QUEUED,
-        scheduled_send_at: dispatchAt,
-        outbound_email_type: "HOUSE_LETTER",
-        round_count: (priorOutbound ?? 0) + 1,
-        inserted_insights: verified.length > 0 ? verified : null,
-        email_headers: {
-          subject: dto.subject,
-          to: match.email,
-          sender_address: identity.address,
-          sender_kind: identity.kind,
-          written_by: userId,
-          template_id: dto.templateId ?? null,
-        },
-      })
-      .select("id")
-      .single();
+    const letter = {
+      order_id: dto.orderId ?? draft?.orderId ?? null,
+      restaurant_id: restaurantId,
+      provider_id: dto.providerId,
+      direction: "outbound",
+      channel: "email",
+      content: dto.body,
+      message_text: dto.body,
+      ai_generated: false,
+      status: LETTER_STATUS.QUEUED,
+      scheduled_send_at: dispatchAt,
+      outbound_email_type: "HOUSE_LETTER",
+      round_count: (priorOutbound ?? 0) + 1,
+      inserted_insights: verified.length > 0 ? verified : null,
+      email_headers: {
+        subject: dto.subject,
+        to: match.email,
+        sender_address: identity.address,
+        sender_kind: identity.kind,
+        written_by: userId,
+        template_id: dto.templateId ?? null,
+        // The claim this letter asks about stays on the row once it is sent,
+        // so the credit can still name its letter (ADR 0230).
+        ...(draft?.creditId ? { credit_id: draft.creditId } : {}),
+        ...(draft ? { drafted_by: draft.draftedBy } : {}),
+      },
+    };
 
+    // From a draft, the draft row BECOMES the letter — conditional on it still
+    // being a draft, so a second send of the same draft finds nothing to claim.
+    const { data, error } = draft
+      ? await this.db.client
+          .from("procurement_conversations")
+          .update(letter)
+          .eq("id", draft.id)
+          .eq("restaurant_id", restaurantId)
+          .eq("status", LETTER_STATUS.DRAFT)
+          .select("id")
+          .maybeSingle()
+      : await this.db.client
+          .from("procurement_conversations")
+          .insert(letter)
+          .select("id")
+          .single();
+
+    if (draft && !error && !data) {
+      throw new ConflictException(
+        "That draft is no longer a draft — it was sent or discarded while this letter was open. Nothing was queued and nothing was sent.",
+      );
+    }
     if (error || !data) {
       throw new BadRequestException(
         `The letter was NOT queued and NOT sent — the conversation book refused the row (${error?.message ?? "no row returned"}).`,
@@ -513,6 +573,329 @@ export class HouseLettersService {
         dispatchAt: (row.scheduled_send_at as string | null) ?? null,
       };
     });
+  }
+
+  // ==========================================================================
+  // Drafts — letters Mudavym wrote and nobody has sent (ADR 0230)
+  // ==========================================================================
+
+  /** One draft of this house, or a refusal that says why it is not one. */
+  private async readDraft(
+    restaurantId: string,
+    id: string,
+  ): Promise<{
+    id: string;
+    providerId: string;
+    orderId: string | null;
+    creditId: string | null;
+    draftedBy: string | null;
+  }> {
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .select("id, status, provider_id, order_id, email_headers")
+      .eq("id", id)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new BadRequestException(
+        `The draft could not be read (${error.message}). Nothing was queued and nothing was sent.`,
+      );
+    }
+    if (!data) throw new NotFoundException("No such draft in this house.");
+    const row = data as unknown as Record<string, unknown>;
+    if (String(row.status) !== LETTER_STATUS.DRAFT) {
+      throw new ConflictException(
+        `That letter is "${String(row.status)}", not a draft, so it was not sent again. Nothing was queued.`,
+      );
+    }
+    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+    return {
+      id: String(row.id),
+      providerId: String(row.provider_id),
+      orderId: (row.order_id as string | null) ?? null,
+      creditId: (headers.credit_id as string | null) ?? null,
+      draftedBy: (headers.drafted_by as string | null) ?? null,
+    };
+  }
+
+  /** Every unsent draft of this house, newest first. */
+  async drafts(restaurantId: string) {
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .select(
+        "id, provider_id, order_id, email_headers, message_text, created_at, providers!left(name)",
+      )
+      .eq("restaurant_id", restaurantId)
+      .eq("status", LETTER_STATUS.DRAFT)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) {
+      throw new BadRequestException(
+        `The drafts could not be read (${error.message}).`,
+      );
+    }
+    return (data ?? []).map((r) => {
+      const row = r as unknown as Record<string, unknown>;
+      const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+      const provider = row.providers as { name?: string } | null;
+      return {
+        id: String(row.id),
+        providerId: String(row.provider_id),
+        providerName: provider?.name ?? null,
+        orderId: (row.order_id as string | null) ?? null,
+        subject: (headers.subject as string | null) ?? null,
+        to: (headers.to as string | null) ?? null,
+        category: (headers.category as string | null) ?? null,
+        creditId: (headers.credit_id as string | null) ?? null,
+        body: String(row.message_text ?? ""),
+        createdAt: (row.created_at as string | null) ?? null,
+      };
+    });
+  }
+
+  /**
+   * Throw a draft away. The row stays, as HOUSE_CANCELLED — "we drafted this
+   * and killed it" is part of the record with a vendor, the same as a queued
+   * letter pulled back.
+   */
+  async discardDraft(params: {
+    restaurantId: string;
+    id: string;
+  }): Promise<{ id: string; status: string; says: string }> {
+    await this.readDraft(params.restaurantId, params.id);
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .update({ status: LETTER_STATUS.CANCELLED })
+      .eq("id", params.id)
+      .eq("restaurant_id", params.restaurantId)
+      .eq("status", LETTER_STATUS.DRAFT)
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      throw new BadRequestException(
+        `The draft was NOT discarded (${error.message}). It is still a draft.`,
+      );
+    }
+    if (!data) {
+      throw new ConflictException(
+        "That draft stopped being a draft before it could be discarded — it may have been sent. The conversation book says what happened to it.",
+      );
+    }
+    return {
+      id: params.id,
+      status: LETTER_STATUS.CANCELLED,
+      says: "Discarded. It was never sent, and the book keeps it as cancelled rather than deleting it.",
+    };
+  }
+
+  /**
+   * Draft the letter that asks a vendor for a credit (founder, 2026-09-25,
+   * round 5; ADR 0230). Called when a claim moves to `requested`.
+   *
+   * It DRAFTS. It never queues and never sends: the row is HOUSE_DRAFT, which
+   * no cron reads, and it leaves only when a person sends it from the composer
+   * through `queue()` — every refusal there (book, guardrails, sender, grant,
+   * undo window) applies to it exactly as to a letter typed by hand.
+   *
+   * The honest outcomes, each its own state rather than one "failed":
+   *   drafted             — a draft addressed to the vendor's booked address
+   *   drafted_no_address  — a draft kept, but the vendor has no address in the
+   *                         book (or the book could not be read), so it cannot
+   *                         go until one is added
+   *   no_vendor           — the claim names no vendor; there is nobody to write
+   *                         to, and no row is written
+   *   existing            — this claim already has an unsent draft; that one is
+   *                         returned, so asking twice never makes two
+   */
+  async draftForCredit(params: {
+    restaurantId: string;
+    userId: string;
+    creditId: string;
+  }): Promise<CreditLetter> {
+    const { restaurantId, creditId } = params;
+    const userId = assertNamedActor(params.userId, "drafted");
+
+    const { data: credit, error: creditError } = await this.db.client
+      .from("procurement_credits")
+      .select(
+        "id, provider_id, order_id, document_id, reason, summary, claimed_amount, claimed_qty, currency, opened_at",
+      )
+      .eq("id", creditId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (creditError) {
+      throw new BadRequestException(
+        `The claim could not be read (${creditError.message}), so no letter was drafted.`,
+      );
+    }
+    if (!credit) throw new NotFoundException("No such claim in this house.");
+    const c = credit as unknown as Record<string, unknown>;
+
+    const providerId = (c.provider_id as string | null) ?? null;
+    if (!providerId) {
+      return {
+        state: "no_vendor",
+        id: null,
+        to: null,
+        says: "This claim names no vendor, so there is nobody to write to and no letter was drafted. Ask the vendor yourself; the claim still records that it was asked for.",
+      };
+    }
+
+    const existing = await this.lettersForCredits(restaurantId, [creditId]);
+    const open = existing[creditId]?.find(
+      (l) => l.status === LETTER_STATUS.DRAFT,
+    );
+    if (open) {
+      return {
+        state: "existing",
+        id: open.id,
+        to: open.to,
+        says: "This claim already has a drafted letter that has not been sent. That draft is the one to open — no second one was made.",
+      };
+    }
+
+    const [vendor, order, invoice] = await Promise.all([
+      this.db.client
+        .from("providers")
+        .select("name")
+        .eq("id", providerId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle(),
+      c.order_id
+        ? this.db.client
+            .from("procurement_orders")
+            .select("order_number")
+            .eq("id", String(c.order_id))
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      c.document_id
+        ? this.db.client
+            .from("procurement_documents")
+            .select("doc_number")
+            .eq("id", String(c.document_id))
+            .eq("restaurant_id", restaurantId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    let to: string | null = null;
+    let bookRead = true;
+    try {
+      const book = await this.book(restaurantId);
+      to = book.find((e) => e.providerId === providerId)?.email ?? null;
+    } catch {
+      bookRead = false;
+    }
+
+    const letter = composeCreditLetter({
+      reason: (c.reason as string | null) ?? null,
+      summary: (c.summary as string | null) ?? null,
+      claimedAmount: Number(c.claimed_amount ?? 0),
+      currency: (c.currency as string | null) ?? null,
+      claimedQty: c.claimed_qty == null ? null : Number(c.claimed_qty),
+      openedAt: (c.opened_at as string | null) ?? null,
+      vendorName:
+        ((vendor.data as Record<string, unknown> | null)?.name as
+          | string
+          | null) ?? null,
+      orderNumber:
+        ((order.data as Record<string, unknown> | null)?.order_number as
+          | string
+          | null) ?? null,
+      invoiceNumber:
+        ((invoice.data as Record<string, unknown> | null)?.doc_number as
+          | string
+          | null) ?? null,
+    });
+
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .insert({
+        order_id: (c.order_id as string | null) ?? null,
+        restaurant_id: restaurantId,
+        provider_id: providerId,
+        direction: "outbound",
+        channel: "email",
+        content: letter.body,
+        message_text: letter.body,
+        ai_generated: false,
+        status: LETTER_STATUS.DRAFT,
+        scheduled_send_at: null,
+        outbound_email_type: "HOUSE_LETTER",
+        email_headers: {
+          subject: letter.subject,
+          to,
+          category: letter.category,
+          credit_id: creditId,
+          drafted_by: userId,
+        },
+      })
+      .select("id")
+      .single();
+    if (error || !data) {
+      throw new BadRequestException(
+        `The letter was NOT drafted — the conversation book refused the row (${error?.message ?? "no row returned"}). The claim still records that it was asked for.`,
+      );
+    }
+    const id = String((data as Record<string, unknown>).id);
+
+    if (!to) {
+      return {
+        state: "drafted_no_address",
+        id,
+        to: null,
+        says: bookRead
+          ? "Drafted, not sent. This vendor has no address in the house's book, so the letter cannot go until one is added to the vendor."
+          : "Drafted, not sent. The vendor book could not be read, so the letter has no recipient yet — open it in Communications to choose one.",
+      };
+    }
+    return {
+      state: "drafted",
+      id,
+      to,
+      says: `Drafted to ${to}, not sent. It waits in Communications until someone here sends it.`,
+    };
+  }
+
+  /**
+   * The house letters that belong to each claim, newest first — the credit's
+   * link to its draft, and what became of it after. A failed read throws: a
+   * claim shown with no letter because the read failed would say "nothing was
+   * drafted" about a draft that exists.
+   */
+  async lettersForCredits(
+    restaurantId: string,
+    creditIds: string[],
+  ): Promise<Record<string, CreditLetterRef[]>> {
+    const out: Record<string, CreditLetterRef[]> = {};
+    if (creditIds.length === 0) return out;
+    const { data, error } = await this.db.client
+      .from("procurement_conversations")
+      .select("id, status, email_headers, sent_at, created_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("outbound_email_type", "HOUSE_LETTER")
+      .in("email_headers->>credit_id", creditIds)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (error) {
+      throw new BadRequestException(
+        `The claims' letters could not be read (${error.message}).`,
+      );
+    }
+    for (const r of (data ?? []) as unknown as Record<string, unknown>[]) {
+      const headers = (r.email_headers ?? {}) as Record<string, unknown>;
+      const creditId = headers.credit_id as string | undefined;
+      if (!creditId) continue;
+      (out[creditId] ??= []).push({
+        id: String(r.id),
+        status: String(r.status ?? ""),
+        to: (headers.to as string | null) ?? null,
+        sentAt: (r.sent_at as string | null) ?? null,
+        createdAt: (r.created_at as string | null) ?? null,
+      });
+    }
+    return out;
   }
 
   // ==========================================================================

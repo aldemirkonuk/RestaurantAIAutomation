@@ -28,7 +28,7 @@ function controllerOver(
     },
   };
   const db = { getClient: () => ({ from: () => builder }) };
-  return new CreditsController(db as never);
+  return new CreditsController(db as never, {} as never);
 }
 
 const user = { userId: "u1", restaurantId: "r1" };
