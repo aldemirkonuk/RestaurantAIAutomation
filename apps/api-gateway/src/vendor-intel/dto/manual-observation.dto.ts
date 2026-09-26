@@ -104,6 +104,23 @@ export class ManualObservationDto {
   sourceUrl?: string;
 
   /**
+   * The currency this price was quoted in. Optional here only for the
+   * pre-existing caller that has never sent one (`VendorPriceCompare.tsx`,
+   * the legacy page — its behaviour must not change): omitting it keeps the
+   * long-standing USD default. The Mudavym register (`/vendor-prices`) is a
+   * NEW caller and its own client refuses to submit without one chosen — see
+   * `vp-format.ts` — so "required, no default" is enforced there, not by
+   * loosening what an existing integration already relies on. When present
+   * it is checked against the real ISO 4217 list
+   * (`common/iso-4217.ts#isIso4217`), not just "three capital letters" —
+   * `common/iso-4217.ts`'s header names the fault a bare regex has.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  currency?: string;
+
+  /**
    * When the price was quoted, if not now. A rep's message from three weeks
    * ago is weaker evidence than one from this morning and the recency
    * weighting can only know that if the caller says so.

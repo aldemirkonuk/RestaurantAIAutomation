@@ -220,6 +220,17 @@ describe("own paper reaches vendor_price_observations", () => {
     expect(row.currency).toBe("TRY");
     expect(typeof row.content_hash).toBe("string");
     expect(row.is_outlier).toBe(false);
+    // Review finding — its own fix, not ADR 0160 §112 fork 6(a): the
+    // own-paper writer judged (is_outlier was a real false, not an absence)
+    // but used to write no `outlier_reason`, so the register read "No judge
+    // has looked at this row" for a row that HAD been looked at. Zero prior
+    // sightings exist here, so the honest reason is "not judged", not
+    // "clean".
+    expect(row.outlier_reason).toMatch(
+      /^Not judged: only 0 comparable sighting\(s\) of this product's own-paper trail exist, below the floor of 5/,
+    );
+    expect(row.outlier_basis).toBe("write_time");
+    expect(typeof row.outlier_judged_at).toBe("string");
     // observed_at is the verification's own moment, and effective_date agrees.
     expect(row.observed_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(row.effective_date).toBe(row.observed_at.slice(0, 10));
@@ -383,6 +394,12 @@ describe("own paper reaches vendor_price_observations", () => {
 
     expect(calls.sightingInserts).toHaveLength(1);
     expect(calls.sightingInserts[0].is_outlier).toBe(true);
+    // The reason names the count and the test, the same words the manual
+    // writer already uses (`vendor-comparison.service.ts`) — a struck row is
+    // never a bare boolean on this register.
+    expect(calls.sightingInserts[0].outlier_reason).toMatch(
+      /^Flagged at write time against 5 earlier sighting\(s\) of this product's own-paper trail/,
+    );
   });
 
   it("does not flag an ordinary price against the same history", async () => {
@@ -406,6 +423,12 @@ describe("own paper reaches vendor_price_observations", () => {
     });
 
     expect(calls.sightingInserts[0].is_outlier).toBe(false);
+    // Before this fix this row's `outlier_reason` was null, indistinguishable
+    // from a row nobody had judged at all — the exact defect this test now
+    // guards (its own review finding, not ADR 0160 §112 fork 6(a)).
+    expect(calls.sightingInserts[0].outlier_reason).toMatch(
+      /^Judged clean at write time against 5 earlier sighting\(s\) of this product's own-paper trail\.$/,
+    );
   });
 });
 

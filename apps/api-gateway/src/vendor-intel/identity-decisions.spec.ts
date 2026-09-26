@@ -49,6 +49,12 @@ function makeService(opts: {
   linkError?: any;
   releaseRows?: any[];
   releaseError?: any;
+  /** Rows for the plain `select().eq(...)` reads of the candidates table —
+   * `pending()`'s own list, and `decisions(identityId)`'s first step (which
+   * candidates named this identity) — distinct from `loadCandidate`'s
+   * `maybeSingle()` read above. */
+  candidateRows?: any[];
+  candidateReadError?: any;
 }) {
   const rec: Recorded = { inserts: [], updates: [], deletes: [], reads: [] };
 
@@ -69,6 +75,10 @@ function makeService(opts: {
       eq: (col: string, val: any) => {
         filters.push([col, val]);
         if (mode === "update") return b;
+        return b;
+      },
+      in: (col: string, vals: any[]) => {
+        filters.push([col, vals]);
         return b;
       },
       update: (p: any) => {
@@ -131,6 +141,12 @@ function makeService(opts: {
         }
         if (mode === "update" && table !== "beverage_identity_candidates" && opts.linkError) {
           return resolve({ data: null, error: opts.linkError });
+        }
+        if (table === "beverage_identity_candidates" && mode === "select") {
+          return resolve({
+            data: opts.candidateRows ?? [],
+            error: opts.candidateReadError ?? null,
+          });
         }
         return resolve({ data: [], error: null });
       },
@@ -697,6 +713,195 @@ describe("the decision log read", () => {
     const { svc } = makeService({ logError: { message: "relation missing" } });
     await expect(svc.decisions("house-1")).rejects.toThrow(
       /could not be read \(relation missing\)\. This is a failure, not an empty log/,
+    );
+  });
+});
+
+/**
+ * The house that decided a shared-register row is now recorded
+ * (`deciding_restaurant_id`, migration 20260917010000) — ADR 0149 answer 17:
+ * "the person's name and undo only inside that house." A HOUSE row's own
+ * `restaurant_id` still IS its deciding house, unaffected by whether
+ * `deciding_restaurant_id` was ever written on it.
+ */
+describe("naming the deciding house on a shared row (ADR 0149 answer 17)", () => {
+  it("shows the person and allows undo inside the deciding house", async () => {
+    const { svc } = makeService({
+      logRows: [
+        {
+          id: "d1",
+          candidate_id: "cand-1",
+          restaurant_id: null,
+          deciding_restaurant_id: "house-1",
+          decided_by_label: "Aylin",
+          decided_by_role: "staff",
+        },
+      ],
+    });
+    const out = await svc.decisions("house-1", 50);
+    expect(out.items[0]).toMatchObject({
+      decided_by_label: "Aylin",
+      decided_by_role: "staff",
+      decided_in: "this_house",
+      person_shown: true,
+      undo_refusal: null,
+    });
+    expect(out.items[0].deciding_restaurant_id).toBeUndefined();
+  });
+
+  it("hides the person and refuses undo from a different house", async () => {
+    const { svc } = makeService({
+      logRows: [
+        {
+          id: "d1",
+          candidate_id: "cand-1",
+          restaurant_id: null,
+          deciding_restaurant_id: "house-2",
+          decided_by_label: "Someone Else",
+          decided_by_role: "manager",
+          note: "checked the label",
+        },
+      ],
+    });
+    const out = await svc.decisions("house-1", 50);
+    expect(out.items[0]).toMatchObject({
+      decided_by: null,
+      decided_by_label: null,
+      decided_by_role: null,
+      note: null,
+      decided_in: "another_house",
+      person_shown: false,
+    });
+    expect(out.items[0].undo_refusal).toMatch(/taken in another house/);
+  });
+
+  it("reads a HOUSE row's own restaurant_id as its deciding house, even with no deciding_restaurant_id column value", async () => {
+    const { svc } = makeService({
+      logRows: [
+        { id: "d1", candidate_id: "cand-1", restaurant_id: "house-1", decided_by_label: "Aylin" },
+      ],
+    });
+    const out = await svc.decisions("house-1", 50);
+    expect(out.items[0]).toMatchObject({ decided_by_label: "Aylin", decided_in: "this_house", person_shown: true, undo_refusal: null });
+  });
+});
+
+describe("undo refuses a shared decision taken in another house (ADR 0149 answer 17)", () => {
+  it("refuses an undo of a shared row decided by another house", async () => {
+    const { svc } = makeService({
+      decision: {
+        id: "dec-1",
+        candidate_id: "cand-1",
+        restaurant_id: null,
+        deciding_restaurant_id: "house-2",
+        action: "confirmed",
+        link_written: null,
+      },
+      candidate: { ...CANDIDATE, restaurant_id: null, status: "confirmed" },
+    });
+    await expect(
+      svc.undo({ decisionId: "dec-1", actor: MANAGER, restaurantId: "house-1" }),
+    ).rejects.toThrow(/taken in another house/);
+  });
+
+  it("allows an undo of a shared row this same house decided", async () => {
+    const { svc, rec } = makeService({
+      decision: {
+        id: "dec-1",
+        candidate_id: "cand-1",
+        restaurant_id: null,
+        deciding_restaurant_id: "house-1",
+        action: "rejected",
+        link_written: null,
+      },
+      candidate: { ...CANDIDATE, restaurant_id: null, status: "rejected" },
+      identity: { id: "ident-1", display_label: "x", identity_key: "k" },
+    });
+    const out = await svc.undo({ decisionId: "dec-1", actor: MANAGER, restaurantId: "house-1" });
+    expect(out.undid).toBe("dec-1");
+    const logged = rec.inserts.find((i) => i.table === "beverage_identity_decisions")!;
+    expect(logged.payload.deciding_restaurant_id).toBe("house-1");
+  });
+});
+
+/**
+ * Narrowed to one bottle — the sighting sheet's "identity decisions on this
+ * row" card and its pending line (ADR 0160 §112, direction A).
+ */
+describe("narrowing the queue and the log to one identity", () => {
+  it("pending() filters the candidates table by identity_id", async () => {
+    const { svc, rec } = makeService({ candidateRows: [CANDIDATE] });
+    const out = await svc.pending("house-1", 50, "ident-1");
+    expect(out).toEqual([CANDIDATE]);
+    const read = rec.reads.find((r) => r.table === "beverage_identity_candidates")!;
+    expect(read.filters).toEqual(
+      expect.arrayContaining([
+        ["status", "pending"],
+        ["or", "restaurant_id.is.null,restaurant_id.eq.house-1"],
+        ["identity_id", "ident-1"],
+      ]),
+    );
+  });
+
+  it("decisions(identityId) reads which candidates named this identity, then filters the log by those candidates", async () => {
+    const { svc, rec } = makeService({
+      candidateRows: [{ id: "cand-1" }, { id: "cand-2" }],
+      logRows: [{ id: "d1", candidate_id: "cand-1" }],
+    });
+    const out = await svc.decisions("house-1", 50, "ident-1");
+    expect(out.items).toHaveLength(1);
+    // The row names no `restaurant_id`/`deciding_restaurant_id` at all (a
+    // fixture predating the migration) — read conservatively: hidden person,
+    // no house may take it back (ADR 0149 answer 17).
+    expect(out.items[0]).toMatchObject({
+      id: "d1",
+      candidate_id: "cand-1",
+      decided_by: null,
+      decided_by_label: null,
+      decided_by_role: null,
+      note: null,
+      decided_in: "unrecorded",
+      person_shown: false,
+    });
+    expect(out.items[0].undo_refusal).toMatch(/before Mudavym recorded which house/);
+    expect(out.scope).toContain("this bottle");
+    const candidateRead = rec.reads.find(
+      (r) => r.table === "beverage_identity_candidates",
+    )!;
+    expect(candidateRead.filters).toEqual(
+      expect.arrayContaining([
+        ["identity_id", "ident-1"],
+        ["or", "restaurant_id.is.null,restaurant_id.eq.house-1"],
+      ]),
+    );
+    const logRead = rec.reads.find((r) => r.table === "beverage_identity_decisions")!;
+    expect(logRead.filters).toEqual(
+      expect.arrayContaining([["candidate_id", ["cand-1", "cand-2"]]]),
+    );
+  });
+
+  it("decisions(identityId) returns an honest empty result without querying the log, when no candidate ever named this identity", async () => {
+    const { svc, rec } = makeService({
+      candidateRows: [],
+      logRows: [{ id: "should-not-appear" }],
+    });
+    const out = await svc.decisions("house-1", 50, "ident-with-no-candidates");
+    expect(out).toEqual({
+      items: [],
+      scope:
+        "this house's decisions on this bottle, plus decisions on it from the public registers",
+      limit: 50,
+      complete: true,
+    });
+    expect(rec.reads.some((r) => r.table === "beverage_identity_decisions")).toBe(false);
+  });
+
+  it("decisions(identityId) fails loudly when the candidate lookup itself fails", async () => {
+    const { svc } = makeService({
+      candidateReadError: { message: "connection reset" },
+    });
+    await expect(svc.decisions("house-1", 50, "ident-1")).rejects.toThrow(
+      /could not be read \(connection reset\)\. This is a failure, not an empty log/,
     );
   });
 });

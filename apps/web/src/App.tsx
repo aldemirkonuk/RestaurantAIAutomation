@@ -145,7 +145,10 @@ const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
 // Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
+// `VendorPriceCompare.tsx` is routed as PageGate's `legacy` branch — see the
+// route comment below for the flag this page ships behind.
 const VendorPriceCompare = lazyWithRefresh(() => import('./pages/VendorPriceCompare'))
+const VendorPricesNext = lazyWithRefresh(() => import('./pages/vendor-prices/next/VendorPricesNext'))
 const DevTruth = lazyWithRefresh(() => import('./pages/DevTruth'))
 
 // Dev/Test pages
@@ -428,10 +431,19 @@ function App() {
                     }
                   />
                   <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
-                  {/* Vendor price comparison. Role gate is enforced server-side
-                      too (owner/manager on /vendor-intel/*) — a hidden route is
-                      not access control. */}
-                  <Route path="/vendor-prices" element={<VendorPriceCompare />} />
+                  {/* Vendor price comparison — ADR 0160 §112, direction A,
+                      behind a per-house flag like every other Mudavym page.
+                      Memory founder-sketch-decisions-106-115.md, "19-lane
+                      blocking answers (AskUserQuestion, 2026-09-19 ~09:20Z)":
+                      "vendor-prices = behind a flag (vendor_prices
+                      mudavym_design_* column migration, he flips it; NOT
+                      live on merge)". Gated on mudavym_design_vendor_prices
+                      (migration 20260921150000, renamed twice — see
+                      vendor-prices.md), OFF by default. Role gate
+                      is enforced server-side too (owner/manager on
+                      /vendor-intel/*, staff on the identity routes) — a
+                      hidden route is not access control. */}
+                  <Route path="/vendor-prices" element={<PageGate page="vendor_prices" legacy={<VendorPriceCompare />} next={<VendorPricesNext />} />} />
                   {/* dev/truth — three instruments that make the product's own
                       numbers checkable (reach · as-of · swallow). The gateway
                       routes behind them 404 in production, so this renders its

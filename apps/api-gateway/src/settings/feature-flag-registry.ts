@@ -102,6 +102,27 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     defaultValue: false,
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
   },
+  {
+    key: "mudavym_design_vendor_prices",
+    // OFF by default: the Mudavym redesign of `/vendor-prices` (ADR 0160
+    // §112, direction A). [Added 2026-09-19, repair pass, wt-pg-vprices]:
+    // an earlier same-day brief (2026-09-18) had this route cut straight to
+    // Mudavym for every house with no flag; the founder's LATER, more
+    // specific 2026-09-19 ~09:20Z answer (memory
+    // founder-sketch-decisions-106-115.md, "19-lane blocking answers")
+    // overrides that and requires exactly this gate. Column added by
+    // 20260921150000 (renamed twice — 20260921000000 and, before that,
+    // 20260919110000 were each older than an in-flight sibling migration by
+    // the time they were checked in; see vendor-prices.md's dated brackets
+    // for the full rename history).
+    defaultValue: false,
+    // Every sibling entry above cites :105, which was already stale before
+    // this addition (useMudavymDesign() is at :122 as of this same edit,
+    // pre-existing drift not caused by this lane) — out of scope to sweep
+    // here, disclosed rather than copied forward uncorrected. This one is
+    // accurate as of 2026-09-19 (repair pass, wt-pg-vprices).
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:129",
+  },
 ];
 
 export const ACTIVE_FEATURE_FLAG_KEYS: readonly string[] =

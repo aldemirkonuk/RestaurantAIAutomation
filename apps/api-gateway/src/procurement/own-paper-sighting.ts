@@ -134,6 +134,19 @@ export interface OwnPaperSightingRow {
   normalization_note: string;
   content_hash: string;
   is_outlier: boolean;
+  /**
+   * A sentence a person can read, mirroring the manual writer's own words
+   * (`vendor-comparison.service.ts`'s `outlierReason`) — never left null when
+   * the caller supplied a `priorCount`. Before this field existed, an
+   * own-paper row was judged (`is_outlier` was a real true/false) but said
+   * nothing about it, so the register read "No judge has looked at this
+   * row" for a row that HAD been looked at. Its own review finding — not
+   * ADR 0160 §112 fork 6(a), which is the still-unbuilt `document_id` +
+   * line-reference provenance (see `vendor-prices.md` §0).
+   */
+  outlier_reason: string | null;
+  outlier_basis: "write_time" | null;
+  outlier_judged_at: string | null;
   raw: Record<string, unknown>;
 }
 
@@ -195,10 +208,16 @@ function positiveInt(v: unknown): number | null {
  * `isOutlier` is passed in rather than computed here because it is a property
  * of the GROUP, which only the caller can read. The caller obtains it from
  * `isOutlierAgainstPriors` with the register rows it has just fetched.
+ *
+ * `priorCount` is the same rows' length, so this can say WHY — "judged clean
+ * against N priors" or "not judged: only N, below the floor" — the way
+ * `vendor-comparison.service.ts`'s manual writer already does. A caller that
+ * omits it gets `outlier_reason: null` (this file's own field goes unwritten,
+ * not a guessed sentence) rather than a claim this function cannot back up.
  */
 export function decideOwnPaperSighting(
   input: OwnPaperSightingInput,
-  opts: { isOutlier?: boolean } = {},
+  opts: { isOutlier?: boolean; priorCount?: number } = {},
 ): OwnPaperSightingDecision {
   const where = `${input.source} on order ${input.orderId ?? "(no id)"}`;
 
@@ -374,6 +393,25 @@ export function decideOwnPaperSighting(
     )
     .digest("hex");
 
+  // The sentence, not just the boolean. `isOutlierAgainstPriors` (the
+  // caller's own judge) returns `false` BOTH when a row is judged clean AND
+  // when there were too few priors to judge at all — `opts.isOutlier` alone
+  // cannot tell those apart, which is exactly how a judged-clean own-paper
+  // row and a never-judged one both used to read "No judge has looked at
+  // this row" on the register (review finding). `priorCount` recovers the
+  // distinction the same way the manual writer already draws it.
+  const judged =
+    opts.priorCount !== undefined && opts.priorCount + 1 >= MIN_OUTLIER_SAMPLE;
+  const outlierReason =
+    opts.priorCount === undefined
+      ? null
+      : !judged
+        ? `Not judged: only ${opts.priorCount} comparable sighting(s) of this product's own-paper trail exist, below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
+        : opts.isOutlier
+          ? `Flagged at write time against ${opts.priorCount} earlier sighting(s) of this product's own-paper trail: it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
+          : `Judged clean at write time against ${opts.priorCount} earlier sighting(s) of this product's own-paper trail.`;
+  const judgedAt = opts.priorCount === undefined ? null : new Date().toISOString();
+
   return {
     write: true,
     sourceRef,
@@ -398,6 +436,9 @@ export function decideOwnPaperSighting(
       normalization_note: note,
       content_hash: contentHash,
       is_outlier: opts.isOutlier === true,
+      outlier_reason: outlierReason,
+      outlier_basis: opts.priorCount === undefined ? null : "write_time",
+      outlier_judged_at: judgedAt,
       raw: {
         origin: "own_paper",
         priceHistorySource: input.source,
