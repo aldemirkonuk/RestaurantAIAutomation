@@ -29,7 +29,7 @@
  * `localStorage` key, so the choice follows the person to another device. A
  * mode is written back only once it differs from what the account already
  * holds, so the ordinary case (nobody has ever switched away from Ask) never
- * spends a write. See the `hydratedModeRef` / `baselineModeRef` block below.
+ * spends a write. See the `hydratedMode` / `baselineModeRef` block below.
  *
  * WHERE IT SITS (ADR 0145, 2026-09-21 layout and 2026-09-25 fork 3):
  *   docked   at ≥ ~1280 px, in the counter's slot beside a live page; the
