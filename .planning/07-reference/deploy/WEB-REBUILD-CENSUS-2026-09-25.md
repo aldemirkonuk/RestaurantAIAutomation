@@ -197,9 +197,9 @@ has something to show, except F1, which is live.
 | # | Fork | Options and cost | Recommendation |
 |---|---|---|---|
 | F1 | `/communications` shows an error to every house because `public.scheduled_reports` is created by no migration (ADR 0083:58-68; production `to_regclass` is null). #457 removed the source and was BLOCKed on ADR 0083 | (a) Amend ADR 0083: the page names the three sources it owns; schedules leave until a table exists; the Gmail-watch line moves to `/admin`. (b) Build the table and feature. (c) Render the missing table as "not set up" | (a), matching his 2026-09-22 ruling to strip technical detail from the restaurant UI (§8.1, preview ruling 2). OD-91 (OPEN-DECISIONS.md:61) and OD-92 (OPEN-DECISIONS.md:62) bear on (b) **[ANSWERED 2026-09-25: (a), amend ADR 0083 (§11 item 1). The amendment is the comms lane's (W1 comms-a), not written here.]** |
-| F2 | OD-152 (OPEN-DECISIONS.md:84): what a bare click on an `/orders` row does | (A) opens the receipt sheet as ruled; (B) keep the expansion; (C) receipt when one exists, expansion while pending | (C) **[ANSWERED 2026-09-25: (C) (§11 item 3). OD-152 moved to Resolved.]** |
+| F2 | OD-152 (OPEN-DECISIONS.md:93): what a bare click on an `/orders` row does | (A) opens the receipt sheet as ruled; (B) keep the expansion; (C) receipt when one exists, expansion while pending | (C) **[ANSWERED 2026-09-25: (C) (§11 item 3). OD-152 moved to Resolved.]** |
 | F3 | OD-140 (OPEN-DECISIONS.md:24): return the not-placed lines, not only their count | Yes: a gateway field plus the control sketch 121 draws. No: a count with no follow-through | Yes **[ANSWERED 2026-09-25: yes, as a separate list endpoint (OD-140's option (a); §11 item 5). OD-140 bracketed ANSWERED in place; it stays in the Open table until lane W1-orders-cellar's build merges.]** |
-| F4 | OD-133 (OPEN-DECISIONS.md:85): **only the retention and DPA terms** remain. Egress is decided (ADR 0182) and the register was widened to add TypeSafe as a subprocessor (round 6y, §8.2) | (a) DPA; (b) accept retention as-is, in writing; (c) scope the gate | (a) **[ANSWERED 2026-09-25: (a), by his word "TypeSafe is already done" (§11 item 8). OD-133 moved to Resolved. The DPA document itself was not seen by this lane.]** |
+| F4 | OD-133 (OPEN-DECISIONS.md:94): **only the retention and DPA terms** remain. Egress is decided (ADR 0182) and the register was widened to add TypeSafe as a subprocessor (round 6y, §8.2) | (a) DPA; (b) accept retention as-is, in writing; (c) scope the gate | (a) **[ANSWERED 2026-09-25: (a), by his word "TypeSafe is already done" (§11 item 8). OD-133 moved to Resolved. The DPA document itself was not seen by this lane.]** |
 | F5 | #414's dormant Arrival book (1413 lines) | (A) its own manifest group; (B) revert now; (C) keep as an alternative | (A), after confirming sketch 121 §7.3's binding three counts are carried by `/house/menu` or superseded by ADR 0213: `HouseMenu.tsx` shows no read/placed/not-placed counts today (critic G16) **[ANSWERED 2026-09-25: (A) (§11 item 4). Recorded as ADR 0149's deletion-manifest note. The sketch 121 §7.3 three-count check in this row's recommendation is still unmeasured.]** |
 | F6 | OD-151 (OPEN-DECISIONS.md:25): a Google Calendar grant | Build (new scope, consent copy, sync) or defer | Defer until L13 reports on the two calendar-push trees |
 | F7 | **Receiving history paging vs the verdict-ledger strip.** Q7's Approach 1 (2026-09-22) includes "a line's full verdict history … paged 10-at-a-time"; on 2026-09-21 he ruled the verdict ledger stripped because it was not bulletproof | (a) Approach 1 without per-line verdict history until a ledger passes his bar; (b) rebuild a bulletproof ledger first; (c) history from existing receipt rows only | Ask with L6's first draft **[ANSWERED 2026-09-25: (c), history from the door receipts already recorded; the ledger strip stands (§11 item 2). Recorded in ADR 0160 §107 / Open item 4.]** |
@@ -466,7 +466,7 @@ Built on branch `fix/preview-notes-2026-09-22` (not merged).
 shell and admin in the database only (J1), `arrival` is overridden by ADR 0213; Q7 not built
 (F7); Q8 built (`ConnectionsNext.tsx:319`, ADR 0149 row 53); Q9 built on #434; Q10 recorded
 on OD-123 in this PR; Q11 recorded on OD-132 in this PR (see C22); §7.2 superseded by ADR
-0213 F7 (OD-141 (OPEN-DECISIONS.md:93)); preview rulings 1–3 merged via #458–#462, ruling 4
+0213 F7 (OD-141 (OPEN-DECISIONS.md:102)); preview rulings 1–3 merged via #458–#462, ruling 4
 is F2.
 
 ### 8.2 Round-5/6 rulings the corrections above rely on (memory `founder-answers-2026-09-21-round5.md`)
@@ -557,7 +557,7 @@ The verdict-ledger strip ruling cited in §0 (L6(b)) is in memory
 
 | Retired | Recover with | Why |
 |---|---|---|
-| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:93), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
+| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:102), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
 
 ---
 
@@ -615,7 +615,7 @@ read tracked files only, ADR 0220; `34386a476`), #466 (this records PR), #467 (r
 catalogue round 6, ADR 0191; `85283ad0f`). **PRs brought up to date:** #427, #423, #395, #412,
 #416, #446, #449, #451, #450, #425, #394. **Merge train 1** is running over #463 #416 #412 #446
 #423 #395 #465 #451 #450 #425 #394 #467, in that order; at this section's last update #463 had
-merged (`f7630c08b`, 22:57Z) and the other eleven were OPEN (`gh pr view --json state`). Heads are from Wave 0's result file; a train
+merged (`f7630c08b`, 22:57Z) and the other eleven were OPEN (`gh pr view --json state`). **[2026-09-26T03:10Z: #416, #412 and #446 have merged since — see §13.2.]** Heads are from Wave 0's result file; a train
 merge moves them.
 
 ### 12.1 Wave 0's notes for the records lane, verified
@@ -650,3 +650,95 @@ already done: L4's "record authorize_integration as acted-on-pending-confirmatio
 | L13 | #368 is CONFLICTING and its WhatsApp-sender content shipped via #391; a close-as-superseded candidate (not in §11 item 7's grant) | `gh pr view 368 --json mergeable` |
 | L1 | Memory corrections owed (not edited by this PR): `founder-answers-2026-09-22-page-gap` (four report paths never existed; Q11 vs `Privacy.tsx:21-31`), `ci-audit-gate-out-of-credit` (#442 bypasses to success), `four-fixes-session-2026-09-22` (#448 CI red), `gate-r4-code-only-in-wt-gate-rule` (superseded by `origin/wip/2026-09-19/gate`, an ancestor of #432), `web-rebuild-goal-2026-09-25` (31 migrations across 7 PRs, not 26 across 5) | L1's report; the memory files exist |
 
+---
+
+## 13. Founder answers, round 5 (2026-09-25 evening)
+
+Copied **verbatim** from project memory `founder-answers-2026-09-25-web-rebuild.md`, lines
+30-58, as that file stood at 2026-09-26T02:40Z (its mtime; its frontmatter `modified` stamp
+still reads 21:16Z and is stale). §11 copied items 1-13; nothing on the record held items
+14-23 (round 4, asked after Wave 1) either, so they are copied here with round 5 (items
+24-36, asked after Wave 2, ~22:30 local). Item 36 and the closing "Still unasked" line came
+in after this lane's brief, which named items 24-35; they are copied too. As in §8 and §11,
+quoted words inside are his; the surrounding text is the recording session's note, and the
+scratchpad paths it names are not durable.
+
+**Round 4 (after Wave 1), all recommended options:**
+14. POST /notifications/send-email: **close the endpoint** (merge #410; #422 drops HouseEmailService + its caller edits). Overrides ADR 0149 row 15's send-email half.
+15. #435 data terms: **complete the subprocessor list first** — add a CI check that every outside host receiving house data (e.g. exp.host push bodies) is named, fill SUBPROCESSORS, then merge.
+16. Verified account with zero houses and no ended membership → **straight to /get-started**; removed-from-house people still see /no-access. (ADR 0164 vs 0213.)
+17. Password reset/change **signs out every other session** (needs issued-token tracking; new build item).
+18. OD-140 "Show me the N" control lives **on /cellar registers**; /house/menu's three locked counts untouched.
+19. #440: manager on/off = **pay visibility/edit only**; removed person's kept rows = **owner-only 'former staff' history**; keep **credentials yes, availability no**.
+20. #464 stale-send limit **24 hours**.
+21. #435 Q21 **keep as built** (per-owner acceptance; first acceptance turns Jev on; later acceptance never overrides an off switch).
+22. Houseless vendor rows: **leave them, report only** (measure + list; no data write).
+23. **Close #374 and #368** with pointers.
+Still open (not asked): ADR 0161 shape guard in ci.yml (gate-owned; ADR 0161 Proposed); ADR 0221 'later' shared-vendor conditions (deferred by design).
+24. **Sketch 122 (recommendations round 6) Q1: direction B — "Goals in the Masthead"** (his words: "direction B is better"; confirmed via AskUserQuestion to mean sketch 122). Goals as a narrow marginalia column at the masthead's right under "The Morning Letter", day strip below both. Sketch on origin/wip/2026-09-21/recs-sketch `.planning/sketches/122-recommendations-round-5/direction-b.html`. Its README "Founder questions" 2-10 are STILL OPEN — ask them (with recommendations) once the W2-recs-sketch review page lands, then build recs on #420's base + flag to code.
+
+**Round 5 (after Wave 2, 2026-09-25 ~22:30), asked via AskUserQuestion:**
+25. Sketch 122 Q2-Q10 all recommended: Q2 add snooze+pin+mark-as-briefed to ADR 0112 F10 undo list (hand-offs record nothing); Q3 reorder = honest two-step now; Q4 sourcesUnread substitute now, real per-rule field next; Q5 account door on the two baseline rules; Q6 post edited in the side sheet (a); Q7 keep both verbs; Q8 non-recipients see count not who; Q9 per-reader delta; Q10 refusal copy trimmed. Record in ADR 0160 §108 + ADR 0112 F10 amendment.
+26. Owner deletes own only house → **/get-started** (only people removed by someone else see /no-access). His words also: "their email is with us, if they accepted to share their personal info we keep what's valuable to us" → keep the account/email; retention of other personal data follows their consent.
+27. No-house caller on list routes → **403** (confirms ADR 0171 assumption; #416 #472).
+28. /ask below ~1280px: panel **lies over** the page (sheet). ASK_LAUNCHED: "added to the railway" — he already set it; ADR 0145 fixture-test hold effectively waived by him — verify readings' fixture coverage anyway and report.
+29. Passkeys (confirmed reading): passkey (Face ID/Touch ID) IS a sign-in method; logged-out with no passkey → emailed one-time code; enrolling while signed in: signed in within last 10 min = direct, else email code first. Consent panel accepted as built (own store per switch, managers see disabled, in-app notice only). Supersedes #479's "type current password" proof and ADR 0134 §7 action-only reading.
+30. Vendor prices #473: no seal on 'Lowest admitted', rise/fall same ink — accepted; provenance = follow-on lane that must land before the flag goes live for any house.
+31. Credits #476: 'requested' creates a DRAFTED letter to the vendor in /communications; nothing sends without approval.
+32. #440 own wage: manager with pay access MAY set own wage, **with a notification to the owner** (and visible in the report/audit trail).
+33. #435 public names (asked again with research, scratchpad research-public-names.md): his words "if they accept terms and conditions then yes, we can access their menu and so on" → these lookups ARE house data, allowed once the owner accepts terms; so the terms/SUBPROCESSORS must NAME every such host (Wine-Searcher, CellarTracker, Google Places, Apify, Yelp, Vivino, OpenTable, Serper) and the guard's 'public' excuse is narrowed; lookups gated on terms acceptance. House-blind catalogue service (step 2) NOT ordered now. Licence breaches (Places/Yelp storage TTLs, Wine-Searcher/CellarTracker Playwright scraping into master_wine_library): "Leave as is for now" — record as accepted risk in v3.0-TECH-DEBT with his words. Gallery: "if we can use it for now, then keep it, until all legal part starts, this way we'll improve way faster" → keep outside sources + image collector for now.
+33a. (superseded first ask) #435 public names: he asked "what is the best SOTA and will help for best improvement in our data gallery? count as house data?" → research agent running (scratchpad research-public-names.md); ask again with the recommendation.
+34. Receiving: door record append-only enforced = **trigger refusing UPDATE/DELETE + FK no cascade**; verifyReceipt accepts part-pack counts **in base units** (ADR 0070) so every verification leaves a history line.
+35. Promotions sketch 124: **Direction A (The Band)**, **tray** bundles, bundle ranks by its total, withheld-worth bundle drawn compact, undated offers kept labelled 'no end date'. NEW ask (his words): the owner searching vendors/promotions "must see certain filters per their restaurant first … first filter as everything you see on the menu at the moment. Bigger search for all the items they use. And other filters that we might need … I need your help there" → brainstorm/research filters, then ask.
+36. House-first filters (research scratchpad research-filters.md, adversary-corrected): /promotions opens on **On my menu** (CURRENT active menu(s) only, paged reads; tag shows the matched menu line) → **Everything I stock** → **All offers** (he added the third rung). Facets: vendor, ends soon, search, **coarse product categories** (his words: "fruit … drinks … soft drinks … whiskeys, maybe not that deep" — NOT serving styles like "by the glass"), and **Running low** ("also works") — build it honestly: only for items whose stock was actually counted (uncounted rows default 0 vs threshold 3). Box sizes FIXED across scopes (rank once). No menu → widen to Everything I stock with banner; bundle shows if any bottle on menu, tagged "n of m on your menu". /vendors opens on **Supplies my menu** (from purchase evidence: price_history ∪ order items ∪ inventory.provider_id) → All my vendors → **Find new vendors** (existing curated vendor_catalogue search). Build AFTER Wave 3's W3-promos (#474) and W3-vendors (rename) land. ODs to file (records lane): two promotions registers; provider_conversation_agent inserts non-existent provider_promotions columns (status, is_recurring, source_message_text) so its offers never land; savings_realized/times_used missing; silent caps (extractor 500, bridge 2000, price_history 2000); extractor generic-name false positives; stock 0 vs threshold 3.
+Still unasked: ADR 0165 items 2 (adaptive recency) + 3 (per-wine vs mixed minimums); OD-125 deliveries domain for /receiving; labour-tracking switch 'and off'; sketch 122 'fifth/sixth' one-line confirm; HOUSE_ITEM_RESEARCH_DISPATCH_ENABLED flip is his.
+
+### 13.1 Where each answer lands
+
+"Lands in" is the PR or record each answer was assigned to. "State" is what that PR's body
+said when this lane read it (2026-09-26 ~03:10Z, `gh pr view --json body`); a PR body is
+the lane's own claim, not re-verified here, and Wave 3 lanes were still pushing.
+
+| # | Answer (short) | Lands in | State at ~03:10Z |
+|---|---|---|---|
+| 14 | `POST /notifications/send-email`: close it | #410 (closes it); #422 drops `HouseEmailService`; OD-121 bracketed (this PR); overrides ADR 0149 row 15's send-email half | #422 body: dropped in `e7ca9ab26`, fork struck as resolved. Both OPEN |
+| 15 | #435: subprocessor list complete first, with a CI check | #435 (ADR 0224 on its branch) | #435 body lists hosts SUBPROCESSORS neither names nor excuses (`exp.host`, `api.twilio.com`, …). OPEN |
+| 16 | Zero houses, no ended membership → `/get-started` | #471 (ADR 0164) | Built, commit `42e23bbe2` (#471 body). OPEN |
+| 17 | Reset/change signs out every other session | #477 (ADR 0225) | OPEN |
+| 18 | OD-140 control on `/cellar` registers | #469; OD-140 bracketed (this PR) | #469 body, "2026-09-25 update — the control moves to /cellar". OPEN |
+| 19 | #440 manager switch = pay visibility/edit; former-staff history owner-only; credentials yes, availability no | #440 (ADR 0215 on its branch) | Built (#440 body, round 4 section). OPEN |
+| 20 | #464 stale-send limit 24 hours | #464 | #464 body: held when older than 24 hours or unprovable. OPEN, in train 1 |
+| 21 | #435 Q21 keep as built | #435 | OPEN |
+| 22 | Houseless vendor rows: report only | ADR 0221 (this PR, not yet on `main`); lane W3-vendors (#481) | No write ordered; nothing to build |
+| 23 | Close #374 and #368 | — | Both CLOSED 2026-09-26T00:06Z (`gh pr view --json closedAt`) |
+| 24 | Sketch 122 Q1: direction B, "Goals in the Masthead" | Lane W3-recs, branch `feat/recs-round6-direction-b` on #420's base; ADR 0160 §108 | Branch not on the remote at ~03:10Z (`git ls-remote`); worktree `wt-w3-recs` has uncommitted edits |
+| 25 | Sketch 122 Q2-Q10 all recommended | ADR 0160 §108 + ADR 0112 F10 amendment, lane W3-recs | Not yet on any remote ref (as item 24) |
+| 26 | Owner deleting own only house → `/get-started`; keep account/email, other data by consent | #471 (ADR 0164) | #471 body carries a "[Amended 2026-09-25, round 5 …]" note. OPEN |
+| 27 | No-house caller on list routes → 403 | #472 (ADR 0171 amendment); #416 on main | #416 MERGED `e754b3a27`; #472 body: every handler 403s with no house. OPEN |
+| 28 | `/ask` below ~1280px is a sheet; `ASK_LAUNCHED` set by him on Railway; verify reading fixtures anyway | #475 (ADR 0145) | #475 body: fixture hold "not re-verified" and `ASK_LAUNCHED` described as unset — both are for its lane to reconcile with this answer. OPEN |
+| 29 | Passkeys are a sign-in method; emailed one-time code fallback; 10-minute recent-sign-in rule; consent panel as built | #479 (ADR 0222); supersedes its "type current password" proof and ADR 0134 §7's action-only reading | #479 body still lists "Passkey as a sign-in method — not built". OPEN |
+| 30 | Vendor prices: no seal on "Lowest admitted", rise/fall same ink; provenance before any house's flag | #473; follow-on lane W3-provenance (branch `feat/vendor-price-provenance`) | #473 OPEN; provenance branch not on the remote at ~03:10Z |
+| 31 | Credits "requested" drafts a letter, sends nothing | #476 (ADR 0230 on its branch) | Built (#476 body). OPEN |
+| 32 | Manager with pay access may set own wage, owner notified, audit trail | #440 | Built, commit `c9123073d` (#440 body). OPEN |
+| 33 | #435 public-name lookups are house data once terms are accepted; name every host; licence breaches accepted for now; gallery kept | #435 (SUBPROCESSORS, guard); `v3.0-TECH-DEBT.md` accepted-risk row (his words) | #435 body quotes item 33. The TECH-DEBT row is #435's lane's, not checked here |
+| 34 | Door record append-only by trigger (UPDATE/DELETE refused, FK no cascade); `verifyReceipt` takes part-pack counts in base units | #480 (stacked on #436) | #480 body at `4d37fe083` still says "there is no trigger" and returns the fork — built state not seen. OPEN |
+| 35 | Promotions sketch 124: direction A, trays, bundle ranks by total, withheld bundle compact, undated labelled | #474 (ADR 0160 §113, ADR 0165) | Built (#474 body). OPEN, dark |
+| 36 | House-first filters for `/promotions` and `/vendors` | Build after #474 and #481; five of the research's follow-ups filed in `OPEN-DECISIONS.md` by this PR (OD-156 to OD-160) | Not started (ordered after W3-promos and W3-vendors). The sixth follow-up, "stock 0 vs threshold 3", is not filed: the founder already ruled "Running low" counts only counted items, and the counted signal exists, `restaurant_inventory.last_counted_at` (`20260805132000_counting_catalog_and_correlation_columns.sql:8-9`), so it is a build rule for that lane, not a fork |
+
+The "Still unasked" forks are filed as register rows by this PR: OD-125 (carried onto `main`
+from `origin/wip/2026-09-21/receiving`, where it was filed; same fork, same id), OD-153 and
+OD-154 (ADR 0165 open items 2 and 3), OD-155 (ADR 0215 item 16's "on and off" reading).
+Not filed: sketch 122's "fifth/sixth" confirm (a one-line check inside lane W3-recs, not a
+fork this lane could state), and `HOUSE_ITEM_RESEARCH_DISPATCH_ENABLED` (his keystroke, §5).
+
+### 13.2 Merge train 1, as of 2026-09-26T03:10Z
+
+Merged, in order: #463 (`f7630c08b`, 22:57Z), #416 (`e754b3a27`, 23:25Z), #412
+(`4e7c5b5a6`, 00:11Z), #446 (`e4f81d748`, 00:33Z). Still OPEN: #423 #395 #465 (fix rounds),
+#451 #450 #425 #394 #467 (`gh pr view --json state,mergedAt`). #416, #412 and #446 change
+only `apps/api-gateway` (`git diff --name-only f7630c08b e4f81d748 -- apps`), so `LIVE_PAGES`
+is still 23 keys and mudavym.com still serves `assets/index-2txKbWJ0.js`. The production
+gateway answers `"commit":"e4f81d7486a9…","bootedAt":"2026-09-26T02:16:38Z"` on
+`/api/v1/health/live` (curl, 03:11Z): the three scoping fixes are live. The `Deploy to
+Production` workflow failed on each of the four merge commits (`gh run list --branch main`);
+Railway and Vercel auto-deploy regardless, so that red is the workflow, not the deploy.

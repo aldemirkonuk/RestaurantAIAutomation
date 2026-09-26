@@ -1,7 +1,7 @@
 ---
 type: reference
 title: Live Checklist
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 
 # Live Checklist — every route in App.tsx, ticked against reality
@@ -79,16 +79,18 @@ updated: 2026-09-25
 
 ## Live for every house in code — 20 keys, 28 routes
 
+**[2026-09-26T03:10Z: 23 keys and 31 routes since #463 (`f7630c08b`) — `shell`, `admin` and `authorize_integration` moved here from the gated table below, where their rows stay with the bracket that moved them. Merge train 1 has since merged #416 (`e754b3a27`), #412 (`4e7c5b5a6`) and #446 (`e4f81d748`); all three change only `apps/api-gateway` (`git diff --name-only f7630c08b e4f81d748 -- apps`), so no key and no route changed. mudavym.com still serves `assets/index-2txKbWJ0.js`; the gateway serves `e4f81d748` (`/api/v1/health/live`, booted 02:16:38Z). [web-rebuild census](../07-reference/deploy/WEB-REBUILD-CENSUS-2026-09-25.md) §13.2.]**
+
 *Rebuilt 2026-09-25.* The rows for the sixteen original keys (seventeen routes, counting `/orders/:id`) went live with #421 (merged 2026-09-21, deployed 2026-09-22); `settings`, `help`, `cellar` and `menu` joined in code with #419, #413 and #434 (2026-09-22/23 UTC). None reads a `restaurant_feature_flags` row.
 
 | Route | Page | Design | Design locked? | Built on main? | Live for every house? | Deployed proof | Legacy deleted? | Notes |
 |---|---|---|---|---|---|---|---|---|
 | `/` | dashboard | Mudavym | Yes — ADR 0149 row 36 | Yes (`DashboardNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:361` |
 | `/inventory` | inventory | Mudavym | Yes — ADR 0149 row 36 | Yes (`InventoryCommandPage.tsx`, same component both branches) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | Gate exists only to mount `HouseHeader` (`App.tsx:362-369`) |
-| `/orders` | orders | Mudavym | Yes — ADR 0149 row 36 | Yes (`OrdersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:376`; the bare row click is OD-152 (OPEN-DECISIONS.md:84) |
+| `/orders` | orders | Mudavym | Yes — ADR 0149 row 36 | Yes (`OrdersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:376`; the bare row click is OD-152 (OPEN-DECISIONS.md:93) |
 | `/orders/:id` | orders | Mudavym | Yes — ADR 0149 row 36 | Yes (`OrdersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:383`; not tracked by this file before 2026-09-25 |
 | `/receiving/:orderId/door` | receiving_door | Mudavym | Yes — ADR 0149 row 36 | Yes (`DoorNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | Outside `DashboardLayout` on purpose; `NO_CHROME`. `App.tsx:289-292` |
-| `/providers` | providers | Mudavym | Yes — ADR 0149 row 36 | Yes (`ProvidersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:430`. **Not every surface rebuilt:** vendor sentiment renders through the legacy `ProviderIntelligencePanel` inside the sheet (`TwinSheet.tsx:33-35,155`), and distributor discovery exists only in legacy `Providers.tsx:152-246` — `ProvidersNext` reads no search params, so `/distributors` lands on the roster (ADR 0149 row 22) |
+| `/providers` | providers | Mudavym | Yes — ADR 0149 row 36 | Yes (`ProvidersNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:430`. **Not every surface rebuilt:** vendor sentiment renders through the legacy `ProviderIntelligencePanel` inside the sheet (`TwinSheet.tsx:33-35,155`), and distributor discovery exists only in legacy `Providers.tsx:152-246` — `ProvidersNext` reads no search params, so `/distributors` lands on the roster (ADR 0149 row 22). **[2026-09-26: the page's reads answer only for the caller's house on `main` and in production — provider intelligence by #416 (`e754b3a27`), the provider sub-resources by #412 (`4e7c5b5a6`); the gateway serves `e4f81d748`. The rename to `/vendors` (ADR 0221) is #481, OPEN.]** |
 | `/communications` | communications | Mudavym | Yes — ADR 0149 row 36 | Yes (`CommunicationsNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:461`; only page allowed a conversation list (ADR 0149 row 25). **Live defect:** every house sees an error for "the report schedules", because `public.scheduled_reports` is created by no migration (census F1) |
 | `/team` | team | Mudavym | Yes — ADR 0149 row 36 | Yes (`TeamNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:455`; pay/hours fix #440 open |
 | `/reports` | reports | Mudavym | Yes — ADR 0149 row 36 | Yes (`ReportsNext.tsx`) | ✓ `34c33a76a` (#421) | first served from `9cfc4e96d` at 2026-09-22T03:41:32Z UTC (see "Deploy proof, 2026-09-22") | No | `App.tsx:418` |
@@ -110,7 +112,7 @@ updated: 2026-09-25
 | `/spirits` | cellar | Mudavym | Yes — ADR 0160 §110 (direction B) | Yes (`CellarNext.tsx`) | ✓ #434 (`92ea9cecc`) | ✓ served bundle `index-DgyBtnzD.js` carries the 20-key `LIVE_PAGES` literal (curl, 2026-09-25) | No | `App.tsx:410` |
 | `/non-alcoholic` | cellar | Mudavym | Yes — ADR 0160 §110 (direction B) | Yes (`CellarNext.tsx`) | ✓ #434 (`92ea9cecc`) | ✓ served bundle `index-DgyBtnzD.js` carries the 20-key `LIVE_PAGES` literal (curl, 2026-09-25) | No | `App.tsx:411` |
 | `/soft-drinks` | cellar | Mudavym | Yes — ADR 0160 §110 (direction B) | Yes (`CellarNext.tsx`) | ✓ #434 (`92ea9cecc`) | ✓ served bundle `index-DgyBtnzD.js` carries the 20-key `LIVE_PAGES` literal (curl, 2026-09-25) | No | `App.tsx:412` |
-| `/menu` | menu | Mudavym | Yes — ADR 0160 §110 item 7 | Yes (`MenuNext.tsx`) | ✓ #434 (`92ea9cecc`) | ✓ served bundle `index-DgyBtnzD.js` carries the 20-key `LIVE_PAGES` literal (curl, 2026-09-25) | No | `App.tsx:417`; a new route, no legacy predecessor |
+| `/menu` | menu | Mudavym | Yes — ADR 0160 §110 item 7 | Yes (`MenuNext.tsx`) | ✓ #434 (`92ea9cecc`) | ✓ served bundle `index-DgyBtnzD.js` carries the 20-key `LIVE_PAGES` literal (curl, 2026-09-25) | No | `App.tsx:417`; a new route, no legacy predecessor. **[2026-09-26: a menu line is edited only by its own house since #446 (`e4f81d748`), served by the production gateway.]** |
 
 ## Isolated-mount sweep — wave 5 (2026-09-18), the row-36 soak question
 
