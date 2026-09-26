@@ -194,7 +194,7 @@ export function TeamRecordSection({
         }
         consequence={
           viewerIsOwner
-            ? "You see wages, shift cost and totals. A manager sees them only if you switch their pay access on (open the manager's row), and can then set a colleague's wage but never their own; their other rights stay as they are. Every wage change is kept: who, when, the old and the new figure."
+            ? "You see wages, shift cost and totals. A manager sees them only if you switch their pay access on (open the manager's row), and can then set wages — their own too, and you are told when they do; their other rights stay as they are. Every wage change is kept: who, when, the old and the new figure."
             : moneyVisible
               ? 'An owner switched your pay access on: you see wages, shift cost and totals, and can set a colleague’s wage, not your own. Every wage change is kept: who, when, the old and the new figure.'
               : 'Wages, shift cost and totals are the owner’s, and a manager’s only when the owner switches their pay access on, so this page shows you hours. The gateway leaves the money out before it is sent, so nothing here could show it.'
@@ -286,6 +286,7 @@ function describe(action: string): string {
   if (action === 'member_role_changed') return 'changed what someone may do';
   if (action === 'team_member_removed') return 'removed someone from the team';
   if (action === 'team_pay_access_changed') return "switched a manager's pay access";
+  if (action === 'team_member_own_wage_set') return 'set their own wage (an owner was told)';
   return action.replace(/_/g, ' ');
 }
 
@@ -321,7 +322,7 @@ export function TrailSheet({
         <span>
           The last {LE}
           {TEAM_SERVER_WINDOWS.TRAIL_ROWS} changes on this restaurant, from the same trail
-          `/settings` reads, filtered to the two actions that are about people. A ceiling,
+          `/settings` reads, filtered to the actions that are about people. A ceiling,
           not a total: the route caps the read and offers no count of what is behind it.
           There is no write route and no delete route — a log a manager can edit is not a
           log.

@@ -127,6 +127,9 @@ export const TEAM_TRAIL_ACTIONS = [
   'member_role_changed',
   'team_member_removed',
   'team_pay_access_changed',
+  // A manager with pay access set their own wage (founder 2026-09-25, round 5
+  // item 32). The row names who and whose, never the figures.
+  'team_member_own_wage_set',
 ] as const;
 
 /**

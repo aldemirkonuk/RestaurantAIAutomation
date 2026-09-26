@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { recordAccessChange } from "./access-audit";
+import { recordOwnWageChange, type OwnWageReceipt } from "./own-wage-notice";
 import {
   LeaveType,
   labourSettingsRefusal,
@@ -16,6 +17,7 @@ import {
   seesMoney,
   TeamRole,
   wageWriteRefusal,
+  ownWageTellsTheOwner,
   workedHours,
   isWorked,
 } from "./pay-rules";
@@ -445,44 +447,65 @@ export class TeamService {
 
   /**
    * Only an owner writes a wage (ADR 0215) — and, since 2026-09-25 (round 4
-   * item 19), a manager the owner switched on, for anyone but themselves
-   * (`wageWriteRefusal`). A manager could set anyone's wage, their own
-   * included, with no record; this refuses before anything is written, and it
-   * refuses in words — a wage silently dropped from a save would read as
-   * saved.
+   * item 19), a manager the owner switched on (`wageWriteRefusal`); since
+   * round 5 (item 32) that includes their own wage, with the owner told
+   * (`ownWageTellsTheOwner`, `recordOwnWageChange`). A manager could once set
+   * anyone's wage with no record; this refuses a writer who may not see pay
+   * before anything is written, and it refuses in words — a wage silently
+   * dropped from a save would read as saved.
    */
-  private assertMayWriteWage(
-    viewer: { role: Role; payAccess: boolean },
-    targetIsSelf: boolean,
-  ): void {
-    const refusal = wageWriteRefusal(viewer, targetIsSelf);
+  private assertMayWriteWage(viewer: { role: Role; payAccess: boolean }): void {
+    const refusal = wageWriteRefusal(viewer);
     if (refusal) throw new ForbiddenException(refusal);
   }
 
   /**
-   * Whether roster row `memberId` is the caller's own. Read only when a
-   * manager with pay access sets a wage. A failed read refuses the write.
+   * Whether roster row `memberId` is the caller's own, and what its wage was.
+   * Read only when a manager with pay access sets a wage: the answer decides
+   * whether the owner is told, and the before-figure is what they are told.
+   * A failed read refuses the write — a self-set wage the owner cannot be told
+   * about is the one write this must not let through unnamed.
    */
-  private async isOwnRow(
+  private async readOwnRow(
     userId: string,
     restaurantId: string,
     memberId: string,
-  ): Promise<boolean> {
+  ): Promise<{ self: boolean; before: number | null; name: string | null }> {
     const { data, error } = await this.sb
       .from("team_members")
-      .select("user_id")
+      .select("user_id, hourly_wage, display_name")
       .eq("id", memberId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
     if (error) {
       this.logger.error(
-        `isOwnRow could not read member ${memberId}: ${error.message}`,
+        `readOwnRow could not read member ${memberId}: ${error.message}`,
       );
       throw new InternalServerErrorException(
         "Could not read whose row this is, so the wage was not saved.",
       );
     }
-    return data?.user_id === userId;
+    return {
+      self: data?.user_id === userId,
+      before: data?.hourly_wage == null ? null : Number(data.hourly_wage),
+      name: data?.display_name ?? null,
+    };
+  }
+
+  /** The house currency the wage trigger records, for the owner's notice. */
+  private async houseCurrency(restaurantId: string): Promise<string | null> {
+    const { data, error } = await this.sb
+      .from("restaurants")
+      .select("currency")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.warn(
+        `own-wage notice: currency unreadable for ${restaurantId}: ${error.message}`,
+      );
+      return null;
+    }
+    return data?.currency ?? null;
   }
 
   /**
@@ -645,7 +668,7 @@ export class TeamService {
     });
     const setsWage = dto.hourlyWage !== undefined && dto.hourlyWage !== null;
     // A new roster row is nobody's own yet: it has no account linked.
-    if (setsWage) this.assertMayWriteWage(viewer, false);
+    if (setsWage) this.assertMayWriteWage(viewer);
     const { data, error } = await this.sb
       .from("team_members")
       .insert({
@@ -687,14 +710,18 @@ export class TeamService {
     });
     // Before any write: a manager may still edit everything else about a
     // person, and nothing about their pay unless an owner switched their pay
-    // access on — and never their own (ADR 0215; round 4 item 19).
+    // access on (ADR 0215; round 4 item 19). Their own included, and then the
+    // owner is told (round 5 item 32).
+    let own: { self: boolean; before: number | null; name: string | null } = {
+      self: false,
+      before: null,
+      name: null,
+    };
     if (dto.hourlyWage !== undefined) {
-      this.assertMayWriteWage(
-        viewer,
-        viewer.role !== "owner" && seesMoney(viewer)
-          ? await this.isOwnRow(userId, restaurantId, memberId)
-          : false,
-      );
+      this.assertMayWriteWage(viewer);
+      if (viewer.role !== "owner" && seesMoney(viewer)) {
+        own = await this.readOwnRow(userId, restaurantId, memberId);
+      }
     }
     const patch: Record<string, any> = { updated_at: new Date().toISOString() };
     if (dto.displayName !== undefined) patch.display_name = dto.displayName;
@@ -733,7 +760,26 @@ export class TeamService {
       throw new InternalServerErrorException("Failed to update team member");
     }
     if (!data) throw new NotFoundException("Team member not found");
-    return memberForViewer(data, viewer);
+
+    // A manager who set their own wage: the owner is told, and the trail
+    // names it (round 5 item 32). Only when the figure actually moved — the
+    // wage trigger records a change only then, and a notice about a wage that
+    // did not change would be a claim about nothing.
+    const after = dto.hourlyWage == null ? null : Number(dto.hourlyWage);
+    let ownWage: OwnWageReceipt | undefined;
+    if (ownWageTellsTheOwner(viewer, own.self) && own.before !== after) {
+      ownWage = await recordOwnWageChange(this.sb, this.logger, {
+        restaurantId,
+        actorUserId: userId,
+        memberId,
+        displayName: own.name,
+        before: own.before,
+        after,
+        currency: await this.houseCurrency(restaurantId),
+      });
+    }
+    const out = memberForViewer(data, viewer);
+    return ownWage ? { ...out, ownWage } : out;
   }
 
   /**

@@ -146,6 +146,13 @@ export const READ_BACK_ACTIONS = [
    * `team/access-audit.ts`, read back so /team's trail shows who switched it.
    */
   "team_pay_access_changed",
+  /**
+   * A manager with pay access set their own wage (ADR 0215 item 21, founder
+   * 2026-09-25 round 5 item 32: allowed, "with a notification to the owner
+   * (and visible in the report/audit trail)"). Filed by
+   * `team/own-wage-notice.ts` with a subject and no figures.
+   */
+  "team_member_own_wage_set",
   "configuration_step_skipped",
   "configuration_folio_recorded",
   "configuration_batch_undone",
@@ -479,7 +486,8 @@ export class SettingsAuditService {
     if (
       action === "member_role_changed" ||
       action === "team_member_removed" ||
-      action === "team_pay_access_changed"
+      action === "team_pay_access_changed" ||
+      action === "team_member_own_wage_set"
     ) {
       return null;
     }

@@ -95,24 +95,34 @@ export function seesMoney(viewer: MoneyViewer): boolean {
 
 /**
  * Who may set a wage, and whose. The owner sets anyone's. A manager whose pay
- * access is on sets a colleague's ("see and edit pay", round 4 item 19) but
- * NOT their own: the 2026-09-21 rule refused a manager's wage write "their own
- * included", the round-4 answer did not address self-pay, and a raise the
- * person gives themselves is the one write the switch must not open without
- * being asked (returned to the founder, ADR 0215). Returns the refusal, in
- * words, or `null` when the write may go ahead.
+ * access is on sets anyone's too — a colleague's ("see and edit pay", round 4
+ * item 19) and, since round 5, their own. **[2026-09-25, founder round 5 item
+ * 32: "a manager with pay access MAY set their own wage, with a notification
+ * to the owner (and visible in the report/audit trail)". This replaces the
+ * refusal built on round 4, which returned the question: "A manager cannot set
+ * their own wage; an owner of this house can." Whether the write is the
+ * writer's own no longer decides whether it may happen — it decides who is
+ * told (`ownWageTellsTheOwner`).]** Returns the refusal, in words, or `null`
+ * when the write may go ahead.
  */
-export function wageWriteRefusal(
-  viewer: MoneyViewer,
-  targetIsSelf: boolean,
-): string | null {
+export function wageWriteRefusal(viewer: MoneyViewer): string | null {
   if (!seesMoney(viewer)) {
     return "Only an owner of this house, or a manager the owner allowed to see pay, can set or change a wage. Nothing was saved.";
   }
-  if (viewerRole(viewer) !== "owner" && targetIsSelf) {
-    return "A manager cannot set their own wage; an owner of this house can. Nothing was saved.";
-  }
   return null;
+}
+
+/**
+ * A wage write the owner must be told about: a non-owner who sees money
+ * setting the wage on their own roster row (founder, 2026-09-25, round 5 item
+ * 32). An owner setting their own wage tells nobody — they are the person it
+ * would tell.
+ */
+export function ownWageTellsTheOwner(
+  viewer: MoneyViewer,
+  targetIsSelf: boolean,
+): boolean {
+  return targetIsSelf && viewerRole(viewer) !== "owner" && seesMoney(viewer);
 }
 
 /**

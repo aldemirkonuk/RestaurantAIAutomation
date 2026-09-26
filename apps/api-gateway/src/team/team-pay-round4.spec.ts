@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { ScheduleService } from "./schedule.service";
 import { FORMER_STAFF_RETENTION_YEARS, TeamService } from "./team.service";
-import { seesMoney, wageWriteRefusal } from "./pay-rules";
+import { ownWageTellsTheOwner, seesMoney, wageWriteRefusal } from "./pay-rules";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 
 /**
@@ -107,10 +107,10 @@ describe("PA — an owner may switch a manager's pay access on; nothing else cha
     expect(seesMoney({ role: "manager", payAccess: null })).toBe(false);
     expect(seesMoney({ role: "manager", payAccess: true })).toBe(true);
     expect(seesMoney({ role: "staff", payAccess: true })).toBe(false);
-    expect(wageWriteRefusal({ role: "manager", payAccess: true }, false)).toBeNull();
-    expect(wageWriteRefusal({ role: "manager", payAccess: true }, true)).toMatch(/cannot set their own wage/);
-    expect(wageWriteRefusal({ role: "manager", payAccess: false }, false)).toMatch(/Only an owner/);
-    expect(wageWriteRefusal("owner", true)).toBeNull();
+    expect(wageWriteRefusal({ role: "manager", payAccess: true })).toBeNull();
+    expect(wageWriteRefusal({ role: "manager", payAccess: false })).toMatch(/Only an owner/);
+    expect(wageWriteRefusal({ role: "staff", payAccess: true })).toMatch(/Only an owner/);
+    expect(wageWriteRefusal("owner")).toBeNull();
   });
 
   it("a switched-on manager's week carries the money; a switched-off one's does not", async () => {
@@ -150,16 +150,13 @@ describe("PA — an owner may switch a manager's pay access on; nothing else cha
     expect("payAccess" in by("m-staff")).toBe(false);
   });
 
-  it("a switched-on manager sets a colleague's wage (recorded as theirs), never their own", async () => {
+  it("a switched-on manager sets a colleague's wage (recorded as theirs), and nobody is notified", async () => {
     const db = seed({ managerPay: true });
     const saved = await teamOf(db).updateMember(MANAGER, RID, "m-staff", { hourlyWage: 22 } as any);
     expect(saved.hourly_wage).toBe(22);
+    expect("ownWage" in saved).toBe(false);
     expect(db.tables.team_members.find((m) => m.id === "m-staff")?.wage_changed_by).toBe(MANAGER);
-
-    await expect(
-      teamOf(db).updateMember(MANAGER, RID, "m-manager", { hourlyWage: 99 } as any),
-    ).rejects.toThrow(/cannot set their own wage/);
-    expect(db.tables.team_members.find((m) => m.id === "m-manager")?.hourly_wage).toBe(30);
+    expect(db.tables.notifications).toHaveLength(0);
   });
 
   it("a switched-off manager still sets no wage at all, a new person's included", async () => {
@@ -425,5 +422,123 @@ describe("CR — a removed person's credentials are kept, not listed in team vie
     await expect(teamOf(db).listCertifications(MANAGER, RID)).rejects.toBeInstanceOf(
       InternalServerErrorException,
     );
+  });
+});
+
+// ── R5: a manager's own wage (founder 2026-09-25, round 5 item 32) ───────────
+
+describe("R5 — a manager with pay access may set their own wage, and the owner is told", () => {
+  it("the rule: only a non-owner who sees money, on their own row, tells the owner", () => {
+    expect(ownWageTellsTheOwner({ role: "manager", payAccess: true }, true)).toBe(true);
+    expect(ownWageTellsTheOwner({ role: "manager", payAccess: true }, false)).toBe(false);
+    expect(ownWageTellsTheOwner("owner", true)).toBe(false);
+    expect(ownWageTellsTheOwner({ role: "manager", payAccess: false }, true)).toBe(false);
+  });
+
+  it("saves the manager's own wage, names them as the writer, tells the owner with the figures, and files a figure-free trail row", async () => {
+    const db = seed({ managerPay: true });
+    const saved = await teamOf(db).updateMember(MANAGER, RID, "m-manager", { hourlyWage: 35 } as any);
+    expect(saved.hourly_wage).toBe(35);
+    expect(saved.ownWage).toEqual({ audited: true, ownersNotified: 1, ownersFound: 1 });
+    expect(db.tables.team_members.find((m) => m.id === "m-manager")?.wage_changed_by).toBe(MANAGER);
+
+    const notices = db.tables.notifications;
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ user_id: OWNER, restaurant_id: RID, channels: ["in_app"], status: "unread" });
+    expect(notices[0].title).toBe("Moe set their own wage");
+    expect(notices[0].message).toContain("from 30.00 TRY to 35.00 TRY");
+    expect(notices[0].metadata).toMatchObject({
+      action: "team_member_own_wage_set",
+      member_id: "m-manager",
+      hourly_wage: { from: 30, to: 35 },
+      currency: "TRY",
+    });
+
+    const trail = db.tables.system_audit_log.filter((r) => r.action === "team_member_own_wage_set");
+    expect(trail).toHaveLength(1);
+    expect(trail[0]).toMatchObject({ actor_id: MANAGER, entity_id: "m-manager", restaurant_id: RID });
+    // The team trail is house-wide: it names who and whose, never the figure.
+    expect(JSON.stringify(trail[0].changes)).not.toMatch(/30|35|TRY/);
+    // Nobody but the owner is told.
+    expect(notices.map((n) => n.user_id)).toEqual([OWNER]);
+  });
+
+  it("tells every active owner, and no inactive one", async () => {
+    const db = seed({ managerPay: true });
+    db.tables.user_restaurant_access.push(
+      { id: "a5", user_id: "user-owner-2", restaurant_id: RID, role: "owner", is_active: true, team_pay_access: false },
+      { id: "a6", user_id: "user-owner-gone", restaurant_id: RID, role: "owner", is_active: false, team_pay_access: false },
+    );
+    const saved = await teamOf(db).updateMember(MANAGER, RID, "m-manager", { hourlyWage: 35 } as any);
+    expect(saved.ownWage).toEqual({ audited: true, ownersNotified: 2, ownersFound: 2 });
+    expect(db.tables.notifications.map((n) => n.user_id).sort()).toEqual([OWNER, "user-owner-2"].sort());
+  });
+
+  it("a save that does not move the figure tells nobody", async () => {
+    const db = seed({ managerPay: true });
+    const saved = await teamOf(db).updateMember(MANAGER, RID, "m-manager", { hourlyWage: 30 } as any);
+    expect("ownWage" in saved).toBe(false);
+    expect(db.tables.notifications).toHaveLength(0);
+    expect(db.tables.system_audit_log.filter((r) => r.action === "team_member_own_wage_set")).toHaveLength(0);
+  });
+
+  it("an owner setting their own wage tells nobody — they are the person it would tell", async () => {
+    const db = seed();
+    const saved = await teamOf(db).updateMember(OWNER, RID, "m-owner", { hourlyWage: 50 } as any);
+    expect(saved.hourly_wage).toBe(50);
+    expect("ownWage" in saved).toBe(false);
+    expect(db.tables.notifications).toHaveLength(0);
+  });
+
+  it("a switched-off manager is still refused their own wage, and nothing is written", async () => {
+    const db = seed();
+    await expect(
+      teamOf(db).updateMember(MANAGER, RID, "m-manager", { hourlyWage: 99 } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.tables.team_members.find((m) => m.id === "m-manager")?.hourly_wage).toBe(30);
+    expect(db.tables.notifications).toHaveLength(0);
+  });
+});
+
+describe("R5 — recordOwnWageChange says when the owner was not told", () => {
+  const { recordOwnWageChange } = jest.requireActual("./own-wage-notice");
+  const logger = { error: jest.fn(), warn: jest.fn() } as any;
+  const change = {
+    restaurantId: RID,
+    actorUserId: MANAGER,
+    memberId: "m-manager",
+    displayName: "Moe",
+    before: 30,
+    after: 35,
+    currency: "TRY",
+  };
+  function sbWith(ownersRead: { data: unknown; error: unknown }, noticeError: unknown = null) {
+    const inserted: any[] = [];
+    const sb = {
+      from: (table: string) => ({
+        insert: async (row: any) => {
+          inserted.push({ table, row });
+          return { error: table === "notifications" ? noticeError : null };
+        },
+        select: () => {
+          const q: any = { eq: () => q, then: (r: any) => Promise.resolve(ownersRead).then(r) };
+          return q;
+        },
+      }),
+    };
+    return { sb, inserted };
+  }
+
+  it("owners unreadable: nobody told, ownersFound null (unknown, not zero)", async () => {
+    const { sb, inserted } = sbWith({ data: null, error: { message: "boom" } });
+    const r = await recordOwnWageChange(sb, logger, change);
+    expect(r).toEqual({ audited: true, ownersNotified: 0, ownersFound: null });
+    expect(inserted.filter((i) => i.table === "notifications")).toHaveLength(0);
+  });
+
+  it("a notice the table refuses is counted as not told", async () => {
+    const { sb } = sbWith({ data: [{ user_id: OWNER }], error: null }, { message: "refused" });
+    const r = await recordOwnWageChange(sb, logger, change);
+    expect(r).toEqual({ audited: true, ownersNotified: 0, ownersFound: 1 });
   });
 });

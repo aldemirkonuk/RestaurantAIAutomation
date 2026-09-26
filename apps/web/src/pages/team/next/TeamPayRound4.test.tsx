@@ -1,8 +1,9 @@
 /**
  * /team, ADR 0215 round 4 — the founder's answers of 2026-09-25 (item 19) on
  * the page: the owner's pay switch on a manager's row ("Pay visibility only"),
- * a manager with pay access never offered their own wage, and the owner-only
- * former-staff history ("Owner-only history") with honest states.
+ * a manager with pay access offered their own wage with the owner told (round 5
+ * item 32, which replaced round 4's refusal), and the owner-only former-staff
+ * history ("Owner-only history") with honest states.
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
@@ -94,7 +95,7 @@ describe('the pay switch on a manager’s row', () => {
     );
     const box = screen.getByRole('checkbox', { name: 'Sees and sets pay' });
     expect(box).not.toBeChecked();
-    expect(screen.getByTestId('pay-access')).toHaveTextContent(/never their own/);
+    expect(screen.getByTestId('pay-access')).toHaveTextContent(/their own too, and then you are told/);
     fireEvent.click(box);
     await waitFor(() => expect(api.setMemberPayAccess).toHaveBeenCalledWith('m-mgr', true));
     await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Sees and sets pay' })).toBeChecked());
@@ -151,7 +152,7 @@ describe('the pay switch on a manager’s row', () => {
     expect(screen.queryByTestId('pay-access')).toBeNull();
   });
 
-  it('shows a switched-on manager a colleague’s wage field, never their own', () => {
+  it('shows a switched-on manager a colleague’s wage field, and their own with the owner told (round 5)', () => {
     const { unmount } = render(
       wrap(
         <MemberSheet
@@ -165,6 +166,7 @@ describe('the pay switch on a manager’s row', () => {
       ),
     );
     expect(screen.getByDisplayValue('20')).toBeInTheDocument();
+    expect(screen.queryByTestId('own-wage-note')).toBeNull();
     unmount();
     render(
       wrap(
@@ -178,15 +180,36 @@ describe('the pay switch on a manager’s row', () => {
         />,
       ),
     );
-    expect(screen.queryByDisplayValue('30')).toBeNull();
-    expect(screen.getByText(/Your own wage is set by an owner/)).toBeInTheDocument();
-    // …and a save does not send it.
+    const field = screen.getByDisplayValue('30');
+    expect(screen.getByTestId('own-wage-note')).toHaveTextContent(/an owner of this house is told/);
+    fireEvent.change(field, { target: { value: '35' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     return waitFor(() => {
       expect(api.updateTeamMember).toHaveBeenCalled();
       const body = api.updateTeamMember.mock.calls[0][1] as Record<string, unknown>;
-      expect(body.hourlyWage).toBeUndefined();
+      expect(body.hourlyWage).toBe(35);
     });
+  });
+
+  it('says so, and stays open, when the owner could not be told of a manager’s own wage', async () => {
+    api.updateTeamMember.mockResolvedValueOnce({ ownWage: { audited: true, ownersNotified: 0, ownersFound: null } });
+    const onClose = vi.fn();
+    render(
+      wrap(
+        <MemberSheet
+          member={member() as never}
+          moneyVisible
+          viewerUserId="u-mgr"
+          ownerCount={1}
+          onClose={onClose}
+          onChanged={() => {}}
+        />,
+      ),
+    );
+    fireEvent.change(screen.getByDisplayValue('30'), { target: { value: '35' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(/could not be read, so none was told/)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('tells the owner, before a removal, what is kept and what is not', () => {

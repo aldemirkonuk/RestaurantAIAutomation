@@ -401,7 +401,7 @@ function TeamNextManager({
    * refuses both to anyone else; this only keeps the page from offering them.
    */
   viewerIsOwner: boolean;
-  /** `public.users.user_id` of the viewer: a manager cannot set their own wage. */
+  /** `public.users.user_id` of the viewer: a manager's own wage row tells them the owner is told. */
   viewerUserId: string | null;
 }) {
   const qc = useQueryClient();

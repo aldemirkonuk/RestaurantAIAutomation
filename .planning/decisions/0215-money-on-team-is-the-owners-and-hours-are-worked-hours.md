@@ -8,7 +8,9 @@
   ones, listed there and not decided here. **[2026-09-25: the founder answered
   the three questions round 3 returned (round 4, item 19) — see "Answered,
   2026-09-25 (round 4)" and Decision items 21–23. One new question is returned
-  there: a switched-on manager setting their OWN wage.]**
+  there: a switched-on manager setting their OWN wage.]** **[2026-09-25, round
+  5 (item 32): answered — such a manager MAY set their own wage, and the owner
+  is told. See "Answered, 2026-09-25 (round 5)" and item 21's bracket.]**
 - **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
   2026-09-22; round 4 answers 2026-09-25)
 - **Decider:** Aldemir (founder) — four picks and one answer to five forks
@@ -249,7 +251,9 @@ founder round 4 item 19, "Pay visibility only (Recommended)": the owner may
 switch an individual manager's pay access on; that manager then sees the
 money and sets a colleague's wage (never their own), with their other rights
 unchanged. Default off, so every manager stays as the 2026-09-21 pick left
-them until an owner acts. Item 21.]**
+them until an owner acts. Item 21.]** **[2026-09-25, founder round 5 item 32:
+"never their own" is withdrawn — a switched-on manager may set their own wage,
+and every active owner is notified; item 21's bracket.]**
 
 What changed, each with a test that fails on `origin/main` 9cfc4e96d:
 
@@ -506,6 +510,34 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     refused** — the 2026-09-21 rule refused it "their own included", the
     round-4 answer did not address it, and a raise someone gives themselves
     is the one write the switch should not open unasked (returned, below).
+    **[2026-09-25, founder round 5 item 32, recorded as: "a manager with pay
+    access MAY set their own wage, with a notification to the owner (and
+    visible in the report/audit trail)". The refusal above is removed, not
+    narrowed. `wageWriteRefusal(viewer)` now refuses only a writer who does
+    not see money. `updateMember` reads the target row first
+    (`readOwnRow`: whose it is, and the old figure). When a non-owner who sees
+    money moves the figure on their OWN row (`ownWageTellsTheOwner`),
+    `recordOwnWageChange` (`team/own-wage-notice.ts`) does two things:
+    (a) it files a `team_member_own_wage_set` row in `system_audit_log` with a
+    subject and NO figures, because the team trail it feeds is readable by
+    everyone in the house and a wage there would hand it to people the money
+    rule withholds it from; (b) it sends one in-app notification to every
+    ACTIVE owner, carrying the old and new figure in the house currency. The
+    figures stay where they always were, in `team_member_wage_changes`, which
+    the trigger writes in the same statement with `changed_by` and
+    `changed_by_role = manager`. Settings-audit reads the new action back, and
+    /team's trail lists it as "set their own wage (an owner was told)". The
+    page offers the manager their own wage field, with a note saying the owner
+    is told. The save answers `ownWage: { audited, ownersNotified,
+    ownersFound }`. When no owner was told (the owners could not be read, or
+    the notice was refused), the sheet stays open and says so; the wage stays
+    saved. An owner setting their own wage tells nobody, and a save that does
+    not move the figure tells nobody. Rejected: keep the refusal (the round-4
+    build); allow it with no notice; hold the new wage until an owner
+    approves it. The founder's answer names a notice, not an approval, so the
+    last would add a pending state nobody asked for. Pinned in
+    `team-pay-round4.spec.ts` (R5) and CLAIMS
+    `ADR-0215-R5-A-MANAGERS-OWN-WAGE-TELLS-THE-OWNER`.]**
     Only the owner writes the switch (`PATCH …/members/:memberId/pay-access`,
     `setPayAccess`): the target must be an ACTIVE MANAGER of the house by
     membership (an owner sees pay already, staff never do, a roster row with
@@ -718,7 +750,9 @@ shifts (item 20, "Kept, not shown"). **[2026-09-25: the founder answered three
 questions on these (round 4, item 19) — see "Answered, 2026-09-25 (round 4)"
 below and items 21–23. Returned by that round, not decided: whether a
 switched-on manager may set their OWN wage (built: refused), and — only if
-the founder meant it — the literal "and off" of item 16.]**
+the founder meant it — the literal "and off" of item 16.]** **[2026-09-25,
+round 5 item 32: the own-wage question is answered — allowed, owner notified
+(item 21's bracket). The literal "and off" of item 16 is still his.]**
 
 ## Answered, 2026-09-22 (round 6y)
 
@@ -767,7 +801,18 @@ the founder meant the tracking switch's "and off", that remains his.
 **Returned by this round (not decided here):** may a manager whose pay access
 is on set their OWN wage? The answer said "see and edit pay"; the 2026-09-21
 rule refused a manager's wage write "their own included". Built: refused
-(`wageWriteRefusal`), in words, and the web never offers it.
+(`wageWriteRefusal`), in words, and the web never offers it. **[Answered in
+round 5, below.]**
+
+## Answered, 2026-09-25 (round 5)
+
+The one question round 4 returned, put to the founder on 2026-09-25 (the
+web-rebuild goal's round 5, item 32). The exact option label was not kept in
+the record. His answer is quoted as the session's founder-answers record holds
+it: **"#440 own wage: manager with pay access MAY set own wage, with a
+notification to the owner (and visible in the report/audit trail)."** Built as
+item 21's round-5 bracket. Rejected: keeping the round-4 refusal; allowing it
+silently; making the new wage wait for an owner's approval.
 
 ## Evidence
 
@@ -1010,3 +1055,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-22 | Round 3 build (founder round 6y, five answers, verbatim in "Answered, 2026-09-22") | Items 16–20 built or recorded; the "Open, for the founder" section's five questions are all struck, answered. Item 10 corrected in place (the "over 4 hours" gate removed; `ASSUME_BREAK_OVER_MIN` deleted from `pay-rules.ts` and its `tm-format.ts` mirror; boundary tests at 4h00/4h01/7h30/7h31 the founder named). Item 20 is the substantial change: `shifts.member_id` and `time_off_requests.member_id` drop their foreign key to `team_members` (migration `20260925180200`); `team_member_departure_recorded()` broadened to shifts and leave, not wage records alone; a new `purge_expired_shift_and_leave_records()` (service_role only, SECURITY INVOKER); `purge_expired_wage_records()`'s departure cleanup broadened the same way; `tmd_guard()` broadened identically; `WageRecordRetentionService` reordered to call the new purge first, then the wage purge, with a short-circuit on the first's failure (this was the one piece left unfinished from an earlier, interrupted pass of this session — found via `grep purge_expired_shift_and_leave_records apps/**/*.ts` turning up only the migration and comments, never a call site). Residual (j) struck (resolved), not deleted. New PGlite probe `teamfix-r3-shifts-and-leave-outlive-removal.mjs`, 31 checks, reproduces the pre-migration cascade defect first, then proves the fix and isolates the broadened `tmd_guard` from the purge functions (a departure with no wage row at all, past five years, with a live shift, refused). 8 of 8 migration mutations and 3 of 3 service mutations killed. Full `/team` suites re-measured: gateway 135 of 135 (7 files), web 105 of 105 (9 files). |
 | 2026-09-22 | Round 3 Opus last call | Item 20 dropped the foreign keys but nothing read the week any differently, so a removed person's kept rows entered it: their next week counted as covered and costed, "Copy last week" wrote them into new weeks, replacing a week deleted their kept shifts, and a pending leave request waited in the manager's list. Fixed as "kept, not shown" (`onTheRoster`; K1, 10 of 10 mutations killed; new CLAIMS row), the week reading as it did before the change; how kept rows should appear is returned to the founder. Records corrected in place: "never had a grant" (OD-72 revoked them), the retention job's header said the other order could clear a departure on live rows (it cannot; the order finishes the job in one night) and that "the tables refuse" an early delete of shifts and leave (no guard on them; the purge's clause is the rule), the Answered table's question 1 carried an "(and off)" the question never had, and "changed no page a person looks at". Returned: the literal reading of "on and off". Residuals (l) and (m) added. |
 | 2026-09-25 | W2-fix-cellar-team lane (founder round 4 item 19, three answers, verbatim in "Answered, 2026-09-25 (round 4)") | Items 21–23 built: the per-manager pay switch (`team_pay_access`, migration `20260925180220`; `seesMoney`/`wageWriteRefusal` take a viewer; owner-only `setPayAccess`, audited and notified; read apart from the membership read for the deploy window), the owner-only former-staff history (`listFormerStaff`, names from the removal's audit row, no name column added), and credentials kept / availability not (migration `20260925180210`; credential purge first in the nightly job; `listCertifications` filtered). Brackets added to Status, the Decision lead, item 16, item 20, residual (j) and "Open, for the founder". Two CLAIMS rows re-pointed with dated brackets (MONEY-IS-THE-OWNERS, A-WAGE-IS-WRITTEN-BY-AN-OWNER-AND-KEPT: their `role === "owner"` / `assertMayWriteWage(role)` literals are gone by design) and three added (R4-*), each mutation-tested. Returned: a switched-on manager's own wage; the literal "and off" of item 16 if meant. Not run: a browser pass; `check_migration_ledger` / definer end-state checks (need a DB URL). |
+| 2026-09-25 | W3-credits-team lane (founder round 5 item 32) | The own-wage refusal is replaced: a switched-on manager may set their own wage, every active owner gets an in-app notice with the figures, and the house-wide trail gets a figure-free `team_member_own_wage_set` row (item 21's round-5 bracket; "Answered, 2026-09-25 (round 5)"). CLAIMS `ADR-0215-TEAM-A-WAGE-IS-WRITTEN-BY-AN-OWNER-AND-KEPT` is re-pointed with a dated bracket, and `ADR-0215-R5-A-MANAGERS-OWN-WAGE-TELLS-THE-OWNER` is added. Both fail against the pre-change files. |

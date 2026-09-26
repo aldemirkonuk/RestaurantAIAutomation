@@ -356,7 +356,10 @@ export function MemberSheet({
    * 2026-09-25 round 4 item 19, "Pay visibility only").
    */
   viewerIsOwner?: boolean;
-  /** The viewer's `user_id`: a manager with pay access cannot set their own wage. */
+  /**
+   * The viewer's `user_id`: a manager with pay access setting their own wage is
+   * told the owner hears of it (founder 2026-09-25, round 5 item 32).
+   */
   viewerUserId?: string | null;
   /** `null` when the roster has not answered — the sole-owner rule then abstains. */
   ownerCount: number | null;
@@ -380,11 +383,13 @@ export function MemberSheet({
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const isSoleOwner = member?.role === 'owner' && ownerCount !== null && ownerCount <= 1;
-  // A manager the owner switched on sets a colleague's wage, never their own;
-  // the gateway refuses it, so the page does not offer it.
+  // A manager the owner switched on sets anyone's wage, their own included
+  // (founder 2026-09-25, round 5 item 32, replacing the round-4 refusal); on
+  // their own row the page says the owner is told before they save.
   const ownRowAsManager =
-    !viewerIsOwner && viewerUserId !== null && member?.user_id === viewerUserId;
-  const mayWriteWage = moneyVisible && !ownRowAsManager;
+    !viewerIsOwner && viewerUserId != null && member?.user_id === viewerUserId;
+  const mayWriteWage = moneyVisible;
+  const [ownWageUntold, setOwnWageUntold] = useState<string | null>(null);
   const hasPaySwitch = viewerIsOwner && member?.role === 'manager';
   const paySwitch = useMutation({
     mutationFn: (on: boolean) => setMemberPayAccess(member!.id, on),
@@ -417,8 +422,21 @@ export function MemberSheet({
         ? updateTeamMember(member!.id, payload)
         : createTeamMember(payload as never);
     },
-    onSuccess: () => {
+    onSuccess: (saved: { ownWage?: { audited: boolean; ownersNotified: number; ownersFound: number | null } } | undefined) => {
       onChanged();
+      // The wage is saved either way. A notice that did not reach the owner is
+      // said here instead of closing on it (ADR 0215 item 21).
+      const own = saved?.ownWage;
+      if (own && (own.ownersNotified === 0 || !own.audited)) {
+        setOwnWageUntold(
+          own.ownersFound === null
+            ? 'Your wage was saved, but the owners of this house could not be read, so none was told. Tell an owner yourself.'
+            : own.ownersNotified === 0
+              ? 'Your wage was saved, but the notice to the owner did not go out. Tell an owner yourself.'
+              : 'Your wage was saved and the owner was told, but the entry in the record did not save.',
+        );
+        return;
+      }
       onClose();
     },
   });
@@ -443,6 +461,7 @@ export function MemberSheet({
         <MutationError when={save.isError}>
           Nothing was saved, so the roster is unchanged. Your values are still here.
         </MutationError>
+        <MutationError when={ownWageUntold !== null}>{ownWageUntold}</MutationError>
         <MutationError when={remove.isError}>
           The removal did not go through — this person is still on the roster and still
           has whatever access they had.
@@ -535,21 +554,21 @@ export function MemberSheet({
                 real figure is here — the week total says so rather than showing a zero.
                 Each change is kept: who, when, the old and the new figure.
               </p>
+              {ownRowAsManager && (
+                <p className="tm-hint" data-testid="own-wage-note">
+                  This is your own wage. You may change it; an owner of this house is told
+                  when you do, with the old and the new figure, and the record names you.
+                </p>
+              )}
             </label>
           ) : (
             <div>
               <span className="tm-label">Hourly wage</span>
-              {ownRowAsManager && moneyVisible ? (
-                <p className="tm-hint">
-                  Your own wage is set by an owner of this house, not by you.
-                </p>
-              ) : (
-                <p className="tm-hint">
-                  Wages are the owner&apos;s to see and to set, and a manager&apos;s only when
-                  the owner switches their pay access on, so this field is withheld rather than
-                  blank.
-                </p>
-              )}
+              <p className="tm-hint">
+                Wages are the owner&apos;s to see and to set, and a manager&apos;s only when
+                the owner switches their pay access on, so this field is withheld rather than
+                blank.
+              </p>
             </div>
           )}
         </div>
@@ -614,8 +633,8 @@ export function MemberSheet({
               </label>
             )}
             <p className="tm-hint">
-              On, this manager sees wages, shift cost and labour totals, and can set a
-              colleague&apos;s wage but never their own. Their other rights are unchanged. Each
+              On, this manager sees wages, shift cost and labour totals, and can set wages —
+              their own too, and then you are told. Their other rights are unchanged. Each
               switch is written to the record, and they are told.
             </p>
             <MutationError when={paySwitch.isError}>
