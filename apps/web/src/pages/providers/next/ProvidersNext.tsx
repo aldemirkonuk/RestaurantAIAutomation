@@ -176,7 +176,7 @@ export default function ProvidersNext() {
                 margin: '4px 0 0',
               }}
             >
-              Providers
+              Vendors
             </h1>
           </div>
           <span style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-3, #7C7365)' }}>

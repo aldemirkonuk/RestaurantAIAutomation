@@ -1,6 +1,6 @@
 ---
 type: page
-route: /providers
+route: /vendors
 slug: providers
 softwares: [vendor-directory, global-vendor-search]
 component: apps/web/src/pages/Providers.tsx
@@ -15,7 +15,18 @@ updated: 2026-08-26
 links: ["[[PAGE-CONTRACT]]", "[[distributors]]", "[[promotions]]", "[[vendor-prices]]", "[[orders]]"]
 ---
 
-# /providers — vendor roster + distributor discovery
+# /vendors (was /providers) — vendor roster + vendor discovery
+
+> [2026-09-25, lane W3-vendors, ADR 0221: the page's address is `/vendors` and its
+> name everywhere the house reads it (rail, header, sidebar, command palette,
+> shortcuts sheet, tours, help guide, the page's own heading) is **Vendors**.
+> `/providers` and `/distributors` redirect to it for good, carrying the rest of
+> the path, the query (`?vendor=<id>`) and the hash (`apps/web/src/lib/renamedRoute.tsx`);
+> `/distributors` adds `tab=discover` when the link did not name a tab. What did
+> NOT move: the page slug and flag (`providers`, `mudavym_design_providers`), the
+> code paths under `pages/providers/`, the gateway's `/providers` API and every
+> table and column. The rest of this note predates the rename and says
+> `/providers` where it means this page.]
 
 > **Part of** [[08-softwares/vendor-directory|Vendor Directory & Intel]] · [[08-softwares/global-vendor-search|Global Vendor Search]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 

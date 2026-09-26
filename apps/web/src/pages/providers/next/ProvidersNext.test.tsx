@@ -126,7 +126,7 @@ beforeEach(() => {
   // Each test states its own URL; without the reset a `?vendor=` from one test
   // would open a sheet in the next and the failure would look like a leak in
   // the component rather than in this file.
-  window.history.replaceState({}, '', '/providers');
+  window.history.replaceState({}, '', '/vendors');
 });
 
 describe('ProvidersNext', () => {
@@ -209,7 +209,7 @@ describe('ProvidersNext', () => {
    * finding 8).
    */
   it('opens the asked-for vendor’s sheet when the page is reached by ?vendor=', async () => {
-    window.history.replaceState({}, '', '/providers?vendor=p1');
+    window.history.replaceState({}, '', '/vendors?vendor=p1');
     mockData.current = {
       ...base,
       cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],
@@ -221,7 +221,7 @@ describe('ProvidersNext', () => {
   });
 
   it('honours ?vendor= once — a later render does not reopen the closed sheet', async () => {
-    window.history.replaceState({}, '', '/providers?vendor=p1');
+    window.history.replaceState({}, '', '/vendors?vendor=p1');
     mockData.current = {
       ...base,
       cards: [{ provider: provider({}), openOrders: 0, leadTimeDays: null, lastContact: null }],

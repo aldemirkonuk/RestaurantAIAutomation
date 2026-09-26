@@ -83,7 +83,7 @@ export function LearnPanel({
       cta: {
         label: 'Browse Vendors',
         onClick: () => {
-          navigate('/providers')
+          navigate('/vendors')
           onClose()
         },
       },

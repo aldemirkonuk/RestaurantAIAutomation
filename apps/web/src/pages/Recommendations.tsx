@@ -115,7 +115,7 @@ function actTarget(rec: Card): { href: string; label: string } {
     dead_stock_capital: { href: `/promotions?${q}`, label: "Create promo" },
     plowhorse_repricing: { href: `/reports?${q}`, label: "Open menu report" },
     puzzle_activation: { href: `/promotions?${q}`, label: "Feature by-the-glass" },
-    vendor_concentration: { href: `/providers?${q}`, label: "Compare vendors" },
+    vendor_concentration: { href: `/vendors?${q}`, label: "Compare vendors" },
     revenue_concentration: { href: `/inventory?${q}`, label: "Protect top sellers" },
     spend_acceleration: { href: `/orders?${q}`, label: "Audit open orders" },
     pairing_promotion: { href: `/promotions?${q}`, label: "Promote pairing" },
