@@ -175,6 +175,12 @@ export class BoundAskService {
     // to "true" when the page ships, in the same change that wires the
     // caller -- this is the one gate, so it is the first line, not a branch
     // a future edit could accidentally get past.
+    // [2026-09-25, ADR 0145's 2026-09-25 amendment: the caller now exists --
+    // the `/ask` page (`apps/web/src/pages/ask/next/`), live in code for every
+    // house. The flag was NOT flipped in that change: ASK_LAUNCHED is an
+    // environment value on the deployed gateway, set by the founder, not by a
+    // commit. Until it reads "true" the page says "Ask has not opened yet"
+    // and nothing is written or spent, exactly as before.]
     if (this.config.get<string>("ASK_LAUNCHED") !== "true") {
       throw new ServiceUnavailableException("Ask has not launched yet.");
     }

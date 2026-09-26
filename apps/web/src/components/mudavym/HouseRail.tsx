@@ -90,7 +90,7 @@ export function HouseRail({ role, flags, tucked, onToggle, mod }: HouseRailProps
   }
   return (
     <nav className="mdv-rail mudavym" aria-label="The rooms">
-      <button type="button" className="mdv-rail__ask" onClick={openAskAi}>
+      <button type="button" className="mdv-rail__ask" onClick={() => openAskAi()}>
         Ask Mudavym.
         <kbd className="mdv-kbd">{mod}⇧K</kbd>
       </button>

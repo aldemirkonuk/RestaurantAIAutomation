@@ -75,7 +75,7 @@
       "destination": "/crawl/heads/privacy.html"
     },
     {
-      "source": "/(admin|authorize|beer|calendar|calendar-classic|cellar|cocktails|communications|connections|credits|deliveries|dev|dev-sandbox|distributors|documents|documents-reports|forgot-password|get-started|help|house|inventory|inventory-legacy|invite|login|logs|menu|no-access|non-alcoholic|notifications|onboarding|orders|privacy|profile|promotions|providers|receipts|receiving|recommendations|register|reports|reset-password|services|settings|simpos|soft-drinks|sommelier|spirits|studio|team|v|vendor-prices|verify-email|whiskey|wines)(/.*)?",
+      "source": "/(admin|ask|authorize|beer|calendar|calendar-classic|cellar|cocktails|communications|connections|credits|deliveries|dev|dev-sandbox|distributors|documents|documents-reports|forgot-password|get-started|help|house|inventory|inventory-legacy|invite|login|logs|menu|no-access|non-alcoholic|notifications|onboarding|orders|privacy|profile|promotions|providers|receipts|receiving|recommendations|register|reports|reset-password|services|settings|simpos|soft-drinks|sommelier|spirits|studio|team|v|vendor-prices|verify-email|whiskey|wines)(/.*)?",
       "destination": "/crawl/app.html"
     }
   ],

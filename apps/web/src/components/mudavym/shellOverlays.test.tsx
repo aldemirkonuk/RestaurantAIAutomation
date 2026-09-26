@@ -15,7 +15,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ShortcutsSheet } from '../command/ShortcutsSheet';
 import { RecentlyViewed } from '../command/RecentlyViewed';
 import { CommandPalette } from '../command/CommandPalette';
-import { AskAiBar } from '../askai/AskAiBar';
+import { AskPanel } from '../askai/AskPanel';
 import { Header } from '../layout/Header';
 import { RestaurantBranchSwitcher } from '../layout/RestaurantBranchSwitcher';
 import { DashboardLayout } from '../layout/DashboardLayout';
@@ -56,6 +56,13 @@ vi.mock('../../services/api/askAi', async (orig) => ({
   listOpenProposals: vi.fn(async () => []),
   listCandidates: vi.fn(async () => []),
   proposeAction: vi.fn(),
+}));
+// `useUserPreferences` is react-query underneath; one case in this file
+// renders `AskPanel` with no `QueryClientProvider` at all (plain `render`,
+// not `renderShell`). This file is about markup, not the Ask panel's mode, so
+// a fixed no-preference-yet shape is enough.
+vi.mock('../../hooks/useUserPreferences', () => ({
+  useUserPreferences: () => ({ preferences: {}, isPlaceholderData: false, updatePreferences: vi.fn() }),
 }));
 vi.mock('../../stores/uiStore', () => ({
   useUIStore: vi.fn((selector: (s: unknown) => unknown) =>
@@ -169,17 +176,17 @@ describe('with no Mudavym page on screen', () => {
     expect(document.querySelector('.mdv-ovl')).toBeNull();
   });
 
-  it('AskAiBar renders its legacy chrome, class string for class string', () => {
-    const { container } = render(
+  // AskAiBar's legacy chrome is retired with the bar itself (ADR 0145, "One
+  // panel, two modes", founder, 2026-09-26): the one Ask panel is the house
+  // Panel in both layouts, so there is no legacy branch left to pin.
+  it('the Ask panel is the house Panel even with no Mudavym page on screen', () => {
+    render(
       <MemoryRouter>
-        <AskAiBar open onClose={() => {}} />
+        <AskPanel placement="overlay" open onClose={() => {}} />
       </MemoryRouter>,
     );
-    const root = container.firstElementChild as HTMLElement;
-    expect(root.getAttribute('class')).toBe(PALETTE_POSITIONER);
-    expect(root.children[0].getAttribute('class')).toBe(PALETTE_SCRIM);
-    expect(root.children[1].getAttribute('class')).toBe(PALETTE_CARD);
-    expect(document.querySelector('.mdv-ovl')).toBeNull();
+    expect(document.querySelector('.mdv-ovl--panel')).not.toBeNull();
+    expect(document.querySelector('.bg-gray-900\\/40')).toBeNull();
   });
 
   it("the Header's bell and user menu render their legacy dropdowns", () => {
@@ -270,13 +277,13 @@ describe('with a Mudavym page on screen', () => {
     expect(screen.getByRole('dialog')).not.toHaveAttribute('aria-modal');
   });
 
-  it('CommandPalette and AskAiBar become the house Panel', () => {
+  it('CommandPalette and the Ask panel become the house Panel', () => {
     const { unmount } = renderShell(<CommandPalette open onClose={() => {}} />);
     expect(document.querySelector('.mdv-ovl--panel')).not.toBeNull();
     expect(document.querySelector('.bg-gray-900\\/40')).toBeNull();
     unmount();
 
-    renderShell(<AskAiBar open onClose={() => {}} />);
+    renderShell(<AskPanel placement="overlay" open onClose={() => {}} />);
     expect(document.querySelector('.mdv-ovl--panel')).not.toBeNull();
     expect(document.querySelector('.bg-gray-900\\/40')).toBeNull();
   });
@@ -347,7 +354,6 @@ const SOURCES: Array<[string, string[]]> = [
   ['components/command/RecentlyViewed.tsx', [RECENTS_POSITIONER, RECENTS_CARD]],
   ['components/layout/ThemeMenu.tsx', [THEME_MENU]],
   ['components/command/CommandPalette.tsx', [PALETTE_POSITIONER, PALETTE_SCRIM, PALETTE_CARD]],
-  ['components/askai/AskAiBar.tsx', [PALETTE_POSITIONER, PALETTE_SCRIM, PALETTE_CARD]],
   ['components/layout/Header.tsx', [BELL_MENU, USER_MENU]],
   ['components/layout/RestaurantBranchSwitcher.tsx', [SWITCHER_MENU]],
   ['components/layout/DashboardLayout.tsx', [MOBILE_SCRIM]],

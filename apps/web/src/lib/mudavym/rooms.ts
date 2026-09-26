@@ -96,7 +96,7 @@ export const INTERNAL_PATHS: readonly string[] = ['/studio', '/simpos', '/dev/tr
 /**
  * Names for routes that are not rooms but are pages a person stands on — the
  * cellar's registers (`pageNames.ts` CELLAR_BY_PATH, the titles the page
- * itself prints), the account's own page, and one record.
+ * itself prints), the account's own page, `/ask`, and one record.
  */
 const OTHER_NAMES: ReadonlyArray<[string, string]> = [
   ['/wines', 'Wines'],
@@ -107,6 +107,9 @@ const OTHER_NAMES: ReadonlyArray<[string, string]> = [
   ['/non-alcoholic', 'Non-alcoholic'],
   ['/soft-drinks', 'Soft drinks'],
   ['/profile', 'Profile'],
+  // ADR 0145 — the page that answers out of a reading; its door is the rail's
+  // "Ask Mudavym." row, so it is not a room of its own.
+  ['/ask', 'Ask'],
 ];
 
 /** One incoming document (`/documents/:id`, ADR 0104 D12) — a record, not a room. */

@@ -60,7 +60,7 @@ export function HouseDoors({ waiting, counterOpen, roomsOpen, onCounter, onRooms
         </span>
         <span>Search</span>
       </button>
-      <button type="button" className="mdv-doors__door" onClick={openAskAi}>
+      <button type="button" className="mdv-doors__door" onClick={() => openAskAi()}>
         <span className="mdv-doors__glyph" aria-hidden>
           <MessageCircle size={16} strokeWidth={1.75} />
         </span>

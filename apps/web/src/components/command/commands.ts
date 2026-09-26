@@ -98,7 +98,7 @@ const NAVIGATION: Command[] = [
   { id: "nav-comms", title: "Communications", section: "Navigation", icon: Mail, href: "/communications", keywords: "email sms templates" },
   { id: "nav-docs", title: "Documents & Reports", section: "Navigation", icon: FileText, href: "/documents-reports", keywords: "files pdf" },
   { id: "nav-notifications", title: "Notifications", section: "Navigation", icon: Bell, href: "/notifications", shortcut: "g n", keywords: "alerts" },
-  { id: "nav-sommelier", title: "Sommelier AI", section: "Navigation", icon: Sparkles, href: "/sommelier", keywords: "assistant chat pairing" },
+  { id: "nav-ask", title: "Ask Mudavym", section: "Navigation", icon: Sparkles, href: "/ask", keywords: "ask assistant question reading sommelier pairing" },
   { id: "nav-settings", title: "Settings", section: "Navigation", icon: SettingsIcon, href: "/settings", shortcut: "g s", keywords: "preferences config team locations" },
   { id: "nav-profile", title: "Profile", section: "Navigation", icon: User, href: "/profile", keywords: "account password email linked oauth theme" },
   { id: "nav-help", title: "Help & Support", section: "Navigation", icon: HelpCircle, href: "/help", keywords: "support docs slack email faq" },

@@ -70,7 +70,7 @@ originally have and now needs — a write tool that a client can see and cannot 
 - **[[06-pages/profile|/profile]]'s Model context register** — the *mirror* surface. It
   lists servers the house has declared to us (`mcp-connections.controller.ts:61,71,82`);
   a built Mudavym MCP server would appear in the client's own config, not there.
-- **[[06-pages/sommelier|/sommelier]]** — the in-product chat, §6.
+- **[[06-pages/RETIRED|/sommelier]]** — the in-product chat, §6. [2026-09-25: retired; `/sommelier` redirects to [[06-pages/ask|/ask]].]
 
 ## §3 Backend
 
@@ -254,7 +254,7 @@ behind each fronted module — but none claims this. Recorded as a gap row in
 - **`/wine-agent` does not exist.** It and `/wineagent` were retired 2026-08-26 (ADR 0019
   §B) — one inline placeholder under two spellings, zero buttons, zero endpoints
   (`.planning/06-pages/PAGES-MAP.md:105-109`; `apps/web/src/App.tsx:354-358`). The live
-  general chat surface is **[[06-pages/sommelier|/sommelier]]**, whose own backend route
+  general chat surface is **[[06-pages/RETIRED|/sommelier]]** [retired 2026-09-25], whose own backend route
   is unregistered and falls back to a local rules answer
   (`.planning/06-pages/sommelier.md:38,55`). So the comparison is not "MCP vs. the
   chatbot": **`/sommelier` is one client, inside our UI, with one model we chose; the MCP

@@ -1,9 +1,9 @@
 ---
 type: index
 title: Retired Pages
-updated: 2026-08-26
-supersedes: ["06-pages/inventory-legacy.md", "06-pages/calendar-classic.md", "06-pages/wine-agent.md", "06-pages/wineagent.md"]
-links: ["[[PAGES-MAP]]", "[[PAGE-CONTRACT]]", "[[inventory]]", "[[calendar]]", "[[sommelier]]"]
+updated: 2026-09-25
+supersedes: ["06-pages/inventory-legacy.md", "06-pages/calendar-classic.md", "06-pages/wine-agent.md", "06-pages/wineagent.md", "06-pages/sommelier.md"]
+links: ["[[PAGES-MAP]]", "[[PAGE-CONTRACT]]", "[[inventory]]", "[[calendar]]", "[[ask]]"]
 ---
 
 # Retired pages
@@ -22,8 +22,8 @@ landed in `feat/retire-legacy-pages`.
 |---|---|---|---|
 | `/inventory-legacy` | `pages/Inventory.tsx` (1,928 ln) | [[inventory]] `/inventory` — `InventoryCommandPage` | **redirects** to `/inventory` |
 | `/calendar-classic` | `pages/Calendar.tsx` (2,345 ln) | [[calendar]] `/calendar` — `CalendarModular` | **redirects** to `/calendar` |
-| `/wine-agent` | inline `PlaceholderPage` | [[sommelier]] `/sommelier` | falls to the `*` catch-all → `/` |
-| `/wineagent` | inline `PlaceholderPage` (same) | [[sommelier]] `/sommelier` | falls to the `*` catch-all → `/` |
+| `/wine-agent` | inline `PlaceholderPage` | `/sommelier` [2026-09-25: now [[ask]] `/ask`] | falls to the `*` catch-all → `/` |
+| `/wineagent` | inline `PlaceholderPage` (same) | `/sommelier` [2026-09-25: now [[ask]] `/ask`] | falls to the `*` catch-all → `/` |
 
 Also deleted, because only a retired page imported them:
 `components/inventory/ManualOverrideModal.tsx` (356 ln),
@@ -41,8 +41,8 @@ owner would rather the check skip index notes, that is a one-word edit to the
 - **`/inventory-legacy`** → [[inventory]] `/inventory` (`<Navigate replace>`)
 - **`/calendar-classic`** → [[calendar]] `/calendar` (`<Navigate replace>`)
 - **`/wine-agent`**, **`/wineagent`** → no route; the `*` catch-all resolves them to
-  [[dashboard]] `/`. Every in-app "Wine Agent" control points at [[sommelier]]
-  `/sommelier` instead.
+  [[dashboard]] `/`. Every in-app "Wine Agent" control points at
+  `/sommelier` instead. [2026-09-25: `/sommelier` redirects to [[ask]] `/ask`.]
 
 ---
 
@@ -173,3 +173,21 @@ cleanup without flipping the two matching `CLAIMS.jsonl` rows to `resolved` make
 true"), and `CLAIMS.jsonl` is owned by another agent this session. Exact edits and
 the claim flips are in
 [HANDOFF-page-retirement](../04-specs/HANDOFF-page-retirement.md).
+
+---
+
+## Retired 2026-09-25: `/sommelier`
+
+[ADR 0145](../decisions/0145-mudavym-answers-out-of-a-reading.md) (Locked 2026-09-12,
+fork 4: "/sommelier redirects here") and its 2026-09-25 amendment. Retire-to-write:
+[[ask]] supersedes `sommelier.md`.
+
+| Retired | What it was | Replaced by | Old URL today | Recover |
+|---|---|---|---|---|
+| `06-pages/sommelier.md` (211 ln) | the page note for `/sommelier`, the Sommelier AI chat (`SommelierAI.tsx`): three personas, a chat whose backend route `POST {orchestrator}/api/v1/sommelier/chat` was never registered, so every message fell back to a local rules answer; maturity `hollow` | [[ask]] `/ask` | **redirects** to `/ask` (`<Navigate replace>`, `App.tsx`) | `git show e754b3a27:.planning/06-pages/sommelier.md` |
+
+`SommelierAI.tsx` itself is **not** deleted: it stays mounted only as `/ask`'s `legacy`
+slot (a per-browser QA override; `ask` is in `LIVE_PAGES`, so no house renders it) until
+the ADR 0149 cutover deletes legacy once. OD-72 (`useSommelierQueries`, the last browser
+anon-key client) is unchanged by this retirement.
+

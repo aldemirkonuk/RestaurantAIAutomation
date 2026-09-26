@@ -1,0 +1,204 @@
+/* The Ask panel (ADR 0145, "One panel, two modes", 2026-09-26).
+   House tokens only. It paints its own paper ground (see .mdv-askp). */
+
+.mdv-askp {
+  --mdv-sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mdv-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  font-family: var(--mdv-sans);
+  color: var(--ink-2);
+  /* The panel paints its own ground (mudavym-ground.test.ts: a .mudavym
+     scope root paints a ground or names one). */
+  background: var(--paper-0);
+}
+
+/* Docked: the counter's slot, beside a live page (≥ ~1280 px). */
+.mdv-askp--docked {
+  position: sticky;
+  top: var(--mdv-shell-top, 53px);
+  height: calc(100vh - var(--mdv-shell-top, 53px));
+  width: 360px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-0);
+  border-left: 1px solid var(--paper-2);
+}
+
+.mdv-askp__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 14px 16px 6px;
+}
+
+.mdv-askp__title-h {
+  font-family: var(--mdv-serif);
+  font-size: 18px;
+  color: var(--ink-1);
+}
+
+.mdv-askp--docked .mdv-askp__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.mdv-askp__footer {
+  padding: 8px 16px;
+  border-top: 1px solid var(--paper-2);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mdv-askp__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mdv-askp__modes {
+  display: inline-flex;
+  margin: 10px 16px 0;
+  border: 1px solid var(--paper-2);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.mdv-askp__mode {
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.mdv-askp__mode + .mdv-askp__mode {
+  border-left: 1px solid var(--paper-2);
+}
+
+.mdv-askp__mode[aria-checked='true'] {
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-weight: 600;
+}
+
+.mdv-askp__mode:focus-visible {
+  outline: 2px solid var(--seal-ring);
+  outline-offset: -2px;
+}
+
+.mdv-askp__contract,
+.mdv-askp__note,
+.mdv-askp__suggest {
+  margin: 6px 16px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+
+.mdv-askp__suggest {
+  color: var(--ink-2);
+}
+
+.mdv-askp__quiet {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mdv-askp .mdv-field {
+  margin-top: 8px;
+}
+
+.mdv-askp__context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--paper-2);
+}
+
+.mdv-askp__results {
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.mdv-askp__folio {
+  padding: 10px 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 10px;
+  background: var(--paper-0);
+}
+
+.mdv-askp__q {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.mdv-askp__title {
+  margin: 4px 0 0;
+  font-family: var(--mdv-serif);
+  font-size: 15px;
+  color: var(--ink-1);
+}
+
+.mdv-askp__line {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.mdv-askp__line--pre {
+  white-space: pre-wrap;
+}
+
+.mdv-askp__figs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin: 8px 0 0;
+}
+
+.mdv-askp__figs dt {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.mdv-askp__figs dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.mdv-askp__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.mdv-askp__eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.mdv-askp__proposals {
+  display: grid;
+  gap: 8px;
+}
+
+.mdv-askp__examples {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}

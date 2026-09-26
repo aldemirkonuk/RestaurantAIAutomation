@@ -183,12 +183,13 @@ const secondaryNavItems: NavItem[] = [
 // The Wine Agent FAB, Help card and Learn panel all open `/sommelier` already,
 // so the concept keeps its entry points — this nav row was the only link that
 // actually landed on the dead page.
+// [2026-09-25, ADR 0145: the row opens `/ask`; `/sommelier` redirects there.]
 const aiNavItems: NavItem[] = [
   {
-    name: 'Sommelier AI',
-    href: '/sommelier',
+    name: 'Ask Mudavym',
+    href: '/ask',
     icon: Sparkles,
-    description: 'Ask about pairings, pricing, and what to reorder.',
+    description: 'Ask the house: stock, orders, receipts, and general questions.',
   },
 ]
 

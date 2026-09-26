@@ -63,6 +63,9 @@ describe('the header names the page by its room, or not at all', () => {
     expect(roomNameFor('/documents/123')).toBe('Document');
     expect(roomNameFor('/wines')).toBe('Wines');
     expect(roomNameFor('/documents-reports')).toBe('Documents & Reports');
+    // ADR 0145: /ask and an old folio on it are named; /sommelier redirects there.
+    expect(roomNameFor('/ask')).toBe('Ask');
+    expect(roomNameFor('/ask/f/0b9e1f7e-0000-4000-8000-000000000001')).toBe('Ask');
   });
 
   it('prints nothing for a route the table does not name — never a title-cased slug', () => {

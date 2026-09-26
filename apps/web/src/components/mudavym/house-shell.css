@@ -907,3 +907,11 @@
   text-transform: uppercase;
   color: var(--ink-4);
 }
+
+/* The header's Ask (ADR 0145, "One panel, two modes"). The phone has its own
+   Ask door among the four, so the header does not repeat it there. */
+@media (max-width: 767px) {
+  .mdv-hdr .mdv-hdr__ask {
+    display: none;
+  }
+}
