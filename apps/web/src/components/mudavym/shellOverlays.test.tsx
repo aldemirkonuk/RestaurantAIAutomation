@@ -209,9 +209,19 @@ describe('with no Mudavym page on screen', () => {
     expect(document.querySelector('.mdv-ovl')).toBeNull();
   });
 
+  // [2026-09-25: `shell` is in LIVE_PAGES (ADR 0149 row 36's bracket), so
+  // DashboardLayout renders HouseShell for every house and the legacy layout
+  // that owns this scrim is reachable only through the QA override '0'. The
+  // two scrim tests set it, so the legacy branch's class strings stay pinned
+  // until that branch is deleted.]
   it("DashboardLayout's mobile scrim keeps its legacy class string", () => {
-    renderShell(<DashboardLayout>{null}</DashboardLayout>);
-    expect(screen.getByLabelText('Close navigation').getAttribute('class')).toBe(MOBILE_SCRIM);
+    window.localStorage.setItem('mudavym.design.shell', '0');
+    try {
+      renderShell(<DashboardLayout>{null}</DashboardLayout>);
+      expect(screen.getByLabelText('Close navigation').getAttribute('class')).toBe(MOBILE_SCRIM);
+    } finally {
+      window.localStorage.removeItem('mudavym.design.shell');
+    }
   });
 
   it('ThemeMenu renders its legacy menu, class string for class string', () => {
@@ -293,10 +303,16 @@ describe('with a Mudavym page on screen', () => {
   });
 
   it("DashboardLayout's mobile scrim takes the house scrim, same element and same z", () => {
-    renderShell(<DashboardLayout>{null}</DashboardLayout>);
-    const scrim = screen.getByLabelText('Close navigation');
-    expect(scrim.getAttribute('class')).toBe('fixed inset-0 z-[45] md:hidden mdv-scrim');
-    expect(scrim.hasAttribute('data-ground')).toBe(false); // paper page
+    // The legacy layout under the QA override (see the note above the first scrim test).
+    window.localStorage.setItem('mudavym.design.shell', '0');
+    try {
+      renderShell(<DashboardLayout>{null}</DashboardLayout>);
+      const scrim = screen.getByLabelText('Close navigation');
+      expect(scrim.getAttribute('class')).toBe('fixed inset-0 z-[45] md:hidden mdv-scrim');
+      expect(scrim.hasAttribute('data-ground')).toBe(false); // paper page
+    } finally {
+      window.localStorage.removeItem('mudavym.design.shell');
+    }
   });
 
   it('carries the page ground onto the portalled root', () => {
