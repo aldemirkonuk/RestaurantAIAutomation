@@ -102,7 +102,12 @@ function makeClient(tables: Record<string, Row[]>, touched: string[]) {
  */
 const POPULATED: Record<string, Row[]> = {
   user_restaurant_access: [
-    { user_id: USER, role: "manager", restaurant_id: RESTAURANT },
+    {
+      user_id: USER,
+      role: "manager",
+      restaurant_id: RESTAURANT,
+      is_active: true,
+    },
   ],
   users: [
     {
@@ -182,6 +187,7 @@ describe("RecipientResolverService — push is not resolved here", () => {
     await service.resolveRecipients({
       restaurantId: RESTAURANT,
       roles: ["manager"],
+      category: "order_approval",
     });
 
     for (const store of PUSH_STORES) {
@@ -203,10 +209,14 @@ describe("RecipientResolverService — push is not resolved here", () => {
     const result = await service.resolveRecipients({
       restaurantId: RESTAURANT,
       roles: ["manager"],
+      category: "order_approval",
       channels: ["email", "sms"],
     });
 
-    expect(Object.keys(result).sort()).toEqual(["emails", "phones"]);
+    // `declined` (OD-121, 2026-09-16) is a pair of COUNTS of people whose own
+    // preference withheld a channel — not a push field, and never an address.
+    expect(Object.keys(result).sort()).toEqual(["declined", "emails", "phones"]);
+    expect(Object.keys(result.declined!).sort()).toEqual(["email", "sms"]);
     expect(result).not.toHaveProperty("pushSubscriptionIds");
     expect(result).not.toHaveProperty("pushUnavailable");
   });
@@ -223,6 +233,7 @@ describe("RecipientResolverService — push is not resolved here", () => {
     const result = await service.resolveRecipients({
       restaurantId: "rest-nobody",
       roles: ["manager"],
+      category: "order_approval",
       channels: ["email"],
     });
 
@@ -241,6 +252,7 @@ describe("RecipientResolverService — push is not resolved here", () => {
     const result = await service.resolveRecipients({
       restaurantId: "rest-other-tenant",
       roles: ["manager"],
+      category: "order_approval",
       channels: ["email"],
       allowDefaultFallback: false,
     });
@@ -290,6 +302,7 @@ describe("RecipientResolverService — push is not resolved here", () => {
     const result = await service.resolveRecipients({
       restaurantId: RESTAURANT,
       roles: ["manager"],
+      category: "order_approval",
       channels: ["email", "sms"],
     });
 
@@ -307,6 +320,7 @@ describe("RecipientResolverService — push is not resolved here", () => {
     const result = await service.resolveRecipients({
       restaurantId: "rest-other-tenant",
       roles: ["manager"],
+      category: "order_approval",
       channels: ["email"],
       allowDefaultFallback: false,
     });
