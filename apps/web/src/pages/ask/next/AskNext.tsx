@@ -52,18 +52,19 @@ import {
   readFailure,
   readingNeeds,
   traceLine,
+  STAFF_LINE,
   type AskFailure,
 } from './ask-format';
 import { useAskNextData } from './useAskNextData';
+import { openAskAi } from '@/components/askai/events';
 
 export interface AskNextProps {
   /** Force a ground regardless of the person's choice (ADR 0042). */
   ground?: 'charcoal';
 }
 
-/** The one line the founder approved for staff (ADR 0145 round 6, "Yes, own-work only"), verbatim. */
-export const STAFF_LINE =
-  'Staff can ask about stock, receiving and today’s deliveries. Money, supplier prices and people data are refused with a one-line reason.';
+/** Kept exported from here too: the page's tests and older imports read it from the page. */
+export { STAFF_LINE };
 
 const PAGE_CSS = `
 .mudavym .ak-root { max-width: 1180px; margin: 0 auto; padding: 28px 16px 64px; display: grid; gap: 32px; grid-template-columns: minmax(0, 1fr); }
@@ -407,6 +408,18 @@ export default function AskNext({ ground }: AskNextProps) {
                 <Link className="ak-link" to="/ask">
                   Back to the shelf
                 </Link>
+                {' · '}
+                {/* "Keep asking" opens the one Ask panel (ADR 0145, "One panel,
+                    two modes", 2026-09-26) carrying this folio, so the next
+                    question is sent as its re-ask and the page stays open. */}
+                <button
+                  type="button"
+                  className="ak-link"
+                  style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', font: 'inherit' }}
+                  onClick={() => openAskAi({ followUp: { folioId: shown.id, utterance: shown.utterance } })}
+                >
+                  Keep asking
+                </button>
               </p>
             </>
           )}

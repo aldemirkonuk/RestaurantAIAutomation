@@ -142,10 +142,15 @@ export const askApi = {
     return data;
   },
 
-  async submit(input: AskSubmit): Promise<AskFolio> {
+  /**
+   * `origin` is where the ask was typed: the `/ask` page, or the Ask panel
+   * (the gateway's `BoundAskDto` has accepted `'panel'` since the bound ask
+   * was built; the panel is the first caller to send it).
+   */
+  async submit(input: AskSubmit, origin: 'page' | 'panel' = 'page'): Promise<AskFolio> {
     const { data } = await apiClient.post<AskFolio>(
       '/ask/folios',
-      { ...input, origin: 'page' },
+      { ...input, origin },
       { timeout: ASK_CLIENT_BUDGET_MS },
     );
     return data;

@@ -1,6 +1,6 @@
 # 0145 — Mudavym answers out of a reading, and only the query that ran may mint one
 
-- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]** **[2026-09-21, KL round 5, later again -- the founder chose the option "Rules in code, label rows": permissions and spend never live in the model. Built: a staff refusal is now SAVED (the folio CHECK lacked `not_permitted`, so every refusal was a 503 on a real database); every field a Reading shows carries a data class and one role-policy table decides who sees what, which answer kinds each role gets and each role's share of the house's daily ask allowance -- the seven restricted Readings are now DERIVED from their fields, not hand-set; every ask is captured once (role snapshot, who chose the Reading, the raw pick, model ids, content hashes); a labels table with `POST /ask/folios/:id/feedback`; a redacted export view. No training. Who may open `/ask` itself stays open. See "Amendment, 2026-09-21 -- rules in code, label rows" below.]** **[2026-09-21, KL round 6 -- two founder answers. Staff on `/ask`: his pick, verbatim, "Yes, own-work only" -- staff reach `/ask`, see stock, receiving and today's deliveries, and are refused money, supplier prices and people data with a one-line reason; general knowledge is allowed and counts toward the house's daily limit. Trace counts: his pick, verbatim, "Hide by data type" -- a Finding's source trace shows a table's row count only to a role that sees that table's class. Built. See "Amendment, 2026-09-21 -- staff own work, and a trace that hides by data type" and the review trail at the end.]** **[2026-09-21, KL round 4 -- six founder answers (round 6r), his picks verbatim: "J4 wins, hide size (Recommended)", "Classify now, forecast=sales (Recommended)", "Same as the wine pool (Recommended)", "Two labels (Recommended)", "Stays stock (Recommended)", "No, user+house (Recommended)". Built: staff are told a failed read's source and never why or how big; the unbuilt money and sales questions refuse staff with the class's line; an owner-only, audited per-house training opt-out, and an export with no free text that leaves opted-out houses out; re-asks labelled `follow_up` or `correction`. `reading_version` answered from the code. Area-gated staff order lookup waits for PR #441. See "Amendment, 2026-09-21 -- round 6r".]** **[2026-09-22, KL round 5 -- the three forks round 6r left open, his picks verbatim: "Never (Recommended)" (opting back in never releases a question asked while opted out -- each folio snapshots the house's answer at ask time), "Text-free until lawyer (Recommended)" (the export stays as built, no free text; a name remover is the first training lane's job), "Add to /privacy now" (a short training notice, his own choice over the lawyer route). Built: migration 20260922220600 adds `ask_reading_folios.asked_while_opted_out`, derived and written once like `asked_as_role`, backfilled from each house's current answer; the export excludes a snapshot-true folio forever, on top of the existing current-state check, and (last call) no longer carries a re-ask label or `reask_kind` drawn from a folio asked while opted out; `/privacy` gained the notice. See "Amendment, 2026-09-22 -- round 6y".]** **[2026-09-25, W2-ask lane -- the `/ask` layout the founder decided on 2026-09-21 (one right-hand slot, counter or Ask; the quick ask a non-modal popover; a requests list at `/admin`; never a write without the seal) was recorded only in session memory; it is now recorded here verbatim, and the `/ask` page is built, live in code for every house. See "Amendment, 2026-09-25".]** **[2026-09-25, founder, round 5, W3-ask lane -- the judge's fork 3 answered, his pick verbatim: "Lie over it (Recommended)" (below ~1280 px the Ask panel lies over the page; the page keeps its width); `ASK_LAUNCHED`, his words verbatim, "aded to the railway" (he set it; not verified by any lane); build task 4 audited: all sixteen readings have both tests, every relation each one reads is now forced to fail as well, and `scripts/check_ask_readings_have_fixtures.py` fails CI when one is lost. See "Amendment, 2026-09-25, round 5".]**
+- **Status:** Locked on the founder's call, 2026-09-12 — the deferred half of [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] decision 2. Five forks named below are deliberately NOT defaulted and remain open. **[2026-09-17, ADR 0149 row 33: the launch floor is Codex's fifteen house readings after audit; standing questions are not in v1 and get their own record; the floating "Wine Agent" button (`WineAgentFab`) is removed, so `/ask` and the palette panel are the two doors — this answers build item 15.]** **[2026-09-19, founder batch 4, KL lane — a NEW rule not among this record's original 15 build tasks: price, vendor, open-order and sales readings are owner/manager only, server-enforced per reading. Built. The cell picker is confirmed as `bound-ask.service.ts`'s existing compose step (Sonnet 5 selects up to 8 cell ids, writes no prose) -- Fork 1's intended, stricter reading, and it was already built. Two questions stay OPEN, to be settled with the `/ask` sketch: whether staff reach `/ask` at all, and what `/ask`'s date handling is. See "Amendment, 2026-09-19" below.]** **[2026-09-21, KL lane round 5 -- closed a role-gate bypass: `orders.late_deliveries` returned the same open orders `orders.open` now withholds from staff, so it is OWNER_MANAGER_ONLY too (six restricted readings, not five). Corrected the cell-picker section above, which had wrongly recorded the founder's answer as naming an unbuilt future UI. Relabelled two of this record's own paraphrases -- the cell-picker answer and the `/ask`-dates answer -- that had been recorded as his verbatim words (a matching fix landed on three more in ADR 0144, and on the reading-catalogue.ts and CLAIMS.jsonl copies of the same claims). See "Amendment, 2026-09-19"'s own dated corrections below.]** **[2026-09-21, same round, later -- a seventh reading restricted: the posted-targets reading (`goals.targets`) is OWNER_MANAGER_ONLY too, a money measure. This does NOT touch who may open `/ask` itself, which stays open with the founder (see "Still open, deliberately not decided here" below, unchanged). See "Amendment, 2026-09-21 -- goals.targets joins the restricted set" below.]** **[2026-09-21, KL round 5, later again -- the founder chose the option "Rules in code, label rows": permissions and spend never live in the model. Built: a staff refusal is now SAVED (the folio CHECK lacked `not_permitted`, so every refusal was a 503 on a real database); every field a Reading shows carries a data class and one role-policy table decides who sees what, which answer kinds each role gets and each role's share of the house's daily ask allowance -- the seven restricted Readings are now DERIVED from their fields, not hand-set; every ask is captured once (role snapshot, who chose the Reading, the raw pick, model ids, content hashes); a labels table with `POST /ask/folios/:id/feedback`; a redacted export view. No training. Who may open `/ask` itself stays open. See "Amendment, 2026-09-21 -- rules in code, label rows" below.]** **[2026-09-21, KL round 6 -- two founder answers. Staff on `/ask`: his pick, verbatim, "Yes, own-work only" -- staff reach `/ask`, see stock, receiving and today's deliveries, and are refused money, supplier prices and people data with a one-line reason; general knowledge is allowed and counts toward the house's daily limit. Trace counts: his pick, verbatim, "Hide by data type" -- a Finding's source trace shows a table's row count only to a role that sees that table's class. Built. See "Amendment, 2026-09-21 -- staff own work, and a trace that hides by data type" and the review trail at the end.]** **[2026-09-21, KL round 4 -- six founder answers (round 6r), his picks verbatim: "J4 wins, hide size (Recommended)", "Classify now, forecast=sales (Recommended)", "Same as the wine pool (Recommended)", "Two labels (Recommended)", "Stays stock (Recommended)", "No, user+house (Recommended)". Built: staff are told a failed read's source and never why or how big; the unbuilt money and sales questions refuse staff with the class's line; an owner-only, audited per-house training opt-out, and an export with no free text that leaves opted-out houses out; re-asks labelled `follow_up` or `correction`. `reading_version` answered from the code. Area-gated staff order lookup waits for PR #441. See "Amendment, 2026-09-21 -- round 6r".]** **[2026-09-22, KL round 5 -- the three forks round 6r left open, his picks verbatim: "Never (Recommended)" (opting back in never releases a question asked while opted out -- each folio snapshots the house's answer at ask time), "Text-free until lawyer (Recommended)" (the export stays as built, no free text; a name remover is the first training lane's job), "Add to /privacy now" (a short training notice, his own choice over the lawyer route). Built: migration 20260922220600 adds `ask_reading_folios.asked_while_opted_out`, derived and written once like `asked_as_role`, backfilled from each house's current answer; the export excludes a snapshot-true folio forever, on top of the existing current-state check, and (last call) no longer carries a re-ask label or `reask_kind` drawn from a folio asked while opted out; `/privacy` gained the notice. See "Amendment, 2026-09-22 -- round 6y".]** **[2026-09-25, W2-ask lane -- the `/ask` layout the founder decided on 2026-09-21 (one right-hand slot, counter or Ask; the quick ask a non-modal popover; a requests list at `/admin`; never a write without the seal) was recorded only in session memory; it is now recorded here verbatim, and the `/ask` page is built, live in code for every house. See "Amendment, 2026-09-25".]** **[2026-09-25, founder, round 5, W3-ask lane -- the judge's fork 3 answered, his pick verbatim: "Lie over it (Recommended)" (below ~1280 px the Ask panel lies over the page; the page keeps its width); `ASK_LAUNCHED`, his words verbatim, "aded to the railway" (he set it; not verified by any lane); build task 4 audited: all sixteen readings have both tests, every relation each one reads is now forced to fail as well, and `scripts/check_ask_readings_have_fixtures.py` fails CI when one is lost. See "Amendment, 2026-09-25, round 5".]** **[2026-09-26, founder, round 6, W4-ask lane -- ⌘⇧K and the Ask panel, his pick verbatim: "One panel, two modes (Recommended)" ("Two surfaces" rejected). Built: one Ask panel, docked in the counter's slot at ≥ ~1280 px and lying over the page below; an explicit mode switch ("Ask the books" / "Propose an action") with a suggestion that never acts; `AskAiBar` retired into it; build task 14 (the silent catch) closed. See "Amendment, 2026-09-26, round 6".]**
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Date:** 2026-09-12
 - **Keywords:** ask, /ask, Mudavym, assistant, reading, finding, provenance, hollow build, refusal shapes, seal, ask-ai, sommelier
@@ -155,7 +155,7 @@ From **Option 2**: the exhaustive census as code, copied from `ONE_TAP_DISPOSITI
 11. `correlation_id` written on the audit row, so `logs-timeline.service.ts:302`'s filter finally has a producer; and `ai_proposed_actions` added as a timeline source so a sealed act from `/ask` appears in `/logs`.
 12. A migration adding a Finding, a reason and a correlation id to `ai_proposed_actions`, correcting in the same change the documented-vs-code mismatch on `idempotency_key` (the migration says client-supplied; the service mints it server-side; the exactly-once property actually comes from the CAS).
 13. The route, the flag and the `MUDAVYM_PAGES` entry. Both the flag and the entry exist only on `origin/feat/mudavym-new-pages`, where `/help` already links to `/ask` with no route behind it.
-14. Removing `AskAiBar.tsx:110`'s `.catch(() => {})`, whose own comment reads *"Fails quiet — an empty list and a broken list look the same to a user."* The panel and the page share a backend and cannot disagree about whether a failed read is an emptiness.
+14. Removing `AskAiBar.tsx:110`'s `.catch(() => {})`, whose own comment reads *"Fails quiet — an empty list and a broken list look the same to a user."* The panel and the page share a backend and cannot disagree about whether a failed read is an emptiness. **[DONE 2026-09-26, W4-ask lane: `AskAiBar.tsx` is deleted; the Ask panel that replaces it says a failed read of the waiting proposals in words ("This does not mean none are waiting") -- `AskPanel.test.tsx`, "a failed read of the waiting proposals is said". The candidates read still degrades quietly to read-only ids, as `ProposalCard` documents; that is a picker, not an emptiness claim.]**
 15. Deciding what `WineAgentFab` does. It still floats on every authenticated page pointing at `/sommelier`, labelled "Wine Agent", two lines above the Ask AI mount, and [[0133-a-public-page-has-no-house-so-the-public-door-has-one-switch]] retired "agent" as a word.
 
 **Consequences for other work.** `/sommelier`'s repair ([[0143-the-arrival-the-desk-the-sommelier-and-the-two-rooms]] §3) and `/ask` are now one build, not two: same backend, same folio table, same reply shapes. `DevTruthService` stops being a dev-only surface. The `/logs` timeline gains its first `correlation_id` producer. And item 12's migration must take a version past everything on `main`, per the standing rule.
@@ -1445,7 +1445,11 @@ panel are the two doors (ADR 0149 row 33).
   popover** (AskAiBar is still a modal), **quick-ask context from an open act
   sheet**, and the **requests list at `/admin`** (it needs a table and an
   endpoint; no migration was written). Each is a separate build item under
-  the layout above.
+  the layout above. **[2026-09-26, round 6: the Ask face is BUILT, and the
+  quick popover is superseded -- "One panel, two modes" makes ⌘⇧K open the
+  one panel, not a second, smaller surface; see "Amendment, 2026-09-26, round
+  6". Quick-ask context from an open act sheet and the requests list are
+  still not built.]**
 - The shelf's per-register **counts** (sketch 114 A draws them): they need
   the shelf endpoint ADR 0145 build item 5 names, which does not exist. The
   page shows no count rather than an invented one (ADR 0051).
@@ -1494,6 +1498,11 @@ still differs from the recorded layout, and that difference IS the unbuilt Ask
 face and non-modal quick popover; building them needs one more of his calls
 first (which door opens which: the record lists ⌘⇧K among the Ask face's
 summoners AND as the quick popover's key), so this lane did not build them.
+**[ANSWERED and BUILT 2026-09-26, round 6: that door-routing call is "One panel,
+two modes" -- ⌘⇧K opens the one Ask panel; `AskAiBar.tsx` and its test are
+deleted, and the fork-3 pin moved to `AskPanel.test.tsx` ("overlay: a dialog
+outside the page's tree") and `HouseShell.test.tsx` ("below ~1280 px the same
+panel lies over the page"). See "Amendment, 2026-09-26, round 6".]**
 
 ### `ASK_LAUNCHED`
 
@@ -1564,6 +1573,125 @@ steps now run it; combined exit is the worse of the two), because
 name is cleaner and is left to the gate owner. CLAIMS row
 `ADR-0145-ASK-EVERY-READING-HAS-BOTH-FIXTURE-TESTS` runs it too.
 
+## Amendment, 2026-09-26, round 6 -- one Ask panel, two modes (W4-ask lane)
+
+### The founder's answer
+
+Asked by the orchestrating session on 2026-09-26 (round 6, via its question
+tool), the question verbatim: *"/ask: ⌘⇧K today opens the 'propose' bar (it
+drafts actions); the new Ask panel answers questions from your books. The
+record says ⌘⇧K should summon the Ask panel. One panel doing both, or two?"*
+
+- **Chosen, founder, 2026-09-26, round 6:** "One panel, two modes
+  (Recommended)" -- its option text, verbatim: "⌘⇧K opens the Ask panel. You
+  type; a question gets an answer from your books, and a request to do
+  something gets a proposal you seal. One door to learn."
+- **Rejected:** "Two surfaces" -- "⌘⇧K keeps the propose bar; the Ask panel
+  opens from the header and rail."
+
+This settles the door-routing call the round-5 amendment left open (⌘⇧K
+listed both as a summoner of the Ask face and as the quick popover's key):
+there is one surface, and every door opens it. The 2026-09-21 record's
+"non-modal quick popover" is superseded by it -- not built as a second thing.
+
+### How the panel routes a typed line, and why this way
+
+His option text says a question "gets an answer" and a request "gets a
+proposal"; it does not say who decides which a line is. The lane brief ruled
+that out as a silent guess ("do NOT silently guess and act"), so the panel
+shows the choice and the person makes it:
+
+- **An explicit two-way switch** at the panel's head, "Ask the books" /
+  "Propose an action" (a radio group, "What Enter does"), with the contract
+  of the selected mode in one line under it. Enter runs the selected mode,
+  always. It opens on "Ask the books": the mode that writes nothing.
+- **A suggestion, never an act.** When the typed words read like the other
+  mode, a line says so ("This reads like a request to do something.") with a
+  control that only switches the mode, and "Enter still does what is selected
+  above." The suggestion is computed from the words alone
+  (`apps/web/src/components/askai/ask-mode.ts`, `suggestAskMode`): a request
+  leads with one of the proposer's own verbs (reorder, order, draft, reply,
+  send, chase...), a question with a question word or a question mark.
+- **The backends' own verdicts, reused after an ask** as one-click offers of
+  the other mode: a folio that came back `no_reading_matched` (the bound
+  pick's `unrecognized` class) offers "Propose this as an action instead"; a
+  proposal the proposer declined offers "Ask the books this instead". Each
+  sends only on the person's click.
+
+Measured before choosing (2026-09-26, this tree): **neither backend
+classifies question-versus-request today.** The bound ask's pick
+(`bound-ask.service.ts`, `pick`) sorts a line among the Readings and sends
+anything else to `unrecognized`; the proposer (`ask-ai.service.ts`,
+`SYSTEM_PROMPT`) declines anything that is not a reorder or a vendor draft.
+So there was no pre-ask classifier to reuse, and the two post-ask verdicts
+above are reused rather than duplicated.
+
+Rejected, with reasons:
+
+- **Auto-route by the words and act** -- the silent guess the brief forbade;
+  a misread request would spend a bound-ask call, and a misread question
+  would draft an action nobody asked for.
+- **A model call to classify first** -- a paid call before every ask (the
+  proposer's route is capped at 10 a minute per person and 200 an hour per
+  house, `ask-ai.controller.ts`) to do what one visible switch does for free.
+- **Send to both and show both** -- two spends per line, and a proposal
+  drafted for every question.
+- **A new gateway endpoint that classifies** -- duplicates the pick, and
+  touches the gate-guarded Ask AI controller for no gain over the switch.
+
+### Where the panel sits
+
+- **≥ ~1280 px (shell on):** the Ask face in the counter's slot beside a LIVE
+  page (the 2026-09-21 layout, option A): a non-modal region, no scrim, no
+  focus trap; the counter folds to its counted strip, and the strip's own
+  control closes Ask and gives the slot back. The person's remembered
+  counter width is not overwritten.
+- **Below ~1280 px, and on the phone:** the same panel lies over the page
+  (fork 3, "Lie over it", 2026-09-25) -- a house `Panel`, scroll locked.
+- **Legacy layout** (the browser override only): the same panel, lying over.
+- **Doors:** ⌘⇧K (`CommandProvider`, unchanged), the header's new Ask
+  button, the rail's first row, the phone's Ask door, the palette row (now
+  "Ask Mudavym"), and "Keep asking" on an open folio at `/ask`, which opens
+  the panel carrying that folio so the next question is sent as its re-ask
+  (`previousFolioId`; the gateway labels it `follow_up` or `correction`).
+
+### What each mode does, unchanged underneath
+
+- **Ask the books:** `POST /ask/folios` with `origin: 'panel'` (the
+  gateway's `BoundAskDto` already accepted it; the panel is its first
+  caller). Role rules are the gateway's: a staff refusal is its saved
+  `not_permitted` line, printed as sent, and staff see the approved round-6
+  line. Each answer opens whole at `/ask/f/:id`.
+- **Propose an action:** `AskAiBar`'s flow moved whole -- `POST
+  /ask-ai/propose` with the visible page context, the refusal reason in
+  full, the waiting proposals, the candidate pickers, and `ProposalCard`'s
+  one apply: the hold bound to a server seal ("Never without the seal").
+  Staff may propose (the route has no `@Roles`); the seal is owner or
+  manager only (`@Roles("owner", "manager")` on seal-challenge and
+  sealed-confirm), and staff are told so in the panel.
+
+### Built (PR #475, `feat/ask-page`)
+
+- `components/askai/AskPanel.tsx` (+ `ask-panel.css`), `ask-mode.ts`,
+  `useAskPanel.ts`; `events.ts` gains the follow-up detail.
+- `HouseShell.tsx` mounts the panel itself (dock or overlay) and adds the
+  header's Ask; `AskAiSurface.tsx` is now the legacy layout's overlay mount.
+- `AskAiBar.tsx` and `AskAiBar.test.tsx` deleted; its tests moved to
+  `AskPanel.test.tsx` (the seal ceremony, refusals, candidates, context).
+- `shellOverlays.test.tsx`: the pinned legacy chrome of the bar is gone with
+  it (its provenance row removed).
+- `/help`'s assistant guide and the palette row describe one panel.
+- Build task 14 closed (bracket above).
+
+### Not built, not verified
+
+- Quick-ask context from an open act sheet (`page-context.ts` still reads
+  only the route) and the requests list at `/admin` -- unchanged.
+- Crossing 1280 px while the panel is open moves it between its two mounts
+  and clears what was typed and answered in it (the answers stay in the book
+  at `/ask`).
+- No browser render against a live gateway: vitest and tsc only.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -1581,3 +1709,5 @@ name is cleaner and is left to the gate owner. CLAIMS row
 | 2026-09-22 | Opus last call, KL round 5 (round 6y), HEAD a04aaa4e1, no merge in progress | Not ready as built: a re-ask carried a question asked while opted out into the export through another folio, both ways (PGlite `KL5-lastcall-reask-optout.mjs`, the build's 19 assertions plus 7 re-ask ones: 2 FAILED on the build's migration). Fixed in the view, with an all-opted-in control kept: 26 of 26. `verify_index.sh` on staged index tree 06c38532: `web_tsc`, `web_eslint` (the 4 changed web files), `claims` 435/435, `prefixes`, that PGlite probe, vitest 2 files / 11 tests -- ALL GREEN; the later edits are to this record only, after which the four git-reading guards and CLAIMS (435/435) were re-run. Gateway tsc and jest not re-run: no gateway file changed. Mutations: dropping the re-ask label clause, and exporting `reask_kind` unguarded, each fail one PGlite assertion; the strengthened CLAIMS verify fails on those two, on a missing `create trigger`, and on a later file redefining the view; all restored byte-identically. Also corrected: the migration header's unsourced quotation, the backfill's "only information" wording, the Settings On/Off lines, and the round-6r Terms and `/ask` drafts (bracketed). Recorded, not decided: the Settings switch is reachable only on the new Settings page; a person's label given while opted out; `/privacy` does not name the AI model provider. |
 | 2026-09-25 | Aldemir (founder), round 5, relayed by the orchestrating session | Fork 3, his pick verbatim: "Lie over it (Recommended)" (rejected: "Push the page"). `ASK_LAUNCHED`, his words verbatim: "aded to the railway" (offered: "After fixture proof (Recommended)", "Right after #475 merges"). See "Amendment, 2026-09-25, round 5". |
 | 2026-09-25 | W3-ask lane (build, PR #475) | Fork 3 pinned on the built ⌘⇧K panel by vitest (mutation-tested); the Ask face stays unbuilt. Build task 4 audited: sixteen of sixteen readings have both tests; a per-source block forces all thirty (Reading, relation) pairs and ties them to the shelves (jest mutation on the receipts' linked order lines caught only by it). Guard `check_ask_readings_have_fixtures.py` added, self-test 11/11, wired through `check_ask_field_classes.py` and a CLAIMS row; on-disk mutations flip it to exit 1 (a deleted `known` row, a narrowed fixture loop) and exit 2 (spec missing), files restored byte-identically. `ASK_LAUNCHED` in production not verified. |
+| 2026-09-26 | Aldemir (founder), round 6, relayed by the orchestrating session | ⌘⇧K and the Ask panel, his pick verbatim: "One panel, two modes (Recommended)" (rejected: "Two surfaces"). See "Amendment, 2026-09-26, round 6". |
+| 2026-09-26 | W4-ask lane (build, PR #475) | Built one Ask panel with an explicit mode switch and a suggestion that never acts; docked in the counter slot at ≥ ~1280 px, lying over below; `AskAiBar` retired; build task 14 closed. Measured in the section above and in the PR. |

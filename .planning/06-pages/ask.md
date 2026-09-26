@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: partial
 status: documented
-updated: 2026-09-25
+updated: 2026-09-26
 supersedes: ["06-pages/sommelier.md"]
 links: ["[[PAGE-CONTRACT]]", "[[RETIRED]]", "[[help]]", "[[privacy]]", "[[settings]]"]
 ---
@@ -110,6 +110,17 @@ All in `apps/api-gateway/src/ask-ai/bound-ask.controller.ts`, guarded
   width, and the panel is a sheet you close. Of the built surfaces only the ⌘⇧K panel
   exists, and it already lies over the page (now pinned by `AskAiBar.test.tsx`); the Ask
   face is still unbuilt and must follow this below ~1280 px. ADR 0145, same amendment.]**
+  **[BUILT 2026-09-26, founder, round 6, his pick verbatim: "One panel, two modes
+  (Recommended)" ("Two surfaces" rejected). ⌘⇧K, the header's Ask, the rail's first row,
+  the phone's Ask door, the palette and "Keep asking" on an open folio all open ONE Ask
+  panel (`components/askai/AskPanel.tsx`): docked in the counter's slot at ≥ ~1280 px
+  beside a live page (the counter folds to its strip), lying over the page below. Its
+  two modes are an explicit switch, "Ask the books" (`POST /ask/folios`, origin
+  `panel`) and "Propose an action" (`POST /ask-ai/propose`, applied only through the
+  sealed hold); the words only SUGGEST a mode, and after an ask the backend's own verdict
+  (`no_reading_matched`, a declined proposal) is offered as the other mode, a click each.
+  `AskAiBar` is deleted. Still not built: quick-ask context from an open act sheet, and
+  the requests list at `/admin`. ADR 0145, "Amendment, 2026-09-26, round 6".]**
 - **Shelf counts** per register (sketch 114 A): no shelf endpoint exists (ADR 0145 build
   item 5); the page shows no count rather than an invented one.
 - **The pick before spend**: the pick runs inside the one `POST`; the page shows it after.

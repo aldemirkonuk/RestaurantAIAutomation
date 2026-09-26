@@ -16,7 +16,8 @@
  *
  * WHAT THE SHELL KEEPS FROM THE LEGACY LAYOUT, AND WHAT IT DROPS
  * --------------------------------------------------------------
- * Kept: `CommandProvider` (⌘K, ⌘⇧K), `AskAiSurface` (the ⌘⇧K panel), and the
+ * Kept: `CommandProvider` (⌘K, ⌘⇧K), the Ask panel (⌘⇧K — see "THE ASK
+ * PANEL" below), and the
  * guidance layer (`SetupNudgeBanner`, `PageTipStrip`, `GuidanceLiveRegion`) —
  * the guidance layer is sketch 106's fork 11, a separate call, so it rides
  * along unchanged rather than being decided here.
@@ -37,13 +38,24 @@
  * ADR 0169). The page column keeps the legacy layout's own `bg-gray-50`, which
  * is the legacy PAGES' ground, not the shell's — a rebuilt page paints its own
  * `.mudavym` root over it exactly as it does today.
+ *
+ * THE ASK PANEL (ADR 0145: the 2026-09-21 layout, fork 3 of 2026-09-25, and
+ * "One panel, two modes" of 2026-09-26)
+ * -------------------------------------------------------------------------
+ * One right-hand slot, two faces. At ≥ ~1280 px, opening Ask (⌘⇧K, the
+ * header's Ask, the rail's first row, "Keep asking") swaps the counter's
+ * column to the Ask face beside a LIVE page, and the counter folds to its
+ * counted strip; the strip's own control closes Ask and gives the slot back.
+ * Below ~1280 px (and on the phone) the same panel lies over the page.
  */
 
 import { useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../contexts/AuthContext';
 import { CommandProvider } from '../command/CommandProvider';
-import { AskAiSurface } from '../askai/AskAiSurface';
+import { AskPanel } from '../askai/AskPanel';
+import { openAskAi } from '../askai/events';
+import { useAskPanel, useOverlayScrollLock } from '../askai/useAskPanel';
 import { GuidanceProvider } from '../../guidance/GuidanceProvider';
 import { PageTipStrip } from '../../guidance/components/PageTipStrip';
 import { SetupNudgeBanner } from '../../guidance/components/SetupNudgeBanner';
@@ -65,6 +77,7 @@ import { bindHouseSaid } from '../../lib/mudavym/houseSaid';
 import { roomNameFor } from '../../lib/mudavym/rooms';
 import { useShellRoleFlags } from '../../lib/mudavym/shellRoleFlags';
 import {
+  TUCK_BELOW_PX,
   counterWidthFor,
   readShellPrefs,
   rememberCounterWidth,
@@ -119,6 +132,12 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
   const vw = useViewportWidth();
   const phone = vw < PHONE_BELOW_PX;
   const [mod] = useState(modKey);
+  // The Ask panel docks in the counter's slot only where the counter is a
+  // column AND the page keeps room beside it (fork 3: below ~1280 px it lies
+  // over the page instead).
+  const ask = useAskPanel();
+  const askDocks = !phone && vw >= TUCK_BELOW_PX;
+  useOverlayScrollLock(ask.open && !askDocks);
 
   // "The house said" is one person's sitting in one house: a sign-out and a
   // sign-in on a shared till, or a branch switch, starts it again.
@@ -179,6 +198,16 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
   }, []);
 
   const toggle = (
+    <>
+    <button
+      type="button"
+      className="mdv-hdr__counter mdv-hdr__ask"
+      onClick={() => openAskAi()}
+      aria-pressed={ask.open}
+      aria-label={`Ask Mudavym (${mod}⇧K)`}
+    >
+      <span className="mdv-hdr__countertext">Ask</span>
+    </button>
     <button
       type="button"
       className="mdv-hdr__counter"
@@ -196,6 +225,7 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
       {waiting === true && <span className="mdv-hdr__counterdot" aria-hidden />}
       {waiting === null && <span className="mdv-hdr__counterdot mdv-hdr__counterdot--hollow" aria-hidden />}
     </button>
+    </>
   );
 
   const headerGround = pageShell.on ? pageShell.ground : undefined;
@@ -254,8 +284,22 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
                   </ErrorBoundary>
                 </main>
               </div>
+              {!phone && ask.open && askDocks && (
+                <AskPanel
+                  placement="docked"
+                  open
+                  onClose={ask.close}
+                  followUp={ask.followUp}
+                  onDropFollowUp={ask.dropFollowUp}
+                />
+              )}
               {!phone && (
-                <HouseCounter state={counter} onOpen={openAct} width={width} onToggle={toggleCounter} />
+                <HouseCounter
+                  state={counter}
+                  onOpen={openAct}
+                  width={ask.open && askDocks ? 'tucked' : width}
+                  onToggle={ask.open && askDocks ? ask.close : toggleCounter}
+                />
               )}
             </div>
             {phone && (
@@ -308,9 +352,18 @@ export function HouseShell({ children }: { children?: ReactNode } = {}) {
               onClose={() => setTarget(null)}
               onChanged={counter.readNow}
             />
-            {/* Ask Mudavym — opened by ⌘⇧K, which CommandProvider registers, by
-                the rail's first row, and by the phone's Ask door. */}
-            <AskAiSurface />
+            {/* Ask Mudavym below ~1280 px: the same panel, lying over the page.
+                Opened by ⌘⇧K (CommandProvider), the header's Ask, the rail's
+                first row, the phone's Ask door and "Keep asking". */}
+            {!askDocks && (
+              <AskPanel
+                placement="overlay"
+                open={ask.open}
+                onClose={ask.close}
+                followUp={ask.followUp}
+                onDropFollowUp={ask.dropFollowUp}
+              />
+            )}
           </div>
         </GuidanceProvider>
       </CommandProvider>

@@ -34,6 +34,7 @@ vi.mock('@/services/api/ask', async () => {
 });
 
 import AskNext, { STAFF_LINE } from './AskNext';
+import { ASK_AI_OPEN_EVENT } from '@/components/askai/events';
 
 function reading(id: string, title: string, over: Partial<AskReading> = {}): AskReading {
   return { id, version: 1, title, question: `${title}?`, subject: 'none', window: false, meaning: `${title} meaning`, ...over };
@@ -280,6 +281,25 @@ describe('the book and old folios', () => {
     await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
     expect(api.submit.mock.calls[0][0]).toMatchObject({ readingId: 'inventory.position', previousFolioId: id, args: { subjectId: 'item-a' } });
     expect(api.submit.mock.calls[0][0].args.subjectText).toBeUndefined();
+  });
+
+  it('"Keep asking" on an open folio opens the one Ask panel carrying that folio (ADR 0145, one panel, 2026-09-26)', async () => {
+    const id = '44444444-4444-4444-8444-444444444444';
+    const f = folio({ id, utterance: 'How much house red?' });
+    api.folio.mockResolvedValue(f);
+    api.folios.mockResolvedValue([f]);
+    const heard: unknown[] = [];
+    const listen = (e: Event) => heard.push((e as CustomEvent).detail);
+    window.addEventListener(ASK_AI_OPEN_EVENT, listen);
+    try {
+      renderAt(`/ask/f/${id}`);
+      await screen.findByRole('article', { name: 'The open folio' });
+      fireEvent.click(screen.getByRole('button', { name: 'Keep asking' }));
+      expect(heard).toEqual([{ followUp: { folioId: id, utterance: 'How much house red?' } }]);
+      expect(api.submit).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(ASK_AI_OPEN_EVENT, listen);
+    }
   });
 
   it('/sommelier lands on /ask and says so', async () => {

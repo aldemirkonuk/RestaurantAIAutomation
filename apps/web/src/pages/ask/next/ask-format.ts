@@ -29,6 +29,14 @@ export const MONO = '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, mono
 
 export const EM = '—';
 
+/**
+ * The one line the founder approved for staff (ADR 0145 round 6, "Yes,
+ * own-work only"), verbatim. Here, not in the page, because the Ask panel
+ * says it too (ADR 0145, "One panel, two modes", 2026-09-26).
+ */
+export const STAFF_LINE =
+  'Staff can ask about stock, receiving and today’s deliveries. Money, supplier prices and people data are refused with a one-line reason.';
+
 export function ensureFraunces(): void {
   if (typeof document === 'undefined') return;
   if (document.getElementById(LINK_ID)) return;
