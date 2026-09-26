@@ -10,7 +10,6 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { CommunicationsService } from "../communications/communications.service";
-import { GmailService } from "../communications/gmail.service";
 import { DatabaseService } from "../database/database.service";
 import { ExpoPushService } from "../push/expo-push.service";
 import type { DeliveryMode, DigestFrequency } from "./dto/notifications.dto";
@@ -49,9 +48,6 @@ export class NotificationsService {
     @Optional()
     @Inject(forwardRef(() => CommunicationsService))
     private readonly communicationsService?: CommunicationsService,
-    @Optional()
-    @Inject(forwardRef(() => GmailService))
-    private readonly gmailService?: GmailService,
     @Optional()
     private readonly expoPushService?: ExpoPushService,
   ) {
@@ -486,48 +482,6 @@ export class NotificationsService {
       priority: data.severity === "error" ? "high" : "medium",
       metadata: { severity: data.severity },
     });
-  }
-
-  /**
-   * Send email via GmailService (OAuth2).
-   * Falls back to a logged mock when GmailService is not injected (e.g. isolated unit tests).
-   */
-  async sendEmail(data: {
-    to: string[];
-    subject: string;
-    bodyHtml: string;
-    bodyText?: string;
-    cc?: string[];
-    bcc?: string[];
-  }): Promise<{ success: boolean; messageId: string }> {
-    this.logger.log(
-      `Sending email to: ${data.to.join(", ")} — ${data.subject}`,
-    );
-
-    if (this.gmailService) {
-      const result = await this.gmailService.sendEmail({
-        to: data.to,
-        subject: data.subject,
-        html: data.bodyHtml,
-        text: data.bodyText,
-        cc: data.cc,
-        bcc: data.bcc,
-      });
-      this.logger.log(
-        `Email ${result.success ? "sent" : "failed"} — MessageID: ${result.messageId}`,
-      );
-      return {
-        success: result.success,
-        messageId: result.messageId ?? `err-${Date.now()}`,
-      };
-    }
-
-    // Fallback mock (no GmailService available)
-    const messageId = `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    this.logger.warn(
-      `GmailService not available — email mocked. MessageID: ${messageId}`,
-    );
-    return { success: true, messageId };
   }
 
   /**

@@ -40,7 +40,8 @@ pytestmark = pytest.mark.prod_e2e
 #                 reporting.events (used by reporting_agent)
 #
 # For undeclared exchanges: use default exchange ("") with exact queue name.
-# Queue name pattern (base_agent.py:422): queue.{agent_name}.{routing_key.replace('.','_')}
+# Queue name pattern: core/base_agent.py subscription_queue_name() —
+# queue.{agent_name}.{routing_key with '.' -> '_' and '*' -> 'star'}
 #
 # Agent short names match wave_b EXPECTED_AGENTS (confirmed from Phase 22 deployment).
 # ---------------------------------------------------------------------------
