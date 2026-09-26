@@ -10,7 +10,7 @@ import { Logger } from "@nestjs/common";
  *
  *   team_member_wage_changes  the figures: old, new, currency, who, their role,
  *                             when. Written by the database trigger in the SAME
- *                             statement as the wage (migration 20260925180000),
+ *                             statement as the wage (migration 20260927150000),
  *                             so it cannot be skipped. Owner-read only.
  *   system_audit_log          `team_member_own_wage_set`: that it happened, who,
  *                             and whose row. It carries NO figure — the team

@@ -309,7 +309,7 @@ describe("GmailService.createMimeMessage — headers (ADR 0172)", () => {
       html: "<p>x</p>",
     });
     expect(result.success).toBe(false);
-    expect(result.refusedBeforeSend).toBe(true);
+    expect(result.refusal).toEqual({ kind: "header" });
     expect(send).not.toHaveBeenCalled();
   });
 

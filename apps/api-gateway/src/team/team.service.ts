@@ -1,12 +1,18 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
+import { markMembershipLeft } from "../auth/membership-ended";
 import { recordAccessChange } from "./access-audit";
 import { recordOwnWageChange, type OwnWageReceipt } from "./own-wage-notice";
 import {
@@ -40,7 +46,7 @@ type Role = "owner" | "manager" | "staff";
 
 /**
  * How long a removed person's records are kept: `wage_record_retention()` in
- * the database (migration `20260925180110`, founder 2026-09-21/22, five years).
+ * the database (migration `20260927150110`, founder 2026-09-21/22, five years).
  * Stated here only to print "kept until"; the database's clock is the one that
  * deletes.
  */
@@ -56,7 +62,12 @@ export const FORMER_STAFF_RETENTION_YEARS = 5;
 export class TeamService {
   private readonly logger = new Logger(TeamService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    @Optional()
+    @Inject(forwardRef(() => WebsocketGateway))
+    private readonly websocketGateway?: WebsocketGateway,
+  ) {}
 
   private get sb() {
     return this.db.supabase;
@@ -134,7 +145,7 @@ export class TeamService {
    * Whether an owner switched this manager's pay access on
    * (`user_restaurant_access.team_pay_access`, ADR 0215, founder 2026-09-25
    * round 4 item 19: "Pay visibility only"). Read on its own, never folded
-   * into `assertAccess`'s membership read: until migration `20260925180220`
+   * into `assertAccess`'s membership read: until migration `20260927150220`
    * applies, the column does not exist, and a membership read that failed on
    * it would lock every manager and owner out of /team. A failed read here is
    * logged and answers OFF — the money is withheld, never shown on a guess —
@@ -168,8 +179,11 @@ export class TeamService {
    * `broadcast-preferences.ts` for why the rule is restated rather than
    * imported from the resolver.
    */
-  async channelOptOuts(userIds: string[]): Promise<ChannelPreferences | null> {
-    return loadChannelOptOuts(this.sb, userIds);
+  async channelOptOuts(
+    userIds: string[],
+    restaurantId: string,
+  ): Promise<ChannelPreferences | null> {
+    return loadChannelOptOuts(this.sb, userIds, restaurantId);
   }
 
   // ── Members ────────────────────────────────────────────────────────────
@@ -322,7 +336,7 @@ export class TeamService {
 
   /**
    * Every membership's pay switch in this house, or `null` when it could not
-   * be read (before migration `20260925180220`, or a failed read). Read apart
+   * be read (before migration `20260927150220`, or a failed read). Read apart
    * from the roster's own membership read for the same reason as
    * `managerPayAccess`: a missing column must not take the roster down.
    */
@@ -922,6 +936,17 @@ export class TeamService {
         throw new InternalServerErrorException("Failed to remove member");
       }
       accessRevoked = true;
+      // A manager deleting their own roster row is leaving (ADR 0164, round
+      // 5, item 26): only people removed by someone else see /no-access.
+      if (member.user_id === userId)
+        await markMembershipLeft(this.sb, userId, restaurantId, this.logger);
+      this.websocketGateway?.evictFromHouse(member.user_id, restaurantId);
+      await cancelPendingInvitesFrom(
+        this.sb,
+        member.user_id,
+        restaurantId,
+        this.logger,
+      );
     }
 
     // Remove from team_members roster.
@@ -972,7 +997,7 @@ export class TeamService {
    * THE NAME comes from the removal's own audit row
    * (`system_audit_log`, `team_member_removed`, `changes.display_name`),
    * which `deleteMember` has written since ADR 0088. The departure row holds
-   * no name, on purpose (KVKK: the minimum; `20260925180110`), so none is
+   * no name, on purpose (KVKK: the minimum; `20260927150110`), so none is
    * added here: when the audit row is missing, the entry says the name was
    * not recorded rather than inventing one.
    *
@@ -1342,7 +1367,7 @@ export class TeamService {
     const { data } = await q.order("created_at", { ascending: false });
     if (role === "staff") return data ?? [];
     // A removed person's requests are kept five years, not listed (ADR 0215
-    // item 20): before 20260925180200 the removal deleted them, and a
+    // item 20): before 20260927150200 the removal deleted them, and a
     // pending one would otherwise wait for a decision about someone gone.
     return onTheRoster(data ?? [], await this.rosterMemberIds(restaurantId));
   }

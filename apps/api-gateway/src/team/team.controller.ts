@@ -472,7 +472,7 @@ export class TeamController {
     // means the read FAILED, which is not the same as "nobody opted out" — the
     // push leg is then skipped and said out loud rather than sent to people who
     // may have declined ([[absence-reported-as-health]]).
-    const optOuts = await this.team.channelOptOuts(userIds);
+    const optOuts = await this.team.channelOptOuts(userIds, rid);
     const preferencesUnavailable = optOuts === null;
 
     const wants = (m: any, channel: "push"): boolean => {

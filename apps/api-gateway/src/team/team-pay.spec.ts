@@ -1072,7 +1072,7 @@ describe("R1 — the retention job: credentials, shifts and leave, then wages, s
 //
 // ADR 0215 item 20 (founder 2026-09-22, round 6y, "Keep them 5 years
 // (Recommended)"): a removal no longer deletes a person's shifts and leave.
-// The database keeps them (migration 20260925180200, PGlite probe); the
+// The database keeps them (migration 20260927150200, PGlite probe); the
 // gateway reads the week as it did before the removal stopped deleting them.
 // "m-gone" is a person removed from the roster whose rows were kept.
 

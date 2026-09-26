@@ -9,7 +9,7 @@
  *
  * A person's SHIFTS AND LEAVE REQUESTS end the same way, on the same clock
  * (founder, 2026-09-22, round 6y, "Keep them 5 years (Recommended)", verbatim
- * in migration `20260925180200`): "removing a person must no longer delete
+ * in migration `20260927150200`): "removing a person must no longer delete
  * their shifts and leave requests straight away; they are kept and end with
  * the wage record (same five-year clock, same deletion job)." Before this,
  * `shifts.member_id` and `time_off_requests.member_id` were `ON DELETE
@@ -17,14 +17,14 @@
  * the wage record's five-year clock started — the wage record then had no
  * hours or leave beside it to show what it priced (ADR 0215 residual (j)).
  *
- * THE RULE LIVES IN THE DATABASE, NOT HERE. Migration 20260925180110 records
+ * THE RULE LIVES IN THE DATABASE, NOT HERE. Migration 20260927150110 records
  * when each person with a wage record, a shift or a leave request left
  * (`team_member_departures`, stamped by the database when their
  * `team_members` row is removed — broadened to shifts and leave by
- * `20260925180200`), lets `team_member_wage_changes` refuse any DELETE of a
+ * `20260927150200`), lets `team_member_wage_changes` refuse any DELETE of a
  * row whose five years have not run, and gives `purge_expired_wage_records()`
  * to delete the ones that have. `purge_expired_shift_and_leave_records()`
- * (`20260925180200`) is the same rule for shifts and leave requests. This job
+ * (`20260927150200`) is the same rule for shifts and leave requests. This job
  * calls the shifts-and-leave purge FIRST, then the wage purge, once a night.
  * The order is about finishing, not safety: `purge_expired_wage_records()`
  * clears a departure only once its wage record, shifts AND leave are all
@@ -39,7 +39,7 @@
  *
  * CREDENTIALS, 2026-09-25 (founder round 4 item 19, "Credentials yes,
  * availability no"): `team_certifications` stopped cascading on a removal
- * (`20260925180210`), a departure is stamped for a person with a credential
+ * (`20260927150210`), a departure is stamped for a person with a credential
  * too, and `purge_expired_credential_records()` is the same rule for them. It
  * runs FIRST of the three, for the same finishing reason: the wage purge's
  * departure cleanup now waits for credentials as well. Availability is not
