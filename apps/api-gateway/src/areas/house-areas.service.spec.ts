@@ -22,8 +22,9 @@ const COLLEAGUE = "aaaaaaaa-0000-0000-0000-000000000003";
 const STRANGER = "aaaaaaaa-0000-0000-0000-000000000009";
 const MANAGER = "aaaaaaaa-0000-0000-0000-000000000004";
 const CO_OWNER = "aaaaaaaa-0000-0000-0000-000000000005";
-// An owner known only through the legacy `users` row (no access row): the
-// token reads them as an owner (`roleInHouse`), so the Away gate must too.
+// An owner known only through the legacy `users` row (no active access row).
+// ADR 0164 ("Membership only"): that person is not a member of the house at
+// all, so no one else changes their Away here (PR #441 audit at 6f036c90f).
 const LEGACY_OWNER = "aaaaaaaa-0000-0000-0000-000000000006";
 const M_STAFF = "bbbbbbbb-0000-0000-0000-000000000002";
 const M_COLLEAGUE = "bbbbbbbb-0000-0000-0000-000000000003";
@@ -461,19 +462,25 @@ describe("only an owner sets or ends an owner's Away (round-2 answer 7)", () => 
     expect(db.tables.system_audit_log).toEqual([]);
   });
 
-  // ADR 0164 ("Membership only", 2026-09-18) retired the legacy `users.restaurant_id`
-  // role fallback everywhere `roleInHouse` is read, including here: with no active
-  // `user_restaurant_access` row, a person carries no role at all, however their
-  // `users` row is pointed. LEGACY_OWNER is still a MEMBER (assertHouseMember's own
-  // membership test still honours the legacy `users.restaurant_id` pointer), just
-  // with no role to protect — so a manager may act on their Away like anyone else's.
-  it("does not read an owner known only by the legacy users row as an owner", async () => {
-    const db = seed({ house_away: [ownerAway(LEGACY_OWNER)] });
-    const svc = service(db);
-    await expect(
-      svc.setAway(manager, LEGACY_OWNER, { from: TODAY, until: plus(2) }),
-    ).resolves.toBeDefined();
-    await expect(svc.endAway(manager, LEGACY_OWNER)).resolves.toBeDefined();
+  // ADR 0164 ("Membership only", 2026-09-18): an active `user_restaurant_access`
+  // row is the only thing that makes a person a member of a house. A person
+  // known only by the legacy `users.restaurant_id` pointer is therefore not a
+  // member, and neither a manager nor an owner changes their Away. Until the
+  // PR #441 audit (6f036c90f) that pointer still made them a member here while
+  // `roleInHouse` gave them no role, so a manager could set or end the Away of
+  // such an owner — against round-2 answer 7.
+  it("refuses anyone changing the Away of a person known only by the legacy users row", async () => {
+    for (const actor of [manager, owner]) {
+      const db = seed({ house_away: [ownerAway(LEGACY_OWNER)] });
+      const svc = service(db);
+      await expect(
+        svc.setAway(actor, LEGACY_OWNER, { from: TODAY, until: plus(2) }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(svc.endAway(actor, LEGACY_OWNER)).rejects.toBeInstanceOf(NotFoundException);
+      expect(db.tables.house_away).toEqual([ownerAway(LEGACY_OWNER)]);
+      expect(db.tables.system_audit_log).toEqual([]);
+      expect(db.tables.notifications).toEqual([]);
+    }
   });
 
   it("lets another owner set and end an owner's Away, logged", async () => {

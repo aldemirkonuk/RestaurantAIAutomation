@@ -681,8 +681,9 @@ export class HouseAreasService {
       throw new ForbiddenException(awayRefusal(actor.role, false));
     }
     if (!self) {
-      const role = await this.roleOf(rid, targetUserId);
-      if (!mayChangeAway(actor, { userId: targetUserId, role })) {
+      // Membership AND role in this house, exactly as setAway asks.
+      const target = await this.assertHouseMember(rid, targetUserId);
+      if (!mayChangeAway(actor, { userId: targetUserId, role: target.role })) {
         throw new ForbiddenException(awayRefusal(actor.role, true));
       }
     }
@@ -786,29 +787,26 @@ export class HouseAreasService {
   }
 
   /**
-   * The target is an active member of THIS house (the same test
-   * `TeamService.assertAccess` uses: an active access row, or the legacy
-   * `users.restaurant_id`). Returns their name for the log line and their
-   * role in this house (`roleInHouse`, the token's own rule).
+   * The target is an active member of THIS house, or 404: an active
+   * `user_restaurant_access` row here, and nothing else (ADR 0164, *"Membership
+   * only"* — the token's own rule, `auth/house-role.ts`). Returns their name for
+   * the log line and their role in this house (`roleInHouse`). An unreadable
+   * register is a 503, never "not an owner".
+   *
+   * [Until 2026-09-26 the legacy `users.restaurant_id` pointer also made a
+   * person a member here, while `roleInHouse` gave that person no role — so a
+   * manager could set or end the Away of an owner known only by that pointer,
+   * against round-2 answer 7 (PR #441 audit at 6f036c90f). A person with no
+   * active row is not a member of the house, so neither an owner nor a manager
+   * changes their Away here.]
    */
   private async assertHouseMember(
     restaurantId: string,
     userId: string,
   ): Promise<{ name: string | null; role: string | null }> {
     const { access, user } = await this.readMembership(restaurantId, userId);
-    const member = !!access || user?.restaurant_id === restaurantId;
-    if (!member) throw new NotFoundException("That person is not a member of this house.");
+    if (!access) throw new NotFoundException("That person is not a member of this house.");
     return { name: user?.name ?? null, role: roleInHouse(access) };
-  }
-
-  /**
-   * The target's role in THIS house, or null for none. An unreadable register
-   * is a 503, never "not an owner" — that guess would let a manager end an
-   * owner's Away.
-   */
-  private async roleOf(restaurantId: string, userId: string): Promise<string | null> {
-    const { access, user } = await this.readMembership(restaurantId, userId);
-    return roleInHouse(access);
   }
 
   private async readMembership(

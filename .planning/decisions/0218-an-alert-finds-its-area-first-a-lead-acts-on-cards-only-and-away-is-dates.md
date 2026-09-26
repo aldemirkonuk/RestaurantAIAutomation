@@ -356,8 +356,14 @@ bundled — not his own words for each. What each one is, and where it is:
 7. **Only an owner can set or end another owner's Away; a manager can no
    longer.** Built: `mayChangeAway` in `house-areas.service.ts`, asked by both
    `setAway` and `endAway` about the target's role **in this house** (read the
-   way the token reads one, `auth/house-role.ts`, so a legacy `users`-row owner
-   counts). An unreadable role is a 503, never "not an owner". The roster's Away
+   way the token reads one, `auth/house-role.ts`) [corrected 2026-09-26: was
+   "so a legacy `users`-row owner counts". ADR 0164 retired that fallback, after
+   which a person known only by `users.restaurant_id` was still admitted as a
+   member here with no role, so a manager could change such an owner's Away (PR
+   #441 audit at 6f036c90f). Both calls now go through `assertHouseMember`, which
+   admits an active `user_restaurant_access` row and nothing else: that person
+   is not a member, 404, for owners and managers alike]. An unreadable role is
+   a 503, never "not an owner". The roster's Away
    card shows a manager an owner's dates without the controls and says who can
    change them (`mayChangeAway` in `services/api/areas.ts`, a mirror; the
    gateway decides). CLAIMS `ADR-0218-ONLY-AN-OWNER-CHANGES-AN-OWNERS-AWAY`.
@@ -789,3 +795,4 @@ hold there too.]
 | 2026-09-22 | founder | Round 4 (round 6z): three answers, each *"(Recommended)"* — "At least once"; "Hide Away events from staff"; "Active roster only" (see **Round 4**) |
 | 2026-09-22 | areas lane, round 4 | Built answer 2: `/logs` now withholds `away_set_for_member` and `away_ended_for_member` from a staff reader, filtered in the `system_audit_log` query (`LogsTimelineService.fetchAuditLog`) before the window, role read off `LogsController`'s existing `MembersService.assertMembership` call. Recorded, no code change: answers 1 and 3 (both already matched what was built). CLAIMS `ADR-0218-LOGS-WITHHOLD-AWAY-FROM-STAFF` added and mutation-tested |
 | 2026-09-25 | settings-b lane (web-rebuild wave 1) | Merged origin/main (`059169a5`). Brought over the round-4 `/logs` build, which until now lived only uncommitted in the `wt-areas` worktree. Renumbered the two migrations past main's ceiling (ADR 0212): `20260921170300` became `20260926150800`, and `20260921171000` became `20260926150900`. `AwayReleaseService.deliver` now passes `skipMobilePush: true`. Before this, the funnel's own fan-out pushed a released message a second time at priority "high", ignored the person's push switch, and pushed an inbox-only message as well. This is the same defect #448 closed for `TeamController.broadcast`, and #448's funnel option is carried here verbatim. Three real-funnel tests are marked `[REVERT-FAILS]`; dropping the option turns four red |
+| 2026-09-26 | audit fix, PR #441 at 6f036c90f | Closed the legacy-pointer carve-out in round 2 answer 7: `assertHouseMember` admits only an active access row (ADR 0164), `endAway` asks it as `setAway` does, and `roleOf` is gone. The spec that accepted a manager changing a legacy-only owner's Away now asserts 404 for owner and manager with nothing written; two mutations (pointer re-admitted, `endAway` membership skipped) turn it red. The fix no longer rests on the 2026-09-18 zero-row measurement. CLAIMS `ADR-0218-ONLY-AN-OWNER-CHANGES-AN-OWNERS-AWAY` now checks the membership test too |
