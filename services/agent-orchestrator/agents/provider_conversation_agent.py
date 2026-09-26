@@ -254,11 +254,17 @@ def _age_in_words(age_seconds: Optional[float]) -> str:
 # =============================================================================
 #
 # The table's columns are the baseline CREATE TABLE
-# (supabase/migrations/20260805000000_baseline_from_production.sql:4808) and no
-# later migration alters it. Until 2026-09-26 this agent wrote `status`,
-# `is_recurring` and `source_message_text` — none of which exist — and read
-# `status` to dedupe, so PostgREST refused every call, the `except` logged it,
-# and not one offer a vendor wrote in conversation ever reached the house.
+# (supabase/migrations/20260805000000_baseline_from_production.sql:4808), plus
+# one additive column: `alerted_at timestamptz` from migration
+# 20260928000000_a_promotion_remembers_being_alerted (founder item 54,
+# 2026-09-26 round 8) -- no later migration alters any other column. Until
+# 2026-09-26 this agent wrote `status`, `is_recurring` and
+# `source_message_text` — none of which exist — and read `status` to dedupe,
+# so PostgREST refused every call, the `except` logged it, and not one offer a
+# vendor wrote in conversation ever reached the house. `_check_expiring_promos`
+# read `status` and `alerted_at` too (the latter did not exist until the
+# migration above); it is fixed the same day to read `is_active` and the real
+# `alerted_at` column, setting it only after a successful alert.
 #
 # The reference writer is the gateway's PromotionExtractorService
 # (apps/api-gateway/src/common/orchestrator/promotion-extractor.service.ts):
@@ -2039,7 +2045,22 @@ class ProviderConversationAgent(BaseAgent):
             return []
 
     async def _check_expiring_promos(self) -> None:
-        """Check for promotions expiring soon and alert manager."""
+        """Alert each house once per promo that is about to expire.
+
+        `is_active` is the table's lifecycle column; there is no `status`
+        (see the header note above `_process_extracted_promos`). The dedupe
+        is `alerted_at IS NULL`, a real column added by migration
+        20260928000000_a_promotion_remembers_being_alerted (founder item 54,
+        2026-09-26 round 8) -- until then this read `status` and `alerted_at`,
+        neither of which existed, so PostgREST refused the query and every
+        expiring promo silently never alerted.
+
+        Each promo is alerted independently: a publish failure on one promo
+        is logged and skipped, never abandoning the rest of the sweep, and
+        `alerted_at` is written only after BOTH alerts for that promo
+        succeeded -- a failed publish leaves it NULL so the next sweep
+        retries it, rather than marking a notice sent when it was not.
+        """
         try:
             cutoff = (
                 (datetime.utcnow() + timedelta(days=self.promo_alert_days))
@@ -2049,13 +2070,17 @@ class ProviderConversationAgent(BaseAgent):
             result = (
                 self.database.supabase.table("provider_promotions")
                 .select("*, providers(name)")
-                .eq("status", "active")
+                .eq("is_active", True)
                 .lte("end_date", cutoff)
                 .is_("alerted_at", "null")
                 .execute()
             )
+        except Exception as e:
+            self.logger.error(f"Error checking expiring promos: {e}")
+            return
 
-            for promo in result.data or []:
+        for promo in result.data or []:
+            try:
                 await self.publish(
                     exchange_name="provider.events",
                     routing_key="provider.promo.expiring_soon",
@@ -2086,13 +2111,16 @@ class ProviderConversationAgent(BaseAgent):
                     },
                 )
 
-                # Mark as alerted
+                # Both alerts sent: mark alerted so this promo is not
+                # re-alerted on the next sweep.
                 self.database.supabase.table("provider_promotions").update(
                     {"alerted_at": datetime.utcnow().isoformat()}
                 ).eq("id", promo["id"]).execute()
 
-        except Exception as e:
-            self.logger.error(f"Error checking expiring promos: {e}")
+            except Exception as e:
+                self.logger.error(
+                    f"Error alerting on expiring promo {promo.get('id')}: {e}"
+                )
 
     # =========================================================================
     # 7. RESPONSE GENERATOR

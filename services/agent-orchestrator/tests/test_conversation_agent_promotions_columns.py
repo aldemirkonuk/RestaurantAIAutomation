@@ -6,12 +6,21 @@ those columns exist, so PostgREST refused every call, the `except` logged it,
 and no offer a vendor wrote in conversation ever landed. PR #464 put the agent
 back into production, which made the dead write live code.
 
+`_check_expiring_promos` had the same defect twice over: it read a `status`
+column that has never existed, and an `alerted_at` column that did not exist
+until migration 20260928000000_a_promotion_remembers_being_alerted (founder
+item 54, 2026-09-26 round 8: "add an alerted_at timestamptz NULL column ... and
+fix _check_expiring_promos"). Both are fixed here, so the xfail this file used
+to pin is gone.
+
 The columns are read from the baseline migration, pinned to a static set so a
 parser drift cannot silently widen them, and every later migration is checked
-for an ALTER of the table. Then every query the promotion paths build is
-recorded, and each column it names — in a payload or in a filter — must be one
-the table has. A return-value test would pass against the broken code: every
-path swallows its error. So the assertions are about what is sent.
+for an ALTER of the table -- except the one named addition below, whose added
+column is itself verified against the migration file rather than trusted by
+name. Then every query the promotion paths build is recorded, and each column
+it names — in a payload or in a filter — must be one the table has (baseline
+plus that one addition). A return-value test would pass against the broken
+code: every path swallows its error. So the assertions are about what is sent.
 
 Run: cd services/agent-orchestrator && python -m pytest tests/test_conversation_agent_promotions_columns.py -v
 """
@@ -19,8 +28,6 @@ Run: cd services/agent-orchestrator && python -m pytest tests/test_conversation_
 import pathlib
 import re
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from agents.provider_conversation_agent import (
     ProviderConversationAgent,
@@ -32,7 +39,7 @@ MIGRATIONS = REPO / "supabase" / "migrations"
 BASELINE = MIGRATIONS / "20260805000000_baseline_from_production.sql"
 
 # supabase/migrations/20260805000000_baseline_from_production.sql:4808-4827
-PROVIDER_PROMOTIONS_COLUMNS = frozenset(
+PROVIDER_PROMOTIONS_BASELINE_COLUMNS = frozenset(
     {
         "id",
         "provider_id",
@@ -53,6 +60,38 @@ PROVIDER_PROMOTIONS_COLUMNS = frozenset(
         "updated_at",
     }
 )
+
+# Migrations allowed to ALTER provider_promotions after the baseline, each
+# named explicitly with the column(s) IT adds -- so a second, unrelated ALTER
+# landing under a different name still fails test_no_later_migration_alters_
+# the_table_except_the_named_ones below, and a drift in what THIS migration
+# adds (parsed straight from its own file, not trusted by name) fails
+# test_the_named_additions_add_exactly_what_they_claim.
+PROVIDER_PROMOTIONS_ADDED_COLUMNS = {
+    "20260928000000_a_promotion_remembers_being_alerted.sql": frozenset({"alerted_at"}),
+}
+
+PROVIDER_PROMOTIONS_COLUMNS = frozenset(
+    PROVIDER_PROMOTIONS_BASELINE_COLUMNS
+    | {c for cols in PROVIDER_PROMOTIONS_ADDED_COLUMNS.values() for c in cols}
+)
+
+
+def _alter_added_columns(sql: str) -> set:
+    """Column names ADDed to provider_promotions by ALTER TABLE clauses in sql."""
+    stmt_re = re.compile(
+        r"ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?"
+        r"(?:public\.)?\"?provider_promotions\"?\s+([^;]*);",
+        re.IGNORECASE,
+    )
+    add_re = re.compile(
+        r"ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?\"?(\w+)\"?", re.IGNORECASE
+    )
+    cols: set = set()
+    for stmt in stmt_re.findall(sql):
+        cols |= set(add_re.findall(stmt))
+    return cols
+
 
 REST_ID = "11111111-1111-1111-1111-111111111111"
 OTHER_REST_ID = "99999999-9999-9999-9999-999999999999"
@@ -76,9 +115,9 @@ def _baseline_columns() -> set:
 
 class TestTheColumnListIsTheMigrations:
     def test_static_list_matches_the_baseline_create_table(self):
-        assert _baseline_columns() == set(PROVIDER_PROMOTIONS_COLUMNS)
+        assert _baseline_columns() == set(PROVIDER_PROMOTIONS_BASELINE_COLUMNS)
 
-    def test_no_later_migration_alters_the_table(self):
+    def test_no_later_migration_alters_the_table_except_the_named_ones(self):
         alter = re.compile(
             r"ALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?"
             r"(?:public\.)?\"?provider_promotions\"?\s+(ADD|DROP|RENAME)",
@@ -89,10 +128,21 @@ class TestTheColumnListIsTheMigrations:
             for p in sorted(MIGRATIONS.glob("*.sql"))
             if p != BASELINE and alter.search(p.read_text())
         ]
-        assert hits == [], (
-            "a migration now changes provider_promotions' columns; update "
-            f"PROVIDER_PROMOTIONS_COLUMNS from it: {hits}"
+        assert set(hits) == set(PROVIDER_PROMOTIONS_ADDED_COLUMNS), (
+            "the set of migrations that ALTER provider_promotions changed; "
+            "update PROVIDER_PROMOTIONS_ADDED_COLUMNS (and, for a DROP or "
+            "RENAME, PROVIDER_PROMOTIONS_BASELINE_COLUMNS / the queries that "
+            f"use the affected column) to match: {hits}"
         )
+
+    def test_the_named_additions_add_exactly_what_they_claim(self):
+        for name, claimed in PROVIDER_PROMOTIONS_ADDED_COLUMNS.items():
+            path = MIGRATIONS / name
+            assert path.is_file(), f"{name} is not in {MIGRATIONS}"
+            assert _alter_added_columns(path.read_text()) == set(claimed), (
+                f"{name} adds different columns than PROVIDER_PROMOTIONS_"
+                f"ADDED_COLUMNS claims for it"
+            )
 
 
 # =============================================================================
@@ -177,6 +227,61 @@ def _unknown_columns(db) -> list:
         for q in db.promo_queries()
         if q.columns() - PROVIDER_PROMOTIONS_COLUMNS
     ]
+
+
+class _ExpiryFakeQuery:
+    """A narrower double than `_Query`: it returns every seeded row regardless
+    of the filter (`_Query` matches filters by literal equality, which cannot
+    model `.lte(...)` against a date computed at call time or `.is_(...,
+    "null")` against a real NULL), and records each update by row id so a
+    test can assert exactly which promo was marked alerted."""
+
+    def __init__(self, db, table):
+        self.db, self.table = db, table
+        self.op = "select"
+        self.values = None
+        self.filters: list = []
+
+    def select(self, *a, **k):
+        self.op = "select"
+        return self
+
+    def update(self, values):
+        self.op, self.values = "update", values
+        return self
+
+    def eq(self, column, value=None):
+        self.filters.append((column, value))
+        return self
+
+    lt = lte = gt = gte = neq = eq
+
+    def is_(self, column, value=None):
+        return self.eq(column, value)
+
+    def order(self, *a, **k):
+        return self
+
+    def limit(self, *a, **k):
+        return self
+
+    def execute(self):
+        if self.op == "select":
+            return MagicMock(data=list(self.db.rows))
+        row_id = dict(self.filters).get("id")
+        self.db.updates.append((row_id, dict(self.values or {})))
+        return MagicMock(data=[])
+
+
+class _ExpiryFakeDB:
+    def __init__(self, rows):
+        self.rows = rows
+        self.updates: list = []
+        self.supabase = self
+
+    def table(self, name):
+        assert name == "provider_promotions"
+        return _ExpiryFakeQuery(self, name)
 
 
 OFFER = {
@@ -329,15 +434,103 @@ class TestTheReadAndTheSweep:
         assert _unknown_columns(agent.database) == []
         agent.logger.error.assert_not_called()
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "open fork: _check_expiring_promos dedupes its alert on "
-            "`alerted_at`, which the table does not have; fixing it needs a "
-            "column or another alert ledger, which is not decided"
-        ),
-    )
     async def test_expiring_alert_sweep_uses_real_columns(self):
         agent = _agent()
         await ProviderConversationAgent._check_expiring_promos(agent)
         assert _unknown_columns(agent.database) == []
+
+    async def test_expiring_alert_sweep_reads_is_active_and_alerted_at(self):
+        agent = _agent()
+        await ProviderConversationAgent._check_expiring_promos(agent)
+        (select_q,) = [q for q in agent.database.promo_queries() if q.op == "select"]
+        assert ("is_active", True) in select_q.filters
+        assert ("alerted_at", "null") in select_q.filters
+        # The old, broken read: a nonexistent `status` column.
+        assert not any(c == "status" for c, _ in select_q.filters)
+
+    async def test_expiring_alert_sweep_marks_alerted_only_after_both_publishes(self):
+        agent = _agent()
+        agent.database = _ExpiryFakeDB(
+            [
+                {
+                    "id": "p-1",
+                    "provider_id": PROV_ID,
+                    "restaurant_id": REST_ID,
+                    "name": "Spring Barolo case deal",
+                    "end_date": "2026-10-01",
+                }
+            ]
+        )
+        await ProviderConversationAgent._check_expiring_promos(agent)
+
+        publishes = [c.kwargs for c in agent.publish.await_args_list]
+        assert len(publishes) == 2
+        assert {p["routing_key"] for p in publishes} == {
+            "provider.promo.expiring_soon",
+            "notification.promo_alert",
+        }
+        # Both payloads carry the house.
+        assert all(
+            p["message_body"]["payload"]["restaurant_id"] == REST_ID for p in publishes
+        )
+
+        assert len(agent.database.updates) == 1
+        row_id, values = agent.database.updates[0]
+        assert row_id == "p-1"
+        assert set(values) == {"alerted_at"}
+        agent.logger.error.assert_not_called()
+
+    async def test_expiring_alert_sweep_leaves_alerted_at_null_on_publish_failure(self):
+        agent = _agent()
+        agent.database = _ExpiryFakeDB(
+            [
+                {
+                    "id": "p-1",
+                    "provider_id": PROV_ID,
+                    "restaurant_id": REST_ID,
+                    "name": "Spring Barolo case deal",
+                    "end_date": "2026-10-01",
+                }
+            ]
+        )
+        agent.publish = AsyncMock(side_effect=RuntimeError("broker unreachable"))
+        await ProviderConversationAgent._check_expiring_promos(agent)
+        assert (
+            agent.database.updates == []
+        ), "alerted_at must not be set when the alert never sent"
+        agent.logger.error.assert_called_once()
+
+    async def test_one_promos_publish_failure_does_not_block_the_others(self):
+        agent = _agent()
+        agent.database = _ExpiryFakeDB(
+            [
+                {
+                    "id": "p-bad",
+                    "provider_id": PROV_ID,
+                    "restaurant_id": REST_ID,
+                    "name": "Bad deal",
+                    "end_date": "2026-10-02",
+                },
+                {
+                    "id": "p-good",
+                    "provider_id": PROV_ID,
+                    "restaurant_id": REST_ID,
+                    "name": "Ok deal",
+                    "end_date": "2026-10-01",
+                },
+            ]
+        )
+
+        async def flaky_publish(**kwargs):
+            if kwargs["message_body"]["payload"].get("promo_id") == "p-bad":
+                raise RuntimeError("broker unreachable")
+
+        agent.publish = AsyncMock(side_effect=flaky_publish)
+        await ProviderConversationAgent._check_expiring_promos(agent)
+
+        alerted_ids = {row_id for row_id, _ in agent.database.updates}
+        assert alerted_ids == {"p-good"}, (
+            "p-bad's failed publish must not stop p-good from being alerted, "
+            "and must not mark p-bad alerted either"
+        )
+        agent.logger.error.assert_called_once()
