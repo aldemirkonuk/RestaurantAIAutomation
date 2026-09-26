@@ -52,7 +52,8 @@ role (measured 2026-09-19), so no member's web view, chosen from the global role
 
 `GET /procurement/receiving/queue`, `GET /procurement/credits`, `GET /procurement/credits/stats` and
 `POST /procurement/credits/:id/transition` answer `403` to anyone whose role in the token's house is
-not owner, manager or admin. This is `@UseGuards(JwtAuthGuard, RolesGuard)` with
+not owner or manager. `RolesGuard` is exact since ADR 0164 (merged with this branch 2026-09-26), so
+`admin`, which these routes do not list, is refused too. This is `@UseGuards(JwtAuthGuard, RolesGuard)` with
 `@Roles("owner","manager")` on `CreditsController`, and `@UseGuards(RolesGuard)` with the same
 `@Roles` on `ReceivingController.queue` only. The door routes (`door`, `receivedSoFar`) and
 `unverified` stay open to staff: the person holding the hand truck works through them.
@@ -67,11 +68,15 @@ not owner, manager or admin. This is `@UseGuards(JwtAuthGuard, RolesGuard)` with
   no credit route), so its working screens do not change. What does change: the legacy
   `ReceiptsPage` (also what `/receipts?tab=credits` renders with the Mudavym flag on, since `ReceiptsNext`
   hands that tab to the legacy page) stopped offering the Credits tab to staff and lands `?tab=credits` on
-  the Receipts tab, so a staff member does not meet a ledger that can only show an error. It decides from
-  `activeRole`, the role in this house, and falls back to the global `user.role` whenever `activeRole`
-  is null (`AuthContext.tsx:475-504`): no house active, `/auth/me/role` still pending or failed, or no role
-  there that it recognises. In those windows a person who is staff here but owner or manager globally
-  can be offered the tab and meet the gateway's `403`; the gateway is the guard, the tab only a courtesy.
+  the Receipts tab, so a staff member does not meet a ledger that can only show an error. It offers the
+  tab to owner and manager only, the same two roles the gateway admits; an `admin` or unrecognised role
+  is treated as staff. It decides from `activeRole`, the role in this house, and falls back to the global
+  `user.role` whenever `activeRole` is null (the effect at `AuthContext.tsx:527-557`): no house active,
+  `/auth/me/role` not yet answered on the first load, failed, or no role there that it recognises. That
+  effect does not clear `activeRole` before it asks, so for the moment between a house switch and the
+  answer `activeRole` still holds the previous house's role. In those windows a person who is staff here but owner or manager globally, or
+  owner or manager in the house they just left, can be offered the tab and meet the gateway's `403`; the
+  gateway is the guard, the tab only a courtesy.
   The audit of PR #395 found the first cut read `user.role` alone, which is the global `users.role`;
   `ReceiptsPage.roles.test.tsx` now pins the difference (9 tests, 3 mutants caught).
 - `GET /procurement/receiving/unverified` is left as it was. It was not in the question put to the
@@ -79,9 +84,10 @@ not owner, manager or admin. This is `@UseGuards(JwtAuthGuard, RolesGuard)` with
 - Revisit when a fourth role appears, when a per-route permission model replaces `@Roles`, or when
   a staff-visible credits view is wanted (that needs its own decision and a server route shaped for it).
 - Proof: `procurement/receiving-credits-roles.spec.ts` drives real HTTP through the real controllers and the real
-  `RolesGuard` (only `JwtAuthGuard` stubbed): staff and no-role get `403` with no ledger or queue read,
-  owner, manager and admin pass, and the routes staff use stay open. With the gates removed 10 of its
-  24 tests fail. `CLAIMS.jsonl` row `ADR-0167-RECEIVING-CREDITS-REFUSE-STAFF` pins the wiring statically.
+  `RolesGuard` (only `JwtAuthGuard` stubbed): staff, no-role and admin get `403` with no ledger or queue
+  read, owner and manager pass, and the routes staff use stay open. Measured 2026-09-26 at the PR head:
+  with both controllers' `@Roles` and `RolesGuard` removed, 14 of its 24 tests fail; with the credits
+  gate alone removed (its `@Roles` or its `RolesGuard`), 10; with the queue's alone, 4. `CLAIMS.jsonl` row `ADR-0167-RECEIVING-CREDITS-REFUSE-STAFF` pins the wiring statically.
 
 ## Open items
 
@@ -107,9 +113,9 @@ not owner, manager or admin. This is `@UseGuards(JwtAuthGuard, RolesGuard)` with
   view and meet a `403` on the queue and credits. Inherited, not introduced here, and not changed: `ReceivingNext`
   belongs to the receiving lane, and `ReceivingHome` is legacy under ADR 0149. Nobody is affected today (every
   active member's two roles agree).
-- **Sequencing with ADR 0164.** The sessions change makes `RolesGuard` exact and relabels owner-only routes to
-  owner+manager. This record's `@Roles("owner","manager")` matches it, but whichever change lands second must
-  re-run `receiving-credits-roles.spec.ts` (24 tests).
+- **Sequencing with ADR 0164 — done 2026-09-26.** ADR 0164 (PR #471) landed first and was merged into this
+  branch (`9ddd030bc`); `receiving-credits-roles.spec.ts` was re-run on the merged tree (24 of 24 pass), its
+  admin cases now expect `403`, and the web tab followed.
 
 ## Review trail
 
@@ -117,3 +123,4 @@ not owner, manager or admin. This is `@UseGuards(JwtAuthGuard, RolesGuard)` with
 |---|---|---|
 | 2026-09-19 | Aldemir | Chose "Refuse staff on all four" and "Owner or manager on all" |
 | 2026-09-25 | Lane L3a (PR #395 update, merged main `059169a5`) | Re-verified on the merged tree: `receiving.controller.ts` and `credits.controller.ts` are unchanged on main since the merge base, and the r5/receiving strip (`origin/wip/2026-09-21/receiving`) differs from main's controller only in whitespace, so the four gated routes are still the only readers of the queue (`managerQueue`) and the ledger; the house counter already refuses its credits register to staff in words (`house-counter.service.ts`). Three comments that said "the receiving routes carry no role gate" narrowed to the door and unverified routes. Mutation: dropping either `@Roles` or the credits `RolesGuard` turns 2–7 of the 24 spec tests and the CLAIMS row red; a no-op stays green |
+| 2026-09-26 | PR #395 audit fix (BLOCK at `60b150d37`) | After ADR 0164's exact guard merged in, this record still said admin passes. Now: admin is refused at the gateway and the web tab no longer offers it (`ReceiptsPage.tsx` `canSeeCredits` is owner or manager; `ReceiptsPage.roles.test.tsx`, still 9 tests, moves the admin case to the refused side, and restoring `'admin'` turns that case red). The "10 of 24" figure was stale: re-measured at the head, both gates removed fails 14 of 24, credits alone 10, queue alone 4. The `AuthContext` citation moved to `:527-557`, and the switch-house window where `activeRole` is the previous house's role is now stated |

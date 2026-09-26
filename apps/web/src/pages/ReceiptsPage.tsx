@@ -72,10 +72,12 @@ export function ReceiptsPage() {
   // recognises. In those windows a person who is staff here but manager
   // globally can be offered the tab and meet the gateway's 403; the gateway is
   // the guard, the tab only a courtesy. Reading `user.role` alone would do that
-  // always. An unrecognised role is treated as staff, as the server does.
+  // always. An unrecognised role is treated as staff, as the server does, and so
+  // is `admin`: `RolesGuard` is exact since ADR 0164 and these routes list only
+  // owner and manager, so the gateway refuses admin too.
   const { user, activeRole } = useAuth()
   const role = (activeRole ?? user?.role ?? '').toLowerCase()
-  const canSeeCredits = role === 'owner' || role === 'manager' || role === 'admin'
+  const canSeeCredits = role === 'owner' || role === 'manager'
   const tab: Tab =
     canSeeCredits && searchParams.get('tab') === 'credits' ? 'credits' : 'receipts'
   const setTab = (next: Tab) => {

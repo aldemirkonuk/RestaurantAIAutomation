@@ -88,9 +88,10 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // "open" below, `JwtAuthGuard`-only, same as the rest of this table's
     // open rows) and exactly one, the insight-catalog toggle, naming owner
     // AND manager like every other row here. A fifteenth and sixteenth are
-    // this branch's own change (ADR 0167, 2026-09-26): the receiving queue
-    // and credit ledger controllers gained @Roles("owner", "manager") on
-    // their four gated routes; the door and unverified/received routes in
+    // PR #395's own change (ADR 0167, locked 2026-09-19, merged with this
+    // table 2026-09-26): the receiving queue and credit ledger controllers
+    // gained @Roles("owner", "manager") on four routes (the three credits
+    // routes and the queue); the door, receivedSoFar and unverified routes in
     // ReceivingController stay open, on purpose (staff use them).
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",

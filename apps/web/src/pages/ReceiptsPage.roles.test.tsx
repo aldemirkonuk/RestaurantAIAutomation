@@ -78,6 +78,7 @@ describe('the Credits tab follows the role in this house (ADR 0167, ADR 0162)', 
     ['staff in this house though the global role is manager', 'staff', 'manager'],
     ['no role at all', null, null],
     ['an unrecognised role', null, 'contractor'],
+    ['admin, on a session that names no house (the gateway refuses admin: ADR 0164)', null, 'admin'],
   ] as const)('%s: no tab, and ?tab=credits lands on Receipts without asking for credits', async (_n, active, global) => {
     h.activeRole = active as typeof h.activeRole;
     h.userRole = global;
@@ -92,7 +93,6 @@ describe('the Credits tab follows the role in this house (ADR 0167, ADR 0162)', 
     ['owner in this house', 'owner', null],
     ['manager in this house', 'manager', null],
     ['manager in this house though the global role is staff', 'manager', 'staff'],
-    ['admin, on a session that names no house', null, 'admin'],
   ] as const)('%s: the tab is offered and ?tab=credits loads the ledger', async (_n, active, global) => {
     h.activeRole = active as typeof h.activeRole;
     h.userRole = global;
