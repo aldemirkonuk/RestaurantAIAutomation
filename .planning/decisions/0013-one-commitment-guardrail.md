@@ -146,6 +146,13 @@ backlog, and deletes non-send messages too). Trusting a message with no publish 
 
 **Open.** Whether 24 hours is the right window for a vendor email, rather than the voice
 call it was set for, is the founder's; it is reported as a candidate open decision, not filed.
+**[2026-09-25, founder round 4 item 20 — answered, no longer open: "#464 stale-send limit
+24 hours." The window stays at 24 hours for the vendor-email send path as built. It is still
+borrowed from `APPROVAL_MAX_AGE_SECONDS` (`services/plivo_voice_client.py`), so a change to the
+voice-call window would move this one too; `test_conversation_agent_send_gates.py` pins
+`SEND_MESSAGE_MAX_AGE_SECONDS == APPROVAL_MAX_AGE_SECONDS == 24 * 3600`, which fails the build
+if either moves without the other being decided. Source: founder answers recorded in session
+6c6d8b93, memory `founder-answers-2026-09-25-web-rebuild.md` item 20.]**
 
 ## Review trail
 
@@ -153,3 +160,4 @@ call it was set for, is the founder's; it is reported as a candidate open decisi
 |---|---|---|
 | 2026-08-25 | — | Created; counts re-verified (19/8/3, not 20/8) |
 | 2026-09-25 | PR #464 lane | Addendum: autonomy switch + 24h send-age guard on the auto-send path |
+| 2026-09-25 | W2-fix-cellar-team lane | Bracket: founder confirmed the 24-hour stale-send limit (round 4 item 20) |
