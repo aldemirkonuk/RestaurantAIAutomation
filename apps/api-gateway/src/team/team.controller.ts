@@ -367,6 +367,19 @@ export class TeamController {
    * channel off. Same people, same channels, opposite answers. The opt-outs are
    * applied here now, and what they suppressed is reported rather than
    * disappearing into a smaller number.
+   *
+   * **One push path (2026-09-22; not an ADR 0088 item — recorded in
+   * `v3.0-TECH-DEBT.md`, "A team broadcast pushed every recipient twice").**
+   * The opt-outs above were real, and a second, unfiltered push still reached
+   * everyone. `persistForRestaurant`'s own "Mobile fan-out" pushed
+   * every write audience at any priority above `"low"`, reading no
+   * preference — so every non-opted-out recipient got this route's `pushIds`
+   * push AND the funnel's push, and an opted-out or inbox-only recipient
+   * still got the funnel's. `persistForRestaurant` now takes
+   * `skipMobilePush`, set below, so this route's own opt-out-aware send is
+   * the only push path. One consequence, on purpose: when the preference read
+   * fails (`preferencesUnavailable`), NOBODY is pushed — before, the funnel's
+   * leg still pushed everyone, opt-outs included, around T4's fail-closed rule.
    */
   @Post("broadcast")
   async broadcast(
@@ -471,7 +484,12 @@ export class TeamController {
           actionUrl: "/team",
           actionLabel: "Open Team",
         },
-        named ? { onlyUserIds: userIds } : {},
+        // `skipMobilePush`: this route sends its own push below, filtered by
+        // `wants()` and `may("push")` — see "One push path" above. Without it
+        // the funnel pushed a second, unfiltered time.
+        named
+          ? { onlyUserIds: userIds, skipMobilePush: true }
+          : { skipMobilePush: true },
       );
 
     const pushable = may("push")
