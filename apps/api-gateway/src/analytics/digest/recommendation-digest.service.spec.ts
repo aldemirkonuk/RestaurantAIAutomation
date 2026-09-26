@@ -1140,3 +1140,49 @@ describe("the person's own subscription (session door)", () => {
     });
   });
 });
+
+/* ── sketch 122 Q8 + Q9 (the founder, 2026-09-25, round 5) ────────────────── */
+
+describe("the page's two reads off the send log: your last letter, and the house's count", () => {
+  it("Q9 per reader: after a letter goes to Ana, her status carries its date and the rule keys it mailed; Bora (never asked) has none", async () => {
+    const { db, service } = build();
+    const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
+    expect(tally.sent).toBe(1);
+    const mailed = sends(db)[0];
+
+    const ana = await service.statusFor(ANA, HOUSE, DUE_PLUS_5);
+    expect(ana.lastLetter).toEqual({
+      periodKey: mailed.period_key,
+      sentAt: mailed.sent_at,
+      ruleKeys: mailed.rule_keys,
+    });
+    expect(ana.lastLetter?.ruleKeys?.length).toBeGreaterThan(0);
+
+    const bora = await service.statusFor(BORA, HOUSE, DUE_PLUS_5);
+    expect(bora.lastLetter).toBeNull();
+  });
+
+  it("Q9: a claim that did not send is not a letter — a failed row gives no lastLetter", async () => {
+    const { db, service } = build({ gmail: provider(() => { throw new Error("smtp down"); }) });
+    await service.sweepTenant(TENANT, DUE_PLUS_5);
+    expect(sends(db)[0].outcome).toBe("failed");
+    const ana = await service.statusFor(ANA, HOUSE, DUE_PLUS_5);
+    expect(ana.lastSend?.outcome).toBe("failed");
+    expect(ana.lastLetter).toBeNull();
+  });
+
+  it("Q8 count, not who: a member who got nothing sees that the house's post went out and how many letters — and no user id anywhere in it", async () => {
+    const { service } = build();
+    await service.sweepTenant(TENANT, DUE_PLUS_5);
+    const bora = await service.statusFor(BORA, HOUSE, DUE_PLUS_5);
+    expect(bora.houseLastPost).toEqual({ periodKey: "2026-09-17", sent: 1, atCap: false });
+    expect(JSON.stringify(bora.houseLastPost)).not.toContain(ANA);
+  });
+
+  it("Q8: a house that has never posted says so with null, not a zero", async () => {
+    const { service } = build();
+    const bora = await service.statusFor(BORA, HOUSE, DUE_PLUS_5);
+    expect(bora.houseLastPost).toBeNull();
+    expect(bora.lastLetter).toBeNull();
+  });
+});

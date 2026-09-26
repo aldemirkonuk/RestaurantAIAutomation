@@ -113,7 +113,21 @@ export interface EntryProps {
   onDismissOpened: () => void;
   onToggleExpand: () => void;
   onToggleSelect: () => void;
+  /**
+   * The hand-off: open the page where the work is done. Records NOTHING here
+   * (sketch 122 Q2, the founder 2026-09-25, round 5: "A hand-off that only
+   * opens another page records nothing").
+   */
   onAct: () => void;
+  /**
+   * *Brief the floor* only — the self-contained act: the tap IS the act, so
+   * it is recorded at once, stays standing, and is undone from the note line
+   * (ADR 0112 F10 amended, sketch 122 Q2). `true` stamps, `false` takes back.
+   */
+  onBrief?: (on: boolean) => void;
+  /** The masthead's suggestion asked for this entry's goal sheet. */
+  openGoal?: boolean;
+  onGoalOpened?: () => void;
   onDismiss: (choice: DismissChoice) => void;
   /**
    * Snooze for `days`. `forWhom: 'me'` hides it from this person alone;
@@ -647,8 +661,8 @@ export default function Entry(props: EntryProps) {
   );
 
   const receipt = useMemo(
-    () => receiptFor(e, watching.length > 0),
-    [e, watching.length],
+    () => receiptFor(e, watching.length > 0, filing.act === 'floor'),
+    [e, watching.length, filing.act],
   );
 
   /* ── the dismissal sheet's own state ──────────────────────────────────── */
@@ -692,6 +706,21 @@ export default function Entry(props: EntryProps) {
     setMenu('dismiss');
     onDismissOpened();
   }, [openDismiss, onDismissOpened]);
+
+  // The masthead's "Set a goal →" (sketch 122 direction B) opens THIS entry's
+  // own goal sheet — the same sheet, target blank, never a second form.
+  const { openGoal, onGoalOpened, onWantGoals } = props;
+  useEffect(() => {
+    if (!openGoal) return;
+    if (goalOffer.kind === 'plan') {
+      onWantGoals();
+      setMenu('goal');
+    }
+    onGoalOpened?.();
+  }, [openGoal, onGoalOpened, onWantGoals, goalOffer.kind]);
+
+  /** Sketch 122 Q7, "Keep both verbs": the floor's act is done now, here. */
+  const briefs = filing.act === 'floor' && !!props.onBrief;
 
   const day = dateOfGrain(e.periodKey);
   /** This entry's firing, when its rule names no subject and no period. */
@@ -814,9 +843,24 @@ export default function Entry(props: EntryProps) {
           <>
             <div className="rc-controls rc-controls-do">
               <span className="rc-micro rc-ctl-label">Carry it out</span>
-              <button type="button" className="rc-act" onClick={props.onAct}>
-                {e.hand.label} →
-              </button>
+              {briefs ? (
+                <>
+                  <button
+                    type="button"
+                    className="rc-act"
+                    aria-pressed={e.acted}
+                    data-testid="rc-brief"
+                    onClick={() => props.onBrief?.(!e.acted)}
+                  >
+                    {e.acted ? 'Briefed' : 'Mark as briefed'}
+                  </button>
+                  <Quiet onClick={props.onAct}>{e.hand.label} →</Quiet>
+                </>
+              ) : (
+                <button type="button" className="rc-act" onClick={props.onAct}>
+                  {e.hand.label} →
+                </button>
+              )}
               {props.daybook && (
                 <Quiet
                   onClick={() => setMenu(menu === 'daybook' ? null : 'daybook')}
@@ -950,6 +994,22 @@ export default function Entry(props: EntryProps) {
               )
               .join('; ')}
             . Progress is read in Reports, against your own numbers.
+          </p>
+        )}
+
+        {/*
+          What the first control does, in words (sketch 122 Q2/Q3/Q7). A
+          hand-off opens a page and records nothing; the briefing is the one
+          act this page itself records; "Order it" is the honest two-step —
+          drafted by hand in Orders, where the hold seals it.
+        */}
+        {live && (
+          <p className="rc-said rc-handoff" data-testid="rc-handoff">
+            {briefs
+              ? `The tap is the briefing: it is recorded at once, stays standing, and can be undone for a few seconds. “${e.hand.label}” opens ${e.hand.where} and records nothing.`
+              : (e.hand.href ?? '').includes('draft=1')
+                ? `Opens ${e.hand.where} to draft it by hand ${EM} nothing is recorded here, and the order is sealed there with the hold.`
+                : `Opens ${e.hand.where} ${EM} nothing is recorded here until the work is done there.`}
           </p>
         )}
 

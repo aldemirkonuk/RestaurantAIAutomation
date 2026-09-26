@@ -934,6 +934,8 @@ as open as it found them.
 **`/recommendations` stays dark.** `mudavym_design_recommendations` is
 untouched by this pass — off everywhere, per house, unchanged from before
 this note.
+**[2026-09-25: no longer dark — live in code for every house; see "Round 6"
+below.]**
 
 ### Repair pass, 2026-09-19 — the charcoal-contrast regression, and the adjacent theme fork
 
@@ -965,6 +967,47 @@ ADR 0149 row 6. ADR 0169 is reserved for the lane that records that decision,
 not this one. The fix above does not depend on which ground wins by default:
 `.rc-dark-head` still has to render dimmer than `.rc-section-head h2` under
 either ground, since charcoal stays available as a per-person choice.
+
+### Round 6, 2026-09-25 — sketch 122 direction B, built, and live for every house
+
+The founder picked sketch 122 **direction B, Goals in the Masthead** (*"direction B is better"*,
+item 24) and took the recommended option on questions 2-10 (round 5). Every answer, verbatim with
+its rejected options, is in [[0160-the-founders-sketch-review-what-he-valued-and-what-each-page-becomes]]
+§108; Q2 is also an amendment to [[0112-one-modal-policy-three-shapes-one-primitive]] F10. Branch
+`feat/recs-round6-direction-b`, cut from PR #467's head (`85283ad0f`, the catalogue, rounds 1-6)
+because this round edits the same files; it merges after #467.
+
+| Answer | What the page does now | Where |
+|---|---|---|
+| Q1 B | The masthead is two columns: the letter (kicker "The Morning Letter", title, voice, read-at, quiet tier) and a 250px margin of the house's goals; the day strip moved from under the leaves to directly under the masthead, spanning both. Below 640px the two stack, letter first. | `RecommendationsNext.tsx` `.rc-mast`, `GoalsMargin.tsx`, `rec-next.css` |
+| goals | The margin reads `GET /analytics/goals/:rid/progress?status=active` (recomputed; the stored `current_value` is stale by design). Up to 3 rows: name, bar, "current of target", the gateway's own pace (`onTrack`: On pace · Behind · No deadline). Every state said: reading, unread, none set, a goal whose figure failed, "N more … in Reports". Money prints with no symbol, as the reports goals desk does — the read carries no currency. | `rec-masthead.ts` `toGoalBook`/`paceOf`/`inUnit` |
+| suggestion | One standing entry whose rule maps to a goal metric (`rec-forward.ts`) that no active goal holds; "Set a goal →" opens THAT entry's own goal sheet, target blank. Not offered when the goal list is unread. | `suggestGoal`, `Entry.tsx` `openGoal` |
+| Q2 | A hand-off (`Draft the PO →`, `Open Reports →` …) only navigates — no `acted` write any more. Snooze, pin and "Mark as briefed" are undo-after: the note line's Undo posts the inverse patch (pin → the old value; briefing → `acted: false`). | `act`, `brief`, `pin`; hook `undoWith` |
+| Q2 gateway | `acted: false` clears `acted_at` + the new `acted_by` and is a note change gated like clearing a pin (staff own, owner/manager any, admin none; audited as `recommendation_note_changed`). Migration `20260927100000` adds `acted_by` and puts it on the two-year author sweep. | `item-state.ts`, `recommendation-actions.service.ts` |
+| Q3 | The stockout entry's control says it: "Opens Orders to draft it by hand — nothing is recorded here, and the order is sealed there with the hold." No in-place draft. | `Entry.tsx` `rc-handoff` |
+| Q4 | Under the read-at line: which engine sources did not answer (`sourcesUnread`, the digest's own wording); an absent field is "not stated", never "all answered". | `quietTierWords` |
+| Q5 | Unchanged: "Its account" shows only where `entry.subject` is set — `sales_below_weekday_baseline` and `weekly_demand_slide`. | `Entry.tsx` |
+| Q6 | Unchanged: the house's post is edited in its side sheet. | `DigestPost.tsx` |
+| Q7 | Floor entries (`sales_below_weekday_baseline`, `staff_spread`) lead with "Mark as briefed" / "Briefed" (pressed); their hand-off stays beside it as a quiet link. | `Entry.tsx` `rc-brief` |
+| Q8 | Under The post: "Last sent Wed 16 Sep: 2 letters. Who received one is not shown." — from `houseLastPost` on `GET /recommendations/digest/subscription` (date + count + at-cap flag, no user id). | `recommendation-digest.service.ts` `statusFor`, `DigestPost.tsx` |
+| Q9 | Above the docket: "Since your letter of Wed 16 Sep — N entries stand that it did not carry · M it carried no longer stand", from THIS reader's last SENT letter (`lastLetter.ruleKeys`). Never "new" (a letter only carries entries above the house's urgency floor). No letter, an unread copy, and a letter with no recorded keys each have their own sentence. | `LetterDelta.tsx` |
+| Q10 | Unchanged: refusal copy only on the controls actually refused. | — |
+
+**Live in code.** `recommendations` is in `LIVE_PAGES` (24 keys) and
+`mudavym_design_recommendations` in the gateway's `LIVE_IN_CODE_FLAGS`; the flip script treats it as
+a no-op. The column stays, unread (ADR 0149).
+
+**Measured (scratch harness, fixture gateway, not production).** At 375px no page-level horizontal
+scroll once the goal sheet's scenario `<select>` was bounded (it had widened the page by 27px — fixed
+in `rec-next.css`); at 1440 the margin sits right of the letter (250px) and the strip below both.
+axe-core 4.11.1 (WCAG 2 A/AA) on the page: the three contrast failures this round introduced or
+touched (suggestion text 3.94:1, delta label 4.06:1, the "File it" label 4.47:1) were fixed; the
+only remaining violations are the shared day strip's future-day digits (`.mdv-ds-n`, 2.4:1,
+`components/mudavym/day-strip.css`, not this page's file). Charcoal ground: no contrast violation.
+
+**Not built, by the answers:** the in-place PO draft (Q3), the per-rule reading · threshold · state
+field (Q4), the account door on more rules (Q5). **Still unasked:** the README's one-line
+"fifth/sixth" confirmation.
 
 ## 2. Entry
 

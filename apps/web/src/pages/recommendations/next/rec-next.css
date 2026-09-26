@@ -42,6 +42,57 @@
 .rc-voice { font-style: italic; font-size: 15px; margin: 4px 0 0; color: var(--ink-2, #4f473c); }
 .rc-readat { margin-top: 6px; }
 
+/* ── the masthead — sketch 122 direction B, goals as the letter's margin ── */
+
+.rc-mast { display: grid; grid-template-columns: 1fr; gap: 14px; align-items: start; }
+@media (min-width: 640px) {
+  .rc-mast { grid-template-columns: minmax(0, 1fr) 250px; gap: 0 28px; }
+  .rc-mast-goals { border-left: 1px solid var(--paper-2, #eae4d8); padding-left: 20px; }
+}
+@media (max-width: 639px) {
+  .rc-mast-goals { border-top: 1px solid var(--paper-2, #eae4d8); padding-top: 12px; }
+}
+.rc-kicker { font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--seal-deep, #14515c); }
+.rc-quiet-tier { max-width: 640px; }
+.rc-mg-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.rc-mg-link { font-size: 10.5px; font-weight: 600; color: var(--seal-deep, #14515c); text-decoration: none; }
+.rc-mg-link:hover { text-decoration: underline; }
+.rc-mgoal { padding: 8px 0; border-top: 1px dotted var(--paper-2, #eae4d8); }
+.rc-mgoal:first-of-type { border-top: 0; padding-top: 0; }
+.rc-mgoal-name { font-size: 11.5px; font-weight: 600; line-height: 1.3; color: var(--ink-1, #211c16); }
+.rc-mgoal-bar { height: 4px; border-radius: 2px; background: var(--paper-2, #eae4d8); margin: 6px 0 4px; overflow: hidden; }
+.rc-mgoal-bar i { display: block; height: 100%; background: var(--seal, #1a5e6b); border-radius: 2px; }
+.rc-mgoal[data-pace='behind'] .rc-mgoal-bar i { background: var(--alarm, #a33a2b); }
+.rc-mgoal-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--ink-3, #7c7365); }
+.rc-mgoal[data-pace='behind'] .rc-mgoal-pace { color: var(--alarm-deep, #8c3322); font-weight: 600; }
+.rc-mgoal-suggest {
+  margin-top: 8px; padding: 8px 9px; border-radius: 8px;
+  border: 1.5px dashed var(--seal-ring, rgba(26, 94, 107, 0.32));
+  background: var(--seal-tint, rgba(26, 94, 107, 0.1));
+}
+.rc-mgoal-suggest .rc-mgoal-name { font-weight: 500; margin-top: 2px; }
+/* On the seal tint --ink-3 measured 3.94:1 (axe, 2026-09-25); --ink-2 clears AA. */
+.rc-mgoal-suggest .rc-why { color: var(--ink-2, #4f473c); }
+.rc-mini {
+  font: inherit; font-size: 11px; font-weight: 600; margin-top: 6px;
+  min-height: 32px; padding: 4px 10px; border-radius: 7px;
+  border: 1px solid var(--seal-ring, rgba(26, 94, 107, 0.32)); background: transparent;
+  color: var(--seal-deep, #14515c); cursor: pointer; white-space: nowrap;
+}
+
+/* ── the delta cutting — per reader (sketch 122 Q9) ─────────────────────── */
+
+.rc-delta-cutting {
+  margin: 0 0 12px; padding: 8px 12px; border-radius: 8px;
+  border: 1px dashed var(--paper-2, #eae4d8); background: var(--paper-1, #f3efe6);
+}
+.rc-delta-cutting .rc-plain { margin: 3px 0 0; }
+/* --ink-3 on --paper-1 measured 4.06:1 (axe, 2026-09-25); --ink-4 is the darker companion. */
+.rc-delta-cutting .rc-micro { color: var(--ink-4, #665d50); }
+.rc-delta-list { margin: 4px 0 0; padding-left: 16px; font-size: 11.5px; color: var(--ink-2, #4f473c); }
+p.rc-delta { margin: 0 0 12px; }
+.rc-handoff { max-width: 640px; }
+
 /* ── leaves ──────────────────────────────────────────────────────────────── */
 
 .rc-leaves { display: flex; flex-wrap: wrap; gap: 4px; margin: 12px 0 16px; }
@@ -169,6 +220,10 @@
 .rc-controls-do { margin-top: 12px; }
 .rc-controls-file { margin-top: 6px; }
 .rc-controls-file .rc-ctl-label { opacity: 0.85; }
+/* [2026-09-25, W3-recs axe pass at 375px: the 0.85 above measured 4.47:1 on
+   --paper-0 (#7d7569 on #fffdf8), under AA's 4.5. The label keeps its quieter
+   rank by weight, not by fading below the line.] */
+.rc-controls-file .rc-ctl-label.rc-ctl-label { opacity: 1; font-weight: 500; }
 @media (min-width: 640px) {
   .rc-controls-do .rc-ctl-label,
   .rc-controls-file .rc-ctl-label { flex: 0 0 74px; }
@@ -180,6 +235,10 @@
 .rc-forward-note { margin-top: 7px; line-height: 1.5; }
 /* the goal sheet's two typed fields */
 .rc-field { display: block; }
+/* The scenario picker's option text is long ("This entry's own measure: Wine
+   revenue"); unbounded, a native select sized itself past a 375px screen and
+   widened the whole page by 27px (measured 2026-09-25, W3-recs harness). */
+.rc-field select { display: block; max-width: 100%; }
 .rc-field input {
   display: block; width: 100%; max-width: 320px; margin-top: 4px;
   font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: 7px;
