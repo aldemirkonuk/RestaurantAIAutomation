@@ -11,7 +11,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: built
 status: documented
-updated: 2026-09-19
+updated: 2026-09-25
 links: ["[[PAGE-CONTRACT]]", "[[providers]]", "[[wines]]"]
 ---
 
@@ -87,6 +87,68 @@ application. Same column, same content, renamed again to
 single step lost the race last time). `feature-flag-registry.ts`, `App.tsx`
 and `useMudavymDesign.ts` all cite this version now; this bracket is the
 settled version until the next sweep proves otherwise.
+
+**[2026-09-25, W2-vprices lane, `feat/vendor-prices-mudavym`]** Rebuilt on
+`origin/main` from `origin/wip/2026-09-21/vprices` (`41e9060c8`, identical to
+`r5/vprices`; the census critic verified it is newer than the dirty
+`wt-pg-vprices` tree). What changed, and what did not:
+
+- **Migration renamed a third time**, `20260921150000` → `20260926170000`: the
+  2026-09-21 version sorts behind main's ceiling `20260922231300`, which
+  `scripts/check_migration_order.py` (ADR 0212) fails. `20260926170000` is the
+  first version of this lane's assigned range `20260926170000`-`20260926179999`.
+  The brackets above stay as history.
+- **Fork 6, as answered 2026-09-18 ("Always on the record, loaded fresh"), is
+  now built.** Every price record draws C's paper trail (`PaperTrail.tsx`)
+  under the ladders: every sighting, newest first, across classes, with the
+  order-and-receipt link, the source link, or the sentence saying there is
+  nothing to open. No click is needed to see it. The compare read that feeds it
+  carries `gcTime: 0` / `staleTime: 0`, so reopening a record re-reads it
+  (`useVendorPricesNextData.test.tsx` pins both, under App.tsx's own 5 s
+  default). Before this, the build still said the trail "opens on demand, never
+  pre-fetched", which was the pre-answer reading.
+- **Still not built (unchanged): fork 6(a)'s full provenance.** That means the
+  `document_id` + line-reference column, the two writer changes, the
+  attach-a-paper upload, and the conversation's message and person. The trail
+  names that last absence on every chat or social line. The sequencing
+  question above is still open.
+- **House scope.** The compare read goes through
+  `scopePriceRegisterRead({ kind: "houseAndOpenMarket" })`
+  (`price-register/visibility.ts`). That returns this house's rows plus the
+  public-register rows (`restaurant_id IS NULL` on `vendor_price_observations`,
+  contributed-only rows excluded). This is ADR 0117's design, and it is the
+  founder's "house versus public pages" comparison. It is not ADR 0221's
+  vendor-row question, which is about `providers`. The currency default reads
+  `GET /providers` and `GET /providers/:id/usual-currency`, and both are
+  house-scoped `.eq` on main after #412/#416.
+- **Honest empty states (ADR 0020).** An empty record now says which window
+  it looked in and where a price would come from. It no longer says "add one
+  below": the button is above. The below-average box now says it found nothing
+  instead of disappearing.
+- **Nightly manifest.** `vendor_prices` moved from `pending_pages` to `pages`
+  (`check_nightly_manifest.py`).
+
+**The three §112 questions ADR 0160 lists as unanswered (`0160:600-603`).**
+They are written up here and in the PR body. The build takes the default that
+presumes least on each:
+
+1. *May the seal mark "lowest before terms"?* **Default: no seal at all on a
+   conditional figure.** The card says "Lowest admitted" and marks nothing
+   else. No terms data exists to seal on. The memory record
+   `founder-sketch-decisions-106-115.md` ("Lane answers batch 2", 2026-09-19)
+   holds an answer, "never seal now + follow-up lane for structured terms".
+   That answer is not yet in ADR 0160, which still lists the question as open.
+   The default matches the memory answer either way.
+2. *The landed/agreed label under ADR 0054 (Proposed).* **Default: keep the
+   words, and state the literal fact next to each one.** The trail line reads
+   "landed — receipt verified by this house" or "agreed — order confirmed by
+   the vendor", so the line stays true whichever label the founder settles on.
+   The same memory record says "badge words = keep landed/agreed" (2026-09-19).
+   That answer is also not yet in ADR 0160.
+3. *A price-movement colour pair.* **Open, with no answer on record. Default:
+   none.** A rise and a fall are drawn in the same ink, and the sign and the
+   words carry the direction (`VendorPricesNext.test.tsx`, "draws a rise and a
+   fall in the same ink").
 
 **Fixed against the sections below, so read them as history, not current state:**
 route is reachable now (§2's "unreachable" gap is closed); the identity log is a
