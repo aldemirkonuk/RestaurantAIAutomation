@@ -289,6 +289,25 @@ residency, and what leaves the product once a restaurant's own figures reach
 a third party's store) is explicitly unresolved, per the founder's own
 "as they come."
 
+### Wine substitution recommendation — founder intuition, not built (2026-09-26)
+
+Said in the 2026-09-25 web-rebuild census session (round 7, item 49; project
+memory `founder-answers-2026-09-25-web-rebuild.md` item 49), his words
+recorded verbatim: *"when menu wine X (e.g. 2021 line) is unavailable or above
+the seasonal market range, the wine engine/ML suggests similar wine Z that
+sells better / cheaper at equal quality"* — a substitution recommendation, not
+a straight reorder. His own qualifier closes it for now: *"we don't have the
+data."* Not scheduled, not designed, and no UI slot reserved for it — an empty
+slot with nothing behind it would be the fabricated-answer shape ADR 0020
+rules out.
+
+"Equal quality" and "sells better" both need a same-quality neighbor set
+(varietal, region, price band, critic score) and a per-wine sell-through
+signal already at the sell-through/POS depth this repo has for wine
+(`analytics-engine.md`), plus a market-price feed for "above the seasonal
+range" (the same `price-index` /`commodity` machinery Wave 4 built for
+produce and spirits, not yet wine-scoped). Candidate register row: OD-164.
+
 ---
 
 ## 10. Non-goals (for now)

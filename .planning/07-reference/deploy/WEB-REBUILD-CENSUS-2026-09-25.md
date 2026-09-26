@@ -197,9 +197,9 @@ has something to show, except F1, which is live.
 | # | Fork | Options and cost | Recommendation |
 |---|---|---|---|
 | F1 | `/communications` shows an error to every house because `public.scheduled_reports` is created by no migration (ADR 0083:58-68; production `to_regclass` is null). #457 removed the source and was BLOCKed on ADR 0083 | (a) Amend ADR 0083: the page names the three sources it owns; schedules leave until a table exists; the Gmail-watch line moves to `/admin`. (b) Build the table and feature. (c) Render the missing table as "not set up" | (a), matching his 2026-09-22 ruling to strip technical detail from the restaurant UI (§8.1, preview ruling 2). OD-91 (OPEN-DECISIONS.md:61) and OD-92 (OPEN-DECISIONS.md:62) bear on (b) **[ANSWERED 2026-09-25: (a), amend ADR 0083 (§11 item 1). The amendment is the comms lane's (W1 comms-a), not written here.]** |
-| F2 | OD-152 (OPEN-DECISIONS.md:96): what a bare click on an `/orders` row does | (A) opens the receipt sheet as ruled; (B) keep the expansion; (C) receipt when one exists, expansion while pending | (C) **[ANSWERED 2026-09-25: (C) (§11 item 3). OD-152 moved to Resolved.]** |
+| F2 | OD-152 (OPEN-DECISIONS.md:97): what a bare click on an `/orders` row does | (A) opens the receipt sheet as ruled; (B) keep the expansion; (C) receipt when one exists, expansion while pending | (C) **[ANSWERED 2026-09-25: (C) (§11 item 3). OD-152 moved to Resolved.]** |
 | F3 | OD-140 (OPEN-DECISIONS.md:24): return the not-placed lines, not only their count | Yes: a gateway field plus the control sketch 121 draws. No: a count with no follow-through | Yes **[ANSWERED 2026-09-25: yes, as a separate list endpoint (OD-140's option (a); §11 item 5). OD-140 bracketed ANSWERED in place; it stays in the Open table until lane W1-orders-cellar's build merges.]** |
-| F4 | OD-133 (OPEN-DECISIONS.md:97): **only the retention and DPA terms** remain. Egress is decided (ADR 0182) and the register was widened to add TypeSafe as a subprocessor (round 6y, §8.2) | (a) DPA; (b) accept retention as-is, in writing; (c) scope the gate | (a) **[ANSWERED 2026-09-25: (a), by his word "TypeSafe is already done" (§11 item 8). OD-133 moved to Resolved. The DPA document itself was not seen by this lane.]** |
+| F4 | OD-133 (OPEN-DECISIONS.md:98): **only the retention and DPA terms** remain. Egress is decided (ADR 0182) and the register was widened to add TypeSafe as a subprocessor (round 6y, §8.2) | (a) DPA; (b) accept retention as-is, in writing; (c) scope the gate | (a) **[ANSWERED 2026-09-25: (a), by his word "TypeSafe is already done" (§11 item 8). OD-133 moved to Resolved. The DPA document itself was not seen by this lane.]** |
 | F5 | #414's dormant Arrival book (1413 lines) | (A) its own manifest group; (B) revert now; (C) keep as an alternative | (A), after confirming sketch 121 §7.3's binding three counts are carried by `/house/menu` or superseded by ADR 0213: `HouseMenu.tsx` shows no read/placed/not-placed counts today (critic G16) **[ANSWERED 2026-09-25: (A) (§11 item 4). Recorded as ADR 0149's deletion-manifest note. The sketch 121 §7.3 three-count check in this row's recommendation is still unmeasured.]** |
 | F6 | OD-151 (OPEN-DECISIONS.md:25): a Google Calendar grant | Build (new scope, consent copy, sync) or defer | Defer until L13 reports on the two calendar-push trees |
 | F7 | **Receiving history paging vs the verdict-ledger strip.** Q7's Approach 1 (2026-09-22) includes "a line's full verdict history … paged 10-at-a-time"; on 2026-09-21 he ruled the verdict ledger stripped because it was not bulletproof | (a) Approach 1 without per-line verdict history until a ledger passes his bar; (b) rebuild a bulletproof ledger first; (c) history from existing receipt rows only | Ask with L6's first draft **[ANSWERED 2026-09-25: (c), history from the door receipts already recorded; the ledger strip stands (§11 item 2). Recorded in ADR 0160 §107 / Open item 4.]** |
@@ -466,7 +466,7 @@ Built on branch `fix/preview-notes-2026-09-22` (not merged).
 shell and admin in the database only (J1), `arrival` is overridden by ADR 0213; Q7 not built
 (F7); Q8 built (`ConnectionsNext.tsx:319`, ADR 0149 row 53); Q9 built on #434; Q10 recorded
 on OD-123 in this PR; Q11 recorded on OD-132 in this PR (see C22); §7.2 superseded by ADR
-0213 F7 (OD-141 (OPEN-DECISIONS.md:105)); preview rulings 1–3 merged via #458–#462, ruling 4
+0213 F7 (OD-141 (OPEN-DECISIONS.md:106)); preview rulings 1–3 merged via #458–#462, ruling 4
 is F2.
 
 ### 8.2 Round-5/6 rulings the corrections above rely on (memory `founder-answers-2026-09-21-round5.md`)
@@ -557,7 +557,7 @@ The verdict-ledger strip ruling cited in §0 (L6(b)) is in memory
 
 | Retired | Recover with | Why |
 |---|---|---|
-| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:105), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
+| `.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (245 lines) | `git show ddc5e094b:.planning/07-reference/deploy/PAGE-WAVE-BLOCKERS-2026-09-22.md` (its last change, #455; unchanged at `059169a59`) | Every PR in its §2–§3 has merged (#413, #414, #415, #419, #420, #426, #430, #434, #437, #439, #452, #454, #455; `gh pr view --json mergedAt`) or is re-planned in §3 here; its §5 questions are answered (Q1 → sketch 121, §8.1; Q2 → ADR 0213 F7; Q3 → Q12 confirmed). Prose mentions of its §5 Q2 in ADR 0213:48, OD-141 (OPEN-DECISIONS.md:106), `SKYLEAF-NEXT-ACT-BUILD-2026-09-22.md:168` and `research-122-squad/` resolve through the recovery command |
 
 ---
 
@@ -810,3 +810,39 @@ append-only and part-pack counts, `75596633b` / `78c4d1030`; #480 stacks on #436
 (promotions direction A with trays, `e45b46d13`), #475 (`/ask` overlay and the fixture audit,
 `a68b1a0ea`), #435 (every host named, `b62765b01`), #478, #422 and #472 (`73e3130c3`,
 `80a1a02dd`, `4558571cf`), and this PR.
+
+## 15. Founder answers, round 7 (2026-09-26 morning, after Wave 4)
+
+Copied **verbatim** from project memory `founder-answers-2026-09-25-web-rebuild.md`,
+lines 67-72, as that file stood at 2026-09-26T04:19Z (its mtime, unchanged since §14).
+Quoted words inside are his; the surrounding text is the recording session's note.
+OD-163 (item 26's general question, what is kept per data class) stays Open — none of
+44-49 resolves it.
+
+**Round 7 (2026-09-26 morning, after Wave 4):**
+44. Passkeys vs password: his words "do industry mimic both for password RESET retires every passkey, and password CHANGE while signed in do same" → follow INDUSTRY PRACTICE for both reset and change (research it; this may supersede item 37's "reset retires"). No-house enrolment: passkey belongs to the person (industry) → allowed.
+45. /ask panel opens in the person's LAST USED mode; first time = Ask the books.
+46. Promotions categories stay coarse (whiskey under Spirits); produce chip when food offers exist. Running low = only if all rows counted and low (as built).
+47. Counts match: repeated identical tap writes nothing new (idempotent); earlier rejection stays visible.
+48. /vendors 'Supplies my menu' = exact vintage; a NAME-ONLY search (menu filter not applied) matches any vintage — implement now. Find new vendors defaults to the house's country (US fallback).
+49. FUTURE idea (his intuition, not for now — "we don't have the data"): when menu wine X (e.g. 2021 line) is unavailable or above the seasonal market range, the wine engine/ML suggests similar wine Z that sells better / cheaper at equal quality → a substitution recommendation. Record in FUTURES/OD; no empty UI slot now (ADR 0020 honest states).
+
+### 15.1 Where each answer lands
+
+Verified here against each PR's own head, read 2026-09-26T05:35Z (`gh pr view --json
+state,headRefOid`); a lane's own report is not re-verified beyond what is cited.
+
+| # | Answer (short) | Lands in | State at ~05:35Z, verified |
+|---|---|---|---|
+| 44 | Reset and change both follow industry practice (research owed — may supersede item 37's "reset retires"); a no-house session may enrol a passkey | #479, ADR 0229 (lane W4-passkeys) | OPEN `d313e046b`. ADR 0229's own fork 4 ("Does a password CHANGE retire passkeys too?", §"Open forks") is exactly this question, still `[OPEN, 2026-09-26]` on this head (`0229-a-passkey-or-an-emailed-code-signs-you-in-and-a-recent-sign-in-guards-enrolment.md:252-261`) — item 44 answers it with "research industry practice" rather than a bare pick, so the fork stays open pending that research. Fork 5 ("A session with no house cannot enrol", `:262-265`) is answered here: allowed, superseding the built restriction that fork names ("left as built") |
+| 45 | /ask opens on the mode last used; first-ever open is Ask the books | #475, ADR 0145 (lane W4-ask) | OPEN `4fd421d64`. Not built: `AskPanel.tsx:175` is `useState<AskMode>('ask')` unconditionally, no persistence of a prior session's mode |
+| 46 | Categories stay coarse, whiskey under Spirits (as built); Running low only when every row is counted (as built); a produce/food chip when food offers exist (not yet true) | #474 (lane W4-promos-filters) | OPEN `99de62bea`. Coarse categories and the counted-only Running low rule match the build (`offer-scope.ts:37-56,183-215` — the file's own comment: "Fruit and produce have no source here … so no such chip is drawn rather than one that could never hold an offer"). The conditional half of item 46 — a chip once food offers actually exist — is not built; `COARSE_CATEGORIES` has no food/produce member (`offer-scope.ts:66-73`) |
+| 47 | A repeated identical "Counts match" tap writes nothing new; an earlier rejection stays visible | #480, ADR 0192 fifth amendment (lane W4-receiving) | OPEN `3eeda2339`. **Matches the build exactly** — `shelf-received.ts:60-79` ("Such a line is a verification … but it RESTATES nothing: the invoice and the desk's refusal are read from the latest event that states them") and `shelf-received.spec.ts` `describe("a one-tap 'Counts match' restates nothing (ADR 0192, fifth amendment)")`. Nothing owed |
+| 48 | 'Supplies my menu' matches on exact vintage (as built); a name-only search override (menu filter not applied) is a NEW ask, "implement now"; Find new vendors should default to the house's own country | #481 (rename) / #484 (`/vendors` filters, lane W4-vendors-filters), ADR 0221 | #481 OPEN `431c274b4`; #484 OPEN `2e7ade9cb`. Exact-vintage matching is built: `vendor-menu-supply.ts` intersects purchase evidence with the CURRENT menu's `wine_library_id`s (one row per vintage), no name fallback. **Two gaps, both owed to #484:** (a) no name-only search exists at all — nothing in `vendor-scope.ts` or `VendorScopes.tsx` relaxes the menu-id match to a bare name; (b) Find new vendors' country field is `useState('US')` (`useVendorScopes.ts:117`), not the house's own country — the file's own comment says why: "nothing here guesses a country for them" |
+| 49 | Future idea, not for now: a wine-engine substitution recommendation (X unavailable/overpriced → suggest Z, same quality, sells better or costs less); no empty UI slot | [FUTURES.md](../FUTURES.md) §9 "Wine substitution recommendation" (new entry, this PR); candidate register row OD-164 (this PR, Open table) | Recorded only — no lane builds this. His own qualifier ("we don't have the data") is the reason nothing is scheduled |
+
+Item 44's research ("industry practice") and item 46's conditional produce chip are
+the two half-open answers here: neither is a bare founder pick a lane can build
+directly, and neither changes an existing Resolved row. Everything else in this
+round either matches the build already (47, most of 46) or names a small, concrete
+gap for its own lane (44 fork 5, 45, 48).
