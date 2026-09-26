@@ -7,6 +7,7 @@ import {
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
 import { AuthService, JwtPayload } from "./auth.service";
+import { AuthController } from "./auth.controller";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import {
   HOUSE_HINT_CLOCK_SKEW_MS,
@@ -669,5 +670,70 @@ describe("account-only signup (ADR 0213) under membership-only sessions", () => 
       restaurantId: access.restaurant_id,
       role: "owner",
     });
+  });
+});
+
+describe("GET /auth/houses: a removed person apart from one who never had a house (bracket 2026-09-25)", () => {
+  // The founder, round 4, item 16: "Verified account with zero houses and no
+  // ended membership -> straight to /get-started; removed-from-house people
+  // still see /no-access." The controller answers `accessEnded`; the web's
+  // chooser routes on it (ChooseHouse.test.tsx).
+  const houses = (db: StubDb) =>
+    new AuthController(service(db)).houses({ user: { userId: U } } as any);
+
+  it("never had a house: accessEnded is false", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [];
+
+    await expect(houses(db)).resolves.toEqual({
+      success: true,
+      houses: [],
+      accessEnded: false,
+    });
+  });
+
+  it("a membership ended: accessEnded is true", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [
+      { user_id: U, restaurant_id: A, ended_at: "2026-09-20T00:00:00Z" },
+      { user_id: OTHER, restaurant_id: B, ended_at: "2026-09-20T00:00:00Z" },
+    ];
+
+    await expect(houses(db)).resolves.toMatchObject({
+      houses: [],
+      accessEnded: true,
+    });
+  });
+
+  it("another person's ended membership says nothing about this one", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [
+      { user_id: OTHER, restaurant_id: A, ended_at: "2026-09-20T00:00:00Z" },
+    ];
+
+    await expect(houses(db)).resolves.toMatchObject({ accessEnded: false });
+  });
+
+  it("with a house it does not ask, and answers null", async () => {
+    const db = world({ houses: [{ house: A, role: "staff" }] });
+    db.tables.house_memberships_ended = [
+      { user_id: U, restaurant_id: B, ended_at: "2026-09-20T00:00:00Z" },
+    ];
+
+    await expect(houses(db)).resolves.toMatchObject({
+      houses: [{ id: A }],
+      accessEnded: null,
+    });
+    expect(db.opsOn("house_memberships_ended")).toHaveLength(0);
+  });
+
+  it("answers 503 when the record cannot be read, never 'never had a house'", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [];
+    db.errors["house_memberships_ended:select"] = { message: "connection reset" };
+
+    await expect(houses(db)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
   });
 });

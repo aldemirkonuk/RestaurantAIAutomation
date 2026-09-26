@@ -493,6 +493,8 @@ shows "Your access to {house} has ended." like the chooser, and both
 branches link to `/get-started`, so an account that signed up and left
 before opening its house is not stranded. That link is a UX choice made
 to avoid a regression, not a decision: see the PR's founder fork.
+[Answered 2026-09-25 — see the next section: the founder chose option (b).
+The link stays, for a different reader: see there.]
 
 **Still not done, stated:** F4's `EndpaperShell` wrapper for
 `/choose-house` (the "Revisit when" trigger above is now met; the page
@@ -501,6 +503,79 @@ here (the mobile checkout has no `jest` installed, and CI does not run
 mobile tests); "reset or change password revokes sessions" is not built
 (`auth.service.ts` `resetPassword` says so in a comment) and stays
 outside this decision.
+
+## 2026-09-25 — zero houses: never had one, or had one that ended (founder, round 4, item 16)
+
+**The fork** (PR #471's body): ADR 0164 said 0 memberships is "no house, no
+role", and its chooser sent that person to `/no-access` ("ask an owner for an
+invitation"). ADR 0213, later, made a house-less verified account the normal
+state of a new owner, whose next step is `/get-started`. Three options were
+put: (a) keep `/no-access` plus a "Start here" link (what the branch did); (b)
+the chooser sends zero-house accounts straight to `/get-started` unless their
+access ended; (c) no link.
+
+**Answered, the founder, 2026-09-25 (round 4, item 16), verbatim:**
+"Verified account with zero houses and no ended membership → **straight to
+/get-started**; removed-from-house people still see /no-access." That is
+option (b).
+
+**What "ended" had to mean.** Every removal path *deletes* the membership row
+(`members.service.ts` `removeMember`, `team.service.ts` `deleteMember`,
+`auth.service.ts` `leaveRestaurant`/`deleteAccount`, and the FK cascade when a
+house is deleted), so after a removal the database held nothing that said the
+person ever had a house. The web's only signal was a `sessionStorage` note set
+in the tab that saw the refusal: a removed person signing in the next day, or
+on another device, would have been sent to `/get-started` and invited to open
+a restaurant. Considered and rejected:
+- *The tab note alone* — the case above; it breaks the founder's second half
+  on every fresh sign-in.
+- *Stamp a column in each removal path in TypeScript* — four call sites today,
+  and every future path (or SQL function, or cascade) must remember to do it;
+  a house deletion's cascade would never do it.
+- *Soft-end memberships (`is_active = false`) instead of deleting* — the right
+  long-run shape, but it changes what every membership reader sees (55
+  `.from("user_restaurant_access")` call sites in 17 gateway files, measured
+  on this branch 2026-09-25 by grep, specs excluded); far outside this fork.
+- *Infer from `organization_invites.used_by_email` or `users.role` at read
+  time* — misses owners removed by a co-owner and anyone added without an
+  invitation; guesses where a record can be kept.
+
+**Built (branch `fix/sessions-follow-membership-r6`, PR #471):**
+- Migration `20260926120000_a_house_membership_that_ends_is_remembered.sql`:
+  table `house_memberships_ended (user_id → users ON DELETE CASCADE,
+  restaurant_id, ended_at)`, RLS on and client grants revoked in the same
+  file; an invoker trigger on `user_restaurant_access` records every deleted
+  *active* row and every deactivation (upsert, so a second removal re-stamps);
+  a backfill of what is still provable (inactive rows; accepted invitations to
+  a house the person is no longer active in). Proved on a PGlite full-corpus
+  build (217/217 prior migrations, 14 checks: delete, deactivation, re-removal,
+  orphan row, house-deletion cascade, account deletion, backfill, ACL; the
+  delete trigger removed turns two checks red). Fidelity limit: PGlite as
+  superuser, Supabase platform stubbed.
+- `GET /auth/houses` answers `accessEnded` — asked only when `houses` is
+  empty, `null` otherwise; a failed read is 503, never "never had a house".
+- `ChooseHouse` with no houses: `/no-access` when `accessEnded` is true, when
+  this tab noted an ended house, or when the answer is missing (an older
+  gateway); `/get-started` only when it is `false`.
+- **The "Opening your own restaurant? Start here." link on `/no-access`
+  stays.** It is not made redundant: the people who now land there are the
+  removed ones, and under ADR 0213 opening a house of their own is still
+  theirs to choose; without it that choice is a typed URL. Its code comment
+  now says who it is for.
+- Not changed: the phone. `apps/mobile` has no `/get-started` flow (ADR 0213
+  is web-only), so its chooser still sends every zero-house session to its
+  `no-access` screen; it ignores the new field.
+- Pre-trigger removals the backfill cannot prove (removed before today, never
+  via an invitation, row deleted) go to `/get-started`. Stated, not measured
+  against production (no production read was made).
+
+Tests: `ChooseHouse.test.tsx` 4 routing cases (never → `/get-started`; ended
+→ `/no-access`; tab note wins over `false`; missing → `/no-access`), each
+mutation-checked red; `sessions-follow-membership.spec.ts` 5 cases on the real
+controller and service (false, true, another person's row, not asked with a
+house, 503), each of three mutants red. CLAIMS row
+`ADR-0164-ZERO-HOUSES-NEVER-VS-ENDED`, mutation-checked (ChooseHouse branch
+removed → red; delete trigger's `when` widened → red).
 
 ## Open items for the founder (not decided here)
 
@@ -602,3 +677,4 @@ The two options originally weighed, kept for the record:
 | 2026-09-21 | Build session (workflow subagent), round 5, same branch | Closed round 4's last-call NOT-READY list, six items. (1) `deleteAccount`'s pre-delete `user_restaurant_access` read now binds `error` and refuses (503, logged) before any of the three deletes runs — `ci.yml:527`'s `check_read_errors_not_swallowed.py` was failing the build on this exact site; new case in `delete-account-evicts-houses.spec.ts` shown red against the pre-fix code and green after; guard now PASSES at 173 sites / 173 baselined / 0 new (no baseline row added); gateway `auth/websocket/team/restaurants/organizations` sweep 41 suites, 470/470 (was 469); `ADR-0164-DELETE-ACCOUNT-EVICTS-HOUSES` extended to pin the error binding and mutation-tested (two mutants — the read reverted outright, and bound but never checked — both red; restored green). (2)/(3) The Resolved-table rows for this ADR's own F1–F5, F4 and "Open items" forks (renumbered 129/130/131, first drafted under three provisional numbers this cycle's other lanes had already taken) and this file no longer carry the three "**Absorbs \<number\> (merged 2026-09-19)**" declarations naming those provisional numbers, or their now-false "before it was ever taken by anyone else" / "this closes the sibling entry" sentences — those three numbers were never committed under their own rows, so the first was free for `origin/feat/finish-public-doors` to file its own, unrelated privacy-notice fork under it 2026-09-18, and the absorbs declarations made `check_od_ids_exist.py` read that real row as resolving two ways. The three provisional-number tokens still in this file (:420-422, the round-3 and round-4 rows above) are replaced with a dated bracket naming them as provisional numbers renumbered before commit — spelled without their letter prefix throughout this row and those edits, deliberately, so this sentence does not itself relapse into the defect it describes (`check_od_ids_exist.py`'s id-reference regex has no way to tell a citation from a plain mention). Proved with the exact scratch-copy simulation the reviewer used to find this: the other lane's row for the first provisional number, read from `origin/feat/finish-public-doors`, inserted into a temporary copy of `OPEN-DECISIONS.md` — `check_od_ids_exist.py` now PASSES (previously exited 1, "RESOLVES TWO WAYS"); the temporary copy was then discarded, never committed. (4) The F4 bullet and "Revisit when" line no longer say "once that branch lands" / "`feat/login-flyleaf-endpaper` lands" — that branch's `EndpaperShell` merged to `main` in PR #397 two days before round 4 wrote those words. Reworded to what is actually still true: `git merge-base fix/sessions-follow-membership origin/main` is `cb756083e`, this branch's own base, and `origin/main` is 10 commits ahead of it (measured today, not round 4's now-stale "4" — numbers get re-measured, never copied forward); the wrapper waits on a rebase, not on a merge that already happened. (5) The OD-131(a) block in `create-location-owners-only.spec.ts` is 3 refusal cases, 1 positive case and 1 503 case, not "4 refusal cases" / "red on all four" as the OPEN-DECISIONS.md row, this file's "Open items (a)", and (found while fixing those two) the `ADR-0164-ORG-OWNERS-ACTIVE-HOUSE` CLAIMS row all three said. Live-checked by reverting `if (!hasHouseInOrg)` to `if (false)`: exactly the 3 refusal cases go red, the positive and 503 cases stay green (11 passed / 14 total in the file); all three passages corrected to match. (6) 21 of the `CLAIMS.jsonl` rows the round-4 reviewer's own tally named as re-encoded from literal UTF-8 to `\uXXXX` escapes (`json.loads` identical either way) were restored byte-for-byte from `cb756083e`. [Round 6, 2026-09-21: both that "21" and the closing claim that the diff against `cb756083e` then carried only the 11 added `ADR-0164-*` rows and the 2 `ADR-0162-*` rows this lane actually changed were false — 45 more encoding-only rows still differed; see round 6's row below for the id-collision measurement error that produced the wrong count and the fix.] Re-ran after every item: `check_decision_claims.sh` 369/369, `check_citation_pairing.py --fix` (0 rewritten), `check_od_ids_exist.py` PASS, `_od_collisions.py` clean, `check_adr_numbers_unique.py` and `check_no_conflict_markers.py` PASS, both gateway `tsc --noEmit` configs clean. |
 | 2026-09-21 | Build session (workflow subagent), round 6, same branch | Closed round 5's last-call NOT-READY item, the only one outstanding: item (6) above (21 `CLAIMS.jsonl` rows restored, diff against `cb756083e` "carries only 11+2") was itself wrong on the tree round 5 committed. Both round 5's fix and the round-4 reviewer's original "21" tally it followed (`b0b73913b`'s commit message) keyed the base-vs-head comparison on each row's `id` field, and ids repeat: 53 of the 358 real claim rows in `cb756083e` share an id with another row (`ADR-0104` ×33, `ADR-0103` ×16, `ADR-0021` ×14, `ADR-0139` ×13 among them, independently recounted), so an id-keyed diff silently collapses distinct rows onto each other and mis-sizes the count whichever way it runs. Pairing the -/+ lines positionally inside each `git diff -U0 cb756083e` hunk instead and comparing `json.loads(a)==json.loads(b)` per pair (a comparison id repeats cannot confuse) puts the true count of encoding-only rows at `b0b73913b` at 66, not 21 — of which round 5 restored 21 and left 45 unrestored, unnoticed because the same id-keyed method verified the fix as had sized it. Restored the remaining 45 byte-for-byte from `cb756083e` at their unchanged line numbers (18, 31, 57, 59, 63, 76, 84, 89, 93, 97, 99, 115, 117, 123, 133, 135–139, 141–142, 146, 156, 162, 187–189, 191, 203–205, 210, 216, 241, 248–249, 251–252, 270, 273, 306–307, 309–310); `git diff --numstat cb756083e` (working tree) now reads 13 added / 2 removed — the 11 `ADR-0164-*` rows and 2 `ADR-0162-*` rows this lane actually changed, exactly — and the positional-pairing script reports 0 encoding-only rows left. `check_decision_claims.sh` unchanged at 369/369. Corrected item (6) above to match and point here. |
 | 2026-09-25 | Build session (workflow subagent, lane W1-sessions) | Carried the lane onto main from `origin/wip/2026-09-21/sessions` as `fix/sessions-follow-membership-r6`; joined it with ADR 0213's account-only signup and main's four new `@Roles` controllers (section "2026-09-25 — carried onto main"). Gateway jest 490 suites, 7813 passed, 14 skipped; web vitest 292 files, 3857 passed, 11 skipped; claims 495/495. |
+| 2026-09-25 | Build session (workflow subagent, lane W2-fix-auth) | The founder's fork answered (round 4, item 16, option (b)): zero houses and no ended membership → `/get-started`; ended → `/no-access` (section "2026-09-25 — zero houses"). Migration `20260926120000` (ended-membership record by trigger + backfill), `GET /auth/houses` `accessEnded`, `ChooseHouse` routing; the `/no-access` link kept for removed people. Merged main `4e7c5b5a6` (#412) first. Gateway `sessions-follow-membership.spec.ts` 35/35; web `ChooseHouse.test.tsx` 14/14; PGlite probe 14/14; claims 499/499. |

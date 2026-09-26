@@ -44,10 +44,12 @@ export function NoAccess() {
             Open the invitation link an owner sends you, or sign in with a
             different account.
           </p>
-          {/* ADR 0213: an account can open its own first house. An
-              account-only signup that has not done so yet is a session in no
-              house (ADR 0164) and lands here, so the way on stays one link
-              away. */}
+          {/* ADR 0213: any account can open its own first house. An
+              account that never had a house no longer lands here: the chooser
+              sends it straight to /get-started (ADR 0164, bracket 2026-09-25;
+              the founder, round 4, item 16). Who lands here is someone whose
+              membership ended, and opening a restaurant of their own is still
+              theirs to choose, so the way on stays one link away. */}
           <p>
             <Link className="mdv-link" to="/get-started">
               Opening your own restaurant? Start here.

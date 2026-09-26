@@ -596,13 +596,23 @@ export class AuthController {
   /**
    * The person's own houses, for the chooser (ADR 0164, R7): an active
    * membership each, `{ id, name, city }`, sorted by name. No role, no numbers.
+   *
+   * `accessEnded` answers only when `houses` is empty (null otherwise): true
+   * when a membership of theirs has ended, so the web shows `/no-access`;
+   * false when they never had a house, so it sends them straight to
+   * `/get-started` (ADR 0164, bracket 2026-09-25; the founder, round 4, item
+   * 16). Asked only when needed, so a person with houses pays no extra read.
    */
   @Get("houses")
   @UseGuards(JwtAuthGuard)
   @AllowsNoHouse()
   async houses(@Req() req: Request & { user: any }) {
     const houses = await this.authService.memberHouses(req.user.userId);
-    return { success: true, houses };
+    const accessEnded =
+      houses.length === 0
+        ? await this.authService.hasEndedMembership(req.user.userId)
+        : null;
+    return { success: true, houses, accessEnded };
   }
 
   /**

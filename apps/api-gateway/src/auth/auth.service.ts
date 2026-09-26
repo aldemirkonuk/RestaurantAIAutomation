@@ -438,6 +438,36 @@ export class AuthService {
   }
 
   /**
+   * Whether a membership of this person's has ever ended: a row in
+   * `house_memberships_ended`, which a trigger writes whenever an active
+   * `user_restaurant_access` row is deleted or deactivated (migration
+   * 20260926120000). This is what tells a person removed from a house apart
+   * from an account that never had one (ADR 0164, bracket 2026-09-25; the
+   * founder, round 4, item 16): with no house, the first sees `/no-access`
+   * and the second goes straight to `/get-started`.
+   *
+   * A failed read is a 503, like `memberHouses`: "never had a house" is a
+   * claim, and a read that failed cannot make it — reading it as `false`
+   * would send a removed person to open a restaurant.
+   */
+  async hasEndedMembership(userId: string): Promise<boolean> {
+    const { data, error } = await this.databaseService.supabase
+      .from("house_memberships_ended")
+      .select("restaurant_id")
+      .eq("user_id", userId)
+      .limit(1);
+    if (error) {
+      this.logger.error(
+        `hasEndedMembership could not read ${userId}'s ended memberships: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not read your houses. Nothing was done; try again.",
+      );
+    }
+    return (data?.length ?? 0) > 0;
+  }
+
+  /**
    * Mint a real session for DEV_AUTH_BYPASS_EMAIL, skipping password
    * verification entirely.
    *

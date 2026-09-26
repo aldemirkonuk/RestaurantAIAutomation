@@ -15,7 +15,8 @@ import { HOUSE_ENDED_KEY, rememberHouse } from "../lib/houseMemory";
 /**
  * Which house today? (ADR 0164, R7): one row per house, this device's last
  * first and marked, one tap opens it; a refusal stays and says so; no houses
- * goes to /no-access; an ended house is named in one sentence.
+ * goes to /no-access when a membership ended and to /get-started when there
+ * never was one; an ended house is named in one sentence.
  */
 
 vi.mock("../contexts/AuthContext", () => ({ useAuth: vi.fn() }));
@@ -74,8 +75,10 @@ function renderAt(state?: unknown) {
   );
 }
 
-const housesAnswer = (houses: unknown[]) =>
-  vi.mocked(apiClient.get).mockResolvedValue({ data: { houses } } as any);
+const housesAnswer = (houses: unknown[], extra: Record<string, unknown> = {}) =>
+  vi.mocked(apiClient.get).mockResolvedValue({
+    data: { houses, ...extra },
+  } as any);
 
 beforeEach(() => {
   localStorage.clear();
@@ -131,7 +134,41 @@ describe("ChooseHouse", () => {
     expect(screen.queryByTestId("where")).not.toBeInTheDocument();
   });
 
-  it("sends a person with no houses to /no-access", async () => {
+  // ADR 0164, bracket 2026-09-25 (the founder, round 4, item 16): "Verified
+  // account with zero houses and no ended membership -> straight to
+  // /get-started; removed-from-house people still see /no-access."
+  it("sends a verified account that never had a house straight to /get-started", async () => {
+    housesAnswer([], { accessEnded: false });
+
+    renderAt();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent("/get-started"),
+    );
+  });
+
+  it("sends a person whose membership ended to /no-access", async () => {
+    housesAnswer([], { accessEnded: true });
+
+    renderAt();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent("/no-access"),
+    );
+  });
+
+  it("sends a person to /no-access when this tab saw their house end, whatever the server's record says", async () => {
+    sessionStorage.setItem(HOUSE_ENDED_KEY, BESIKTAS.id);
+    housesAnswer([], { accessEnded: false });
+
+    renderAt();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent("/no-access"),
+    );
+  });
+
+  it("reads a missing answer as ended: /no-access, never an invitation to open a restaurant", async () => {
     housesAnswer([]);
 
     renderAt();

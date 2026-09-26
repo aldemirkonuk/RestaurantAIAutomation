@@ -20,7 +20,9 @@ import {
  *
  * The page after sign-in for a person with two or more houses whose device has
  * not used one of them within seven days, and for anyone whose access to the
- * house they were in has just ended. One large row per house, the name and the
+ * house they were in has just ended. Someone with no house at all leaves it at
+ * once: to /no-access if a membership of theirs ended, to /get-started if they
+ * never had one. One large row per house, the name and the
  * city and nothing else; this device's last house first, marked; one tap opens
  * it. Kept simple on purpose ("simple for people"): no role, no numbers, no
  * logos. It is the next leaf after sign-in, so it wears the sign-in page's
@@ -32,7 +34,7 @@ const ROW_TRANSITION = `transform ${ink.ms}ms ${ink.easing}, background-color ${
 
 type Load =
   | { state: "loading" }
-  | { state: "ready"; houses: ChooserHouse[] }
+  | { state: "ready"; houses: ChooserHouse[]; accessEnded: boolean }
   | { state: "failed" };
 
 export function ChooseHouse() {
@@ -68,7 +70,12 @@ export function ChooseHouse() {
       const houses = Array.isArray(data?.houses)
         ? (data.houses as ChooserHouse[])
         : [];
-      setLoad({ state: "ready", houses });
+      // Only `true` or `false` is an answer. Anything else (an older gateway
+      // that does not send it) is read as "ended": /no-access with its way on
+      // to /get-started is the safe side, never an invitation to open a
+      // restaurant for someone who was removed from one.
+      const accessEnded = data?.accessEnded !== false;
+      setLoad({ state: "ready", houses, accessEnded });
     } catch {
       setLoad({ state: "failed" });
     }
@@ -100,8 +107,17 @@ export function ChooseHouse() {
   if (!loading && !user) return <Navigate to="/login" replace />;
   if (user?.emailVerified === false)
     return <Navigate to="/verify-email" replace />;
+  // No house (ADR 0164, bracket 2026-09-25; the founder, round 4, item 16):
+  // someone whose membership ended (the server's record, or this tab's note
+  // of the refusal) sees /no-access; a verified account that never had a
+  // house goes straight to /get-started (ADR 0213) to open its first one.
   if (load.state === "ready" && load.houses.length === 0)
-    return <Navigate to="/no-access" replace />;
+    return (
+      <Navigate
+        to={load.accessEnded || ended ? "/no-access" : "/get-started"}
+        replace
+      />
+    );
 
   const open = async (house: ChooserHouse) => {
     setRefused(null);
