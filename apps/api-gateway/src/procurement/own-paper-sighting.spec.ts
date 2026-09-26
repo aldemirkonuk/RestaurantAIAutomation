@@ -18,6 +18,7 @@ import { ProcurementService } from "./procurement.service";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
 import { InventoryLedgerService } from "../inventory-ledger/inventory-ledger.service";
+import { Logger } from "@nestjs/common";
 import {
   decideOwnPaperSighting,
   isOutlierAgainstPriors,
@@ -45,6 +46,8 @@ function makeDb(opts: {
   bottleSizeMl?: number | null;
   /** Rows already on the register for this wine. */
   existingSightings?: Row[];
+  /** The outlier population read fails (supabase resolves with an error). */
+  priorReadFails?: boolean;
 }) {
   const calls: Calls = { sightingInserts: [], priceHistoryInserts: [] };
   const existing = opts.existingSightings ?? [];
@@ -90,6 +93,11 @@ function makeDb(opts: {
             return { data: hit ? { id: "existing" } : null, error: null };
           }
           // The outlier population read.
+          if (opts.priorReadFails)
+            return {
+              data: null,
+              error: { message: "canceling statement due to statement timeout" },
+            };
           return {
             data: existing.filter((r) => r.master_wine_id === WINE),
             error: null,
@@ -220,6 +228,17 @@ describe("own paper reaches vendor_price_observations", () => {
     expect(row.currency).toBe("TRY");
     expect(typeof row.content_hash).toBe("string");
     expect(row.is_outlier).toBe(false);
+    // Review finding — its own fix, not ADR 0160 §112 fork 6(a): the
+    // own-paper writer judged (is_outlier was a real false, not an absence)
+    // but used to write no `outlier_reason`, so the register read "No judge
+    // has looked at this row" for a row that HAD been looked at. Zero prior
+    // sightings exist here, so the honest reason is "not judged", not
+    // "clean".
+    expect(row.outlier_reason).toMatch(
+      /^Not judged: only 0 earlier sighting\(s\) of this product exist on this house's register and the public one \(every source type counted\), below the floor of 5/,
+    );
+    expect(row.outlier_basis).toBe("write_time");
+    expect(typeof row.outlier_judged_at).toBe("string");
     // observed_at is the verification's own moment, and effective_date agrees.
     expect(row.observed_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(row.effective_date).toBe(row.observed_at.slice(0, 10));
@@ -383,6 +402,12 @@ describe("own paper reaches vendor_price_observations", () => {
 
     expect(calls.sightingInserts).toHaveLength(1);
     expect(calls.sightingInserts[0].is_outlier).toBe(true);
+    // The reason names the count and the test, the same words the manual
+    // writer already uses (`vendor-comparison.service.ts`) — a struck row is
+    // never a bare boolean on this register.
+    expect(calls.sightingInserts[0].outlier_reason).toMatch(
+      /^Flagged at write time against 5 earlier sighting\(s\) of this product on this house's register and the public one \(every source type counted\)/,
+    );
   });
 
   it("does not flag an ordinary price against the same history", async () => {
@@ -406,6 +431,55 @@ describe("own paper reaches vendor_price_observations", () => {
     });
 
     expect(calls.sightingInserts[0].is_outlier).toBe(false);
+    // Before this fix this row's `outlier_reason` was null, indistinguishable
+    // from a row nobody had judged at all — the exact defect this test now
+    // guards (its own review finding, not ADR 0160 §112 fork 6(a)).
+    expect(calls.sightingInserts[0].outlier_reason).toMatch(
+      /^Judged clean at write time against 5 earlier sighting\(s\) of this product on this house's register and the public one \(every source type counted\)\.$/,
+    );
+  });
+
+  // PR #473 audit (2026-09-26): a failed outlier-population read used to come
+  // back as `[]`, which this PR turned into a stored "Not judged: only 0
+  // sighting(s)" with `outlier_basis = 'write_time'` — a failed read written
+  // down as an empty register. The seeded five rows make the lie visible: had
+  // the read worked there WERE five.
+  it("a register it could not read writes no flag and NO reason, never 'only 0'", async () => {
+    const seeded = [18, 18.5, 19, 18.2, 18.8].map((p, i) => ({
+      master_wine_id: WINE,
+      raw_price: p,
+      source_type: "invoice",
+      observed_at: `2026-08-0${i + 1}T00:00:00.000Z`,
+      pack_size: 1,
+      unit_volume_ml: 750,
+      yield_factor: 1,
+    }));
+    const warn = jest
+      .spyOn(Logger.prototype, "warn")
+      .mockImplementation(() => undefined);
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, final_price: 380 },
+      existingSightings: seeded,
+      priorReadFails: true,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...verifyBody,
+      invoiceUnitPrice: 380,
+    });
+
+    // The sighting is still evidence and is still written...
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    // ...but nothing is claimed about it: not flagged, not "judged", no count.
+    expect(row.is_outlier).toBe(false);
+    expect(row.outlier_reason).toBeNull();
+    expect(row.outlier_basis).toBeNull();
+    expect(row.outlier_judged_at).toBeNull();
+    const said = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(said).toContain("Could not read the price register to screen for outliers");
+    expect(said).toContain("statement timeout");
+    warn.mockRestore();
   });
 });
 

@@ -41,6 +41,78 @@ export interface PriceTrend {
   absoluteChange: number | null
   pctChange: number | null
   note: string
+  /** Sample sizes for the two windows the trend compares — fork 5(a): a
+   * chip refuses below a minimum and prints the count either way. */
+  currentCount: number
+  previousCount: number
+}
+
+/**
+ * A comparison never crosses a class (ADR 0160 §112, fork 1 — the founder's
+ * words, "Quoted to this house $30.20" and "Public pages $40.49" are two
+ * figures that never average). Mirrors the gateway's own
+ * `price-below-average.ts#ComparisonClass` — a string union there, widened
+ * here to `string` because `other:<sourceType>` is open-ended by design: an
+ * unrecognised source type gets its own class rather than being folded into
+ * "quoted" (`price-below-average.ts:130-135`).
+ */
+export type ComparisonClass = 'quoted' | 'public_site' | string
+
+/** `price-below-average.ts#COMPARISON_CLASS_LABEL`, kept in one place there —
+ * this is the client's copy, checked by the same words. */
+export function comparisonClassLabel(cls: ComparisonClass): string {
+  if (cls === 'quoted') return 'Quoted to this house'
+  if (cls === 'public_site') return 'Public vendor site (tier 4)'
+  const raw = cls.startsWith('other:') ? cls.slice('other:'.length) : cls
+  return `Unrecognised source (${raw})`
+}
+
+/**
+ * One row behind a rung — the "show your working" panel, and (since ADR 0160
+ * §112) the sighting sheet's source. Every field here is additive on the
+ * gateway's `VendorComparison.observations[]`
+ * (`apps/api-gateway/src/vendor-intel/vendor-comparison.service.ts`); the
+ * legacy `/vendor-prices` page never reads `observations` at all, so nothing
+ * here can break it.
+ */
+export interface VendorObservationRow {
+  id: string
+  vendorName: string | null
+  providerId: string | null
+  sourceType: PriceSourceType
+  sourceUrl: string | null
+  /** `receipt_verified:<orderId>` / `order_confirmed:<orderId>` for the
+   * house's own paper (`procurement/own-paper-sighting.ts`); null for a
+   * hand-recorded row, which has no paper to link. */
+  sourceRef: string | null
+  comparisonClass: ComparisonClass
+  rawPrice: number
+  currency: string
+  /** ADR 0117's 1 (best) to 7 (least); null only if the row predates the
+   * column. */
+  trustTier: number | null
+  packSize: number
+  unitVolumeMl: number | null
+  observedAt: string
+  parseConfidence: number | null
+  /** The STORED write-time verdict — never re-derived on the client, so the
+   * ladder always agrees with `own-paper-sighting.ts` /
+   * `outlier-rejudge.ts`. */
+  isOutlier: boolean
+  outlierReason: string | null
+  /** The note recorded with this sighting, own-paper or hand-typed — null
+   * when none was written (review finding: the sighting sheet used to have
+   * no way to show this even when one existed, ADR 0160 §112). */
+  note: string | null
+  /** ADR 0124 — null means unidentified, ranked by name and vintage alone. */
+  identityId: string | null
+  /** The identity's own name, best effort — null when unidentified or the
+   * label could not be read (never swaps out `identityId`, which is always
+   * present when a row is identified). */
+  identityLabel: string | null
+  /** Per-750ml, pack- and yield-adjusted; null when the row cannot be
+   * normalised (ranked last within its class, never treated as free). */
+  normalizedUnitPrice: number | null
 }
 
 export interface VendorCompareResponse {
@@ -57,7 +129,24 @@ export interface VendorCompareResponse {
     confidence: number
     notes: string[]
   }
+  /** The same consensus, run once per comparison class — see
+   * `comparisonClassLabel`. A class with too few admitted rows still gets an
+   * entry (never a thrown error), so one class can read "not enough" while
+   * another has a real number. */
+  consensusByClass: Record<string, VendorCompareResponse['consensus']>
   trends: PriceTrend[]
+  /** The 7/30/90 chips, per class — for the same reason as
+   * `consensusByClass`: a trend that blended two classes would report the
+   * exact crossing the founder ruled out. */
+  trendsByClass: Record<string, PriceTrend[]>
+  observations: VendorObservationRow[]
+  /** False when the gateway's 500-row cap was hit — every count above is
+   * then a FLOOR, not a total. */
+  complete: boolean
+  /** The window this read actually covered, in days (365 unless the caller
+   * passed `windowDays`) — an older rung outside it is dropped silently
+   * unless the page states this. */
+  windowDays: number
 }
 
 export async function compareVendorPrices(params: {
@@ -80,6 +169,10 @@ export interface ManualObservationInput {
   providerId?: string
   vendorName?: string
   price: number
+  /** ISO 4217, required by the Mudavym register's own client-side rule (no
+   * default) even though the DTO keeps it optional for the legacy page,
+   * which has never sent one and must keep working unchanged. */
+  currency?: string
   packSize?: number
   unitVolumeMl?: number
   sourceType?: ManualSourceType
@@ -91,6 +184,33 @@ export interface ManualObservationInput {
 export async function recordVendorPrice(input: ManualObservationInput) {
   const res = await apiClient.post('/vendor-intel/observations', input)
   return res.data as { success: boolean; observation: { id: string } }
+}
+
+export interface ProviderUsualCurrency {
+  providerId: string
+  code: string | null
+  setAt: string | null
+  setByName: string | null
+  sentence: string
+}
+
+/**
+ * `GET /providers/:id/usual-currency` — fork 2(c) (ADR 0160 §112, README
+ * `354-383`, accepted by the founder's blanket "I agree… in the other
+ * things"): "the vendor's usual currency where stated, else required." The
+ * endpoint already exists (built for the order sheet's own currency
+ * default) — this page only reads it, and only ever OFFERS the value as a
+ * starting point; it never overrides what a person actually types.
+ */
+export async function fetchProviderUsualCurrency(providerId: string): Promise<ProviderUsualCurrency> {
+  const { data } = await apiClient.get(`/providers/${providerId}/usual-currency`)
+  return {
+    providerId: typeof data?.providerId === 'string' ? data.providerId : providerId,
+    code: typeof data?.code === 'string' ? data.code : null,
+    setAt: typeof data?.setAt === 'string' ? data.setAt : null,
+    setByName: typeof data?.setByName === 'string' ? data.setByName : null,
+    sentence: typeof data?.sentence === 'string' ? data.sentence : '',
+  }
 }
 
 /**
@@ -116,6 +236,15 @@ export function retryUnlessClientError(failureCount: number, error: unknown): bo
   const status = (error as { response?: { status?: number } })?.response?.status
   if (typeof status === 'number' && status >= 400 && status < 500) return false
   return failureCount < 1
+}
+
+/** The HTTP status a failed request answered with, or null when there is
+ * none to read (a dropped connection, a thrown non-axios error). Lets a page
+ * tell a REFUSAL (403 — a role that will never be let in) from an UNKNOWN
+ * (a 5xx, a timeout — retrying might work). */
+export function apiErrorStatus(error: unknown): number | null {
+  const status = (error as { response?: { status?: number } })?.response?.status
+  return typeof status === 'number' ? status : null
 }
 
 export function apiErrorMessage(error: unknown, fallback = 'Unknown error'): string {
@@ -168,6 +297,7 @@ export interface IdentityDecision {
   decidedAt: string
   /** What the SERVER showed the person, captured at the moment they decided. */
   evidenceShown: Record<string, unknown>
+  /** Null when `personShown` is false — a note is the person's own words. */
   note: string | null
   linkWritten: string | null
   undoesDecisionId: string | null
@@ -192,10 +322,19 @@ export interface IdentityDecisionLog {
   complete: boolean
 }
 
-/** A failed read REJECTS. An empty list here would claim nobody ever decided. */
-export async function fetchIdentityDecisions(limit = 50): Promise<IdentityDecisionLog> {
+/**
+ * A failed read REJECTS. An empty list here would claim nobody ever decided.
+ *
+ * `identityId`, when given, narrows the log to decisions on ONE bottle — the
+ * sighting sheet's "identity decisions on this row" card (ADR 0160 §112).
+ * Omitted, this is the house-wide log `IdentityDecisionLog.tsx` already reads.
+ */
+export async function fetchIdentityDecisions(
+  limit = 50,
+  identityId?: string,
+): Promise<IdentityDecisionLog> {
   const { data } = await apiClient.get('/vendor-intel/identity/decisions', {
-    params: { limit },
+    params: identityId ? { limit, identityId } : { limit },
   })
   const rows: any[] = Array.isArray(data?.items) ? data.items : []
   return {
@@ -231,6 +370,77 @@ export async function fetchIdentityDecisions(limit = 50): Promise<IdentityDecisi
   }
 }
 
+// ---------------------------------------------------------------------------
+// The identity candidate queue (ADR 0124 Q2) — "are these two bottles the
+// same bottle", open to staff because it carries no price, vendor or terms.
+// ---------------------------------------------------------------------------
+
+export interface IdentityCandidate {
+  id: string
+  subjectTable: string
+  subjectId: string
+  restaurantId: string | null
+  identityId: string
+  method: 'exact_key_ambiguous' | 'normalised_key' | 'person'
+  confidence: number
+  evidence: Record<string, unknown>
+  createdAt: string
+}
+
+export interface IdentityCandidateQueue {
+  items: IdentityCandidate[]
+  count: number
+  limit: number
+  /** A full page is a FLOOR, not a total — same rule as the decision log. */
+  complete: boolean
+}
+
+/**
+ * `identityId`, when given, narrows the queue to proposals naming ONE
+ * bottle — the sighting sheet's pending line. Omitted, this is the house's
+ * whole "waiting for a person" queue (ADR 0160 §112, 1b).
+ */
+export async function fetchIdentityCandidates(
+  opts: { identityId?: string; limit?: number } = {},
+): Promise<IdentityCandidateQueue> {
+  const { limit = 50, identityId } = opts
+  const { data } = await apiClient.get('/vendor-intel/identity/candidates', {
+    params: identityId ? { limit, identityId } : { limit },
+  })
+  const rows: any[] = Array.isArray(data?.items) ? data.items : []
+  return {
+    items: rows.map((r) => ({
+      id: r.id,
+      subjectTable: r.subject_table,
+      subjectId: r.subject_id,
+      restaurantId: r.restaurant_id ?? null,
+      identityId: r.identity_id,
+      method: r.method,
+      confidence: Number(r.confidence),
+      evidence: r.evidence ?? {},
+      createdAt: r.created_at,
+    })),
+    count: typeof data?.count === 'number' ? data.count : rows.length,
+    limit: typeof data?.limit === 'number' ? data.limit : limit,
+    complete: data?.complete === true,
+  }
+}
+
+/** Staff may confirm; only a manager may undo (`undoIdentityDecision`). */
+export async function decideIdentityCandidate(input: {
+  candidateId: string
+  decision: 'confirmed' | 'rejected'
+  note?: string
+}) {
+  const { data } = await apiClient.post('/vendor-intel/identity/candidates/decide', input)
+  return data as {
+    id: string
+    status: string
+    linkWritten: string | null
+    decisionId: string
+  }
+}
+
 export async function undoIdentityDecision(input: { decisionId: string; note?: string }) {
   const { data } = await apiClient.post('/vendor-intel/identity/decisions/undo', input)
   return data as {
@@ -238,5 +448,131 @@ export async function undoIdentityDecision(input: { decisionId: string; note?: s
     undid: string
     candidateId: string
     linkCleared: string | null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The masthead standing line and the below-average box (ADR 0160 §112 review:
+// "the page before a bottle is picked is nearly empty… build both from the
+// existing endpoints"). All four reads below are owner/manager; a staff
+// session never calls them — the page's 403 branch handles that page-wide.
+// ---------------------------------------------------------------------------
+
+export interface IdentityRegisterStatus {
+  identities: number | null
+  keys: number | null
+  candidates: { pending: number; confirmed: number; rejected: number } | null
+  notes: string[]
+}
+
+/** `GET /vendor-intel/identity/status` — platform-wide register counts, not
+ * scoped to this house (there is no house-scoped identity count to show). */
+export async function fetchIdentityStatus(): Promise<IdentityRegisterStatus> {
+  const { data } = await apiClient.get('/vendor-intel/identity/status')
+  return {
+    identities: typeof data?.identities === 'number' ? data.identities : null,
+    keys: typeof data?.keys === 'number' ? data.keys : null,
+    candidates: data?.candidates ?? null,
+    notes: Array.isArray(data?.notes) ? data.notes : [],
+  }
+}
+
+export interface PriceIndexSourceStatus {
+  key: string
+  issuer: string | null
+  jurisdiction: string | null
+  rows: number
+  lastFetchedAt: string | null
+  silentBecause: string | null
+}
+
+/** `GET /price-index/status` — a sibling register (ADR 0111), never pooled
+ * with a vendor quote; this masthead only counts it. */
+export async function fetchPriceIndexStatus(): Promise<{ armed: boolean; sources: PriceIndexSourceStatus[] }> {
+  const { data } = await apiClient.get('/price-index/status')
+  const sources: any[] = Array.isArray(data?.sources) ? data.sources : []
+  return {
+    armed: data?.armed === true,
+    sources: sources.map((s) => ({
+      key: String(s?.key ?? 'unknown'),
+      issuer: s?.issuer ?? null,
+      jurisdiction: s?.jurisdiction ?? null,
+      rows: typeof s?.rows === 'number' ? s.rows : 0,
+      lastFetchedAt: s?.lastFetchedAt ?? null,
+      silentBecause: s?.silentBecause ?? null,
+    })),
+  }
+}
+
+export interface SweepStatusSummary {
+  armed: boolean
+  /** In-memory only (the service's own contract): null after a redeploy even
+   * if a sweep ran minutes before it, and the page must say so, not "never". */
+  lastRunAt: string | null
+  activeCount: number
+  totalCount: number
+}
+
+/** `GET /vendor-intel/site-sweep/status` — owner only; call this only when
+ * the session's role is owner (E8: a manager gets a 403 here). */
+export async function fetchSiteSweepStatus(): Promise<SweepStatusSummary> {
+  const { data } = await apiClient.get('/vendor-intel/site-sweep/status')
+  const vendors: any[] = Array.isArray(data?.vendors) ? data.vendors : []
+  return {
+    armed: data?.armed === true,
+    lastRunAt: data?.lastRun?.finishedAt ?? null,
+    activeCount: vendors.filter((v) => (v?.rowsWritten ?? 0) > 0).length,
+    totalCount: vendors.length,
+  }
+}
+
+/** `GET /vendor-intel/shop-sweep/status` — owner only, same reason. */
+export async function fetchShopSweepStatus(): Promise<SweepStatusSummary> {
+  const { data } = await apiClient.get('/vendor-intel/shop-sweep/status')
+  const shops: any[] = Array.isArray(data?.shops) ? data.shops : []
+  return {
+    armed: data?.armed === true,
+    lastRunAt: data?.lastRun?.finishedAt ?? null,
+    activeCount: shops.filter((s) => (s?.rowsWritten ?? 0) > 0).length,
+    totalCount: shops.length,
+  }
+}
+
+export interface BelowAverageItem {
+  productKey: string
+  keyedBy: 'identity' | 'wine' | 'signature'
+  sourceClass: ComparisonClass
+  productName: string | null
+  currency: string
+  latest: { unitPrice: number; observedAt: string; vendorName: string | null; sourceType: string }
+  average: { unitPrice: number; observations: number; from: string; to: string }
+  absoluteBelow: number
+  fractionBelow: number
+}
+
+export interface BelowAverageResult {
+  items: BelowAverageItem[]
+  publicSiteItems: BelowAverageItem[]
+  scanned: { observations: number; products: number; comparisons: number }
+  minObservations: number
+  window: { days: number; from: string }
+}
+
+/** `GET /vendor-intel/below-average` — "newest below the earlier mean", the
+ * cross-product box the empty picker state is missing (T-not-named in the
+ * review). `quoted` only in `items`; `publicSiteItems` is its own line,
+ * never pooled with a house quote (the founder's rule, price-below-average.ts). */
+export async function fetchBelowAverage(params: {
+  windowDays?: number
+  minObservations?: number
+  limit?: number
+} = {}): Promise<BelowAverageResult> {
+  const { data } = await apiClient.get('/vendor-intel/below-average', { params })
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    publicSiteItems: Array.isArray(data?.publicSiteItems) ? data.publicSiteItems : [],
+    scanned: data?.scanned ?? { observations: 0, products: 0, comparisons: 0 },
+    minObservations: typeof data?.minObservations === 'number' ? data.minObservations : 3,
+    window: data?.window ?? { days: 30, from: '' },
   }
 }

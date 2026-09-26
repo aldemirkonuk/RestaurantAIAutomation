@@ -475,15 +475,26 @@ export class VendorIntelController {
    */
   @Get("identity/candidates")
   @Roles("owner", "manager", "staff")
-  @ApiOperation({ summary: "Identity links proposed and waiting for a person" })
+  @ApiOperation({
+    summary:
+      "Identity links proposed and waiting for a person, optionally narrowed to one bottle",
+  })
   async identityCandidates(
     @CurrentUser() user: { restaurantId: string },
     @Query("limit") limit?: string,
+    @Query("identityId") identityId?: string,
   ) {
     const n = limit ? Number(limit) : undefined;
     const capped =
       Number.isFinite(n) && (n as number) > 0 ? Math.min(n as number, 200) : 50;
-    const items = await this.identity.pending(user?.restaurantId ?? null, capped);
+    if (identityId && !UUID_RE.test(identityId)) {
+      throw new BadRequestException("identityId must be an identity id.");
+    }
+    const items = await this.identity.pending(
+      user?.restaurantId ?? null,
+      capped,
+      identityId || undefined,
+    );
     return {
       success: true,
       items,
@@ -587,17 +598,25 @@ export class VendorIntelController {
    */
   @Get("identity/decisions")
   @Roles("owner", "manager", "staff")
-  @ApiOperation({ summary: "Every identity decision this house has taken" })
+  @ApiOperation({
+    summary:
+      "Every identity decision this house has taken, optionally narrowed to one bottle",
+  })
   async identityDecisions(
     @CurrentUser() user: { restaurantId: string },
     @Query("limit") limit?: string,
+    @Query("identityId") identityId?: string,
   ) {
     const n = limit ? Number(limit) : undefined;
+    if (identityId && !UUID_RE.test(identityId)) {
+      throw new BadRequestException("identityId must be an identity id.");
+    }
     return {
       success: true,
       ...(await this.identity.decisions(
         user?.restaurantId ?? null,
         Number.isFinite(n) && (n as number) > 0 ? (n as number) : 50,
+        identityId || undefined,
       )),
     };
   }

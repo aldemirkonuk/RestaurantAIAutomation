@@ -600,7 +600,16 @@ written rule under ADR 0020 before it ships. Open item 8 is closed; ads become o
   is accepted by his blanket "I agree ... in the other things" (`README:354-383`), but
   its three further,
   unlisted questions (whether the seal may mark "lowest before terms," the landed/agreed
-  label under ADR 0054 Proposed, a price-movement colour pair) are not; 113 — 6 of 7 open
+  label under ADR 0054 Proposed, a price-movement colour pair) are not
+  **[ANSWERED — recorded 2026-09-26, PR #473 audit: all three are settled. Seal: never
+  seal "lowest before terms" now, structured terms are a follow-up lane (his lane
+  answers batch 2, 2026-09-19), confirmed for the built page as "no seal on 'Lowest
+  admitted'" (his answer 30, 2026-09-25). Label: keep the landed/agreed words (batch 2,
+  2026-09-19). Colour: no movement colour pair, a rise and a fall use the same ink
+  (answer 30). Sequencing: fork 6(a)'s full provenance is a follow-on lane that MUST
+  land before `mudavym_design_vendor_prices` is turned on for any house (answer 30).
+  Source: project memory `founder-sketch-decisions-106-115.md:139-141` and
+  `founder-answers-2026-09-25-web-rebuild.md:50`.]**; 113 — 6 of 7 open
   (`README:336-377`): only question 7, the coupling to 112's forks, is answered, through
   112's accepted forks 1(a) and 2(c) (`README:367-377`); open include question 2, the
   projected worth (Open item 8), and question 3, senders and strangers (Open item 3).

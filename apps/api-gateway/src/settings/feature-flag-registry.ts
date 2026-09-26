@@ -72,13 +72,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
   },
   {
     key: "mudavym_design_recommendations",
     // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
   },
   {
     key: "enable_house_inbox_read",
@@ -100,7 +100,22 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:202",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
+  },
+  {
+    key: "mudavym_design_vendor_prices",
+    // OFF by default: the Mudavym redesign of `/vendor-prices` (ADR 0160
+    // §112, direction A). [Added 2026-09-19, repair pass, wt-pg-vprices]:
+    // an earlier same-day brief (2026-09-18) had this route cut straight to
+    // Mudavym for every house with no flag; the founder's LATER, more
+    // specific 2026-09-19 ~09:20Z answer (memory
+    // founder-sketch-decisions-106-115.md, "19-lane blocking answers")
+    // overrides that and requires exactly this gate. Column added by
+    // 20260926170000 (renamed a third time on 2026-09-25 into the W2 lane's
+    // reserved range — every earlier version sorted below main's ceiling;
+    // see vendor-prices.md's dated brackets for the rename history).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:205",
   },
 ];
 

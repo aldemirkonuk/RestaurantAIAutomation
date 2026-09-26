@@ -1873,13 +1873,22 @@ export class ProcurementService {
         return;
       }
 
-      const isOutlier = isOutlierAgainstPriors(
-        await this.priorSightingUnitPrices(
-          args.restaurantId,
-          args.masterWineId,
-        ),
-        provisional.normalizedUnitPrice,
+      const priorUnitPrices = await this.priorSightingUnitPrices(
+        args.restaurantId,
+        args.masterWineId,
       );
+      // `null` is a register we could not read. It is not an empty one: no
+      // flag, and no reason either — `priorCount: undefined` leaves
+      // `outlier_reason`/`outlier_basis`/`outlier_judged_at` null, so the row
+      // reads "No judge has looked at this row", which is the truth. Passing
+      // `0` here would store "Not judged: only 0 sightings" against a
+      // register that may hold hundreds (PR #473 audit, 2026-09-26).
+      const isOutlier =
+        priorUnitPrices !== null &&
+        isOutlierAgainstPriors(
+          priorUnitPrices,
+          provisional.normalizedUnitPrice,
+        );
 
       const decision = decideOwnPaperSighting(
         {
@@ -1898,7 +1907,12 @@ export class ProcurementService {
           currency: s.currency ?? null,
           notes: args.notes ?? null,
         },
-        { isOutlier },
+        // `priorUnitPrices.length` — not just the boolean — so the row can
+        // say WHY it was or was not flagged (its own review finding, not
+        // ADR 0160 §112 fork 6(a): the own-paper writer judged but never
+        // recorded a reason, so a judged-clean row and a never-judged one
+        // both read "No judge has looked at this row").
+        { isOutlier, priorCount: priorUnitPrices?.length },
       );
       if (!decision.write) {
         this.logger.warn(decision.reason);
@@ -1930,6 +1944,9 @@ export class ProcurementService {
           normalization_note: row.normalization_note,
           content_hash: row.content_hash,
           is_outlier: row.is_outlier,
+          outlier_reason: row.outlier_reason,
+          outlier_basis: row.outlier_basis,
+          outlier_judged_at: row.outlier_judged_at,
           raw: row.raw,
         });
 
@@ -1972,11 +1989,20 @@ export class ProcurementService {
    * the key `priceBelowAverage` groups on (`price-below-average.ts:141-144`);
    * with no identity there is no group, so there is nothing to be an outlier
    * against and the answer is an empty list.
+   *
+   * The population is every source type — invoices, quotes, scrapes, typed
+   * prices — on this house's rows and the public register's. There is no
+   * `source_type` filter, and the reason `decideOwnPaperSighting` writes says
+   * exactly that rather than "own-paper trail".
+   *
+   * `null` means the read FAILED. It is never folded into `[]`: an empty list
+   * becomes a stored "only 0 sightings" sentence, and a failed read is not a
+   * register with nothing in it.
    */
   private async priorSightingUnitPrices(
     restaurantId: string,
     masterWineId: string | null,
-  ): Promise<number[]> {
+  ): Promise<number[] | null> {
     if (!masterWineId) return [];
     try {
       const { data, error } = await this.databaseService.supabase
@@ -2004,11 +2030,12 @@ export class ProcurementService {
       return out;
     } catch (e: any) {
       // A register we could not read is not a register with nothing in it. Say
-      // so, and decline to flag rather than flagging against an empty list.
+      // so, and return `null` — the caller declines to flag AND declines to
+      // write a reason, rather than recording "only 0 sightings".
       this.logger.warn(
-        `Could not read the price register to screen for outliers: ${e?.message}`,
+        `Could not read the price register to screen for outliers: ${e?.message}. Nothing was flagged, and no reason is recorded.`,
       );
-      return [];
+      return null;
     }
   }
 
