@@ -707,7 +707,7 @@ the lane's own claim, not re-verified here, and Wave 3 lanes were still pushing.
 | 17 | Reset/change signs out every other session | #477 (ADR 0225) | OPEN |
 | 18 | OD-140 control on `/cellar` registers | #469; OD-140 bracketed (this PR) | #469 body, "2026-09-25 update — the control moves to /cellar". OPEN |
 | 19 | #440 manager switch = pay visibility/edit; former-staff history owner-only; credentials yes, availability no | #440 (ADR 0215 on its branch) | Built (#440 body, round 4 section). OPEN |
-| 20 | #464 stale-send limit 24 hours | #464 | #464 body: held when older than 24 hours or unprovable. OPEN, in train 1 |
+| 20 | #464 stale-send limit 24 hours | #464 | #464 body: held when older than 24 hours or unprovable. OPEN |
 | 21 | #435 Q21 keep as built | #435 | OPEN |
 | 22 | Houseless vendor rows: report only | ADR 0221 (this PR, not yet on `main`); lane W3-vendors (#481) | No write ordered; nothing to build |
 | 23 | Close #374 and #368 | — | Both CLOSED 2026-09-26T00:06Z (`gh pr view --json closedAt`) |
@@ -734,8 +734,9 @@ fork this lane could state), and `HOUSE_ITEM_RESEARCH_DISPATCH_ENABLED` (his key
 ### 13.2 Merge train 1, as of 2026-09-26T03:10Z
 
 Merged, in order: #463 (`f7630c08b`, 22:57Z), #416 (`e754b3a27`, 23:25Z), #412
-(`4e7c5b5a6`, 00:11Z), #446 (`e4f81d748`, 00:33Z). Still OPEN: #423 #395 #465 (fix rounds),
-#451 #450 #425 #394 #467 (`gh pr view --json state,mergedAt`). #416, #412 and #446 change
+(`4e7c5b5a6`, 00:11Z), #446 (`e4f81d748`, 00:33Z), and at 03:16:54Z #451 (`932bd83af`, the
+schema-drift test reader; this PR merged it in). Still OPEN: #423 #395 #465 (fix rounds),
+#450 #425 #394 #467 (`gh pr view --json state,mergedAt`, re-read 03:18Z). #416, #412 and #446 change
 only `apps/api-gateway` (`git diff --name-only f7630c08b e4f81d748 -- apps`), so `LIVE_PAGES`
 is still 23 keys and mudavym.com still serves `assets/index-2txKbWJ0.js`. The production
 gateway answers `"commit":"e4f81d7486a9…","bootedAt":"2026-09-26T02:16:38Z"` on
