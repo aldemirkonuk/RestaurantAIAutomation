@@ -12,9 +12,11 @@ Emits one PLAN row per line on stdout: `id\tstatus\tverify\tclaim`. The runner
 splits stdin on lines and each line on tabs, so a value that contains either
 byte is not a value this format can carry.
 
-MULTI-LINE VERIFY IS REJECTED, NOT SILENTLY SPLIT — found 2026-09-2x (ADR 0215,
-lane team3, wt-labor)
+MULTI-LINE VERIFY IS REJECTED, NOT SILENTLY SPLIT — found 2026-09-22
 -----------------------------------------------------------------------------
+Found on the CLAIMS rows of the unmerged /team pay branch (PR #440,
+origin/fix/team-pay-defects, whose own record is ADR 0215 on that branch — ADR
+0215 is about /team pay, not about this parser, and is not on main yet).
 A `verify` (or `claim`, `id`, `status`) string that JSON-decodes to a value
 containing a real newline byte — written in the JSONL source as the ONE-
 backslash escape `\n`, not the two-backslash literal `\\n` — broke the PLAN's
@@ -58,12 +60,42 @@ def parse(path: str) -> int:
                 print(f"MALFORMED\t{n}\t{e}", file=sys.stderr)
                 bad = True
                 continue
+            # Every value below is used as a str. A row that is not an object, or a
+            # hand-typed unquoted number (`"id": 215`), used to raise TypeError out
+            # of this function — python exit 1, which the shell runner did not
+            # catch, so the whole guard printed PASS over zero claims. Now a
+            # wrong type is MALFORMED like any other unparseable row.
+            if not isinstance(o, dict):
+                print(f"MALFORMED\t{n}\tnot a JSON object: {line[:80]}", file=sys.stderr)
+                bad = True
+                continue
             if "_comment" in o:
                 continue
             missing = [k for k in FIELDS + ("verified",) if k not in o]
             if missing:
                 print(
                     f"MALFORMED\t{n}\t{o.get('id', '?')} missing {missing}",
+                    file=sys.stderr,
+                )
+                bad = True
+                continue
+            not_str = [k for k in FIELDS if not isinstance(o[k], str)]
+            if not_str:
+                print(
+                    f"MALFORMED\t{n}\t{o.get('id')!r} field(s) {not_str} must be "
+                    "JSON strings (quote them)",
+                    file=sys.stderr,
+                )
+                bad = True
+                continue
+            # The runner splits on tabs with bash `read`, and tab is IFS
+            # whitespace there: an EMPTY field collapses into its neighbour and
+            # shifts every later field one slot left. An empty `verify` would
+            # also run `bash -c ""`, which exits 0 and "holds" for free.
+            empty = [k for k in ("id", "verify") if not o[k].strip()]
+            if empty:
+                print(
+                    f"MALFORMED\t{n}\t{o['id']!r} field(s) {empty} are empty",
                     file=sys.stderr,
                 )
                 bad = True
@@ -208,6 +240,14 @@ def self_test() -> int:
         row(verify="echo 'a\\nb'"),
         0,
     )
+
+    # A hand-typed unquoted number used to raise TypeError (exit 1), which the
+    # shell runner did not catch: PASS over zero claims.
+    check("an unquoted numeric id fails loud, not a crash", row(id=215), 3, "MALFORMED")
+    check("a non-string verify fails loud", row(verify=["true"]), 3, "MALFORMED")
+    check("a JSON line that is not an object fails loud", "[1, 2]\n", 3, "MALFORMED")
+    check("an empty verify fails loud (bash -c '' exits 0)", row(verify="  "), 3, "MALFORMED")
+    check("an empty id fails loud", row(id=""), 3, "MALFORMED")
 
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
