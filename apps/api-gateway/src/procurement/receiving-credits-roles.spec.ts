@@ -19,9 +19,12 @@
  *      the real `RolesGuard`, real `@Roles` metadata. Only `JwtAuthGuard` is
  *      replaced, by a stub that sets `req.user.role` from a header, because what
  *      is under test is the gate that runs AFTER authentication. A staff caller
- *      gets 403; a caller with no role in the house gets 403; owner, manager and
- *      admin get through (a 404 on the transition, from the stub's empty ledger,
- *      is "through": it is the handler talking, not the guard).
+ *      gets 403; a caller with no role in the house gets 403; owner and manager
+ *      get through (a 404 on the transition, from the stub's empty ledger, is
+ *      "through": it is the handler talking, not the guard). `admin` gets 403
+ *      too, per ADR 0164 (2026-09-18): the guard is exact-match now, `admin` is
+ *      no longer implicitly admitted by a route that names other roles, and
+ *      these routes never listed `admin`.
  *   2. The routes staff DO use are still open. The door routes and `unverified`
  *      carry no `@Roles`: a gate that swept them up would stop the person
  *      holding the hand truck, and every test on the four routes above would
@@ -167,7 +170,7 @@ describe("receiving queue and credit ledger: owner or manager only (ADR 0167)", 
       expect(receivingCalls.managerQueue).toBe(0);
     });
 
-    it.each(["owner", "manager", "admin"])(
+    it.each(["owner", "manager"])(
       "lets a %s through to the handler",
       async (role) => {
         const res = await call(method, path, role);
@@ -176,6 +179,13 @@ describe("receiving queue and credit ledger: owner or manager only (ADR 0167)", 
         expect(res.status).toBe(method === "POST" ? 404 : 200);
       },
     );
+
+    it("refuses admin with 403 (ADR 0164: exact-match, not implicitly admitted)", async () => {
+      const res = await call(method, path, "admin");
+      expect(res.status).toBe(403);
+      expect(touched.from).toBe(0);
+      expect(receivingCalls.managerQueue).toBe(0);
+    });
   });
 
   it("leaves the routes staff work with open: unverified answers a staff caller", async () => {
