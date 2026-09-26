@@ -222,6 +222,38 @@ export function fmtDay(iso: string | null | undefined): string {
 }
 
 /**
+ * A FIRING, read back (ADR 0191 round 3 — the founder: "Each firing is one
+ * card"). A rule that names no subject and no period is keyed by the period
+ * it fired in — `fire:day:2026-09-21`, `fire:week:2026-W39`,
+ * `fire:month:2026-09` (the gateway's `firingGrain`) — so a one-card dismiss
+ * or done hides this firing and the card returns when the rule fires again.
+ * Null for any other grain. Display only; the page never builds a key.
+ */
+export function firingOf(
+  grain: string | null | undefined,
+): { period: 'day' | 'week' | 'month'; words: string } | null {
+  if (!grain) return null;
+  let m = /^fire:day:(\d{4}-\d{2}-\d{2})$/.exec(grain);
+  if (m) return { period: 'day', words: fmtDay(m[1]) };
+  m = /^fire:week:(\d{4})-W(\d{2})$/.exec(grain);
+  if (m) {
+    // The Monday of an ISO week: week 1 holds 4 January.
+    const year = Number(m[1]);
+    const week = Number(m[2]);
+    const jan4 = Date.UTC(year, 0, 4);
+    const jan4Weekday = new Date(jan4).getUTCDay() || 7;
+    const monday = new Date(jan4 + ((week - 1) * 7 - (jan4Weekday - 1)) * 86_400_000);
+    return { period: 'week', words: `the week of ${fmtDay(monday.toISOString())}` };
+  }
+  m = /^fire:month:(\d{4})-(\d{2})$/.exec(grain);
+  if (m) {
+    const month = MONTH_NAMES[Number(m[2]) - 1];
+    return month ? { period: 'month', words: `${month} ${m[1]}` } : null;
+  }
+  return null;
+}
+
+/**
  * The label on a scope choice, for THIS entry.
  *
  * A scope the entry cannot support is not offered — a rule that names no
@@ -232,7 +264,9 @@ export function scopeLabel(
   scope: SuppressionScope,
   subject: string | null,
   day: string | null,
+  firing: { words: string } | null = null,
 ): string {
+  if (scope === 'insight' && firing) return `This firing only — ${firing.words}`;
   if (scope === 'insight')
     return day ? `This exact finding — ${fmtDay(day)}` : 'This exact finding';
   if (scope === 'subject')
@@ -246,7 +280,10 @@ export function scopePromise(
   subject: string | null,
   day: string | null,
   rule: string,
+  firing: { words: string } | null = null,
 ): string {
+  if (scope === 'insight' && firing)
+    return `this firing of it — ${firing.words}. It comes back when the rule fires again with new numbers`;
   if (scope === 'insight')
     return day
       ? `this one finding about ${subject ?? 'this'} on ${fmtDay(day)} — the same rule will still be read on every other day`
@@ -263,6 +300,9 @@ export function scopePromise(
  */
 export function dismissalSentence(storedKey: string): string {
   const { ruleId, subject, grain } = readKey(storedKey);
+  const firing = firingOf(grain);
+  if (firing)
+    return `Silenced: one firing of the rule ${ruleId} — ${firing.words}. It comes back when the rule fires again.`;
   const day = dateOfGrain(grain);
   if (subject && day)
     return `Silenced: this one finding about ${subject} on ${fmtDay(day)}. The rule still reads every other day.`;
@@ -433,6 +473,49 @@ export interface FailureVM {
   /** 403 — understood and refused. Retrying changes nothing. */
   forbidden: boolean;
 }
+
+/**
+ * The dismissal reasons — the gateway's closed label set. One list for the
+ * whole web app (`@/lib/recommendationState`), re-exported for this page.
+ */
+export {
+  DISMISS_CHOICES,
+  DISMISS_REASONS,
+  NOT_NOW_DAYS,
+  NOT_YOUR_ACT_SAID,
+  mayActForTheHouse,
+  maySnoozeForEveryone,
+  notYourActOf,
+  paperMissOf,
+  patchForChoice,
+  type DismissChoiceId,
+} from '@/lib/recommendationState';
+
+/**
+ * The key a state write about THIS item goes to — snooze, done, a one-item
+ * dismiss (ADR 0191: one shared per-item state). The gateway built it
+ * (`suppression.key`, the exact finding); a row read back from the actions
+ * table has none, and its own `ruleKey` IS the stored key. Pin, rating,
+ * assignment and acted-on stay on the rule's own row, as before.
+ */
+export function itemKeyOf(e: {
+  ruleKey: string;
+  suppression?: { key: string } | null;
+}): string {
+  return e.suppression?.key ?? e.ruleKey;
+}
+
+/**
+ * The snooze vocabulary — `value` is the number of days the label already
+ * says out loud, and nothing here describes the tenant (descriptor keys,
+ * per `scripts/check_no_seeded_defaults.py` S1). Shared by the feed's entry
+ * and the catalogue's live items, so a snooze means one thing on both.
+ */
+export const SNOOZE_CHOICES: ReadonlyArray<{ id: string; label: string; value: number }> = [
+  { id: 'tomorrow', label: 'Until tomorrow', value: 1 },
+  { id: 'week', label: 'Until next week', value: 7 },
+  { id: 'month', label: 'Until next month', value: 30 },
+];
 
 export function failureOf(err: unknown): FailureVM {
   const status =
