@@ -299,13 +299,19 @@ class Builder implements PromiseLike<any> {
         : [this.payload];
       const written: Row[] = [];
       for (const r of incoming) {
-        const hit = store.find((existing) =>
+        const hitIndex = store.findIndex((existing) =>
           keys.every((k) => existing[k] === r[k]),
         );
-        if (hit) {
+        if (hitIndex !== -1) {
           if (!this.upsertOpts.ignoreDuplicates) {
-            Object.assign(hit, r);
-            written.push(hit);
+            // A NEW object, not a mutation of the existing one: a caller that
+            // read this row earlier (an audit "before" snapshot, say) holds a
+            // real supabase-js response, which a later write never reaches
+            // back into. Object.assign(hit, r) used to, and it made a save's
+            // own before/after diff compare a row against itself.
+            const merged = { ...store[hitIndex], ...r };
+            store[hitIndex] = merged;
+            written.push(merged);
           }
           continue;
         }
