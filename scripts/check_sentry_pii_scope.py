@@ -630,6 +630,7 @@ def _decorator_block(lines: list[str], i: int) -> str:
     contiguous run of decorators, comments and blank lines in BOTH directions
     instead, stopping at the method signature or the previous member.
     """
+
     def is_attached(ln: str) -> bool:
         t = ln.strip()
         return (
@@ -647,6 +648,8 @@ def _decorator_block(lines: list[str], i: int) -> str:
     while end + 1 < len(lines) and is_attached(lines[end + 1]):
         end += 1
     return "\n".join(lines[start : end + 1])
+
+
 _CONTROLLER_RE = re.compile(r"""@Controller\(\s*["']([^"']*)["']""")
 
 
@@ -718,7 +721,9 @@ def _token_path_prefixes(repo: Path) -> set[str]:
     f = repo / "apps/web/src/lib/error-tracking.ts"
     if not f.exists():
         return set()
-    m = re.search(r"TOKEN_PATH_PREFIXES\s*=\s*\[(.*?)\]", f.read_text(encoding="utf-8"), re.S)
+    m = re.search(
+        r"TOKEN_PATH_PREFIXES\s*=\s*\[(.*?)\]", f.read_text(encoding="utf-8"), re.S
+    )
     return set(re.findall(r"""['"](/[^'"]*)['"]""", m.group(1))) if m else set()
 
 
