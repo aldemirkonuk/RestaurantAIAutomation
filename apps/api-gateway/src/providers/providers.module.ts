@@ -3,11 +3,17 @@ import { ProvidersController } from "./providers.controller";
 import { ProvidersService } from "./providers.service";
 import { ProviderIntelligenceController } from "./provider-intelligence.controller";
 import { ProviderIntelligenceService } from "./provider-intelligence.service";
+import { VendorScorecardController } from "./scorecard/vendor-scorecard.controller";
+import { VendorScorecardService } from "./scorecard/vendor-scorecard.service";
+import { VendorMailToneService } from "./scorecard/vendor-mail-tone.service";
+import { JevToneScorer, TONE_SCORER } from "../vendor-tone/jev-tone.client";
+import { VendorToneScoringService } from "../vendor-tone/vendor-tone-scoring.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { EventsModule } from "../events/events.module";
 import { ProcurementModule } from "../procurement/procurement.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
+import { SettingsModule } from "../settings/settings.module";
 
 /**
  * ProcurementModule is imported for `createRetroactiveOrder`, which records an
@@ -31,6 +37,16 @@ import { OrganizationsModule } from "../organizations/organizations.module";
  * proves that, because Nest resolves a genuine cycle by injecting `undefined`
  * at runtime rather than failing the build.
  */
+/**
+ * `SettingsModule` is imported for `HouseDataTermsService`, which the Jev
+ * sweep (`VendorToneScoringService`, ADR 0207 round 4) reads before it will
+ * send anything for a house: no acceptance of the current data terms, no
+ * send. `ProcurementModule` already imports `SettingsModule`
+ * (`ApprovalThresholdsService`) and `SettingsModule` imports nothing that
+ * reaches back here, so this edge creates no NEW cycle either — direct
+ * rather than leaned on through the existing transitive edge, for the same
+ * reason `OrganizationsModule` above is direct.
+ */
 @Module({
   imports: [
     DatabaseModule,
@@ -38,9 +54,26 @@ import { OrganizationsModule } from "../organizations/organizations.module";
     EventsModule,
     ProcurementModule,
     OrganizationsModule,
+    SettingsModule,
   ],
-  controllers: [ProvidersController, ProviderIntelligenceController],
-  providers: [ProvidersService, ProviderIntelligenceService],
+  controllers: [
+    ProvidersController,
+    ProviderIntelligenceController,
+    // ADR 0207 — the operational vendor scorecard, on its own prefix.
+    VendorScorecardController,
+  ],
+  providers: [
+    ProvidersService,
+    ProviderIntelligenceService,
+    VendorScorecardService,
+    // ADR 0207 round 3 — how a vendor's mail reads (owners and managers), and
+    // the Jev sweep that scores it for houses that turned it on. Registered
+    // here, beside the scorecard that reads it, so no shared module changes.
+    VendorMailToneService,
+    JevToneScorer,
+    { provide: TONE_SCORER, useExisting: JevToneScorer },
+    VendorToneScoringService,
+  ],
   exports: [ProvidersService, ProviderIntelligenceService],
 })
 export class ProvidersModule {}

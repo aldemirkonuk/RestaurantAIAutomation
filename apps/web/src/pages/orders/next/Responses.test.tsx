@@ -411,6 +411,9 @@ describe('reject', () => {
     expect(cancelMock.mutate).toHaveBeenCalledWith(
       {
         orderId: 'o-1',
+        // ADR 0207 round 4 — the picker's default (house_decision) travels
+        // with the write when the response being rejected is not a decline.
+        reasonCode: 'house_decision',
         reason: 'Price is 18% over what we last paid.',
         challenge: 'cancel-seal-token',
       },

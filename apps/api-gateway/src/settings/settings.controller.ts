@@ -5,6 +5,7 @@ import {
   Post,
   Body,
   Param,
+  Headers,
   UseGuards,
   HttpCode,
   HttpException,
@@ -43,6 +44,21 @@ import {
 } from "./dto/feature-flags.dto";
 import { SetHouseCurrencyDto } from "./dto/house-currency.dto";
 import { SetHouseCarryingCostDto } from "./dto/house-carrying-cost.dto";
+import {
+  HouseTimeZoneService,
+  type HouseTimeZoneReadout,
+} from "./house-time-zone.service";
+import {
+  HouseToneScoringService,
+  type HouseToneScoringReadout,
+} from "./house-tone-scoring.service";
+import { SetHouseTimeZoneDto } from "./dto/house-time-zone.dto";
+import { SetHouseToneScoringDto } from "./dto/house-tone-scoring.dto";
+import {
+  HouseDataTermsService,
+  type DataTermsReadout,
+} from "./data-terms/house-data-terms.service";
+import { AcceptDataTermsDto } from "./dto/house-data-terms.dto";
 
 @ApiTags("settings")
 @ApiBearerAuth("JWT-auth")
@@ -55,6 +71,9 @@ export class SettingsController {
     private readonly organizations: OrganizationsService,
     private readonly houseCurrency: HouseCurrencyService,
     private readonly houseCarryingCost: HouseCarryingCostService,
+    private readonly houseTimeZone: HouseTimeZoneService,
+    private readonly houseToneScoring: HouseToneScoringService,
+    private readonly houseDataTerms: HouseDataTermsService,
   ) {}
 
   @Get("feature-flags")
@@ -325,6 +344,235 @@ export class SettingsController {
       dto?.percentPerMonth,
       dto?.basis,
       userId,
+    );
+  }
+
+  /* ── The clock this house keeps ──────────────────────────────────────
+   *
+   * THE FOUNDER, 2026-09-21: *"Add it to Settings"*. The vendor scorecard reads
+   * every on-time verdict against midnight at the end of the expected day ON
+   * THE HOUSE'S CLOCK (ADR 0207 question 6), from `restaurants.timezone` — a
+   * column no person could write. A house that has not stated one keeps the
+   * span rule (a landing within a day of midnight is listed, not counted).
+   */
+
+  @Get("time-zone")
+  @ApiOperation({
+    summary: "The house's time zone, and who last stated it",
+    description:
+      "`zone: null` means nobody has stated one — the on-time line then counts only a verdict that holds in every zone. `unreadZone` is a value in the column this server cannot resolve, kept verbatim and never read as a zone. `readable: false` means the row could not be READ, which is a different state and says so in words.",
+  })
+  @ApiResponse({ status: 200, description: "The time-zone readout" })
+  async getHouseTimeZone(
+    @CurrentUser("restaurantId") restaurantId: string,
+  ): Promise<HouseTimeZoneReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so there is no time zone to read.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseTimeZone.read(restaurantId);
+  }
+
+  @Put("time-zone")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "State the house's time zone — owner or manager only",
+    description:
+      "The zone must be an IANA name this server's `Intl` lists (`Europe/Istanbul`, `America/Los_Angeles`, or `UTC`); abbreviations, offsets and misspellings are refused with a sentence. The write is explicit: no zone is ever derived or written here. The response carries `audited` and `auditReason`.",
+  })
+  @ApiResponse({ status: 200, description: "The readout after the write" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is not an owner or manager of this restaurant. The clock every on-time verdict is read on is not a per-person setting.",
+  })
+  async setHouseTimeZone(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @Body() dto: SetHouseTimeZoneDto,
+    @CurrentUser("userId") userId: string,
+  ): Promise<HouseTimeZoneReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so nothing was recorded.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "state the time zone this restaurant keeps",
+    );
+    return this.houseTimeZone.write(restaurantId, dto?.zone, userId);
+  }
+
+  /* ── Whether Jev reads this house's vendor mail ───────────────────────
+   *
+   * THE FOUNDER, 2026-09-21: *"this feature can also be disabled"*; the mail
+   * leaves *"Only with names removed"*. Off by default (ADR 0207).
+   */
+
+  @Get("vendor-tone-scoring")
+  @ApiOperation({
+    summary: "Whether Jev reads this house's vendor mail, and who last set it",
+    description:
+      "`enabled: false` is the default: nothing is sent. `readable: false` means the row could not be read, and is never reported as off.",
+  })
+  async getHouseToneScoring(
+    @CurrentUser("restaurantId") restaurantId: string,
+  ): Promise<HouseToneScoringReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so there is nothing to read.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseToneScoring.read(restaurantId);
+  }
+
+  @Put("vendor-tone-scoring")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Turn Jev's reading of vendor mail on or off — owner only, and only with the data terms accepted",
+    description:
+      "On, this house's inbound vendor mail is sent to Jev (TypeSafe) with emails, phone numbers, person names and sensitive topics removed first, and scored on a point scale kept as internal data; the vendor sheet shows one word per message. Off, nothing is sent and the sheet reads the inbound model's existing label. Audited. ADR 0207 round 4: owner only (was owner or manager) — turning this on is folded into accepting the house's data terms (`POST /settings/data-terms/acceptances`), which is the normal way to turn it on for the first time or after a version bump.",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "The caller is not an owner of this restaurant. Sending the house's mail to a third party, under its data terms, is an owner's act.",
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      "`enabled: true` was sent, but no owner has accepted the CURRENT version of this house's data terms. Accept them first at `POST /settings/data-terms/acceptances`, or read them at `GET /settings/data-terms`.",
+  })
+  async setHouseToneScoring(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @Body() dto: SetHouseToneScoringDto,
+    @CurrentUser("userId") userId: string,
+  ): Promise<HouseToneScoringReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so nothing was recorded.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    // ADR 0207 round 4 — owner only (was owner or manager). Turning Jev on is
+    // an owner accepting the house's complete data terms; turning it off
+    // needs no such acceptance and stays as easy as it was.
+    await this.houseDataTerms.assertOwner(
+      userId,
+      restaurantId,
+      "decide whether Jev reads this restaurant's vendor mail",
+    );
+    if (typeof dto?.enabled !== "boolean") {
+      throw new HttpException(
+        "Send true to have Jev read this house's vendor mail, or false to stop it. Nothing was recorded.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (dto.enabled) {
+      const acceptance = await this.houseDataTerms.effectiveAcceptance(
+        restaurantId,
+      );
+      if (!acceptance.ok) {
+        throw new HttpException(
+          `Whether the data terms have been accepted could not be read (${acceptance.reason}), so nothing was turned on.`,
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+      }
+      if (!acceptance.current) {
+        throw new HttpException(
+          // Shown to an owner as-is on Settings, so it is written for them,
+          // not for a client of the API (the 409 description above names the
+          // routes). [Last call, 2026-09-22: this sentence named the routes.]
+          "Jev stays off: turning it on means an owner accepting this house's data-and-privacy terms, and no owner has accepted their current version. Nothing was changed.",
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
+    return this.houseToneScoring.write(restaurantId, dto.enabled, userId);
+  }
+
+  /* ── The house's data-and-privacy terms — accepting turns Jev on ──────
+   *
+   * THE FOUNDER, 2026-09-22, round 6y, verbatim: "owner only, but also we're
+   * going to use this as complete data and privacy usage, they have to
+   * accept that, and when they do they'd accept the jev too with their names
+   * and sensitive topics redacted." (ADR 0207 round 4.)
+   */
+
+  @Get("data-terms")
+  @ApiOperation({
+    summary: "The house's data-and-privacy terms, and who last accepted them",
+    description:
+      "Any member of the house may read this. `acceptance` is the latest one on record, of any version; `current` is true only when some owner has accepted the CURRENT version; `yours.current` is whether the reader has accepted it themselves (ADR 0207 question 19: every owner accepts at their next sign-in). A failed read is `readable: false` with its reason, never silently 'not accepted'.",
+  })
+  async getDataTerms(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+  ): Promise<DataTermsReadout> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so there is nothing to read.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseDataTerms.read(restaurantId, userId);
+  }
+
+  @Post("data-terms/seal-challenge")
+  @ApiOperation({
+    summary: "Mint the one-time seal an acceptance has to carry back — owner only",
+  })
+  async issueDataTermsSealChallenge(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+  ): Promise<{ challenge: string; expiresAt: string }> {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so nothing was minted.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseDataTerms.issueSealChallenge(restaurantId, userId);
+  }
+
+  @Post("data-terms/acceptances")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "Accept the house's data terms — owner only, sealed, one row per owner. The house's first acceptance turns Jev on.",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner of this restaurant.",
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      "`version`/`digest` are not the CURRENT ones — the terms changed while they were being read. Read them again before accepting.",
+  })
+  async acceptDataTerms(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Body() dto: AcceptDataTermsDto,
+    @Headers("x-seal-challenge") challenge?: string,
+  ) {
+    if (!restaurantId) {
+      throw new HttpException(
+        "This session is not attached to a restaurant, so nothing was recorded.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.houseDataTerms.accept(
+      restaurantId,
+      userId,
+      dto.version,
+      dto.digest,
+      challenge ?? null,
     );
   }
 

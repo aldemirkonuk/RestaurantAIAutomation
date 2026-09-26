@@ -57,6 +57,12 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 // Transient legacy modals — mounted by the team/locations registers, and not
 // under test here.
+// Mail reading reads the house's data terms through react-query; this page
+// suite mounts no QueryClientProvider, and the terms have their own suites.
+vi.mock('../../../hooks/queries/useDataTerms', () => ({
+  useDataTerms: () => ({ data: undefined }),
+  useInvalidateDataTerms: () => vi.fn(),
+}));
 vi.mock('@/components/team/InviteTeamDialog', () => ({ InviteTeamDialog: () => null }));
 vi.mock('@/components/team/TeamLaborSettings', () => ({ TeamLaborSettings: () => null }));
 vi.mock('@/components/team/TeamGoalsSettings', () => ({ TeamGoalsSettings: () => null }));
@@ -210,6 +216,16 @@ function base(over: Record<string, unknown> = {}) {
       statedAt: null,
       statedBy: null,
     }),
+    // ADR 0207 (2026-09-21): Time zone and Mail reading are eager registers
+    // on the interview page like every other, so their fixtures are load-
+    // bearing on every test that mounts the page.
+    houseTimeZone: remote({
+      restaurantId: 'r1', zone: 'Europe/Istanbul', unreadZone: null, country: 'TR',
+      readable: true, reason: null, statedAt: null, statedBy: null,
+    }),
+    houseToneScoring: remote({
+      restaurantId: 'r1', enabled: false, readable: true, reason: null, statedAt: null, statedBy: null,
+    }),
     writer: { busy: null, failed: null, run: vi.fn(), clear: vi.fn() },
     saveFlag, savePrefs, saveNotif,
     saveSender: vi.fn(), sendTestEmail: vi.fn(), regenerateIcal: vi.fn(),
@@ -219,6 +235,8 @@ function base(over: Record<string, unknown> = {}) {
     saveHours: vi.fn(() => Promise.resolve(true)),
     saveDigest: vi.fn(() => Promise.resolve(true)),
     saveAskTraining: vi.fn(() => Promise.resolve(true)),
+    saveTimeZone: vi.fn(() => Promise.resolve(true)),
+    saveToneScoring: vi.fn(() => Promise.resolve(true)),
     ...over,
   };
 }
@@ -461,7 +479,7 @@ describe('SettingsNext — the editorial spine', () => {
     // own heading — the legacy ten under their legacy names, plus cellar, plus
     // the three the fourth pass added, plus Currency (2026-09-05) and Carrying
     // cost (2026-09-06).
-    for (const title of ['Team', 'Services & permissions', 'Email sign-off', 'Notifications', 'Locations & chains', 'Measurement & recipes', 'Map', 'Features', 'Point of sale', 'Calendar subscription', 'Cellar registers', 'Vendor terms', 'Approval thresholds', 'What changed here', 'Reporting currency', 'What holding stock costs']) {
+    for (const title of ['Team', 'Services & permissions', 'Email sign-off', 'Notifications', 'Locations & chains', 'Measurement & recipes', 'Map', 'Features', 'Point of sale', 'Calendar subscription', 'Cellar registers', 'Vendor terms', 'Approval thresholds', 'What changed here', 'Reporting currency', 'What holding stock costs', 'Time zone', 'How vendor mail is read']) {
       expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
     }
     // Graft B and the digest sender get their own home too, not folded into
@@ -469,11 +487,11 @@ describe('SettingsNext — the editorial spine', () => {
     expect(screen.getByRole('heading', { name: 'When is it open?' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Questions and training' })).toBeInTheDocument();
     expect(screen.getByText('Should it mail a recommendations digest?')).toBeInTheDocument();
-    expect(screen.getByText(/twelve kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
-    // The standing honesty statement, now that FOUR registers DO record an
-    // author: it names which four — Currency joined them 2026-09-05 — and
-    // admits the other eight still do not.
-    expect(screen.getByText(/Four of these registers now record/i)).toBeInTheDocument();
+    expect(screen.getByText(/fourteen kept for this restaurant, three on your account, one in this browser only/i)).toBeInTheDocument();
+    // The standing honesty statement, now that SIX registers DO record an
+    // author: it names which six — Currency joined them 2026-09-05, Time zone
+    // and Mail reading 2026-09-21 (ADR 0207) — and admits the other eight still do not.
+    expect(screen.getByText(/Six of these registers now record/i)).toBeInTheDocument();
     expect(screen.getByText(/other eight write through services this pass did not touch/i)).toBeInTheDocument();
   });
 
@@ -1193,10 +1211,11 @@ describe('the collapse — four connection tabs become one line', () => {
     // Twelve tabs plus the one line out. The tally beside it counts the same
     // twelve, and drops a clause whose count reached zero rather than printing
     // "none". The numbers moved by one on 2026-09-05 when the Currency register
-    // was added and by one again on 2026-09-06 with Carrying cost; they are
-    // derived, so this line is the only place that says so.
-    expect(screen.getByText(/^Twelve registers — /)).toBeInTheDocument();
-    expect(screen.queryByText(/Sixteen registers/)).not.toBeInTheDocument();
+    // was added, by one again on 2026-09-06 with Carrying cost, and by two on
+    // 2026-09-21 with Time zone and Mail reading (ADR 0207); they are derived,
+    // so this line is the only place that says so.
+    expect(screen.getByText(/^Fourteen registers — /)).toBeInTheDocument();
+    expect(screen.queryByText(/^18 registers/)).not.toBeInTheDocument();
   });
 
   it('offers one line out, naming the four registers it replaces', () => {

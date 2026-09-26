@@ -193,10 +193,13 @@ export function useCancelOrder() {
   return useMutation({
     mutationFn: ({
       orderId,
+      reasonCode,
       reason,
       challenge,
     }: {
       orderId: string
+      /** ADR 0207 round 4 — required; see `services/api/orders.ts` `cancelOrder`. */
+      reasonCode: 'never_arrived' | 'vendor_cannot_supply' | 'house_decision'
       reason?: string
       /**
        * The one-time seal minted when the hold began (ADR 0125). Typed optional
@@ -209,7 +212,7 @@ export function useCancelOrder() {
       challenge?: string | null
     }) => {
       if (!activeRestaurantId) throw new Error('No restaurant selected')
-      return ordersApi.cancelOrder(orderId, reason, activeRestaurantId, challenge)
+      return ordersApi.cancelOrder(orderId, reasonCode, reason, activeRestaurantId, challenge)
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })

@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sketch 117 · Direction C — The Docket</title>
+<!-- The product self-hosts its faces; the sketch loads them from Google Fonts only so it renders from file://. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..680;1,9..144,300..680&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Sketch chrome — NOT the product. Grey paper around the specimens. */
+html, body { margin: 0; background: #d9d4cb; color: #2a2620; font-family: 'DM Sans', system-ui, sans-serif; }
+.sk-wrap { max-width: 1440px; margin: 0 auto; padding: 24px 20px 80px; }
+.sk-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 18px; margin-bottom: 18px; }
+.sk-head h1 { margin: 0; font-family: 'Fraunces', Georgia, serif; font-weight: 500; font-size: 22px; letter-spacing: -0.01em; }
+.sk-head p { margin: 0; font-size: 13px; color: #5a5348; max-width: 980px; line-height: 1.5; }
+.sk-label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #6b6356; margin: 34px 0 10px; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.sk-label small { letter-spacing: 0; text-transform: none; font-size: 12px; color: #7a7266; }
+.sk-note { font-size: 12.5px; color: #5a5348; max-width: 980px; margin: 0 0 12px; line-height: 1.5; }
+.sk-row { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+.sk-frame { border: 1px solid rgba(0,0,0,.18); box-shadow: 0 1px 0 rgba(255,255,255,.5) inset; }
+.sk-phone { width: 390px; box-sizing: border-box; border-radius: 28px; border: 6px solid #2a2620; overflow: hidden; background: #15130F; flex: none; }
+.sk-cap { font-size: 11.5px; color: #6b6356; margin: 6px 0 0; max-width: 460px; line-height: 1.45; }
+@media (max-width: 600px) {
+  .sk-wrap { padding: 12px 8px 40px; }
+  .sk-phone, .st-frame { width: 100% !important; max-width: 100%; }
+  .sk-row > .sk-frame { width: 100% !important; }
+}
+
+/* Mudavym tokens — verbatim from apps/web/src/styles/mudavym.css (ADR 0042, ADR 0138). */
+.mudavym, .mudavym[data-ground="charcoal"] {
+  --seal: #5FB0BC; --seal-deep: #7DC3CD;
+  --seal-tint: rgba(95,176,188,.14); --seal-ring: rgba(95,176,188,.38);
+  --paper-0: #15130F; --paper-1: #1D1813; --paper-2: #262019;
+  --ink-1: #EFE7D9; --ink-2: #C0B6A5; --ink-3: #8E8576; --ink-4: #ABA294;
+  --serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --sans: 'DM Sans', 'Plus Jakarta Sans', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* motion — lib/mudavym/motion.ts tokens, nothing else */
+  --settle: 320ms cubic-bezier(0.16,1,0.3,1);
+  --ink-t: 160ms cubic-bezier(0.16,1,0.3,1);
+  --turn: 420ms cubic-bezier(0.32,0.72,0,1);
+  --tuck: 300ms cubic-bezier(0.2,0.9,0.3,1); /* stand-in for the sampled linear() of the tuck spring */
+  color-scheme: dark;
+}
+.mudavym[data-ground="paper"] {
+  --seal: #1a5e6b; --seal-deep: #14515c;
+  --seal-tint: rgba(26,94,107,.1); --seal-ring: rgba(26,94,107,.32);
+  --paper-0: #fffdf8; --paper-1: #f3efe6; --paper-2: #eae4d8;
+  --ink-1: #211c16; --ink-2: #4f473c; --ink-3: #7c7365; --ink-4: #665d50;
+  color-scheme: light;
+}
+@media (prefers-reduced-motion: reduce) { .mudavym * { transition-duration: 0ms !important; animation: none !important; } }
+
+/* ================================================================
+   The page — the Sorting Office (DocumentsReportsNext, direction D) with a
+   sixth drawer, and the vendor docket as its reading pane. Prefix so- / dk-.
+   ================================================================ */
+.so-page { background: var(--paper-0); color: var(--ink-1); font-family: var(--sans); font-size: 13px; line-height: 1.45; container-type: inline-size; container-name: page; position: relative; overflow: hidden; }
+.so-in { max-width: 1200px; margin: 0 auto; padding: 22px 16px 40px; }
+.so-chrome { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 24px; border-bottom: 1px solid var(--paper-2); font-size: 12.5px; color: var(--ink-2); background: var(--paper-0); }
+.so-chrome .mark { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--seal); box-sizing: border-box; position: relative; }
+.so-chrome .mark::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--seal); }
+.so-chrome .rule { width: 1px; height: 18px; background: var(--paper-2); }
+.so-chrome .page { font-family: var(--serif); font-weight: 600; font-size: 15px; color: var(--ink-1); }
+.so-chrome .search { margin: 0 auto; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px 6px 11px; border: 1px solid var(--paper-2); border-radius: 9px; background: var(--paper-1); color: var(--ink-3); min-width: 260px; }
+.so-chrome .kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--paper-2); border-radius: 4px; padding: 1px 5px; color: var(--ink-3); margin-left: auto; }
+.so-chrome .house { color: var(--ink-1); font-weight: 500; }
+.so-chrome .bell { width: 8px; height: 8px; border-radius: 50%; background: var(--seal); display: inline-block; }
+
+.so-wordmark { font-family: var(--serif); font-weight: 600; letter-spacing: -0.02em; font-size: 13px; line-height: 1; color: var(--ink-1); }
+.so-wordmark b { color: var(--seal); font-weight: 600; }
+.so-h1 { margin: 4px 0 0; font-family: var(--serif); font-size: 30px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1; }
+.so-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 16px; margin-bottom: 18px; }
+.so-figs { display: flex; gap: 20px; text-align: right; }
+.so-lbl { font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); display: block; }
+.so-count { font-family: var(--mono); font-size: 20px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink-1); }
+.so-count.seal { color: var(--seal-deep); font-size: 22px; }
+.so-grid { display: grid; gap: 24px; grid-template-columns: 480px minmax(0, 1fr); }
+.so-col { display: flex; flex-direction: column; gap: 12px; }
+.so-drawer { border: 1px solid var(--paper-2); background: var(--paper-1); border-radius: 12px; padding: 12px 15px; }
+.so-drawer.signal { border-color: var(--seal-ring); }
+.so-drawer .row { display: flex; align-items: baseline; gap: 8px; }
+.so-drawer .sub { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.so-drawer .what { font-size: 11.5px; color: var(--ink-2); display: block; }
+.so-drawer .go { font-size: 11.5px; font-weight: 600; color: var(--seal-deep); text-decoration: underline; text-underline-offset: 2px; }
+.so-drawer .lines { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; }
+.so-drawer .lines li { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; border-top: 1px solid var(--paper-2); font-size: 12px; color: var(--ink-2); }
+.so-drawer .lines li .t { flex: 1; color: var(--ink-1); }
+.so-drawer .lines li .age { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
+
+/* the Vendors drawer — one line per vendor, the line is the docket's first fact */
+.vd-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.vd-list li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 8px 8px; margin: 0 -8px; border-top: 1px solid var(--paper-2); border-radius: 8px; cursor: pointer; transition: background-color var(--ink-t); }
+.vd-list li:hover { background: var(--paper-0); }
+.vd-list li[data-open="true"] { background: var(--paper-0); box-shadow: inset 2px 0 0 var(--seal); }
+.vd-list .nm { font-family: var(--serif); font-size: 14px; font-weight: 600; color: var(--ink-1); letter-spacing: -0.01em; }
+.vd-list .ty { font-family: var(--mono); font-size: 8.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--seal-deep); display: block; }
+.vd-list .fc { font-family: var(--mono); font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.vd-list .fc i { font-family: var(--serif); font-style: italic; color: var(--ink-3); font-size: 11.5px; white-space: normal; }
+.vd-list .en { grid-column: 1 / -1; font-size: 11px; color: var(--ink-3); }
+
+/* the docket — the reading pane */
+.dk-pane { border: 1px solid var(--paper-2); border-radius: 12px; background: var(--paper-1); padding: 16px 18px 18px; animation: dk-settle var(--settle) both; }
+@keyframes dk-settle { from { transform: translateY(-4px); opacity: 0 } to { transform: none; opacity: 1 } }
+.dk-eyebrow { font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.dk-h2 { margin: 2px 0 0; font-family: var(--serif); font-size: 24px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
+.dk-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.dk-win { display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--ink-3); flex-wrap: wrap; }
+.dk-chip { font-family: var(--mono); font-size: 10.5px; padding: 2px 7px; border: 1px solid var(--paper-2); border-radius: 6px; color: var(--ink-2); cursor: pointer; transition: border-color var(--ink-t); background: var(--paper-1); }
+.dk-chip[data-on="true"] { border-color: var(--ink-3); color: var(--ink-1); }
+.dk-standing { margin: 8px 0 0; font-size: 12px; color: var(--ink-2); line-height: 1.5; }
+.dk-standing b { color: var(--ink-1); font-weight: 500; }
+.dk-standing .src { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+/* the tallies — sums of the entries beneath; each is a filter */
+.dk-tallies { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 14px 0 0; }
+.dk-tally { border: 1px solid var(--paper-2); border-radius: 10px; background: var(--paper-0); padding: 9px 11px; text-align: left; cursor: pointer; font: inherit; color: inherit; display: flex; flex-direction: column; gap: 2px; min-width: 0; transition: border-color var(--ink-t); }
+.dk-tally:hover { border-color: var(--seal-ring); }
+.dk-tally[data-on="true"] { border-color: var(--seal); }
+.dk-tally .k { font-family: var(--serif); font-size: 12.5px; color: var(--ink-2); }
+/* a figure never clips: the denominator drops to its own line when the cell is narrow */
+.dk-tally .f { font-family: var(--mono); font-size: 17px; font-weight: 500; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--ink-1); display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 4px; }
+.dk-tally .f small { font-size: 10.5px; color: var(--ink-3); font-weight: 400; letter-spacing: 0; white-space: nowrap; }
+.dk-tally .f.refuse { font-family: var(--serif); font-style: italic; font-size: 12px; font-weight: 400; color: var(--ink-2); display: block; }
+.dk-tally .p { font-family: var(--mono); font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; line-height: 1.5; }
+.dk-tally .p b { color: var(--ink-2); font-weight: 500; }
+.dk-tally .n { font-size: 10.5px; color: var(--seal); margin-top: 2px; }
+.dk-sum { margin: 8px 0 0; font-size: 11.5px; color: var(--ink-3); line-height: 1.5; }
+.dk-sum b { color: var(--ink-2); font-weight: 500; }
+
+/* the filter row — kinds of entry, each with its count */
+.dk-kinds { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 6px; align-items: center; font-size: 11.5px; color: var(--ink-3); }
+
+/* entries — every one a dated fact with the contribution it makes */
+.dk-list { list-style: none; margin: 0; padding: 0; }
+.dk-e { display: grid; grid-template-columns: 96px 88px minmax(0, 1fr) auto; gap: 4px 14px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--paper-2); transition: background-color var(--ink-t); }
+.dk-e:hover { background: var(--paper-0); margin: 0 -8px; padding-left: 8px; padding-right: 8px; border-radius: 8px; }
+.dk-e .d { font-family: var(--mono); font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dk-e .d b { color: var(--ink-2); font-weight: 500; display: block; }
+.dk-e .k { font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.dk-e .s { font-size: 12.5px; color: var(--ink-1); line-height: 1.45; min-width: 0; }
+.dk-e .s a { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); }
+.dk-e .s .q { color: var(--ink-3); }
+.dk-e .c { font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ink-1); text-align: right; white-space: nowrap; }
+.dk-e .c small { display: block; font-family: var(--sans); font-size: 10.5px; color: var(--ink-3); white-space: nowrap; }
+.dk-e .c.no { color: var(--ink-1); }
+.dk-e .c.nc { font-family: var(--serif); font-style: italic; font-size: 12px; color: var(--ink-3); }
+.dk-e .m { font-family: var(--sans); font-size: 11px; color: var(--ink-2); }
+/* a struck entry — listed, not counted */
+.dk-e.struck .s, .dk-e.struck .d { color: var(--ink-3); }
+/* a shadow marker — what would have alerted, nothing shipped */
+.dk-e.shadow { border-top: 1px dashed var(--ink-3); border-bottom: 1px dashed var(--ink-3); background: transparent; margin: 4px 0; padding: 9px 10px; border-radius: 0; }
+.dk-e.shadow .k { color: var(--ink-2); }
+.dk-e.shadow .s i { font-family: var(--serif); }
+.dk-e.shadow .c { font-family: var(--sans); font-size: 11px; color: var(--ink-2); white-space: normal; max-width: 160px; }
+/* a window rule — where the arithmetic starts and stops */
+.dk-rule { display: flex; align-items: center; gap: 10px; padding: 10px 0 6px; font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.dk-rule::before, .dk-rule::after { content: ""; flex: 1; height: 1px; background: var(--ink-3); opacity: .5; }
+.dk-prior { border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; background: var(--paper-0); margin-top: 8px; }
+.dk-prior summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--ink-2); }
+.dk-prior summary::after { content: "turn ›"; font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.dk-prior[open] summary::after { content: "close"; }
+.dk-prior p { margin: 8px 0 0; font-size: 11.5px; color: var(--ink-2); line-height: 1.55; }
+.dk-prior p b { color: var(--ink-1); font-weight: 500; }
+.dk-fold { display: block; margin: 8px 0 0; font-size: 11.5px; color: var(--seal); text-decoration: none; border-top: 1px solid var(--paper-2); padding-top: 8px; }
+.dk-band { border: 1px dashed var(--ink-3); border-radius: 8px; padding: 9px 12px; font-size: 12px; color: var(--ink-2); line-height: 1.5; margin: 10px 0 4px; }
+.dk-band b { color: var(--ink-1); font-weight: 500; }
+.dk-band .src { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.dk-band .act { display: inline-flex; gap: 6px; margin-left: 8px; vertical-align: middle; }
+.dk-btn { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: 1px solid var(--paper-2); border-radius: 6px; background: var(--paper-1); color: var(--ink-2); font: inherit; font-size: 11.5px; cursor: pointer; transition: border-color var(--ink-t), color var(--ink-t); }
+.dk-btn:hover { border-color: var(--seal-ring); color: var(--ink-1); }
+.dk-btn.primary { background: var(--seal); border-color: var(--seal); color: var(--paper-0); font-weight: 500; }
+.dk-note { background: var(--paper-0); border: 1px solid var(--paper-2); border-radius: 8px; padding: 12px 14px; font-size: 12.5px; color: var(--ink-2); line-height: 1.55; }
+.dk-note b { color: var(--ink-1); font-weight: 500; }
+.dk-note .src { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.dk-note .act { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+.dk-skel { height: 12px; border-radius: 4px; background: linear-gradient(90deg, var(--paper-1), var(--paper-2), var(--paper-1)); background-size: 200% 100%; animation: dk-sh 1.6s linear infinite; display: block; }
+@keyframes dk-sh { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+.dk-reg { display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin: 8px 0 0; }
+.dk-reg span b { color: var(--ink-2); font-weight: 500; }
+
+/* overlays — ADR 0112 at the product's numbers (sheet.css) */
+.ov-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.22); }
+.ov-sheet { position: absolute; top: 0; right: 0; bottom: 0; width: 100%; max-width: 440px; background: var(--paper-0); border-left: 1px solid var(--paper-2); box-shadow: -18px 0 40px rgba(0,0,0,.35); display: flex; flex-direction: column; }
+.ov-sheet.standalone { position: relative; max-width: none; box-shadow: none; border-left: 0; }
+.ov-hd { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--paper-2); }
+.ov-hd .eyebrow { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; text-transform: uppercase; color: var(--seal-deep); }
+.ov-hd .title { font-family: var(--serif); font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; margin-top: 2px; }
+.ov-hd .esc { margin-left: auto; font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--paper-2); border-radius: 4px; padding: 2px 6px; color: var(--ink-3); }
+.ov-spine { display: flex; gap: 6px; font-family: var(--mono); font-size: 10px; color: var(--ink-3); padding: 8px 18px 0; }
+.ov-spine b { color: var(--ink-2); font-weight: 500; }
+.ov-body { padding: 12px 18px 22px; }
+.sp-row { display: grid; grid-template-columns: 96px 1fr; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--paper-2); font-size: 12.5px; }
+.sp-row .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); padding-top: 3px; }
+.sp-row .v { color: var(--ink-1); line-height: 1.45; }
+.sp-row .v .q { color: var(--ink-3); }
+.sp-row .v a { color: var(--seal); text-decoration: none; border-bottom: 1px solid var(--seal-ring); }
+.sp-row .v .st { font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); }
+.sp-contrib { margin-top: 12px; border: 1px solid var(--paper-2); border-radius: 8px; padding: 10px 12px; background: var(--paper-1); }
+.sp-contrib h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-3); }
+.sp-contrib div { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--ink-2); padding: 3px 0; }
+.sp-contrib div b { font-family: var(--mono); font-weight: 500; color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.sp-contrib div i { font-family: var(--serif); color: var(--ink-3); }
+/* the popover — anchored, width 320, radius 14 */
+.ov-pop { width: 320px; border: 1px solid var(--paper-2); border-radius: 14px; background: var(--paper-1); box-shadow: 0 12px 30px rgba(0,0,0,.35); padding: 12px 14px; font-size: 12px; color: var(--ink-2); line-height: 1.5; box-sizing: border-box; }
+.ov-pop h4 { margin: 0 0 6px; font-family: var(--serif); font-size: 15px; font-weight: 500; color: var(--ink-1); }
+.ov-pop p { margin: 0 0 6px; }
+.ov-pop b { color: var(--ink-1); font-weight: 500; }
+.ov-pop .src { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.ov-pop .act { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+/* states */
+.st-frame { width: 460px; flex: none; background: var(--paper-0); border: 1px solid var(--paper-2); color: var(--ink-1); font-family: var(--sans); font-size: 13px; line-height: 1.45; padding: 14px 16px; box-sizing: border-box; }
+.st-frame .dk-pane { padding: 12px 14px 14px; }
+.st-frame .dk-tallies { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.st-frame .dk-e { grid-template-columns: 84px minmax(0, 1fr) auto; }
+.st-frame .dk-e .k { display: none; }
+
+/* phone — the drawers stack; the docket is the pane beneath; tallies two-up; entries lose the kind column */
+@container page (max-width: 480px) {
+  .so-in { padding: 16px 14px 28px; }
+  .so-chrome { padding: 0 14px; } .so-chrome .search { display: none; }
+  .so-grid { grid-template-columns: 1fr; gap: 14px; }
+  .so-head { flex-direction: column; align-items: flex-start; }
+  .so-figs { text-align: left; }
+  .dk-pane { padding: 14px 14px 16px; }
+  .dk-tallies { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dk-e { grid-template-columns: 64px minmax(0, 1fr) auto; gap: 4px 10px; }
+  .dk-e .k { display: none; }
+  .dk-e .c { max-width: 96px; white-space: normal; }
+  .dk-e .c small { white-space: normal; }
+  /* the shadow marker's count drops under its sentence — a fourth column starves the sentence at this width */
+  .dk-e.shadow { grid-template-columns: 64px minmax(0, 1fr); }
+  .dk-e.shadow .c { grid-column: 2; max-width: none; text-align: left; }
+  .dk-h2 { font-size: 20px; }
+}
+</style>
+</head>
+<body>
+<div class="sk-wrap">
+  <div class="sk-head">
+    <h1>Sketch 117 · Direction C — The Docket</h1>
+    <p>The scorecard is <b>a day book per vendor</b>, filed in the <b>Sorting Office on /documents-reports</b>: a sixth drawer, <i>Vendors</i>, and a reading pane that lists every scored event the house's registers hold for one vendor in the window — a delivery landed, a line short at the door, an invoice line above the agreed price, a reply that came 5 h 12 after ours, a credit memo that settled a claim — newest first, each entry carrying the fact it contributes. The five tallies at the top are <b>sums of the entries drawn beneath them</b>, and a tally is also a filter: press it and the entries that remain are its rows. No figure exists on this page that is not also visible as the entries that produced it. The conversation list itself stays on /communications (ADR 0149, row 25); a reply here is a scored fact with a link to its thread, never the thread.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">1 · Desktop, 1200 · Harbor &amp; Vine, Brooklyn (USD) <small>/documents-reports with the Vendors drawer open on Skurnik — the docket is the reading pane</small></div>
+  <div class="mudavym sk-frame" data-ground="charcoal">
+  <div class="so-page">
+    <div class="so-chrome"><span class="mark"></span><span class="rule"></span><span class="page">Documents &amp; Reports</span><span class="search">Search the house… <span class="kbd">⌘K</span></span><span class="house">Harbor &amp; Vine</span><span class="bell"></span></div>
+    <div class="so-in">
+      <div class="so-head">
+        <div><div class="so-wordmark">Muda<b>vym</b></div><h1 class="so-h1">Documents &amp; Reports</h1></div>
+        <div class="so-figs"><div><span class="so-lbl">Needs a human</span><span class="so-count seal">7</span></div></div>
+      </div>
+
+      <div class="so-grid">
+        <div class="so-col">
+          <section class="so-drawer signal" aria-label="Waiting on you">
+            <span class="so-lbl">Drawer · Waiting on you</span>
+            <div class="row"><span class="so-count">7</span><span class="sub">oldest debt first</span></div>
+            <ul class="lines">
+              <li><span class="t">INV-9040 · Skurnik · needs review</span><span class="age">2 d</span></li>
+              <li><span class="t">Draft reply to Winebow · awaiting approval</span><span class="age">1 d</span></li>
+              <li><span class="t">PO-2291 · 3 cases counted, not by bottle</span><span class="age">1 d</span></li>
+            </ul>
+            <span class="go" style="display:block; margin-top:8px">All 7 ›</span>
+          </section>
+
+          <section class="so-drawer" aria-label="Vendors" style="border-color: var(--ink-3)">
+            <span class="so-lbl">Drawer · Vendors</span>
+            <div class="row"><span class="so-count">6</span><span class="sub">4 have enough deliveries to score this window · the score needs 5</span></div>
+            <span class="what">one docket per vendor — every entry a fact from the orders, receiving, invoice-match, mail and credits registers</span>
+            <ul class="vd-list">
+              <li><span><span class="ty">Produce</span><span class="nm">Greenmarket Provisions</span></span><span class="fc">31 of 34 on time</span><span class="en">16 verdict lines · 2 claims credited · 61 entries</span></li>
+              <li data-open="true"><span><span class="ty">Wine &amp; spirits</span><span class="nm">Skurnik Wines &amp; Spirits</span></span><span class="fc">12 of 14 on time</span><span class="en">3 verdict lines · 1 claim promised, 39 d · 30 entries</span></li>
+              <li><span><span class="ty">Wine &amp; spirits</span><span class="nm">Empire Merchants</span></span><span class="fc">11 of 11 on time</span><span class="en">replies not collected · 9 lines above agreed · 22 entries</span></li>
+              <li><span><span class="ty">Wine importer</span><span class="nm">Winebow</span></span><span class="fc">4 of 6 on time</span><span class="en">1 claim requested, 6 d · 15 entries</span></li>
+              <li><span><span class="ty">Wine &amp; spirits</span><span class="nm">Southern Glazer's</span></span><span class="fc"><i>2 deliveries — too few</i></span><span class="en">the entries are here; the tallies wait for 5 · 9 entries</span></li>
+              <li><span><span class="ty">Ice &amp; dry goods</span><span class="nm">Brooklyn Ice &amp; Provisions</span></span><span class="fc"><i>no entries in 365 d</i></span><span class="en">in the book, no order, no paper, no thread</span></li>
+            </ul>
+          </section>
+
+          <section class="so-drawer" aria-label="House reports"><span class="so-lbl">House reports</span><div class="row"><span class="so-count">12</span><span class="sub">3 this week</span></div><span class="what">weekly, monthly, on request</span></section>
+          <section class="so-drawer" aria-label="Vendor paper"><span class="so-lbl">Vendor paper</span><div class="row"><span class="so-count">≥100</span><span class="sub">4 need review, all paper</span></div><span class="what">invoices · slips · credit memos</span><span class="go">Open in Receipts</span></section>
+          <section class="so-drawer" aria-label="Conversations"><span class="so-lbl">Conversations</span><div class="row"><span class="so-count">41</span><span class="sub">1 draft waiting</span></div><span class="what">vendor threads, classified — the list lives on /communications</span><span class="go">Open in Communications</span></section>
+          <section class="so-drawer" aria-label="System log"><span class="so-lbl">System log</span><div class="row"><span class="so-count">≥100</span><span class="sub">windowed</span></div><span class="go">Open the timeline</span></section>
+        </div>
+
+        <!-- the reading pane: Skurnik's docket -->
+        <article class="dk-pane" aria-label="Skurnik Wines & Spirits — docket">
+          <div class="dk-top">
+            <div><span class="dk-eyebrow">Vendor docket · wine &amp; spirits</span><h2 class="dk-h2">Skurnik Wines &amp; Spirits</h2></div>
+            <div class="dk-win"><span>Window</span><span class="dk-chip">30 d</span><span class="dk-chip" data-on="true">90 d</span><span class="dk-chip">365 d</span><span>19 Jun – 17 Sep · prior 21 Mar – 18 Jun</span></div>
+          </div>
+          <p class="dk-standing"><b>30 entries from 5 registers.</b> Each tally below is the sum of the entries under it — press one and the entries that remain are its rows. Nothing is weighted, nothing is summed into a grade, and a register that did not answer is a band in the list, not a thinner list. <span class="src">orders · receiving · invoice match · procurement_conversations · procurement_credits · read 09:41</span></p>
+
+          <div class="dk-tallies">
+            <button class="dk-tally"><span class="k">On time</span><span class="f">12<small>of 14</small></span><span class="p">prior <b>9 of 13</b></span><span class="n">15 entries ›</span></button>
+            <button class="dk-tally"><span class="k">Lines as ordered</span><span class="f">209<small>of 212</small></span><span class="p">prior <b>171 of 174</b></span><span class="n">3 verdicts ›</span></button>
+            <button class="dk-tally"><span class="k">Price as agreed</span><span class="f">183<small>of 187</small></span><span class="p">prior <b>158 of 160</b></span><span class="n">4 lines ›</span></button>
+            <button class="dk-tally"><span class="k">Reply time</span><span class="f">5 h 40<small>med · 9</small></span><span class="p">prior <b>7 h 10 · 7</b></span><span class="n">9 replies + 2 open ›</span></button>
+            <button class="dk-tally"><span class="k">Credits</span><span class="f">$286.00<small>of $412.50</small></span><span class="p">1 promised · <b>39 d</b></span><span class="n">3 claims ›</span></button>
+          </div>
+          <p class="dk-sum"><b>Tone is not a tally.</b> A model's reading of 9 replies (1 read as terse) is a note on the reply entries, unlabelled by anyone, and in no figure here. <b>The prior window</b> is the 90 days before this one, its entries folded at the foot of the list; a window under 5 deliveries prints its count and no comparison.</p>
+
+          <div class="dk-kinds"><span>Show</span><span class="dk-chip" data-on="true">All 30</span><span class="dk-chip">Deliveries 15</span><span class="dk-chip">Receiving 3</span><span class="dk-chip">Invoice lines 4</span><span class="dk-chip">Replies 11</span><span class="dk-chip">Credits 3</span><span class="dk-chip">Shadow 1</span></div>
+
+          <ul class="dk-list">
+            <li class="dk-e"><span class="d"><b>16 Sep</b>10:42</span><span class="k">Delivery</span><span class="s"><a href="#">PO-2291</a> landed. Expected 16 Sep, the vendor's stated date on the order. <span class="q">Door count 16 of 16 lines as ordered.</span></span><span class="c">on time<small>lines 16 of 16</small></span></li>
+            <li class="dk-e"><span class="d"><b>15 Sep</b>16:02</span><span class="k">Mail</span><span class="s">We wrote: <i>"C-88 — any word on the credit for INV-55120 line 7?"</i> <span class="q">No reply yet, 2 days.</span> <a href="#">thread ›</a></span><span class="c nc">open · not counted, not forgotten</span></li>
+            <li class="dk-e"><span class="d"><b>15 Sep</b>11:30</span><span class="k">Invoice</span><span class="s"><a href="#">INV-9040</a> · 14 lines with an agreed price, <b>1 above it</b>: line 3, Ch. Musar 2017, $30.80 against $30.20 agreed. <span class="q">13 at the agreed price. Verified by Deniz A.</span></span><span class="c">13 of 14<small>+2.0% on 1 line</small></span></li>
+            <li class="dk-e"><span class="d"><b>15 Sep</b>09:10</span><span class="k">Delivery</span><span class="s"><a href="#">PO-2284</a> landed. Expected 12 Sep. <span class="q">Door count 14 of 14 lines as ordered. Agreed 11:02 (both sides recorded), verified 11:30.</span></span><span class="c no">+3 d late<small>lines 14 of 14</small></span></li>
+            <li class="dk-e"><span class="d"><b>14 Sep</b>09:15</span><span class="k">Mail</span><span class="s">Marco replied to our message of 13 Sep 16:02 — <i>"PO-2284 is on the Monday truck, apologies."</i> <a href="#">thread ›</a> <span class="q">Read by the model as apologetic · not scored.</span></span><span class="c">17 h 13<small>same thread</small></span></li>
+            <li class="dk-e"><span class="d"><b>12 Sep</b>14:20</span><span class="k">Mail</span><span class="s">Marco replied to our order confirmation request of 12 Sep 10:15. <a href="#">thread ›</a></span><span class="c">4 h 05<small>same thread</small></span></li>
+            <li class="dk-e"><span class="d"><b>9 Sep</b>11:05</span><span class="k">Delivery</span><span class="s"><a href="#">PO-2277</a> landed. Expected 9 Sep. <span class="q">Door count 15 of 15.</span></span><span class="c">on time<small>lines 15 of 15</small></span></li>
+            <li class="dk-e"><span class="d"><b>5 Sep</b>08:55</span><span class="k">Delivery</span><span class="s"><a href="#">PO-2270</a> landed. Expected 5 Sep. <span class="q">Door count 12 of 12.</span></span><span class="c">on time<small>lines 12 of 12</small></span></li>
+            <li class="dk-e shadow"><span class="d"><b>4 Sep</b>07:00</span><span class="k">Shadow</span><span class="s"><i>Would have alerted here:</i> reply time doubled — 5 h 40 this window against 2 h 50 in the 30 days before. <span class="q">Nothing was sent.</span> Labelled <b style="color:var(--ink-1)">Not worth it</b> — Deniz A., 6 Sep: <i>"August, the rep was on leave."</i></span><span class="c">1 of 1 labelled here · 3 of 11 across the house</span></li>
+            <li class="dk-e"><span class="d"><b>2 Sep</b>12:20</span><span class="k">Delivery</span><span class="s"><a href="#">PO-2263</a> landed. Expected 2 Sep. <span class="q">Door count 18 of 18.</span></span><span class="c">on time<small>lines 18 of 18</small></span></li>
+            <li class="dk-e"><span class="d"><b>27 Aug</b>13:00</span><span class="k">Invoice</span><span class="s"><a href="#">INV-9002</a> · 16 lines with an agreed price, <b>2 above it</b>: lines 2 and 5, +2.3% and +2.1%. <span class="q">14 at it. 3 lines had no agreed price and are not compared.</span></span><span class="c">14 of 16<small>2 above agreed</small></span></li>
+            <li class="dk-e"><span class="d"><b>27 Aug</b>10:15</span><span class="k">Delivery</span><span class="s"><a href="#">PO-2251</a> landed. Expected 26 Aug. <span class="q">Door count 16 of 16.</span></span><span class="c no">+1 d late<small>lines 16 of 16</small></span></li>
+            <li class="dk-e"><span class="d"><b>26 Aug</b></span><span class="k">Credit</span><span class="s"><a href="#">C-81</a> credited by memo <a href="#">CM-311</a>: <b>$103.50 allowed of $118.00 asked</b> — the difference is on this row, not hidden in the total. <span class="q">Opened 27 Jul for PO-2207 line 9, 1 broken.</span></span><span class="c">$103.50<small>of $118.00 asked · 30 d to settle</small></span></li>
+            <li class="dk-e"><span class="d"><b>19 Aug</b></span><span class="k">Credit</span><span class="s"><a href="#">C-77</a> credited by memo <a href="#">CM-302</a>: $182.50 allowed of $182.50 asked. <span class="q">Opened 3 Jul for PO-2190 line 4, 2 short.</span></span><span class="c">$182.50<small>of $182.50 asked · 47 d to settle</small></span></li>
+            <li class="dk-e"><span class="d"><b>12 Aug</b>15:40</span><span class="k">Credit</span><span class="s"><a href="#">C-88</a> <b>promised</b> by mail — <i>"we'll credit it on the next order"</i> — for INV-55120 line 7, $112.00 above agreed. <span class="q">Promised is not recovered. Still open, 39 days since it was opened; chased from /receipts.</span></span><span class="c nc">promised · $0.00 recovered</span></li>
+            <li class="dk-e"><span class="d"><b>9 Aug</b>11:00</span><span class="k">Invoice</span><span class="s"><a href="#">INV-55120</a> · 15 lines with an agreed price, <b>1 above it</b>: line 7, +2.1%, $112.00 on the line. <span class="q">14 at it. Claim C-88 opened the same day.</span></span><span class="c">14 of 15<small>1 above agreed</small></span></li>
+            <li class="dk-e"><span class="d"><b>25 Jul</b>10:30</span><span class="k">Receiving</span><span class="s"><a href="#">PO-2207</a> line 9, Domaine Tempier Bandol: <b>1 bottle broken, refused at the door</b>. Verdict recorded by Sam O. with a photograph. <span class="q">Claim C-81 opened 27 Jul.</span></span><span class="c no">1 line refused<small>of 14 on this delivery</small></span></li>
+            <li class="dk-e"><span class="d"><b>3 Jul</b>11:10</span><span class="k">Receiving</span><span class="s"><a href="#">PO-2190</a> line 4, Vietti Barbera: <b>counted 10 against 12 billed — 2 short</b>. Proposal SHORT_SHIP accepted by the vendor 4 Jul; claim C-77 opened. <span class="q">The delivery itself landed on time.</span></span><span class="c no">1 line short<small>of 12 on this delivery</small></span></li>
+            <li class="dk-e struck"><span class="d"><b>24 Jun</b>10:20</span><span class="k">Delivery</span><span class="s"><a href="#">PO-2183</a> landed. <b>No expected date on the order</b> — listed, not counted: it cannot be late against nothing. <span class="q">Door count 9 of 9.</span></span><span class="c nc">not counted<small>lines 9 of 9</small></span></li>
+            <a class="dk-fold" href="#">Show the 12 earlier entries in this window — 7 deliveries, 5 replies ›</a>
+            <li class="dk-rule">Window opens · 19 Jun · every tally above is the sum of the 30 entries in it</li>
+          </ul>
+          <details class="dk-prior">
+            <summary>Prior window · 21 Mar – 18 Jun · 27 entries</summary>
+            <p><b>9 of 13</b> on time (1 with no expected date) · <b>171 of 174</b> lines as ordered · <b>158 of 160</b> at the agreed price · reply <b>7 h 10</b> median of 7 · <b>no claims</b>. The prior window is compared as a window, never as its oldest entry against the newest: the comparison on each tally is these sums against those. <a href="#" style="color:var(--seal)">Open the prior window's entries ›</a></p>
+          </details>
+        </article>
+      </div>
+    </div>
+  </div>
+  </div>
+  <p class="sk-cap">Left: the Sorting Office's drawers, with <i>Vendors</i> added under <i>Waiting on you</i> — one line per vendor, and the line is the docket's first tally. Right: the docket. A late delivery is an entry with <i>+3 d late</i> on it; the "12 of 14" above is counted from entries the reader can see or fold open.</p>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">2 · Overlays, drawn open <small>sheet from a delivery entry (one object) · popover on the shadow marker (a choice) · popover on the credits tally (the rule)</small></div>
+  <div class="sk-row">
+    <div class="mudavym sk-frame" data-ground="charcoal" style="width:440px; flex:none;">
+      <div class="so-page">
+        <aside class="ov-sheet standalone">
+          <div class="ov-spine"><b>Skurnik</b><span>›</span><span>Docket</span><span>›</span><span>PO-2284</span></div>
+          <div class="ov-hd"><div><div class="eyebrow">Delivery · ordered</div><div class="title">PO-2284 · landed 15 Sep 09:10</div></div><span class="esc">Esc</span></div>
+          <div class="ov-body">
+            <div class="sp-row"><span class="k">Expected</span><span class="v">12 Sep <span class="q">· the vendor's stated date on the order (<code style="font-family:var(--mono); font-size:10.5px">expected_delivery_date</code>)</span></span></div>
+            <div class="sp-row"><span class="k">Landed</span><span class="v">15 Sep 09:10 <span class="q">· 3 days after the expected date — the on-time rule is landed by 23:59 on that date</span></span></div>
+            <div class="sp-row"><span class="k">Door count</span><span class="v">14 of 14 lines as ordered <span class="q">· counted by Sam O., <a href="#">receiving advice ›</a></span></span></div>
+            <div class="sp-row"><span class="k">Invoice</span><span class="v"><a href="#">INV-9040</a> · 14 lines with an agreed price, 1 above it <span class="q">· line 3, +2.0% — <a href="#">open the canonical document ›</a></span></span></div>
+            <div class="sp-row"><span class="k">Agreed</span><span class="v">15 Sep 11:02 <span class="st">both_sides_recorded</span> <span class="q">· the difference on line 3 was answered by accept-as-billed, reason "price rise announced 1 Sep, not yet on the order"</span></span></div>
+            <div class="sp-row"><span class="k">Verified</span><span class="v">15 Sep 11:30 · Deniz A.</span></div>
+            <div class="sp-row" style="border-bottom:0"><span class="k">Clocks</span><span class="v">Payment · 30 d from delivery, wholesaler-initiated EFT · due 15 Oct <span class="q">· correction window: none for this jurisdiction and class (stated, not unknown)</span></span></div>
+            <div class="sp-contrib">
+              <h4>What this delivery contributes</h4>
+              <div><span>On time</span><b>0 of 1</b></div>
+              <div><span>Lines as ordered</span><b>14 of 14</b></div>
+              <div><span>Price as agreed</span><b>13 of 14</b></div>
+              <div><span>Reply time</span><i>not this entry — replies are their own entries</i></div>
+              <div><span>Credits</span><i>no claim on this delivery</i></div>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:12px"><span class="dk-btn">Open the order</span><span class="dk-btn">Open in Receipts</span></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div class="mudavym sk-frame" data-ground="charcoal" style="width:400px; flex:none; padding:22px 30px 26px; box-sizing:border-box; background:var(--paper-0);">
+      <div class="dk-e shadow" style="margin:0; display:block; padding:9px 10px"><span class="k">Shadow · 4 Sep</span><span class="s" style="display:block; margin-top:4px"><i>Would have alerted here:</i> reply time doubled — 5 h 40 against 2 h 50 in the 30 before.</span></div>
+      <div class="ov-pop" style="margin-top:8px">
+        <h4>Was this worth an alert?</h4>
+        <p>Your answer is a <b>labelled record with your name on it</b>. It changes no tally and sends nothing; the shadow run counts labels toward the day an alert may ship.</p>
+        <p><b>The rule that fired:</b> median reply time in the 30 days to 4 Sep more than double the median of the 30 before, with at least 5 replies in each. <span class="src">6 replies · 5 h 40 / 2 h 50</span></p>
+        <p>Already labelled <b>Not worth it</b> by Deniz A. on 6 Sep. A second label is appended, never a replacement.</p>
+        <div class="act"><span class="dk-btn">Worth an alert</span><span class="dk-btn" data-on="true">Not worth it</span><span class="dk-btn">Unsure</span></div>
+        <p style="margin:8px 0 0"><span class="src">Recorded as Deniz A. · 17 Sep 09:44 · Esc leaves it as it was</span></p>
+      </div>
+    </div>
+
+    <div class="mudavym sk-frame" data-ground="charcoal" style="width:400px; flex:none; padding:22px 30px 26px; box-sizing:border-box; background:var(--paper-0);">
+      <button class="dk-tally" data-on="true" style="width:220px"><span class="k">Credits</span><span class="f">$286.00<small>of $412.50</small></span><span class="p">1 promised · <b>39 d</b></span></button>
+      <div class="ov-pop" style="margin-top:8px">
+        <h4>How Credits is counted</h4>
+        <p><b>Numerator:</b> the amount the vendor <b>allowed</b> on claims settled by a credit memo — never the amount we asked. <b>Denominator:</b> the amount asked on every claim opened in the window. A claim the rep <b>promised</b> is in the denominator and not the numerator; <i>promised is not recovered</i>, and the entry ages it in days.</p>
+        <p>A window with no claims prints <b>$0.00 of $0.00 · no claims</b>, which is not a clean record and is not a bad one.</p>
+        <span class="src">credit-ledger.ts · state credited requires credited_amount + credit_document_id</span>
+        <div class="act"><span class="dk-btn primary">Show the 3 claims</span><span class="dk-btn">Close</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="sk-cap">The sheet is the delivery's own spine (ADR 0103: expected, landed, door count, invoice, agreed, verified, clocks) with a footer that says exactly what the entry contributes to each tally. The two popovers are a choice and a rule; neither dims the page.</p>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">3 · Meyhane Kalamış, Kadıköy (TRY, tr-TR) <small>Kavaklıdere's docket — the e-İrsaliye response window, a vendor also reached by phone, money in ₺</small></div>
+  <div class="mudavym sk-frame" data-ground="charcoal" style="max-width:760px;">
+  <div class="so-page">
+    <div class="so-in" style="padding:16px 16px 20px">
+      <article class="dk-pane" aria-label="Kavaklıdere Dağıtım — docket">
+        <div class="dk-top">
+          <div><span class="dk-eyebrow">Vendor docket · şarap dağıtım</span><h2 class="dk-h2">Kavaklıdere Dağıtım</h2></div>
+          <div class="dk-win"><span>Window</span><span class="dk-chip">30 d</span><span class="dk-chip" data-on="true">90 d</span><span class="dk-chip">365 d</span><span>19.06 – 17.09 · prior 21.03 – 18.06</span></div>
+        </div>
+        <p class="dk-standing"><b>24 entries from 5 registers.</b> Bills in TRY, stated by the house. Two e-İrsaliye response windows closed by silence are entries of their own — recorded as what the law deems, never as this house agreeing (ADR 0103 D3). <span class="src">siparişler · teslim alma · fatura eşleme · posta · alacaklar · 09:41</span></p>
+        <div class="dk-tallies">
+          <button class="dk-tally"><span class="k">On time</span><span class="f">7<small>of 9</small></span><span class="p">prior <b>8 of 9</b></span><span class="n">9 entries ›</span></button>
+          <button class="dk-tally"><span class="k">Lines as ordered</span><span class="f">94<small>of 96</small></span><span class="p">prior <b>88 of 88</b></span><span class="n">1 verdict ›</span></button>
+          <button class="dk-tally"><span class="k">Price as agreed</span><span class="f">91<small>of 96</small></span><span class="p">prior <b>86 of 88</b></span><span class="n">5 lines ›</span></button>
+          <button class="dk-tally"><span class="k">Reply time</span><span class="f">22 sa<small>med · 6</small></span><span class="p">prior <b>4 replies</b> — no comparison</span><span class="n">6 replies ›</span></button>
+          <button class="dk-tally"><span class="k">Credits</span><span class="f">₺1.200,00<small>of ₺3.840,00</small></span><span class="p">1 promised · <b>27 g</b></span><span class="n">2 claims ›</span></button>
+        </div>
+        <p class="dk-sum"><b>Phone calls are not on the record</b> and are not counted: the reply tally counts mail in the same thread and says so. The prior window's 4 replies are under the minimum, so that tally prints its count and no comparison — the minimum is per measure, not per vendor.</p>
+        <div class="dk-kinds"><span>Show</span><span class="dk-chip" data-on="true">All 24</span><span class="dk-chip">Deliveries 9</span><span class="dk-chip">Receiving 1</span><span class="dk-chip">Invoice lines 5</span><span class="dk-chip">Replies 6</span><span class="dk-chip">Credits 2</span><span class="dk-chip">Clocks 2</span></div>
+        <ul class="dk-list">
+          <li class="dk-e"><span class="d"><b>15.09</b>11:20</span><span class="k">Delivery</span><span class="s"><a href="#">SİP-418</a> landed. Expected 15.09. <span class="q">Door count 12 of 12. e-İrsaliye <a href="#">İRS-2026-0915</a> attached.</span></span><span class="c">on time<small>lines 12 of 12</small></span></li>
+          <li class="dk-e"><span class="d"><b>12.09</b>23:59</span><span class="k">Clock</span><span class="s">e-İrsaliye response window on <a href="#">İRS-2026-0905</a> <b>closed by silence</b> — 7 days, no answer from us. <span class="q">Recorded as what the law deems (lapse). The delivery stays counted as it landed: 05.09, on time. This house did not agree; the record says so.</span></span><span class="c nc">lapsed · not agreement</span></li>
+          <li class="dk-e"><span class="d"><b>11.09</b>16:40</span><span class="k">Invoice</span><span class="s"><a href="#">FTR-2026-1187</a> · 24 lines with an agreed price, <b>3 above it</b>: +%6,2 · +%6,2 · +%6,1, in TRY. <span class="q">21 at it. The order's prices were confirmed 02.09; the rise was not announced.</span></span><span class="c">21 of 24<small>3 above agreed</small></span></li>
+          <li class="dk-e"><span class="d"><b>10.09</b>09:05</span><span class="k">Mail</span><span class="s">Selin replied to our message of 08.09 14:30 — <i>"Fiyat listesi güncellendi, ekte."</i> <a href="#">thread ›</a> <span class="q">Read by the model as neutral · not scored.</span></span><span class="c">1 g 18 sa<small>same thread</small></span></li>
+          <li class="dk-e"><span class="d"><b>08.09</b>10:10</span><span class="k">Delivery</span><span class="s"><a href="#">SİP-411</a> landed. Expected 06.09. <span class="q">Confirmed by phone on 05.09 — the call is not on the record; the mail that followed is.</span></span><span class="c no">+2 g late<small>lines 10 of 10</small></span></li>
+          <li class="dk-e"><span class="d"><b>04.09</b>11:45</span><span class="k">Receiving</span><span class="s"><a href="#">SİP-405</a> line 6, Öküzgözü 2021: <b>counted 10 against 12 billed — 2 short</b>. Proposal SHORT_SHIP countered at ₺142,00 credit, accepted 05.09. <span class="q">Claim T-19 opened.</span></span><span class="c no">1 line short<small>of 14 on this delivery</small></span></li>
+          <li class="dk-e"><span class="d"><b>21.08</b>15:00</span><span class="k">Credit</span><span class="s"><a href="#">T-17</a> <b>promised</b> by mail for FTR-2026-1102, ₺2.640,00 above agreed across 4 lines. <span class="q">Promised is not recovered. 27 days open.</span></span><span class="c nc">promised · ₺0,00 recovered</span></li>
+          <li class="dk-e"><span class="d"><b>14.08</b></span><span class="k">Credit</span><span class="s"><a href="#">T-15</a> credited by memo <a href="#">İADE-0814</a>: ₺1.200,00 allowed of ₺1.200,00 asked. <span class="q">Opened 02.08.</span></span><span class="c">₺1.200,00<small>of ₺1.200,00 asked · 12 g to settle</small></span></li>
+          <a class="dk-fold" href="#">Show the 16 earlier entries in this window — 6 deliveries, 1 clock, 2 invoices, 5 replies, 2 receiving ›</a>
+          <li class="dk-rule">Window opens · 19.06 · every tally above is the sum of the 24 entries in it</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+  </div>
+  <p class="sk-cap">What changes for a Turkish house: ₺ with tr-TR separators, dd.mm dates, <i>g</i> and <i>sa</i> for days and hours, and a kind of entry the US house never has — a <b>clock</b>, the e-İrsaliye response window, printed as an entry that contributes to no tally and says why. The chrome stays in the product's language; whether the product translates its UI is a separate question this sketch does not take.</p>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">4 · States <small>too few · nothing to score · loading by register · read failed and not collected (partial) · refused by role</small></div>
+  <div class="sk-row">
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal">
+      <article class="dk-pane">
+        <span class="dk-eyebrow">Vendor docket · wine &amp; spirits</span><h2 class="dk-h2">Southern Glazer's</h2>
+        <p class="dk-standing"><b>9 entries from 3 registers.</b> 2 deliveries in the window — <b>the tallies need 5</b>; the entries are still here, and the 365-day window would score (7 of 8).</p>
+        <div class="dk-tallies">
+          <button class="dk-tally"><span class="k">On time</span><span class="f refuse">2 deliveries — needs 5</span><span class="n">2 entries ›</span></button>
+          <button class="dk-tally"><span class="k">Lines as ordered</span><span class="f refuse">29 lines on 2 — needs 5</span></button>
+          <button class="dk-tally"><span class="k">Price as agreed</span><span class="f refuse">not scored</span></button>
+          <button class="dk-tally"><span class="k">Reply time</span><span class="f">14 h 05<small>med · 5</small></span><span class="p">replies are their own count</span><span class="n">5 replies ›</span></button>
+        </div>
+        <ul class="dk-list" style="margin-top:10px">
+          <li class="dk-e"><span class="d"><b>11 Sep</b>10:20</span><span class="s"><a href="#">PO-2280</a> landed. Expected 11 Sep. <span class="q">Door count 15 of 15.</span></span><span class="c">on time<small>listed, not scored</small></span></li>
+          <li class="dk-e"><span class="d"><b>28 Aug</b>09:50</span><span class="s"><a href="#">PO-2255</a> landed. Expected 28 Aug. <span class="q">Door count 14 of 14.</span></span><span class="c">on time<small>listed, not scored</small></span></li>
+          <li class="dk-e"><span class="d"><b>27 Aug</b>16:10</span><span class="s">Reply to our message of 27 Aug 09:00. <a href="#">thread ›</a></span><span class="c">7 h 10</span></li>
+          <a class="dk-fold" href="#">4 more replies ›</a>
+        </ul>
+      </article>
+      <p class="sk-cap" style="color:var(--ink-3); margin-top:10px"><b style="color:var(--ink-2)">Too few.</b> Two on-time deliveries are two facts, not a record; the tally refuses, the entries stay.</p>
+    </div>
+
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal">
+      <article class="dk-pane">
+        <span class="dk-eyebrow">Vendor docket · ice &amp; dry goods</span><h2 class="dk-h2">Brooklyn Ice &amp; Provisions</h2>
+        <div class="dk-note" style="margin-top:10px"><b>No entries in 365 days.</b> This vendor is in the book with no order, no receiving record, no invoice, no claim and no mail thread. An empty docket is not a clean one; no tally is drawn, because a tally of nothing would read as a perfect vendor. <span class="src">GET /providers/:id/orders → 0 · credits?providerId → 0 · threads → 0</span>
+          <div class="act"><span class="dk-btn">Place an order ›</span><span class="dk-btn">Retire from the book</span></div></div>
+      </article>
+      <p class="sk-cap" style="color:var(--ink-3); margin-top:10px"><b style="color:var(--ink-2)">Nothing to score.</b></p>
+      <article class="dk-pane" style="margin-top:14px">
+        <span class="dk-eyebrow">Vendor docket · wine &amp; spirits</span><h2 class="dk-h2">Winebow</h2>
+        <p class="dk-standing">Reading the registers — an entry is drawn the moment its register answers; a tally waits for every register it sums.</p>
+        <div class="dk-reg"><span><b>orders</b> · 6 entries</span><span><b>receiving</b> · 3 entries</span><span>invoice match · reading…</span><span>mail · reading…</span><span><b>credits</b> · 1 entry</span></div>
+        <div class="dk-tallies" style="margin-top:10px">
+          <button class="dk-tally"><span class="k">On time</span><span class="f">4<small>of 6</small></span></button>
+          <button class="dk-tally"><span class="k">Price as agreed</span><span class="dk-skel" style="width:56px; height:16px; margin-top:3px"></span></button>
+        </div>
+        <ul class="dk-list" style="margin-top:10px">
+          <li class="dk-e"><span class="d"><b>14 Sep</b>09:30</span><span class="s"><a href="#">PO-2288</a> landed. Expected 12 Sep.</span><span class="c no">+2 d late</span></li>
+          <li class="dk-e"><span class="d"><span class="dk-skel" style="width:48px"></span></span><span class="s"><span class="dk-skel" style="width:80%"></span></span><span class="c"><span class="dk-skel" style="width:40px"></span></span></li>
+        </ul>
+      </article>
+      <p class="sk-cap" style="color:var(--ink-3); margin-top:10px"><b style="color:var(--ink-2)">Loading, by register.</b> Three answered and are drawn; two are shapes. No figure counts up from zero.</p>
+    </div>
+
+    <div class="mudavym sk-frame st-frame" data-ground="charcoal">
+      <article class="dk-pane">
+        <span class="dk-eyebrow">Vendor docket · wine &amp; spirits</span><h2 class="dk-h2">Empire Merchants</h2>
+        <p class="dk-standing"><b>22 entries from 3 registers; 2 registers are missing from this docket.</b></p>
+        <div class="dk-band"><b>Credits did not answer.</b> GET /procurement/credits?providerId= returned 502 at 09:41 — credit entries are <b>missing from this list</b>, not absent from the record. Unknown, not zero. <span class="act"><span class="dk-btn">Try again</span></span></div>
+        <div class="dk-band"><b>Replies are not collected</b> for this vendor: no mailbox is linked, their mail lands in a shared inbox the house has not connected. Not slow — unknown. <span class="act"><span class="dk-btn">Connect the inbox ›</span></span></div>
+        <div class="dk-tallies">
+          <button class="dk-tally"><span class="k">On time</span><span class="f">11<small>of 11</small></span><span class="p">prior <b>10 of 10</b></span></button>
+          <button class="dk-tally"><span class="k">Price as agreed</span><span class="f">112<small>of 121</small></span><span class="p">9 above · mean +4.8%</span></button>
+          <button class="dk-tally"><span class="k">Reply time</span><span class="f refuse">not collected</span></button>
+          <button class="dk-tally"><span class="k">Credits</span><span class="f refuse">did not answer</span><span class="p">502 · 09:41</span></button>
+        </div>
+      </article>
+      <p class="sk-cap" style="color:var(--ink-3); margin-top:10px"><b style="color:var(--ink-2)">Partial.</b> A missing register is a band at the top of the list and a sentence in its tally — never a list that is merely shorter.</p>
+      <article class="dk-pane" style="margin-top:14px">
+        <span class="dk-eyebrow">Vendor docket · wine &amp; spirits</span><h2 class="dk-h2">Skurnik Wines &amp; Spirits</h2>
+        <div class="dk-band" style="margin-top:10px"><b>Withheld for your role.</b> Invoice-line and credit entries read the money registers, which this house keeps to owners and managers; they are not in this list and their tallies are em dashes. The door is yours: deliveries, receiving verdicts and replies are drawn in full. <span class="src">403 · money entries · role: staff</span></div>
+        <div class="dk-tallies">
+          <button class="dk-tally"><span class="k">On time</span><span class="f">12<small>of 14</small></span></button>
+          <button class="dk-tally"><span class="k">Lines as ordered</span><span class="f">209<small>of 212</small></span></button>
+          <button class="dk-tally" style="opacity:.6"><span class="k">Price as agreed</span><span class="f">—</span></button>
+          <button class="dk-tally" style="opacity:.6"><span class="k">Credits</span><span class="f">—</span></button>
+        </div>
+      </article>
+      <p class="sk-cap" style="color:var(--ink-3); margin-top:10px"><b style="color:var(--ink-2)">Refused, by kind.</b> Staff see the entries that are theirs and a sentence for the ones that are not — a different answer from A and B, which withhold the whole card.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <div class="sk-label">5 · Phone, 390 <small>the Sorting Office stacks; the Vendors drawer is open; the docket is the pane beneath it, tallies two-up, entries without the kind column</small></div>
+  <div class="sk-row">
+    <div class="sk-phone">
+      <div class="mudavym" data-ground="charcoal">
+      <div class="so-page" style="min-height: 1180px;">
+        <div class="so-chrome"><span class="mark"></span><span class="rule"></span><span class="page">Documents &amp; Reports</span><span class="house" style="margin-left:auto">Harbor &amp; Vine</span><span class="bell"></span></div>
+        <div class="so-in">
+          <div class="so-head"><div><div class="so-wordmark">Muda<b>vym</b></div><h1 class="so-h1">Documents &amp; Reports</h1></div><div class="so-figs"><div><span class="so-lbl">Needs a human</span><span class="so-count seal">7</span></div></div></div>
+          <div class="so-grid">
+            <div class="so-col">
+              <section class="so-drawer" aria-label="Vendors" style="border-color: var(--ink-3)">
+                <span class="so-lbl">Drawer · Vendors</span>
+                <div class="row"><span class="so-count">6</span><span class="sub">4 score this window · needs 5</span></div>
+                <ul class="vd-list">
+                  <li data-open="true"><span><span class="ty">Wine &amp; spirits</span><span class="nm">Skurnik Wines &amp; Spirits</span></span><span class="fc">12 of 14 on time</span></li>
+                  <li><span><span class="ty">Wine &amp; spirits</span><span class="nm">Empire Merchants</span></span><span class="fc">11 of 11 on time</span></li>
+                  <li><span><span class="ty">Wine &amp; spirits</span><span class="nm">Southern Glazer's</span></span><span class="fc"><i>too few</i></span></li>
+                </ul>
+                <span class="go" style="display:block; margin-top:8px">All 6 ›</span>
+              </section>
+            </div>
+            <article class="dk-pane">
+              <span class="dk-eyebrow">Vendor docket · 90 d</span><h2 class="dk-h2">Skurnik Wines &amp; Spirits</h2>
+              <p class="dk-standing"><b>30 entries.</b> Each tally is the sum of the entries under it.</p>
+              <div class="dk-tallies">
+                <button class="dk-tally"><span class="k">On time</span><span class="f">12<small>of 14</small></span><span class="p">prior <b>9 of 13</b></span></button>
+                <button class="dk-tally"><span class="k">Lines as ordered</span><span class="f">209<small>of 212</small></span><span class="p">prior <b>171 of 174</b></span></button>
+                <button class="dk-tally"><span class="k">Price as agreed</span><span class="f">183<small>of 187</small></span><span class="p">prior <b>158 of 160</b></span></button>
+                <button class="dk-tally"><span class="k">Reply time</span><span class="f">5 h 40<small>· 9</small></span><span class="p">prior <b>7 h 10</b></span></button>
+                <button class="dk-tally" style="grid-column: 1 / -1"><span class="k">Credits</span><span class="f">$286.00<small>of $412.50</small></span><span class="p">1 promised · <b>39 d</b> · not recovered</span></button>
+              </div>
+              <ul class="dk-list" style="margin-top:10px">
+                <li class="dk-e"><span class="d"><b>16 Sep</b>10:42</span><span class="s"><a href="#">PO-2291</a> landed. Expected 16 Sep.</span><span class="c">on time<small>16 of 16</small></span></li>
+                <li class="dk-e"><span class="d"><b>15 Sep</b>16:02</span><span class="s">We wrote about <span style="white-space:nowrap">C-88</span>. <span class="q">No reply yet, 2 d.</span></span><span class="c nc">open · not counted</span></li>
+                <li class="dk-e"><span class="d"><b>15 Sep</b>11:30</span><span class="s"><a href="#">INV-9040</a> · 1 line above agreed, +2.0%.</span><span class="c">13 of 14</span></li>
+                <li class="dk-e"><span class="d"><b>15 Sep</b>09:10</span><span class="s"><a href="#">PO-2284</a> landed. Expected 12 Sep.</span><span class="c no">+3 d late<small>14 of 14</small></span></li>
+                <li class="dk-e"><span class="d"><b>14 Sep</b>09:15</span><span class="s">Marco replied — <i>"on the Monday truck."</i></span><span class="c">17 h 13</span></li>
+                <li class="dk-e shadow"><span class="d"><b>4 Sep</b></span><span class="s"><i>Would have alerted:</i> reply time doubled. Labelled <b style="color:var(--ink-1)">Not worth it</b>, Deniz A.</span><span class="c">1 of 1</span></li>
+                <a class="dk-fold" href="#">24 more entries in this window ›</a>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <p class="sk-note" style="max-width:480px">On the phone the Vendors drawer opens the docket beneath it and scrolls to it (the same settle the Sorting Office uses for its reading pane); a tally press filters in place; an entry opens its record as a bottom sheet at the upper detent (sketch 103 1c). The kind column is dropped — the sentence carries the kind — and the contribution stays on the right, wrapping to two lines when it must.</p>
+  </div>
+</div>
+</body>
+</html>

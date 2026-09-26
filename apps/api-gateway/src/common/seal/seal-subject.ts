@@ -146,6 +146,7 @@ export const SEAL_SUBJECT_KINDS = [
   "text_credit_purchase",
   "commodity_exposure",
   "procurement_document",
+  "house_data_terms",
   "configuration_batch",
   "integration_grant",
   // An assistant proposal (`ai_proposed_actions`), applied from the house
@@ -205,6 +206,14 @@ export function subjectNoun(kind: SealSubjectKind): string {
       // would name the row a correction touches rather than the record somebody
       // is standing behind.
       return "document";
+    case "house_data_terms":
+      // "data terms", not "acceptance": the act being sealed is agreeing to
+      // the house's data-and-privacy terms, and "a different acceptance"
+      // would name the row rather than the thing the owner read and held for
+      // (ADR 0207 round 4). Its subject is the RESTAURANT (one house, one
+      // running acceptance state), the same shape `house_mail_export` and
+      // `text_credit_purchase` use for the same reason.
+      return "data terms";
     case "configuration_batch":
       // "batch", not "proposal" or "receipt": the act being sealed is APPLYING
       // it, and the book's own UI already calls it "this batch" throughout —

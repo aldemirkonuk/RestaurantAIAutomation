@@ -3,19 +3,24 @@ import { useMutation } from '@tanstack/react-query'
 import { ProviderKnowledgePanel } from './ProviderKnowledgePanel'
 import { ProviderPromotionsPanel } from './ProviderPromotionsPanel'
 import { ProviderConversationMemory } from './ProviderConversationMemory'
-import { ProviderSentimentChart } from './ProviderSentimentChart'
 import {
   triggerOutreach,
   triggerOnboarding,
 } from '../../services/api/provider-intelligence'
 
-type Tab = 'knowledge' | 'promotions' | 'conversations' | 'sentiment'
+// The Sentiment tab retired on 2026-09-21 (ADR 0207, round 3). The founder:
+// "sentiments are a must in our new page but not as in this design, the
+// feature must stay, the current design can go" — and then, choosing its
+// replacement, "A, Plus C's lines", on the vendor sheet only. The reading now
+// lives in `pages/providers/next/scorecard/MailTone.tsx`, for owners and
+// managers; the score-to-two-decimals, the arrow and the first-against-last
+// trend it drew are gone with it.
+type Tab = 'knowledge' | 'promotions' | 'conversations'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'knowledge', label: 'Digital Twin' },
   { key: 'promotions', label: 'Promotions' },
   { key: 'conversations', label: 'Conversations' },
-  { key: 'sentiment', label: 'Sentiment' },
 ]
 
 interface Props {
@@ -113,7 +118,6 @@ export function ProviderIntelligencePanel({ providerId, providerName }: Props) {
         {activeTab === 'knowledge' && <ProviderKnowledgePanel providerId={providerId} />}
         {activeTab === 'promotions' && <ProviderPromotionsPanel providerId={providerId} mode="provider" />}
         {activeTab === 'conversations' && <ProviderConversationMemory providerId={providerId} />}
-        {activeTab === 'sentiment' && <ProviderSentimentChart providerId={providerId} />}
       </div>
     </div>
   )

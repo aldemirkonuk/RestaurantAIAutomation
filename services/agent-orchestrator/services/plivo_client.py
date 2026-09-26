@@ -193,8 +193,11 @@ class PlivoSMSClient:
                 src=self.from_number,
                 dst=to_number,
                 text=message,
-                url="https://your-domain.com/webhooks/plivo/status",  # Delivery status callback
-                method="POST",
+                # No delivery-status callback. This line used to hand Plivo
+                # "https://your-domain.com/webhooks/plivo/status" -- a real,
+                # third-party domain -- so every live send would have had Plivo
+                # POST the message id, both numbers and the status to it
+                # (ADR 0224; scripts/check_data_terms_name_every_host.py).
             ),
         )
 

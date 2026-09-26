@@ -71,6 +71,13 @@ function controller(opts: {
       // The carrying-cost register, added 2026-09-06 (founder batch 59). Not
       // exercised here; a bare double so this file keeps owning one gate.
       {} as never,
+      // The time-zone and tone-scoring registers, added 2026-09-21 (ADR 0207).
+      // Not exercised here; bare doubles so this file keeps owning one gate.
+      {} as never,
+      {} as never,
+      // The data-terms register, added 2026-09-22 (ADR 0207 round 4). Not
+      // exercised here; a bare double so this file keeps owning one gate.
+      {} as never,
     ),
     write,
   };

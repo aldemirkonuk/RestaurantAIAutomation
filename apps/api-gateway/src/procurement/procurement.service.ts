@@ -131,6 +131,13 @@ import {
 } from "./order-transitions";
 import { toPostgrestInList } from "./order-status";
 import {
+  CANCEL_REASON_REFUSAL_WORDS,
+  CancelReasonCode,
+  verdictFor as cancelReasonVerdictFor,
+} from "./cancel-reason";
+import { deadlineOf } from "./delivery-deadline";
+import { houseFrame } from "../common/house-frame";
+import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
   DELIVERY_REFUSED_STATE_UNREADABLE,
   earlierDeliveryOf,
@@ -409,6 +416,24 @@ function embeddedProviderName(embed: unknown): string | null {
  * contact address.
  */
 export class SendRefusedBeforeSendError extends BadRequestException {}
+
+/**
+ * The result of the founder's box on a never-arrived cancel (ADR 0207 round
+ * 5, question 20): "We paid for this, we are owed {total}." `opened` is true
+ * only the FIRST time this order's claim is raised; a repeat of the box on
+ * the same order reports `alreadyOpen: true` with that SAME claim, never a
+ * second row.
+ */
+export interface NeverArrivedCreditClaimResult {
+  opened: boolean;
+  alreadyOpen: boolean;
+  claim: {
+    id: string;
+    claimedAmount: number;
+    currency: string | null;
+    state: string;
+  };
+}
 
 @Injectable()
 export class ProcurementService {
@@ -2652,7 +2677,9 @@ export class ProcurementService {
   ): Promise<{ from: ProcurementOrderStatus; row: Record<string, any> }> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("id, status, total_cost, provider_id, inventory_id, quantity")
+      .select(
+        "id, status, total_cost, provider_id, inventory_id, quantity, expected_delivery_date",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .maybeSingle();
@@ -2692,7 +2719,17 @@ export class ProcurementService {
      * caller that sets it without having checked is writing an unchecked state
      * change, and there is exactly one such caller, named here.
      */
-    opts?: { statusTransitionAlreadyChecked?: boolean },
+    opts?: {
+      statusTransitionAlreadyChecked?: boolean;
+      /**
+       * ADR 0207 round 4. Set only by `cancelOrder`, which has already run
+       * `cancel-reason.ts`'s `verdictFor` against this order's real state and
+       * deadline — never accepted from a request body.
+       */
+      cancelReasonCode?: CancelReasonCode;
+      cancelledFromStatus?: ProcurementOrderStatus;
+      cancelledAt?: string;
+    },
   ): Promise<OrderResponseDto> {
     // ADR 0125 — the state change is the one field on this DTO that is not a
     // note about the order but a claim about where the order IS. Until this,
@@ -2701,6 +2738,23 @@ export class ProcurementService {
     // from any other: a DELIVERED order back to PENDING, a COMPLETED one to
     // CANCELLED, an order to IN_TRANSIT or FAILED which nothing in this
     // codebase ever writes.
+    // ADR 0207 round 4 — a cancellation says whose failure it was, and that
+    // category is proven by `cancelOrder` (the sealed act, `DELETE
+    // orders/:id`) against the order's real state and deadline. `PATCH
+    // orders/:id` carrying `status: CANCELLED` wrote the status with no seal,
+    // no role check and no category, so a never-arrived order cancelled that
+    // way vanished from every vendor figure. It is refused here; the one
+    // caller that sets the category is `cancelOrder`. [Last call, 2026-09-22.]
+    if (
+      dto.status === ProcurementOrderStatus.CANCELLED &&
+      !opts?.cancelReasonCode
+    ) {
+      throw new UnprocessableEntityException({
+        reason: "cancel_through_the_sealed_act",
+        message:
+          "An order is cancelled through its own act, which asks whose failure it was and is held to confirm — not by editing its status. Nothing was changed.",
+      });
+    }
     if (dto.status !== undefined && !opts?.statusTransitionAlreadyChecked) {
       await this.assertStatusTransition(restaurantId, orderId, dto.status);
     }
@@ -2756,6 +2810,15 @@ export class ProcurementService {
       invoice_image_url: dto.invoiceImageUrl ?? undefined,
       discrepancy_notes: dto.discrepancyNotes ?? undefined,
       location_id: dto.locationId ?? undefined,
+      // Whose failure a cancellation was (ADR 0207 round 4). NOT on
+      // UpdateOrderDto: that class is bound to the public `PATCH orders/:id`
+      // body, and these three columns are proven, not asserted — a client
+      // sending them there could write a category the order-transition and
+      // deadline rules never checked. They travel only through `opts`, which
+      // only `cancelOrder` (this file) sets, in the SAME UPDATE as the status.
+      cancel_reason_code: opts?.cancelReasonCode ?? undefined,
+      cancelled_from_status: opts?.cancelledFromStatus ?? undefined,
+      cancelled_at: opts?.cancelledAt ?? undefined,
     };
 
     const { data, error } = await this.databaseService.supabase
@@ -2981,12 +3044,12 @@ export class ProcurementService {
     userId: string,
     reason?: string,
     challenge?: string | null,
+    reasonCode?: string,
   ): Promise<OrderResponseDto> {
     const spokenReason = (reason ?? "").trim();
     if (spokenReason === "") {
       throw new BadRequestException(ProcurementService.CANCEL_NEEDS_A_REASON);
     }
-
     // Checked again here, not only at the mint (ADR 0125 Q1). A seal minted
     // while the person was a manager must not be spendable after they stop
     // being one.
@@ -2994,11 +3057,46 @@ export class ProcurementService {
 
     // The state, read once and refused here rather than inside `updateOrder`:
     // this caller needs `from` for the shadow-stock decision and the audit row.
-    const { from: preStatus } = await this.assertStatusTransition(
+    const { from: preStatus, row: preRow } = await this.assertStatusTransition(
       restaurantId,
       orderId,
       ProcurementOrderStatus.CANCELLED,
     );
+
+    // The category rule (ADR 0207 round 4, cancel-reason.ts): which category
+    // this cancel may carry, from this order's current state and — for
+    // never_arrived — only once its deadline has passed on the house's clock.
+    // Checked BEFORE the seal is redeemed, same reasoning as the transition
+    // check above: a refusal must not burn a one-time token.
+    const houseZone = await this.readHouseZoneForCancel(restaurantId);
+    const deadline = deadlineOf(
+      (preRow as { expected_delivery_date?: string | null })
+        .expected_delivery_date,
+      houseZone,
+    );
+    const verdict = cancelReasonVerdictFor(
+      reasonCode ?? "",
+      preStatus,
+      deadline,
+      Date.now(),
+    );
+    if (!verdict.ok) {
+      // A missing or unknown category is a 400 (the caller sent nothing
+      // usable, like the bare-reason check above); a category that does not
+      // fit THIS order's state or deadline is a 422, the same status the
+      // transition check above answers with — it names the state, not the
+      // request shape.
+      if (verdict.reason === "unknown_code") {
+        throw new BadRequestException(
+          CANCEL_REASON_REFUSAL_WORDS[verdict.reason],
+        );
+      }
+      throw new UnprocessableEntityException({
+        reason: "cancel_needs_a_category",
+        message: CANCEL_REASON_REFUSAL_WORDS[verdict.reason],
+      });
+    }
+    const cancelReasonCode = reasonCode as CancelReasonCode;
 
     // AFTER the transition check, so a person whose order cannot be cancelled
     // at all is told that rather than having their seal burned by a request
@@ -3006,6 +3104,7 @@ export class ProcurementService {
     // written on an unproven seal.
     await this.redeemOrderCancelSeal(restaurantId, orderId, userId, challenge);
 
+    const cancelledAtIso = new Date().toISOString();
     const order = await this.updateOrder(
       restaurantId,
       orderId,
@@ -3013,7 +3112,12 @@ export class ProcurementService {
         status: ProcurementOrderStatus.CANCELLED,
         rejectionReason: spokenReason,
       },
-      { statusTransitionAlreadyChecked: true },
+      {
+        statusTransitionAlreadyChecked: true,
+        cancelReasonCode,
+        cancelledFromStatus: preStatus,
+        cancelledAt: cancelledAtIso,
+      },
     );
 
     // D-10: Cascade PENDING_APPROVAL conversations to CANCELLED so they don't
@@ -3085,12 +3189,33 @@ export class ProcurementService {
       actorUserId: userId,
       from: preStatus,
       reason: spokenReason,
+      reasonCode: cancelReasonCode,
     });
 
     // Emit order_change event for cross-page sync
     await this.emitOrderChangeEvent(restaurantId, userId, order, "cancelled");
 
     return order;
+  }
+
+  /**
+   * The house's time zone, for the `never_arrived` category's past-due check
+   * only. A failed or missing read degrades to `null` (the span rule,
+   * `delivery-deadline.ts`) rather than refusing the cancel outright — the
+   * category rule already requires the span to have closed at BOTH ends, so a
+   * house with no zone on record is not blocked from cancelling, only held to
+   * the more conservative (later) instant.
+   */
+  private async readHouseZoneForCancel(
+    restaurantId: string,
+  ): Promise<string | null> {
+    const { data, error } = await this.databaseService.supabase
+      .from("restaurants")
+      .select("timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return houseFrame(data as { timezone?: string; country?: string }).zone;
   }
 
   /** Spend the cancellation seal. Throws with the whole sentence on refusal. */
@@ -3134,6 +3259,7 @@ export class ProcurementService {
     actorUserId: string;
     from: ProcurementOrderStatus;
     reason: string;
+    reasonCode: CancelReasonCode;
   }): Promise<void> {
     try {
       const { error } = await this.databaseService.supabase
@@ -3152,6 +3278,7 @@ export class ProcurementService {
             act: ORDER_CANCEL_ACT,
             sealed: true,
             reason: record.reason,
+            reason_code: record.reasonCode,
           },
           restaurant_id: record.restaurantId,
           reason: record.reason,
@@ -4564,33 +4691,50 @@ export class ProcurementService {
    * vendor error) and for any discrepancy whose amount cannot be computed. A $0
    * claim in a distributor's inbox costs more credibility than it recovers.
    */
+  /**
+   * @param order The order row this claim is against, when the caller already
+   *   has it (`verifyReceipt` selects `*`) — read here only for `provider_id`
+   *   and `currency`, so the claim states the vendor and money it is against
+   *   instead of leaving both silently unset. [ADR 0207 round 5, named as a
+   *   round-4 gap: "openCreditClaim ... records neither provider_id nor
+   *   currency, and the column defaults to 'USD'."] `currency` is left unset
+   *   (the column's own DEFAULT 'USD' stands) rather than written explicitly
+   *   when the order records none — writing 'USD' for an unknown currency
+   *   would be the same silent guess the design names as the fault, moved
+   *   one line down.
+   */
   private async openCreditClaim(
     restaurantId: string,
     orderId: string,
     userId: string,
     match: MatchResult,
+    order?: { provider_id?: string | null; currency?: string | null } | null,
   ): Promise<void> {
     try {
       const claim = draftClaimFromMatch(match);
       if (!claim) return;
 
+      const insertRow: Record<string, unknown> = {
+        restaurant_id: restaurantId,
+        order_id: orderId,
+        provider_id: order?.provider_id ?? null,
+        reason: claim.reason,
+        summary: claim.summary,
+        claimed_amount: claim.claimedAmount,
+        // True only when the vendor's own packing slip proves the overbill.
+        // Worth knowing which claims are winnable before spending a call.
+        self_evidenced: claim.selfEvidenced,
+        state: "open",
+        opened_by: userId,
+        // Snapshot: the order can be corrected later, and the claim must still
+        // be able to say what it was based on when it was raised.
+        evidence: match as unknown as Record<string, unknown>,
+      };
+      if (order?.currency) insertRow.currency = order.currency;
+
       const { error } = await this.databaseService.supabase
         .from("procurement_credits")
-        .insert({
-          restaurant_id: restaurantId,
-          order_id: orderId,
-          reason: claim.reason,
-          summary: claim.summary,
-          claimed_amount: claim.claimedAmount,
-          // True only when the vendor's own packing slip proves the overbill.
-          // Worth knowing which claims are winnable before spending a call.
-          self_evidenced: claim.selfEvidenced,
-          state: "open",
-          opened_by: userId,
-          // Snapshot: the order can be corrected later, and the claim must still
-          // be able to say what it was based on when it was raised.
-          evidence: match as unknown as Record<string, unknown>,
-        });
+        .insert(insertRow);
 
       // 23505 = a claim for this line and reason is already open. Re-running the
       // match must not manufacture a second claim for money already being
@@ -4602,6 +4746,184 @@ export class ProcurementService {
     } catch (err: any) {
       this.logger.warn(`openCreditClaim threw for ${orderId}: ${err?.message}`);
     }
+  }
+
+  /**
+   * The founder's box on the never-arrived cancel (ADR 0207 round 5, question
+   * 20, round 6z, verbatim): "Add the box (Recommended)" — "We paid for
+   * this, we are owed {total}", opening a credit claim with the order's
+   * vendor and currency so the Credits line chases it.
+   *
+   * Only after the order has actually been cancelled `never_arrived` — this
+   * is not a general "claim a credit" act, it is the one box that follows
+   * that specific cancellation, so it re-reads the order rather than trusting
+   * whatever the caller last knew. Idempotent: a second call for the same
+   * order finds its own open claim (`uq_pc_order_never_arrived` proves it at
+   * the database) and returns it rather than opening a second one.
+   */
+  async openNeverArrivedCreditClaim(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+  ): Promise<NeverArrivedCreditClaimResult> {
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        "Who may claim this refund could not be established (the organizations service is not " +
+          "wired into procurement), so nothing was opened. This is a gateway fault, not a " +
+          "decision about this order.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "claim a credit for an order that never arrived",
+    );
+
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id, status, cancel_reason_code, provider_id, currency, total_cost")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `This order could not be read (${error.message}), so no claim was opened.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException(
+        "No order with that id belongs to this restaurant, so no claim was opened.",
+      );
+    }
+    const row = data as {
+      status: string | null;
+      cancel_reason_code: string | null;
+      provider_id: string | null;
+      currency: string | null;
+      total_cost: string | number | null;
+    };
+    if (row.status !== "CANCELLED" || row.cancel_reason_code !== "never_arrived") {
+      throw new UnprocessableEntityException(
+        "A refund claim follows a never-arrived cancellation. Cancel this order as " +
+          "never arrived first, then claim the refund.",
+      );
+    }
+    const total =
+      typeof row.total_cost === "string"
+        ? parseFloat(row.total_cost)
+        : row.total_cost;
+    if (total == null || Number.isNaN(total) || !(total > 0)) {
+      throw new UnprocessableEntityException(
+        "This order has no positive total on record, so there is nothing to claim back.",
+      );
+    }
+
+    // Idempotent before the insert: a live open/requested/promised claim for
+    // this order and this reason is returned as-is. The database's own
+    // uq_pc_order_never_arrived is the proof this cannot be raced into two.
+    const existing = await this.databaseService.supabase
+      .from("procurement_credits")
+      .select("id, claimed_amount, currency, state")
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .eq("reason", "never_arrived")
+      .neq("state", "written_off")
+      .maybeSingle();
+    if (existing.error) {
+      throw new InternalServerErrorException(
+        `Whether a claim already existed could not be read (${existing.error.message}), so nothing was opened.`,
+      );
+    }
+    if (existing.data) {
+      const already = existing.data as {
+        id: string;
+        claimed_amount: number;
+        currency: string | null;
+        state: string;
+      };
+      return {
+        opened: false,
+        alreadyOpen: true,
+        claim: {
+          id: already.id,
+          claimedAmount: already.claimed_amount,
+          currency: already.currency,
+          state: already.state,
+        },
+      };
+    }
+
+    const insertRow: Record<string, unknown> = {
+      restaurant_id: restaurantId,
+      order_id: orderId,
+      provider_id: row.provider_id,
+      reason: "never_arrived",
+      summary:
+        "Paid in advance; the order was cancelled as never arrived. Chasing a refund.",
+      claimed_amount: total,
+      self_evidenced: false,
+      state: "open",
+      opened_by: userId,
+    };
+    if (row.currency) insertRow.currency = row.currency;
+
+    const { data: inserted, error: insertError } = await this.databaseService.supabase
+      .from("procurement_credits")
+      .insert(insertRow)
+      .select("id, claimed_amount, currency, state")
+      .single();
+    if (insertError) {
+      if (insertError.code === "23505") {
+        // Raced with another request that won first — read back what it
+        // opened rather than telling this caller nothing happened.
+        const raced = await this.databaseService.supabase
+          .from("procurement_credits")
+          .select("id, claimed_amount, currency, state")
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .eq("reason", "never_arrived")
+          .neq("state", "written_off")
+          .maybeSingle();
+        if (raced.data) {
+          const won = raced.data as {
+            id: string;
+            claimed_amount: number;
+            currency: string | null;
+            state: string;
+          };
+          return {
+            opened: false,
+            alreadyOpen: true,
+            claim: {
+              id: won.id,
+              claimedAmount: won.claimed_amount,
+              currency: won.currency,
+              state: won.state,
+            },
+          };
+        }
+      }
+      throw new InternalServerErrorException(
+        `The claim could not be recorded (${insertError.message}), so nothing was opened.`,
+      );
+    }
+
+    const won = inserted as {
+      id: string;
+      claimed_amount: number;
+      currency: string | null;
+      state: string;
+    };
+    return {
+      opened: true,
+      alreadyOpen: false,
+      claim: {
+        id: won.id,
+        claimedAmount: won.claimed_amount,
+        currency: won.currency,
+        state: won.state,
+      },
+    };
   }
 
   /**
@@ -5259,7 +5581,14 @@ export class ProcurementService {
     // Raise a vendor credit claim when the match found money owed back.
     // Best-effort: a failure here must not strand a delivery that has already
     // been counted, and the claim can be raised again from the discrepancy queue.
-    if (match) await this.openCreditClaim(restaurantId, orderId, userId, match);
+    if (match)
+      await this.openCreditClaim(
+        restaurantId,
+        orderId,
+        userId,
+        match,
+        orderRow as { provider_id?: string | null; currency?: string | null },
+      );
 
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
