@@ -45,6 +45,10 @@ import {
   type StakeId,
   type SuppressionScope,
   type SuppressionVM,
+  itemKeyOf,
+  mayActForTheHouse,
+  maySnoozeForEveryone,
+  paperMissOf,
 } from './rec-format';
 import { type PosVM } from './rec-days';
 
@@ -94,7 +98,44 @@ export interface EntryVM {
    * where the stored `ruleKey` IS the key.
    */
   suppression: SuppressionVM | null;
+  /**
+   * The gateway's own answer (`recommendation-actions.service.ts`): this
+   * row's key silences a WHOLE rule — no subject, no period. Returning such
+   * a dismissal to the book is an owner/manager act (founder, 2026-09-21).
+   * False on standing entries, whose own key is not what was stored.
+   */
+  ruleWide: boolean;
+  /**
+   * Whether this person may return this row to the book (ADR 0191 round 4,
+   * answer 5 — staff undo only their own acts; owners and managers anyone's).
+   * The gateway's own answer on the Dismissed, Done and Snoozed leaves; null
+   * when it could not tell (the history was unreadable) or did not say, and
+   * then the control stays open — the gateway decides at the write.
+   */
+  undoableByYou: boolean | null;
+  /**
+   * A snooze this person made for themselves alone (ADR 0191 round 3 — the
+   * founder: a staff snooze is "Only them"). Only on the Snoozed leaf, read
+   * from `GET …/snoozed-for-me`; the entry's own control wakes it for them.
+   */
+  personal?: boolean;
 }
+
+/**
+ * The roles that may dismiss or return a WHOLE rule — the gateway's set:
+ * owners and managers, not the platform admin (ADR 0191 round 4, answer 7).
+ */
+export function mayActRuleWide(role: string | null | undefined): boolean {
+  return mayActForTheHouse(role);
+}
+
+/**
+ * The receipts a state write returns (ADR 0191): the house log for a
+ * whole-rule act, and — round 3, "Keep every label" — the append-only
+ * history for every dismiss, restore, done and snooze for the house. One
+ * phrase when either missed, null otherwise.
+ */
+const auditMissOf = paperMissOf;
 
 export interface StateCounts {
   active: number;
@@ -222,6 +263,8 @@ function toEntry(raw: Record<string, unknown>, fallbackStatus: Disposition): Ent
     subject: typeof raw.subject === 'string' && raw.subject ? raw.subject : null,
     periodKey: typeof raw.periodKey === 'string' && raw.periodKey ? raw.periodKey : null,
     suppression: readSuppression(raw.suppression),
+    ruleWide: raw.ruleWide === true,
+    undoableByYou: typeof raw.undoableByYou === 'boolean' ? raw.undoableByYou : null,
   };
 }
 
@@ -334,7 +377,8 @@ export interface RecommendationsData {
   requestPosBack: (days: number) => void;
   /** The last write the page performed, said in words. */
   note: string | null;
-  undo: { ruleKey: string; label: string } | null;
+  /** `personal`: the write was this person's own snooze — undo wakes it. */
+  undo: { ruleKey: string; label: string; personal?: boolean } | null;
   clearUndo: () => void;
   refetch: () => void;
   /** Resolves TRUE only when the server stored it. Callers that navigate away
@@ -345,15 +389,50 @@ export interface RecommendationsData {
     patch: Record<string, unknown>,
     said: string,
     removeFromLeaf: boolean,
+    /** Write to this key instead of the rule's own (snooze and done: the item). */
+    atKey?: string,
   ) => Promise<boolean>;
   dismiss: (entry: EntryVM, choice: DismissChoice) => Promise<void>;
   restore: (ruleKey: string) => Promise<void>;
-  bulk: (entries: EntryVM[], patch: Record<string, unknown>, said: string) => Promise<void>;
+  /** End this person's own snooze on one key — the entry is back for them. */
+  wake: (ruleKey: string) => Promise<void>;
+  bulk: (
+    entries: EntryVM[],
+    patch: Record<string, unknown>,
+    said: string,
+    atItem?: boolean,
+  ) => Promise<void>;
+  /**
+   * Whether this person may dismiss or return a WHOLE rule — owner, manager
+   * or admin (founder, 2026-09-21: "owner/manager only and audited
+   * EVERYWHERE"). The gateway enforces it; the page only stops offering what
+   * would be refused, and says why.
+   */
+  canActRuleWide: boolean;
+  /**
+   * Whether this person may snooze for EVERYONE — owners and managers (ADR
+   * 0191 round 3). Anyone else's snooze hides the entry from them alone.
+   */
+  canSnoozeForEveryone: boolean;
+  /** Standing entries withheld because this person snoozed them for themselves. */
+  hiddenForYou: number | null;
+  /**
+   * False when this person's own snoozes could not be read — entries they
+   * snoozed for themselves may be standing below, and the page says so.
+   */
+  personalSnoozesReadable: boolean;
+  /**
+   * On the Snoozed leaf: why this person's own snoozes could not be read,
+   * or null. The house's snoozes are still listed; theirs are not claimed.
+   */
+  personalProblem: string | null;
 }
 
 export function useRecommendationsNextData(): RecommendationsData {
-  const { activeRestaurantId } = useAuth();
+  const { activeRestaurantId, activeRole, user } = useAuth();
   const rid = activeRestaurantId ?? null;
+  const canActRuleWide = mayActRuleWide(activeRole ?? user?.role ?? null);
+  const canSnoozeForEveryone = maySnoozeForEveryone(activeRole ?? user?.role ?? null);
 
   const [leaf, setLeaf] = useState<Leaf>('standing');
   const [phase, setPhase] = useState<Phase>('loading');
@@ -365,6 +444,9 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [digest, setDigest] = useState<DigestPref | null | undefined>(undefined);
   const [suppressed, setSuppressed] = useState<number | null>(null);
   const [suppressionsReadable, setSuppressionsReadable] = useState(true);
+  const [hiddenForYou, setHiddenForYou] = useState<number | null>(null);
+  const [personalSnoozesReadable, setPersonalSnoozesReadable] = useState(true);
+  const [personalProblem, setPersonalProblem] = useState<string | null>(null);
   const [exclusions, setExclusions] = useState<ExclusionsVM | undefined>(undefined);
   const [team, setTeam] = useState<TeamOption[] | null | undefined>(undefined);
   const [goals, setGoals] = useState<GoalsVM>(undefined);
@@ -381,7 +463,11 @@ export function useRecommendationsNextData(): RecommendationsData {
   const [pos, setPos] = useState<PosVM>(undefined);
   const [posProblem, setPosProblem] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [undo, setUndo] = useState<{ ruleKey: string; label: string } | null>(null);
+  const [undo, setUndo] = useState<{
+    ruleKey: string;
+    label: string;
+    personal?: boolean;
+  } | null>(null);
   const seq = useRef(0);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -407,6 +493,10 @@ export function useRecommendationsNextData(): RecommendationsData {
           // Absent field ⇒ an older gateway ⇒ we cannot claim the dismissals
           // were honoured. Only an explicit `true` counts as readable.
           setSuppressionsReadable(data?.suppressionsReadable === true);
+          // This person's own snoozes (round 3): only an explicit `true`
+          // counts as read, as for the house's dismissals above.
+          setHiddenForYou(num(data?.hiddenForYou));
+          setPersonalSnoozesReadable(data?.personalSnoozesReadable === true);
           setGeneratedAt(typeof data?.generatedAt === 'string' ? data.generatedAt : null);
           const sc = data?.stateCounts as Partial<StateCounts> | undefined;
           setCounts(
@@ -428,7 +518,30 @@ export function useRecommendationsNextData(): RecommendationsData {
           if (mine !== seq.current) return;
           const list = Array.isArray(data?.items) ? (data.items as Record<string, unknown>[]) : [];
           const fallback: Disposition = which === 'history' ? 'done' : (which as Disposition);
-          setEntries(list.map((r) => toEntry(r, fallback)));
+          const house = list.map((r) => toEntry(r, fallback));
+          if (which !== 'snoozed') {
+            setEntries(house);
+          } else {
+            // The Snoozed leaf also lists what THIS person snoozed for
+            // themselves (round 3). A failed read of those is said, and the
+            // house's snoozes still show — never an empty "you have none".
+            let own: EntryVM[] = [];
+            try {
+              const { data: mineData } = await apiClient.get<Record<string, unknown>>(
+                `${BASE}/${rid}/snoozed-for-me`,
+              );
+              if (mine !== seq.current) return;
+              const rows = Array.isArray(mineData?.items)
+                ? (mineData.items as Record<string, unknown>[])
+                : [];
+              own = rows.map((r) => ({ ...toEntry(r, 'snoozed'), personal: true }));
+              setPersonalProblem(null);
+            } catch (err) {
+              if (mine !== seq.current) return;
+              setPersonalProblem(failureOf(err).message);
+            }
+            setEntries([...own, ...house]);
+          }
         }
         setPhase('ready');
       } catch (err) {
@@ -804,8 +917,8 @@ export function useRecommendationsNextData(): RecommendationsData {
     [rid, say],
   );
 
-  const offerUndo = useCallback((ruleKey: string, label: string) => {
-    setUndo({ ruleKey, label });
+  const offerUndo = useCallback((ruleKey: string, label: string, personal = false) => {
+    setUndo({ ruleKey, label, personal });
     if (undoTimer.current) clearTimeout(undoTimer.current);
     undoTimer.current = setTimeout(() => setUndo(null), 8000);
   }, []);
@@ -829,22 +942,30 @@ export function useRecommendationsNextData(): RecommendationsData {
       patch: Record<string, unknown>,
       said: string,
       removeFromLeaf: boolean,
+      atKey?: string,
     ): Promise<boolean> => {
       if (!rid) return false;
       const before = entry;
+      const key = atKey ?? entry.ruleKey;
       if (removeFromLeaf) setEntries((prev) => prev.filter((e) => e.ruleKey !== entry.ruleKey));
       else
         setEntries((prev) =>
           prev.map((e) => (e.ruleKey === entry.ruleKey ? { ...e, ...patch } : e)),
         );
       try {
-        await apiClient.post(`${BASE}/${rid}/action`, {
-          ruleKey: entry.ruleKey,
+        const { data } = await apiClient.post(`${BASE}/${rid}/action`, {
+          ruleKey: key,
           ...patch,
           snapshot: snapshotOf(entry),
         });
-        say(said);
-        if (removeFromLeaf) offerUndo(entry.ruleKey, said);
+        const miss = auditMissOf(data);
+        say(miss ? `${said} Saved, but ${miss}.` : said);
+        // Undo returns the key that was WRITTEN — the item's, for a snooze —
+        // and a snooze that became this person's own is undone by waking it,
+        // not by writing the house's state (round 3).
+        const personal =
+          (data as { recordedAs?: unknown } | null)?.recordedAs === 'snoozed_for_you';
+        if (removeFromLeaf) offerUndo(key, said, personal);
         return true;
       } catch (err) {
         const f = failureOf(err);
@@ -885,13 +1006,15 @@ export function useRecommendationsNextData(): RecommendationsData {
       if (!rid) return;
       const before = entry;
       setEntries((prev) => prev.filter((e) => e.ruleKey !== entry.ruleKey));
+      let miss: string | null = null;
       try {
-        await apiClient.post(`${BASE}/${rid}/action`, {
+        const { data } = await apiClient.post(`${BASE}/${rid}/action`, {
           ruleKey: choice.key,
           status: 'dismissed',
           reason: choice.reason,
           snapshot: snapshotOf(entry),
         });
+        miss = auditMissOf(data);
       } catch (err) {
         const f = failureOf(err);
         setEntries((prev) => [before, ...prev.filter((e) => e.ruleKey !== before.ruleKey)]);
@@ -910,7 +1033,8 @@ export function useRecommendationsNextData(): RecommendationsData {
           ? ` ${choice.excludeDate} is also out of the analysis — its numbers stop counting toward every average.`
           : ` The entry is dismissed, but ${choice.excludeDate} could NOT be excluded from the analysis — the averages still count it.`;
       }
-      say(`${choice.said}${tail} Undo here, or on the History leaf.`);
+      const paper = miss ? ` It holds, but it was ${miss}.` : '';
+      say(`${choice.said}${tail}${paper} Undo here, or on the History leaf.`);
       offerUndo(choice.key, choice.said);
     },
     [rid, say, offerUndo, excludeDay],
@@ -920,29 +1044,80 @@ export function useRecommendationsNextData(): RecommendationsData {
     async (ruleKey: string) => {
       if (!rid) return;
       try {
-        await apiClient.post(`${BASE}/${rid}/action`, { ruleKey, status: 'active' });
+        const { data } = await apiClient.post(`${BASE}/${rid}/action`, {
+          ruleKey,
+          status: 'active',
+        });
         setUndo(null);
-        say('Restored to the standing book.');
+        const miss = auditMissOf(data);
+        say(
+          miss
+            ? `Restored to the standing book — but ${miss}.`
+            : 'Restored to the standing book.',
+        );
         void load(leaf);
       } catch (err) {
+        // A 403 carries the gateway's own sentence: a whole rule is returned
+        // by an owner or manager.
         say(`Could not restore it (${failureOf(err).message}).`);
       }
     },
     [rid, leaf, load, say],
   );
 
+  const wake = useCallback(
+    async (ruleKey: string) => {
+      if (!rid) return;
+      try {
+        const { data } = await apiClient.post<{ woke?: boolean }>(
+          `${BASE}/${rid}/snoozed-for-me/wake`,
+          { ruleKey },
+        );
+        setUndo(null);
+        say(
+          data?.woke === false
+            ? 'There was no snooze of yours on it — nothing changed.'
+            : 'Back in your standing book.',
+        );
+        void load(leaf);
+      } catch (err) {
+        say(`It is still snoozed for you (${failureOf(err).message}).`);
+      }
+    },
+    [rid, leaf, load, say],
+  );
+
   const bulk = useCallback(
-    async (list: EntryVM[], patch: Record<string, unknown>, said: string) => {
+    async (list: EntryVM[], patch: Record<string, unknown>, said: string, atItem = false) => {
       if (!rid || list.length === 0) return;
       const keys = new Set(list.map((e) => e.ruleKey));
       const before = entries;
       setEntries((prev) => prev.filter((e) => !keys.has(e.ruleKey)));
       try {
-        await apiClient.post(`${BASE}/${rid}/bulk-action`, {
-          items: list.map((e) => ({ ruleKey: e.ruleKey, snapshot: snapshotOf(e) })),
+        const { data } = await apiClient.post<{
+          updated?: number;
+          audit?: { recorded?: number; missed?: number };
+          history?: { recorded?: number; missed?: number };
+        }>(`${BASE}/${rid}/bulk-action`, {
+          items: list.map((e) => ({
+            ruleKey: atItem ? itemKeyOf(e) : e.ruleKey,
+            snapshot: snapshotOf(e),
+          })),
           ...patch,
         });
-        say(said);
+        // The gateway says how many landed. Saying "Dismissed 5" over 3 that
+        // were stored is the claim this page exists to refuse.
+        const updated = typeof data?.updated === 'number' ? data.updated : null;
+        const missed = data?.audit?.missed ?? 0;
+        const parts = [
+          updated !== null && updated < list.length
+            ? `Only ${updated} of ${list.length} were saved — the rest are back on the book.`
+            : said,
+        ];
+        if (missed > 0) parts.push(`${missed} not written to the house log.`);
+        const unkept = data?.history?.missed ?? 0;
+        if (unkept > 0) parts.push(`${unkept} not kept in the history.`);
+        say(parts.join(' '));
         void load(leaf);
       } catch (err) {
         setEntries(before);
@@ -990,6 +1165,12 @@ export function useRecommendationsNextData(): RecommendationsData {
     setDisposition,
     dismiss,
     restore,
+    wake,
     bulk,
+    canActRuleWide,
+    canSnoozeForEveryone,
+    hiddenForYou,
+    personalSnoozesReadable,
+    personalProblem,
   };
 }

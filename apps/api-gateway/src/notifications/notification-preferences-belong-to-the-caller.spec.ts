@@ -65,7 +65,9 @@ describe("GET /notifications/preferences reads only the caller's row", () => {
 
     await controller.getPreferences({ userId: OWN } as any, req(OWN));
 
-    expect(service.getPreferences).toHaveBeenCalledWith(OWN);
+    // The house comes from the same token, always (ADR 0149 row 39):
+    // preferences are per person PER HOUSE.
+    expect(service.getPreferences).toHaveBeenCalledWith(OWN, "rest-1");
   });
 
   it("[REVERT-FAILS] reads the token's user when the query names none", async () => {
@@ -73,7 +75,7 @@ describe("GET /notifications/preferences reads only the caller's row", () => {
 
     await controller.getPreferences({} as any, req(OWN));
 
-    expect(service.getPreferences).toHaveBeenCalledWith(OWN);
+    expect(service.getPreferences).toHaveBeenCalledWith(OWN, "rest-1");
   });
 
   it("[REVERT-FAILS] refuses a session with no user id rather than trusting the query", async () => {
@@ -141,9 +143,11 @@ describe("PATCH /notifications/preferences writes only the caller's row", () => 
       req(OWN),
     );
 
+    // The house comes from the same token as the user (ADR 0149 row 39).
     expect(service.updatePreferences).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: OWN,
+        restaurantId: "rest-1",
         ordersMode: "in_app",
         quietHours: { enabled: true },
       }),
@@ -160,7 +164,11 @@ describe("PATCH /notifications/preferences writes only the caller's row", () => 
     );
 
     expect(service.updatePreferences).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: OWN, push: false }),
+      expect.objectContaining({
+        userId: OWN,
+        restaurantId: "rest-1",
+        push: false,
+      }),
     );
   });
 
@@ -211,9 +219,9 @@ describe("a failed preferences read is an error, never the defaults", () => {
       db as never,
     );
 
-    await expect(service.getPreferences(OWN)).rejects.toMatchObject({
-      message: expect.stringMatching(/permission denied/),
-    });
+    await expect(service.getPreferences(OWN, "rest-1")).rejects.toMatchObject(
+      { message: expect.stringMatching(/permission denied/) },
+    );
   });
 });
 

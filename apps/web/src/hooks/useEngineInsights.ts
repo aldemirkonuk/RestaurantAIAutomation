@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { apiClient, getErrorMessage } from '../services/api/client'
+import { insightActKey } from '../lib/recommendationState'
 
 export interface EngineInsight {
   ruleKey: string
@@ -69,12 +70,21 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>()
 const CACHE_TTL_MS = 30_000
 
-function mapRows(rows: any[], pinnedSet: Set<string>, hidden: Set<string>): EngineInsight[] {
+/**
+ * What is hidden the gateway has already withheld, at every scope, from the
+ * read itself (ADR 0191: one shared per-item state). This mapper does not
+ * filter by state again: its old filter matched `buildInsightRuleKey`'s
+ * `insight:<candidate>:<entity>`, a key nothing server-side ever wrote, so
+ * it could only ever disagree with the gateway. Pins are read at the
+ * gateway-built key the row carries.
+ */
+function mapRows(rows: any[], pinnedSet: Set<string>): EngineInsight[] {
   return rows
     .map((r) => {
       const candidateKey = r.candidate_key ?? r.candidateKey ?? ''
       const eKey = r.entity_key ?? r.entityKey ?? ''
       const ruleKey = buildInsightRuleKey(candidateKey, eKey || null)
+      const item = insightActKey(r)
       return {
         sentence: String(r.sentence ?? ''),
         category: String(r.category ?? 'sales'),
@@ -84,10 +94,10 @@ function mapRows(rows: any[], pinnedSet: Set<string>, hidden: Set<string>): Engi
         zScore: r.z_score ?? r.z ?? null,
         entityKey: eKey || null,
         entityLabel: r.entity_label ?? r.entityLabel ?? null,
-        pinned: pinnedSet.has(ruleKey),
+        pinned: item ? pinnedSet.has(item.key) : false,
       } satisfies EngineInsight
     })
-    .filter((r) => r.sentence && !hidden.has(r.ruleKey))
+    .filter((r) => r.sentence)
     .sort((a, b) =>
       a.pinned !== b.pinned ? (a.pinned ? -1 : 1) : b.score - a.score,
     )
@@ -145,28 +155,19 @@ export function useEngineInsights(opts?: { categories?: string[]; limit?: number
           ),
         ])
 
-        const hidden = new Set<string>()
         const pinnedSet = new Set<string>()
         if (dispRes.status === 'fulfilled') {
-          const now = Date.now()
           const items: any[] = dispRes.value.data?.items ?? []
           for (const it of items) {
             if (!String(it.ruleKey ?? '').startsWith('insight:')) continue
             if (it.pinned) pinnedSet.add(it.ruleKey)
-            const snoozedActive =
-              it.status === 'snoozed' &&
-              it.snoozeUntil &&
-              new Date(it.snoozeUntil).getTime() > now
-            if (it.status === 'dismissed' || it.status === 'done' || snoozedActive) {
-              hidden.add(it.ruleKey)
-            }
           }
         }
 
         if (insRes.status === 'rejected') throw insRes.reason
         const body = insRes.value.data ?? {}
         const rows: any[] = body.insights ?? []
-        const mapped = mapRows(rows, pinnedSet, hidden)
+        const mapped = mapRows(rows, pinnedSet)
         const nextHasData = Array.isArray(body.availability)
           ? body.availability.length > 0
           : rows.length > 0 || body.source === 'stored'

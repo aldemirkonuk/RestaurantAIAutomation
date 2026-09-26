@@ -11,6 +11,8 @@ import { TokenBlacklistService } from "../services/token-blacklist.service";
 import { assertTenantMatch } from "../../common/tenant/assert-tenant-match";
 import { ALLOWS_TENANT_CHANGE_KEY } from "../../common/tenant/allows-tenant-change.decorator";
 import { assertEmailVerified } from "../assert-email-verified";
+import { ALLOWS_NO_HOUSE_KEY } from "../../common/tenant/allows-no-house.decorator";
+import { assertHouseChosen } from "../../common/tenant/assert-house-chosen";
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard("jwt") {
@@ -80,6 +82,16 @@ export class JwtAuthGuard extends AuthGuard("jwt") {
         [context.getHandler(), context.getClass()],
       );
       assertEmailVerified(request, allowUnverified === true);
+
+      // A session in no house reaches only the routes that say it may (ADR
+      // 0164, R4): who am I, my houses, choose one, accept an invitation, my
+      // account, sign out. After the email check, so an unverified person is
+      // sent to verify first; that flow names its house.
+      const allowsNoHouse = this.reflector.getAllAndOverride<boolean>(
+        ALLOWS_NO_HOUSE_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      assertHouseChosen(request, allowsNoHouse === true);
     }
     return canActivate;
   }

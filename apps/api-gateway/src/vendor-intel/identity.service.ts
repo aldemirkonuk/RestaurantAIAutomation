@@ -1280,11 +1280,12 @@ export class IdentityService {
    * such a row ever reached it, which its filter prevents.)
    *
    * WHO ELSE COULD, AND WHY NOT (measured 2026-09-17; corrected after review
-   * the same day). House membership roles are owner, manager and staff
-   * (`user_restaurant_access_role_known`). `RolesGuard` also admits a legacy
-   * `admin` string from `users.role` as owner/manager-equivalent, but such a
-   * session carries one active house like any other and nothing grants it
-   * reach across houses. The `X-Admin-Key` service key (ADR 0099) names no
+   * the same day; `admin` note retired 2026-09-19, ADR 0164 — RolesGuard no
+   * longer admits it at all, and no row in production ever held it). House
+   * membership roles are owner, manager and staff
+   * (`user_restaurant_access_role_known`), and a session carries at most one
+   * active house's role, so nothing grants reach across houses regardless of
+   * role. The `X-Admin-Key` service key (ADR 0099) names no
    * person, and an undo is a logged decision that must name one. There IS a
    * person-naming operator gate: the `PLATFORM_ADMIN_USER_IDS` allowlist
    * (`ProspectsController.assertPlatformAdmin`, fail-closed, one route today:

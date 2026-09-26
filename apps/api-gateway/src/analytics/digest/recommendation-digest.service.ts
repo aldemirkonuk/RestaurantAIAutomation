@@ -746,6 +746,13 @@ export class RecommendationDigestService {
       .select(
         "user_id, restaurant_id, email_enabled, categories, quiet_hours_enabled, quiet_hours_start, quiet_hours_end",
       )
+      // Preferences are per person PER HOUSE (ADR 0149 row 39: "reads and the
+      // resolver filter by house"). Without this filter a member with no row
+      // here but one in another house had THAT house's email switch and quiet
+      // hours decide this house's digest, instead of the defaults the header
+      // promises (fact 4). Same defect the D5 sweep closed in
+      // calendar-reminders.service.ts (PR #422 audit, 2026-09-26).
+      .eq("restaurant_id", restaurantId)
       .in("user_id", ids);
     if (error) {
       // Not "defaults": a read failure must neither wake somebody inside quiet
@@ -756,7 +763,6 @@ export class RecommendationDigestService {
     }
     const out = new Map<string, MemberPrefs>();
     for (const raw of (data ?? []) as Record<string, any>[]) {
-      if (out.has(raw.user_id) && raw.restaurant_id !== restaurantId) continue;
       out.set(raw.user_id, toMemberPrefs(raw));
     }
     return out;

@@ -1,6 +1,7 @@
 # 0170 — A vendor email body is text, never markup
 
 - **Status:** Proposed 2026-09-19. The founder locks it; an agent never does. Both vendor paths are built: the gateway in PR #399 (`fix/email-html-escaping`, merged d7e69ec08), and the orchestrator in `fix/python-composer-escaping` (see the addendum). The template half is step 2, still open, and tracked by an `open` CLAIMS row.
+- **[2026-09-25: `POST /notifications/send-email` is closed, not constrained.** The founder, round 4 item 14, chose *"close the endpoint (merge #410; #422 drops HouseEmailService + its caller edits)"* over ADR 0149 row 15's owner/manager send of client HTML. PR #410 argued from this record (a constrained send of client HTML is still an open send); the route now refuses (403) and carries no body at all, so it is no longer a vendor-mail path this record has to cover. This record's own status is unchanged: still Proposed, still the founder's to lock.]**
 - **Date:** 2026-09-19
 - **Decider:** Aldemir (founder)
 - **Keywords:** email, html, escaping, escapeHtml, textToEmailHtml, buildEmailHtml, vendor email, draft, approveDraft, modifiedContent, personalizeGreeting, applyEmailPlaceholders, sanitiser, allowlist, email-templates, baseTemplate, XSS, phishing

@@ -37,14 +37,28 @@ export class ReportCuttingReader {
     days: number | null,
   ): Promise<unknown> {
     switch (cutting) {
-      // GET /analytics/insights/:rid?limit=40 — AnalyticsController.getInsights:
-      // the stored feed, and on a cold start one live computation, persisted.
+      // GET /analytics/insights/:rid?limit=40 — AnalyticsController.getInsights
+      // (its readInsights): the stored feed with the ONE shared per-item state
+      // applied (ADR 0191), and on a cold start one live computation, persisted.
+      // A cache whose every row is withheld is an answer, not a cold start, so
+      // the test is rows READ, not rows kept — the same as the page.
+      // The page then drops what the person looking snoozed for themselves
+      // (ADR 0191 round 3, "Only them"). An export has no one looking — it is
+      // queued and read later, and the file can reach others — so it is the
+      // house's answer, as the digest and the MCP reader are.
       case "reading": {
-        const stored = await this.insights.getStored(restaurantId, {
+        const stored = await this.insights.readStored(restaurantId, {
           categories: undefined,
           limit: 40,
         });
-        if (stored.length > 0) return { source: "stored", insights: stored };
+        if (stored.read > 0)
+          return {
+            source: "stored",
+            insights: stored.rows,
+            suppressed: stored.withheld.dismissed,
+            withheld: stored.withheld,
+            suppressionsReadable: stored.suppressionsReadable,
+          };
         return this.insights.generate(restaurantId, {
           categories: undefined,
           persist: true,

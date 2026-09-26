@@ -1,3 +1,4 @@
+import { stateBookFrom } from "./item-state";
 import { InsightGeneratorService } from "./insight-generator.service";
 import { buildSuppressionKey } from "./suppression";
 import { verbalize } from "./insight-verbalizer";
@@ -118,8 +119,15 @@ function generatorFor(s: Scenario) {
       }),
     } as any,
     {
-      listSuppressions: async () => ({
-        keys: new Set(s.suppressions ?? []),
+      readState: async () => ({
+        book: stateBookFrom(
+          (s.suppressions ?? []).map((ruleKey: string) => ({
+            ruleKey,
+            status: "dismissed",
+            reason: "not_relevant",
+            snoozeUntil: null,
+          })),
+        ),
         readable: s.suppressionsReadable ?? true,
         problem: null,
       }),
