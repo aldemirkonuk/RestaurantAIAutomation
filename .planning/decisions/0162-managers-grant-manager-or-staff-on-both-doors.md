@@ -273,7 +273,7 @@ None of those 7 differs in role from `users.role`, so nobody is affected today. 
 OPEN as 44.1q, with the question above. **[Closed 2026-09-18, sixth round (third addendum): the
 merge audit swept the routes (38 `@Roles` decorators in 9 controllers (a 39th match, `identity-curation.controller.ts:29`, sits inside a JSDoc comment); 36 of them in 7
 controllers that call no membership check of their own), and `req.user.role` is now the role in the house the token
-names.]**
+names.]** [Corrected 2026-09-18, ADR 0164, by a comment-stripped count on `cb756083e`: 37 decorators in 9 controllers, price-index 8, not 9. A second match, `price-index.controller.ts:238`, is also a JSDoc line, and it was counted as a decorator.]
 
 **B. The YAREN manager gets a manager row.** His answer: *"Give them a manager row"*.
 Migration `20260918153000_a_setup_era_manager_holds_their_house_by_a_row.sql` writes
@@ -344,7 +344,7 @@ fifth round had filed rather than built:
    `req.user.role`, and `JwtStrategy.validate` filled it from `users.role`. Since answer
    A stopped a role change from writing `users.role` for a house the `users` row does
    not name, a person demoted in house B kept manager on B's `@Roles` routes. There are
-   38 decorators in 9 controllers (a 39th match sits inside a JSDoc comment). 36 of them sit in 7 controllers (vendor-intel,
+   38 decorators in 9 controllers (a 39th match sits inside a JSDoc comment) [Corrected 2026-09-18, ADR 0164, by a comment-stripped count on `cb756083e`: 37 decorators in 9 controllers, price-index 8, not 9. A second match, `price-index.controller.ts:238`, is also a JSDoc line, and it was counted as a decorator.]. 36 of them sit in 7 controllers (vendor-intel,
    price-index, commodity, house-mail-archive, ask-ai, distributor-feed, sender-trust)
    that call no membership check of their own, per the audit's grep (44.1q).
 2. **Leavers stayed members.** `leaveRestaurant` and `TeamService.deleteMember` deleted
@@ -358,7 +358,7 @@ person may do in another. Both findings break it. The first lets house A's role 
 house B. The second lets a house the person left keep treating them as a member.
 `RolesGuard` reading the role in the house the request names was already the first
 option 44.1q named. It is built here once, where every consumer reads, and not by
-retiring 39 decorators.
+retiring 39 decorators. [Corrected 2026-09-18, ADR 0164: 37 decorators; two of the 39 matches are JSDoc lines.]
 
 *What changed* (details, line numbers and tests in `v3.0-TECH-DEBT.md` 44.1j, 44.1n
 and 44.1q):
@@ -417,7 +417,12 @@ once the count's error is read, and only its claim catches it.
 
 The round-6 verifier found three holes that existed before PR #393 and sit outside
 its diff (v3.0-TECH-DEBT 44.1r-44.1t). Two were put to the founder the same night
-(`AskUserQuestion`, 2026-09-18):
+(`AskUserQuestion`, 2026-09-18): **[Corrected 2026-09-18, PR #393's merge audit note 1
+and ADR 0164: two of the three existed before PR #393. 44.1t came from #393's own fix.
+Clearing `users.restaurant_id` on leave is what made a leaver's next sign-in name no
+house and carry `users.role`. Before #393 that sign-in named the house they had left,
+and the `users`-row fallback still admitted them there at `users.role`, so the hole
+#393 left is narrower than the one it closed, but it is #393's. Built in ADR 0164.]**
 
 - **Sessions (44.1r).** Leaving or being removed does not end the session in that
   house: `refreshAccessToken` re-mints a token naming the house with no membership
@@ -431,13 +436,18 @@ its diff (v3.0-TECH-DEBT 44.1r-44.1t). Two were put to the founder the same nigh
 - **"Owner only" (44.1s).** `RolesGuard` (`roles.guard.ts:30-37`) lets a manager
   through wherever a route requires `owner`; 11 non-spec `@Roles('owner')`
   decorators exist (vendor-intel scrape and sweeps, price-index reopen, and
-  others). His answer: **"Keep managers in"** - today's behaviour stays, and those
+  others) **[Corrected 2026-09-18, ADR 0164: 10. The 11th grep match is a JSDoc line,
+  `price-index.controller.ts:238`]**. His answer: **"Keep managers in"** - today's behaviour stays, and those
   routes are relabelled owner-or-manager so the code says what it does (follow-up
   PR). This does not touch the grant rule above: who may GRANT owner is unchanged.
 - **A leaver's next login (44.1t).** After leaving their home house, a person's
   fresh login names no house and carries `users.role` (column default `manager`),
   which nothing resets. Not put to the founder: it follows from answer A and 44.1r,
-  and the follow-up PR resets the role with the house.
+  and the follow-up PR resets the role with the house. **[Corrected 2026-09-18, ADR
+  0164: not built that way. Resetting `users.role` would have been a remedy the
+  founder had not seen. His sign-in answer settled it instead: `users.role` stops
+  mattering for anyone with a house, and a session in no house carries no role at
+  all, so the column is never read for a session and nothing needs resetting.]**
 
 ## Review trail
 
@@ -457,3 +467,4 @@ its diff (v3.0-TECH-DEBT 44.1r-44.1t). Two were put to the founder the same nigh
 | 2026-09-18 | PR #393 merge audit of `dcf91322` (ADR 0090: planner, correctness reviewer, adversarial reviewer) | Correctness: approve with notes. Adversarial: BLOCK on `@Roles` still gated by the global `users.role` (39 decorators in 10 controllers, swept) and on leavers kept as members by the `users`-row fallback |
 | 2026-09-18 | PR #393 round-6 build | Made `req.user.role` the role in the token's house, cleared `users.restaurant_id` for the house left on all three exits, put the owner rule on the Team page's remove, stopped both removals on a failed read, filtered the role change's UPDATE to the active row; re-measured production read-only; 49 claim mutants and 3 controls, 41 jest mutants (1 equivalent survivor) |
 | 2026-09-18 | Aldemir (AskUserQuestion) | On the round-6 verifier's findings: "Membership only" for sessions (44.1r), "Keep managers in" for owner-only routes (44.1s); fourth addendum |
+| 2026-09-18 | ADR 0164 build (`fix/sessions-follow-membership`) | Bracket-corrected the fourth addendum (44.1t came from #393's own fix; its remedy is ADR 0164's, not a reset) and the decorator counts (10 owner-only, 37 in all); built 44.1r, 44.1s and 44.1t in ADR 0164 |

@@ -2,9 +2,16 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { ShieldAlert, ArrowLeft } from 'lucide-react'
 
+type HouseRole = 'owner' | 'manager' | 'staff'
+
 interface ProtectedRouteProps {
   children: React.ReactNode
-  requiredRole?: 'owner' | 'manager' | 'staff'
+  /**
+   * The roles, IN THE SESSION'S HOUSE, that may open this page. Exact, like the
+   * gateway's RolesGuard (ADR 0164, "Keep managers in"): 'owner' means owner,
+   * and a page for owners and managers says ['owner', 'manager'].
+   */
+  requiredRole?: HouseRole | HouseRole[]
   requiredStudioRole?: ('developer' | 'certified_contributor' | 'review_admin')[]
   redirectTo?: string
 }
@@ -43,6 +50,16 @@ export function ProtectedRoute({
     return <Navigate to="/verify-email" replace />
   }
 
+  // A session in no house (ADR 0164): someone with several houses who has not
+  // chosen one yet, or whose access to their house just ended. They choose;
+  // the chooser sends someone with no houses at all to /no-access if someone
+  // else ended a membership of theirs, or to /get-started if they never had
+  // one or ended their own (brackets 2026-09-25; the founder, round 4, item
+  // 16, and round 5, item 26).
+  if (!user?.restaurantId) {
+    return <Navigate to="/choose-house" state={{ from: location }} replace />
+  }
+
   // Studio role loading guard (Pitfall 6: undefined = still loading, not denied)
   if (requiredStudioRole && user?.studioRoles === undefined) {
     return (
@@ -58,11 +75,16 @@ export function ProtectedRoute({
     )
   }
 
-  // Role Check
-  if (requiredRole && user?.role !== requiredRole) {
-    const isAuthorized =
-      (requiredRole === 'owner' || requiredRole === 'manager') &&
-      (user?.role === 'owner' || user?.role === 'manager')
+  // Role check: exact, on the role in the session's house. This used to let a
+  // manager through any page that named owner, and the reverse, mirroring the
+  // gateway's old RolesGuard; both now mean exactly what they list.
+  const allowedRoles = requiredRole
+    ? Array.isArray(requiredRole)
+      ? requiredRole
+      : [requiredRole]
+    : null
+  if (allowedRoles) {
+    const isAuthorized = !!user?.role && allowedRoles.includes(user.role)
 
     if (!isAuthorized) {
       return (

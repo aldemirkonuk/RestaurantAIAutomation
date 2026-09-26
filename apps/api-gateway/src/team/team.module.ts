@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -8,6 +8,7 @@ import { CommunicationsModule } from "../communications/communications.module";
 // `CommunicationsModule`, so this edge adds nothing to the
 // `auth -> communications -> auth` ring — see `text-senders.module.ts`.
 import { TextSendersModule } from "../communications/text/text-senders.module";
+import { WebsocketModule } from "../websocket/websocket.module";
 import { TeamController } from "./team.controller";
 import { TeamService } from "./team.service";
 import { NotesService } from "./notes.service";
@@ -22,6 +23,7 @@ import { PerformanceService } from "./performance.service";
     PushModule,
     CommunicationsModule,
     TextSendersModule,
+    forwardRef(() => WebsocketModule),
   ],
   controllers: [TeamController],
   providers: [NotesService, TeamService, ScheduleService, PerformanceService],

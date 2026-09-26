@@ -5,9 +5,14 @@ import { CommunicationsService } from "./communications.service";
 import { DatabaseService } from "../database/database.service";
 import { GmailService } from "./gmail.service";
 import type { EmailResult } from "./gmail.service";
-import { RecipientResolverService } from "./recipient-resolver.service";
+import {
+  NOTIFICATION_SEND_CATEGORY,
+  RecipientLookupFailedError,
+  RecipientResolverService,
+} from "./recipient-resolver.service";
 import type {
   NotificationChannel,
+  NotificationSend,
   RecipientRole,
   ResolvedRecipients,
 } from "./recipient-resolver.service";
@@ -84,6 +89,17 @@ export function computeNextFireAt(
  * restaurant: the legacy default. They are never applied to any other tenant —
  * see `recipientsFor`.
  */
+/** How many addresses a resolve produced on the channels a job asked for. */
+function addressCount(
+  recipients: ResolvedRecipients,
+  channels: NotificationChannel[],
+): number {
+  return (
+    (channels.includes("email") ? recipients.emails.length : 0) +
+    (channels.includes("sms") ? recipients.phones.length : 0)
+  );
+}
+
 @Injectable()
 export class ScheduledTasksService implements OnModuleInit {
   private readonly logger = new Logger(ScheduledTasksService.name);
@@ -123,13 +139,30 @@ export class ScheduledTasksService implements OnModuleInit {
    * move by a single address as part of a multi-tenancy fix. Every other tenant
    * — and every other job — resolves against its own members, with the env
    * fallback disabled so nothing can spill across the tenant boundary.
+   *
+   * `send` names the job, and `NOTIFICATION_SEND_CATEGORY` maps it to the ONE
+   * preference category that decides who wants it (OD-121, founder answer 15,
+   * 2026-09-16). The job cannot pass a category of its own choosing, so the
+   * mapping lives in one reviewable table rather than in nine string literals.
+   *
+   * A FAILED LOOKUP IS NOT AN EMPTY HOUSE (2026-09-17, notify-lane review M2).
+   * When the resolver reports `lookupFailed`, this logs
+   * `RECIPIENT_LOOKUP_FAILED … recipient_lookup_failed` at ERROR and, if
+   * nobody could be addressed, throws `RecipientLookupFailedError`, so
+   * `runPerTenant` counts the tenant as FAILED instead of the job logging
+   * "skipped: no recipients". A job that also writes the house's inbox row
+   * passes `deferLookupFailure` and calls `failIfLookupFailed` after that row
+   * is written, so a mail lookup that failed does not cost the inbox its row.
+   * The legacy house, whose env fallback still answers, is sent to and logged.
    */
   private async recipientsFor(
     tenant: ScheduledTenant,
     opts: {
+      send: NotificationSend;
       roles: RecipientRole[];
       channels: NotificationChannel[];
       legacyEnv?: boolean;
+      deferLookupFailure?: boolean;
     },
   ): Promise<ResolvedRecipients> {
     if (tenant.isLegacyDefault && opts.legacyEnv) {
@@ -142,12 +175,54 @@ export class ScheduledTasksService implements OnModuleInit {
       };
     }
 
-    return this.recipientResolver.resolveRecipients({
+    const resolved = await this.recipientResolver.resolveRecipients({
       restaurantId: tenant.id,
       roles: opts.roles,
+      category: NOTIFICATION_SEND_CATEGORY[opts.send],
       channels: opts.channels,
       allowDefaultFallback: tenant.isLegacyDefault,
     });
+
+    if (resolved.lookupFailed) {
+      const reachable = addressCount(resolved, opts.channels);
+      this.logger.error(
+        `RECIPIENT_LOOKUP_FAILED job=${opts.send} restaurant=${tenant.id} (${tenant.name}) — ` +
+          `recipient_lookup_failed: ${resolved.lookupFailed.reason}. ` +
+          (reachable > 0
+            ? `Sending only to the ${reachable} address(es) the legacy env fallback supplied.`
+            : "Nobody can be addressed; this is a failed read, not an empty house."),
+      );
+      if (reachable === 0 && !opts.deferLookupFailure) {
+        throw new RecipientLookupFailedError(
+          opts.send,
+          tenant.id,
+          resolved.lookupFailed.reason,
+        );
+      }
+    }
+    return resolved;
+  }
+
+  /**
+   * For a job that deferred a failed lookup (`deferLookupFailure`) so it could
+   * write the house's inbox row first: fail this tenant's run now.
+   */
+  private failIfLookupFailed(
+    send: NotificationSend,
+    tenant: ScheduledTenant,
+    recipients: ResolvedRecipients | null,
+    channels: NotificationChannel[],
+  ): void {
+    if (
+      recipients?.lookupFailed &&
+      addressCount(recipients, channels) === 0
+    ) {
+      throw new RecipientLookupFailedError(
+        send,
+        tenant.id,
+        recipients.lookupFailed.reason,
+      );
+    }
   }
 
   /**
@@ -197,6 +272,7 @@ export class ScheduledTasksService implements OnModuleInit {
   async sendDailySMSSummary() {
     await this.tenants.runPerTenant("daily-sms-summary", async (tenant) => {
       const { phones } = await this.recipientsFor(tenant, {
+        send: "daily-sms-summary",
         roles: ["manager"],
         channels: ["sms"],
         legacyEnv: true,
@@ -243,19 +319,23 @@ export class ScheduledTasksService implements OnModuleInit {
 
       const reportData = await this.getWeeklyReportData(tenant.id);
 
+      let recipients: ResolvedRecipients | null = null;
       if (reportsMode.email) {
-        const { emails } = await this.recipientsFor(tenant, {
+        recipients = await this.recipientsFor(tenant, {
+          send: "weekly-email-report",
           roles: ["manager"],
           channels: ["email"],
           legacyEnv: true,
+          deferLookupFailure: true,
         });
+        const { emails } = recipients;
         if (emails.length > 0) {
           await this.communicationsService.sendWeeklyReport({
             recipientEmails: emails,
             restaurantId: tenant.id,
             reportData,
           });
-        } else {
+        } else if (!recipients.lookupFailed) {
           this.logger.log(
             `Weekly report email skipped for ${tenant.name}: no email recipients`,
           );
@@ -274,6 +354,10 @@ export class ScheduledTasksService implements OnModuleInit {
           totalBottles: reportData.totalBottles,
         },
       });
+
+      this.failIfLookupFailed("weekly-email-report", tenant, recipients, [
+        "email",
+      ]);
     });
   }
 
@@ -289,6 +373,7 @@ export class ScheduledTasksService implements OnModuleInit {
       "midday-low-stock-report",
       async (tenant) => {
         const recipients = await this.recipientsFor(tenant, {
+          send: "midday-low-stock-report",
           roles: ["manager"],
           channels: ["email", "sms"],
           legacyEnv: true,
@@ -333,6 +418,7 @@ export class ScheduledTasksService implements OnModuleInit {
   async checkLowStockAlerts() {
     await this.tenants.runPerTenant("low-stock-alerts", async (tenant) => {
       const recipients = await this.recipientsFor(tenant, {
+        send: "low-stock-alerts",
         roles: ["manager"],
         channels: ["email", "sms"],
         legacyEnv: true,
@@ -447,8 +533,10 @@ export class ScheduledTasksService implements OnModuleInit {
         if (schedules.length === 0) return;
 
         const recipients = await this.recipientsFor(tenant, {
+          send: "recurring-order-reminder",
           roles: ["manager"],
           channels: ["email"],
+          deferLookupFailure: true,
         });
 
         const labels: string[] = [];
@@ -498,6 +586,10 @@ export class ScheduledTasksService implements OnModuleInit {
           groupKey: `recurring_order:${twoDaysStr}`,
           metadata: { count: schedules.length },
         });
+
+        this.failIfLookupFailed("recurring-order-reminder", tenant, recipients, [
+          "email",
+        ]);
       },
     );
   }
@@ -554,8 +646,10 @@ export class ScheduledTasksService implements OnModuleInit {
         if (deliveries.length === 0) return;
 
         const recipients = await this.recipientsFor(tenant, {
+          send: "delivery-eta-notification",
           roles: ["manager", "staff"],
           channels: ["email"],
+          deferLookupFailure: true,
         });
 
         for (const delivery of deliveries) {
@@ -592,6 +686,13 @@ export class ScheduledTasksService implements OnModuleInit {
           groupKey: `delivery_eta:${tomorrowStr}`,
           metadata: { count: deliveries.length },
         });
+
+        this.failIfLookupFailed(
+          "delivery-eta-notification",
+          tenant,
+          recipients,
+          ["email"],
+        );
       },
     );
   }
@@ -633,6 +734,7 @@ export class ScheduledTasksService implements OnModuleInit {
       "inventory-audit-reminder",
       async (tenant) => {
         const recipients = await this.recipientsFor(tenant, {
+          send: "inventory-audit-reminder",
           roles: ["manager", "staff"],
           channels: ["email"],
         });
@@ -705,6 +807,7 @@ export class ScheduledTasksService implements OnModuleInit {
       if (events.length === 0) return;
 
       const recipients = await this.recipientsFor(tenant, {
+        send: "event-prep-check",
         roles: ["manager", "staff"],
         channels: ["email"],
       });
@@ -821,6 +924,7 @@ export class ScheduledTasksService implements OnModuleInit {
           let emails: string[] = reminder.recipient_emails || [];
           if (emails.length === 0 && reminder.recipient_roles?.length > 0) {
             const recipients = await this.recipientsFor(tenant, {
+              send: "custom-reminders-check",
               roles: reminder.recipient_roles,
               channels: ["email"],
             });
@@ -1539,6 +1643,9 @@ export class ScheduledTasksService implements OnModuleInit {
           .getClient()
           .from("notification_preferences")
           .select(col)
+          // (2026-09-19, D5) per (restaurant_id, user_id) since row 39 -- scope
+          // by house or a member's OTHER restaurant's mode leaks into this one.
+          .eq("restaurant_id", restaurantId)
           .in("user_id", userIds),
       );
       // Unreadable preferences fall back to on — the historical behaviour, kept
