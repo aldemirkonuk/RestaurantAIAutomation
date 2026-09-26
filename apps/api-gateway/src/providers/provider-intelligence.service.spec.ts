@@ -22,19 +22,36 @@ import { DatabaseService } from "../database/database.service";
  * code returned exactly the same rows, just after a guaranteed-failing round
  * trip. That is the shape of test this repository keeps discovering it has.
  */
+const HOUSE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
 describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () => {
   let service: ProviderIntelligenceService;
   let rpc: jest.Mock;
   let from: jest.Mock;
+  let eq: jest.Mock;
   let limit: jest.Mock;
 
   function buildClient(result: { data: any[] | null; error: any }) {
     limit = jest.fn().mockResolvedValue(result);
     const order = jest.fn().mockReturnValue({ limit });
     const ilike = jest.fn().mockReturnValue({ order });
-    const eq = jest.fn().mockReturnValue({ ilike });
-    const select = jest.fn().mockReturnValue({ eq });
-    from = jest.fn().mockReturnValue({ select });
+    // Two `.eq()` calls now: provider, then house (ADR 0147). The chain node
+    // returns itself so the count is what the test reads, not the shape.
+    const chain: Record<string, unknown> = { ilike };
+    eq = jest.fn().mockReturnValue(chain);
+    chain.eq = eq;
+    const select = jest.fn().mockReturnValue(chain);
+    // The provider-ownership read (ADR 0147) runs first and finds the house's
+    // own provider; it has its own chain so `eq` above still counts only the
+    // conversation_embeddings filters.
+    const owned: Record<string, unknown> = {};
+    owned.select = () => owned;
+    owned.eq = () => owned;
+    owned.maybeSingle = () =>
+      Promise.resolve({ data: { id: "prov-1" }, error: null });
+    from = jest.fn((table: string) =>
+      table === "providers" ? owned : { select },
+    );
     rpc = jest.fn();
     return { from, rpc };
   }
@@ -53,7 +70,7 @@ describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () 
   it("never calls the phantom RPC", async () => {
     service = await makeService({ data: [], error: null });
 
-    await service.searchConversationMemory("prov-1", "shipping");
+    await service.searchConversationMemory("prov-1", HOUSE, "shipping");
 
     expect(rpc).not.toHaveBeenCalled();
   });
@@ -64,9 +81,14 @@ describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () 
       error: null,
     });
 
-    const rows = await service.searchConversationMemory("prov-1", "shipping");
+    const rows = await service.searchConversationMemory(
+      "prov-1",
+      HOUSE,
+      "shipping",
+    );
 
     expect(from).toHaveBeenCalledWith("conversation_embeddings");
+    expect(eq).toHaveBeenCalledWith("restaurant_id", HOUSE);
     expect(rows).toHaveLength(1);
   });
 
@@ -79,7 +101,7 @@ describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () 
     // The old shape swallowed every failure into `return data || []`, so a
     // broken search and a search with no hits were the same answer.
     await expect(
-      service.searchConversationMemory("prov-1", "shipping"),
+      service.searchConversationMemory("prov-1", HOUSE, "shipping"),
     ).rejects.toMatchObject({ code: "PGRST205" });
   });
 
@@ -87,7 +109,7 @@ describe("ProviderIntelligenceService — searchConversationMemory (OD-99)", () 
     service = await makeService({ data: [], error: null });
 
     await expect(
-      service.searchConversationMemory("prov-1", "nothing-matches-this"),
+      service.searchConversationMemory("prov-1", HOUSE, "nothing-matches-this"),
     ).resolves.toEqual([]);
   });
 });
@@ -141,6 +163,13 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
           },
           order: () => api,
           limit: () => api,
+          maybeSingle() {
+            return new Promise((resolve) =>
+              api.then(({ data }: { data: Row[] }) =>
+                resolve({ data: data[0] ?? null, error: null }),
+              ),
+            );
+          },
           then(resolve: any) {
             let rows = tables[table] || [];
             rows = rows.filter((r) => eqFilters.every(([c, v]) => r[c] === v));
@@ -155,7 +184,8 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
                 group.split(",").some((clause) => {
                   const [col, op, val] = clause.split(".");
                   const actual = r[col] ?? null;
-                  if (op === "is") return actual === (val === "null" ? null : val);
+                  if (op === "is")
+                    return actual === (val === "null" ? null : val);
                   if (op === "eq") return actual === val;
                   return false;
                 }),
@@ -185,6 +215,9 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
   describe("getSentimentTrend", () => {
     it("returns only the caller house's sentiment rows for a provider shared across houses", async () => {
       const service = await makeScopedService({
+        // The provider is house r1's (the ownership read, ADR 0147); the r2
+        // row below is a cross-stamped row the house clause must drop.
+        providers: [{ id: "prov-shared", restaurant_id: "r1" }],
         provider_sentiment_history: [
           {
             provider_id: "prov-shared",
@@ -211,6 +244,9 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
 
     it("returns no data points for a foreign house, not another house's trend", async () => {
       const service = await makeScopedService({
+        // The provider is house r1's (the ownership read, ADR 0147); the r2
+        // row below is a cross-stamped row the house clause must drop.
+        providers: [{ id: "prov-shared", restaurant_id: "r1" }],
         provider_sentiment_history: [
           {
             provider_id: "prov-shared",
@@ -291,7 +327,13 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
       expect(result[0].avgSentiment).toBe(0.8);
     });
 
-    it("includes a provider deliberately shared across every house (restaurant_id IS NULL), never a different house's own provider", async () => {
+    // #391 widened this list to NULL-house providers as "shared". No other
+    // provider read in this gateway treats them so (listProviders and
+    // getProvider both use a plain .eq), and bulk import wrote restaurant_id
+    // NULL for every imported vendor until PR #412 — so a NULL-house row is
+    // one house's vendor with its house dropped, not a shared one. Excluded
+    // here until a decision says otherwise (PR #416 merge, 2026-09-25).
+    it("excludes a provider with no house (restaurant_id IS NULL) as well as a different house's own provider", async () => {
       const service = await makeScopedService({
         providers: [
           {
@@ -316,7 +358,7 @@ describe("ProviderIntelligenceService — house scoping (2026-09-17)", () => {
 
       const result = await service.compareProviders("r1");
 
-      expect(result.map((p) => p.id)).toEqual(["p-shared"]);
+      expect(result.map((p) => p.id)).toEqual([]);
     });
   });
 });
