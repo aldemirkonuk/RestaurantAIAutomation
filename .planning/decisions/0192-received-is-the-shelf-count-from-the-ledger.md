@@ -220,13 +220,18 @@ Built:
   anything else moves; if it cannot be written the verification changes nothing. It
   no longer writes `accepted_quantity`, `rejected_quantity`, `invoice_quantity` or
   `backorder_quantity`. The latest `reconciled` event is the verification of record (a
-  re-verification restates the delivery; runs are not added up). The existing
+  re-verification restates the delivery; runs are not added up). **[2026-09-26, fifth
+  amendment: a one-tap confirmation (`outcome = 'accepted'`) is a verification that
+  restates nothing; the invoice and the desk's refusal are read from the latest event
+  that states them.]** The existing
   `listUnverified` already counted a `reconciled` event as closing the loop.
 - The shelf reading (`shelf-received.ts`) adds `rejectedAtDeskBottles`,
   `invoicedBottles`, `verifiedAt`, `orderedBottles` and `backorderBottles`:
   **accepted** is the ledger's own count (the verification's correction is what moves
   it — there is no second "accepted" number), **rejected** is the door's plus the
-  latest verification's, **invoiced** is the latest verification's, **backorder** is the
+  latest verification's, **invoiced** is the latest verification's **[2026-09-26, fifth
+  amendment: the latest that states one; refusal from the latest full verification]**,
+  **backorder** is the
   order's bottles less the ledger's count, never below zero, and null when the order's
   bottles are not known exactly (never a rounded pack). A later truck moves the
   backorder; the old column never could. The 409 summary names desk rejections and
@@ -535,6 +540,8 @@ path (`hasMatchFields` is false), so it completes the order and writes no `recon
 Writing one would make it the verification of record and blank an earlier verification's
 invoice quantity (the latest `reconciled` row answers "invoiced", 2026-09-21 amendment), so it
 is not built here; it is a fork for the founder, reported by the W3-receiving lane.
+**[founder, 2026-09-26, round 6: answered — *"Yes, keep last invoice (Recommended)"*; built, see
+the fifth amendment below. The one-tap now writes its line and blanks nothing.]**
 
 **Also in this round (a code fix, not a ruling).** CodeQL alert #1505
 (`js/user-controlled-bypass`) flagged `markDelivered`'s put-back guard `if (stockNotMoved)`.
@@ -547,6 +554,61 @@ the `true` on the delivery-read branch turns its "cannot be read … put back" c
 
 **Evidence.** `verify-receipt.spec.ts`, block *"a part-pack derived count verifies in bottles"*
 (3 tests; both part-pack cases go red when the refusal is put back).
+
+## Fifth amendment 2026-09-26 — a one-tap "Counts match" leaves a history line and restates nothing
+
+**Source.** The founder, 2026-09-26, round 6, asked via AskUserQuestion: *"Receiving: the
+one-tap 'Counts match' writes no history line today. Should it?"* **[founder, 2026-09-26,
+round 6]** chose, verbatim: *"Yes, keep last invoice (Recommended) — It writes a history line
+with the counted bottles. The invoice figure from an earlier check stays readable instead of
+turning into 'unknown'."* Rejected: *"Yes, as the new record — The line becomes the check of
+record; an earlier invoice figure reads as unknown."* and *"Leave it — One-tap confirmations
+leave no history."* This closes the fourth amendment's open item (the W3-receiving lane's
+fork; its options A/B/C were these three, B chosen).
+
+**Built.**
+
+1. **The line.** A verification with no match field (`hasMatchFields` false) — the mobile
+   Today card's *"Counts match"*, which posts `{ adjustments: [] }`
+   (`apps/mobile/src/components/today/DecisionCard.tsx`), and an old offline payload that
+   carries only adjustments — now writes one `reconciled` event in `verifyReceipt`, in
+   bottles: `counted_qty_bottles` = what the ledger holds for the order's item (the booked
+   bottles, plus any adjustment the payload makes to that item), `rejected_qty_bottles` 0,
+   `invoice_qty_bottles` NULL, and `outcome = 'accepted'`. A count that is not a whole,
+   non-negative number of bottles, or an order with no item, records `NULL` ("no accepted
+   count recorded"), never a rounded or guessed one. It is written before anything moves,
+   like the full verification's event: if it cannot be recorded, or the ledger cannot be read,
+   nothing changes (no stock, no order write). Every adjustment's item is proven to be the
+   house's before the line is written, so a refused adjustment (403) leaves no line.
+2. **The mark.** `outcome = 'accepted'` (`COUNTS_CONFIRMED_OUTCOME`,
+   `apps/api-gateway/src/procurement/shelf-received.ts`) is the receiver's word from the
+   column's own list (`accepted | short | refused`, `20260901220000_door_facts_are_columns.sql`):
+   the delivery was accepted as booked. A full verification leaves `outcome` NULL, so the word
+   is what tells the two apart; nothing is inferred from an absent number. No migration: the
+   column and its CHECK already admit it, and the door's lanes read `stage = 'case_count'`
+   only, so a `reconciled` row with this word reaches no door lane.
+3. **The reading ("keep last invoice").** `composeShelfReceived` reads each figure from the
+   latest event that STATES it: *invoiced* from the latest `reconciled` event whose
+   `invoice_qty_bottles` is not NULL (so neither a confirmation nor a later full check with
+   no paper blanks an earlier invoice), *rejected at verification* from the latest full
+   verification (so a confirmation does not turn an earlier refusal into a zero nobody
+   counted; confirmations alone read 0), and *verified at* from the latest verification of
+   either kind. The 2026-09-21 sentence "the latest `reconciled` row answers invoiced" is
+   superseded by this reading.
+
+**My reading, stated for his check.** His option names the invoice only. The desk's refusal
+is read by the same rule ("stays readable instead of turning into …") because the one-tap
+states no refusal either, and the `rejected_qty_bottles` column is NOT NULL, so without the
+mark the confirmation's forced 0 would overwrite an earlier refusal. The old offline
+adjustments-only payload is covered because it is the same no-count path, and the fourth
+amendment's intent was that every verification leaves a line.
+
+**Evidence.** `verify-receipt.spec.ts`, block *"a one-tap 'Counts match' leaves a history
+line"* (7 tests); `shelf-received.spec.ts`, block *"a one-tap 'Counts match' restates
+nothing"* (7 tests). Mutants, each put back after: disabling the write turns 5 red; reading
+the invoice from the latest event turns 3 red; reading the refusal from the latest event turns
+2 red; dropping `outcome` from the reader's select turns 1 red; skipping the tenancy pre-check
+turns 1 red. The desk's history words for the line (*desk_confirmed*) are on #480.
 
 ## Review trail
 
@@ -567,3 +629,5 @@ the `true` on the delivery-read branch turns its "cannot be read … put back" c
 | 2026-09-22 | Claude (Opus 5), lane E round 4 last call 2 | Record narrowed to the code: the API-only ledger endpoint does not queue research (item 4 bracket, the CLAIMS row text, the module comment), and the /inventory card is not in Mudavym components (Not built). No behaviour changed |
 | 2026-09-25 | Aldemir (founder), round 5 | *"Yes, in base units (Recommended)"* on the part pack (fourth amendment, verbatim with the rejected option) |
 | 2026-09-25 | Claude (Opus 5), lane W3-receiving | Built (fourth amendment): the derived part pack verifies in bottles and writes its event; the no-count one-tap verification stated as not covered; CodeQL #1505 restructured (flag split from reason) |
+| 2026-09-26 | Aldemir (founder), round 6 | *"Yes, keep last invoice (Recommended)"* on the one-tap "Counts match" (fifth amendment, verbatim with both rejected options) |
+| 2026-09-26 | Claude (Opus 5), lane W4-receiving | Built (fifth amendment): the no-count verification writes a `reconciled` line marked `outcome = 'accepted'`; the invoice and the desk's refusal read from the latest event that states them; the refusal half stated as this lane's reading |
