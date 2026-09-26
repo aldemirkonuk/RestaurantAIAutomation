@@ -438,7 +438,7 @@ function App() {
                       "vendor-prices = behind a flag (vendor_prices
                       mudavym_design_* column migration, he flips it; NOT
                       live on merge)". Gated on mudavym_design_vendor_prices
-                      (migration 20260921150000, renamed twice — see
+                      (migration 20260926170000, renamed three times — see
                       vendor-prices.md), OFF by default. Role gate
                       is enforced server-side too (owner/manager on
                       /vendor-intel/*, staff on the identity routes) — a

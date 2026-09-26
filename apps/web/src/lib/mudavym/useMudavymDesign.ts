@@ -109,11 +109,9 @@ export const MUDAVYM_PAGES = [
   // (memory founder-sketch-decisions-106-115.md) overrides an earlier
   // same-day brief that had routed `/vendor-prices` straight to Mudavym for
   // every house with no gate — see App.tsx's route comment. Column added by
-  // migration 20260921150000 (renamed twice — 20260921000000 and, before
-  // that, 20260919110000 were each older than an in-flight sibling
-  // migration by the time they were checked in; see vendor-prices.md's
-  // dated brackets for the full rename history), OFF by default like every
-  // other page here.
+  // migration 20260926170000 (renamed three times; see vendor-prices.md's
+  // dated brackets for the history), OFF by default and NOT in LIVE_PAGES —
+  // the founder flips it per house.
   'vendor_prices',
 ] as const;
 
