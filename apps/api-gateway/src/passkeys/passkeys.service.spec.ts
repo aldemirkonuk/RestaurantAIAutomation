@@ -102,12 +102,13 @@ class Query implements PromiseLike<{ data: any; error: any }> {
     return this;
   }
 
-  then<T1, T2>(
-    ok?: (v: { data: any; error: any }) => T1,
-    bad?: (e: any) => T2,
-  ): PromiseLike<T1 | T2> {
+  then<TResult1 = { data: any; error: any }, TResult2 = never>(
+    ok?: ((v: { data: any; error: any }) => TResult1 | PromiseLike<TResult1>) | null,
+    bad?: ((e: any) => TResult2 | PromiseLike<TResult2>) | null,
+  ): PromiseLike<TResult1 | TResult2> {
     return Promise.resolve(this.run()).then(ok, bad);
   }
+
 
   private run(): { data: any; error: any } {
     const rows =
@@ -193,7 +194,7 @@ class SoftAuthenticator {
     return 0x01 | (this.uv ? 0x04 : 0) | (attested ? 0x40 : 0);
   }
 
-  register(options: { challenge: string; rp: { id: string } }, origin: string) {
+  register(options: { challenge: string; rp: { id?: string } }, origin: string) {
     const clientDataJSON = Buffer.from(
       JSON.stringify({
         type: "webauthn.create",
@@ -205,7 +206,7 @@ class SoftAuthenticator {
     const idLen = Buffer.alloc(2);
     idLen.writeUInt16BE(this.credentialId.length);
     const authData = Buffer.concat([
-      sha256(options.rp.id),
+      sha256(options.rp.id ?? ""),
       Buffer.from([this.flags(true)]),
       u32(this.counter),
       Buffer.alloc(16),
