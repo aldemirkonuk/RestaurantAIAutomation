@@ -18,6 +18,22 @@
 --
 -- Read by AuthService.memberHouses' caller (`GET /auth/houses`, field
 -- `accessEnded`) only when the person has no active house.
+--
+-- ADR 0164, bracket of 2026-09-25 (the founder, round 5, item 26): "Owner
+-- deletes own only house -> /get-started (only people removed by someone else
+-- see /no-access)." So a row also says HOW the membership ended:
+--   end_reason 'removed'       -- the row itself was deleted or deactivated
+--                                 (someone else took the person out, unless
+--                                 the gateway restamps it 'left' below);
+--   end_reason 'house_deleted' -- the house row is gone: this was the FK
+--                                 cascade of a house deletion;
+--   end_reason 'left'          -- stamped by the gateway right after the
+--                                 person ended it themselves (leaveRestaurant,
+--                                 removeMember/deleteMember on oneself).
+-- and ended_role keeps the role they held. The gateway reads "ended by someone
+-- else" as: not 'left', and not ('house_deleted' held as 'owner'). A restamp
+-- that fails leaves 'removed', which is the safe side (/no-access, whose
+-- "Start here" link still reaches /get-started).
 
 create table if not exists public.house_memberships_ended (
   user_id       uuid        not null references public.users(user_id) on delete cascade,
@@ -25,14 +41,22 @@ create table if not exists public.house_memberships_ended (
   -- its membership rows, and that is an ended membership too).
   restaurant_id uuid        not null,
   ended_at      timestamptz not null default now(),
+  -- How it ended (see the header). Default 'removed': anything not proven
+  -- self-ended reads as ended by someone else.
+  end_reason    text        not null default 'removed'
+                check (end_reason in ('removed', 'left', 'house_deleted')),
+  -- The role held in that house when it ended; null when the backfill cannot
+  -- prove it.
+  ended_role    text,
   primary key (user_id, restaurant_id)
 );
 
 comment on table public.house_memberships_ended is
   'One row per (person, house) whose active user_restaurant_access row was deleted or deactivated; '
   'written only by trigger user_restaurant_access_end_is_remembered. ADR 0164 bracket 2026-09-25 '
-  '(founder round 4, item 16): a verified account with no house and no row here goes to /get-started; '
-  'a person with a row here sees /no-access.';
+  '(founder round 4, item 16) and round 5, item 26: a verified account with no house goes to /no-access '
+  'only when a row here was ended by someone else (end_reason removed, or house_deleted held as other than '
+  'owner); otherwise to /get-started.';
 
 -- OD-59 / OD-94 house rule: RLS and the client REVOKE in the migration that
 -- creates the table. Only the gateway (service role) reads it.
@@ -58,9 +82,28 @@ begin
     return null;
   end if;
 
-  insert into public.house_memberships_ended (user_id, restaurant_id, ended_at)
-  values (old.user_id, old.restaurant_id, now())
-  on conflict (user_id, restaurant_id) do update set ended_at = excluded.ended_at;
+  -- A house deletion reaches this row through the FK's ON DELETE CASCADE,
+  -- which runs after the restaurants row is already gone in this statement;
+  -- a removal leaves the house in place.
+  insert into public.house_memberships_ended
+    (user_id, restaurant_id, ended_at, end_reason, ended_role)
+  values (
+    old.user_id,
+    old.restaurant_id,
+    now(),
+    case
+      when exists (select 1 from public.restaurants r where r.id = old.restaurant_id)
+        then 'removed'
+      else 'house_deleted'
+    end,
+    old.role
+  )
+  -- A second ending is a new fact: every column is re-stamped, so a person
+  -- who once left and was later removed reads as removed.
+  on conflict (user_id, restaurant_id) do update
+    set ended_at   = excluded.ended_at,
+        end_reason = excluded.end_reason,
+        ended_role = excluded.ended_role;
 
   return null;
 end
@@ -86,8 +129,8 @@ create trigger user_restaurant_access_deactivation_is_remembered
 -- before this trigger existed. Insert-only; nothing existing is changed.
 --
 -- 1. A membership row that is already inactive.
-insert into public.house_memberships_ended (user_id, restaurant_id, ended_at)
-select ura.user_id, ura.restaurant_id, coalesce(ura.deactivated_at, now())
+insert into public.house_memberships_ended (user_id, restaurant_id, ended_at, end_reason, ended_role)
+select ura.user_id, ura.restaurant_id, coalesce(ura.deactivated_at, now()), 'removed', ura.role
 from public.user_restaurant_access ura
 where ura.is_active = false
   and exists (select 1 from public.users u where u.user_id = ura.user_id)
@@ -97,9 +140,11 @@ on conflict (user_id, restaurant_id) do nothing;
 --    active member of. Acceptance stamps used_at and used_by_email
 --    (auth.service.ts acceptInvite / joinViaInvite) and a failed join
 --    un-stamps it, so a stamped invite is a membership that once existed.
-insert into public.house_memberships_ended (user_id, restaurant_id, ended_at)
+--    Who ended it and how is not provable from here, so these read as
+--    'removed' (the safe side) with no role.
+insert into public.house_memberships_ended (user_id, restaurant_id, ended_at, end_reason, ended_role)
 select distinct on (u.user_id, oi.restaurant_id)
-       u.user_id, oi.restaurant_id, oi.used_at
+       u.user_id, oi.restaurant_id, oi.used_at, 'removed', null
 from public.organization_invites oi
 join public.users u on lower(u.email) = lower(oi.used_by_email)
 where oi.used_at is not null

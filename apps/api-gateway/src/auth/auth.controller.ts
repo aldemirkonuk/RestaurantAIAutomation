@@ -598,10 +598,12 @@ export class AuthController {
    * membership each, `{ id, name, city }`, sorted by name. No role, no numbers.
    *
    * `accessEnded` answers only when `houses` is empty (null otherwise): true
-   * when a membership of theirs has ended, so the web shows `/no-access`;
-   * false when they never had a house, so it sends them straight to
-   * `/get-started` (ADR 0164, bracket 2026-09-25; the founder, round 4, item
-   * 16). Asked only when needed, so a person with houses pays no extra read.
+   * when someone else ended a membership of theirs, so the web shows
+   * `/no-access`; false when they never had a house or ended their own (left,
+   * or deleted the house they owned), so it sends them straight to
+   * `/get-started` (ADR 0164, brackets 2026-09-25; the founder, round 4, item
+   * 16, and round 5, item 26). Asked only when needed, so a person with houses
+   * pays no extra read.
    */
   @Get("houses")
   @UseGuards(JwtAuthGuard)

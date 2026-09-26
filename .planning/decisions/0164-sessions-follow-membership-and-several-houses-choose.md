@@ -557,6 +557,10 @@ a restaurant. Considered and rejected:
 - `ChooseHouse` with no houses: `/no-access` when `accessEnded` is true, when
   this tab noted an ended house, or when the answer is missing (an older
   gateway); `/get-started` only when it is `false`.
+  [Amended 2026-09-25, round 5, item 26 (next section): "this tab noted an
+  ended house" no longer sends anyone to `/no-access`; the server's answer
+  decides, and `accessEnded` now means "someone else ended a membership of
+  theirs".]
 - **The "Opening your own restaurant? Start here." link on `/no-access`
   stays.** It is not made redundant: the people who now land there are the
   removed ones, and under ADR 0213 opening a house of their own is still
@@ -570,12 +574,123 @@ a restaurant. Considered and rejected:
   against production (no production read was made).
 
 Tests: `ChooseHouse.test.tsx` 4 routing cases (never → `/get-started`; ended
-→ `/no-access`; tab note wins over `false`; missing → `/no-access`), each
+→ `/no-access`; tab note wins over `false` [replaced 2026-09-25, round 5:
+the server's `false` now wins over the tab note]; missing → `/no-access`), each
 mutation-checked red; `sessions-follow-membership.spec.ts` 5 cases on the real
 controller and service (false, true, another person's row, not asked with a
 house, 503), each of three mutants red. CLAIMS row
 `ADR-0164-ZERO-HOUSES-NEVER-VS-ENDED`, mutation-checked (ChooseHouse branch
 removed → red; delete trigger's `when` widened → red).
+
+## 2026-09-25 — an owner who ends their own house goes to /get-started (founder, round 5, item 26)
+
+**The fork** (lane W3, asked by the orchestrating session): the round-4
+trigger recorded every ended membership alike, including the FK cascade of a
+house deletion, so an owner who deleted their own only house would have been
+read as removed and sent to `/no-access`.
+
+**Asked, verbatim:** "Auth (#471): an owner deletes their own only house.
+Their membership is recorded as ended. Where do they land next sign-in?"
+- **Chosen — "/get-started (Recommended)":** "They ended it themselves, so
+  they're treated as a fresh account ready to start a house. Only people
+  REMOVED by someone else see /no-access."
+- *Rejected — "/no-access":* "Same as a removed member; they must be invited
+  or start again from there."
+
+**Answered, the founder, 2026-09-25, round 5, verbatim (his spelling):**
+"their email is with us, if they accpeted to share their perosnal info we keep
+what s valuable to us, and yes /get-started".
+
+**Retention, recorded as his statement (no code acts on it here).** When an
+owner deletes their own house, the account and its email stay with Mudavym;
+this change deletes no account, no email, and no `house_memberships_ended`
+row. Keeping any *other* personal data follows the person's consent: what they
+accepted to share is kept where it is valuable to Mudavym, and nothing else is
+promised. No deletion or retention code is written for it on this branch;
+turning that sentence into a retention rule per data class is later work,
+not ordered here.
+
+**What "someone else" had to mean in the data.** The trigger cannot see who
+acted (the gateway writes as the service role for every caller). It records
+what it can see, and the gateway adds the one fact only it knows:
+- `end_reason` (check: `removed` | `left` | `house_deleted`, default
+  `removed`) and `ended_role` (the role held), both on the unmerged migration
+  `20260926120000` (edited in place: it has never been applied anywhere,
+  migrations apply on merge; additive columns, no row deletes).
+- The trigger writes `house_deleted` when the `restaurants` row is already
+  gone in the statement, which is exactly the FK's `ON DELETE CASCADE`
+  (`user_restaurant_access_restaurant_id_fkey`, baseline
+  `20260805000000:13742`); otherwise `removed`. A second ending re-stamps
+  every column.
+- The gateway restamps the row `left` (`markMembershipLeft`,
+  `apps/api-gateway/src/auth/membership-ended.ts`) on the three doors where
+  the person ends it themselves: `leaveRestaurant`, `removeMember` on
+  oneself, `TeamService.deleteMember` of one's own roster row. A failed
+  restamp is logged, not thrown, and the row stays `removed`.
+- The read (`endedBySomeoneElse`): self-ended is `left`, or `house_deleted`
+  held as `owner`; everything else, including a row with no reason, is
+  someone else's. Staff of a house its owner deleted were removed by that act,
+  so they still see `/no-access`.
+- `ChooseHouse` now routes on the server's answer alone. This tab's
+  `sessionStorage` note saw that access ended, not who ended it, and an
+  owner's open tab is refused (`HOUSE_ACCESS_ENDED`) exactly like a removed
+  person's; letting the note win would send that owner to `/no-access`. A
+  missing answer still reads as ended.
+
+Considered and rejected:
+- *Pass the actor into the trigger* (a PostgREST request header read as
+  `request.headers`, or an RPC that sets a transaction-local setting before
+  the delete). It would be atomic, but every delete, including a future
+  house-delete route, would have to carry it, over a path the gateway's shared
+  service-role client does not use today; the restamp needs no new database
+  surface, and its failure lands on the safe side.
+- *Infer self-ended in the trigger* (write a boolean). It hides the facts
+  behind a conclusion; `end_reason` + `ended_role` keep the facts and the rule
+  lives in one reviewed TypeScript function.
+- *Any `house_deleted` row is self-ended.* Staff of the deleted house would be
+  sent to `/get-started` although someone else ended their access, which the
+  answer names as `/no-access`.
+- *An `ended_by` actor column.* No path today would fill it for a cascade (no
+  house-delete route exists in the gateway: the only `restaurants` deletes are
+  the rollbacks in `createFirstHouse`, `registerRestaurant` and
+  `createLocation`, `auth.service.ts:1229`, `:1417`,
+  `organizations.service.ts:714` on this branch; no `restaurants` delete in
+  `services/`), so it would be null exactly where it mattered.
+
+**Limits, stated.**
+- A co-owner of a house another owner deleted reads as self-ended
+  (`house_deleted` held as `owner`) and goes to `/get-started`. The record
+  cannot tell the two owners apart without an actor; `/get-started` is where
+  the founder's answer sends an owner whose house is gone, and `/no-access`'s
+  "ask an owner for an invitation" has no house left to name.
+- An owner's own house deleted by hand in SQL (today's only way, since no
+  delete-house route exists) reads the same as one deleted by a future route:
+  `house_deleted` held as `owner`, self-ended. That is the case the answer
+  describes.
+- The `createFirstHouse` rollback (owner row written, a later write fails,
+  the house is deleted) now reads as `house_deleted`/`owner`, self-ended: the
+  new account still goes to `/get-started`, where round 4 would have sent it to
+  `/no-access`.
+- Backfilled rows read `removed` (the safe side); they cannot prove who ended
+  them.
+- The phone is unchanged (no `/get-started` flow; ADR 0213 is web-only).
+
+Tests and proof: `sessions-follow-membership.spec.ts` (+9 cases: owner of a
+deleted house → false; staff of it → true; left → false; left one + removed
+from another → true; owner removed with the house still there → true; a row
+with no reason → true; the read asks for both columns; `leaveRestaurant`
+restamps and then reads false; a failed restamp still leaves and reads true);
+`removal-only-that-house.spec.ts` (+5: leave, Settings' remove of oneself and
+the Team page's remove of oneself stamp `left`; the two removals by an owner
+stamp nothing); `ChooseHouse.test.tsx` (the tab note case now asserts
+`/get-started` on `false`, plus `true` and missing with the note). Six gateway
+mutants and two web mutants, each red, restored green. PGlite full-corpus probe
+(217/217 prior migrations; fidelity limit: PGlite as superuser, Supabase
+platform stubbed): 21 checks incl. `house_deleted/owner`,
+`house_deleted/staff`, `removed/staff`, re-stamp after `left`, the check
+constraint, backfill reasons; two migration mutants red. CLAIMS row
+`ADR-0164-SELF-ENDED-GOES-TO-GET-STARTED` (two mutants red), and
+`ADR-0164-ZERO-HOUSES-NEVER-VS-ENDED` amended in place.
 
 ## Open items for the founder (not decided here)
 
@@ -678,3 +793,4 @@ The two options originally weighed, kept for the record:
 | 2026-09-21 | Build session (workflow subagent), round 6, same branch | Closed round 5's last-call NOT-READY item, the only one outstanding: item (6) above (21 `CLAIMS.jsonl` rows restored, diff against `cb756083e` "carries only 11+2") was itself wrong on the tree round 5 committed. Both round 5's fix and the round-4 reviewer's original "21" tally it followed (`b0b73913b`'s commit message) keyed the base-vs-head comparison on each row's `id` field, and ids repeat: 53 of the 358 real claim rows in `cb756083e` share an id with another row (`ADR-0104` ×33, `ADR-0103` ×16, `ADR-0021` ×14, `ADR-0139` ×13 among them, independently recounted), so an id-keyed diff silently collapses distinct rows onto each other and mis-sizes the count whichever way it runs. Pairing the -/+ lines positionally inside each `git diff -U0 cb756083e` hunk instead and comparing `json.loads(a)==json.loads(b)` per pair (a comparison id repeats cannot confuse) puts the true count of encoding-only rows at `b0b73913b` at 66, not 21 — of which round 5 restored 21 and left 45 unrestored, unnoticed because the same id-keyed method verified the fix as had sized it. Restored the remaining 45 byte-for-byte from `cb756083e` at their unchanged line numbers (18, 31, 57, 59, 63, 76, 84, 89, 93, 97, 99, 115, 117, 123, 133, 135–139, 141–142, 146, 156, 162, 187–189, 191, 203–205, 210, 216, 241, 248–249, 251–252, 270, 273, 306–307, 309–310); `git diff --numstat cb756083e` (working tree) now reads 13 added / 2 removed — the 11 `ADR-0164-*` rows and 2 `ADR-0162-*` rows this lane actually changed, exactly — and the positional-pairing script reports 0 encoding-only rows left. `check_decision_claims.sh` unchanged at 369/369. Corrected item (6) above to match and point here. |
 | 2026-09-25 | Build session (workflow subagent, lane W1-sessions) | Carried the lane onto main from `origin/wip/2026-09-21/sessions` as `fix/sessions-follow-membership-r6`; joined it with ADR 0213's account-only signup and main's four new `@Roles` controllers (section "2026-09-25 — carried onto main"). Gateway jest 490 suites, 7813 passed, 14 skipped; web vitest 292 files, 3857 passed, 11 skipped; claims 495/495. |
 | 2026-09-25 | Build session (workflow subagent, lane W2-fix-auth) | The founder's fork answered (round 4, item 16, option (b)): zero houses and no ended membership → `/get-started`; ended → `/no-access` (section "2026-09-25 — zero houses"). Migration `20260926120000` (ended-membership record by trigger + backfill), `GET /auth/houses` `accessEnded`, `ChooseHouse` routing; the `/no-access` link kept for removed people. Merged main `4e7c5b5a6` (#412) first. Gateway `sessions-follow-membership.spec.ts` 35/35; web `ChooseHouse.test.tsx` 14/14; PGlite probe 14/14; claims 499/499. |
+| 2026-09-25 | Build session (workflow subagent, lane W3-owner-exit) | The founder's round-5 item 26 built (section "2026-09-25 — an owner who ends their own house"): `end_reason`/`ended_role` on the unmerged migration, `left` restamp on the three self-ending doors, `endedBySomeoneElse`, `ChooseHouse` routes on the server's answer; his retention statement recorded, no deletion code. Round-4 section bracket-amended in place. |

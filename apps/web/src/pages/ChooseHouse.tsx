@@ -21,8 +21,9 @@ import {
  * The page after sign-in for a person with two or more houses whose device has
  * not used one of them within seven days, and for anyone whose access to the
  * house they were in has just ended. Someone with no house at all leaves it at
- * once: to /no-access if a membership of theirs ended, to /get-started if they
- * never had one. One large row per house, the name and the
+ * once: to /no-access if someone else ended a membership of theirs, to
+ * /get-started if they never had one or ended their own. One large row per
+ * house, the name and the
  * city and nothing else; this device's last house first, marked; one tap opens
  * it. Kept simple on purpose ("simple for people"): no role, no numbers, no
  * logos. It is the next leaf after sign-in, so it wears the sign-in page's
@@ -107,14 +108,18 @@ export function ChooseHouse() {
   if (!loading && !user) return <Navigate to="/login" replace />;
   if (user?.emailVerified === false)
     return <Navigate to="/verify-email" replace />;
-  // No house (ADR 0164, bracket 2026-09-25; the founder, round 4, item 16):
-  // someone whose membership ended (the server's record, or this tab's note
-  // of the refusal) sees /no-access; a verified account that never had a
-  // house goes straight to /get-started (ADR 0213) to open its first one.
+  // No house (ADR 0164, brackets 2026-09-25; the founder, round 4, item 16,
+  // and round 5, item 26: "only people removed by someone else see
+  // /no-access"): someone whose membership another person ended sees
+  // /no-access; a verified account that never had a house, or that ended its
+  // own (left, or deleted the house it owned), goes straight to /get-started
+  // (ADR 0213). The server's record decides. This tab's note of a refusal
+  // cannot: it saw that access ended, not who ended it, and an owner whose
+  // own house was deleted is refused the same way a removed person is.
   if (load.state === "ready" && load.houses.length === 0)
     return (
       <Navigate
-        to={load.accessEnded || ended ? "/no-access" : "/get-started"}
+        to={load.accessEnded ? "/no-access" : "/get-started"}
         replace
       />
     );

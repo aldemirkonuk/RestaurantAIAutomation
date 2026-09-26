@@ -157,9 +157,35 @@ describe("ChooseHouse", () => {
     );
   });
 
-  it("sends a person to /no-access when this tab saw their house end, whatever the server's record says", async () => {
+  // Round 5, item 26 (the founder, 2026-09-25): "Owner deletes own only house
+  // -> /get-started (only people removed by someone else see /no-access)."
+  // The owner's open tab is refused like a removed person's and notes it; the
+  // server's record, which knows who ended it, decides.
+  it("sends an owner whose own house was deleted to /get-started, even when this tab saw the house end", async () => {
     sessionStorage.setItem(HOUSE_ENDED_KEY, BESIKTAS.id);
     housesAnswer([], { accessEnded: false });
+
+    renderAt();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent("/get-started"),
+    );
+  });
+
+  it("sends a person someone else removed to /no-access when this tab saw their house end", async () => {
+    sessionStorage.setItem(HOUSE_ENDED_KEY, BESIKTAS.id);
+    housesAnswer([], { accessEnded: true });
+
+    renderAt();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent("/no-access"),
+    );
+  });
+
+  it("reads a missing answer as ended even with this tab's note: /no-access", async () => {
+    sessionStorage.setItem(HOUSE_ENDED_KEY, BESIKTAS.id);
+    housesAnswer([]);
 
     renderAt();
 

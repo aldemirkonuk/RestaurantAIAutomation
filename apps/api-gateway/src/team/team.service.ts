@@ -11,6 +11,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
+import { markMembershipLeft } from "../auth/membership-ended";
 import { recordAccessChange } from "./access-audit";
 import {
   ChannelPreferences,
@@ -585,6 +586,10 @@ export class TeamService {
         throw new InternalServerErrorException("Failed to remove member");
       }
       accessRevoked = true;
+      // A manager deleting their own roster row is leaving (ADR 0164, round
+      // 5, item 26): only people removed by someone else see /no-access.
+      if (member.user_id === userId)
+        await markMembershipLeft(this.sb, userId, restaurantId, this.logger);
       this.websocketGateway?.evictFromHouse(member.user_id, restaurantId);
       await cancelPendingInvitesFrom(
         this.sb,

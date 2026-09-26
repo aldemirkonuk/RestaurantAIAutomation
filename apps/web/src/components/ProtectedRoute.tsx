@@ -52,9 +52,10 @@ export function ProtectedRoute({
 
   // A session in no house (ADR 0164): someone with several houses who has not
   // chosen one yet, or whose access to their house just ended. They choose;
-  // the chooser sends someone with no houses at all to /no-access if a
-  // membership of theirs ended, or to /get-started if they never had one
-  // (bracket 2026-09-25; the founder, round 4, item 16).
+  // the chooser sends someone with no houses at all to /no-access if someone
+  // else ended a membership of theirs, or to /get-started if they never had
+  // one or ended their own (brackets 2026-09-25; the founder, round 4, item
+  // 16, and round 5, item 26).
   if (!user?.restaurantId) {
     return <Navigate to="/choose-house" state={{ from: location }} replace />
   }

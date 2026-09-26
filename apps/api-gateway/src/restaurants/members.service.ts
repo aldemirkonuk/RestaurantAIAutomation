@@ -14,6 +14,7 @@ import { DatabaseService } from "../database/database.service";
 import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
 import { grantRefusal } from "../auth/role-grant";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
+import { markMembershipLeft } from "../auth/membership-ended";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -435,6 +436,16 @@ export class MembersService {
       this.logger.error(`removeMember delete failed: ${error.message}`);
       throw new InternalServerErrorException("Failed to remove member");
     }
+
+    // Removing oneself is leaving (ADR 0164, round 5, item 26): only people
+    // removed by someone else are sent to /no-access.
+    if (selfLeave)
+      await markMembershipLeft(
+        this.databaseService.supabase,
+        targetUserId,
+        restaurantId,
+        this.logger,
+      );
 
     this.websocketGateway?.evictFromHouse(targetUserId, restaurantId);
     await cancelPendingInvitesFrom(

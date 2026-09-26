@@ -695,7 +695,13 @@ describe("GET /auth/houses: a removed person apart from one who never had a hous
   it("a membership ended: accessEnded is true", async () => {
     const db = world();
     db.tables.house_memberships_ended = [
-      { user_id: U, restaurant_id: A, ended_at: "2026-09-20T00:00:00Z" },
+      {
+        user_id: U,
+        restaurant_id: A,
+        ended_at: "2026-09-20T00:00:00Z",
+        end_reason: "removed",
+        ended_role: "staff",
+      },
       { user_id: OTHER, restaurant_id: B, ended_at: "2026-09-20T00:00:00Z" },
     ];
 
@@ -727,6 +733,26 @@ describe("GET /auth/houses: a removed person apart from one who never had a hous
     expect(db.opsOn("house_memberships_ended")).toHaveLength(0);
   });
 
+  it("a row with no reason reads as removed by someone else (the safe side)", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [
+      { user_id: U, restaurant_id: A, ended_at: "2026-09-20T00:00:00Z" },
+    ];
+
+    await expect(houses(db)).resolves.toMatchObject({ accessEnded: true });
+  });
+
+  it("asks for how each membership ended, not only whether one did", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [];
+
+    await houses(db);
+
+    const [read] = db.opsOn("house_memberships_ended", "select");
+    expect(read.columns).toContain("end_reason");
+    expect(read.columns).toContain("ended_role");
+  });
+
   it("answers 503 when the record cannot be read, never 'never had a house'", async () => {
     const db = world();
     db.tables.house_memberships_ended = [];
@@ -735,5 +761,104 @@ describe("GET /auth/houses: a removed person apart from one who never had a hous
     await expect(houses(db)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
+  });
+});
+
+describe("GET /auth/houses: an owner who ended their own house goes to /get-started (bracket 2026-09-25, round 5)", () => {
+  // The founder, round 5, item 26: "Owner deletes own only house ->
+  // /get-started (only people removed by someone else see /no-access)." The
+  // trigger records end_reason 'house_deleted' (the house row is gone) or
+  // 'removed', and ended_role; the gateway restamps 'left' where the person
+  // ended it themselves.
+  const houses = (db: StubDb) =>
+    new AuthController(service(db)).houses({ user: { userId: U } } as any);
+  const ended = (
+    restaurant_id: string,
+    end_reason: string,
+    ended_role: string,
+  ) => ({
+    user_id: U,
+    restaurant_id,
+    ended_at: "2026-09-25T00:00:00Z",
+    end_reason,
+    ended_role,
+  });
+
+  it("the owner of a house that was deleted: accessEnded is false", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [ended(A, "house_deleted", "owner")];
+
+    await expect(houses(db)).resolves.toEqual({
+      success: true,
+      houses: [],
+      accessEnded: false,
+    });
+  });
+
+  it("a staff member of a house its owner deleted was removed by someone else: accessEnded is true", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [ended(A, "house_deleted", "staff")];
+
+    await expect(houses(db)).resolves.toMatchObject({ accessEnded: true });
+  });
+
+  it("a person who left: accessEnded is false", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [ended(A, "left", "manager")];
+
+    await expect(houses(db)).resolves.toMatchObject({ accessEnded: false });
+  });
+
+  it("left one house and was removed from another: accessEnded is true", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [
+      ended(A, "left", "manager"),
+      ended(B, "removed", "staff"),
+    ];
+
+    await expect(houses(db)).resolves.toMatchObject({ accessEnded: true });
+  });
+
+  it("an owner removed by a co-owner (house still there) was removed by someone else", async () => {
+    const db = world();
+    db.tables.house_memberships_ended = [ended(A, "removed", "owner")];
+
+    await expect(houses(db)).resolves.toMatchObject({ accessEnded: true });
+  });
+
+  it("leaveRestaurant restamps the trigger's row as 'left', so the leaver goes to /get-started", async () => {
+    const db = world({ houses: [{ house: A, role: "manager" }] });
+    // What the trigger writes inside the access row's delete (the stub runs
+    // no triggers; migration 20260926120000 is proved on PGlite).
+    db.tables.house_memberships_ended = [ended(A, "removed", "manager")];
+
+    await service(db).leaveRestaurant(U, A);
+
+    const [stamp] = db.opsOn("house_memberships_ended", "update");
+    expect(stamp.payload).toEqual({ end_reason: "left" });
+    expect(stamp.filters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ column: "user_id", value: U }),
+        expect.objectContaining({ column: "restaurant_id", value: A }),
+      ]),
+    );
+    await expect(houses(db)).resolves.toMatchObject({
+      houses: [],
+      accessEnded: false,
+    });
+  });
+
+  it("a leave whose restamp fails still leaves, and reads as removed (the safe side)", async () => {
+    const db = world({ houses: [{ house: A, role: "manager" }] });
+    db.tables.house_memberships_ended = [ended(A, "removed", "manager")];
+    db.errors["house_memberships_ended:update"] = {
+      message: "connection reset",
+    };
+
+    await expect(service(db).leaveRestaurant(U, A)).resolves.toBeUndefined();
+
+    expect(db.tables.user_restaurant_access).toHaveLength(0);
+    delete db.errors["house_memberships_ended:update"];
+    await expect(houses(db)).resolves.toMatchObject({ accessEnded: true });
   });
 });

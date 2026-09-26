@@ -47,9 +47,11 @@ export function NoAccess() {
           {/* ADR 0213: any account can open its own first house. An
               account that never had a house no longer lands here: the chooser
               sends it straight to /get-started (ADR 0164, bracket 2026-09-25;
-              the founder, round 4, item 16). Who lands here is someone whose
-              membership ended, and opening a restaurant of their own is still
-              theirs to choose, so the way on stays one link away. */}
+              the founder, round 4, item 16), and neither does one that ended
+              its own (left, or deleted the house it owned; round 5, item 26).
+              Who lands here is someone whose membership someone else ended,
+              and opening a restaurant of their own is still theirs to choose,
+              so the way on stays one link away. */}
           <p>
             <Link className="mdv-link" to="/get-started">
               Opening your own restaurant? Start here.

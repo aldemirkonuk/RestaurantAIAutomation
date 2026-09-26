@@ -18,6 +18,7 @@ import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GmailService } from "../communications/gmail.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import { cancelPendingInvitesFrom } from "./cancel-house-invites";
+import { endedBySomeoneElse, markMembershipLeft } from "./membership-ended";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import axios from "axios";
@@ -438,24 +439,26 @@ export class AuthService {
   }
 
   /**
-   * Whether a membership of this person's has ever ended: a row in
-   * `house_memberships_ended`, which a trigger writes whenever an active
-   * `user_restaurant_access` row is deleted or deactivated (migration
-   * 20260926120000). This is what tells a person removed from a house apart
-   * from an account that never had one (ADR 0164, bracket 2026-09-25; the
-   * founder, round 4, item 16): with no house, the first sees `/no-access`
-   * and the second goes straight to `/get-started`.
+   * Whether someone else ended a membership of this person's: a row in
+   * `house_memberships_ended` (a trigger writes one whenever an active
+   * `user_restaurant_access` row is deleted or deactivated, migration
+   * 20260926120000) that `endedBySomeoneElse` does not read as self-ended.
+   * This is what tells a person removed from a house apart from an account
+   * that never had one, or that ended its own (ADR 0164, brackets 2026-09-25;
+   * the founder, round 4, item 16, and round 5, item 26: "Owner deletes own
+   * only house -> /get-started (only people removed by someone else see
+   * /no-access)"). With no house, the first sees `/no-access`; the others go
+   * straight to `/get-started`.
    *
-   * A failed read is a 503, like `memberHouses`: "never had a house" is a
-   * claim, and a read that failed cannot make it — reading it as `false`
-   * would send a removed person to open a restaurant.
+   * A failed read is a 503, like `memberHouses`: "not removed" is a claim,
+   * and a read that failed cannot make it — reading it as `false` would send
+   * a removed person to open a restaurant.
    */
   async hasEndedMembership(userId: string): Promise<boolean> {
     const { data, error } = await this.databaseService.supabase
       .from("house_memberships_ended")
-      .select("restaurant_id")
-      .eq("user_id", userId)
-      .limit(1);
+      .select("restaurant_id, end_reason, ended_role")
+      .eq("user_id", userId);
     if (error) {
       this.logger.error(
         `hasEndedMembership could not read ${userId}'s ended memberships: ${error.message}`,
@@ -464,7 +467,7 @@ export class AuthService {
         "Could not read your houses. Nothing was done; try again.",
       );
     }
-    return (data?.length ?? 0) > 0;
+    return (data ?? []).some(endedBySomeoneElse);
   }
 
   /**
@@ -3198,6 +3201,14 @@ export class AuthService {
       throw new BadRequestException("Failed to leave restaurant");
     }
 
+    // They ended it themselves (ADR 0164, round 5, item 26): with no house
+    // left they go to /get-started, not /no-access.
+    await markMembershipLeft(
+      this.databaseService.supabase,
+      userId,
+      restaurantId,
+      this.logger,
+    );
     this.websocketGateway?.evictFromHouse(userId, restaurantId);
     await cancelPendingInvitesFrom(
       this.databaseService.supabase,
