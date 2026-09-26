@@ -539,7 +539,7 @@ Please try again or add items to inventory manually.""",
             return
 
         # Get notification preferences
-        prefs = await self._get_notification_preferences(manager["id"])
+        prefs = await self._get_notification_preferences(manager["id"], restaurant_id)
 
         # Determine urgency and channels
         urgency = self._calculate_urgency(estimated_stockout_days)
@@ -640,7 +640,7 @@ Please try again or add items to inventory manually.""",
         reject_url = f"{self._get_base_url()}/orders/{order_id}"
 
         # Get preferences
-        prefs = await self._get_notification_preferences(manager["id"])
+        prefs = await self._get_notification_preferences(manager["id"], restaurant_id)
         channels = prefs.get("order_approval_channels", ["push", "email", "sms"])
 
         # Send via selected channels
@@ -731,7 +731,7 @@ Please try again or add items to inventory manually.""",
         if not manager:
             return
 
-        prefs = await self._get_notification_preferences(manager["id"])
+        prefs = await self._get_notification_preferences(manager["id"], restaurant_id)
         channels = await self._select_channels("high", prefs, "negotiation_complete")
         results = []
 
@@ -804,7 +804,7 @@ Please try again or add items to inventory manually.""",
         if not manager:
             return
 
-        prefs = await self._get_notification_preferences(manager["id"])
+        prefs = await self._get_notification_preferences(manager["id"], restaurant_id)
         channels = await self._select_channels("high", prefs, "delivery_confirmation")
         results = []
 
@@ -1624,20 +1624,35 @@ Please try again or add items to inventory manually.""",
             self.logger.error(f"Failed to get manager: {e}")
             return None
 
-    async def _get_notification_preferences(self, manager_id: str) -> Dict[str, Any]:
-        """Get notification preferences for manager"""
+    async def _get_notification_preferences(
+        self, manager_id: str, restaurant_id: str
+    ) -> Dict[str, Any]:
+        """Get notification preferences for manager, scoped to one house.
+
+        (2026-09-19, D5) Preferences are per (restaurant_id, user_id) since
+        ADR 0149 row 39. Before this, the query filtered only on user_id and
+        called `.single()`, which PostgREST satisfies for exactly one row --
+        a manager of two or more houses now has one row per house, so
+        `.single()` raises "multiple rows returned", the except below catches
+        it, and every caller silently got `{}` (every channel default-allowed)
+        for any manager who runs more than one house, not that house's real
+        preferences.
+        """
         try:
             response = (
                 self.database.supabase.table("notification_preferences")
                 .select("*")
                 .eq("user_id", manager_id)
+                .eq("restaurant_id", restaurant_id)
                 .single()
                 .execute()
             )
 
             return response.data if response.data else {}
         except Exception as e:
-            self.logger.warning(f"No preferences found for manager {manager_id}: {e}")
+            self.logger.warning(
+                f"No preferences found for manager {manager_id} at restaurant {restaurant_id}: {e}"
+            )
             return {}
 
     async def _get_push_subscriptions(self, manager_id: str) -> List[Dict[str, Any]]:

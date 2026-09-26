@@ -107,8 +107,11 @@ export class TeamService {
    * `broadcast-preferences.ts` for why the rule is restated rather than
    * imported from the resolver.
    */
-  async channelOptOuts(userIds: string[]): Promise<ChannelPreferences | null> {
-    return loadChannelOptOuts(this.sb, userIds);
+  async channelOptOuts(
+    userIds: string[],
+    restaurantId: string,
+  ): Promise<ChannelPreferences | null> {
+    return loadChannelOptOuts(this.sb, userIds, restaurantId);
   }
 
   // ── Members ────────────────────────────────────────────────────────────

@@ -112,8 +112,10 @@ function Row({
 
 export function NotificationsSection() {
   const user = useAuthStore((s) => s.user)
+  const activeRestaurantId = useAuthStore((s) => s.activeRestaurantId)
   const userId = user?.userId || ''
-  const { data: prefs } = useNotificationPreferences(userId)
+  // (2026-09-19, D5) restaurantId is cache-key-only -- see useNotificationPreferences.
+  const { data: prefs } = useNotificationPreferences(userId, activeRestaurantId)
   const updatePrefs = useUpdateNotificationPreferences()
 
   const [cat, setCat] = useState<CategoryId>('low')
@@ -148,20 +150,20 @@ export function NotificationsSection() {
   const saveLow = (patch: Partial<LowStock>) => {
     const next = { ...low, ...patch }
     setLow(next)
-    if (userId) updatePrefs.mutate({ userId, preferences: { lowStock: next } })
+    if (userId) updatePrefs.mutate({ userId, restaurantId: activeRestaurantId, preferences: { lowStock: next } })
   }
   const saveQuiet = (patch: Partial<Quiet>) => {
     const next = { ...quiet, ...patch }
     setQuiet(next)
-    if (userId) updatePrefs.mutate({ userId, preferences: { quietHours: next } })
+    if (userId) updatePrefs.mutate({ userId, restaurantId: activeRestaurantId, preferences: { quietHours: next } })
   }
   const saveOrdersMode = (v: Mode) => {
     setOrdersMode(v)
-    if (userId) updatePrefs.mutate({ userId, preferences: { ordersMode: v } })
+    if (userId) updatePrefs.mutate({ userId, restaurantId: activeRestaurantId, preferences: { ordersMode: v } })
   }
   const saveReportsMode = (v: Mode) => {
     setReportsMode(v)
-    if (userId) updatePrefs.mutate({ userId, preferences: { reportsMode: v } })
+    if (userId) updatePrefs.mutate({ userId, restaurantId: activeRestaurantId, preferences: { reportsMode: v } })
   }
 
   const off = !low.enabled

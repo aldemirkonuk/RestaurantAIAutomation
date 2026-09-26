@@ -117,3 +117,31 @@ describe("OrchestratorService.proxyStudio path validation", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe("OrchestratorService.publishEvent publish time", () => {
+  // The orchestrator refuses to send a vendor email from a message whose age it
+  // cannot prove (provider_conversation_agent.send_hold_for). A flat gateway body
+  // carries no envelope time, so the AMQP `timestamp` property is its only one.
+  it("stamps every publish with the AMQP timestamp, in whole seconds", async () => {
+    const config = {
+      get: (_key: string, fallback?: string) => fallback ?? "",
+    } as unknown as ConfigService;
+    const service = new OrchestratorService(config);
+    const publish = jest.fn();
+    const channel = { assertExchange: jest.fn(), publish };
+    (service as any).getChannel = jest.fn().mockResolvedValue(channel);
+
+    const before = Math.floor(Date.now() / 1000);
+    await service.publishEvent("conversation.events", "conversation.approved", {
+      conversation_id: "c-1",
+    });
+    const after = Math.floor(Date.now() / 1000);
+
+    expect(publish).toHaveBeenCalledTimes(1);
+    const options = publish.mock.calls[0][3];
+    expect(Number.isInteger(options.timestamp)).toBe(true);
+    expect(options.timestamp).toBeGreaterThanOrEqual(before);
+    expect(options.timestamp).toBeLessThanOrEqual(after);
+    expect(options.persistent).toBe(true);
+  });
+});

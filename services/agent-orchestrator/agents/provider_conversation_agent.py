@@ -35,16 +35,18 @@ import re
 import time
 import uuid
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 
 from core.commitment_patterns import contains_commitment_language
 from core.base_agent import BaseAgent
+from core.notifications import notify_restaurant
 from utils.logger import setup_logger
 from services.email_composer_service import EmailComposerService
 from services.spend_logger import estimate_llm_cost, get_spend_logger
 from config.settings import Settings, get_settings
 from services.model_clients import get_haiku_client
+from services.plivo_voice_client import APPROVAL_MAX_AGE_SECONDS
 
 logger = setup_logger("agent.provider_conversation")
 
@@ -132,6 +134,120 @@ Generate the message:"""
 # apps/api-gateway/src/common/orchestrator/commitment-patterns.ts. To change the
 # guardrail, edit that file and run scripts/sync_commitment_patterns.py.
 # CI fails on drift; tests/test_commitment_patterns_sync.py fails on drift too.
+
+# -----------------------------------------------------------------------------
+# SEND GATES (2026-09-25, PR #464 — set before this agent first ran in production)
+#
+# Until #464 this agent never processed a message in production, but its durable
+# queues were bound to live exchanges and have been collecting since at least
+# 2026-09-23. The founder's ruling that day was "gate, clear, then merge": the
+# autonomous hold obeys the house's switch, and a backlog of old send requests
+# must not turn into email. That is done here, in code, instead of by purging
+# the broker by hand.
+# -----------------------------------------------------------------------------
+
+#: Routing keys whose handler can put an email in a vendor's inbox. Every other
+#: key this agent hears only drafts, reads or records, and is processed normally
+#: however old it is.
+SEND_TRIGGERING_KEYS = frozenset(
+    {
+        "conversation.approved",
+        # Writes the edited text, then runs the approved path.
+        "conversation.modified",
+        "conversation.auto_reply.urgency",
+    }
+)
+
+#: A send-triggering message older than this is not sent. The number is not new:
+#: services/plivo_voice_client.py already rules, in this runtime, that "a human
+#: who approved 6 bottles at $25 yesterday has not approved today's call".
+SEND_MESSAGE_MAX_AGE_SECONDS = APPROVAL_MAX_AGE_SECONDS
+
+#: A publish time further ahead of this clock than this is not evidence of
+#: anything, so it is treated like a missing one.
+PUBLISHED_AT_FUTURE_TOLERANCE_SECONDS = 300
+
+#: The one row per restaurant that holds its switches
+#: (apps/api-gateway/src/settings/feature-flag-registry.ts, SETTINGS_ROW_FLAG_NAME).
+#: Reading any other row of restaurant_feature_flags reads a self-evolution flag.
+SETTINGS_ROW_FLAG_NAME = "restaurant_settings"
+
+
+@dataclass(frozen=True)
+class SendHold:
+    """Why a send-triggering message was not acted on."""
+
+    reason: str  # "stale" | "unknown_time"
+    published_at: Optional[datetime]
+    age_seconds: Optional[float]
+
+
+def _parse_published_at(value: Any) -> Optional[datetime]:
+    """An aware UTC datetime from an envelope time, or None when there is none."""
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    else:
+        return None
+    if parsed.tzinfo is None:
+        # MessageBus stamps `datetime.utcnow()`, which is naive UTC.
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def message_published_at(message: Dict[str, Any]) -> Optional[datetime]:
+    """When this message was first published, on the evidence the body carries.
+
+    Two sources, and the EARLIER one wins, because a hold errs toward asking:
+      * ``timestamp`` — the envelope `MessageBus.publish` writes on every Python
+        publish, kept verbatim through the bus's own retry re-publish;
+      * ``amqp_timestamp`` — the AMQP `timestamp` property, which
+        `MessageBus.consume` forwards into the body. The gateway's
+        `OrchestratorService.publishEvent` stamps it; its flat bodies carry no
+        envelope of their own.
+    """
+    found = [
+        parsed
+        for parsed in (
+            _parse_published_at(message.get("timestamp")),
+            _parse_published_at(message.get("amqp_timestamp")),
+        )
+        if parsed is not None
+    ]
+    return min(found) if found else None
+
+
+def send_hold_for(
+    message: Dict[str, Any], now: Optional[datetime] = None
+) -> Optional[SendHold]:
+    """None when a send-triggering message is fresh enough to act on.
+
+    Fails closed: a message with no publish time, or one we cannot trust, is
+    held exactly like a stale one. Asking the manager again costs one click; an
+    approval from last week arriving at a vendor today cannot be taken back.
+    """
+    published_at = message_published_at(message)
+    if published_at is None:
+        return SendHold("unknown_time", None, None)
+    now = now or datetime.now(timezone.utc)
+    age = (now - published_at).total_seconds()
+    if age < -PUBLISHED_AT_FUTURE_TOLERANCE_SECONDS:
+        return SendHold("unknown_time", published_at, age)
+    if age > SEND_MESSAGE_MAX_AGE_SECONDS:
+        return SendHold("stale", published_at, age)
+    return None
+
+
+def _age_in_words(age_seconds: Optional[float]) -> str:
+    hours = int((age_seconds or 0) // 3600)
+    if hours < 48:
+        return f"about {hours} hours"
+    return f"about {hours // 24} days"
+
 
 SUMMARY_PROMPT = """Summarize this conversation session in exactly 3 lines:
 Line 1: What was discussed
@@ -358,7 +474,8 @@ class ProviderConversationAgent(BaseAgent):
             ("conversation.events", "conversation.modified"),
             # Follow-up triggers
             ("calendar.events", "calendar.provider_followup_due"),
-            # Scarcity auto-reply (bypass approval)
+            # Scarcity auto-reply (bypasses approval only where the house
+            # switched on enable_ai_autonomous_send)
             ("conversation.events", "conversation.auto_reply.urgency"),
             # System control
             ("system.control", "system.provider_conversation.*"),
@@ -379,8 +496,17 @@ class ProviderConversationAgent(BaseAgent):
                 return
 
         try:
+            # --- Send gate: an old send request is never sent (ADR 0013 bracket
+            # 2026-09-25). Checked here, before dispatch, so every send path
+            # passes it, including conversation.modified -> approved. ---
+            hold = (
+                send_hold_for(message) if routing_key in SEND_TRIGGERING_KEYS else None
+            )
+            if hold is not None:
+                await self._hold_send(routing_key, payload, hold)
+
             # --- Inbound provider messages ---
-            if routing_key.startswith("conversation.inbound."):
+            elif routing_key.startswith("conversation.inbound."):
                 channel = routing_key.split(".")[
                     -1
                 ]  # email, sms, whatsapp, voice_transcript
@@ -3306,8 +3432,10 @@ class ProviderConversationAgent(BaseAgent):
     async def _handle_scarcity_auto_reply(self, payload: Dict[str, Any]) -> None:
         """Immediately reply to a vendor who indicated limited stock.
 
-        Skips the normal approval flow to avoid losing inventory.
-        Still notifies the manager afterward.
+        Skips the normal approval flow to avoid losing inventory — but ONLY for
+        a house whose enable_ai_autonomous_send is a stored `true`. Otherwise
+        nothing is sent and the manager is told. A request older than
+        SEND_MESSAGE_MAX_AGE_SECONDS never reaches this method (process_message).
         """
         provider_id = payload.get("provider_id")
         restaurant_id = payload.get("restaurant_id")
@@ -3366,6 +3494,36 @@ class ProviderConversationAgent(BaseAgent):
             )
             return
 
+        # The house decides whether anything leaves without a person reading it
+        # — the same switch, the same row and the same literal-`true` rule as the
+        # gateway's autonomous reply (inbound-responder.service.ts,
+        # isAutonomousSendEnabled). It is read last, right before the send, so
+        # no path above can reach the send without it.
+        autonomy = self._autonomous_send_state(restaurant_id)
+        if autonomy != "on":
+            vendor = self._vendor_words(provider_data.get("name"))
+            why = (
+                "Automatic replies are off for this house"
+                if autonomy == "off"
+                else "We could not check whether automatic replies are on for this house"
+            )
+            self.logger.warning(
+                f"Scarcity hold NOT sent to provider {provider_id} "
+                f"(restaurant {restaurant_id}): enable_ai_autonomous_send is "
+                f"{autonomy}."
+            )
+            await self._notify_manager(
+                restaurant_id,
+                "scarcity_hold_not_sent",
+                f"{vendor} is running short of {wine_name}",
+                f"{vendor} says stock of {wine_name} is limited. {why}, so "
+                f"nothing was sent. Reply to {vendor} yourself if you want them "
+                "to hold it.",
+                order_id=order_id,
+                metadata={"provider_id": provider_id, "autonomy": autonomy},
+            )
+            return
+
         send_result = await self._send_message(
             provider_id=provider_id,
             message=hold_message,
@@ -3421,6 +3579,205 @@ class ProviderConversationAgent(BaseAgent):
         self.logger.info(
             f"Scarcity auto-hold {'sent' if hold_sent else 'NOT sent'} to "
             f"{provider_data.get('name', provider_id)}: {send_result}"
+        )
+
+    # =========================================================================
+    # 13c. SEND GATES — the house's switch, and no send from an old message
+    # =========================================================================
+
+    def _autonomous_send_state(self, restaurant_id: Optional[str]) -> str:
+        """ "on", "off" or "unreadable" for the house's enable_ai_autonomous_send.
+
+        Only "on" permits a send. It is "on" only when the house's settings row
+        holds a literal `true`: no row, no restaurant, a read error or a thrown
+        client are all not "on" — the rule the gateway already uses, so the two
+        runtimes cannot disagree about one house.
+        """
+        if not restaurant_id:
+            return "unreadable"
+        try:
+            result = (
+                self.database.supabase.table("restaurant_feature_flags")
+                .select("enable_ai_autonomous_send")
+                .eq("restaurant_id", restaurant_id)
+                .eq("flag_name", SETTINGS_ROW_FLAG_NAME)
+                .maybe_single()
+                .execute()
+            )
+        except Exception as e:  # noqa: BLE001 — any failure is "not on"
+            self.logger.error(
+                f"Could not read enable_ai_autonomous_send for {restaurant_id}: {e}"
+            )
+            return "unreadable"
+        # postgrest returns None, not an empty response, when no row matches.
+        row = getattr(result, "data", None) if result is not None else None
+        if not isinstance(row, dict):
+            return "off"
+        return "on" if row.get("enable_ai_autonomous_send") is True else "off"
+
+    @staticmethod
+    def _vendor_words(name: Optional[str]) -> str:
+        return name if name and name != "Unknown" else "The vendor"
+
+    async def _notify_manager(
+        self,
+        restaurant_id: Optional[str],
+        notification_type: str,
+        title: str,
+        message: str,
+        *,
+        order_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """One in-app notification per member of the house (core.notifications)."""
+        if not restaurant_id:
+            self.logger.warning(
+                f"{notification_type} not delivered: no restaurant on the message"
+            )
+            return
+        await notify_restaurant(
+            self.database,
+            self.logger,
+            restaurant_id,
+            notification_type,
+            title,
+            message,
+            priority="high",
+            action_url=f"/orders?order={order_id}" if order_id else "/communications",
+            metadata={**(metadata or {}), "order_id": order_id},
+        )
+
+    async def _hold_send(
+        self, routing_key: str, payload: Dict[str, Any], hold: SendHold
+    ) -> None:
+        """Do not send; hand the decision back to a person and log why."""
+        published = hold.published_at.isoformat() if hold.published_at else "unknown"
+        self.logger.warning(
+            f"NOT SENT — {routing_key} held ({hold.reason}): published {published}, "
+            f"age {hold.age_seconds}s, limit {SEND_MESSAGE_MAX_AGE_SECONDS}s. "
+            f"conversation={payload.get('conversation_id')} "
+            f"provider={payload.get('provider_id')}"
+        )
+        if routing_key == "conversation.auto_reply.urgency":
+            await self._hold_urgency_reply(payload, hold)
+        else:
+            await self._return_draft_for_reapproval(routing_key, payload, hold)
+
+    async def _hold_urgency_reply(
+        self, payload: Dict[str, Any], hold: SendHold
+    ) -> None:
+        provider_id = payload.get("provider_id")
+        wine_name = payload.get("wine_name") or "a wine"
+        vendor = self._vendor_words(
+            await self._get_provider_name(provider_id) if provider_id else None
+        )
+        when = (
+            f"{_age_in_words(hold.age_seconds)} ago"
+            if hold.reason == "stale"
+            else "at a time we cannot confirm"
+        )
+        await self._notify_manager(
+            payload.get("restaurant_id"),
+            "scarcity_hold_not_sent",
+            f"{vendor} is running short of {wine_name}",
+            f"{vendor} said stock of {wine_name} was limited, {when}. That is too "
+            "old to answer automatically, so nothing was sent. Reply to "
+            f"{vendor} yourself if you still want them to hold it.",
+            order_id=payload.get("order_id"),
+            metadata={"provider_id": provider_id, "hold_reason": hold.reason},
+        )
+
+    async def _return_draft_for_reapproval(
+        self, routing_key: str, payload: Dict[str, Any], hold: SendHold
+    ) -> None:
+        """Put an approved-but-unsent draft back in front of the manager.
+
+        A read or write failure here RAISES: nothing has been sent, the bus
+        retries, and the retry is held again because the message only gets
+        older. A row already in a send state is left alone.
+        """
+        conversation_id = payload.get("conversation_id")
+        if not conversation_id:
+            return
+
+        if hold.reason == "stale":
+            sentence = (
+                f"You approved this message {_age_in_words(hold.age_seconds)} "
+                "ago, but it was not sent then. It has not been sent now either, "
+                "because an approval that old may no longer be right. Read it "
+                "again and approve it if it still is."
+            )
+        else:
+            sentence = (
+                "An approval for this message reached us without a time we can "
+                "trust, so it was not sent. Read it again and approve it if it "
+                "is still right."
+            )
+
+        table = self.database.supabase.table
+        row = (
+            table("procurement_conversations")
+            .select(
+                "id, restaurant_id, provider_id, order_id, status, constraint_flags"
+            )
+            .eq("id", conversation_id)
+            .single()
+            .execute()
+        ).data or {}
+        if not row:
+            self.logger.warning(
+                f"Held {routing_key} for {conversation_id}, but no such draft exists."
+            )
+            return
+        if row.get("status") in self._SEND_TERMINAL_STATUSES:
+            self.logger.info(
+                f"Held {routing_key} for {conversation_id}; the draft is already "
+                f"{row.get('status')}, so there is nothing to return."
+            )
+            return
+
+        flags = row.get("constraint_flags")
+        flags = dict(flags) if isinstance(flags, dict) else {}
+        flags["reapproval_required"] = {
+            "reason": sentence,
+            "reason_code": hold.reason,
+            "routing_key": routing_key,
+            "approval_published_at": (
+                hold.published_at.isoformat() if hold.published_at else None
+            ),
+            "held_at": datetime.now(timezone.utc).isoformat(),
+        }
+        blocked = ",".join(self._SEND_TERMINAL_STATUSES)
+        updated = (
+            table("procurement_conversations")
+            .update({"status": "PENDING_APPROVAL", "constraint_flags": flags})
+            .eq("id", conversation_id)
+            .or_(f"status.is.null,status.not.in.({blocked})")
+            .execute()
+        )
+        if not getattr(updated, "data", None):
+            self.logger.info(
+                f"Held {routing_key} for {conversation_id}; the draft moved into a "
+                "send state meanwhile, so it was not returned."
+            )
+            return
+
+        vendor = self._vendor_words(
+            await self._get_provider_name(row["provider_id"])
+            if row.get("provider_id")
+            else None
+        )
+        await self._notify_manager(
+            row.get("restaurant_id"),
+            "conversation_reapproval_needed",
+            f"Approve your message to {vendor} again",
+            sentence,
+            order_id=row.get("order_id"),
+            metadata={
+                "conversation_id": conversation_id,
+                "provider_id": row.get("provider_id"),
+                "hold_reason": hold.reason,
+            },
         )
 
     # =========================================================================
