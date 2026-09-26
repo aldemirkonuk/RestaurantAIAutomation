@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **163 as of 2026-09-25, on #436 (`feat/finish-action-integrity`) merged up to main 4e7c5b5a6** (`check_read_errors_not_swallowed.py` on that tree: 1703 files scanned, 163 sites, 163 baselined, 0 allowlisted, PASS). The branch's round-3/round-4 strict reads and main's retirements together; the two `r5/E` notes below are that branch's own, pre-merge. Re-measure before citing.
+
 > **167 as of 2026-09-25, on #412 merged up to main e754b3a27 (#416)** (`check_read_errors_not_swallowed.py` on `fix/provider-subresources-house-scoped`: `providers.service.ts` `providers/existingProvider` actual=0 — `softDeleteProvider` now reads through `getProvider`, which throws on a failed read; retired, rows sum to 167). Re-measure before citing.
 
 > **168 as of 2026-09-23, on #455 after #414** (`check_read_errors_not_swallowed.py` on `feat/arrival-first-proof`: `auth.service.ts` `users/existing` actual=0 after account-only signup; retired, rows sum to 168). Re-measure before citing.

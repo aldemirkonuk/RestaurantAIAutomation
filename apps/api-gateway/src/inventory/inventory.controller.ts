@@ -37,11 +37,11 @@ import { AuctionLotRecordsService } from "./auction-lot-records.service";
 export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,
-    private readonly auctionLotRecords: AuctionLotRecordsService,
     // ADR 0193: a wine's selling price is the manager's to change ("it should
     // be changed whenever the manager wants", founder 2026-09-21). The role
     // is resolved from the house's access rows, not from the token's claim.
     private readonly organizations: OrganizationsService,
+    private readonly auctionLotRecords: AuctionLotRecordsService,
   ) {}
 
   /**
