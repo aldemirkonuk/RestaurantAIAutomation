@@ -110,6 +110,47 @@ export const STATEMENTS: readonly DataTermStatement[] = [
     ],
   },
   {
+    key: "house-list-searches",
+    kind: "fact",
+    text:
+      "Names taken from this house's own list — a wine's producer, name and vintage — are searched " +
+      "on the web through Serper, to check a menu's wines against what the web says about them. " +
+      "Those searches are this house's data: they run only once an owner has accepted terms that " +
+      "name Serper, and never before. Mudavym's nightly refresh of critic scores and prices also " +
+      "searches, through Serper, the names of wines in Mudavym's shared wine library, which can " +
+      "include wines first read from a house's list.",
+    evidence: [
+      "services/agent-orchestrator/services/house_data_terms_gate.py:64",
+      "services/agent-orchestrator/jobs/web_verify_tasks.py:312",
+      "services/agent-orchestrator/jobs/research_tasks.py:1504",
+      "services/agent-orchestrator/services/critic_score_service.py:130",
+      "services/agent-orchestrator/jobs/celery_app.py:120",
+    ],
+  },
+  {
+    key: "catalogue-lookups",
+    kind: "fact",
+    text:
+      "Mudavym's own catalogue tools can send a restaurant's name and city, a city, or a wine's " +
+      "producer, name and vintage to Google Maps, Apify (which reads OpenTable for us), Yelp, " +
+      "Vivino, OpenTable, Wine-Searcher and CellarTracker, and can keep what comes back: photos, " +
+      "restaurant listings and wine records. No page of this house starts them — they run only when " +
+      "Mudavym starts them itself. A name typed for this house, or taken from its list, is this " +
+      "house's data, so each of these services is named below.",
+    evidence: [
+      "services/agent-orchestrator/services/image_collector.py:231",
+      "services/agent-orchestrator/services/image_collector.py:317",
+      "services/agent-orchestrator/services/image_collector.py:421",
+      "services/agent-orchestrator/services/image_collector.py:483",
+      "services/agent-orchestrator/services/google_maps_discovery.py:25",
+      "services/agent-orchestrator/services/opentable_discovery.py:195",
+      "services/agent-orchestrator/services/wine_research_service.py:191",
+      "services/agent-orchestrator/services/wine_research_service.py:234",
+      "services/agent-orchestrator/main.py:151",
+      "services/agent-orchestrator/jobs/celery_app.py:77",
+    ],
+  },
+  {
     key: "other-connections",
     kind: "fact",
     text:
@@ -118,12 +159,13 @@ export const STATEMENTS: readonly DataTermStatement[] = [
       "(sign-in and profile), Plivo, Twilio and Meta's WhatsApp (text messages), SendGrid (email, " +
       "when it is the mail path), Firebase, Expo and the browsers' own push services (notifications), " +
       "Toast (point of sale), Stripe (billing), Serper (web search), OpenAI (only when a key is set), " +
-      "the US National Weather Service (the house's map point, for its forecast), and the services " +
+      "the US National Weather Service (the house's map point, for its forecast), the look-up " +
+      "services named in the two statements above, and the services " +
       "Mudavym itself runs on: Supabase (the database), CloudAMQP (the message queue), Upstash (the " +
       "cache), Railway (the servers) and Vercel (the web app and its /api relay). " +
       "A check in Mudavym's build fails whenever its code can send to a host this list does not name.",
     evidence: [
-      ".planning/foundation/EXTERNAL_CONNECTIONS.md:34-64",
+      ".planning/foundation/EXTERNAL_CONNECTIONS.md:34-68",
       "scripts/check_data_terms_name_every_host.py",
       "vercel.json:8-12",
     ],
@@ -264,8 +306,57 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
   {
     name: "Serper",
     host: "google.serper.dev",
-    what: "web search for price verification",
-    when: "research and price checks",
+    what: "web searches built from a wine's producer, name and vintage: checking a menu's wines, critic scores and prices",
+    when: "for this house's list, only once an owner has accepted these terms; nightly for Mudavym's shared wine library",
+    masked: false,
+  },
+  {
+    name: "Google Maps Platform",
+    host: "maps.googleapis.com, places.googleapis.com",
+    what: "a restaurant's name and city, a city, or the house's own Google place id; photos and listings that come back",
+    when: "only when Mudavym runs its catalogue, discovery or map-point tools",
+    masked: false,
+  },
+  {
+    name: "Apify (OpenTable reader)",
+    host: "api.apify.com",
+    what: "a restaurant's name and city, handed to a reader of OpenTable's pages; photos that come back",
+    when: "only when Mudavym runs its catalogue tools",
+    masked: false,
+  },
+  {
+    name: "Yelp",
+    host: "api.yelp.com",
+    what: "a restaurant's name and city; photos that come back",
+    when: "only when Mudavym runs its catalogue tools",
+    masked: false,
+  },
+  {
+    name: "Vivino",
+    host: "www.vivino.com",
+    what: "a wine's name; label photos that come back",
+    when: "only when Mudavym runs its catalogue tools",
+    masked: false,
+  },
+  {
+    name: "OpenTable",
+    host: "www.opentable.com",
+    what: "a city, to list its restaurants",
+    when: "only when Mudavym runs its discovery tools",
+    masked: false,
+  },
+  {
+    name: "Wine-Searcher",
+    host: "www.wine-searcher.com",
+    what: "a wine's producer, name and vintage; the wine record read from the page",
+    when: "only when Mudavym runs its wine-research tool",
+    masked: false,
+  },
+  {
+    name: "CellarTracker",
+    host: "www.cellartracker.com",
+    what: "a wine's producer, name and vintage; the wine record read from the page",
+    when: "only when Mudavym runs its wine-research tool",
     masked: false,
   },
   {

@@ -213,6 +213,14 @@ together with the data terms' `SUBPROCESSORS`, by the blocking guard
 and the orchestrator is named or excused with a written reason. This paragraph's DPA/BAA/policy
 claims were not re-measured (TypeSafe's DPA is the founder's "already done", 2026-09-25), and
 `subprocessor_classification` below is not re-scored here.]
+[Bracket, 2026-09-25 (ADR 0224 amendment, the founder's item 33): the register now also names the
+eight look-up hosts that had been excused as `public` — Google Maps Platform (`maps.` and
+`places.googleapis.com`), Apify, Yelp, Vivino, OpenTable, Wine-Searcher and CellarTracker — because a
+name taken from, or typed for, a house's list is house data even when each word is public. Serper's
+row now says it receives a wine's producer, name and vintage. The house-triggered Serper paths run
+only after an owner accepts terms naming it (`services/agent-orchestrator/services/house_data_terms_gate.py`).
+The licence risk of what the catalogue tools store is recorded as accepted in `v3.0-TECH-DEBT.md`.
+`subprocessor_classification` is still not re-scored here.]
 
 ### 🔴 The finding that reframes everything above: the schema has no callers
 

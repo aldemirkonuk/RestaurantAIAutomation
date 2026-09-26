@@ -46,8 +46,16 @@ An EXCUSED host is a claim that no house data reaches it. The categories:
   local      -- loopback / link-local / placeholder addresses; never a real peer.
   reference  -- a link the code carries as DATA (a source citation shown to a
                 person or stored), never fetched by the code.
-  public     -- fetched, but only public, non-house data leaves (a public price
-                list, a public statute). The reason must say what is sent.
+  public     -- fetched, and what leaves is independent of every house's records
+                and not timed by them: a fixed series key, a fixed city or shop
+                page chosen by us, a public statute. The reason must say what is
+                sent. NARROWED 2026-09-25 (the founder, item 33: "if they accept
+                terms and conditions then yes, we can access their menu and so
+                on"): a name, place or wine taken from -- or typed for -- a
+                house's list is that house's data even when every word of it is
+                public, so a host that receives one must be NAMED. The look-up
+                services below (LOOKUP_DOMAINS) can never be excused as `public`
+                -- only as `reference`, a string the code matches but never fetches.
   nothost    -- a string shaped like a hostname that is not one (a settings
                 key, a package name).
 A PACKAGES entry is (target, reason): target is a host some SUBPROCESSORS row
@@ -353,24 +361,6 @@ EXCUSED_HOSTS: dict[str, tuple[str, str]] = {
     ),
     **_group(
         "public",
-        "the training-image collector and city discovery: a restaurant name and city "
-        "typed by an operator, or a city, or a wine name -- no house record is read or sent",
-        "maps.googleapis.com",
-        "places.googleapis.com",
-        "api.apify.com",
-        "api.yelp.com",
-        "www.vivino.com",
-        "www.opentable.com",
-    ),
-    **_group(
-        "public",
-        "wine-name lookups reachable only from a stub task that researches nothing "
-        "today (jobs/tasks.py research_unknowns_task); a query would carry a wine's name only",
-        "www.cellartracker.com",
-        "www.wine-searcher.com",
-    ),
-    **_group(
-        "public",
         "sovereign-cloud sign-in hosts allowed for an operator's issuer/JWKS override: "
         "only Microsoft's public signing keys are fetched from them",
         "login.microsoftonline.us",
@@ -378,6 +368,31 @@ EXCUSED_HOSTS: dict[str, tuple[str, str]] = {
         "login.partner.microsoftonline.cn",
     ),
 }
+
+# Look-up services a query built from a house's list goes to (the founder,
+# 2026-09-25, item 33; ADR 0224's narrowed `public`). A host equal to, or under,
+# one of these may be NAMED, or excused only as `reference` (matched as a
+# string, never fetched) -- never as `public` or any other fetched category.
+LOOKUP_DOMAINS = (
+    "serper.dev",
+    "maps.googleapis.com",
+    "places.googleapis.com",
+    "apify.com",
+    "yelp.com",
+    "vivino.com",
+    "opentable.com",
+    "wine-searcher.com",
+    "cellartracker.com",
+)
+LOOKUP_EXCUSABLE = {"reference"}
+
+
+def lookup_domain(host: str) -> str | None:
+    for d in LOOKUP_DOMAINS:
+        if host == d or host.endswith("." + d):
+            return d
+    return None
+
 
 # Every third-party package the scanned code imports: (target, reason).
 PACKAGES: dict[str, tuple[str, str]] = {
@@ -904,6 +919,14 @@ def evaluate(
     reached: set[str] = set()
     used_excuses: set[str] = set()
 
+    for h, (cat, _why) in sorted(excused.items()):
+        d = lookup_domain(h)
+        if d and cat not in LOOKUP_EXCUSABLE:
+            violations.append(
+                f"{h}: excused as `{cat}`, but {d} receives look-ups built from a house's "
+                "list, which are house data -- name it in SUBPROCESSORS (ADR 0224, narrowed `public`)"
+            )
+
     for host, locs in sorted(hosts.items()):
         n = named_by(host, names)
         if n:
@@ -1101,6 +1124,52 @@ def self_test() -> int:
             {},
             pk,
             0,
+        ),
+        (
+            "a look-up host excused as public",
+            ["exp.host", "api.vendor.ai"],
+            {
+                **base_files,
+                "services/x/ws.py": 'U = "https://www.wine-searcher.com/find/x"\n',
+            },
+            {"www.wine-searcher.com": ("public", "a wine's name only")},
+            pk,
+            1,
+        ),
+        (
+            "a look-up host named",
+            ["exp.host", "api.vendor.ai", "www.wine-searcher.com"],
+            {
+                **base_files,
+                "services/x/ws.py": 'U = "https://www.wine-searcher.com/find/x"\n',
+            },
+            {},
+            pk,
+            0,
+        ),
+        (
+            "a look-up domain carried as a reference",
+            ["exp.host", "api.vendor.ai"],
+            {**base_files, "services/x/tiers.py": 'T = ["wine-searcher.com"]\n'},
+            {
+                "wine-searcher.com": (
+                    "reference",
+                    "a source-tier table entry, never fetched",
+                )
+            },
+            pk,
+            0,
+        ),
+        (
+            "a look-up subdomain excused as public",
+            ["exp.host", "api.vendor.ai"],
+            {
+                **base_files,
+                "services/x/y.py": 'U = "https://api.yelp.com/v3/businesses"\n',
+            },
+            {"api.yelp.com": ("public", "a city only")},
+            pk,
+            1,
         ),
         (
             "dead package row",
