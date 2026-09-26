@@ -111,7 +111,10 @@ settled version until the next sweep proves otherwise.
   `document_id` + line-reference column, the two writer changes, the
   attach-a-paper upload, and the conversation's message and person. The trail
   names that last absence on every chat or social line. The sequencing
-  question above is still open.
+  question above is still open. **[Answered and built 2026-09-25 — see the
+  W3-provenance bracket that follows this list. The founder sequenced it
+  (round 5 item 30: a follow-on lane that must land before the flag is turned
+  on for any house), and `feat/vendor-price-provenance` builds it.]**
 - **House scope.** The compare read goes through
   `scopePriceRegisterRead({ kind: "houseAndOpenMarket" })`
   (`price-register/visibility.ts`). That returns this house's rows plus the
@@ -128,7 +131,99 @@ settled version until the next sweep proves otherwise.
 - **Nightly manifest.** `vendor_prices` moved from `pending_pages` to `pages`
   (`check_nightly_manifest.py`).
 
+**[2026-09-25, W3-provenance lane, `feat/vendor-price-provenance`, stacked on
+#473] Fork 6(a)'s full provenance is built.** The founder's sequencing answer
+(web-rebuild round 5 item 30, 2026-09-25): "provenance = follow-on lane that
+must land before the flag goes live for any house." So
+`mudavym_design_vendor_prices` stays OFF for every house until this lane has
+merged. What it adds:
+
+- **Schema**, `20260927130000_a_price_names_its_paper_and_its_messenger.sql`,
+  additive only. It adds four nullable columns on `vendor_price_observations`:
+  `document_id`, `document_line_id`, `conversation_message_id` and
+  `source_contact_id`.
+  - The document and the message are **composite foreign keys with
+    `restaurant_id`**, against new `UNIQUE (id, restaurant_id)` indexes on the
+    parents. The database itself refuses a sighting that names another house's
+    paper or message.
+  - The line is a line *of* the named document: a composite key with
+    `document_id`, plus a plain key of its own.
+  - Three CHECKs refuse all four ids on a public-register row
+    (`restaurant_id IS NULL`).
+  - Delete rules are `ON DELETE SET NULL (<the id column only>)`. A deleted
+    paper never deletes a price, never nulls `restaurant_id` (a plain `SET NULL`
+    on a composite key would publish the house's price), and never blocks a
+    house deletion.
+  - The migration's own assertions refuse a plain `SET NULL`.
+  - Measured in a PGlite build of all 219 migrations, 15 probes, plus 5
+    mutations (scratch harness, not in the repo):
+    - same-house insert succeeds;
+    - another house's document, message or line is refused with `23503`;
+    - a public row naming any of the four is refused with `23514`;
+    - deleting the document nulls both the document and the line and keeps the
+      house;
+    - deleting the house succeeds, and its sightings keep `restaurant_id`.
+  - One of those probes found a real defect in the first draft. With a single
+    composite line key, deleting the document left `document_line_id`
+    dangling. That is why the line now takes two keys.
+- **Writer change 1, verified receipt** (`procurement.service.ts`
+  `receiptPaperFor` → `own-paper-sighting.ts` `pickReceiptPaper`). The rule:
+  - The paper is the one live invoice linked to the order. Rejected and
+    superseded invoices are skipped, and so are packing slips and credit memos.
+  - The line is the invoice line the line matcher paired with the order's line
+    (`procurement_document_lines.order_line_id`).
+  - When there are two invoices, or the paired line is ambiguous, the writer
+    names no paper (or no line) and a sentence says why. It never picks one.
+  - A failed read is recorded as a failed read.
+  - The price is always still written.
+- **Writer change 2, confirmed deal** (`dealMessageFor` → `pickDealMessage`).
+  The price names the newest inbound message carrying an unresolved
+  `deal_proposal`. `resolveLatestDealProposal` now uses the same function, so
+  the price names the message the manager confirmed.
+- **Attach-a-paper upload** (`RecordPriceForm`). The file goes through the
+  house's one document door, `POST /procurement/documents`, and the price is
+  recorded with the returned id. A failed upload records nothing and says so.
+  The old free-text link field stays, relabelled as a link.
+- **The message and the person.**
+  - When the typed vendor matches one of this house's vendors, the form offers
+    this house's 20 most recent messages with that vendor and the vendor's
+    contacts. This is the new
+    `GET /vendor-intel/observation-sources?providerId=`, owner/manager,
+    house-scoped, never cached.
+  - `POST /vendor-intel/observations` accepts `documentId`, `documentLineId`,
+    `conversationMessageId` and `contactId`. Each is checked against the
+    caller's house before the write. A failed check refuses the write.
+- **Shown on every record, loaded fresh** (fork 6's answer).
+  - `compare` reads each named paper, line, message and person fresh,
+    house-scoped on its own table (`vendor-intel/price-provenance.ts`).
+    `provider_contacts` is scoped through its vendor's `restaurant_id`.
+  - `PaperTrail` and `SightingSheet` draw the same lines (`ProvenanceList`).
+    Each paper opens at `/documents/:id`.
+  - A person comes from one of two places. It is either the contact someone
+    named, or it is read off the message's own From/To header and matched to
+    the vendor's contacts.
+  - The page states in plain words what it cannot show:
+    - a failed read says it is a failed read;
+    - a paper or message deleted since says it was deleted (from the id copy
+      in `raw.provenance`);
+    - a message whose raw mail the house's retention window deleted shows no
+      words and no header-derived person.
+- **Not done, named:**
+  - The form offers no picker for the *line* on an attached paper. The DTO
+    accepts `documentLineId`, and the two own-paper writers set it, but a
+    freshly uploaded paper's lines only exist once extraction has run.
+  - An order confirmed by `confirmDeal` names a message but no document. The
+    vendor's confirmation is a message, not a stored paper.
+  - WhatsApp messages carry no From header this page can read. Their person
+    is only known when someone names a contact.
+  - No browser check of the rendered page was run. Rendering needs a
+    signed-in house with the flag on, and this lane has neither. Coverage is
+    jsdom tests only.
+
 **The three §112 questions ADR 0160 lists as unanswered (`0160:600-603`).**
+**[Answered 2026-09-25, round 5 item 30: "no seal on 'Lowest admitted',
+rise/fall same ink — accepted"; the landed/agreed wording from the 2026-09-19
+batch — all three are now bracketed closed in ADR 0160's open-questions line.]**
 They are written up here and in the PR body. The build takes the default that
 presumes least on each:
 
