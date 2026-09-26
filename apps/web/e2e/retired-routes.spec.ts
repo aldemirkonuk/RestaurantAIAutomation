@@ -34,27 +34,37 @@ test.describe('Retired routes (ADR 0019 §B)', () => {
     expect(new URL(page.url()).pathname).toBe('/calendar')
   })
 
+  // [2026-09-25: the house shell is live in code for every house (ADR 0149
+  // row 36's bracket; `shell` in LIVE_PAGES), so `<Route path="*">` is
+  // ShellCatchAll's in-app 404, rendered at the unmatched URL, instead of the
+  // legacy layout's silent redirect to `/`. The two tests below used to prove
+  // "falls through" by landing on `/`; they now prove it by that 404's own
+  // headline. The retirement they guard is unchanged.]
+  const notFound = (page: import('@playwright/test').Page, path: string) =>
+    page.getByRole('heading', { name: `There is no page at ${path}.` })
+
   test('the retired paths do not fall through to the catch-all', async ({ page }) => {
-    // An unmatched path resolves to `/` via `<Route path="*">`. If either retired
-    // path ever loses its redirect it would land there too, which reads to the
-    // user as "the app is broken" rather than "the page moved".
+    // An unmatched path lands on the catch-all. If either retired path ever
+    // loses its redirect it would land there too, which reads to the user as
+    // "the app is broken" rather than "the page moved".
     await mockAuthState(page)
     await page.goto('/this-route-does-not-exist')
-    await page.waitForURL((url) => new URL(url).pathname === '/', { timeout: 15000 })
+    await expect(notFound(page, '/this-route-does-not-exist')).toBeVisible({ timeout: 15000 })
 
     await page.goto('/inventory-legacy')
     await page.waitForURL((url) => new URL(url).pathname !== '/inventory-legacy', {
       timeout: 15000,
     })
-    expect(new URL(page.url()).pathname).not.toBe('/')
+    expect(new URL(page.url()).pathname).toBe('/inventory')
+    await expect(page.getByRole('heading', { name: /^There is no page at/ })).toHaveCount(0)
   })
 
   test('/wine-agent and /wineagent no longer render a page of their own', async ({ page }) => {
     await mockAuthState(page)
     for (const retired of ['/wine-agent', '/wineagent']) {
       await page.goto(retired)
-      await page.waitForURL((url) => new URL(url).pathname !== retired, { timeout: 15000 })
-      expect(new URL(page.url()).pathname).not.toBe(retired)
+      // No redirect (ADR 0019 §B): the catch-all answers, in words.
+      await expect(notFound(page, retired)).toBeVisible({ timeout: 15000 })
       await expect(page.getByText(/under construction/i)).toHaveCount(0)
     }
   })

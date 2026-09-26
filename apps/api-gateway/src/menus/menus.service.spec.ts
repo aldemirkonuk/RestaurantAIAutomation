@@ -240,18 +240,47 @@ describe("MenusService.getMenu", () => {
  * defect it closes is not verified, it is merely present.
  */
 describe("MenusService.addMenuItem — tenant isolation", () => {
-  it("refuses a caller whose own restaurant does not own the menu", async () => {
-    const service = makeService({
+  // PR #446 (2026-09-25, over #434's 403): another house's menu id is the SAME
+  // 404 as a missing one (ADR 0147), so the route cannot confirm that a
+  // foreign id is a real menu; and nothing is written to it.
+  it("404s a menu of another house, exactly as a missing one, and writes no line", async () => {
+    const tables: Record<string, Row[]> = {
       restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1" }],
-    });
+      menu_items: [],
+    };
+    const service = makeService(tables);
 
+    const foreign = service.addMenuItem(
+      { menuId: "menu-1", name: "Should not land" } as any,
+      "user-1",
+      "rest-2",
+    );
+    await expect(foreign).rejects.toBeInstanceOf(NotFoundException);
+    await expect(foreign).rejects.toThrow("Menu not found");
     await expect(
       service.addMenuItem(
-        { menuId: "menu-1", name: "Should not land" } as any,
+        { menuId: "missing", name: "Should not land" } as any,
         "user-1",
         "rest-2",
       ),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toThrow("Menu not found");
+    expect(tables.menu_items).toHaveLength(0);
+  });
+
+  it("surfaces a failed menu read as an error, never as 'not found'", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1" }],
+    };
+    (tables as any).__readFails = [{ restaurant_menus: "statement timeout" }];
+    const service = makeService(tables);
+
+    const read = service.addMenuItem(
+      { menuId: "menu-1", name: "x" } as any,
+      "user-1",
+      "rest-1",
+    );
+    await expect(read).rejects.toThrow(/statement timeout/);
+    await expect(read).rejects.not.toBeInstanceOf(NotFoundException);
   });
 
   it("refuses a caller who carries no restaurant at all", async () => {
@@ -373,6 +402,18 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     expect(tables.menu_items[0].bottle_price).toBe(60);
     expect(tables.menu_items[0].status).toBe("approved");
     expect(calls).toHaveLength(0);
+  });
+
+  it("surfaces a failed read of the line as an error, never as 'not found' (PR #446)", async () => {
+    const tables: Record<string, Row[]> = { menu_items: [line()], restaurant_menus: [CURRENT()] };
+    (tables as any).__readFails = [{ menu_items: "statement timeout" }];
+    const service = makeService(tables, { rpc: changed });
+    const read = service.reviewMenuItem("mi-1", "user-1", "rest-1", {
+      fieldName: "name",
+      newValue: "x",
+    } as any);
+    await expect(read).rejects.toThrow(/statement timeout/);
+    await expect(read).rejects.not.toBeInstanceOf(NotFoundException);
   });
 
   it("refuses a session with no house on its token", async () => {
