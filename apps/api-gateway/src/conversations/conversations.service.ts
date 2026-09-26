@@ -17,7 +17,8 @@ interface ApprovalOptions {
 }
 
 interface ListConversationsOptions {
-  restaurantId?: string;
+  /** The caller's house. Required: a list without one is refused, never unfiltered. */
+  restaurantId: string;
   providerId?: string;
   orderId?: string;
   orderNumber?: string;
@@ -200,12 +201,61 @@ export class ConversationsService {
     return {};
   }
 
+  /**
+   * The order named in a by-order read is this house's, or the read is a 404.
+   * `procurement_orders.restaurant_id` is NOT NULL, so no order is shared. A
+   * missing id and another house's id answer the same, so the answer cannot
+   * confirm an id; a failed read throws, so it is a 500 and never an empty list
+   * (ADR 0147; ADR 0171).
+   */
+  async assertOrderInHouse(orderId: string, restaurantId: string) {
+    this.requireHouse(restaurantId);
+    if (!UUID_RE.test(orderId)) throw new NotFoundException("Order not found");
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id")
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(`could not read the order's house: ${error.message}`);
+    }
+    if (!data) throw new NotFoundException("Order not found");
+  }
+
+  /**
+   * The vendor named in a by-provider read is this house's, or the read is a
+   * 404 — the same check the provider-intelligence routes make (PR #416). A
+   * vendor row with no house is not any house's (founder, 2026-09-25: each
+   * house owns its vendor rows), so it is a 404 here too.
+   */
+  async assertProviderInHouse(providerId: string, restaurantId: string) {
+    this.requireHouse(restaurantId);
+    if (!UUID_RE.test(providerId)) {
+      throw new NotFoundException("Vendor not found");
+    }
+    const { data, error } = await this.databaseService.supabase
+      .from("providers")
+      .select("id")
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(`could not read the vendor's house: ${error.message}`);
+    }
+    if (!data) throw new NotFoundException("Vendor not found");
+  }
+
   // ── New: Listing & Filtering ──────────────────────────────────────
 
   /**
-   * List conversations with comprehensive filtering and pagination
+   * List this house's conversations with filtering and pagination. The house is
+   * required and always applied: this used to filter `if (options.restaurantId)`,
+   * so a caller that passed none (by-order, by-provider, a session naming no
+   * house) read every house's vendor messages.
    */
   async listConversations(options: ListConversationsOptions) {
+    const restaurantId = this.requireHouse(options.restaurantId);
     try {
       const { page, limit, sortBy, sortOrder } = options;
       const offset = (page - 1) * limit;
@@ -224,10 +274,8 @@ export class ConversationsService {
           { count: "exact" },
         );
 
-      // Apply filters
-      if (options.restaurantId) {
-        query = query.eq("restaurant_id", options.restaurantId);
-      }
+      // Apply filters. The house first, unconditionally.
+      query = query.eq("restaurant_id", restaurantId);
       if (options.providerId) {
         query = query.eq("provider_id", options.providerId);
       }
@@ -557,19 +605,17 @@ export class ConversationsService {
   /**
    * Get aggregated conversation statistics
    */
-  async getStats(restaurantId?: string) {
+  async getStats(restaurantId: string) {
+    // Required, like every other read here: `if (restaurantId)` counted every
+    // house's messages for a session that named none.
+    this.requireHouse(restaurantId);
     try {
-      let baseQuery = this.databaseService.supabase
+      const { data, error } = await this.databaseService.supabase
         .from("procurement_conversations")
         .select(
           "id, channel, direction, provider_id, detected_sentiment, created_at",
-        );
-
-      if (restaurantId) {
-        baseQuery = baseQuery.eq("restaurant_id", restaurantId);
-      }
-
-      const { data, error } = await baseQuery;
+        )
+        .eq("restaurant_id", restaurantId);
 
       if (error) {
         throw new Error(error.message);
