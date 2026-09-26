@@ -296,7 +296,9 @@ agent resolving its own threads — that claim did not survive re-fetch; the rul
   only opens another page is not on the list because it is not an act: it records nothing and has
   nothing to undo. Built on `feat/recs-round6-direction-b`: the briefing's Undo takes the stamp
   back (`acted: false`), gated like clearing a pin under ADR 0191 round 5 — staff their own,
-  owners and managers anyone's, the platform admin none — which needed a new `acted_by` column
+  owners and managers anyone's, the platform admin none — and the stamp itself is gated the same
+  way (a first stamp anyone's but the admin's, a re-stamp over someone else's theirs or an owner's
+  or manager's; PR #483 audit R2, 2026-09-26), which needed a new `acted_by` column
   (migration `20260927100000`). That column joins the two-year author sweep ADR 0191 round 6 put
   `created_by`/`pinned_by`/`rated_by`/`assigned_by` on; that is the lane's reading of round 6 for
   a column that did not exist when it was answered, not a separate founder answer.]**

@@ -323,7 +323,7 @@ describe("answer 2: a note is gated like an act", () => {
       ),
     );
     expect(e.forbidden).toBe(true);
-    expect(e.message).toMatch(/note \(pin, rating, assignment\)/);
+    expect(e.message).toMatch(/note \(pin, rating, assignment, briefing\)/);
     expect(t.writes).toEqual([]);
   });
 

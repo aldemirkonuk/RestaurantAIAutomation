@@ -203,12 +203,14 @@ the masthead margin reads `GET /analytics/goals/:rid/progress` (recomputed progr
 said, no currency symbol invented); one suggested goal from a standing entry whose rule maps to a
 metric no active goal holds, opening that entry's own goal sheet with the target blank; hand-offs
 no longer write `acted`; *Mark as briefed* stamps `acted_at` + a new `acted_by` (migration
-`20260927100000`) and its Undo is gated like clearing a pin; the delta cutting and the house's
+`20260927100000`), and the stamp is a note gated like a pin both ways — its Undo like clearing a
+pin, a re-stamp over someone else's like re-pinning theirs, the platform admin making neither
+(PR #483 audit R2, 2026-09-26); the delta cutting and the house's
 send count read two new fields of `GET /recommendations/digest/subscription` (`lastLetter`,
 `houseLastPost`). Not built here, by these answers: the in-place PO draft (Q3), the per-rule
-quiet-tier field (Q4), the account door on more rules (Q5). Still unasked (founder memory item
-"Still unasked"): the one-line confirmation of the "fifth/sixth" reading in README's non-blocking
-flag.]**
+quiet-tier field (Q4), the account door on more rules (Q5). The one-line confirmation of the
+"fifth/sixth" reading in README's non-blocking flag is answered: the founder's 2026-09-25 answers,
+item 43, "Sketch 122 fifth/sixth reading confirmed".]**
 
 **[ADDED 2026-09-19, PR #391 audit M2 — his 2026-09-19 sketch-120 feedback (memory
 `founder-sketch-decisions-106-115.md`, lane-answers batch 3, "RECOMMENDATIONS"), the

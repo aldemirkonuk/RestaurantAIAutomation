@@ -983,7 +983,7 @@ because this round edits the same files; it merges after #467.
 | goals | The margin reads `GET /analytics/goals/:rid/progress?status=active` (recomputed; the stored `current_value` is stale by design). Up to 3 rows: name, bar, "current of target", the gateway's own pace (`onTrack`: On pace · Behind · No deadline). Every state said: reading, unread, none set, a goal whose figure failed, "N more … in Reports". Money prints with no symbol, as the reports goals desk does — the read carries no currency. | `rec-masthead.ts` `toGoalBook`/`paceOf`/`inUnit` |
 | suggestion | One standing entry whose rule maps to a goal metric (`rec-forward.ts`) that no active goal holds; "Set a goal →" opens THAT entry's own goal sheet, target blank. Not offered when the goal list is unread. | `suggestGoal`, `Entry.tsx` `openGoal` |
 | Q2 | A hand-off (`Draft the PO →`, `Open Reports →` …) only navigates — no `acted` write any more. Snooze, pin and "Mark as briefed" are undo-after: the note line's Undo posts the inverse patch (pin → the old value; briefing → `acted: false`). | `act`, `brief`, `pin`; hook `undoWith` |
-| Q2 gateway | `acted: false` clears `acted_at` + the new `acted_by` and is a note change gated like clearing a pin (staff own, owner/manager any, admin none; audited as `recommendation_note_changed`). Migration `20260927100000` adds `acted_by` and puts it on the two-year author sweep. | `item-state.ts`, `recommendation-actions.service.ts` |
+| Q2 gateway | `acted: true` stamps `acted_at` + the new `acted_by`; `acted: false` clears both. Both are a note change gated like a pin (a first stamp anyone's but the admin's; re-stamping or clearing someone else's: staff own, owner/manager any, admin none; audited as `recommendation_note_changed` — PR #483 audit R2). Migration `20260927100000` adds `acted_by` and puts it on the two-year author sweep. | `item-state.ts`, `recommendation-actions.service.ts` |
 | Q3 | The stockout entry's control says it: "Opens Orders to draft it by hand — nothing is recorded here, and the order is sealed there with the hold." No in-place draft. | `Entry.tsx` `rc-handoff` |
 | Q4 | Under the read-at line: which engine sources did not answer (`sourcesUnread`, the digest's own wording); an absent field is "not stated", never "all answered". | `quietTierWords` |
 | Q5 | Unchanged: "Its account" shows only where `entry.subject` is set — `sales_below_weekday_baseline` and `weekly_demand_slide`. | `Entry.tsx` |
@@ -1006,8 +1006,9 @@ only remaining violations are the shared day strip's future-day digits (`.mdv-ds
 `components/mudavym/day-strip.css`, not this page's file). Charcoal ground: no contrast violation.
 
 **Not built, by the answers:** the in-place PO draft (Q3), the per-rule reading · threshold · state
-field (Q4), the account door on more rules (Q5). **Still unasked:** the README's one-line
-"fifth/sixth" confirmation.
+field (Q4), the account door on more rules (Q5). **Answered, not asked again:** the README's
+one-line "fifth/sixth" reading — confirmed in the founder's 2026-09-25 answers, item 43 ("Sketch 122
+fifth/sixth reading confirmed").
 
 ## 2. Entry
 

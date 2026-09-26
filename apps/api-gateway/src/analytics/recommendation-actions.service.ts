@@ -473,7 +473,9 @@ export class RecommendationActionsService {
     // The stamp names who made it (migration 20260927100000), so its Undo can
     // be gated like a pin's — the founder, 2026-09-25, sketch 122 Q2: "Mark as
     // briefed" joins ADR 0112 F10's undo-after list. `false` is that Undo:
-    // the stamp and its author go together.
+    // the stamp and its author go together. Both directions pass the note
+    // gate first (`notesTouchedBy`), so a re-stamp never overwrites someone
+    // else's `acted_by` unless they may (PR #483 audit, R2).
     if (patch.acted === true) {
       row.acted_at = new Date().toISOString();
       row.acted_by = createdBy ?? null;
@@ -1193,7 +1195,7 @@ export class RecommendationActionsService {
     if (fields.includes("acted"))
       changes.acted = {
         from: before.acted,
-        to: false,
+        to: patch.acted,
         from_by: before.actedBy,
       };
     if (fields.includes("assignment")) {
@@ -1255,7 +1257,7 @@ export class RecommendationActionsService {
       !actor.userId
     )
       throw new ActRefused(
-        "A signed-in user is required — every dismiss, restore, done, snooze and note (pin, rating, assignment) is kept with who made it.",
+        "A signed-in user is required — every dismiss, restore, done, snooze and note (pin, rating, assignment, briefing) is kept with who made it.",
         true,
       );
   }
