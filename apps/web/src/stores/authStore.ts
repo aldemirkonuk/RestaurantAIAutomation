@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
+import { doRefresh } from '../lib/sessionRefresh'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -263,29 +264,51 @@ export const useAuthStore = create<AuthState>()(
           const response = await api.get('/api/v1/auth/me')
           applyUserData(response.data.user, response.data.availableRestaurants)
         } catch (err: any) {
-          // Access token expired — try refresh before giving up.
-          // Previously we called clearTokens() here which wiped the refresh
-          // token, causing every page query to 401 silently with no recovery.
-          if (err.response?.status === 401) {
-            const storedRefresh = localStorage.getItem('refreshToken')
-            if (storedRefresh) {
+          const status = err?.response?.status
+          if (status === 401) {
+            // ADR 0164, item 2/3: the one shared, single-flight refresh
+            // (`doRefresh`, also used by AuthContext.tsx and its axios
+            // interceptor) instead of a fourth independent implementation —
+            // a refresh AuthContext started around the same moment is
+            // shared, not raced, and houseAccessEnded/503 are handled the
+            // one place both clients rely on.
+            const newAccess = await doRefresh()
+            if (newAccess) {
+              get().setTokens(newAccess, localStorage.getItem('refreshToken') || '')
               try {
-                const refreshRes = await api.post('/api/v1/auth/refresh', { refreshToken: storedRefresh })
-                const { accessToken: newAccess, refreshToken: newRefresh } = refreshRes.data
-                get().setTokens(newAccess, newRefresh || storedRefresh)
-                api.defaults.headers.common['Authorization'] = `Bearer ${newAccess}`
                 const retryRes = await api.get('/api/v1/auth/me')
                 applyUserData(retryRes.data.user, retryRes.data.availableRestaurants)
                 return
-              } catch {
-                // Refresh token itself is expired/invalid — fall through to clear
+              } catch (retryErr) {
+                console.error('Failed to load user after refresh:', retryErr)
               }
             }
+            // `doRefresh` removes the stored refresh token itself only when
+            // it was genuinely rejected. A houseAccessEnded response leaves a
+            // fresh (no-house) pair in place and has already sent the person
+            // to the chooser; a 503 or a dropped connection while refreshing
+            // leaves the original pair untouched. Only the first case is
+            // actually signed out — the other two keep whatever session is
+            // now on disk instead of wiping it.
+            if (!localStorage.getItem('refreshToken')) {
+              get().clearTokens()
+              set({ user: null, loading: false })
+              window.location.href = '/login'
+            } else {
+              set({ loading: false })
+            }
+            return
           }
-          console.error('Failed to load user:', err)
-          get().clearTokens()
-          set({ user: null, loading: false })
-          window.location.href = '/login'
+          // A rate limit, a 500, a 503, and a dropped connection all say "ask
+          // again later"; none of them says "you are not who you said you
+          // were" — this used to clear both tokens on ANY error here,
+          // including a 503, which is the exact failure AuthContext.tsx's own
+          // `/auth/me` load was already fixed for (ADR 0164 claimed "both web
+          // clients"; this one was not).
+          console.warn(
+            `Keeping the session: /auth/me failed with ${status ?? 'no status (network)'}, which is not an authentication failure.`,
+          )
+          set({ loading: false })
         }
       },
     }),

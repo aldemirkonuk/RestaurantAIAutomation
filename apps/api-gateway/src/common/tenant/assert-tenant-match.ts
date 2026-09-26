@@ -70,15 +70,29 @@ export function assertTenantMatch(
   const fromBody = clean([body?.restaurantId, body?.restaurant_id]);
 
   // Every name the request carries, exemption or not. The tenantless branch
-  // below is judged against ALL of them: the exemption permits changing which
-  // tenant you are in, never acquiring one for free.
+  // below is judged against ALL of them except, on the one exempt route, the
+  // body: there a session in no house names the house it chooses, and the
+  // route's membership check is what grants it (ADR 0164).
   const allNamed = [...fromPathAndQuery, ...fromBody];
   if (allNamed.length === 0) return; // nothing to violate
 
   // A session with no tenant may not reach into one by naming it. Tenantless
   // users are ordinary — onboarding, profile, settings — but those routes name
   // no restaurant, so they are unaffected by this branch.
+  //
+  // One exception, and only in the body: the route whose purpose is to CHANGE
+  // tenant is also how a session with no house chooses one (ADR 0164). A
+  // person with several houses signs in to no house and then names the one
+  // they pick; `switchRestaurant` mints it only where they hold an active
+  // membership row, so naming a house there acquires nothing that membership
+  // does not already give. [Until 2026-09-18 this refused that too, so no
+  // tenantless session could ever switch, including a leaver from PR #393
+  // with houses left (code map finding 1).] A path or query naming a
+  // restaurant is still refused: a session in no house reads no house's data.
   if (!user.restaurantId) {
+    if (options.allowBodyTenantChange && fromPathAndQuery.length === 0) {
+      return;
+    }
     throw new ForbiddenException("Tenant isolation violation");
   }
 

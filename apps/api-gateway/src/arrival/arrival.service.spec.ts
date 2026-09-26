@@ -101,8 +101,13 @@ describe("Arrival's configuration boundary", () => {
       { target: "notifications", field: "categories.inventory", value: false },
       false,
     );
+    expect(service.notifications.getPreferences).toHaveBeenCalledWith(
+      actor.userId,
+      actor.restaurantId,
+    );
     expect(service.notifications.updatePreferences).toHaveBeenCalledWith({
       userId: actor.userId,
+      restaurantId: actor.restaurantId,
       categories: { inventory: false, orders: false },
     });
   });
