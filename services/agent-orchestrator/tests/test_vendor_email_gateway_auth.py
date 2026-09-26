@@ -684,6 +684,10 @@ class _Table:
         self.is_single = True
         return self
 
+    def maybe_single(self) -> "_Table":
+        self.is_single = True
+        return self
+
     def execute(self) -> _Result:
         row = self.db.conversation
         if self.op == "update":
@@ -700,12 +704,20 @@ class _Table:
             return _Result(self.db.provider)
         if self.name == "procurement_orders":
             return _Result(self.db.order)
+        if self.name == "restaurant_feature_flags":
+            return _Result(dict(self.db.flags))
         return _Result({})
 
 
 class _Db:
     def __init__(self, conversation: Dict[str, Any]):
         self.conversation = conversation
+        # ADR 0212-adjacent gate merged from main (#464, "Gate, clear, then
+        # merge"): _autonomous_send_state now guards the scarcity auto-hold
+        # too. These fixture houses opt in, since the tests below are about
+        # what the hold says once sent, not about the gate itself (that is
+        # test_conversation_agent_send_gates.py's own job).
+        self.flags = {"enable_ai_autonomous_send": True}
         self.provider = {
             "name": "Vendor One",
             "primary_contact": {"name": "Ana", "email": "orders@vendor-one.example"},
