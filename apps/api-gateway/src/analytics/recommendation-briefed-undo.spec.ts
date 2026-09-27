@@ -15,7 +15,7 @@ import {
  * paths; "Mark as briefed" is the self-contained act — the tap stamps
  * `acted_at` — so its Undo must take the stamp back (`acted: false`), and
  * taking back SOMEONE ELSE's stamp is gated like clearing their pin (ADR 0191
- * round 5, "Gate like acts"). `acted_by` (migration 20260927100000) is what
+ * round 5, "Gate like acts"). `acted_by` (migration 20260928000100) is what
  * lets the gate tell whose stamp it is.
  *
  * The table stub is `recommendation-round5.spec.ts`'s own, copied — it

@@ -299,7 +299,7 @@ agent resolving its own threads — that claim did not survive re-fetch; the rul
   owners and managers anyone's, the platform admin none — and the stamp itself is gated the same
   way (a first stamp anyone's but the admin's, a re-stamp over someone else's theirs or an owner's
   or manager's; PR #483 audit R2, 2026-09-26), which needed a new `acted_by` column
-  (migration `20260927100000`). That column joins the two-year author sweep ADR 0191 round 6 put
+  (migration `20260928000100`). That column joins the two-year author sweep ADR 0191 round 6 put
   `created_by`/`pinned_by`/`rated_by`/`assigned_by` on; that is the lane's reading of round 6 for
   a column that did not exist when it was answered, not a separate founder answer.]**
 - **F11 — all three, as the house's own rules.** A manager's passcode at the point of action for
