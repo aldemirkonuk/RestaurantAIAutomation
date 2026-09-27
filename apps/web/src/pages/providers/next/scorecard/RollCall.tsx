@@ -102,7 +102,7 @@ function Cell({
               : {
                   fontSize: 11.5,
                   fontStyle: 'italic',
-                  color: m.outcome === 'could_not_read' ? 'var(--alarm, #A33A2B)' : 'var(--ink-3, #7C7365)',
+                  color: m.outcome === 'could_not_read' ? 'var(--alarm, #A33A2B)' : 'var(--ink-4, #665D50)',
                 }
           }
         >

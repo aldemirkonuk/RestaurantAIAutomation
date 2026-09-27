@@ -1393,7 +1393,7 @@ export default function ReceiptsNext() {
                       border: 'none',
                       borderBottom: tab === key ? '2px solid var(--seal, #1A5E6B)' : '2px solid transparent',
                       background: 'transparent',
-                      color: tab === key ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+                      color: tab === key ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
                       cursor: 'pointer',
                     }}
                   >

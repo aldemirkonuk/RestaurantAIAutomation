@@ -145,7 +145,7 @@ function TrustedSenders({ senders, houseName }: { senders: ReturnType<typeof use
                           ? 'var(--alarm-deep, #8C3322)'
                           : st.tone === 'trusted'
                             ? 'var(--seal-deep, #14515C)'
-                            : 'var(--ink-3, #7C7365)',
+                            : 'var(--ink-4, #665D50)',
                     }}
                   >
                     {st.word} · updated {fmtDay(s.updated_at)}

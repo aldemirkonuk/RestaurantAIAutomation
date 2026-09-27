@@ -478,9 +478,23 @@ describe('OD-112 — the caption ink (--ink-4) clears AA on both grounds', () =>
    *  `caret-color` and `text-decoration-color` end in `-color` the same
    *  way and were equally exposed. The lookbehind now also excludes `-`,
    *  matching what the doc comment above already claimed and what CSS_HIT
-   *  enforces by anchoring on `{`/`;`/start-of-line instead.] */
+   *  enforces by anchoring on `{`/`;`/start-of-line instead.]
+   *
+   *  [PR 478 audit, fix round 1 of 2, 2026-09-27: `[^,;{}]` stopped at the
+   *  FIRST comma after the property name, and the codebase's dominant token
+   *  shape carries one inside its own parentheses — `var(--ink-1, #211C16)`.
+   *  So `color: cond ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)'`
+   *  never reached `--ink-3`, and six rendered captions shipped unconverted
+   *  (DocketSheet.tsx:84,170, LedgerCard.tsx:74, RollCall.tsx:105,
+   *  ReceiptsNext.tsx:1396, WhoIsWriting.tsx:148) while OD-112 was marked
+   *  resolved. The scan now steps over a balanced `( … )` group (one nested
+   *  level, e.g. `var(--a, var(--b))`) as a single unit, so a comma inside
+   *  parentheses no longer ends the value, and a `--ink-3` inside an open
+   *  paren (`'var(--ink-3, #7C7365)'`) is still reached. The alternation's
+   *  branches start on disjoint characters (`(` vs. anything but `(`), so
+   *  the bound stays linear rather than exponential.] */
   const CSS_HIT = /(?:^|[{;])\s*(color|-webkit-text-fill-color|fill)\s*:\s*[^;{}]*--ink-3\b/gm;
-  const JS_HIT = /(?<![\w$-])(color|WebkitTextFillColor|fg|fill)\s*[:=]\s*[^,;{}]{0,300}?--ink-3\b/g;
+  const JS_HIT = /(?<![\w$-])(color|WebkitTextFillColor|fg|fill)\s*[:=]\s*(?:\((?:[^()]|\([^()]*\))*\)|[^,;{}()]){0,300}?(?:\([^)]{0,200}?)?--ink-3\b/g;
 
   it('no shipped color declaration paints the decorative-only --ink-3', () => {
     const files = [
@@ -603,6 +617,35 @@ describe('OD-112 — the caption ink (--ink-4) clears AA on both grounds', () =>
 
   it('JS_HIT catches --ink-3 on an SVG `fill=` JSX attribute', () => {
     expect(jsHitCount(`<Cell fill="var(--ink-3)" />`)).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 behind a comma-fallback var() in an earlier ternary branch', () => {
+    // The shape that shipped unconverted at DocketSheet.tsx:84 et al.
+    expect(
+      jsHitCount(`color: fig.scored ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',`),
+    ).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 behind two comma-fallback branches across lines', () => {
+    expect(
+      jsHitCount(
+        `color:\n  s.tone === 'miss'\n    ? 'var(--alarm, #A33A2B)'\n    : s.tone === 'hit'\n      ? 'var(--seal-deep, #14515C)'\n      : 'var(--ink-3, #7C7365)',`,
+      ),
+    ).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 behind a nested var() fallback', () => {
+    expect(jsHitCount(`color: on ? 'var(--ink-1, var(--ink-2))' : 'var(--ink-3)',`)).toBe(1);
+  });
+
+  it('JS_HIT still stops at a top-level comma, so the next key is not blamed', () => {
+    expect(jsHitCount(`color: 'var(--ink-1, #211C16)', borderColor: 'var(--ink-3, #7C7365)',`)).toBe(0);
+  });
+
+  it('JS_HIT still leaves a comma-fallback --ink-4 alone', () => {
+    expect(
+      jsHitCount(`color: fig.scored ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',`),
+    ).toBe(0);
   });
 
   it('JS_HIT still catches the original direct-quote shape', () => {

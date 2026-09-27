@@ -71,7 +71,7 @@ export function WindowChips({ value, onChange }: { value: WindowDays; onChange: 
             borderRadius: 6,
             border: `1px solid ${w === value ? 'var(--seal-ring, rgba(26,94,107,.32))' : 'var(--paper-2, #EAE4D8)'}`,
             background: w === value ? 'var(--paper-1, #F3EFE6)' : 'transparent',
-            color: w === value ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+            color: w === value ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
             cursor: 'pointer',
             transition: `border-color ${ink.ms}ms ${ink.easing}, color ${ink.ms}ms ${ink.easing}`,
           }}

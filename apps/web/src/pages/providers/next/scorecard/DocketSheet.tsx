@@ -81,7 +81,7 @@ function Tally({
           fontSize: 12.5,
           fontWeight: fig.scored ? 600 : 400,
           fontStyle: fig.scored ? 'normal' : 'italic',
-          color: fig.scored ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',
+          color: fig.scored ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
         }}
       >
         {fig.big}
@@ -167,7 +167,7 @@ function Entry({ e, f }: { e: DocketEntry; f: Formats }) {
                 ? 'var(--alarm, #A33A2B)'
                 : s.tone === 'hit'
                   ? 'var(--seal-deep, #14515C)'
-                  : 'var(--ink-3, #7C7365)',
+                  : 'var(--ink-4, #665D50)',
           }}
         >
           {s.word}
