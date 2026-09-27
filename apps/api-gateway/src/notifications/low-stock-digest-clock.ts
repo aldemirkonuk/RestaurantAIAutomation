@@ -93,9 +93,10 @@ export function digestClockFor(
 
 /**
  * Rounds an instant to the nearest UTC hour, absorbing cron jitter of ±30
- * minutes. A run more than 30 minutes late is judged as the NEXT hour's tick,
- * so the crossing it was scheduled for is never evaluated — see the no-catch-up
- * note on `isDigestTick`.
+ * minutes. A run more than 30 minutes late is judged as the NEXT hour's tick;
+ * the house-local hour it was scheduled for is then caught up by that tick
+ * (still due, see `isDigestDue`) unless the next hour is already the next
+ * house-local date.
  */
 export function hourTick(at: Date): Date {
   return new Date(Math.round(at.getTime() / 3_600_000) * 3_600_000);
@@ -139,60 +140,64 @@ export function houseWallAt(instant: Date, zone: string): WallReading {
   return { dateKey, minutes: hour * 60 + minute };
 }
 
-function cmp(a: WallReading, b: WallReading): number {
-  if (a.dateKey !== b.dateKey) return a.dateKey < b.dateKey ? -1 : 1;
-  return a.minutes - b.minutes;
-}
-
 /**
- * Same rule as `isDigestTick`, but taking two already-computed wall
- * readings instead of an instant + zone. Exists so a caller that reads many
- * hours off the SAME pair of ticks (the digest sweep checks every
- * restaurant's own hour against one tick; the full-year property test in
- * `low-stock-digest-clock.spec.ts` checks all 24 hours against one tick) can
- * compute `houseWallAt` once per tick per zone and reuse it, rather than
- * re-running `Intl.DateTimeFormat` for every hour it tests.
+ * True when the house's local wall clock at `cur` has reached `hour`:00 on its
+ * own local date. Taking an already-computed reading lets a caller that tests
+ * many hours against ONE tick (the full-year property test in
+ * `low-stock-digest-clock.spec.ts` checks all 24 hours against one reading)
+ * compute `houseWallAt` once per tick per zone and reuse it.
  */
-export function isDigestTickFromReadings(
+export function isDigestDueFromReading(
   cur: WallReading,
-  prev: WallReading,
   hour: number,
 ): boolean {
   const h = ((hour % 24) + 24) % 24;
-  const target: WallReading = { dateKey: cur.dateKey, minutes: h * 60 };
-  return cmp(cur, target) >= 0 && cmp(prev, target) < 0;
+  return cur.minutes >= h * 60;
 }
 
 /**
- * True exactly on the one hourly tick that first reaches (or passes) `hour`
- * on the house's own local date.
+ * SAME-DAY CATCH-UP (founder item 70, 2026-09-27, verbatim "Catch up same day
+ * (Recommended)"). A house's digest is DUE on every hourly tick from the one
+ * that first reaches its local digest hour until local midnight. The sweep
+ * sends on a due tick only when `last_digest_at` is not already on (or after)
+ * that house-local date (`digestAlreadySentOn`), so the first due tick that is
+ * actually evaluated sends and every later one that day is a no-op.
  *
- * Ticks arrive every 60 minutes on the UTC hour, and every real UTC
- * fall-back offset change is 60 minutes or less, so the sequence of local
- * (date, minute) readings at consecutive ticks never goes backward, and it
- * crosses each (date, hour:00) target exactly once:
- *   - Spring-forward: the crossing tick is the first one after the gap (no
- *     day is skipped — NY's local hour 2 on 2026-03-08 simply arrives at the
- *     07:00Z tick, already past 03:00 local).
- *   - Fall-back: the repeated local hour does not cross the target again, so
- *     there is no double send.
- *   - Half-hour / 45-minute zones (India, Nepal, parts of Australia,
- *     Chatham) fire at the next top of the UTC hour after the target — e.g.
+ * This replaced a crossing-only rule (true only on the one tick that crossed
+ * the hour), under which a crossing tick that was never evaluated — a failed
+ * `restaurants` read on it, a cron run more than 30 minutes late, the gateway
+ * down across it — lost that house's digest for the day
+ * (TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP, now resolved).
+ *
+ * Ticks arrive every 60 minutes on the UTC hour, so:
+ *   - Spring-forward: the first due tick is the first one after the gap (NY's
+ *     local hour 2 on 2026-03-08 arrives at the 07:00Z tick, already 03:00).
+ *   - Fall-back: the repeated local hour is still due, but the date's digest
+ *     is already stamped, so there is no second send.
+ *   - Half-hour / 45-minute zones (India, Nepal, parts of Australia, Chatham)
+ *     are first due at the next top of the UTC hour after the target — e.g.
  *     Kolkata 12:30 for hour 12 — because the sweep stays hourly.
  *
- * NO CATCH-UP. Only the crossing tick returns true; every later tick that
- * day returns false. So if the crossing tick is never evaluated for a house —
- * the sweep's batched `restaurants` read failed on that tick, the cron ran
- * more than 30 minutes late (`hourTick` moved it to the next hour), or the
- * gateway was down — that house's digest for that local date is NOT sent,
- * and nothing retries it. Measured by specs i and j in
- * `low-stock-digest-house-clock.spec.ts`; filed in v3.0-TECH-DEBT with the
- * open CLAIMS row TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP.
+ * Same day only: the catch-up window ends at house-local midnight. A house
+ * whose every due tick that date went unevaluated (for hour 23, just the one
+ * 23:00 tick) still loses that date; the next date starts fresh.
  */
-export function isDigestTick(tick: Date, zone: string, hour: number): boolean {
-  const cur = houseWallAt(tick, zone);
-  const prev = houseWallAt(new Date(tick.getTime() - 3_600_000), zone);
-  return isDigestTickFromReadings(cur, prev, hour);
+export function isDigestDue(tick: Date, zone: string, hour: number): boolean {
+  return isDigestDueFromReading(houseWallAt(tick, zone), hour);
+}
+
+/**
+ * True when a digest stamped on house-local date `lastDateKey` already covers
+ * `todayKey` (both `YYYY-MM-DD`, so string order is date order). "On or
+ * after", not only "on": a stamp can never legitimately be on a later house
+ * date than the tick judging it, and treating one as "not today" would send.
+ * `null` (never sent) never covers.
+ */
+export function digestAlreadySentOn(
+  lastDateKey: string | null,
+  todayKey: string,
+): boolean {
+  return lastDateKey !== null && lastDateKey >= todayKey;
 }
 
 /**

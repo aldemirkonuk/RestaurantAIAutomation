@@ -20,9 +20,10 @@ import { canonicalOrigin } from "../communications/email-templates";
 import {
   digestClockFor,
   digestHourOf,
+  digestAlreadySentOn,
   hourTick,
   houseWallAt,
-  isDigestTick,
+  isDigestDue,
   type DigestClock,
 } from "./low-stock-digest-clock";
 
@@ -104,6 +105,17 @@ export class LowStockAlertsService {
   private readonly INSTANT_COOLDOWN_MS = 15 * 60_000;
   private readonly lastInstantAt = new Map<string, number>();
 
+  /**
+   * The house-local date this process last SENT each restaurant's digest.
+   * The durable fence is `inventory_alert_state.last_digest_at`; this is the
+   * in-process backstop for when that stamp could not be written. Under
+   * same-day catch-up (founder item 70) every tick after the digest hour is
+   * due, so an unwritten stamp with no second fence would re-send every hour
+   * until local midnight. A restart empties it; `last_digest_at` is then the
+   * only fence, as it is across gateway replicas.
+   */
+  private readonly digestSentOn = new Map<string, string>();
+
   constructor(
     private readonly db: DatabaseService,
     private readonly notifications: NotificationsService,
@@ -145,12 +157,13 @@ export class LowStockAlertsService {
 
   /**
    * Digest sweep — runs hourly, on the UTC hour, and for each restaurant
-   * sends the batched reminder only on the tick that crosses that house's
-   * OWN local digest hour (item 56 / ADR 0149: "each house's timezone").
+   * sends the batched reminder once per house-local date, on the first
+   * evaluated tick at or after that house's OWN local digest hour (item 56 /
+   * ADR 0149: "each house's timezone"; item 70: "Catch up same day").
    *
    * The cron itself no longer names a timezone — it fires once per UTC hour
    * — and `runDigestSweepAt` (below) decides per house, per tick, whether
-   * this is that house's moment, using its own clock
+   * the digest is due and not yet sent, using its own clock
    * (`low-stock-digest-clock.ts`: house zone, then UTC when the house has
    * none this server can read — see ADR 0116:297-301).
    */
@@ -163,9 +176,16 @@ export class LowStockAlertsService {
    * The digest sweep for one tick, extracted so tests can drive it at any
    * instant without waiting on the cron. `at` is rounded to the nearest UTC
    * hour (`hourTick`) so cron jitter of up to ±30 minutes cannot shift which
-   * house-local hour a house is judged against. A run more than 30 minutes
-   * late is judged as the next hour, and there is no catch-up for a crossing
-   * tick that was never evaluated (see `isDigestTick`, spec j).
+   * house-local hour a house is judged against.
+   *
+   * SAME-DAY CATCH-UP (founder item 70, 2026-09-27, verbatim "Catch up same
+   * day (Recommended)"): a house is sent when its local time has reached
+   * today's digest hour (`isDigestDue`) AND `last_digest_at` is not on today's
+   * house-local date (`digestAlreadySentOn`). A tick that was skipped, late or
+   * never run is therefore made up by the next evaluated tick that day. The
+   * price of that is that the dedupe read now carries the whole weight of
+   * "once a day": when it fails, the house is SKIPPED this tick — never sent
+   * blind — and the next tick tries again (spec k).
    */
   async runDigestSweepAt(at: Date): Promise<void> {
     try {
@@ -193,23 +213,55 @@ export class LowStockAlertsService {
           // unreadable row is never silently "no timezone → UTC" (that would
           // misfire LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN for a house that in
           // fact has a zone this server just failed to read). Skip this
-          // house this tick. This is NOT a retry: `isDigestTick` is true only
-          // on the one tick that crosses the house's hour, so if THIS was
-          // that tick, the house's digest for that local date is lost and no
-          // later tick sends it (spec i; v3.0-TECH-DEBT, open CLAIMS row
-          // TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP). The zone is unknown
-          // here, so the log cannot say whether this tick was the crossing.
+          // house this tick; under same-day catch-up the next tick whose
+          // read succeeds sends it, if its hour has passed and it has not
+          // been sent today (spec i).
           this.logger.warn(
-            `LOW_STOCK_DIGEST_HOUSE_UNREADABLE restaurant=${restaurantId} — restaurants row (timezone/country) could not be read; skipping this tick, not retried: if this was the house's digest hour, today's digest is not sent.`,
+            `LOW_STOCK_DIGEST_HOUSE_UNREADABLE restaurant=${restaurantId} — restaurants row (timezone/country) could not be read; skipping this tick, a later tick today catches it up.`,
           );
           continue;
         }
 
         const house = houses.map.get(restaurantId) ?? null;
         const clock = digestClockFor(house);
-        if (!isDigestTick(tick, clock.zone, hour)) continue;
+        if (!isDigestDue(tick, clock.zone, hour)) continue;
 
         const periodKey = houseWallAt(tick, clock.zone).dateKey;
+
+        // In-process fence first (see `digestSentOn`): it also saves the
+        // dedupe read on every due tick after today's send.
+        if (
+          digestAlreadySentOn(
+            this.digestSentOn.get(restaurantId) ?? null,
+            periodKey,
+          )
+        ) {
+          continue;
+        }
+
+        const last = await this.readLastDigestAt(restaurantId);
+        if (!last.ok) {
+          // The read failed rather than coming back empty. SKIP, never send:
+          // under catch-up this read is the only thing between the house and
+          // a digest every hour until midnight (founder item 70: "a failed
+          // dedupe read SKIPS (never double-send)"). The next tick reads
+          // again, so one failed read delays today's digest, it does not
+          // lose it (spec k).
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_DEDUPE_UNREADABLE restaurant=${restaurantId} date=${periodKey} — last_digest_at could not be read; skipping this tick so it cannot send twice, a later tick today retries.`,
+          );
+          continue;
+        }
+        if (
+          last.at &&
+          digestAlreadySentOn(
+            houseWallAt(last.at, clock.zone).dateKey,
+            periodKey,
+          )
+        ) {
+          this.digestSentOn.set(restaurantId, periodKey);
+          continue;
+        }
 
         if (clock.source === "fallback") {
           this.logger.warn(
@@ -217,27 +269,10 @@ export class LowStockAlertsService {
           );
         }
 
-        const last = await this.readLastDigestAt(restaurantId);
-        if (last.ok && last.at) {
-          const lastPeriodKey = houseWallAt(last.at, clock.zone).dateKey;
-          if (lastPeriodKey === periodKey) {
-            this.logger.log(
-              `LOW_STOCK_DIGEST_ALREADY_SENT restaurant=${restaurantId} date=${periodKey}`,
-            );
-            continue;
-          }
-        } else if (!last.ok) {
-          // The read failed rather than coming back empty. Fail OPEN: the
-          // per-tick isDigestTick rule already guarantees at most one send
-          // per house-local date inside a single sweep, so the exposure of
-          // proceeding is a possible duplicate against another gateway
-          // replica or an overlapping deploy — not a silently lost day.
-          // Builder's choice, Proposed (ADR 0149 item 56).
-          this.logger.warn(
-            `LOW_STOCK_DIGEST_DEDUPE_UNREADABLE restaurant=${restaurantId} — last_digest_at could not be read; sending anyway.`,
-          );
-        }
-
+        // Fence before the send: if sendDigest throws part-way, this process
+        // must still not send again today (a failed email is recorded on the
+        // notification row by sendDigest, and is not retried — as before).
+        this.digestSentOn.set(restaurantId, periodKey);
         await this.sendDigest(
           restaurantId,
           rows,
@@ -649,13 +684,23 @@ export class LowStockAlertsService {
 
     // Stamp the digest time on the ledger (the sweep's tick when given).
     const stampIso = digestAt ?? new Date().toISOString();
+    let stamped = 0;
     for (const row of rows) {
-      await this.upsertState(restaurantId, {
+      const ok = await this.upsertState(restaurantId, {
         inventoryId: row.inventoryId,
         wineName: row.wineName,
         level: row.severity,
         digestAt: stampIso,
       });
+      if (ok) stamped++;
+    }
+    // `readLastDigestAt` takes the newest stamp across the house's rows, so
+    // one written row is enough to fence today. None written means only the
+    // in-process `digestSentOn` fence stands until the next restart.
+    if (stamped === 0) {
+      this.logger.warn(
+        `LOW_STOCK_DIGEST_STAMP_UNWRITTEN restaurant=${restaurantId} date=${dateStr} — last_digest_at could not be written; only this process remembers today's send.`,
+      );
     }
   }
 

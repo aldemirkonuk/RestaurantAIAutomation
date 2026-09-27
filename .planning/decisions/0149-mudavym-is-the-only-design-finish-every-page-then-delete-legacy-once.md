@@ -149,7 +149,9 @@ the current restaurants or users, or tables, dbs or such"*. So:
 - **[2026-09-27, founder, round 9 item 56 / round 10 item 61 — the low-stock digest hour.** Chosen: "UTC, said on the page (Recommended)". Rejected: "New York time, said on the page", "No digest until a zone is set". Built on `fix/low-stock-digest-house-timezone`.]
   The hourly UTC-anchored sweep now picks each house whose OWN local clock has
   just crossed its configured digest hour (`low-stock-digest-clock.ts:
-  isDigestTick`), instead of gating everyone on one hard-coded New York hour
+  isDigestTick`) [2026-09-27, founder item 70: superseded — `isDigestTick` is
+  gone; a house is now DUE from its hour to local midnight (`isDigestDue`) and
+  sent once per house date, see the item 70 bracket below], instead of gating everyone on one hard-coded New York hour
   (`low-stock-alerts.service.ts` previously ran `@Cron(..., {timeZone:
   "America/New_York"})` and compared against `currentEtHour()`).
   - **Zone order:** the house's own `restaurants.timezone` first
@@ -172,7 +174,9 @@ the current restaurants or users, or tables, dbs or such"*. So:
     and skips a restaurant already sent for that date.
   - **DST:** spring-forward sends at the first hourly tick after the gap (no
     day is skipped); the repeated hour on fall-back does not cross the
-    target a second time, so there is no double send; half-hour and
+    target a second time, so there is no double send [2026-09-27, item 70:
+    under catch-up the repeated hour is still due, and it is today's
+    `last_digest_at` stamp that stops the second send]; half-hour and
     45-minute zones (India, Nepal, parts of Australia, Chatham) send at the
     next top of the UTC hour after their target, because the sweep stays
     hourly rather than becoming a 15-minute poll.
@@ -190,7 +194,10 @@ the current restaurants or users, or tables, dbs or such"*. So:
     unreadable dedupe sends anyway, on the reasoning that `isDigestTick`
     alone already caps a single sweep run to one crossing per house-local
     date, so the exposure is a possible duplicate against another gateway
-    replica or an overlapping deploy, not a silently lost reminder day; the
+    replica or an overlapping deploy, not a silently lost reminder day
+    [Overturned 2026-09-27 by founder item 70: "a failed dedupe read SKIPS
+    (never double-send)". With catch-up the read is the only fence, so the
+    house is skipped for that tick and the next tick reads again]; the
     fallback-zone warn (`LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN`) logs only on the
     tick that actually fires, not on every sweep; a malformed `digest_time`
     is skipped with a warn (`LOW_STOCK_DIGEST_TIME_UNREADABLE`) rather than
@@ -209,16 +216,57 @@ the current restaurants or users, or tables, dbs or such"*. So:
     specs i and j in `low-stock-digest-house-clock.spec.ts`; filed in
     v3.0-TECH-DEBT with the open CLAIMS row
     `TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP`. Whether to add catch-up is an
-    open fork, not decided here. Same audit: `last_digest_at` is now stamped
+    open fork, not decided here. [Decided 2026-09-27, founder item 70: catch
+    up. See the next bracket.] Same audit: `last_digest_at` is now stamped
     with the sweep's tick, not the run time, so a late run before house-local
     midnight and the on-time run for the same tick cannot both send (spec j2);
     the `LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN` log no longer says "the page says
     so" (no /notifications copy states the zone yet); and the page-statement
     duty is attributed to founder item 61, not ADR 0116:297-301, which asks
     only for a log line.
+  - **[2026-09-27, founder, item 70 — digest catch-up.** Chosen: "Catch up same
+    day (Recommended)" (`founder-answers-2026-09-25-web-rebuild.md:104`). The other
+    option, keeping the loss (v3.0-TECH-DEBT fork (b)), was not taken; its
+    verbatim label is not in the memory record. Built on
+    `fix/low-stock-digest-house-timezone` (PR #488).]
+    - **Rule.** Send once the house's local time has reached today's digest
+      hour (`isDigestDue`) and `last_digest_at` is not on today's house-local
+      date (`digestAlreadySentOn`, which also treats a stamp on a later date
+      as covering today; no real stamp can be). The first tick that is
+      actually evaluated sends. A late, skipped or failed tick is made up by
+      the next one that same local day.
+    - **A failed dedupe read SKIPS the house for that tick**
+      (`LOW_STOCK_DIGEST_DEDUPE_UNREADABLE`, "skipping this tick so it cannot
+      send twice"). It is retried on the next tick, so one failed read delays
+      the digest by an hour and does not lose the day.
+    - **Builder's addition, Proposed.** There is an in-process fence,
+      `digestSentOn` (restaurant → house date sent). Under catch-up, a
+      `last_digest_at` stamp that failed to write would otherwise re-send
+      every hour until midnight. The fence covers this process; a restart or
+      another replica has only `last_digest_at`. `sendDigest` now warns
+      `LOW_STOCK_DIGEST_STAMP_UNWRITTEN` when no row was stamped. The fence is
+      set before `sendDigest` runs, so a send that throws part-way is also not
+      repeated by this process. As before, a failed email is recorded on the
+      notification row and is not retried.
+    - **Consequence, stated.** A house with no low wine at its hour but one
+      going low later that day now gets that day's digest on the next tick.
+      Before, it waited for the next day's hour. The founder's rule ("no
+      digest today") covers this case literally; the audit and the founder
+      should know it happens.
+    - **Still lost ("same day").** A house whose every due tick that date went
+      unevaluated still loses the day. For hour 23 that is only the 23:00
+      tick. A run more than 30 minutes late at 23:00 is judged as the next
+      date's 00:00 (`hourTick`).
+    - **Specs** in `low-stock-digest-house-clock.spec.ts`: i and j were
+      rewritten from KNOWN LOSS to catch-up. New: k (failed dedupe read), l
+      (gateway down across the hour, then a second restart the same day), m
+      (unwritten stamp). The clock spec's full-year property test now drives
+      the send rule, and a catch-up property drops every date's first due
+      tick. Each part was mutation-checked (PR #488 body).
   - **CLAIMS:** `ADR-0149-LOW-STOCK-DIGEST-FOLLOWS-THE-HOUSE-CLOCK`,
     `ADR-0149-LOW-STOCK-DIGEST-DST-TESTED`,
-    `TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP` (open).
+    `TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP` (open) [resolved 2026-09-27,
+    item 70].
   - **Source note:** the verbatim option labels above come from the
     orchestrator's relayed task text for this lane, not from a session this
     builder ran directly; the founder-answers memory (round 9 item 56, round

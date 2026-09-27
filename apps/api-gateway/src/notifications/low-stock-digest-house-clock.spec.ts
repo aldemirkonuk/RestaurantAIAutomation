@@ -30,6 +30,8 @@ function makeDigestDbMock(opts: {
    * genuinely has no timezone recorded (`timezone: null` with no error).
    */
   restaurantsReadError?: boolean;
+  /** Force every `inventory_alert_state` upsert (the digest stamp) to error. */
+  upsertError?: boolean;
 }) {
   const lastDigestAt: Record<string, string> = {
     ...(opts.initialLastDigestAt ?? {}),
@@ -55,6 +57,9 @@ function makeDigestDbMock(opts: {
       neq: () => chain,
       update: () => chain,
       upsert: (row: any) => {
+        if (opts.upsertError) {
+          return Promise.resolve({ error: { message: "write failed" } });
+        }
         upsertRows.push(row);
         if (table === "inventory_alert_state" && row.last_digest_at) {
           lastDigestAt[row.restaurant_id] = row.last_digest_at;
@@ -325,7 +330,7 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
     });
 
-    it("a read error on last_digest_at sends anyway (fails open) and warns", async () => {
+    it("a read error on last_digest_at SKIPS the send (never risks a double) and warns", async () => {
       const { mock } = makeDigestDbMock({
         lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
         restaurantsRows: [
@@ -339,7 +344,8 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
 
       await svc.runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
 
-      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+      expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+      expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
       expect(
         warnSpy.mock.calls.some((c) =>
           String(c[0]).includes("LOW_STOCK_DIGEST_DEDUPE_UNREADABLE"),
@@ -402,8 +408,10 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       String(c[0]).includes("LOW_STOCK_DIGEST_HOUSE_UNREADABLE"),
     );
     expect(unreadable).toHaveLength(1);
-    // The warn must say the skip is not retried (spec i measures that).
-    expect(String(unreadable[0][0])).toContain("not retried");
+    // The warn must say a later tick catches it up (spec i measures that).
+    expect(String(unreadable[0][0])).toContain(
+      "a later tick today catches it up",
+    );
     // And it must never be confused with "no timezone recorded" — that is a
     // different fact (a genuinely zoneless house) from "could not be read".
     expect(
@@ -413,13 +421,11 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     ).toBe(false);
   });
 
-  // i and j pin a KNOWN LOSS, not a wanted behaviour: `isDigestTick` fires
-  // only on the one tick that crosses the house's hour, and nothing retries a
-  // crossing tick that was not evaluated. Filed in v3.0-TECH-DEBT with the
-  // open CLAIMS row TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP; whether to add
-  // catch-up is an open fork. If catch-up lands, these two tests must flip to
-  // "sends exactly once" rather than be deleted.
-  it("i. KNOWN LOSS: a restaurants read failure on the crossing tick loses that day's digest — later ticks do not retry it", async () => {
+  // i, j, k and l pin SAME-DAY CATCH-UP (founder item 70, 2026-09-27,
+  // "Catch up same day (Recommended)"). Before it, i and j pinned the
+  // opposite: a crossing tick that was not evaluated lost that house's day
+  // (TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP, now resolved).
+  it("i. catch-up: a restaurants read failure at the house's hour is made up by the next tick, sent exactly once that day", async () => {
     const opts = {
       lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
       restaurantsRows: [
@@ -431,7 +437,7 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     const { mock } = makeDigestDbMock(opts);
     const svc = build(mock);
 
-    // 16:00Z = 12:00 EDT, the crossing tick — the read fails.
+    // 16:00Z = 12:00 EDT, the house's hour — the read fails.
     await svc.runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
     expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
 
@@ -445,17 +451,21 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     ) {
       await svc.runDigestSweepAt(new Date(t));
     }
-    expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
-
-    // The next local day's crossing tick sends normally.
-    await svc.runDigestSweepAt(new Date("2026-09-27T16:00:00Z"));
     expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
     expect(notifications.persistForRestaurant.mock.calls[0][1].groupKey).toBe(
+      "low_stock_digest:2026-09-26",
+    );
+
+    // The next local day's hour sends again, once.
+    await svc.runDigestSweepAt(new Date("2026-09-27T16:00:00Z"));
+    await svc.runDigestSweepAt(new Date("2026-09-27T17:00:00Z"));
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(2);
+    expect(notifications.persistForRestaurant.mock.calls[1][1].groupKey).toBe(
       "low_stock_digest:2026-09-27",
     );
   });
 
-  it("j. KNOWN LOSS: a cron run at 10:31Z is judged as 11:00Z — the hour-10 house loses its day, the hour-11 house is sent exactly once across the 10:31Z and 11:00Z runs", async () => {
+  it("j. catch-up: a cron run at 10:31Z is judged as 11:00Z — the hour-10 house is caught up by it, and each house is sent exactly once that day", async () => {
     const { mock } = makeDigestDbMock({
       lowStockRows: [
         makeLowStockRow({ id: "inv-10", restaurant_id: "h10" }),
@@ -476,17 +486,123 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     // The system clock is set to each run's instant, as in production, so
     // the last_digest_at stamp is written at a realistic time.
     await runAt(svc, "2026-09-26T10:31:00Z");
+    expect(
+      notifications.persistForRestaurant.mock.calls.map((c) => c[0]).sort(),
+    ).toEqual(["h10", "h11"]);
     await runAt(svc, "2026-09-26T11:00:00Z");
     // Every later tick that day.
     for (let h = 12; h <= 23; h++) {
       await runAt(svc, `2026-09-26T${h}:00:00Z`);
     }
 
-    const sentFor = notifications.persistForRestaurant.mock.calls.map(
-      (c) => c[0],
+    const sentFor = notifications.persistForRestaurant.mock.calls
+      .map((c) => c[0])
+      .sort();
+    expect(sentFor).toEqual(["h10", "h11"]); // each once
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(2);
+  });
+
+  it("k. a failed dedupe read SKIPS that tick and never double-sends; the next readable tick sends once", async () => {
+    const opts = {
+      lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
+      restaurantsRows: [
+        { id: "ny", name: "NY House", timezone: "America/New_York" },
+      ],
+      prefsByRestaurant: { ny: dailyPrefs("12:00") },
+      // Already sent today at 12:00 EDT by another replica / a prior run.
+      initialLastDigestAt: { ny: "2026-09-26T16:00:00.000Z" },
+      lastDigestAtReadError: true,
+    };
+    const { mock } = makeDigestDbMock(opts);
+    const svc = build(mock);
+    const warnSpy = jest.spyOn((svc as any).logger, "warn");
+
+    // 13:00 and 14:00 EDT: the house is due, the dedupe read fails. Sending
+    // here would be the second digest of the day, so it must skip.
+    await svc.runDigestSweepAt(new Date("2026-09-26T17:00:00Z"));
+    await svc.runDigestSweepAt(new Date("2026-09-26T18:00:00Z"));
+    expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+    const unreadable = warnSpy.mock.calls.filter((c) =>
+      String(c[0]).includes("LOW_STOCK_DIGEST_DEDUPE_UNREADABLE"),
     );
-    expect(sentFor).toEqual(["h11"]); // h10: lost; h11: once (last_digest_at dedupe)
+    expect(unreadable).toHaveLength(2);
+    expect(String(unreadable[0][0])).toContain("skipping this tick");
+
+    // The read works again: today's stamp is seen, still no send today.
+    opts.lastDigestAtReadError = false;
+    await svc.runDigestSweepAt(new Date("2026-09-26T19:00:00Z"));
+    expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+
+    // Next day: the read fails at the hour, then works — sent once, late.
+    opts.lastDigestAtReadError = true;
+    await svc.runDigestSweepAt(new Date("2026-09-27T16:00:00Z"));
+    expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+    opts.lastDigestAtReadError = false;
+    await svc.runDigestSweepAt(new Date("2026-09-27T17:00:00Z"));
+    await svc.runDigestSweepAt(new Date("2026-09-27T18:00:00Z"));
     expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+    expect(notifications.persistForRestaurant.mock.calls[0][1].groupKey).toBe(
+      "low_stock_digest:2026-09-27",
+    );
+  });
+
+  it("l. restart: a gateway down across the house's hour sends on its first tick after restart, and a second restart that day does not send again", async () => {
+    const { mock, lastDigestAt } = makeDigestDbMock({
+      lowStockRows: [makeLowStockRow({ restaurant_id: "ist" })],
+      restaurantsRows: [
+        { id: "ist", name: "Istanbul House", timezone: "Europe/Istanbul" },
+      ],
+      prefsByRestaurant: { ist: dailyPrefs("12:00") },
+      // Yesterday's digest, 2026-09-25 12:00 Istanbul.
+      initialLastDigestAt: { ist: "2026-09-25T09:00:00.000Z" },
+    });
+
+    // Down from 08:00Z to 12:00Z (11:00-15:00 Istanbul) — the 09:00Z tick
+    // at the house's hour never ran. A fresh process starts at 12:00Z.
+    const first = build(mock);
+    await runAt(first, "2026-09-26T12:00:00Z");
+    await runAt(first, "2026-09-26T13:00:00Z");
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+    expect(notifications.persistForRestaurant.mock.calls[0][1].groupKey).toBe(
+      "low_stock_digest:2026-09-26",
+    );
+    expect(lastDigestAt.ist).toBe("2026-09-26T12:00:00.000Z");
+
+    // Another restart the same day: the new process has no memory of the
+    // send; only last_digest_at stops a second one.
+    const second = build(mock);
+    for (let h = 14; h <= 20; h++) {
+      await runAt(second, `2026-09-26T${h}:00:00Z`);
+    }
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+  });
+
+  it("m. an unwritten last_digest_at stamp warns, and this process still does not send again that day", async () => {
+    const { mock } = makeDigestDbMock({
+      lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
+      restaurantsRows: [
+        { id: "ny", name: "NY House", timezone: "America/New_York" },
+      ],
+      prefsByRestaurant: { ny: dailyPrefs("12:00") },
+      upsertError: true,
+    });
+    const svc = build(mock);
+    const warnSpy = jest.spyOn((svc as any).logger, "warn");
+
+    for (
+      let t = Date.parse("2026-09-26T16:00:00Z");
+      t <= Date.parse("2026-09-27T03:00:00Z");
+      t += 3_600_000
+    ) {
+      await svc.runDigestSweepAt(new Date(t));
+    }
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+    expect(
+      warnSpy.mock.calls.filter((c) =>
+        String(c[0]).includes("LOW_STOCK_DIGEST_STAMP_UNWRITTEN"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("j2. a late run before local midnight and the on-time run for the same tick send an hour-0 house exactly once", async () => {
