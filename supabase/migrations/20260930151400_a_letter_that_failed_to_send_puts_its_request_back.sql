@@ -9,7 +9,7 @@
 -- reason shown to the manager and to the staff member who asked. `released`
 -- never stands on an unsent letter.
 --
--- WHAT CHANGES ON vendor_send_requests (20260929140700, 20260929141100)
+-- WHAT CHANGES ON vendor_send_requests (20260930150700, 20260930151100)
 -- ---------------------------------------------------------------------
 --   send_failed_count     how many times a letter released from this request
 --                         failed to send, putting it back to waiting

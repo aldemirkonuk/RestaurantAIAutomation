@@ -527,7 +527,7 @@ export class SendRefusedBeforeSendError extends BadRequestException {
 /**
  * The `reason` a 422 carries when the in-process send refused a draft before
  * anything left and the draft was closed as `SEND_REFUSED` (founder, answer 6,
- * 2026-09-21; 20260929140800).
+ * 2026-09-21; 20260930150800).
  */
 export const DRAFT_SEND_REFUSED = "draft_send_refused";
 
