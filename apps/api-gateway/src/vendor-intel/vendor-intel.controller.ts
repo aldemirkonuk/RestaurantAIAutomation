@@ -157,7 +157,9 @@ export class VendorIntelController {
    * one-click action for every manager.
    */
   @Post("scrape")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Extract prices from one vendor page" })
   async scrape(
     @CurrentUser() user: { restaurantId: string },
@@ -186,7 +188,9 @@ export class VendorIntelController {
   }
 
   @Post("sweep")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Sweep active vendor_catalogue websites (sequential, rate-limited)",
@@ -226,7 +230,9 @@ export class VendorIntelController {
    * vendors and what their public pages say.
    */
   @Get("site-sweep/status")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Per-vendor state of the scheduled site sweep: last fetch, rows written, refusals by reason, and why a vendor is silent",
@@ -246,7 +252,9 @@ export class VendorIntelController {
    * the sentence saying so rather than an empty result.
    */
   @Post("site-sweep/run")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Run the vendor-site sweep now for this house" })
   async runSiteSweep(
     @CurrentUser() user: { restaurantId: string },
@@ -277,7 +285,9 @@ export class VendorIntelController {
    * on rows the market box reads.
    */
   @Get("outlier-rejudge/status")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "State of the nightly is_outlier re-judge: armed or not, last run, rows judged, flags set and cleared, and why it is silent",
@@ -294,7 +304,9 @@ export class VendorIntelController {
    * returns the status sentence saying so and writes nothing.
    */
   @Post("outlier-rejudge/run")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Run the outlier re-judge now over the whole register" })
   async runOutlierRejudge(@Body() body: { dryRun?: boolean; windowDays?: number }) {
     if (!this.rejudge.armed()) {
@@ -322,7 +334,9 @@ export class VendorIntelController {
    * fetched, each with the reason and the day it was measured.
    */
   @Get("shop-sweep/status")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Per-shop state of the merchant-shop (class D) sweep: armed or not, last fetch, postings written, refusals by reason, and why a shop is silent",
@@ -340,7 +354,9 @@ export class VendorIntelController {
    * see the service's header for why.
    */
   @Post("shop-sweep/run")
-  @Roles("owner")
+  // ADR 0164, "Keep managers in" (founder, 2026-09-18): this route has always
+  // admitted managers; the label now says so. A lone "owner" now means owner.
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Run the merchant-shop sweep now over the named pages",
   })
