@@ -126,7 +126,18 @@ export const DECLINE_INTENTS = ["rejection", "declined", "out_of_stock"];
 
 interface Analysis {
   intent: string;
-  sentiment: string;
+  /**
+   * positive | neutral | negative, or null when the reply held none of the
+   * three. It used to default to "neutral", which the vendor sheet would have
+   * read as "plain" — a guessed word (ADR 0207, round 3).
+   */
+  sentiment: string | null;
+  /**
+   * The exact phrase of the supplier's latest message the tone rests on, or ""
+   * — the line the vendor sheet quotes beside its word. The sheet shows it only
+   * when it occurs verbatim in the message (ADR 0207, round 3).
+   */
+  tone_quote: string;
   summary: string;
   vendor_offers: VendorOffer[];
   key_facts: string[];
@@ -338,6 +349,7 @@ export class InboundResponderService {
               reasoning: analysis.reasoning,
               special_conditions: analysis.special_conditions,
               commercial_terms: analysis.commercial_terms,
+              tone_quote: analysis.tone_quote,
             },
             classification: {
               email_class: analysis.email_class,
@@ -720,6 +732,7 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
 {
   "intent": "price_acceptance | counter_offer | rejection | question | promo_offer | out_of_stock | confirmation | general",
   "sentiment": "positive | neutral | negative",
+  "tone_quote": "the exact short phrase, copied character for character from the supplier's latest message, that shows most clearly how it reads toward us; empty string if none",
   "summary": "1-2 sentences: what the supplier said and the current state of the negotiation",
   "vendor_offers": [{"price_per_bottle": number|null, "quantity": number|null, "unit": "bottle|case", "conditions": "string", "quote": "the exact phrase from their email"}],
   "key_facts": ["short factual bullets worth remembering"],
@@ -845,7 +858,15 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
       if (!p.reply_body || typeof p.reply_body !== "string") return null;
       return {
         intent: String(p.intent || "general"),
-        sentiment: String(p.sentiment || "neutral"),
+        sentiment: ["positive", "neutral", "negative"].includes(
+          String(p.sentiment ?? "").toLowerCase(),
+        )
+          ? String(p.sentiment).toLowerCase()
+          : null,
+        tone_quote:
+          typeof p.tone_quote === "string"
+            ? p.tone_quote.trim().slice(0, 300)
+            : "",
         summary: String(p.summary || ""),
         vendor_offers: Array.isArray(p.vendor_offers) ? p.vendor_offers : [],
         key_facts: Array.isArray(p.key_facts) ? p.key_facts.map(String) : [],

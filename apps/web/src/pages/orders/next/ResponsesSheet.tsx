@@ -76,6 +76,7 @@ import {
   REJECT_NEEDS_A_REASON,
   VENDOR_DECLINED_NOTE,
   describeOrderedQuantity,
+  isDecline,
   readVendorResponses,
   reasonIsGiven,
   responsesUnreadable,
@@ -190,6 +191,17 @@ export function ResponsesSheet({
   const [reasonTouched, setReasonTouched] = useState(false);
   const [approveError, setApproveError] = useState<string | null>(null);
   const [rejectError, setRejectError] = useState<string | null>(null);
+  /**
+   * ADR 0207 round 4. Preselected `vendor_cannot_supply` when the answer being
+   * rejected is one of `DECLINE_INTENTS` (the vendor itself said no); the
+   * person can change it — a rejection here is not always the vendor's fault
+   * (a bad price, a misread answer), and the category is what the vendor
+   * scorecard reads, so it must be the truth of THIS order, not a guess from
+   * the last answer read.
+   */
+  const [reasonCode, setReasonCode] = useState<
+    'never_arrived' | 'vendor_cannot_supply' | 'house_decision'
+  >('house_decision');
 
   const responses = useMemo(() => readVendorResponses(convos.data), [convos.data]);
 
@@ -202,6 +214,7 @@ export function ResponsesSheet({
     setReasonTouched(false);
     setApproveError(null);
     setRejectError(null);
+    setReasonCode('house_decision');
   }, [open, row.id]);
 
   // The list can shrink under us (a refetch on the 15s interval). Clamping here
@@ -212,6 +225,14 @@ export function ResponsesSheet({
 
   const current = responses[index] ?? null;
   const total = responses.length;
+
+  // ADR 0207 round 4: preselect vendor_cannot_supply when the answer being
+  // read is one of DECLINE_INTENTS — the vendor itself said no. Re-runs each
+  // time the stepped-to answer changes, so stepping to a different answer
+  // re-derives the suggestion rather than carrying one from a prior answer.
+  useEffect(() => {
+    setReasonCode(isDecline(current?.intent) ? 'vendor_cannot_supply' : 'house_decision');
+  }, [current?.intent]);
 
   /**
    * Left and right step. Deliberately NOT bound while the caret is in the
@@ -313,7 +334,7 @@ export function ResponsesSheet({
     }
     setRejectError(null);
     cancel.mutate(
-      { orderId: row.id, reason: reason.trim(), challenge },
+      { orderId: row.id, reasonCode, reason: reason.trim(), challenge },
       {
         onError: (err) => {
           const status = (err as { response?: { status?: number } })?.response?.status;
@@ -400,6 +421,44 @@ export function ResponsesSheet({
               {/* ── reject: a reason in words, then the same gesture ──────── */}
               <div style={{ minWidth: 236, flex: '1 1 236px' }}>
                 {label('Reject — say why')}
+                <div
+                  role="radiogroup"
+                  aria-label="Whose failure this is"
+                  data-testid="reject-reason-code"
+                  style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}
+                >
+                  {/* No "Never arrived" here: this sheet rejects pending-stage
+                      orders only, which were never out with the vendor, and the
+                      gateway refuses that category for them (cancel-reason.ts).
+                      [Last call, 2026-09-22: it was offered, and always refused.] */}
+                  {(
+                    [
+                      { value: 'vendor_cannot_supply', text: 'Vendor could not supply' },
+                      { value: 'house_decision', text: "House's decision" },
+                    ] as const
+                  ).map((opt) => (
+                    <label
+                      key={opt.value}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        fontFamily: SANS,
+                        fontSize: 11.5,
+                        color: 'var(--ink-2, #4F473C)',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name={`reject-reason-code-${row.id}`}
+                        value={opt.value}
+                        checked={reasonCode === opt.value}
+                        onChange={() => setReasonCode(opt.value)}
+                      />
+                      {opt.text}
+                    </label>
+                  ))}
+                </div>
                 <textarea
                   data-testid="reject-reason"
                   aria-label="Why this order is rejected"
