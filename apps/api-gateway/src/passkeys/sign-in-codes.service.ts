@@ -14,7 +14,7 @@ import { GmailService } from "../communications/gmail.service";
 import { signInCodeEmailTemplate } from "../communications/email-templates/sign-in-code.template";
 
 /**
- * Emailed one-time codes (ADR 0229, Proposed; founder 2026-09-25, item 29).
+ * Emailed one-time codes (ADR 0229, Locked 2026-09-27; founder 2026-09-25, item 29).
  *
  * THE FOUNDER, confirmed reading: "logged-out with no passkey -> emailed
  * one-time code; enrolling while signed in: signed in within last 10 min =
@@ -367,13 +367,17 @@ export class SignInCodesService {
       throw new BadRequestException(CODE_SPENT);
     }
 
+    // Claim one of the code's tries BEFORE comparing, so no guess is ever
+    // checked without being counted first (see claimTry).
+    const attempts = await this.claimTry(live.id, live.attempts);
+    if (attempts === null) throw new BadRequestException(CODE_SPENT);
+
     const expected = Buffer.from(live.code_hash, "hex");
     const given = Buffer.from(this.hashCode(purpose, email, code), "hex");
     const matches =
       expected.length === given.length && timingSafeEqual(expected, given);
 
     if (!matches) {
-      const attempts = await this.recordWrongGuess(live.id, live.attempts);
       throw new BadRequestException(
         attempts >= MAX_ATTEMPTS_PER_CODE ? CODE_SPENT : CODE_REFUSAL,
       );
@@ -402,30 +406,35 @@ export class SignInCodesService {
   }
 
   /**
-   * Count a wrong guess even when it races another one for the same code.
-   * The compare-and-set moves `attempts` forward by exactly one per winning
-   * caller; a caller that LOSES the race (another request's CAS landed
-   * first, on the same stale count both callers read) must retry against
-   * the row's now-current count rather than treat the loss as "nothing to
-   * count". Before this, N concurrent wrong guesses against one code could
-   * cost as few as one real increment -- every loser fired its guess and was
-   * refused, but never counted -- so an attacker firing guesses in parallel
-   * was not held to the 5-per-code / 20-per-day limits the docblock above
-   * claims (found by the ADR 0090 audit of PR #479, 2026-09-26).
+   * Take one of a code's MAX_ATTEMPTS_PER_CODE tries, before the guess is
+   * compared. Returns the count after this claim, or null when the code has
+   * no try left (spent, or consumed by a right guess that got there first).
    *
-   * Bounded at five retries: real contention on one six-digit code has no
-   * legitimate reason to run deeper than that, and a caller that still
-   * cannot land its increment is refused as spent rather than let the guess
-   * through uncounted.
+   * The claim is a compare-and-set on `attempts` (and `consumed_at is null`),
+   * so at most MAX_ATTEMPTS_PER_CODE claims can ever land on one code, and a
+   * guess is compared only after its claim landed. A caller that loses the
+   * race re-reads the count and tries again; every loss means another claim
+   * landed (the count only rises, and stops at the cap), so the loop ends
+   * within MAX_ATTEMPTS_PER_CODE + 1 rounds with no arbitrary retry bound.
+   *
+   * History (ADR 0090 audit of PR #479): the first build compared first and
+   * counted afterwards with an unchecked compare-and-set, so parallel wrong
+   * guesses could share one increment (audit at b88c27053). Fix round 1
+   * counted each wrong guess with a bounded retry, but still compared first:
+   * every request that read the count before any write passed the
+   * "`attempts` < 5" check, so a burst of N parallel guesses got N
+   * comparisons, not 5 (flagged for re-test at c1acfeabc). Claiming first
+   * bounds comparisons, not only the count.
    */
-  private async recordWrongGuess(id: string, seen: number): Promise<number> {
+  private async claimTry(id: string, seen: number): Promise<number | null> {
     let attempts = seen;
-    for (let i = 0; i < 5; i++) {
+    while (attempts < MAX_ATTEMPTS_PER_CODE) {
       const { data, error } = await this.db
         .from("sign_in_codes")
         .update({ attempts: attempts + 1 })
         .eq("id", id)
         .eq("attempts", attempts)
+        .is("consumed_at", null)
         .select("attempts")
         .maybeSingle();
       if (error) {
@@ -434,7 +443,7 @@ export class SignInCodesService {
         );
       }
       if (data) return (data as { attempts: number }).attempts;
-      // Lost the race: read what actually landed and retry against it.
+      // Lost the race: read what actually landed and claim against it.
       const { data: fresh, error: readError } = await this.db
         .from("sign_in_codes")
         .select("attempts, consumed_at")
@@ -446,15 +455,17 @@ export class SignInCodesService {
         );
       }
       const row = fresh as { attempts: number; consumed_at: string | null };
-      // A concurrent correct guess consumed the code first: this guess was
-      // always going to be refused, and there is no live count to bump.
-      if (row.consumed_at) return MAX_ATTEMPTS_PER_CODE;
-      attempts = row.attempts;
-      if (attempts >= MAX_ATTEMPTS_PER_CODE) return attempts;
+      if (row.consumed_at) return null;
+      // A lost compare-and-set on a live row means the count moved. If it
+      // did not, something else refused the write: fail, never spin.
+      if (!(Number(row.attempts) > attempts)) {
+        throw new InternalServerErrorException(
+          "The code could not be checked just now. Nothing was done; try again.",
+        );
+      }
+      attempts = Number(row.attempts);
     }
-    // Contention this path has never seen five times over on one code:
-    // refuse as spent rather than let an uncounted guess through.
-    return MAX_ATTEMPTS_PER_CODE;
+    return null;
   }
 
   /** Step-up: the address is the account's own, read from the row. */
@@ -494,7 +505,13 @@ export class SignInCodesService {
   private assertNotLockedForTheDay(recent: CodeRow[], now: number): void {
     const failed = recent
       .filter((r) => new Date(r.created_at).getTime() > now - DAY_MS)
-      .reduce((n, r) => n + (Number(r.attempts) || 0), 0);
+      // Every try is claimed before it is compared (claimTry), so a code a
+      // right guess consumed carries one claimed try that was not wrong.
+      .reduce(
+        (n, r) =>
+          n + Math.max(0, (Number(r.attempts) || 0) - (r.consumed_at ? 1 : 0)),
+        0,
+      );
     if (failed >= MAX_FAILED_PER_EMAIL_PER_DAY) {
       throw new HttpException(DAILY_LOCK, HttpStatus.TOO_MANY_REQUESTS);
     }

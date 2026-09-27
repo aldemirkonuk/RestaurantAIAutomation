@@ -18,7 +18,7 @@ import {
 import { FakeDb } from "./testing/passkey-harness";
 
 /**
- * Emailed one-time codes (ADR 0229, Proposed; founder 2026-09-25, item 29:
+ * Emailed one-time codes (ADR 0229, Locked 2026-09-27; founder 2026-09-25, item 29:
  * "logged-out with no passkey -> emailed one-time code"). Issue, verify,
  * expiry, lockout, and -- because the sign-in route is typed into by
  * strangers -- that nothing it answers says whether an address has an account.
@@ -359,6 +359,60 @@ describe("SignInCodesService — checking", () => {
     await expect(svc.verify("sign_in", EMAIL, code)).rejects.toThrow(
       CODE_SPENT,
     );
+  });
+
+  it("compares at most five guesses per code even when many more race it (ADR 0090 audit of PR #479, 2026-09-27)", async () => {
+    const { db, svc, lastCode } = setup();
+    await svc.issueForSignIn(EMAIL, null);
+    await flush();
+    const code = lastCode();
+    const wrong = code === "000000" ? "111111" : "000000";
+    const compared = jest.spyOn(svc, "hashCode");
+    // Three times the cap, fired together, the RIGHT code last: every one of
+    // them reads attempts = 0 before any write lands. Compare-first let each
+    // of them be checked, so the right one at the back signed in.
+    const burst = [
+      ...Array.from({ length: 3 * MAX_ATTEMPTS_PER_CODE - 1 }, () => wrong),
+      code,
+    ];
+    const results = await Promise.all(
+      burst.map((g) => statusOf(svc.verify("sign_in", EMAIL, g))),
+    );
+    expect(results).not.toContain("resolved");
+    expect(compared).toHaveBeenCalledTimes(MAX_ATTEMPTS_PER_CODE);
+    expect(db.tables.sign_in_codes[0].attempts).toBe(MAX_ATTEMPTS_PER_CODE);
+    expect(results.filter((r) => r === `400 ${CODE_SPENT}`).length).toBe(
+      3 * MAX_ATTEMPTS_PER_CODE - (MAX_ATTEMPTS_PER_CODE - 1),
+    );
+    await expect(svc.verify("sign_in", EMAIL, code)).rejects.toThrow(
+      CODE_SPENT,
+    );
+  });
+
+  it("a right guess spends a try but is never counted as a wrong one for the day", async () => {
+    const { db, svc, lastCode, tick } = setup();
+    await svc.issueForSignIn(EMAIL, null);
+    await flush();
+    await expect(svc.verify("sign_in", EMAIL, lastCode())).resolves.toBe(USER);
+    expect(db.tables.sign_in_codes[0].attempts).toBe(1);
+    // Nineteen wrong tries after it, spread over fresh codes, still leave
+    // the address open: the consumed code's claimed try was not wrong.
+    for (let i = 0; i < MAX_FAILED_PER_EMAIL_PER_DAY - 1; i++) {
+      if (i % (MAX_ATTEMPTS_PER_CODE - 1) === 0) {
+        tick(61 * 60 * 1000); // past the hourly issue cap, inside the day
+        await svc.issueForSignIn(EMAIL, null);
+        await flush();
+      }
+      const c = lastCode();
+      await statusOf(
+        svc.verify("sign_in", EMAIL, c === "000000" ? "111111" : "000000"),
+      );
+    }
+    expect(
+      db.tables.sign_in_codes.reduce((n: number, r: any) => n + r.attempts, 0),
+    ).toBe(MAX_FAILED_PER_EMAIL_PER_DAY);
+    tick(61 * 60 * 1000);
+    expect(await statusOf(svc.issueForSignIn(EMAIL, null))).toBe("resolved");
   });
 
   it("says a failed read is a failure, never a wrong code", async () => {
