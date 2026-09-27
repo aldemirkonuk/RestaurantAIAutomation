@@ -178,3 +178,17 @@ Seams:
 - The `state_invariant_enforcer` → `system_audit_log` → *nothing* chain (§4, #4) is a
   detector whose findings nobody can see. Either give it a surface here or stop calling it
   a guardrail.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** `database` module has low coverage but is tiny and low-risk (132 LOC, 0 endpoints).
+
+**Coverage.** `health` 98.1%/88.2% — the best branch coverage measured anywhere in the gateway; `database` 37.3%/27.8%.
+
+**Runs in production.** Yes, owner-role-gated routes are live.
+
+**Promised vs. built.** `partial` holds.
+
+**Gaps.** None major found this pass.
+
+*Evidence:* `coverage-summary.json` (heavy.sh jest, 2026-09-18).
