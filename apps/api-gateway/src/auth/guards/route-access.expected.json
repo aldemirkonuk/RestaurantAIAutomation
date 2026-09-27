@@ -205,6 +205,21 @@
     "owner",
     "manager"
   ],
+  "GET /communications/letters/sender (HouseLettersController.senderIdentity)": "open",
+  "GET /communications/letters/book (HouseLettersController.book)": "open",
+  "GET /communications/letters/queued (HouseLettersController.queued)": "open",
+  "GET /communications/letters/drafts (HouseLettersController.drafts)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/letters/:id/discard (HouseLettersController.discard)": [
+    "owner",
+    "manager"
+  ],
+  "GET /communications/letters/templates (HouseLettersController.templates)": "open",
+  "POST /communications/letters/templates (HouseLettersController.upsertTemplate)": "open",
+  "POST /communications/letters (HouseLettersController.queue)": "open",
+  "POST /communications/letters/:id/cancel (HouseLettersController.cancel)": "open",
   "GET /conversations (ConversationsController.listConversations)": [
     "owner",
     "manager",
@@ -355,6 +370,10 @@
     "manager"
   ],
   "GET /procurement/credits/stats (CreditsController.stats)": [
+    "owner",
+    "manager"
+  ],
+  "POST /procurement/credits/:id/request-letter (CreditsController.requestLetter)": [
     "owner",
     "manager"
   ],
