@@ -47,7 +47,7 @@ type Role = "owner" | "manager" | "staff";
 
 /**
  * How long a removed person's records are kept: `wage_record_retention()` in
- * the database (migration `20261101110110`, founder 2026-09-21/22, five years).
+ * the database (migration `20261103110110`, founder 2026-09-21/22, five years).
  * Stated here only to print "kept until"; the database's clock is the one that
  * deletes.
  */
@@ -198,7 +198,7 @@ export class TeamService {
    * Whether an owner switched this manager's pay access on
    * (`user_restaurant_access.team_pay_access`, ADR 0215, founder 2026-09-25
    * round 4 item 19: "Pay visibility only"). Read on its own, never folded
-   * into `assertAccess`'s membership read: until migration `20261101110220`
+   * into `assertAccess`'s membership read: until migration `20261103110220`
    * applies, the column does not exist, and a membership read that failed on
    * it would lock every manager and owner out of /team. A failed read here is
    * logged and answers OFF — the money is withheld, never shown on a guess —
@@ -389,7 +389,7 @@ export class TeamService {
 
   /**
    * Every membership's pay switch in this house, or `null` when it could not
-   * be read (before migration `20261101110220`, or a failed read). Read apart
+   * be read (before migration `20261103110220`, or a failed read). Read apart
    * from the roster's own membership read for the same reason as
    * `managerPayAccess`: a missing column must not take the roster down.
    */
@@ -1070,7 +1070,7 @@ export class TeamService {
    * THE NAME comes from the removal's own audit row
    * (`system_audit_log`, `team_member_removed`, `changes.display_name`),
    * which `deleteMember` has written since ADR 0088. The departure row holds
-   * no name, on purpose (KVKK: the minimum; `20261101110110`), so none is
+   * no name, on purpose (KVKK: the minimum; `20261103110110`), so none is
    * added here: when the audit row is missing, the entry says the name was
    * not recorded rather than inventing one.
    *
@@ -1440,7 +1440,7 @@ export class TeamService {
     const { data } = await q.order("created_at", { ascending: false });
     if (role === "staff") return data ?? [];
     // A removed person's requests are kept five years, not listed (ADR 0215
-    // item 20): before 20261101110200 the removal deleted them, and a
+    // item 20): before 20261103110200 the removal deleted them, and a
     // pending one would otherwise wait for a decision about someone gone.
     return onTheRoster(data ?? [], await this.rosterMemberIds(restaurantId));
   }
