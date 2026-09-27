@@ -605,6 +605,70 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     ).toHaveLength(1);
   });
 
+  describe("n. the house's zone changes mid-day", () => {
+    // "Today" is always the house-local date in the zone the house has at
+    // the tick. Both fences (last_digest_at and the in-process one) hold an
+    // instant and are re-read in that zone, so each date of the NEW zone gets
+    // at most one digest. Counted in the OLD zone, a change can put two on
+    // one date. Reachable once a house's zone can be edited (#435).
+    it("forward (UTC -> Pacific/Kiritimati, hour 9): two sends on one UTC date, one per Kiritimati date", async () => {
+      const house = { id: "kir", name: "Moving House", timezone: "UTC" };
+      const { mock } = makeDigestDbMock({
+        lowStockRows: [makeLowStockRow({ restaurant_id: "kir" })],
+        restaurantsRows: [house],
+        prefsByRestaurant: { kir: dailyPrefs("09:00") },
+      });
+      const svc = build(mock);
+
+      await runAt(svc, "2026-09-26T09:00:00Z");
+      house.timezone = "Pacific/Kiritimati";
+      for (let h = 10; h <= 23; h++) {
+        await runAt(svc, `2026-09-26T${String(h).padStart(2, "0")}:00:00Z`);
+      }
+      for (let h = 0; h <= 9; h++) {
+        await runAt(svc, `2026-09-27T${String(h).padStart(2, "0")}:00:00Z`);
+      }
+
+      expect(
+        notifications.persistForRestaurant.mock.calls.map((c) => c[1].groupKey),
+      ).toEqual(["low_stock_digest:2026-09-26", "low_stock_digest:2026-09-27"]);
+      // The second send is 19:00Z, 09:00 on 2026-09-27 in Kiritimati.
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(2);
+    });
+
+    it("backward (Pacific/Kiritimati -> UTC, hour 9): the new zone's next date is still sent, by this process too", async () => {
+      const house = {
+        id: "kir",
+        name: "Moving House",
+        timezone: "Pacific/Kiritimati",
+      };
+      const { mock, lastDigestAt } = makeDigestDbMock({
+        lowStockRows: [makeLowStockRow({ restaurant_id: "kir" })],
+        restaurantsRows: [house],
+        prefsByRestaurant: { kir: dailyPrefs("09:00") },
+      });
+      const svc = build(mock);
+
+      // 19:00Z on the 25th is 09:00 on 2026-09-26 in Kiritimati.
+      await runAt(svc, "2026-09-25T19:00:00Z");
+      house.timezone = "UTC";
+      for (let h = 20; h <= 23; h++) {
+        await runAt(svc, `2026-09-25T${h}:00:00Z`);
+      }
+      for (let h = 0; h <= 23; h++) {
+        await runAt(svc, `2026-09-26T${String(h).padStart(2, "0")}:00:00Z`);
+      }
+
+      // UTC 2026-09-25 is covered by the 19:00Z send; UTC 2026-09-26 is sent
+      // at its own 09:00Z. Both sends fall on Kiritimati date 2026-09-26.
+      expect(
+        notifications.persistForRestaurant.mock.calls.map((c) => c[1].groupKey),
+      ).toEqual(["low_stock_digest:2026-09-26", "low_stock_digest:2026-09-26"]);
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(2);
+      expect(lastDigestAt.kir).toBe("2026-09-26T09:00:00.000Z");
+    });
+  });
+
   it("j2. a late run before local midnight and the on-time run for the same tick send an hour-0 house exactly once", async () => {
     const { mock, lastDigestAt } = makeDigestDbMock({
       lowStockRows: [makeLowStockRow({ restaurant_id: "h0" })],

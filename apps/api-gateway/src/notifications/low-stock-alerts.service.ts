@@ -106,15 +106,21 @@ export class LowStockAlertsService {
   private readonly lastInstantAt = new Map<string, number>();
 
   /**
-   * The house-local date this process last SENT each restaurant's digest.
-   * The durable fence is `inventory_alert_state.last_digest_at`; this is the
-   * in-process backstop for when that stamp could not be written. Under
-   * same-day catch-up (founder item 70) every tick after the digest hour is
-   * due, so an unwritten stamp with no second fence would re-send every hour
-   * until local midnight. A restart empties it; `last_digest_at` is then the
-   * only fence, as it is across gateway replicas.
+   * The tick this process last SENT (or found stamped) each restaurant's
+   * digest for. The durable fence is `inventory_alert_state.last_digest_at`;
+   * this is the in-process backstop for when that stamp could not be
+   * written. Under same-day catch-up (founder item 70) every tick after the
+   * digest hour is due, so an unwritten stamp with no second fence would
+   * re-send every hour until local midnight. A restart empties it;
+   * `last_digest_at` is then the only fence, as it is across gateway
+   * replicas.
+   *
+   * It holds an instant, not a date string, and is read in the house's zone
+   * at each tick — exactly as `last_digest_at` is — so a house whose zone
+   * changes mid-day is judged the same by this process as by a restarted
+   * one (spec n, backward).
    */
-  private readonly digestSentOn = new Map<string, string>();
+  private readonly digestSentOn = new Map<string, Date>();
 
   constructor(
     private readonly db: DatabaseService,
@@ -230,9 +236,11 @@ export class LowStockAlertsService {
 
         // In-process fence first (see `digestSentOn`): it also saves the
         // dedupe read on every due tick after today's send.
+        const fenced = this.digestSentOn.get(restaurantId);
         if (
+          fenced &&
           digestAlreadySentOn(
-            this.digestSentOn.get(restaurantId) ?? null,
+            houseWallAt(fenced, clock.zone).dateKey,
             periodKey,
           )
         ) {
@@ -259,7 +267,7 @@ export class LowStockAlertsService {
             periodKey,
           )
         ) {
-          this.digestSentOn.set(restaurantId, periodKey);
+          this.digestSentOn.set(restaurantId, last.at);
           continue;
         }
 
@@ -272,7 +280,7 @@ export class LowStockAlertsService {
         // Fence before the send: if sendDigest throws part-way, this process
         // must still not send again today (a failed email is recorded on the
         // notification row by sendDigest, and is not retried — as before).
-        this.digestSentOn.set(restaurantId, periodKey);
+        this.digestSentOn.set(restaurantId, tick);
         await this.sendDigest(
           restaurantId,
           rows,

@@ -259,7 +259,8 @@ describe("the send rule — full-year property test", () => {
     }
   }
 
-  // Named for the CLAIMS grep: "exactly once".
+  // CLAIMS ADR-0149-LOW-STOCK-DIGEST-DST-TESTED pins this title and the
+  // catch-up one below, and their per-date toBe(1) assertions.
   it("sends exactly once per house-local (date, hour) target across a full year, in every zone", () => {
     for (const zone of zones) {
       const r = readingsOf(zone);

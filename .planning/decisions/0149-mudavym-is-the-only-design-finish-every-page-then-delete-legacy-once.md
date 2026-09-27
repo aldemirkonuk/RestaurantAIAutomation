@@ -240,7 +240,10 @@ the current restaurants or users, or tables, dbs or such"*. So:
       send twice"). It is retried on the next tick, so one failed read delays
       the digest by an hour and does not lose the day.
     - **Builder's addition, Proposed.** There is an in-process fence,
-      `digestSentOn` (restaurant → house date sent). Under catch-up, a
+      `digestSentOn` (restaurant → house date sent) [2026-09-27, PR #488 audit
+      at f835811bc: now restaurant → the tick instant sent, re-read in the
+      house's zone at each tick like `last_digest_at`; see the zone-change
+      bullet below]. Under catch-up, a
       `last_digest_at` stamp that failed to write would otherwise re-send
       every hour until midnight. The fence covers this process; a restart or
       another replica has only `last_digest_at`. `sendDigest` now warns
@@ -257,16 +260,34 @@ the current restaurants or users, or tables, dbs or such"*. So:
       unevaluated still loses the day. For hour 23 that is only the 23:00
       tick. A run more than 30 minutes late at 23:00 is judged as the next
       date's 00:00 (`hourTick`).
+    - **A house whose zone changes mid-day** [2026-09-27, PR #488 audit at
+      f835811bc]. "Today" is the house-local date in the zone the house has at
+      the tick, and both fences hold an instant re-read in that zone, so each
+      date of the NEW zone gets at most one digest. Counted in the OLD zone, a
+      change in either direction can give two digests on one date: UTC →
+      Pacific/Kiritimati at hour 9 sends at 09:00Z and 19:00Z the same UTC
+      day; Pacific/Kiritimati → UTC at hour 9 sends at 19:00Z on the 25th and
+      09:00Z on the 26th, both on Kiritimati's 26th (spec n). Before this
+      audit the in-process fence held a date string in the old zone, so the
+      backward case skipped UTC's 26th in a process that had not restarted
+      (spec n failed on f835811bc). Reachable once a house's zone can be
+      edited (#435).
     - **Specs** in `low-stock-digest-house-clock.spec.ts`: i and j were
       rewritten from KNOWN LOSS to catch-up. New: k (failed dedupe read), l
       (gateway down across the hour, then a second restart the same day), m
       (unwritten stamp). The clock spec's full-year property test now drives
       the send rule, and a catch-up property drops every date's first due
-      tick. Each part was mutation-checked (PR #488 body).
+      tick. Each part was mutation-checked (PR #488 body). Spec n (zone
+      change mid-day, both directions) was added at the f835811bc audit.
   - **CLAIMS:** `ADR-0149-LOW-STOCK-DIGEST-FOLLOWS-THE-HOUSE-CLOCK`,
-    `ADR-0149-LOW-STOCK-DIGEST-DST-TESTED`,
+    `ADR-0149-LOW-STOCK-DIGEST-DST-TESTED` [narrowed 2026-09-27, f835811bc
+    audit: it named a "tick-crossing" guarantee item 70 removed, and its
+    verify held with the full-year test deleted; it now pins both property
+    tests by title and their per-date assertion],
     `TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP` (open) [resolved 2026-09-27,
-    item 70].
+    item 70]; item 61's page half: `ITEM-61-NOTIFICATIONS-SAYS-UTC-FALLBACK`
+    (open, owed by #486) and `ITEM-61-NOTIFICATIONS-NEVER-SAYS-NEW-YORK-TIME`
+    (v3.0-TECH-DEBT 2026-09-27).
   - **Source note:** the verbatim option labels above come from the
     orchestrator's relayed task text for this lane, not from a session this
     builder ran directly; the founder-answers memory (round 9 item 56, round
