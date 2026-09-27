@@ -15,7 +15,7 @@ import { CalendarService } from "./calendar.service";
 /**
  * Personal calendar links (ADR 0111, review trail 2026-09-21), run against the
  * shared in-memory store that ENFORCES the two unique indexes of migration
- * 20260930153800 (`fake-db.ts`) — so "one live link per person" and the
+ * 20261005090000 (`fake-db.ts`) — so "one live link per person" and the
  * create race are measured, not assumed.
  *
  * The founder's example is the fixture: Ayse works the bar, Bora the kitchen,
