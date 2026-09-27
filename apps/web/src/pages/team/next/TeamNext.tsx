@@ -47,6 +47,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  LayoutGrid,
   Megaphone,
   Send,
   Upload,
@@ -81,6 +82,8 @@ import {
 } from './TeamOverlays';
 import { TeamRecordSection, TrailSheet } from './TeamRecord';
 import { FormerStaffSheet } from './FormerStaff';
+import { AreasSheet } from './AreasSheet';
+import { useHouseAreas } from './useHouseAreas';
 import {
   useActiveRestaurantId,
   useTeamNextData,
@@ -283,6 +286,8 @@ function CertRow({ block }: { block: CertExposureVM }) {
       }),
   });
   const shifts = block.shiftsThisWeek;
+  // The one person asked is Away: the request waits for them (ADR 0218).
+  const held = renew.data?.away?.held[0] ?? null;
   return (
     <div
       className="flex flex-wrap items-center gap-3 py-2.5"
@@ -323,7 +328,11 @@ function CertRow({ block }: { block: CertExposureVM }) {
           {renew.isPending ? 'Sending…' : 'Request renewal'}
         </button>
       )}
-      {renew.isSuccess && (
+      {renew.isSuccess && held && (
+        // ADR 0218, round-2 answer 3: the sender sees "away until <date>".
+        <span style={{ fontSize: 11, color: 'var(--ink-3)', width: '100%' }}>{held.detail}</span>
+      )}
+      {renew.isSuccess && !held && (
         // NOT a latch. Nothing on the server records that a renewal was asked
         // for, so this page cannot know on the next load whether it was.
         // TODO(gateway, not this branch): record renewal requests against the
@@ -387,6 +396,7 @@ type Overlay =
   | { kind: 'timeoff' }
   | { kind: 'trail' }
   | { kind: 'former' }
+  | { kind: 'areas' }
   | { kind: 'export' };
 
 function TeamNextManager({
@@ -412,6 +422,7 @@ function TeamNextManager({
   const exportAnchor = useRef<HTMLButtonElement | null>(null);
 
   const data = useTeamNextData(weekStart);
+  const house = useHouseAreas();
   const labor = data.labor;
   /**
    * People over the Turkish week (45 worked hours). A review, never a price:
@@ -483,6 +494,14 @@ function TeamNextManager({
             >
               <UsersRound className="tm-icon" aria-hidden="true" />
               People · {data.membersCount === null ? EM : data.membersCount}
+            </button>
+            <button
+              type="button"
+              className="tm-ctl tm-ctl--quiet"
+              onClick={() => setOverlay({ kind: 'areas' })}
+            >
+              <LayoutGrid className="tm-icon" aria-hidden="true" />
+              Areas
             </button>
             <button
               type="button"
@@ -833,9 +852,21 @@ function TeamNextManager({
           timeOff={data.timeOff}
           moneyVisible={data.moneyVisible}
           money={data.money}
+          house={house}
           onClose={() => setOverlay(null)}
           onEdit={(m) => setOverlay({ kind: 'member', member: m })}
           onAdd={() => setOverlay({ kind: 'member', member: null })}
+        />
+      )}
+      {overlay?.kind === 'areas' && (
+        <AreasSheet
+          readout={house.areas}
+          failed={house.areasFailed}
+          roster={data.members}
+          awayByUser={house.awayByUser}
+          today={house.away?.today ?? null}
+          awayFailed={house.awayFailed}
+          onClose={() => setOverlay(null)}
         />
       )}
       {overlay?.kind === 'member' && (
@@ -883,6 +914,8 @@ function TeamNextManager({
           only={overlay.only}
           weekStart={weekStart}
           scheduleId={data.scheduleId}
+          awayByUser={house.awayByUser}
+          awayToday={house.away?.today ?? null}
           onClose={() => setOverlay(null)}
           onSent={refreshWeek}
         />

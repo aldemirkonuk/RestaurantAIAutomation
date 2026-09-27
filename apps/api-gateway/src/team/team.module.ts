@@ -8,6 +8,11 @@ import { CommunicationsModule } from "../communications/communications.module";
 // `CommunicationsModule`, so this edge adds nothing to the
 // `auth -> communications -> auth` ring — see `text-senders.module.ts`.
 import { TextSendersModule } from "../communications/text/text-senders.module";
+// ADR 0218, round 2: a message to a person who is Away waits for them. The
+// routing module depends on the database alone, so it adds no ring.
+import { AreaRoutingModule } from "../areas/area-routing.module";
+import { AwayHoldService } from "./away-hold.service";
+import { AwayReleaseService } from "./away-release.service";
 import { WebsocketModule } from "../websocket/websocket.module";
 import { TeamController } from "./team.controller";
 import { TeamService } from "./team.service";
@@ -26,6 +31,7 @@ import { WageRecordRetentionService } from "./wage-record-retention.service";
     PushModule,
     CommunicationsModule,
     TextSendersModule,
+    AreaRoutingModule,
     forwardRef(() => WebsocketModule),
   ],
   controllers: [TeamController],
@@ -35,7 +41,10 @@ import { WageRecordRetentionService } from "./wage-record-retention.service";
     ScheduleService,
     PerformanceService,
     WageRecordRetentionService,
+    AwayHoldService,
+    AwayReleaseService,
   ],
-  exports: [TeamService, ScheduleService],
+  // AwayReleaseService: an "End Away now" on /house/away releases what waited.
+  exports: [TeamService, ScheduleService, AwayReleaseService],
 })
 export class TeamModule {}

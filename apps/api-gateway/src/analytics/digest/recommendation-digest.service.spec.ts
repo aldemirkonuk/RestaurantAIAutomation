@@ -18,6 +18,7 @@ import { RecommendationsService } from "../recommendations.service";
 import { ScheduledTenantsService } from "../../communications/scheduled-tenants.service";
 import { RecommendationDigestService } from "./recommendation-digest.service";
 import { FakeDb, type Row } from "./testing/digest-fake-db";
+import { AreaRoutingService } from "../../areas/area-routing.service";
 
 /* ── the house ────────────────────────────────────────────────────────────── */
 
@@ -143,6 +144,8 @@ function build(
     env?: Record<string, string | undefined>;
     engine?: EngineOpts;
     gmail?: Provider;
+    /** ADR 0218: read Away through the real reader over the same store. */
+    away?: boolean;
   } = {},
 ) {
   const db = o.db ?? seed();
@@ -163,6 +166,7 @@ function build(
     gmail as any,
     tenants,
     config,
+    o.away ? new AreaRoutingService(database) : undefined,
   );
   return { db, service, gmail, tenants };
 }
@@ -1194,5 +1198,82 @@ describe("the person's own subscription (session door)", () => {
     ).toMatchObject({
       unsubscribed_via: "settings",
     });
+  });
+});
+
+/* ── Away pauses the digest (ADR 0218, round-2 answer 4) ────────────────── */
+
+describe("the digest pauses for a person while they are Away", () => {
+  function awayDb(from: string, until: string): FakeDb {
+    const db = seed();
+    db.tables.house_away = [{ restaurant_id: HOUSE, user_id: ANA, away_from: from, away_until: until }];
+    return db;
+  }
+
+  it("sends nothing and writes no row on a due day they are Away, and counts it", async () => {
+    const db = awayDb("2026-09-15", "2026-09-19");
+    const { service, gmail } = build({ db, away: true });
+    const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    expect(tally.pausedAway).toBe(1);
+    expect(sends(db)).toEqual([]);
+  });
+
+  it("sends as before on the first due day they are back", async () => {
+    const db = awayDb("2026-09-10", "2026-09-16");
+    const { service, gmail } = build({ db, away: true });
+    const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
+    expect(tally.pausedAway).toBe(0);
+    expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
+    expect(gmail.sendEmail.mock.calls[0][0].to).toEqual(["ana@house.test"]);
+  });
+
+  it("judges the day the letter FELL DUE, not today: a letter due on the last Away day, swept after midnight, is paused — never `expired`", async () => {
+    const db = awayDb("2026-09-15", "2026-09-17");
+    const { service, gmail } = build({ db, away: true });
+    // 00:05 Istanbul on the 18th = 21:05Z on the 17th: 17h after the 17th's due.
+    const tally = await service.sweepTenant(TENANT, new Date("2026-09-17T21:05:00Z"));
+    expect(gmail.sendEmail).not.toHaveBeenCalled();
+    expect(tally.pausedAway).toBe(1);
+    expect(tally.expired).toBe(0);
+    expect(sends(db)).toEqual([]);
+  });
+
+  it("pauses only the person who is Away", async () => {
+    const db = awayDb("2026-09-15", "2026-09-19");
+    db.tables.recommendation_digest_subscriptions.push({
+      id: "sub-bora",
+      restaurant_id: HOUSE,
+      user_id: BORA,
+      frequency: "daily",
+      weekday: null,
+      subscribed_at: "2026-09-02T10:00:00Z",
+      updated_at: "2026-09-02T10:00:00Z",
+      unsubscribed_at: null,
+      unsubscribed_via: null,
+    });
+    const { service, gmail } = build({ db, away: true });
+    const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
+    expect(tally.pausedAway).toBe(1);
+    expect(gmail.sendEmail.mock.calls.map((c: any[]) => c[0].to)).toEqual([["bora@house.test"]]);
+  });
+
+  it("ignores another house's Away window for the same person", async () => {
+    const db = seed();
+    db.tables.house_away = [
+      { restaurant_id: "house-2", user_id: ANA, away_from: "2026-09-15", away_until: "2026-09-19" },
+    ];
+    const { service, gmail } = build({ db, away: true });
+    await service.sweepTenant(TENANT, DUE_PLUS_5);
+    expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails open, loudly, when Away cannot be read: the letter the person asked for still goes", async () => {
+    const db = awayDb("2026-09-15", "2026-09-19");
+    db.failures["house_away:select"] = "connection reset";
+    const { service, gmail } = build({ db, away: true });
+    const tally = await service.sweepTenant(TENANT, DUE_PLUS_5);
+    expect(tally.pausedAway).toBe(0);
+    expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
   });
 });

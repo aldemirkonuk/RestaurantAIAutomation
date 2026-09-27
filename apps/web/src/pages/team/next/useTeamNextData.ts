@@ -120,8 +120,11 @@ export interface TeamTrail {
 }
 
 /**
- * The actions on that trail that are about people, not about settings. The
- * third, a manager's pay switch, since 2026-09-25 (ADR 0215 round 4 item 19).
+ * The actions on that trail that are about people, not about settings: the two
+ * access changes, a manager's pay switch (ADR 0215 round 4 item 19) and their
+ * own wage set (round 5 item 32), and (ADR 0218) areas, lead marks and Away
+ * set or ended on someone's behalf. A person's own Away dates are never on
+ * this trail.
  */
 export const TEAM_TRAIL_ACTIONS = [
   'member_role_changed',
@@ -130,6 +133,13 @@ export const TEAM_TRAIL_ACTIONS = [
   // A manager with pay access set their own wage (founder 2026-09-25, round 5
   // item 32). The row names who and whose, never the figures.
   'team_member_own_wage_set',
+  'house_area_changed',
+  'area_member_added',
+  'area_member_removed',
+  'area_lead_granted',
+  'area_lead_removed',
+  'away_set_for_member',
+  'away_ended_for_member',
 ] as const;
 
 /**
