@@ -175,22 +175,33 @@ That was wrong. Do not act on it.
 
 **Runs in production.** Measured 2026-09-26: `neural_footprint_event` holds **23**
 gateway rows (`subject_id='DocumentExtractor'`, the procurement-documents call site), last
-2026-09-11. **`cost_usd` is NULL on all 23**, so the spend ceiling that sums `cost_usd`
-reads those calls as free. This pass did not investigate why. No other gateway call site has
-a production row.
+2026-09-11. **`cost_usd` is NULL on all 23, and all 23 are failed calls**:
+`outcome='failure'`, `input_tokens`/`output_tokens` NULL, and one error on every row,
+`Anthropic 400: Your credit balance is too low` (SQL below, 2026-09-26). The model is
+`claude-haiku-4-5`, which is priced (`model-client.service.ts:29`), so the NULL comes from
+`computeCostUsd` returning NULL for missing usage (`:629`). It is not an unpriced model.
+The vendor refused and billed nothing, so a spend ceiling that reads these rows as zero
+reads them correctly. An earlier draft of this entry said "reads those calls as free" and
+"did not investigate why". That wording implied a ceiling blind spot, and the rows do not
+show one. The real finding is that **no gateway model call has succeeded in production on
+record**, because the key has no credit. It is filed in `v3.0-TECH-DEBT.md` (2026-09-26 entry).
+No other gateway call site has a production row.
 
 **Promised vs. built.** Both the router and its spend write exist and are CI-guarded in
 source. The production ledger does not show the same: 1 of 10 call sites has rows, and
-none of those rows carries a cost.
+every one of those rows is a refused call.
 
 **Gaps.** No golden-set/eval harness for any gateway caller (`grep -rli golden
-apps/api-gateway/src` → none). NULL `cost_usd` on every production gateway row (cause not
-investigated).
+apps/api-gateway/src` → none). Every production gateway row is a no-credit refusal, and the
+ledger has no successful call to price.
 
 *Evidence:* `model-client.service.ts:21-22,574-590`; `scripts/check_model_calls_logged.sh`;
 `grep -rl "modelClient\." apps/api-gateway/src` → 10; SQL (2026-09-26) `select subject_id,
 count(*), count(cost_usd) from neural_footprint_event where subject_type='agent' group by 1`
-→ `DocumentExtractor` 23 / 0, plus 2 Python-agent rows (below).
+→ `DocumentExtractor` 23 / 0, plus 2 Python-agent rows (below). Cause: `select count(*),
+count(input_tokens), array_agg(distinct outcome), array_agg(distinct context->>'error') from
+neural_footprint_event where subject_id='DocumentExtractor'` → 23, 0, `{failure}`, one
+`Anthropic 400: … credit balance is too low`.
 
 ### agent-orchestrator (service)
 

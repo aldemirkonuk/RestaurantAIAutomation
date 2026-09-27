@@ -39,7 +39,7 @@ division (8, ADR 0049)  →  software (this layer)  →  page (06-pages)  →  c
 The division layer is the **parent**; every note names its division so the two layers
 are one structure, never two competing taxonomies (CLAUDE.md §4).
 
-## Anatomy — 9 sections
+## Anatomy — 10 sections (§0–§9)
 
 | § | Section | Holds |
 |---|---|---|

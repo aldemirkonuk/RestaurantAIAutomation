@@ -164,14 +164,14 @@ Seams:
 
 ## §9 Capacity and coverage — measured 2026-09-19
 
-**Capacity.** Backbone for cross-product alerts; `low-stock-edge-sweep` cron runs every 2 minutes.
+**Capacity.** Backbone for cross-product alerts. Two low-stock crons are registered: `low-stock-edge-sweep` every 2 minutes and `low-stock-digest` hourly (`low-stock-alerts.service.ts:119,144`). Registration is not firing; see the next line.
 
 **Coverage.** 76.6%/61.3% — the best-covered large module measured this pass (heavy.sh jest, 2026-09-18).
 
-**Runs in production.** Yes — backend fully live; the frontend redesign is flag OFF.
+**Runs in production.** The digest cron does. The edge sweep is not established. Measured 2026-09-26 by `select metadata->>'mode', count(*), max(created_at) from notifications where type='inventory_low_stock' group by 1`: `digest` has 375 rows, 77 of them in the last 7 days, the latest 2026-09-26 16:00 UTC. All of them fall on minute 0, which is the hourly digest's own stamp. `instant` has 269 rows, the latest 2026-09-12 11:20 UTC, and none in the last 14 days. The sweep writes only on a new threshold crossing, so its silence fits both a quiet stock level and a sweep that stopped. No run log separates the two. The frontend redesign is flag OFF.
 
 **Promised vs. built.** `partial` holds.
 
-**Gaps.** None major found this pass.
+**Gaps.** No run record for either cron. Whether the edge sweep still fires is unmeasured, since its last output is 2026-09-12. An earlier draft of this section called the backend "fully live" on a 566-row count. Under this note's own contract (SOFTWARE-CONTRACT row 9), a row count does not show that a job fired.
 
-*Evidence:* Supabase `notifications`=566 rows; `low-stock-alerts.service.ts` cron registration.
+*Evidence:* the SQL above (2026-09-26); `low-stock-alerts.service.ts:119,144` cron registration; `metadata.mode` set at `:479` (instant) and `:533` (digest).

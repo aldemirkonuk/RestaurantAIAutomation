@@ -312,7 +312,7 @@ Seams:
   despite the drift in §7.1.
 
 
-## §9 Measured on the sim tenant — 2026-09-06 (slice 3 stop 3)
+## §8a Measured on the sim tenant — 2026-09-06 (slice 3 stop 3)
 
 The vendor lens ran the short-ship path through the delivery doors on Sim Meyhouse against a
 gateway built from `origin/main` `417474e6`. What this software gained, and what it did not:
@@ -360,7 +360,7 @@ gateway built from `origin/main` `417474e6`. What this software gained, and what
 
 **Coverage.** `document-extractor.spec.ts` covers the primary extractor here; the menu and photo-count call sites' coverage was not separately verified this pass.
 
-**Runs in production.** Yes, for the procurement-documents call site. `neural_footprint_event` holds 23 `subject_id='DocumentExtractor'` rows, the last on 2026-09-11 (SQL, 2026-09-26). `cost_usd` is NULL on all 23 (see the `model-client-router` entry in [[SOFTWARE-MAP]]). The menu-OCR and photo-count sites have no production rows.
+**Runs in production.** No, not successfully on record. The procurement-documents call site was *called* 23 times: `neural_footprint_event` holds 23 `subject_id='DocumentExtractor'` rows, from 2026-09-04 to 2026-09-11. **All 23 are `outcome='failure'`** and carry the same error, `Anthropic 400: Your credit balance is too low`. Their tokens are NULL, and so is their `cost_usd`, which is correct for a refused call (SQL, 2026-09-26; see the `model-client-router` entry in [[SOFTWARE-MAP]]). This is the no-credit key already filed at `v3.0-TECH-DEBT.md` "Extraction supplied from outside the gateway (2026-09-04)". The menu-OCR and photo-count sites have no production rows at all.
 
 **Promised vs. built.** Three independent vision call sites on the same model tier with no shared abstraction is a maintenance gap, not itself a behavioral discrepancy.
 
