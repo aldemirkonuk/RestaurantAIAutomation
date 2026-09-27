@@ -353,7 +353,12 @@ house-letters' dispatcher, which reads `HOUSE_QUEUED` after the undo window.
 **Not changed here:** `rejectConversation` and `editMessage` still have no
 status guard. That was true before this PR, and neither one sends. Reject
 publishes `conversation.rejected`, whose handler writes metadata only (audit
-at `16d995c33`). A guard on either one is a separate change.
+at `16d995c33`). A guard on either one is a separate change. **[2026-09-27, audit at
+4c79b8978: "neither one sends" is true, but a reject of a `HOUSE_QUEUED` letter
+reports success while the dispatcher still sends it, since it reads only `status`
+and `message_text`. Filed as v3.0-TECH-DEBT "Reject and edit do not refuse a house
+letter", tracked by the open CLAIMS row
+`TD-2026-09-27-REJECT-EDIT-DO-NOT-REFUSE-HOUSE-LETTERS`.]**
 
 ## Review trail
 
