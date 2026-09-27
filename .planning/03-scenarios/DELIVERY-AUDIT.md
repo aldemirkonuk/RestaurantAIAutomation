@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **160 as of 2026-09-27, on #438 (`fix/ical-token-minted-on-act`) merged onto `origin/main` ef8ecdf30** (`check_read_errors_not_swallowed.py` on that tree: 1777 files scanned, 160 sites, 160 baselined, 0 allowlisted). Main's 161 real rows less `calendar.service.ts` calendar_recurrence_rules/rules (ADR 0111). The baseline's `total_sites` now reads 160, the real row sum; main's file said 163 while its rows summed to 161. Re-measure before citing.
+
 > **167 as of 2026-09-25, on #438 (`fix/ical-token-minted-on-act`) merged onto `origin/main` 059169a5** (`check_read_errors_not_swallowed.py` on that tree: 1661 files scanned, 167 sites, 167 baselined, 0 allowlisted). ADR 0111 retires `calendar.service.ts` calendar_recurrence_rules/rules. Re-measure before citing.
 
 > **161 as of 2026-09-26, on `feat/notifications-held-low-stock` (from main `387475342`)** (`check_read_errors_not_swallowed.py` on that tree: 161 sites, 161 baselined, 0 allowlisted): `low-stock-alerts.service.ts` `notification_preferences/data` retired — the low-stock preferences read now binds its error and throws, so the held queue can report "not known" instead of the 12:00 defaults (the senders still fall back to the defaults). Re-measure before citing.
