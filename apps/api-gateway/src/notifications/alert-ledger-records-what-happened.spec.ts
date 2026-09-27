@@ -52,6 +52,7 @@ function makeHarness(
     supabase: { from: (t: string) => makeChain(t) },
     getClient: () => ({ from: (t: string) => makeChain(t) }),
     getRestaurantMemberIds: jest.fn().mockResolvedValue(["user-1"]),
+    getRestaurantMemberIdsOrThrow: jest.fn().mockResolvedValue(["user-1"]),
   } as any;
 
   const notifications = {

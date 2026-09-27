@@ -27,14 +27,53 @@ function makeHarness(
     prefsRows?: Row[] | null;
     prefsError?: string;
     persistReturns?: any;
+    /**
+     * Simulates `getRestaurantMemberIds`'s swallowed read failure
+     * (database.service.ts `catch { return []; }`) at the strict layer:
+     * `getRestaurantMemberIdsOrThrow` throws this message instead of
+     * quietly returning `[]`. Omit to keep the harness's normal single
+     * member.
+     */
+    memberIdsError?: string;
+    /**
+     * What the clear-hold guard's read (`.select("last_held_at")...
+     * .maybeSingle()`) sees as the CURRENT `last_held_at`, simulating a
+     * concurrent writer (the edge sweep) having touched the row since the
+     * digest snapshotted `rows`. Omit to keep the default `{alert_count:0}`
+     * shape every other test in this file relies on.
+     */
+    guardCurrentHeldAt?: string | null;
+    /**
+     * Whether the guarded update (`.update(row).eq(...).eq(...).eq(
+     * "last_held_at", guardCurrentHeldAt).select(...)`) reports a matching
+     * row, i.e. whether `last_held_at` was STILL `guardCurrentHeldAt` at
+     * write time. Only meaningful together with `guardCurrentHeldAt`.
+     */
+    guardUpdateMatches?: boolean;
   } = {},
 ) {
   const upserts: Row[] = [];
   const updates: Array<{ table: string; patch: Row }> = [];
+  const guardedUpdates: Row[] = [];
 
   const makeChain = (table: string): any => {
     const chain: any = {
-      select: () => chain,
+      select: () => {
+        if (chain.__updated && table === "inventory_alert_state") {
+          // Terminal for the guarded clear-hold update: resolve with a
+          // matching row (guard held) or none (guard failed — a fresher
+          // hold was recorded after the digest's snapshot).
+          return Promise.resolve(
+            opts.guardUpdateMatches
+              ? {
+                  data: [{ inventory_id: chain.__patch?.inventory_id }],
+                  error: null,
+                }
+              : { data: [], error: null },
+          );
+        }
+        return chain;
+      },
       eq: () => chain,
       neq: () => chain,
       not: () => chain,
@@ -43,9 +82,19 @@ function makeHarness(
       limit: () => chain,
       update: (patch: Row) => {
         updates.push({ table, patch: { ...patch } });
+        if (table === "inventory_alert_state") {
+          chain.__updated = true;
+          chain.__patch = patch;
+          guardedUpdates.push({ ...patch });
+        }
         return chain;
       },
-      maybeSingle: () => Promise.resolve({ data: { alert_count: 0 } }),
+      maybeSingle: () =>
+        Promise.resolve(
+          "guardCurrentHeldAt" in opts
+            ? { data: { last_held_at: opts.guardCurrentHeldAt } }
+            : { data: { alert_count: 0 } },
+        ),
       upsert: (row: Row) => {
         if (table === "inventory_alert_state") upserts.push({ ...row });
         return Promise.resolve({ error: null });
@@ -66,6 +115,9 @@ function makeHarness(
     supabase: { from: (t: string) => makeChain(t) },
     getClient: () => ({ from: (t: string) => makeChain(t) }),
     getRestaurantMemberIds: jest.fn().mockResolvedValue(["user-1"]),
+    getRestaurantMemberIdsOrThrow: opts.memberIdsError
+      ? jest.fn().mockRejectedValue(new Error(opts.memberIdsError))
+      : jest.fn().mockResolvedValue(["user-1"]),
   } as any;
 
   const notifications = {
@@ -92,7 +144,7 @@ function makeHarness(
     gmail as any,
     recipientResolver as any,
   );
-  return { service, upserts, updates, notifications };
+  return { service, upserts, updates, guardedUpdates, notifications };
 }
 
 const row = (over: Partial<Row> = {}) => ({
@@ -156,6 +208,49 @@ describe("the digest ends the holds it answered", () => {
     });
     await service.sendDigest("r1", [row({ inventoryId: "a" })]);
     expect(ledgerFor(upserts, "a")).toBeUndefined();
+  });
+
+  /**
+   * PR #486 round-1 audit finding 2 (2026-09-26): the digest snapshots
+   * `rows` once and then awaits an email send plus N writes per restaurant —
+   * minutes, not milliseconds — while the edge sweep runs every 2 minutes
+   * and can record a FRESH, unnotified hold on the same wine in that window.
+   * The old clear-hold write was a blind, unconditioned `.upsert()`, which
+   * would silently clobber that fresher hold and roll `last_alert_level`
+   * back to the stale snapshot value. The fix reads the CURRENT
+   * `last_held_at` immediately before writing and only clears through a
+   * `.update()` guarded by that exact value — never the blind upsert —
+   * whenever a hold currently exists to protect.
+   */
+  it("never falls back to a blind upsert when a hold currently exists — it always goes through the guarded update", async () => {
+    const { service, upserts, guardedUpdates } = makeHarness({
+      guardCurrentHeldAt: "2026-09-26T09:58:00.000Z",
+      guardUpdateMatches: true,
+    });
+    await service.sendDigest("r1", [row({ inventoryId: "a" })]);
+    expect(upserts.find((u) => u.inventory_id === "a")).toBeUndefined();
+    expect(guardedUpdates).toHaveLength(1);
+    expect(guardedUpdates[0]).toMatchObject({
+      inventory_id: "a",
+      last_held_at: null,
+      last_held_reason: null,
+      last_digest_at: expect.any(String),
+    });
+  });
+
+  it("[REVERT-FAILS] a hold that changed after the digest's snapshot is NOT cleared — the guard blocks the clobber", async () => {
+    const { service, upserts, guardedUpdates } = makeHarness({
+      // The edge sweep recorded (or re-recorded) a hold between the digest's
+      // `rows` snapshot and this write, so the guarded update's `last_held_at`
+      // filter no longer matches what is actually on the row.
+      guardCurrentHeldAt: "2026-09-26T10:01:00.000Z",
+      guardUpdateMatches: false,
+    });
+    await service.sendDigest("r1", [row({ inventoryId: "a" })]);
+    // No fallback to the blind upsert -- the fresher hold this digest never
+    // told anyone about is left exactly as the edge sweep wrote it.
+    expect(upserts.find((u) => u.inventory_id === "a")).toBeUndefined();
+    expect(guardedUpdates).toHaveLength(1);
   });
 });
 
@@ -266,6 +361,50 @@ describe("listHeldCrossings", () => {
     const { service, notifications } = makeHarness({ prefsError: "boom" });
     await service.evaluateRestaurant("r1", [row()], "House");
     // Defaults: instant-first on, so the crossing alerts immediately.
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * PR #486 round-1 audit finding 1 (2026-09-26): `getRestaurantMemberIds`
+   * (database.service.ts) catches any read failure of
+   * `user_restaurant_access` / `users` into `[]` — identical to a house that
+   * legitimately has zero members. `readLowStockPrefs` used that swallowing
+   * method, so a member-read failure never reached its own try/catch and
+   * `digest` came back as the 12:00 defaults instead of `null`. The fix
+   * (`getRestaurantMemberIdsOrThrow`) is exercised here directly, not via
+   * `getRestaurantMemberIds`'s internals, so this fails loudly again if a
+   * future change routes `readLowStockPrefs` back through the swallowing
+   * method.
+   */
+  it("[REVERT-FAILS] a swallowed member-read failure is `digest: null`, never the 12:00 defaults", async () => {
+    const { service } = makeHarness({ memberIdsError: "fetch failed" });
+    const view = await service.listHeldCrossings("r1");
+    expect(view.digest).toBeNull();
+  });
+
+  it("a house with zero real members (the read SUCCEEDED with no rows) still gets the 12:00 defaults, not null", async () => {
+    const { service } = makeHarness(); // default mock resolves ["user-1"]...
+    (service as any).db.getRestaurantMemberIdsOrThrow = jest
+      .fn()
+      .mockResolvedValue([]); // a real, successful read that found nobody
+    const view = await service.listHeldCrossings("r1");
+    expect(view.digest).toEqual({
+      low_stock_enabled: true,
+      frequency: "daily",
+      hour: 12,
+      timezone: "America/New_York",
+    });
+  });
+
+  it("the senders still fall back to the defaults when the member read fails", async () => {
+    const { service, notifications } = makeHarness({
+      memberIdsError: "fetch failed",
+    });
+    await service.evaluateRestaurant("r1", [row()], "House");
+    // getEffectiveLowStockPrefs catches readLowStockPrefs's throw and falls
+    // back to DEFAULTS for the sender path — a missed alert is worse than a
+    // default one. Only the page-facing read (listHeldCrossings) must show
+    // `null` instead.
     expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
   });
 });

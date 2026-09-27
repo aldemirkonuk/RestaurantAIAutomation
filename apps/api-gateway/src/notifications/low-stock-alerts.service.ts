@@ -903,12 +903,19 @@ export class LowStockAlertsService {
    * THROWS. The senders fall back to the defaults (a missed alert is worse
    * than a default one); a page that reports the digest time to a person must
    * not (held-queue lane, 2026-09-26).
+   *
+   * This uses `getRestaurantMemberIdsOrThrow`, not the plain
+   * `getRestaurantMemberIds` — that one's `catch { return []; }`
+   * (database.service.ts) makes a swallowed member-read failure
+   * indistinguishable from a legitimate zero-member house, which would have
+   * returned DEFAULTS here without throwing on exactly the failure this
+   * method exists to surface (PR #486 round-1 audit finding 1, 2026-09-26).
    */
   private async readLowStockPrefs(
     restaurantId: string,
   ): Promise<EffectiveLowStockPrefs> {
     const DEFAULTS = { ...LOW_STOCK_PREF_DEFAULTS };
-    const memberIds = await this.db.getRestaurantMemberIds(restaurantId);
+    const memberIds = await this.db.getRestaurantMemberIdsOrThrow(restaurantId);
     if (memberIds.length === 0) return DEFAULTS;
     const { data, error } = await this.db.supabase
       .from("notification_preferences")
@@ -1063,6 +1070,64 @@ export class LowStockAlertsService {
           .eq("inventory_id", p.inventoryId)
           .maybeSingle();
         row.alert_count = (cur?.alert_count ?? 0) + 1;
+      }
+
+      if (p.clearHold) {
+        // The digest snapshots `rows` once and then awaits an email send plus
+        // N writes per restaurant (sendDigest) — minutes, not milliseconds —
+        // while the independent edge sweep runs every 2 minutes and can
+        // record a FRESH, unnotified hold on this same wine in that window.
+        // A blind upsert here would silently overwrite that fresher hold
+        // (and its level) with the digest's stale snapshot — the exact
+        // "absence reported as health" fault this PR exists to close, one
+        // layer down (PR #486 round-1 audit finding 2, 2026-09-26).
+        //
+        // This narrows the race window to a single read-then-conditional-
+        // write instead of the whole digest run, and the write below only
+        // takes effect if nothing changed `last_held_at` in between — not a
+        // full transactional guarantee, but the write is a single
+        // Postgres UPDATE ... WHERE, so the check-then-act is atomic against
+        // any OTHER writer, including the edge sweep.
+        const { data: current, error: guardReadError } = await this.db.supabase
+          .from("inventory_alert_state")
+          .select("last_held_at")
+          .eq("restaurant_id", restaurantId)
+          .eq("inventory_id", p.inventoryId)
+          .maybeSingle();
+        if (guardReadError) {
+          // Can't tell whether a hold is currently there to protect --
+          // clearing anyway on an unknown state is exactly the blind write
+          // this guard exists to prevent, so skip rather than guess.
+          this.logger.warn(
+            `inventory_alert_state clear-hold guard read failed: ${guardReadError.message}`,
+          );
+          return false;
+        }
+        const guardHeldAt = current?.last_held_at ?? null;
+        if (guardHeldAt) {
+          const { data: updated, error } = await this.db.supabase
+            .from("inventory_alert_state")
+            .update(row)
+            .eq("restaurant_id", restaurantId)
+            .eq("inventory_id", p.inventoryId)
+            .eq("last_held_at", guardHeldAt)
+            .select("inventory_id");
+          if (error) {
+            this.logger.warn(
+              `inventory_alert_state clear-hold update failed: ${error.message}`,
+            );
+            return false;
+          }
+          if (!updated || updated.length === 0) {
+            this.logger.warn(
+              `inventory_alert_state clear-hold skipped for restaurant ${restaurantId} / ${p.inventoryId}: the hold changed after this write's snapshot -- leaving the newer one in place.`,
+            );
+            return false;
+          }
+          return true;
+        }
+        // No hold currently recorded (nothing to protect) -- fall through to
+        // the plain upsert below, which also carries the level/digestAt.
       }
 
       const { error } = await this.db.supabase

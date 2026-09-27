@@ -61,6 +61,7 @@ function makeDb(existingDeliveryStatus: Row | null = null) {
       supabase: { from: (t: string) => chain(t) },
       getClient: () => ({ from: (t: string) => chain(t) }),
       getRestaurantMemberIds: jest.fn().mockResolvedValue(["user-1"]),
+      getRestaurantMemberIdsOrThrow: jest.fn().mockResolvedValue(["user-1"]),
     } as any,
     updates,
   };
