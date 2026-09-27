@@ -29,7 +29,7 @@
  *     authenticated with the short-lived JWT.
  *     **[2026-09-25, ADR 0222 (Proposed): passkeys are built — `PasskeyRows`,
  *     over `apps/api-gateway/src/passkeys/` and `user_passkeys`
- *     (20260928010000). Two-factor and API tokens are still `Not built`, and
+ *     (20260929030000). Two-factor and API tokens are still `Not built`, and
  *     the measurement above still holds for them.]**
  *     **[2026-09-25, ADR 0229 (Proposed; founder item 29): a passkey also signs
  *     you in on /login, and adding one needs a sign-in in the last ten minutes

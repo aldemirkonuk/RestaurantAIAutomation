@@ -308,7 +308,7 @@ in when this device has none; both mint only through
 `auth_time` within ten minutes or an emailed code. Built in
 `apps/api-gateway/src/passkeys/` (`sign-in.controller.ts`,
 `sign-in-codes.service.ts`, `passkeys.service.ts`), migration
-`20260928020000_passkey_sign_in_and_email_codes.sql` (`sign_in` challenge
+`20260929040000_passkey_sign_in_and_email_codes.sql` (`sign_in` challenge
 purpose with no person; `sign_in_codes`), and on `/login` and `/profile`.
 
 **Recovery when a device is lost.** A passkey is never the only door:
