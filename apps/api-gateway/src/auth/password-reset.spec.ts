@@ -253,9 +253,25 @@ describe("AuthService#resetPassword", () => {
       eq: () => resetsUpdateChain,
       is: () => Promise.resolve({ error: null }),
     };
+    // ADR 0225: the password write reads the users row, then writes the
+    // new hash and session_version + 1 in one compare-and-set update.
+    const userRow = { user_id: "u1", session_version: 0 };
     const usersChain: any = {
-      update: () => usersChain,
-      eq: () => Promise.resolve({ error: updateError }),
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: userRow, error: null }),
+        }),
+      }),
+      update: () => ({
+        eq: () => ({
+          eq: () => ({
+            select: async () =>
+              updateError
+                ? { data: null, error: updateError }
+                : { data: [{ ...userRow, session_version: 1 }], error: null },
+          }),
+        }),
+      }),
     };
 
     const from = jest.fn((table: string) => {
