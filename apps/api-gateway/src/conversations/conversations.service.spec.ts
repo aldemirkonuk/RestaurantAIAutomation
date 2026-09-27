@@ -1,5 +1,10 @@
 import axios from "axios";
-import { ConversationsService } from "./conversations.service";
+import { readFileSync } from "fs";
+import { join } from "path";
+import {
+  ConversationsService,
+  HOUSE_LETTER_STATUSES,
+} from "./conversations.service";
 import { DatabaseService } from "../database/database.service";
 
 jest.mock("axios");
@@ -28,7 +33,11 @@ const HOUSE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const CONV = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
 
 function makeService(
-  opts: { updateError?: { message: string }; status?: string | null } = {},
+  opts: {
+    updateError?: { message: string };
+    status?: string | null;
+    outboundEmailType?: string | null;
+  } = {},
 ) {
   const updates: Row[] = [];
 
@@ -63,6 +72,7 @@ function makeService(
                 id: CONV,
                 order_id: "order-1",
                 status: opts.status ?? null,
+                outbound_email_type: opts.outboundEmailType ?? null,
                 paused_at: new Date(Date.now() - 60_000).toISOString(),
               },
               error: null,
@@ -158,51 +168,113 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
   });
 });
 
-describe("PR #476 Train 5 BLOCK — approveConversation refuses a credit-claim letter", () => {
+describe("PR #476 Train 5 BLOCK — approveConversation refuses every house letter", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("refuses a HOUSE_DRAFT row without publishing conversation.approved", async () => {
-    const { service, updates } = makeService({ status: "HOUSE_DRAFT" });
+  // The real route (`conversations.controller.ts`, `@Roles("owner","manager")`)
+  // always passes the caller's role; so does every case here.
+  const approve = (service: any) =>
+    service.approveConversation(
+      CONV,
+      HOUSE,
+      { approvalChannel: "web" },
+      "owner",
+    );
 
-    const result = await service.approveConversation(CONV, HOUSE, {
-      approvalChannel: "web",
-    });
-
+  const expectRefused = (result: any, updates: Row[], error: RegExp) => {
     expect(result.success).toBe(false);
     expect(result.messageSent).toBe(false);
-    expect(result.error).toMatch(/draft/i);
+    expect(result.error).toMatch(error);
+    // Never published, never even recorded as approved.
     expect(mockedAxios.post).not.toHaveBeenCalled();
-    // Never even recorded as approved — the row is left exactly as it was.
     expect(updates).toHaveLength(0);
+  };
+
+  it("refuses a HOUSE_DRAFT letter", async () => {
+    const { service, updates } = makeService({
+      status: "HOUSE_DRAFT",
+      outboundEmailType: "HOUSE_LETTER",
+    });
+    expectRefused(await approve(service), updates, /draft/i);
   });
 
-  it("refuses a HOUSE_CANCELLED row without publishing conversation.approved", async () => {
-    const { service, updates } = makeService({ status: "HOUSE_CANCELLED" });
-
-    const result = await service.approveConversation(CONV, HOUSE, {
-      approvalChannel: "web",
+  it("refuses a HOUSE_CANCELLED letter", async () => {
+    const { service, updates } = makeService({
+      status: "HOUSE_CANCELLED",
+      outboundEmailType: "HOUSE_LETTER",
     });
+    expectRefused(await approve(service), updates, /discarded/i);
+  });
 
-    expect(result.success).toBe(false);
-    expect(result.messageSent).toBe(false);
-    expect(result.error).toMatch(/discarded/i);
-    expect(mockedAxios.post).not.toHaveBeenCalled();
-    expect(updates).toHaveLength(0);
+  it("refuses a HOUSE_QUEUED letter — approving it would send it twice", async () => {
+    const { service, updates } = makeService({
+      status: "HOUSE_QUEUED",
+      outboundEmailType: "HOUSE_LETTER",
+    });
+    expectRefused(await approve(service), updates, /twice/i);
+  });
+
+  it("refuses a HOUSE_FAILED letter", async () => {
+    const { service, updates } = makeService({
+      status: "HOUSE_FAILED",
+      outboundEmailType: "HOUSE_LETTER",
+    });
+    expectRefused(await approve(service), updates, /Communications/);
+  });
+
+  it("refuses a SENT house letter by its type", async () => {
+    const { service, updates } = makeService({
+      status: "SENT",
+      outboundEmailType: "HOUSE_LETTER",
+    });
+    expectRefused(await approve(service), updates, /Communications/);
+  });
+
+  it("refuses a HOUSE_QUEUED row even when its type column is empty", async () => {
+    const { service, updates } = makeService({ status: "HOUSE_QUEUED" });
+    expectRefused(await approve(service), updates, /twice/i);
   });
 
   it("still approves and dispatches a conversation with no status (the ordinary case)", async () => {
     mockedAxios.post.mockResolvedValue({ status: 200, data: {} } as any);
     const { service, updates } = makeService({ status: null });
 
-    const result = await service.approveConversation(CONV, HOUSE, {
-      approvalChannel: "web",
-    });
+    const result = await approve(service);
 
     expect(result.success).toBe(true);
     expect(mockedAxios.post).toHaveBeenCalled();
     expect(updates).toHaveLength(1);
+  });
+
+  it("still approves an AI-path draft (PENDING_APPROVAL, PRICE_INQUIRY)", async () => {
+    mockedAxios.post.mockResolvedValue({ status: 200, data: {} } as any);
+    const { service, updates } = makeService({
+      status: "PENDING_APPROVAL",
+      outboundEmailType: "PRICE_INQUIRY",
+    });
+
+    const result = await approve(service);
+
+    expect(result.success).toBe(true);
+    expect(updates).toHaveLength(1);
+  });
+
+  it("names every LETTER_STATUS word except the shared SENT", () => {
+    const src = readFileSync(
+      join(__dirname, "../communications/letters/house-letters.service.ts"),
+      "utf8",
+    );
+    const block = src.slice(
+      src.indexOf("export const LETTER_STATUS"),
+      src.indexOf("} as const", src.indexOf("export const LETTER_STATUS")),
+    );
+    const words = [...block.matchAll(/:\s*"([A-Z_]+)"/g)].map((m) => m[1]);
+    expect(words).toContain("SENT");
+    expect([...HOUSE_LETTER_STATUSES].sort()).toEqual(
+      words.filter((w) => w !== "SENT").sort(),
+    );
   });
 });
 

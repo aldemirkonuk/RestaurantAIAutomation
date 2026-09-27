@@ -84,6 +84,34 @@ function isOwnerOrManager(role: string | null | undefined): boolean {
 const WITHHOLD_HOUSE_DRAFT = "status.is.null,status.neq.HOUSE_DRAFT";
 const WITHHOLD_HOUSE_CANCELLED = "status.is.null,status.neq.HOUSE_CANCELLED";
 
+/**
+ * The four `LETTER_STATUS` words only a house letter carries
+ * (`communications/letters/house-letters.service.ts`). Its fifth, `SENT`, is
+ * shared with AI-path rows and so is not here — `approveConversation` catches
+ * a sent house letter by `outbound_email_type` instead. Copied, not imported,
+ * so this module does not load the letters service; the spec pins the two
+ * lists together.
+ */
+export const HOUSE_LETTER_STATUSES: ReadonlySet<string> = new Set([
+  "HOUSE_DRAFT",
+  "HOUSE_QUEUED",
+  "HOUSE_CANCELLED",
+  "HOUSE_FAILED",
+]);
+
+function houseLetterApproveRefusal(status: string | null | undefined): string {
+  switch (status) {
+    case "HOUSE_DRAFT":
+      return "This is a drafted credit-claim letter, not a vendor reply — ask the vendor before there is anything to approve.";
+    case "HOUSE_CANCELLED":
+      return "This credit-claim letter was discarded and cannot be approved.";
+    case "HOUSE_QUEUED":
+      return "This letter is already queued to send from Communications — approving it here would send it twice.";
+    default:
+      return "This is a letter the house sends from Communications, not a vendor reply — there is nothing to approve here.";
+  }
+}
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -884,10 +912,9 @@ export class ConversationsService {
 
       // Calculate time to approval. The controller route this serves is
       // already `@Roles("owner","manager")`-gated, so `callerRole` is passed
-      // through rather than left to default — a conversation this approves
-      // is never a HOUSE_DRAFT/HOUSE_CANCELLED credit letter, but the read
-      // should say so because the caller is verified, not because it forgot
-      // to ask.
+      // through rather than left to default: the read withholds nothing
+      // because the caller is verified, not because it forgot to ask. A house
+      // letter it returns is refused just below.
       const conversation = await this.getConversation(
         conversationId,
         restaurantId,
@@ -895,31 +922,35 @@ export class ConversationsService {
       );
       if (!conversation) throw this.notFound();
 
-      // PR #476 audit (Train 5 BLOCK): "approve" here means "publish
-      // conversation.approved", which resumes the procurement agent and
-      // sends the vendor message. A HOUSE_DRAFT row (ADR 0167/0230's
-      // credit-claim letter, `outbound_email_type: "HOUSE_LETTER"`) has
-      // never been queued to send, and a HOUSE_CANCELLED one was thrown
-      // away — neither is a vendor reply waiting on a decision, which is
-      // the only thing this endpoint is for. Before this check, an
-      // owner/manager (the only callers `getConversation` does not withhold
-      // either status from) could approve a draft nobody asked to send,
-      // dispatching it around the dedicated "ask the vendor" / cancel flow
-      // that ADR 0230 requires. Checked by status alone: HOUSE_DRAFT and
-      // HOUSE_CANCELLED are the only statuses `outbound_email_type:
-      // "HOUSE_LETTER"` rows carry (house-letters.service.ts LETTER_STATUS),
-      // so there is no letter this misses and no non-letter row this catches.
+      // PR #476 audit (Train 5 BLOCK, tightened in round 6): "approve" here
+      // means "publish conversation.approved", which resumes the procurement
+      // agent and has it send the vendor message itself. A house letter
+      // (`outbound_email_type: "HOUSE_LETTER"`, ADR 0118 composer / ADR 0230
+      // credit-claim draft) is never sent that way: it leaves only through
+      // house-letters' own dispatcher, which reads HOUSE_QUEUED after the
+      // undo window. So no house letter, in any status, is a vendor reply
+      // waiting on this decision:
+      //   - HOUSE_DRAFT: nobody has asked to send it yet;
+      //   - HOUSE_QUEUED: already scheduled — approving it would send it a
+      //     second time, around the undo window;
+      //   - HOUSE_CANCELLED: discarded;
+      //   - HOUSE_FAILED / SENT: the dispatcher already tried or delivered.
+      // Refused on either signal — the type column, or any of the four
+      // HOUSE_* words in LETTER_STATUS (house-letters.service.ts) — so a row
+      // carrying one without the other is still caught. SENT is not in the
+      // status set because AI-path rows use it too; a SENT house letter is
+      // caught by its type. The agent refuses the same four words when it
+      // claims a send (provider_conversation_agent.py
+      // `_HOUSE_LETTER_STATUSES`), so a conversation.approved that reaches it
+      // by any other publisher cannot send a house letter either.
       if (
-        conversation.status === "HOUSE_DRAFT" ||
-        conversation.status === "HOUSE_CANCELLED"
+        conversation.outbound_email_type === "HOUSE_LETTER" ||
+        HOUSE_LETTER_STATUSES.has(conversation.status)
       ) {
         return {
           success: false,
           messageSent: false,
-          error:
-            conversation.status === "HOUSE_DRAFT"
-              ? "This is a drafted credit-claim letter, not a vendor reply — ask the vendor before there is anything to approve."
-              : "This credit-claim letter was discarded and cannot be approved.",
+          error: houseLetterApproveRefusal(conversation.status),
         };
       }
 

@@ -321,6 +321,40 @@ Production's live grants were **not** queried in this round. OD-72's own
 measurement also records that the product does not use Supabase Auth
 (`20260825210000`, "WHY REVOKE RATHER THAN WRITE POLICIES").
 
+## Approve refuses every house letter (2026-09-27, PR #476 train 5 BLOCK and round 6)
+
+`POST /conversations/:id/approve` publishes `conversation.approved`, and the
+Python `provider_conversation_agent` sends the vendor message itself on that
+event. A house letter never leaves that way. It leaves only through
+house-letters' dispatcher, which reads `HOUSE_QUEUED` after the undo window.
+
+- **Train 5 BLOCK:** approve checked neither status nor type, so an owner or
+  manager could approve a `HOUSE_DRAFT` or `HOUSE_CANCELLED` credit letter.
+  The first fix (`16d995c33`) refused those two statuses, and its comment said
+  they were "the only statuses" a `HOUSE_LETTER` row carries. **[Corrected
+  2026-09-27, round 6: false. `LETTER_STATUS` (`house-letters.service.ts`) also
+  has `HOUSE_QUEUED`, `HOUSE_FAILED` and `SENT`, and `queue()` moves the same
+  row to `HOUSE_QUEUED`. Approving a queued letter reached the agent, whose
+  claim did not refuse `HOUSE_QUEUED`, so the letter could be sent twice,
+  around the undo window.]**
+- **Now, gateway:** `approveConversation` refuses, before any write or publish,
+  a row whose `outbound_email_type` is `HOUSE_LETTER` **or** whose status is in
+  `HOUSE_LETTER_STATUSES` (`HOUSE_DRAFT`, `HOUSE_QUEUED`, `HOUSE_CANCELLED`,
+  `HOUSE_FAILED`). `SENT` is not in the status set, because AI-path rows use it
+  too. A sent house letter is caught by its type.
+- **Now, agent (backstop for any other publisher):** the send claim and the
+  stale-approval return-to-manager update both filter on
+  `_CLAIM_REFUSED_STATUSES = _SEND_TERMINAL_STATUSES + _HOUSE_LETTER_STATUSES`.
+- **Drift:** `conversations.service.spec.ts` and
+  `test_conversation_agent_send_gates.py` each read `LETTER_STATUS` from source.
+  Each fails if a `HOUSE_*` word is added there and not refused. CLAIMS row
+  `ADR-0230-APPROVE-REFUSES-EVERY-HOUSE-LETTER` pins both halves statically.
+
+**Not changed here:** `rejectConversation` and `editMessage` still have no
+status guard. That was true before this PR, and neither one sends. Reject
+publishes `conversation.rejected`, whose handler writes metadata only (audit
+at `16d995c33`). A guard on either one is a separate change.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -332,3 +366,5 @@ measurement also records that the product does not use Supabase Auth
 | 2026-09-27 | PR #476 audit fix (BLOCK at 9d04c0fb6) | `GET /conversations/threads`, `GET /conversations/thread/:threadId` and `POST /conversations/:id/summarize` withhold the same rows from staff. The `list_conversation_threads` RPC gains `p_withhold_house_letters` (default true, migration `20260929200000` **[renamed to `20260930250000`, 2026-09-27 merge-train update]**). Round 2's "every read route" is corrected in place (see round 3 above). |
 | 2026-09-27 | PR #476 audit fix (BLOCK at e2cd28578) | Migration `20260929200000` **[renamed to `20260930250000`, 2026-09-27 merge-train update]** revokes `list_conversation_threads` from PUBLIC, anon and authenticated, and grants EXECUTE to service_role only. `reports.service.ts` passes `p_withhold_house_letters: true` explicitly (see round 4 above). |
 | 2026-09-27 | merge-train update | Migration renamed `20260929200000` → `20260930250000`: it was BEHIND a migration (`20260930100100`) that landed on `origin/main` first, which `check_migration_order.py` flags to keep `supabase db reset` from replaying it out of order. Citations updated in `CLAIMS.jsonl`, the two conversations source files, and this record (bracketed, not rewritten). |
+| 2026-09-27 | PR #476 audit fix (train 5 BLOCK) | `approveConversation` refuses `HOUSE_DRAFT`/`HOUSE_CANCELLED` (`16d995c33`); its completeness comment was wrong (see "Approve refuses every house letter") |
+| 2026-09-27 | PR #476 audit fix (BLOCK at 16d995c33, round 6) | Approve refuses every house letter by type or by any of the four `HOUSE_*` words; the agent's send claim refuses the same four. CLAIMS `ADR-0230-APPROVE-REFUSES-EVERY-HOUSE-LETTER` |
