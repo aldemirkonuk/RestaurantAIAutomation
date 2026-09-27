@@ -46,6 +46,15 @@ import { AuthContext } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
 import { stripePublishableKey } from '../../../components/mudavym/stripe-js';
 import { readError } from './cx-format';
+import {
+  connectMyCalendar,
+  getMyCalendarLink,
+  listHouseCalendarLinks,
+  renewMyCalendarLink,
+  stopMyCalendarLink,
+  type HouseCalendarLink,
+  type MyCalendarLink,
+} from '../../../services/api/calendar';
 
 /* ── view models ──────────────────────────────────────────────────────── */
 
@@ -619,15 +628,23 @@ export function useConnectionsNextData() {
     staleTime: 120_000,
   });
 
-  /* read 4 — the calendar feed. Provisioned on read by the gateway, which is
-     why this is a GET that can create: the token exists so the row can name
-     it, and naming a feed that does not exist yet would be worse. */
+  /* read 4 — the reader's OWN calendar link (ADR 0111, review trail
+     2026-09-21: "they can connect their own"). Read-only: a GET never makes a
+     link, and it never carries the address — that is shown once, on the
+     answer to `createFeed`/`regenerateFeed`. */
   const icalQ = useQuery({
     queryKey: ['connections-next-ical', rid],
-    queryFn: async (): Promise<{ token: string }> => {
-      const { data } = await apiClient.get<{ token: string }>('/calendar/ical-token');
-      return data;
-    },
+    queryFn: (): Promise<MyCalendarLink> => getMyCalendarLink(),
+    enabled: on,
+    staleTime: 300_000,
+  });
+
+  /* read 4b — how many personal calendar links are live in this house. Each
+     is an address that needs no login, so it is what "public to anyone"
+     counts. This page is manager/owner only, and so is the route. */
+  const icalLinksQ = useQuery({
+    queryKey: ['connections-next-ical-links', rid],
+    queryFn: (): Promise<HouseCalendarLink[]> => listHouseCalendarLinks(),
     enabled: on,
     staleTime: 300_000,
   });
@@ -830,11 +847,26 @@ export function useConnectionsNextData() {
     invalidate('connections-next-mcp-runtime');
   }, [invalidate]);
 
+  /**
+   * The reader's own calendar link: connect, get a new one, stop. Each
+   * answer that made a secret carries the address ONCE in `data.issued`; the
+   * row shows it from there and nowhere else (ADR 0111, 2026-09-21).
+   */
+  const invalidateFeed = () => {
+    invalidate('connections-next-ical');
+    invalidate('connections-next-ical-links');
+  };
+  const createFeed = useMutation({
+    mutationFn: (): Promise<MyCalendarLink> => connectMyCalendar(),
+    onSuccess: invalidateFeed,
+  });
   const regenerateFeed = useMutation({
-    mutationFn: async () => {
-      await apiClient.post('/calendar/ical-token/regenerate');
-    },
-    onSuccess: () => invalidate('connections-next-ical'),
+    mutationFn: (): Promise<MyCalendarLink> => renewMyCalendarLink(),
+    onSuccess: invalidateFeed,
+  });
+  const revokeFeed = useMutation({
+    mutationFn: () => stopMyCalendarLink(),
+    onSuccess: invalidateFeed,
   });
 
   /**
@@ -1218,13 +1250,14 @@ export function useConnectionsNextData() {
      * never be produced by a failed request.
      */
     const houseCount =
-      posQ.error || providerQ.error || senderQ.error || icalQ.error || mcpQ.error
+      posQ.error || providerQ.error || senderQ.error || mcpQ.error
         ? null
         : [
             (posQ.data?.totalChecks ?? 0) > 0 ? 1 : 0,
             providerQ.data?.connected ? 1 : 0,
             senderQ.data?.address ? 1 : 0,
-            icalQ.data?.token ? 1 : 0,
+            // The calendar link is no longer the house's: each person
+            // connects their own (ADR 0111, 2026-09-21), counted below.
             liveMcp.length,
           ].reduce((a, b) => a + b, 0);
 
@@ -1249,7 +1282,7 @@ export function useConnectionsNextData() {
             (n, s) => n + s.toolGrants.filter((g) => g.writes).length,
             0,
           ),
-      publicToAnyone: icalQ.error ? null : icalQ.data?.token ? 1 : 0,
+      publicToAnyone: icalLinksQ.error ? null : (icalLinksQ.data?.length ?? null),
       houseHasLetGoOf: houseGrantsQ.error
         ? null
         : grants.filter((g) => g.houseAccess.revoked).length,
@@ -1259,7 +1292,7 @@ export function useConnectionsNextData() {
     providerQ.data, providerQ.error,
     paymentsQ.data, paymentsQ.error,
     senderQ.data, senderQ.error,
-    icalQ.data, icalQ.error,
+    icalLinksQ.data, icalLinksQ.error,
     mcpQ.data, mcpQ.error,
     houseGrantsQ.data, houseGrantsQ.error,
   ]);
@@ -1305,7 +1338,9 @@ export function useConnectionsNextData() {
       (auth?.user as { email?: string } | undefined)?.email?.trim() ||
       null,
     tally,
+    createFeed,
     regenerateFeed,
+    revokeFeed,
     uploadDistributorFile,
     declarePriceCode,
     withdrawPriceCode,
