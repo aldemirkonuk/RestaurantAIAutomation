@@ -33,6 +33,12 @@ interface ListConversationsOptions {
   month?: string;
   search?: string;
   status?: string;
+  /**
+   * The role the caller's token names in THIS house (ADR 0162). A caller who
+   * omits it is treated as the LEAST trusted role, never the most — see
+   * `isOwnerOrManager` below.
+   */
+  callerRole?: string | null;
   page: number;
   limit: number;
   sortBy: string;
@@ -46,6 +52,37 @@ const ALLOWED_SENTIMENTS = new Set([
   "unclassified",
 ]);
 const ALLOWED_DIRECTIONS = new Set(["inbound", "outbound"]);
+
+const OWNER_MANAGER_ROLES = new Set(["owner", "manager"]);
+
+/** The role ADR 0167 / ADR 0230 admit to a credit-claim letter's own figures. */
+function isOwnerOrManager(role: string | null | undefined): boolean {
+  return (
+    typeof role === "string" && OWNER_MANAGER_ROLES.has(role.toLowerCase())
+  );
+}
+
+/**
+ * `HOUSE_DRAFT` and `HOUSE_CANCELLED` (`communications/letters/house-letters.service.ts`
+ * `LETTER_STATUS`) are an undecided or discarded credit-claim letter, carrying
+ * the same claimed dollar amount, reason and invoice/order numbers ADR 0167
+ * already refuses staff on the credit ledger itself (`GET /procurement/credits`).
+ * This table is a general house/vendor conversation log every role may read;
+ * only these two statuses are ever withheld, and only from a caller who is not
+ * owner or manager (PR #476 audit round 2, R1b — `GET /conversations` and its
+ * siblings carried no role gate at all, so a staff member could read a
+ * manager's credit draft by this door and, chained with the letter route,
+ * hijack and send it).
+ *
+ * Applied as two separate `.or()` calls, ANDed by PostgREST, rather than one
+ * `.not("status", "in", ...)`: `status` is nullable (every AI-path row and
+ * every legacy conversation carries no status at all), and `neq` against a
+ * NULL evaluates to NULL — i.e. EXCLUDED — which would silently drop most of
+ * this table's rows for every non-owner/manager caller. Same idiom as
+ * `procurement.service.ts`'s `getConversationHistory`.
+ */
+const WITHHOLD_HOUSE_DRAFT = "status.is.null,status.neq.HOUSE_DRAFT";
+const WITHHOLD_HOUSE_CANCELLED = "status.is.null,status.neq.HOUSE_CANCELLED";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -274,8 +311,13 @@ export class ConversationsService {
           { count: "exact" },
         );
 
-      // Apply filters. The house first, unconditionally.
+      // Apply filters. The house first, unconditionally, then the role —
+      // also unconditionally, never behind an opt-in filter a caller could
+      // omit (ADR 0167/0230; see `isOwnerOrManager` above).
       query = query.eq("restaurant_id", restaurantId);
+      if (!isOwnerOrManager(options.callerRole)) {
+        query = query.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED);
+      }
       if (options.providerId) {
         query = query.eq("provider_id", options.providerId);
       }
@@ -671,16 +713,20 @@ export class ConversationsService {
 
   /**
    * Get conversation by ID, if it is this house's. Null is "not found" — the
-   * same answer for a missing id and another house's; a failed read throws.
+   * same answer for a missing id and another house's, and now also for a
+   * `HOUSE_DRAFT`/`HOUSE_CANCELLED` credit-claim letter when `callerRole` is
+   * not owner or manager (ADR 0167/0230; PR #476 audit round 2, R1b) — a
+   * failed read throws instead.
    */
   async getConversation(
     conversationId: string,
     restaurantId: string,
+    callerRole?: string | null,
   ): Promise<any | null> {
     this.requireHouse(restaurantId);
     if (!UUID_RE.test(conversationId)) return null;
     try {
-      const { data, error } = await this.databaseService.supabase
+      let query = this.databaseService.supabase
         .from("procurement_conversations")
         .select(
           `
@@ -702,8 +748,11 @@ export class ConversationsService {
         `,
         )
         .eq("id", conversationId)
-        .eq("restaurant_id", restaurantId)
-        .maybeSingle();
+        .eq("restaurant_id", restaurantId);
+      if (!isOwnerOrManager(callerRole)) {
+        query = query.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED);
+      }
+      const { data, error } = await query.maybeSingle();
 
       if (error) {
         this.logger.error(`Supabase error: ${error.message}`);
@@ -769,6 +818,7 @@ export class ConversationsService {
     conversationId: string,
     restaurantId: string,
     options: ApprovalOptions,
+    callerRole?: string | null,
   ): Promise<{ success: boolean; messageSent: boolean; error?: string }> {
     this.requireHouse(restaurantId);
     try {
@@ -789,10 +839,16 @@ export class ConversationsService {
         updates.manager_notes = options.managerNotes;
       }
 
-      // Calculate time to approval
+      // Calculate time to approval. The controller route this serves is
+      // already `@Roles("owner","manager")`-gated, so `callerRole` is passed
+      // through rather than left to default — a conversation this approves
+      // is never a HOUSE_DRAFT/HOUSE_CANCELLED credit letter, but the read
+      // should say so because the caller is verified, not because it forgot
+      // to ask.
       const conversation = await this.getConversation(
         conversationId,
         restaurantId,
+        callerRole,
       );
       if (!conversation) throw this.notFound();
       if (conversation.paused_at) {

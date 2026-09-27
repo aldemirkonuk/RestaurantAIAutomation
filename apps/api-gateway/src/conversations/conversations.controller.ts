@@ -102,6 +102,7 @@ export class ConversationsController {
   @ApiQuery({ name: "sortOrder", required: false })
   async listConversations(
     @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
     @Query("providerId") providerId?: string,
     @Query("orderId") orderId?: string,
     @Query("orderNumber") orderNumber?: string,
@@ -141,6 +142,11 @@ export class ConversationsController {
         month,
         search,
         status,
+        // The role IN THIS HOUSE (ADR 0162), never the global `users.role`.
+        // ADR 0167/0230: a caller who is not owner or manager never sees a
+        // HOUSE_DRAFT/HOUSE_CANCELLED credit-claim letter through this route
+        // (PR #476 audit round 2, R1b).
+        callerRole: role,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? parseInt(limit, 10) : 20,
         sortBy: sortBy || "created_at",
@@ -262,6 +268,7 @@ export class ConversationsController {
   @ApiOperation({ summary: "Get all conversations with a vendor" })
   async getByProvider(
     @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
     @Param("providerId") providerId: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string,
@@ -281,6 +288,7 @@ export class ConversationsController {
         limit: limit ? parseInt(limit, 10) : 20,
         sortBy: "created_at",
         sortOrder: "desc",
+        callerRole: role,
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -301,6 +309,7 @@ export class ConversationsController {
   @ApiOperation({ summary: "Get all conversations for an order" })
   async getByOrder(
     @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
     @Param("orderId") orderId: string,
   ) {
     const restaurantId = houseOf(user);
@@ -315,6 +324,7 @@ export class ConversationsController {
         limit: 100,
         sortBy: "created_at",
         sortOrder: "asc",
+        callerRole: role,
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -402,6 +412,7 @@ export class ConversationsController {
   @Get(":conversationId")
   async getConversation(
     @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
     @Param("conversationId") conversationId: string,
   ) {
     const restaurantId = houseOf(user);
@@ -411,6 +422,7 @@ export class ConversationsController {
       const conversation = await this.conversationsService.getConversation(
         conversationId,
         restaurantId,
+        role,
       );
 
       if (!conversation) {
@@ -449,6 +461,7 @@ export class ConversationsController {
   @Roles("owner", "manager")
   async approveConversation(
     @CurrentUser() user: AuthUser,
+    @CurrentUser("role") role: string | null,
     @Param("conversationId") conversationId: string,
     @Body() body: ApproveConversationDto,
   ) {
@@ -473,6 +486,7 @@ export class ConversationsController {
           managerNotes: body.manager_notes,
           approvalChannel: body.approval_channel,
         },
+        role,
       );
 
       if (!result.success) {

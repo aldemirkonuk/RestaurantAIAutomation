@@ -92,6 +92,15 @@ export const LETTER_STATUS = {
   SENT: "SENT",
 } as const;
 
+const OWNER_MANAGER_ROLES = new Set(["owner", "manager"]);
+
+/** The role ADR 0167 already admits to a credit claim's own figures. */
+function isOwnerOrManager(role: string | null | undefined): boolean {
+  return (
+    typeof role === "string" && OWNER_MANAGER_ROLES.has(role.toLowerCase())
+  );
+}
+
 /**
  * `processScheduledAutoSends` in `procurement.service.ts` selects on the literal
  * `status = 'AUTO_SEND_SCHEDULED'`. A house letter must never wear that word, or
@@ -149,7 +158,6 @@ export interface BookEntry {
   email: string;
   source: "provider" | "contact";
 }
-
 
 @Injectable()
 export class HouseLettersService {
@@ -306,6 +314,8 @@ export class HouseLettersService {
     restaurantId: string;
     userId: string;
     dto: QueueLetterDto;
+    /** The caller's role in this house (ADR 0162). See the R1b check below. */
+    role?: string | null;
   }): Promise<{
     id: string;
     status: string;
@@ -329,6 +339,24 @@ export class HouseLettersService {
     const draft = dto.draftId
       ? await this.readDraft(restaurantId, dto.draftId)
       : null;
+
+    // ── 0b. a credit claim's draft is owner/manager territory ──────────────
+    // ADR 0167 already refuses staff `POST /procurement/credits/:id/transition`
+    // — the move that drafts this letter in the first place — the same
+    // claimed dollar amount, reason and invoice/order numbers this draft's
+    // body carries. Completing that same claim by sending its letter through
+    // THIS route is the same act with a different door, and must answer the
+    // same way (PR #476 audit round 2, R1b: staff could read a manager's
+    // draft id via the ungated `/conversations` routes, then `queue()` it
+    // under their own subject/body to hijack and send a credit letter as the
+    // house). A letter with no `draftId`, or one that answers no claim, is
+    // unaffected — "writing and sending a letter by hand" stays open to every
+    // role, exactly as ADR 0230's reconciliation with ADR 0167 intended.
+    if (draft?.creditId && !isOwnerOrManager(params.role)) {
+      throw new ForbiddenException(
+        "This draft answers a credit claim. Only an owner or manager may send it, the same rule the claim's own ledger already enforces. Nothing was queued and nothing was sent.",
+      );
+    }
     if (draft && draft.providerId !== dto.providerId) {
       throw new UnprocessableEntityException(
         "That draft was written to a different vendor. Nothing was queued and nothing was sent.",
@@ -499,10 +527,12 @@ export class HouseLettersService {
   async cancel(params: {
     restaurantId: string;
     id: string;
+    /** The caller's role in this house (ADR 0162). See the R1b check below. */
+    role?: string | null;
   }): Promise<{ id: string; status: string; says: string }> {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
-      .select("id, status, scheduled_send_at, restaurant_id")
+      .select("id, status, scheduled_send_at, restaurant_id, email_headers")
       .eq("id", params.id)
       .eq("restaurant_id", params.restaurantId)
       .maybeSingle();
@@ -515,6 +545,17 @@ export class HouseLettersService {
     if (!data) throw new NotFoundException("No such letter in this house.");
 
     const row = data as unknown as Record<string, unknown>;
+
+    // Same ADR 0167 reconciliation as `queue()` above: a queued letter that
+    // answers a credit claim (`email_headers.credit_id`) is owner/manager
+    // territory, pulling it back included. A letter with no claim behind it
+    // is unaffected (PR #476 audit round 2, R1b).
+    const headers = (row.email_headers ?? {}) as Record<string, unknown>;
+    if (headers.credit_id && !isOwnerOrManager(params.role)) {
+      throw new ForbiddenException(
+        "This letter answers a credit claim. Only an owner or manager may pull it back, the same rule the claim's own ledger already enforces. It is still queued.",
+      );
+    }
     if (String(row.status) !== LETTER_STATUS.QUEUED) {
       throw new ConflictException(
         `That letter is "${String(row.status)}", not queued, so it was not cancelled. Only a letter still inside its window can be pulled back.`,
@@ -854,9 +895,7 @@ export class HouseLettersService {
     // Double-SEND is a separate, already-closed door: `queue()`'s
     // status-guarded UPDATE only ever promotes one draft, whichever survives
     // here.
-    const afterInsert = await this.lettersForCredits(restaurantId, [
-      creditId,
-    ]);
+    const afterInsert = await this.lettersForCredits(restaurantId, [creditId]);
     const openAfterInsert = (afterInsert.byCredit[creditId] ?? []).filter(
       (l) => l.status === LETTER_STATUS.DRAFT,
     );
@@ -1291,8 +1330,6 @@ export class HouseLettersService {
 export function sameAddress(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
-
-
 
 /** The merge fields a template body actually declares, in order of appearance. */
 export function mergeFieldsIn(

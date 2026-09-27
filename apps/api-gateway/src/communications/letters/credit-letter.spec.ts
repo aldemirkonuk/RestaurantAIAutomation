@@ -18,7 +18,7 @@
  *   6. The credits controller drafts on `→ requested` and on no other move.
  */
 
-import { ConflictException } from "@nestjs/common";
+import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import { HouseSenderService } from "./house-sender.service";
@@ -51,10 +51,13 @@ function store(tables: Record<string, Row[]>) {
   const from = (table: string) => {
     const rows = (tables[table] ??= []);
     const filters: ((r: Row) => boolean)[] = [];
-    let op: { kind: "select" } | { kind: "insert"; body: Row } | {
-      kind: "update";
-      body: Row;
-    } = { kind: "select" };
+    let op:
+      | { kind: "select" }
+      | { kind: "insert"; body: Row }
+      | {
+          kind: "update";
+          body: Row;
+        } = { kind: "select" };
     const q: Record<string, unknown> = {};
     const chain = () => q;
     q.select = chain;
@@ -104,8 +107,10 @@ function store(tables: Record<string, Row[]>) {
   };
   return {
     tables,
-    db: { client: { from }, getClient: () => ({ from }) } as unknown as
-      DatabaseService,
+    db: {
+      client: { from },
+      getClient: () => ({ from }),
+    } as unknown as DatabaseService,
   };
 }
 
@@ -367,6 +372,7 @@ describe("sending a draft is the approval", () => {
       restaurantId: HOUSE,
       userId: PERSON,
       dto: dto(draftId),
+      role: "manager",
     });
     expect(out.id).toBe(draftId);
     expect(out.status).toBe(LETTER_STATUS.QUEUED);
@@ -381,9 +387,19 @@ describe("sending a draft is the approval", () => {
 
   it("a draft already sent is refused, not sent twice", async () => {
     const { svc, tables, draftId } = await drafted();
-    await svc.queue({ restaurantId: HOUSE, userId: PERSON, dto: dto(draftId) });
+    await svc.queue({
+      restaurantId: HOUSE,
+      userId: PERSON,
+      dto: dto(draftId),
+      role: "manager",
+    });
     await expect(
-      svc.queue({ restaurantId: HOUSE, userId: PERSON, dto: dto(draftId) }),
+      svc.queue({
+        restaurantId: HOUSE,
+        userId: PERSON,
+        dto: dto(draftId),
+        role: "manager",
+      }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(tables.procurement_conversations).toHaveLength(1);
   });
@@ -394,9 +410,62 @@ describe("sending a draft is the approval", () => {
       svc.queue({
         restaurantId: HOUSE,
         userId: PERSON,
-        dto: { ...dto(draftId), providerId: "ffffffff-0000-4000-8000-ffffffffffff" },
+        dto: {
+          ...dto(draftId),
+          providerId: "ffffffff-0000-4000-8000-ffffffffffff",
+        },
+        role: "manager",
       }),
     ).rejects.toThrow(/different vendor/);
+  });
+
+  // PR #476 audit round 2, R1b: staff could read a manager's credit draft
+  // through the ungated `/conversations` routes, then send it as their own by
+  // calling this same route — completing, under a different door, the exact
+  // act ADR 0167 already refuses staff on the claim's own ledger
+  // (`POST /procurement/credits/:id/transition`).
+  it("refuses a staff caller sending a credit claim's draft, and writes nothing", async () => {
+    const { svc, tables, draftId } = await drafted();
+    await expect(
+      svc.queue({
+        restaurantId: HOUSE,
+        userId: PERSON,
+        dto: dto(draftId),
+        role: "staff",
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    const row = tables.procurement_conversations.find((r) => r.id === draftId);
+    expect(row?.status).toBe(LETTER_STATUS.DRAFT);
+  });
+
+  it("refuses a session with no role in this house, the same as staff", async () => {
+    const { svc, draftId } = await drafted();
+    await expect(
+      svc.queue({
+        restaurantId: HOUSE,
+        userId: PERSON,
+        dto: dto(draftId),
+        role: null,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("does not gate a letter with no draft behind it — writing by hand stays open to every role", async () => {
+    const { db, tables } = seed();
+    const svc = service(db);
+    const out = await svc.queue({
+      restaurantId: HOUSE,
+      userId: PERSON,
+      dto: {
+        providerId: PROVIDER,
+        to: "orders@vinoteca.example",
+        subject: "A question about next week's delivery",
+        body: "Can we move Thursday's delivery to Friday instead?",
+      },
+      role: "staff",
+    });
+    expect(out.status).toBe(LETTER_STATUS.QUEUED);
+    expect(tables.procurement_conversations).toHaveLength(1);
   });
 
   // Audit round 1, R5 (low severity): the "no open draft" check and the
@@ -407,7 +476,9 @@ describe("sending a draft is the approval", () => {
   it("closes a concurrent double-draft race, keeping one winner and cancelling the rest", async () => {
     const { db, tables } = seed();
     const svc = service(db);
-    const originalFrom = db.client.from as unknown as (table: string) => Record<string, unknown>;
+    const originalFrom = db.client.from as unknown as (
+      table: string,
+    ) => Record<string, unknown>;
     let injected = false;
     (db.client as unknown as { from: typeof originalFrom }).from = (
       table: string,

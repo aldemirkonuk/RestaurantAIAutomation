@@ -172,11 +172,20 @@ export class HouseLettersController {
   @ApiResponse({
     status: 403,
     description:
-      "The house has stopped using the grant this identity rests on (ADR 0114).",
+      "The house has stopped using the grant this identity rests on (ADR 0114), or the draft answers a credit claim and the caller is not owner or manager (ADR 0167).",
   })
-  async queue(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+  async queue(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: QueueLetterDto,
+    // Last, not between `user` and `dto`: a direct (non-HTTP) call passes
+    // positional args, and `house-letters-actor.spec.ts` calls `queue(user,
+    // dto)` without a role — appending it here keeps that call's `dto`
+    // where it always was, `undefined` role failing safe exactly as it did
+    // before this param existed.
+    @CurrentUser("role") role?: string | null,
+  ) {
     const { userId, restaurantId } = houseActor(user);
-    return this.letters.queue({ restaurantId, userId, dto });
+    return this.letters.queue({ restaurantId, userId, dto, role });
   }
 
   @Post(":id/cancel")
@@ -184,8 +193,9 @@ export class HouseLettersController {
   async cancel(
     @CurrentUser() user: TokenUser,
     @Param("id", new ParseUUIDPipe()) id: string,
+    @CurrentUser("role") role?: string | null,
   ) {
     const { restaurantId } = houseActor(user);
-    return this.letters.cancel({ restaurantId, id });
+    return this.letters.cancel({ restaurantId, id, role });
   }
 }

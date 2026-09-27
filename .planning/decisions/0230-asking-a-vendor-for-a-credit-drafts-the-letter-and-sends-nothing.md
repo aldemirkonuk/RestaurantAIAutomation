@@ -120,6 +120,85 @@ staff, no-role and admin get 403 on both routes and reads nothing; owner and
 manager pass; every other handler is asserted ungated) and
 `route-access.expected.json` (this controller's full route census).
 
+## Reconciliation with ADR 0167, round 2 (2026-09-26, PR #476 audit round 2, R1b/R2b)
+
+Round 1 closed the two routes this decision's build had opened by name. It
+missed three more, all pre-existing and none of them touched by this PR's
+diff, that the same new `HOUSE_DRAFT`/`HOUSE_CANCELLED` rows now also flow
+through:
+
+1. **`GET /conversations`, `/conversations/by-order/:id`,
+   `/conversations/by-provider/:id` and `/conversations/:id`
+   (`conversations.controller.ts`) carried no status exclusion at all** — a
+   general house/vendor conversation log, open to every role, that this PR
+   made a HOUSE_DRAFT's home. A staff caller could list or read a manager's
+   credit-claim letter by this door: its `message_text`, claimed amount and
+   invoice/order numbers.
+2. **`POST /communications/letters` (`queue`) and
+   `POST /communications/letters/:id/cancel` were, and remain, deliberately
+   ungated** — round 1's reconciliation said writing and sending a letter by
+   hand was never part of ADR 0167, which is still true for an ordinary
+   letter. It is not true when `queue`'s `draftId` resolves to a row carrying
+   `email_headers.credit_id`: sending THAT letter is the completion of the
+   same owner/manager-only act ADR 0167 already gates on
+   `POST /procurement/credits/:id/transition`, not "writing one by hand".
+   Chained with (1), a staff member could read a manager's draft id through
+   the ungated conversation read, then `queue()` it under their own
+   subject/body — hijacking and sending a credit letter as the house, which
+   is exactly what "nothing sends without approval" (item 31, the founder's
+   own words) exists to stop. `cancel()` on a credit-linked queued letter is
+   the same act in reverse (pulling back a manager's ask) and is refused the
+   same way.
+3. **`inbound-responder.service.ts`'s `buildTranscript` and
+   `procurement.service.ts`'s `getConversationHistory`** treated an unsent or
+   discarded credit letter as though it had gone: the first labelled it
+   `"Us:"` in the transcript handed to the negotiation LLM, risking a reply
+   that acts as if the vendor had already been asked; the second is a third,
+   role-blind read path (`JwtAuthGuard` alone) that returned the same claimed
+   figures to any caller.
+
+None of this is a fresh choice put to the founder — each is ADR 0167's
+existing rule, or the same "nothing sends without approval" sentence,
+reaching a place this decision's own build put a `HOUSE_DRAFT`/`HOUSE_CANCELLED`
+row without following it there. Fixed without a decorator-level `@Roles` on
+routes ADR 0167 never named (round 1's reconciliation is unchanged on that
+point):
+
+- `conversations.service.ts`'s `listConversations` and `getConversation` now
+  take the caller's role and withhold `HOUSE_DRAFT`/`HOUSE_CANCELLED` rows
+  from anyone who is not owner or manager — two null-safe `.or()` filters
+  (`status.is.null,status.neq.<X>`, the same idiom
+  `procurement.service.ts:getConversationHistory` already used), never a
+  blanket new gate: every other status, and a row with no status at all,
+  reads exactly as before for every role.
+- `house-letters.service.ts`'s `queue()` and `cancel()` now take the caller's
+  role and refuse (`ForbiddenException`) only when the letter in question
+  answers a credit claim (`draft.creditId` / `email_headers.credit_id`); a
+  letter with no claim behind it is unaffected.
+- `buildTranscript` drops `HOUSE_DRAFT`/`HOUSE_CANCELLED` rows from the
+  transcript entirely, rather than relabelling them — the model should reason
+  from what was actually said, and an undecided draft was never said to
+  anyone.
+- `getConversationHistory` withholds both statuses outright (no role split,
+  since the route itself has none), the same "live elsewhere" reasoning it
+  already applies to `PENDING_APPROVAL` and an unsent outbound `DRAFT`.
+
+Proof: `credit-letter.spec.ts` and `house-letters.spec.ts` (a staff or no-role
+caller is refused sending or cancelling a credit-linked letter; a non-credit
+letter is unaffected either way), `conversation-routes-belong-to-the-callers-house.spec.ts`
+and `conversation-lists-belong-to-the-callers-house.spec.ts` (a staff caller
+reads 404 / an empty slot on every read route for a HOUSE_DRAFT/HOUSE_CANCELLED
+row; owner and manager still see it; an ordinary message is untouched),
+`inbound-responder.service.spec.ts` (`buildTranscript` drops both statuses,
+keeps a real inbound reply alongside), and `conversation-ledger.spec.ts`
+(`getConversationHistory` withholds both, keeps a real `HOUSE_QUEUED`/`SENT`
+letter). Mutation-checked 2026-09-26: removing each of the five guards in
+turn (the two `.or()` calls in `listConversations`, the same in
+`getConversation`, the credit check in `queue()`, the same in `cancel()`, the
+status filter in `buildTranscript`, the two `.or()` calls in
+`getConversationHistory`) turns exactly the tests named for it red, and
+nothing else.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -127,3 +206,4 @@ manager pass; every other handler is asserted ungated) and
 | 2026-09-25 | founder (round 5, item 31) | Locked: draft on requested, never auto-send |
 | 2026-09-25 | W3-credits-team lane | Built on PR #476 |
 | 2026-09-26 | PR #476 audit fix (BLOCK at 37a89291e, round 1, R1) | `drafts`/`discard` gated owner-or-manager, reconciling with ADR 0167 (see above) |
+| 2026-09-26 | PR #476 audit fix (BLOCK at 032e5a43e, round 2, R1b/R2b) | Conversation reads, `queue`/`cancel` on a credit-linked letter, the LLM transcript and the procurement history ledger all withhold a `HOUSE_DRAFT`/`HOUSE_CANCELLED` row from anyone who is not owner or manager (see round 2 reconciliation above) |

@@ -75,12 +75,38 @@ function seed() {
   failWith = null;
 }
 
+/**
+ * One `.or("col.is.null,col.op.value")` group, parsed into predicates a row
+ * must satisfy AT LEAST ONE of. Only the ops this codebase's `.or()` calls
+ * actually use (`is.null`, `neq`, `eq`) are supported — anything else is a
+ * fixture gap, not a silent pass.
+ */
+function parseOrGroup(filterStr: string): Array<(r: Row) => boolean> {
+  return filterStr.split(",").map((clause) => {
+    const m = /^(\w+)\.(is|neq|eq)\.(.*)$/.exec(clause.trim());
+    if (!m) {
+      throw new Error(
+        `conversation-routes fixture cannot parse .or() clause: ${clause}`,
+      );
+    }
+    const [, col, op, val] = m;
+    if (op === "is" && val === "null") return (r: Row) => r[col] == null;
+    if (op === "neq") return (r: Row) => r[col] !== val;
+    return (r: Row) => r[col] === val;
+  });
+}
+
 /** A chainable query over `table`; `.eq` filters are real, not recorded-and-ignored. */
 function makeBuilder() {
   const filters: Array<[string, unknown]> = [];
+  const orGroups: Array<Array<(r: Row) => boolean>> = [];
   let patch: Row | null = null;
   const matching = () =>
-    table.filter((r) => filters.every(([col, val]) => r[col] === val));
+    table.filter(
+      (r) =>
+        filters.every(([col, val]) => r[col] === val) &&
+        orGroups.every((preds) => preds.some((p) => p(r))),
+    );
   const run = () => {
     if (failWith) return { data: null, error: { message: failWith } };
     // Postgres refuses a non-uuid against a uuid column (22P02); it does not
@@ -109,6 +135,10 @@ function makeBuilder() {
     order: () => b,
     eq: (col: string, val: unknown) => {
       filters.push([col, val]);
+      return b;
+    },
+    or: (filterStr: string) => {
+      orGroups.push(parseOrGroup(filterStr));
       return b;
     },
     update: (row: Row) => {
@@ -436,7 +466,55 @@ describe("approve, edit and reject take an owner or a manager (ADR 0116, ADR 016
       200,
     );
   });
+});
 
+// PR #476 audit round 2, R1b: `GET /conversations/:conversationId` carried no
+// exclusion at all for a `HOUSE_DRAFT`/`HOUSE_CANCELLED` row — an undecided or
+// discarded credit-claim letter (ADR 0230) carrying the same claimed dollar
+// amount, reason and invoice/order numbers ADR 0167 already refuses staff on
+// the credit ledger itself. A staff caller who read a manager's draft id this
+// way, then sent it through `POST /communications/letters`, could hijack and
+// send a credit letter as the house.
+describe("a credit claim's letter is owner/manager territory here too (ADR 0167/0230)", () => {
+  it("answers a staff caller 404 on a HOUSE_DRAFT row — the same as not found", async () => {
+    rowOf(CONV_A).status = "HOUSE_DRAFT";
+    rowOf(CONV_A).message_text = "Asking for a $84.50 credit on INV-77.";
+    const res = await call("GET", `/${CONV_A}`, { role: "staff" });
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain("84.50");
+  });
+
+  it("answers a staff caller 404 on a HOUSE_CANCELLED row too", async () => {
+    rowOf(CONV_A).status = "HOUSE_CANCELLED";
+    const res = await call("GET", `/${CONV_A}`, { role: "staff" });
+    expect(res.status).toBe(404);
+  });
+
+  it.each(["owner", "manager"])(
+    "still answers %s the row, not a 404",
+    async (role) => {
+      rowOf(CONV_A).status = "HOUSE_DRAFT";
+      const res = await call("GET", `/${CONV_A}`, { role });
+      expect(res.status).toBe(200);
+      expect(res.body.conversation_id).toBe(CONV_A);
+    },
+  );
+
+  it("does not withhold a conversation with no status, or an ordinary one, from staff", async () => {
+    // The default seed carries no `status` at all (undefined), and this
+    // asserts the withholding is specific to the two credit-letter statuses,
+    // not a blanket new gate on every read.
+    expect((await call("GET", `/${CONV_A}`, { role: "staff" })).status).toBe(
+      200,
+    );
+    rowOf(CONV_A).status = "SENT";
+    expect((await call("GET", `/${CONV_A}`, { role: "staff" })).status).toBe(
+      200,
+    );
+  });
+});
+
+describe("approve, edit and reject take an owner or a manager — guard metadata", () => {
   it("lists JwtAuthGuard BEFORE RolesGuard and declares the role on the three writes", () => {
     const guards: unknown[] =
       Reflect.getMetadata("__guards__", ConversationsController) ?? [];

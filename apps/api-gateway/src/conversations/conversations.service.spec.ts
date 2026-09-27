@@ -35,6 +35,12 @@ function makeService(opts: { updateError?: { message: string } } = {}) {
       const q: any = {
         select: () => q,
         eq: () => q,
+        // `getConversation`'s ADR 0167 exclusion (see conversations.service.ts)
+        // adds `.or()` calls when the caller's role is not passed through;
+        // this fixture's rows carry no `status` at all, so they are never a
+        // HOUSE_DRAFT/HOUSE_CANCELLED credit letter and the filter is a no-op
+        // here regardless.
+        or: () => q,
         update(row: Row) {
           updates.push({ table, row });
           // update().eq("id").eq("restaurant_id").select("id") — the row comes back
