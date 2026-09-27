@@ -87,8 +87,12 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // adds 52 new /analytics/* routes, 51 of them outside @Roles (recorded
     // "open" below, `JwtAuthGuard`-only, same as the rest of this table's
     // open rows) and exactly one, the insight-catalog toggle, naming owner
-    // AND manager like every other row here. A fifteenth would be a new file
-    // whose routes are not in the table yet.
+    // AND manager like every other row here. A fifteenth and sixteenth are
+    // PR #395's own change (ADR 0167, locked 2026-09-19, merged with this
+    // table 2026-09-26): the receiving queue and credit ledger controllers
+    // gained @Roles("owner", "manager") on four routes (the three credits
+    // routes and the queue); the door, receivedSoFar and unverified routes in
+    // ReceivingController stay open, on purpose (staff use them).
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -102,6 +106,8 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "house/house-counter.controller.ts",
       "house/house-day.controller.ts",
       "price-index/price-index.controller.ts",
+      "procurement/documents/credits.controller.ts",
+      "procurement/receiving.controller.ts",
       "reports/exports/report-exports.controller.ts",
       "vendor-intel/vendor-intel.controller.ts",
     ]);
