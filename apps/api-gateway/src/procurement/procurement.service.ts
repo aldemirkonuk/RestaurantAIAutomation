@@ -84,10 +84,7 @@ import {
   receivingPriceNeedsACurrency,
   type PriceCurrencyClaim,
 } from "./price-currency";
-import {
-  orderCurrencyOffer,
-  orderCurrencySource,
-} from "./agreement-currency";
+import { orderCurrencyOffer, orderCurrencySource } from "./agreement-currency";
 import {
   documentMoneyState,
   receivingPriceRefusal,
@@ -142,10 +139,7 @@ import {
 // is the pure half of ADR 0124's identity register — no Nest DI, no database,
 // no module wiring — so the one rule that decides whether a key names a bottle
 // lives in exactly one place and this file cannot drift from it.
-import {
-  IdentityKeyRow,
-  joinByExactKey,
-} from "../vendor-intel/identity-join";
+import { IdentityKeyRow, joinByExactKey } from "../vendor-intel/identity-join";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -201,7 +195,9 @@ const APPROVAL_GATE_WINDOW_DAYS = 365;
  * number becomes `null` — never `0`, which `decideApproval` would read as a
  * genuine total below every ceiling.
  */
-function toFiniteNumber(value: string | number | null | undefined): number | null {
+function toFiniteNumber(
+  value: string | number | null | undefined,
+): number | null {
   if (value === null || value === undefined) return null;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
@@ -1981,7 +1977,9 @@ export class ProcurementService {
     try {
       const { data, error } = await this.databaseService.supabase
         .from("vendor_price_observations")
-        .select("raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor")
+        .select(
+          "raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor",
+        )
         .eq("master_wine_id", masterWineId)
         .or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
         .order("observed_at", { ascending: false })
@@ -2271,11 +2269,12 @@ export class ProcurementService {
     }
 
     let houseCurrency: string | null = null;
-    const { data: house, error: houseError } = await this.databaseService.supabase
-      .from("restaurants")
-      .select("currency")
-      .eq("id", restaurantId)
-      .maybeSingle();
+    const { data: house, error: houseError } =
+      await this.databaseService.supabase
+        .from("restaurants")
+        .select("currency")
+        .eq("id", restaurantId)
+        .maybeSingle();
     if (houseError) {
       this.logger.warn(
         `Could not read the house's currency for the agreement sheet: ` +
@@ -2344,11 +2343,12 @@ export class ProcurementService {
     docNumber: string | null;
     reason: string;
   } | null> {
-    const { data: links, error: linkError } = await this.databaseService.supabase
-      .from("procurement_document_links")
-      .select("document_id")
-      .eq("restaurant_id", restaurantId)
-      .eq("order_id", orderId);
+    const { data: links, error: linkError } =
+      await this.databaseService.supabase
+        .from("procurement_document_links")
+        .select("document_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId);
     if (linkError) {
       this.logger.warn(
         `The documents attached to order ${orderId} could not be read ` +
@@ -2357,7 +2357,9 @@ export class ProcurementService {
       );
       return null;
     }
-    const ids = (links ?? []).map((l) => (l as any).document_id).filter(Boolean);
+    const ids = (links ?? [])
+      .map((l) => (l as any).document_id)
+      .filter(Boolean);
     if (!ids.length) return null;
 
     const { data: docs, error: docError } = await this.databaseService.supabase
@@ -2599,7 +2601,9 @@ export class ProcurementService {
     // line all read, and all three wanted the name.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("*, inventory:inventory_id(wine_name), provider:provider_id(name)")
+      .select(
+        "*, inventory:inventory_id(wine_name), provider:provider_id(name)",
+      )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
       .single();
@@ -3716,12 +3720,15 @@ export class ProcurementService {
       );
     }
 
-    const { data: orderRow, error: orderError } = await this.databaseService.supabase
-      .from("procurement_orders")
-      .select("id, total_cost, provider_id, inventory_id, final_price, status")
-      .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
-      .maybeSingle();
+    const { data: orderRow, error: orderError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .select(
+          "id, total_cost, provider_id, inventory_id, final_price, status",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("id", orderId)
+        .maybeSingle();
 
     if (orderError) {
       throw new InternalServerErrorException(
@@ -3886,9 +3893,14 @@ export class ProcurementService {
     }
 
     const orders = walk.rows
-      .filter((r) => PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase()))
+      .filter((r) =>
+        PENDING_APPROVAL_STATUSES.has((r.status ?? "").toUpperCase()),
+      )
       .map((r) => {
-        const decision: ApprovalDecision = decideApproval(readout.thresholds, r.test);
+        const decision: ApprovalDecision = decideApproval(
+          readout.thresholds,
+          r.test,
+        );
         const mayApprove =
           decision.requiredRole === null ||
           roleSatisfies(callerRole, decision.requiredRole);
@@ -3934,7 +3946,9 @@ export class ProcurementService {
     orderId: string,
     currentStatus: string | null,
   ): Promise<void> {
-    if ((currentStatus ?? "").toUpperCase() !== ProcurementOrderStatus.PENDING) {
+    if (
+      (currentStatus ?? "").toUpperCase() !== ProcurementOrderStatus.PENDING
+    ) {
       return;
     }
     try {
@@ -4036,7 +4050,9 @@ export class ProcurementService {
     try {
       const { data, error } = await this.databaseService.supabase
         .from("procurement_orders")
-        .select("id, status, provider_id, inventory_id, requested_at, total_cost, final_price")
+        .select(
+          "id, status, provider_id, inventory_id, requested_at, total_cost, final_price",
+        )
         .eq("restaurant_id", restaurantId)
         .gte("requested_at", since)
         .order("requested_at", { ascending: true })
@@ -4046,7 +4062,11 @@ export class ProcurementService {
       }
       const seenVendors = new Set<string>();
       const lastPriceByItem = new Map<string, number>();
-      const rows: Array<{ id: string; status: string | null; test: OrderUnderTest }> = [];
+      const rows: Array<{
+        id: string;
+        status: string | null;
+        test: OrderUnderTest;
+      }> = [];
       for (const raw of (data ?? []) as Array<{
         id: string;
         status: string | null;
@@ -5204,7 +5224,9 @@ export class ProcurementService {
       //     agreement named has not varied the price, and without this sentence
       //     a `price_variance` reads as an overcharge.
       const comparisonNotes = [
-        doorPrice.ok ? doorPrice.note : `Price not compared: ${doorPrice.reason}.`,
+        doorPrice.ok
+          ? doorPrice.note
+          : `Price not compared: ${doorPrice.reason}.`,
         hasStatedFees(agreedFees)
           ? "The agreement also names money outside the price of the wine: " +
             [
@@ -5584,7 +5606,9 @@ export class ProcurementService {
   async listPendingOrders(restaurantId: string): Promise<OrderResponseDto[]> {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
-      .select("*, inventory:inventory_id(wine_name), provider:provider_id(name)")
+      .select(
+        "*, inventory:inventory_id(wine_name), provider:provider_id(name)",
+      )
       .eq("restaurant_id", restaurantId)
       .in("status", [
         ProcurementOrderStatus.PENDING,
@@ -5723,7 +5747,9 @@ export class ProcurementService {
       // Both keys, always written, and both `undefined` when the line was not
       // read — absence on the wire, never a null that would read as "the line
       // states no unit". See `AgreedPriceUnitReading`.
-      priceUom: priceUnit.read ? (priceUnit.stated?.priceUom ?? null) : undefined,
+      priceUom: priceUnit.read
+        ? (priceUnit.stated?.priceUom ?? null)
+        : undefined,
       pricePackSize: priceUnit.read
         ? (priceUnit.stated?.pricePackSize ?? null)
         : undefined,
@@ -6218,7 +6244,7 @@ export class ProcurementService {
         throw new SendRefusedBeforeSendError(
           result.refusal.kind === "header"
             ? `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
-              "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address) and approve again."
+                "Nothing was sent — Gmail was never called. Fix the header named above (usually the vendor's address) and approve again."
             : result.refusal.kind === "rejected"
               ? `Email could not be delivered to ${params.to}: ${result.error ?? "unknown error"}. ` +
                 "The mail service rejected the request, so nothing was sent. Check the vendor's address and approve again."
@@ -6298,15 +6324,19 @@ export class ProcurementService {
       if (!claimed) continue;
 
       try {
-        const { data: order, error: orderError } = await this.databaseService.supabase
-          .from("procurement_orders")
-          .select(
-            "id, status, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
-          )
-          .eq("id", row.order_id)
-          .eq("restaurant_id", row.restaurant_id)
-          .single();
-        if (orderError || !order) throw new Error("The scheduled reply's owned order could not be checked.");
+        const { data: order, error: orderError } =
+          await this.databaseService.supabase
+            .from("procurement_orders")
+            .select(
+              "id, status, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
+            )
+            .eq("id", row.order_id)
+            .eq("restaurant_id", row.restaurant_id)
+            .single();
+        if (orderError || !order)
+          throw new Error(
+            "The scheduled reply's owned order could not be checked.",
+          );
         const providerEmail = (order as any)?.providers?.contact_email ?? null;
         const wineName =
           (order as any)?.restaurant_inventory?.wine_name ?? "Wine Order";
@@ -6321,7 +6351,10 @@ export class ProcurementService {
         // on the wire. DISCARDED, not reverted: reverting would leave a manager
         // a one-tap approval for a letter about a dead order.
         const orderState = readOrderStatus((order as any)?.status);
-        if (orderState !== null && ORDER_TERMINAL_STATUSES.includes(orderState)) {
+        if (
+          orderState !== null &&
+          ORDER_TERMINAL_STATUSES.includes(orderState)
+        ) {
           await this.databaseService.supabase
             .from("procurement_conversations")
             .update({ status: "DISCARDED", scheduled_send_at: null })
@@ -7080,7 +7113,8 @@ export class ProcurementService {
         vendorName: (order as any)?.providers?.name ?? null,
         productName: shelfItem.wineName ?? wineName ?? null,
         unitPrice: agreedPrice ?? null,
-        unitLabel: statedPriceUnit?.priceUom ?? confirmUnits.unitType ?? "bottle",
+        unitLabel:
+          statedPriceUnit?.priceUom ?? confirmUnits.unitType ?? "bottle",
         packSize:
           statedPriceUnit?.pricePackSize ??
           (bottlesPerConfirmedUnit === 1 ? 1 : null),
@@ -7421,16 +7455,27 @@ export class ProcurementService {
    * is invisible, so every value the workflow gains — `DISCARDED` and
    * `CANCELLED` both post-date the list — disappears silently and nothing
    * reports that it did. A ledger must fail toward showing too much, so the
-   * filter is inverted. Exactly two things are withheld, and both are withheld
-   * because they are LIVE ELSEWHERE, never because they are uninteresting:
+   * filter is inverted. Four things are withheld, and every one of them is
+   * withheld because it is LIVE ELSEWHERE, never because it is uninteresting:
    *
    *   status = PENDING_APPROVAL       — the approval queue on /orders
    *                                     (`getActiveConversations`, which
    *                                     selects exactly this status)
    *   status = DRAFT AND outbound     — an unsent draft of ours, same queue
+   *   status = HOUSE_DRAFT            — a credit claim's letter nobody has
+   *                                     decided (ADR 0230); live in
+   *                                     `GET /communications/letters/drafts`
+   *   status = HOUSE_CANCELLED        — that same letter, discarded
    *
-   * Showing either in the history ledger would put the same row in two live
-   * places and invite a second send of an email already awaiting approval.
+   * Showing any of these in the history ledger would put the same row in two
+   * live places and invite a second send of an email already awaiting
+   * approval. The last two are also owner/manager-only figures elsewhere
+   * (ADR 0167: the claimed dollar amount, reason and invoice/order numbers a
+   * `HOUSE_DRAFT`/`HOUSE_CANCELLED` row's body carries), and this route has
+   * no role gate of its own (`JwtAuthGuard` alone) — so unlike `DISCARDED`/
+   * `CANCELLED` below, these two are withheld from every caller, not shown
+   * with a lowercase chip (PR #476 audit round 2, R2b: this was a third,
+   * ungated door onto a manager's credit draft).
    *
    * `DRAFT` inbound is NOT excluded. `procurement_conversations.status`
    * defaults to `'DRAFT'` at the column level, and the inbound path does not
@@ -7438,8 +7483,9 @@ export class ProcurementService {
    * describes us rather than them — 10 of the 27 rows. They are received mail,
    * not drafts, and they were the largest single thing missing from the page.
    *
-   * DISCARDED (3) and CANCELLED (1) are shown. "We drafted this and killed it"
-   * is part of the record of what happened with a vendor; the page renders an
+   * DISCARDED (3) and CANCELLED (1) — the LEGACY AI-path statuses, never
+   * `HOUSE_CANCELLED` — are shown. "We drafted this and killed it" is part of
+   * the record of what happened with a vendor; the page renders an
    * unrecognised status as its own lowercase chip, so they arrive labelled.
    */
   async getConversationHistory(restaurantId: string): Promise<any[]> {
@@ -7468,7 +7514,7 @@ export class ProcurementService {
       `,
       )
       .eq("restaurant_id", restaurantId)
-      // The two exclusions, as filters rather than a post-fetch drop, so
+      // The four exclusions, as filters rather than a post-fetch drop, so
       // `limit` counts rows the manager can actually see.
       //
       // Each is written `status.is.null,<test>` because `neq` against a NULL
@@ -7476,10 +7522,18 @@ export class ProcurementService {
       // deny-list ledger is backwards: an unrecognised or absent status is the
       // case we most want on screen. `status` is nullable (it only has a
       // DEFAULT), so this is reachable, and it is the same shape as
-      // `one-tap-actions.service.ts:90`. Two separate `.or()` calls are ANDed.
+      // `one-tap-actions.service.ts:90`. Every `.or()` call here is ANDed with
+      // the rest.
       .or("status.is.null,status.neq.PENDING_APPROVAL")
       // NOT (status = DRAFT AND direction = outbound), by De Morgan.
       .or("status.is.null,status.neq.DRAFT,direction.eq.inbound")
+      // PR #476 audit round 2, R2b: this route carries no role gate
+      // (`JwtAuthGuard` alone), so a `HOUSE_DRAFT`/`HOUSE_CANCELLED` row —
+      // a credit claim's letter, carrying the same claimed dollar amount,
+      // reason and invoice/order numbers ADR 0167 refuses staff on the
+      // ledger itself — must not read through it at all, for any caller.
+      .or("status.is.null,status.neq.HOUSE_DRAFT")
+      .or("status.is.null,status.neq.HOUSE_CANCELLED")
       .order("created_at", { ascending: false })
       .limit(100);
 
