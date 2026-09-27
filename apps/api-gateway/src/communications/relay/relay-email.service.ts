@@ -780,12 +780,17 @@ export class RelayEmailService {
     });
     if (result.success !== true) {
       // ADR 0172: `GmailService.sendEmail` catches `MimeHeaderError` itself
-      // and reports it as `refusedBeforeSend` rather than letting it
-      // propagate — re-throw the SAME typed error here so `dispatch()`'s
-      // catch can tell "the provider refused" (a transport failure) apart
-      // from "we never called the provider" (a header refusal) without
-      // parsing `result.error`'s text.
-      if (result.refusedBeforeSend) {
+      // and reports it as `refusal: { kind: "header" }` (PR #405's typed
+      // refusal shape, replacing the old `refusedBeforeSend` boolean) rather
+      // than letting it propagate — re-throw the SAME typed error here so
+      // `dispatch()`'s catch can tell "the provider refused" (a transport
+      // failure) apart from "we never called the provider" (a header
+      // refusal) without parsing `result.error`'s text.
+      // [merge-train correction 2026-09-26, PR #429: this read
+      // `result.refusedBeforeSend`, a field `EmailResult` no longer has
+      // after PR #405 (ADR 0172 addendum) replaced it with `refusal`;
+      // TypeScript caught it (TS2339) rather than it going live silently.]
+      if (result.refusal?.kind === "header") {
         throw new MimeHeaderError(
           result.error ?? "the provider reported no reason",
         );

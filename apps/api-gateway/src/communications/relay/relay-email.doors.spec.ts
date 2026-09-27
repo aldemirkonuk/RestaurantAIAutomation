@@ -901,7 +901,7 @@ describe("the orchestrator's door", () => {
     gmail.sendEmail.mockResolvedValue({
       success: false,
       error: "Could not fold the Subject header.",
-      refusedBeforeSend: true,
+      refusal: { kind: "header" },
     });
     const res = await post(ORCHESTRATOR_SEND, asService);
 
