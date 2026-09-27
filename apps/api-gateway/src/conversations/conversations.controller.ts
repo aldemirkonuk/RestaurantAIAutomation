@@ -61,8 +61,9 @@ interface RejectConversationDto {
 // real email. The controller previously carried no guard at all, so the whole surface
 // was reachable unauthenticated via the service-role key (which bypasses RLS).
 //
-// Every by-id route below answers only for the caller's own house, and a row in
-// another house is a 404, the same answer as a row that does not exist (ADR 0147;
+// Every route below takes the house from `houseOf(user)` and answers only for it:
+// a session naming no house is a 403, and a conversation, order or vendor in
+// another house is a 404, the same answer as one that does not exist (ADR 0147;
 // ADR 0171). Approve, edit and reject also take a role: they decide what a vendor is
 // told, so only an owner or a manager may (ADR 0116; ADR 0162 — the role IN THIS
 // house, which is what `RolesGuard` reads from the token).
@@ -120,11 +121,12 @@ export class ConversationsController {
     @Query("sortBy") sortBy?: string,
     @Query("sortOrder") sortOrder?: string,
   ) {
+    const restaurantId = houseOf(user);
     try {
       return await this.conversationsService.listConversations({
         // Always the caller's own tenant. Previously this came from a query param, so
         // omitting it returned every restaurant's conversations in one response.
-        restaurantId: user.restaurantId,
+        restaurantId,
         providerId,
         orderId,
         orderNumber,
@@ -198,9 +200,10 @@ export class ConversationsController {
     @Query("page") page?: string,
     @Query("limit") limit?: string,
   ) {
+    const restaurantId = houseOf(user);
     try {
       return await this.conversationsService.listConversationThreads({
-        restaurantId: user.restaurantId,
+        restaurantId,
         providerId,
         orderNumber,
         threadKey,
@@ -240,11 +243,9 @@ export class ConversationsController {
     @CurrentUser() user: AuthUser,
     @Param("threadId") threadId: string,
   ) {
+    const restaurantId = houseOf(user);
     try {
-      return await this.conversationsService.getThread(
-        threadId,
-        user.restaurantId,
-      );
+      return await this.conversationsService.getThread(threadId, restaurantId);
     } catch (error) {
       this.logger.error(`Failed to get thread: ${error.message}`, error.stack);
       throw new HttpException(
@@ -260,12 +261,21 @@ export class ConversationsController {
   @Get("by-provider/:providerId")
   @ApiOperation({ summary: "Get all conversations with a vendor" })
   async getByProvider(
+    @CurrentUser() user: AuthUser,
     @Param("providerId") providerId: string,
     @Query("page") page?: string,
     @Query("limit") limit?: string,
   ) {
+    const restaurantId = houseOf(user);
     try {
+      // Another house's vendor is a 404, the same answer as a missing one, and
+      // the list below is this house's messages only (ADR 0147; ADR 0171).
+      await this.conversationsService.assertProviderInHouse(
+        providerId,
+        restaurantId,
+      );
       return await this.conversationsService.listConversations({
+        restaurantId,
         providerId,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? parseInt(limit, 10) : 20,
@@ -273,6 +283,7 @@ export class ConversationsController {
         sortOrder: "desc",
       });
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error(
         `Failed to get provider conversations: ${error.message}`,
       );
@@ -288,9 +299,17 @@ export class ConversationsController {
    */
   @Get("by-order/:orderId")
   @ApiOperation({ summary: "Get all conversations for an order" })
-  async getByOrder(@Param("orderId") orderId: string) {
+  async getByOrder(
+    @CurrentUser() user: AuthUser,
+    @Param("orderId") orderId: string,
+  ) {
+    const restaurantId = houseOf(user);
     try {
+      // Another house's order is a 404, the same answer as a missing one, and
+      // the list below is this house's messages only (ADR 0147; ADR 0171).
+      await this.conversationsService.assertOrderInHouse(orderId, restaurantId);
       return await this.conversationsService.listConversations({
+        restaurantId,
         orderId,
         page: 1,
         limit: 100,
@@ -298,6 +317,7 @@ export class ConversationsController {
         sortOrder: "asc",
       });
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error(`Failed to get order conversations: ${error.message}`);
       throw new HttpException(
         "Failed to get conversations",
@@ -337,8 +357,9 @@ export class ConversationsController {
   @Get("stats/overview")
   @ApiOperation({ summary: "Get aggregated conversation statistics" })
   async getStats(@CurrentUser() user: AuthUser) {
+    const restaurantId = houseOf(user);
     try {
-      return await this.conversationsService.getStats(user.restaurantId);
+      return await this.conversationsService.getStats(restaurantId);
     } catch (error) {
       this.logger.error(`Failed to get stats: ${error.message}`);
       throw new HttpException(
