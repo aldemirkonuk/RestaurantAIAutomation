@@ -378,6 +378,305 @@ describe('every .mudavym scope root says what ground it is on', () => {
   });
 });
 
+/**
+ * OD-112 — the caption ink clears AA, and `--ink-3` stays decorative-only.
+ *
+ * Founder, 2026-09-16 (ADR 0042 amendment): captions on the paper ground use
+ * `--ink-4`; `--ink-3` is decorative only. Measured 2026-08-31: `--ink-3`
+ * (`#7C7365`) is 3.69–4.37:1 on the three paper grounds — under AA's 4.5:1
+ * floor at caption sizes. `--ink-4` (`#665D50`) clears it on every ground in
+ * both columns (below). The wave-wide sweep (2026-09-25) moved every real
+ * `color` / `-webkit-text-fill-color` declaration that painted `--ink-3` over
+ * to `--ink-4`, leaving `--ink-3` only on non-text properties (borders,
+ * box-shadows, background tints, dashed rules) — those need WCAG's 3:1
+ * non-text minimum, not a caption's 4.5:1, and are unaffected by this ruling.
+ *
+ * Two things are pinned so this cannot regress: the TOKEN VALUES (a future
+ * palette edit that quietly re-darkens `--ink-4`, or the paper/charcoal
+ * grounds, below AA), and the SOURCE (a future PR that reaches for `--ink-3`
+ * to paint a caption again, the exact defect this sweep just closed 578
+ * call sites of) — for the shapes the static scan below actually covers.
+ * [2026-09-27, PR 478 audit round 1: that "cannot regress" claim was false
+ * for three shapes present in this same codebase — a ternary branch, a
+ * `fg:`-keyed map, and an SVG `fill` — each demonstrated with a node repro
+ * against the regex as shipped. The mutation cases right below the scan
+ * (`JS_HIT`/`CSS_HIT` regressions it must now catch) are the check that the
+ * fix actually closed those three gaps, not just a restated claim.]
+ */
+describe('OD-112 — the caption ink (--ink-4) clears AA on both grounds', () => {
+  it.each([
+    ['paper-0', PAPER_FULL['--paper-0']],
+    ['paper-1', PAPER_FULL['--paper-1']],
+    ['paper-2', PAPER_FULL['--paper-2']],
+  ])('--ink-4 on the paper %s clears 4.5:1', (_name, ground) => {
+    expect(contrast(PAPER_FULL['--ink-4'], ground)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each([
+    ['paper-0', CHARCOAL['--paper-0']],
+    ['paper-1', CHARCOAL['--paper-1']],
+    ['paper-2', CHARCOAL['--paper-2']],
+  ])('--ink-4 on the charcoal %s clears 4.5:1', (_name, ground) => {
+    expect(contrast(CHARCOAL['--ink-4'], ground)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('--ink-3 itself is BELOW 4.5:1 on paper-2 — the reason it may never paint a caption again', () => {
+    // Pinned so nobody "fixes" this suite by darkening --ink-3 back into
+    // caption service instead of using --ink-4: that is the reading OD-112
+    // rejected (the alternative was darkening --ink-3 itself). paper-2 is
+    // the deepest paper ground and the one OD-112's own measurement used
+    // (3.69:1); paper-0 has since lightened enough (#FAF7F1 -> #FFFDF8) that
+    // it alone would no longer demonstrate the failure.
+    expect(contrast(PAPER_FULL['--ink-3'], PAPER_FULL['--paper-2'])).toBeLessThan(4.5);
+  });
+
+  /**
+   * The static half: every SHIPPED `color` / `-webkit-text-fill-color`
+   * declaration that resolves `--ink-3`, across `.css`, `.tsx` and `.ts`
+   * under `apps/web/src`. A declaration next to a `deliberately` comment is
+   * the codebase's own established escape hatch (aria-hidden icon glyphs and
+   * disabled-control text, which WCAG holds to 3:1, not 4.5:1 — see
+   * `HoursSection.tsx` and `SettingsNext.tsx`) and is exempted here the same
+   * way; every other hit is the caption regression this test exists to catch.
+   */
+  const walkFiles = (dir: string, exts: readonly string[]): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) return e.name === 'node_modules' ? [] : walkFiles(full, exts);
+      return e.isFile() && exts.some((ext) => e.name.endsWith(ext)) ? [full] : [];
+    });
+
+  /** Matches a `color` / `-webkit-text-fill-color` / `fill` (CSS) or `color` /
+   *  `WebkitTextFillColor` / `fg` / `fill` (JS object key or JSX attribute)
+   *  declaration whose value contains `--ink-3` — but not `background-color`,
+   *  `border(-*)-color`, `outline-color`, `caret-color` or
+   *  `text-decoration-color`, which stay decorative. `[{;]` / start-of-line
+   *  anchors the property name so `background-color:` can never be mistaken
+   *  for a bare `color:`.
+   *
+   *  [2026-09-27, PR 478 audit round 1: the prior JS_HIT required the value
+   *  to START with a quote right after the `:`/`=`, so it matched
+   *  `color: 'var(--ink-3)'` but not a ternary branch
+   *  (`color: cond ? 'var(--ink-3)' : 'var(--ink-1)'`) — confirmed with a
+   *  node repro against the shipped ternary at
+   *  `pages/profile/next/PaymentRegister.tsx:171`, which is the exact shape
+   *  a regression would reach for. It also recognised only `color` /
+   *  `WebkitTextFillColor`, missing the `fg:`-keyed tone maps
+   *  (`pages/providers/next/TermsSection.tsx`) and the `fill=`/`fill:`
+   *  SVG attribute this same PR swept on three Recharts call sites. JS_HIT
+   *  now scans everything up to the next `,`/`;`/brace after the property
+   *  name (bounded to 300 chars so one file can't make the regex walk the
+   *  whole rest of the source) instead of requiring an immediate quote, and
+   *  CSS_HIT/JS_HIT both add `fill` to the property alternation.]
+   *
+   *  [PR 478 merge-train, 2026-09-27: JS_HIT's `(?<![\w$])` lookbehind
+   *  blocked a property name preceded by a word char or `$`, but not by a
+   *  hyphen — so raw CSS-in-JS (a `.tsx` template string, not a JSX/object
+   *  style prop) let `border-color: var(--ink-3)` match on the `color`
+   *  substring, flagging `pages/ask/next/AskNext.tsx:89`'s decorative
+   *  border as a caption regression. `background-color`, `outline-color`,
+   *  `caret-color` and `text-decoration-color` end in `-color` the same
+   *  way and were equally exposed. The lookbehind now also excludes `-`,
+   *  matching what the doc comment above already claimed and what CSS_HIT
+   *  enforces by anchoring on `{`/`;`/start-of-line instead.]
+   *
+   *  [PR 478 audit, fix round 1 of 2, 2026-09-27: `[^,;{}]` stopped at the
+   *  FIRST comma after the property name, and the codebase's dominant token
+   *  shape carries one inside its own parentheses — `var(--ink-1, #211C16)`.
+   *  So `color: cond ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)'`
+   *  never reached `--ink-3`, and six rendered captions shipped unconverted
+   *  (DocketSheet.tsx:84,170, LedgerCard.tsx:74, RollCall.tsx:105,
+   *  ReceiptsNext.tsx:1396, WhoIsWriting.tsx:148) while OD-112 was marked
+   *  resolved. The scan now steps over a balanced `( … )` group (one nested
+   *  level, e.g. `var(--a, var(--b))`) as a single unit, so a comma inside
+   *  parentheses no longer ends the value, and a `--ink-3` inside an open
+   *  paren (`'var(--ink-3, #7C7365)'`) is still reached. The alternation's
+   *  branches start on disjoint characters (`(` vs. anything but `(`), so
+   *  the bound stays linear rather than exponential.] */
+  const CSS_HIT = /(?:^|[{;])\s*(color|-webkit-text-fill-color|fill)\s*:\s*[^;{}]*--ink-3\b/gm;
+  const JS_HIT = /(?<![\w$-])(color|WebkitTextFillColor|fg|fill)\s*[:=]\s*(?:\((?:[^()]|\([^()]*\))*\)|[^,;{}()]){0,300}?(?:\([^)]{0,200}?)?--ink-3\b/g;
+
+  it('no shipped color declaration paints the decorative-only --ink-3', () => {
+    const files = [
+      ...walkFiles(ROOT, ['.css']),
+      ...walkFiles(ROOT, ['.tsx', '.ts']).filter((f) => !f.includes('.test.')),
+    ];
+    expect(files.length).toBeGreaterThan(100); // a walk that found nothing is a broken walk
+
+    const hits: string[] = [];
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8');
+      const isCss = file.endsWith('.css');
+      const re = isCss ? CSS_HIT : JS_HIT;
+      re.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src))) {
+        const lineNo = src.slice(0, m.index).split('\n').length;
+        const windowStart = src.lastIndexOf('\n', Math.max(0, m.index - 400));
+        const context = src.slice(Math.max(0, windowStart), m.index);
+        if (/deliberat/i.test(context.slice(-400))) continue;
+        hits.push(`${file.slice(ROOT.length + 1)}:${lineNo}`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  /**
+   * The fallback half. [2026-09-27, PR 478 audit round 2] The sweep renamed
+   * `var(--ink-3, #7C7365)` to `var(--ink-4, #7C7365)` at 44 sites across
+   * six files and left the fallback hex behind, so wherever the variable
+   * does not resolve (a render outside `.mudavym`, a paint before
+   * `mudavym.css` loads) the caption fell back to the very value OD-112
+   * retired. The `--ink-3` scan above cannot see that — the token it looks
+   * for is gone — so this scan pins every `--ink-4` fallback literal to
+   * `--ink-4`'s own paper value (ADR 0169's default ground; every site at
+   * the time of writing is on paper, including `CanonicalSheet.tsx` and
+   * `DeliverySpine.tsx`, whose charcoal-column fallbacks `#ABA294` /
+   * `#8E8576` would measure well under 4.5:1 there).
+   */
+  const INK4_FALLBACK = /var\(\s*--ink-4\s*,\s*(#[0-9a-fA-F]{3,8})\s*\)/g;
+  const staleInk4Fallbacks = (src: string): string[] => {
+    INK4_FALLBACK.lastIndex = 0;
+    const out: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = INK4_FALLBACK.exec(src))) {
+      if (m[1].toLowerCase() !== PAPER_FULL['--ink-4']) out.push(m[1]);
+    }
+    return out;
+  };
+
+  it('every --ink-4 fallback literal is --ink-4 itself, never the retired --ink-3 value', () => {
+    const files = [
+      ...walkFiles(ROOT, ['.css']),
+      ...walkFiles(ROOT, ['.tsx', '.ts']).filter((f) => !f.includes('.test.')),
+    ];
+    expect(files.length).toBeGreaterThan(100); // a walk that found nothing is a broken walk
+
+    let seen = 0;
+    const hits: string[] = [];
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8');
+      INK4_FALLBACK.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = INK4_FALLBACK.exec(src))) {
+        seen++;
+        if (m[1].toLowerCase() === PAPER_FULL['--ink-4']) continue;
+        const lineNo = src.slice(0, m.index).split('\n').length;
+        hits.push(`${file.slice(ROOT.length + 1)}:${lineNo} ${m[1]}`);
+      }
+    }
+    expect(seen).toBeGreaterThan(100); // proves the scan reads real fallbacks, not none
+    expect(hits).toEqual([]);
+  });
+
+  it('the fallback scan catches the exact shapes the sweep left behind', () => {
+    expect(staleInk4Fallbacks(`color: 'var(--ink-4, #7C7365)',`)).toEqual(['#7C7365']);
+    expect(staleInk4Fallbacks(`.x { color: var(--ink-4, #7c7365); }`)).toEqual(['#7c7365']);
+    expect(staleInk4Fallbacks(`color: 'var(--ink-4,#ABA294)'`)).toEqual(['#ABA294']);
+    expect(staleInk4Fallbacks(`color: 'var(--ink-4, #665D50)'`)).toEqual([]);
+    // the retired value really does fail AA where these captions sit
+    expect(contrast('#7c7365', PAPER_FULL['--paper-2'])).toBeLessThan(4.5);
+  });
+
+  /**
+   * Mutation cases for the scan itself. [2026-09-27, PR 478 audit round 1]
+   * confirmed these four shapes with a direct node repro against the
+   * regex as shipped: the first three gave zero matches although each is a
+   * real caption-ink regression, and the fourth (unchanged) is the shape
+   * the original guard already caught. This pins the fix, not just the
+   * claim — each `it` runs the exact regex objects the scan above uses
+   * against a synthetic snippet, so a future edit that narrows JS_HIT back
+   * down cannot pass silently.
+   */
+  const jsHitCount = (src: string): number => {
+    JS_HIT.lastIndex = 0;
+    let n = 0;
+    while (JS_HIT.exec(src)) n++;
+    return n;
+  };
+  const cssHitCount = (src: string): number => {
+    CSS_HIT.lastIndex = 0;
+    let n = 0;
+    while (CSS_HIT.exec(src)) n++;
+    return n;
+  };
+
+  it('JS_HIT catches --ink-3 in a ternary branch', () => {
+    expect(jsHitCount(`color: unknown ? 'var(--ink-3)' : 'var(--ink-1)',`)).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 in a multi-line ternary branch', () => {
+    expect(
+      jsHitCount(`color: unknown\n            ? 'var(--ink-3)'\n            : 'var(--ink-1)',`),
+    ).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 on a `fg:`-keyed map value', () => {
+    expect(jsHitCount(`fg: 'var(--ink-3)',`)).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 on an SVG `fill=` JSX attribute', () => {
+    expect(jsHitCount(`<Cell fill="var(--ink-3)" />`)).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 behind a comma-fallback var() in an earlier ternary branch', () => {
+    // The shape that shipped unconverted at DocketSheet.tsx:84 et al.
+    expect(
+      jsHitCount(`color: fig.scored ? 'var(--ink-1, #211C16)' : 'var(--ink-3, #7C7365)',`),
+    ).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 behind two comma-fallback branches across lines', () => {
+    expect(
+      jsHitCount(
+        `color:\n  s.tone === 'miss'\n    ? 'var(--alarm, #A33A2B)'\n    : s.tone === 'hit'\n      ? 'var(--seal-deep, #14515C)'\n      : 'var(--ink-3, #7C7365)',`,
+      ),
+    ).toBe(1);
+  });
+
+  it('JS_HIT catches --ink-3 behind a nested var() fallback', () => {
+    expect(jsHitCount(`color: on ? 'var(--ink-1, var(--ink-2))' : 'var(--ink-3)',`)).toBe(1);
+  });
+
+  it('JS_HIT still stops at a top-level comma, so the next key is not blamed', () => {
+    expect(jsHitCount(`color: 'var(--ink-1, #211C16)', borderColor: 'var(--ink-3, #7C7365)',`)).toBe(0);
+  });
+
+  it('JS_HIT still leaves a comma-fallback --ink-4 alone', () => {
+    expect(
+      jsHitCount(`color: fig.scored ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',`),
+    ).toBe(0);
+  });
+
+  it('JS_HIT still catches the original direct-quote shape', () => {
+    expect(jsHitCount(`color: 'var(--ink-3)',`)).toBe(1);
+  });
+
+  it('JS_HIT still leaves --ink-4 alone', () => {
+    expect(jsHitCount(`color: unknown ? 'var(--ink-4)' : 'var(--ink-1)',`)).toBe(0);
+  });
+
+  it('JS_HIT leaves border/background/outline/caret --ink-3 alone in raw CSS-in-JS text', () => {
+    expect(
+      jsHitCount(
+        `.x { border-color: var(--ink-3); background-color: var(--ink-3); outline-color: var(--ink-3); caret-color: var(--ink-3); }`,
+      ),
+    ).toBe(0);
+  });
+
+  it('CSS_HIT catches --ink-3 on a `fill:` CSS declaration', () => {
+    expect(cssHitCount(`.icon { fill: var(--ink-3); }`)).toBe(1);
+  });
+
+  it('CSS_HIT still leaves border/background/outline/caret --ink-3 alone', () => {
+    expect(
+      cssHitCount(
+        `.x { border-color: var(--ink-3); background-color: var(--ink-3); outline-color: var(--ink-3); caret-color: var(--ink-3); }`,
+      ),
+    ).toBe(0);
+  });
+});
+
 /** WCAG 2.x relative-luminance contrast ratio. */
 function contrast(a: string, b: string): number {
   const l = (hex: string) => {

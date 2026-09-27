@@ -200,3 +200,68 @@ describe('2026-09-26 (ADR 0149 row 54)', () => {
     );
   });
 });
+
+/**
+ * 2026-09-27 (ADR 0149 row 54, completed) — founder item 53 (2026-09-25,
+ * round 8): "Promotions and vendor-prices go live in code at cutover
+ * (flags-to-code PR, every house incl. new ones)", option chosen "Live in code
+ * at cutover (Recommended)". Both pages were dark behind their own columns
+ * until this; a house created after the merge has no row for either.
+ */
+describe('2026-09-27 (ADR 0149 row 54, founder item 53)', () => {
+  const CASES = [
+    {
+      page: 'promotions' as const,
+      path: '/promotions',
+      legacyText: 'legacy promotions tabs',
+      testId: 'promotions-next',
+      appRoute:
+        /<Route path="\/promotions" element=\{<PageGate page="promotions" legacy=\{<Promotions \/>\} next=\{<PromotionsNext \/>\} \/>\} \/>/,
+    },
+    {
+      page: 'vendor_prices' as const,
+      path: '/vendor-prices',
+      legacyText: 'legacy vendor price compare',
+      testId: 'vendor-prices-next',
+      appRoute:
+        /<Route path="\/vendor-prices" element=\{<PageGate page="vendor_prices" legacy=\{<VendorPriceCompare \/>\} next=\{<VendorPricesNext \/>\} \/>\} \/>/,
+    },
+  ];
+
+  function mountCase(c: (typeof CASES)[number]) {
+    return render(
+      <AuthContext.Provider value={newHouseAuth}>
+        <MemoryRouter initialEntries={[c.path]}>
+          <Routes>
+            <Route
+              path={c.path}
+              element={<PageGate page={c.page} legacy={<p>{c.legacyText}</p>} next={<main data-testid={c.testId} />} />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    );
+  }
+
+  it.each(CASES)('$page is live in code', (c) => {
+    expect(LIVE_PAGES.has(c.page)).toBe(true);
+  });
+
+  it.each(CASES)('$path renders the Mudavym page for a house with no flag row, no request', (c) => {
+    mountCase(c);
+    expect(screen.getByTestId(c.testId)).toBeTruthy();
+    expect(screen.queryByText(c.legacyText)).toBeNull();
+    expect(checkFlag).not.toHaveBeenCalled();
+  });
+
+  it.each(CASES)("$path: the QA override '0' is the only way back to legacy", (c) => {
+    window.localStorage.setItem(`mudavym.design.${c.page}`, '0');
+    mountCase(c);
+    expect(screen.getByText(c.legacyText)).toBeTruthy();
+  });
+
+  it.each(CASES)('App.tsx routes $path through the same gate', (c) => {
+    const app = readFileSync(join(__dirname, '..', '..', 'App.tsx'), 'utf8');
+    expect(app).toMatch(c.appRoute);
+  });
+});

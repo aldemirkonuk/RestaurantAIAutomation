@@ -58,7 +58,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // flipping that on existing restaurants would silently stop vendor replies
     // being analysed at all.
     defaultValue: true,
-    readBy: "common/orchestrator/inbound-responder.service.ts:1003",
+    readBy: "common/orchestrator/inbound-responder.service.ts:1024",
   },
   {
     key: "enable_ai_autonomous_send",
@@ -66,13 +66,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // leaves for a vendor with no human approval. A restaurant gets that only
     // by deliberately asking for it.
     defaultValue: false,
-    readBy: "common/orchestrator/inbound-responder.service.ts:1027",
-  },
-  {
-    key: "mudavym_design_recommendations",
-    // OFF by default: the Mudavym redesign of `/recommendations` (ADR 0044 p4 wave, REWORK verdict — "more structure and uniqueness"; also the first authenticated build of the page).
-    defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:212",
+    readBy: "common/orchestrator/inbound-responder.service.ts:1048",
   },
   {
     key: "enable_house_inbox_read",
@@ -94,7 +88,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:212",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:263",
   },
 ];
 
@@ -129,12 +123,30 @@ export function isActiveFeatureFlag(name: string): boolean {
  * like `help`, never had a column. The three moved keys' columns
  * (20260921114300, 20260922210200, 20260922220200) stay, unread.]
  *
- * [2026-09-26, ADR 0149 row 54: `mudavym_design_receiving` moved here from
- * ACTIVE_FEATURE_FLAGS — the receiving DESK joins on the same 2026-09-22 Q2/Q4
- * basis as the bracket above (not founder item 53, which names only
- * `promotions` and `vendor_prices`), now that its sketch review closed
- * (Approach 1, #480). The list is now twenty-four keys. Its column stays,
- * unread.]
+ * [2026-09-25, ADR 0145's 2026-09-25 amendment: `mudavym_design_ask` joins —
+ * `/ask` is live in code for every house from its first day, on the same Q2.
+ * Like `help` and `menu` it never had a column. Twenty-four keys.]
+ *
+ * [2026-09-25, lane W3-recs, ADR 0160 §108's round-5 bracket:
+ * `mudavym_design_recommendations` moved here from ACTIVE_FEATURE_FLAGS —
+ * twenty-five keys, with `mudavym_design_ask` above. §108 held the page dark
+ * "pending sketch 122"; the founder picked sketch 122's direction B
+ * (2026-09-25, item 24) and answered its questions 2-10 the same day (round
+ * 5), so §108 is fully answered and the same Q2/Q4 page-gap rule as the three
+ * keys above applies. Its column stays, unread.]
+ *
+ * [2026-09-27, ADR 0149 row 54: three keys moved here from
+ * ACTIVE_FEATURE_FLAGS — twenty-eight keys. `mudavym_design_receiving` (the
+ * DESK, route `/receiving`; `receiving_door` above is a different page) on the
+ * same 2026-09-22 page-gap Q2/Q4 basis, its sketch review closed (Approach 1,
+ * #480). `mudavym_design_promotions` and `mudavym_design_vendor_prices` on
+ * founder item 53 (2026-09-25, round 8, "Live in code at cutover
+ * (Recommended)"; rejected "Promotions only", "Keep both dark"), every house
+ * including new ones. The two preconditions their removed entries named are
+ * met: "Who is writing" (#470) is on /communications, ungated, and fork 6(a)'s
+ * provenance (#482) is merged. Their three columns (20261015000000,
+ * 20261022000000 and the receiving one) stay, unread. The one
+ * `mudavym_design_*` key still ACTIVE is `mudavym_design_arrival`.]
  *
  * Deliberately NOT in ACTIVE_FEATURE_FLAGS:
  *  - `GET /settings/feature-flags` returns only ACTIVE_FEATURE_FLAG_KEYS
@@ -182,7 +194,11 @@ export const LIVE_IN_CODE_FLAGS: readonly string[] = [
   "mudavym_design_shell",
   "mudavym_design_admin",
   "mudavym_design_authorize_integration",
+  "mudavym_design_ask",
+  "mudavym_design_recommendations",
   "mudavym_design_receiving",
+  "mudavym_design_promotions",
+  "mudavym_design_vendor_prices",
 ];
 
 export function defaultActiveFlags(): Record<string, boolean> {

@@ -68,6 +68,8 @@ import { NoteDays } from './NoteDays';
 import MarketPricePanel from './MarketPricePanel';
 import MarketIndexPanel from './MarketIndexPanel';
 import { HouseBand } from './HouseBand';
+import { HeldBand } from './HeldBand';
+import { useHeldLowStock } from './useHeldLowStock';
 import { matchesQuery } from './nt-book';
 import { DURATIONS } from './nt-snooze';
 import {
@@ -169,6 +171,8 @@ export interface NotificationsNextProps {
 
 export default function NotificationsNext({ ground }: NotificationsNextProps) {
   const data = useNotificationsNextData();
+  /** The held low-stock queue — its own read, its own three states. */
+  const held = useHeldLowStock();
   const location = useLocation();
   const [openId, setOpenId] = useState<string | null>(null);
   const [showRuledOff, setShowRuledOff] = useState(false);
@@ -495,6 +499,12 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           {/* ── the book ──────────────────────────────────────────────── */}
           <div>
+            {/* Wines below par the house has not told anyone about yet
+                (founder, 2026-09-26, round 8 — carried over from legacy
+                before the cutover). Above "Needs a hand" because a held
+                critical is a stockout nobody has heard of. */}
+            <HeldBand held={held} />
+
             <section aria-labelledby="nt-needs">
               <div className="flex items-baseline justify-between gap-3">
                 <h2
@@ -794,7 +804,10 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
               </p>
               <button
                 type="button"
-                onClick={data.refresh}
+                onClick={() => {
+                  data.refresh();
+                  held.refresh();
+                }}
                 className="nt-ink mt-2 inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
                 style={{
                   border: '1px solid var(--paper-2)',

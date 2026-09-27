@@ -12,7 +12,7 @@ agents: [sommelier_agent, menu_analyzer_agent]
 owner_unit: ""
 gap_reason: "Four units hold a slice each — catalogue-identity, agent-fleet, corpora-enrichment, taste-fingerprint — and every one disclaims the product"
 updated: 2026-09-01
-links: ["[[wines]]", "[[sommelier]]", "[[wine-studio]]", "[[catalogue-identity-charter]]", "[[SOFTWARE-MAP]]"]
+links: ["[[wines]]", "[[ask]]", "[[wine-studio]]", "[[catalogue-identity-charter]]", "[[SOFTWARE-MAP]]"]
 ---
 
 # Wine Library & Sommelier
@@ -51,7 +51,7 @@ Read it and it is real. Act on it and, today, mostly nothing happens.
 
 - [[wines]] (`/wines`, `App.tsx:289`) — the catalogue. `WineLibrary.tsx`, the larger of
   the two surfaces.
-- [[sommelier]] (`/sommelier`, `App.tsx:331`) — the chat. `SommelierAI.tsx`, 721 lines.
+- [[RETIRED|sommelier (retired 2026-09-25)]] (`/sommelier`, `App.tsx:331`) — the chat. [2026-09-25: `/sommelier` redirects to [[ask]] `/ask` (ADR 0145); the page note is retired.] `SommelierAI.tsx`, 721 lines.
 
 `/sommelier` is the terminus for every "Wine Agent" affordance in the product. The
 `/wine-agent` and `/wineagent` placeholder routes are **retired** — *"both rendered the
@@ -176,7 +176,7 @@ actions are not.
 - Enrichment arrives on the wire and is discarded — `description`, `tastingNotes`,
   `pairingNotes`, `imageUrl` are on the API type and unmapped (`services/api/types.ts:324-328`).
 
-**[[sommelier]]** (`sommelier.md:96-126`). *A 721-line chat product with no chat backend.*
+**[[RETIRED|sommelier (retired 2026-09-25)]]** (`sommelier.md:96-126`, recoverable at `e754b3a27`). *A 721-line chat product with no chat backend.*
 Everything around the model call is real; the model call is not. Every message takes the
 catch branch (`SommelierAI.tsx:188-241`) — the code says so at `:171-172`: *"This endpoint
 may not exist yet, so we'll handle gracefully."* What ships is a client-side rules bot: a
@@ -222,3 +222,37 @@ locked ADR is a decision, not a docs fix.
   shipping wrong data under real column headings today.
 - §3a's page list needs an ADR-level correction (§7), and the ownership gap (§6) needs a
   team before either of the above has an accountable home.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Large reference corpus with no per-restaurant roster of any real substance.
+
+**Coverage.** 59.1%/52.4%.
+
+**Runs in production.** `/wines` is flag OFF (legacy); `/sommelier` is ungated and live.
+
+**Promised vs. built.** `hollow` holds.
+
+**Gaps.** `restaurant_wine_roster`=0 rows despite `master_wine_library`=4,253 rows. See also the `wine-intelligence` model entry below, which measures the enrichment pipeline behind this library and finds it broken.
+
+*Evidence:* Supabase row counts above.
+
+### wine-intelligence (model)
+
+**Capacity.** 3,589 live wine rows; trigram/fuzzy matching for vendor/catalog/library dedup is live and actively iterated on.
+
+**Coverage.** Not independently measured this pass; cited from the `docs/wine-ml-foundations` branch's 2026-09-18 production audit (`.planning/07-reference/wine-intelligence-foundations.md`), itself a same-day re-measurement, not a stale copy-forward.
+
+**Runs in production.** Matching migrations are live (e.g. `20260811010000_vendor_catalogue_match.sql`); enrichment is not — 0 real restaurants have an enriched wine.
+
+**Promised vs. built.** Docs (`BEVERAGE_CATALOGUE_ARCHITECTURE` etc.) promise ML-ready sensory/embedding features; the cited audit found the enrichment pipeline broken since 2026-08-17 and embeddings unread by any query.
+
+**Gaps.** No producer narrative, critic-score, or market-price data at all; sensory profiles on stocked wines are mostly a copied placeholder template.
+
+*Evidence:* `.planning/07-reference/wine-intelligence-foundations.md` (measured against Supabase project `exzueerziesmczwlhomd`, dated 2026-09-18).
+
+### document-extraction-ocr (model) — menu-OCR call site only
+
+**Capacity.** Menu OCR via `menus/parsers/scan-parser.service.ts` (Haiku) is one of three independent vision call sites on the same model tier; see [[receipts-invoice-match]] for the full model entry (procurement documents is its primary call site).
+
+*Evidence:* `scan-parser.service.ts:289`.

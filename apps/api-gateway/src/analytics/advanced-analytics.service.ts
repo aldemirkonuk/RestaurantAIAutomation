@@ -12,10 +12,16 @@ import {
 } from "./inventory-cost";
 import {
   ORDER_ARRIVED_STATUSES,
+  ORDER_OPEN_WITH_VENDOR_STATUSES,
   ORDER_OUTSTANDING_STATUSES,
   ORDER_SPEND_STATUSES,
   hasStatus,
 } from "../procurement/order-status";
+import { deadlineOf, landedVerdict } from "../procurement/delivery-deadline";
+import { overdueStanding } from "../procurement/overdue-order";
+import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
+import { readOverdueContext } from "../procurement/overdue-order-reads";
+import { HouseFrame, houseFrame } from "../common/house-frame";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -123,6 +129,28 @@ export class AdvancedAnalyticsService {
     }));
   }
 
+  /**
+   * The house's clock (ADR 0207 question 6). A failed read degrades like every
+   * loader here — to no zone, which the deadline rule answers by counting only
+   * verdicts that hold in every zone, never by assuming UTC — and says so in
+   * `onTimeDeadline.houseRecord`.
+   */
+  private async loadHouseFrame(
+    restaurantId: string,
+  ): Promise<HouseFrame & { read: "read" | "could_not_read" | "no_record" }> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("restaurants")
+      .select("id, timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logQueryFailure("restaurants", error);
+      return { ...houseFrame(null), read: "could_not_read" };
+    }
+    return { ...houseFrame(data), read: data ? "read" : "no_record" };
+  }
+
   private async loadOrders(restaurantId: string, sinceDays = 365) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
     // Same schema-drift class as loadInventory above. `procurement_orders` has
@@ -138,7 +166,7 @@ export class AdvancedAnalyticsService {
       .getClient()
       .from("procurement_orders")
       .select(
-        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status",
+        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
       )
       .eq("restaurant_id", restaurantId)
       .gte("created_at", since);
@@ -289,6 +317,25 @@ export class AdvancedAnalyticsService {
 
   async getVendorScorecard(restaurantId: string) {
     const orders = await this.loadOrders(restaurantId, 365);
+    const house = await this.loadHouseFrame(restaurantId);
+    const nowMs = Date.now();
+    // Which orders still out with a vendor are CONFIRMED late — the house
+    // answered "Not yet" — or closed with a credit (procurement/overdue-order.ts).
+    // A failed read degrades like every loader here, and says so: each order
+    // past its date is then `unread`, outside the rate, never guessed late.
+    const overdue = await readOverdueContext(
+      this.dbService.getClient(),
+      restaurantId,
+      orders
+        .filter((o: any) =>
+          hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES),
+        )
+        .map((o: any) => o.id),
+    );
+    if (!overdue.ok)
+      this.logQueryFailure("procurement_order_arrival_answers", {
+        message: overdue.reason,
+      });
     const byVendor = new Map<string, any[]>();
     for (const o of orders) {
       const key = o.provider_id || "unknown";
@@ -312,14 +359,88 @@ export class AdvancedAnalyticsService {
             86400000,
         )
         .filter((d) => d >= 0 && d < 120);
-      const onTime = delivered.filter(
-        (o) =>
-          o.expected_delivery_date &&
-          o.delivered_at &&
-          new Date(o.delivered_at) <=
-            new Date(`${o.expected_delivery_date}T23:59:59Z`),
-      ).length;
-      const withEta = delivered.filter((o) => o.expected_delivery_date).length;
+      // THE ON-TIME RULE — the one the vendor scorecard reads
+      // (procurement/delivery-deadline.ts, ADR 0207): landed before midnight
+      // at the end of the expected day on the HOUSE's clock (question 6), and
+      // an order still out with the vendor past that midnight is LATE once
+      // CONFIRMED — the house answered "Not yet" (question 8 and the founder's
+      // delegation of 2026-09-21, procurement/overdue-order.ts). Unanswered it
+      // is `unconfirmed`, and 30 days on `incomplete`: both outside the rate.
+      // With no zone known, only a verdict that holds in every zone is
+      // counted; the rest are `undecided`, outside the rate.
+      const counts = {
+        onTime: 0,
+        late: 0,
+        overdue: 0,
+        unconfirmed: 0,
+        incomplete: 0,
+        unread: 0,
+        undecided: 0,
+        // ADR 0207 round 4 — a never-arrived cancel counts the same as a
+        // confirmed-overdue order: late, and named separately so a reader can
+        // tell a vendor that missed a live order from one that was cancelled
+        // out of a never-arrived state. couldNotSupply/houseDecision/
+        // uncategorised are informational only (cancel-reason.ts): they never
+        // add to `late`, the same as they are only "listed" in the scorecard.
+        neverArrived: 0,
+        couldNotSupply: 0,
+        houseDecisionCancels: 0,
+        uncategorisedCancels: 0,
+      };
+      for (const o of os) {
+        if (o.status === ProcurementOrderStatus.CANCELLED) {
+          const from = o.cancelled_from_status as ProcurementOrderStatus | null;
+          if (
+            from === ProcurementOrderStatus.PENDING ||
+            from === ProcurementOrderStatus.APPROVAL_NEEDED
+          ) {
+            continue; // never placed with the vendor — not a vendor event
+          }
+          const code = o.cancel_reason_code as string | null;
+          if (code === "never_arrived") {
+            counts.late += 1;
+            counts.neverArrived += 1;
+          } else if (code === "vendor_cannot_supply") {
+            counts.couldNotSupply += 1;
+          } else if (code === "house_decision") {
+            counts.houseDecisionCancels += 1;
+          } else if (from) {
+            // A CANCELLED row that was once placed with the vendor but
+            // carries no category — a cancel written before this column
+            // existed, or by a path that has not yet been taught it
+            // (ADR 0207 §5, the procurement-agent owner's follow-up).
+            counts.uncategorisedCancels += 1;
+          }
+          continue;
+        }
+        const d = deadlineOf(o.expected_delivery_date, house.zone);
+        if (!d) continue;
+        if (hasStatus(o.status, ORDER_ARRIVED_STATUSES)) {
+          const landed = o.delivered_at ? Date.parse(o.delivered_at) : NaN;
+          if (!Number.isFinite(landed)) continue;
+          const v = landedVerdict(landed, d);
+          if (v === "on_time") counts.onTime += 1;
+          else if (v === "late") counts.late += 1;
+          else counts.undecided += 1;
+        } else if (hasStatus(o.status, ORDER_OPEN_WITH_VENDOR_STATUSES)) {
+          const standing = overdueStanding({
+            status: o.status,
+            expectedDate: o.expected_delivery_date,
+            deadline: d,
+            nowMs,
+            answers: overdue.ok ? (overdue.answers.get(o.id) ?? []) : [],
+            closedWithCredit: overdue.ok && overdue.closedWithCredit.has(o.id),
+          });
+          if (!standing || standing.kind === "not_due") continue;
+          if (!overdue.ok) counts.unread += 1;
+          else if (standing.kind === "confirmed_late") {
+            counts.late += 1;
+            counts.overdue += 1;
+          } else if (standing.kind === "incomplete") counts.incomplete += 1;
+          else counts.unconfirmed += 1;
+        }
+      }
+      const scored = counts.onTime + counts.late;
       const unitPrices = delivered
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
@@ -344,7 +465,8 @@ export class AdvancedAnalyticsService {
           stdev: E.stdev(leadTimes, true),
           n: leadTimes.length,
         },
-        onTimeRate: withEta > 0 ? onTime / withEta : null,
+        onTimeRate: scored > 0 ? counts.onTime / scored : null,
+        onTimeCounts: counts,
         unitPrice: {
           mean: E.mean(unitPrices),
           latest: unitPrices.length ? unitPrices[unitPrices.length - 1] : null,
@@ -357,6 +479,12 @@ export class AdvancedAnalyticsService {
     const spendShare = vendors.map((v) => v.spend);
     return {
       vendors,
+      onTimeDeadline: {
+        zone: house.zone,
+        zoneSource: house.zoneSource,
+        houseRecord: house.read,
+        arrivalAnswers: overdue.ok ? "read" : "could_not_read",
+      },
       concentration: {
         hhi: E.herfindahlIndex(spendShare),
         effectiveVendors: E.effectiveCount(spendShare),

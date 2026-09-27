@@ -301,6 +301,9 @@ how a true figure becomes a false claim.
   in UTC. More houses will hit that path after the migration than before.
 - **`regions_covered` still holds whatever weekdays were already written.** The
   listing proposes; a person decides. Nothing was cleaned up.
+- **[2026-09-27]** The low-stock digest (`low-stock-alerts.service.ts`) is now a
+  third consumer of this fallback rule, alongside the recommendation digest
+  and the calendar reminders — see ADR 0149's 2026-09-27 bracket (item 56).
 
 ### What would trigger revisiting this
 
@@ -432,7 +435,7 @@ outbox all posted to `POST /procurement/orders/:id/deliver` and reached
 with a 409 naming the order and when it arrived, and the same rule is the UPDATE's own
 `status=not.in.(...)` WHERE clause so a race loses at the database
 (`apps/api-gateway/src/procurement/delivered-once.ts`,
-`procurement/tests/delivered-once.spec.ts`, [[orders]] §9 and §13.18).
+`procurement/tests/delivered-once.spec.ts`, [[06-pages/orders|orders]] §9 and §13.18).
 
 **This addendum's check is kept, and kept FIRST, for a reason the service cannot
 cover.** The seal is minted and redeemed *before* `markDelivered` is called, so a

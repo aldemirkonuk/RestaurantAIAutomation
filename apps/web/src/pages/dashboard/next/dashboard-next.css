@@ -94,7 +94,7 @@
 .dn-cell-num {
   font-size: 11px;
   line-height: 1;
-  color: var(--ink-3);
+  color: var(--ink-4);
   font-variant-numeric: tabular-nums;
 }
 .dn-cell-fig {

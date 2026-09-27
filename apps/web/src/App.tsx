@@ -121,6 +121,8 @@ const Recommendations = lazyWithRefresh(() => import('./pages/Recommendations'))
 const InsightCatalog = lazyWithRefresh(() => import('./pages/InsightCatalog'))
 const WineLibrary = lazyWithRefresh(() => import('./pages/wine-library'))
 const SommelierAI = lazyWithRefresh(() => import('./pages/SommelierAI'))
+// ADR 0145 — `/ask`, live for every house in code (LIVE_PAGES).
+const AskNext = lazyWithRefresh(() => import('./pages/ask/next/AskNext'))
 const AdminPanel = lazyWithRefresh(() => import('./pages/AdminPanel'))
 const AuthorizeIntegrationNext = lazyWithRefresh(() => import('./pages/authorize-integration/next/AuthorizeIntegrationNext'))
 const CompleteIntegrationConsent = lazyWithRefresh(() => import('./pages/authorize-integration/CompleteIntegrationConsent'))
@@ -130,6 +132,12 @@ const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 // Standard pages (lazy loaded)
 const Providers = lazyWithRefresh(() => import('./pages/Providers'))
 const Promotions = lazyWithRefresh(() => import('./pages/Promotions'))
+// Sketch 113 direction B (ADR 0160 §113 / ADR 0165), behind
+// `mudavym_design_promotions` — OFF by default, so `Promotions` above stays
+// every house's page until the founder turns it on. [2026-09-27, ADR 0149 row
+// 54: superseded — founder item 53 put `promotions` in LIVE_PAGES, so every
+// house gets PromotionsNext; `Promotions` is reachable only by QA override.]
+const PromotionsNext = lazyWithRefresh(() => import('./pages/promotions/next/PromotionsNext'))
 const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const ReceiptsPage = lazyWithRefresh(() => import('./pages/ReceiptsPage'))
@@ -143,10 +151,14 @@ const HelpNext = lazyWithRefresh(() => import('./pages/help/next/HelpNext'))
 const Profile = lazyWithRefresh(() => import('./pages/Profile'))
 const AuthorizeIntegration = lazyWithRefresh(() => import('./pages/AuthorizeIntegration'))
 const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
+const Terms = lazyWithRefresh(() => import('./pages/Terms'))
 // Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
+// `VendorPriceCompare.tsx` is routed as PageGate's `legacy` branch — see the
+// route comment below for the flag this page ships behind.
 const VendorPriceCompare = lazyWithRefresh(() => import('./pages/VendorPriceCompare'))
+const VendorPricesNext = lazyWithRefresh(() => import('./pages/vendor-prices/next/VendorPricesNext'))
 const DevTruth = lazyWithRefresh(() => import('./pages/DevTruth'))
 
 // Dev/Test pages
@@ -211,6 +223,11 @@ function App() {
                 {/* Public: linked from the auth screens and the consent page, so
                     it must be readable before you have an account. */}
                 <Route path="/privacy" element={<Privacy />} />
+                {/* Public, same reason as /privacy. G9 (census, 2026-09-25):
+                    required by ADR 0145's round-6r notice and the owner
+                    data-terms acceptance work; placeholder text per OD-132/
+                    OD-124 until a lawyer reviews it (founder Q11, 2026-09-22). */}
+                <Route path="/terms" element={<Terms />} />
                 {/* Public vendor catalogue. No auth: this is what a vendor chose
                     to publish, and our own ingester reads it back as structured data. */}
                 <Route path="/v/:slug" element={<VendorPortal />} />
@@ -383,7 +400,10 @@ function App() {
                       renders exactly as it does today; `OrdersNext` reads it
                       and opens that order's row (OrdersNext.tsx). */}
                   <Route path="/orders/:id" element={<PageGate page="orders" legacy={<Orders />} next={<OrdersNext />} />} />
-                  {/* One event, three renderings, chosen by role — see ReceivingHome. */}
+                  {/* One event, three renderings, chosen by role — see ReceivingHome.
+                      [2026-09-26, ADR 0149 row 54: the desk is in LIVE_PAGES,
+                      so every house gets ReceivingNext; ReceivingHome is
+                      reachable only through the QA override.] */}
                   <Route path="/receiving" element={<PageGate page="receiving" legacy={<ReceivingHome />} next={<ReceivingNext />} />} />
                   {/* One delivery, asked for by id — the in-app notification
                       actionUrls `delivery-clock.service.ts` and
@@ -430,10 +450,26 @@ function App() {
                     }
                   />
                   <Route path="/providers" element={<PageGate page="providers" legacy={<Providers />} next={<ProvidersNext />} />} />
-                  {/* Vendor price comparison. Role gate is enforced server-side
-                      too (owner/manager on /vendor-intel/*) — a hidden route is
-                      not access control. */}
-                  <Route path="/vendor-prices" element={<VendorPriceCompare />} />
+                  {/* Vendor price comparison — ADR 0160 §112, direction A,
+                      behind a per-house flag like every other Mudavym page.
+                      Memory founder-sketch-decisions-106-115.md, "19-lane
+                      blocking answers (AskUserQuestion, 2026-09-19 ~09:20Z)":
+                      "vendor-prices = behind a flag (vendor_prices
+                      mudavym_design_* column migration, he flips it; NOT
+                      live on merge)". Gated on mudavym_design_vendor_prices
+                      (migration 20261022000000, renamed seven times — see
+                      vendor-prices.md), OFF by default. Role gate
+                      is enforced server-side too (owner/manager on
+                      /vendor-intel/*, staff on the identity routes) — a
+                      hidden route is not access control.
+                      [2026-09-27, ADR 0149 row 54: no longer flag-gated in
+                      effect — founder item 53 ("Live in code at cutover
+                      (Recommended)") put vendor_prices in LIVE_PAGES for
+                      every house, superseding the per-house flip above, after
+                      its provenance lane (#482) merged. The PageGate stays so
+                      the QA override can still reach the legacy page until
+                      the deletion manifest removes it.] */}
+                  <Route path="/vendor-prices" element={<PageGate page="vendor_prices" legacy={<VendorPriceCompare />} next={<VendorPricesNext />} />} />
                   {/* dev/truth — three instruments that make the product's own
                       numbers checkable (reach · as-of · swallow). The gateway
                       routes behind them 404 in production, so this renders its
@@ -446,7 +482,15 @@ function App() {
                     path="/distributors"
                     element={<Navigate to="/providers?tab=discover" replace />}
                   />
-                  <Route path="/promotions" element={<Promotions />} />
+                  {/* Flag-gated and held back from LIVE_PAGES (2026-09-25):
+                      legacy keeps Trusted senders / Prospects until "Who is
+                      writing" is live on /communications (PR #470).
+                      [2026-09-27, ADR 0149 row 54: #470 merged and "Who is
+                      writing" renders on /communications ungated; founder
+                      item 53 ("Live in code at cutover (Recommended)") put
+                      promotions in LIVE_PAGES for every house. The PageGate
+                      stays for the QA override only.] */}
+                  <Route path="/promotions" element={<PageGate page="promotions" legacy={<Promotions />} next={<PromotionsNext />} />} />
                   {/* Both halves split by role INSIDE the element: the legacy
                       entry always did (TeamCommandPage.tsx:36-37) and TeamNext
                       now does too. Routed straight to the manager surface, a
@@ -505,9 +549,15 @@ function App() {
                       `/wine-agent` and `/wineagent` are retired (ADR 0019 §B): both
                       rendered the same under-construction placeholder with no
                       behaviour behind it. Everything that said "Wine Agent" in the
-                      UI already navigated to `/sommelier`, which is the real
-                      inventory & ordering help surface. */}
-                  <Route path="/sommelier" element={<SommelierAI />} />
+                      UI already navigated to `/sommelier`.
+                      [2026-09-25, ADR 0145: `/ask` is the page now — the
+                      founder's 2026-09-12 answer "/sommelier redirects here".
+                      `ask` is in LIVE_PAGES, so every house gets `AskNext`; the
+                      old chat stays mounted only as `legacy` (a per-browser QA
+                      override) until the ADR 0149 cutover deletes it.] */}
+                  <Route path="/ask" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
+                  <Route path="/ask/f/:folioId" element={<PageGate page="ask" legacy={<SommelierAI />} next={<AskNext />} />} />
+                  <Route path="/sommelier" element={<Navigate to="/ask" replace state={{ from: 'sommelier' }} />} />
                   <Route path="/services" element={<Navigate to="/settings?tab=services" replace />} />
                   
                   {/* Dev/Test Pages */}

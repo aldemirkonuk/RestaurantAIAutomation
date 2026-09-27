@@ -28,6 +28,12 @@ ADR 0149 row 54 (2026-09-26) added two more checks, both solve-it-once:
     Settings page hard-codes (FeaturesSection.tsx) must be a line that still
     reads `checkFeatureFlag`. This anchor was unguarded before this row (it
     had already drifted once, unnoticed, to a stale line).
+    [2026-09-27, merging main: main dropped the line number from
+    FeaturesSection.tsx for a symbolic `useMudavymDesign.ts · checkFeatureFlag`
+    (#474's train). The check now accepts either shape: the symbolic name must
+    still exist in the hook as a `.checkFeatureFlag(` call, and a numeric
+    anchor, if one is ever reintroduced, must still read `checkFeatureFlag`.
+    Neither shape present is CANNOT CHECK (exit 2), never a silent pass.]
 """
 from __future__ import annotations
 
@@ -41,6 +47,9 @@ REGISTRY = ROOT / "apps/api-gateway/src/settings/feature-flag-registry.ts"
 USE_MUDAVYM_DESIGN = ROOT / "apps/web/src/lib/mudavym/useMudavymDesign.ts"
 FLIP_SCRIPT = ROOT / "scripts/flip_mudavym_design_flags.py"
 FEATURES_SECTION = ROOT / "apps/web/src/pages/settings/next/FeaturesSection.tsx"
+# The line-number-free anchor main's FeaturesSection.tsx carries since #474's
+# train (2026-09-27): the file and the call, never a line.
+SYMBOLIC_FEATURES_ANCHOR = "useMudavymDesign.ts · checkFeatureFlag"
 
 # What counts as "code that branches on a flag" at the cited line. Keyed by
 # anchor file so new families state their expectation explicitly.
@@ -241,12 +250,22 @@ def check_features_section_anchor() -> list[str]:
         fail_cannot_check(f"{FEATURES_SECTION} not found")
     section_src = FEATURES_SECTION.read_text(encoding="utf-8")
     line_nos = sorted(set(int(n) for n in re.findall(r"useMudavymDesign\.ts:(\d+)", section_src)))
-    if not line_nos:
-        fail_cannot_check("no useMudavymDesign.ts:N anchor found in FeaturesSection.tsx — shape changed?")
+    symbolic = SYMBOLIC_FEATURES_ANCHOR in section_src
+    if not line_nos and not symbolic:
+        fail_cannot_check(
+            "no useMudavymDesign.ts:N or symbolic "
+            f"{SYMBOLIC_FEATURES_ANCHOR!r} anchor found in FeaturesSection.tsx — shape changed?"
+        )
     if not USE_MUDAVYM_DESIGN.is_file():
         fail_cannot_check(f"{USE_MUDAVYM_DESIGN} not found")
-    content = USE_MUDAVYM_DESIGN.read_text(encoding="utf-8").splitlines()
+    hook_src = USE_MUDAVYM_DESIGN.read_text(encoding="utf-8")
+    content = hook_src.splitlines()
     bad: list[str] = []
+    if symbolic and ".checkFeatureFlag(" not in hook_src:
+        bad.append(
+            f"FeaturesSection.tsx names {SYMBOLIC_FEATURES_ANCHOR!r}, but useMudavymDesign.ts "
+            "no longer calls .checkFeatureFlag( — the Settings page names a gate that is gone"
+        )
     for line_no in line_nos:
         if line_no < 1 or line_no > len(content):
             bad.append(f"FeaturesSection.tsx cites useMudavymDesign.ts:{line_no}, past EOF ({len(content)} lines)")

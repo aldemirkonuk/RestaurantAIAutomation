@@ -104,6 +104,31 @@ export const MUDAVYM_PAGES = [
   // [2026-09-25: superseded — now in LIVE_PAGES, live for every house in
   // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
+  // ADR 0160 §113 / ADR 0165 (2026-09-25). `/promotions`, sketch 113
+  // direction B with C's density. Held back from LIVE_PAGES: flag-gated on
+  // `mudavym_design_promotions`, OFF by default (20261015000000), `legacy`
+  // is today's three-tab Promotions page, unchanged. Dark until the founder
+  // turns it on — the two drawings ADR 0160 still owes (the bundle shape,
+  // B's sized boxes at C's 10+ density) are sketch 124, not built.
+  // [CORRECTED 2026-09-27, ADR 0149 row 54: both halves are stale. Sketch 124
+  // was answered (A · The Band, the tray) and built on PR #474 — ADR 0160
+  // §113's "ANSWERED and BUILT 2026-09-25" bracket, CLAIMS
+  // `PROMOTIONS-BAND-AND-TRAY-BUILT`. And `promotions` is no longer held back:
+  // founder item 53 (2026-09-25, round 8, "Live in code at cutover
+  // (Recommended)") put it in LIVE_PAGES below, live for every house in code;
+  // the 20261015000000 column stays, unread.]
+  'promotions',
+  // ADR 0160 §112 (/vendor-prices). Flag-gated, OFF by default, NOT in
+  // LIVE_PAGES — the founder flips it per house (column: 20261022000000).
+  // [CORRECTED 2026-09-27, ADR 0149 row 54: now in LIVE_PAGES, live for every
+  // house in code — founder item 53 ("Live in code at cutover
+  // (Recommended)"), which supersedes the per-house flip. Its precondition
+  // (ADR 0160 §112, answer 30: fork 6(a)'s provenance lands first) is PR
+  // #482, merged. The 20261022000000 column stays, unread.]
+  'vendor_prices',
+  // ADR 0145 `/ask` (2026-09-25 amendment): live in code from day one (Q2); no
+  // column exists. `legacy` is the retired /sommelier chat, until the cutover.
+  'ask',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
@@ -129,22 +154,44 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * which row a house has, or whether it has one. Their three columns stay,
  * unread (ADR 0149 never deletes a column).]
  *
- * [2026-09-26, ADR 0149 row 54: `receiving` (the desk) joined on the
- * founder's 2026-09-22 page-gap Q2/Q4 — the same basis as the bracket above,
- * not founder item 53 (that item covers only `promotions` and
- * `vendor_prices`, tracked separately) — now that its sketch review closed
- * with Approach 1 (#480) and the history-from-door-receipts answer of
- * 2026-09-25. Production had `receiving` ON for 1 of 14 houses (census J1);
- * in code it is now on for every house, existing or new. Its column stays,
- * unread.]
+ * [2026-09-25, ADR 0145's 2026-09-25 amendment: `ask` joined on the same Q2.]
  *
- * 24 keys. Held back, still flag-gated: `recommendations` and `arrival` (the
- * /get-started book, whose `legacy` slot is the ADR 0213 plan of record — OFF
- * until deliberately flipped). `MUDAVYM_PAGES.length` is 26;
+ * [2026-09-25, lane W3-recs, ADR 0160 §108's round-5 bracket:
+ * `recommendations` joined — 25 keys, with `ask`. §108 held it dark "pending
+ * sketch 122"; the founder picked sketch 122 direction B and answered its
+ * questions 2-10 the same day, so the same Q2/Q4 rule applies. Its column
+ * stays, unread.]
+ *
+ * [2026-09-26, lane W4-promos-filters, PR #474, ADR 0160 §113's round-6
+ * bracket: `promotions` stays held back, flag-gated on
+ * `mudavym_design_promotions` — dark until the founder turns it on.
+ * `MUDAVYM_PAGES.length` is 28.]
+ *
+ * 24 keys [25 since the first bracket above]. Held back, still flag-gated:
+ * `receiving`, `arrival` (the /get-started book, whose `legacy` slot is
+ * the ADR 0213 plan of record — OFF until deliberately flipped)
+ * [`recommendations` was the third until the first bracket above] and
+ * `promotions` (since the second bracket above).
  * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.
+ *
+ * [merged 2026-09-27, PR #473 x main: `vendor_prices` (this PR) and `ask`
+ * (ADR 0145 amendment) were independent additions at the same list position;
+ * both are kept, so `MUDAVYM_PAGES.length` moves from 27 to 28.]
+ *
+ * [2026-09-27, ADR 0149 row 54 — this supersedes every "held back" sentence
+ * above except `arrival`'s. `receiving` (the desk, route `/receiving`, not the
+ * door) joined on the founder's 2026-09-22 page-gap Q2/Q4 — the same basis as
+ * the 2026-09-25 bracket, not item 53 — its sketch review closed with
+ * Approach 1 (#480); production had it ON for 1 of 14 houses (census J1).
+ * `promotions` and `vendor_prices` joined on founder item 53 (2026-09-25,
+ * round 8, "Live in code at cutover (Recommended)"; rejected "Promotions
+ * only", "Keep both dark"): every house, existing or new. Their three columns
+ * stay, unread. `MUDAVYM_PAGES.length` is 29 (the "28" above missed that
+ * `promotions` and `vendor_prices` both landed); LIVE_PAGES is 28 keys; the
+ * one page still held back, flag-gated, is `arrival`.]
  */
 export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'dashboard',
@@ -170,7 +217,11 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'shell',
   'admin',
   'authorize_integration',
+  'ask',
+  'recommendations',
   'receiving',
+  'promotions',
+  'vendor_prices',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

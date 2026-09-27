@@ -17,7 +17,8 @@ interface ApprovalOptions {
 }
 
 interface ListConversationsOptions {
-  restaurantId?: string;
+  /** The caller's house. Required: a list without one is refused, never unfiltered. */
+  restaurantId: string;
   providerId?: string;
   orderId?: string;
   orderNumber?: string;
@@ -32,6 +33,12 @@ interface ListConversationsOptions {
   month?: string;
   search?: string;
   status?: string;
+  /**
+   * The role the caller's token names in THIS house (ADR 0162). A caller who
+   * omits it is treated as the LEAST trusted role, never the most — see
+   * `isOwnerOrManager` below.
+   */
+  callerRole?: string | null;
   page: number;
   limit: number;
   sortBy: string;
@@ -45,6 +52,65 @@ const ALLOWED_SENTIMENTS = new Set([
   "unclassified",
 ]);
 const ALLOWED_DIRECTIONS = new Set(["inbound", "outbound"]);
+
+const OWNER_MANAGER_ROLES = new Set(["owner", "manager"]);
+
+/** The role ADR 0167 / ADR 0230 admit to a credit-claim letter's own figures. */
+function isOwnerOrManager(role: string | null | undefined): boolean {
+  return (
+    typeof role === "string" && OWNER_MANAGER_ROLES.has(role.toLowerCase())
+  );
+}
+
+/**
+ * `HOUSE_DRAFT` and `HOUSE_CANCELLED` (`communications/letters/house-letters.service.ts`
+ * `LETTER_STATUS`) are an undecided or discarded credit-claim letter, carrying
+ * the same claimed dollar amount, reason and invoice/order numbers ADR 0167
+ * already refuses staff on the credit ledger itself (`GET /procurement/credits`).
+ * This table is a general house/vendor conversation log every role may read;
+ * only these two statuses are ever withheld, and only from a caller who is not
+ * owner or manager (PR #476 audit round 2, R1b — `GET /conversations` and its
+ * siblings carried no role gate at all, so a staff member could read a
+ * manager's credit draft by this door and, chained with the letter route,
+ * hijack and send it).
+ *
+ * Applied as two separate `.or()` calls, ANDed by PostgREST, rather than one
+ * `.not("status", "in", ...)`: `status` is nullable (every AI-path row and
+ * every legacy conversation carries no status at all), and `neq` against a
+ * NULL evaluates to NULL — i.e. EXCLUDED — which would silently drop most of
+ * this table's rows for every non-owner/manager caller. Same idiom as
+ * `procurement.service.ts`'s `getConversationHistory`.
+ */
+const WITHHOLD_HOUSE_DRAFT = "status.is.null,status.neq.HOUSE_DRAFT";
+const WITHHOLD_HOUSE_CANCELLED = "status.is.null,status.neq.HOUSE_CANCELLED";
+
+/**
+ * The four `LETTER_STATUS` words only a house letter carries
+ * (`communications/letters/house-letters.service.ts`). Its fifth, `SENT`, is
+ * shared with AI-path rows and so is not here — `approveConversation` catches
+ * a sent house letter by `outbound_email_type` instead. Copied, not imported,
+ * so this module does not load the letters service; the spec pins the two
+ * lists together.
+ */
+export const HOUSE_LETTER_STATUSES: ReadonlySet<string> = new Set([
+  "HOUSE_DRAFT",
+  "HOUSE_QUEUED",
+  "HOUSE_CANCELLED",
+  "HOUSE_FAILED",
+]);
+
+function houseLetterApproveRefusal(status: string | null | undefined): string {
+  switch (status) {
+    case "HOUSE_DRAFT":
+      return "This is a drafted credit-claim letter, not a vendor reply — ask the vendor before there is anything to approve.";
+    case "HOUSE_CANCELLED":
+      return "This credit-claim letter was discarded and cannot be approved.";
+    case "HOUSE_QUEUED":
+      return "This letter is already queued to send from Communications — approving it here would send it twice.";
+    default:
+      return "This is a letter the house sends from Communications, not a vendor reply — there is nothing to approve here.";
+  }
+}
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -200,12 +266,61 @@ export class ConversationsService {
     return {};
   }
 
+  /**
+   * The order named in a by-order read is this house's, or the read is a 404.
+   * `procurement_orders.restaurant_id` is NOT NULL, so no order is shared. A
+   * missing id and another house's id answer the same, so the answer cannot
+   * confirm an id; a failed read throws, so it is a 500 and never an empty list
+   * (ADR 0147; ADR 0171).
+   */
+  async assertOrderInHouse(orderId: string, restaurantId: string) {
+    this.requireHouse(restaurantId);
+    if (!UUID_RE.test(orderId)) throw new NotFoundException("Order not found");
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("id")
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(`could not read the order's house: ${error.message}`);
+    }
+    if (!data) throw new NotFoundException("Order not found");
+  }
+
+  /**
+   * The vendor named in a by-provider read is this house's, or the read is a
+   * 404 — the same check the provider-intelligence routes make (PR #416). A
+   * vendor row with no house is not any house's (founder, 2026-09-25: each
+   * house owns its vendor rows), so it is a 404 here too.
+   */
+  async assertProviderInHouse(providerId: string, restaurantId: string) {
+    this.requireHouse(restaurantId);
+    if (!UUID_RE.test(providerId)) {
+      throw new NotFoundException("Vendor not found");
+    }
+    const { data, error } = await this.databaseService.supabase
+      .from("providers")
+      .select("id")
+      .eq("id", providerId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(`could not read the vendor's house: ${error.message}`);
+    }
+    if (!data) throw new NotFoundException("Vendor not found");
+  }
+
   // ── New: Listing & Filtering ──────────────────────────────────────
 
   /**
-   * List conversations with comprehensive filtering and pagination
+   * List this house's conversations with filtering and pagination. The house is
+   * required and always applied: this used to filter `if (options.restaurantId)`,
+   * so a caller that passed none (by-order, by-provider, a session naming no
+   * house) read every house's vendor messages.
    */
   async listConversations(options: ListConversationsOptions) {
+    const restaurantId = this.requireHouse(options.restaurantId);
     try {
       const { page, limit, sortBy, sortOrder } = options;
       const offset = (page - 1) * limit;
@@ -224,9 +339,12 @@ export class ConversationsService {
           { count: "exact" },
         );
 
-      // Apply filters
-      if (options.restaurantId) {
-        query = query.eq("restaurant_id", options.restaurantId);
+      // Apply filters. The house first, unconditionally, then the role —
+      // also unconditionally, never behind an opt-in filter a caller could
+      // omit (ADR 0167/0230; see `isOwnerOrManager` above).
+      query = query.eq("restaurant_id", restaurantId);
+      if (!isOwnerOrManager(options.callerRole)) {
+        query = query.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED);
       }
       if (options.providerId) {
         query = query.eq("provider_id", options.providerId);
@@ -382,6 +500,12 @@ export class ConversationsService {
         p_date_to: window.to,
         p_limit: limit,
         p_offset: (page - 1) * limit,
+        // ADR 0167/0230: withheld INSIDE the RPC (migration 20261016000000),
+        // so the thread count, first/last times, search and paging never see
+        // a HOUSE_DRAFT/HOUSE_CANCELLED letter a non-owner/manager may not.
+        // Filtering the messages below alone would still let `search` find a
+        // draft's amount and count draft-only threads (PR #476 audit, 9d04c0fb6).
+        p_withhold_house_letters: !isOwnerOrManager(options.callerRole),
       });
 
     if (threadError) {
@@ -404,7 +528,7 @@ export class ConversationsService {
       };
     }
 
-    const { data, error } = await this.databaseService.supabase
+    let messagesQuery = this.databaseService.supabase
       .from("procurement_conversations")
       .select(
         `
@@ -414,8 +538,18 @@ export class ConversationsService {
       `,
       )
       .eq("restaurant_id", options.restaurantId)
-      .in("thread_key", keys)
-      .order("created_at", { ascending: false });
+      .in("thread_key", keys);
+    // A thread the RPC returned may still hold a withheld letter (a vendor
+    // reply beside a draft): every message of the thread is fetched here, so
+    // the same rule is applied again to the messages themselves.
+    if (!isOwnerOrManager(options.callerRole)) {
+      messagesQuery = messagesQuery
+        .or(WITHHOLD_HOUSE_DRAFT)
+        .or(WITHHOLD_HOUSE_CANCELLED);
+    }
+    const { data, error } = await messagesQuery.order("created_at", {
+      ascending: false,
+    });
 
     if (error) {
       this.logger.error(`List thread messages error: ${error.message}`);
@@ -441,9 +575,18 @@ export class ConversationsService {
   }
 
   /**
-   * Get a full conversation thread by threadId
+   * Get a full conversation thread by threadId.
+   *
+   * `callerRole` is the role in THIS house (ADR 0162). A caller who is not
+   * owner or manager never receives a `HOUSE_DRAFT`/`HOUSE_CANCELLED`
+   * credit-claim letter's message (ADR 0167/0230; PR #476 audit, 9d04c0fb6);
+   * omitting it is the least trusted case, never the most.
    */
-  async getThread(threadId: string, restaurantId: string) {
+  async getThread(
+    threadId: string,
+    restaurantId: string,
+    callerRole?: string | null,
+  ) {
     try {
       const select = `
           *,
@@ -454,11 +597,16 @@ export class ConversationsService {
       // Tenant scope is mandatory: thread keys are derived from Gmail thread ids, so
       // without this any authenticated user could read another restaurant's entire
       // negotiation history by guessing or replaying a key.
-      const scoped = () =>
-        this.databaseService.supabase
+      const withhold = !isOwnerOrManager(callerRole);
+      const scoped = () => {
+        const q = this.databaseService.supabase
           .from("procurement_conversations")
           .select(select)
           .eq("restaurant_id", restaurantId);
+        return withhold
+          ? q.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED)
+          : q;
+      };
 
       // thread_key is the durable identity. Older callers (and saved links) may still
       // pass an order UUID, so fall back to order_id when the key matches nothing.
@@ -509,19 +657,32 @@ export class ConversationsService {
   }
 
   /**
-   * Regenerate summary for a conversation's thread
+   * Regenerate summary for a conversation's thread.
+   *
+   * A caller who is not owner or manager is answered "not found" for a
+   * `HOUSE_DRAFT`/`HOUSE_CANCELLED` credit-claim letter, exactly as
+   * `getConversation` answers (ADR 0167/0230; PR #476 audit, 9d04c0fb6).
    */
-  async regenerateSummary(conversationId: string, restaurantId: string) {
+  async regenerateSummary(
+    conversationId: string,
+    restaurantId: string,
+    callerRole?: string | null,
+  ) {
     this.requireHouse(restaurantId);
     try {
       // Get the thread_id for this conversation — this house's only.
       if (!UUID_RE.test(conversationId)) throw this.notFound();
-      const { data: conv, error } = await this.databaseService.supabase
+      let convQuery = this.databaseService.supabase
         .from("procurement_conversations")
         .select("id, order_id")
         .eq("id", conversationId)
-        .eq("restaurant_id", restaurantId)
-        .maybeSingle();
+        .eq("restaurant_id", restaurantId);
+      if (!isOwnerOrManager(callerRole)) {
+        convQuery = convQuery
+          .or(WITHHOLD_HOUSE_DRAFT)
+          .or(WITHHOLD_HOUSE_CANCELLED);
+      }
+      const { data: conv, error } = await convQuery.maybeSingle();
 
       if (error) throw new Error(error.message);
       if (!conv) throw this.notFound();
@@ -557,19 +718,17 @@ export class ConversationsService {
   /**
    * Get aggregated conversation statistics
    */
-  async getStats(restaurantId?: string) {
+  async getStats(restaurantId: string) {
+    // Required, like every other read here: `if (restaurantId)` counted every
+    // house's messages for a session that named none.
+    this.requireHouse(restaurantId);
     try {
-      let baseQuery = this.databaseService.supabase
+      const { data, error } = await this.databaseService.supabase
         .from("procurement_conversations")
         .select(
           "id, channel, direction, provider_id, detected_sentiment, created_at",
-        );
-
-      if (restaurantId) {
-        baseQuery = baseQuery.eq("restaurant_id", restaurantId);
-      }
-
-      const { data, error } = await baseQuery;
+        )
+        .eq("restaurant_id", restaurantId);
 
       if (error) {
         throw new Error(error.message);
@@ -625,16 +784,20 @@ export class ConversationsService {
 
   /**
    * Get conversation by ID, if it is this house's. Null is "not found" — the
-   * same answer for a missing id and another house's; a failed read throws.
+   * same answer for a missing id and another house's, and now also for a
+   * `HOUSE_DRAFT`/`HOUSE_CANCELLED` credit-claim letter when `callerRole` is
+   * not owner or manager (ADR 0167/0230; PR #476 audit round 2, R1b) — a
+   * failed read throws instead.
    */
   async getConversation(
     conversationId: string,
     restaurantId: string,
+    callerRole?: string | null,
   ): Promise<any | null> {
     this.requireHouse(restaurantId);
     if (!UUID_RE.test(conversationId)) return null;
     try {
-      const { data, error } = await this.databaseService.supabase
+      let query = this.databaseService.supabase
         .from("procurement_conversations")
         .select(
           `
@@ -656,8 +819,11 @@ export class ConversationsService {
         `,
         )
         .eq("id", conversationId)
-        .eq("restaurant_id", restaurantId)
-        .maybeSingle();
+        .eq("restaurant_id", restaurantId);
+      if (!isOwnerOrManager(callerRole)) {
+        query = query.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED);
+      }
+      const { data, error } = await query.maybeSingle();
 
       if (error) {
         this.logger.error(`Supabase error: ${error.message}`);
@@ -723,6 +889,7 @@ export class ConversationsService {
     conversationId: string,
     restaurantId: string,
     options: ApprovalOptions,
+    callerRole?: string | null,
   ): Promise<{ success: boolean; messageSent: boolean; error?: string }> {
     this.requireHouse(restaurantId);
     try {
@@ -743,12 +910,50 @@ export class ConversationsService {
         updates.manager_notes = options.managerNotes;
       }
 
-      // Calculate time to approval
+      // Calculate time to approval. The controller route this serves is
+      // already `@Roles("owner","manager")`-gated, so `callerRole` is passed
+      // through rather than left to default: the read withholds nothing
+      // because the caller is verified, not because it forgot to ask. A house
+      // letter it returns is refused just below.
       const conversation = await this.getConversation(
         conversationId,
         restaurantId,
+        callerRole,
       );
       if (!conversation) throw this.notFound();
+
+      // PR #476 audit (Train 5 BLOCK, tightened in round 6): "approve" here
+      // means "publish conversation.approved", which resumes the procurement
+      // agent and has it send the vendor message itself. A house letter
+      // (`outbound_email_type: "HOUSE_LETTER"`, ADR 0118 composer / ADR 0230
+      // credit-claim draft) is never sent that way: it leaves only through
+      // house-letters' own dispatcher, which reads HOUSE_QUEUED after the
+      // undo window. So no house letter, in any status, is a vendor reply
+      // waiting on this decision:
+      //   - HOUSE_DRAFT: nobody has asked to send it yet;
+      //   - HOUSE_QUEUED: already scheduled — approving it would send it a
+      //     second time, around the undo window;
+      //   - HOUSE_CANCELLED: discarded;
+      //   - HOUSE_FAILED / SENT: the dispatcher already tried or delivered.
+      // Refused on either signal — the type column, or any of the four
+      // HOUSE_* words in LETTER_STATUS (house-letters.service.ts) — so a row
+      // carrying one without the other is still caught. SENT is not in the
+      // status set because AI-path rows use it too; a SENT house letter is
+      // caught by its type. The agent refuses the same four words when it
+      // claims a send (provider_conversation_agent.py
+      // `_HOUSE_LETTER_STATUSES`), so a conversation.approved that reaches it
+      // by any other publisher cannot send a house letter either.
+      if (
+        conversation.outbound_email_type === "HOUSE_LETTER" ||
+        HOUSE_LETTER_STATUSES.has(conversation.status)
+      ) {
+        return {
+          success: false,
+          messageSent: false,
+          error: houseLetterApproveRefusal(conversation.status),
+        };
+      }
+
       if (conversation.paused_at) {
         const pausedAt = new Date(conversation.paused_at);
         const now = new Date();

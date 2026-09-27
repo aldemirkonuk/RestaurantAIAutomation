@@ -79,7 +79,8 @@ FLAGS_TABLE = "restaurant_feature_flags"
 SETTINGS_ROW_FLAG_NAME = "restaurant_settings"
 AUDIT_TABLE = "system_audit_log"
 
-# The twenty-one pages of ADR 0044 + 0114 + 0133 (logs) + 0143 (admin),
+# The twenty-three pages of ADR 0044 + 0114 + 0133 (logs) + 0143 (admin) + 0165 (promotions)
+# + 0160 §112 (vendor_prices, added 2026-09-27),
 # in MUDAVYM_PAGES order (apps/web/src/lib/mudavym/useMudavymDesign.ts).
 # A slug not in this list is a typo, not a page; the script refuses it rather
 # than inventing a column. (shell / help live only in MUDAVYM_PAGES — shell is
@@ -111,6 +112,16 @@ PAGES: tuple[str, ...] = (
     # ADR 0143 — the Mudavym admin desk. [2026-09-25: live in code now — see
     # LIVE_IN_CODE below; still a known slug so a flip of it reports NO-OP.]
     "admin",
+    # ADR 0160 §113 / ADR 0165 (2026-09-25) — /promotions, flag-gated and OFF
+    # by default (column 20261015000000). Not live in code: a flip is real.
+    # [2026-09-27, ADR 0149 row 54: live in code now (founder item 53) — see
+    # LIVE_IN_CODE below; still a known slug so a flip of it reports NO-OP.]
+    "promotions",
+    # ADR 0160 §112 — /vendor-prices (column 20261022000000). [Added
+    # 2026-09-27, ADR 0149 row 54: PR #473 enrolled the page without a slug
+    # here, so a flip of it failed "not a Mudavym page". It is live in code
+    # now (founder item 53); the slug exists so that flip reports NO-OP.]
+    "vendor_prices",
 )
 
 # ADR 0149 row 36 (2026-09-17, "16 locked pages"), live-review.md defect 2.
@@ -152,11 +163,21 @@ LIVE_IN_CODE: frozenset[str] = frozenset(
         # never slugs here (see PAGES).
         "settings",
         "admin",
-        # ADR 0149 row 54 (2026-09-26): the receiving DESK joins on the
+        # [2026-09-25, lane W3-recs] `recommendations` joins LIVE_PAGES on ADR
+        # 0160 §108's round-5 bracket (sketch 122 fully answered); a flip of
+        # its column is now a no-op like the rest.
+        "recommendations",
+        # ADR 0149 row 54 (2026-09-26/27): the receiving DESK joins on the
         # founder's 2026-09-22 page-gap Q2/Q4 answers, its sketch review
         # closed (Approach 1, #480). `receiving_door` above is a different
         # page and was already live.
         "receiving",
+        # ADR 0149 row 54 (2026-09-27): founder item 53 (2026-09-25, round 8,
+        # "Live in code at cutover (Recommended)") — promotions and vendor
+        # prices are live in code for every house; a flip of either column is
+        # now a no-op like the rest.
+        "promotions",
+        "vendor_prices",
     }
 )
 
@@ -322,18 +343,24 @@ def self_test() -> int:
             "dashboard", "orders", "receiving_door", "providers", "communications",
             "team", "inventory", "receipts", "documents_reports", "document",
             "reports", "calendar", "profile", "connections", "notifications", "logs",
-            "cellar", "settings", "admin", "receiving",
+            "cellar", "settings", "admin", "recommendations", "receiving",
+            "promotions", "vendor_prices",
         },
-        "LIVE_IN_CODE is the sixteen ADR 0149 row 36 names plus cellar, settings, admin and receiving",
+        "LIVE_IN_CODE is the sixteen ADR 0149 row 36 names plus cellar, settings, admin, "
+        "recommendations, receiving, promotions and vendor_prices",
     )
-    check(len(LIVE_IN_CODE) == 20, "twenty live-in-code pages")
+    check(len(LIVE_IN_CODE) == 23, "twenty-three live-in-code pages")
     check(set(LIVE_IN_CODE) <= set(PAGES), "every live-in-code slug is a known page")
     check("receiving" in LIVE_IN_CODE, "the receiving desk is live in code since 2026-09-26 (ADR 0149 row 54)")
+    check(
+        {"promotions", "vendor_prices"} <= LIVE_IN_CODE,
+        "promotions and vendor_prices are live in code since 2026-09-27 (founder item 53, ADR 0149 row 54)",
+    )
     if failures:
         for f in failures:
             print(f"SELF-TEST FAIL: {f}")
         return 1
-    print("self-test: 14 checks pass, no database touched")
+    print("self-test: 15 checks pass, no database touched")
     return 0
 
 

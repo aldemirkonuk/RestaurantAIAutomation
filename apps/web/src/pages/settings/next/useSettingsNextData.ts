@@ -51,6 +51,14 @@ import {
   type PosStatusResponse,
 } from '@/services/api/posHub';
 import {
+  connectMyCalendar,
+  getMyCalendarLink,
+  renewMyCalendarLink,
+  stopMyCalendarLink,
+  subscribeAddress,
+  type MyCalendarLink,
+} from '@/services/api/calendar';
+import {
   fetchNotificationPreferences,
   updateNotificationPreferences,
   type NotificationPreferences,
@@ -159,6 +167,13 @@ export interface TeamRegister {
   invites: PendingInviteRow[] | null;
   invitesDenied: boolean;
 }
+
+/**
+ * The reader's OWN calendar link (ADR 0111, review trail 2026-09-21: "they
+ * can connect their own"). The read never carries the address; it is shown
+ * once, from `icalIssued`, on the answer to the act that made it.
+ */
+export type IcalRegister = MyCalendarLink;
 
 export interface ChainRow {
   id: string;
@@ -455,6 +470,42 @@ export interface SetDigestBody {
   recipientEmail?: string | null;
 }
 
+/**
+ * The clock this house keeps, as `GET /settings/time-zone` answers it (ADR
+ * 0207, round 3; the founder, 2026-09-21: "Add it to Settings"). Mirrors
+ * `HouseTimeZoneReadout`. `zone: null` is an unanswered question; `readable:
+ * false` a failed read; `unreadZone` a value the server cannot resolve, kept
+ * verbatim and never read as a zone.
+ */
+export interface HouseTimeZoneRegister {
+  restaurantId: string;
+  zone: string | null;
+  unreadZone: string | null;
+  country: string | null;
+  readable: boolean;
+  reason: string | null;
+  statedAt: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+  audited?: boolean;
+  auditReason?: string | null;
+}
+
+/**
+ * Whether Jev reads this house's vendor mail, as `GET
+ * /settings/vendor-tone-scoring` answers it (ADR 0207, round 3). Off by
+ * default. `enabled: null` only with `readable: false` — never read as off.
+ */
+export interface HouseToneScoringRegister {
+  restaurantId: string;
+  enabled: boolean | null;
+  readable: boolean;
+  reason: string | null;
+  statedAt: string | null;
+  statedBy: { userId: string | null; name: string | null } | null;
+  audited?: boolean;
+  auditReason?: string | null;
+}
+
 export interface SetVendorTermsBody {
   deliveryWeekdays?: number[] | null;
   orderCutoffTime?: string | null;
@@ -554,10 +605,12 @@ export function useSettingsNextData() {
     return data ?? {};
   });
 
-  const ical = useRemote<{ token: string }>(tenantKey('calendar'), async () => {
-    const { data } = await apiClient.get<{ token: string }>('/calendar/ical-token');
-    return data;
-  });
+  // Read-only: a GET never makes a link (the defect this lane began with),
+  // and never carries the address. `icalIssued` holds the address in memory
+  // for the moment after `createIcal`/`regenerateIcal` made it, and nowhere else.
+  const ical = useRemote<IcalRegister>(tenantKey('calendar'), () => getMyCalendarLink());
+  const [icalIssued, setIcalIssued] = useState<string | null>(null);
+  useEffect(() => setIcalIssued(null), [rid]);
 
   const sender = useRemote<SenderIdentityRow | null>(tenantKey('email'), async () => {
     const { data } = await apiClient.get<SenderIdentityRow[]>(`/restaurants/${rid}/templates`);
@@ -643,6 +696,21 @@ export function useSettingsNextData() {
     return data;
   });
 
+  const houseTimeZone = useRemote<HouseTimeZoneRegister>(tenantKey('time-zone'), async () => {
+    const { data } = await apiClient.get<HouseTimeZoneRegister>('/settings/time-zone');
+    return data;
+  });
+
+  const houseToneScoring = useRemote<HouseToneScoringRegister>(
+    tenantKey('mail-reading'),
+    async () => {
+      const { data } = await apiClient.get<HouseToneScoringRegister>(
+        '/settings/vendor-tone-scoring',
+      );
+      return data;
+    },
+  );
+
   const ledger = useRemote<LedgerRegister>(tenantKey('ledger'), async () => {
     const { data } = await apiClient.get<LedgerRegister>('/settings-audit?limit=100');
     return data;
@@ -722,11 +790,34 @@ export function useSettingsNextData() {
     [writer],
   );
 
+  const createIcal = useCallback(
+    () =>
+      writer.run('ical-create', async () => {
+        const next = await connectMyCalendar();
+        ical.set(next);
+        setIcalIssued(next.issued ? subscribeAddress(next.issued) : null);
+      }),
+    [writer, ical],
+  );
+
   const regenerateIcal = useCallback(
     () =>
       writer.run('ical', async () => {
-        const { data } = await apiClient.post<{ token: string }>('/calendar/ical-token/regenerate');
-        ical.set(data);
+        const next = await renewMyCalendarLink();
+        ical.set(next);
+        setIcalIssued(next.issued ? subscribeAddress(next.issued) : null);
+      }),
+    [writer, ical],
+  );
+
+  const revokeIcal = useCallback(
+    () =>
+      writer.run('ical-revoke', async () => {
+        await stopMyCalendarLink();
+        setIcalIssued(null);
+        if (ical.data) {
+          ical.set({ ...ical.data, connected: false, createdAt: null, issuedAt: null, lastFetchedAt: null });
+        }
       }),
     [writer, ical],
   );
@@ -890,6 +981,39 @@ export function useSettingsNextData() {
     [writer, digest, rid],
   );
 
+  /**
+   * State the house's time zone — always a zone a person picked from the list;
+   * the page never writes one it derived. The server's answer replaces the
+   * register, so a write whose audit row failed shows it.
+   */
+  const saveTimeZone = useCallback(
+    (zone: string) =>
+      writer.run('time-zone', async () => {
+        const { data } = await apiClient.put<HouseTimeZoneRegister>('/settings/time-zone', {
+          zone,
+        });
+        if (data) houseTimeZone.set(data);
+        else houseTimeZone.reload();
+        ledger.reload();
+      }),
+    [writer, houseTimeZone, ledger],
+  );
+
+  /** Turn Jev's reading of vendor mail on or off — a person's press, never a default. */
+  const saveToneScoring = useCallback(
+    (enabled: boolean) =>
+      writer.run('mail-reading', async () => {
+        const { data } = await apiClient.put<HouseToneScoringRegister>(
+          '/settings/vendor-tone-scoring',
+          { enabled },
+        );
+        if (data) houseToneScoring.set(data);
+        else houseToneScoring.reload();
+        ledger.reload();
+      }),
+    [writer, houseToneScoring, ledger],
+  );
+
   const locations: RestaurantBranch[] = useMemo(
     () => availableRestaurants ?? [],
     [availableRestaurants],
@@ -904,14 +1028,16 @@ export function useSettingsNextData() {
     isOwner: role === 'owner',
     locations,
     refreshBranches,
-    team, flags, ical, sender, chains, pos, prefs, notif, integrations,
+    team, flags, ical, icalIssued, sender, chains, pos, prefs, notif, integrations,
     vendorTerms, thresholds, ledger, houseCurrency, houseCarryingCost, houseAskTraining,
+    houseTimeZone, houseToneScoring,
     hours, digest,
     writer,
-    saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, regenerateIcal,
+    saveFlag, savePrefs, saveNotif, saveSender, sendTestEmail, createIcal, regenerateIcal, revokeIcal,
     setMemberRole, removeMember, revokeInvite, disconnectIntegration,
     saveVendorTerms, saveThreshold, saveCurrency, saveCarryingCost, saveAskTraining,
     saveHours, saveDigest,
+    saveTimeZone, saveToneScoring,
   };
 }
 
