@@ -7,6 +7,7 @@ import {
   registersForLabel,
   REGISTER_IDS,
   tallyMenuLines,
+  unplacedMenuLines,
   type InferenceInput,
   type RegisterId,
   type StoredAnswer,
@@ -361,5 +362,46 @@ describe("tallyMenuLines", () => {
     // An empty menu IS a readable menu. Unreadable is the service's problem
     // (it returns null there); zero lines is a fact this function may state.
     expect(tallyMenuLines([])).toEqual({ read: 0, placed: 0, notPlaced: 0 });
+  });
+});
+
+/**
+ * OD-140 — the list behind the count (founder 2026-09-25: "Separate list
+ * endpoint"). The pure half: the list is exactly the lines `placeMenuLine`
+ * returns nothing for, and `notPlaced` is its length on every menu.
+ */
+describe("unplacedMenuLines", () => {
+  const MENUS: Array<Array<{ id: string; category: string | null; name: string | null }>> = [
+    [],
+    [
+      { id: "a", category: "Wines by the glass", name: "Barolo" },
+      { id: "b", category: "Kitchen", name: "Mixed olives" },
+      { id: "c", category: null, name: "Chalkboard special" },
+    ],
+    // The section wins over the name, and a silent section falls back to it —
+    // the two branches of placeMenuLine a hand-written filter would get wrong.
+    [
+      { id: "d", category: "Signature Cocktails", name: "Merlot Sour" },
+      { id: "e", category: "House Selection", name: "Draft Lager" },
+      { id: "f", category: "House Selection", name: "Grilled halloumi" },
+      { id: "g", category: "Whiskey & Rye", name: "Redbreast 12" },
+      { id: "h", category: "", name: "" },
+    ],
+  ];
+
+  it("returns exactly the lines placeMenuLine cannot place, in the order given", () => {
+    expect(unplacedMenuLines(MENUS[1]).map((l) => l.id)).toEqual(["b", "c"]);
+    expect(unplacedMenuLines(MENUS[2]).map((l) => l.id)).toEqual(["f", "h"]);
+    for (const menu of MENUS) {
+      for (const line of unplacedMenuLines(menu)) {
+        expect(placeMenuLine(line)).toEqual([]);
+      }
+    }
+  });
+
+  it("is the count: notPlaced === the list's length, on every menu", () => {
+    for (const menu of MENUS) {
+      expect(tallyMenuLines(menu).notPlaced).toBe(unplacedMenuLines(menu).length);
+    }
   });
 });
