@@ -13,14 +13,25 @@ item 54, 2026-09-26 round 8: "add an alerted_at timestamptz NULL column ... and
 fix _check_expiring_promos"). Both are fixed here, so the xfail this file used
 to pin is gone.
 
+PR #474 (lane W2-promos, /promotions rebuild) added a second ALTER the same
+week: `dismissed_at` / `dismissed_by` on provider_promotions, so a manager's
+dismissal is house-wide rather than per-browser (ADR 0144 §4). Its migration
+was renamed past #485's `alerted_at` migration during this PR's merge-train
+update (2026-09-27), keeping this PR's own two migrations (flag column, then
+dismissal) in their order. That puts `alerted_at` first even though the
+dismissal migration was written earlier; both are additive `if not exists`
+ALTERs, so the order between them changes nothing. The column set below
+carries both additions.
+
 The columns are read from the baseline migration, pinned to a static set so a
 parser drift cannot silently widen them, and every later migration is checked
-for an ALTER of the table -- except the one named addition below, whose added
-column is itself verified against the migration file rather than trusted by
-name. Then every query the promotion paths build is recorded, and each column
-it names — in a payload or in a filter — must be one the table has (baseline
-plus that one addition). A return-value test would pass against the broken
-code: every path swallows its error. So the assertions are about what is sent.
+for an ALTER of the table -- except the named additions below, whose added
+columns are themselves verified against their migration files rather than
+trusted by name. Then every query the promotion paths build is recorded, and
+each column it names — in a payload or in a filter — must be one the table
+has (baseline plus those additions). A return-value test would pass against
+the broken code: every path swallows its error. So the assertions are about
+what is sent.
 
 Run: cd services/agent-orchestrator && python -m pytest tests/test_conversation_agent_promotions_columns.py -v
 """
@@ -70,6 +81,9 @@ PROVIDER_PROMOTIONS_BASELINE_COLUMNS = frozenset(
 # test_the_named_additions_add_exactly_what_they_claim.
 PROVIDER_PROMOTIONS_ADDED_COLUMNS = {
     "20260928000000_a_promotion_remembers_being_alerted.sql": frozenset({"alerted_at"}),
+    "20261015000100_an_offer_dismissed_is_dismissed_for_the_house.sql": frozenset(
+        {"dismissed_at", "dismissed_by"}
+    ),
 }
 
 PROVIDER_PROMOTIONS_COLUMNS = frozenset(
