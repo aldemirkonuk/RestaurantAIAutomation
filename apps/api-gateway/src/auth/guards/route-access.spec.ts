@@ -93,11 +93,20 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // gained @Roles("owner", "manager") on four routes (the three credits
     // routes and the queue); the door, receivedSoFar and unverified routes in
     // ReceivingController stay open, on purpose (staff use them). A
-    // seventeenth is this PR's own change (PR #474, ADR 0124:357-362): the
+    // seventeenth is PR #474's own change (ADR 0124:357-362): the
     // new promotions controller gained @Roles("owner", "manager") on all
     // three of its routes (the read and the two dismiss/restore writes) —
     // this read carries what a vendor charges the house, the same reason
-    // /vendor-intel and the pricing column are gated.
+    // /vendor-intel and the pricing column are gated. An
+    // eighteenth, HouseLettersController, is PR #476's own audit fix (round
+    // 1, R1): `drafts` and `discard` carried only `JwtAuthGuard`, so any
+    // staff member could read a credit draft's claimed amount, reason and
+    // invoice/order numbers through this door, the same figures ADR 0167
+    // already refuses them on the ledger — closed with the identical
+    // @Roles("owner", "manager"). Every other route on this controller
+    // (sender, book, queued, templates, queue, cancel) is unchanged and
+    // stays "open": writing and sending a letter by hand was never gated by
+    // ADR 0167, which named only the credit ledger's own four routes.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -106,6 +115,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "common/orchestrator/prospects.controller.ts",
       "common/orchestrator/sender-trust.controller.ts",
       "communications/archive/house-mail-archive.controller.ts",
+      "communications/letters/house-letters.controller.ts",
       "conversations/conversations.controller.ts",
       "distributor-feed/distributor-feed.controller.ts",
       "house/house-counter.controller.ts",

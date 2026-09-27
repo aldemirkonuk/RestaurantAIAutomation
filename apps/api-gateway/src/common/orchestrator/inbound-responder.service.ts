@@ -1396,9 +1396,27 @@ Return ONLY a JSON object (no markdown, no prose) with exactly these keys:
     }
   }
 
+  /**
+   * `HOUSE_DRAFT` and `HOUSE_CANCELLED` (`communications/letters/house-letters.service.ts`
+   * `LETTER_STATUS`) are a credit-claim letter nobody has decided, or one
+   * discarded — neither ever reached the vendor. Labelling either "Us:" told
+   * the model a claim had been asked for when it had not, risking a reply
+   * that acts as if the vendor had already been chased (PR #476 audit round
+   * 2, R2b). Excluded here, not just relabelled: the model should reason from
+   * what was actually said, and an undecided draft was never said to anyone.
+   */
+  private static readonly UNSENT_STATUSES = new Set([
+    "HOUSE_DRAFT",
+    "HOUSE_CANCELLED",
+  ]);
+
   private buildTranscript(messages: any[]): string {
-    if (!messages.length) return "(no prior messages)";
-    return messages
+    const sent = messages.filter(
+      (m) =>
+        !InboundResponderService.UNSENT_STATUSES.has(String(m.status ?? "")),
+    );
+    if (!sent.length) return "(no prior messages)";
+    return sent
       .map((m) => {
         const who = m.direction === "inbound" ? `${"Supplier"}` : "Us";
         const body = (m.content || m.message_text || "").toString().trim();
