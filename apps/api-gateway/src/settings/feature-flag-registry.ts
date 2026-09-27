@@ -58,7 +58,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // flipping that on existing restaurants would silently stop vendor replies
     // being analysed at all.
     defaultValue: true,
-    readBy: "common/orchestrator/inbound-responder.service.ts:1003",
+    readBy: "common/orchestrator/inbound-responder.service.ts:1024",
   },
   {
     key: "enable_ai_autonomous_send",
@@ -66,13 +66,13 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // leaves for a vendor with no human approval. A restaurant gets that only
     // by deliberately asking for it.
     defaultValue: false,
-    readBy: "common/orchestrator/inbound-responder.service.ts:1027",
+    readBy: "common/orchestrator/inbound-responder.service.ts:1048",
   },
   {
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:216",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:229",
   },
   {
     key: "enable_house_inbox_read",
@@ -94,7 +94,20 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:216",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:229",
+  },
+  {
+    key: "mudavym_design_promotions",
+    // OFF by default: `/promotions` on Mudavym (ADR 0160 §113, sketch 113
+    // direction B with C's density; ADR 0165's sizing rule). Held back from
+    // LIVE_PAGES so every house keeps today's three-tab Promotions page until
+    // the founder turns this on — and it should not be turned on before
+    // "Who is writing" (PR #470) is live on /communications, because the
+    // legacy page is today's only home for Trusted senders and Prospects.
+    // Column added by 20261015000000, in the same change as this entry, so
+    // the Settings `.select()` of every ACTIVE key cannot 42703.
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:229",
   },
 ];
 

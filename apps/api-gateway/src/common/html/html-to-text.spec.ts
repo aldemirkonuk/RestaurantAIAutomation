@@ -120,4 +120,25 @@ describe("htmlToText", () => {
       expect(htmlToText("")).toBe("");
     });
   });
+  describe("hr and the inbound-mail options (ADR 0090 audit of PR #435 at e2d8ef93a)", () => {
+    it("breaks the line at an <hr>", () => {
+      expect(htmlToText("above<hr>below")).toBe("above\nbelow");
+    });
+
+    it("joins across inline tags by default, spaces them when asked", () => {
+      expect(htmlToText("$<b>18</b>.40")).toBe("$18.40");
+      expect(htmlToText("Hello<b>world</b>", 0, { spaceForInlineTags: true })).toBe(
+        "Hello world",
+      );
+    });
+
+    it("keeps paragraph gaps by default, one break per boundary when asked", () => {
+      expect(htmlToText("<p>A</p><p>B</p>")).toBe("A\n\nB");
+      expect(htmlToText("<p>A</p><p>B</p>", 0, { oneBreakPerBoundary: true })).toBe("A\nB");
+      // <br> always breaks, so an explicit empty line survives.
+      expect(
+        htmlToText("<div>A</div><div><br></div><div>B</div>", 0, { oneBreakPerBoundary: true }),
+      ).toBe("A\n\nB");
+    });
+  });
 });

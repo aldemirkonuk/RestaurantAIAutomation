@@ -117,9 +117,13 @@ describe('useMudavymDesign precedence', () => {
  * [2026-09-25, lane W3-recs: `recommendations` joins — ADR 0160 §108 is fully
  * answered (sketch 122 direction B, questions 2-10, round 5). Until now it
  * was the first of three held back.]
+ *
+ * [2026-09-26, lane W4-promos-filters, PR #474: `promotions` joins the held
+ * back set — ADR 0160 §113 / ADR 0165, dark until the founder turns
+ * `mudavym_design_promotions` on.]
  */
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
-  const HELD_BACK = ['arrival', 'receiving'] as const;
+  const HELD_BACK = ['arrival', 'receiving', 'promotions'] as const;
   const PROMOTED_2026_09_25 = [
     'shell',
     'admin',
@@ -132,10 +136,10 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
     expect(LIVE_PAGES.size).toBe(25);
-    expect(MUDAVYM_PAGES.length).toBe(27);
+    expect(MUDAVYM_PAGES.length).toBe(28);
   });
 
-  it('holds back arrival and receiving', () => {
+  it('holds back arrival, receiving and promotions', () => {
     for (const page of HELD_BACK) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated

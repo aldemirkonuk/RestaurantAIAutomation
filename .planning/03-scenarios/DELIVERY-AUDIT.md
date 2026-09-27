@@ -132,7 +132,11 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **160 as of 2026-09-27, on #440 (`fix/team-pay-defects`) merged onto `origin/main` ef8ecdf30** (`check_read_errors_not_swallowed.py` on that tree: 1774 files scanned, 160 sites, 160 baselined, 0 allowlisted): one below the 161 main carried at that merge (its line below); the 166 line below it was measured on an older base. Re-measure before citing.
+
 > **166 as of 2026-09-25, on #440 (`fix/team-pay-defects`) merged onto `origin/main` 4e7c5b5a6 (#412)** (`check_read_errors_not_swallowed.py` on that tree: 1656 files scanned, 166 sites, 166 baselined, 0 allowlisted). Both 167 lines below counted from 168: #412 retired `providers.service.ts` providers/existingProvider and ADR 0215 retires `schedule.service.ts` team_members/m. Re-measure before citing.
+
+> **161 as of 2026-09-26, on `feat/notifications-held-low-stock` (from main `387475342`)** (`check_read_errors_not_swallowed.py` on that tree: 161 sites, 161 baselined, 0 allowlisted): `low-stock-alerts.service.ts` `notification_preferences/data` retired — the low-stock preferences read now binds its error and throws, so the held queue can report "not known" instead of the 12:00 defaults (the senders still fall back to the defaults). Re-measure before citing.
 
 > **162 as of 2026-09-25, on `fix/sessions-follow-membership-r6` after merging main `4e7c5b5a6` (#412)** (`check_read_errors_not_swallowed.py` on that tree: 162 sites, 162 baselined, 0 allowlisted): the two lines below, combined — ADR 0164's five retirements and #412's one. Re-measure before citing.
 

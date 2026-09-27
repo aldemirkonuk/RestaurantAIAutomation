@@ -104,6 +104,13 @@ export const MUDAVYM_PAGES = [
   // [2026-09-25: superseded — now in LIVE_PAGES, live for every house in
   // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
+  // ADR 0160 §113 / ADR 0165 (2026-09-25). `/promotions`, sketch 113
+  // direction B with C's density. Held back from LIVE_PAGES: flag-gated on
+  // `mudavym_design_promotions`, OFF by default (20261015000000), `legacy`
+  // is today's three-tab Promotions page, unchanged. Dark until the founder
+  // turns it on — the two drawings ADR 0160 still owes (the bundle shape,
+  // B's sized boxes at C's 10+ density) are sketch 124, not built.
+  'promotions',
   // ADR 0145 `/ask` (2026-09-25 amendment): live in code from day one (Q2); no
   // column exists. `legacy` is the retired /sommelier chat, until the cutover.
   'ask',
@@ -140,10 +147,16 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * questions 2-10 the same day, so the same Q2/Q4 rule applies. Its column
  * stays, unread.]
  *
- * 24 keys [25 since the bracket above]. Held back, still flag-gated:
- * `receiving` and `arrival` (the /get-started book, whose `legacy` slot is
+ * [2026-09-26, lane W4-promos-filters, PR #474, ADR 0160 §113's round-6
+ * bracket: `promotions` stays held back, flag-gated on
+ * `mudavym_design_promotions` — dark until the founder turns it on.
+ * `MUDAVYM_PAGES.length` is 28.]
+ *
+ * 24 keys [25 since the first bracket above]. Held back, still flag-gated:
+ * `receiving`, `arrival` (the /get-started book, whose `legacy` slot is
  * the ADR 0213 plan of record — OFF until deliberately flipped)
- * [`recommendations` was the third until the bracket above]. `MUDAVYM_PAGES.length` is 27;
+ * [`recommendations` was the third until the first bracket above] and
+ * `promotions` (since the second bracket above).
  * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
