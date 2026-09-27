@@ -331,6 +331,9 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
       // The RPC's timestamptz bound gets end-of-day, not midnight — a bare
       // date would silently exclude nearly all of the period's last day.
       p_date_to: "2026-03-31T23:59:59.999",
+      // Unsent credit-claim letters are not conversations with a vendor
+      // (ADR 0230); the report says so rather than inheriting the default.
+      p_withhold_house_letters: true,
     });
     // The paper leg is tenant-scoped — dropping this .eq would be a
     // cross-tenant count leak, and no other assertion would notice.
