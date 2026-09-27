@@ -12,7 +12,7 @@ rebrand_strings: 5
 maturity: partial
 status: documented
 updated: 2026-08-26
-links: ["[[PAGE-CONTRACT]]", "[[onboarding]]", "[[verify-email]]", "[[dashboard]]", "[[inventory]]", "[[orders]]", "[[providers]]", "[[settings]]", "[[sommelier]]"]
+links: ["[[PAGE-CONTRACT]]", "[[onboarding]]", "[[verify-email]]", "[[dashboard]]", "[[inventory]]", "[[orders]]", "[[providers]]", "[[settings]]", "[[ask]]"]
 ---
 
 # /get-started
@@ -43,7 +43,7 @@ names for the folio-0 evidence files.]**
 - **Card: Create & track orders** → [[orders]] `/orders`
 - **Card: Add a vendor** → [[providers]] `/providers`
 - **Card: Invite your team** → [[settings]] `/settings?tab=team`
-- **Card: Wine Agent** → [[sommelier]] `/sommelier`
+- **Card: Wine Agent** → [[RETIRED|sommelier (retired 2026-09-25)]] `/sommelier` [2026-09-25: redirects to [[ask]] `/ask`]
 - **Card: Services & permissions** → [[settings]] `/settings?tab=services`
 
 ## 1. Purpose
