@@ -20,6 +20,13 @@ export class CreateFirstHouseDto {
   @IsOptional() @IsString() neighborhood?: string;
   @IsOptional() @IsEmail() restaurantEmail?: string;
   @IsOptional() @IsString() restaurantPhone?: string;
+
+  /**
+   * The browser's own zone (`Intl.DateTimeFormat().resolvedOptions()
+   * .timeZone`). `AuthService.createFirstHouse` re-validates it against
+   * `Intl` (`resolveSignUpTimezone`, `sign-up-timezone.ts`) and stores NULL
+   * for anything absent or not a real IANA identifier (item 62, 2026-09-27).
+   */
   @IsOptional() @IsString() timezone?: string;
   @IsOptional() @IsIn(ISO_4217_CODES as string[]) currency?: string;
 

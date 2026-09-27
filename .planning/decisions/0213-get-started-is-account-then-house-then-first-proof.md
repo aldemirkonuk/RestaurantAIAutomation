@@ -73,6 +73,38 @@ as the fallback the verdict named: unmatched / uncategorised / unknown → penci
   "Still open" as the get-started decision. Sketch 123 draws the lock; 121/122
   stay as research records.
 
+**[ITEM 62, 2026-09-27 — row 8 ("TZ ... derived, shown, never asked as
+blanks") tightened on BOTH tenant-creating routes. Founder verbatim, item 62:
+*"Browser zone, else none (Recommended)"*; rejected "Save nothing" (would
+discard a good browser answer) and "Keep New York default" (the fault ADR
+0116 had already removed from `restaurants.timezone` itself — the column has
+carried no default and stayed nullable since
+`20260903170000_a_default_is_not_an_answer.sql`, so no migration was needed
+here). Until this change, "derived" was true only in the sense that a value
+always arrived — `AuthService.registerRestaurant` wrote `dto.timezone ||
+"America/New_York"` for the legacy route this ADR's Consequences names, an
+application-level re-invention of the exact fabricated-default fault the
+column-level fix had removed one layer down. `createFirstHouse` (the route
+this ADR actually put `/get-started` on) had no such fallback but also no
+validation, so a malformed client-sent string would have been stored as a
+house's clock, unread by `Intl` anywhere in the write path.**
+**Both routes now call one function, `resolveSignUpTimezone`
+(`apps/api-gateway/src/auth/sign-up-timezone.ts`): the caller's zone if
+`Intl.DateTimeFormat` recognises it as a real IANA identifier, `null`
+otherwise — never a substituted default, never an untrusted string. `null`
+is not a new case for the rest of the product to learn: the low-stock
+digest's UTC fallback and its "no time zone set yet" line (item 61, PR #488)
+already exist for exactly this state.**
+**The web side (`Register.tsx`, `GetStarted.tsx`, `AuthContext.tsx`)
+computed the "derived" zone with a bare
+`Intl.DateTimeFormat().resolvedOptions().timeZone` — including once at
+`GetStarted.tsx`'s render, feeding the visible "Timezone · {timezone}" line
+row 8 promises is "shown." A runtime whose `Intl` cannot resolve a zone would
+have thrown there and taken the screen down before the person ever reached
+"This is us," rather than proceeding with no zone recorded. All three call
+sites now go through `lib/browserTimezone.ts`'s `getBrowserTimezone()`, which
+wraps the same call in a `try`/`catch` and omits the field on failure.]**
+
 ## Review trail
 
 | Date | Reviewer | Outcome |

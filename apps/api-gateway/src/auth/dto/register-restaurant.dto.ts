@@ -26,6 +26,16 @@ export class RegisterRestaurantDto {
   @IsOptional() @IsEmail() restaurantEmail?: string; // restaurant contact email; defaults to owner email
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsString() cuisineType?: string;
+
+  /**
+   * The browser's own zone, as `Intl.DateTimeFormat().resolvedOptions()
+   * .timeZone` reported it client-side — not asked of the person, so shape
+   * validation here is deliberately loose. `AuthService.registerRestaurant`
+   * re-checks it against `Intl` itself (`resolveSignUpTimezone`,
+   * `sign-up-timezone.ts`) and stores NULL for anything absent or not a real
+   * IANA identifier, rather than trusting the string or inventing one
+   * (item 62, 2026-09-27).
+   */
   @IsOptional() @IsString() timezone?: string;
 
   /**
