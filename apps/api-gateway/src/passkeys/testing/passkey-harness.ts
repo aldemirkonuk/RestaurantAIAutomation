@@ -46,7 +46,7 @@ export class FakeDb {
 }
 
 class Query implements PromiseLike<{ data: any; error: any }> {
-  private op: "select" | "insert" | "update" | "delete" = "select";
+  private op: "select" | "insert" | "update" | "delete" | "upsert" = "select";
   private payload: Row | null = null;
   private filters: Array<(r: Row) => boolean> = [];
   private returning = false;
@@ -66,6 +66,15 @@ class Query implements PromiseLike<{ data: any; error: any }> {
     this.payload = row;
     return this;
   }
+  /** Insert-if-absent on `onConflict` (the only upsert shape the invite
+   * join uses: `ignoreDuplicates`). */
+  upsert(row: Row, opts?: { onConflict?: string }) {
+    this.op = "upsert";
+    this.payload = row;
+    this.conflictOn = (opts?.onConflict ?? "id").split(",");
+    return this;
+  }
+  private conflictOn: string[] = [];
   update(row: Row) {
     this.op = "update";
     this.payload = row;
@@ -85,6 +94,12 @@ class Query implements PromiseLike<{ data: any; error: any }> {
   }
   lt(k: string, v: string) {
     this.filters.push((r) => r[k] < v);
+    return this;
+  }
+  ilike(k: string, v: string) {
+    this.filters.push(
+      (r) => typeof r[k] === "string" && r[k].toLowerCase() === v.toLowerCase(),
+    );
     return this;
   }
   gt(k: string, v: string) {
@@ -130,7 +145,13 @@ class Query implements PromiseLike<{ data: any; error: any }> {
     if (this.op === "select" && this.db.failReadOn === this.table)
       return { data: null, error: { message: "read refused" } };
     let out: Row[] = [];
-    if (this.op === "insert") {
+    if (
+      this.op === "upsert" &&
+      rows.some((r) => this.conflictOn.every((c) => r[c] === this.payload![c]))
+    ) {
+      return { data: this.returning ? [] : null, error: null };
+    }
+    if (this.op === "insert" || this.op === "upsert") {
       if (this.db.failInsertOn === this.table)
         return { data: null, error: { message: "insert refused" } };
       const id = `00000000-0000-4000-8000-${String(++this.db.seq).padStart(12, "0")}`;

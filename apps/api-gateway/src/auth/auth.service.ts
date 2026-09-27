@@ -42,6 +42,11 @@ import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
 import { devBypassEnvEnabled } from "./dev-bypass.util";
 import { grantRefusal } from "./role-grant";
 import {
+  inviteVerifiesAddress,
+  unprovenPasswordHasLapsed,
+} from "./unproven-address";
+import { normalizeEmail } from "../passkeys/sign-in-codes.service";
+import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
 } from "../organizations/org-role";
@@ -375,7 +380,14 @@ export class AuthService {
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
+    // ADR 0229 fork 8 (the founder, 2026-09-27, item 73, "Expire the
+    // password, 7 days (Recommended)"): an account still unverified more than
+    // seven days after registration keeps its row, but its unproven password
+    // no longer signs in. The compare above runs first either way, and the
+    // refusal is the wrong-password refusal word for word, so neither the
+    // answer nor its timing says the account exists or is unverified. The
+    // emailed code still signs in, and fork 6 then removes this password.
+    if (!isPasswordValid || unprovenPasswordHasLapsed(user, Date.now())) {
       throw new UnauthorizedException("Invalid credentials");
     }
 
@@ -2099,6 +2111,9 @@ export class AuthService {
         code,
         invited_by: userId,
         role: grantedRole,
+        // The address this invite is for (ADR 0229 fork 7, item 72): a join
+        // with exactly this address is verified; any other is not.
+        target_email: normalizeEmail(dto.targetEmail) || null,
       })
       .select("id, code, expires_at")
       .single();
@@ -2430,17 +2445,28 @@ export class AuthService {
 
   /**
    * Path A: Join via invite code — atomically consumes invite and creates user.
-   * User is email_verified: true because owner vouched for them.
+   *
+   * A NEW account is verified only when the address typed here is the address
+   * the invite was made for (ADR 0229 fork 7; the founder, 2026-09-27, item
+   * 72, "Bind invite to address (Recommended)"). An invite made with no
+   * address, or a join with another address, creates the account unverified
+   * and mails the verification link, like any registration. Until 2026-09-27
+   * every new account made here was verified for whatever address was typed.
    */
   async joinViaInvite(dto: JoinViaInviteDto): Promise<TokenPair> {
+    // One spelling of the address for every read and write below: the
+    // spelling registerAccount stores and the emailed code looks up.
+    const email = normalizeEmail(dto.email);
     const { data: invite, error: inviteErr } =
       await this.databaseService.supabase
         .from("organization_invites")
-        .update({ used_at: new Date().toISOString(), used_by_email: dto.email })
+        .update({ used_at: new Date().toISOString(), used_by_email: email })
         .eq("code", dto.code.toUpperCase())
         .is("used_at", null)
         .gt("expires_at", new Date().toISOString())
-        .select("id, organization_id, restaurant_id, role, invited_by")
+        .select(
+          "id, organization_id, restaurant_id, role, invited_by, target_email",
+        )
         .single();
 
     if (inviteErr || !invite) {
@@ -2487,7 +2513,7 @@ export class AuthService {
     const { data: existingUser } = await this.databaseService.supabase
       .from("users")
       .select("*")
-      .eq("email", dto.email)
+      .eq("email", email)
       .maybeSingle();
 
     let user: any;
@@ -2522,10 +2548,17 @@ export class AuthService {
       //
       // Joining an ADDITIONAL restaurant with an existing account is a real
       // flow, so it is kept — it now costs the account's own password.
+      //
+      // An unproven password that has lapsed (ADR 0229 fork 8, item 73) opens
+      // nothing here either: this is a password sign-in by another door.
       const passwordMatches =
         typeof existingUser.password_hash === "string" &&
         existingUser.password_hash.length > 0 &&
-        (await bcrypt.compare(dto.password ?? "", existingUser.password_hash));
+        (await bcrypt.compare(
+          dto.password ?? "",
+          existingUser.password_hash,
+        )) &&
+        !unprovenPasswordHasLapsed(existingUser, Date.now());
 
       if (!passwordMatches) {
         // Deliberately identical to the credential error used elsewhere, and
@@ -2538,16 +2571,22 @@ export class AuthService {
       user = existingUser;
     } else {
       const passwordHash = await bcrypt.hash(dto.password, this.SALT_ROUNDS);
+      // ADR 0229 fork 7, item 72: verified only on a match with the address
+      // the invite was made for; otherwise the address is still unproven.
+      const addressProvedByInvite = inviteVerifiesAddress(
+        invite.target_email,
+        email,
+      );
       const { data: newUser, error: userErr } =
         await this.databaseService.supabase
           .from("users")
           .insert({
-            email: dto.email,
+            email,
             password_hash: passwordHash,
             name: dto.name,
             restaurant_id: invite.restaurant_id,
             role: invite.role,
-            email_verified: true,
+            email_verified: addressProvedByInvite,
           })
           .select()
           .single();
@@ -2562,6 +2601,14 @@ export class AuthService {
         );
       }
       user = newUser;
+      if (!addressProvedByInvite) {
+        // The person proves the address once, as every registrant does.
+        this.queueEmailVerification(user.user_id, email).catch((err) =>
+          this.logger.warn(
+            `queueEmailVerification failed (non-fatal): ${err.message}`,
+          ),
+        );
+      }
     }
 
     const { error: uraErr } = await this.databaseService.supabase
@@ -2607,7 +2654,7 @@ export class AuthService {
       restaurantId: invite.restaurant_id,
       inviteId: invite.id,
       userId: user.user_id,
-      email: dto.email,
+      email,
       name: dto.name ?? user.name ?? null,
       role: invite.role,
     });
