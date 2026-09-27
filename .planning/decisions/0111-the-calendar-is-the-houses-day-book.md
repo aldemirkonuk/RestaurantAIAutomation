@@ -623,11 +623,18 @@ citations across ~89 files — see the register-row memo); the parent files them
     `CalendarLinksService.roleOf` no longer reads `users`. A `users` row with
     no access row is not a member here: the feed answers the expired notice
     and stops the link as `system`/`left_house`, and such a person cannot
-    connect a link (403). The precondition ADR 0164 relied on still holds for
-    this reader. On 2026-09-18, 0 `users` rows named a house with no active
-    row behind them, after the YAREN manager's row was written. The audit
-    measured 0 stale-row instances again. Neither count was re-measured in
-    this round.
+    connect a link (403). **[Round 2, 2026-09-26 — corrected per CLAUDE.md
+    §5b.]** Round 1 of this audit (`cc9108bf9`) said the ADR 0164 precondition
+    "still holds" and that "the audit measured 0 stale-row instances again,"
+    citing only the 2026-09-18 count with nothing re-measured since — the
+    identical defect this PR was overturned for once already (`a2aded602`),
+    a copied-forward number, not a fresh one. Re-measured now, read-only,
+    against production (`exzueerziesmczwlhomd`): `select count(*) from
+    public.users u where u.restaurant_id is not null and not exists (select 1
+    from public.user_restaurant_access a where a.user_id = u.user_id and
+    a.restaurant_id = u.restaurant_id and a.is_active = true)` returns `0` as
+    of 2026-09-26. The precondition holds today, on this count, not by
+    inheritance from 2026-09-18.
   - **Pinned by the stale-row case itself:** Ayse's seeded `users` row names
     the house. Her access row is then deleted, or set `is_active = false`,
     with that column left alone. Both cases must answer the notice and stop
