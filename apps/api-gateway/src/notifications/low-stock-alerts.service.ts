@@ -17,6 +17,14 @@ import {
 } from "../communications/recipient-resolver.service";
 import type { LowStockDigestWine } from "../communications/email-templates";
 import { canonicalOrigin } from "../communications/email-templates";
+import {
+  digestClockFor,
+  digestHourOf,
+  hourTick,
+  houseWallAt,
+  isDigestTick,
+  type DigestClock,
+} from "./low-stock-digest-clock";
 
 type AlertLevel = "ok" | "low" | "critical";
 
@@ -136,44 +144,91 @@ export class LowStockAlertsService {
   }
 
   /**
-   * Digest sweep — runs hourly and, for each restaurant, sends the batched
-   * reminder only when the current hour matches that restaurant's configured
-   * `digest_time` (and the digest isn't turned off). One email + one grouped
-   * inbox row per restaurant.
+   * Digest sweep — runs hourly, on the UTC hour, and for each restaurant
+   * sends the batched reminder only on the tick that crosses that house's
+   * OWN local digest hour (item 56 / ADR 0149: "each house's timezone").
+   *
+   * The cron itself no longer names a timezone — it fires once per UTC hour
+   * — and `runDigestSweepAt` (below) decides per house, per tick, whether
+   * this is that house's moment, using its own clock
+   * (`low-stock-digest-clock.ts`: house zone, then UTC when the house has
+   * none this server can read — see ADR 0116:297-301).
    */
-  @Cron("0 * * * *", {
-    name: "low-stock-digest",
-    timeZone: "America/New_York",
-  })
+  @Cron("0 * * * *", { name: "low-stock-digest", timeZone: "UTC" })
   async runDailyDigest(): Promise<void> {
+    await this.runDigestSweepAt(new Date());
+  }
+
+  /**
+   * The digest sweep for one tick, extracted so tests can drive it at any
+   * instant without waiting on the cron. `at` is rounded to the nearest UTC
+   * hour (`hourTick`) so cron jitter of up to ±30 minutes cannot shift which
+   * house-local hour a house is judged against.
+   */
+  async runDigestSweepAt(at: Date): Promise<void> {
     try {
-      const etHour = this.currentEtHour();
+      const tick = hourTick(at);
       const byRestaurant = await this.getLowStockByRestaurant();
-      const names = await this.getRestaurantNames([...byRestaurant.keys()]);
+      if (byRestaurant.size === 0) return;
+      const ids = [...byRestaurant.keys()];
+      const names = await this.getRestaurantNames(ids);
+      const houses = await this.getRestaurantHouses(ids);
+
       for (const [restaurantId, rows] of byRestaurant) {
         const prefs = await this.getEffectiveLowStockPrefs(restaurantId);
         if (!prefs.enabled || prefs.digestFrequency === "off") continue;
-        const digestHour = parseInt(
-          (prefs.digestTime || "12:00").split(":")[0],
-          10,
+
+        const hour = digestHourOf(prefs.digestTime);
+        if (hour === null) {
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_TIME_UNREADABLE restaurant=${restaurantId} digest_time=${JSON.stringify(prefs.digestTime)} — skipping this tick.`,
+          );
+          continue;
+        }
+
+        const house = houses.get(restaurantId) ?? null;
+        const clock = digestClockFor(house);
+        if (!isDigestTick(tick, clock.zone, hour)) continue;
+
+        const periodKey = houseWallAt(tick, clock.zone).dateKey;
+
+        if (clock.source === "fallback") {
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN restaurant=${restaurantId} timezone=${JSON.stringify(clock.recorded)} — no zone this server can read; the digest runs on ${clock.zone} and the page says so.`,
+          );
+        }
+
+        const last = await this.readLastDigestAt(restaurantId);
+        if (last.ok && last.at) {
+          const lastPeriodKey = houseWallAt(last.at, clock.zone).dateKey;
+          if (lastPeriodKey === periodKey) {
+            this.logger.log(
+              `LOW_STOCK_DIGEST_ALREADY_SENT restaurant=${restaurantId} date=${periodKey}`,
+            );
+            continue;
+          }
+        } else if (!last.ok) {
+          // The read failed rather than coming back empty. Fail OPEN: the
+          // per-tick isDigestTick rule already guarantees at most one send
+          // per house-local date inside a single sweep, so the exposure of
+          // proceeding is a possible duplicate against another gateway
+          // replica or an overlapping deploy — not a silently lost day.
+          // Builder's choice, Proposed (ADR 0149 item 56).
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_DEDUPE_UNREADABLE restaurant=${restaurantId} — last_digest_at could not be read; sending anyway.`,
+          );
+        }
+
+        await this.sendDigest(
+          restaurantId,
+          rows,
+          names.get(restaurantId),
+          periodKey,
         );
-        if (etHour !== digestHour) continue;
-        await this.sendDigest(restaurantId, rows, names.get(restaurantId));
       }
     } catch (e: any) {
       this.logger.error(`low-stock digest failed: ${e?.message}`);
     }
-  }
-
-  /** Current hour (0–23) in the digest timezone. */
-  private currentEtHour(): number {
-    return Number(
-      new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/New_York",
-        hour: "2-digit",
-        hour12: false,
-      }).format(new Date()),
-    );
   }
 
   // Manual triggers (tests / on-demand — bypass the hour gate).
@@ -514,10 +569,17 @@ export class LowStockAlertsService {
     restaurantId: string,
     rows: LowStockRow[],
     restaurantName?: string,
+    /**
+     * The house-local date (`YYYY-MM-DD`) this digest belongs to, from the
+     * sweep's `houseWallAt(tick, clock.zone)`. Falls back to the UTC date
+     * (today's behaviour) for `triggerDailyDigest` and any other caller that
+     * has no house clock to hand.
+     */
+    periodKey?: string,
   ): Promise<void> {
     if (rows.length === 0) return;
     const criticalCount = rows.filter((w) => w.severity === "critical").length;
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = periodKey ?? new Date().toISOString().slice(0, 10);
 
     const persisted = await this.notifications.persistForRestaurant(
       restaurantId,
@@ -988,6 +1050,93 @@ export class LowStockAlertsService {
   }
 
   /**
+   * `getRestaurantNames` widened to the columns the digest clock needs
+   * (`timezone`, `country`) so the sweep can decide each house's clock
+   * without a second round trip per restaurant.
+   */
+  private async getRestaurantHouses(
+    ids: string[],
+  ): Promise<
+    Map<
+      string,
+      { name: string; timezone: string | null; country: string | null }
+    >
+  > {
+    const map = new Map<
+      string,
+      { name: string; timezone: string | null; country: string | null }
+    >();
+    if (ids.length === 0) return map;
+    const { data } = await this.db.supabase
+      .from("restaurants")
+      .select("id, name, timezone, country")
+      .in("id", ids);
+    for (const r of data || []) {
+      map.set(r.id, {
+        name: r.name,
+        timezone: r.timezone ?? null,
+        country: r.country ?? null,
+      });
+    }
+    return map;
+  }
+
+  /**
+   * The clock one house's low-stock digest runs on. Public so a caller
+   * outside this service (e.g. the held-low-stock queue view) can report
+   * which zone a house's digest hour is read on without duplicating the
+   * house/country/fallback order.
+   *
+   * Returns `null` only when the `restaurants` read itself failed — the same
+   * honesty rule the held-queue view already applies to an unreadable prefs
+   * read: an unreadable fact is `null`, never silently the fallback.
+   */
+  async digestClockForRestaurant(
+    restaurantId: string,
+  ): Promise<DigestClock | null> {
+    const { data, error } = await this.db.supabase
+      .from("restaurants")
+      .select("id, timezone, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return digestClockFor({ timezone: data.timezone, country: data.country });
+  }
+
+  /**
+   * The most recent `last_digest_at` written for this restaurant (any wine —
+   * one send stamps every wine in the digest the same instant, see
+   * `sendDigest`). `ok: false` means the read itself failed (network/DB
+   * error), distinct from `ok: true, at: null` (never sent before).
+   *
+   * This is a NEW read: `last_digest_at` was write-only on main (written at
+   * `upsertState`'s `digestAt`, never selected anywhere — confirmed by grep
+   * before this lane). The per-house-date gate below is what makes the
+   * column's name true.
+   */
+  private async readLastDigestAt(
+    restaurantId: string,
+  ): Promise<{ ok: boolean; at: Date | null }> {
+    try {
+      const { data, error } = await this.db.supabase
+        .from("inventory_alert_state")
+        .select("last_digest_at")
+        .eq("restaurant_id", restaurantId)
+        .not("last_digest_at", "is", null)
+        .order("last_digest_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) return { ok: false, at: null };
+      return {
+        ok: true,
+        at: data?.last_digest_at ? new Date(data.last_digest_at) : null,
+      };
+    } catch {
+      return { ok: false, at: null };
+    }
+  }
+
+  /**
    * Resolve low-stock email recipients for ONE restaurant.
    *
    * `MANAGER_EMAIL` names a single restaurant's manager, so it is only a legal
@@ -1049,7 +1198,8 @@ export class LowStockAlertsService {
       }
     } else if (report) {
       // No resolver in this module is a wiring fault, not an empty house.
-      report.lookupFailed = "no recipient resolver is available to this service";
+      report.lookupFailed =
+        "no recipient resolver is available to this service";
     }
 
     if (!isLegacyDefault) {
@@ -1069,7 +1219,9 @@ export class LowStockAlertsService {
   }
 
   private inventoryUrl(): string {
-    const base = canonicalOrigin(this.config.get<string>("FRONTEND_URL")) || "https://mudavym.com";
+    const base =
+      canonicalOrigin(this.config.get<string>("FRONTEND_URL")) ||
+      "https://mudavym.com";
     return `${base}/inventory?filter=low-stock`;
   }
 }
