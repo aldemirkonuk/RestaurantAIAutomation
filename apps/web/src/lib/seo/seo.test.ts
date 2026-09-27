@@ -101,8 +101,17 @@ describe('head block', () => {
 });
 
 describe('registry', () => {
-  it('every public route is indexable, canonical to itself, and free of em dashes', () => {
+  it('every public route is indexable and canonical to itself, except one held noindex on purpose', () => {
     for (const r of PUBLIC_ROUTES) {
+      // OD-170: /terms is held noindex, out of the sitemap, until its final
+      // legal text and subprocessor list exist. A held route carries no
+      // canonical (renderHeadBlock only emits one for an indexable head) and
+      // must also be out of the sitemap, or the two flags would disagree.
+      if (r.head.robots === 'noindex, nofollow') {
+        expect(r.sitemap, r.path).toBe(false);
+        expect(r.head.canonical, r.path).toBeUndefined();
+        continue;
+      }
       expect(r.head.robots).toBe('index, follow');
       expect(r.head.canonical).toBe(`${SITE.origin}${r.path}`);
       expect(`${r.head.title} ${r.head.description}`).not.toContain('—');
@@ -209,6 +218,11 @@ describe('sitemap and llms.txt', () => {
     expect(xml).toContain('<loc>https://mudavym.com/privacy</loc>');
     expect(xml).not.toContain('<loc>https://mudavym.com/</loc>');
     expect(xml).not.toContain('lastmod');
+  });
+
+  it('holds /terms out of the sitemap and llms.txt (OD-170, noindex until final text)', () => {
+    expect(renderPagesSitemap()).not.toContain('/terms');
+    expect(renderLlmsTxt()).not.toContain('/terms');
   });
 
   it('llms.txt has the llmstxt.org v2 shape, the honesty note, and no price or rating claim', () => {

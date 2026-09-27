@@ -80,17 +80,23 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
     // G9 (census, 2026-09-25): required by ADR 0145's round-6r notice and the
     // owner data-terms acceptance work. Title and sentence are the page's own
     // words (Terms.tsx's PublicShell title and voice line); change them with
-    // the page. Placeholder text per OD-132/OD-124 — still indexable, since
-    // "placeholder" describes what the words settle, not whether the route
-    // is real.
+    // the page. Placeholder text per OD-132/OD-124.
+    //
+    // Held noindex and out of the sitemap (OD-170, founder answer 2026-09-27,
+    // "Noindex until final text (Recommended)"): a stranger may still open
+    // this route directly — the page itself says plainly that it is a
+    // placeholder — but it is not offered to search engines or listed in
+    // sitemap-pages.xml/llms.txt until the final legal text and the
+    // subprocessor list (founder-answers-2026-09-25-web-rebuild.md:32,53)
+    // exist. Revisit together with OD-132/OD-124.
     path: '/terms',
     file: 'crawl/heads/terms.html',
-    head: indexable(
-      '/terms',
-      titleWithSite('Terms of Service'),
-      'What using Mudavym means today, stated plainly, ahead of legal review.',
-    ),
-    sitemap: true,
+    head: {
+      title: titleWithSite('Terms of Service'),
+      description: 'What using Mudavym means today, stated plainly, ahead of legal review.',
+      robots: 'noindex, nofollow',
+    },
+    sitemap: false,
   },
 ];
 
