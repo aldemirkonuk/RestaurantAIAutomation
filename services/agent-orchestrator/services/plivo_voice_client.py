@@ -380,7 +380,7 @@ class PlivoVoiceClient:
         auth_id: str,
         auth_token: str,
         from_number: str,
-        webhook_base_url: str = "https://your-domain.com/webhooks/plivo",
+        webhook_base_url: Optional[str] = None,
         mock_mode: bool = False,
         approval_verifier: Optional[Callable[["VoiceOrderApproval"], bool]] = None,
     ):
@@ -391,7 +391,11 @@ class PlivoVoiceClient:
             auth_id: Plivo Auth ID
             auth_token: Plivo Auth Token
             from_number: Source phone number (Plivo number)
-            webhook_base_url: Base URL for webhooks
+            webhook_base_url: Base URL of OUR webhooks. No default: the old one,
+                "https://your-domain.com/webhooks/plivo", is a real third-party
+                domain, so Plivo would have fetched answer XML from it and
+                POSTed call and recording data to it (ADR 0224). A live call
+                without one is refused.
             mock_mode: If True, log instead of making real calls
             approval_verifier: Optional callable that re-reads the approval row
                 and returns True if it really exists and is still approved. When
@@ -548,6 +552,16 @@ class PlivoVoiceClient:
                 "to": to_number,
                 "status": CallStatus.INITIATED.value,
                 "cost": 0.0,
+            }
+
+        if not self.webhook_base_url:
+            # Plivo reads the answer XML and POSTs hangup, fallback and
+            # recording events to this base; without our own there is nowhere
+            # safe to point it (ADR 0224).
+            logger.error("Plivo voice call refused: no webhook base URL is configured")
+            return {
+                "success": False,
+                "error": "No Plivo webhook base URL is configured; a live call needs Mudavym's own.",
             }
 
         # Set default answer URL if not provided

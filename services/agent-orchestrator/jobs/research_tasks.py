@@ -89,6 +89,7 @@ from services.research_agent_helpers import (
     _cache_key_wine,
     _cache_key_producer,
 )
+from services.house_data_terms_gate import SERPER_HOST, outside_lookup_allowed
 from services.serper_client import serper_search
 from services.spend_logger import estimate_llm_cost, get_spend_logger
 
@@ -1493,6 +1494,21 @@ async def _research_async(submission_id: str, dry_run: bool) -> None:
         logger.info(
             "research_agent: submission %s not eligible (cooldown/confidence gate)",
             submission_id,
+        )
+        return
+
+    # ADR 0224 / the founder, 2026-09-25: this run searches the web with the
+    # wine's own words from the house's list -- the house's data -- so it runs
+    # only once an owner has accepted terms naming Serper. Before the
+    # research_runs row, so a withheld run leaves no trace of having started.
+    allowed, why = outside_lookup_allowed(
+        supabase, submission.get("restaurant_id"), SERPER_HOST
+    )
+    if not allowed:
+        logger.info(
+            "research_agent: submission %s — web research withheld (%s)",
+            submission_id,
+            why,
         )
         return
 

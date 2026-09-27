@@ -29,6 +29,7 @@ from supabase import create_client
 
 from config.settings import get_settings
 from jobs.celery_app import celery_app
+from services.house_data_terms_gate import SERPER_HOST, outside_lookup_allowed
 from services.spend_logger import get_spend_logger
 
 logger = logging.getLogger(__name__)
@@ -203,6 +204,24 @@ def web_verify_task(self, wine_id: str) -> Optional[dict]:
 # ---------------------------------------------------------------------------
 
 
+def _queue_ontology(wine_id: str) -> None:
+    """Queue ontology cross-validation (ONTO-05). Non-fatal: web verification
+    has already finished or been withheld; an ontology failure cannot block it."""
+    try:
+        from jobs.ontology_tasks import ontology_validate_task
+
+        ontology_validate_task.delay(wine_id)
+        logger.info(
+            "_verify_async: queued ontology_validate_task for wine_id=%s", wine_id
+        )
+    except Exception as exc:
+        logger.warning(
+            "_verify_async: failed to queue ontology_validate_task for wine_id=%s: %s",
+            wine_id,
+            exc,
+        )
+
+
 async def _verify_async(wine_id: str) -> Optional[dict]:
     """
     Core async verification logic. Called from web_verify_task via asyncio.run().
@@ -230,7 +249,7 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
     # Fetch wine record
     resp = (
         supabase.table("master_wine_library_submissions")
-        .select("id, payload, field_confidence")
+        .select("id, payload, field_confidence, restaurant_id")
         .eq("id", wine_id)
         .maybe_single()
         .execute()
@@ -286,6 +305,20 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
             if isinstance(v, dict) and v.get("verification_status") == "producer_graph"
         )
     else:
+        # ADR 0224 / the founder, 2026-09-25: a search built from a house's own
+        # list is that house's data, and leaves only once an owner has accepted
+        # terms naming Serper. Checked BEFORE the budget is reserved, so a
+        # withheld search spends nothing. The chain still reaches ontology.
+        allowed, why = outside_lookup_allowed(
+            supabase, resp.data.get("restaurant_id"), SERPER_HOST
+        )
+        if not allowed:
+            logger.info(
+                "_verify_async: wine_id=%s — web search withheld (%s)", wine_id, why
+            )
+            _queue_ontology(wine_id)
+            return {"wine_id": wine_id, "status": f"skipped_{why}"}
+
         # WSRCH-08: Daily budget cap — check BEFORE Serper call
         if not check_and_reserve_search_budget():
             logger.info(
@@ -450,20 +483,7 @@ async def _verify_async(wine_id: str) -> Optional[dict]:
     )
 
     # ONTO-05: Trigger ontology cross-validation after web verification (primary path)
-    # Non-fatal: web verification is already complete; ontology failure cannot block it
-    try:
-        from jobs.ontology_tasks import ontology_validate_task
-
-        ontology_validate_task.delay(wine_id)
-        logger.info(
-            "_verify_async: queued ontology_validate_task for wine_id=%s", wine_id
-        )
-    except Exception as exc:
-        logger.warning(
-            "_verify_async: failed to queue ontology_validate_task for wine_id=%s: %s",
-            wine_id,
-            exc,
-        )
+    _queue_ontology(wine_id)
 
     return {
         "wine_id": wine_id,
