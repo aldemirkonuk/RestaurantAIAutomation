@@ -27,7 +27,8 @@
  * them any more.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PenLine, Library } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
 import type { ProcurementHistoryItem } from '../../../hooks/queries/useConversationQueries';
@@ -49,6 +50,7 @@ import { ComposeSheet } from './Compose/ComposeSheet';
 import { DraftedReplyPanel, type DraftedReply } from './DraftedReplyPanel';
 import { LetterRequestsPanel } from './LetterRequestsPanel';
 import { useLetterSenderStanding } from './Compose/useComposeData';
+import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -321,6 +323,25 @@ export default function CommunicationsNext() {
      page still holds, so a draft that vanishes under a refetch closes the panel
      rather than leaving it describing a letter that has gone. */
   const [draftOpen, setDraftOpen] = useState<string | null>(null);
+  // Drafts Mudavym wrote (ADR 0230). `?draft=<id>` is the credit claim's link
+  // to its letter; it opens that draft once the drafts list has answered.
+  const houseDrafts = useHouseDrafts();
+  const [params, setParams] = useSearchParams();
+  const [draft, setDraft] = useState<HouseDraft | null>(null);
+  const linked = params.get('draft');
+  useEffect(() => {
+    if (!linked || !houseDrafts.drafts) return;
+    const hit = houseDrafts.drafts.find((d) => d.id === linked);
+    if (hit) setDraft(hit);
+  }, [linked, houseDrafts.drafts]);
+  const closeDraft = () => {
+    setDraft(null);
+    houseDrafts.refetch();
+    if (linked) {
+      params.delete('draft');
+      setParams(params, { replace: true });
+    }
+  };
 
   return (
     <div
@@ -580,6 +601,18 @@ export default function CommunicationsNext() {
                   The house's letter templates
                 </button>
               </div>
+              <HouseDrafts
+                drafts={houseDrafts.drafts}
+                failed={houseDrafts.failed}
+                error={houseDrafts.error}
+                onOpen={setDraft}
+              />
+              {linked && houseDrafts.drafts && !houseDrafts.drafts.some((d) => d.id === linked) && (
+                <p role="status" style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '8px 0 0' }}>
+                  The letter this link points to is no longer a draft — it was sent or discarded. The
+                  conversation book says which.
+                </p>
+              )}
             </div>
 
             {/* The "Scheduled reports" card left this page on 2026-09-25 (ADR
@@ -599,6 +632,21 @@ export default function CommunicationsNext() {
       </div>
 
       <ComposeSheet open={compose} onClose={() => setCompose(false)} />
+      {draft && (
+        <ComposeSheet
+          key={draft.id}
+          open
+          onClose={closeDraft}
+          onDiscarded={houseDrafts.refetch}
+          prefill={{
+            draftId: draft.id,
+            providerId: draft.providerId,
+            to: draft.to,
+            subject: draft.subject ?? '',
+            body: draft.body,
+          }}
+        />
+      )}
       {library && <TemplateSheet onClose={() => setLibrary(false)} />}
 
       <DraftedReplyPanel

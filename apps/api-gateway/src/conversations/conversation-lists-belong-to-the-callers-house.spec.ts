@@ -88,9 +88,25 @@ function seed() {
   failOn = null;
 }
 
+/** `status.is.null` / `status.neq.X` / `direction.eq.X`, the ops this file's `.or()` calls use. */
+function orClause(expr: string): (r: Row) => boolean {
+  const m = /^(\w+)\.(is|neq|eq)\.(.*)$/.exec(expr.trim());
+  if (!m)
+    throw new Error(
+      `conversation-lists fixture cannot parse .or() clause: ${expr}`,
+    );
+  const [, col, op, val] = m;
+  if (op === "is" && val === "null") return (r) => r[col] == null;
+  // SQL three-valued logic: `col <> 'X'` is NULL (excluded) when col IS NULL,
+  // so `neq` here must not treat a missing column as passing.
+  if (op === "neq") return (r) => r[col] != null && r[col] !== val;
+  return (r) => r[col] === val;
+}
+
 /** A chainable query over one table; `.eq` filters are real, the rest chain. */
 function makeBuilder(table: string) {
   const filters: Array<[string, unknown]> = [];
+  const orGroups: Array<Array<(r: Row) => boolean>> = [];
   const run = () => {
     if (failOn && failOn.table === table) {
       return { data: null, error: { message: failOn.message }, count: null };
@@ -106,8 +122,10 @@ function makeBuilder(table: string) {
         count: null,
       };
     }
-    const rows = (tables[table] ?? []).filter((r) =>
-      filters.every(([col, val]) => r[col] === val),
+    const rows = (tables[table] ?? []).filter(
+      (r) =>
+        filters.every(([col, val]) => r[col] === val) &&
+        orGroups.every((preds) => preds.some((p) => p(r))),
     );
     return { data: rows, error: null, count: rows.length };
   };
@@ -118,7 +136,10 @@ function makeBuilder(table: string) {
     ilike: () => b,
     gte: () => b,
     lte: () => b,
-    or: () => b,
+    or: (expr: string) => {
+      orGroups.push(expr.split(",").map(orClause));
+      return b;
+    },
     eq: (col: string, val: unknown) => {
       filters.push([col, val]);
       return b;
@@ -146,9 +167,11 @@ let base: string;
 
 async function get(
   path: string,
-  as: { house?: string | null } = {},
+  as: { house?: string | null; role?: string } = {},
 ): Promise<{ status: number; body: any; text: string }> {
-  const headers: Record<string, string> = { "x-test-role": "manager" };
+  const headers: Record<string, string> = {
+    "x-test-role": as.role ?? "manager",
+  };
   if (as.house !== null) headers["x-test-house"] = as.house ?? HOUSE_A;
   const res = await fetch(`${base}/conversations${path}`, { headers });
   const text = await res.text();
@@ -320,5 +343,61 @@ describe("a failed ownership read is a failure, not an empty list, and its text 
     expect(res.status).toBe(500);
     expect(res.text).not.toContain("secret_internal");
     expect(res.body.message).toBe("Failed to get conversations");
+  });
+});
+
+// PR #476 audit round 2, R1b: none of these list routes carried a role
+// exclusion at all, so a staff caller could read a manager's undecided or
+// discarded credit-claim letter (`HOUSE_DRAFT`/`HOUSE_CANCELLED`, ADR 0230)
+// through GET /, /by-order and /by-provider — the same figures ADR 0167
+// already refuses staff on the credit ledger itself.
+describe("a credit claim's letter is withheld from staff on every list route (ADR 0167/0230)", () => {
+  function addCreditDraft(status: string) {
+    tables.procurement_conversations.push({
+      id: "conv-a2-credit-draft",
+      restaurant_id: HOUSE_A,
+      order_id: ORDER_A,
+      provider_id: VENDOR_A,
+      channel: "email",
+      direction: "outbound",
+      status,
+      message_text: "Asking for a $84.50 credit on invoice INV-77",
+      created_at: "2026-09-20T13:00:00Z",
+    });
+  }
+
+  it.each([
+    ["GET /", "/"],
+    ["by-order", `/by-order/${ORDER_A}`],
+    ["by-provider", `/by-provider/${VENDOR_A}`],
+  ])("%s withholds a HOUSE_DRAFT row from staff", async (_name, path) => {
+    addCreditDraft("HOUSE_DRAFT");
+    const staff = await get(path, { role: "staff" });
+    expect(staff.status).toBe(200);
+    expect(idsOf(staff.body)).not.toContain("conv-a2-credit-draft");
+    expect(staff.text).not.toContain("84.50");
+  });
+
+  it.each([
+    ["GET /", "/"],
+    ["by-order", `/by-order/${ORDER_A}`],
+    ["by-provider", `/by-provider/${VENDOR_A}`],
+  ])("%s withholds a HOUSE_CANCELLED row from staff", async (_name, path) => {
+    addCreditDraft("HOUSE_CANCELLED");
+    const staff = await get(path, { role: "staff" });
+    expect(idsOf(staff.body)).not.toContain("conv-a2-credit-draft");
+  });
+
+  it.each(["owner", "manager"])("still shows the draft to %s", async (role) => {
+    addCreditDraft("HOUSE_DRAFT");
+    const res = await get("/", { role });
+    expect(idsOf(res.body)).toContain("conv-a2-credit-draft");
+  });
+
+  it("does not withhold an ordinary message from staff", async () => {
+    // conv-a1 carries no `status` at all — the withholding must be specific
+    // to the two credit-letter statuses, not a blanket new gate.
+    const staff = await get("/", { role: "staff" });
+    expect(idsOf(staff.body)).toContain("conv-a1");
   });
 });

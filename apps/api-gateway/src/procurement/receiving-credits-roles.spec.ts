@@ -43,6 +43,7 @@ import { DatabaseService } from "../database/database.service";
 import { ReceivingController } from "./receiving.controller";
 import { ReceivingService } from "./receiving.service";
 import { CreditsController } from "./documents/credits.controller";
+import { HouseLettersService } from "../communications/letters/house-letters.service";
 
 const HOUSE = "12823c23-277c-5ae9-b49b-e17d33704e04";
 
@@ -98,6 +99,9 @@ describe("receiving queue and credit ledger: owner or manager only (ADR 0167)", 
           },
         },
         { provide: DatabaseService, useValue: emptyLedger(touched) },
+        // Not exercised here: no test in this file reaches requestLetter, which
+        // is what CreditsController uses this for. It only needs to satisfy DI.
+        { provide: HouseLettersService, useValue: {} },
       ],
     })
       // Authentication is not what is under test; the role a request carries is.
@@ -217,10 +221,12 @@ describe("the gate is on the right handlers and only those (metadata)", () => {
       "owner",
       "manager",
     ]);
-    // Three handlers today. A fourth added later inherits the gate; this
-    // fails only if the list below stops naming what the class has.
+    // Four handlers today (PR #476 added requestLetter, ADR 0230). A fifth
+    // added later inherits the gate; this fails only if the list below stops
+    // naming what the class has.
     expect(methodsOf(CreditsController).sort()).toEqual([
       "list",
+      "requestLetter",
       "stats",
       "transition",
     ]);

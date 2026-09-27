@@ -132,11 +132,14 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **154 as of 2026-09-27, on #436 (`feat/finish-action-integrity`) merged up to main ef8ecdf30 (#435)** (`check_read_errors_not_swallowed.py` on that tree: 1823 files scanned, 154 sites, 154 baselined, 0 allowlisted, PASS). The branch's 155 below and main's held-queue retirement (the 161 line below) together. Re-measure before citing.
+
 > **155 as of 2026-09-26, on #436 after the W7-team commit** (`check_read_errors_not_swallowed.py`: 1721 files scanned, 155 sites, 155 baselined, 0 allowlisted, PASS). Three retired in `apps/api-gateway/src/team/`: `team.service.ts` `coverage_templates/data` (the rule list read), `performance.service.ts` `team_members/valid` (the sales-batch roster read) and `server_sales/rows` (the performance read) — each now throws instead of reading as empty (ADR 0088 amendment, 2026-09-26).
 
 > **158 as of 2026-09-26, on #436 (`feat/finish-action-integrity`) merged up to main 387475342 (#471)** (`check_read_errors_not_swallowed.py` on that tree: 1721 files scanned, 158 sites, 158 baselined, 0 allowlisted, PASS). Supersedes the two 163 lines below for this branch; re-measure before citing.
 
 > **163 as of 2026-09-25, on #436 (`feat/finish-action-integrity`) merged up to main 4e7c5b5a6** (`check_read_errors_not_swallowed.py` on that tree: 1703 files scanned, 163 sites, 163 baselined, 0 allowlisted, PASS). The branch's round-3/round-4 strict reads and main's retirements together; the two `r5/E` notes below are that branch's own, pre-merge. Re-measure before citing.
+> **161 as of 2026-09-26, on `feat/notifications-held-low-stock` (from main `387475342`)** (`check_read_errors_not_swallowed.py` on that tree: 161 sites, 161 baselined, 0 allowlisted): `low-stock-alerts.service.ts` `notification_preferences/data` retired — the low-stock preferences read now binds its error and throws, so the held queue can report "not known" instead of the 12:00 defaults (the senders still fall back to the defaults). Re-measure before citing.
 
 > **162 as of 2026-09-25, on `fix/sessions-follow-membership-r6` after merging main `4e7c5b5a6` (#412)** (`check_read_errors_not_swallowed.py` on that tree: 162 sites, 162 baselined, 0 allowlisted): the two lines below, combined — ADR 0164's five retirements and #412's one. Re-measure before citing.
 

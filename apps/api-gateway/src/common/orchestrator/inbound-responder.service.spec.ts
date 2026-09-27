@@ -247,6 +247,31 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(svc().parseAnalysis("I cannot help with that.")).toBeNull();
     });
 
+    // ADR 0207, round 3: the vendor sheet reads this label as warm / plain /
+    // terse, so a missing or off-list sentiment is NO reading — it used to
+    // default to "neutral", which the sheet would have printed as "plain".
+    it("keeps the three sentiment labels and reads anything else as none — never a defaulted neutral", () => {
+      const at = (sentiment: unknown) =>
+        svc().parseAnalysis(
+          JSON.stringify(baseAnalysis({ sentiment } as never)),
+        ).sentiment;
+      expect(at("negative")).toBe("negative");
+      expect(at("Positive")).toBe("positive");
+      expect(at(undefined)).toBeNull();
+      expect(at("professional")).toBeNull();
+    });
+
+    it("keeps the tone quote as a string, trimmed and capped, and '' when absent", () => {
+      const q = (tone_quote: unknown) =>
+        svc().parseAnalysis(
+          JSON.stringify(baseAnalysis({ tone_quote } as never)),
+        ).tone_quote;
+      expect(q("  Please stop asking.  ")).toBe("Please stop asking.");
+      expect(q(undefined)).toBe("");
+      expect(q({ evil: true })).toBe("");
+      expect(q("x".repeat(400))).toHaveLength(300);
+    });
+
     it("parses shadow classification fields when present", () => {
       const raw = JSON.stringify(
         baseAnalysis({
@@ -361,7 +386,10 @@ describe("InboundResponderService (deterministic core)", () => {
      * behaviour: the status still advances and no price is written anywhere.
      */
     const withCapturingDb = (
-      lineRead: { data: any; error: any } = { data: { id: "line1" }, error: null },
+      lineRead: { data: any; error: any } = {
+        data: { id: "line1" },
+        error: null,
+      },
     ) => {
       const updates: Record<string, Record<string, any>> = {};
       const captured: { update?: Record<string, any> } = {};
@@ -531,131 +559,215 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(captured.update).toBeUndefined();
     });
 
-  /**
-   * ADR 0125 Q3 — a vendor's no is not the order's death.
-   *
-   * ADDED AFTER AN AUDIT. The Q3 change shipped with no regression test at all in
-   * either language: the auditor swapped the PRE-FIX service back in and the whole
-   * file still passed 25/25, because none of the existing cases sends a decline.
-   *
-   * Writing these found a real defect in the shipped change, not just a gap: the
-   * `CONFIRMED -> NEGOTIATING` edge was added to the transition table and was
-   * UNREACHABLE from here, because `syncOrderState` returned early on any terminal
-   * status — CONFIRMED among them — before the decline branch was ever consulted.
-   * The first version of the CONFIRMED case below failed against the code that had
-   * already been committed.
-   */
-  describe("syncOrderState — a vendor's decline (ADR 0125 Q3)", () => {
-    const declineAnalysis = (intent: string) =>
-      baseAnalysis({
-        intent,
-        deal_kind: "none",
-        vendor_offers: [],
-        summary: "We cannot supply this vintage.",
-      });
+    /**
+     * ADR 0125 Q3 — a vendor's no is not the order's death.
+     *
+     * ADDED AFTER AN AUDIT. The Q3 change shipped with no regression test at all in
+     * either language: the auditor swapped the PRE-FIX service back in and the whole
+     * file still passed 25/25, because none of the existing cases sends a decline.
+     *
+     * Writing these found a real defect in the shipped change, not just a gap: the
+     * `CONFIRMED -> NEGOTIATING` edge was added to the transition table and was
+     * UNREACHABLE from here, because `syncOrderState` returned early on any terminal
+     * status — CONFIRMED among them — before the decline branch was ever consulted.
+     * The first version of the CONFIRMED case below failed against the code that had
+     * already been committed.
+     */
+    describe("syncOrderState — a vendor's decline (ADR 0125 Q3)", () => {
+      const declineAnalysis = (intent: string) =>
+        baseAnalysis({
+          intent,
+          deal_kind: "none",
+          vendor_offers: [],
+          summary: "We cannot supply this vintage.",
+        });
 
-    it("leaves an order already NEGOTIATING where it is, and tells a manager", async () => {
-      const { s, updates, notes } = withCapturingDb();
-      const order = {
-        id: "d1",
-        restaurant_id: "rest-A",
-        status: "NEGOTIATING",
-        quantity: 6,
-        final_price: null,
-        negotiated_price: null,
-      };
-      await s.syncOrderState(order, declineAnalysis("rejection"), 1090, 6, false);
-
-      // No status write: it is already in the state a decline lands in, and a
-      // rewrite would be a change nobody made.
-      expect(updates.procurement_orders).not.toHaveProperty("status");
-      // And NOT closed. This is the whole decision: REJECTED would drop the order
-      // out of every open-order list before a person decided anything.
-      expect(updates.procurement_orders?.status).not.toBe("REJECTED");
-
-      // The decline is NOT copied onto the order. Who declined, when and in what
-      // words is the inbound `procurement_conversations` row; two accounts of one
-      // event can disagree.
-      const payload = JSON.stringify(updates.procurement_orders ?? {});
-      expect(payload).not.toMatch(/decline/i);
-      expect(payload).not.toMatch(/cannot supply/i);
-      expect(updates.procurement_orders).not.toHaveProperty("rejection_reason");
-
-      expect(notes).toHaveLength(1);
-      expect(notes[0].restaurantId).toBe("rest-A");
-      expect(notes[0].n.message).toMatch(/not cancelled/i);
-      expect(notes[0].n.metadata.from_status).toBe("NEGOTIATING");
-    });
-
-    it("returns a CONFIRMED order to NEGOTIATING rather than treating it as terminal", async () => {
-      // The case that caught the defect. CONFIRMED is in `terminal`, so before the
-      // fix `syncOrderState` returned before the decline branch and the order
-      // stayed placed with the vendor that had just refused it.
-      const { s, updates, notes } = withCapturingDb();
-      const order = {
-        id: "d2",
-        restaurant_id: "rest-A",
-        status: "CONFIRMED",
-        quantity: 6,
-        final_price: 1050,
-        negotiated_price: 1050,
-      };
-      await s.syncOrderState(order, declineAnalysis("out_of_stock"), 1090, 6, false);
-      expect(updates.procurement_orders?.status).toBe("NEGOTIATING");
-      expect(notes[0]?.n.metadata.from_status).toBe("CONFIRMED");
-    });
-
-    it.each(["rejection", "declined", "out_of_stock", "OUT_OF_STOCK"])(
-      "reads %s as a decline",
-      async (intent) => {
-        const { s, updates } = withCapturingDb();
-        const order = { id: "d3", restaurant_id: "rest-A", status: "CONFIRMED", quantity: 6 };
-        await s.syncOrderState(order, declineAnalysis(intent), 1090, 6, false);
-        expect(updates.procurement_orders?.status).toBe("NEGOTIATING");
-      },
-    );
-
-    it("does NOT treat a counter-offer as a decline", async () => {
-      // Haggling is not refusing. If `counter_offer` joined DECLINE_INTENTS every
-      // ordinary negotiation would rewind a placed order and notify a manager.
-      const { s, updates, notes } = withCapturingDb();
-      const order = {
-        id: "d4",
-        restaurant_id: "rest-A",
-        status: "CONFIRMED",
-        quantity: 6,
-        final_price: 1050,
-      };
-      await s.syncOrderState(
-        order,
-        baseAnalysis({ intent: "counter_offer", deal_kind: "offer", vendor_offers: [] }),
-        1090,
-        6,
-        false,
-      );
-      // CONFIRMED is terminal for everything that is not a decline, so nothing at
-      // all happened.
-      expect(updates.procurement_orders).toBeUndefined();
-      expect(notes).toHaveLength(0);
-    });
-
-    it("still refuses to rewind an order whose wine is moving or arrived", async () => {
-      // The decline rewind is allowed out of CONFIRMED and nothing else, because
-      // the transition table has no IN_TRANSIT/DELIVERED -> NEGOTIATING edge. A
-      // "decline" at that point is a delivery problem, and it belongs at the door.
-      for (const status of ["IN_TRANSIT", "DELIVERED", "COMPLETED", "CANCELLED"]) {
+      it("leaves an order already NEGOTIATING where it is, and tells a manager", async () => {
         const { s, updates, notes } = withCapturingDb();
+        const order = {
+          id: "d1",
+          restaurant_id: "rest-A",
+          status: "NEGOTIATING",
+          quantity: 6,
+          final_price: null,
+          negotiated_price: null,
+        };
         await s.syncOrderState(
-          { id: "d5", restaurant_id: "rest-A", status, quantity: 6 },
+          order,
           declineAnalysis("rejection"),
           1090,
           6,
           false,
         );
+
+        // No status write: it is already in the state a decline lands in, and a
+        // rewrite would be a change nobody made.
+        expect(updates.procurement_orders).not.toHaveProperty("status");
+        // And NOT closed. This is the whole decision: REJECTED would drop the order
+        // out of every open-order list before a person decided anything.
+        expect(updates.procurement_orders?.status).not.toBe("REJECTED");
+
+        // The decline is NOT copied onto the order. Who declined, when and in what
+        // words is the inbound `procurement_conversations` row; two accounts of one
+        // event can disagree.
+        const payload = JSON.stringify(updates.procurement_orders ?? {});
+        expect(payload).not.toMatch(/decline/i);
+        expect(payload).not.toMatch(/cannot supply/i);
+        expect(updates.procurement_orders).not.toHaveProperty(
+          "rejection_reason",
+        );
+
+        expect(notes).toHaveLength(1);
+        expect(notes[0].restaurantId).toBe("rest-A");
+        expect(notes[0].n.message).toMatch(/not cancelled/i);
+        expect(notes[0].n.metadata.from_status).toBe("NEGOTIATING");
+      });
+
+      it("returns a CONFIRMED order to NEGOTIATING rather than treating it as terminal", async () => {
+        // The case that caught the defect. CONFIRMED is in `terminal`, so before the
+        // fix `syncOrderState` returned before the decline branch and the order
+        // stayed placed with the vendor that had just refused it.
+        const { s, updates, notes } = withCapturingDb();
+        const order = {
+          id: "d2",
+          restaurant_id: "rest-A",
+          status: "CONFIRMED",
+          quantity: 6,
+          final_price: 1050,
+          negotiated_price: 1050,
+        };
+        await s.syncOrderState(
+          order,
+          declineAnalysis("out_of_stock"),
+          1090,
+          6,
+          false,
+        );
+        expect(updates.procurement_orders?.status).toBe("NEGOTIATING");
+        expect(notes[0]?.n.metadata.from_status).toBe("CONFIRMED");
+      });
+
+      it.each(["rejection", "declined", "out_of_stock", "OUT_OF_STOCK"])(
+        "reads %s as a decline",
+        async (intent) => {
+          const { s, updates } = withCapturingDb();
+          const order = {
+            id: "d3",
+            restaurant_id: "rest-A",
+            status: "CONFIRMED",
+            quantity: 6,
+          };
+          await s.syncOrderState(
+            order,
+            declineAnalysis(intent),
+            1090,
+            6,
+            false,
+          );
+          expect(updates.procurement_orders?.status).toBe("NEGOTIATING");
+        },
+      );
+
+      it("does NOT treat a counter-offer as a decline", async () => {
+        // Haggling is not refusing. If `counter_offer` joined DECLINE_INTENTS every
+        // ordinary negotiation would rewind a placed order and notify a manager.
+        const { s, updates, notes } = withCapturingDb();
+        const order = {
+          id: "d4",
+          restaurant_id: "rest-A",
+          status: "CONFIRMED",
+          quantity: 6,
+          final_price: 1050,
+        };
+        await s.syncOrderState(
+          order,
+          baseAnalysis({
+            intent: "counter_offer",
+            deal_kind: "offer",
+            vendor_offers: [],
+          }),
+          1090,
+          6,
+          false,
+        );
+        // CONFIRMED is terminal for everything that is not a decline, so nothing at
+        // all happened.
         expect(updates.procurement_orders).toBeUndefined();
         expect(notes).toHaveLength(0);
-      }
+      });
+
+      it("still refuses to rewind an order whose wine is moving or arrived", async () => {
+        // The decline rewind is allowed out of CONFIRMED and nothing else, because
+        // the transition table has no IN_TRANSIT/DELIVERED -> NEGOTIATING edge. A
+        // "decline" at that point is a delivery problem, and it belongs at the door.
+        for (const status of [
+          "IN_TRANSIT",
+          "DELIVERED",
+          "COMPLETED",
+          "CANCELLED",
+        ]) {
+          const { s, updates, notes } = withCapturingDb();
+          await s.syncOrderState(
+            { id: "d5", restaurant_id: "rest-A", status, quantity: 6 },
+            declineAnalysis("rejection"),
+            1090,
+            6,
+            false,
+          );
+          expect(updates.procurement_orders).toBeUndefined();
+          expect(notes).toHaveLength(0);
+        }
+      });
     });
   });
+
+  // PR #476 audit round 2, R2b: an undecided or discarded credit-claim
+  // letter (`HOUSE_DRAFT`/`HOUSE_CANCELLED`, communications/letters/
+  // house-letters.service.ts LETTER_STATUS) never reached the vendor.
+  // Labelling it "Us:" told the model a claim had already been asked for.
+  describe("buildTranscript — an unsent credit-claim letter is not 'Us:'", () => {
+    const row = (over: Record<string, unknown>) => ({
+      direction: "outbound",
+      content: "We are asking for a $84.50 credit on invoice INV-77.",
+      message_text: "We are asking for a $84.50 credit on invoice INV-77.",
+      created_at: "2026-09-25T10:00:00Z",
+      status: "HOUSE_QUEUED",
+      ...over,
+    });
+
+    it("drops a HOUSE_DRAFT row from the transcript entirely", () => {
+      const out = svc().buildTranscript([row({ status: "HOUSE_DRAFT" })]);
+      expect(out).toBe("(no prior messages)");
+      expect(out).not.toContain("Us:");
+      expect(out).not.toContain("84.50");
+    });
+
+    it("drops a HOUSE_CANCELLED row from the transcript entirely", () => {
+      const out = svc().buildTranscript([row({ status: "HOUSE_CANCELLED" })]);
+      expect(out).toBe("(no prior messages)");
+      expect(out).not.toContain("84.50");
+    });
+
+    it("keeps a HOUSE_QUEUED / SENT row labelled Us: — it really left", () => {
+      const out = svc().buildTranscript([
+        row({ status: "HOUSE_QUEUED" }),
+        row({ status: "SENT", content: "Confirming receipt of the credit." }),
+      ]);
+      expect(out).toContain("Us: We are asking for a $84.50 credit");
+      expect(out).toContain("Us: Confirming receipt of the credit.");
+    });
+
+    it("keeps a real inbound reply even alongside an unsent draft", () => {
+      const out = svc().buildTranscript([
+        row({ status: "HOUSE_DRAFT" }),
+        row({
+          direction: "inbound",
+          status: "",
+          content: "We do not see any credit request from you.",
+        }),
+      ]);
+      expect(out).not.toContain("Us:");
+      expect(out).toContain("Supplier: We do not see any credit request");
+    });
   });
 });

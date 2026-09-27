@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>124a · /promotions · The Band</title>
+<style>
+.mudavym{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --alarm:#A33A2B;--paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;--ink-4:#665d50;
+  --warn:#96601A;--warn-tint:rgba(150,96,26,.14);--loss:#A8402C;--loss-tint:rgba(168,64,44,.14);
+  color-scheme:light;background:var(--paper-0);color:var(--ink-1)}
+
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{background:#f7f3ea;font-family:"DM Sans","Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.serif{font-family:Fraunces,"Iowan Old Style",Georgia,serif;letter-spacing:-.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.banner{background:var(--seal);color:#fffdf8;font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:8px 16px;display:flex;gap:14px;flex-wrap:wrap}
+.note{max-width:1200px;margin:18px auto 0;padding:0 16px;color:var(--ink-3);font-size:12.5px}
+.note b{color:var(--ink-2);font-weight:500}
+.frame{max-width:1200px;margin:14px auto 40px;border:1px solid var(--paper-2);border-radius:10px;overflow:hidden}
+.page{padding:24px 24px 40px}
+.eyebrow{font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3);margin:0}
+h1{font-family:Fraunces,Georgia,serif;font-weight:420;font-size:34px;line-height:1.08;margin:6px 0 0}
+.standing{font-family:Fraunces,Georgia,serif;font-style:italic;font-size:15px;color:var(--ink-2);margin:10px 0 0;max-width:860px}
+.standing b{font-style:normal;font-weight:500;color:var(--ink-1)}
+.readat{font:10.5px "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3);margin-top:4px}
+.chip{display:inline-flex;align-items:center;gap:4px;font:500 9.5px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.06em;text-transform:uppercase;border:1px solid var(--paper-2);border-radius:3px;padding:1px 6px;color:var(--ink-3);white-space:nowrap}
+.chip.agreed{border-color:rgba(150,96,26,.45);color:var(--warn)}
+.chip.bundle{border-color:var(--seal-ring);color:var(--seal-deep)}
+.chip.code{text-transform:none;color:var(--ink-2)}
+.beats{color:var(--seal-deep)} .above{color:var(--loss)} .withheld{color:var(--ink-3);font-style:italic}
+.btn{border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1);border-radius:8px;padding:5px 10px;font:12px inherit;font-family:inherit;display:inline-flex;gap:4px;align-items:center}
+.btn.primary{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--ink-3)}
+.est{display:block;font-size:11px;color:var(--ink-3)}
+.forks{max-width:1200px;margin:0 auto 60px;padding:0 16px;color:var(--ink-2);font-size:13px}
+.forks h2{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:18px;margin:0 0 6px}
+.forks li{margin:4px 0}
+@media (max-width:780px){ h1{font-size:26px} .page{padding:18px 16px 32px} }
+
+.band{display:grid;gap:12px;margin-top:22px}
+.row-large{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.row-compact{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.card{border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.vendor{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:16px}
+.vendor span{color:var(--ink-2);font-weight:420}
+.ends{font:11px "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3)} .ends.soon{color:var(--warn)}
+.fig{font-family:Fraunces,Georgia,serif;font-weight:500;letter-spacing:-.03em;line-height:.95;font-variant-numeric:tabular-nums}
+.hero{display:grid;grid-template-columns:1.1fr 1fr;gap:10px 28px;padding:20px 24px}
+.hero .fig{font-size:88px} .large .fig{font-size:44px} .compact .fig{font-size:22px}
+.compact{padding:10px 12px;gap:5px} .compact .vendor{font-size:13.5px}
+.against{font-size:12.5px;color:var(--ink-2)} .against b{color:var(--ink-1);font-weight:500}
+.worth{border-top:1px solid var(--paper-2);padding-top:8px;font-size:12.5px;color:var(--ink-2)}
+.worth .amt{font:15px "JetBrains Mono",ui-monospace,monospace;color:var(--ink-1)}
+.why{font-size:11.5px;color:var(--ink-3);font-style:italic}
+.lines{font-size:12px;color:var(--ink-2);display:grid;gap:3px}
+.lines div{display:flex;justify-content:space-between;gap:8px}
+/* the bundle: a TRAY — one card, the bottles set into it as a small table */
+.tray{border-color:var(--seal-ring);background:linear-gradient(var(--paper-1),var(--paper-1)) padding-box}
+.tray .bottles{border:1px dashed var(--seal-ring);border-radius:8px;padding:6px 8px;display:grid;gap:3px;font-size:12px;background:var(--paper-0)}
+.tray .bottles div{display:flex;justify-content:space-between;gap:8px}
+.tray .bottles .mono{font-size:11px}
+.foot{display:flex;gap:6px;margin-top:auto;padding-top:4px;flex-wrap:wrap}
+@media (max-width:1100px){.row-compact{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:780px){.hero{grid-template-columns:1fr}.hero .fig{font-size:56px}.row-large,.row-compact{grid-template-columns:1fr}.large .fig{font-size:32px}}
+</style></head>
+<body class="mudavym">
+<div class="banner"><b>Sketch 124 · A · The Band</b><span>tiers as rows · bundle as a tray</span><span>example data</span></div><p class="note"><b>The idea.</b> Each tier is its own row, so size never fights density: one hero band across the page, three large cards beneath it, then the rest as five-across compact tiles — twelve offers read on one 1440 screen. A bundle is a <b>tray</b>: one card with its bottles set into it as a small table, ranked by its own rolled-up worth and taking whatever tier that worth earns (here: large). A bundle whose worth is withheld drops to a compact tray.</p><div class="frame"><div class="page"><p class="eyebrow">The house's vendors</p>
+<h1>Promotions.</h1>
+<p class="standing"><b>12 offers from 7 vendors on the table</b> — five carry a worth the house qualifies for, against a comparison no older than 180 days.</p>
+<p class="readat">Read Sep 25, 14:02 · 312 paid lines, 40 house sightings over 540 days · example data</p>
+<div class="band"><article class="card hero"><div><div class="top"><span class="vendor">Empire Merchants <span>· September rosé close-out</span></span><span class="ends">ends Sep 30</span></div><div class="fig beats">−11.8%</div><div class="against">under <b>Winebow, $13.10</b> · landed</div><div class="against"><b>Their claim:</b> 12% off <span class="chip code">code <b>ROSE12</b></span></div></div><div style="display:flex;flex-direction:column;gap:8px"><div class="worth"><span class="amt">$412</span> — 96 bottles bought in the last 540 days across 11 invoices.<span class="est">Estimate at your rate, not a saving already banked.</span></div><div class="lines"><div><span>Ch. de Sours Rosé 2024</span><span class="mono beats">−11.8%</span></div><div><span>Whispering Angel 2024</span><span class="mono beats">−11.8%</span></div><div><span>Miraval Rosé 2024</span><span class="mono beats">−11.8%</span></div></div><div class="foot"><span class="btn quiet">Details</span><span class="btn primary">Draft an order</span></div></div></article><div class="row-large"><article class="card large"><div class="top"><span class="vendor">Winebow <span>· Burgundy allocation</span></span><span class="ends">ends Oct 4</span></div><div class="fig beats">−7.2%</div><div class="against">under <b>Empire, $41.80</b> · landed</div><div class="against"><b>Their claim:</b> 8% off 6+ </div><div class="worth"><span class="amt">$188</span> — 24 bottles bought in the last 540 days across 5 invoices.<span class="est">Estimate at your rate, not a saving already banked.</span></div><div class="foot"><span class="btn quiet">Details</span><span class="btn primary">Draft an order</span></div></article><article class="card large tray"><div class="top"><span class="vendor">Southern Glazer&#x27;s <span>· Rakı &amp; meze trio</span></span><span class="ends">ends Oct 12</span></div><span class="chip bundle">bundle · 3 bottles</span><div class="fig beats">$164</div><div class="against">the bundle's worth — the sum of its 3 bottles, each against your lowest other vendor</div><div class="bottles"><div><span>Yeni Rakı 70cl</span><span class="mono beats">−9.1% · $61</span></div><div><span>Tekirdağ Gold 70cl</span><span class="mono beats">−6.4% · $58</span></div><div><span>Efe Yaş Üzüm 70cl</span><span class="mono beats">−5.0% · $45</span></div></div><div class="against"><b>Their claim:</b> 3 bottles, $96 together</div><span class="est">Estimate at your rate, not a saving already banked.</span><div class="foot"><span class="btn quiet">Details</span><span class="btn primary">Draft an order</span></div></article><article class="card large"><div class="top"><span class="vendor">Martignetti <span>· Loire whites</span></span><span class="ends">ends Oct 1</span></div><div class="fig beats">−5.5%</div><div class="against">under <b>Winebow, $17.40</b> · landed</div><div class="against"><b>Their claim:</b> 10% off </div><div class="worth"><span class="amt">$96</span> — 40 bottles bought in the last 540 days across 9 invoices.<span class="est">Estimate at your rate, not a saving already banked.</span></div><div class="foot"><span class="btn quiet">Details</span><span class="btn primary">Draft an order</span></div></article></div><div class="row-compact"><article class="card compact"><div class="top"><span class="vendor">Empire Merchants <span>· Prosecco case deal</span></span><span class="ends soon">ends Sep 28 · 3 days</span></div><div class="fig beats">−3.1%</div><div class="why" style="font-style:normal">$12 off a case</div><div class="foot"><span class="btn quiet">Details</span></div></article><article class="card compact"><div class="top"><span class="vendor">RNDC <span>· Whiskey month</span></span><span class="ends">ends Oct 31</span></div><div class="fig beats">−2.0%</div><div class="why" style="font-style:normal">5% off</div><div class="foot"><span class="btn quiet">Details</span></div></article><article class="card compact"><div class="top"><span class="vendor">Winebow <span>· Napa cabernet</span></span><span class="ends">ends Oct 15</span></div><div class="fig above">+1.8%</div><div class="why" style="font-style:normal">above the lowest other vendor</div><div class="foot"><span class="btn quiet">Details</span></div></article><article class="card compact"><div class="top"><span class="vendor">Kobrand <span>· Champagne 12+</span></span><span class="ends">ends Nov 1</span></div><div class="fig beats">−8.0%</div><div class="why" style="font-style:normal">the minimum of 12 does not say bottles or cases — not sized</div><div class="foot"><span class="btn quiet">Details</span></div></article><article class="card compact tray"><div class="top"><span class="vendor">Empire Merchants <span>· Aperitivo pair</span></span><span class="ends">no end date</span></div><span class="chip bundle">bundle · 2 bottles</span><div class="fig withheld" style="font-size:20px">worth withheld</div><div class="bottles"><div><span>Aperol 1L</span><span class="mono beats">−4.2% · $22</span></div><div><span>Campari 1L</span><span class="mono withheld">no comparison</span></div></div><div class="against"><b>Their claim:</b> 2 bottles, $44 together</div><div class="why">1 of 2 bottles has no comparison — no partial sum</div><div class="foot"><span class="btn quiet">Details</span><span class="btn primary">Draft an order</span></div></article><article class="card compact"><div class="top"><span class="vendor">Martignetti <span>· Rioja reserva</span></span><span class="ends">ends Oct 20</span></div><div class="fig beats">−6.1%</div><div class="why" style="font-style:normal">the other vendor&#x27;s price is 212 days old — past 180</div><div class="foot"><span class="btn quiet">Details</span></div></article><article class="card compact"><div class="top"><span class="vendor">Southern Glazer&#x27;s <span>· Mezcal intro</span></span><span class="ends">ends Oct 9</span></div><div class="fig beats">−4.0%</div><div class="why" style="font-style:normal">your largest single order is 4 bottles; the minimum is 6</div><div class="foot"><span class="btn quiet">Details</span></div></article><article class="card compact"><div class="top"><span class="vendor">RNDC <span>· House gin</span></span><span class="ends">no end date</span></div><div class="fig matches">±0.0%</div><div class="why" style="font-style:normal">matches the lowest other vendor</div><div class="foot"><span class="btn quiet">Details</span></div></article></div></div></div></div><section class="forks"><h2>What this direction asks you</h2><ul><li>Is a row per tier right, or should a large card be allowed beside the hero when the hero is narrow?</li><li>Five compact tiles across at desktop (C's density) — or four, with more room for the reason a worth is withheld?</li><li>The tray: should a bundle show every bottle inline (as here), or its first three and a count, like a large card?</li><li>A bundle with a withheld worth: compact tray (here), or kept at the size its bottles' own worths would earn?</li></ul></section></body></html>

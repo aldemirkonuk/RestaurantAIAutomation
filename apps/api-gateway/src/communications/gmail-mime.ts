@@ -18,6 +18,8 @@
  * drift from.
  */
 
+import { htmlToText as sharedHtmlToText } from "../common/html/html-to-text";
+
 /** Gmail's MIME tree; only the fields these walkers touch. */
 export interface GmailPayloadPart {
   mimeType?: string | null;
@@ -82,13 +84,68 @@ export function extractEmailContent(payload: GmailPayloadPart | null | undefined
   // No text/plain anywhere -> render the HTML part down to text so we never
   // hand the AI an empty body.
   if (!text && html) {
-    text = html
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    text = htmlToText(html);
   }
   return { text, attachmentRefs };
+}
+
+/**
+ * HTML -> plain text, keeping the source's line breaks.
+ *
+ * [Audit of PR #435 at a229848f3, 2026-09-26, security review: the previous
+ * version of this function (`.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")`)
+ * stripped every tag AND collapsed every newline to a single space. That is
+ * fine for a person reading the body, but `vendor-tone/tone-scale.ts`
+ * `latestPart()` — the cut that keeps a quoted thread's earlier turns (the
+ * house's own prior words) out of what `vendor-tone/tone-egress.ts` sends to
+ * Jev — works ENTIRELY by matching header/"wrote:"/separator lines at line
+ * boundaries. A vendor message with no `text/plain` part (common for ERP,
+ * webmail and ticketing senders) has no boundaries left once flattened to one
+ * line, so the whole quoted thread — including the house's own negotiation —
+ * went out whole. This walks the same MIME tree the plain-text path already
+ * feeds `latestPart()` with, so an HTML-only message gets the same
+ * newline-delimited shape a plain-text one always had, and the existing cut
+ * logic applies unchanged. See `gmail-mime.spec.ts` for the reproduction.]
+ *
+ * [Audit of PR #435 at ca5b82d9b, round 2, 2026-09-26, both reviewers BLOCK:
+ * the entity decode used to be five chained `.replace()` calls run in a fixed
+ * order (`&amp;` first, then `&lt;`/`&gt;`/`&quot;`/`&#39;`). That is exactly
+ * the anti-pattern `common/html/html-to-text.ts`'s own docstring names and was
+ * written to retire: decoding `&amp;` before `&lt;` turns the literal,
+ * doubly-escaped text `&amp;lt;` into `&lt;` and then into an actual `<` — a
+ * tag character that was never in the source. CodeQL's `js/double-escaping`
+ * flagged this line by line number. The decode below is ONE regex pass with a
+ * replacer callback: every entity is matched against the ORIGINAL string in a
+ * single left-to-right scan, so a character produced by decoding one entity is
+ * never re-offered to the regex as the start of another. `&amp;lt;` now stays
+ * `&lt;` (a literal, safe string), never resolving to `<`. See the
+ * "double-escaping" describe block in `gmail-mime.spec.ts` for the pin.
+ * [2026-09-27: that regex pass is gone — the decode is now the shared
+ * scanner's one-pass `decodeEntities`; the same pin still holds.]]
+ *
+ * [Audit of PR #435 at e2d8ef93a, 2026-09-27, both reviewers BLOCK: the regex
+ * pipeline above stripped `<script>`/`<style>` TAGS but kept their BODIES as
+ * text — an injection path, since this text is what agents read and what
+ * goes to Jev, whose reply re-enters agent context — and broke lines only on `<br>` and CLOSING block
+ * tags, so Outlook's `<hr>` divider and Apple Mail's bare
+ * `wrote:<blockquote type="cite">` left the quoted thread on the same line as
+ * the latest message, and `latestPart()` returned it whole. This now
+ * delegates to the shared single-pass scanner (`common/html/html-to-text.ts`),
+ * which drops script/style/noscript/template contents, breaks the line on
+ * OPENING and closing block tags alike (including `<hr>` and `<blockquote>`),
+ * decodes entities in one pass, and is linear in input length. The one shape
+ * inbound mail needs that the vendor-page extractors must not have — a space
+ * for an inline tag, so words do not glue, and one line break (not a blank
+ * line) between adjacent blocks, so a wrapped "On …/… wrote:" header stays
+ * contiguous — are its `spaceForInlineTags` and `oneBreakPerBoundary`
+ * options. Pinned by the "injection and quoted-thread shapes" block in
+ * `gmail-mime.spec.ts`.]
+ */
+export function htmlToText(html: string): string {
+  return sharedHtmlToText(html, 0, {
+    spaceForInlineTags: true,
+    oneBreakPerBoundary: true,
+  });
 }
 
 /**

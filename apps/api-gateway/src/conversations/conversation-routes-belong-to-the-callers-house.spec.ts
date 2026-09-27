@@ -76,14 +76,41 @@ function seed() {
   ];
   applied = [];
   failWith = null;
+  rpcCalls = [];
+}
+
+/**
+ * One `.or("col.is.null,col.op.value")` group, parsed into predicates a row
+ * must satisfy AT LEAST ONE of. Only the ops this codebase's `.or()` calls
+ * actually use (`is.null`, `neq`, `eq`) are supported — anything else is a
+ * fixture gap, not a silent pass.
+ */
+function parseOrGroup(filterStr: string): Array<(r: Row) => boolean> {
+  return filterStr.split(",").map((clause) => {
+    const m = /^(\w+)\.(is|neq|eq)\.(.*)$/.exec(clause.trim());
+    if (!m) {
+      throw new Error(
+        `conversation-routes fixture cannot parse .or() clause: ${clause}`,
+      );
+    }
+    const [, col, op, val] = m;
+    if (op === "is" && val === "null") return (r: Row) => r[col] == null;
+    if (op === "neq") return (r: Row) => r[col] !== val;
+    return (r: Row) => r[col] === val;
+  });
 }
 
 /** A chainable query over `table`; `.eq` filters are real, not recorded-and-ignored. */
 function makeBuilder() {
   const filters: Array<[string, unknown]> = [];
+  const orGroups: Array<Array<(r: Row) => boolean>> = [];
   let patch: Row | null = null;
   const matching = () =>
-    table.filter((r) => filters.every(([col, val]) => r[col] === val));
+    table.filter(
+      (r) =>
+        filters.every(([col, val]) => r[col] === val) &&
+        orGroups.every((preds) => preds.some((p) => p(r))),
+    );
   const run = () => {
     if (failWith) return { data: null, error: { message: failWith } };
     // Postgres refuses a non-uuid against a uuid column (22P02); it does not
@@ -114,6 +141,14 @@ function makeBuilder() {
       filters.push([col, val]);
       return b;
     },
+    in: (col: string, vals: unknown[]) => {
+      orGroups.push([(r: Row) => vals.includes(r[col])]);
+      return b;
+    },
+    or: (filterStr: string) => {
+      orGroups.push(parseOrGroup(filterStr));
+      return b;
+    },
     update: (row: Row) => {
       patch = row;
       return b;
@@ -136,7 +171,47 @@ function makeBuilder() {
   return b;
 }
 
-const db = { supabase: { from: jest.fn(() => makeBuilder()) } };
+/**
+ * `list_conversation_threads`, as far as these routes lean on it: the house,
+ * `p_thread_key`, `p_search` and `p_withhold_house_letters` (DEFAULT TRUE,
+ * as in migration 20261016000000). The SQL itself is proven against a real
+ * Postgres build of every migration, not here; this stand-in only lets the
+ * HTTP seam run, and records the arguments the service passed.
+ */
+let rpcCalls: Array<{ fn: string; args: Row }> = [];
+function fakeRpc(fn: string, args: Row) {
+  rpcCalls.push({ fn, args });
+  if (fn !== "list_conversation_threads") {
+    return Promise.resolve({ data: null, error: { message: `no rpc ${fn}` } });
+  }
+  const withhold = args.p_withhold_house_letters ?? true;
+  const matched = table.filter(
+    (r) =>
+      r.restaurant_id === args.p_restaurant_id &&
+      (!withhold ||
+        r.status == null ||
+        !["HOUSE_DRAFT", "HOUSE_CANCELLED"].includes(r.status)) &&
+      (args.p_thread_key == null || r.thread_key === args.p_thread_key) &&
+      (args.p_search == null ||
+        String(r.message_text ?? "").includes(args.p_search)),
+  );
+  const keys = [...new Set(matched.map((r) => r.thread_key))];
+  return Promise.resolve({
+    data: keys.map((k) => ({
+      thread_key: k,
+      message_count: matched.filter((r) => r.thread_key === k).length,
+      total_threads: keys.length,
+    })),
+    error: null,
+  });
+}
+
+const db = {
+  supabase: {
+    from: jest.fn(() => makeBuilder()),
+    rpc: jest.fn((fn: string, args: Row) => fakeRpc(fn, args)),
+  },
+};
 
 /*
  * The approve route's two gates (ADR 0175 D9/D10, 2026-09-21). WHO is a stand-in
@@ -533,7 +608,149 @@ describe("approve, edit and reject take an owner or a manager (ADR 0116, ADR 016
       200,
     );
   });
+});
 
+// PR #476 audit round 2, R1b: `GET /conversations/:conversationId` carried no
+// exclusion at all for a `HOUSE_DRAFT`/`HOUSE_CANCELLED` row — an undecided or
+// discarded credit-claim letter (ADR 0230) carrying the same claimed dollar
+// amount, reason and invoice/order numbers ADR 0167 already refuses staff on
+// the credit ledger itself. A staff caller who read a manager's draft id this
+// way, then sent it through `POST /communications/letters`, could hijack and
+// send a credit letter as the house.
+describe("a credit claim's letter is owner/manager territory here too (ADR 0167/0230)", () => {
+  it("answers a staff caller 404 on a HOUSE_DRAFT row — the same as not found", async () => {
+    rowOf(CONV_A).status = "HOUSE_DRAFT";
+    rowOf(CONV_A).message_text = "Asking for a $84.50 credit on INV-77.";
+    const res = await call("GET", `/${CONV_A}`, { role: "staff" });
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain("84.50");
+  });
+
+  it("answers a staff caller 404 on a HOUSE_CANCELLED row too", async () => {
+    rowOf(CONV_A).status = "HOUSE_CANCELLED";
+    const res = await call("GET", `/${CONV_A}`, { role: "staff" });
+    expect(res.status).toBe(404);
+  });
+
+  it.each(["owner", "manager"])(
+    "still answers %s the row, not a 404",
+    async (role) => {
+      rowOf(CONV_A).status = "HOUSE_DRAFT";
+      const res = await call("GET", `/${CONV_A}`, { role });
+      expect(res.status).toBe(200);
+      expect(res.body.conversation_id).toBe(CONV_A);
+    },
+  );
+
+  it("does not withhold a conversation with no status, or an ordinary one, from staff", async () => {
+    // The default seed carries no `status` at all (undefined), and this
+    // asserts the withholding is specific to the two credit-letter statuses,
+    // not a blanket new gate on every read.
+    expect((await call("GET", `/${CONV_A}`, { role: "staff" })).status).toBe(
+      200,
+    );
+    rowOf(CONV_A).status = "SENT";
+    expect((await call("GET", `/${CONV_A}`, { role: "staff" })).status).toBe(
+      200,
+    );
+  });
+});
+
+// PR #476 audit (2026-09-27, head 9d04c0fb6): the round-2 fix above covered
+// the by-id read and the message lists, but GET /threads, GET /thread/:threadId
+// and POST /:id/summarize took no role at all, so a staff caller read the same
+// credit-claim letter through the thread view the Communications page uses
+// (useConversationQueries.ts useConversationThreads / useConversationThread).
+describe("the thread routes withhold a credit claim's letter from staff too (ADR 0167/0230)", () => {
+  const DRAFT = "d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1";
+  const LONE = "e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1";
+  beforeEach(() => {
+    rowOf(CONV_A).thread_key = "T-A";
+    table.push(
+      {
+        id: DRAFT,
+        restaurant_id: HOUSE_A,
+        thread_key: "T-A",
+        status: "HOUSE_DRAFT",
+        direction: "outbound",
+        message_text: "Asking for a $84.50 credit on INV-77.",
+      },
+      {
+        id: LONE,
+        restaurant_id: HOUSE_A,
+        thread_key: "T-LONE",
+        status: "HOUSE_CANCELLED",
+        direction: "outbound",
+        message_text: "Discarded: a $12.00 credit on INV-78.",
+      },
+    );
+  });
+
+  it("GET /threads: staff get the vendor's message but no letter, and no letter-only thread", async () => {
+    const res = await call("GET", "/threads", { role: "staff" });
+    expect(res.status).toBe(200);
+    const body = JSON.stringify(res.body);
+    expect(body).not.toContain("84.50");
+    expect(body).not.toContain("12.00");
+    expect(body).toContain("House A asks the vendor for 12 cases");
+    expect(res.body.threads.map((t: Row) => t.key)).toEqual(["T-A"]);
+    expect(res.body.total).toBe(1);
+    expect(rpcCalls[0].args.p_withhold_house_letters).toBe(true);
+  });
+
+  it("GET /threads: a staff search cannot find a letter's amount", async () => {
+    const res = await call("GET", "/threads?search=84.50", { role: "staff" });
+    expect(res.status).toBe(200);
+    expect(res.body.threads).toEqual([]);
+    expect(res.body.total).toBe(0);
+  });
+
+  it.each(["owner", "manager"])(
+    "GET /threads: %s still see every letter",
+    async (role) => {
+      const res = await call("GET", "/threads", { role });
+      expect(res.status).toBe(200);
+      const body = JSON.stringify(res.body);
+      expect(body).toContain("84.50");
+      expect(body).toContain("12.00");
+      expect(rpcCalls[0].args.p_withhold_house_letters).toBe(false);
+    },
+  );
+
+  it("GET /thread/:threadId: staff get the thread without the letter", async () => {
+    const res = await call("GET", "/thread/T-A", { role: "staff" });
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("84.50");
+    expect(res.body.message_count).toBe(1);
+    const lone = await call("GET", "/thread/T-LONE", { role: "staff" });
+    expect(lone.status).toBe(200);
+    expect(lone.body.message_count).toBe(0);
+    expect(JSON.stringify(lone.body)).not.toContain("12.00");
+  });
+
+  it.each(["owner", "manager"])(
+    "GET /thread/:threadId: %s still see the letter",
+    async (role) => {
+      const res = await call("GET", "/thread/T-A", { role });
+      expect(res.status).toBe(200);
+      expect(JSON.stringify(res.body)).toContain("84.50");
+      expect(res.body.message_count).toBe(2);
+    },
+  );
+
+  it("POST /:id/summarize: staff are answered 404 on a letter, and nothing is queued", async () => {
+    const res = await call("POST", `/${DRAFT}/summarize`, { role: "staff" });
+    expect(res.status).toBe(404);
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
+  it("POST /:id/summarize: a manager may still summarize it", async () => {
+    const res = await call("POST", `/${DRAFT}/summarize`, { role: "manager" });
+    expect(res.status).toBe(201);
+  });
+});
+
+describe("approve, edit and reject — guard metadata (approve is gated in the service since ADR 0175 D10)", () => {
   it("lists JwtAuthGuard BEFORE RolesGuard and declares the role on edit and reject", () => {
     const guards: unknown[] =
       Reflect.getMetadata("__guards__", ConversationsController) ?? [];

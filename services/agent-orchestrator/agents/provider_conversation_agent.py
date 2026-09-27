@@ -2885,6 +2885,28 @@ class ProviderConversationAgent(BaseAgent):
         "SEND_REFUSED",
     )
 
+    # A house letter (`outbound_email_type = 'HOUSE_LETTER'`: the ADR 0118
+    # composer, or an ADR 0230 credit-claim draft) is sent only by the
+    # gateway's own dispatcher (apps/api-gateway/src/communications/letters/
+    # house-letters.service.ts), which reads HOUSE_QUEUED after the undo
+    # window. This agent must never claim one: a HOUSE_QUEUED claim would send
+    # the letter a second time, and a HOUSE_DRAFT / HOUSE_CANCELLED /
+    # HOUSE_FAILED claim would send something nobody asked to send (PR #476
+    # audit, round 6). These are LETTER_STATUS's four HOUSE_* words; its fifth,
+    # SENT, is already terminal above. The gateway refuses the same rows at
+    # POST /conversations/:id/approve (conversations.service.ts
+    # HOUSE_LETTER_STATUSES); this is the backstop for any other publisher of
+    # conversation.approved.
+    _HOUSE_LETTER_STATUSES = (
+        "HOUSE_DRAFT",
+        "HOUSE_QUEUED",
+        "HOUSE_CANCELLED",
+        "HOUSE_FAILED",
+    )
+
+    # Every status a send claim — or a return to the manager — must not touch.
+    _CLAIM_REFUSED_STATUSES = _SEND_TERMINAL_STATUSES + _HOUSE_LETTER_STATUSES
+
     def _mint_rfc822_message_id(self) -> str:
         """Mint an RFC822 Message-ID BEFORE the send.
 
@@ -2973,7 +2995,7 @@ class ProviderConversationAgent(BaseAgent):
         and its send would be refused forever. That direction is fail-safe but
         it is still wrong, so NULL is matched explicitly.
         """
-        blocked = ",".join(self._SEND_TERMINAL_STATUSES)
+        blocked = ",".join(self._CLAIM_REFUSED_STATUSES)
         try:
             claimed = (
                 self.database.supabase.table("procurement_conversations")
@@ -3679,7 +3701,7 @@ class ProviderConversationAgent(BaseAgent):
                 f"Held {routing_key} for {conversation_id}, but no such draft exists."
             )
             return
-        if row.get("status") in self._SEND_TERMINAL_STATUSES:
+        if row.get("status") in self._CLAIM_REFUSED_STATUSES:
             self.logger.info(
                 f"Held {routing_key} for {conversation_id}; the draft is already "
                 f"{row.get('status')}, so there is nothing to return."
@@ -3697,7 +3719,7 @@ class ProviderConversationAgent(BaseAgent):
             ),
             "held_at": datetime.now(timezone.utc).isoformat(),
         }
-        blocked = ",".join(self._SEND_TERMINAL_STATUSES)
+        blocked = ",".join(self._CLAIM_REFUSED_STATUSES)
         updated = (
             table("procurement_conversations")
             .update({"status": "PENDING_APPROVAL", "constraint_flags": flags})
