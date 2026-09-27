@@ -31,6 +31,7 @@ import {
 import { ink, settle } from '../../../lib/mudavym/motion';
 import { EM, GE, MONO, SANS, SERIF, fmtDate, labelize } from './so-format';
 import { SO_SERVER_WINDOWS, settledError, useSortingOfficeData } from './useSortingOfficeData';
+import { IncompleteOrders } from './IncompleteOrders';
 
 function DrawerLabel({ children }: { children: string }) {
   return (
@@ -721,6 +722,11 @@ export default function DocumentsReportsNext() {
                 </Link>
               </section>
             </div>
+
+            {/* orders that never arrived — 30 days past their date (ADR 0207
+                round 3): out of the vendor figures until received, cancelled
+                or closed with a credit */}
+            <IncompleteOrders />
 
             {/* the noise roll: filed, countable, never deleted, never in the way */}
             <section
