@@ -193,7 +193,16 @@ must land before the flag goes live for any house." So
 `mudavym_design_vendor_prices` stays OFF for every house until this lane has
 merged. What it adds:
 
-- **Schema**, `20260927130000_a_price_names_its_paper_and_its_messenger.sql`,
+- **Schema**, `20260927130000_a_price_names_its_paper_and_its_messenger.sql`
+  **[renamed 2026-09-27, merge-train update for PR #482: `20260927130000` →
+  `20261115000000`. `check_migration_order.py` found the version behind
+  origin/main's ceiling after #473's own seven renames landed `20261022000000`;
+  `20261115000000` clears that ceiling and the highest version queued across
+  every other open PR at merge time (`20261102110000`, PR #488), by a wide
+  margin rather than one step, the same reasoning `/vendor-prices`'s own
+  migration used above. Content unchanged — a pure rename. Every citation of
+  the old version in this file, the ADR 0160 doc, `v3.0-TECH-DEBT.md` and the
+  code comments it names is re-cited to the new one.]**,
   additive only. It adds four nullable columns on `vendor_price_observations`:
   `document_id`, `document_line_id`, `conversation_message_id` and
   `source_contact_id`.

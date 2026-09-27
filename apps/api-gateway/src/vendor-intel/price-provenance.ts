@@ -16,7 +16,7 @@
  * `vendor-comparison.service.ts` `loadProvenance`, and every one of them is
  * house-scoped on its own table (`restaurant_id`, or the contact's vendor's
  * `restaurant_id`), on top of the database's own composite keys
- * (`20260927130000_a_price_names_its_paper_and_its_messenger.sql`).
+ * (`20261115000000_a_price_names_its_paper_and_its_messenger.sql`).
  */
 
 /** What a person can read about the paper a price was read from. */

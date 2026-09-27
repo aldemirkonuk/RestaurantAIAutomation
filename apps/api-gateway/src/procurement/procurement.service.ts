@@ -1996,7 +1996,7 @@ export class ProcurementService {
           outlier_judged_at: row.outlier_judged_at,
           // ADR 0160 §112 fork 6(a). The database refuses another house's
           // document or message here on its own (composite keys,
-          // `20260927130000_a_price_names_its_paper_and_its_messenger.sql`).
+          // `20261115000000_a_price_names_its_paper_and_its_messenger.sql`).
           document_id: row.document_id,
           document_line_id: row.document_line_id,
           conversation_message_id: row.conversation_message_id,

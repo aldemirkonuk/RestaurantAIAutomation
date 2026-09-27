@@ -129,7 +129,7 @@ export interface OwnPaperSightingInput {
  * Every id here was read house-scoped by the caller
  * (`procurement.service.ts` `receiptPaperFor` / `dealMessageFor`), and the
  * database refuses any other house's document or message on its own
- * (`20260927130000_a_price_names_its_paper_and_its_messenger.sql`'s composite
+ * (`20261115000000_a_price_names_its_paper_and_its_messenger.sql`'s composite
  * keys) — so this module never has to trust them for the boundary.
  */
 export interface OwnPaperProvenance {

@@ -556,7 +556,9 @@ it does not reopen "not deferred" — the provenance is still owed before any ho
 the page.]** **[built 2026-09-25, lane W3-provenance, branch
 `feat/vendor-price-provenance` (stacked on #473): `vendor_price_observations` gains
 `document_id`, `document_line_id`, `conversation_message_id` and `source_contact_id`
-(`20260927130000_a_price_names_its_paper_and_its_messenger.sql` — composite keys with
+(`20260927130000_a_price_names_its_paper_and_its_messenger.sql` **[renamed
+2026-09-27, merge-train update for PR #482, to `20261115000000` — see
+`06-pages/vendor-prices.md`'s dated bracket for the reason]** — composite keys with
 `restaurant_id`, so the database refuses another house's paper or message, and a
 public-register row can carry none **[corrected 2026-09-26, PR #482 audit at
 cd2dc58f6: a line is house-checked by the database only when the row also names its
