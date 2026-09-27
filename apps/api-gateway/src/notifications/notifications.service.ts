@@ -614,6 +614,17 @@ export class NotificationsService {
        * restaurant through this default (team-audit.md, BLOCKER 4).
        */
       onlyUserIds?: string[];
+      /**
+       * Set by a caller that already sends its OWN push, with its own
+       * opt-out and audience filtering — team broadcast is the first
+       * (`team.controller.ts` `broadcast()`, "One push path"). Without this,
+       * this funnel's own "Mobile fan-out" below fired a SECOND push at
+       * every non-`"low"` priority, to the full write audience, reading no
+       * preference at all: an inbox-only send still pushed, and a push
+       * opt-out was ignored.
+       * Two push paths for one message; this keeps it to one.
+       */
+      skipMobilePush?: boolean;
     } = {},
   ): Promise<{ inserted: number; ids: string[] }> {
     const { broadcast = true, dedupeWithinMinutes } = opts;
@@ -712,7 +723,13 @@ export class NotificationsService {
       // Mobile fan-out: whatever lands in the notification center lands on
       // members' phones too, except low priority which stays in-app only.
       // Batching happens upstream of this funnel, so a digest is one push.
-      if (this.expoPushService && (payload.priority ?? "medium") !== "low") {
+      // `skipMobilePush` opts a caller OUT of this leg entirely, for when it
+      // is running its own — see the option's doc comment.
+      if (
+        this.expoPushService &&
+        !opts.skipMobilePush &&
+        (payload.priority ?? "medium") !== "low"
+      ) {
         await this.expoPushService.sendToUsers(userIds, {
           title: payload.title,
           body: payload.message,
