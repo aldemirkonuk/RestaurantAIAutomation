@@ -238,6 +238,17 @@ class PageSpec:
     # cache actually lives in. Named by FUNCTION so a shared file's other hooks,
     # which belong to other pages, are not judged here.
     imported_query_hooks: tuple[tuple[Path, str], ...] = ()
+    # W6's "no local query at all" exemption below is opt-in per page, not
+    # automatic from `imported_query_hooks` alone. /receipts also declares an
+    # imported hook (useProviders, for vendor names on the credit ledger's
+    # rows) while still having real page-local reads every day; the exemption
+    # is for a page whose OWN shape moved every bucket external, like
+    # /communications after the ADR 0083 amendment, not for "no local call
+    # happened to be found this run" (which a mutation — or a genuine future
+    # regression that silently deletes a page's own reads — can produce just
+    # as well as a deliberate shape). True only where that IS the page's real,
+    # everyday shape.
+    all_queries_imported: bool = False
 
 
 _RECEIVING = Path("apps/web/src/pages/receiving/next")
@@ -339,6 +350,11 @@ PAGES = (
             (_CMS_SENDERS, "useSenderRegister"),
             (_CMS_SENDERS, "useStrangers"),
         ),
+        # This page's real, everyday shape since the ADR 0083 amendment: every
+        # cache bucket lives in one of the shared hooks above, never a local
+        # `useQuery`. See the field's own docstring for why this is not the
+        # default for a page that merely imports one shared hook.
+        all_queries_imported=True,
     ),
     PageSpec(
         name="/documents-reports",
@@ -851,14 +867,19 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
     # reads those hooks' keys and raises CannotCheck itself when one holds none.
     # /communications took this shape on 2026-09-25 (ADR 0083 amendment), when
     # its two page-local reads — the report schedules and the Gmail watch —
-    # left the page. The exemption needs BOTH halves: no query call anywhere in
-    # the page's files (so an unparseable one still refuses below) AND at least
-    # one declared shared hook (so a page with no reads at all still refuses).
+    # left the page, and its PageSpec says so with `all_queries_imported=True`.
+    # The exemption needs THREE things: no query call anywhere in the page's
+    # files (so an unparseable one still refuses below), the page's own word
+    # that this is its everyday shape (so declaring an imported hook for one
+    # incidental lookup — /receipts' useProviders, for vendor names on the
+    # credit ledger's rows, while the page still has real local reads every
+    # day — does not also excuse it), and at least one declared shared hook
+    # (so a page with no reads at all still refuses).
     local_query_call = any(
         ANY_QUERY_HOOK_CALL.search(src)
         for src in [hooks_src, *renderer_src.values()]
     )
-    if not keys and not local_query_call and page.imported_query_hooks:
+    if not keys and not local_query_call and page.all_queries_imported:
         pass
     elif not keys:
         raise CannotCheck(
