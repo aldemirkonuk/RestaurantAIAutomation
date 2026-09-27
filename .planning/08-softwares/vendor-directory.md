@@ -174,3 +174,17 @@ Seams:
   decision that unblocks it.
 - OD-101 (should the email composer read/write `provider_knowledge`) sits directly on this
   software's data.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** `providers` (4,664 LOC / 51 endpoints / 2 controllers / 9 specs) has the worst endpoint-to-spec ratio of any module over 20 endpoints measured this pass.
+
+**Coverage.** `providers` 47.3%/36.6%; `vendor-catalogue` untested (0 specs).
+
+**Runs in production.** Yes, with light real data.
+
+**Promised vs. built.** `partial` holds.
+
+**Gaps.** Low coverage on the largest vendor-division controller in the codebase.
+
+*Evidence:* Supabase `providers`=22, `vendor_catalogue`=25 rows.
