@@ -230,9 +230,21 @@ export const OWNER_PAY_WITHHELD = "owner" as const;
  * cost too (`labor_cost / worked hours` IS the owner's wage) and says why.
  */
 export function shiftForViewer<T extends Record<string, any>>(
-  shift: T,
+  row: T,
   viewer: MoneyViewer,
 ): T {
+  // An open shift carries no one's wage, so it carries no cost: every writer
+  // prices a shift with no person as `null`. A figure stored on one anyway is
+  // a former occupant's — `updateShift` wrote one before it priced an
+  // unassigned shift as nobody's (whether any such row is in production was
+  // not measured) — and
+  // `seesMoneyOf(viewer, null)` is true, so it would reach a manager as is,
+  // and `labor_cost / worked hours` would be that person's wage, an owner's
+  // included (founder item 71). Said as `null`, never passed on.
+  const shift =
+    row && typeof row === "object" && !row.member_id && row.labor_cost != null
+      ? ({ ...row, labor_cost: null } as T)
+      : row;
   if (seesMoneyOf(viewer, shift?.member_id)) return shift;
   const out = without(shift, SHIFT_MONEY);
   return seesMoney(viewer) && out && typeof out === "object"

@@ -799,7 +799,15 @@ export class ScheduleService {
       patch.schedule_id = schedule.id;
     }
 
-    // Recompute labor cost if member, time or break changed.
+    // Recompute labor cost if member, time or break changed. The person is
+    // the one the shift will HAVE: an explicit `memberId: null` unassigns it,
+    // and an open shift carries no one's wage, so it is priced as nobody's
+    // (`null`). A `??` here used to fall through that `null` to the person
+    // being taken off, so an owner's shift unassigned by a manager kept a cost
+    // priced at the owner's wage on a row with no person on it, which
+    // `shiftForViewer` passed to them (founder item 71, PR #440 audit).
+    const pricedMember =
+      dto.memberId !== undefined ? dto.memberId : cur.member_id;
     if (
       dto.memberId !== undefined ||
       dto.startTime !== undefined ||
@@ -808,7 +816,7 @@ export class ScheduleService {
     ) {
       patch.labor_cost = await this.laborCost(
         restaurantId,
-        dto.memberId ?? cur.member_id,
+        pricedMember,
         {
           start_time: nextStart,
           end_time: nextEnd,

@@ -2,7 +2,9 @@ import {
   BadRequestException,
   ForbiddenException,
   InternalServerErrorException,
+  ValidationPipe,
 } from "@nestjs/common";
+import { UpdateShiftDto } from "./dto/team.dto";
 import { ScheduleService } from "./schedule.service";
 import { FORMER_STAFF_RETENTION_YEARS, TeamService } from "./team.service";
 import {
@@ -668,6 +670,56 @@ describe("R6 — an OWNER's pay is the owners': a manager never sees or sets it,
       endTime: "17:00",
     } as any);
     expect(staffShift.labor_cost).toBe(150);
+  });
+
+  it("a manager who unassigns the owner's shift gets no cost priced at the owner's wage, now or on the week", async () => {
+    // PR #440 audit at ccd69c4e: `dto.memberId ?? cur.member_id` fell through
+    // an explicit `null` to the owner, so the now-open shift was priced at
+    // 40/h, and an open shift's cost reaches a switched-on manager
+    // (`seesMoneyOf(viewer, null)`): 300 / 7.5 worked hours = the owner's wage.
+    const db = seed({ managerPay: true });
+    ownerShiftWeek(db);
+    const svc = scheduleOf(db);
+    const updated = await svc.updateShift(MANAGER, RID, "sh3", { memberId: null, endTime: "18:00" } as any);
+    expect(updated.member_id).toBeNull();
+    expect(updated.labor_cost).toBeNull();
+    expect(db.tables.shifts.find((s) => s.id === "sh3")?.labor_cost).toBeNull();
+
+    // Unassigned alone, with nothing else changed, it is priced as nobody's too.
+    db.tables.shifts.push(shift({ id: "sh4", member_id: "m-owner", labor_cost: 300 }));
+    const bare = await svc.updateShift(MANAGER, RID, "sh4", { memberId: null } as any);
+    expect(bare.labor_cost).toBeNull();
+    expect(db.tables.shifts.find((s) => s.id === "sh4")?.labor_cost).toBeNull();
+
+    const week = await svc.getWeek(MANAGER, RID, WEEK);
+    for (const id of ["sh3", "sh4"]) {
+      const row = week.shifts.find((s: any) => s.id === id);
+      expect(row.labor_cost).toBeNull();
+    }
+    // Reassigned to a colleague, it is priced at the colleague's wage.
+    const moved = await svc.updateShift(MANAGER, RID, "sh4", { memberId: "m-staff" } as any);
+    expect(moved.labor_cost).toBe(150);
+  });
+
+  it("an open shift that still holds a former occupant's cost is shown with none", async () => {
+    // A row written by the old fall-through: no person on it, the owner's
+    // figure still stored. It is nobody's wage, so it is said as `null`.
+    const db = seed({ managerPay: true });
+    db.tables.shifts.push(shift({ id: "sh-stale", member_id: null, state: "open", labor_cost: 300 }));
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    const row = week.shifts.find((s: any) => s.id === "sh-stale");
+    expect(row.labor_cost).toBeNull();
+    expect(shiftForViewer({ id: "x", member_id: null, labor_cost: 300 }, "owner").labor_cost).toBeNull();
+  });
+
+  it("the global validation pipe lets an explicit memberId null reach updateShift (the unassign is reachable)", async () => {
+    // main.ts: whitelist + forbidNonWhitelisted + transform. `whitelist` strips
+    // undecorated KEYS, not a null VALUE of a decorated one, and @IsOptional
+    // skips validation on null, so the unassign above is a real request.
+    const pipe = new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true });
+    const out = await pipe.transform({ memberId: null }, { type: "body", metatype: UpdateShiftDto });
+    expect("memberId" in out).toBe(true);
+    expect(out.memberId).toBeNull();
   });
 
   it("the owner's rows unreadable: pay is withheld from the manager altogether, and no wage is written", async () => {
