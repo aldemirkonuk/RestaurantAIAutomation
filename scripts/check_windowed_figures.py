@@ -249,6 +249,7 @@ _TEAM_CMD = Path("apps/web/src/pages/team/command")
 _LOGS = Path("apps/web/src/pages/logs/next")
 _QUERY_HOOKS = Path("apps/web/src/hooks/queries/useConversationQueries.ts")
 _DRAFT_HOOKS = Path("apps/web/src/hooks/queries/useDraftEmailQueries.ts")
+_CMS_SENDERS = _COMMS / "useSendersDeskData.ts"
 
 PAGES = (
     PageSpec(
@@ -313,10 +314,11 @@ PAGES = (
         floor_markers=("GE",),
         nullable_contract={
             # Every glance figure must be able to say it does not know. The page
-            # has FIVE sources and only one of them used to have a failure
+            # had FIVE sources and only one of them used to have a failure
             # surface, so four figures rendered a failure as the em dash the ADR
-            # reserves for "has not answered".
-            "CommsGlance": ["threads", "draftsPending", "sentLast30", "schedules"],
+            # reserves for "has not answered". Since the ADR 0083 amendment of
+            # 2026-09-25 it owns three; the schedules figure left with its card.
+            "CommsGlance": ["threads", "draftsPending", "sentLast30"],
         },
         tenant_tokens=("rid", "restaurantId"),
         tenant_keyed=True,
@@ -326,6 +328,16 @@ PAGES = (
             (_QUERY_HOOKS, "useProcurementConversationHistory"),
             (_QUERY_HOOKS, "useConversationThreads"),
             (_DRAFT_HOOKS, "useActiveConversations"),
+            # ADR 0160 open item 3 (2026-09-25) / PR #470 audit: useSendersDeskData.ts
+            # is the page's OWN file (not a shared hook outside the tree), but its
+            # queries are declared inside `useSenderRegister`/`useStrangers`, one
+            # level below where W6 reads (useCommsNextData.ts + CommunicationsNext.tsx
+            # only) — so before this line, neither `comms-senders` nor
+            # `comms-strangers` was judged by anything. W7's per-function reader
+            # does not care whether a file sits inside or outside the page tree; it
+            # only needs `export function <name>`, which both have.
+            (_CMS_SENDERS, "useSenderRegister"),
+            (_CMS_SENDERS, "useStrangers"),
         ),
     ),
     PageSpec(
@@ -602,6 +614,20 @@ def resolve_gateway(root: Path, basename: str) -> Path:
 # the failure mode this whole file exists to prevent, so it is tested below.
 USE_QUERY = re.compile(r"use(?:Infinite)?Query\s*(?:<[^()<>]*(?:<[^()<>]*>[^()<>]*)*>)?\s*\(\s*\{")
 
+# Detection only — every react-query hook FORM, not just `useQuery`/
+# `useInfiniteQuery`. Added 2026-09-25 (PR #470 audit): W6's "is there a
+# page-local query at all" test used the same two-form regex as USE_QUERY
+# above, so a page whose local read was a `useQueries` or `useSuspenseQuery`
+# call — neither parsed by USE_QUERY nor matched by the old detector — read as
+# "no local query call" and, for any page with a declared shared hook, took
+# the pass-vacuously branch below instead of raising CannotCheck. That is the
+# same vacuity class line 594's comment already warns about, just for a form
+# this guard didn't know existed. `useCellarNextData.ts` and
+# `useReportsNextData.ts` both call `useQueries` today, though neither is a
+# guarded PAGES entry yet (see `--self-test`, "W6 does not silently pass a
+# useQueries call it cannot parse").
+ANY_QUERY_HOOK_CALL = re.compile(r"\buse(?:Suspense)?(?:Infinite)?Quer(?:y|ies)\b")
+
 
 def query_bodies(src: str) -> list[str]:
     """Each `useQuery({ … })` argument, by brace matching."""
@@ -813,14 +839,28 @@ def run_page(root: Path, page: PageSpec, rep: Report) -> None:
     # cannot fire on a page it is printed as covering is the shape this whole
     # file is written against, so it is matched as an identifier now and tested
     # on the Infinite form below.
-    if re.search(r"\buse(?:Infinite)?Query\b", hooks_src) and not hook_bodies:
+    if ANY_QUERY_HOOK_CALL.search(hooks_src) and not hook_bodies:
         raise CannotCheck(
             f"{page.hooks} contains a query call but none could be parsed. W6 and W5 "
             "would both pass on a file they never read."
         )
     bodies = hook_bodies + [b for src in renderer_src.values() for b in query_bodies(src)]
     keys = [k for b in bodies for k in query_keys(b)]
-    if not keys:
+    # A page whose EVERY cache bucket lives in a declared shared hook has no
+    # page-local key to judge, and that is a shape, not a blind spot: W7 below
+    # reads those hooks' keys and raises CannotCheck itself when one holds none.
+    # /communications took this shape on 2026-09-25 (ADR 0083 amendment), when
+    # its two page-local reads — the report schedules and the Gmail watch —
+    # left the page. The exemption needs BOTH halves: no query call anywhere in
+    # the page's files (so an unparseable one still refuses below) AND at least
+    # one declared shared hook (so a page with no reads at all still refuses).
+    local_query_call = any(
+        ANY_QUERY_HOOK_CALL.search(src)
+        for src in [hooks_src, *renderer_src.values()]
+    )
+    if not keys and not local_query_call and page.imported_query_hooks:
+        pass
+    elif not keys:
         raise CannotCheck(
             f"no `queryKey: [...]` found in any parsed useQuery in {page.name}'s hook "
             "or renderers. W6 would pass vacuously, which is how /receipts kept three "
@@ -988,22 +1028,24 @@ export interface CommsGlance {
   draftsPending: number | null;
   sentLast30: number | null;
   sentLast30Truncated: boolean;
-  schedules: number | null;
 }
 
 export function useCommsNextData() {
-  const restaurantId = activeRestaurantId ?? user?.restaurantId ?? '';
-  const schedulesQ = useQuery<ScheduledReport[]>({
-    queryKey: ['report-schedules', restaurantId],
+  const historyQ = useProcurementConversationHistory();
+  const threadsQ = useConversationThreads();
+  const activeQ = useActiveConversations();
+  const truncated = (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS;
+  return { truncated, historyQ, threadsQ, activeQ };
+}
+"""
+
+# A page-local read added back to the comms hook. Since 2026-09-25 the page has
+# none (every bucket is a declared shared hook, W7), so W6's only job there is
+# to judge one the day it returns.
+COMMS_LOCAL_QUERY = """  const schedulesQ = useQuery<ScheduledReport[]>({
+    queryKey: ['report-schedules'],
     queryFn: listReportSchedules,
   });
-  const gmailQ = useQuery<{ configured: boolean }>({
-    queryKey: ['comms-gmail-watch-status', restaurantId],
-    queryFn: async () => (await apiClient.get('/x')).data,
-  });
-  const truncated = (historyQ.data?.length ?? 0) >= COMMS_SERVER_WINDOWS.HISTORY_ROWS;
-  return { truncated, schedulesQ, gmailQ };
-}
 """
 
 # The header deliberately says MERGE and the body calls GET: both contain the
@@ -1015,6 +1057,27 @@ import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 export function R() {
   const t = `cap ${COMMS_SERVER_WINDOWS.HISTORY_ROWS}`;
   return <span title={t}>{unknown ? EM : floor ? `${GE}${value}` : value}</span>;
+}
+"""
+
+# PR #470's own page-local hooks (ADR 0160 open item 3): `comms-senders` and
+# `comms-strangers`, both tenant-keyed. Added 2026-09-25 after the pr-audit-gate
+# found this file listed as neither a hook nor a renderer for /communications,
+# so W6 never judged either key. See "W6 the senders key/strangers key lost
+# its tenant" below for the mutation that proves this fixture is now read.
+CLEAN_COMMS_SENDERS_HOOKS = """
+import { useQuery } from '@tanstack/react-query';
+export function useSenderRegister(restaurantId) {
+  return useQuery({
+    queryKey: ['comms-senders', restaurantId],
+    queryFn: () => apiClient.get('/senders/reputation'),
+  });
+}
+export function useStrangers(restaurantId, allHouses) {
+  return useQuery({
+    queryKey: ['comms-strangers', restaurantId, allHouses ? 'all' : 'this'],
+    queryFn: () => apiClient.get('/prospects'),
+  });
 }
 """
 
@@ -1334,6 +1397,12 @@ def _scaffold(tmp: Path) -> None:
     (tmp / _CMS.hooks).write_text(CLEAN_COMMS_HOOKS, encoding="utf-8")
     for r in _CMS.renderers:
         (tmp / r).write_text(CLEAN_COMMS_RENDERER, encoding="utf-8")
+    # useSendersDeskData.ts (ADR 0160 open item 3): not a PageSpec renderer —
+    # it is read only through the two `imported_query_hooks` entries above,
+    # exactly like _QUERY_HOOKS/_DRAFT_HOOKS below, so it needs its own file
+    # here rather than a slot in the renderers loop.
+    (tmp / _CMS_SENDERS).parent.mkdir(parents=True, exist_ok=True)
+    (tmp / _CMS_SENDERS).write_text(CLEAN_COMMS_SENDERS_HOOKS, encoding="utf-8")
     (tmp / _SO.hooks).write_text(CLEAN_SO_HOOKS, encoding="utf-8")
     for r in _SO.renderers:
         (tmp / r).write_text(CLEAN_SO_RENDERER, encoding="utf-8")
@@ -1638,12 +1707,101 @@ def self_test() -> int:
         "clean",
     )
     case(
-        "W6 the comms schedules key lost its tenant",
+        "W6 a page-local comms read returns without its tenant",
         lambda t: (t / _CMS.hooks).write_text(
-            CLEAN_COMMS_HOOKS.replace("'report-schedules', restaurantId]", "'report-schedules']"),
+            CLEAN_COMMS_HOOKS.replace(
+                "  const truncated =", COMMS_LOCAL_QUERY + "  const truncated ="
+            ),
             encoding="utf-8",
         ),
         "violation",
+        "report-schedules",
+    )
+    case(
+        "W6 a page-local comms read with its tenant is judged clean",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace(
+                "  const truncated =",
+                COMMS_LOCAL_QUERY.replace("['report-schedules']", "['report-schedules', restaurantId]")
+                + "  const truncated =",
+            ),
+            encoding="utf-8",
+        ),
+        "clean",
+    )
+    case(
+        "W6 an unparseable page-local comms read still refuses",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace("  const truncated =", "  const q = useQuery(opts);\n  const truncated ="),
+            encoding="utf-8",
+        ),
+        "cannot-check",
+    )
+    case(
+        "W6 a keyless page-local comms read is not excused by the shared hooks",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace(
+                "  const truncated =", "  const q = useQuery({ queryFn: listReportSchedules });\n  const truncated ="
+            ),
+            encoding="utf-8",
+        ),
+        "cannot-check",
+    )
+    case(
+        # 2026-09-25 (PR #470 audit): a `useQueries`/`useSuspenseQuery` local
+        # read must never be mistaken for "no local query call" — that misread
+        # is what let the pass-vacuously exemption above wave through a form
+        # neither USE_QUERY nor the old detector recognized.
+        "W6 does NOT silently pass a useQueries call it cannot parse",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace(
+                "  const truncated =",
+                "  const results = useQueries({ queries: [{ queryKey: ['report-schedules'], queryFn: listReportSchedules }] });\n"
+                "  const truncated =",
+            ),
+            encoding="utf-8",
+        ),
+        "cannot-check",
+    )
+    case(
+        "W6 does NOT silently pass a useSuspenseQuery call it cannot parse",
+        lambda t: (t / _CMS.hooks).write_text(
+            CLEAN_COMMS_HOOKS.replace(
+                "  const truncated =",
+                "  const q = useSuspenseQuery({ queryKey: ['report-schedules'], queryFn: listReportSchedules });\n"
+                "  const truncated =",
+            ),
+            encoding="utf-8",
+        ),
+        "cannot-check",
+    )
+    case(
+        # ADR 0160 open item 3 / PR #470 audit: useSendersDeskData.ts sat
+        # outside this PageSpec's hooks/renderers, so a dropped `restaurantId`
+        # on either of its two queries would have gone unguarded. Now listed
+        # as a renderer (see the PageSpec above), both keys are judged.
+        "W6 the senders register key lost its tenant (comms-senders)",
+        lambda t: (t / _CMS_SENDERS).write_text(
+            CLEAN_COMMS_SENDERS_HOOKS.replace(
+                "queryKey: ['comms-senders', restaurantId],",
+                "queryKey: ['comms-senders'],",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        "comms-senders",
+    )
+    case(
+        "W6 the strangers key lost its tenant (comms-strangers)",
+        lambda t: (t / _CMS_SENDERS).write_text(
+            CLEAN_COMMS_SENDERS_HOOKS.replace(
+                "queryKey: ['comms-strangers', restaurantId, allHouses ? 'all' : 'this'],",
+                "queryKey: ['comms-strangers', allHouses ? 'all' : 'this'],",
+            ),
+            encoding="utf-8",
+        ),
+        "violation",
+        "comms-strangers",
     )
     case(
         "W2 the comms floor marker was deleted but its IMPORT remained",
