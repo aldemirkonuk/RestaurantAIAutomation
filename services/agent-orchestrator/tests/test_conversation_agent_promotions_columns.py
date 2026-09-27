@@ -25,9 +25,10 @@ code: every path swallows its error. So the assertions are about what is sent.
 Run: cd services/agent-orchestrator && python -m pytest tests/test_conversation_agent_promotions_columns.py -v
 """
 
+import asyncio
 import pathlib
 import re
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from agents.provider_conversation_agent import (
     ProviderConversationAgent,
@@ -500,6 +501,70 @@ class TestTheReadAndTheSweep:
         ), "alerted_at must not be set when the alert never sent"
         agent.logger.error.assert_called_once()
 
+    async def test_expiring_alert_sweep_leaves_alerted_at_null_on_publish_returning_false(
+        self,
+    ):
+        """MessageBus.publish/publish_event does not raise on a broker
+        hiccup (CircuitOpenError or any other publish exception) -- it
+        logs the error and returns False. A test that only simulates
+        failure via `side_effect=RuntimeError` never exercises this path,
+        so it would pass against code that ignores the return value and
+        stamps alerted_at anyway."""
+        agent = _agent()
+        agent.database = _ExpiryFakeDB(
+            [
+                {
+                    "id": "p-1",
+                    "provider_id": PROV_ID,
+                    "restaurant_id": REST_ID,
+                    "name": "Spring Barolo case deal",
+                    "end_date": "2026-10-01",
+                }
+            ]
+        )
+        agent.publish = AsyncMock(return_value=False)
+        await ProviderConversationAgent._check_expiring_promos(agent)
+        assert (
+            agent.database.updates == []
+        ), "alerted_at must not be set when publish returns False"
+        agent.logger.error.assert_called_once()
+
+    async def test_one_promos_publish_returning_false_does_not_block_the_others(self):
+        """Same as the raising case, but for the return-False failure mode
+        the real MessageBus actually takes."""
+        agent = _agent()
+        agent.database = _ExpiryFakeDB(
+            [
+                {
+                    "id": "p-bad",
+                    "provider_id": PROV_ID,
+                    "restaurant_id": REST_ID,
+                    "name": "Bad deal",
+                    "end_date": "2026-10-02",
+                },
+                {
+                    "id": "p-good",
+                    "provider_id": PROV_ID,
+                    "restaurant_id": REST_ID,
+                    "name": "Ok deal",
+                    "end_date": "2026-10-01",
+                },
+            ]
+        )
+
+        async def flaky_publish(**kwargs):
+            return kwargs["message_body"]["payload"].get("promo_id") != "p-bad"
+
+        agent.publish = AsyncMock(side_effect=flaky_publish)
+        await ProviderConversationAgent._check_expiring_promos(agent)
+
+        alerted_ids = {row_id for row_id, _ in agent.database.updates}
+        assert alerted_ids == {"p-good"}, (
+            "p-bad's publish returning False must not mark it alerted, "
+            "and must not stop p-good from being alerted"
+        )
+        agent.logger.error.assert_called_once()
+
     async def test_one_promos_publish_failure_does_not_block_the_others(self):
         agent = _agent()
         agent.database = _ExpiryFakeDB(
@@ -524,6 +589,7 @@ class TestTheReadAndTheSweep:
         async def flaky_publish(**kwargs):
             if kwargs["message_body"]["payload"].get("promo_id") == "p-bad":
                 raise RuntimeError("broker unreachable")
+            return True
 
         agent.publish = AsyncMock(side_effect=flaky_publish)
         await ProviderConversationAgent._check_expiring_promos(agent)
@@ -534,3 +600,43 @@ class TestTheReadAndTheSweep:
             "and must not mark p-bad alerted either"
         )
         agent.logger.error.assert_called_once()
+
+
+# =============================================================================
+# The proactive-monitor loop's ordering
+# =============================================================================
+
+
+class TestProactiveMonitorLoopOrdering:
+    async def test_expire_old_promos_runs_before_check_expiring_promos(self):
+        """`_check_expiring_promos` has no lower bound on `end_date` (any
+        `is_active=true` row past its end_date qualifies as "expiring
+        soon" too). `_expire_old_promos` must run first each pass so an
+        already-expired row is deactivated before that read, not after --
+        otherwise the first run after this migration ships would read
+        every row `_expire_old_promos`'s prior `status`/`expired` no-op
+        left stranded `is_active=true` and fire a false alert burst."""
+        agent = _agent()
+        agent._shutdown_event = asyncio.Event()
+        calls: list = []
+
+        async def fake_expire():
+            calls.append("expire")
+
+        async def fake_check():
+            calls.append("check")
+
+        async def fake_health():
+            calls.append("health")
+
+        agent._expire_old_promos = fake_expire
+        agent._check_expiring_promos = fake_check
+        agent._check_relationship_health = fake_health
+
+        with patch(
+            "agents.provider_conversation_agent.asyncio.wait_for",
+            side_effect=[asyncio.TimeoutError(), None],
+        ):
+            await ProviderConversationAgent._proactive_monitor_loop(agent)
+
+        assert calls == ["expire", "check", "health"]

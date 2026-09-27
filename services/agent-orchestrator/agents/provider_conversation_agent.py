@@ -2060,6 +2060,20 @@ class ProviderConversationAgent(BaseAgent):
         `alerted_at` is written only after BOTH alerts for that promo
         succeeded -- a failed publish leaves it NULL so the next sweep
         retries it, rather than marking a notice sent when it was not.
+        `MessageBus.publish`/`publish_event` returns `False` on a
+        `CircuitOpenError` or any other publish exception instead of
+        raising, so both `self.publish(...)` calls below have their return
+        value checked explicitly and turned into a raise -- otherwise a
+        broker hiccup would fall through to the `alerted_at` write and
+        permanently lose the alert with no retry.
+
+        Filter has no lower bound on `end_date` on purpose: `is_active`
+        rows already past their end date belong to `_expire_old_promos`,
+        which the proactive-monitor loop runs first specifically so this
+        query never sees them (see that loop's ordering note) -- otherwise
+        the first run after this migration would alert on every already-
+        expired row left `is_active=true` by `_expire_old_promos`'s prior
+        `status`/`expired` no-op.
         """
         try:
             cutoff = (
@@ -2081,7 +2095,13 @@ class ProviderConversationAgent(BaseAgent):
 
         for promo in result.data or []:
             try:
-                await self.publish(
+                # MessageBus.publish/publish_event does not raise on a
+                # broker hiccup (CircuitOpenError or any other publish
+                # exception) -- it logs it and returns False. Both calls
+                # below must be inspected explicitly, or a broker outage
+                # would fall straight through to the alerted_at write
+                # below and permanently lose the alert with no retry.
+                promo_event_sent = await self.publish(
                     exchange_name="provider.events",
                     routing_key="provider.promo.expiring_soon",
                     message_body={
@@ -2095,8 +2115,13 @@ class ProviderConversationAgent(BaseAgent):
                         },
                     },
                 )
+                if not promo_event_sent:
+                    raise RuntimeError(
+                        "publish provider.promo.expiring_soon returned False "
+                        f"for promo {promo.get('id')}"
+                    )
 
-                await self.publish(
+                notification_sent = await self.publish(
                     exchange_name="notification.events",
                     routing_key="notification.promo_alert",
                     message_body={
@@ -2110,6 +2135,11 @@ class ProviderConversationAgent(BaseAgent):
                         },
                     },
                 )
+                if not notification_sent:
+                    raise RuntimeError(
+                        "publish notification.promo_alert returned False "
+                        f"for promo {promo.get('id')}"
+                    )
 
                 # Both alerts sent: mark alerted so this promo is not
                 # re-alerted on the next sweep.
@@ -3760,14 +3790,23 @@ class ProviderConversationAgent(BaseAgent):
 
         while not self._shutdown_event.is_set():
             try:
+                # Expire old promotions FIRST. _check_expiring_promos has no
+                # lower bound on end_date (see its docstring), so any row
+                # still is_active=true past its end_date would otherwise be
+                # read as "expiring soon" and alerted on. This matters most
+                # on the first run after 20260928000000_a_promotion_remembers_being_alerted
+                # ships: _expire_old_promos was a no-op before this PR (it
+                # wrote a `status` column that does not exist), so
+                # already-expired rows accumulated across every house with
+                # `alerted_at` NULL -- running this first prevents a false
+                # alert burst on all of them.
+                await self._expire_old_promos()
+
                 # Check expiring promos
                 await self._check_expiring_promos()
 
                 # Check relationship health (providers with no recent contact)
                 await self._check_relationship_health()
-
-                # Expire old promotions
-                await self._expire_old_promos()
 
             except Exception as e:
                 self.logger.error(f"Proactive monitor error: {e}")
