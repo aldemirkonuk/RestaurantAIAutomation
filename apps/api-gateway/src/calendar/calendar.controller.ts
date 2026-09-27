@@ -41,7 +41,6 @@ import {
   CreateEventTypeDto,
   UpdateEventTypeDto,
   UpdateEventStatusDto,
-  ICalTokenResponseDto,
   CreateCalendarDayNoteDto,
   CalendarDayNoteResponseDto,
   MyCalendarLinkDto,
