@@ -13,7 +13,7 @@
 
 /* Away today: the name keeps its place and weight; only the ink lightens. */
 .mdv-away[data-away='now'] .mdv-away__name {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-away__note {
@@ -41,7 +41,7 @@ button.mdv-away__note:focus-visible {
 /* Coming up, not yet: quieter still, and the name is untouched. */
 .mdv-away[data-away='soon'] .mdv-away__note {
   background: transparent;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mdv-away__why {

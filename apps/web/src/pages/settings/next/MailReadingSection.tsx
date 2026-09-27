@@ -133,12 +133,12 @@ function Body({
         }
       >
         {reg.statedBy?.name && (
-          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)', margin: '3px 0 0' }}>
+          <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '3px 0 0' }}>
             set by · {reg.statedBy.name}
           </p>
         )}
         {!isOwner && (
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
             Only an owner can decide whether this restaurant’s vendor mail leaves for Jev — turning it on is accepting
             the house’s data terms.
           </p>

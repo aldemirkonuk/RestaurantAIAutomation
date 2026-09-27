@@ -250,7 +250,7 @@ function GapRow({
         {fmtWeekday(gap.date)} · {gap.role} · {periodLabel(gap.period)}
         {gap.times ? ` · ${gap.times.start.slice(0, 5)}–${gap.times.end.slice(0, 5)}` : ''}
       </span>
-      <span className="ml-auto" style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>
+      <span className="ml-auto" style={{ fontSize: 11.5, color: 'var(--ink-4)' }}>
         {gap.suggested
           ? `suggest ${gap.suggested.name} — ${gap.suggested.hoursThisWeek}h this week` +
             (gap.times ? ` · ${gap.times.source}` : '')
@@ -266,7 +266,7 @@ function GapRow({
       </button>
       {/* the reason is on-screen text, not a hover-only title (a11y) */}
       {!canAssign && reason && gap.suggested !== null && (
-        <span style={{ fontSize: 11, color: 'var(--ink-3)', width: '100%' }}>{reason}</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-4)', width: '100%' }}>{reason}</span>
       )}
       <MutationError when={assign.isError}>
         The assignment did not go through — the desk still shows the gap. Try again or set
@@ -305,7 +305,7 @@ function CertRow({ block }: { block: CertExposureVM }) {
         style={{
           fontFamily: 'var(--tm-mono)',
           fontSize: 11,
-          color: (shifts ?? 0) > 0 ? 'var(--ink-1)' : 'var(--ink-3)',
+          color: (shifts ?? 0) > 0 ? 'var(--ink-1)' : 'var(--ink-4)',
         }}
       >
         {shifts === null
@@ -315,7 +315,7 @@ function CertRow({ block }: { block: CertExposureVM }) {
             : 'not scheduled this week'}
       </span>
       {!block.memberLinked ? (
-        <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-4)' }}>
           no linked account — a request would reach nobody
         </span>
       ) : (
@@ -330,14 +330,14 @@ function CertRow({ block }: { block: CertExposureVM }) {
       )}
       {renew.isSuccess && held && (
         // ADR 0218, round-2 answer 3: the sender sees "away until <date>".
-        <span style={{ fontSize: 11, color: 'var(--ink-3)', width: '100%' }}>{held.detail}</span>
+        <span style={{ fontSize: 11, color: 'var(--ink-4)', width: '100%' }}>{held.detail}</span>
       )}
       {renew.isSuccess && !held && (
         // NOT a latch. Nothing on the server records that a renewal was asked
         // for, so this page cannot know on the next load whether it was.
         // TODO(gateway, not this branch): record renewal requests against the
         // certification so this can become a state instead of a moment.
-        <span style={{ fontSize: 11, color: 'var(--ink-3)', width: '100%' }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-4)', width: '100%' }}>
           Sent just now. Nothing records the request, so this will not show after a reload.
         </span>
       )}
@@ -436,7 +436,7 @@ function TeamNextManager({
         {data.overtimeNamed.map((o) => `${o.name} (${o.hours}h)`).join(', ')}
       </p>
     ) : (
-      <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '8px 0 0' }}>
+      <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '8px 0 0' }}>
         {`No one is scheduled over ${WEEKLY_REVIEW_HOURS} worked hours.`}
       </p>
     );
@@ -449,7 +449,7 @@ function TeamNextManager({
    */
   const assumedLine =
     labor?.assumedBreak && labor.assumedBreak.shifts > 0 ? (
-      <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+      <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '6px 0 0' }}>
         {`${labor.assumedBreak.shifts} shift${labor.assumedBreak.shifts === 1 ? ' has' : 's have'} no break recorded, so ${labor.assumedBreak.shifts === 1 ? 'it is' : 'each is'} counted with the legal minimum break (assumed, ${fmtHours(labor.assumedBreak.hours)} in all). Record the real break on the shift to replace it.`}
       </p>
     ) : null;
@@ -602,10 +602,10 @@ function TeamNextManager({
               // withheld by the gateway, not unknown, and the page says which.
               <div>
                 <span className="tm-fig">{fmtHours(labor.totalHours)}</span>
-                <span style={{ fontSize: 12, color: 'var(--ink-3)', marginLeft: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--ink-4)', marginLeft: 8 }}>
                   worked, breaks taken out
                 </span>
-                <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+                <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '6px 0 0' }}>
                   Wages and labour cost are shown to the owner only.
                 </p>
                 {assumedLine}
@@ -624,13 +624,13 @@ function TeamNextManager({
             ) : (
               <div>
                 <span className="tm-fig">{fmtMoneyWhole(labor.totalCost, data.money)}</span>
-                <span style={{ fontSize: 12, color: 'var(--ink-3)', marginLeft: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--ink-4)', marginLeft: 8 }}>
                   {fmtHours(labor.totalHours)} worked
                   {data.target.pct === null
                     ? ' · no target set'
                     : ` · target ${data.target.pct}% of sales`}
                 </span>
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+                <p style={{ fontSize: 11.5, color: 'var(--ink-4)', margin: '6px 0 0' }}>
                   Wages only, for the shifts on the schedule — not SGK, meals or bonuses.
                 </p>
                 {(labor.ownerShiftsLeftOut ?? 0) > 0 && (
@@ -646,7 +646,7 @@ function TeamNextManager({
                 )}
                 {assumedLine}
                 {data.target.pct === null && (
-                  <p style={{ fontSize: 11.5, color: 'var(--ink-3)', margin: '6px 0 0' }}>
+                  <p style={{ fontSize: 11.5, color: 'var(--ink-4)', margin: '6px 0 0' }}>
                     {data.target.why}
                   </p>
                 )}
@@ -670,7 +670,7 @@ function TeamNextManager({
                       </p>
                     )}
                     {(labor.leave?.unknownTypeDays ?? 0) > 0 && (
-                      <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '8px 0 0' }}>
+                      <p style={{ fontSize: 12, color: 'var(--ink-4)', margin: '8px 0 0' }}>
                         {`${labor.leave!.unknownTypeDays} day${labor.leave!.unknownTypeDays === 1 ? '' : 's'} of approved leave are not marked paid or unpaid.`}
                       </p>
                     )}

@@ -132,7 +132,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
             <button
               type="button"
               className="mdv-link"
-              style={{ color: 'var(--ink-3)', justifySelf: 'center' }}
+              style={{ color: 'var(--ink-4)', justifySelf: 'center' }}
               onClick={() => {
                 handleClose()
                 onRosterOnly()
