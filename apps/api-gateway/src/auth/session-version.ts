@@ -4,7 +4,7 @@
  * reset/change signs out every other session").
  *
  * The mechanism is a per-person session version. `users.session_version`
- * (migration 20260928120000) starts at 0 and goes up by one each time the
+ * (migration 20260929020000) starts at 0 and goes up by one each time the
  * password is set. Every token this API mints carries the version it was
  * minted under as `sv`. A token whose `sv` is below the person's current
  * version belongs to a session that ended, and every place that reads a
