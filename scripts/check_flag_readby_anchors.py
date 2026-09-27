@@ -15,6 +15,19 @@ It also holds the three copies of the live-in-code set to one another:
 Solve-it-once rule: sweep + blocking guard. This guard exits 2 when it cannot
 check (missing registry, unreadable file), 1 on a stale anchor, 0 when every
 anchor's cited line actually contains a recognisable gate.
+
+ADR 0149 row 54 (2026-09-26) added two more checks, both solve-it-once:
+
+  * check_every_page_reachable() — every MUDAVYM_PAGES key must be either in
+    LIVE_PAGES or an ACTIVE `mudavym_design_<page>` key, and never both. A
+    page in neither is a page no house can ever see: dropping an ACTIVE entry
+    without adding the page to LIVE_PAGES leaves the gate at `false` forever,
+    and every check above stays green because none of them ever look at
+    MUDAVYM_PAGES itself — the exact failure mode this PR risked.
+  * check_features_section_anchor() — every `useMudavymDesign.ts:N` the
+    Settings page hard-codes (FeaturesSection.tsx) must be a line that still
+    reads `checkFeatureFlag`. This anchor was unguarded before this row (it
+    had already drifted once, unnoticed, to a stale line).
 """
 from __future__ import annotations
 
@@ -27,6 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REGISTRY = ROOT / "apps/api-gateway/src/settings/feature-flag-registry.ts"
 USE_MUDAVYM_DESIGN = ROOT / "apps/web/src/lib/mudavym/useMudavymDesign.ts"
 FLIP_SCRIPT = ROOT / "scripts/flip_mudavym_design_flags.py"
+FEATURES_SECTION = ROOT / "apps/web/src/pages/settings/next/FeaturesSection.tsx"
 
 # What counts as "code that branches on a flag" at the cited line. Keyed by
 # anchor file so new families state their expectation explicitly.
@@ -163,6 +177,87 @@ def check_flip_script_agrees(live_pages: set[str]) -> list[str]:
     return bad
 
 
+def extract_mudavym_pages() -> list[str]:
+    """`export const MUDAVYM_PAGES = [ ... ] as const;` — same shape as the
+    other arrays but terminated by `] as const;` instead of a bare `];`, so it
+    needs its own anchor rather than reusing `extract_string_array`.
+    """
+    if not USE_MUDAVYM_DESIGN.is_file():
+        fail_cannot_check(f"{USE_MUDAVYM_DESIGN} not found")
+    src = USE_MUDAVYM_DESIGN.read_text(encoding="utf-8")
+    m = re.search(r"export const MUDAVYM_PAGES = \[([\s\S]*?)\]\s*as const\s*;", src)
+    if not m:
+        fail_cannot_check("MUDAVYM_PAGES declaration not found (useMudavymDesign.ts shape changed?)")
+    # Strip `//` line comments first — the array is interleaved with prose
+    # comments that themselves contain quoted words (contractions like
+    # "founder's", quoted phrases from the founder's own answers), which a
+    # bare quote-scan would mistake for page slugs.
+    body = re.sub(r"//[^\n]*", "", m.group(1))
+    candidates = re.findall(r"['\"]([^'\"]+)['\"]", body)
+    slug = re.compile(r"^[a-z][a-z0-9_]*$")
+    pages = [c for c in candidates if slug.match(c)]
+    if not pages:
+        fail_cannot_check("MUDAVYM_PAGES parsed to zero pages — extraction broken?")
+    return pages
+
+
+def check_every_page_reachable(active_keys: set[str]) -> list[str]:
+    """Every MUDAVYM_PAGES key must resolve for SOME house, some way: either
+    LIVE_PAGES (in code, for every house) or an ACTIVE `mudavym_design_<page>`
+    flag (a real column and real gating code a house can turn on). A page in
+    neither is unreachable forever — the gate always returns `false` and
+    nothing anywhere offers a switch — which none of the checks above catch,
+    since they only compare LIVE_PAGES against LIVE_IN_CODE_FLAGS / the flip
+    script and never look at MUDAVYM_PAGES itself. A page in BOTH is also
+    wrong (an ACTIVE switch nothing can ever change, the disagreement
+    check_live_pages_agree already catches from the other side, restated here
+    so this check is a complete partition on its own).
+    """
+    pages = extract_mudavym_pages()
+    web_src = USE_MUDAVYM_DESIGN.read_text(encoding="utf-8")
+    live_pages = set(extract_string_array(web_src, "LIVE_PAGES"))
+
+    bad: list[str] = []
+    for page in pages:
+        in_live = page in live_pages
+        in_active = f"mudavym_design_{page}" in active_keys
+        if not in_live and not in_active:
+            bad.append(
+                f"{page}: a page no house can ever see: not live in code and no switch"
+            )
+        elif in_live and in_active:
+            bad.append(
+                f"{page}: in LIVE_PAGES and still an ACTIVE flag — a switch that cannot change anything"
+            )
+    return bad
+
+
+def check_features_section_anchor() -> list[str]:
+    """Every `useMudavymDesign.ts:N` FeaturesSection.tsx hard-codes must be a
+    line whose text still contains `checkFeatureFlag` — the same gate the
+    registry's own `readBy` anchors point at, checked the same way.
+    """
+    if not FEATURES_SECTION.is_file():
+        fail_cannot_check(f"{FEATURES_SECTION} not found")
+    section_src = FEATURES_SECTION.read_text(encoding="utf-8")
+    line_nos = sorted(set(int(n) for n in re.findall(r"useMudavymDesign\.ts:(\d+)", section_src)))
+    if not line_nos:
+        fail_cannot_check("no useMudavymDesign.ts:N anchor found in FeaturesSection.tsx — shape changed?")
+    if not USE_MUDAVYM_DESIGN.is_file():
+        fail_cannot_check(f"{USE_MUDAVYM_DESIGN} not found")
+    content = USE_MUDAVYM_DESIGN.read_text(encoding="utf-8").splitlines()
+    bad: list[str] = []
+    for line_no in line_nos:
+        if line_no < 1 or line_no > len(content):
+            bad.append(f"FeaturesSection.tsx cites useMudavymDesign.ts:{line_no}, past EOF ({len(content)} lines)")
+        elif "checkFeatureFlag" not in content[line_no - 1]:
+            bad.append(
+                f"FeaturesSection.tsx cites useMudavymDesign.ts:{line_no}, which no longer reads "
+                f"checkFeatureFlag (line reads: {content[line_no - 1].strip()[:80]!r})"
+            )
+    return bad
+
+
 def main() -> None:
     if not REGISTRY.is_file():
         fail_cannot_check(f"registry not found at {REGISTRY}")
@@ -175,8 +270,11 @@ def main() -> None:
     if not entries:
         fail_cannot_check("no ACTIVE entries with readBy found — registry shape changed?")
 
+    active_keys = {key for key, _ in entries}
     bad: list[str] = []
-    bad.extend(check_live_pages_agree({key for key, _ in entries}))
+    bad.extend(check_live_pages_agree(active_keys))
+    bad.extend(check_every_page_reachable(active_keys))
+    bad.extend(check_features_section_anchor())
     for key, read_by in entries:
         # "path:line" or "path:line1,line2,..."
         m = re.match(r"^(.*):(\d+(?:,\d+)*)$", read_by)

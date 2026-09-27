@@ -146,3 +146,57 @@ describe('App.tsx routes these paths through the same gates', () => {
     );
   });
 });
+
+/**
+ * 2026-09-26 (ADR 0149 row 54) — the receiving DESK (route `/receiving`,
+ * distinct from the door at `/receiving/:orderId/door`) joins LIVE_PAGES on
+ * the same 2026-09-22 page-gap Q2/Q4 basis as the block above, now that its
+ * sketch review closed (Approach 1, #480). Not founder item 53 — that item is
+ * `promotions` and `vendor_prices` only.
+ */
+describe('2026-09-26 (ADR 0149 row 54)', () => {
+  function mountReceiving(path: string) {
+    return render(
+      <AuthContext.Provider value={newHouseAuth}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route
+              path="/receiving"
+              element={
+                <PageGate
+                  page="receiving"
+                  legacy={<p>legacy receiving home</p>}
+                  next={<main data-testid="receiving-next" />}
+                />
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>,
+    );
+  }
+
+  it('receiving is live in code', () => {
+    expect(LIVE_PAGES.has('receiving')).toBe(true);
+  });
+
+  it('/receiving renders the Mudavym desk for a house with no flag row, no request', () => {
+    mountReceiving('/receiving');
+    expect(screen.getByTestId('receiving-next')).toBeTruthy();
+    expect(screen.queryByText('legacy receiving home')).toBeNull();
+    expect(checkFlag).not.toHaveBeenCalled();
+  });
+
+  it("the QA override '0' is the only way back to legacy", () => {
+    window.localStorage.setItem('mudavym.design.receiving', '0');
+    mountReceiving('/receiving');
+    expect(screen.getByText('legacy receiving home')).toBeTruthy();
+  });
+
+  it('App.tsx routes /receiving through the same gate', () => {
+    const app = readFileSync(join(__dirname, '..', '..', 'App.tsx'), 'utf8');
+    expect(app).toMatch(
+      /<Route path="\/receiving" element=\{<PageGate page="receiving" legacy=\{<ReceivingHome \/>\} next=\{<ReceivingNext \/>\} \/>\} \/>/,
+    );
+  });
+});
