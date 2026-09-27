@@ -91,6 +91,8 @@ const UNIQUE_KEYS: Record<string, string[]> = {
   ],
   // uniq_delivery_item_to_name_order (20261103101300): one ask per order.
   delivery_item_to_name: ["order_id"],
+  // `uq_calendar_feed_links_token_hash` (migration 20261031174523).
+  calendar_feed_links: ["token_hash"],
 };
 
 /**
@@ -110,6 +112,13 @@ const PARTIAL_UNIQUE_KEYS: Record<
     key: ["connection_id", "tool_name"],
     where: (r) => (r.gone_at ?? null) === null,
   },
+  // `uq_calendar_feed_links_live_person` (migration 20261031174523): one LIVE
+  // link per person per house; revoked rows for the same person coexist.
+  // Used by `calendar/calendar-links.service.spec.ts`.
+  calendar_feed_links: {
+    key: ["restaurant_id", "user_id"],
+    where: (r) => (r.revoked_at ?? null) === null,
+  },
 };
 
 type Predicate = (r: Row) => boolean;
@@ -120,6 +129,8 @@ export class FakeQuery {
   private payload: Row[] = [];
   private patch: Row = {};
   private limitN: number | null = null;
+  private offsetN = 0;
+  private ranged = false;
   private headCount = false;
   private orderKey: string | null = null;
   private orderAsc = true;
@@ -221,6 +232,13 @@ export class FakeQuery {
     this.limitN = n;
     return this;
   }
+  /** PostgREST's `Range`: rows `from`..`to`, both inclusive, after ordering. */
+  range(from: number, to: number) {
+    this.offsetN = from;
+    this.limitN = to - from + 1;
+    this.ranged = true;
+    return this;
+  }
   single() {
     return this.run(true);
   }
@@ -302,11 +320,16 @@ export class FakeQuery {
       );
     }
     if (this.headCount) return { data: null, count: hit.length, error: null };
-    if (this.limitN !== null) hit = hit.slice(0, this.limitN);
+    const total = hit.length;
+    if (this.limitN !== null) {
+      hit = hit.slice(this.offsetN, this.offsetN + this.limitN);
+    }
     return {
       data: single ? (hit[0] ?? null) : hit,
       error: null,
-      count: hit.length,
+      // PostgREST's `count: exact` on a range is the whole match, not the
+      // page. Without a range this keeps the count it always returned.
+      count: this.ranged ? total : hit.length,
     };
   }
 }

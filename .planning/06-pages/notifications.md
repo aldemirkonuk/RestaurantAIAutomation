@@ -2556,3 +2556,53 @@ token's id rather than the path's spelling of it.
 exists in the gateway or on the legacy page, and a send-now is a new outbound act
 (the founder's call; reported as a candidate, not built). Browser-preview verification
 was not available to the lane that built this; coverage is unit + DOM.
+
+### 13.42 The low-stock digest reads each house's own clock (ADR 0149 item 56, 2026-09-27)
+
+*(13.41 is reserved for #486, the held-low-stock queue lane, which was still open on
+`origin/main` when this section was written — a gap beats a number collision, per
+[[register-row-shifts-citations]].)*
+
+**What changed.** `low-stock-alerts.service.ts`'s hourly digest sweep used to compare
+one hard-coded New York hour (`currentEtHour()` + `@Cron(..., {timeZone:
+"America/New_York"})`) against every house's `digest_time`, so a Turkish house set for
+"12:00" was judged against New York's clock, not its own. The cron is now anchored to
+UTC and fires every house on the tick that crosses **that house's own local** digest
+hour (`low-stock-digest-clock.ts`). The zone comes from `restaurants.timezone` first;
+a house with no readable zone falls back to UTC and the sweep logs it, per ADR 0116's
+locked rule (item 56 / founder round 10 item 61: "UTC, said on the page").
+
+**Copy on this page — not yet.** This lane did not change any text on `/notifications`.
+The "New York time" string the held-low-stock queue prints (`nt-held.ts`) belongs to
+#486, which was still open when this lane built; that PR's follow-up is to read the new
+`LowStockAlertsService.digestClockForRestaurant()` and say the house's own zone (or
+"UTC — this house has no time zone set yet" for the fallback) instead.
+[2026-09-27, PR #488 audit at 7b2ab8d3f: #486 merged first, still printing "New York
+time" (and the view still reporting the New York zone), so this PR's merge of `main`
+made the change here: `listHeldCrossings` reports `timezone` and `zone_source` from
+`digestClockForRestaurant()` (and `digest: null` when that read fails), and `whenTold`
+says "…at 12 PM, Los Angeles time." for a house zone or "…at 12 PM UTC — this house has
+no time zone set yet." for the fallback. The line shows only while wines are held; an
+empty queue states no hour or zone.]
+
+**Real-tenant effect.** Meyhouse Palo Alto has no `restaurants.timezone` set (cleared by
+migration `20260903170000`), so its digest moves from 09:00 PT to 05:00 PDT until the
+founder sets `America/Los_Angeles` for it in Settings, after #435 (which adds the
+Settings > Time zone control) merges.
+
+**No catch-up.** A house is sent only on the one tick that crosses its hour. If that
+tick fails to read the `restaurants` row, runs more than 30 minutes late, or never runs,
+the house gets no digest that day (v3.0-TECH-DEBT, open CLAIMS row
+`TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP`).
+[Resolved 2026-09-27, founder item 70, "Catch up same day (Recommended)": a house is
+now sent on the first evaluated tick at or after its hour on which `last_digest_at` is
+not already today's house date. A missed or failed tick is caught up later the same day.
+A failed `last_digest_at` read skips the house for that tick and never sends blind. The
+CLAIMS row is resolved; see ADR 0149's item 70 bracket.]
+[2026-09-27, PR #488 audit at 7b2ab8d3f: so does a failed preferences read
+(`LOW_STOCK_DIGEST_PREFS_UNREADABLE`). It used to fall back to the defaults (on, daily,
+12:00), which under catch-up sent an 18:00 or digest-off house at the first failed tick
+after noon and stamped the day. Spec o; CLAIMS `ADR-0149-LOW-STOCK-DIGEST-PREFS-READ-SKIPS`.]
+
+See ADR 0149's 2026-09-27 bracket (item 56) for the full rationale, the DST behaviour,
+and the builder's-choice notes.
