@@ -12,7 +12,7 @@ signals_today: none
 rebrand_strings: 0
 maturity: hollow
 status: documented
-updated: 2026-09-19
+updated: 2026-09-25
 links: ["[[PAGE-CONTRACT]]", "[[TIER-MAP]]", "[[orders]]", "[[inventory]]", "[[providers]]"]
 ---
 
@@ -150,6 +150,10 @@ catalogue wines into inventory. Owner/manager surface; staff can read.
 - **House lines no register can hold are reported, not dropped** — the count and
   the first four labels, so a register never quietly returns fewer rows than the
   books contain
+- **The menu lines the reader could not place, on `/cellar`** (OD-140, founder
+  2026-09-25) — under the register cards: "N of the M menu lines could not be placed
+  in any register", and **"Show me the N it could not place"**, which reads the lines
+  (name and section) only when pressed. See §14
 - **DARK / GATED** &middot; **"Count into the cellar" renders disabled on every
   row of every register**, with the gateway's own sentence beside it: every
   quantity path (`restaurant_inventory`, `inventory_lots`,
@@ -1836,6 +1840,9 @@ against the local gateway on :4000):
   `awaitingConfirmation` (`boolean | null`), `needsEvidence[]`, `stranded[]`,
   `unmappedKinds` and `unmappedCatalogueTypes`.
   `apps/api-gateway/src/cellar/cellar.controller.ts` → `cellar-registers.service.ts`
+- `GET /cellar/:restaurantId/registers/unplaced` — the menu lines behind the readout's
+  `menuLines.notPlaced`: `{ restaurantId, read, lines: [{ id, category, name }] }`. Read
+  by `useUnplacedMenuLines` only when "Show me the N" is pressed (§14, OD-140)
 - `PUT /cellar/:restaurantId/registers` — the house's answer.
   Body `{ registers: [{ id, carried }], source: 'inferred'|'confirmed'|'manual' }`.
   The actor comes from the JWT and `evidence` is snapshotted server-side from the live
@@ -2749,3 +2756,42 @@ because a house's own unconfirmed name is not a subject to go fetching prices
 for. Zero is a real zero with its reason; a failed count is null, not 0. This is
 the answer to ADR 0117 Q28.
 
+## 14. The lines the reader could not place — BUILT 2026-09-25 (OD-140)
+
+The founder, 2026-09-25, on OD-140: **"Separate list endpoint"**; and in round 4
+(item 18): the "Show me the N" control **lives on `/cellar` registers**, and
+`/house/menu`'s three locked counts stay untouched.
+
+- **Where.** `Registers.tsx` mounts `UnplacedMenuLines` in *The registers* section,
+  directly under the register cards and above the needs-rows / stranded notices. It is
+  drawn only once the registers readout is in: when that readout is unread, the
+  section's own alert already says so and nothing about menu lines is claimed.
+- **The count** is the readout's `menuLines` (`GET /cellar/:rid/registers`, the same
+  pass that decided the registers). **The list** is `GET /cellar/:rid/registers/unplaced`,
+  read by `useUnplacedMenuLines` (`useCellarNextData.ts`) in a child that mounts only
+  when the disclosure opens, with no retry — so a closed control costs no request and
+  a failed read is said at once.
+- **Honest states, kept apart (ADR 0020 / 0051):** no `menuLines` field — nothing
+  claimed; `menuLines: null` — "the menu could not be read (reason) … unknown — not
+  zero", no control; 0 lines read — "no lines yet", not "all placed"; none unplaced —
+  "placed every one of the M", no control; some unplaced — the count and the control
+  (`aria-expanded`, `aria-controls`). Opened: *reading*; a failed read said as a failure
+  ("The count above still stands"), never an empty list; the lines, name and section
+  ("A line with no name" / "no section" rather than blanks); and a list whose length is
+  not the count, said as "the menu changed since the count above".
+- **Why count and list cannot drift.** The gateway reads both through one `menu_items`
+  query (`readMenuRows`) and one filter (`unplacedMenuLines`); `tallyMenuLines().notPlaced`
+  is defined as `unplacedMenuLines(lines).length`, and `cellar-registers.service.spec.ts`
+  pins `lines.length === menuLines.notPlaced` for one menu.
+- **Tests.** `UnplacedMenuLines.test.tsx` (9, through the real `apiClient` contract) and
+  two in `CellarNext.test.tsx` (mounted in the registers section on `/cellar`; absent
+  when the readout is unread). Seven mutations each fail a test: list read before asked,
+  error rendered as data, mismatch note dropped, control shown at zero, empty menu said
+  as all placed, unread menu dropped, control unmounted from `/cellar`.
+- **Moved off the Arrival book.** The first cut (PR #469, Wave 1) hung the control on
+  the Arrival reveal (`pages/arrival/Arrival.tsx`), which is flag-OFF and on the ADR
+  0149 deletion manifest at cutover (#414). That component is removed; the Arrival note
+  now says `/cellar` lists the lines.
+- **Not on `/house/menu`.** Its three counts (ADR 0213 row 14) are read / set /
+  pencilled from the import review (`lineNeedsPencil`) — a different rule — and stay
+  as locked.
