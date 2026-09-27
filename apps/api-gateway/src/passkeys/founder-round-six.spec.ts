@@ -46,12 +46,15 @@ function world() {
       email: "m@example.com",
       name: "Mira",
       password_hash: OLD_HASH,
+      // ADR 0225 (#477): the column defaults to 0 in the database.
+      session_version: 0,
     },
     {
       user_id: OTHER,
       email: "o@example.com",
       name: "Onur",
       password_hash: "$2b$04$old",
+      session_version: 0,
     },
   );
   db.tables.password_resets = [

@@ -88,7 +88,7 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
       setCurrent('');
       setNext('');
       setConfirm('');
-      setPasswordMsg({ tone: 'done', text: 'Password updated. Your session is unaffected.' });
+      setPasswordMsg({ tone: 'done', text: 'Password updated. Every other session on Mudavym was signed out; this one stays signed in.' });
     } catch (e) {
       setPasswordMsg({ tone: 'error', text: `Not changed — ${String((e as Error).message)}` });
     } finally {
