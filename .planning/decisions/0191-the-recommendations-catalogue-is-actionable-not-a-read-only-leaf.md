@@ -968,6 +968,11 @@ chose:
      said an Act click bumps `updated_at` without touching `created_by`,
      and put a "set at" timestamp to the founder on that ground. It does
      not, for any caller with a user id, so the question fell away.]
+     [Scope, 2026-09-27, PR #483 audit R4: no Act deep-link click posts
+     `acted: true` any more — ADR 0112 F10 (amended) says a hand-off records
+     nothing, and `acted` is now the gated "Mark as briefed" stamp with its
+     own `acted_by`. The clock argument is unchanged: every remaining write
+     still names its caller.]
    - **`pinned_by`, `rated_by` and `assigned_by` are NOT cleared by this
      sweep.** The founder's answer named `created_by`, by that name; those
      three columns did not exist when he was asked, because they are what
