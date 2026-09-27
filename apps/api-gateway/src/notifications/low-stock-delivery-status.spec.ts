@@ -31,7 +31,7 @@ function makeDb(existingDeliveryStatus: Row | null = null) {
       _updating: null as Row | null,
       select: () => q,
       eq: (_col: string, val: string) => {
-        if (q._updating) {
+        if (q._updating && table === "notifications") {
           updates.push({
             id: val,
             delivery_status: q._updating.delivery_status,
@@ -49,7 +49,13 @@ function makeDb(existingDeliveryStatus: Row | null = null) {
         q._updating = patch;
         return q;
       },
-      upsert: () => Promise.resolve({ error: null }),
+      // The ledger's clear-hold write (`inventory_alert_state`), which this
+      // file does not assert on: a conditional UPDATE, then insert-if-absent.
+      or: () => q,
+      upsert: () => ({
+        then: (resolve: any) => resolve({ error: null }),
+        select: () => Promise.resolve({ data: [{}], error: null }),
+      }),
       maybeSingle: () => Promise.resolve({ data: { alert_count: 0 } }),
       then: (resolve: any) => resolve({ data: [], error: null }),
     };

@@ -1,4 +1,7 @@
-import { LowStockAlertsService } from "./low-stock-alerts.service";
+import {
+  LowStockAlertsService,
+  heldNoNewerThan,
+} from "./low-stock-alerts.service";
 
 /**
  * The held low-stock queue tells the truth about who has been told
@@ -43,11 +46,32 @@ function makeHarness(
      * shape every other test in this file relies on.
      */
     guardCurrentHeldAt?: string | null;
+    /**
+     * The row's `last_held_at` at the instant a WRITE lands, when it differs
+     * from what an earlier read saw -- i.e. a concurrent writer (the edge
+     * sweep) stamped a hold between the two. Defaults to
+     * `guardCurrentHeldAt`. This is what lets a test tell a
+     * read-then-blind-write apart from a single conditional write: only the
+     * first can be fooled by a read that saw no hold.
+     */
+    heldAtWrite?: string | null;
+    /** Whether the `inventory_alert_state` row exists at all (default yes). */
+    rowExists?: boolean;
   } = {},
 ) {
   const upserts: Row[] = [];
   const updates: Array<{ table: string; patch: Row }> = [];
   const guardedUpdates: Row[] = [];
+  /** Every write that actually LANDED on `inventory_alert_state`, in order:
+   * plain upserts, inserts, and updates whose WHERE clause matched. */
+  const ledger: Row[] = [];
+  const rowExists = opts.rowExists ?? true;
+  const heldAtWrite =
+    "heldAtWrite" in opts
+      ? (opts.heldAtWrite ?? null)
+      : "guardCurrentHeldAt" in opts
+        ? (opts.guardCurrentHeldAt ?? null)
+        : null;
 
   const makeChain = (table: string): any => {
     const chain: any = {
@@ -70,16 +94,8 @@ function makeHarness(
           // boolean, independent of `guardCurrentHeldAt` -- which is exactly
           // how it let a self-referential guard pass as a real
           // compare-and-swap. This harness computes it instead.
-          const currentHeldAt =
-            "guardCurrentHeldAt" in opts ? opts.guardCurrentHeldAt : null;
-          let matches: boolean;
-          if (chain.__eqLastHeldAt !== undefined) {
-            matches = currentHeldAt === chain.__eqLastHeldAt;
-          } else if (chain.__lte !== undefined) {
-            matches = currentHeldAt != null && currentHeldAt <= chain.__lte;
-          } else {
-            matches = false;
-          }
+          const matches = updateMatches();
+          if (matches) land();
           return Promise.resolve(
             matches
               ? {
@@ -91,6 +107,20 @@ function makeHarness(
         }
         return chain;
       },
+      // PostgREST's `or=(a,b)` as the production code issues it through
+      // `heldNoNewerThan()`: `last_held_at.is.null,last_held_at.lte.<iso>`.
+      // Parsed, not pattern-matched on the whole string, so a mutation that
+      // drops either arm changes what matches.
+      or: (expr: string) => {
+        if (chain.__updated && table === "inventory_alert_state") {
+          const arms = expr.split(",");
+          chain.__orIsNull = arms.includes("last_held_at.is.null");
+          const lte = arms.find((a) => a.startsWith("last_held_at.lte."));
+          chain.__orLte = lte ? lte.slice("last_held_at.lte.".length) : null;
+          chain.__hasOr = true;
+        }
+        return chain;
+      },
       eq: (col: string, val: string) => {
         if (
           chain.__updated &&
@@ -99,11 +129,15 @@ function makeHarness(
         ) {
           chain.__eqLastHeldAt = val;
         }
+        if (col === "inventory_id") chain.__ids = [val];
         return chain;
       },
       neq: () => chain,
       not: () => chain,
-      in: () => chain,
+      in: (col: string, vals: string[]) => {
+        if (col === "inventory_id") chain.__ids = vals;
+        return chain;
+      },
       order: () => chain,
       limit: () => chain,
       lte: (col: string, val: string) => {
@@ -127,18 +161,67 @@ function makeHarness(
             ? { data: { last_held_at: opts.guardCurrentHeldAt } }
             : { data: { alert_count: 0 } },
         ),
-      upsert: (row: Row) => {
-        if (table === "inventory_alert_state") upserts.push({ ...row });
-        return Promise.resolve({ error: null });
+      upsert: (row: Row, upsertOpts?: { ignoreDuplicates?: boolean }) => {
+        // ON CONFLICT DO NOTHING: lands only when the row does not exist.
+        const lands =
+          table === "inventory_alert_state" &&
+          !(upsertOpts?.ignoreDuplicates && rowExists);
+        if (lands) {
+          upserts.push({ ...row });
+          ledger.push({ ...row });
+        }
+        const result = { error: null };
+        return {
+          then: (resolve: any) => resolve(result),
+          select: () =>
+            Promise.resolve({
+              data: lands ? [{ inventory_id: row.inventory_id }] : [],
+              error: null,
+            }),
+        };
       },
-      then: (resolve: any) =>
-        resolve(
+      then: (resolve: any) => {
+        // An awaited `update(...)` with no `.select()` (the recovery writers):
+        // apply the same WHERE evaluation as the guarded path.
+        if (chain.__updated && table === "inventory_alert_state") {
+          if (updateMatches()) land();
+          return resolve({ data: null, error: null });
+        }
+        return resolve(
           table === "notification_preferences"
             ? opts.prefsError
               ? { data: null, error: { message: opts.prefsError } }
               : { data: opts.prefsRows ?? [], error: null }
             : { data: opts.alertStateRows ?? [], error: null },
-        ),
+        );
+      },
+    };
+    /** Does the issued WHERE clause match the row as it stands at write
+     * time (`heldAtWrite`)? Computed from the filters the production code
+     * actually called, never injected. */
+    const updateMatches = (): boolean => {
+      if (!rowExists) return false;
+      if (chain.__eqLastHeldAt !== undefined) {
+        return heldAtWrite === chain.__eqLastHeldAt;
+      }
+      if (chain.__lte !== undefined) {
+        return heldAtWrite != null && heldAtWrite <= chain.__lte;
+      }
+      if (chain.__hasOr) {
+        return (
+          (chain.__orIsNull && heldAtWrite == null) ||
+          (chain.__orLte != null &&
+            heldAtWrite != null &&
+            heldAtWrite <= chain.__orLte)
+        );
+      }
+      // No condition on `last_held_at` at all: an unconditioned write.
+      return true;
+    };
+    const land = () => {
+      for (const id of chain.__ids ?? [chain.__patch?.inventory_id]) {
+        ledger.push({ ...chain.__patch, inventory_id: id });
+      }
     };
     return chain;
   };
@@ -176,7 +259,14 @@ function makeHarness(
     gmail as any,
     recipientResolver as any,
   );
-  return { service, upserts, updates, guardedUpdates, notifications };
+  return {
+    service,
+    upserts,
+    updates,
+    guardedUpdates,
+    ledger,
+    notifications,
+  };
 }
 
 const row = (over: Partial<Row> = {}) => ({
@@ -211,9 +301,9 @@ describe("the instant path counts an inbox row, not an answer", () => {
   });
 
   it("a written inbox row still ends the hold", async () => {
-    const { service, upserts } = makeHarness();
+    const { service, ledger } = makeHarness();
     await service.evaluateRestaurant("r1", [row()], "House");
-    const last = ledgerFor(upserts, "inv-1")!;
+    const last = ledgerFor(ledger, "inv-1")!;
     expect(last.last_alerted_at).toEqual(expect.any(String));
     expect(last.last_held_at).toBeNull();
   });
@@ -255,13 +345,13 @@ describe("the instant path counts an inbox row, not an answer", () => {
 
 describe("the digest ends the holds it answered", () => {
   it("[REVERT-FAILS] a digest that wrote its inbox row clears every covered hold", async () => {
-    const { service, upserts } = makeHarness();
+    const { service, ledger } = makeHarness();
     await service.sendDigest("r1", [
       row({ inventoryId: "a", severity: "low" }),
       row({ inventoryId: "b" }),
     ]);
     for (const id of ["a", "b"]) {
-      const last = ledgerFor(upserts, id)!;
+      const last = ledgerFor(ledger, id)!;
       expect(last.last_digest_at).toEqual(expect.any(String));
       expect(last.last_held_at).toBeNull();
       expect(last.last_held_reason).toBeNull();
@@ -269,11 +359,55 @@ describe("the digest ends the holds it answered", () => {
   });
 
   it("[REVERT-FAILS] a digest that wrote no inbox row (deduped or failed) leaves the holds and stamps no digest", async () => {
-    const { service, upserts } = makeHarness({
+    const { service, ledger } = makeHarness({
       persistReturns: { inserted: 0, ids: [] },
     });
     await service.sendDigest("r1", [row({ inventoryId: "a" })]);
-    expect(ledgerFor(upserts, "a")).toBeUndefined();
+    expect(ledgerFor(ledger, "a")).toBeUndefined();
+  });
+
+  /**
+   * PR #486 rounds 3-4 audit (2026-09-27): round 2's clear read
+   * `last_held_at` first and, when that read saw NO hold, fell through to a
+   * blind `.upsert()` -- so a hold the edge sweep stamped between the read
+   * and the write was erased, and the queue said "resolved" about a wine
+   * nobody was told about. `guardCurrentHeldAt: null` is what that read
+   * saw; `heldAtWrite` is the row when the write lands.
+   */
+  it("[REVERT-FAILS] a hold stamped after a read that saw none is not erased -- the clear is one conditional write", async () => {
+    const { service, upserts, ledger } = makeHarness({
+      guardCurrentHeldAt: null,
+      heldAtWrite: "2099-01-01T00:00:00.000Z",
+    });
+    const warnSpy = jest.spyOn((service as any).logger, "warn");
+    await service.sendDigest("r1", [row({ inventoryId: "a" })]);
+    expect(upserts.find((u) => u.inventory_id === "a")).toBeUndefined();
+    expect(ledgerFor(ledger, "a")).toBeUndefined();
+    expect(
+      warnSpy.mock.calls.some((c) =>
+        String(c[0]).includes("clear-hold skipped"),
+      ),
+    ).toBe(true);
+  });
+
+  it("a row with no hold is cleared by the same conditional write, not by an upsert", async () => {
+    const { service, upserts, ledger } = makeHarness({ heldAtWrite: null });
+    await service.sendDigest("r1", [row({ inventoryId: "a" })]);
+    expect(upserts.find((u) => u.inventory_id === "a")).toBeUndefined();
+    expect(ledgerFor(ledger, "a")).toMatchObject({
+      last_held_at: null,
+      last_digest_at: expect.any(String),
+    });
+  });
+
+  it("a wine with no ledger row yet is inserted, never merged over one", async () => {
+    const { service, upserts, ledger } = makeHarness({ rowExists: false });
+    await service.sendDigest("r1", [row({ inventoryId: "a" })]);
+    expect(upserts.find((u) => u.inventory_id === "a")).toMatchObject({
+      last_held_at: null,
+      last_digest_at: expect.any(String),
+    });
+    expect(ledgerFor(ledger, "a")).toBeDefined();
   });
 
   /**
@@ -408,16 +542,92 @@ describe("a wine back above par is not held", () => {
   });
 
   it("[REVERT-FAILS] the sweep's reconciliation clears the hold with the level", async () => {
-    const { service, updates } = makeHarness({
+    const { service, updates, ledger } = makeHarness({
       alertStateRows: [{ restaurant_id: "r1", inventory_id: "inv-9" }],
+      heldAtWrite: "2000-01-01T00:00:00.000Z",
     });
-    await (service as any).reconcileRecoveries(new Map());
+    await (service as any).reconcileRecoveries(
+      new Map(),
+      "2026-01-01T00:00:00.000Z",
+    );
     const patch = updates.find(
       (u) =>
         u.table === "inventory_alert_state" &&
         u.patch.last_alert_level === "ok",
     )?.patch;
     expect(patch).toMatchObject({ last_held_at: null, last_held_reason: null });
+    // An old hold (before the read) really is cleared.
+    expect(ledgerFor(ledger, "inv-9")).toMatchObject({ last_held_at: null });
+  });
+
+  /**
+   * PR #486 rounds 3-4 audit (2026-09-27): both recovery writers cleared
+   * `last_held_at` with no condition. A hold the edge sweep stamped AFTER
+   * the recovery writer's low-stock read (the wine dipped again) was erased
+   * by a writer acting on an older observation.
+   */
+  it("[REVERT-FAILS] the real-time recovery path leaves a hold stamped after its own read", async () => {
+    const { service, ledger } = makeHarness({
+      heldAtWrite: "2099-01-01T00:00:00.000Z",
+    });
+    (service as any).getLowStockForRestaurant = jest.fn().mockResolvedValue([]);
+    await service.evaluateInventoryItems("r1", ["inv-9"]);
+    expect(ledgerFor(ledger, "inv-9")).toBeUndefined();
+  });
+
+  it("the real-time recovery path still clears a hold older than its read", async () => {
+    const { service, ledger } = makeHarness({
+      heldAtWrite: "2000-01-01T00:00:00.000Z",
+    });
+    (service as any).getLowStockForRestaurant = jest.fn().mockResolvedValue([]);
+    await service.evaluateInventoryItems("r1", ["inv-9"]);
+    expect(ledgerFor(ledger, "inv-9")).toMatchObject({
+      last_alert_level: "ok",
+      last_held_at: null,
+    });
+  });
+
+  it("[REVERT-FAILS] the sweep's reconciliation leaves a hold stamped after the sweep's read", async () => {
+    const { service, ledger } = makeHarness({
+      alertStateRows: [{ restaurant_id: "r1", inventory_id: "inv-9" }],
+      heldAtWrite: "2099-01-01T00:00:00.000Z",
+    });
+    await (service as any).reconcileRecoveries(
+      new Map(),
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(ledgerFor(ledger, "inv-9")).toBeUndefined();
+  });
+
+  it("[REVERT-FAILS] the edge sweep hands reconciliation the instant BEFORE its read, not after", async () => {
+    const { service } = makeHarness();
+    const order: string[] = [];
+    (service as any).getLowStockByRestaurant = jest.fn(async () => {
+      order.push(`read@${Date.now()}`);
+      await new Promise((r) => setTimeout(r, 5));
+      return new Map();
+    });
+    const spy = jest
+      .spyOn(service as any, "reconcileRecoveries")
+      .mockResolvedValue(undefined);
+    const before = Date.now();
+    await service.runEdgeSweep();
+    const cutoff = Date.parse(spy.mock.calls[0][1] as string);
+    const readAt = Number(order[0].slice(5));
+    expect(cutoff).toBeGreaterThanOrEqual(before);
+    expect(cutoff).toBeLessThanOrEqual(readAt);
+  });
+});
+
+describe("heldNoNewerThan", () => {
+  it("matches no hold or a hold at/before the cutoff, as a PostgREST or-filter", () => {
+    expect(heldNoNewerThan("2026-09-27T10:00:00.000Z")).toBe(
+      "last_held_at.is.null,last_held_at.lte.2026-09-27T10:00:00.000Z",
+    );
+  });
+
+  it("only ever emits an ISO instant (no reserved `,()` can reach the filter)", () => {
+    expect(() => heldNoNewerThan("x),id.neq.(0")).toThrow();
   });
 });
 

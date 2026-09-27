@@ -86,6 +86,23 @@ interface RecipientReport {
   lookupFailed: string | null;
 }
 
+/**
+ * The PostgREST `or` filter every hold-CLEARING write carries: match a row
+ * only when it has no hold, or its hold is no newer than `cutoff` -- an
+ * instant the writer captured BEFORE it observed the state it is acting on.
+ * A hold stamped after that instant was written by someone who saw the wine
+ * low later than this writer did, and a clear must not erase it. Postgres
+ * evaluates this in the same statement that writes, so there is no
+ * read-then-write gap. The cutoff is re-serialised through `Date` so it can
+ * only ever be an ISO-8601 instant (no reserved `,()` reaches the filter);
+ * the same unquoted `col.lte.<iso>,col.is.null` shape is already used at
+ * logs-timeline.service.ts `windowed()`.
+ */
+export function heldNoNewerThan(cutoff: string): string {
+  const iso = new Date(cutoff).toISOString();
+  return `last_held_at.is.null,last_held_at.lte.${iso}`;
+}
+
 interface LowStockRow {
   inventoryId: string;
   wineId: string;
@@ -160,6 +177,8 @@ export class LowStockAlertsService {
   @Cron("*/2 * * * *", { name: "low-stock-edge-sweep" })
   async runEdgeSweep(): Promise<void> {
     try {
+      // Before the read, for the same reason as `evaluateInventoryItems`.
+      const lowReadStartedAt = new Date().toISOString();
       const byRestaurant = await this.getLowStockByRestaurant();
       const names = await this.getRestaurantNames([...byRestaurant.keys()]);
       for (const [restaurantId, rows] of byRestaurant) {
@@ -170,7 +189,7 @@ export class LowStockAlertsService {
         );
       }
       // Reconcile restocks even for restaurants that dropped off the low list.
-      await this.reconcileRecoveries(byRestaurant);
+      await this.reconcileRecoveries(byRestaurant, lowReadStartedAt);
     } catch (e: any) {
       this.logger.error(`low-stock edge sweep failed: ${e?.message}`);
     }
@@ -519,6 +538,11 @@ export class LowStockAlertsService {
   ): Promise<void> {
     if (!restaurantId || inventoryIds.length === 0) return;
     try {
+      // Captured BEFORE the low-stock read: a hold stamped after this was
+      // written by a writer that saw the wine low later than we saw it
+      // recovered, so the recovery clear below must leave it (PR #486
+      // rounds 3-4 audit).
+      const readStartedAt = new Date().toISOString();
       const lowRows = await this.getLowStockForRestaurant(restaurantId);
       const lowById = new Map(lowRows.map((r) => [r.inventoryId, r]));
 
@@ -548,7 +572,8 @@ export class LowStockAlertsService {
           })
           .eq("restaurant_id", restaurantId)
           .in("inventory_id", recovered)
-          .neq("last_alert_level", "ok");
+          .neq("last_alert_level", "ok")
+          .or(heldNoNewerThan(readStartedAt));
       }
     } catch (e: any) {
       this.logger.warn(`evaluateInventoryItems failed: ${e?.message}`);
@@ -882,6 +907,10 @@ export class LowStockAlertsService {
   /** Reset the ledger for wines that recovered above par (silent — no spam). */
   private async reconcileRecoveries(
     byRestaurant: Map<string, LowStockRow[]>,
+    /** When `byRestaurant` was read -- captured before that read. A hold
+     * newer than this was written by someone who saw the wine low after we
+     * saw it recovered, and is left in place (next sweep re-decides). */
+    lowReadStartedAt: string,
   ): Promise<void> {
     try {
       const { data: stale } = await this.db.supabase
@@ -905,7 +934,8 @@ export class LowStockAlertsService {
               updated_at: new Date().toISOString(),
             })
             .eq("restaurant_id", s.restaurant_id)
-            .eq("inventory_id", s.inventory_id);
+            .eq("inventory_id", s.inventory_id)
+            .or(heldNoNewerThan(lowReadStartedAt));
         }
       }
     } catch (e: any) {
@@ -1102,7 +1132,7 @@ export class LowStockAlertsService {
        * DURING that gap, describes a crossing THIS call never told anyone
        * about, and must survive. Omit only when the caller has no slow work
        * between deciding and writing (there is currently no such caller);
-       * the guard then falls back to protecting only the read-to-write gap.
+       * the cutoff then falls back to the instant this call began.
        */
       clearHoldNotAfter?: string;
     },
@@ -1164,59 +1194,69 @@ export class LowStockAlertsService {
         //
         // ROUND 2 fix: the caller now hands down `clearHoldNotAfter` — an
         // instant it captured BEFORE its own slow work began, not something
-        // read fresh in here. The guard compares the CURRENT `last_held_at`
-        // against that externally supplied cutoff. A hold timestamped after
-        // the cutoff was written by someone else during the caller's slow
-        // work and is left alone; the write itself is a single
-        // `UPDATE ... WHERE last_held_at <= cutoff`, so the compare-and-swap
-        // is atomic against any other writer, including the edge sweep.
-        const { data: current, error: guardReadError } = await this.db.supabase
+        // read fresh in here. A hold timestamped after that cutoff was
+        // written by someone else during the caller's slow work and is left
+        // alone.
+        //
+        // ROUNDS 3-4 fix (PR #486 audits, 2026-09-27): round 2 read
+        // `last_held_at` first and ran the `<= cutoff` compare-and-swap only
+        // when that read found a hold. When it found none it fell through to
+        // the blind `.upsert()` below, so a hold the edge sweep wrote between
+        // that read and that write was clobbered -- the swap was atomic only
+        // on one of its two branches. There is no read any more. The clear is
+        // ONE conditional statement,
+        //   UPDATE ... WHERE last_held_at IS NULL OR last_held_at <= cutoff
+        // so "no hold" and "an old hold" are decided by Postgres in the same
+        // statement that writes, and a newer hold is never matched. Only if
+        // that matches nothing is the row inserted -- and only if it does not
+        // exist (`ignoreDuplicates`, i.e. ON CONFLICT DO NOTHING), never
+        // merged over a row someone else wrote. A row that exists and did not
+        // match carries a newer hold, and is left in place.
+        //
+        // Scope of the claim: this makes THIS clear atomic against a
+        // concurrent hold write. The two recovery writers
+        // (`evaluateInventoryItems`, `reconcileRecoveries`) carry the same
+        // `IS NULL OR <= their own pre-read instant` condition; the
+        // level-only and hold-setting writes do not clear a hold and are not
+        // conditioned.
+        const cutoff = new Date(p.clearHoldNotAfter ?? nowIso).toISOString();
+        const { data: updated, error: updateError } = await this.db.supabase
           .from("inventory_alert_state")
-          .select("last_held_at")
+          .update(row)
           .eq("restaurant_id", restaurantId)
           .eq("inventory_id", p.inventoryId)
-          .maybeSingle();
-        if (guardReadError) {
-          // Can't tell whether a hold is currently there to protect --
-          // clearing anyway on an unknown state is exactly the blind write
-          // this guard exists to prevent, so skip rather than guess.
+          .or(heldNoNewerThan(cutoff))
+          .select("inventory_id");
+        if (updateError) {
           this.logger.warn(
-            `inventory_alert_state clear-hold guard read failed: ${guardReadError.message}`,
+            `inventory_alert_state clear-hold update failed: ${updateError.message}`,
           );
           return false;
         }
-        const guardHeldAt = current?.last_held_at ?? null;
-        if (guardHeldAt) {
-          // The cutoff every caller now supplies. Falling back to `nowIso`
-          // (captured at the very top of this call) is strictly narrower
-          // than round 1's blind upsert -- it still only protects the gap
-          // between this read and this write -- but there is currently no
-          // caller that omits `clearHoldNotAfter`, so this is a belt-and-
-          // braces default, not a load-bearing path.
-          const cutoff = p.clearHoldNotAfter ?? nowIso;
-          const { data: updated, error } = await this.db.supabase
-            .from("inventory_alert_state")
-            .update(row)
-            .eq("restaurant_id", restaurantId)
-            .eq("inventory_id", p.inventoryId)
-            .lte("last_held_at", cutoff)
-            .select("inventory_id");
-          if (error) {
-            this.logger.warn(
-              `inventory_alert_state clear-hold update failed: ${error.message}`,
-            );
-            return false;
-          }
-          if (!updated || updated.length === 0) {
-            this.logger.warn(
-              `inventory_alert_state clear-hold skipped for restaurant ${restaurantId} / ${p.inventoryId}: last_held_at (${guardHeldAt}) is newer than this call's snapshot (${cutoff}) -- a fresher, unnotified crossing was recorded in between and is left in place.`,
-            );
-            return false;
-          }
-          return true;
+        if (updated && updated.length > 0) return true;
+
+        const { data: inserted, error: insertError } = await this.db.supabase
+          .from("inventory_alert_state")
+          .upsert(row, {
+            onConflict: "restaurant_id,inventory_id",
+            ignoreDuplicates: true,
+          })
+          .select("inventory_id");
+        if (insertError) {
+          this.logger.warn(
+            `inventory_alert_state clear-hold insert failed: ${insertError.message}`,
+          );
+          return false;
         }
-        // No hold currently recorded (nothing to protect) -- fall through to
-        // the plain upsert below, which also carries the level/digestAt.
+        if (inserted && inserted.length > 0) return true;
+
+        // The row exists and its hold is newer than the cutoff (or a row
+        // appeared between the two statements -- the rarer case, reported
+        // the same fail-closed way: the hold, if any, stays).
+        this.logger.warn(
+          `inventory_alert_state clear-hold skipped for restaurant ${restaurantId} / ${p.inventoryId}: last_held_at is newer than this call's snapshot (${cutoff}) -- a fresher, unnotified crossing was recorded in between and is left in place.`,
+        );
+        return false;
       }
 
       const { error } = await this.db.supabase
