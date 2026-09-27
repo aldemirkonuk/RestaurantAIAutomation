@@ -712,3 +712,85 @@ describe('useRecommendationsNextData — round 3, the person’s own snoozes', (
     }
   });
 });
+
+/* ── round 6 (sketch 122 direction B + Q2/Q4) ──────────────────────────────── */
+
+describe('round 6 reads and writes', () => {
+  it('reads the goals WITH progress for the masthead, and an unread book is null, never an empty one', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url === '/analytics/goals/r1/progress?status=active')
+        return {
+          data: {
+            goals: [
+              {
+                goal: { id: 'g1', name: 'Hold spend', metric_key: 'purchase_spend', direction: 'at_most', target_value: '9500' },
+                unit: 'currency',
+                current: 6180,
+                target: 9500,
+                progressPct: 0.65,
+                onTrack: false,
+                daysLeft: 14,
+              },
+              { goal: { id: 'g2', name: 'Broken', metric_key: 'checks', target_value: 10 }, unreadable: true, reason: 'boom' },
+            ],
+            total: 2,
+            truncated: false,
+          },
+        };
+      if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
+      if (url.includes('/exclusions')) return { data: { items: [], readable: true, problem: null } };
+      return { data: { ...FEED, sourcesUnread: ['cashflow'] } };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.goalBook).toBeTruthy());
+    const book = result.current.goalBook!;
+    expect(book.goals[0]).toMatchObject({ name: 'Hold spend', direction: 'at_most', current: 6180, onTrack: false });
+    expect(book.goals[1]).toMatchObject({ unreadable: 'boom', current: null, progressPct: null, onTrack: null });
+    await waitFor(() => expect(result.current.sourcesUnread).toEqual(['cashflow']));
+  });
+
+  it('an older feed with no sourcesUnread field is "not stated", not "every source answered"', async () => {
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    expect(result.current.sourcesUnread).toBeNull();
+  });
+
+  it('a failed progress read is null', async () => {
+    api.get.mockImplementation(async (url: string) => {
+      if (url.includes('/progress')) throw new Error('down');
+      if (url.includes('/digest')) return { data: { digestEnabled: false, digestHour: 7 } };
+      if (url.includes('/exclusions')) return { data: { items: [], readable: true, problem: null } };
+      return { data: FEED };
+    });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.goalBook).toBeNull());
+  });
+
+  it('a one-tap act that stays on the leaf offers Undo carrying its inverse patch (sketch 122 Q2)', async () => {
+    api.post.mockResolvedValue({ data: { ruleKey: 'stockout_imminent' } });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    const e = result.current.entries[0];
+    await act(async () => {
+      await result.current.setDisposition(e, { acted: true }, 'Marked as briefed — still standing.', false, undefined, { acted: false });
+    });
+    expect(api.post).toHaveBeenCalledWith(
+      '/analytics/recommendations/r1/action',
+      expect.objectContaining({ ruleKey: 'stockout_imminent', acted: true }),
+    );
+    expect(result.current.undo?.inverse?.patch).toEqual({ acted: false });
+    expect(result.current.undo?.inverse?.entry.acted).toBe(true);
+    // …and the entry stays on the leaf, marked.
+    expect(result.current.entries[0].acted).toBe(true);
+  });
+
+  it('a write with no inverse that stays on the leaf offers no Undo, as before', async () => {
+    api.post.mockResolvedValue({ data: { ruleKey: 'stockout_imminent' } });
+    const { result } = renderHook(() => useRecommendationsNextData());
+    await waitFor(() => expect(result.current.phase).toBe('ready'));
+    await act(async () => {
+      await result.current.setDisposition(result.current.entries[0], { feedback: 'helpful' }, 'Noted.', false);
+    });
+    expect(result.current.undo).toBeNull();
+  });
+});
