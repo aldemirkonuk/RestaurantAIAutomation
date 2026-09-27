@@ -75,7 +75,7 @@ export interface LeavingStopReceipt {
   audited: number;
 }
 
-/** The `revoke_reason` a leaving stop writes (migration 20261005090100). */
+/** The `revoke_reason` a leaving stop writes (migration 20261031174623). */
 export const LEFT_HOUSE = "left_house";
 
 export async function stopCalendarLinksOnLeaving(

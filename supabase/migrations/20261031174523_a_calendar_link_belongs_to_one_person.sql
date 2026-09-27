@@ -131,7 +131,7 @@ SELECT
   retired.id,
   jsonb_build_object(
     'credential', 'calendar_ical_token',
-    'migration', '20261005090000'
+    'migration', '20261031174523'
   ),
   retired.id,
   'Founder 2026-09-21: every person connects their own calendar link, so the shared house link was switched off.'
