@@ -706,6 +706,96 @@ describe("pulling a letter back", () => {
       status: LETTER_STATUS.CANCELLED,
     });
   });
+
+  // PR #476 audit round 2, R1b: a queued letter answering a credit claim
+  // (`email_headers.credit_id`, set by `queue()` when it comes from a
+  // credit's draft) is the same ADR 0167 territory as sending it — pulling it
+  // back is owner/manager only too. A letter with no claim behind it stays
+  // open to every role.
+  //
+  // Moved here (2026-09-27, PR #429 merge-train) from inside the
+  // "HouseLettersController.cancel passes the SIGNED token's userId" describe,
+  // where the merge first landed it: these tests call the SERVICE directly
+  // through `svcWith`, which this describe block defines, not the controller,
+  // so they belong beside it rather than beside the controller-level test.
+  //
+  // Every call here also passes `userId: CALLER`, matching the row's own
+  // `written_by` (2026-09-27, PR #429 merge-train, composing this ADR 0230
+  // gate with THIS branch's own ADR 0149 row 43 author-only check, which
+  // main does not carry — `cancel()` here refuses first on authorship, so a
+  // test of the ROLE gate alone must hold authorship constant-satisfied or
+  // it is testing the author check instead). The last case still varies who
+  // writes it, per its own name.
+  describe("a credit claim's queued letter", () => {
+    const CALLER = "cccccccc-0000-4000-8000-cccccccccccc";
+
+    function svcWithCreditLetter() {
+      return svcWith({
+        id: "letter-1",
+        status: LETTER_STATUS.QUEUED,
+        scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
+        restaurant_id: HOUSE,
+        email_headers: {
+          credit_id: "credit-1",
+          to: "vendor@example.com",
+          written_by: CALLER,
+        },
+      });
+    }
+
+    it("refuses a staff caller, and cancels nothing", async () => {
+      const { rec, service } = svcWithCreditLetter();
+      await expect(
+        service.cancel({
+          restaurantId: HOUSE,
+          userId: CALLER,
+          id: "letter-1",
+          role: "staff",
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(rec.updates).toHaveLength(0);
+    });
+
+    it("refuses a session with no role in this house", async () => {
+      const { service } = svcWithCreditLetter();
+      await expect(
+        service.cancel({
+          restaurantId: HOUSE,
+          userId: CALLER,
+          id: "letter-1",
+          role: null,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it.each(["owner", "manager"])("lets a %s pull it back", async (role) => {
+      const { service } = svcWithCreditLetter();
+      const out = await service.cancel({
+        restaurantId: HOUSE,
+        userId: CALLER,
+        id: "letter-1",
+        role,
+      });
+      expect(out.status).toBe(LETTER_STATUS.CANCELLED);
+    });
+
+    it("does not gate a letter with no claim behind it", async () => {
+      const { service } = svcWith({
+        id: "letter-1",
+        status: LETTER_STATUS.QUEUED,
+        scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
+        restaurant_id: HOUSE,
+        email_headers: { written_by: CALLER },
+      });
+      const out = await service.cancel({
+        restaurantId: HOUSE,
+        userId: CALLER,
+        id: "letter-1",
+        role: "staff",
+      });
+      expect(out.status).toBe(LETTER_STATUS.CANCELLED);
+    });
+  });
 });
 
 describe("HouseLettersController.cancel passes the SIGNED token's userId, not the house id (confirmer M8, wave5)", () => {
@@ -736,63 +826,6 @@ describe("HouseLettersController.cancel passes the SIGNED token's userId, not th
     // Pinned down explicitly: a controller that swapped in the house id
     // (the exact M8 mutation the wave5 confirmer named) must not pass this.
     expect(cancel.mock.calls[0][0].userId).not.toBe(HOUSE);
-  });
-
-  // PR #476 audit round 2, R1b: a queued letter answering a credit claim
-  // (`email_headers.credit_id`, set by `queue()` when it comes from a
-  // credit's draft) is the same ADR 0167 territory as sending it — pulling it
-  // back is owner/manager only too. A letter with no claim behind it stays
-  // open to every role.
-  describe("a credit claim's queued letter", () => {
-    function svcWithCreditLetter() {
-      return svcWith({
-        id: "letter-1",
-        status: LETTER_STATUS.QUEUED,
-        scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
-        restaurant_id: HOUSE,
-        email_headers: { credit_id: "credit-1", to: "vendor@example.com" },
-      });
-    }
-
-    it("refuses a staff caller, and cancels nothing", async () => {
-      const { rec, service } = svcWithCreditLetter();
-      await expect(
-        service.cancel({ restaurantId: HOUSE, id: "letter-1", role: "staff" }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-      expect(rec.updates).toHaveLength(0);
-    });
-
-    it("refuses a session with no role in this house", async () => {
-      const { service } = svcWithCreditLetter();
-      await expect(
-        service.cancel({ restaurantId: HOUSE, id: "letter-1", role: null }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
-    });
-
-    it.each(["owner", "manager"])("lets a %s pull it back", async (role) => {
-      const { service } = svcWithCreditLetter();
-      const out = await service.cancel({
-        restaurantId: HOUSE,
-        id: "letter-1",
-        role,
-      });
-      expect(out.status).toBe(LETTER_STATUS.CANCELLED);
-    });
-
-    it("does not gate a letter with no claim behind it", async () => {
-      const { service } = svcWith({
-        id: "letter-1",
-        status: LETTER_STATUS.QUEUED,
-        scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
-        restaurant_id: HOUSE,
-      });
-      const out = await service.cancel({
-        restaurantId: HOUSE,
-        id: "letter-1",
-        role: "staff",
-      });
-      expect(out.status).toBe(LETTER_STATUS.CANCELLED);
-    });
   });
 });
 
