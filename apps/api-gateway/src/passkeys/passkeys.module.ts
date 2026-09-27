@@ -7,7 +7,7 @@ import { SignInCodesService } from "./sign-in-codes.service";
 import { SignInController } from "./sign-in.controller";
 
 /**
- * ADR 0222 / ADR 0229 (Proposed): passkeys on /profile, and the two sign-in
+ * ADR 0222 / ADR 0229 (Locked 2026-09-27): passkeys on /profile, and the two sign-in
  * doors that are not a password -- a passkey, or an emailed code.
  */
 @Module({

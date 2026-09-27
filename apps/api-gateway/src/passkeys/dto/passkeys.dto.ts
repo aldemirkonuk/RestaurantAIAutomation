@@ -9,7 +9,7 @@ import {
 } from "class-validator";
 
 /**
- * Bodies of the passkey routes (ADR 0222, Proposed). The service re-checks
+ * Bodies of the passkey routes (ADR 0222, Locked 2026-09-27). The service re-checks
  * every field it relies on; these decorators exist so the global
  * ValidationPipe (`whitelist`, `forbidNonWhitelisted`) lets the fields through
  * and refuses anything else.

@@ -1,5 +1,5 @@
 /**
- * PasskeyRows — ADR 0222 (Proposed), ADR 0134 §7 ("Passkey + paste").
+ * PasskeyRows — ADR 0222 (Locked 2026-09-27), ADR 0134 §7 ("Passkey + paste").
  *
  * The API module is mocked at its boundary; the ceremony itself is proven in
  * the gateway's `passkeys.service.spec.ts` against a software authenticator.

@@ -1,6 +1,6 @@
 # 0229 — A passkey or an emailed code signs you in, and a recent sign-in guards enrolment
 
-- **Status:** Proposed — the founder answered WHAT on 2026-09-25 (item 29, below), answered forks 1-3 on 2026-09-26 (round 6, item 37, § Open forks), and the same day (round 7, item 44) ordered industry practice for a reset AND a change — which **supersedes round 6's "reset RETIRES every passkey"** and answers forks 4 and 5 (§ Round 7); this record is the HOW
+- **Status:** Locked **[2026-09-27, the founder, round 11, item 63, verbatim: "Lock both as built (Recommended)" — ADR 0222 and ADR 0229 locked as built on PR #479. Fork 6 below was found by the ADR 0090 audit and was not in front of him when he answered, so it is recorded open rather than folded into the lock]** — the founder answered WHAT on 2026-09-25 (item 29, below), answered forks 1-3 on 2026-09-26 (round 6, item 37, § Open forks), and the same day (round 7, item 44) ordered industry practice for a reset AND a change — which **supersedes round 6's "reset RETIRES every passkey"** and answers forks 4 and 5 (§ Round 7); this record is the HOW
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** passkey sign-in, discoverable credential, user handle, WebAuthn authentication, one-time code, OTP, email code, step-up, re-authentication, auth_time, freshness, enumeration, rate limit, HMAC, session_version, membership, recovery, lost device
@@ -72,7 +72,16 @@ merged with `origin/main` `e4f81d748`):
    - 5 wrong tries kill a code; **20 wrong tries per address per day** lock
      the code path for that address (password, Google and passkeys still
      work) — an online guesser gets 20 in 1,000,000 a day, under NIST's
-     100-consecutive-failure ceiling;
+     100-consecutive-failure ceiling; **[2026-09-27, PR #479 audit-fix round
+     2: each try is now claimed by a compare-and-set on `attempts` BEFORE the
+     code is compared (`SignInCodesService.claimTry`), so a burst of parallel
+     guesses gets at most 5 comparisons per code — fix round 1 counted every
+     wrong guess but still compared first, so N parallel guesses got N
+     comparisons. The day check reads before the claim, so a burst on the
+     day's last code can pass 20 by up to 4: the ceiling is 24 comparisons per
+     address per day, assuming only one code is live — the per-hour issue cap
+     is a read-then-insert and was not re-measured under concurrency. A right
+     guess spends a try but is not counted as a wrong one.]**
    - 5 codes per address per hour; 20 per requesting source per hour; plus
      `@RateLimit` on each public route.
    **Enumeration:** a row is written for an address with no account too
@@ -371,6 +380,41 @@ mint should stamp `signedInNow()` (the password was just typed).
    the token's house, so an account on `/get-started` cannot add one. Not
    asked in round 6; left as built.
 
+6. **[OPEN — found 2026-09-27 by the ADR 0090 audit of PR #479 (reports at
+   `b88c27053` and `c1acfeabc`), not yet put to the founder.]** **A code
+   sign-in can verify an account someone else registered, and keep their
+   password.** Round 6 part 4 (item 37, "emailed-code sign-in marks email
+   verified") is built in `AuthService.verifyEmailProvedByCode`
+   (`apps/api-gateway/src/auth/auth.service.ts:814-839`): it sets
+   `email_verified = true` (`:826`) and leaves `password_hash` as it is. The
+   sequence: someone registers the victim's address with a password of their
+   own (`POST /auth/register/account`, `@Public()`, `auth.controller.ts:137-139`;
+   `registerAccount` writes `email_verified: false`, `auth.service.ts:1160`);
+   the victim, told the address is taken, uses "Email me a sign-in code";
+   the code proves the victim's mailbox and flips the flag; the registrant's
+   password now opens a verified session. Their already-issued tokens do too:
+   `JwtStrategy.validate` reads `email_verified` from the row on every request
+   (`strategies/jwt.strategy.ts:39,76`), a refresh token lives 7 days
+   (`auth.service.ts:923`), and this branch has no per-person session cut-off
+   (ADR 0225's `sv` is PR #477, still open). The emailed verification link
+   (`auth.service.ts:2369`) has the same shape and predates this PR; the code
+   path is the new and likelier door, because the victim starts it.
+   Paths: (a) **drop the unproven password and end every other session when a
+   code first verifies the address** — the shape of the mitigations in
+   Sudhodanan & Paverd, "Pre-hijacked accounts" (USENIX Security 2022; not
+   re-researched this round); needs #477's `sv` (or a new
+   cut-off column) to end the registrant's sessions; cost: a person who
+   registered with a password, never clicked the link, then used a code must
+   set a password again on `/profile`; (b) **do not verify by code when the
+   account holds a password it never proved** — narrows item 37; the person
+   lands on `/verify-email` as before; no dependency on #477; (c) refuse a code
+   sign-in into such an account and send the person to a password reset —
+   narrows item 37 and adds a dead end for the legitimate registrant.
+   **Recommendation: (a), landing after #477 so `sv` ends the sessions; (b)
+   as the interim if #479 must merge first.** Not built: every path changes
+   what item 37 does or who keeps a password, which is his call (CLAUDE.md
+   §0.1).
+
 ## Consequences
 
 - Every session minted before this deploy has no `auth_time`, so the first
@@ -404,3 +448,4 @@ mint should stamp `signedInNow()` (the password was just typed).
 | 2026-09-25 | lane W3-passkeys (agent) | Created, Proposed. Gateway: `passkeys.sign-in.spec.ts` 22, `sign-in-codes.service.spec.ts` 18, `auth-time.spec.ts` 7 (real `@simplewebauthn/server` against a software authenticator; real `JwtService`). 23 gateway mutants of the checks: 20 red, 3 green — each green one a check guarded twice (the revoked filter, the code's single use, the challenge's purpose binding); the compound mutants removing both guards of the first two, and both UV guards, went red (the purpose binding is backed by the table's `(purpose = 'sign_in') = (user_id is null)` check, so it is not reachable alone). Web: 5 mutants, 5 red. PGlite full-corpus probe of the migration 16/16. No independent adversarial fan-out ran (no Workflow tool in this lane); the forks above are this lane's own adversarial pass |
 | 2026-09-26 | lane W4-passkeys (agent) | Founder round 6 item 37 recorded (forks 1-3 answered) and built: reset retires passkeys, enrolment mail, staff enrolment, code sign-in verifies email. New `founder-round-six.spec.ts` 12 cases (real `AuthService.resetPassword` + real passkey ceremonies: a retired passkey cannot sign in). 8 source mutants of the new checks, 8 red (one initially green — the session minted from the pre-write row — killed by moving that case onto the copy-returning fake). Two new CLAIMS rows, 7 mutants, 7 red. Fork 4 (password change) opened, not built. No independent adversarial fan-out ran |
 | 2026-09-26 | lane W5-passkeys (agent) | Founder round 7 item 44: researched Google, Apple, Microsoft, GitHub, Okta, Auth0, 1Password, Dashlane (not found), NIST SP 800-63B-4, FIDO, OWASP (§ Round 7 table). Industry keeps passkeys on reset and change → round 6 part 1 un-built (`retire-passkeys.ts` deleted), password reset/change notice mail listing live passkeys added, houseless enrolment allowed (no house/role read). `founder-round-six.spec.ts` rewritten (round-7 cases: reset and change keep and still sign in; the mail lists only live own passkeys, escaped, no secret/link; unreadable ≠ none; a failed mail never fails the reset; houseless enrol end to end). 7 source mutants, 7 red (incl. re-adding a reset-time revoke). Gateway `src/auth src/passkeys src/communications/email-templates` 31 suites / 386 tests green; boot check PASS. Research was one agent's WebSearch/WebFetch pass plus its own adversarial paragraph — no independent Workflow fan-out ran; several "kept" rows rest on omission, marked so |
+| 2026-09-27 | the founder (round 11, item 63) + PR #479 audit-fix round 2 (agent) | **Locked as built**, verbatim "Lock both as built (Recommended)"; Status line and this ADR's own index row changed. The same round recorded fork 6 (a code sign-in verifies an account someone else registered and keeps their password), found by the audit and not in front of the founder when he answered; not built, open for him. Code: `claimTry` replaces `recordWrongGuess` (claim a try before comparing); `sign-in-codes.service.spec.ts` 21/21 with two new cases (3×5 parallel guesses with the right code last: none signs in, `hashCode` runs 5 times; a right guess is not a wrong one for the day). Mutants: compare-first restored → both new cases red; the consumed-row adjustment removed → the day case red. `src/passkeys src/auth` 32 suites / 406 tests green; gateway `tsc --noEmit` clean |

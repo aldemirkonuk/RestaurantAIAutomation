@@ -11,7 +11,7 @@ import {
 } from "../team/testing/supabase-stub";
 
 /**
- * The `auth_time` claim (ADR 0229, Proposed; the founder, 2026-09-25, item 29:
+ * The `auth_time` claim (ADR 0229, Locked 2026-09-27; the founder, 2026-09-25, item 29:
  * "enrolling while signed in: signed in within last 10 min = direct, else email
  * code first").
  *

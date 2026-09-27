@@ -54,7 +54,7 @@ import { IntegrationReturnNotice } from '../../authorize-integration/Integration
  * `.map()`, and there is no second row component anywhere on the page. What separates a live Google link from a passkey with
  * no backend is its state chip and whether its control is live or `disabled`
  * carrying its reason in words — never the amount of design spent on it.
- * **[2026-09-25, ADR 0222 (Proposed): passkeys have a backend now. Register
+ * **[2026-09-25, ADR 0222 (Locked 2026-09-27): passkeys have a backend now. Register
  * II's Passkeys row became `PasskeyRows.tsx` — its own four `ConnectionRow`
  * call sites (reading, unreadable, the header, one per passkey) — so the
  * fifteen above is no longer the count; the claim it supports, one row

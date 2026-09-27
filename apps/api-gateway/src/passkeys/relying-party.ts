@@ -1,5 +1,5 @@
 /**
- * Which relying party a passkey ceremony belongs to (ADR 0222, Proposed).
+ * Which relying party a passkey ceremony belongs to (ADR 0222, Locked 2026-09-27).
  *
  * A WebAuthn credential is bound to an RP ID -- a registrable domain the page's
  * origin sits on. The browser refuses a ceremony whose RP ID is not the page's

@@ -7,7 +7,7 @@ interface SignInCodeEmailData {
 }
 
 /**
- * The emailed one-time code (ADR 0229, Proposed; founder 2026-09-25 item 29).
+ * The emailed one-time code (ADR 0229, Locked 2026-09-27; founder 2026-09-25 item 29).
  * Rendered only for an address that has an account -- the sign-in route sends
  * the same response either way and mails nobody when there is no account.
  *

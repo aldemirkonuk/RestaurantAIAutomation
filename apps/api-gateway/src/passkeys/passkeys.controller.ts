@@ -35,7 +35,7 @@ import {
 } from "./passkeys.service";
 
 /**
- * The caller's own passkeys (ADR 0222, Proposed; ADR 0134 §7, founder
+ * The caller's own passkeys (ADR 0222, Locked 2026-09-27; ADR 0134 §7, founder
  * 2026-09-21: "Passkey + paste (Recommended)").
  *
  * Every route acts on the signed token's person. None takes a user id in any

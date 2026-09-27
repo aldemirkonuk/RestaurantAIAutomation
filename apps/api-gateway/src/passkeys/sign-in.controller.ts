@@ -22,7 +22,7 @@ import { requestSource } from "./request-source";
 import { SignInCodesService } from "./sign-in-codes.service";
 
 /**
- * Signing in without a password (ADR 0222 / ADR 0229, Proposed; the founder,
+ * Signing in without a password (ADR 0222 / ADR 0229, Locked 2026-09-27; the founder,
  * 2026-09-25, item 29): "passkey (Face ID/Touch ID) IS a sign-in method;
  * logged-out with no passkey -> emailed one-time code." Password and Google
  * stay exactly as they are; these are two more doors to the same session.

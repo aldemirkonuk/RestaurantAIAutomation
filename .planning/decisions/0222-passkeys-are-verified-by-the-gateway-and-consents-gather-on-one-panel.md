@@ -1,6 +1,6 @@
 # 0222 — Passkeys are verified by the gateway, and consents gather on one panel
 
-- **Status:** Proposed — the founder answered WHAT on 2026-09-21 (round 6r, below) and again on 2026-09-25 (item 29, below: forks 1-4 answered, the consent panel accepted as built); this record is the HOW. The sign-in half is [[0229-a-passkey-or-an-emailed-code-signs-you-in-and-a-recent-sign-in-guards-enrolment]]
+- **Status:** Locked **[2026-09-27, the founder, round 11, item 63, verbatim: "Lock both as built (Recommended)" — ADR 0222 and ADR 0229 locked as built on PR #479]** — the founder answered WHAT on 2026-09-21 (round 6r, below) and again on 2026-09-25 (item 29, below: forks 1-4 answered, the consent panel accepted as built), fork 5 on 2026-09-26 (round 6) and the enrolment scope in round 7; the HOW below is what he locked. The sign-in half is [[0229-a-passkey-or-an-emailed-code-signs-you-in-and-a-recent-sign-in-guards-enrolment]]
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** passkey, WebAuthn, FIDO2, simplewebauthn, rp id, mudavym.com, attestation, user verification, challenge, re-authentication, recovery, consent panel, ask-training, Jev, fork 14, SC 3.3.8, /profile, /settings
@@ -202,3 +202,4 @@ opt-out — each with its own audited trail.
 | 2026-09-25 | lane W3-passkeys (agent) | Founder's item 29 recorded; forks 1-4 bracketed answered; the password proof replaced by ADR 0229's ten-minute rule. `passkeys.service.spec.ts` now 28/28 (the two password cases removed; the proof's cases moved to `passkeys.sign-in.spec.ts`). Status stays Proposed: the HOW is still an agent's |
 | 2026-09-26 | lane W4-passkeys (agent) | Round 6 brackets: staff may enrol; fork 5 answered (enrolment mail built). Details and tests in ADR 0229 § Round 6 |
 | 2026-09-26 | lane W5-passkeys (agent) | Round 7 brackets: reset no longer retires passkeys; enrolment is the person's, no house needed. Evidence table and tests in ADR 0229 § Round 7 |
+| 2026-09-27 | the founder (round 11, item 63) | **Locked as built**, verbatim "Lock both as built (Recommended)". Recorded by the PR #479 audit-fix round; the Status line and this ADR's own index row changed, nothing else in the decision |

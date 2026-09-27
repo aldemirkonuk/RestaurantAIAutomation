@@ -1,5 +1,5 @@
 /**
- * The signed-in person's passkeys (ADR 0222, Proposed; ADR 0134 §7, founder
+ * The signed-in person's passkeys (ADR 0222, Locked 2026-09-27; ADR 0134 §7, founder
  * 2026-09-21: "Passkey + paste (Recommended)").
  *
  * No function here takes a user id: the gateway acts on the token's person

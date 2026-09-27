@@ -31,7 +31,7 @@ import {
 } from "./relying-party";
 
 /**
- * Passkeys on /profile (ADR 0222, Proposed; ADR 0134 §7).
+ * Passkeys on /profile (ADR 0222, Locked 2026-09-27; ADR 0134 §7).
  *
  * THE FOUNDER, 2026-09-21, round 6r, his pick verbatim: **"Passkey + paste
  * (Recommended)"**. What ADR 0134 recorded that pick to mean, and where each
@@ -64,7 +64,7 @@ import {
  *      answers -- the same verification a point of action will call -- and
  *      grants nothing.
  *
- * HOW (ADR 0222, Proposed -- the founder answered WHAT, not HOW):
+ * HOW (ADR 0222, Locked 2026-09-27 as built -- founder round 11, item 63):
  *   * `@simplewebauthn/server` verifies; nothing here parses CBOR or checks a
  *     signature by hand.
  *   * Attestation `none`, user verification `required`, resident key

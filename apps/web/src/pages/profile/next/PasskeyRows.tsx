@@ -1,5 +1,5 @@
 /**
- * Passkeys — Register II's "Second factor" rail, built (ADR 0222, Proposed).
+ * Passkeys — Register II's "Second factor" rail, built (ADR 0222, Locked 2026-09-27).
  *
  * THE FOUNDER, 2026-09-21, round 6r, his pick verbatim: **"Passkey + paste
  * (Recommended)"** (ADR 0134 §7). As recorded there: WebAuthn, per user,

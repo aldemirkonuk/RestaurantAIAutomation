@@ -1,5 +1,5 @@
 /**
- * ADR 0222 (Proposed): passkeys on /profile.
+ * ADR 0222 (Locked 2026-09-27): passkeys on /profile.
  *
  * These tests drive the REAL `@simplewebauthn/server` verification with a
  * software authenticator built from node's own crypto (an ES256 key, a CBOR
