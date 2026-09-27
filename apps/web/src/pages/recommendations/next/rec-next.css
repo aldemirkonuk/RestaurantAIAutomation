@@ -63,7 +63,7 @@
 .rc-mgoal-bar { height: 4px; border-radius: 2px; background: var(--paper-2, #eae4d8); margin: 6px 0 4px; overflow: hidden; }
 .rc-mgoal-bar i { display: block; height: 100%; background: var(--seal, #1a5e6b); border-radius: 2px; }
 .rc-mgoal[data-pace='behind'] .rc-mgoal-bar i { background: var(--alarm, #a33a2b); }
-.rc-mgoal-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--ink-3, #7c7365); }
+.rc-mgoal-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--ink-4, #665d50); }
 .rc-mgoal[data-pace='behind'] .rc-mgoal-pace { color: var(--alarm-deep, #8c3322); font-weight: 600; }
 .rc-mgoal-suggest {
   margin-top: 8px; padding: 8px 9px; border-radius: 8px;
