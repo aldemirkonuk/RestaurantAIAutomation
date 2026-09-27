@@ -10,12 +10,13 @@
  * plus a failed re-mint (AuthContext.tsx catches it and proceeds) renders the
  * PREVIOUS tenant's book with no banner.
  *
- * P3 — a permanent failure is not latency. `scheduled_reports` is created by no
- * migration in `supabase/migrations/` — it is named in
- * `20260826170000_integration_oauth_tables.sql:26` as one of five tables
- * production never saw — so `GET /reports/schedules` fails every time. A hook
- * that only exposes `data !== undefined` reports that permanent failure as
- * "hasn't answered yet", forever.
+ * P3/P4 — a failure is not latency, and every source the page OWNS can say it
+ * failed. Since the ADR 0083 amendment of 2026-09-25 the page owns three: the
+ * conversation book, the thread index and the drafts. The report schedules
+ * (`scheduled_reports` is created by no migration, so the read failed for
+ * every house) and the Gmail watch status (deployment plumbing, now read on
+ * the admin desk) left the page — and so did their requests: this hook must
+ * not ask for either.
  */
 
 import React from 'react';
@@ -89,21 +90,6 @@ describe('useCommsNextData — every cache bucket names the tenant (P2)', () => 
     expect(history).not.toContain(JSON.stringify(['procurement', 'history']));
   });
 
-  it('keys the report schedules by the ACTIVE restaurant', async () => {
-    auth('active-rest-B');
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
-
-    await waitFor(() => expect(keys(qc).length).toBeGreaterThan(0));
-
-    const sched = keys(qc).filter((k) => k.includes('report-schedules'));
-    expect(sched.length).toBeGreaterThan(0);
-    for (const k of sched) {
-      expect(k, `schedules key ${k} must name the active restaurant`).toContain('active-rest-B');
-    }
-    expect(sched).not.toContain(JSON.stringify(['report-schedules']));
-  });
-
   it('two restaurants never share a cache bucket', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -132,45 +118,96 @@ describe('useCommsNextData — every cache bucket names the tenant (P2)', () => 
   });
 });
 
-describe('useCommsNextData — a permanent failure is not latency (P3)', () => {
-  it('reports a failed schedules fetch as a failure, distinct from unanswered', async () => {
+const LABELS = {
+  history: 'the conversation book',
+  threads: 'the thread index',
+  drafts: 'the drafts awaiting action',
+} as const;
+
+/** Route each owned source to its own client so one can fail alone. */
+function sources(fail: Partial<Record<keyof typeof LABELS, boolean>>) {
+  mockAxiosGet.mockImplementation((url: string) => {
+    if (url.includes('/procurement/conversations/history')) {
+      return fail.history ? Promise.reject(new Error('history 500')) : Promise.resolve({ data: [] });
+    }
+    if (url.includes('/conversations/threads')) {
+      return fail.threads
+        ? Promise.reject(new Error('threads 500'))
+        : Promise.resolve({ data: { threads: [], total: 0 } });
+    }
+    return Promise.resolve({ data: [] });
+  });
+  mockApiGet.mockImplementation((url: string) => {
+    if (url.includes('/procurement/conversations/active')) {
+      return fail.drafts ? Promise.reject(new Error('drafts 500')) : Promise.resolve({ data: [] });
+    }
+    return Promise.resolve({ data: {} });
+  });
+}
+
+describe('useCommsNextData — ADR 0083 amended 2026-09-25: three owned sources', () => {
+  it('never asks for the report schedules or the Gmail watch status', async () => {
     auth('active-rest-B');
-    mockListSchedules.mockRejectedValue(new Error('Request failed with status code 500'));
+    sources({});
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
 
-    await waitFor(() => expect(result.current.schedulesError).not.toBeNull());
+    await waitFor(() => expect(result.current.glance.draftsPending).toBe(0));
+    await waitFor(() => expect(result.current.glance.threads).toBe(0));
+    await waitFor(() => expect(result.current.hasData).toBe(true));
 
-    expect(result.current.schedulesError).toContain('500');
-    // Unanswered and failed must not be the same state.
-    expect(result.current.schedulesKnown).toBe(false);
-    expect(result.current.glance.schedules).toBeNull();
+    expect(mockListSchedules).not.toHaveBeenCalled();
+    const urls = [...mockAxiosGet.mock.calls, ...mockApiGet.mock.calls].map((c) => String(c[0]));
+    expect(urls.some((u) => u.includes('/reports/schedules'))).toBe(false);
+    expect(urls.some((u) => u.includes('/webhooks/gmail/status'))).toBe(false);
+    expect(keys(qc).some((k) => k.includes('report-schedules') || k.includes('gmail'))).toBe(false);
+    // healthy owned sources: nothing for the banner to say
+    expect(result.current.failedSources).toEqual([]);
   });
 
-  it('a schedules fetch that has not answered yet is NOT a failure', async () => {
+  for (const source of ['history', 'threads', 'drafts'] as const) {
+    it(`a real failure of ${LABELS[source]} alone is still named (ADR 0051: never swallowed)`, async () => {
+      auth('active-rest-B');
+      sources({ [source]: true });
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
+
+      await waitFor(() => expect(result.current.failed[source]).toBe(true));
+      expect(result.current.failedSources).toEqual([LABELS[source]]);
+      // failed is not unanswered: the other two answered and are not named
+      for (const other of Object.keys(LABELS) as Array<keyof typeof LABELS>) {
+        if (other !== source) expect(result.current.failed[other]).toBe(false);
+      }
+    });
+  }
+
+  it('an owned source that has not answered yet is NOT a failure', async () => {
     auth('active-rest-B');
-    mockListSchedules.mockReturnValue(new Promise(() => {}));
+    mockAxiosGet.mockReturnValue(new Promise(() => {}));
+    mockApiGet.mockReturnValue(new Promise(() => {}));
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
 
-    await waitFor(() => expect(result.current.gmailWatchConfigured).not.toBeUndefined());
-    expect(result.current.schedulesError).toBeNull();
-    expect(result.current.schedulesKnown).toBe(false);
+    await waitFor(() => expect(keys(qc).length).toBeGreaterThan(0));
+    expect(result.current.glance.threads).toBeNull();
+    expect(result.current.glance.draftsPending).toBeNull();
+    expect(result.current.failedSources).toEqual([]);
   });
 
-  it('exposes a failed state for every one of the five queries (P4)', async () => {
+  it('exposes a failed state for every one of the three owned queries (P4)', async () => {
     auth('active-rest-B');
-    mockAxiosGet.mockRejectedValue(new Error('gateway down'));
-    mockApiGet.mockRejectedValue(new Error('gateway down'));
-    mockListSchedules.mockRejectedValue(new Error('gateway down'));
+    sources({ history: true, threads: true, drafts: true });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useCommsNextData(), { wrapper: wrapper(qc) });
 
     await waitFor(() => expect(result.current.failed.history).toBe(true));
     await waitFor(() => expect(result.current.failed.threads).toBe(true));
     await waitFor(() => expect(result.current.failed.drafts).toBe(true));
-    await waitFor(() => expect(result.current.failed.schedules).toBe(true));
-    await waitFor(() => expect(result.current.failed.gmail).toBe(true));
-    expect(result.current.failedSources.length).toBe(5);
+    expect(result.current.failedSources).toEqual([
+      LABELS.history,
+      LABELS.threads,
+      LABELS.drafts,
+    ]);
+    expect(Object.keys(result.current.failed).sort()).toEqual(['drafts', 'history', 'threads']);
   });
 });

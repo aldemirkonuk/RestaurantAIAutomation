@@ -1,5 +1,5 @@
 /**
- * The grant functions of 20260926140500 / 20260926140600, modelled over the
+ * The grant functions of 20260929140500 / 20260929140600, modelled over the
  * producers' in-memory store for the gateway specs.
  *
  * WHY A MODEL AND NOT A STUB
