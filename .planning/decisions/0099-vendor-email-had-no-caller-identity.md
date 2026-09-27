@@ -371,6 +371,40 @@ route) — so there is no second runtime for this one to disagree with.]
     lane's `RELAY_REFUSED` and `relay_refusal_reason`. Any panel that shows
     one must learn the other.]
 
+  - **A Gmail-level 403/404 reached THROUGH the relay path -- a fork left
+    open by the PR #429 audit (`v3.0-TECH-DEBT.md`'s "RELAY_REFUSED (#429)
+    and SEND_REFUSED (#436)..." entry) -- is now answered.** [ADDED
+    2026-09-27, merge-train item 66, founder verbatim "Close it
+    (RELAY_REFUSED)" (rejecting "Reopen via a new signal" and "Keep not
+    confirmed"): `RelayEmailService.sendThroughDeploymentMailbox` calls
+    `GmailService.sendEmail` directly (the orchestrator's transport), so a
+    Gmail-level refusal -- `classifySendFailure`'s `"rejected"` kind, Gmail
+    400/403/404, `send-failure.ts:45` -- can happen on this path too, Gmail
+    actually reached and refusing, not a pre-transport door refusal. This
+    CLOSES the draft `RELAY_REFUSED`, the same final bucket the header
+    refusal above already uses. It is a NARROWER answer than PR #405's
+    2026-09-25 ruling for the SAME Gmail statuses on the in-process
+    direct-send path (`ProcurementService.sendVendorEmail`,
+    `procurement.service.ts:6222`), which REOPENS that draft to
+    `PENDING_APPROVAL` instead -- the two paths now deliberately disagree,
+    rather than being left to collide on the same three HTTP codes as the
+    open finding above warned. `"credentials"` (Gmail 401/OAuth) and
+    `"no-transport"` are unaffected and stay ambiguous/parked on the relay
+    path, unchanged, matching this ADR's own "401 parks" answer above.
+    Implemented via a new `RelayRejectedByProviderError`
+    (`send-failure.ts`), re-thrown by `sendThroughDeploymentMailbox` for
+    `refusal.kind === "rejected"` exactly as `MimeHeaderError` already is
+    for `"header"`, and a new `providerRejectedRequest` flag on
+    `dispatch()`'s result -- kept separate from `refusedBeforeSend` because
+    the wording differs (Gmail WAS reached this time), though both now
+    answer the same 422 in `sendAsOrchestrator`. `_relay_final_refusal_code`
+    needed NO change: it only ever read the gateway's own HTTP status, and
+    422 was already in its final-code set, so this is entirely a
+    TypeScript-side decision about which HTTP status the relay answers
+    with. Proved by two new cases in `relay-email.doors.spec.ts`: the
+    422/close case, and a sibling proving `"credentials"` still stays
+    200/ambiguous.]
+
   **Tests, all in `wt-r5-relay`:**
   `test_vendor_email_gateway_auth.py` — new
   `test_relay_final_refusal_code_matches_400_403_and_422`,

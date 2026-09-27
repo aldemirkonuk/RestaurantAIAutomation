@@ -137,6 +137,7 @@ import {
 import { HouseSenderService } from "../letters/house-sender.service";
 import { houseActor, type TokenUser } from "../letters/house-letters.actor";
 import { MimeHeaderError } from "../mime-headers";
+import { RelayRejectedByProviderError } from "../send-failure";
 import {
   OrganizationsService,
   RestaurantRoleUnreadableError,
@@ -207,6 +208,19 @@ export interface RelayResult {
    * by fields, not strings).
    */
   refusedBeforeSend?: boolean;
+  /**
+   * `true` only when `success` is `false`, the send went through the
+   * orchestrator's transport (`sendThroughDeploymentMailbox`), and the
+   * provider itself returned a `kind: "rejected"` refusal (Gmail 400/403/404
+   * — `send-failure.ts`'s `GMAIL_REJECTED_STATUSES`) — Gmail WAS called and
+   * refused the request outright, unlike `refusedBeforeSend`. Founder,
+   * 2026-09-27 (item 66): this closes the relay draft as `RELAY_REFUSED`
+   * exactly like a header refusal does, even though the provider was
+   * reached. See `RelayRejectedByProviderError` (send-failure.ts) for the
+   * full ruling and how it differs from the direct-send path's #405 answer
+   * for the same Gmail statuses. Typed, never inferred from `error`'s text.
+   */
+  providerRejectedRequest?: boolean;
   channel: "email";
   door: RelayDoor;
   /** Populated only on the person door: which mailbox it sent (or will send)
@@ -368,16 +382,23 @@ export class RelayEmailService {
     // this 422 through the SAME "gateway refused the send: HTTP {code}"
     // string the 400/403/422 door refusals already produce, so a header
     // refusal closes the draft exactly like any other structural one.
-    if (!result.success && result.refusedBeforeSend) {
+    // Founder, 2026-09-27 (item 66, "Close it (RELAY_REFUSED)"): a Gmail
+    // 400/403/404 reached through this transport (`providerRejectedRequest`)
+    // answers the SAME final 422 a header refusal does, so
+    // `_relay_final_refusal_code` closes the draft RELAY_REFUSED for it too —
+    // the code only reads the HTTP status, never which of the two flags below
+    // set it. The wording differs because the provider WAS reached this time.
+    if (!result.success && (result.refusedBeforeSend || result.providerRejectedRequest)) {
       // Every `MimeHeaderError` sentence already ends in a full stop
       // (mime-headers.ts), so drop it before appending ours — this text is
       // stored on the draft verbatim and shown to a manager.
       const said = (
         result.error ?? "the provider refused to build this message"
       ).replace(/\.\s*$/, "");
-      throw new UnprocessableEntityException(
-        `${said}. Nothing was sent — the provider was never called. Fix the header named above and try again.`,
-      );
+      const closingWords = result.refusedBeforeSend
+        ? "Nothing was sent — the provider was never called. Fix the header named above and try again."
+        : "The mail service rejected the request, so nothing was sent. Fix the address named above and send again.";
+      throw new UnprocessableEntityException(`${said}. ${closingWords}`);
     }
     return result;
   }
@@ -722,6 +743,13 @@ export class RelayEmailService {
     // detection point here; `sendThroughGrant` (the person door's transport)
     // throws it directly, uncaught, already.
     let refusedBeforeSend = false;
+    // `RelayRejectedByProviderError` (send-failure.ts): Gmail WAS called, on
+    // the orchestrator's transport, and refused the request outright (400/
+    // 403/404 — `kind: "rejected"`). Founder, 2026-09-27, item 66: this
+    // closes the draft the same final way a header refusal does, even though
+    // it is not "before send" in the `refusedBeforeSend` sense — hence its
+    // own flag, never folded into that one.
+    let providerRejectedRequest = false;
     try {
       const result = await send(plan);
       success = true;
@@ -731,6 +759,7 @@ export class RelayEmailService {
       success = false;
       error = err instanceof Error ? err.message : String(err);
       refusedBeforeSend = err instanceof MimeHeaderError;
+      providerRejectedRequest = err instanceof RelayRejectedByProviderError;
     }
 
     const outcomeRecorded = await this.insertBestEffort(
@@ -740,7 +769,7 @@ export class RelayEmailService {
         correlationId,
         success
           ? { outcome: "sent", messageId: messageId ?? null, threadId: threadId ?? null, ...extraAudit }
-          : { outcome: "failed", error, refusedBeforeSend, ...extraAudit },
+          : { outcome: "failed", error, refusedBeforeSend, providerRejectedRequest, ...extraAudit },
         success ? null : (error ?? null),
       ),
       `the ${success ? "sent" : "failed"} outcome of ${correlationId}`,
@@ -752,6 +781,7 @@ export class RelayEmailService {
       threadId,
       error,
       ...(refusedBeforeSend ? { refusedBeforeSend } : {}),
+      ...(providerRejectedRequest ? { providerRejectedRequest } : {}),
       channel: "email",
       door: plan.door,
       ...(extraAudit.sender
@@ -792,6 +822,23 @@ export class RelayEmailService {
       // TypeScript caught it (TS2339) rather than it going live silently.]
       if (result.refusal?.kind === "header") {
         throw new MimeHeaderError(
+          result.error ?? "the provider reported no reason",
+        );
+      }
+      // Founder, 2026-09-27 (item 66, "Close it (RELAY_REFUSED)", rejecting
+      // "Reopen via a new signal" and "Keep not confirmed"): a Gmail 400/403/
+      // 404 reached through THIS transport — `kind: "rejected"`, Gmail was
+      // actually called and refused the request outright — closes the relay
+      // draft as RELAY_REFUSED, the same as a header refusal, even though the
+      // provider was reached. #405's "reopen to PENDING_APPROVAL" ruling for
+      // these same Gmail statuses is scoped to the DIRECT-SEND path only
+      // (`ProcurementService.sendVendorEmail`); it does not apply here. See
+      // `RelayRejectedByProviderError` (send-failure.ts) for the full ruling.
+      // `"credentials"` (401/OAuth) and `"no-transport"` are deliberately NOT
+      // re-thrown here and fall through to the plain `Error` below, staying
+      // ambiguous on this path exactly as before (ADR 0099: "401 parks").
+      if (result.refusal?.kind === "rejected") {
+        throw new RelayRejectedByProviderError(
           result.error ?? "the provider reported no reason",
         );
       }

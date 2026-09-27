@@ -939,7 +939,71 @@ describe("the orchestrator's door", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(false);
     expect(res.body.refusedBeforeSend).toBeUndefined();
-    expect(audit()[1].changes).toMatchObject({ refusedBeforeSend: false });
+    expect(res.body.providerRejectedRequest).toBeUndefined();
+    expect(audit()[1].changes).toMatchObject({
+      refusedBeforeSend: false,
+      providerRejectedRequest: false,
+    });
+  });
+
+  // Founder, 2026-09-27 (item 66, "Close it (RELAY_REFUSED)", rejecting
+  // "Reopen via a new signal" and "Keep not confirmed"): a Gmail 403/404
+  // reached through THIS door — GmailService actually called, and refusing
+  // outright (`refusal: { kind: "rejected" }`, `send-failure.ts`'s
+  // `GMAIL_REJECTED_STATUSES`) — closes the draft the same final way a
+  // header refusal does. This is narrower than, and does NOT reuse, PR
+  // #405's "Gmail 403/404 reopens the draft" ruling — that answer is scoped
+  // to the direct-send path (`ProcurementService.sendVendorEmail`) only.
+  it("is 422 — not 200 — for a Gmail 403/404 rejection reached through the relay, distinct from a header refusal", async () => {
+    gmail.sendEmail.mockResolvedValue({
+      success: false,
+      error: "Requested entity was not found.",
+      refusal: { kind: "rejected" },
+    });
+    const res = await post(ORCHESTRATOR_SEND, asService);
+
+    expect(res.status).toBe(422);
+    expect(String(res.body.message)).toMatch(/Requested entity was not found/);
+    expect(String(res.body.message)).toMatch(
+      /mail service rejected the request/,
+    );
+    // This is the one thing that must NOT be said: unlike a header refusal,
+    // Gmail WAS actually called here.
+    expect(String(res.body.message)).not.toMatch(/never called/);
+    expect(String(res.body.message)).not.toMatch(/\.\./);
+    expect(actions()).toEqual([
+      RELAY_AUDIT_ACTIONS.ATTEMPTED,
+      RELAY_AUDIT_ACTIONS.FAILED,
+    ]);
+    expect(audit()[1]).toMatchObject({
+      reason: "Requested entity was not found.",
+      changes: expect.objectContaining({
+        outcome: "failed",
+        refusedBeforeSend: false,
+        providerRejectedRequest: true,
+      }),
+    });
+  });
+
+  // The direct-send path's #405 answer for these same Gmail statuses does
+  // not apply here: the relay path has no "reopen" outcome at all, only
+  // "close" (this test) or "stay ambiguous" (the next one, for 401).
+  it("stays ambiguous (200, parked) — not RELAY_REFUSED — for a Gmail 401/OAuth credentials refusal (ADR 0099: '401 parks')", async () => {
+    gmail.sendEmail.mockResolvedValue({
+      success: false,
+      error: "invalid_grant: Token has been expired or revoked.",
+      refusal: { kind: "credentials" },
+    });
+    const res = await post(ORCHESTRATOR_SEND, asService);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(false);
+    expect(res.body.refusedBeforeSend).toBeUndefined();
+    expect(res.body.providerRejectedRequest).toBeUndefined();
+    expect(audit()[1].changes).toMatchObject({
+      refusedBeforeSend: false,
+      providerRejectedRequest: false,
+    });
   });
 
   it("refuses 503 and sends nothing when the attempt row cannot be written", async () => {

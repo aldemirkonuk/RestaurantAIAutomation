@@ -97,3 +97,29 @@ export function classifySendFailure(error: unknown): SendRefusal | undefined {
 
   return undefined;
 }
+
+/**
+ * Carries a `kind: "rejected"` refusal (Gmail 400/403/404 — `GMAIL_REJECTED_
+ * STATUSES` above) across the throw/catch boundary inside
+ * `RelayEmailService.dispatch()`, the way `MimeHeaderError` already does for
+ * `kind: "header"`.
+ *
+ * Founder, 2026-09-27 (item 66, "Close it (RELAY_REFUSED)", rejecting "Reopen
+ * via a new signal" and "Keep not confirmed"): a Gmail 403/404 reached
+ * through the RELAY path — `RelayEmailService.sendThroughDeploymentMailbox`,
+ * the orchestrator's transport — closes the draft as `RELAY_REFUSED`, no
+ * retry. This is a NARROWER answer than PR #405's ruling for the SAME Gmail
+ * statuses on the DIRECT-SEND path (`ProcurementService.sendVendorEmail`,
+ * `procurement.service.ts:6222`), which reopens the draft to
+ * `PENDING_APPROVAL` instead — the two paths now deliberately disagree, and
+ * this class exists so the relay path's own dispatch loop, not a shared
+ * classifier, is what encodes that disagreement. `"credentials"` (401/OAuth)
+ * and `"no-transport"` are NOT covered: they stay ambiguous on the relay path
+ * exactly as before (ADR 0099: "401 parks").
+ */
+export class RelayRejectedByProviderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RelayRejectedByProviderError";
+  }
+}
