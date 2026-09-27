@@ -342,7 +342,7 @@ gateway built from `origin/main` `417474e6`. What this software gained, and what
 
 ## §9 Capacity and coverage — measured 2026-09-19
 
-**Capacity.** Shares the procurement module's size/risk profile (40,442 LOC, 79 endpoints, 5 crons, 72 specs); `document-intake.service.ts` cron runs every 5 minutes.
+**Capacity.** Shares the procurement module's size/risk profile (40,442 LOC, 79 endpoints, 5 crons, 72 specs); `document-intake.service.ts` registers a sweep cron, `@Cron("*/5 * * * *")` (`:2094`). That is a registration, not a firing — see Gaps.
 
 **Coverage.** 79.0%/66.2% at the module level (same procurement module as [[orders]]).
 
@@ -350,9 +350,9 @@ gateway built from `origin/main` `417474e6`. What this software gained, and what
 
 **Promised vs. built.** `partial` holds.
 
-**Gaps.** None new beyond the procurement-module-wide N+1 lead (see [[orders]]).
+**Gaps.** None new beyond the procurement-module-wide N+1 lead (see [[orders]]), plus one this pass found: whether the sweep cron has ever fired is unmeasured. It backfills mail-sourced attachments by writing `source_channel='email'` (`:2146`) on a hit, and production has zero such rows — but `conversation_attachments`, the table it sweeps, is itself empty (SQL, 2026-09-26), so a quiet backlog and a cron that never runs look identical from here. Per this note's own contract (SOFTWARE-CONTRACT row 9), the registration string proves the code path exists, not that a job fired.
 
-*Evidence:* Supabase `procurement_documents`=33, `document_revisions`=23.
+*Evidence:* Supabase `procurement_documents`=33 (10 `manual`, 23 `upload`, 0 `email`), `document_revisions`=23, `conversation_attachments`=0 (all 2026-09-26).
 
 ### document-extraction-ocr (model)
 
