@@ -186,7 +186,21 @@ export class LowStockAlertsService {
           continue;
         }
 
-        const house = houses.get(restaurantId) ?? null;
+        if (!houses.ok) {
+          // The batched restaurants read failed for this whole tick — an
+          // unreadable row is never silently "no timezone → UTC" (that would
+          // misfire LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN for a house that in
+          // fact has a zone this server just failed to read). Skip this
+          // house this tick and retry on the next hourly tick; the
+          // per-house-date `last_digest_at` gate above means a retry can
+          // never double-send once the read starts working again.
+          this.logger.warn(
+            `LOW_STOCK_DIGEST_HOUSE_UNREADABLE restaurant=${restaurantId} — restaurants row (timezone/country) could not be read; skipping this tick.`,
+          );
+          continue;
+        }
+
+        const house = houses.map.get(restaurantId) ?? null;
         const clock = digestClockFor(house);
         if (!isDigestTick(tick, clock.zone, hour)) continue;
 
@@ -1053,24 +1067,39 @@ export class LowStockAlertsService {
    * `getRestaurantNames` widened to the columns the digest clock needs
    * (`timezone`, `country`) so the sweep can decide each house's clock
    * without a second round trip per restaurant.
+   *
+   * `ok: false` means the read itself failed (network/DB error) — the same
+   * shape as `readLastDigestAt`, and the same reason: this is a batched read
+   * for every low-stock restaurant in the tick, so a failure here cannot be
+   * attributed to one house. An unreadable row must never be silently read
+   * as "no timezone → UTC" (that would make a transient DB failure look like
+   * a house that genuinely has no zone, and everyone on that connection
+   * would get the wrong warning — `LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN` — for
+   * the wrong reason). The caller (`runDigestSweepAt`) checks `ok` and skips
+   * each affected house's tick with its own log line instead.
    */
-  private async getRestaurantHouses(
-    ids: string[],
-  ): Promise<
-    Map<
+  private async getRestaurantHouses(ids: string[]): Promise<{
+    ok: boolean;
+    map: Map<
       string,
       { name: string; timezone: string | null; country: string | null }
-    >
-  > {
+    >;
+  }> {
     const map = new Map<
       string,
       { name: string; timezone: string | null; country: string | null }
     >();
-    if (ids.length === 0) return map;
-    const { data } = await this.db.supabase
+    if (ids.length === 0) return { ok: true, map };
+    const { data, error } = await this.db.supabase
       .from("restaurants")
       .select("id, name, timezone, country")
       .in("id", ids);
+    if (error) {
+      this.logger.warn(
+        `restaurants (house timezone/country) read failed: ${error.message}`,
+      );
+      return { ok: false, map };
+    }
     for (const r of data || []) {
       map.set(r.id, {
         name: r.name,
@@ -1078,7 +1107,7 @@ export class LowStockAlertsService {
         country: r.country ?? null,
       });
     }
-    return map;
+    return { ok: true, map };
   }
 
   /**

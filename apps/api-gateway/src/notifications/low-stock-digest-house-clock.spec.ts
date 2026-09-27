@@ -24,6 +24,12 @@ function makeDigestDbMock(opts: {
   initialLastDigestAt?: Record<string, string>;
   /** Force the `last_digest_at` read itself to error (network/DB failure). */
   lastDigestAtReadError?: boolean;
+  /**
+   * Force the `restaurants` read itself to error (network/DB failure) —
+   * exercised by getRestaurantHouses' `ok` flag, distinct from a house that
+   * genuinely has no timezone recorded (`timezone: null` with no error).
+   */
+  restaurantsReadError?: boolean;
 }) {
   const lastDigestAt: Record<string, string> = {
     ...(opts.initialLastDigestAt ?? {}),
@@ -77,6 +83,12 @@ function makeDigestDbMock(opts: {
           return resolve({ data: opts.lowStockRows, error: null });
         }
         if (table === "restaurants") {
+          if (opts.restaurantsReadError) {
+            return resolve({
+              data: null,
+              error: { message: "fetch failed" },
+            });
+          }
           const ids = chain._in as string[] | undefined;
           const rows = ids
             ? opts.restaurantsRows.filter((r) => ids.includes(r.id))
@@ -338,6 +350,38 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       String(c[0]).includes("LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN"),
     );
     expect(unknownWarns).toHaveLength(1);
+  });
+
+  it("h. a read error on restaurants (house timezone/country) skips that house's tick and warns, rather than defaulting to UTC", async () => {
+    const { mock } = makeDigestDbMock({
+      lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
+      restaurantsRows: [
+        { id: "ny", name: "NY House", timezone: "America/New_York" },
+      ],
+      prefsByRestaurant: { ny: dailyPrefs("12:00") },
+      restaurantsReadError: true,
+    });
+    const svc = build(mock);
+    const warnSpy = jest.spyOn((svc as any).logger, "warn");
+
+    // 16:00Z is noon in New York (EDT, UTC-4) — the house's own hour, had
+    // the read succeeded. It must NOT fall through to the UTC fallback
+    // clock (which would also fire at a different hour) or send silently.
+    await svc.runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
+
+    expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+    expect(
+      warnSpy.mock.calls.some((c) =>
+        String(c[0]).includes("LOW_STOCK_DIGEST_HOUSE_UNREADABLE"),
+      ),
+    ).toBe(true);
+    // And it must never be confused with "no timezone recorded" — that is a
+    // different fact (a genuinely zoneless house) from "could not be read".
+    expect(
+      warnSpy.mock.calls.some((c) =>
+        String(c[0]).includes("LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN"),
+      ),
+    ).toBe(false);
   });
 
   describe("g. regressions — no send when preferences say not to", () => {
