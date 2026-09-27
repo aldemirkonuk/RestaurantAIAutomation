@@ -467,9 +467,20 @@ describe('OD-112 — the caption ink (--ink-4) clears AA on both grounds', () =>
    *  now scans everything up to the next `,`/`;`/brace after the property
    *  name (bounded to 300 chars so one file can't make the regex walk the
    *  whole rest of the source) instead of requiring an immediate quote, and
-   *  CSS_HIT/JS_HIT both add `fill` to the property alternation.] */
+   *  CSS_HIT/JS_HIT both add `fill` to the property alternation.]
+   *
+   *  [PR 478 merge-train, 2026-09-27: JS_HIT's `(?<![\w$])` lookbehind
+   *  blocked a property name preceded by a word char or `$`, but not by a
+   *  hyphen — so raw CSS-in-JS (a `.tsx` template string, not a JSX/object
+   *  style prop) let `border-color: var(--ink-3)` match on the `color`
+   *  substring, flagging `pages/ask/next/AskNext.tsx:89`'s decorative
+   *  border as a caption regression. `background-color`, `outline-color`,
+   *  `caret-color` and `text-decoration-color` end in `-color` the same
+   *  way and were equally exposed. The lookbehind now also excludes `-`,
+   *  matching what the doc comment above already claimed and what CSS_HIT
+   *  enforces by anchoring on `{`/`;`/start-of-line instead.] */
   const CSS_HIT = /(?:^|[{;])\s*(color|-webkit-text-fill-color|fill)\s*:\s*[^;{}]*--ink-3\b/gm;
-  const JS_HIT = /(?<![\w$])(color|WebkitTextFillColor|fg|fill)\s*[:=]\s*[^,;{}]{0,300}?--ink-3\b/g;
+  const JS_HIT = /(?<![\w$-])(color|WebkitTextFillColor|fg|fill)\s*[:=]\s*[^,;{}]{0,300}?--ink-3\b/g;
 
   it('no shipped color declaration paints the decorative-only --ink-3', () => {
     const files = [
@@ -543,6 +554,14 @@ describe('OD-112 — the caption ink (--ink-4) clears AA on both grounds', () =>
 
   it('JS_HIT still leaves --ink-4 alone', () => {
     expect(jsHitCount(`color: unknown ? 'var(--ink-4)' : 'var(--ink-1)',`)).toBe(0);
+  });
+
+  it('JS_HIT leaves border/background/outline/caret --ink-3 alone in raw CSS-in-JS text', () => {
+    expect(
+      jsHitCount(
+        `.x { border-color: var(--ink-3); background-color: var(--ink-3); outline-color: var(--ink-3); caret-color: var(--ink-3); }`,
+      ),
+    ).toBe(0);
   });
 
   it('CSS_HIT catches --ink-3 on a `fill:` CSS declaration', () => {

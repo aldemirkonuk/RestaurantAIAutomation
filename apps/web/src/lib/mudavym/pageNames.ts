@@ -89,6 +89,9 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // ADR 0160 sec110 item 7 — a new route with no sidebar entry yet; named
   // directly, same footing as `recommendations` and `cellar` above.
   menu: 'Menu',
+  // ADR 0145 — `/ask`, the page that answers out of a reading. Reached by
+  // the command palette, /help and the redirect from `/sommelier`.
+  ask: 'Ask',
 };
 
 /**

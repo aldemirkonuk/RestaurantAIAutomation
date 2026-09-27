@@ -130,6 +130,50 @@ describe("ADR 0145 declared sixteen-reading numerical/error floor", () => {
   });
 });
 
+// [2026-09-25, W3-ask lane -- ADR 0145 build task 4, audited per SOURCE.]
+// The floor above forces ONE table per Reading to fail. A Reading reads up to
+// six (`receipts.verified_line`), and a source it reads only on a branch --
+// the linked order lines behind a receipt, a recurring series' exceptions --
+// was never forced to fail at all. This block forces EVERY relation a Reading
+// actually queries, in the base fixture and in a richer one that walks those
+// branches, and requires the union of what was forced to equal the Reading's
+// declared `shelves`: a declared source nobody proved refuses on error fails
+// here. `scripts/check_ask_readings_have_fixtures.py` holds this block in place.
+const richFixture = () => {
+  const books = fixture();
+  // A receipt linked to an owned order: the runner then reads that order's lines.
+  books.tables.procurement_document_links = [house("link-a", { document_id: "receipt-a", order_id: "order-a" })];
+  // A recurring series in the window: the runner then reads its exceptions.
+  books.tables.calendar_events.push(house("series", { title: "Service", start_date: "2020-01-01", status: "scheduled", is_recurring: true, recurrence_rule_id: "rule", parent_event_id: null }));
+  books.tables.calendar_recurrence_rules = [house("rule", { calendar_event_id: "series", frequency: "daily", interval_value: 1, end_type: "never" })];
+  books.tables.calendar_recurrence_exceptions = [];
+  return books;
+};
+const argsFor = (id: ReadingId): ReadingArgs => id === "orders.lines" ? { subjectId: "order-a" } : args;
+describe("ADR 0145 build task 4, per source: every relation a Reading reads refuses on a forced error", () => {
+  test.each(READING_CATALOGUE.map(r => [r.id] as [ReadingId]))("%s: each source it reads, forced to fail, is could_not_read, never an answer", async id => {
+    const forced = new Set<string>();
+    for (const make of [fixture, richFixture]) {
+      const probe = make();
+      const happy = await run(probe, id, argsFor(id));
+      expect(happy.outcome).toBe("read");
+      const tables = [...new Set(probe.calls.map(c => c.table))];
+      expect(tables.length).toBeGreaterThan(0);
+      for (const table of tables) {
+        const books = make(); books.fail.add(table);
+        const finding = await run(books, id, argsFor(id));
+        expect({ table, outcome: finding.outcome }).toEqual({ table, outcome: "could_not_read" });
+        expect(finding.failedSources).toContain(table);
+        expect(finding.rows).toEqual([]);
+        expect(finding.rowsScanned).toBeNull();
+        forced.add(table);
+      }
+    }
+    // Every declared shelf was reached and forced; nothing undeclared was read.
+    expect([...forced].sort()).toEqual([...READING_CATALOGUE.find(r => r.id === id)!.shelves].sort());
+  });
+});
+
 describe("proof, scope, absence and provenance regressions", () => {
   test("actual multi-page reads exceed Supabase's first page without inventing a count", async () => {
     const books = fixture(); books.tables.analytics_goals = Array.from({ length: 1201 }, (_, i) => house(`g-${i.toString().padStart(4, "0")}`, { status: "active", target_value: i, metric_key: "covers" }));

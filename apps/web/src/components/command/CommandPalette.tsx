@@ -195,15 +195,17 @@ export function CommandPalette({
       });
     }
 
-    // Ask AI (P3.C) is reachable by ⌘⇧K, but a shortcut nobody is told about
+    // The Ask panel is reachable by ⌘⇧K, but a shortcut nobody is told about
     // is not a feature. It appears here too, and hands off to the same event.
+    // One panel, two modes (ADR 0145, founder, 2026-09-26): ask the books, or
+    // propose an action that only a seal applies.
     const askAi: Command = {
       id: "askai-open",
-      title: "Ask AI to do something",
-      subtitle: "Reorder stock or draft a vendor reply — you confirm before it runs",
+      title: "Ask Mudavym",
+      subtitle: "Ask the books, or propose a reorder or a vendor reply — nothing runs without your seal",
       section: "Create",
       icon: Sparkles,
-      keywords: "ask ai action propose reorder draft vendor natural language command",
+      keywords: "ask ai mudavym question books action propose reorder draft vendor natural language command",
       shortcut: "⌘ ⇧ K",
       action: () => window.dispatchEvent(new CustomEvent(ASK_AI_OPEN_EVENT)),
     };
