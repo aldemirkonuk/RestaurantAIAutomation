@@ -54,7 +54,11 @@ interface SessionState {
    * proved who they are seconds ago by typing a password they just chose, and
    * demanding Face ID on top of that is a gate against nobody.
    */
-  adoptTokens: (accessToken: string, refreshToken?: string) => Promise<void>;
+  adoptTokens: (
+    accessToken: string,
+    refreshToken?: string,
+    expectedGeneration?: number,
+  ) => Promise<boolean>;
   /** Re-read `/auth/me` — used after verifying an email or accepting an invite. */
   refreshUser: () => Promise<void>;
   /**
@@ -68,6 +72,40 @@ interface SessionState {
   signOut: () => Promise<void>;
   /** Swap in a refreshed access token (called by the API client). */
   setAccessToken: (token: string) => void;
+}
+
+/**
+ * Token writes and deletes run one at a time, in call order (audit of PR
+ * #436, 2026-09-27). `signOut` bumps the generation synchronously and then
+ * queues its delete, so a write that started before it is overwritten by the
+ * delete, and a write that starts after it sees the new generation and does
+ * nothing. Without the queue a sign-in or house switch resolving after sign-out
+ * could leave valid tokens in SecureStore for the next launch to find.
+ */
+let tokenQueue: Promise<unknown> = Promise.resolve();
+function onTokenQueue<T>(job: () => Promise<T>): Promise<T> {
+  const run = tokenQueue.then(job, job);
+  tokenQueue = run.catch(() => undefined);
+  return run;
+}
+
+/** Persist tokens only while the session is still `generation`; true if written. */
+function persistTokens(
+  currentGeneration: () => number,
+  generation: number,
+  accessToken: string,
+  refreshToken?: string,
+): Promise<boolean> {
+  return onTokenQueue(async () => {
+    if (currentGeneration() !== generation) return false;
+    await Promise.all([
+      SecureStore.setItemAsync(ACCESS_KEY, accessToken),
+      refreshToken
+        ? SecureStore.setItemAsync(REFRESH_KEY, refreshToken)
+        : Promise.resolve(),
+    ]);
+    return true;
+  });
 }
 
 async function fetchMe(accessToken: string): Promise<SessionUser | null> {
@@ -145,11 +183,13 @@ export const useSession = create<SessionState>((set, get) => ({
   accessToken: null,
 
   hydrate: async () => {
+    const generation = get().generation;
     try {
       const [access, refresh] = await Promise.all([
         SecureStore.getItemAsync(ACCESS_KEY),
         SecureStore.getItemAsync(REFRESH_KEY),
       ]);
+      if (get().generation !== generation) return;
       if (!access && !refresh) {
         set({ status: "signedOut" });
         return;
@@ -159,7 +199,7 @@ export const useSession = create<SessionState>((set, get) => ({
       // Profile can load behind the gate; stale is fine offline.
       if (access) {
         const user = await fetchMe(access);
-        if (user) {
+        if (user && get().generation === generation) {
           set({ user });
           // Opening the app is a real use of this house on this phone, same
           // as signing in (item 6, 2026-09-19) — otherwise a phone someone
@@ -169,7 +209,7 @@ export const useSession = create<SessionState>((set, get) => ({
         }
       }
     } catch {
-      set({ status: "signedOut" });
+      if (get().generation === generation) set({ status: "signedOut" });
     }
   },
 
@@ -200,10 +240,8 @@ export const useSession = create<SessionState>((set, get) => ({
       );
     }
     const { accessToken, refreshToken } = await res.json();
-    await Promise.all([
-      SecureStore.setItemAsync(ACCESS_KEY, accessToken),
-      SecureStore.setItemAsync(REFRESH_KEY, refreshToken),
-    ]);
+    const current = () => get().generation;
+    if (!(await persistTokens(current, generation, accessToken, refreshToken))) return;
     const user = await fetchMe(accessToken);
     if (get().generation !== generation) return;
     clearPersistedQueries();
@@ -212,21 +250,28 @@ export const useSession = create<SessionState>((set, get) => ({
     set({ accessToken, user, status: "signedIn" });
   },
 
-  adoptTokens: async (accessToken, refreshToken) => {
+  adoptTokens: async (accessToken, refreshToken, expectedGeneration) => {
+    // A caller that fetched these tokens under an earlier generation (a house
+    // switch) passes it; a sign-out since then means the tokens are dropped.
+    if (
+      expectedGeneration !== undefined &&
+      get().generation !== expectedGeneration
+    ) {
+      return false;
+    }
     const generation = get().generation + 1;
     set({ generation });
-    await Promise.all([
-      SecureStore.setItemAsync(ACCESS_KEY, accessToken),
-      refreshToken
-        ? SecureStore.setItemAsync(REFRESH_KEY, refreshToken)
-        : Promise.resolve(),
-    ]);
+    const current = () => get().generation;
+    if (!(await persistTokens(current, generation, accessToken, refreshToken))) {
+      return false;
+    }
     const user = await fetchMe(accessToken);
-    if (get().generation !== generation) return;
+    if (get().generation !== generation) return false;
     clearPersistedQueries();
     useFeedLocal.setState({ hidden: {}, clearedThisSession: 0 });
     await rememberSessionHouse(user);
     set({ accessToken, user, status: "signedIn" });
+    return true;
   },
 
   refreshUser: async () => {
@@ -239,6 +284,10 @@ export const useSession = create<SessionState>((set, get) => ({
   chooseHouse: async (houseId) => {
     const token = get().accessToken;
     if (!token) return false;
+    // Captured BEFORE the fetch: `adoptTokens` bumps the generation only after
+    // the response, so without this a sign-out during the switch would be
+    // bumped past and the switched session would come back.
+    const generation = get().generation;
     try {
       const res = await fetch(`${API_URL}/auth/switch-restaurant`, {
         method: "POST",
@@ -251,8 +300,11 @@ export const useSession = create<SessionState>((set, get) => ({
       if (!res.ok) return false;
       const body = await res.json();
       if (!body?.accessToken || body.restaurantId !== houseId) return false;
-      await get().adoptTokens(body.accessToken, body.refreshToken);
-      return true;
+      return await get().adoptTokens(
+        body.accessToken,
+        body.refreshToken,
+        generation,
+      );
     } catch {
       return false;
     }
@@ -279,15 +331,18 @@ export const useSession = create<SessionState>((set, get) => ({
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
     }
-    await Promise.all([
-      SecureStore.deleteItemAsync(ACCESS_KEY),
-      SecureStore.deleteItemAsync(REFRESH_KEY),
-    ]);
+    await onTokenQueue(() =>
+      Promise.all([
+        SecureStore.deleteItemAsync(ACCESS_KEY),
+        SecureStore.deleteItemAsync(REFRESH_KEY),
+      ]),
+    );
   },
 
   setAccessToken: (token) => {
+    const generation = get().generation;
     set({ accessToken: token });
-    SecureStore.setItemAsync(ACCESS_KEY, token).catch(() => {});
+    persistTokens(() => get().generation, generation, token).catch(() => {});
   },
 }));
 
@@ -307,10 +362,10 @@ export async function refreshAccessToken(): Promise<string | null> {
     const access: string | undefined = body.accessToken;
     const nextRefresh: string | undefined = body.refreshToken;
     if (!access || useSession.getState().generation !== generation) return null;
-    useSession.getState().setAccessToken(access);
-    if (nextRefresh) {
-      await SecureStore.setItemAsync(REFRESH_KEY, nextRefresh);
-    }
+    const current = () => useSession.getState().generation;
+    if (!(await persistTokens(current, generation, access, nextRefresh))) return null;
+    if (current() !== generation) return null;
+    useSession.setState({ accessToken: access });
     // The person is no longer a member of the house this session was in (ADR
     // 0164): the new session names none. Forget it on this phone and re-read
     // who they are, so the Today tab sends them to the chooser.

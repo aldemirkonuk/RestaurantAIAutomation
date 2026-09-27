@@ -154,19 +154,37 @@ const authority = {
       return {
         mode: "send",
         basis: tokenRole === "grantee" ? "grant" : tokenRole,
-        grant: tokenRole === "grantee" ? { id: "grant-1", grantorUserId: "owner-1", expiresAt: null, limitAmount: null, limitCurrency: null } : null,
+        grant:
+          tokenRole === "grantee"
+            ? {
+                id: "grant-1",
+                grantorUserId: "owner-1",
+                expiresAt: null,
+                limitAmount: null,
+                limitCurrency: null,
+              }
+            : null,
         role: tokenRole,
       };
     }
-    throw new ForbiddenException("Nothing was sent. Only an owner, a manager, or someone an owner has named may approve this message to the vendor with one hold. Ask an owner or a manager to do it.");
+    throw new ForbiddenException(
+      "Nothing was sent. Only an owner, a manager, or someone an owner has named may approve this message to the vendor with one hold. Ask an owner or a manager to do it.",
+    );
   }),
   // A release under a grant is written to the security ledger (founder answer 4).
   witnessGrantUse: jest.fn(async () => undefined),
 };
 const seal = {
-  issue: jest.fn(async (p: any) => ({ challenge: "good", expiresAt: "t", action: p.action })),
+  issue: jest.fn(async (p: any) => ({
+    challenge: "good",
+    expiresAt: "t",
+    action: p.action,
+  })),
   redeem: jest.fn(async (p: any) => {
-    if (p.challenge !== "good") throw new ForbiddenException("That seal is absent or not this one. Nothing was changed.");
+    if (p.challenge !== "good")
+      throw new ForbiddenException(
+        "That seal is absent or not this one. Nothing was changed.",
+      );
     return { sealId: "seal-1" };
   }),
 };
@@ -468,6 +486,45 @@ describe("approve, edit and reject take an owner or a manager (ADR 0116, ADR 016
     expect(res.status).toBe(201);
   });
 
+  // The decline on /approve (approved: false) carries no @Roles, so the
+  // controller checks the role itself; it must match /reject's exact list
+  // (ADR 0164: `admin` is not an owner or a manager). Audit of PR #436,
+  // 2026-09-27.
+  it.each(["admin", "staff", ""])(
+    "the decline on approve refuses role %p exactly as /reject does",
+    async (role) => {
+      const decline = await call(
+        "POST",
+        `/${CONV_A}/approve`,
+        { role },
+        { approved: false, approval_channel: "web_app" },
+      );
+      const reject = await call(
+        "POST",
+        `/${CONV_A}/reject`,
+        { role },
+        { reason: "x" },
+      );
+      expect(decline.status).toBe(403);
+      expect(reject.status).toBe(403);
+      expect(applied).toEqual([]);
+      expect(rowOf(CONV_A).manager_approval_status).toBe("pending");
+    },
+  );
+
+  it.each(["owner", "manager"])(
+    "the decline on approve admits %s",
+    async (role) => {
+      const res = await call(
+        "POST",
+        `/${CONV_A}/approve`,
+        { role },
+        { approved: false, approval_channel: "web_app" },
+      );
+      expect(res.status).toBe(201);
+    },
+  );
+
   it("does not gate the reads or summarize on a role", async () => {
     expect((await call("GET", `/${CONV_A}`, { role: "staff" })).status).toBe(
       200,
@@ -495,7 +552,10 @@ describe("approve, edit and reject take an owner or a manager (ADR 0116, ADR 016
   it("approve carries no token role: a grantee is a row, not a role, so WHO is the service's gate (ADR 0175 D10)", () => {
     for (const name of ["approveConversation", "issueApproveSeal"]) {
       expect(
-        Reflect.getMetadata(ROLES_KEY, (ConversationsController.prototype as any)[name]),
+        Reflect.getMetadata(
+          ROLES_KEY,
+          (ConversationsController.prototype as any)[name],
+        ),
       ).toBeUndefined();
     }
   });
@@ -525,7 +585,12 @@ describe("a failed by-id read is a failure, and its text does not leave", () => 
 
 describe("approve is sealed and admits a grantee (ADR 0175 D9/D10, 2026-09-21)", () => {
   it("refuses an approve with no seal, before anything is written or published", async () => {
-    const res = await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A, seal: null }, APPROVE_BODY);
+    const res = await call(
+      "POST",
+      `/${CONV_A}/approve`,
+      { house: HOUSE_A, seal: null },
+      APPROVE_BODY,
+    );
     expect(res.status).toBe(403);
     expect(applied).toEqual([]);
     expect(rowOf(CONV_A).manager_approval_status).toBe("pending");
@@ -533,7 +598,12 @@ describe("approve is sealed and admits a grantee (ADR 0175 D9/D10, 2026-09-21)",
   });
 
   it("refuses a seal that is not the one minted, before anything is written", async () => {
-    const res = await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A, seal: "stale" }, APPROVE_BODY);
+    const res = await call(
+      "POST",
+      `/${CONV_A}/approve`,
+      { house: HOUSE_A, seal: "stale" },
+      APPROVE_BODY,
+    );
     expect(res.status).toBe(403);
     expect(applied).toEqual([]);
     expect(mockedAxios.post).not.toHaveBeenCalled();
@@ -549,35 +619,64 @@ describe("approve is sealed and admits a grantee (ADR 0175 D9/D10, 2026-09-21)",
       subjectId: CONV_A,
       action: "approve_conversation",
     });
-    expect(redeemed.args).toMatchObject({ body: APPROVE_BODY.modified_message, conversationId: CONV_A });
+    expect(redeemed.args).toMatchObject({
+      body: APPROVE_BODY.modified_message,
+      conversationId: CONV_A,
+    });
   });
 
   it("with no edit, the seal is over the agent's own words on the row", async () => {
-    await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A }, { approved: true, approval_channel: "web_app" });
-    expect(seal.redeem.mock.calls[0][0].args.body).toBe("House A asks the vendor for 12 cases");
+    await call(
+      "POST",
+      `/${CONV_A}/approve`,
+      { house: HOUSE_A },
+      { approved: true, approval_channel: "web_app" },
+    );
+    expect(seal.redeem.mock.calls[0][0].args.body).toBe(
+      "House A asks the vendor for 12 cases",
+    );
   });
 
   it("admits a grantee — the standing a token role cannot express", async () => {
-    const res = await call("POST", `/${CONV_A}/approve`, { house: HOUSE_A, role: "grantee" }, APPROVE_BODY);
+    const res = await call(
+      "POST",
+      `/${CONV_A}/approve`,
+      { house: HOUSE_A, role: "grantee" },
+      APPROVE_BODY,
+    );
     expect(res.status).toBe(201);
     expect(authority.assertMaySend).toHaveBeenCalled();
     // The release under a grant is on the security ledger, after the seal and
     // before the row is written (ADR 0112 F12; founder answer 4, 2026-09-21).
     expect(authority.witnessGrantUse).toHaveBeenCalledWith(
       "grant-1",
-      expect.objectContaining({ restaurantId: HOUSE_A, act: "approve_conversation", subject: `procurement_conversation:${CONV_A}` }),
+      expect.objectContaining({
+        restaurantId: HOUSE_A,
+        act: "approve_conversation",
+        subject: `procurement_conversation:${CONV_A}`,
+      }),
     );
   });
 
   it("the mint answers another house's conversation 404, before WHO is asked", async () => {
-    const res = await call("POST", `/${CONV_B}/approve-seal-challenge`, { house: HOUSE_A }, {});
+    const res = await call(
+      "POST",
+      `/${CONV_B}/approve-seal-challenge`,
+      { house: HOUSE_A },
+      {},
+    );
     expect(res.status).toBe(404);
     expect(authority.assertMaySend).not.toHaveBeenCalled();
     expect(seal.issue).not.toHaveBeenCalled();
   });
 
   it("the mint refuses staff and issues nothing", async () => {
-    const res = await call("POST", `/${CONV_A}/approve-seal-challenge`, { house: HOUSE_A, role: "staff" }, {});
+    const res = await call(
+      "POST",
+      `/${CONV_A}/approve-seal-challenge`,
+      { house: HOUSE_A, role: "staff" },
+      {},
+    );
     expect(res.status).toBe(403);
     expect(seal.issue).not.toHaveBeenCalled();
   });

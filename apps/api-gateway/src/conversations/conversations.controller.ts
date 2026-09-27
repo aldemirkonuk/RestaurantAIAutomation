@@ -501,10 +501,13 @@ export class ConversationsController {
     try {
       if (!body.approved) {
         // Declining sends nothing, but it is still an owner's or a manager's
-        // call: the `/reject` route's own @Roles is not on this path, so the
-        // role is checked here in the words RolesGuard would use.
+        // call: the `/reject` route's own @Roles("owner", "manager") is not on
+        // this path, so the same exact-role match RolesGuard makes is made here
+        // (roles.guard.ts; ADR 0164: a role list means exactly its roles, and
+        // `admin` is not one of them). `user.role` is the role in the token's
+        // house (ADR 0162).
         const role = String((user as { role?: string })?.role ?? "").toLowerCase();
-        if (role !== "owner" && role !== "manager" && role !== "admin") {
+        if (role !== "owner" && role !== "manager") {
           throw new ForbiddenException("Only an owner or a manager may decline this message.");
         }
         return await this.rejectConversation(user, conversationId, {
