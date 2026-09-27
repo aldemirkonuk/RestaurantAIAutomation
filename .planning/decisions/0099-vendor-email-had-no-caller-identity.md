@@ -101,7 +101,12 @@ they fire the first time the orchestrator is deployed.
 [CORRECTED 2026-09-26, PR #429 audit fix round 1 — this was accurate for the
 2026-09-02 measurement above, not a standing fact. `railway status` (read-only,
 re-run 2026-09-26) shows `services/agent-orchestrator` `● Online` in `production`,
-one instance `RUNNING`, at a commit past `main`'s tip — it has been deployed since.
+one instance `RUNNING`, at commit `341c99b7c` (#469) — it has been deployed since.
+[CORRECTED 2026-09-27, PR #429 audit fix round 2: an earlier wording here said that
+commit was "past `main`'s tip". It was not: `341c99b7c` is on `main`'s first-parent
+history (`git merge-base --is-ancestor 341c99b7c origin/main`), committed
+2026-09-27T02:09:55Z, and Railway's `createdAt` for the deployment is 02:09:57Z — it was
+`main`'s tip when deployed, not past it.]
 Whether `agent_activity_logs` now carries any row was not re-measured (that needs a
 production data query, out of scope here). Details and the entries this affects:
 `v3.0-TECH-DEBT.md`, "`services/agent-orchestrator` runs in production…".]
@@ -419,6 +424,17 @@ route) — so there is no second runtime for this one to disagree with.]
     (a 403/404 names none). Proved in `relay-email.doors.spec.ts` through
     the REAL `GmailService` and `classifySendFailure`: a gaxios-shaped 403
     and 404 give 422; a Gmail 400 and a nodemailer EENVELOPE / 550 give 200.]
+    [ADDED 2026-09-27, PR #429 audit fix round 2 — a consequence of the ruling
+    as built, not recorded before. `GMAIL_REJECTED_STATUSES`
+    (`send-failure.ts`) files Gmail "forbidden/quota" under 403, and Gmail
+    also answers 403 for rate/quota exhaustion and for a delegation or
+    API-disabled fault on the SENDING mailbox. The relay sends from the one
+    shared deployment mailbox, so such a fault closes every relay draft sent
+    while it lasts, each permanently `RELAY_REFUSED` and shown as refused;
+    a stale `threadId` 404 closes its one draft the same way. This is within
+    the founder's words ("Close it" for 403/404) and never risks a duplicate
+    send; whether a mailbox-side 403 should park like 401 instead is filed as
+    OD-174 (OPEN-DECISIONS.md:24), part (b). Unchanged in code.]
 
   - **Deploy order, gateway older than agent (PR #429 audit F2).** [ADDED
     2026-09-27. The two services deploy separately. While a new
@@ -440,6 +456,10 @@ route) — so there is no second runtime for this one to disagree with.]
     by `older-gateway-whitelist-shape.spec.ts`). This reads the founder's
     "400 final" as not covering a version-skew 400; if he reads it
     otherwise, the one function above is the whole change to revert.]
+    [STATUS 2026-09-27, PR #429 audit fix round 2: this reading narrows a
+    Locked founder ruling and was never put to him. It is now filed as
+    OD-174 (OPEN-DECISIONS.md:24), part (a), and stays an agent's reading —
+    not decided — until he answers.]
 
   **Tests, all in `wt-r5-relay`:**
   `test_vendor_email_gateway_auth.py` — new
@@ -505,6 +525,17 @@ route) — so there is no second runtime for this one to disagree with.]
 - **Nothing here makes the orchestrator run in production.** The measured blast
   radius of zero is because it does not. Whether it should is a separate
   decision.
+  [CORRECTED 2026-09-27, PR #429 audit fix round 2 — true of the 2026-09-02
+  measurement only, not a standing fact. The orchestrator DOES run in production
+  now: `railway status --json` (read-only, 2026-09-26) shows
+  `services/agent-orchestrator` `RUNNING` in `production` at `341c99b7c` (#469),
+  and its registered `provider_conversation_agent` (`core/agent_registry.py:126`)
+  binds `conversation.approved` (`provider_conversation_agent.py:585`), so the relay
+  door is reachable and the blast radius cannot be assumed zero. Not measured here:
+  whether any production row has yet gone through it. The first sentence stays true — nothing in THIS change
+  deploys it. Evidence: the correction bracket under "So: no vendor email was
+  lost" above, and `v3.0-TECH-DEBT.md`, "`services/agent-orchestrator` runs in
+  production…".]
 
 ## Verification
 
