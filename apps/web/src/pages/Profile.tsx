@@ -239,7 +239,7 @@ export default function Profile() {
     try {
       await profileApi.changePassword({ currentPassword, newPassword })
       toast.success('Password updated', {
-        description: 'Every other device was signed out; this one stays signed in.',
+        description: 'Every other session on Mudavym was signed out; this one stays signed in.',
       })
       setCurrentPassword('')
       setNewPassword('')

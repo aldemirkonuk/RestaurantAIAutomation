@@ -14,7 +14,7 @@ describe("public account email identity", () => {
     // ADR 0174 D8 / ADR 0225: the mail says what the reset does to sessions,
     // and ships in the same change as the revocation itself.
     expect(html).toContain(
-      "When you choose a new password, every device signed in to your account is signed out.",
+      "When you choose a new password, every session on Mudavym is signed out.",
     );
   });
   it("uses Mudavym for Studio invitations, preserving recipient and role details", () => {

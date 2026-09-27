@@ -1,5 +1,9 @@
 import "reflect-metadata";
-import { BadRequestException, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
 import { AuthService, JwtPayload } from "./auth.service";
@@ -346,6 +350,78 @@ describe("a password change keeps the session that made it and signs out the oth
       (db.tables.users.find((r: Row) => r.user_id === U) as Row)
         .session_version,
     ).toBe(2);
+  });
+
+  // R1 (audit 3aaaf502e, 2026-09-26): changePassword verifies currentPassword
+  // against ONE read of password_hash, then writes via
+  // setPasswordEndingSessions, which used to compare-and-set on
+  // session_version alone. If the row's password_hash moved between that
+  // read and the write — a legitimate resetPassword landing in the gap —
+  // the old code still wrote its own (attacker-supplied) newPassword on
+  // top, undoing the reset and minting fresh tokens for whoever knew the
+  // now-stale OLD password. It must instead refuse.
+  it("refuses to overwrite a password that changed between the check and the write (R1)", async () => {
+    const db = world();
+    const attacker = await signIn(db);
+    const req = { user: await guard(db, attacker.accessToken) } as any;
+
+    // A legitimate reset (or another device's change) lands right as this
+    // call's write fires, changing password_hash under it.
+    const somebodyElsesHash = bcrypt.hashSync("victims-own-new-password", 4);
+    const realFrom = db.supabase.from.bind(db.supabase);
+    let raced = false;
+    (db.supabase as any).from = (table: string) => {
+      const q = realFrom(table);
+      if (table !== "users") return q;
+      const realUpdate = q.update.bind(q);
+      q.update = (payload: any) => {
+        if (!raced && "password_hash" in payload) {
+          raced = true;
+          const row = db.tables.users.find((r: Row) => r.user_id === U) as Row;
+          row.password_hash = somebodyElsesHash;
+          row.session_version += 1;
+        }
+        return realUpdate(payload);
+      };
+      return q;
+    };
+
+    await expect(
+      new AuthController(service(db)).changePassword(req, {
+        currentPassword: OLD,
+        newPassword: NEW,
+      } as any),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    // The password that landed in the race is the one that survives; the
+    // attacker's write never lands on top of it.
+    const row = db.tables.users.find((r: Row) => r.user_id === U) as Row;
+    expect(row.password_hash).toBe(somebodyElsesHash);
+    await expect(bcrypt.compare(NEW, row.password_hash)).resolves.toBe(false);
+  });
+
+  // R4 (audit 3aaaf502e, 2026-09-26): the kept session's house used to fall
+  // back to the raw users.restaurant_id row when the calling session named
+  // none — an eighth, untracked site of the fallback ADR-0162's open
+  // tripwire tracks. A session that named no house (ADR 0164's valid
+  // "no house" state) must stay houseless even though the row underneath
+  // does name one.
+  it("a session that names no house stays houseless, even though the users row does (R4)", async () => {
+    const db = world();
+    const laptop = await signIn(db);
+    const req = {
+      user: { ...(await guard(db, laptop.accessToken)), restaurantId: null },
+    } as any;
+
+    const answer = await new AuthController(service(db)).changePassword(req, {
+      currentPassword: OLD,
+      newPassword: NEW,
+    } as any);
+
+    expect(claims(answer.accessToken)).toMatchObject({
+      sub: U,
+      restaurantId: null,
+    });
   });
 });
 

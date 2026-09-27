@@ -785,12 +785,26 @@ export class AuthService {
    * A write that cannot be made fails the whole change: a password that
    * changed while the old sessions stayed open is the state this exists to
    * prevent.
+   *
+   * `expectedCurrentHash` (R1, audit 3aaaf502e, 2026-09-26): when the caller
+   * already proved knowledge of a specific current password (changePassword,
+   * which read and bcrypt-compared it before calling here), that same hash
+   * — `null` if the account had none — is passed in and the CAS below
+   * matches it as well as the version. Without this, the write matched only
+   * `session_version`, so a caller who verified an OLD hash could still land
+   * its write on top of a row whose hash had since moved (e.g. the victim's
+   * own concurrent resetPassword), silently overwriting a password it never
+   * actually proved knowledge of. resetPassword itself needs no such check —
+   * it authenticates by the reset token, not by a compared password — so it
+   * omits the argument and this stays a plain session_version CAS for it.
    */
   private async setPasswordEndingSessions(
     userId: string,
     passwordHash: string,
     caller: string,
+    expectedCurrentHash?: string | null,
   ): Promise<any> {
+    const checkHash = expectedCurrentHash !== undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       const { data: current, error: readErr } =
         await this.databaseService.supabase
@@ -806,14 +820,35 @@ export class AuthService {
         throw new BadRequestException("Failed to update password");
       }
 
+      if (checkHash && current.password_hash !== expectedCurrentHash) {
+        // The password this caller verified is no longer the one on the
+        // row — someone else (a reset, another device) changed it in the
+        // gap between that check and this write. Do not write on top of
+        // it; that is exactly the race this argument exists to close.
+        this.logger.warn(
+          `${caller}: ${userId}'s password changed elsewhere between the ` +
+            "check and the write; refusing to overwrite it",
+        );
+        throw new ConflictException(
+          "Your password was changed elsewhere just now. Sign in again and retry.",
+        );
+      }
+
       const from = sessionVersionOf(current);
-      const { data: written, error: writeErr } =
-        await this.databaseService.supabase
-          .from("users")
-          .update({ password_hash: passwordHash, session_version: from + 1 })
-          .eq("user_id", userId)
-          .eq("session_version", from)
-          .select("*");
+      let updateQuery = this.databaseService.supabase
+        .from("users")
+        .update({ password_hash: passwordHash, session_version: from + 1 })
+        .eq("user_id", userId)
+        .eq("session_version", from);
+      if (checkHash) {
+        updateQuery =
+          expectedCurrentHash === null
+            ? updateQuery.is("password_hash", null)
+            : updateQuery.eq("password_hash", expectedCurrentHash);
+      }
+      const { data: written, error: writeErr } = await updateQuery.select(
+        "*",
+      );
       if (writeErr) {
         this.logger.error(`${caller} failed: ${writeErr.message}`);
         throw new BadRequestException("Failed to update password");
@@ -2764,15 +2799,27 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
+    // R1 (audit 3aaaf502e, 2026-09-26): pass the hash just verified above so
+    // the write below refuses to land on any row whose password_hash has
+    // since moved — see setPasswordEndingSessions's expectedCurrentHash.
+    // Without this, an attacker who still knows the OLD password could win
+    // a race against the victim's own resetPassword: the write matched only
+    // on session_version, so it could overwrite a hash the victim had
+    // already replaced, minting the attacker fresh tokens.
     const row = await this.setPasswordEndingSessions(
       userId,
       passwordHash,
       "changePassword",
+      user.password_hash ?? null,
     );
 
     // The kept session: same house as the token that asked, same dev-bypass
     // standing (already re-checked against the environment by the caller).
-    const house = session.restaurantId ?? row.restaurant_id ?? null;
+    // No fallback to the raw users row here (R4, audit 3aaaf502e): a session
+    // that names no house (ADR 0164's houseless state) stays houseless —
+    // generateTokens below only ever mints a house session.restaurantId
+    // already named, and re-checks that against an active membership row.
+    const house = session.restaurantId ?? null;
     return this.generateTokens(
       {
         ...row,

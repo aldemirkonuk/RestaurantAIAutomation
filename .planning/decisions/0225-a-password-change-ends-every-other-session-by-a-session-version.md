@@ -1,6 +1,6 @@
 # 0225 — A password change ends every other session, by a session version
 
-- **Status:** Proposed. The rule is the founder's and binding (2026-09-19, ADR 0174 D8, batches 5 and 6; restated 2026-09-25, round 4, item 17). The mechanism below awaits his review on the PR.
+- **Status:** Accepted. The rule is the founder's and binding (2026-09-19, ADR 0174 D8, batches 5 and 6; restated 2026-09-25, round 4, item 17). The mechanism below was "Proposed" and awaiting his review on the PR; closed 2026-09-26 (R5, audit 3aaaf502e, fix round 1 of 2, PR #477) when he named #477 in his standing pre-approval to merge after audit (`founder-answers-2026-09-25-web-rebuild.md`, round 10, item 59, 2026-09-26).
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** password reset, change password, sign out, sessions, revocation, JWT, refresh token, websocket, session_version, sv
@@ -89,8 +89,13 @@ a change is handed a new pair.**
   Until the migration applies, a password change or reset fails closed (its
   write names the column).
 - **The reset mail says so** (ADR 0174 D8, in the same change as the
-  revocation): "When you choose a new password, every device signed in to your
-  account is signed out." The reset and profile success lines say it too.
+  revocation): "When you choose a new password, every session on Mudavym is
+  signed out." The reset and profile success lines say it too. [Narrowed
+  2026-09-26 (R2/R3, audit 3aaaf502e): the earlier wording said "every device"
+  unconditionally, which the "Given up / not covered" gaps below made untrue
+  — the orchestrator's studio verifier and a socket on another gateway
+  instance are neither "a session on Mudavym" nor ended by this change, so
+  the copy no longer claims they are.]
 
 ## Consequences
 
@@ -120,3 +125,5 @@ a change is handed a new pair.**
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-25 | Build session (workflow subagent, lane W2-fix-auth) | Created with the build on `fix/password-change-revokes-sessions`. Gateway `password-change-ends-sessions.spec.ts` 18/18 (8 mutants each red: guard check, refresh check, handshake check, socket eviction, CAS filter, `sv` claim, version not bumped); `password-reset.spec.ts` 12/12 after its mock learned the one-write shape; web `profile.sessions.test.ts` 5/5 and `websocket.sessionRenewed.test.tsx` 1/1 (each mutation-checked red); PGlite full-corpus probe of the migration 8/8. CLAIMS `ADR-0225-PASSWORD-CHANGE-ENDS-OTHER-SESSIONS` (2 mutants red); `ADR-0162-ROLE-IN-TOKEN-HOUSE`'s pin of `validateJwtPayload` extended by the new refusal, bracketed in its claim text. |
+| 2026-09-26 | PR Audit Gate (ADR 0090), planner Opus, correctness + security Sonnet | BLOCK at `3aaaf502e` — R1 CONFIRMED CRITICAL: `changePassword` verified `currentPassword` against one read of `password_hash` (`auth.service.ts:2746-2764`), then `setPasswordEndingSessions` compare-and-set only on `session_version` (`:783-826`), never re-checking the hash; someone who still knew the OLD password could race the account owner's own `resetPassword` and win, overwriting the owner's just-reset password and minting themselves fresh tokens — untested by `password-change-ends-sessions.spec.ts:317-350`. R4 CONFIRMED REGRESSION RISK: `session.restaurantId ?? row.restaurant_id ?? null` (`:2775`) was an eighth, untracked site of the fallback `ADR-0162-USERS-ROW-FALLBACK-RETIRED` tracks; mitigated at mint time by `generateTokens`' membership re-check, but contrary to ADR 0164's "houseless stays houseless" and uncovered by any test. R5: this ADR was "Proposed" with no recorded founder sign-off in the PR. R2/R3 confirmed live and disclosed (orchestrator signature-only verify, no socket.io adapter) but the reset-mail/toast copy claimed "every device … is signed out" unconditionally. Full report: `477-3aaaf502e.md`. |
+| 2026-09-26 | Fix round 1 of 2 (workflow subagent) | R1 closed: `setPasswordEndingSessions` takes the caller's already-verified `password_hash` as `expectedCurrentHash` and refuses (`ConflictException`) the moment a fresh read shows it moved, and the compare-and-set write itself now also filters on it (`.eq("password_hash", …)` / `.is("password_hash", null)`), so a write can land only on the exact row state the caller proved knowledge of. `resetPassword` omits the argument — it authenticates by token, not a compared password — and keeps the plain `session_version` CAS. R4 closed: the fallback is gone; `changePassword`'s kept house is `session.restaurantId ?? null`, full stop. R2/R3: the reset-mail and toast copy narrowed from "every device … is signed out" to "every session on Mudavym … is signed out" (`ResetPassword.tsx`, `Profile.tsx`, `SecurityRegister.tsx`, `password-reset.template.ts`), which the orchestrator and cross-instance-socket gaps no longer contradict. R5 closed by founder pre-approval (see Status). Two new specs (R1, R4) added to `password-change-ends-sessions.spec.ts` (20/20); both fail against the pre-fix code and against 4 further targeted mutants (guard removed, CAS filter removed, `expectedCurrentHash` argument dropped, house fallback restored) — see `ADR-0225-PASSWORD-CHANGE-ENDS-OTHER-SESSIONS` in CLAIMS.jsonl, rewritten and mutation-tested the same way, `check_decision_claims.sh` 544/544 holding. `apps/api-gateway/src/auth` suite 334/334; `tsc --noEmit` clean; web `Profile.test.tsx` + `ProfileNext.test.tsx` 73/73. |
