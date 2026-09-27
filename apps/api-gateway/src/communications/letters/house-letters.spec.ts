@@ -451,6 +451,41 @@ describe("queueing a letter", () => {
     expect(recorded[0].candidate_key).toBe("weekday.baseline.wednesday");
     expect(recorded[0].computed_at).toBe("2026-09-01T06:00:00Z");
   });
+
+  // PR #476 audit round 1, R2: a discarded (or still-undecided) HOUSE_DRAFT
+  // must not inflate the composer's "message N on this order" round count.
+  it("round_count excludes discarded and undecided drafts, and counts every real round", async () => {
+    const { rec, service: svc } = service({
+      ...BOOK_ROWS,
+      integration_oauth_connections: [GRANT_WITH_SEND],
+      analytics_insights: [],
+      // This fake store returns every seeded row for the table verbatim
+      // (its `.eq`/`.in` are pass-throughs — see `build()` above), so only
+      // outbound rows are seeded here; the real `.eq("direction","outbound")`
+      // is exercised for real against the in-memory store in
+      // `credit-letter.spec.ts`'s "closes a concurrent double-draft race" and
+      // its siblings.
+      procurement_conversations: [
+        { id: "c1", status: "SENT", direction: "outbound" },
+        { id: "c2", status: "HOUSE_QUEUED", direction: "outbound" },
+        { id: "c3", status: "HOUSE_FAILED", direction: "outbound" },
+        // A discarded draft: never reached the vendor, must not count.
+        { id: "c4", status: "HOUSE_CANCELLED", direction: "outbound" },
+        // A draft nobody has decided yet: also never reached the vendor.
+        { id: "c5", status: "HOUSE_DRAFT", direction: "outbound" },
+      ],
+    });
+
+    const out = await svc.queue({
+      restaurantId: HOUSE,
+      userId: PERSON,
+      dto: { ...draft, orderId: "order-1" },
+    });
+
+    expect(out.status).toBe(LETTER_STATUS.QUEUED);
+    // Three real rounds (SENT, HOUSE_QUEUED, HOUSE_FAILED) preceded this one.
+    expect(rec.inserts[0].round_count).toBe(4);
+  });
 });
 
 // ===========================================================================
@@ -502,6 +537,63 @@ describe("pulling a letter back", () => {
     await expect(
       service.cancel({ restaurantId: HOUSE, id: "letter-1" }),
     ).rejects.toThrow(ConflictException);
+  });
+
+  // PR #476 audit round 2, R1b: a queued letter answering a credit claim
+  // (`email_headers.credit_id`, set by `queue()` when it comes from a
+  // credit's draft) is the same ADR 0167 territory as sending it — pulling it
+  // back is owner/manager only too. A letter with no claim behind it stays
+  // open to every role.
+  describe("a credit claim's queued letter", () => {
+    function svcWithCreditLetter() {
+      return svcWith({
+        id: "letter-1",
+        status: LETTER_STATUS.QUEUED,
+        scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
+        restaurant_id: HOUSE,
+        email_headers: { credit_id: "credit-1", to: "vendor@example.com" },
+      });
+    }
+
+    it("refuses a staff caller, and cancels nothing", async () => {
+      const { rec, service } = svcWithCreditLetter();
+      await expect(
+        service.cancel({ restaurantId: HOUSE, id: "letter-1", role: "staff" }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(rec.updates).toHaveLength(0);
+    });
+
+    it("refuses a session with no role in this house", async () => {
+      const { service } = svcWithCreditLetter();
+      await expect(
+        service.cancel({ restaurantId: HOUSE, id: "letter-1", role: null }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it.each(["owner", "manager"])("lets a %s pull it back", async (role) => {
+      const { service } = svcWithCreditLetter();
+      const out = await service.cancel({
+        restaurantId: HOUSE,
+        id: "letter-1",
+        role,
+      });
+      expect(out.status).toBe(LETTER_STATUS.CANCELLED);
+    });
+
+    it("does not gate a letter with no claim behind it", async () => {
+      const { service } = svcWith({
+        id: "letter-1",
+        status: LETTER_STATUS.QUEUED,
+        scheduled_send_at: new Date(Date.now() + 60_000).toISOString(),
+        restaurant_id: HOUSE,
+      });
+      const out = await service.cancel({
+        restaurantId: HOUSE,
+        id: "letter-1",
+        role: "staff",
+      });
+      expect(out.status).toBe(LETTER_STATUS.CANCELLED);
+    });
   });
 });
 
@@ -643,18 +735,18 @@ describe("the gmail_send grant, end to end", () => {
 
   it("sends the due letter through Gmail and records the id Google returned", async () => {
     const calls: Array<[string, RequestInit]> = [];
-    const { rec, svc } = dispatcher([GRANT_WITH_SEND], async (
-      url: string,
-      init: RequestInit,
-    ) => {
-      calls.push([url, init]);
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ id: "18f0c0ffee" }),
-        text: async () => "",
-      };
-    });
+    const { rec, svc } = dispatcher(
+      [GRANT_WITH_SEND],
+      async (url: string, init: RequestInit) => {
+        calls.push([url, init]);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "18f0c0ffee" }),
+          text: async () => "",
+        };
+      },
+    );
 
     const result = await svc.dispatchDue(Date.parse("2026-09-04T10:00:00Z"));
     expect(result).toMatchObject({ considered: 1, sent: 1, failed: 0 });
@@ -706,13 +798,14 @@ describe("the gmail_send grant, end to end", () => {
     const result = await svc.dispatchDue(Date.parse("2026-09-04T10:00:00Z"));
     expect(result).toMatchObject({ sent: 0, failed: 1 });
 
-    expect(
-      rec.updates.some((u) => u.status === LETTER_STATUS.SENT),
-    ).toBe(false);
+    expect(rec.updates.some((u) => u.status === LETTER_STATUS.SENT)).toBe(
+      false,
+    );
     const failed = rec.updates.find((u) => u.status === LETTER_STATUS.FAILED);
     expect(failed).toBeDefined();
     const said = String(
-      (failed!.constraint_flags as Record<string, unknown>).house_letter_failure,
+      (failed!.constraint_flags as Record<string, unknown>)
+        .house_letter_failure,
     );
     // In words, with Google's own status and Google's own sentence in it.
     expect(said).toContain("Google refused the send (429)");
@@ -762,18 +855,18 @@ describe("the gmail_send grant, end to end", () => {
       scopes: [GMAIL_SEND_SCOPE],
     };
     const calls: RequestInit[] = [];
-    const { svc } = dispatcher([sendOnly], async (
-      _url: string,
-      init: RequestInit,
-    ) => {
-      calls.push(init);
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ id: "x" }),
-        text: async () => "",
-      };
-    });
+    const { svc } = dispatcher(
+      [sendOnly],
+      async (_url: string, init: RequestInit) => {
+        calls.push(init);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ id: "x" }),
+          text: async () => "",
+        };
+      },
+    );
 
     await svc.dispatchDue(Date.parse("2026-09-04T10:00:00Z"));
     const decoded = Buffer.from(

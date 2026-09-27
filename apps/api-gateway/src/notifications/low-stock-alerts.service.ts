@@ -20,6 +20,47 @@ import { canonicalOrigin } from "../communications/email-templates";
 
 type AlertLevel = "ok" | "low" | "critical";
 
+interface EffectiveLowStockPrefs {
+  enabled: boolean;
+  instantFirstAlert: boolean;
+  criticalImmediate: boolean;
+  digestFrequency: string;
+  digestTime: string;
+}
+
+const LOW_STOCK_PREF_DEFAULTS: EffectiveLowStockPrefs = {
+  enabled: true,
+  instantFirstAlert: true,
+  criticalImmediate: true,
+  digestFrequency: "daily",
+  digestTime: "12:00",
+};
+
+/** `GET /notifications/low-stock/held/:restaurantId` — the held queue. */
+export interface HeldCrossingsView {
+  restaurant_id: string;
+  held: Array<{
+    inventory_id: string;
+    wine_name: string | null;
+    level: string;
+    held_at: string;
+    reason: string | null;
+  }>;
+  summary: { count: number; critical: number; oldest_held_at: string | null };
+  /**
+   * When the held wines will be told, as the digest cron will actually keep
+   * it. `null` when the house's preferences could not be read.
+   */
+  digest: {
+    /** False when every member turned low-stock alerts off. */
+    low_stock_enabled: boolean;
+    frequency: "daily" | "off";
+    /** 0-23; the cron matches the hour only. */
+    hour: number;
+    timezone: "America/New_York";
+  } | null;
+}
+
 /**
  * What a low-stock email attempt actually did, written to
  * `notifications.delivery_status.email` (ADR 0093 D5).
@@ -43,6 +84,23 @@ interface RecipientReport {
   email: number;
   /** The failed read's words when the lookup failed, else null. */
   lookupFailed: string | null;
+}
+
+/**
+ * The PostgREST `or` filter every hold-CLEARING write carries: match a row
+ * only when it has no hold, or its hold is no newer than `cutoff` -- an
+ * instant the writer captured BEFORE it observed the state it is acting on.
+ * A hold stamped after that instant was written by someone who saw the wine
+ * low later than this writer did, and a clear must not erase it. Postgres
+ * evaluates this in the same statement that writes, so there is no
+ * read-then-write gap. The cutoff is re-serialised through `Date` so it can
+ * only ever be an ISO-8601 instant (no reserved `,()` reaches the filter);
+ * the same unquoted `col.lte.<iso>,col.is.null` shape is already used at
+ * logs-timeline.service.ts `windowed()`.
+ */
+export function heldNoNewerThan(cutoff: string): string {
+  const iso = new Date(cutoff).toISOString();
+  return `last_held_at.is.null,last_held_at.lte.${iso}`;
 }
 
 interface LowStockRow {
@@ -119,6 +177,8 @@ export class LowStockAlertsService {
   @Cron("*/2 * * * *", { name: "low-stock-edge-sweep" })
   async runEdgeSweep(): Promise<void> {
     try {
+      // Before the read, for the same reason as `evaluateInventoryItems`.
+      const lowReadStartedAt = new Date().toISOString();
       const byRestaurant = await this.getLowStockByRestaurant();
       const names = await this.getRestaurantNames([...byRestaurant.keys()]);
       for (const [restaurantId, rows] of byRestaurant) {
@@ -129,7 +189,7 @@ export class LowStockAlertsService {
         );
       }
       // Reconcile restocks even for restaurants that dropped off the low list.
-      await this.reconcileRecoveries(byRestaurant);
+      await this.reconcileRecoveries(byRestaurant, lowReadStartedAt);
     } catch (e: any) {
       this.logger.error(`low-stock edge sweep failed: ${e?.message}`);
     }
@@ -149,6 +209,12 @@ export class LowStockAlertsService {
     try {
       const etHour = this.currentEtHour();
       const byRestaurant = await this.getLowStockByRestaurant();
+      // Captured once, right after the read `rows` itself comes from — the
+      // true "we observed these holds as of here" instant, before ANY
+      // restaurant's email send or writes below (PR #486 round-2 audit,
+      // 2026-09-26). Every restaurant in this sweep shares it, which is
+      // correct: they all came from the same `getLowStockByRestaurant` call.
+      const rowsSnapshotAt = new Date().toISOString();
       const names = await this.getRestaurantNames([...byRestaurant.keys()]);
       for (const [restaurantId, rows] of byRestaurant) {
         const prefs = await this.getEffectiveLowStockPrefs(restaurantId);
@@ -158,7 +224,12 @@ export class LowStockAlertsService {
           10,
         );
         if (etHour !== digestHour) continue;
-        await this.sendDigest(restaurantId, rows, names.get(restaurantId));
+        await this.sendDigest(
+          restaurantId,
+          rows,
+          names.get(restaurantId),
+          rowsSnapshotAt,
+        );
       }
     } catch (e: any) {
       this.logger.error(`low-stock digest failed: ${e?.message}`);
@@ -182,11 +253,17 @@ export class LowStockAlertsService {
   }
   async triggerDailyDigest(): Promise<void> {
     const byRestaurant = await this.getLowStockByRestaurant();
+    const rowsSnapshotAt = new Date().toISOString();
     const names = await this.getRestaurantNames([...byRestaurant.keys()]);
     for (const [restaurantId, rows] of byRestaurant) {
       const prefs = await this.getEffectiveLowStockPrefs(restaurantId);
       if (!prefs.enabled || prefs.digestFrequency === "off") continue;
-      await this.sendDigest(restaurantId, rows, names.get(restaurantId));
+      await this.sendDigest(
+        restaurantId,
+        rows,
+        names.get(restaurantId),
+        rowsSnapshotAt,
+      );
     }
   }
 
@@ -265,7 +342,13 @@ export class LowStockAlertsService {
       await this.recordAlertOutcome(
         restaurantId,
         immediate,
-        delivered ? { alertedAt: nowIso } : { heldAt: nowIso, reason: "prefs" },
+        // A failed inbox write is held with NO reason rather than "prefs":
+        // the held queue writes "prefs" to a person as "this house's settings
+        // save low stock for the digest", which is not why this one waited
+        // (held-queue lane, 2026-09-26). The column's check allows only the
+        // two chosen reasons or NULL, so NULL — "not recorded" — is the
+        // honest value without a migration.
+        delivered ? { alertedAt: nowIso } : { heldAt: nowIso, reason: null },
       );
     } else if (immediate.length > 0) {
       this.logger.log(
@@ -305,34 +388,65 @@ export class LowStockAlertsService {
    * A failed read throws rather than returning an empty list (ADR 0067): an
    * empty held-queue is good news, and good news must be measured.
    */
-  async listHeldCrossings(restaurantId: string): Promise<{
-    restaurant_id: string;
-    held: Array<{
-      inventory_id: string;
-      wine_name: string | null;
-      level: string;
-      held_at: string;
-      reason: string | null;
-    }>;
-    summary: { count: number; critical: number; oldest_held_at: string | null };
-  }> {
+  async listHeldCrossings(restaurantId: string): Promise<HeldCrossingsView> {
     const { data, error } = await this.db.supabase
       .from("inventory_alert_state")
       .select(
-        "inventory_id, wine_name, last_alert_level, last_held_at, last_held_reason",
+        "inventory_id, wine_name, last_alert_level, last_held_at, last_held_reason, last_digest_at",
       )
       .eq("restaurant_id", restaurantId)
       .not("last_held_at", "is", null)
       .order("last_held_at", { ascending: false });
     if (error) throw new Error(error.message);
 
-    const held = (data || []).map((r: any) => ({
-      inventory_id: r.inventory_id,
-      wine_name: r.wine_name ?? null,
-      level: r.last_alert_level ?? "low",
-      held_at: r.last_held_at,
-      reason: r.last_held_reason ?? null,
-    }));
+    // (2026-09-26, held-queue lane) Two kinds of row carry a `last_held_at`
+    // and are NOT waiting on anybody, and until today both were listed:
+    //   - a wine back above par (`last_alert_level = 'ok'`): recovery reset
+    //     the level and never cleared the hold;
+    //   - a wine the digest already covered (`last_digest_at >= last_held_at`):
+    //     the digest stamped its own column and never cleared the hold.
+    // The writers now clear the hold in both places. This read-side filter is
+    // for the rows written before that fix, which nothing backfills.
+    const held = (data || [])
+      .filter((r: any) => (r.last_alert_level ?? "low") !== "ok")
+      .filter(
+        (r: any) =>
+          !r.last_digest_at ||
+          new Date(r.last_digest_at).getTime() <
+            new Date(r.last_held_at).getTime(),
+      )
+      .map((r: any) => ({
+        inventory_id: r.inventory_id,
+        wine_name: r.wine_name ?? null,
+        level: r.last_alert_level ?? "low",
+        held_at: r.last_held_at,
+        reason: r.last_held_reason ?? null,
+      }));
+
+    // When — or whether — the held wines will be told. A digest that is off
+    // means a held crossing is never sent on its own, and the page has to say
+    // so rather than promise "the next digest". A preferences read that fails
+    // is `null`, never the defaults: "12:00, daily" invented over a failed
+    // read would be a claim about this house nobody measured.
+    let digest: HeldCrossingsView["digest"] = null;
+    try {
+      const prefs = await this.readLowStockPrefs(restaurantId);
+      const hour = parseInt((prefs.digestTime || "12:00").split(":")[0], 10);
+      digest = {
+        low_stock_enabled: prefs.enabled,
+        frequency: prefs.digestFrequency === "daily" ? "daily" : "off",
+        // The digest cron fires on the hour (`0 * * * *`) and matches only the
+        // HOUR of `digest_time`, so a 12:30 setting goes out at 12:00. The
+        // time reported is the one the cron will actually keep.
+        hour: Number.isFinite(hour) ? hour : 12,
+        timezone: "America/New_York",
+      };
+    } catch (e: any) {
+      this.logger.warn(
+        `held crossings: preferences unreadable for ${restaurantId}: ${e?.message}`,
+      );
+    }
+
     return {
       restaurant_id: restaurantId,
       held,
@@ -341,6 +455,7 @@ export class LowStockAlertsService {
         critical: held.filter((h) => h.level === "critical").length,
         oldest_held_at: held.length > 0 ? held[held.length - 1].held_at : null,
       },
+      digest,
     };
   }
 
@@ -358,17 +473,41 @@ export class LowStockAlertsService {
     wines: LowStockRow[],
     outcome:
       | { alertedAt: string }
-      | { heldAt: string; reason: "instant_cooldown" | "prefs" },
+      | { heldAt: string; reason: "instant_cooldown" | "prefs" | null },
   ): Promise<void> {
     for (const w of wines) {
-      await this.upsertState(restaurantId, {
+      const persisted = await this.upsertState(restaurantId, {
         inventoryId: w.inventoryId,
         wineName: w.wineName,
         level: w.severity,
         ...("alertedAt" in outcome
-          ? { bumpAlert: true, alertedAt: outcome.alertedAt, clearHold: true }
+          ? {
+              bumpAlert: true,
+              alertedAt: outcome.alertedAt,
+              clearHold: true,
+              // `outcome.alertedAt` is `evaluateRestaurant`'s `nowIso` --
+              // captured before `getAlertState`, before the per-row writes,
+              // and before `fireInstantAlert`'s own persist + email send --
+              // so it is a valid pre-slow-work cutoff for the same guard
+              // `sendDigest` uses (PR #486 round-2 audit, 2026-09-26).
+              clearHoldNotAfter: outcome.alertedAt,
+            }
           : { heldAt: outcome.heldAt, heldReason: outcome.reason }),
       });
+      // (PR #486 round-2 audit, secondary finding, 2026-09-26) This return
+      // value used to be discarded. When the clear-hold guard skips a write
+      // for a wine that WAS actually alerted (a fresher hold arrived in the
+      // gap, or the guard's own read failed), `last_held_at` is left set, so
+      // `listHeldCrossings` keeps reporting a told wine as still waiting --
+      // over-reporting a hold, never under-alerting, but still the exact
+      // fault this file exists to close, one call site over. There is
+      // nothing more to DO here (the alert already went out and will not be
+      // resent), so this is surfaced rather than silently swallowed.
+      if ("alertedAt" in outcome && !persisted) {
+        this.logger.warn(
+          `inventory_alert_state clear-hold for ${restaurantId}/${w.inventoryId} was skipped after a delivered alert -- it will keep reading "held" on the queue until this wine crosses again or the digest covers it.`,
+        );
+      }
     }
   }
 
@@ -399,6 +538,11 @@ export class LowStockAlertsService {
   ): Promise<void> {
     if (!restaurantId || inventoryIds.length === 0) return;
     try {
+      // Captured BEFORE the low-stock read: a hold stamped after this was
+      // written by a writer that saw the wine low later than we saw it
+      // recovered, so the recovery clear below must leave it (PR #486
+      // rounds 3-4 audit).
+      const readStartedAt = new Date().toISOString();
       const lowRows = await this.getLowStockForRestaurant(restaurantId);
       const lowById = new Map(lowRows.map((r) => [r.inventoryId, r]));
 
@@ -421,11 +565,15 @@ export class LowStockAlertsService {
           .from("inventory_alert_state")
           .update({
             last_alert_level: "ok",
+            // A wine back above par is not waiting to be told about anything.
+            last_held_at: null,
+            last_held_reason: null,
             updated_at: new Date().toISOString(),
           })
           .eq("restaurant_id", restaurantId)
           .in("inventory_id", recovered)
-          .neq("last_alert_level", "ok");
+          .neq("last_alert_level", "ok")
+          .or(heldNoNewerThan(readStartedAt));
       }
     } catch (e: any) {
       this.logger.warn(`evaluateInventoryItems failed: ${e?.message}`);
@@ -502,20 +650,38 @@ export class LowStockAlertsService {
     // The INBOX row is what "we told them" means here — email delivery is
     // recorded separately and is allowed to fail (the lens run's two alerts
     // both carried `email = {ok:false, error:"no_recipients"}` and that was
-    // correct). A falsy `persisted` means no inbox row, so nothing was told.
-    return Boolean(persisted);
+    // correct). No inbox row means nothing was told.
+    //
+    // (2026-09-26, held-queue lane) This read `Boolean(persisted)`, which is
+    // true for EVERY answer `persistForRestaurant` gives: it never resolves
+    // falsy — a failed insert, a house with no members and a dedupe hit all
+    // come back as `{ inserted: 0, ids: [] }`, an object. So a crossing whose
+    // inbox write failed was stamped alerted and dropped out of the held
+    // queue — the fault the `last_held_at` column exists to prevent, one layer
+    // down. The count is the fact.
+    return (persisted?.inserted ?? 0) > 0;
   }
 
   /**
    * The batched daily reminder — every currently-low wine in one email + one
    * grouped inbox row. Deduped so a double cron fire won't repeat it.
+   *
+   * `rowsSnapshotAt` is when `rows` was actually read (`getLowStockByRestaurant`
+   * in the caller, before this restaurant's — or any restaurant's — digest
+   * started sending). It defaults to "now" for a caller with no such instant
+   * to hand down (there is currently none — every real caller passes it), but
+   * "now" at entry is itself an equally valid, if slightly looser, cutoff:
+   * either way it is captured HERE, before the email send and the N writes
+   * below, which is the gap the round-2 audit finding named.
    */
   async sendDigest(
     restaurantId: string,
     rows: LowStockRow[],
     restaurantName?: string,
+    rowsSnapshotAt?: string,
   ): Promise<void> {
     if (rows.length === 0) return;
+    const snapshotAt = rowsSnapshotAt ?? new Date().toISOString();
     const criticalCount = rows.filter((w) => w.severity === "critical").length;
     const dateStr = new Date().toISOString().slice(0, 10);
 
@@ -553,7 +719,22 @@ export class LowStockAlertsService {
     );
     await this.recordEmailOutcome(persisted?.ids, outcome);
 
-    // Stamp the digest time on the ledger.
+    // Stamp the digest on the ledger — and end every hold it answered.
+    //
+    // (2026-09-26, held-queue lane) Before this, the digest stamped
+    // `last_digest_at` and left `last_held_at` alone, so a wine the digest had
+    // just told the house about still read "held — nobody has been told" on
+    // /notifications until it happened to cross again. And it stamped even
+    // when the inbox write was deduped or failed (`inserted: 0`), which made
+    // "a digest went out" a claim about an intention. Both halves now follow
+    // the same rule as the instant path: only a written inbox row counts.
+    const told = (persisted?.inserted ?? 0) > 0;
+    if (!told) {
+      this.logger.warn(
+        `Low-stock digest for ${restaurantId} wrote no inbox row — holds are left in place.`,
+      );
+      return;
+    }
     const nowIso = new Date().toISOString();
     for (const row of rows) {
       await this.upsertState(restaurantId, {
@@ -561,6 +742,13 @@ export class LowStockAlertsService {
         wineName: row.wineName,
         level: row.severity,
         digestAt: nowIso,
+        clearHold: true,
+        // The pre-slow-work cutoff (see the doc comment above), NOT `nowIso`
+        // above -- `nowIso` is stamped after the email send and after every
+        // sibling row in this same loop, so using it here would recreate the
+        // round-1 defect (comparing a value to something captured after the
+        // gap it needs to protect).
+        clearHoldNotAfter: snapshotAt,
       });
     }
   }
@@ -719,6 +907,10 @@ export class LowStockAlertsService {
   /** Reset the ledger for wines that recovered above par (silent — no spam). */
   private async reconcileRecoveries(
     byRestaurant: Map<string, LowStockRow[]>,
+    /** When `byRestaurant` was read -- captured before that read. A hold
+     * newer than this was written by someone who saw the wine low after we
+     * saw it recovered, and is left in place (next sweep re-decides). */
+    lowReadStartedAt: string,
   ): Promise<void> {
     try {
       const { data: stale } = await this.db.supabase
@@ -736,10 +928,14 @@ export class LowStockAlertsService {
             .from("inventory_alert_state")
             .update({
               last_alert_level: "ok",
+              // Recovered: the hold ends with the crossing (held-queue lane).
+              last_held_at: null,
+              last_held_reason: null,
               updated_at: new Date().toISOString(),
             })
             .eq("restaurant_id", s.restaurant_id)
-            .eq("inventory_id", s.inventory_id);
+            .eq("inventory_id", s.inventory_id)
+            .or(heldNoNewerThan(lowReadStartedAt));
         }
       }
     } catch (e: any) {
@@ -779,54 +975,60 @@ export class LowStockAlertsService {
    * to all-on defaults when no prefs exist. This is what makes the Settings
    * page actually change behaviour.
    */
-  private async getEffectiveLowStockPrefs(restaurantId: string): Promise<{
-    enabled: boolean;
-    instantFirstAlert: boolean;
-    criticalImmediate: boolean;
-    digestFrequency: string;
-    digestTime: string;
-  }> {
-    const DEFAULTS = {
-      enabled: true,
-      instantFirstAlert: true,
-      criticalImmediate: true,
-      digestFrequency: "daily",
-      digestTime: "12:00",
-    };
+  private async getEffectiveLowStockPrefs(
+    restaurantId: string,
+  ): Promise<EffectiveLowStockPrefs> {
     try {
-      const memberIds = await this.db.getRestaurantMemberIds(restaurantId);
-      if (memberIds.length === 0) return DEFAULTS;
-      const { data } = await this.db.supabase
-        .from("notification_preferences")
-        .select(
-          "low_stock_enabled, instant_first_alert, critical_immediate, digest_frequency, digest_time",
-        )
-        // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since
-        // ADR 0149 row 39 -- a member of two houses has a row per house, and
-        // an unscoped `.in("user_id", ...)` mixed the OTHER house's row into
-        // this restaurant's aggregate.
-        .eq("restaurant_id", restaurantId)
-        .in("user_id", memberIds);
-      if (!data || data.length === 0) return DEFAULTS;
-
-      const dailyTimes = data
-        .filter((p: any) => (p.digest_frequency ?? "daily") === "daily")
-        .map((p: any) => p.digest_time || "12:00")
-        .sort();
-      return {
-        enabled: data.some((p: any) => p.low_stock_enabled !== false),
-        instantFirstAlert: data.some(
-          (p: any) => p.instant_first_alert !== false,
-        ),
-        criticalImmediate: data.some(
-          (p: any) => p.critical_immediate !== false,
-        ),
-        digestFrequency: dailyTimes.length > 0 ? "daily" : "off",
-        digestTime: dailyTimes[0] || "12:00",
-      };
+      return await this.readLowStockPrefs(restaurantId);
     } catch {
-      return DEFAULTS;
+      return { ...LOW_STOCK_PREF_DEFAULTS };
     }
+  }
+
+  /**
+   * The same aggregate as `getEffectiveLowStockPrefs`, but a failed read
+   * THROWS. The senders fall back to the defaults (a missed alert is worse
+   * than a default one); a page that reports the digest time to a person must
+   * not (held-queue lane, 2026-09-26).
+   *
+   * This uses `getRestaurantMemberIdsOrThrow`, not the plain
+   * `getRestaurantMemberIds` — that one's `catch { return []; }`
+   * (database.service.ts) makes a swallowed member-read failure
+   * indistinguishable from a legitimate zero-member house, which would have
+   * returned DEFAULTS here without throwing on exactly the failure this
+   * method exists to surface (PR #486 round-1 audit finding 1, 2026-09-26).
+   */
+  private async readLowStockPrefs(
+    restaurantId: string,
+  ): Promise<EffectiveLowStockPrefs> {
+    const DEFAULTS = { ...LOW_STOCK_PREF_DEFAULTS };
+    const memberIds = await this.db.getRestaurantMemberIdsOrThrow(restaurantId);
+    if (memberIds.length === 0) return DEFAULTS;
+    const { data, error } = await this.db.supabase
+      .from("notification_preferences")
+      .select(
+        "low_stock_enabled, instant_first_alert, critical_immediate, digest_frequency, digest_time",
+      )
+      // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since
+      // ADR 0149 row 39 -- a member of two houses has a row per house, and
+      // an unscoped `.in("user_id", ...)` mixed the OTHER house's row into
+      // this restaurant's aggregate.
+      .eq("restaurant_id", restaurantId)
+      .in("user_id", memberIds);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) return DEFAULTS;
+
+    const dailyTimes = data
+      .filter((p: any) => (p.digest_frequency ?? "daily") === "daily")
+      .map((p: any) => p.digest_time || "12:00")
+      .sort();
+    return {
+      enabled: data.some((p: any) => p.low_stock_enabled !== false),
+      instantFirstAlert: data.some((p: any) => p.instant_first_alert !== false),
+      criticalImmediate: data.some((p: any) => p.critical_immediate !== false),
+      digestFrequency: dailyTimes.length > 0 ? "daily" : "off",
+      digestTime: dailyTimes[0] || "12:00",
+    };
   }
 
   /** Currently-low wines for a single restaurant (used by the real-time path). */
@@ -918,9 +1120,21 @@ export class LowStockAlertsService {
       digestAt?: string;
       /** A crossing detected and deliberately not sent yet. */
       heldAt?: string;
-      heldReason?: "instant_cooldown" | "prefs";
+      heldReason?: "instant_cooldown" | "prefs" | null;
       /** Something was sent, so the hold is over. */
       clearHold?: boolean;
+      /**
+       * ONLY meaningful with `clearHold`: the instant the caller observed
+       * "this wine is being told about now", captured BEFORE the slow work
+       * (an email send, N sibling writes) that separates that decision from
+       * this write actually landing. A hold currently on the row that is
+       * NEWER than this instant was written by someone else (the edge sweep)
+       * DURING that gap, describes a crossing THIS call never told anyone
+       * about, and must survive. Omit only when the caller has no slow work
+       * between deciding and writing (there is currently no such caller);
+       * the cutoff then falls back to the instant this call began.
+       */
+      clearHoldNotAfter?: string;
     },
   ): Promise<boolean> {
     const nowIso = new Date().toISOString();
@@ -955,6 +1169,94 @@ export class LowStockAlertsService {
           .eq("inventory_id", p.inventoryId)
           .maybeSingle();
         row.alert_count = (cur?.alert_count ?? 0) + 1;
+      }
+
+      if (p.clearHold) {
+        // The digest snapshots `rows` once and then awaits an email send plus
+        // N writes per restaurant (sendDigest) — minutes, not milliseconds —
+        // while the independent edge sweep runs every 2 minutes and can
+        // record a FRESH, unnotified hold on this same wine in that window.
+        // A blind upsert here would silently overwrite that fresher hold
+        // (and its level) with the digest's stale snapshot — the exact
+        // "absence reported as health" fault this PR exists to close, one
+        // layer down (PR #486 round-1 audit finding 2, 2026-09-26).
+        //
+        // ROUND 1's fix read `last_held_at` immediately before this write and
+        // conditioned the write on THAT SAME just-read value. That compares
+        // a number to itself: it only protects the read-to-write gap (a
+        // single Postgres round trip), never the multi-minute gap between
+        // the digest's OWN snapshot and this call, which is the gap the
+        // finding actually named. Both an independent correctness pass and
+        // an independent security pass converged on this exact defect during
+        // the PR #486 round-2 audit (2026-09-26) and the test that claimed to
+        // prove the fix exercised a scenario the production code path could
+        // not produce under that race.
+        //
+        // ROUND 2 fix: the caller now hands down `clearHoldNotAfter` — an
+        // instant it captured BEFORE its own slow work began, not something
+        // read fresh in here. A hold timestamped after that cutoff was
+        // written by someone else during the caller's slow work and is left
+        // alone.
+        //
+        // ROUNDS 3-4 fix (PR #486 audits, 2026-09-27): round 2 read
+        // `last_held_at` first and ran the `<= cutoff` compare-and-swap only
+        // when that read found a hold. When it found none it fell through to
+        // the blind `.upsert()` below, so a hold the edge sweep wrote between
+        // that read and that write was clobbered -- the swap was atomic only
+        // on one of its two branches. There is no read any more. The clear is
+        // ONE conditional statement,
+        //   UPDATE ... WHERE last_held_at IS NULL OR last_held_at <= cutoff
+        // so "no hold" and "an old hold" are decided by Postgres in the same
+        // statement that writes, and a newer hold is never matched. Only if
+        // that matches nothing is the row inserted -- and only if it does not
+        // exist (`ignoreDuplicates`, i.e. ON CONFLICT DO NOTHING), never
+        // merged over a row someone else wrote. A row that exists and did not
+        // match carries a newer hold, and is left in place.
+        //
+        // Scope of the claim: this makes THIS clear atomic against a
+        // concurrent hold write. The two recovery writers
+        // (`evaluateInventoryItems`, `reconcileRecoveries`) carry the same
+        // `IS NULL OR <= their own pre-read instant` condition; the
+        // level-only and hold-setting writes do not clear a hold and are not
+        // conditioned.
+        const cutoff = new Date(p.clearHoldNotAfter ?? nowIso).toISOString();
+        const { data: updated, error: updateError } = await this.db.supabase
+          .from("inventory_alert_state")
+          .update(row)
+          .eq("restaurant_id", restaurantId)
+          .eq("inventory_id", p.inventoryId)
+          .or(heldNoNewerThan(cutoff))
+          .select("inventory_id");
+        if (updateError) {
+          this.logger.warn(
+            `inventory_alert_state clear-hold update failed: ${updateError.message}`,
+          );
+          return false;
+        }
+        if (updated && updated.length > 0) return true;
+
+        const { data: inserted, error: insertError } = await this.db.supabase
+          .from("inventory_alert_state")
+          .upsert(row, {
+            onConflict: "restaurant_id,inventory_id",
+            ignoreDuplicates: true,
+          })
+          .select("inventory_id");
+        if (insertError) {
+          this.logger.warn(
+            `inventory_alert_state clear-hold insert failed: ${insertError.message}`,
+          );
+          return false;
+        }
+        if (inserted && inserted.length > 0) return true;
+
+        // The row exists and its hold is newer than the cutoff (or a row
+        // appeared between the two statements -- the rarer case, reported
+        // the same fail-closed way: the hold, if any, stays).
+        this.logger.warn(
+          `inventory_alert_state clear-hold skipped for restaurant ${restaurantId} / ${p.inventoryId}: last_held_at is newer than this call's snapshot (${cutoff}) -- a fresher, unnotified crossing was recorded in between and is left in place.`,
+        );
+        return false;
       }
 
       const { error } = await this.db.supabase
@@ -1049,7 +1351,8 @@ export class LowStockAlertsService {
       }
     } else if (report) {
       // No resolver in this module is a wiring fault, not an empty house.
-      report.lookupFailed = "no recipient resolver is available to this service";
+      report.lookupFailed =
+        "no recipient resolver is available to this service";
     }
 
     if (!isLegacyDefault) {
@@ -1069,7 +1372,9 @@ export class LowStockAlertsService {
   }
 
   private inventoryUrl(): string {
-    const base = canonicalOrigin(this.config.get<string>("FRONTEND_URL")) || "https://mudavym.com";
+    const base =
+      canonicalOrigin(this.config.get<string>("FRONTEND_URL")) ||
+      "https://mudavym.com";
     return `${base}/inventory?filter=low-stock`;
   }
 }

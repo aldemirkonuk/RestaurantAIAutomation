@@ -46,6 +46,7 @@ function makeDbMock(
     supabase: { from: (t: string) => makeChain(t) },
     getClient: () => ({ from: (t: string) => makeChain(t) }),
     getRestaurantMemberIds: jest.fn().mockResolvedValue(["user-1"]),
+    getRestaurantMemberIdsOrThrow: jest.fn().mockResolvedValue(["user-1"]),
     // Test-only escape hatch, not part of the real DatabaseService shape.
     _eqCallsOnNotificationPreferences: eqCalls,
   } as any;

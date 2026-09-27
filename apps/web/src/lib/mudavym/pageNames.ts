@@ -97,6 +97,9 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // <h1> (VendorPricesNext.tsx:807) — no sidebar entry exists for this
   // cold-URL-only page (see the file header note above).
   vendor_prices: 'Vendor prices',
+  // ADR 0160 §113 / ADR 0165 — /promotions (sketch 113 direction B),
+  // flag-gated on `mudavym_design_promotions`, held back from LIVE_PAGES.
+  promotions: 'Promotions',
   // ADR 0145 — `/ask`, the page that answers out of a reading. Reached by
   // the command palette, /help and the redirect from `/sommelier`.
   ask: 'Ask',

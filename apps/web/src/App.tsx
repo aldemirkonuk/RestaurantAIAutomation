@@ -132,6 +132,10 @@ const AdminHealth = lazyWithRefresh(() => import('./pages/AdminHealth'))
 // Standard pages (lazy loaded)
 const Providers = lazyWithRefresh(() => import('./pages/Providers'))
 const Promotions = lazyWithRefresh(() => import('./pages/Promotions'))
+// Sketch 113 direction B (ADR 0160 §113 / ADR 0165), behind
+// `mudavym_design_promotions` — OFF by default, so `Promotions` above stays
+// every house's page until the founder turns it on.
+const PromotionsNext = lazyWithRefresh(() => import('./pages/promotions/next/PromotionsNext'))
 const Communications = lazyWithRefresh(() => import('./pages/Communications'))
 const DocumentsPage = lazyWithRefresh(() => import('./pages/DocumentsPage'))
 const ReceiptsPage = lazyWithRefresh(() => import('./pages/ReceiptsPage'))
@@ -442,7 +446,7 @@ function App() {
                       "vendor-prices = behind a flag (vendor_prices
                       mudavym_design_* column migration, he flips it; NOT
                       live on merge)". Gated on mudavym_design_vendor_prices
-                      (migration 20261002000000, renamed six times — see
+                      (migration 20261022000000, renamed seven times — see
                       vendor-prices.md), OFF by default. Role gate
                       is enforced server-side too (owner/manager on
                       /vendor-intel/*, staff on the identity routes) — a
@@ -460,7 +464,10 @@ function App() {
                     path="/distributors"
                     element={<Navigate to="/providers?tab=discover" replace />}
                   />
-                  <Route path="/promotions" element={<Promotions />} />
+                  {/* Flag-gated and held back from LIVE_PAGES (2026-09-25):
+                      legacy keeps Trusted senders / Prospects until "Who is
+                      writing" is live on /communications (PR #470). */}
+                  <Route path="/promotions" element={<PageGate page="promotions" legacy={<Promotions />} next={<PromotionsNext />} />} />
                   {/* Both halves split by role INSIDE the element: the legacy
                       entry always did (TeamCommandPage.tsx:36-37) and TeamNext
                       now does too. Routed straight to the manager surface, a

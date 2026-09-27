@@ -75,6 +75,27 @@ export type SettingsRegister =
    */
   | "carrying-cost"
   /**
+   * The clock this house keeps (`restaurants.timezone`). Its own register: it
+   * decides where midnight falls for every on-time verdict (ADR 0207). The
+   * founder, 2026-09-21: *"Add it to Settings"*.
+   */
+  | "time-zone"
+  /**
+   * Whether this house's inbound vendor mail is scored by Jev
+   * (`restaurants.vendor_tone_scoring_enabled`). Its own register: turning it
+   * on sends masked vendor mail to a third party (ADR 0207). The founder,
+   * 2026-09-21: *"this feature can also be disabled."*
+   */
+  | "tone-scoring"
+  /**
+   * An owner's acceptance of the house's complete data-and-privacy terms —
+   * which is what turns Jev on (ADR 0207 round 4). Its own register, distinct
+   * from "tone-scoring": this one records WHAT was agreed to and by whom,
+   * not only that the switch moved. The founder, 2026-09-22, round 6y:
+   * *"they have to accept that, and when they do they'd accept the jev too."*
+   */
+  | "data-terms"
+  /**
    * The margin this house needs on a bottle and on a glass, and its "close
    * enough" band (ADR 0193). A fact about the HOUSE that decides whether any
    * price advice may be printed at all -- the same reason the carrying cost
@@ -117,6 +138,25 @@ export const SETTINGS_AUDIT_ACTIONS = [
    * clause is gated on the answer.
    */
   "carrying_cost_changed",
+  /**
+   * The house stated its time zone. Added 2026-09-21 (ADR 0207): until then
+   * `restaurants.timezone` had no writer a person could reach.
+   */
+  "house_time_zone_changed",
+  /**
+   * The house turned Jev tone scoring of its vendor mail on or off. Added
+   * 2026-09-21 (ADR 0207); off by default.
+   */
+  "vendor_tone_scoring_changed",
+  /**
+   * An owner accepted the house's data-and-privacy terms — which is what
+   * turns Jev on (ADR 0207 round 4, 2026-09-22). Distinct from
+   * `vendor_tone_scoring_changed`: this row is the acceptance itself
+   * (`house_data_terms_acceptances`'s own append-only record is the primary
+   * one; this is the settings-audit mirror the read-back list already shows
+   * every other change through).
+   */
+  "house_data_terms_accepted",
   /**
    * The house stated the margin it needs (ADR 0193). Added 2026-09-21: until
    * then nothing held a house's target, so no price advice could be computed

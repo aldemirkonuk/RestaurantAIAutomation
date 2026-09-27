@@ -77,6 +77,17 @@ vi.mock('./useHouseCommodity', () => ({
   useHouseCommodity: () => mockCommodity.current,
 }));
 
+/**
+ * The held low-stock queue is a FOURTH read (founder, 2026-09-26, round 8).
+ * Mocked to ready-and-empty so the day-book's assertions are never answered by
+ * a held wine; its own states are covered in `HeldBand.test.tsx`.
+ */
+const mockHeld = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
+vi.mock('./useHeldLowStock', () => ({
+  HELD_POLL_MS: 60_000,
+  useHeldLowStock: () => mockHeld.current,
+}));
+
 import NotificationsNext from './NotificationsNext';
 
 function row(over: Partial<Notification>): Notification {
@@ -176,6 +187,16 @@ beforeEach(() => {
   mockData.current = base([]);
   mockMarket.current = { ...EMPTY_MARKET };
   mockIndex.current = { ...EMPTY_INDEX };
+  mockHeld.current = {
+    state: 'ready',
+    view: {
+      restaurant_id: 'r1',
+      held: [],
+      summary: { count: 0, critical: 0, oldest_held_at: null },
+      digest: null,
+    },
+    refresh: vi.fn(),
+  };
   // 'loading' on purpose: this file's assertions are about the POSTED-PRICE
   // register, and a commodity section in any other state renders a second
   // role="status" that `getByRole('status')` would find alongside the one the
@@ -777,5 +798,44 @@ describe('NotificationsNext — the index line is its own register, never beside
     expect(within(index).getByRole('status').textContent).toContain(
       'This house has no state recorded',
     );
+  });
+});
+
+describe('NotificationsNext — the held low-stock queue (founder, 2026-09-26, round 8)', () => {
+  it('draws the held queue above "Needs a hand", so a held critical is read first', () => {
+    mockHeld.current = {
+      state: 'ready',
+      view: {
+        restaurant_id: 'r1',
+        held: [
+          {
+            inventory_id: 'i1',
+            wine_name: 'Tsantali Rapsani',
+            level: 'critical',
+            held_at: new Date(Date.now() - 3_600_000).toISOString(),
+            reason: 'prefs',
+          },
+        ],
+        summary: { count: 1, critical: 1, oldest_held_at: null },
+        digest: { low_stock_enabled: true, frequency: 'daily', hour: 12, timezone: 'America/New_York' },
+      },
+      refresh: vi.fn(),
+    };
+    draw();
+    const heldHeading = screen.getByRole('heading', { name: /Held for the digest/ });
+    const needsHeading = screen.getByRole('heading', { name: /Needs a hand/ });
+    expect(
+      heldHeading.compareDocumentPosition(needsHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText(/1 wine is below par and nobody has been told yet/)).toBeInTheDocument();
+  });
+
+  it('"Read it now" re-reads the held queue as well as the book', () => {
+    const refresh = vi.fn();
+    mockHeld.current = { ...(mockHeld.current as object), refresh };
+    draw();
+    fireEvent.click(screen.getByRole('button', { name: /Read it now/ }));
+    expect(spies.refresh).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 });

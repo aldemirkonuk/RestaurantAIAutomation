@@ -205,6 +205,21 @@
     "owner",
     "manager"
   ],
+  "GET /communications/letters/sender (HouseLettersController.senderIdentity)": "open",
+  "GET /communications/letters/book (HouseLettersController.book)": "open",
+  "GET /communications/letters/queued (HouseLettersController.queued)": "open",
+  "GET /communications/letters/drafts (HouseLettersController.drafts)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/letters/:id/discard (HouseLettersController.discard)": [
+    "owner",
+    "manager"
+  ],
+  "GET /communications/letters/templates (HouseLettersController.templates)": "open",
+  "POST /communications/letters/templates (HouseLettersController.upsertTemplate)": "open",
+  "POST /communications/letters (HouseLettersController.queue)": "open",
+  "POST /communications/letters/:id/cancel (HouseLettersController.cancel)": "open",
   "GET /conversations (ConversationsController.listConversations)": [
     "owner",
     "manager",
@@ -358,6 +373,10 @@
     "owner",
     "manager"
   ],
+  "POST /procurement/credits/:id/request-letter (CreditsController.requestLetter)": [
+    "owner",
+    "manager"
+  ],
   "POST /procurement/credits/:id/transition (CreditsController.transition)": [
     "owner",
     "manager"
@@ -369,6 +388,18 @@
     "manager"
   ],
   "GET /procurement/receiving/unverified (ReceivingController.unverified)": "open",
+  "GET /promotions (PromotionsController.read)": [
+    "owner",
+    "manager"
+  ],
+  "POST /promotions/:id/dismiss (PromotionsController.dismiss)": [
+    "owner",
+    "manager"
+  ],
+  "POST /promotions/:id/restore (PromotionsController.restore)": [
+    "owner",
+    "manager"
+  ],
   "POST /reports/exports (ReportExportsController.request)": [
     "owner",
     "manager"

@@ -139,6 +139,20 @@ opened or moved to that exact version afterward. `20261002000000` re-clears
 the sweep with nothing else queued past it. `feature-flag-registry.ts`,
 `App.tsx` and `useMudavymDesign.ts` re-cited a third time; all four brackets
 above stay as history.
+
+**[2026-09-27, train-6 pre-merge fix for PR #473]** Renamed a seventh time,
+`20261002000000` → `20261022000000`: the train-6 adjudication PASSED #473 at
+`86cb8895d` on the condition that the migration line match the code, and by
+then origin/main's ceiling was `20261021150000`
+(`20261021150000_a_never_arrived_cancel_can_claim_a_refund.sql`), which sorts
+ahead of the sixth rename. `20261022000000` clears that ceiling and every
+migration queued in the other open PRs except #438's `20261031174523` /
+`20261031174623` (a different lane; order against main is what the guard
+checks). Content unchanged — a pure rename. The same merge moved the
+registry's `readBy` anchors for every `mudavym_design_*` key to
+`useMudavymDesign.ts:236` (the `.checkFeatureFlag(restaurantId,
+flagKeyFor(page))` line once `promotions` and `vendor_prices` both sit in
+`MUDAVYM_PAGES`). All five brackets above stay as history.
 - **Fork 6, as answered 2026-09-18 ("Always on the record, loaded fresh"), is
   now built.** Every price record draws C's paper trail (`PaperTrail.tsx`)
   under the ladders: every sighting, newest first, across classes, with the
