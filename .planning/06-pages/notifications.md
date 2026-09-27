@@ -2500,6 +2500,11 @@ Settings > Time zone control) merges.
 tick fails to read the `restaurants` row, runs more than 30 minutes late, or never runs,
 the house gets no digest that day (v3.0-TECH-DEBT, open CLAIMS row
 `TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP`).
+[Resolved 2026-09-27, founder item 70, "Catch up same day (Recommended)": a house is
+now sent on the first evaluated tick at or after its hour on which `last_digest_at` is
+not already today's house date. A missed or failed tick is caught up later the same day.
+A failed `last_digest_at` read skips the house for that tick and never sends blind. The
+CLAIMS row is resolved; see ADR 0149's item 70 bracket.]
 
 See ADR 0149's 2026-09-27 bracket (item 56) for the full rationale, the DST behaviour,
 and the builder's-choice notes.
