@@ -141,11 +141,22 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  *
  * [2026-09-25, ADR 0145's 2026-09-25 amendment: `ask` joined on the same Q2.]
  *
- * 24 keys. Held back, still flag-gated: `recommendations`, `receiving`,
- * `arrival` (the /get-started book, whose `legacy` slot is the ADR 0213 plan
- * of record — OFF until deliberately flipped) and `promotions` (2026-09-25,
- * ADR 0160 §113 / ADR 0165: dark until the founder turns
- * `mudavym_design_promotions` on). `MUDAVYM_PAGES.length` is 28;
+ * [2026-09-25, lane W3-recs, ADR 0160 §108's round-5 bracket:
+ * `recommendations` joined — 25 keys, with `ask`. §108 held it dark "pending
+ * sketch 122"; the founder picked sketch 122 direction B and answered its
+ * questions 2-10 the same day, so the same Q2/Q4 rule applies. Its column
+ * stays, unread.]
+ *
+ * [2026-09-26, lane W4-promos-filters, PR #474, ADR 0160 §113's round-6
+ * bracket: `promotions` stays held back, flag-gated on
+ * `mudavym_design_promotions` — dark until the founder turns it on.
+ * `MUDAVYM_PAGES.length` is 28.]
+ *
+ * 24 keys [25 since the first bracket above]. Held back, still flag-gated:
+ * `receiving`, `arrival` (the /get-started book, whose `legacy` slot is
+ * the ADR 0213 plan of record — OFF until deliberately flipped)
+ * [`recommendations` was the third until the first bracket above] and
+ * `promotions` (since the second bracket above).
  * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
@@ -176,6 +187,7 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'admin',
   'authorize_integration',
   'ask',
+  'recommendations',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

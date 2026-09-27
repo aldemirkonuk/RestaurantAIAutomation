@@ -765,7 +765,9 @@ This is the inventory of paths that are wired and reachable right now, grouped b
 >   return supporting evidence points.
 > - NEW-304 impact tracker (measured lift 7/30d) — needs a measurement job that
 >   snapshots the metric at act-time and re-reads it later. `acted_at` is already
->   stored, which is the hook it would build on.
+>   stored, which is the hook it would build on. *[2026-09-27, PR #483 audit R4:
+>   no longer — `acted_at` is now the "Mark as briefed" stamp and no Act hand-off
+>   writes it (ADR 0112 F10, amended); an act-time snapshot needs its own hook.]*
 > - NEW-307 category tabs — **intentionally superseded.** The catalog's proposed
 >   tabs (Inventory, Pricing, Labor, Vendors, Menu) don't match the engine's real
 >   categories (sales / inventory / efficiency / risk / purchasing / staff /
