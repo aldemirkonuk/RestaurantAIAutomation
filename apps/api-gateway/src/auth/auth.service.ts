@@ -30,6 +30,7 @@ import axios from "axios";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { RegisterAccountDto } from "./dto/register-account.dto";
 import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
+import { resolveSignUpTimezone } from "./sign-up-timezone";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
@@ -1337,7 +1338,10 @@ export class AuthService {
             postal_code: dto.postalCode,
             neighborhood: dto.neighborhood,
             phone: dto.restaurantPhone,
-            timezone: dto.timezone ?? null,
+            // Item 62 (2026-09-27): the browser's zone, validated against
+            // Intl, or nothing — never a caller-typed string trusted as-is.
+            // See sign-up-timezone.ts.
+            timezone: resolveSignUpTimezone(dto.timezone),
             currency: dto.currency ?? null,
             organization_id: orgId,
             latitude: coords.latitude,
@@ -1458,7 +1462,17 @@ export class AuthService {
             neighborhood: dto.neighborhood,
             phone: dto.phone,
             cuisine_type: dto.cuisineType,
-            timezone: dto.timezone || "America/New_York",
+            // Item 62 (2026-09-27, founder verbatim: "Browser zone, else
+            // none (Recommended)"). This used to write `dto.timezone ||
+            // "America/New_York"` — a fabricated answer for the same fault
+            // ADR 0116 removed from the column itself
+            // (`20260903170000_a_default_is_not_an_answer.sql` dropped the
+            // DEFAULT and left the column nullable). The web form sends
+            // `Intl.DateTimeFormat().resolvedOptions().timeZone`; this
+            // validates it against Intl and stores NULL for anything absent
+            // or not a real IANA zone rather than inventing a house's clock.
+            // See sign-up-timezone.ts.
+            timezone: resolveSignUpTimezone(dto.timezone),
             // The money this house reports in, as CONFIRMED on the form's
             // currency step — or NULL, which means the question has not been
             // answered and every reader must say so rather than print a dollar
