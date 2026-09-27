@@ -339,7 +339,11 @@ const TR_STOPWORDS = new Set([
  * FAIL CLOSED (ADR 0207 choice 30). A text with no marker word at all is not
  * covered, however short; a longer one needs at least 3% of its words to be
  * markers. Callers pass the part that would actually LEAVE (the latest part,
- * `tone-scale.ts` `latestPart`), never the whole thread.
+ * `tone-scale.ts` `latestPart`), which is MEANT to exclude the whole prior
+ * thread — not guaranteed to: that function's own docstring names its
+ * residual risk (a quote shape none of its patterns know is not cut), and
+ * `latestPart` only has lines to match against when the text it is given
+ * has any.
  *
  * [Last call, 2026-09-22: this read "too short to call unreadable" for any
  * text under eight words and returned covered — "Marco è in ospedale,
@@ -347,6 +351,17 @@ const TR_STOPWORDS = new Set([
  * sheet passed the RAW message, so an Italian reply above an English quoted
  * thread passed on the thread's words and its Italian latest part was sent.
  * The cost of failing closed is named: a bare "Ok." is no longer scored.]
+ *
+ * [Audit of PR #435 at a229848f3, 2026-09-26: this docstring said "never the
+ * whole thread" as fact. An HTML-only vendor message (no text/plain part)
+ * reached this file already flattened to one line with no newlines at all
+ * by `gmail-mime.ts` `extractEmailContent()`, so `latestPart` had no header/
+ * "wrote:"/separator line to cut at and returned the entire flattened
+ * thread — which this function then read as one (long, mixed-language)
+ * message, exactly the shape the sweep case above already worried about.
+ * Fixed at the source (`gmail-mime.ts` now hands HTML-only mail the same
+ * newline shape plain-text mail always had, so the SAME cut logic applies);
+ * this comment no longer asserts more than `latestPart` itself promises.]
  */
 export function languageCovered(text: string): boolean {
   const words = String(text ?? "")

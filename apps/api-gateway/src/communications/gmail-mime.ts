@@ -82,13 +82,49 @@ export function extractEmailContent(payload: GmailPayloadPart | null | undefined
   // No text/plain anywhere -> render the HTML part down to text so we never
   // hand the AI an empty body.
   if (!text && html) {
-    text = html
-      .replace(/<[^>]+>/g, " ")
-      .replace(/&nbsp;/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    text = htmlToText(html);
   }
   return { text, attachmentRefs };
+}
+
+/**
+ * HTML -> plain text, keeping the source's line breaks.
+ *
+ * [Audit of PR #435 at a229848f3, 2026-09-26, security review: the previous
+ * version of this function (`.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")`)
+ * stripped every tag AND collapsed every newline to a single space. That is
+ * fine for a person reading the body, but `vendor-tone/tone-scale.ts`
+ * `latestPart()` — the cut that keeps a quoted thread's earlier turns (the
+ * house's own prior words) out of what `vendor-tone/tone-egress.ts` sends to
+ * Jev — works ENTIRELY by matching header/"wrote:"/separator lines at line
+ * boundaries. A vendor message with no `text/plain` part (common for ERP,
+ * webmail and ticketing senders) has no boundaries left once flattened to one
+ * line, so the whole quoted thread — including the house's own negotiation —
+ * went out whole. This walks the same MIME tree the plain-text path already
+ * feeds `latestPart()` with, so an HTML-only message gets the same
+ * newline-delimited shape a plain-text one always had, and the existing cut
+ * logic applies unchanged. See `gmail-mime.spec.ts` for the reproduction.]
+ */
+export function htmlToText(html: string): string {
+  return html
+    // Block boundaries become a line break BEFORE tags are stripped, so the
+    // cut logic downstream still has lines to match against.
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|tr|li|h[1-6]|blockquote|table|title)>/gi, "\n")
+    // Every remaining tag (including opening tags with attributes) becomes a
+    // space, not nothing — "Hello<b>world</b>" must not become "Helloworld".
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    // Collapse horizontal whitespace only — newlines are load-bearing here.
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**
