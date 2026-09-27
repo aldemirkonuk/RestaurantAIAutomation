@@ -147,7 +147,7 @@ function BucketCard({
           <dd style={{ margin: 0 }}>{fmtLastContact(vm.lastContact)}</dd>
         </div>
         <div className="flex justify-between gap-3" data-testid="pv-card-did">
-          <dt style={{ color: 'var(--ink-3, #7C7365)', whiteSpace: 'nowrap' }}>{SC.page.didLabel}</dt>
+          <dt style={{ color: 'var(--ink-4, #665D50)', whiteSpace: 'nowrap' }}>{SC.page.didLabel}</dt>
           <dd
             style={{
               margin: 0,

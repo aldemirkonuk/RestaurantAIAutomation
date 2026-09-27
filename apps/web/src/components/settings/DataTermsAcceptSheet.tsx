@@ -191,7 +191,7 @@ export function DataTermsAcceptSheet({
               onApprove={onApprove}
               onChallenge={onChallenge}
             />
-            <span style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+            <span style={{ fontFamily: SANS, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
               version {readout.version}
             </span>
           </div>
@@ -205,7 +205,7 @@ export function DataTermsAcceptSheet({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontFamily: SANS, fontSize: 12.5, lineHeight: 1.55 }}>
         {readout.acceptance && (
-          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: '0.06em', color: 'var(--ink-3, #7C7365)' }}>
+          <p style={{ margin: 0, fontFamily: MONO, fontSize: 10, letterSpacing: '0.06em', color: 'var(--ink-4, #665D50)' }}>
             {reaccepting
               ? `Last accepted version ${readout.acceptance.version} by ${readout.acceptance.acceptedBy.name ?? 'a former owner'} on ${readout.acceptance.acceptedAt.slice(0, 10)}.`
               : `Accepted (version ${readout.acceptance.version}) by ${readout.acceptance.acceptedBy.name ?? 'a former owner'} on ${readout.acceptance.acceptedAt.slice(0, 10)}.`}
@@ -265,7 +265,7 @@ export function DataTermsAcceptSheet({
           </div>
         )}
 
-        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: 0, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
           The full picture of what Mudavym collects is on the{' '}
           <Link to="/privacy" style={{ color: 'var(--seal-deep, #14515C)' }}>
             privacy page

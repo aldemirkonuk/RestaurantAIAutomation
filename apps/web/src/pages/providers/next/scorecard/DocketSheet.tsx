@@ -70,7 +70,7 @@ function Tally({
         style={{
           display: 'block',
           fontSize: 10,
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #665D50)',
         }}
       >
         {m.label}
@@ -92,7 +92,7 @@ function Tally({
             display: 'block',
             fontFamily: MONO,
             fontSize: 9.5,
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
           }}
         >
           {fig.small}
@@ -149,7 +149,7 @@ function Entry({ e, f }: { e: DocketEntry; f: Formats }) {
             style={{
               fontFamily: MONO,
               fontSize: 10.5,
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
               marginRight: 8,
             }}
           >
@@ -187,7 +187,7 @@ function Entry({ e, f }: { e: DocketEntry; f: Formats }) {
             style={{
               fontFamily: MONO,
               fontSize: 10.5,
-              color: 'var(--ink-3, #7C7365)',
+              color: 'var(--ink-4, #665D50)',
             }}
           >
             {SC.docket.agreedInvoiced(
@@ -203,7 +203,7 @@ function Entry({ e, f }: { e: DocketEntry; f: Formats }) {
             margin: '2px 0 0',
             fontSize: 10.5,
             fontStyle: 'italic',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
           }}
         >
           {SC.docket.notCounted(e.excludedBecause)}
@@ -261,7 +261,7 @@ export function DocketSheet({
             </span>
           </p>
         ) : !q.data || !card ? (
-          <p aria-busy="true" style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)' }}>
+          <p aria-busy="true" style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
             {SC.docket.reading}
           </p>
         ) : (
@@ -290,7 +290,7 @@ export function DocketSheet({
                 margin: '10px 0 4px',
                 fontSize: 11,
                 lineHeight: 1.45,
-                color: 'var(--ink-3, #7C7365)',
+                color: 'var(--ink-4, #665D50)',
               }}
             >
               {filter
