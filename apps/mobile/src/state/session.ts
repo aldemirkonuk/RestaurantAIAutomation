@@ -53,11 +53,17 @@ interface SessionState {
    * *sign in*, never *sign up*. Lands in `signedIn`, not `locked`: the user
    * proved who they are seconds ago by typing a password they just chose, and
    * demanding Face ID on top of that is a gate against nobody.
+   *
+   * `expectedGeneration` is the generation read BEFORE the request that minted
+   * these tokens was sent, and it is required: a sign-out (or another sign-in)
+   * since then means the tokens are dropped and this answers false. Screens do
+   * not call this directly; they go through `requestThenAdopt`, which reads the
+   * generation at the right moment (audit of PR #436, round 2, 2026-09-27).
    */
   adoptTokens: (
     accessToken: string,
-    refreshToken?: string,
-    expectedGeneration?: number,
+    refreshToken: string | undefined,
+    expectedGeneration: number,
   ) => Promise<boolean>;
   /** Re-read `/auth/me` — used after verifying an email or accepting an invite. */
   refreshUser: () => Promise<void>;
@@ -251,14 +257,9 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   adoptTokens: async (accessToken, refreshToken, expectedGeneration) => {
-    // A caller that fetched these tokens under an earlier generation (a house
-    // switch) passes it; a sign-out since then means the tokens are dropped.
-    if (
-      expectedGeneration !== undefined &&
-      get().generation !== expectedGeneration
-    ) {
-      return false;
-    }
+    // Every caller fetched these tokens under the generation it passes; a
+    // sign-out or sign-in since then means the tokens are dropped.
+    if (get().generation !== expectedGeneration) return false;
     const generation = get().generation + 1;
     set({ generation });
     const current = () => get().generation;
@@ -345,6 +346,28 @@ export const useSession = create<SessionState>((set, get) => ({
     persistTokens(() => get().generation, generation, token).catch(() => {});
   },
 }));
+
+export type AdoptOutcome = "adopted" | "superseded" | "noTokens";
+
+/**
+ * Send a request that answers with a token pair (`verify-email`, `join`,
+ * `register/restaurant`) and adopt the pair, unless the session moved on while
+ * the request was in flight. The generation is read BEFORE `request` starts,
+ * so a sign-out pressed during it makes the answer `superseded`: nothing is
+ * written to SecureStore and the session stays signed out (audit of PR #436,
+ * round 2, 2026-09-27). `noTokens` means the server answered without a pair.
+ */
+export async function requestThenAdopt<
+  T extends { accessToken?: string; refreshToken?: string },
+>(request: () => Promise<T>): Promise<{ result: T; outcome: AdoptOutcome }> {
+  const generation = useSession.getState().generation;
+  const result = await request();
+  if (!result.accessToken) return { result, outcome: "noTokens" };
+  const adopted = await useSession
+    .getState()
+    .adoptTokens(result.accessToken, result.refreshToken, generation);
+  return { result, outcome: adopted ? "adopted" : "superseded" };
+}
 
 /** Refresh flow used by the API client on 401. Returns the new token or null. */
 export async function refreshAccessToken(): Promise<string | null> {

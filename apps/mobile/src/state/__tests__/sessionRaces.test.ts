@@ -11,7 +11,7 @@ jest.mock("expo-secure-store", () => ({
 jest.mock("@/config", () => ({ API_URL: "https://example.invalid/api" }));
 jest.mock("@/lib/queryClient", () => ({ clearPersistedQueries: jest.fn() }));
 import * as SecureStore from "expo-secure-store";
-import { useSession } from "../session";
+import { requestThenAdopt, useSession } from "../session";
 
 const ACCESS_KEY = "wineops_access_token";
 const REFRESH_KEY = "wineops_refresh_token";
@@ -178,4 +178,71 @@ it("a sign-out pressed while a token write is still in flight deletes after that
   expect(store[ACCESS_KEY]).toBeUndefined();
   expect(store[REFRESH_KEY]).toBeUndefined();
   expect(useSession.getState().status).toBe("signedOut");
+});
+
+/**
+ * verify-email, join and register/restaurant answer with a token pair too,
+ * and before round 2 of the audit their screens adopted it with no generation,
+ * so a sign-out during the request was bumped past and the session came back.
+ */
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+it("a verify-email answer that lands after sign-out is dropped and persists nothing", async () => {
+  useSession.setState({
+    generation: 5,
+    status: "signedIn",
+    accessToken: "unverified",
+    user: { id: "alice", email: "a@example.com", emailVerified: false },
+  });
+  const verify = deferred<{ success: true; accessToken?: string; refreshToken?: string }>();
+  const redeeming = requestThenAdopt(() => verify.promise);
+  await flush();
+  await useSession.getState().signOut();
+  verify.resolve({ success: true, accessToken: "verified", refreshToken: "verified-refresh" });
+  await expect(redeeming).resolves.toMatchObject({ outcome: "superseded" });
+  await flush();
+  expect(pending.filter((p) => p.url.endsWith("/auth/me"))).toHaveLength(0);
+  expect(useSession.getState()).toMatchObject({ status: "signedOut", accessToken: null, user: null });
+  expect(storedTokens()).toEqual({});
+});
+
+it("a register answer that lands after another sign-in started is dropped", async () => {
+  const register = deferred<{ success: true; accessToken: string; refreshToken: string }>();
+  const registering = requestThenAdopt(() => register.promise);
+  await flush();
+  const signingIn = useSession.getState().signIn("b@example.com", "pw");
+  await flush();
+  register.resolve({ success: true, accessToken: "new-owner", refreshToken: "new-owner-refresh" });
+  await expect(registering).resolves.toMatchObject({ outcome: "superseded" });
+  expect(storedTokens()).toEqual({});
+  answer("/auth/login", { accessToken: "bob", refreshToken: "bob-refresh" });
+  await flush();
+  answer("/auth/me", { id: "bob", email: "b@example.com" });
+  await signingIn;
+  expect(useSession.getState()).toMatchObject({ status: "signedIn", accessToken: "bob" });
+  expect(storedTokens()).toEqual({ [ACCESS_KEY]: "bob", [REFRESH_KEY]: "bob-refresh" });
+});
+
+it("a register answer with no sign-out in between is adopted", async () => {
+  const register = deferred<{ success: true; accessToken: string; refreshToken: string }>();
+  const registering = requestThenAdopt(() => register.promise);
+  await flush();
+  register.resolve({ success: true, accessToken: "new-owner", refreshToken: "new-owner-refresh" });
+  await flush();
+  answer("/auth/me", { id: "carol", email: "c@example.com" });
+  await expect(registering).resolves.toMatchObject({ outcome: "adopted" });
+  expect(useSession.getState()).toMatchObject({ status: "signedIn", accessToken: "new-owner" });
+  expect(storedTokens()).toEqual({ [ACCESS_KEY]: "new-owner", [REFRESH_KEY]: "new-owner-refresh" });
+});
+
+it("an answer with no token pair adopts nothing", async () => {
+  await expect(requestThenAdopt(async (): Promise<{ success: true; accessToken?: string }> => ({ success: true }))).resolves.toMatchObject({
+    outcome: "noTokens",
+  });
+  expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  expect(useSession.getState().generation).toBe(0);
 });
