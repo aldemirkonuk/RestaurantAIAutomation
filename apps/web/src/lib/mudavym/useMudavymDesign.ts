@@ -104,6 +104,9 @@ export const MUDAVYM_PAGES = [
   // [2026-09-25: superseded — now in LIVE_PAGES, live for every house in
   // code; the 20260922220200 column stays, unread.]
   'authorize_integration',
+  // ADR 0145 `/ask` (2026-09-25 amendment): live in code from day one (Q2); no
+  // column exists. `legacy` is the retired /sommelier chat, until the cutover.
+  'ask',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
@@ -129,15 +132,18 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * which row a house has, or whether it has one. Their three columns stay,
  * unread (ADR 0149 never deletes a column).]
  *
- * [2026-09-25, lane W3-recs, ADR 0160 §108's round-5 bracket:
- * `recommendations` joined — 24 keys. §108 held it dark "pending sketch 122";
- * the founder picked sketch 122 direction B and answered its questions 2-10
- * the same day, so the same Q2/Q4 rule applies. Its column stays, unread.]
+ * [2026-09-25, ADR 0145's 2026-09-25 amendment: `ask` joined on the same Q2.]
  *
- * 23 keys [24 since the bracket above]. Held back, still flag-gated:
+ * [2026-09-25, lane W3-recs, ADR 0160 §108's round-5 bracket:
+ * `recommendations` joined — 25 keys, with `ask`. §108 held it dark "pending
+ * sketch 122"; the founder picked sketch 122 direction B and answered its
+ * questions 2-10 the same day, so the same Q2/Q4 rule applies. Its column
+ * stays, unread.]
+ *
+ * 24 keys [25 since the bracket above]. Held back, still flag-gated:
  * `receiving` and `arrival` (the /get-started book, whose `legacy` slot is
  * the ADR 0213 plan of record — OFF until deliberately flipped)
- * [`recommendations` was the third until the bracket above]. `MUDAVYM_PAGES.length` is 26;
+ * [`recommendations` was the third until the bracket above]. `MUDAVYM_PAGES.length` is 27;
  * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
@@ -167,6 +173,7 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'shell',
   'admin',
   'authorize_integration',
+  'ask',
   'recommendations',
 ]);
 

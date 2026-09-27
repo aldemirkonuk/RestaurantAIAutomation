@@ -993,7 +993,7 @@ because this round edits the same files; it merges after #467.
 | Q9 | Above the docket: "Since your letter of Wed 16 Sep — N entries stand that it did not carry · M it carried no longer stand", from THIS reader's last SENT letter (`lastLetter.ruleKeys`). Never "new" (a letter only carries entries above the house's urgency floor). No letter, an unread copy, and a letter with no recorded keys each have their own sentence. | `LetterDelta.tsx` |
 | Q10 | Unchanged: refusal copy only on the controls actually refused. | — |
 
-**Live in code.** `recommendations` is in `LIVE_PAGES` (24 keys) and
+**Live in code.** `recommendations` is in `LIVE_PAGES` (25 keys, with `ask` from #475) and
 `mudavym_design_recommendations` in the gateway's `LIVE_IN_CODE_FLAGS`; the flip script treats it as
 a no-op. The column stays, unread (ADR 0149).
 
