@@ -4,7 +4,9 @@ import {
   Credit,
   draftClaimFromMatch,
   reasonForVerdict,
+  CURRENCY_UNRECORDED,
   recoveryStats,
+  recoveryStatsByCurrency,
   transition,
 } from "./credit-ledger";
 
@@ -229,5 +231,62 @@ describe("recoveryStats", () => {
     expect(s.recovered).toBe(0);
     expect(s.oldestOpenDays).toBeNull();
     expect(s.settlementRate).toBeNull();
+  });
+});
+
+describe("recoveryStatsByCurrency", () => {
+  const now = new Date("2026-07-27T00:00:00.000Z");
+
+  it("never adds one currency's claims to another's", () => {
+    const by = recoveryStatsByCurrency(
+      [
+        credit({ state: "requested", claimedAmount: 250, currency: "TRY" }),
+        credit({ state: "open", claimedAmount: 40, currency: "EUR" }),
+        credit({
+          state: "credited",
+          claimedAmount: 100,
+          creditedAmount: 90,
+          creditDocumentId: "d",
+          currency: "TRY",
+        }),
+      ],
+      now,
+    );
+
+    expect(Object.keys(by)).toEqual(["EUR", "TRY"]);
+    expect(by.TRY.outstanding).toBe(250);
+    expect(by.TRY.recovered).toBe(90);
+    expect(by.EUR.outstanding).toBe(40);
+    expect(by.EUR.recovered).toBe(0);
+    // The combined figure still exists for the callers that read it, and it is
+    // exactly the sum this function refuses to show as one number.
+    expect(
+      recoveryStats(
+        [
+          credit({ state: "requested", claimedAmount: 250, currency: "TRY" }),
+          credit({ state: "open", claimedAmount: 40, currency: "EUR" }),
+        ],
+        now,
+      ).outstanding,
+    ).toBe(290);
+  });
+
+  it("normalises the code and names a missing one instead of borrowing a currency", () => {
+    const by = recoveryStatsByCurrency(
+      [
+        credit({ state: "open", claimedAmount: 10, currency: " try " }),
+        credit({ state: "open", claimedAmount: 5, currency: null }),
+        credit({ state: "open", claimedAmount: 7 }),
+      ],
+      now,
+    );
+
+    expect(by.TRY.outstanding).toBe(10);
+    expect(by[CURRENCY_UNRECORDED].outstanding).toBe(12);
+    expect(by.USD).toBeUndefined();
+  });
+
+  it("answers an empty ledger with no groups, not a zero in some currency", () => {
+    expect(recoveryStatsByCurrency([], now)).toEqual({});
   });
 });

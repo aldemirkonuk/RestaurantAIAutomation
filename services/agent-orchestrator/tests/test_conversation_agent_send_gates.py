@@ -21,6 +21,7 @@ GATE 2 — no send from an old message.
 """
 
 import json
+import re
 import types
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -98,11 +99,15 @@ class _Query:
     def _matches(self, row):
         if any(row.get(k) != v for k, v in self.filters.items()):
             return False
-        if self.or_filter:  # the claim / return guard: status null or not terminal
-            return (
-                row.get("status")
-                not in ProviderConversationAgent._SEND_TERMINAL_STATUSES
+        if self.or_filter:  # the claim / return guard: status null or not refused
+            # Honour the filter string the agent actually built, not a copy of
+            # its constant, so a status dropped from the query is caught here.
+            m = re.fullmatch(
+                r"status\.is\.null,status\.not\.in\.\(([^)]*)\)", self.or_filter
             )
+            assert m, f"unexpected or_ filter {self.or_filter!r}"
+            status = row.get("status")
+            return status is None or status not in m.group(1).split(",")
         return True
 
     def execute(self):
@@ -590,3 +595,66 @@ class TestBusCarriesThePublishTime:
         await queue.callback(_Incoming({"conversation_id": CONV_ID}, stamp))
         (retry,) = exchange.published
         assert retry.timestamp == stamp, "a retry must not look newer than it is"
+
+
+# =============================================================================
+# A house letter is never this agent's to send (PR #476 audit, round 6)
+# =============================================================================
+
+
+class TestHouseLettersAreNeverClaimed:
+    """The gateway's dispatcher is the only sender of a house letter.
+
+    A conversation.approved for a HOUSE_QUEUED letter — already scheduled,
+    inside its undo window — must not make this agent send it a second time,
+    and no other HOUSE_* word may be claimed or returned to the manager either.
+    """
+
+    @pytest.mark.parametrize(
+        "status", ["HOUSE_DRAFT", "HOUSE_QUEUED", "HOUSE_CANCELLED", "HOUSE_FAILED"]
+    )
+    async def test_fresh_approval_does_not_send_a_house_letter(self, status):
+        agent = _agent(status=status)
+        await ProviderConversationAgent.process_message(
+            agent,
+            _message(
+                "conversation.approved",
+                {"conversation_id": CONV_ID},
+                timestamp=_iso(timedelta(minutes=5)),
+            ),
+        )
+        assert agent.sends == []
+        assert agent.db.tables["procurement_conversations"][0]["status"] == status
+
+    @pytest.mark.parametrize(
+        "status", ["HOUSE_DRAFT", "HOUSE_QUEUED", "HOUSE_CANCELLED", "HOUSE_FAILED"]
+    )
+    async def test_stale_approval_does_not_return_a_house_letter(self, status):
+        agent = _agent(status=status)
+        await ProviderConversationAgent.process_message(
+            agent,
+            _message(
+                "conversation.approved",
+                {"conversation_id": CONV_ID},
+                timestamp=_iso(timedelta(days=3)),
+            ),
+        )
+        row = agent.db.tables["procurement_conversations"][0]
+        assert row["status"] == status
+        assert "reapproval_required" not in row["constraint_flags"]
+        assert agent.sends == [] and agent.db.notifications == []
+
+    def test_every_house_word_in_letter_status_is_refused(self):
+        """The four HOUSE_* words of the gateway's LETTER_STATUS, read from source."""
+        from pathlib import Path
+
+        src = (
+            Path(__file__).resolve().parents[3]
+            / "apps/api-gateway/src/communications/letters/house-letters.service.ts"
+        ).read_text()
+        start = src.index("export const LETTER_STATUS")
+        block = src[start : src.index("} as const", start)]
+        words = set(re.findall(r':\s*"([A-Z_]+)"', block))
+        assert "HOUSE_QUEUED" in words
+        refused = set(ProviderConversationAgent._CLAIM_REFUSED_STATUSES)
+        assert words <= refused, words - refused

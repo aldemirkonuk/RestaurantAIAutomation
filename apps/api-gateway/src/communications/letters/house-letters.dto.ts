@@ -69,6 +69,14 @@ export class QueueLetterDto {
   @IsUUID()
   orderId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      "The draft this letter is sent from (ADR 0230). Sending it is the approval: the draft row becomes the queued letter, and a draft that is no longer a draft is refused rather than sent twice.",
+  })
+  @IsOptional()
+  @IsUUID()
+  draftId?: string;
+
   @ApiPropertyOptional({ description: "The house template this started from." })
   @IsOptional()
   @IsUUID()
