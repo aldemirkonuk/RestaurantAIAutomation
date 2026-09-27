@@ -17,6 +17,11 @@ import { DatabaseService } from "../database/database.service";
 import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GmailService } from "../communications/gmail.service";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
+import {
+  SESSION_ENDED,
+  sessionIsCurrent,
+  sessionVersionOf,
+} from "./session-version";
 import { cancelPendingInvitesFrom } from "./cancel-house-invites";
 import { endedBySomeoneElse, markMembershipLeft } from "./membership-ended";
 import * as bcrypt from "bcrypt";
@@ -25,6 +30,7 @@ import axios from "axios";
 import { RegisterRestaurantDto } from "./dto/register-restaurant.dto";
 import { RegisterAccountDto } from "./dto/register-account.dto";
 import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
+import { resolveSignUpTimezone } from "./sign-up-timezone";
 import { JoinViaInviteDto } from "./dto/join-via-invite.dto";
 import { InviteDto } from "./dto/invite.dto";
 import { resolveJwtSecret, INSECURE_DEFAULT_JWT_SECRET } from "./jwt-secret";
@@ -120,6 +126,14 @@ export interface JwtPayload {
    * production server even though the signature is valid there.
    */
   devBypass?: boolean;
+  /**
+   * The session version this token was minted under (ADR 0225). Every token
+   * `generateTokens` signs carries it; a token below the person's current
+   * `users.session_version` belongs to a session a password reset or change
+   * signed out, and is refused. Absent on tokens minted before ADR 0225, which
+   * read as version 0. See `session-version.ts`.
+   */
+  sv?: number;
   iat?: number;
   exp?: number;
 }
@@ -227,15 +241,18 @@ export class AuthService {
   private microsoftIdTokens = new MicrosoftIdTokenVerifier();
 
   /**
-   * Evicts a person's open sockets from a house's live room the moment
-   * `leaveRestaurant` ends their membership there (44.1r's websocket
-   * sibling). Property injection, not a constructor parameter, for the same
-   * reason as `microsoftIdTokens` above: every existing spec builds
+   * Closes a person's open sockets whose session a password reset or change
+   * just signed out (ADR 0225, `endStaleSessions`), and evicts a person's
+   * open sockets from a house's live room the moment `leaveRestaurant` ends
+   * their membership there (44.1r's websocket sibling, `evictFromHouse`).
+   * Property injection, not a constructor parameter, for the same reason as
+   * `microsoftIdTokens` above: every existing spec builds
    * `new AuthService(...)` with five positional arguments, and Nest still
    * wires this one when the app boots through its own container. Left
-   * `undefined` by a spec that constructs directly — `evictFromHouse` is
-   * always called through `?.`, so that is a silent no-op there, never a
-   * throw.
+   * `undefined` by a spec that constructs directly, so both calls are always
+   * made through `?.` — a socket either one misses (another gateway
+   * instance, or a spec) still cannot reconnect: the handshake checks the
+   * session version and the house membership too.
    */
   @Optional()
   @Inject(forwardRef(() => WebsocketGateway))
@@ -617,6 +634,15 @@ export class AuthService {
       throw new UnauthorizedException("User not found");
     }
 
+    // ADR 0225: a refresh token from a session a password reset or change
+    // signed out mints nothing. Refused here, before any token is signed.
+    if (!sessionIsCurrent(payload, user)) {
+      throw new UnauthorizedException({
+        message: "This session was signed out. Sign in again.",
+        code: SESSION_ENDED,
+      });
+    }
+
     // Carry the dev-bypass marker across the refresh. Without this the
     // override silently lapsed after 15 minutes: the new payload is rebuilt
     // from the row, the row says false, and the founder was bounced to
@@ -717,6 +743,134 @@ export class AuthService {
    * Studio roles are fetched from user_roles table and embedded in app_metadata.roles
    * so FastAPI require_studio_role() can authorize studio API calls without a DB round-trip.
    */
+  /**
+   * The session version a new pair is minted under (ADR 0225).
+   *
+   * The caller's `users` row when it carries the column: that row is the one
+   * the credential was checked against, so a sign-in that verified the OLD
+   * password just before a change is minted under the OLD version and is
+   * refused on its first request. A caller that passes something else (a
+   * hand-built object, or a row read before the column existed) gets the
+   * current version from the database; a failed read mints nothing (503),
+   * since a guessed version is either a session a reset should have ended or
+   * one that dies on its first request.
+   */
+  private async sessionVersionFor(user: any): Promise<number> {
+    if (user && Object.prototype.hasOwnProperty.call(user, "session_version")) {
+      return sessionVersionOf(user);
+    }
+    const { data, error } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("user_id", user?.user_id)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `sessionVersionFor could not read ${user?.user_id}: ${error.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not start your session. Nothing was done; try again.",
+      );
+    }
+    return sessionVersionOf(data);
+  }
+
+  /**
+   * Set a new password and end every session minted before it, in ONE write
+   * (ADR 0225): `password_hash` and `session_version + 1` together,
+   * compare-and-set on the version read just before. Two changes racing each
+   * other both land, one version apart, so each ends the sessions the other
+   * started from; neither is lost. Returns the updated row (its new version
+   * is what the surviving session is minted under), and closes the person's
+   * sockets that are now stale.
+   *
+   * A write that cannot be made fails the whole change: a password that
+   * changed while the old sessions stayed open is the state this exists to
+   * prevent.
+   *
+   * `expectedCurrentHash` (R1, audit 3aaaf502e, 2026-09-26): when the caller
+   * already proved knowledge of a specific current password (changePassword,
+   * which read and bcrypt-compared it before calling here), that same hash
+   * — `null` if the account had none — is passed in and the CAS below
+   * matches it as well as the version. Without this, the write matched only
+   * `session_version`, so a caller who verified an OLD hash could still land
+   * its write on top of a row whose hash had since moved (e.g. the victim's
+   * own concurrent resetPassword), silently overwriting a password it never
+   * actually proved knowledge of. resetPassword itself needs no such check —
+   * it authenticates by the reset token, not by a compared password — so it
+   * omits the argument and this stays a plain session_version CAS for it.
+   */
+  private async setPasswordEndingSessions(
+    userId: string,
+    passwordHash: string,
+    caller: string,
+    expectedCurrentHash?: string | null,
+  ): Promise<any> {
+    const checkHash = expectedCurrentHash !== undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: current, error: readErr } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("*")
+          .eq("user_id", userId)
+          .maybeSingle();
+      if (readErr || !current) {
+        this.logger.error(
+          `${caller} could not read ${userId} before the password write: ` +
+            `${readErr?.message ?? "no row"}`,
+        );
+        throw new BadRequestException("Failed to update password");
+      }
+
+      if (checkHash && current.password_hash !== expectedCurrentHash) {
+        // The password this caller verified is no longer the one on the
+        // row — someone else (a reset, another device) changed it in the
+        // gap between that check and this write. Do not write on top of
+        // it; that is exactly the race this argument exists to close.
+        this.logger.warn(
+          `${caller}: ${userId}'s password changed elsewhere between the ` +
+            "check and the write; refusing to overwrite it",
+        );
+        throw new ConflictException(
+          "Your password was changed elsewhere just now. Sign in again and retry.",
+        );
+      }
+
+      const from = sessionVersionOf(current);
+      let updateQuery = this.databaseService.supabase
+        .from("users")
+        .update({ password_hash: passwordHash, session_version: from + 1 })
+        .eq("user_id", userId)
+        .eq("session_version", from);
+      if (checkHash) {
+        updateQuery =
+          expectedCurrentHash === null
+            ? updateQuery.is("password_hash", null)
+            : updateQuery.eq("password_hash", expectedCurrentHash);
+      }
+      const { data: written, error: writeErr } = await updateQuery.select(
+        "*",
+      );
+      if (writeErr) {
+        this.logger.error(`${caller} failed: ${writeErr.message}`);
+        throw new BadRequestException("Failed to update password");
+      }
+      if (Array.isArray(written) && written.length === 1) {
+        const row = written[0];
+        this.websocketGateway?.endStaleSessions(userId, sessionVersionOf(row));
+        return row;
+      }
+      // Another change moved the version between the read and the write.
+      // Read again and write on top of it.
+    }
+    this.logger.error(
+      `${caller}: the session version of ${userId} kept moving; gave up after 3 tries`,
+    );
+    throw new ConflictException(
+      "Your password was being changed somewhere else at the same moment. Try again.",
+    );
+  }
+
   private async generateTokens(
     user: any,
     devBypass: boolean,
@@ -782,6 +936,8 @@ export class AuthService {
       // session", and readers would have to handle both.
       ...(devBypass ? { devBypass: true } : {}),
       app_metadata: { roles: studioRoles },
+      // ADR 0225: the session version this pair is minted under.
+      sv: await this.sessionVersionFor(user),
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -943,6 +1099,16 @@ export class AuthService {
     }
     if (!user) {
       throw new UnauthorizedException("User not found");
+    }
+
+    // ADR 0225: a token from a session a password reset or change signed out
+    // is refused on its next request. The row above is read on every request
+    // already, so this costs no query.
+    if (!sessionIsCurrent(payload, user)) {
+      throw new UnauthorizedException({
+        message: "This session was signed out. Sign in again.",
+        code: SESSION_ENDED,
+      });
     }
 
     if (!house) {
@@ -1173,7 +1339,10 @@ export class AuthService {
             postal_code: dto.postalCode,
             neighborhood: dto.neighborhood,
             phone: dto.restaurantPhone,
-            timezone: dto.timezone ?? null,
+            // Item 62 (2026-09-27): the browser's zone, validated against
+            // Intl, or nothing — never a caller-typed string trusted as-is.
+            // See sign-up-timezone.ts.
+            timezone: resolveSignUpTimezone(dto.timezone),
             currency: dto.currency ?? null,
             organization_id: orgId,
             latitude: coords.latitude,
@@ -1294,7 +1463,17 @@ export class AuthService {
             neighborhood: dto.neighborhood,
             phone: dto.phone,
             cuisine_type: dto.cuisineType,
-            timezone: dto.timezone || "America/New_York",
+            // Item 62 (2026-09-27, founder verbatim: "Browser zone, else
+            // none (Recommended)"). This used to write `dto.timezone ||
+            // "America/New_York"` — a fabricated answer for the same fault
+            // ADR 0116 removed from the column itself
+            // (`20260903170000_a_default_is_not_an_answer.sql` dropped the
+            // DEFAULT and left the column nullable). The web form sends
+            // `Intl.DateTimeFormat().resolvedOptions().timeZone`; this
+            // validates it against Intl and stores NULL for anything absent
+            // or not a real IANA zone rather than inventing a house's clock.
+            // See sign-up-timezone.ts.
+            timezone: resolveSignUpTimezone(dto.timezone),
             // The money this house reports in, as CONFIRMED on the form's
             // currency step — or NULL, which means the question has not been
             // answered and every reader must say so rather than print a dollar
@@ -2594,11 +2773,20 @@ export class AuthService {
     return this.getProfileForUser(userId);
   }
 
+  /**
+   * Change (or first set) the password of a signed-in person, and sign out
+   * every OTHER session of theirs (ADR 0225; the founder, 2026-09-25, round
+   * 4, item 17). The session that made the change is the one kept: it gets
+   * the returned pair, minted under the new version in the house it was in.
+   * Its own old tokens die with the others, so a client that ignores the
+   * returned pair is signed out too.
+   */
   async changePassword(
     userId: string,
     currentPassword: string | undefined,
     newPassword: string,
-  ): Promise<void> {
+    session: { restaurantId?: string | null; devBypass?: boolean } = {},
+  ): Promise<TokenPair> {
     if (!newPassword || newPassword.length < 8) {
       throw new BadRequestException(
         "New password must be at least 8 characters",
@@ -2626,17 +2814,35 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
-    const { error: updateErr } = await this.databaseService.supabase
-      .from("users")
-      .update({
-        password_hash: passwordHash,
-      })
-      .eq("user_id", userId);
+    // R1 (audit 3aaaf502e, 2026-09-26): pass the hash just verified above so
+    // the write below refuses to land on any row whose password_hash has
+    // since moved — see setPasswordEndingSessions's expectedCurrentHash.
+    // Without this, an attacker who still knows the OLD password could win
+    // a race against the victim's own resetPassword: the write matched only
+    // on session_version, so it could overwrite a hash the victim had
+    // already replaced, minting the attacker fresh tokens.
+    const row = await this.setPasswordEndingSessions(
+      userId,
+      passwordHash,
+      "changePassword",
+      user.password_hash ?? null,
+    );
 
-    if (updateErr) {
-      this.logger.error(`changePassword failed: ${updateErr.message}`);
-      throw new BadRequestException("Failed to update password");
-    }
+    // The kept session: same house as the token that asked, same dev-bypass
+    // standing (already re-checked against the environment by the caller).
+    // No fallback to the raw users row here (R4, audit 3aaaf502e): a session
+    // that names no house (ADR 0164's houseless state) stays houseless —
+    // generateTokens below only ever mints a house session.restaurantId
+    // already named, and re-checks that against an active membership row.
+    const house = session.restaurantId ?? null;
+    return this.generateTokens(
+      {
+        ...row,
+        restaurant_id: house,
+      },
+      session.devBypass === true,
+      house,
+    );
   }
 
   /** Minimum seconds between password-reset requests for the same email. */
@@ -2775,15 +2981,13 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
 
-    const { error: updateErr } = await this.databaseService.supabase
-      .from("users")
-      .update({ password_hash: passwordHash })
-      .eq("user_id", reset.user_id);
-
-    if (updateErr) {
-      this.logger.error(`resetPassword failed: ${updateErr.message}`);
-      throw new BadRequestException("Failed to update password");
-    }
+    // ADR 0225: the new password and the end of every session minted before
+    // it are one write. A reset is made from no session, so none is kept.
+    await this.setPasswordEndingSessions(
+      reset.user_id,
+      passwordHash,
+      "resetPassword",
+    );
 
     const usedAt = new Date().toISOString();
 
@@ -2796,14 +3000,11 @@ export class AuthService {
       .eq("user_id", reset.user_id)
       .is("used_at", null);
 
-    // Deliberately does not revoke existing sessions. changePassword() above —
-    // the existing, in-app password-change path — does not do this either, and
-    // TokenBlacklistService can only blacklist a token it is handed; nothing in
-    // this codebase tracks the set of tokens issued to a user, so "revoke every
-    // outstanding session" is a real feature this change does not build. If a
-    // reset should force other devices out, that is a follow-up against
-    // TokenBlacklistService, applied consistently to changePassword too — not
-    // a one-off here.
+    // Every session this person had is now signed out (ADR 0225): not by
+    // tracking the tokens issued to them (TokenBlacklistService can only
+    // deny a token it is handed), but by the session version the write above
+    // moved, which every token carries and every reader checks. See
+    // session-version.ts.
   }
 
   /**
