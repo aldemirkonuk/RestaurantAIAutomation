@@ -201,7 +201,7 @@ other send from the house's own mailbox**, so D2's rule is a property of the
 `relay-email.cron.ts`, migration
 `20261001090000_a_persons_mail_queues_like_the_houses_own.sql` [renamed
 2026-09-27, PR #429 merge-train, to `20261025000000_a_persons_mail_queues_like_the_houses_own.sql`
-— ADR 0212]): a
+— ADR 0212] [renamed again 2026-09-27, PR #429 audit fix round after 2b97a7563, to `20261105000000_a_persons_mail_queues_like_the_houses_own.sql` — ADR 0212; main's ceiling had moved to `20261031174623` (#438)]): a
 `relay_email_queue` row — door-agnostic sibling of this composer's own
 `HOUSE_QUEUED` row on `procurement_conversations`, not the same table, because
 `procurement_conversations.provider_id` is `NOT NULL` and the person door also

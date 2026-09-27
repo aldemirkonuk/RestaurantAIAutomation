@@ -59,7 +59,7 @@
  *     letters composer's queue), not the same table — that table's
  *     `provider_id` is `NOT NULL`, and this door also reaches a house's own
  *     members, with no vendor at all (migration
- *     20261025000000_a_persons_mail_queues_like_the_houses_own.sql explains
+ *     20261105000000_a_persons_mail_queues_like_the_houses_own.sql explains
  *     why at length).
  *
  * THE RECORD

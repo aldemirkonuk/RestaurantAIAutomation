@@ -273,7 +273,7 @@ route) — so there is no second runtime for this one to disagree with.]
   addition alongside it. What changed, concretely:
 
   - **A new terminal status, `RELAY_REFUSED`, on `procurement_conversations`**
-    (migration `20261001090100_a_relay_refusal_closes_the_draft_no_retry.sql`; [renumbered 2026-09-25 from `20260921113000`, which sorted behind main's ceiling `20260922231300` — ADR 0212]; [renumbered again 2026-09-26 from `20260925160100`, which by then sorted behind main's new ceiling `20260925160700` — same guard, PR #429 merge-train]; [renumbered twice more on 2026-09-27, via `20260928130100` to `20261001090100`, past main's ceilings `20260928000000` and `20260930100100` — same guard; ADR 0212's brackets]; [renumbered once more, 2026-09-27, merge-train update on PR #429: `20261001090100` → `20261025000100`, past main's new ceiling `20261021150000` — same guard; ADR 0212's brackets]).
+    (migration `20261001090100_a_relay_refusal_closes_the_draft_no_retry.sql`; [renumbered 2026-09-25 from `20260921113000`, which sorted behind main's ceiling `20260922231300` — ADR 0212]; [renumbered again 2026-09-26 from `20260925160100`, which by then sorted behind main's new ceiling `20260925160700` — same guard, PR #429 merge-train]; [renumbered twice more on 2026-09-27, via `20260928130100` to `20261001090100`, past main's ceilings `20260928000000` and `20260930100100` — same guard; ADR 0212's brackets]; [renumbered once more, 2026-09-27, merge-train update on PR #429: `20261001090100` → `20261025000100`, past main's new ceiling `20261021150000` — same guard; ADR 0212's brackets] [renamed again 2026-09-27, PR #429 audit fix round after 2b97a7563, to `20261105000100` — ADR 0212; main's ceiling had moved to `20261031174623` (#438)]).
     `_release_send_claim` (which set the row back to `prior_status` — DRAFT
     or PENDING_APPROVAL — so a person or a bus replay could try again) is no
     longer reached for these three codes; `_close_relay_refused` is, and it
@@ -288,7 +288,7 @@ route) — so there is no second runtime for this one to disagree with.]
     constraint. `procurement_conversations.status` itself still carries NO
     CHECK constraint of its own — confirmed again (the prior migration,
     `20261001090000` [renumbered again 2026-09-27, PR #429 merge-train, to `20261025000000`
-    — ADR 0212], renumbered 2026-09-25 from `20260921110000` per ADR 0212 and again 2026-09-26 from `20260925160000` for the same reason, already found and recorded this) — and closing that
+    — ADR 0212] [renamed again 2026-09-27, PR #429 audit fix round after 2b97a7563, to `20261105000000` — ADR 0212; main's ceiling had moved to `20261031174623` (#438)], renumbered 2026-09-25 from `20260921110000` per ADR 0212 and again 2026-09-26 from `20260925160000` for the same reason, already found and recorded this) — and closing that
     gap for the whole column is a cross-cutting change spanning 20+ call
     sites across two services, filed as an open item in the migration's own
     header rather than guessed at here.

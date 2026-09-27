@@ -99,6 +99,14 @@ gateway and orchestrator source comments) directly, and the dated narrative ones
 file, `.planning/06-pages/communications.md`, ADR 0099, ADR 0118, ADR 0147, ADR 0230,
 `v3.0-TECH-DEBT.md`) by bracket, matching this ADR's own convention.]
 
+[2026-09-27, PR #429 audit fix round after `2b97a7563`: renamed a sixth time, to
+`20261105000000` and `…000100`, past main's new ceiling `20261031174623` (#438's
+calendar-link migrations, merged while #429 was in audit; `check_migration_order.py`
+failed the merged tree until the rename). Same split as the bracket above: CLAIMS.jsonl,
+the migrations' own cross-references and the gateway/orchestrator source comments
+repointed directly; `.planning/06-pages/communications.md`, ADR 0099, ADR 0118, ADR 0147
+and `v3.0-TECH-DEBT.md` by a dated bracket after the previous one.]
+
 The same day, one lane renamed its migration to one step past the ceiling. That was
 checked by hand against every branch it could see, and it still lost the race twice.
 
