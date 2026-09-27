@@ -508,6 +508,63 @@ describe('OD-112 — the caption ink (--ink-4) clears AA on both grounds', () =>
   });
 
   /**
+   * The fallback half. [2026-09-27, PR 478 audit round 2] The sweep renamed
+   * `var(--ink-3, #7C7365)` to `var(--ink-4, #7C7365)` at 44 sites across
+   * six files and left the fallback hex behind, so wherever the variable
+   * does not resolve (a render outside `.mudavym`, a paint before
+   * `mudavym.css` loads) the caption fell back to the very value OD-112
+   * retired. The `--ink-3` scan above cannot see that — the token it looks
+   * for is gone — so this scan pins every `--ink-4` fallback literal to
+   * `--ink-4`'s own paper value (ADR 0169's default ground; every site at
+   * the time of writing is on paper, including `CanonicalSheet.tsx` and
+   * `DeliverySpine.tsx`, whose charcoal-column fallbacks `#ABA294` /
+   * `#8E8576` would measure well under 4.5:1 there).
+   */
+  const INK4_FALLBACK = /var\(\s*--ink-4\s*,\s*(#[0-9a-fA-F]{3,8})\s*\)/g;
+  const staleInk4Fallbacks = (src: string): string[] => {
+    INK4_FALLBACK.lastIndex = 0;
+    const out: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = INK4_FALLBACK.exec(src))) {
+      if (m[1].toLowerCase() !== PAPER_FULL['--ink-4']) out.push(m[1]);
+    }
+    return out;
+  };
+
+  it('every --ink-4 fallback literal is --ink-4 itself, never the retired --ink-3 value', () => {
+    const files = [
+      ...walkFiles(ROOT, ['.css']),
+      ...walkFiles(ROOT, ['.tsx', '.ts']).filter((f) => !f.includes('.test.')),
+    ];
+    expect(files.length).toBeGreaterThan(100); // a walk that found nothing is a broken walk
+
+    let seen = 0;
+    const hits: string[] = [];
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8');
+      INK4_FALLBACK.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = INK4_FALLBACK.exec(src))) {
+        seen++;
+        if (m[1].toLowerCase() === PAPER_FULL['--ink-4']) continue;
+        const lineNo = src.slice(0, m.index).split('\n').length;
+        hits.push(`${file.slice(ROOT.length + 1)}:${lineNo} ${m[1]}`);
+      }
+    }
+    expect(seen).toBeGreaterThan(100); // proves the scan reads real fallbacks, not none
+    expect(hits).toEqual([]);
+  });
+
+  it('the fallback scan catches the exact shapes the sweep left behind', () => {
+    expect(staleInk4Fallbacks(`color: 'var(--ink-4, #7C7365)',`)).toEqual(['#7C7365']);
+    expect(staleInk4Fallbacks(`.x { color: var(--ink-4, #7c7365); }`)).toEqual(['#7c7365']);
+    expect(staleInk4Fallbacks(`color: 'var(--ink-4,#ABA294)'`)).toEqual(['#ABA294']);
+    expect(staleInk4Fallbacks(`color: 'var(--ink-4, #665D50)'`)).toEqual([]);
+    // the retired value really does fail AA where these captions sit
+    expect(contrast('#7c7365', PAPER_FULL['--paper-2'])).toBeLessThan(4.5);
+  });
+
+  /**
    * Mutation cases for the scan itself. [2026-09-27, PR 478 audit round 1]
    * confirmed these four shapes with a direct node repro against the
    * regex as shipped: the first three gave zero matches although each is a

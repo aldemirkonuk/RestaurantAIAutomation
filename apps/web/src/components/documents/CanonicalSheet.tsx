@@ -52,7 +52,7 @@ const KICK: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '.15em',
   textTransform: 'uppercase',
-  color: 'var(--ink-4, #8E8576)',
+  color: 'var(--ink-4, #665D50)',
 }
 
 const TH: React.CSSProperties = {
@@ -595,7 +595,7 @@ export function CanonicalSheet({
                     adj && adj.verdict !== 'ok' ? 'rgba(148,102,26,.07)' : undefined,
                 }}
               >
-                <td style={{ ...TD, textAlign: 'left', color: 'var(--ink-4, #ABA294)' }}>
+                <td style={{ ...TD, textAlign: 'left', color: 'var(--ink-4, #665D50)' }}>
                   {i + 1}
                 </td>
                 <td style={{ ...TD, fontFamily: 'inherit', textAlign: 'left', fontSize: 11.5 }}>

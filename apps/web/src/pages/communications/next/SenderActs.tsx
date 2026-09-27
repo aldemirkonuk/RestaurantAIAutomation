@@ -50,7 +50,7 @@ const EYEBROW: CSSProperties = {
   fontSize: 9.5,
   letterSpacing: '0.12em',
   textTransform: 'uppercase',
-  color: 'var(--ink-4, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
 };
 /** The overlay body is unpadded by design (`.mdv-ovl__body`); the head and foot inset 16px, so the content does too. */
 const BODY: CSSProperties = { padding: '12px 16px' };
@@ -67,7 +67,7 @@ function Kv({ rows }: { rows: [string, string][] }) {
     <dl style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '4px 12px', margin: '0 0 10px', fontSize: 12 }}>
       {rows.map(([k, v]) => (
         <div key={k} style={{ display: 'contents' }}>
-          <dt style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-4, #7C7365)' }}>{k}</dt>
+          <dt style={{ fontFamily: MONO, fontSize: 11, color: 'var(--ink-4, #665D50)' }}>{k}</dt>
           <dd style={{ fontFamily: MONO, fontSize: 11.5, margin: 0, color: 'var(--ink-1, #211C16)' }}>{v}</dd>
         </div>
       ))}
@@ -117,7 +117,7 @@ export function TrustPanel({ sender, houseName, onClose, onTrust }: TrustPanelPr
               }
             }}
           />
-          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>
+          <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
             Reversible from the same row; the register keeps when.
           </span>
         </div>
@@ -142,7 +142,7 @@ export function TrustPanel({ sender, houseName, onClose, onTrust }: TrustPanelPr
           ['updated_at', fmtDay(sender.updated_at)],
         ]}
       />
-      <p style={{ ...NOTE, fontSize: 11.5, color: 'var(--ink-4, #7C7365)' }}>
+      <p style={{ ...NOTE, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
         Written to the sender register for this house, then read back. A write that did not land is reported as not
         saved.
       </p>

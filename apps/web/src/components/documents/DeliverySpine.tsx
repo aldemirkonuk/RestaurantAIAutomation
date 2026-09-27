@@ -48,7 +48,7 @@ function Ladder({ state }: { state: string }) {
         const here = reached === i
         return (
           <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            {i > 0 && <span style={{ color: 'var(--ink-4, #ABA294)', fontSize: 9 }}>▸</span>}
+            {i > 0 && <span style={{ color: 'var(--ink-4, #665D50)', fontSize: 9 }}>▸</span>}
             <span
               style={{
                 fontFamily: MONO,
@@ -62,7 +62,7 @@ function Ladder({ state }: { state: string }) {
                   ? 'var(--paper-0, #FAF7F1)'
                   : done
                     ? 'var(--ink-2, #4F473C)'
-                    : 'var(--ink-4, #ABA294)',
+                    : 'var(--ink-4, #665D50)',
               }}
             >
               {s}
