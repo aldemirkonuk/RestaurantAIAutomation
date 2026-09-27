@@ -257,7 +257,11 @@ export interface RecommendationActionPatch {
    */
   snoozeFor?: string | null;
   pinned?: boolean;
-  /** Mark that the manager followed the Act deep-link (sets acted_at=now). */
+  /**
+   * "Mark as briefed" (sketch 122 Q2): `true` stamps acted_at + acted_by,
+   * `false` takes the stamp back; a note, gated like a pin. No hand-off posts
+   * it any more — a hand-off records nothing (ADR 0112 F10, amended).
+   */
   acted?: boolean;
   feedback?: "helpful" | "not_helpful" | null;
   /** NEW-296: team member id + display name, or null to unassign. */

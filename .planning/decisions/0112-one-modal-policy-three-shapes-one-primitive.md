@@ -301,7 +301,18 @@ agent resolving its own threads — that claim did not survive re-fetch; the rul
   or manager's; PR #483 audit R2, 2026-09-26), which needed a new `acted_by` column
   (migration `20260928000100`). That column joins the two-year author sweep ADR 0191 round 6 put
   `created_by`/`pinned_by`/`rated_by`/`assigned_by` on; that is the lane's reading of round 6 for
-  a column that did not exist when it was answered, not a separate founder answer.]**
+  a column that did not exist when it was answered, not a separate founder answer.
+  *[Scope, 2026-09-27, PR #483 audit R4: "records nothing" holds for every hand-off in the product,
+  not only the rebuilt `/recommendations`. Until this PR three older "Act" hand-offs still posted
+  `acted: true` fire-and-forget before leaving the page — `ContextualInsights.tsx` (the rail on
+  Orders, Vendors and Inventory), `EngineInsightsPanel.tsx` (Reports) and the legacy
+  `Recommendations.tsx`. Once `acted` became the gated, audited briefing stamp, each such click
+  would have named the clicker as the briefer, or been refused (403 `not_your_note`) unseen as the
+  page navigated away; the same PR removed those posts, pinned by a test in each suite and by
+  CLAIMS `ADR-0112-F10-NO-HANDOFF-STAMPS-ACTED` (no non-test web or mobile source posts
+  `acted: true`). Consequence, stated rather than hidden: a click-through from those panels no
+  longer lands in `GET recommendations/:id/history` (`listHistory` reads `acted_at`,
+  `recommendation-actions.service.ts`), which now lists briefings, not visits.]*]**
 - **F11 — all three, as the house's own rules.** A manager's passcode at the point of action for
   staff → manager acts (the manager's name goes on the line); presence on shared records; and a
   two-person rule for money — the initiator is mechanically excluded from approving their own

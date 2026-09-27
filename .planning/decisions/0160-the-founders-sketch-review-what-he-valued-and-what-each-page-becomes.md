@@ -176,7 +176,10 @@ decided, so this row is fully answered and the page goes live in code for every 
 - **Q2 (item 25), "Add all three (Recommended)":** snooze, pin and mark-as-briefed are one tap
   with Undo and no seal — recorded as an amendment to ADR 0112 F10, where the list lives. The
   question's own words carry the second half: *"A hand-off that only opens another page records
-  nothing."* Rejected: *"Keep F10 closed"*; *"Add snooze + pin only"*.
+  nothing."* Rejected: *"Keep F10 closed"*; *"Add snooze + pin only"*. *[2026-09-27, PR #483
+  audit R4: that half is held on every surface — the older "Act" hand-offs on the Orders /
+  Vendors / Inventory rail, Reports' panel and the legacy page stopped posting `acted: true` in
+  the same PR; see ADR 0112 F10's bracket.]*
 - **Q3, "Two-step now (Recommended)":** the Order-it control opens Orders and the PO is drafted by
   hand there, where the hold seals it; the in-place draft is a later round. Rejected: *"Build
   in-place draft now"*.
