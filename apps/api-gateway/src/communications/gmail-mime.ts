@@ -18,6 +18,8 @@
  * drift from.
  */
 
+import { htmlToText as sharedHtmlToText } from "../common/html/html-to-text";
+
 /** Gmail's MIME tree; only the fields these walkers touch. */
 export interface GmailPayloadPart {
   mimeType?: string | null;
@@ -88,20 +90,6 @@ export function extractEmailContent(payload: GmailPayloadPart | null | undefined
 }
 
 /**
- * Named entities this parser recognizes, decoded in a single non-cascading
- * pass (see the audit note on `htmlToText` below for why chained replaces are
- * unsafe here).
- */
-const GMAIL_MIME_ENTITIES: Record<string, string> = {
-  nbsp: " ",
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  "#39": "'",
-};
-
-/**
  * HTML -> plain text, keeping the source's line breaks.
  *
  * [Audit of PR #435 at a229848f3, 2026-09-26, security review: the previous
@@ -131,27 +119,33 @@ const GMAIL_MIME_ENTITIES: Record<string, string> = {
  * single left-to-right scan, so a character produced by decoding one entity is
  * never re-offered to the regex as the start of another. `&amp;lt;` now stays
  * `&lt;` (a literal, safe string), never resolving to `<`. See the
- * "double-escaping" describe block in `gmail-mime.spec.ts` for the pin.]
+ * "double-escaping" describe block in `gmail-mime.spec.ts` for the pin.
+ * [2026-09-27: that regex pass is gone — the decode is now the shared
+ * scanner's one-pass `decodeEntities`; the same pin still holds.]]
+ *
+ * [Audit of PR #435 at e2d8ef93a, 2026-09-27, both reviewers BLOCK: the regex
+ * pipeline above stripped `<script>`/`<style>` TAGS but kept their BODIES as
+ * text — an injection path, since this text is what agents read and what
+ * goes to Jev, whose reply re-enters agent context — and broke lines only on `<br>` and CLOSING block
+ * tags, so Outlook's `<hr>` divider and Apple Mail's bare
+ * `wrote:<blockquote type="cite">` left the quoted thread on the same line as
+ * the latest message, and `latestPart()` returned it whole. This now
+ * delegates to the shared single-pass scanner (`common/html/html-to-text.ts`),
+ * which drops script/style/noscript/template contents, breaks the line on
+ * OPENING and closing block tags alike (including `<hr>` and `<blockquote>`),
+ * decodes entities in one pass, and is linear in input length. The one shape
+ * inbound mail needs that the vendor-page extractors must not have — a space
+ * for an inline tag, so words do not glue, and one line break (not a blank
+ * line) between adjacent blocks, so a wrapped "On …/… wrote:" header stays
+ * contiguous — are its `spaceForInlineTags` and `oneBreakPerBoundary`
+ * options. Pinned by the "injection and quoted-thread shapes" block in
+ * `gmail-mime.spec.ts`.]
  */
 export function htmlToText(html: string): string {
-  return html
-    // Block boundaries become a line break BEFORE tags are stripped, so the
-    // cut logic downstream still has lines to match against.
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(?:p|div|tr|li|h[1-6]|blockquote|table|title)>/gi, "\n")
-    // Every remaining tag (including opening tags with attributes) becomes a
-    // space, not nothing — "Hello<b>world</b>" must not become "Helloworld".
-    .replace(/<[^>]+>/g, " ")
-    // Single non-cascading pass — see the audit note above.
-    .replace(
-      /&(nbsp|amp|lt|gt|quot|#39);/g,
-      (_match, name: string) => GMAIL_MIME_ENTITIES[name],
-    )
-    // Collapse horizontal whitespace only — newlines are load-bearing here.
-    .replace(/[ \t]+/g, " ")
-    .replace(/ *\n */g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return sharedHtmlToText(html, 0, {
+    spaceForInlineTags: true,
+    oneBreakPerBoundary: true,
+  });
 }
 
 /**
