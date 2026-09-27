@@ -107,10 +107,14 @@ export class SignInController {
     const userId = await this.codes.verify("sign_in", dto.email, dto.code);
     // The address the code was just checked against: an emailed-code sign-in
     // proves that mailbox, so AuthService marks it verified (ADR 0229, item 37).
+    // `lastHouses` is this device's hint for THIS email, exactly as a
+    // password sign-in reads it (ADR 0164): membership decides, the hint
+    // never does.
     const tokens = await this.auth.issueSessionForVerifiedSignIn(
       userId,
       "email_code",
       dto.email,
+      dto.lastHouses,
     );
     return { success: true, ...tokens };
   }

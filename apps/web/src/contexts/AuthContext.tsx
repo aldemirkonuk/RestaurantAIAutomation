@@ -676,18 +676,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithSession = useCallback(
     async (pair: { accessToken: string; refreshToken: string }) => {
       setError(null);
-      localStorage.setItem("accessToken", pair.accessToken);
-      localStorage.setItem("refreshToken", pair.refreshToken);
+      // One helper stores every session (ADR 0164), exactly as `login` and
+      // every other sign-in door does: it reads the house the TOKEN names
+      // (or clears one an earlier session on this device left) instead of
+      // this call writing localStorage directly and skipping that logic. A
+      // passkey/emailed-code sign-in used to leave `activeRestaurantId`
+      // untouched, so a multi-house account (or one whose device last used a
+      // house it has since left) could show a stale house until something
+      // else happened to call `storeSession`.
+      storeSession(pair.accessToken, pair.refreshToken);
       api.defaults.headers.common["Authorization"] = `Bearer ${pair.accessToken}`;
       const userResponse = await api.get("/api/v1/auth/me");
-      let studioRoles: string[] = [];
-      try {
-        const payload = JSON.parse(atob(pair.accessToken.split(".")[1]));
-        studioRoles = payload?.app_metadata?.roles ?? [];
-      } catch {
-        /* malformed token */
-      }
-      setUser({ ...userResponse.data.user, studioRoles });
+      setUser(userFrom(userResponse.data.user, pair.accessToken));
     },
     [],
   );

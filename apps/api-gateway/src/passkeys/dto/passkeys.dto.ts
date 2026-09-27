@@ -58,6 +58,13 @@ export class EmailCodeVerifyDto {
   @IsString()
   @MaxLength(12)
   code!: string;
+
+  @ApiPropertyOptional({
+    description:
+      "This device's memory of the house THIS email last used, as [{ userId, houseId, usedAt }] (ADR 0164). A hint only: the server checks it against active memberships before naming a house, exactly as it does for a password sign-in.",
+  })
+  @IsOptional()
+  lastHouses?: unknown;
 }
 
 export class FinishPasskeyRegistrationDto {

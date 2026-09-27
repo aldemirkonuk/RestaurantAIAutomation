@@ -95,6 +95,10 @@ class Query implements PromiseLike<{ data: any; error: any }> {
     this.filters.push((r) => r[k] >= v);
     return this;
   }
+  in(k: string, values: unknown[]) {
+    this.filters.push((r) => values.includes(r[k]));
+    return this;
+  }
   order() {
     return this;
   }

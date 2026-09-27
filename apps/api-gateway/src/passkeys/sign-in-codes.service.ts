@@ -373,14 +373,9 @@ export class SignInCodesService {
       expected.length === given.length && timingSafeEqual(expected, given);
 
     if (!matches) {
-      // Compare-and-set on the count, so two racing guesses cannot share one.
-      await this.db
-        .from("sign_in_codes")
-        .update({ attempts: live.attempts + 1 })
-        .eq("id", live.id)
-        .eq("attempts", live.attempts);
+      const attempts = await this.recordWrongGuess(live.id, live.attempts);
       throw new BadRequestException(
-        live.attempts + 1 >= MAX_ATTEMPTS_PER_CODE ? CODE_SPENT : CODE_REFUSAL,
+        attempts >= MAX_ATTEMPTS_PER_CODE ? CODE_SPENT : CODE_REFUSAL,
       );
     }
 
@@ -404,6 +399,62 @@ export class SignInCodesService {
       throw new BadRequestException(CODE_REFUSAL);
     }
     return row.user_id;
+  }
+
+  /**
+   * Count a wrong guess even when it races another one for the same code.
+   * The compare-and-set moves `attempts` forward by exactly one per winning
+   * caller; a caller that LOSES the race (another request's CAS landed
+   * first, on the same stale count both callers read) must retry against
+   * the row's now-current count rather than treat the loss as "nothing to
+   * count". Before this, N concurrent wrong guesses against one code could
+   * cost as few as one real increment -- every loser fired its guess and was
+   * refused, but never counted -- so an attacker firing guesses in parallel
+   * was not held to the 5-per-code / 20-per-day limits the docblock above
+   * claims (found by the ADR 0090 audit of PR #479, 2026-09-26).
+   *
+   * Bounded at five retries: real contention on one six-digit code has no
+   * legitimate reason to run deeper than that, and a caller that still
+   * cannot land its increment is refused as spent rather than let the guess
+   * through uncounted.
+   */
+  private async recordWrongGuess(id: string, seen: number): Promise<number> {
+    let attempts = seen;
+    for (let i = 0; i < 5; i++) {
+      const { data, error } = await this.db
+        .from("sign_in_codes")
+        .update({ attempts: attempts + 1 })
+        .eq("id", id)
+        .eq("attempts", attempts)
+        .select("attempts")
+        .maybeSingle();
+      if (error) {
+        throw new InternalServerErrorException(
+          "The code could not be checked just now. Nothing was done; try again.",
+        );
+      }
+      if (data) return (data as { attempts: number }).attempts;
+      // Lost the race: read what actually landed and retry against it.
+      const { data: fresh, error: readError } = await this.db
+        .from("sign_in_codes")
+        .select("attempts, consumed_at")
+        .eq("id", id)
+        .maybeSingle();
+      if (readError || !fresh) {
+        throw new InternalServerErrorException(
+          "The code could not be checked just now. Nothing was done; try again.",
+        );
+      }
+      const row = fresh as { attempts: number; consumed_at: string | null };
+      // A concurrent correct guess consumed the code first: this guess was
+      // always going to be refused, and there is no live count to bump.
+      if (row.consumed_at) return MAX_ATTEMPTS_PER_CODE;
+      attempts = row.attempts;
+      if (attempts >= MAX_ATTEMPTS_PER_CODE) return attempts;
+    }
+    // Contention this path has never seen five times over on one code:
+    // refuse as spent rather than let an uncounted guess through.
+    return MAX_ATTEMPTS_PER_CODE;
   }
 
   /** Step-up: the address is the account's own, read from the row. */

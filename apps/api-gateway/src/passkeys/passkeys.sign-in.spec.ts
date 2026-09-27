@@ -446,11 +446,14 @@ describe("SignInController: the proof decides, AuthService mints", () => {
     expect(minted.issueSessionForVerifiedSignIn).not.toHaveBeenCalled();
     await controller.emailCodeVerify({ email: "m@example.com", code });
     // The address the code was checked against goes along: AuthService marks
-    // it verified (ADR 0229, round 6, item 37).
+    // it verified (ADR 0229, round 6, item 37). The device sent no
+    // `lastHouses` hint here, so it goes along as undefined -- AuthService
+    // (via `signIn`) still decides the house purely from membership.
     expect(minted.issueSessionForVerifiedSignIn).toHaveBeenCalledWith(
       USER,
       "email_code",
       "m@example.com",
+      undefined,
     );
   });
 });

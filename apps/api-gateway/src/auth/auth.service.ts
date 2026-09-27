@@ -757,14 +757,25 @@ export class AuthService {
    * A session for an account whose owner just proved who they are by a path
    * that is not a password -- a passkey or an emailed code (ADR 0222 / 0229,
    * founder 2026-09-25 item 29). The caller has already verified the proof;
-   * this mints through `generateTokens`, the one place every session is minted,
-   * so membership and every other claim follow exactly the password path.
+   * this hands the proven account to the same `signIn` a password uses, so
+   * membership, the hint/chooseHouse rule (ADR 0164) and every other claim
+   * follow exactly the password path.
+   *
+   * Until the ADR 0090 audit of PR #479 (2026-09-26) this minted directly
+   * against the stale `users.restaurant_id` column instead: a multi-house
+   * account never saw the chooser a password sign-in gives it, and a person
+   * whose `restaurant_id` pointed at a house they had since left landed with
+   * no house at all instead of being offered the ones they still hold.
+   * `generateTokens` itself re-checks membership before naming a house, so
+   * this was never a way to land in someone else's house -- but it could
+   * still land you in the wrong one of your own, or in none, silently.
    */
   async issueSessionForVerifiedSignIn(
     userId: string,
     method: "passkey" | "email_code",
     provedEmail: string | null = null,
-  ): Promise<TokenPair> {
+    lastHouses: unknown = null,
+  ): Promise<SignInResult> {
     const { data: user, error } = await this.databaseService.supabase
       .from("users")
       .select("*")
@@ -781,12 +792,7 @@ export class AuthService {
       method,
       provedEmail,
     );
-    return this.generateTokens(
-      signedIn,
-      false,
-      signedIn.restaurant_id ?? null,
-      signedInNow(),
-    );
+    return this.signIn(signedIn, false, lastHouses, signedInNow());
   }
 
   /**

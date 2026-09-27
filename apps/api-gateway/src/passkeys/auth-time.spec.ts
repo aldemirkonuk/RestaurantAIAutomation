@@ -22,9 +22,12 @@ import {
 
 const SECRET = "auth-time-spec-secret";
 const REFRESH = "auth-time-spec-refresh";
-const USER = "user-a";
-const HOUSE = "house-a";
-const HOUSE_2 = "house-b";
+// UUID-shaped (unlike a plain slug) because `parseLastHouseHints` (ADR 0164)
+// drops any hint whose ids are not: the new multi-house cases below exercise
+// it, where the old ones (login, refresh, switch) never touched it.
+const USER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const HOUSE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const HOUSE_2 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const PASSWORD = "a long enough password";
 
 async function world(): Promise<StubDb> {
@@ -48,6 +51,13 @@ async function world(): Promise<StubDb> {
         role: "manager",
         is_active: true,
       },
+    ],
+    // `memberHouses` (ADR 0164) names a house only where it can also read
+    // it here -- needed now that a passkey/emailed-code sign-in goes through
+    // it too, instead of minting directly off `users.restaurant_id`.
+    restaurants: [
+      { id: HOUSE, name: "House A", city: null },
+      { id: HOUSE_2, name: "House B", city: null },
     ],
     user_roles: [],
   });
@@ -91,13 +101,33 @@ describe("auth_time: stamped by a sign-in, carried by everything else", () => {
     expect(r.auth_time).toBe(at);
   });
 
-  it("a passkey or emailed-code sign-in stamps it now, through the one minting path", async () => {
+  it("a passkey or emailed-code sign-in stamps it now, and lands in the hinted house exactly like a password sign-in (ADR 0164)", async () => {
     const { svc, jwt } = await service(await world());
-    const pair = await svc.issueSessionForVerifiedSignIn(USER, "passkey");
+    const pair = await svc.issueSessionForVerifiedSignIn(
+      USER,
+      "passkey",
+      null,
+      [{ userId: USER, houseId: HOUSE, usedAt: Date.now() }],
+    );
     const c = claims(jwt, pair.accessToken);
     expect(c.sub).toBe(USER);
     expect(c.restaurantId).toBe(HOUSE);
     expect(c.role).toBe("manager");
+    expect(
+      Math.abs((c.auth_time as number) - signedInNow()),
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it("a passkey or emailed-code sign-in with no hint asks a multi-house account to choose, instead of minting whatever users.restaurant_id happened to say (ADR 0090 audit of PR #479, 2026-09-26)", async () => {
+    const { svc, jwt } = await service(await world());
+    const pair = await svc.issueSessionForVerifiedSignIn(USER, "email_code");
+    expect(pair.restaurantId).toBeNull();
+    expect((pair.chooseHouse?.houses ?? []).map((h) => h.id).sort()).toEqual(
+      [HOUSE, HOUSE_2].sort(),
+    );
+    const c = claims(jwt, pair.accessToken);
+    expect(c.restaurantId).toBeNull();
+    expect(c.role).toBeNull();
     expect(
       Math.abs((c.auth_time as number) - signedInNow()),
     ).toBeLessThanOrEqual(1);

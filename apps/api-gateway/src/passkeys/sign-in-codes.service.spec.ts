@@ -335,6 +335,32 @@ describe("SignInCodesService — checking", () => {
     await expect(svc.verifyStepUp(USER, mine)).resolves.toBeUndefined();
   });
 
+  it("counts every wrong guess even when several race the same code (ADR 0090 audit of PR #479, 2026-09-26)", async () => {
+    const { db, svc, lastCode } = setup();
+    await svc.issueForSignIn(EMAIL, null);
+    await flush();
+    const code = lastCode();
+    const wrong = code === "000000" ? "111111" : "000000";
+    // Fired together, not one after another: this is the shape that used to
+    // let concurrent wrong guesses share one increment, because each one
+    // read `attempts` before any of them had written it back.
+    const results = await Promise.all(
+      Array.from({ length: MAX_ATTEMPTS_PER_CODE }, () =>
+        statusOf(svc.verify("sign_in", EMAIL, wrong)),
+      ),
+    );
+    // Every one of the N guesses is counted -- none is free just for racing.
+    expect(db.tables.sign_in_codes[0].attempts).toBe(MAX_ATTEMPTS_PER_CODE);
+    expect(results.filter((r) => r === `400 ${CODE_SPENT}`)).toHaveLength(1);
+    expect(results.filter((r) => r === `400 ${CODE_REFUSAL}`)).toHaveLength(
+      MAX_ATTEMPTS_PER_CODE - 1,
+    );
+    // The code is really dead, not just reported dead to the losers.
+    await expect(svc.verify("sign_in", EMAIL, code)).rejects.toThrow(
+      CODE_SPENT,
+    );
+  });
+
   it("says a failed read is a failure, never a wrong code", async () => {
     const { db, svc } = setup();
     db.failReadOn = "sign_in_codes";

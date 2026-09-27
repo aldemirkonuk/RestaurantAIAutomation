@@ -13,6 +13,7 @@
 
 import { startAuthentication, startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser'
 import { apiClient } from './client'
+import { lastHouseHintFor } from '../../lib/houseMemory'
 
 export interface Passkey {
   id: string
@@ -147,11 +148,18 @@ export async function requestSignInCode(email: string): Promise<{ message: strin
   return data
 }
 
-/** Sign in with the emailed code. */
+/**
+ * Sign in with the emailed code. `lastHouses` carries this device's memory
+ * of the house THIS email last used (ADR 0164), exactly as a password
+ * sign-in sends it -- a hint only; the server checks it against active
+ * membership before naming a house.
+ */
 export async function signInWithEmailCode(email: string, code: string): Promise<SessionPair> {
+  const hint = lastHouseHintFor(email)
   const { data } = await apiClient.post<SessionPair>('/auth/email-code/verify', {
     email,
     code: code.replace(/\s+/g, ''),
+    lastHouses: hint ? [hint] : [],
   })
   return { accessToken: data.accessToken, refreshToken: data.refreshToken }
 }
