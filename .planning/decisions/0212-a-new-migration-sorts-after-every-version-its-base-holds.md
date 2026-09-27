@@ -89,6 +89,16 @@ repointed in the same commit.]
 Every citation of the `20260928130000`/`…130100` pair outside this bracket and the one
 above was repointed in the same commit.]
 
+[2026-09-27, merge-train update on PR #429: renamed a fifth time, to `20261025000000` and
+`…000100`, past main's new ceiling `20261021150000` (#485's never-arrived-cancel-can-claim
+migration, merged while #429 was still catching up to main; `check_migration_order.py`
+failed the merged tree until the rename). Every citation of the `20261001090000`/`…090100`
+pair outside this bracket and the ones above was repointed in the same commit — the
+functional ones (CLAIMS.jsonl's verify strings, the migrations' own cross-references, the
+gateway and orchestrator source comments) directly, and the dated narrative ones (this
+file, `.planning/06-pages/communications.md`, ADR 0099, ADR 0118, ADR 0147, ADR 0230,
+`v3.0-TECH-DEBT.md`) by bracket, matching this ADR's own convention.]
+
 The same day, one lane renamed its migration to one step past the ceiling. That was
 checked by hand against every branch it could see, and it still lost the race twice.
 

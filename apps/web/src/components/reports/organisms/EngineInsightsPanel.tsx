@@ -365,8 +365,13 @@ export function EngineInsightsPanel({
     await insightAction(ins, { pinned: next });
   };
 
+  /*
+   * A hand-off: it only opens the page where the work is done, so it records
+   * nothing (ADR 0112 F10, amended 2026-09-25 — the founder, sketch 122 Q2).
+   * The `acted` stamp it used to post fire-and-forget is, since PR #483,
+   * the gated, audited "Mark as briefed" stamp (PR #483 audit, R4).
+   */
   const actInsight = (ins: EngineInsight) => {
-    insightAction(ins, { acted: true });
     const route = CATEGORY_ROUTE[ins.category] ?? "/recommendations";
     window.location.href = `${route}?insight=${encodeURIComponent(ins.ruleKey)}&from=reports`;
   };

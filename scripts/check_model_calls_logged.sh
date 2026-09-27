@@ -102,6 +102,11 @@ GATEWAY_ALLOWLIST=(
   # name a provider URL — the whole point of P1 §5.3 is that the URL, the retry
   # and the timeout live here once instead of seven times.
   "apps/api-gateway/src/common/model-client/"
+  # The house's data terms NAME Anthropic as a subprocessor: `api.anthropic.com`
+  # is a host string in the SUBPROCESSORS table an owner reads before accepting
+  # (ADR 0207 round 4). Text shown to a person, not a call; nothing there
+  # fetches. Added 2026-09-25.
+  "apps/api-gateway/src/settings/data-terms/house-data-terms.ts"
 )
 
 PY_ALLOWLIST=(

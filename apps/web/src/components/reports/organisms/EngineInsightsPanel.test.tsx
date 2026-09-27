@@ -137,3 +137,26 @@ describe('EngineInsightsPanel — round 3, what each choice records', () => {
     expect(screen.getByRole('status')).toHaveTextContent('could not be read just now');
   });
 });
+
+/**
+ * ADR 0112 F10, amended 2026-09-25 (the founder, sketch 122 Q2): a hand-off
+ * that only opens another page records nothing. Since PR #483 `acted` is the
+ * gated, audited "Mark as briefed" stamp (audit R4).
+ */
+describe('EngineInsightsPanel — Act is a hand-off and records nothing', () => {
+  it('Act opens the work page and posts nothing', async () => {
+    const real = window.location;
+    const loc = { href: '' } as Location;
+    Object.defineProperty(window, 'location', { configurable: true, value: loc });
+    try {
+      serve({ source: 'stored', insights: [ONE], suppressionsReadable: true });
+      mount();
+      await screen.findByText(ONE.sentence);
+      fireEvent.click(screen.getByRole('button', { name: /^Act/ }));
+      expect(loc.href).toContain('from=reports');
+      expect(api.post).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: real });
+    }
+  });
+});

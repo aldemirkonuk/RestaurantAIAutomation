@@ -199,7 +199,9 @@ other send from the house's own mailbox**, so D2's rule is a property of the
 *mailbox*, not of any one composer built on top of it. Built the same day
 (`relay-email.service.ts`'s `queueForHouse`/`dispatchQueued`/`cancelQueued`,
 `relay-email.cron.ts`, migration
-`20261001090000_a_persons_mail_queues_like_the_houses_own.sql`): a
+`20261001090000_a_persons_mail_queues_like_the_houses_own.sql` [renamed
+2026-09-27, PR #429 merge-train, to `20261025000000_a_persons_mail_queues_like_the_houses_own.sql`
+— ADR 0212]): a
 `relay_email_queue` row — door-agnostic sibling of this composer's own
 `HOUSE_QUEUED` row on `procurement_conversations`, not the same table, because
 `procurement_conversations.provider_id` is `NOT NULL` and the person door also

@@ -11,7 +11,9 @@
  *
  * There is no auto-send anywhere in this controller and no route that sends
  * immediately: `POST /letters` queues, the dispatcher sends, and
- * `POST /letters/:id/cancel` stops it in between.
+ * `POST /letters/:id/cancel` stops it in between. A draft (ADR 0230) leaves
+ * only through `POST /letters` with its `draftId` — the same refusals, the same
+ * undo window.
  */
 
 import {
@@ -27,6 +29,8 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../../auth/guards/roles.guard";
+import { Roles } from "../../auth/decorators/roles.decorator";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import {
   HouseLettersService,
@@ -97,6 +101,36 @@ export class HouseLettersController {
     return { queued: await this.letters.queued(restaurantId) };
   }
 
+  @Get("drafts")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Letters Mudavym drafted that nobody has sent (ADR 0230) — a credit claim asked for leaves one here",
+    description:
+      "Owner or manager only (ADR 0167, extended here: a credit draft's body carries the same claimed dollar amount, reason and invoice/order numbers ADR 0167 already refuses staff on the ledger; a route that returned them unguarded would let staff read them by another door). Fixed in the PR #476 audit's first round; ADR 0230 records the reconciliation.",
+  })
+  async drafts(@CurrentUser() user: TokenUser) {
+    const { restaurantId } = houseActor(user);
+    return { drafts: await this.letters.drafts(restaurantId) };
+  }
+
+  @Post(":id/discard")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Throw a draft away. It was never sent.",
+    description:
+      "Owner or manager only (ADR 0167, extended here): discarding a claim's letter is the same write staff are refused on the ledger's own transition route, and a staff caller must not be able to kill a manager's draft through this door either.",
+  })
+  async discard(
+    @CurrentUser() user: TokenUser,
+    @Param("id", new ParseUUIDPipe()) id: string,
+  ) {
+    const { restaurantId } = houseActor(user);
+    return this.letters.discardDraft({ restaurantId, id });
+  }
+
   @Get("templates")
   @ApiOperation({ summary: "The house's letter templates" })
   async templates(@CurrentUser() user: TokenUser) {
@@ -138,11 +172,20 @@ export class HouseLettersController {
   @ApiResponse({
     status: 403,
     description:
-      "The house has stopped using the grant this identity rests on (ADR 0114).",
+      "The house has stopped using the grant this identity rests on (ADR 0114), or the draft answers a credit claim and the caller is not owner or manager (ADR 0167).",
   })
-  async queue(@CurrentUser() user: TokenUser, @Body() dto: QueueLetterDto) {
+  async queue(
+    @CurrentUser() user: TokenUser,
+    @Body() dto: QueueLetterDto,
+    // Last, not between `user` and `dto`: a direct (non-HTTP) call passes
+    // positional args, and `house-letters-actor.spec.ts` calls `queue(user,
+    // dto)` without a role — appending it here keeps that call's `dto`
+    // where it always was, `undefined` role failing safe exactly as it did
+    // before this param existed.
+    @CurrentUser("role") role?: string | null,
+  ) {
     const { userId, restaurantId } = houseActor(user);
-    return this.letters.queue({ restaurantId, userId, dto });
+    return this.letters.queue({ restaurantId, userId, dto, role });
   }
 
   @Post(":id/cancel")
@@ -158,8 +201,9 @@ export class HouseLettersController {
   async cancel(
     @CurrentUser() user: TokenUser,
     @Param("id", new ParseUUIDPipe()) id: string,
+    @CurrentUser("role") role?: string | null,
   ) {
     const { userId, restaurantId } = houseActor(user);
-    return this.letters.cancel({ restaurantId, userId, id });
+    return this.letters.cancel({ restaurantId, userId, id, role });
   }
 }

@@ -201,6 +201,26 @@ a substring collision, not a privacy statute. Obligation coverage is genuinely 0
 
 There is **no policy, no DPA, no BAA, no data-processing record, no subprocessor
 register, and no privacy programme document anywhere in this repository.**
+[Bracket, 2026-09-22 (ADR 0207 round 4): a subprocessor register now exists —
+`.planning/foundation/EXTERNAL_CONNECTIONS.md` §2, one row per outbound service. It is
+a connections census, not a DPA/data-processing record; this paragraph's other claims
+stand unchanged, and the register itself was not re-measured beyond adding TypeSafe's row.]
+[Bracket, 2026-09-25 (ADR 0224, PR #435): the register was re-measured and completed —
+13 rows added (Expo, browser push, Stripe, Twilio, Meta/WhatsApp, SendGrid, Google Drive and
+account, Microsoft Graph, US NWS, CloudAMQP, Upstash, Railway, Vercel) — and it is now held,
+together with the data terms' `SUBPROCESSORS`, by the blocking guard
+`scripts/check_data_terms_name_every_host.py`: every host literal and network SDK in the gateway
+and the orchestrator is named or excused with a written reason. This paragraph's DPA/BAA/policy
+claims were not re-measured (TypeSafe's DPA is the founder's "already done", 2026-09-25), and
+`subprocessor_classification` below is not re-scored here.]
+[Bracket, 2026-09-25 (ADR 0224 amendment, the founder's item 33): the register now also names the
+eight look-up hosts that had been excused as `public` — Google Maps Platform (`maps.` and
+`places.googleapis.com`), Apify, Yelp, Vivino, OpenTable, Wine-Searcher and CellarTracker — because a
+name taken from, or typed for, a house's list is house data even when each word is public. Serper's
+row now says it receives a wine's producer, name and vintage. The house-triggered Serper paths run
+only after an owner accepts terms naming it (`services/agent-orchestrator/services/house_data_terms_gate.py`).
+The licence risk of what the catalogue tools store is recorded as accepted in `v3.0-TECH-DEBT.md`.
+`subprocessor_classification` is still not re-scored here.]
 
 ### 🔴 The finding that reframes everything above: the schema has no callers
 
