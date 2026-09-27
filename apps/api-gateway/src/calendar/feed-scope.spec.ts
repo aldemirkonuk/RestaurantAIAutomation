@@ -358,7 +358,7 @@ describe("the category list and the migration's CHECK are the same list", () => 
     const sql = fs.readFileSync(
       path.join(
         __dirname,
-        "../../../../supabase/migrations/20260926130000_a_calendar_link_belongs_to_one_person.sql",
+        "../../../../supabase/migrations/20260928010000_a_calendar_link_belongs_to_one_person.sql",
       ),
       "utf8",
     );
