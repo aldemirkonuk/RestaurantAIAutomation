@@ -960,10 +960,24 @@ describe("the orchestrator's door", () => {
   // ready-made `refusal` object, so nothing proved which transport errors
   // reach the close — and the close had grown past the ruling to Gmail 400
   // and the SMTP fallback's EENVELOPE / 5xx.
-  function gaxiosRefusal(status: number, message: string): Error {
+  function gaxiosRefusal(
+    status: number,
+    message: string,
+    reasons: string[] = [],
+  ): Error {
+    const errors = reasons.map((reason) => ({
+      domain: "usageLimits",
+      reason,
+      message,
+    }));
     return Object.assign(new Error(message), {
       status,
-      response: { status, data: { error: { code: status, message } } },
+      response: {
+        status,
+        data: {
+          error: { code: status, message, ...(reasons.length && { errors }) },
+        },
+      },
     });
   }
 
@@ -1006,6 +1020,76 @@ describe("the orchestrator's door", () => {
       });
     },
   );
+
+  // Founder, 2026-09-27 (item 69 / OD-174 (b), "Park quota/delegation 403
+  // (Recommended)", narrowing item 66): a Gmail 403 whose TYPED reason is a
+  // fault of the shared sending mailbox parks the draft like ADR 0099's relay
+  // 401 — this door answers 503, which the orchestrator parks
+  // SEND_UNCONFIRMED (test_vendor_email_gateway_auth.py pins that half). Every
+  // other 403 and every 404 still answers the item-66 422 above.
+  it.each([
+    [403, "Daily Limit Exceeded", "dailyLimitExceeded"],
+    [403, "User Rate Limit Exceeded", "userRateLimitExceeded"],
+    [403, "Rate Limit Exceeded", "rateLimitExceeded"],
+    [403, "Quota exceeded", "quotaExceeded"],
+    [403, "The domain administrators have disabled Gmail apps.", "domainPolicy"],
+    [403, "Gmail API has not been used in project 1 before or it is disabled.", "accessNotConfigured"],
+  ])(
+    "is 503 — held, not closed — for a real Gmail API %i whose reason is a sending-mailbox fault (%s)",
+    async (status, said, reason) => {
+      const res = await throughGmailApi(gaxiosRefusal(status, said, [reason]));
+
+      expect(res.status).toBe(503);
+      expect(String(res.body.message)).toContain(said.replace(/\.$/, ""));
+      expect(String(res.body.message)).toContain(reason);
+      expect(String(res.body.message)).toMatch(/held rather than closed/);
+      expect(String(res.body.message)).not.toMatch(/Gmail refused this message/);
+      expect(String(res.body.message)).not.toMatch(/\.\./);
+      expect(actions()).toEqual([
+        RELAY_AUDIT_ACTIONS.ATTEMPTED,
+        RELAY_AUDIT_ACTIONS.FAILED,
+      ]);
+      expect(audit()[1]).toMatchObject({
+        changes: expect.objectContaining({
+          outcome: "failed",
+          refusedBeforeSend: false,
+          providerRejectedRequest: false,
+          sendingMailboxUnavailable: true,
+          gmailReasons: [reason],
+        }),
+      });
+    },
+  );
+
+  it.each([
+    [403, "Delegation denied for letters@mudavym.example", ["forbidden"]],
+    [403, "Request had insufficient authentication scopes.", ["insufficientPermissions"]],
+    [404, "Requested entity was not found.", ["dailyLimitExceeded"]],
+  ])(
+    "is still 422 (closed) for a real Gmail API %i: %s — only a 403 with a sending-mailbox reason parks",
+    async (status, said, reasons) => {
+      const res = await throughGmailApi(gaxiosRefusal(status, said, reasons));
+
+      expect(res.status).toBe(422);
+      expect(String(res.body.message)).toMatch(/Gmail refused this message/);
+      expect(audit()[1].changes).toMatchObject({
+        providerRejectedRequest: true,
+        sendingMailboxUnavailable: false,
+      });
+    },
+  );
+
+  it("reads the reason, never the words: a quota sentence with no typed reason still closes (422)", async () => {
+    const res = await throughGmailApi(
+      gaxiosRefusal(403, "Daily Limit Exceeded dailyLimitExceeded"),
+    );
+
+    expect(res.status).toBe(422);
+    expect(audit()[1].changes).toMatchObject({
+      providerRejectedRequest: true,
+      sendingMailboxUnavailable: false,
+    });
+  });
 
   it("stays 200 (not closed) for a real Gmail API 400 — kind 'rejected', but not in the item-66 ruling", async () => {
     const res = await throughGmailApi(gaxiosRefusal(400, "Invalid To header"));
@@ -1071,7 +1155,14 @@ describe("the orchestrator's door", () => {
   // The direct-send path's #405 answer for these same Gmail statuses does
   // not apply here: the relay path has no "reopen" outcome at all, only
   // "close" (this test) or "stay ambiguous" (the next one, for 401).
-  it("stays ambiguous (200, parked) — not RELAY_REFUSED — for a Gmail 401/OAuth credentials refusal (ADR 0099: '401 parks')", async () => {
+  // [CORRECTED 2026-09-27, item 69 round: this test was titled "stays
+  // ambiguous (200, parked)". The 200 is right; "parked" is not what the
+  // orchestrator does with it: `send_via_gateway` words it "gateway refused
+  // the send: HTTP 200 — invalid_grant: …", and `_is_definite_send_refusal`'s
+  // credentials pattern matches "invalid_grant", so the draft is RELEASED
+  // for retry, not parked (measured on the Python classifier; filed in
+  // v3.0-TECH-DEBT.md). ADR 0099's "401 parks" is the relay DOOR's own 401.]
+  it("stays 200 (not closed, not RELAY_REFUSED) for a Gmail 401/OAuth credentials refusal", async () => {
     gmail.sendEmail.mockResolvedValue({
       success: false,
       error: "invalid_grant: Token has been expired or revoked.",

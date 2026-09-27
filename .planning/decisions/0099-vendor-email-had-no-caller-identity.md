@@ -5,6 +5,10 @@
   split by code (400/403/422 final, 401 parks)". Narrowed 2026-09-21: the
   same founder corrected what "definite" means for 400/403/422 — CLOSE, not
   release for retry (see the bracket below and the review trail).
+  Narrowed again 2026-09-27 by the same founder (merge-train items 68 and 69,
+  OD-174): an older gateway's whitelist 400 is a named exception released for
+  retry, and a Gmail 403 whose reason is a sending-mailbox fault parks like
+  401 — see the two 2026-09-27 brackets below.
 - **Date:** 2026-09-02
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** communications, vendor email, service-to-service auth, ADMIN_API_KEY, X-Admin-Key, JwtAuthGuard, forbidNonWhitelisted, SendEmailDto, threading, In-Reply-To, fail-closed, absence-as-health, blast radius
@@ -269,7 +273,7 @@ route) — so there is no second runtime for this one to disagree with.]
   addition alongside it. What changed, concretely:
 
   - **A new terminal status, `RELAY_REFUSED`, on `procurement_conversations`**
-    (migration `20260928130100_a_relay_refusal_closes_the_draft_no_retry.sql`; [renumbered 2026-09-25 from `20260921113000`, which sorted behind main's ceiling `20260922231300` — ADR 0212]; [renumbered again 2026-09-26 from `20260925160100`, which by then sorted behind main's new ceiling `20260925160700` — same guard, PR #429 merge-train]).
+    (migration `20261001090100_a_relay_refusal_closes_the_draft_no_retry.sql`; [renumbered 2026-09-25 from `20260921113000`, which sorted behind main's ceiling `20260922231300` — ADR 0212]; [renumbered again 2026-09-26 from `20260925160100`, which by then sorted behind main's new ceiling `20260925160700` — same guard, PR #429 merge-train][renumbered again 2026-09-26 from `20260925160100`, which by then sorted behind main's new ceiling `20260925160700` — same guard, PR #429 merge-train]; [renumbered twice more on 2026-09-27, via `20260928130100` to `20261001090100`, past main's ceilings `20260928000000` and `20260930100100` — same guard; ADR 0212's brackets]).
     `_release_send_claim` (which set the row back to `prior_status` — DRAFT
     or PENDING_APPROVAL — so a person or a bus replay could try again) is no
     longer reached for these three codes; `_close_relay_refused` is, and it
@@ -283,7 +287,7 @@ route) — so there is no second runtime for this one to disagree with.]
     (same migration), scoped to `status = 'RELAY_REFUSED'` by a CHECK
     constraint. `procurement_conversations.status` itself still carries NO
     CHECK constraint of its own — confirmed again (the prior migration,
-    `20260928130000`, renumbered 2026-09-25 from `20260921110000` per ADR 0212 and again 2026-09-26 from `20260925160000` for the same reason, already found and recorded this) — and closing that
+    `20261001090000`, renumbered 2026-09-25 from `20260921110000` per ADR 0212 and again 2026-09-26 from `20260925160000` for the same reason, already found and recorded this) — and closing that
     gap for the whole column is a cross-cutting change spanning 20+ call
     sites across two services, filed as an open item in the migration's own
     header rather than guessed at here.
@@ -434,7 +438,49 @@ route) — so there is no second runtime for this one to disagree with.]
     a stale `threadId` 404 closes its one draft the same way. This is within
     the founder's words ("Close it" for 403/404) and never risks a duplicate
     send; whether a mailbox-side 403 should park like 401 instead is filed as
-    OD-174 (OPEN-DECISIONS.md:24), part (b). Unchanged in code.]
+    OD-174 (OPEN-DECISIONS.md:88), part (b). Unchanged in code.]
+    [RESOLVED 2026-09-27 — founder, merge-train item 69 / OD-174 (b),
+    verbatim "Park quota/delegation 403 (Recommended)" (rejected: keep
+    closing every 403 as item 66 built it). A Gmail API 403 whose TYPED
+    reason names a fault of the shared sending mailbox now PARKS the draft
+    the way this ADR's relay 401 parks it, instead of closing it; every other
+    403 and every 404 still closes `RELAY_REFUSED` (item 66 narrowed, not
+    reversed). The reasons, from Gmail's "Resolve errors" page and Google's
+    shared API errors (read 2026-09-27): `dailyLimitExceeded`,
+    `userRateLimitExceeded`, `rateLimitExceeded`, `quotaExceeded`,
+    `domainPolicy`, `accessNotConfigured`, and the AIP-193 ErrorInfo
+    `RATE_LIMIT_EXCEEDED` / `SERVICE_DISABLED` (`send-failure.ts`
+    `RELAY_PARKING_GMAIL_REASONS`). They are read from `errors[].reason` and
+    ErrorInfo `details[].reason` only (`gmailErrorReasons`), never from the
+    message, and only when the typed status is 403
+    (`gmailRefusalParksRelayDraft`, checked before
+    `gmailRefusalClosesRelayDraft`, which excludes them). "Delegation" has no
+    reason of its own: Gmail types "Delegation denied for <user>" as
+    `forbidden` / `global`, the same fields as any other forbidden request,
+    so it cannot be separated without reading text and stays in the closing
+    bucket. It also cannot reach this path as a send 403: `GmailService`
+    sends as `userId: "me"` on the mailbox's own OAuth refresh token, so a
+    grant fault surfaces at the token endpoint as `"credentials"`, which
+    never closed. How it parks: `sendAsOrchestrator` answers **503** for it
+    (`RelaySendingMailboxUnavailableError`, `sendingMailboxUnavailable` on
+    the result and the FAILED audit row, with the reasons);
+    `_is_definite_send_refusal` reads "gateway refused the send: HTTP 5xx"
+    before any other pattern, so the draft is parked `SEND_UNCONFIRMED`
+    without a raise — the relay 401's own outcome. Python needed no change;
+    `test_a_sending_mailbox_503_end_to_end_parks_like_a_401` pins that half.
+    As with a 401, the parked row carries no reason of its own; the reason is
+    on the gateway's audit row and in both services' logs.]
+    [CORRECTED 2026-09-27, item-69 round: this bracket's "`"credentials"`
+    (Gmail 401/OAuth) and `"no-transport"` are unaffected and stay
+    ambiguous/parked on the relay path" is half wrong. They are unaffected
+    and answer 200 `success:false`; they are NOT parked. The composer words
+    that 200 "gateway refused the send: HTTP 200 — invalid_grant: …", and
+    `_is_definite_send_refusal`'s credentials pattern matches `invalid_grant`
+    (and "Invalid Credentials"), so the draft is RELEASED for retry — measured
+    on the classifier itself. This ADR's "401 parks" is the relay DOOR's own
+    401 (a wrong service key), which does park
+    (`test_a_relay_401_end_to_end_parks_for_a_person`). The gateway test that
+    said "parked" is renamed. Filed in `v3.0-TECH-DEBT.md`, not changed here.]
 
   - **Deploy order, gateway older than agent (PR #429 audit F2).** [ADDED
     2026-09-27. The two services deploy separately. While a new
@@ -458,8 +504,22 @@ route) — so there is no second runtime for this one to disagree with.]
     otherwise, the one function above is the whole change to revert.]
     [STATUS 2026-09-27, PR #429 audit fix round 2: this reading narrows a
     Locked founder ruling and was never put to him. It is now filed as
-    OD-174 (OPEN-DECISIONS.md:24), part (a), and stays an agent's reading —
+    OD-174 (OPEN-DECISIONS.md:88), part (a), and stays an agent's reading —
     not decided — until he answers.]
+    [FOUNDER-APPROVED 2026-09-27 — merge-train item 68 / OD-174 (a),
+    verbatim "Keep the retry (Recommended)" (rejected: close this 400 too
+    and rely on the deploy order alone). The release-for-retry above is now
+    a NAMED, founder-approved exception to this ADR's "400/403/422 relay
+    refusal is FINAL" rule, scoped to exactly the structural shape
+    `_fields_an_older_gateway_refused` recognises; every other 400 stays
+    final. Unchanged in code. The deploy-ordering hazard stands as recorded:
+    promote `api-gateway` before `services/agent-orchestrator`, both of which
+    run in production (the correction brackets under "So: no vendor email
+    was lost" and "Nothing here makes the orchestrator run in production");
+    if the agent rolls first anyway, drafts are released and retried rather
+    than closed, and a draft whose bus retries run out before the gateway
+    lands waits at its prior status for a person. The window's length is
+    still unmeasured.]
 
   **Tests, all in `wt-r5-relay`:**
   `test_vendor_email_gateway_auth.py` — new
@@ -576,3 +636,4 @@ and it says so in the log rather than failing silently.
 | 2026-09-21 | relay lane (`wt-r5-relay`) | Founder corrected the 2026-09-19 answer: 400/403/422 CLOSE (`RELAY_REFUSED`, no claim released, no raise) rather than release for retry, and a relay-path header refusal (ADR 0172) now answers 422 rather than 200 — both his words quoted verbatim in the bracket above. `_is_definite_send_refusal` unchanged; a new, narrower `_relay_final_refusal_code` is checked first. Migration `20260921113000` adds `procurement_conversations.relay_refusal_reason`, scoped to the new status by a CHECK constraint (the column's own status field remains unconstrained — confirmed again, filed as an open item, not touched). CommunicationsNext's draft panel now shows the gateway's sentence; `/orders`' own panel does not yet (named, not built). [CORRECTED same day, last call: built — see the next row.] 85/85 + 58/58 measured; 9 mutants, all killed, every restore `cmp`-identical (one — M2 — false-passed on first run because the test harness mocked the constant it was meant to verify; fixed to parse the real query instead). Status remains Locked. |
 | 2026-09-21 | relay lane last call (`wt-r5-relay`) | Adversarial pass over the staged diff. The close path, the replay block and the 422 held (85/85 Python re-run; one extra mutant — the close call swapped for `_release_send_claim`, i.e. option (c) "release quietly" — killed 9 red, restore `cmp`-identical). Three gaps fixed: (1) "the manager sees why on the draft" did not hold end to end — the `/orders` thread drawer printed the raw `RELAY_REFUSED` token under a Clock icon, the legacy `/communications` page printed the raw token, and CommunicationsNext showed the reason only as a hover tooltip; all three now name the state and print the gateway's sentence (see the bracket in the draft-panel bullet), and `getOrderConversations` now reads `relay_refusal_reason`. (2) The 422 sentence always carried a doubled full stop (every `MimeHeaderError` message ends in one), stored and shown verbatim; trimmed. (3) This record called the lane brief's paraphrase "the founder's own words"; corrected in place. None of the "manager sees why" half had a single test before; added: 2 gateway (`conversation-ledger.spec.ts`, both reads, select pinned) and 3 web (drawer, legacy page, CommunicationsNext). Seven mutants against them (reason hidden in the drawer, drawer status entry removed, CommunicationsNext opened-row line removed, legacy label removed, `getOrderConversations` mapping nulled, its select column dropped, the full-stop trim removed): all 7 killed, every restore `cmp`-identical. Measured on the staged INDEX tree via `verify_index.sh`: `gw_tsc`, `gw_tsc_spec`, `web_tsc`, `gw_eslint` exit 0; jest 71/71 (`relay-email.doors.spec.ts` 58 + `conversation-ledger.spec.ts` 13); vitest 47/47 over the four touched web files; claims 395/395; boots and prefixes PASS; web eslint (via the p4-scratch plugin dir) exit 0 on the eight touched web files; the four git guards exit 0; the PGlite probe re-run, all held. Not done: no browser look at the three panels (tests render the DOM; no seeded RELAY_REFUSED row exists to view). One founder question left: the in-process path answers a header refusal 400 and releases the draft, the relay path 422 and closes it. Status remains Locked. |
 | 2026-09-21 | relay lane, merge last call (`wt-r5-relay`) | Merged `origin/main` at `34c33a76a` (#391, #418, #421). Main's header encoder won in `createMimeMessage`, `sendThroughGrant` and CLAIMS. The relay's close with no retry, its 422, and its random MIME boundary were kept. Each of main's added lines in the 10 files both sides touched is present in the merged tree. A mutant that closed a send on ANY quoted 400/403/422 passed all 85 Python tests. That meant a 5xx or a 200 whose detail quoted a relay refusal would be marked "not sent" when the vendor may already have it. Two tests were added and they kill that mutant (87/87; restore `cmp`-identical). The migration header and two gateway comments had called the brief's paraphrase his words; they were corrected to match the bracket above. The in-process question is answered and built in lane E (bracket above). Status remains Locked. |
+| 2026-09-27 | relay lane, merge-train items 66/68/69 (`wt-fin-relay`) | Item 69 built: a Gmail 403 whose typed reason is a sending-mailbox fault parks (503 → `SEND_UNCONFIRMED`) instead of closing; every other 403 and every 404 still closes. Item 68 recorded as a named exception; OD-174 moved to Resolved. The "credentials stay parked" wording corrected (they are released). 9 gateway mutants and 1 Python mutant, all killed, every restore `cmp`-identical. Status remains Locked. |

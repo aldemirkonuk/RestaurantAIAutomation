@@ -59,7 +59,7 @@
  *     letters composer's queue), not the same table — that table's
  *     `provider_id` is `NOT NULL`, and this door also reaches a house's own
  *     members, with no vendor at all (migration
- *     20260928130000_a_persons_mail_queues_like_the_houses_own.sql explains
+ *     20261001090000_a_persons_mail_queues_like_the_houses_own.sql explains
  *     why at length).
  *
  * THE RECORD
@@ -139,7 +139,9 @@ import { houseActor, type TokenUser } from "../letters/house-letters.actor";
 import { MimeHeaderError } from "../mime-headers";
 import {
   RelayRejectedByProviderError,
+  RelaySendingMailboxUnavailableError,
   gmailRefusalClosesRelayDraft,
+  gmailRefusalParksRelayDraft,
 } from "../send-failure";
 import {
   OrganizationsService,
@@ -225,6 +227,19 @@ export interface RelayResult {
    * for the same Gmail statuses. Typed, never inferred from `error`'s text.
    */
   providerRejectedRequest?: boolean;
+  /**
+   * `true` only when `success` is `false`, the send went through the
+   * orchestrator's transport, and Gmail answered 403 with a reason that
+   * names a fault of the shared SENDING mailbox — quota, rate limit, a
+   * domain policy, the API switched off (`send-failure.ts`'s
+   * `gmailRefusalParksRelayDraft`). Founder, 2026-09-27 (item 69, "Park
+   * quota/delegation 403 (Recommended)"): this PARKS the draft the way a
+   * relay 401 does — `sendAsOrchestrator` answers 503 — instead of closing it
+   * like `providerRejectedRequest`. Never both. Typed, never read from text.
+   */
+  sendingMailboxUnavailable?: boolean;
+  /** The Gmail reasons that set `sendingMailboxUnavailable`, as Gmail typed them. */
+  gmailReasons?: string[];
   channel: "email";
   door: RelayDoor;
   /** Populated only on the person door: which mailbox it sent (or will send)
@@ -392,6 +407,26 @@ export class RelayEmailService {
     // `_relay_final_refusal_code` closes the draft RELAY_REFUSED for it too —
     // the code only reads the HTTP status, never which of the two flags below
     // set it. The wording differs because the provider WAS reached this time.
+    // Founder, 2026-09-27 (item 69, "Park quota/delegation 403
+    // (Recommended)", narrowing item 66): a Gmail 403 whose typed reason is
+    // a fault of the shared sending mailbox is the mailbox's problem, not
+    // the draft's, so it must not close. It answers 503: the orchestrator's
+    // `_is_definite_send_refusal` checks "gateway refused the send: HTTP 5xx"
+    // FIRST and returns False, so `_handle_conversation_approved` parks the
+    // draft SEND_UNCONFIRMED without raising — the same outcome as ADR
+    // 0099's relay 401 ("401 parks"), never RELAY_REFUSED, never a bus retry.
+    if (!result.success && result.sendingMailboxUnavailable) {
+      const said = (result.error ?? "Gmail refused the send").replace(
+        /\.\s*$/,
+        "",
+      );
+      const reasons = result.gmailReasons?.length
+        ? ` (${result.gmailReasons.join(", ")})`
+        : "";
+      throw new ServiceUnavailableException(
+        `${said}. Gmail refused to send from the shared sending mailbox for a reason on that mailbox${reasons}, not on this message, so nothing was sent and the draft is held rather than closed.`,
+      );
+    }
     if (!result.success && (result.refusedBeforeSend || result.providerRejectedRequest)) {
       // Every `MimeHeaderError` sentence already ends in a full stop
       // (mime-headers.ts), so drop it before appending ours — this text is
@@ -754,6 +789,12 @@ export class RelayEmailService {
     // it is not "before send" in the `refusedBeforeSend` sense — hence its
     // own flag, never folded into that one.
     let providerRejectedRequest = false;
+    // `RelaySendingMailboxUnavailableError` (send-failure.ts): Gmail answered
+    // 403 for a fault of the shared sending mailbox. Founder, 2026-09-27,
+    // item 69: parks rather than closes — its own flag, never folded into
+    // `providerRejectedRequest`.
+    let sendingMailboxUnavailable = false;
+    let gmailReasons: string[] = [];
     try {
       const result = await send(plan);
       success = true;
@@ -764,6 +805,10 @@ export class RelayEmailService {
       error = err instanceof Error ? err.message : String(err);
       refusedBeforeSend = err instanceof MimeHeaderError;
       providerRejectedRequest = err instanceof RelayRejectedByProviderError;
+      if (err instanceof RelaySendingMailboxUnavailableError) {
+        sendingMailboxUnavailable = true;
+        gmailReasons = [...err.reasons];
+      }
     }
 
     const outcomeRecorded = await this.insertBestEffort(
@@ -773,7 +818,15 @@ export class RelayEmailService {
         correlationId,
         success
           ? { outcome: "sent", messageId: messageId ?? null, threadId: threadId ?? null, ...extraAudit }
-          : { outcome: "failed", error, refusedBeforeSend, providerRejectedRequest, ...extraAudit },
+          : {
+              outcome: "failed",
+              error,
+              refusedBeforeSend,
+              providerRejectedRequest,
+              sendingMailboxUnavailable,
+              ...(gmailReasons.length ? { gmailReasons } : {}),
+              ...extraAudit,
+            },
         success ? null : (error ?? null),
       ),
       `the ${success ? "sent" : "failed"} outcome of ${correlationId}`,
@@ -786,6 +839,9 @@ export class RelayEmailService {
       error,
       ...(refusedBeforeSend ? { refusedBeforeSend } : {}),
       ...(providerRejectedRequest ? { providerRejectedRequest } : {}),
+      ...(sendingMailboxUnavailable
+        ? { sendingMailboxUnavailable, gmailReasons }
+        : {}),
       channel: "email",
       door: plan.door,
       ...(extraAudit.sender
@@ -844,6 +900,17 @@ export class RelayEmailService {
       // `"credentials"` (401/OAuth) and `"no-transport"` are deliberately NOT
       // re-thrown here and fall through to the plain `Error` below, staying
       // ambiguous on this path exactly as before (ADR 0099: "401 parks").
+      // Founder, 2026-09-27 (item 69, "Park quota/delegation 403
+      // (Recommended)", narrowing item 66): a 403 whose typed Gmail reason is
+      // a fault of THIS shared mailbox (quota, rate limit, domain policy, API
+      // disabled) parks instead — checked first, because
+      // `gmailRefusalClosesRelayDraft` excludes exactly these.
+      if (gmailRefusalParksRelayDraft(result)) {
+        throw new RelaySendingMailboxUnavailableError(
+          result.error ?? "the provider reported no reason",
+          result.gmailApiReasons ?? [],
+        );
+      }
       if (gmailRefusalClosesRelayDraft(result)) {
         throw new RelayRejectedByProviderError(
           result.error ?? "the provider reported no reason",

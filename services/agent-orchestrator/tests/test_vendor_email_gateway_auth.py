@@ -715,6 +715,52 @@ async def test_a_relay_401_end_to_end_parks_for_a_person(
     assert agent.database.supabase.conversation["status"] == "SEND_UNCONFIRMED"
 
 
+# Founder, 2026-09-27, merge-train item 69 / OD-174 (b), verbatim "Park
+# quota/delegation 403 (Recommended)": a Gmail 403 whose typed reason is a
+# fault of the shared sending mailbox is answered by the gateway as 503
+# (relay-email.service.ts `sendAsOrchestrator`, `sendingMailboxUnavailable`).
+# This pins the orchestrator's half: that 503 parks the draft exactly as the
+# relay 401 above does — SEND_UNCONFIRMED, no raise, never RELAY_REFUSED —
+# whatever Gmail's own words inside the sentence say.
+_MAILBOX_PARK_SENTENCES = [
+    "Daily Limit Exceeded. Gmail refused to send from the shared sending "
+    "mailbox for a reason on that mailbox (dailyLimitExceeded), not on this "
+    "message, so nothing was sent and the draft is held rather than closed.",
+    # Gmail's words can carry anything; the 5xx is read first regardless.
+    "Invalid Credentials; recipient address rejected; gateway refused the "
+    "send: HTTP 422 — no recipients. Gmail refused to send from the shared "
+    "sending mailbox for a reason on that mailbox (userRateLimitExceeded), "
+    "not on this message, so nothing was sent and the draft is held rather "
+    "than closed.",
+]
+
+
+@pytest.mark.parametrize("sentence", _MAILBOX_PARK_SENTENCES)
+@pytest.mark.asyncio
+async def test_a_sending_mailbox_503_end_to_end_parks_like_a_401(
+    monkeypatch: pytest.MonkeyPatch, sentence: str
+):
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    monkeypatch.setattr(
+        _CLIENT_SESSION,
+        _answering(
+            503,
+            {
+                "statusCode": 503,
+                "message": sentence,
+                "error": "Service Unavailable",
+            },
+        ),
+    )
+    agent = _approved_agent(_approved_conversation())
+
+    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    row = agent.database.supabase.conversation
+    assert row["status"] == "SEND_UNCONFIRMED"
+    assert row.get("relay_refusal_reason") is None
+
+
 @pytest.mark.asyncio
 async def test_a_provider_failure_behind_a_200_reports_the_provider_s_error(
     composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch

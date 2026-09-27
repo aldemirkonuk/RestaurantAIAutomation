@@ -15,6 +15,7 @@ import {
 } from "./mime-headers";
 import {
   classifySendFailure,
+  gmailErrorReasons,
   httpStatus as typedHttpStatus,
   type SendRefusal,
 } from "./send-failure";
@@ -137,6 +138,15 @@ export interface EmailResult {
    * (send-failure.ts `gmailRefusalClosesRelayDraft`, founder item 66).
    */
   gmailApiStatus?: number;
+  /**
+   * The Gmail API's machine-readable error reasons for this failure
+   * (`errors[].reason`, or an AIP-193 ErrorInfo `reason`), read from typed
+   * fields by send-failure.ts `gmailErrorReasons`, never from `error` text.
+   * Set ONLY on the Gmail API branch, never on the SMTP fallback. The relay
+   * parks rather than closes a 403 whose reason is a sending-mailbox fault
+   * (send-failure.ts `gmailRefusalParksRelayDraft`, founder item 69).
+   */
+  gmailApiReasons?: string[];
 }
 
 @Injectable()
@@ -302,11 +312,13 @@ export class GmailService implements OnModuleInit {
         error && typeof error === "object"
           ? typedHttpStatus(error as Record<string, any>)
           : undefined;
+      const gmailApiReasons = gmailErrorReasons(error);
       return {
         success: false,
         error: errorMessage,
         ...(refusal && { refusal }),
         ...(gmailApiStatus !== undefined && { gmailApiStatus }),
+        ...(gmailApiReasons.length > 0 && { gmailApiReasons }),
       };
     }
   }

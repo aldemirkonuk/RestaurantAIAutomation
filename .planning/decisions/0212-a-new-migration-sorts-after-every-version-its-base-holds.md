@@ -83,6 +83,12 @@ citation of the prior `20260927140000`/`…140100` pair, including this ADR's ow
 above and the CLAIMS row that asserts each migration cites its sibling by name, was
 repointed in the same commit.]
 
+[2026-09-27, PR #429 items 66/68/69 round: renamed a fourth time, to `20261001090000` and
+`…090100`, past main's new ceiling `20260930100100` (#441's areas migrations, merged while
+#429 was in flight; `check_migration_order.py` failed the merged tree until the rename).
+Every citation of the `20260928130000`/`…130100` pair outside this bracket and the one
+above was repointed in the same commit.]
+
 The same day, one lane renamed its migration to one step past the ceiling. That was
 checked by hand against every branch it could see, and it still lost the race twice.
 

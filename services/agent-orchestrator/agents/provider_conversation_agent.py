@@ -3135,7 +3135,7 @@ class ProviderConversationAgent(BaseAgent):
         draft to fix and send again as new.
 
         `reason` is the gateway's own sentence, stored verbatim in
-        `relay_refusal_reason` (migration 20260928130100) so a manager reading
+        `relay_refusal_reason` (migration 20261001090100) so a manager reading
         the draft sees exactly what the relay said. Best-effort, same posture
         as its siblings above: if this write fails the row stays SENDING,
         which is also not re-claimable.

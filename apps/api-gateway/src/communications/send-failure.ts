@@ -113,23 +113,123 @@ export function classifySendFailure(error: unknown): SendRefusal | undefined {
  *     a different transport the ruling never covered (PR #429 audit at
  *     d8be79ab2 found the first cut of item 66 closed on all of these).
  * Widening this set is a founder call, not an implementation detail.
+ *
+ * Narrowed by item 69 (below): a 403 whose Gmail reason says the SENDING
+ * mailbox is out of quota or switched off parks instead of closing.
  */
 export const RELAY_CLOSING_GMAIL_STATUSES: ReadonlySet<number> = new Set([
   403, 404,
 ]);
 
 /**
+ * The Gmail error reasons that PARK a relay draft instead of closing it
+ * (founder, 2026-09-27, merge-train item 69 / OD-174 (b), verbatim "Park
+ * quota/delegation 403 (Recommended)"; rejected: keep closing every 403 as
+ * item 66 built it). Each one is a fault of the one shared deployment mailbox
+ * the relay sends from, not of the draft — so closing on it would close EVERY
+ * relay draft sent while the fault lasts, each for good.
+ *
+ * Source: Gmail API "Resolve errors" (developers.google.com/workspace/gmail/
+ * api/guides/handle-errors, read 2026-09-27) documents 403 with
+ * `errors[].reason` = `dailyLimitExceeded`, `userRateLimitExceeded`,
+ * `rateLimitExceeded` and `domainPolicy` ("The domain administrators have
+ * disabled Gmail apps"). Google's shared API errors add `quotaExceeded` and
+ * `accessNotConfigured` (the Gmail API is disabled in the Cloud project), and
+ * the AIP-193 `google.rpc.ErrorInfo` detail carries the same two facts as
+ * `RATE_LIMIT_EXCEEDED` and `SERVICE_DISABLED`.
+ *
+ * Delegation has NO reason of its own: Gmail's "Delegation denied for <user>"
+ * arrives as `reason: "forbidden"`, `domain: "global"` — the same typed fields
+ * as any other forbidden request — so it cannot be told apart without reading
+ * the message, which this module never does. It also cannot arise on this
+ * transport as a send 403: `GmailService` sends as `userId: "me"` with the
+ * mailbox's own OAuth refresh token, so a grant or delegation fault surfaces
+ * at the token endpoint (`invalid_grant` / `unauthorized_client`, kind
+ * `"credentials"`), which never closed a relay draft. `forbidden` therefore
+ * stays in the closing bucket, as do `insufficientPermissions` and a 403 that
+ * carries no reason at all ("every other 403 ... still closes", item 69).
+ */
+export const RELAY_PARKING_GMAIL_REASONS: ReadonlySet<string> = new Set([
+  // Gmail API errors[].reason (the v1 JSON error body)
+  "dailyLimitExceeded",
+  "userRateLimitExceeded",
+  "rateLimitExceeded",
+  "quotaExceeded",
+  "domainPolicy",
+  "accessNotConfigured",
+  // AIP-193 google.rpc.ErrorInfo reasons for the same two facts
+  "RATE_LIMIT_EXCEEDED",
+  "SERVICE_DISABLED",
+]);
+
+const ERROR_INFO_TYPE = "type.googleapis.com/google.rpc.ErrorInfo";
+
+/**
+ * The Gmail API's machine-readable error reasons for this failure, read from
+ * TYPED fields only: `response.data.error.errors[].reason` (the v1 JSON error
+ * body gaxios keeps on `response.data`), the same array when a googleapis
+ * version copies it onto the error as `errors`, and the `reason` of every
+ * `google.rpc.ErrorInfo` in `response.data.error.details`. Never `message`,
+ * never any free-text field. Non-string entries are ignored.
+ */
+export function gmailErrorReasons(error: unknown): string[] {
+  if (!error || typeof error !== "object") return [];
+  const e = error as Record<string, any>;
+  const body = e.response?.data?.error;
+  const reasons: string[] = [];
+  const read = (list: unknown, onlyErrorInfo: boolean) => {
+    if (!Array.isArray(list)) return;
+    for (const entry of list) {
+      if (!entry || typeof entry !== "object") continue;
+      if (onlyErrorInfo && entry["@type"] !== ERROR_INFO_TYPE) continue;
+      if (typeof entry.reason === "string" && !reasons.includes(entry.reason)) {
+        reasons.push(entry.reason);
+      }
+    }
+  };
+  if (body && typeof body === "object") {
+    read(body.errors, false);
+    read(body.details, true);
+  }
+  read(e.errors, false);
+  return reasons;
+}
+
+/**
+ * Does this failed send PARK a relay draft under item 69? Only a Gmail API
+ * (never SMTP) refusal whose typed status is 403 AND whose typed reasons name
+ * a sending-mailbox fault (`RELAY_PARKING_GMAIL_REASONS`). A 404 never parks,
+ * whatever its reason; neither does a 403 with no reason or another reason.
+ */
+export function gmailRefusalParksRelayDraft(result: {
+  refusal?: SendRefusal;
+  gmailApiStatus?: number;
+  gmailApiReasons?: readonly string[];
+}): boolean {
+  return (
+    result.refusal?.kind === "rejected" &&
+    result.gmailApiStatus === 403 &&
+    (result.gmailApiReasons ?? []).some((r) =>
+      RELAY_PARKING_GMAIL_REASONS.has(r),
+    )
+  );
+}
+
+/**
  * Does this failed send close a relay draft under item 66? Only a Gmail API
- * (never SMTP) refusal whose typed HTTP status is 403 or 404.
+ * (never SMTP) refusal whose typed HTTP status is 403 or 404 — and, since item
+ * 69, not a 403 that `gmailRefusalParksRelayDraft` parks instead.
  */
 export function gmailRefusalClosesRelayDraft(result: {
   refusal?: SendRefusal;
   gmailApiStatus?: number;
+  gmailApiReasons?: readonly string[];
 }): boolean {
   return (
     result.refusal?.kind === "rejected" &&
     result.gmailApiStatus !== undefined &&
-    RELAY_CLOSING_GMAIL_STATUSES.has(result.gmailApiStatus)
+    RELAY_CLOSING_GMAIL_STATUSES.has(result.gmailApiStatus) &&
+    !gmailRefusalParksRelayDraft(result)
   );
 }
 
@@ -155,5 +255,27 @@ export class RelayRejectedByProviderError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "RelayRejectedByProviderError";
+  }
+}
+
+/**
+ * Carries an item-69 park (`gmailRefusalParksRelayDraft` above: a Gmail API
+ * 403 whose reason is quota, rate limit, a domain policy or the API switched
+ * off on the SHARED sending mailbox) across the throw/catch boundary inside
+ * `RelayEmailService.dispatch()`.
+ *
+ * Founder, 2026-09-27 (item 69, "Park quota/delegation 403 (Recommended)"):
+ * such a 403 parks the draft the way ADR 0099's relay 401 parks it, instead
+ * of closing it `RELAY_REFUSED`. `sendAsOrchestrator` answers 503 for it,
+ * which the orchestrator's `_is_definite_send_refusal` reads as a gateway 5xx
+ * FIRST, before any other pattern — ambiguous, parked `SEND_UNCONFIRMED`, not
+ * raised, so the bus does not retry it and no person-less loop re-sends it.
+ */
+export class RelaySendingMailboxUnavailableError extends Error {
+  readonly reasons: readonly string[];
+  constructor(message: string, reasons: readonly string[]) {
+    super(message);
+    this.name = "RelaySendingMailboxUnavailableError";
+    this.reasons = [...reasons];
   }
 }

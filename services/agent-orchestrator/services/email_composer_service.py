@@ -53,6 +53,12 @@ def _fields_an_older_gateway_refused(
     whitelist sentence naming a key THIS agent put in the body. A list mixing
     in any other validation failure, a string `message`, or a name this agent
     did not send is not this case and stays the relay's own final 400.
+
+    [FOUNDER-APPROVED 2026-09-27, merge-train item 68 / OD-174 (a), verbatim
+    "Keep the retry (Recommended)": this release-for-retry is a named,
+    approved exception to ADR 0099's "400/403/422 relay refusal is FINAL"
+    rule, not an agent's reading of it. The rejected alternative was to close
+    this 400 too and rely on the gateway-before-agent deploy order alone.]
     """
     if status != 400 or not isinstance(message, list) or not message:
         return None
