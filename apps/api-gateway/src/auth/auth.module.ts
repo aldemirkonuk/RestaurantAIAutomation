@@ -14,6 +14,7 @@ import { TokenBlacklistService } from "./services/token-blacklist.service";
 import { GoogleStrategy } from "./strategies/google.strategy";
 import { MicrosoftStrategy } from "./strategies/microsoft.strategy";
 import { CommunicationsModule } from "../communications/communications.module";
+import { WebsocketModule } from "../websocket/websocket.module";
 import { resolveJwtSecret } from "./jwt-secret";
 
 @Module({
@@ -22,6 +23,7 @@ import { resolveJwtSecret } from "./jwt-secret";
     CacheModule,
     ConfigModule,
     forwardRef(() => CommunicationsModule),
+    forwardRef(() => WebsocketModule),
     PassportModule.register({ defaultStrategy: "jwt" }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

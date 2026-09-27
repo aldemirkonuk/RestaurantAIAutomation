@@ -134,12 +134,12 @@ describe("auth_time: stamped by a sign-in, carried by everything else", () => {
   it("a house switch carries the instant it was given, and invents none", async () => {
     const { svc, jwt } = await service(await world());
     const t = signedInNow() - 900;
-    const carried = await svc.switchRestaurant(USER, HOUSE_2, t);
+    const carried = await svc.switchRestaurant(USER, HOUSE_2, false, t);
     expect(claims(jwt, carried.accessToken)).toMatchObject({
       restaurantId: HOUSE_2,
       auth_time: t,
     });
-    const none = await svc.switchRestaurant(USER, HOUSE_2, null);
+    const none = await svc.switchRestaurant(USER, HOUSE_2, false, null);
     expect(claims(jwt, none.accessToken)).not.toHaveProperty("auth_time");
   });
 

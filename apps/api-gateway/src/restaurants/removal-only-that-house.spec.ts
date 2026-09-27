@@ -452,3 +452,52 @@ describe("the Team page's remove: owners manage owners (44.1n)", () => {
     expect(db.tables.team_members).toHaveLength(1);
   });
 });
+
+describe("who ended it: leaving is stamped 'left', a removal by someone else is not (ADR 0164, round 5, item 26)", () => {
+  // The founder, 2026-09-25, round 5, item 26: "only people removed by someone
+  // else see /no-access". The trigger (migration 20260926120000) cannot see
+  // who acted; each door where the person ends it themselves restamps the
+  // trigger's row 'left'. The stub runs no triggers, so only the restamp is
+  // asserted here; the row's reading is in sessions-follow-membership.spec.ts.
+  const stamps = (db: StubDb) =>
+    db.opsOn("house_memberships_ended", "update").map((op) => ({
+      payload: op.payload,
+      eqs: Object.fromEntries(op.filters.map((f) => [f.column, f.value])),
+    }));
+  const left = [
+    { payload: { end_reason: "left" }, eqs: { user_id: P, restaurant_id: B } },
+  ];
+
+  it("leaveRestaurant stamps 'left'", async () => {
+    const db = world(managerOfB(B));
+    await services(db).auth.leaveRestaurant(P, B);
+    expect(stamps(db)).toEqual(left);
+  });
+
+  it("Settings' remove of oneself stamps 'left'", async () => {
+    const db = world(managerOfB(B));
+    await services(db).members.removeMember(P, B, P);
+    expect(accessRows(db, P, B)).toHaveLength(0);
+    expect(stamps(db)).toEqual(left);
+  });
+
+  it("Settings' remove by an owner stamps nothing: it reads as removed", async () => {
+    const db = world(managerOfB(B));
+    await services(db).members.removeMember(OWNER_B, B, P);
+    expect(accessRows(db, P, B)).toHaveLength(0);
+    expect(stamps(db)).toEqual([]);
+  });
+
+  it("the Team page's remove of one's own roster row stamps 'left'", async () => {
+    const db = world(managerOfB(B));
+    await services(db).team.deleteMember(P, B, "m-p");
+    expect(accessRows(db, P, B)).toHaveLength(0);
+    expect(stamps(db)).toEqual(left);
+  });
+
+  it("the Team page's remove by an owner stamps nothing: it reads as removed", async () => {
+    const db = world(managerOfB(B));
+    await services(db).team.deleteMember(OWNER_B, B, "m-p");
+    expect(stamps(db)).toEqual([]);
+  });
+});
