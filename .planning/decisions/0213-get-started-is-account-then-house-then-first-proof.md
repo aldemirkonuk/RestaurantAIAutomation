@@ -74,7 +74,7 @@ as the fallback the verdict named: unmatched / uncategorised / unknown → penci
   stay as research records.
 
 **[ITEM 62, 2026-09-27 — row 8 ("TZ ... derived, shown, never asked as
-blanks") tightened on BOTH tenant-creating routes. Founder verbatim, item 62:
+blanks") tightened on both SIGN-UP routes. Founder verbatim, item 62:
 *"Browser zone, else none (Recommended)"*; rejected "Save nothing" (would
 discard a good browser answer) and "Keep New York default" (the fault ADR
 0116 had already removed from `restaurants.timezone` itself — the column has
@@ -88,13 +88,37 @@ column-level fix had removed one layer down. `createFirstHouse` (the route
 this ADR actually put `/get-started` on) had no such fallback but also no
 validation, so a malformed client-sent string would have been stored as a
 house's clock, unread by `Intl` anywhere in the write path.**
-**Both routes now call one function, `resolveSignUpTimezone`
-(`apps/api-gateway/src/auth/sign-up-timezone.ts`): the caller's zone if
-`Intl.DateTimeFormat` recognises it as a real IANA identifier, `null`
-otherwise — never a substituted default, never an untrusted string. `null`
-is not a new case for the rest of the product to learn: the low-stock
-digest's UTC fallback and its "no time zone set yet" line (item 61, PR #488)
-already exist for exactly this state.**
+**Both sign-up routes now call one function, `resolveSignUpTimezone`
+(`apps/api-gateway/src/auth/sign-up-timezone.ts`): `Intl.DateTimeFormat`'s
+own resolved name for the caller's zone when `Intl` accepts it and that name
+is not a bare UTC offset, `null` otherwise — never a substituted default,
+never the caller's raw spelling (`"america/new_york"` is stored as
+`"America/New_York"`; `"+05:00"`, which Node 22.22.2's `Intl` accepts, is
+stored as `null`; measured 2026-09-27, pinned in `register-timezone.spec.ts`).
+A THIRD route also creates a house and is NOT covered here:
+`OrganizationsService.createLocation` (`POST /organizations/locations`, used
+by `AddLocationDialog.tsx` to add a location to an existing organisation)
+writes `dto.timezone ?? null` with no `Intl` check, and the dialog calls the
+bare `Intl` expression this bracket replaces below. It never writes New York,
+so it is outside item 62's words, but it is the same class of gap — filed in
+`v3.0-TECH-DEBT.md` (2026-09-27) with the open CLAIMS row
+`TD-2026-09-27-CREATE-LOCATION-TIMEZONE-UNVALIDATED`.**
+**What a `null` zone means downstream is not uniform yet, and this bracket
+does not change it. At `origin/main` 29ba4e820 the low-stock digest runs
+EVERY house on a hard-coded New York clock
+(`notifications/low-stock-alerts.service.ts:146,172`) whatever
+`restaurants.timezone` holds, so storing `null` instead of
+`"America/New_York"` changes nothing about the digest while that stands. The
+digest's move to the house's own zone with a UTC fallback is PR #488 (item
+61, OPEN when this was written); the on-page "UTC — this house has no time
+zone set yet" line is a further follow-up that #488's page note assigns to
+#486's lane. So the honest UTC fallback for a sign-up with no zone depends on
+#488 landing — this change does not supply it; merging this first changes
+nothing in the digest, because the digest ignores the column until then.
+Other readers already carry `null` themselves (`scheduled-tenants.service.ts`
+`TIMEZONE_NOT_SET`; `calendar-reminders.service.ts` falls back to UTC and
+logs it; `vendor-terms.service.ts:716-717` uses a display zone flagged
+`isColumnDefault`).**
 **The web side (`Register.tsx`, `GetStarted.tsx`, `AuthContext.tsx`)
 computed the "derived" zone with a bare
 `Intl.DateTimeFormat().resolvedOptions().timeZone` — including once at

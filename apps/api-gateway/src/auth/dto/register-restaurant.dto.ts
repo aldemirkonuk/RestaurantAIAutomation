@@ -32,9 +32,9 @@ export class RegisterRestaurantDto {
    * .timeZone` reported it client-side — not asked of the person, so shape
    * validation here is deliberately loose. `AuthService.registerRestaurant`
    * re-checks it against `Intl` itself (`resolveSignUpTimezone`,
-   * `sign-up-timezone.ts`) and stores NULL for anything absent or not a real
-   * IANA identifier, rather than trusting the string or inventing one
-   * (item 62, 2026-09-27).
+   * `sign-up-timezone.ts`) and stores `Intl`'s resolved zone name, or NULL
+   * for anything absent, unrecognised or a bare UTC offset, rather than
+   * trusting the string or inventing one (item 62, 2026-09-27).
    */
   @IsOptional() @IsString() timezone?: string;
 

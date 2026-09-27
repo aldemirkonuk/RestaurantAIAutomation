@@ -172,6 +172,20 @@ describe("resolveSignUpTimezone", () => {
     expect(resolveSignUpTimezone("just a string")).toBeNull();
   });
 
+  it("stores Intl's resolved name, not the caller's spelling", () => {
+    expect(resolveSignUpTimezone("america/new_york")).toBe("America/New_York");
+    expect(resolveSignUpTimezone("US/Eastern")).toBe("America/New_York");
+    expect(resolveSignUpTimezone("utc")).toBe("UTC");
+  });
+
+  it("refuses a bare UTC offset — it is not an IANA zone name", () => {
+    // Node 22's Intl accepts these and resolves them to themselves, so
+    // isKnownTimeZone alone would let them through (measured 2026-09-27).
+    expect(resolveSignUpTimezone("+05:00")).toBeNull();
+    expect(resolveSignUpTimezone("-03:30")).toBeNull();
+    expect(resolveSignUpTimezone("+0530")).toBeNull();
+  });
+
   it("turns an absent zone into null", () => {
     expect(resolveSignUpTimezone(undefined)).toBeNull();
     expect(resolveSignUpTimezone(null)).toBeNull();
