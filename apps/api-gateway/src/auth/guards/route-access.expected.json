@@ -358,6 +358,10 @@
     "owner",
     "manager"
   ],
+  "POST /procurement/credits/:id/request-letter (CreditsController.requestLetter)": [
+    "owner",
+    "manager"
+  ],
   "POST /procurement/credits/:id/transition (CreditsController.transition)": [
     "owner",
     "manager"
