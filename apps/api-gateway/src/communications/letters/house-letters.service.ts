@@ -742,7 +742,7 @@ export class HouseLettersService {
     }
 
     const existing = await this.lettersForCredits(restaurantId, [creditId]);
-    const open = existing[creditId]?.find(
+    const open = existing.byCredit[creditId]?.find(
       (l) => l.status === LETTER_STATUS.DRAFT,
     );
     if (open) {
@@ -840,6 +840,51 @@ export class HouseLettersService {
     }
     const id = String((data as Record<string, unknown>).id);
 
+    // ── close the TOCTOU race, after the fact (audit round 1, R5, low severity) ──
+    // The "no open draft" check above and this insert are two round trips, so
+    // two concurrent `→ requested` (or `request-letter`) calls on the same
+    // claim can both pass the check and both insert — there is no unique
+    // constraint on (restaurant, credit_id, DRAFT) to stop it. Rather than add
+    // one (a migration, on a table many lanes touch, for a low-severity race),
+    // this re-reads every open draft for the claim right after inserting and
+    // keeps exactly one: the OLDEST by created_at (ties broken by id, so the
+    // order is total and every racer agrees on the same winner without
+    // coordinating). Every other one — including this call's own row, if it
+    // lost — is cancelled immediately, before it is ever shown to anyone.
+    // Double-SEND is a separate, already-closed door: `queue()`'s
+    // status-guarded UPDATE only ever promotes one draft, whichever survives
+    // here.
+    const afterInsert = await this.lettersForCredits(restaurantId, [
+      creditId,
+    ]);
+    const openAfterInsert = (afterInsert.byCredit[creditId] ?? []).filter(
+      (l) => l.status === LETTER_STATUS.DRAFT,
+    );
+    if (openAfterInsert.length > 1) {
+      const [canonical] = [...openAfterInsert].sort(
+        (a, b) =>
+          (a.createdAt ?? "").localeCompare(b.createdAt ?? "") ||
+          a.id.localeCompare(b.id),
+      );
+      for (const dup of openAfterInsert) {
+        if (dup.id === canonical.id) continue;
+        await this.db.client
+          .from("procurement_conversations")
+          .update({ status: LETTER_STATUS.CANCELLED })
+          .eq("id", dup.id)
+          .eq("restaurant_id", restaurantId)
+          .eq("status", LETTER_STATUS.DRAFT);
+      }
+      if (canonical.id !== id) {
+        return {
+          state: "existing",
+          id: canonical.id,
+          to: canonical.to,
+          says: "This claim already has a drafted letter that has not been sent (a concurrent request drafted it first). That draft is the one to open — no second one was kept.",
+        };
+      }
+    }
+
     if (!to) {
       return {
         state: "drafted_no_address",
@@ -863,13 +908,25 @@ export class HouseLettersService {
    * link to its draft, and what became of it after. A failed read throws: a
    * claim shown with no letter because the read failed would say "nothing was
    * drafted" about a draft that exists.
+   *
+   * `capped` (PR #476 audit round 1, R4): the read stops at 500 rows across
+   * the WHOLE batch of `creditIds`, not per claim, and the window is not
+   * registered anywhere else. Once a house's letters for these claims exceed
+   * it, the oldest ones fall out of `data`, and a claim whose only letter fell
+   * out would otherwise get `[]` here — indistinguishable from a claim that
+   * was never asked for. The caller (`credits.controller.ts`) reads `capped`
+   * and renders a claim ABSENT from `byCredit` as unknown, never as none,
+   * whenever this is true; a claim present in `byCredit` is unaffected — its
+   * letter survived the window, so it is known regardless. Registered as
+   * `RECEIPTS_SERVER_WINDOWS.CREDIT_LETTERS` in `useReceiptsNextData.ts`, so
+   * `scripts/check_windowed_figures.py` proves the 500 below still matches.
    */
   async lettersForCredits(
     restaurantId: string,
     creditIds: string[],
-  ): Promise<Record<string, CreditLetterRef[]>> {
-    const out: Record<string, CreditLetterRef[]> = {};
-    if (creditIds.length === 0) return out;
+  ): Promise<{ byCredit: Record<string, CreditLetterRef[]>; capped: boolean }> {
+    const byCredit: Record<string, CreditLetterRef[]> = {};
+    if (creditIds.length === 0) return { byCredit, capped: false };
     const { data, error } = await this.db.client
       .from("procurement_conversations")
       .select("id, status, email_headers, sent_at, created_at")
@@ -883,11 +940,12 @@ export class HouseLettersService {
         `The claims' letters could not be read (${error.message}).`,
       );
     }
-    for (const r of (data ?? []) as unknown as Record<string, unknown>[]) {
+    const rows = (data ?? []) as unknown as Record<string, unknown>[];
+    for (const r of rows) {
       const headers = (r.email_headers ?? {}) as Record<string, unknown>;
       const creditId = headers.credit_id as string | undefined;
       if (!creditId) continue;
-      (out[creditId] ??= []).push({
+      (byCredit[creditId] ??= []).push({
         id: String(r.id),
         status: String(r.status ?? ""),
         to: (headers.to as string | null) ?? null,
@@ -895,7 +953,7 @@ export class HouseLettersService {
         createdAt: (r.created_at as string | null) ?? null,
       });
     }
-    return out;
+    return { byCredit, capped: rows.length >= 500 };
   }
 
   // ==========================================================================
@@ -1148,14 +1206,32 @@ export class HouseLettersService {
   // helpers
   // ==========================================================================
 
+  /**
+   * How many outbound messages this order has already had — the round count
+   * the composer's guardrail and `round_count` read.
+   *
+   * A `HOUSE_DRAFT` nobody has decided has not reached the vendor, and a
+   * `HOUSE_CANCELLED` one never will (PR #476 audit round 1, R2): before this
+   * fix, discarding a draft still left it counted, so the composer told a
+   * human "this is message 4 on this order" about a conversation that had
+   * only had three. Both statuses are excluded here; every other status this
+   * table holds — `HOUSE_QUEUED`, `SENT`, `HOUSE_FAILED`, and every AI-path
+   * value outside the `LETTER_STATUS` enum — is a round that did, or at least
+   * tried to, leave, and still counts.
+   */
   private async countOutboundOnOrder(orderId: string): Promise<number> {
     const { data, error } = await this.db.client
       .from("procurement_conversations")
-      .select("id")
+      .select("id, status")
       .eq("order_id", orderId)
       .eq("direction", "outbound");
     if (error) return 0;
-    return (data ?? []).length;
+    return (data ?? []).filter((r) => {
+      const status = String((r as Record<string, unknown>).status ?? "");
+      return (
+        status !== LETTER_STATUS.DRAFT && status !== LETTER_STATUS.CANCELLED
+      );
+    }).length;
   }
 
   /**

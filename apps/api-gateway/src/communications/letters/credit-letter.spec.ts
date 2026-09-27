@@ -399,6 +399,87 @@ describe("sending a draft is the approval", () => {
     ).rejects.toThrow(/different vendor/);
   });
 
+  // Audit round 1, R5 (low severity): the "no open draft" check and the
+  // insert are two round trips, so two concurrent `→ requested` calls can
+  // both pass the check and both insert. Simulated here by injecting a
+  // second draft row for the same claim right before this call's own insert
+  // lands — exactly the race window the check-then-insert leaves open.
+  it("closes a concurrent double-draft race, keeping one winner and cancelling the rest", async () => {
+    const { db, tables } = seed();
+    const svc = service(db);
+    const originalFrom = db.client.from as (table: string) => Record<string, unknown>;
+    let injected = false;
+    (db.client as unknown as { from: typeof originalFrom }).from = (
+      table: string,
+    ) => {
+      const q = originalFrom(table);
+      if (table === "procurement_conversations") {
+        const originalInsert = (
+          q.insert as (body: Row) => Record<string, unknown>
+        ).bind(q);
+        q.insert = (body: Row) => {
+          if (!injected) {
+            injected = true;
+            // Ties on `created_at` (neither row sets it here — the fake
+            // store has no DB default) are broken by id; "aaa-racer" sorts
+            // before whatever id the real insert below generates, so the
+            // racer is the deterministic winner, same as an earlier
+            // `created_at` would be in production.
+            tables.procurement_conversations.push({
+              id: "aaa-racer",
+              restaurant_id: HOUSE,
+              provider_id: PROVIDER,
+              order_id: "order-1",
+              direction: "outbound",
+              channel: "email",
+              content: "racer draft",
+              message_text: "racer draft",
+              ai_generated: false,
+              status: LETTER_STATUS.DRAFT,
+              scheduled_send_at: null,
+              outbound_email_type: "HOUSE_LETTER",
+              email_headers: {
+                subject: "racer",
+                to: "orders@vinoteca.example",
+                category: "invoice_mismatch",
+                credit_id: CREDIT,
+                drafted_by: PERSON,
+              },
+            });
+          }
+          return originalInsert(body);
+        };
+      }
+      return q;
+    };
+
+    const out = await svc.draftForCredit({
+      restaurantId: HOUSE,
+      userId: PERSON,
+      creditId: CREDIT,
+    });
+
+    expect(out.state).toBe("existing");
+    expect(out.id).toBe("aaa-racer");
+    const drafts = tables.procurement_conversations.filter(
+      (r) => r.status === LETTER_STATUS.DRAFT,
+    );
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].id).toBe("aaa-racer");
+    const cancelled = tables.procurement_conversations.filter(
+      (r) => r.status === LETTER_STATUS.CANCELLED,
+    );
+    expect(cancelled).toHaveLength(1);
+    // The loser can never then be sent — it is not a draft any more.
+    await expect(
+      svc.queue({
+        restaurantId: HOUSE,
+        userId: PERSON,
+        dto: dto(String(cancelled[0].id)),
+      }),
+    ).rejects.toThrow(/not a draft/);
+  });
+
   it("a discarded draft is kept as cancelled and cannot then be sent", async () => {
     const { svc, tables, draftId } = await drafted();
     const out = await svc.discardDraft({ restaurantId: HOUSE, id: draftId });
@@ -416,10 +497,11 @@ describe("sending a draft is the approval", () => {
     const drafts = await svc.drafts(HOUSE);
     expect(drafts).toHaveLength(1);
     expect(drafts[0]).toMatchObject({ id: draftId, creditId: CREDIT });
-    const byCredit = await svc.lettersForCredits(HOUSE, [CREDIT]);
-    expect(byCredit[CREDIT]).toEqual([
+    const lettersResult = await svc.lettersForCredits(HOUSE, [CREDIT]);
+    expect(lettersResult.byCredit[CREDIT]).toEqual([
       expect.objectContaining({ id: draftId, status: LETTER_STATUS.DRAFT }),
     ]);
+    expect(lettersResult.capped).toBe(false);
     expect(await svc.drafts(OTHER_HOUSE)).toEqual([]);
   });
 });
@@ -486,5 +568,77 @@ describe("CreditsController drafts on → requested only", () => {
     await expect(c.requestLetter(CREDIT, user)).rejects.toThrow(
       /move it to requested first/,
     );
+  });
+
+  // Audit round 1, R4: `lettersForCredits` caps at 500 rows with no floor
+  // signal, so a claim whose letter fell out of that window used to render
+  // `[]` — indistinguishable from a claim never asked for. `credits.controller`
+  // must read `capped` and turn an ABSENT claim into `null` (unknown), while a
+  // claim still PRESENT in a capped read keeps its letters unchanged.
+  it("a claim absent from a capped letters read is unknown, never 'no letter'", async () => {
+    const { db } = seed();
+    const cappedAndMissing = {
+      lettersForCredits: async () => ({ byCredit: {}, capped: true }),
+    } as unknown as HouseLettersService;
+    const c = new CreditsController(db, cappedAndMissing);
+    const list = await c.list(user);
+    expect(list.lettersCapped).toBe(true);
+    expect(list.items[0].letters).toBeNull();
+  });
+
+  it("a claim present in a capped letters read still shows its own letters", async () => {
+    const { db } = seed();
+    const cappedButPresent = {
+      lettersForCredits: async () => ({
+        byCredit: {
+          [CREDIT]: [
+            {
+              id: "row-1",
+              status: LETTER_STATUS.DRAFT,
+              to: null,
+              sentAt: null,
+              createdAt: null,
+            },
+          ],
+        },
+        capped: true,
+      }),
+    } as unknown as HouseLettersService;
+    const c = new CreditsController(db, cappedButPresent);
+    const list = await c.list(user);
+    expect(list.lettersCapped).toBe(true);
+    expect(list.items[0].letters).toEqual([
+      expect.objectContaining({ status: LETTER_STATUS.DRAFT }),
+    ]);
+  });
+
+  it("an uncapped read still renders a genuinely letterless claim as []", async () => {
+    const { db } = seed();
+    const uncappedAndMissing = {
+      lettersForCredits: async () => ({ byCredit: {}, capped: false }),
+    } as unknown as HouseLettersService;
+    const c = new CreditsController(db, uncappedAndMissing);
+    const list = await c.list(user);
+    expect(list.lettersCapped).toBe(false);
+    expect(list.items[0].letters).toEqual([]);
+  });
+
+  it("lettersForCredits itself reports capped once the read reaches 500 rows", async () => {
+    const { db, tables } = seed();
+    const svc = service(db);
+    for (let i = 0; i < 500; i++) {
+      tables.procurement_conversations.push({
+        id: `letter-${i}`,
+        restaurant_id: HOUSE,
+        outbound_email_type: "HOUSE_LETTER",
+        status: LETTER_STATUS.SENT,
+        email_headers: { credit_id: CREDIT, to: "orders@vinoteca.example" },
+        sent_at: "2026-09-20T10:00:00.000Z",
+        created_at: "2026-09-20T10:00:00.000Z",
+      });
+    }
+    const result = await svc.lettersForCredits(HOUSE, [CREDIT]);
+    expect(result.capped).toBe(true);
+    expect(result.byCredit[CREDIT]).toHaveLength(500);
   });
 });

@@ -29,6 +29,8 @@ import {
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../../auth/guards/roles.guard";
+import { Roles } from "../../auth/decorators/roles.decorator";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import {
   HouseLettersService,
@@ -100,9 +102,13 @@ export class HouseLettersController {
   }
 
   @Get("drafts")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Letters Mudavym drafted that nobody has sent (ADR 0230) — a credit claim asked for leaves one here",
+    description:
+      "Owner or manager only (ADR 0167, extended here: a credit draft's body carries the same claimed dollar amount, reason and invoice/order numbers ADR 0167 already refuses staff on the ledger; a route that returned them unguarded would let staff read them by another door). Fixed in the PR #476 audit's first round; ADR 0230 records the reconciliation.",
   })
   async drafts(@CurrentUser() user: TokenUser) {
     const { restaurantId } = houseActor(user);
@@ -110,7 +116,13 @@ export class HouseLettersController {
   }
 
   @Post(":id/discard")
-  @ApiOperation({ summary: "Throw a draft away. It was never sent." })
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Throw a draft away. It was never sent.",
+    description:
+      "Owner or manager only (ADR 0167, extended here): discarding a claim's letter is the same write staff are refused on the ledger's own transition route, and a staff caller must not be able to kill a manager's draft through this door either.",
+  })
   async discard(
     @CurrentUser() user: TokenUser,
     @Param("id", new ParseUUIDPipe()) id: string,

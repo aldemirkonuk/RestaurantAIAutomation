@@ -619,7 +619,13 @@ function ClaimLetter({ claim, outcome }: { claim: ProcurementCredit; outcome: Cr
     );
   }
   if (claim.letters === null) {
-    return <span>Unknown — this claim’s letters could not be read, so whether one was drafted is not known.</span>;
+    return (
+      <span>
+        Unknown — this claim’s letters could not be confirmed. Either the read failed, or the gateway’s
+        read of at most {RECEIPTS_SERVER_WINDOWS.CREDIT_LETTERS} letters across these claims left this
+        one out; whether one was drafted is not known either way.
+      </span>
+    );
   }
   if (!latest) {
     return claim.provider_id ? (

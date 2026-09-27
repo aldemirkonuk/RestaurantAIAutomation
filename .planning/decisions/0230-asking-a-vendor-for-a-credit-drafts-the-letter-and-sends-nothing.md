@@ -97,9 +97,33 @@ What was built, on `feat/receipts-credits-tab`:
 - **Revisit** if a house wants credit letters grouped per vendor (one letter for
   several claims), or when a vendor channel other than email carries claims.
 
+## Reconciliation with ADR 0167 (2026-09-26, PR #476 audit round 1)
+
+This decision built a new surface — `GET /communications/letters/drafts` and
+`POST /communications/letters/:id/discard` — that reads and destroys exactly
+the figures [[0167-the-receiving-queue-and-credit-ledger-refuse-staff]] locked
+as owner-or-manager-only: `drafts()`'s response carries each draft's full
+letter body, which for a credit-claim draft is the claimed dollar amount, the
+reason in a vendor's words, and the invoice/order numbers. Both routes had
+carried `JwtAuthGuard` alone, so a staff member could read a claim's dollars
+by this door even though `GET /procurement/credits` refuses them the same
+figures, and could discard a manager's own draft. This was not a fresh choice
+put to the founder — it is ADR 0167's existing rule ("owner or manager on all
+[figures the staff view omits]") applied to a route this decision's own build
+opened without noticing it carried the same figures. No option was rejected
+here; `@Roles("owner", "manager")` was added to `drafts` and `discard` alone
+(`house-letters.controller.ts`), matching `CreditsController` exactly. Every
+other route on `HouseLettersController` — writing and sending a letter by
+hand — stays open, as ADR 0167 never named it. Proof:
+`house-letters-drafts-roles.spec.ts` (real HTTP through the real `RolesGuard`;
+staff, no-role and admin get 403 on both routes and reads nothing; owner and
+manager pass; every other handler is asserted ungated) and
+`route-access.expected.json` (this controller's full route census).
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-25 | founder (round 5, item 31) | Locked: draft on requested, never auto-send |
 | 2026-09-25 | W3-credits-team lane | Built on PR #476 |
+| 2026-09-26 | PR #476 audit fix (BLOCK at 37a89291e, round 1, R1) | `drafts`/`discard` gated owner-or-manager, reconciling with ADR 0167 (see above) |

@@ -165,13 +165,25 @@ describe('who is offered the ledger (ADR 0167)', () => {
     expect(canSeeCreditLedger('manager', 'staff')).toBe(true);
     expect(canSeeCreditLedger('staff', 'owner')).toBe(false);
     expect(canSeeCreditLedger(null, 'owner')).toBe(true);
-    expect(canSeeCreditLedger('ADMIN', null)).toBe(true);
+    expect(canSeeCreditLedger('ADMIN', null)).toBe(false);
     expect(canSeeCreditLedger(null, null)).toBe(false);
     expect(canSeeCreditLedger('sommelier', null)).toBe(false);
   });
 
   it('lands staff who follow /credits on Receipts, says why, and asks the gateway nothing', async () => {
     api.role = 'staff';
+    renderAt('/receipts?tab=credits');
+    expect(await screen.findByText(/kept for the owner and managers of this house/i)).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Credits' })).toBeNull();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Receipts');
+    expect(api.list).not.toHaveBeenCalled();
+  });
+
+  // Regression, PR #476 audit round 1: this had reintroduced 'admin' into
+  // canSeeCreditLedger — the exact bug PR #395's audit already fixed on the
+  // legacy ReceiptsPage. Restoring 'admin' to canSeeCreditLedger turns this red.
+  it('lands admin who follow /credits on Receipts too, the same as staff (ADR 0167)', async () => {
+    api.role = 'admin';
     renderAt('/receipts?tab=credits');
     expect(await screen.findByText(/kept for the owner and managers of this house/i)).toBeTruthy();
     expect(screen.queryByRole('tab', { name: 'Credits' })).toBeNull();
@@ -336,11 +348,11 @@ describe('moves', () => {
     expect(screen.queryByRole('link', { name: 'Open the draft' })).toBeNull();
   });
 
-  it('letters that could not be read are unknown, never none', async () => {
+  it('letters that could not be read (or fell outside a capped read) are unknown, never none', async () => {
     api.claims = [claim({ state: 'requested', letters: null })];
     renderAt('/receipts?tab=credits');
     fireEvent.click(await screen.findByText('Billed for more than arrived'));
-    expect(await screen.findByText(/letters could not be read/)).toBeTruthy();
+    expect(await screen.findByText(/letters could not be confirmed/)).toBeTruthy();
     expect(screen.queryByText(/No letter was drafted/)).toBeNull();
   });
 

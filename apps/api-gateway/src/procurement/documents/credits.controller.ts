@@ -165,22 +165,33 @@ export class CreditsController {
     // Each claim's letters (ADR 0230): the draft it links to, and what became
     // of it. Read separately so a failure here is named rather than printed as
     // "no letter" — `letters: null` + `lettersError` is unknown, never none.
-    let letters: Record<string, unknown[]> | null = null;
+    let byCredit: Record<string, unknown[]> | null = null;
     let lettersError: string | null = null;
+    let lettersCapped = false;
     try {
-      letters = await this.letters.lettersForCredits(
+      const result = await this.letters.lettersForCredits(
         user.restaurantId,
         items.map((r: { id: string }) => r.id),
       );
+      byCredit = result.byCredit;
+      lettersCapped = result.capped;
     } catch (err) {
       lettersError = err instanceof Error ? err.message : String(err);
     }
     return {
       items: items.map((r: { id: string }) => ({
         ...r,
-        letters: letters ? (letters[r.id] ?? []) : null,
+        // A claim PRESENT in `byCredit` keeps its letters even when the read
+        // was capped — its own letter survived the window, so it is known
+        // either way. A claim ABSENT from a capped read is unknown, not
+        // none (audit round 1, R4): the window may have cut it, not the
+        // vendor conversation. Only an uncapped absence is a real "[]".
+        letters: byCredit
+          ? byCredit[r.id] ?? (lettersCapped ? null : [])
+          : null,
       })),
       lettersError,
+      lettersCapped,
     };
   }
 

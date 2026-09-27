@@ -84,18 +84,24 @@ const ReceiptsCredits = lazy(() =>
 
 /**
  * Whether this person is offered the credit ledger. ADR 0167 (founder
- * 2026-09-19, "Refuse staff on all four"): the gateway answers the list, the
- * figures and every move only for the owner or a manager (or an admin) of the
- * house in the token. The role read is the one IN THIS HOUSE, `activeRole`;
- * `user.role` is the global `users.role` and only the fallback while no house
- * is active. An unrecognised role is treated as staff, as the server does.
+ * 2026-09-19, "Refuse staff on all four"; RolesGuard exact since ADR 0164):
+ * the gateway answers the list, the figures and every move only for the
+ * owner or a manager of the house in the token — `admin` is refused there
+ * too, the same as staff. The role read is the one IN THIS HOUSE,
+ * `activeRole`; `user.role` is the global `users.role` and only the fallback
+ * while no house is active. An unrecognised role is treated as staff, as the
+ * server does.
+ *
+ * Fixed in the PR #476 audit (round 1): this had reintroduced admin, the
+ * exact bug PR #395's audit already found and fixed on the legacy
+ * `ReceiptsPage.tsx` (`canSeeCredits`, which admits owner/manager only).
  */
 export function canSeeCreditLedger(
   activeRole: string | null | undefined,
   globalRole: string | null | undefined,
 ): boolean {
   const role = (activeRole ?? globalRole ?? '').toLowerCase();
-  return role === 'owner' || role === 'manager' || role === 'admin';
+  return role === 'owner' || role === 'manager';
 }
 const CanonicalDocumentPage = lazy(() =>
   import('../../documents/next/CanonicalDocumentPage').then((m) => ({

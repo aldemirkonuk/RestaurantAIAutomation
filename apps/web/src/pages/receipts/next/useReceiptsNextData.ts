@@ -57,6 +57,14 @@ export const RECEIPTS_SERVER_WINDOWS = {
   RECOVERY_STATS: 5000,
   /** documents.controller.ts:117 — the credit memos a settlement can name. */
   CREDIT_MEMOS: 100,
+  /**
+   * house-letters.service.ts:892 — `lettersForCredits`' read of every claim's
+   * house letters, across the WHOLE batch of claims on this page, not per
+   * claim. Past this many rows a claim's own letter can fall out of the
+   * window; the gateway then reports `lettersCapped` and a claim ABSENT from
+   * its response is unknown rather than "no letter" (audit round 1, R4).
+   */
+  CREDIT_LETTERS: 500,
 } as const;
 
 export interface ReceiptsNextData {
