@@ -148,6 +148,14 @@ export const RELAY_CLOSING_GMAIL_STATUSES: ReadonlySet<number> = new Set([
  * `"credentials"`), which never closed a relay draft. `forbidden` therefore
  * stays in the closing bucket, as do `insufficientPermissions` and a 403 that
  * carries no reason at all ("every other 403 ... still closes", item 69).
+ * [NARROWED 2026-09-27, PR #429 audit round at 2b97a7563: "a grant ... fault
+ * surfaces at the token endpoint" is too broad. A revoked or expired grant
+ * does; a grant that is valid but lacks the send scope does NOT — the token
+ * refreshes, and `users.messages.send` answers 403 `insufficientPermissions`,
+ * which closes every relay draft sent while it lasts. That is inside item 69's
+ * literal "every other 403 still closes", so it is unchanged here; whether it
+ * should park like a mailbox fault is an open founder question, not filed as
+ * an OD by this round (named in PR #429's body next to OD-175).]
  */
 export const RELAY_PARKING_GMAIL_REASONS: ReadonlySet<string> = new Set([
   // Gmail API errors[].reason (the v1 JSON error body)
