@@ -227,7 +227,7 @@ This is the same ADR 0167 rule again, not a new choice for the founder:
   `matched`. Counts, first and last times, search and paging then only see
   what the caller may see. The default fails closed: a caller that passes
   nothing gets the staff view. That caller is `reports.service.ts`
-  `getReportCrossFile`, which passes nothing, so its "conversation threads in
+  `getReportCrossFile`, which passes nothing **[corrected in round 4: it now passes `true` explicitly]**, so its "conversation threads in
   this period" count now leaves out letters that were never sent. The old
   13-argument overload is dropped rather than kept beside the new one. A
   named call with only those 13 arguments would match both and fail as
@@ -278,6 +278,49 @@ this round:
   HTTP reads.
 - Direct Supabase or RLS access.
 
+## Reconciliation with ADR 0167, round 4 (2026-09-27, PR #476 audit at e2cd28578)
+
+Round 3's migration dropped and re-created `list_conversation_threads` and
+reissued no grant. A re-created function gets a fresh ACL, and PostgreSQL gives
+EXECUTE on a new function to PUBLIC, which anon and authenticated belong to.
+OD-72's `alter default privileges ... revoke all on functions from anon,
+authenticated` (`20260825210000`) does not remove PUBLIC's built-in grant. The
+archived original had revoked PUBLIC and anon
+(`migrations_archive/20260728120000:89-95`). Round 3's "checked / not checked"
+list did not mention function grants.
+
+The withholding is `p_withhold_house_letters`, a flag the caller supplies. So
+any client that can execute the RPC can pass false. The fix, at the end of
+migration `20260929200000`:
+
+- `REVOKE ALL ... FROM PUBLIC, anon, authenticated` and
+  `GRANT EXECUTE ... TO service_role` only. Unlike the archived original,
+  `authenticated` is **not** granted again. The only callers are the gateway's
+  service-role client: `conversations.service.ts` `listConversationThreads`
+  and `reports.service.ts` `getReportCrossFile`, both through
+  `DatabaseService` (`SUPABASE_SERVICE_ROLE_KEY`). `git grep
+  list_conversation_threads -- apps services packages` finds no web, mobile or
+  Python caller.
+- `reports.service.ts` now passes `p_withhold_house_letters: true`
+  explicitly, and `reports.service.spec.ts` pins it. It no longer relies on
+  the default without saying so.
+
+Proof (PGlite build of all 230 migrations, 2026-09-27; runs as superuser, no
+Supabase platform, not production). Fixed: `has_function_privilege` is false
+for anon, authenticated and a fresh role with no grants (so PUBLIC is shut),
+and true for service_role. A call as anon or authenticated is refused 42501,
+and a call as service_role runs. Control, with round 3's file as it was at
+`e2cd28578`: all four roles hold EXECUTE.
+
+**What this bounds.** In the control, a call as authenticated was *still*
+refused: 42501 "permission denied for table procurement_conversations". OD-72
+revoked client table grants, and the function is SECURITY INVOKER. So in the
+migration-built database the missing revoke re-opened the first of two layers,
+not a readable path. The audit's staff-JWT bypass was not reachable there.
+Production's live grants were **not** queried in this round. OD-72's own
+measurement also records that the product does not use Supabase Auth
+(`20260825210000`, "WHY REVOKE RATHER THAN WRITE POLICIES").
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -287,3 +330,4 @@ this round:
 | 2026-09-26 | PR #476 audit fix (BLOCK at 37a89291e, round 1, R1) | `drafts`/`discard` gated owner-or-manager, reconciling with ADR 0167 (see above) |
 | 2026-09-26 | PR #476 audit fix (BLOCK at 032e5a43e, round 2, R1b/R2b) | Conversation reads, `queue`/`cancel` on a credit-linked letter, the LLM transcript and the procurement history ledger all withhold a `HOUSE_DRAFT`/`HOUSE_CANCELLED` row from anyone who is not owner or manager (see round 2 reconciliation above) |
 | 2026-09-27 | PR #476 audit fix (BLOCK at 9d04c0fb6) | `GET /conversations/threads`, `GET /conversations/thread/:threadId` and `POST /conversations/:id/summarize` withhold the same rows from staff. The `list_conversation_threads` RPC gains `p_withhold_house_letters` (default true, migration `20260929200000`). Round 2's "every read route" is corrected in place (see round 3 above). |
+| 2026-09-27 | PR #476 audit fix (BLOCK at e2cd28578) | Migration `20260929200000` revokes `list_conversation_threads` from PUBLIC, anon and authenticated, and grants EXECUTE to service_role only. `reports.service.ts` passes `p_withhold_house_letters: true` explicitly (see round 4 above). |

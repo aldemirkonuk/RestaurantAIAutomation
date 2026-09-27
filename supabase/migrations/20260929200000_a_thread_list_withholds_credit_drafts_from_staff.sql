@@ -19,9 +19,9 @@
 -- `p_withhold_house_letters` DEFAULTS TO TRUE — fail closed: a caller that does
 -- not say otherwise gets the staff view. The gateway passes false only for an
 -- owner or manager of the house (conversations.service.ts
--- listConversationThreads). reports.service.ts getReportCrossFile passes no
--- value, so its "conversation threads in this period" count now leaves out
--- letters that were never sent — the correct reading for a count of
+-- listConversationThreads). reports.service.ts getReportCrossFile passes
+-- true explicitly, so its "conversation threads in this period" count leaves
+-- out letters that were never sent — the correct reading for a count of
 -- conversations with vendors.
 --
 -- `status` is nullable (every AI-path and legacy row has none), so the test is
@@ -115,3 +115,38 @@ COMMENT ON FUNCTION public.list_conversation_threads(
   '(default true) leaves out HOUSE_DRAFT/HOUSE_CANCELLED credit-claim letters; '
   'the gateway passes false only for the house''s owner or manager '
   '(ADR 0167, ADR 0230, PR #476).';
+
+-- Only the gateway may call this. PR #476 audit at e2cd28578 (2026-09-27):
+-- DROP + CREATE resets the function's ACL, and PostgreSQL gives EXECUTE on a
+-- new function to PUBLIC — which anon and authenticated belong to — whatever
+-- OD-72's `alter default privileges ... revoke all on functions` says, since
+-- that only removes the explicit anon/authenticated default, not PUBLIC's
+-- built-in one. The archived original revoked PUBLIC and anon
+-- (migrations_archive/20260728120000:89-95); without the lines below this
+-- migration would have silently re-opened it.
+--
+-- `authenticated` is NOT re-granted, unlike the archived original: the
+-- withholding is the caller-supplied `p_withhold_house_letters`, so any
+-- client able to call the RPC could pass false and read the letters ADR 0167
+-- refuses staff. The only callers are the gateway's service-role client
+-- (conversations.service.ts listConversationThreads, reports.service.ts
+-- getReportCrossFile, both via DatabaseService's SUPABASE_SERVICE_ROLE_KEY
+-- client); no web, mobile or Python code calls it (`git grep
+-- list_conversation_threads -- apps services packages`).
+--
+-- Measured bound (PGlite build of all 230 migrations, superuser, no Supabase
+-- platform, 2026-09-27): without these lines anon and authenticated DO hold
+-- EXECUTE, but a call as either is still refused 42501 "permission denied for
+-- table procurement_conversations", because OD-72 (20260825210000) revoked
+-- client table grants and the function is SECURITY INVOKER. So this closes the
+-- second of two layers, not an open leak; it keeps the RPC shut if that table
+-- grant ever returns.
+REVOKE ALL ON FUNCTION public.list_conversation_threads(
+  uuid, uuid, text, text, text, text, text, text, text,
+  timestamp with time zone, timestamp with time zone, integer, integer, boolean
+) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.list_conversation_threads(
+  uuid, uuid, text, text, text, text, text, text, text,
+  timestamp with time zone, timestamp with time zone, integer, integer, boolean
+) TO service_role;
