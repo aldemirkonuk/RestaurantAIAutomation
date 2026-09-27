@@ -32,10 +32,21 @@ function makeHarness(
       neq: () => chain,
       in: () => chain,
       update: () => chain,
+      // The clear-hold write's `IS NULL OR <= cutoff` condition. This
+      // harness models no stored row, so that UPDATE matches nothing and the
+      // write lands through the insert-if-absent upsert below.
+      or: () => chain,
       maybeSingle: () => Promise.resolve({ data: { alert_count: 0 } }),
       upsert: (row: Row) => {
         if (table === "inventory_alert_state") upserts.push({ ...row });
-        return Promise.resolve({ error: null });
+        return {
+          then: (resolve: any) => resolve({ error: null }),
+          select: () =>
+            Promise.resolve({
+              data: [{ inventory_id: row.inventory_id }],
+              error: null,
+            }),
+        };
       },
       then: (resolve: any) =>
         resolve({
@@ -52,6 +63,7 @@ function makeHarness(
     supabase: { from: (t: string) => makeChain(t) },
     getClient: () => ({ from: (t: string) => makeChain(t) }),
     getRestaurantMemberIds: jest.fn().mockResolvedValue(["user-1"]),
+    getRestaurantMemberIdsOrThrow: jest.fn().mockResolvedValue(["user-1"]),
   } as any;
 
   const notifications = {
