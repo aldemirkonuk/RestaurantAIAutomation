@@ -52,7 +52,7 @@ import {
  * a role gate on those routes; this module keeps its own owner/manager gate
  * (ADR 0124), see the controller.]** This module is the page's own read
  * because the page needs three things that route never had — the house's
- * dismissal (a column, `20260930150100`), the expiry state as a word, and
+ * dismissal (a column, `20261015000100`), the expiry state as a word, and
  * the grade — and one read that carries all of them with one `read_at`.
  *
  * HONESTY (ADR 0020 / 0051)

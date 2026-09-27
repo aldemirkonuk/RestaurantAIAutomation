@@ -48,6 +48,15 @@
 -- (`gh pr list --json number,files`, highest seen: #476's 20260929200000),
 -- keeping their relative order. Body unchanged.
 --
+-- Renamed a sixth time 2026-09-27 (PR #474 merge-train update, train 5,
+-- second hop): 20260930150100 collided with open PR #436
+-- (feat/finish-action-integrity), which claimed the identical version the
+-- same afternoon; CI's check_migration_versions_unique.py caught it.
+-- Re-versioned this file and the flag column (20260930150000 -> 20261015000000)
+-- past that ceiling and clear of every open PR's migrations re-scanned at
+-- that time (`gh pr list --json number,files`, highest seen: #473's
+-- 20261002000000), keeping their relative order. Body unchanged.
+--
 -- Why a timestamp and not a boolean: a boolean cannot say WHEN, and a
 -- dismissal with no date cannot be reviewed or expired. `dismissed_at IS NULL`
 -- is the single fact "on the table"; there is no second column to disagree

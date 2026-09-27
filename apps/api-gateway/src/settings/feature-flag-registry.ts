@@ -110,7 +110,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // the founder turns this on — and it should not be turned on before
     // "Who is writing" (PR #470) is live on /communications, because the
     // legacy page is today's only home for Trusted senders and Prospects.
-    // Column added by 20260930150000, in the same change as this entry, so
+    // Column added by 20261015000000, in the same change as this entry, so
     // the Settings `.select()` of every ACTIVE key cannot 42703.
     defaultValue: false,
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:217",

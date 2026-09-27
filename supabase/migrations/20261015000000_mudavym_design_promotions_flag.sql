@@ -28,6 +28,17 @@
 -- migrations measured at rename time (`gh pr list --json number,files`,
 -- highest seen: #476's 20260929200000), keeping order with the dismissal
 -- migration that follows it. Body unchanged.
+--
+-- Renamed a third time 2026-09-27 (PR #474 merge-train update, train 5,
+-- second hop): 20260930150000 collided with open PR #436
+-- (feat/finish-action-integrity), which claimed the identical version the
+-- same afternoon; CI's check_migration_versions_unique.py caught it (the
+-- guard checks origin/main plus every OTHER open PR, so a same-day sibling
+-- picking the same timestamp is exactly the race it exists to catch).
+-- Re-versioned from 20260930150000 to 20261015000000, clear of every open
+-- PR's migrations re-scanned at that time (`gh pr list --json number,files`,
+-- highest seen: #473's 20261002000000), keeping order with the dismissal
+-- migration that follows it. Body unchanged.
 
 alter table public.restaurant_feature_flags
   add column if not exists mudavym_design_promotions boolean not null default false;
