@@ -48,6 +48,14 @@ function makeDb(opts: {
   existingSightings?: Row[];
   /** The outlier population read fails (supabase resolves with an error). */
   priorReadFails?: boolean;
+  /**
+   * `restaurant_inventory.master_wine_id` as this shelf slot really resolves.
+   * Defaults to `WINE`. Set to `null` to simulate an inventory row whose
+   * identity never resolved — the column is NOT NULL by schema, but
+   * `resolveOrderShelfItem`'s `asUuid(row?.master_wine_id)` still returns null
+   * on a lookup failure or an unreadable value (PR #473 audit round 2).
+   */
+  masterWineId?: string | null;
 }) {
   const calls: Calls = { sightingInserts: [], priceHistoryInserts: [] };
   const existing = opts.existingSightings ?? [];
@@ -71,7 +79,7 @@ function makeDb(opts: {
             return { data: { id: filters.id }, error: null };
           return {
             data: {
-              master_wine_id: WINE,
+              master_wine_id: "masterWineId" in opts ? opts.masterWineId : WINE,
               bottle_size_ml:
                 "bottleSizeMl" in opts ? opts.bottleSizeMl : 750,
               wine_name: "Barolo Riserva",
@@ -92,7 +100,11 @@ function makeDb(opts: {
             );
             return { data: hit ? { id: "existing" } : null, error: null };
           }
-          // The outlier population read.
+          // The outlier population read. `filters.master_wine_id` is undefined
+          // when the caller never resolved an identity — `priorSightingUnitPrices`
+          // refuses to call this at all in that case (it returns null before the
+          // query runs), so reaching this branch with no identity would itself be
+          // a test bug, not a real path.
           if (opts.priorReadFails)
             return {
               data: null,
@@ -480,6 +492,54 @@ describe("own paper reaches vendor_price_observations", () => {
     expect(said).toContain("Could not read the price register to screen for outliers");
     expect(said).toContain("statement timeout");
     warn.mockRestore();
+  });
+
+  // PR #473 audit round 2 (2026-09-26, unresolved at 6c83ea2fa0f8): the SAME
+  // sibling branch as above, for the case the round-2 BLOCK actually named.
+  // `priorSightingUnitPrices` opened `if (!masterWineId) return [];` — an
+  // identity-resolution failure (`resolveOrderShelfItem` returning null,
+  // despite `restaurant_inventory.master_wine_id` being NOT NULL by schema)
+  // read back as "zero rows for this product", not "no product to check".
+  // The seeded five rows make the lie visible the same way: if this house's
+  // register really held zero sightings of an IDENTIFIED wine, "only 0" would
+  // be true; here there is no wine to have counted sightings of at all, and
+  // the seeded rows (keyed to a real identity) prove the register is not
+  // actually empty.
+  it("an unresolved identity writes no flag and NO reason, never 'only 0'", async () => {
+    const seeded = [18, 18.5, 19, 18.2, 18.8].map((p, i) => ({
+      master_wine_id: WINE,
+      raw_price: p,
+      source_type: "invoice",
+      observed_at: `2026-08-0${i + 1}T00:00:00.000Z`,
+      pack_size: 1,
+      unit_volume_ml: 750,
+      yield_factor: 1,
+    }));
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, final_price: 380 },
+      existingSightings: seeded,
+      masterWineId: null,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...verifyBody,
+      invoiceUnitPrice: 380,
+    });
+
+    // The sighting is still written — ADR 0117's five things a sighting must
+    // name do not include a product identity, so an unresolved one is not by
+    // itself a refusal.
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.master_wine_id).toBeNull();
+    // ...but nothing is claimed about it: not flagged, not "judged", no count.
+    // Before this fix `priorCount` arrived here as `0` and this row stored
+    // "Not judged: only 0 earlier sighting(s)... exist" — false, since there
+    // were five, just not countable against an identity nobody resolved.
+    expect(row.is_outlier).toBe(false);
+    expect(row.outlier_reason).toBeNull();
+    expect(row.outlier_basis).toBeNull();
+    expect(row.outlier_judged_at).toBeNull();
   });
 });
 

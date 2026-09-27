@@ -1986,24 +1986,29 @@ export class ProcurementService {
    * The scope matches `belowTrailingAverage` exactly (`restaurant_id IS NULL OR
    * = this tenant`, `vendor-comparison.service.ts:341`) so the MAD test is run
    * over the same population the ladder will later read. `master_wine_id` is
-   * the key `priceBelowAverage` groups on (`price-below-average.ts:141-144`);
-   * with no identity there is no group, so there is nothing to be an outlier
-   * against and the answer is an empty list.
+   * the key `priceBelowAverage` groups on (`price-below-average.ts:141-144`).
    *
    * The population is every source type — invoices, quotes, scrapes, typed
    * prices — on this house's rows and the public register's. There is no
    * `source_type` filter, and the reason `decideOwnPaperSighting` writes says
    * exactly that rather than "own-paper trail".
    *
-   * `null` means the read FAILED. It is never folded into `[]`: an empty list
-   * becomes a stored "only 0 sightings" sentence, and a failed read is not a
-   * register with nothing in it.
+   * `null` means NO JUDGEMENT IS POSSIBLE, for either of two reasons: the read
+   * FAILED, or there is no identity to read against in the first place
+   * (`masterWineId` is null — `resolveOrderShelfItem` returns that whenever the
+   * inventory lookup fails or the row's `master_wine_id` cannot be read as a
+   * uuid, despite the column being NOT NULL by schema). Neither is folded into
+   * `[]`: an empty list becomes a stored "only 0 sightings of this PRODUCT"
+   * sentence, and both "the read failed" and "there is no product to count
+   * sightings of" are worse than silence, not zero (PR #473 audit round 2,
+   * 2026-09-26 — the null-identity branch used to return `[]` here and was the
+   * one case this docblock's own contract didn't cover).
    */
   private async priorSightingUnitPrices(
     restaurantId: string,
     masterWineId: string | null,
   ): Promise<number[] | null> {
-    if (!masterWineId) return [];
+    if (!masterWineId) return null;
     try {
       const { data, error } = await this.databaseService.supabase
         .from("vendor_price_observations")

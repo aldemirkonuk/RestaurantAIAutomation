@@ -214,7 +214,12 @@ function positiveInt(v: unknown): number | null {
  * `vendor-comparison.service.ts`'s manual writer already does. A caller that
  * omits it gets `outlier_reason: null` (this file's own field goes unwritten,
  * not a guessed sentence) rather than a claim this function cannot back up —
- * and the caller MUST omit it when its register read failed, never pass 0.
+ * and the caller MUST omit it whenever it has no real count to report: its
+ * register read failed, OR the sighting names no product identity at all
+ * (`masterWineId` null), in which case there is no group to have counted
+ * sightings of. Never pass 0 for either case (PR #473 audit round 2,
+ * 2026-09-26: the null-identity case used to arrive here as 0, and this
+ * function itself never refuses on it — the caller is where it is prevented).
  *
  * The sentence names the population the caller really reads: this house's
  * rows plus the public register's, every source type. It does NOT copy the
