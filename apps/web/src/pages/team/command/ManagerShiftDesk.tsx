@@ -954,7 +954,9 @@ export function ManagerShiftDesk() {
       {memberEditor && (
         <MemberEditor
           member={memberEditor.member}
-          wageVisible={moneyVisible}
+          // Never an owner's wage for a manager, pay access or not (founder
+          // 2026-09-27, item 71); the gateway withholds and refuses it too.
+          wageVisible={moneyVisible && memberEditor.member?.pay_withheld !== 'owner'}
           ownerCount={members.filter(m => m.role === 'owner').length}
           onClose={() => setMemberEditor(null)}
         />

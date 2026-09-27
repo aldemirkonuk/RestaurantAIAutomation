@@ -27,6 +27,13 @@ export interface TeamMember {
    * so absent means "not yours to see" and `null` means "no wage on file".
    */
   hourly_wage?: number | null
+  /**
+   * `'owner'` when this row is an OWNER's and the viewer is a manager who sees
+   * pay (founder 2026-09-27, item 71: "if owner taking money, manager can't
+   * see it"): the wage is withheld because it is the owner's, not because the
+   * viewer sees no pay and not because none is on file.
+   */
+  pay_withheld?: 'owner'
   skills: string[]
   hire_date: string | null
   status: string
@@ -114,6 +121,8 @@ export interface Shift {
   note: string | null
   /** The owner's alone (ADR 0215): absent for anyone else, `null` = unpriced. */
   labor_cost?: number | null
+  /** `'owner'`: an owner's shift, its cost withheld from a manager who sees pay (item 71). */
+  pay_withheld?: 'owner'
   shift_breaks?: ShiftBreak[]
   /**
    * The break whoever edits the shift recorded, in minutes (ADR 0215): `0` =
@@ -181,6 +190,8 @@ export interface WeekPayload {
     unpricedShifts?: number
     targetPct?: number | null
     costCovers?: 'scheduled_shifts'
+    /** Worked shifts that are an owner's and so not in a manager's total (item 71); 0 for the owner. */
+    ownerShiftsLeftOut?: number
     leave?: {
       readable: boolean
       paid: Array<{ memberId: string; days: number }> | null

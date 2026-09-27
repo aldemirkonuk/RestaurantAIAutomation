@@ -22,7 +22,10 @@
  * access on ("Pay visibility only" — "The switch decides whether that manager
  * can see and edit pay; their other rights are unchanged"). The rule is now
  * the role plus that per-manager switch, still applied where a response is
- * built; see `seesMoney` and `wageWriteRefusal`.]
+ * built; see `seesMoney` and `wageWriteRefusal`.] [2026-09-27, founder item
+ * 71: "if owner taking money, manager can't see it" — an OWNER's wage and
+ * shift cost stay the owners' even from a manager with pay access, applied per
+ * row; see `seesMoneyOf`.]
  *
  * HOURS ARE WORKED HOURS
  * ----------------------
@@ -70,7 +73,20 @@ export const WEEKLY_REVIEW_HOURS = 45;
  * (`user_restaurant_access.team_pay_access`). A bare role is a viewer with the
  * switch off.
  */
-export type MoneyViewer = TeamRole | { role: TeamRole; payAccess?: boolean | null };
+export type MoneyViewer =
+  | TeamRole
+  | {
+      role: TeamRole;
+      payAccess?: boolean | null;
+      /**
+       * The roster ids (`team_members.id`) that are an OWNER's, for a
+       * non-owner who sees money (founder item 71, 2026-09-27: "if owner
+       * taking money, manager can't see it"). `null` or missing = not known,
+       * and then every owner-row test withholds: a figure is never shown on
+       * a guess about whose it is.
+       */
+      ownerMembers?: ReadonlySet<string> | null;
+    };
 
 function viewerRole(v: MoneyViewer): TeamRole {
   return typeof v === "string" ? v : v.role;
@@ -94,6 +110,29 @@ export function seesMoney(viewer: MoneyViewer): boolean {
 }
 
 /**
+ * Whether this viewer sees the money on ONE roster person's row — their wage,
+ * or a shift of theirs. An owner sees every row. A non-owner who sees money
+ * (a manager with pay access) sees every row EXCEPT an owner's: the founder,
+ * 2026-09-27 (item 71, ADR 0215 question 7), verbatim: "if owner taking
+ * money, manager can't see it" — an owner's wage is invisible to managers,
+ * not shown and not settable, even with pay access; only owners see and set
+ * an owner's wage. `memberId` null is a row with no person (an open shift),
+ * which carries no one's wage. When the viewer's owner rows are not known the
+ * answer is no: withheld, never guessed.
+ */
+export function seesMoneyOf(
+  viewer: MoneyViewer,
+  memberId: string | null | undefined,
+): boolean {
+  if (!seesMoney(viewer)) return false;
+  if (viewerRole(viewer) === "owner") return true;
+  if (!memberId) return true;
+  const owners = typeof viewer === "string" ? null : viewer.ownerMembers;
+  if (!owners) return false;
+  return !owners.has(memberId);
+}
+
+/**
  * Who may set a wage, and whose. The owner sets anyone's. A manager whose pay
  * access is on sets anyone's too — a colleague's ("see and edit pay", round 4
  * item 19) and, since round 5, their own. **[2026-09-25, founder round 5 item
@@ -102,12 +141,23 @@ export function seesMoney(viewer: MoneyViewer): boolean {
  * refusal built on round 4, which returned the question: "A manager cannot set
  * their own wage; an owner of this house can." Whether the write is the
  * writer's own no longer decides whether it may happen — it decides who is
- * told (`ownWageTellsTheOwner`).]** Returns the refusal, in words, or `null`
- * when the write may go ahead.
+ * told (`ownWageTellsTheOwner`).]** **[2026-09-27, founder item 71: except an
+ * OWNER's — "if owner taking money, manager can't see it". The TARGET row is
+ * read: `targetMemberId` is the roster row written, checked against the
+ * viewer's owner rows (`seesMoneyOf`); a target that is an owner's, or whose
+ * owner-ness is not known, refuses a non-owner. `null` is a new row, which is
+ * nobody's yet.]** Returns the refusal, in words, or `null` when the write
+ * may go ahead.
  */
-export function wageWriteRefusal(viewer: MoneyViewer): string | null {
+export function wageWriteRefusal(
+  viewer: MoneyViewer,
+  targetMemberId: string | null,
+): string | null {
   if (!seesMoney(viewer)) {
     return "Only an owner of this house, or a manager the owner allowed to see pay, can set or change a wage. Nothing was saved.";
+  }
+  if (!seesMoneyOf(viewer, targetMemberId)) {
+    return "Only an owner can set or change an owner's pay. Nothing was saved.";
   }
   return null;
 }
@@ -165,15 +215,29 @@ function without<T extends Record<string, any>>(
 }
 
 /**
+ * What a row carries in place of money withheld because it is an OWNER's
+ * (founder item 71): the viewer sees pay, just not this person's, so the page
+ * can say "the owner's pay" rather than "no wage on file" or "not priced".
+ * Not sent where the viewer sees no pay at all — there the page already says
+ * pay is withheld, and the marker would add nothing.
+ */
+export const OWNER_PAY_WITHHELD = "owner" as const;
+
+/**
  * A shift as this viewer may receive it. The key is REMOVED, not nulled: `null`
  * on `labor_cost` already means "no wage on file", and a withheld figure is not
- * an unknown one.
+ * an unknown one. An owner's shift, to a manager with pay access, loses its
+ * cost too (`labor_cost / worked hours` IS the owner's wage) and says why.
  */
 export function shiftForViewer<T extends Record<string, any>>(
   shift: T,
   viewer: MoneyViewer,
 ): T {
-  return seesMoney(viewer) ? shift : without(shift, SHIFT_MONEY);
+  if (seesMoneyOf(viewer, shift?.member_id)) return shift;
+  const out = without(shift, SHIFT_MONEY);
+  return seesMoney(viewer) && out && typeof out === "object"
+    ? ({ ...out, pay_withheld: OWNER_PAY_WITHHELD } as T)
+    : out;
 }
 
 /** A roster row as this viewer may receive it. Same rule, same reason. */
@@ -181,7 +245,11 @@ export function memberForViewer<T extends Record<string, any>>(
   member: T,
   viewer: MoneyViewer,
 ): T {
-  return seesMoney(viewer) ? member : without(member, MEMBER_MONEY);
+  if (seesMoneyOf(viewer, member?.id)) return member;
+  const out = without(member, MEMBER_MONEY);
+  return seesMoney(viewer) && out && typeof out === "object"
+    ? ({ ...out, pay_withheld: OWNER_PAY_WITHHELD } as T)
+    : out;
 }
 
 /** Minutes since midnight from an "HH:MM" string. */

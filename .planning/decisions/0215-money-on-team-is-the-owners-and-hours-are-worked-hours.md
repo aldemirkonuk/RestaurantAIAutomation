@@ -13,7 +13,12 @@
   is told. See "Answered, 2026-09-25 (round 5)" and item 21's bracket.]** **[2026-09-27,
   ADR 0090 audit of 25e55b2c: one new question returned, not decided here —
   may a switched-on manager set an OWNER's wage ("Open, for the founder"
-  question 7, residual (o)).]**
+  question 7, residual (o)).]** **[2026-09-27, founder item 71 (round 13):
+  question 7 answered, verbatim: "if owner taking money, manager can't see it" — an owner's wage and
+  shift cost are invisible to managers, pay access or not, and only an owner
+  sets an owner's wage. See "Answered, 2026-09-27 (item 71)" and item 24.
+  Nothing from this record is open for the founder except OD-165 (question 6)
+  and the literal "and off" of item 16.]**
 - **Date:** 2026-09-21 (round 2 answers 2026-09-21; round 6y answers
   2026-09-22; round 4 answers 2026-09-25)
 - **Decider:** Aldemir (founder) — four picks and one answer to five forks
@@ -263,7 +268,10 @@ money and sets a colleague's wage (never their own), with their other rights
 unchanged. Default off, so every manager stays as the 2026-09-21 pick left
 them until an owner acts. Item 21.]** **[2026-09-25, founder round 5 item 32:
 "never their own" is withdrawn — a switched-on manager may set their own wage,
-and every active owner is notified; item 21's bracket.]**
+and every active owner is notified; item 21's bracket.]** **[2026-09-27,
+founder item 71, verbatim: "if owner taking money, manager can't see it": an OWNER's pay is the
+owners' alone — a switched-on manager sees every wage and shift cost except
+an owner's, and cannot set an owner's wage. Item 24.]**
 
 What changed, each with a test that fails on `origin/main` 9cfc4e96d:
 
@@ -607,6 +615,52 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
     cascade is still in place). ADR 0149's never-delete rule is therefore
     not engaged — there were no retained rows to stop retaining. A kept
     credential's `doc_url` document is not touched (no path ever deleted it).
+24. **An owner's pay is the owners' (2026-09-27, founder item 71).** His
+    answer to question 7, verbatim: "if owner taking money, manager can't see it". Read
+    as the founder-answers record states it: an owner's wage is invisible to
+    managers — not shown, not settable, even with pay access; only owners
+    see and set an owner's wage (stronger than the offered "(a) refuse it",
+    which covered the write alone). Built, per row, in `pay-rules.ts`:
+    `seesMoneyOf(viewer, memberId)` is the owner always; for a manager with
+    pay access, every row EXCEPT an owner's; an open shift (no person) is
+    nobody's wage. The viewer carries `ownerMembers` — the roster ids whose
+    account holds an owner membership of the house, active or not — read by
+    `TeamService.assertAccess` only for a switched-on manager; if either
+    read fails, that manager's pay access is off for the request (withheld,
+    never guessed). Every read path that carries pay goes through it:
+    `listMembers` and every member reply (`createMember`, `updateMember`)
+    via `memberForViewer`; `getWeek` and every shift reply (`createShift`,
+    `updateShift`, `assignCover`, `reportCallout`) via `shiftForViewer` —
+    an owner's shift loses `labor_cost`, because cost over worked hours IS
+    the wage. A withheld row carries `pay_withheld: "owner"` so the page
+    says whose it is rather than "no wage on file" / "not priced". The
+    week's labour block leaves an owner's shifts out of a manager's
+    `totalCost`, `pricedShifts` and `unpricedShifts` (with every other cost
+    beside it, a total holding the owner's would give it back by
+    subtraction) and says how many in `ownerShiftsLeftOut`; hours are not
+    money, so the owner's hours still count. **The write:**
+    `wageWriteRefusal(viewer, targetMemberId)` now reads the TARGET row —
+    a non-owner writing an owner's row, or a row whose owner-ness is not
+    known, is refused in words ("Only an owner can set or change an owner's
+    pay. Nothing was saved.") before any read of the row or any write; a
+    new row (`createMember`) is nobody's yet. A manager may still edit an
+    owner's other details. Already owner-only and unchanged: the
+    former-staff history and its `team_member_wage_changes` rows
+    (`listFormerStaff`), the own-wage notice (sent to owners only, and only
+    about a manager's own row), the audit trail's `team_member_own_wage_set`
+    row (no figures). No other gateway, orchestrator or mobile path reads
+    `hourly_wage` or `labor_cost` (`git grep`, 2026-09-27), and the client
+    grants on these tables were revoked schema-wide (OD-72), so the gateway
+    is the only door. Web: the roster names an owner's wage "the owner's",
+    the member sheet offers no wage field on an owner's row to a manager
+    (and the legacy desk's editor neither), the week grid's labour lens shows
+    an owner's shift as hours, the shift sheet names the cost as the
+    owner's, and the labour block says "Leaves out the owner's N shift(s)".
+    Rejected: withholding a switched-on manager's whole week total whenever
+    an owner works a shift (it would undo item 21 for every house whose
+    owner is on the schedule); keeping the owner's cost in the total (the
+    owner's figure by subtraction). No migration: the rule is applied where
+    a response is built, like every other money rule here.
 
 ## Consequences
 
@@ -679,7 +733,7 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   `team_pay_access_changed` row and no fresh owner decision. Owner-gated and
   house-scoped throughout — not a cross-house or auth hole. Filed as
   [OD-165](OPEN-DECISIONS.md), not decided here.
-  (o) **Found 2026-09-27, ADR 0090 audit of 25e55b2c:** a manager whose pay
+  (o) ~~**Found 2026-09-27, ADR 0090 audit of 25e55b2c:** a manager whose pay
   access is on may set an OWNER's wage. `wageWriteRefusal(viewer)`
   (`pay-rules.ts`) looks only at the writer, never at whose row it is, and
   `ensureRosterFromAccess` gives an owner a `team_members` row like anyone
@@ -690,7 +744,21 @@ questions round 2 left open (see "Answered, 2026-09-22 (round 6y)" below):
   owner's row, and ADR 0218's "only an owner sets or ends an owner's" Away is
   a separate answer about a separate field, so it is not borrowed here.
   Pinned as built by `team-pay-round4.spec.ts` R6 (both directions); returned
-  as "Open, for the founder" question 7, not decided here.
+  as "Open, for the founder" question 7, not decided here.~~ **[Resolved
+  2026-09-27, founder item 71, verbatim: "if owner taking money, manager can't see it" — built as
+  item 24; R6 is flipped to the answer.]** (p) An owner's roster row is made
+  from their membership by `ensureRosterFromAccess`, which runs before
+  `autoLinkByEmail` on every roster read, so an account-less row a manager
+  created with an owner's email cannot become that owner's second row
+  (`uq_team_members_user`). Only if that backfill's insert failed (it logs a
+  warning and goes on) could such a row — its wage set by the manager, and
+  recorded as theirs — be linked to the owner; noted, not guarded. (q) The
+  legacy desk's Tonight pulse (`ManagerShiftDesk.tsx`) shows its em dash
+  (unknown) to a switched-on manager on a night an owner works, and the CSV
+  export leaves an owner's shift cost blank for them; neither shows the
+  figure. (r) A switched-on manager's week total is the total of the shifts
+  that are not an owner's, and the page says so; their labour-target
+  comparison (if one is drawn) is against that total.
 - **Revisit when** the labour page lands (it will own pay basis and confirmed
   hours), or if a second role is ever meant to see pay.
 
@@ -792,14 +860,18 @@ round 5 item 32: the own-wage question is answered — allowed, owner notified
    grant) or item 32/round-5 (a manager's own-wage write), which cover a
    different moment.
 
-7. **[Added 2026-09-27, ADR 0090 audit of 25e55b2c; residual (o).]** May a
+7. ~~**[Added 2026-09-27, ADR 0090 audit of 25e55b2c; residual (o).]** May a
    manager whose pay access is on set an OWNER's wage, and if so, is the
    owner told? As built: yes, and nobody is told (the change row names the
    manager). The paths: **(a)** refuse it — an owner's wage is set only by an
    owner, the shape ADR 0218 gave an owner's Away; **(b)** allow it and tell
    the owners, the notice round 5 item 32 gives a manager's own wage;
    **(c)** keep it as built. Recommended to the founder: (a). Not filed as an
-   OD row: the orchestrator returns it to him directly, as rounds 3–5 were.
+   OD row: the orchestrator returns it to him directly, as rounds 3–5 were.~~
+   **[Answered 2026-09-27, founder item 71 (round 13), verbatim: "if owner taking money, manager can't see it" — stronger than (a): an owner's wage is invisible
+   to managers, not shown and not settable, even with pay access; only
+   owners see and set an owner's wage. Built as item 24. See "Answered,
+   2026-09-27 (item 71)".]**
 
 ## Answered, 2026-09-22 (round 6y)
 
@@ -861,7 +933,36 @@ notification to the owner (and visible in the report/audit trail)."** Built as
 item 21's round-5 bracket. Rejected: keeping the round-4 refusal; allowing it
 silently; making the new wage wait for an owner's approval.
 
+## Answered, 2026-09-27 (item 71)
+
+Question 7 (residual (o)), put to the founder on 2026-09-27 (the web-rebuild
+goal's round 13, item 71) with the three paths above and (a) recommended. His
+answer, verbatim: **"if owner taking money, manager can't see it"**. The founder-answers record
+reads it as: an owner's wage is invisible to managers (not shown, not
+settable, even with pay access); only owners see and set an owner's wage —
+stronger than the offered "Refuse it", which named the write alone. Built as
+item 24. Rejected by the answer: (b) allowing it with the owners told; (c)
+keeping it as built.
+
 ## Evidence
+
+- **Item 71 (2026-09-27).** Gateway `team-pay-round4.spec.ts` R6 rewritten
+  from "pinned as built" to the answer, 12 cases (the per-row rule and the
+  target-reading refusal; a switched-on and a switched-off manager refused
+  the owner's wage with nothing written, nobody told, no trail row; an owner
+  setting it; a manager editing an owner's other details with no wage in the
+  reply; the roster; an inactive owner membership; the week with the owner's
+  shift left out of the total and counted in hours; an unpriced owner shift
+  not making a manager's total unknown; the four shift writers; owner rows
+  unreadable; the former-staff history). `jest src/team` 242 of 242 (10
+  files). 8 of 8 gateway mutations killed (owner rows ignored; unknown owner
+  rows shown; the write's target check dropped; the total keeping owner
+  shifts; unreadable owner rows keeping pay; owner rows limited to active
+  memberships; `updateMember` passing no target; the withheld marker
+  dropped). Web `TeamPay.test.tsx` +6 cases; `vitest src/pages/team` 136 of
+  136 (9 files); 5 of 5 web mutations killed (wage field offered on an
+  owner's row; the roster fact, the grid chip and the shift sheet ignoring
+  the marker; the left-out line dropped). Not run: a browser pass.
 
 - **Round 4 (2026-09-25).** Gateway `team-pay-round4.spec.ts` 29 cases (PA
   pay switch 13, FS former-staff history 12, CR credentials 4) and R1 in
@@ -1108,3 +1209,4 @@ Round 3 Opus last call, 2026-09-22, on the index tree (`wt-labor`):
 | 2026-09-27 | ADR 0090 audit of #440 at c093e731 (BLOCK, fix round 1 of 2) | Three records lagged the code. `README.md`'s index row for this ADR still said wages were owner-only and "Only an owner writes a wage": a dated `[Amended]` bracket now states the round-4 switch (`team_pay_access`, `20260929030220`, owner-set; `seesMoney`/`wageWriteRefusal`) and round 5's own-wage write with the owner told (`ownWageTellsTheOwner`) — an index-row-only README change, founder item 59. `CLAIMS.jsonl` `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` bracketed for the third renumber, and its verify now greps both retired prefixes (`20260925180`, `20260927150`) — mutation-tested: a planted `20260927150110` and a planted `20260925180110` comment in `20260929030110` each fail it, the clean tree passes. This file's second renumber bracket had its first number rewritten by the third renumber's sweep (read `20260929030000`/`…150100`); restored to `20260927150000`, with a dated bracket after the correction bracket. PR body's five "ship as `150xxx`" lines rewritten to `120xxx`. No code changed. Re-verified: `check_decision_claims.sh` 567/567, `check_citation_pairing.py`, `check_od_ids_exist.py`, `check_migration_order.py`, `check_migration_versions_unique.py` all pass; `git grep -e 20260925180 -e 20260927150 -- supabase/migrations` empty. |
 | 2026-09-27 | Merge-train update of PR #440 (round 2), CLAUDE.md-directed sync to `origin/main` | Branch was 8 commits behind `origin/main` and DIRTY. Merged `origin/main`; conflicts in `CLAIMS.jsonl` (disjoint ids, union, both sides kept — no `(id, verify)` duplicates), `apps/api-gateway/src/team/access-audit.ts` and `team.module.ts` (both additive: ADR 0215's pay-access action/service beside ADR 0218's area/away actions/services — unioned), and four `apps/web/src/pages/team/next/*.tsx` files (ADR 0215's owner-only wage column beside ADR 0218's Areas card and Away marker on the same rows — unioned; `RosterSheet.tsx`'s `MemberDetail`/`RosterSheet` now take `moneyVisible`, `money` AND `house`, replacing `origin/main`'s superseded local `money()` formatter with this branch's house-currency-aware `fmtMoneyExact`, since fixing that formatter is this PR's own point). `check_migration_versions_unique.py` then failed twice: `origin/main` had moved past this branch's six migrations (new ceiling `20260930100100`, #441's Away migration) AND collided directly with open PR #479's `20260929030000_user_passkeys.sql`. Renumbered a fourth time (bracket above, Links section) to `20260930110xxx`; every live citation swept, the historical rename brackets and changelog rows above left citing the numbers true when they were written — sweeping those forward was exactly the round-1 bracket's corrected mistake, not repeated here. `CLAIMS.jsonl`'s `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` amended to grep a third retired prefix (`20260929030`). |
 | 2026-09-27 | ADR 0090 audit of #440 at 25e55b2c (BLOCK, fix round 1 of 2) | Two of the three blocking findings fixed, one returned. (1) A switched-on manager may set an OWNER's wage and nobody is told (`wageWriteRefusal` never reads the target; `ownWageTellsTheOwner` is false off the writer's own row): not decided by round 4 item 19 or round 5 item 32, so recorded as residual (o) and "Open, for the founder" question 7 with three paths, and NOT changed in code. (2) The path had no test: `team-pay-round4.spec.ts` R6 pins it as built in both directions — widening `ownWageTellsTheOwner` past the writer's own row fails the first case, dropping `wageWriteRefusal`'s `seesMoney` check fails the second. (3) The PR body still named `20260928120xxx` as the shipped files: rewritten to the shipped names with a dated bracket; the unbracketed `84debc021` renumber (`20260928120xxx` → `20260929030xxx`) is now named in a correction bracket under Links, and `ADR-0215-NO-STALE-180XXX-MIGRATION-CITATIONS` greps `20260928120` too (mutation: a planted `-- 20260928120110` line fails it). (4) `origin/main` had moved again (#483, `20261001000000`): merged (CLAIMS conflict unioned, disjoint ids) and the six files renumbered a sixth time to `20261021110xxx` (bracket under Links). |
+| 2026-09-27 | Founder item 71 (round 13) build | Question 7 answered, verbatim: "if owner taking money, manager can't see it". Built as item 24: `seesMoneyOf` per row, `ownerMembers` on a switched-on manager's viewer (unreadable = pay off), `wageWriteRefusal(viewer, targetMemberId)` reads the target, an owner's shift left out of a manager's total with `ownerShiftsLeftOut`, `pay_withheld: "owner"` on withheld rows, and the web's roster, member sheet, grid, shift sheet, labour block and legacy editor. Residual (o) struck, resolved; (p)–(r) added. R6 flipped. `origin/main` (#435, `20261021150000`) merged; the six migrations renumbered a seventh time to `20261101100xxx` (bracket under Links). |

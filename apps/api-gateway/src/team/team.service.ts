@@ -94,7 +94,11 @@ export class TeamService {
     restaurantId: string,
     required?: "owner" | "manager",
     opts?: { payAccess?: boolean },
-  ): Promise<{ role: Role; payAccess: boolean }> {
+  ): Promise<{
+    role: Role;
+    payAccess: boolean;
+    ownerMembers?: ReadonlySet<string>;
+  }> {
     let accessRole: string | null = null;
 
     const { data: access } = await this.sb
@@ -137,8 +141,56 @@ export class TeamService {
       opts?.payAccess === true && role === "manager"
         ? await this.managerPayAccess(userId, restaurantId)
         : false;
+    if (!payAccess) return { role, payAccess };
 
-    return { role, payAccess };
+    // A manager who sees pay never sees an OWNER's (founder item 71,
+    // 2026-09-27: "if owner taking money, manager can't see it"), so their
+    // viewer carries which roster rows are an owner's. Unreadable, pay is
+    // withheld from them altogether — the same answer as an unreadable
+    // switch — rather than shown on a guess about whose it is.
+    const ownerMembers = await this.ownerMemberIds(restaurantId);
+    if (!ownerMembers) return { role, payAccess: false };
+    return { role, payAccess, ownerMembers };
+  }
+
+  /**
+   * The roster rows (`team_members.id`) that belong to an owner of this house
+   * — by any owner membership, active or not: a deactivated owner's pay is
+   * still an owner's. `null`
+   * when either read fails; the caller withholds rather than guesses.
+   */
+  private async ownerMemberIds(
+    restaurantId: string,
+  ): Promise<Set<string> | null> {
+    const { data: owners, error: ownersError } = await this.sb
+      .from("user_restaurant_access")
+      .select("user_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("role", "owner");
+    if (ownersError) {
+      this.logger.warn(
+        `ownerMemberIds: could not read the owners of ${restaurantId}, so pay ` +
+          `is withheld from managers: ${ownersError.message}`,
+      );
+      return null;
+    }
+    const ownerUserIds = [
+      ...new Set((owners ?? []).map((o: any) => o.user_id).filter(Boolean)),
+    ];
+    if (ownerUserIds.length === 0) return new Set();
+    const { data: rows, error: rowsError } = await this.sb
+      .from("team_members")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .in("user_id", ownerUserIds);
+    if (rowsError) {
+      this.logger.warn(
+        `ownerMemberIds: could not read the owners' roster rows of ` +
+          `${restaurantId}, so pay is withheld from managers: ${rowsError.message}`,
+      );
+      return null;
+    }
+    return new Set((rows ?? []).map((r: any) => r.id as string));
   }
 
   /**
@@ -466,10 +518,15 @@ export class TeamService {
    * (`ownWageTellsTheOwner`, `recordOwnWageChange`). A manager could once set
    * anyone's wage with no record; this refuses a writer who may not see pay
    * before anything is written, and it refuses in words — a wage silently
-   * dropped from a save would read as saved.
+   * dropped from a save would read as saved. **[2026-09-27, founder item 71:
+   * the TARGET row is read too — an owner's wage is written by an owner only,
+   * "if owner taking money, manager can't see it"; see `wageWriteRefusal`.]**
    */
-  private assertMayWriteWage(viewer: { role: Role; payAccess: boolean }): void {
-    const refusal = wageWriteRefusal(viewer);
+  private assertMayWriteWage(
+    viewer: { role: Role; payAccess: boolean; ownerMembers?: ReadonlySet<string> },
+    targetMemberId: string | null,
+  ): void {
+    const refusal = wageWriteRefusal(viewer, targetMemberId);
     if (refusal) throw new ForbiddenException(refusal);
   }
 
@@ -681,8 +738,10 @@ export class TeamService {
       payAccess: true,
     });
     const setsWage = dto.hourlyWage !== undefined && dto.hourlyWage !== null;
-    // A new roster row is nobody's own yet: it has no account linked.
-    if (setsWage) this.assertMayWriteWage(viewer);
+    // A new roster row is nobody's own yet, and nobody's an owner's: it has
+    // no account linked (an owner's row is made from their membership by
+    // `ensureRosterFromAccess`, never here).
+    if (setsWage) this.assertMayWriteWage(viewer, null);
     const { data, error } = await this.sb
       .from("team_members")
       .insert({
@@ -725,14 +784,16 @@ export class TeamService {
     // Before any write: a manager may still edit everything else about a
     // person, and nothing about their pay unless an owner switched their pay
     // access on (ADR 0215; round 4 item 19). Their own included, and then the
-    // owner is told (round 5 item 32).
+    // owner is told (round 5 item 32). An OWNER's never, whatever the switch
+    // (founder item 71, 2026-09-27: "if owner taking money, manager can't see
+    // it") — refused here, before any read of the row or any write.
     let own: { self: boolean; before: number | null; name: string | null } = {
       self: false,
       before: null,
       name: null,
     };
     if (dto.hourlyWage !== undefined) {
-      this.assertMayWriteWage(viewer);
+      this.assertMayWriteWage(viewer, memberId);
       if (viewer.role !== "owner" && seesMoney(viewer)) {
         own = await this.readOwnRow(userId, restaurantId, memberId);
       }

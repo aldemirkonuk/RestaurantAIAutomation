@@ -20,6 +20,7 @@ import {
   priceShift,
   recordedBreakMinutes,
   seesMoney,
+  seesMoneyOf,
   MoneyViewer,
   shiftForViewer,
   ShiftLike,
@@ -1200,7 +1201,14 @@ export class ScheduleService {
     if (!settings?.labor_tracking_enabled) return { enabled: false, ...hours };
     if (!moneyVisible) return { enabled: true, ...hours };
 
-    const assigned = worked.filter((sh) => !!sh.member_id);
+    // An owner's shifts are left out of a manager's money (founder item 71,
+    // 2026-09-27: "if owner taking money, manager can't see it"): with every
+    // other shift's cost beside it, a total that held the owner's would give
+    // the owner's figure back by subtraction. The block says how many were
+    // left out, so the total is never read as the whole week's.
+    const assignedAll = worked.filter((sh) => !!sh.member_id);
+    const assigned = assignedAll.filter((sh) => seesMoneyOf(viewer, sh.member_id));
+    const ownerShiftsLeftOut = assignedAll.length - assigned.length;
     const priced = assigned.filter((sh) => sh.labor_cost != null);
     const unpricedShifts = assigned.length - priced.length;
     const costComplete = unpricedShifts === 0;
@@ -1233,6 +1241,11 @@ export class ScheduleService {
        * page's work (ADR 0215), not a guess this block makes.
        */
       costCovers: "scheduled_shifts",
+      /**
+       * How many worked shifts are an OWNER's and so not in this viewer's
+       * total (item 71). Always 0 for an owner; a manager's page says it.
+       */
+      ownerShiftsLeftOut,
       leave: await this.leaveThisWeek(restaurantId, weekStart, roster),
     };
   }

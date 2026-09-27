@@ -633,6 +633,17 @@ function TeamNextManager({
                 <p style={{ fontSize: 11.5, color: 'var(--ink-3)', margin: '6px 0 0' }}>
                   Wages only, for the shifts on the schedule — not SGK, meals or bonuses.
                 </p>
+                {(labor.ownerShiftsLeftOut ?? 0) > 0 && (
+                  // Founder 2026-09-27 (item 71): "if owner taking money, manager
+                  // can't see it". The gateway leaves an owner's shifts out of a
+                  // manager's total; the page says so, so it is not read as the week.
+                  <p
+                    data-testid="owner-pay-left-out"
+                    style={{ fontSize: 11.5, color: 'var(--ink-2)', margin: '6px 0 0' }}
+                  >
+                    {`Leaves out the owner's ${labor.ownerShiftsLeftOut} shift${labor.ownerShiftsLeftOut === 1 ? '' : 's'}: an owner's pay is seen by an owner only.`}
+                  </p>
+                )}
                 {assumedLine}
                 {data.target.pct === null && (
                   <p style={{ fontSize: 11.5, color: 'var(--ink-3)', margin: '6px 0 0' }}>

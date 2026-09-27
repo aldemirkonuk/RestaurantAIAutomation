@@ -126,7 +126,18 @@ function MemberDetail({
           k="This week"
           v={shifts === null ? `${EM} not read` : `${mine.length} shifts · ${fmtHours(hours)}`}
         />
-        {moneyVisible && <Fact k="Hourly wage" v={fmtMoneyExact(member.hourly_wage, money)} />}
+        {moneyVisible && (
+          <Fact
+            k="Hourly wage"
+            v={
+              // An owner's row, to a manager who sees pay (founder 2026-09-27,
+              // item 71: "if owner taking money, manager can't see it").
+              member.pay_withheld === 'owner'
+                ? "the owner's — an owner's pay is seen by an owner only"
+                : fmtMoneyExact(member.hourly_wage, money)
+            }
+          />
+        )}
         <Fact
           k="Areas"
           v={
@@ -459,7 +470,11 @@ export function MemberSheet({
   // their own row the page says the owner is told before they save.
   const ownRowAsManager =
     !viewerIsOwner && viewerUserId != null && member?.user_id === viewerUserId;
-  const mayWriteWage = moneyVisible;
+  // Never an owner's, whatever the viewer's pay access (founder 2026-09-27,
+  // item 71): the gateway withholds it and refuses the write; the page does
+  // not offer it.
+  const ownersPay = member?.pay_withheld === 'owner';
+  const mayWriteWage = moneyVisible && !ownersPay;
   const [ownWageUntold, setOwnWageUntold] = useState<string | null>(null);
   const hasPaySwitch = viewerIsOwner && member?.role === 'manager';
   const paySwitch = useMutation({
@@ -635,10 +650,10 @@ export function MemberSheet({
           ) : (
             <div>
               <span className="tm-label">Hourly wage</span>
-              <p className="tm-hint">
-                Wages are the owner&apos;s to see and to set, and a manager&apos;s only when
-                the owner switches their pay access on, so this field is withheld rather than
-                blank.
+              <p className="tm-hint" data-testid={ownersPay ? 'owner-pay-note' : undefined}>
+                {ownersPay
+                  ? "This is an owner's pay. Only an owner sees or sets it, whatever a manager's pay access, so this field is withheld rather than blank."
+                  : "Wages are the owner's to see and to set, and a manager's only when the owner switches their pay access on, so this field is withheld rather than blank."}
               </p>
             </div>
           )}

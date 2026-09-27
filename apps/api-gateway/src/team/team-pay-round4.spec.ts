@@ -5,7 +5,14 @@ import {
 } from "@nestjs/common";
 import { ScheduleService } from "./schedule.service";
 import { FORMER_STAFF_RETENTION_YEARS, TeamService } from "./team.service";
-import { ownWageTellsTheOwner, seesMoney, wageWriteRefusal } from "./pay-rules";
+import {
+  memberForViewer,
+  ownWageTellsTheOwner,
+  seesMoney,
+  seesMoneyOf,
+  shiftForViewer,
+  wageWriteRefusal,
+} from "./pay-rules";
 import { asDatabaseService, makeStubDb, StubDb } from "./testing/supabase-stub";
 
 /**
@@ -107,10 +114,11 @@ describe("PA — an owner may switch a manager's pay access on; nothing else cha
     expect(seesMoney({ role: "manager", payAccess: null })).toBe(false);
     expect(seesMoney({ role: "manager", payAccess: true })).toBe(true);
     expect(seesMoney({ role: "staff", payAccess: true })).toBe(false);
-    expect(wageWriteRefusal({ role: "manager", payAccess: true })).toBeNull();
-    expect(wageWriteRefusal({ role: "manager", payAccess: false })).toMatch(/Only an owner/);
-    expect(wageWriteRefusal({ role: "staff", payAccess: true })).toMatch(/Only an owner/);
-    expect(wageWriteRefusal("owner")).toBeNull();
+    const known = { ownerMembers: new Set(["m-owner"]) };
+    expect(wageWriteRefusal({ role: "manager", payAccess: true, ...known }, "m-staff")).toBeNull();
+    expect(wageWriteRefusal({ role: "manager", payAccess: false, ...known }, "m-staff")).toMatch(/Only an owner/);
+    expect(wageWriteRefusal({ role: "staff", payAccess: true, ...known }, "m-staff")).toMatch(/Only an owner/);
+    expect(wageWriteRefusal("owner", "m-staff")).toBeNull();
   });
 
   it("a switched-on manager's week carries the money; a switched-off one's does not", async () => {
@@ -500,32 +508,190 @@ describe("R5 — a manager with pay access may set their own wage, and the owner
   });
 });
 
-describe("R6 — a switched-on manager and the OWNER's wage: pinned as built, the fork is the founder's", () => {
-  // ADR 0090 audit of #440 at 25e55b2c (2026-09-27) found this path untested.
-  // Whether a manager with pay access may set an OWNER's wage, and whether the
-  // owner is then told, is NOT decided: round 4 item 19 ("see and edit pay")
-  // and round 5 item 32 (a manager's OWN wage, owner told) do not name it, and
-  // ADR 0218's Away carve-out ("only an owner sets or ends an owner's") is a
-  // different answer about a different field. ADR 0215 "Open, for the
-  // founder" question 7. These cases pin what the code does today so that
-  // whichever answer he gives flips them visibly; they are not that answer.
-  it("as built: the write goes through, names the manager as the writer, and tells nobody", async () => {
-    const db = seed({ managerPay: true });
-    const saved = await teamOf(db).updateMember(MANAGER, RID, "m-owner", { hourlyWage: 45 } as any);
-    expect(saved.hourly_wage).toBe(45);
-    expect(db.tables.team_members.find((m) => m.id === "m-owner")?.wage_changed_by).toBe(MANAGER);
-    expect("ownWage" in saved).toBe(false);
-    expect(db.tables.notifications).toHaveLength(0);
-    expect(db.tables.system_audit_log.filter((r) => r.action === "team_member_own_wage_set")).toHaveLength(0);
+describe("R6 — an OWNER's pay is the owners': a manager never sees or sets it, pay access or not (founder item 71)", () => {
+  // ADR 0215 question 7, answered 2026-09-27 (founder item 71), verbatim: "if
+  // owner taking money, manager can't see it" — an owner's wage is invisible
+  // to managers (not shown, not settable, even with pay access); only owners
+  // see and set an owner's wage. Until this round these cases pinned the
+  // opposite, as built: a switched-on manager's write to the owner's row went
+  // through and told nobody.
+  const ownerShiftWeek = (db: StubDb) =>
+    db.tables.shifts.push(
+      shift({ id: "sh1", member_id: "m-staff", labor_cost: 150 }),
+      shift({ id: "sh2", member_id: "m-manager", labor_cost: 225 }),
+      shift({ id: "sh3", member_id: "m-owner", labor_cost: 300 }),
+    );
+
+  it("the rule reads the TARGET row: an owner's is the owners' alone; unknown owner rows withhold", () => {
+    const on = { role: "manager" as const, payAccess: true, ownerMembers: new Set(["m-owner"]) };
+    expect(seesMoneyOf(on, "m-staff")).toBe(true);
+    expect(seesMoneyOf(on, "m-owner")).toBe(false);
+    expect(seesMoneyOf(on, null)).toBe(true); // an open shift is nobody's wage
+    expect(seesMoneyOf("owner", "m-owner")).toBe(true);
+    expect(seesMoneyOf({ role: "manager", payAccess: true }, "m-staff")).toBe(false);
+    expect(wageWriteRefusal(on, "m-owner")).toMatch(/Only an owner can set or change an owner's pay/);
+    expect(wageWriteRefusal(on, null)).toBeNull(); // a new row is nobody's yet
+    expect(wageWriteRefusal({ role: "manager", payAccess: true }, "m-staff")).toMatch(/owner's pay/);
+    expect(wageWriteRefusal("owner", "m-owner")).toBeNull();
+    const ownerShift: Record<string, any> = shiftForViewer({ id: "x", member_id: "m-owner", labor_cost: 300 }, on);
+    expect("labor_cost" in ownerShift).toBe(false);
+    expect(ownerShift.pay_withheld).toBe("owner");
+    const offShift = shiftForViewer({ id: "x", member_id: "m-owner", labor_cost: 300 }, { role: "manager", payAccess: false });
+    expect("pay_withheld" in offShift).toBe(false);
+    expect("hourly_wage" in memberForViewer({ id: "m-owner", hourly_wage: 40 }, on)).toBe(false);
+    expect(memberForViewer({ id: "m-owner", hourly_wage: 40 }, "owner").hourly_wage).toBe(40);
   });
 
-  it("a switched-off manager is refused the owner's wage, and nothing is written", async () => {
+  it("a switched-on manager is refused the owner's wage: nothing written, nobody told, no change row", async () => {
+    const db = seed({ managerPay: true });
+    await expect(
+      teamOf(db).updateMember(MANAGER, RID, "m-owner", { hourlyWage: 45 } as any),
+    ).rejects.toThrow(/Only an owner can set or change an owner's pay/);
+    const row = db.tables.team_members.find((m) => m.id === "m-owner");
+    expect(row?.hourly_wage).toBe(40);
+    expect(row?.wage_changed_by).toBeUndefined();
+    expect(db.tables.notifications).toHaveLength(0);
+    expect(db.tables.system_audit_log).toHaveLength(0);
+  });
+
+  it("a switched-off manager is refused the owner's wage too, and nothing is written", async () => {
     const db = seed();
     await expect(
       teamOf(db).updateMember(MANAGER, RID, "m-owner", { hourlyWage: 45 } as any),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(db.tables.team_members.find((m) => m.id === "m-owner")?.hourly_wage).toBe(40);
     expect(db.tables.notifications).toHaveLength(0);
+  });
+
+  it("an owner sets an owner's wage", async () => {
+    const db = seed({ managerPay: true });
+    const saved = await teamOf(db).updateMember(OWNER, RID, "m-owner", { hourlyWage: 45 } as any);
+    expect(saved.hourly_wage).toBe(45);
+    expect(db.tables.team_members.find((m) => m.id === "m-owner")?.wage_changed_by).toBe(OWNER);
+  });
+
+  it("a switched-on manager may still edit the owner's other details, and the reply carries no wage", async () => {
+    const db = seed({ managerPay: true });
+    const saved = await teamOf(db).updateMember(MANAGER, RID, "m-owner", { phone: "555" } as any);
+    expect(saved.phone).toBe("555");
+    expect("hourly_wage" in saved).toBe(false);
+    expect(saved.pay_withheld).toBe("owner");
+  });
+
+  it("the roster: a switched-on manager gets every wage but the owner's, which says whose it is", async () => {
+    const db = seed({ managerPay: true });
+    const rows = await teamOf(db).listMembers(MANAGER, RID);
+    const by = (id: string) => rows.find((m: any) => m.id === id);
+    expect("hourly_wage" in by("m-owner")).toBe(false);
+    expect(by("m-owner").pay_withheld).toBe("owner");
+    expect(by("m-staff").hourly_wage).toBe(20);
+    expect(by("m-manager").hourly_wage).toBe(30);
+    expect("pay_withheld" in by("m-staff")).toBe(false);
+    // The owner's roster is whole.
+    const own = await teamOf(db).listMembers(OWNER, RID);
+    expect(own.find((m: any) => m.id === "m-owner")?.hourly_wage).toBe(40);
+    for (const r of own) expect("pay_withheld" in r).toBe(false);
+  });
+
+  it("an inactive owner membership still makes the row an owner's", async () => {
+    const db = seed({ managerPay: true });
+    db.tables.user_restaurant_access.find((a) => a.user_id === OWNER)!.is_active = false;
+    // Another owner keeps the house owned; the deactivated one's pay stays hidden.
+    db.tables.user_restaurant_access.push({ id: "a5", user_id: "user-owner-2", restaurant_id: RID, role: "owner", is_active: true, team_pay_access: false });
+    const rows = await teamOf(db).listMembers(MANAGER, RID);
+    expect("hourly_wage" in rows.find((m: any) => m.id === "m-owner")).toBe(false);
+  });
+
+  it("the week: the owner's shift has no cost for a switched-on manager, and the total leaves it out and says so", async () => {
+    const db = seed({ managerPay: true });
+    ownerShiftWeek(db);
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    const by = (id: string) => week.shifts.find((s: any) => s.id === id);
+    expect("labor_cost" in by("sh3")).toBe(false);
+    expect(by("sh3").pay_withheld).toBe("owner");
+    expect(by("sh1").labor_cost).toBe(150);
+    expect(by("sh2").labor_cost).toBe(225);
+    // 150 + 225, never 675: with the other costs beside it, a total holding
+    // the owner's 300 would give it back by subtraction.
+    expect(week.labor.totalCost).toBe(375);
+    expect(week.labor.ownerShiftsLeftOut).toBe(1);
+    expect(week.labor.pricedShifts).toBe(2);
+    expect(week.labor.unpricedShifts).toBe(0);
+    // Hours are not money: the owner's hours still count.
+    expect(week.labor.totalHours).toBe(22.5);
+
+    const owners = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    expect(owners.labor.totalCost).toBe(675);
+    expect(owners.labor.ownerShiftsLeftOut).toBe(0);
+    expect(owners.shifts.find((s: any) => s.id === "sh3").labor_cost).toBe(300);
+    for (const s of owners.shifts) expect("pay_withheld" in s).toBe(false);
+  });
+
+  it("an unpriced owner shift does not make a manager's total unknown — it is not theirs to count", async () => {
+    const db = seed({ managerPay: true });
+    ownerShiftWeek(db);
+    db.tables.shifts.find((s) => s.id === "sh3")!.labor_cost = null;
+    const week = await scheduleOf(db).getWeek(MANAGER, RID, WEEK);
+    expect(week.labor.totalCost).toBe(375);
+    expect(week.labor.costComplete).toBe(true);
+  });
+
+  it("the shift writers: an owner's shift comes back to a switched-on manager without its cost, and is still priced", async () => {
+    const db = seed({ managerPay: true });
+    db.tables.shifts.push(shift({ id: "sh-open", member_id: null, state: "open", labor_cost: null }));
+    const svc = scheduleOf(db);
+    const created = await svc.createShift(MANAGER, RID, {
+      memberId: "m-owner",
+      shiftDate: WEEK,
+      startTime: "09:00",
+      endTime: "17:00",
+    } as any);
+    expect("labor_cost" in created).toBe(false);
+    expect(created.pay_withheld).toBe("owner");
+    // 7.5 h worked (the assumed Art. 68 minimum) x 40: priced, just not shown.
+    expect(db.tables.shifts.find((s) => s.id === created.id)?.labor_cost).toBe(300);
+
+    const updated = await svc.updateShift(MANAGER, RID, created.id, { endTime: "18:00" } as any);
+    expect("labor_cost" in updated).toBe(false);
+
+    const assigned = await svc.assignCover(MANAGER, RID, "sh-open", { memberId: "m-owner" } as any);
+    expect("labor_cost" in assigned).toBe(false);
+
+    const callout = await svc.reportCallout(MANAGER, RID, created.id, {} as any);
+    expect("labor_cost" in callout.callout).toBe(false);
+
+    // A colleague's shift still carries its cost to the same manager.
+    const staffShift = await svc.createShift(MANAGER, RID, {
+      memberId: "m-staff",
+      shiftDate: WEEK,
+      startTime: "09:00",
+      endTime: "17:00",
+    } as any);
+    expect(staffShift.labor_cost).toBe(150);
+  });
+
+  it("the owner's rows unreadable: pay is withheld from the manager altogether, and no wage is written", async () => {
+    const db = seed({ managerPay: true });
+    ownerShiftWeek(db);
+    const team = teamOf(db);
+    (team as any).ownerMemberIds = async () => null;
+    const notifications = { persistForRestaurant: jest.fn(async () => ({ inserted: 0 })) } as any;
+    const push = { sendToUsers: jest.fn(async () => undefined) } as any;
+    const week = await new ScheduleService(asDatabaseService(db), team, notifications, push).getWeek(MANAGER, RID, WEEK);
+    expect(week.labor.moneyVisible).toBe(false);
+    for (const s of week.shifts) {
+      expect("labor_cost" in s).toBe(false);
+      expect("pay_withheld" in s).toBe(false);
+    }
+    await expect(
+      team.updateMember(MANAGER, RID, "m-staff", { hourlyWage: 22 } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.tables.team_members.find((m) => m.id === "m-staff")?.hourly_wage).toBe(20);
+  });
+
+  it("the former-staff history and its wage-change rows stay the owner's alone", async () => {
+    const db = seed({ managerPay: true });
+    await expect(teamOf(db).listFormerStaff(MANAGER, RID)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 

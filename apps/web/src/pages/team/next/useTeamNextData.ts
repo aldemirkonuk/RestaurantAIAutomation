@@ -294,6 +294,12 @@ export interface LaborVM {
   costComplete: boolean | null;
   pricedShifts: number | null;
   unpricedShifts: number | null;
+  /**
+   * Worked shifts that are an OWNER's and so left out of a manager's total
+   * (founder 2026-09-27, item 71: "if owner taking money, manager can't see
+   * it"). 0 for the owner; `null` when the gateway did not say.
+   */
+  ownerShiftsLeftOut: number | null;
   /** Approved leave in the week, by type — owner only, `null` when not sent. */
   leave: {
     readable: boolean;
@@ -639,6 +645,8 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
           typeof laborRaw.pricedShifts === 'number' ? laborRaw.pricedShifts : null,
         unpricedShifts:
           typeof laborRaw.unpricedShifts === 'number' ? laborRaw.unpricedShifts : null,
+        ownerShiftsLeftOut:
+          typeof laborRaw.ownerShiftsLeftOut === 'number' ? laborRaw.ownerShiftsLeftOut : null,
       }
     : null;
 

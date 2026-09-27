@@ -86,7 +86,8 @@ vi.mock('../../../contexts/AuthContext', () => ({
 vi.mock('./MyShiftsNext', () => ({ MyShiftsNext: () => <div>My Shifts</div> }));
 
 import TeamNext from './TeamNext';
-import { MemberSheet } from './RosterSheet';
+import { MemberSheet, RosterSheet } from './RosterSheet';
+import { WeekGrid } from './WeekGrid';
 import { ExportPopover, TimeOffSheet } from './TeamOverlays';
 import {
   fmtMoneyExact,
@@ -335,5 +336,169 @@ describe('paid leave is not a free week', () => {
     expect(screen.getByText(/paid or unpaid not said/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Approve as paid' }));
     await vi.waitFor(() => expect(api.reviewTimeOff).toHaveBeenCalledWith('t1', 'approved', 'paid'));
+  });
+});
+
+// ── (item 71) an owner's pay is the owners', even from a manager who sees pay ──
+// The founder, 2026-09-27 (ADR 0215 question 7), verbatim: "if owner taking
+// money, manager can't see it". The gateway withholds an owner's wage and
+// shift cost from a manager with pay access and marks the row
+// `pay_withheld: 'owner'`; the page says whose it is and offers no field.
+
+describe("an owner's pay is not shown or offered to a manager who sees pay", () => {
+  const ownerRow = member({
+    id: 'm-owner',
+    user_id: 'u-owner',
+    display_name: 'Ada',
+    role: 'owner',
+    position: 'Owner',
+    pay_withheld: 'owner',
+  });
+
+  it('names the owner’s wage on the roster as the owner’s, and shows a colleague’s', () => {
+    render(
+      <RosterSheet
+        members={[ownerRow, member({ hourly_wage: 20 })] as never}
+        membersFailed={false}
+        shifts={[]}
+        certs={[]}
+        timeOff={[]}
+        moneyVisible
+        money={TRY_HOUSE}
+        house={{ areas: null, areasFailed: false, away: null, awayFailed: false, awayByUser: new Map() }}
+        onClose={() => {}}
+        onEdit={() => {}}
+        onAdd={() => {}}
+      />,
+      { wrapper },
+    );
+    const [ownerBtn, staffBtn] = screen.getAllByRole('button', { expanded: false });
+    fireEvent.click(ownerBtn);
+    expect(screen.getByText(/the owner's — an owner's pay is seen by an owner only/)).toBeInTheDocument();
+    fireEvent.click(staffBtn);
+    expect(screen.getByText(/20,00/)).toBeInTheDocument();
+  });
+
+  it('offers no wage field on the owner’s row, and says why', () => {
+    render(
+      <MemberSheet member={ownerRow as never} moneyVisible viewerUserId="u-mgr" ownerCount={1} onClose={() => {}} onChanged={() => {}} />,
+      { wrapper },
+    );
+    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    expect(screen.getByTestId('owner-pay-note')).toHaveTextContent(/Only an owner sees or sets it/);
+  });
+
+  it('still offers the owner their own wage field', () => {
+    render(
+      <MemberSheet
+        member={member({ id: 'm-owner', user_id: 'u-owner', role: 'owner', hourly_wage: 40 }) as never}
+        moneyVisible
+        viewerIsOwner
+        viewerUserId="u-owner"
+        ownerCount={1}
+        onClose={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(screen.getByDisplayValue('40')).toBeInTheDocument();
+    expect(screen.queryByTestId('owner-pay-note')).not.toBeInTheDocument();
+  });
+
+  it('says the manager’s week total leaves the owner’s shifts out', async () => {
+    api.week = weekPayload({
+      labor: {
+        enabled: true,
+        moneyVisible: true,
+        totalHours: 22.5,
+        totalCost: 375,
+        costComplete: true,
+        pricedShifts: 2,
+        unpricedShifts: 0,
+        ownerShiftsLeftOut: 1,
+        targetPct: null,
+        overtime: [],
+        leave: { readable: true, paid: [], paidDays: 0, unknownTypeDays: 0 },
+      },
+      money: TRY_HOUSE,
+    });
+    render(<TeamNext />, { wrapper });
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    expect(await within(labour).findByTestId('owner-pay-left-out')).toHaveTextContent(
+      "Leaves out the owner's 1 shift: an owner's pay is seen by an owner only.",
+    );
+  });
+
+  it('says nothing of the kind on the owner’s own week', async () => {
+    api.week = weekPayload({
+      labor: {
+        enabled: true,
+        moneyVisible: true,
+        totalHours: 22.5,
+        totalCost: 675,
+        costComplete: true,
+        pricedShifts: 3,
+        unpricedShifts: 0,
+        ownerShiftsLeftOut: 0,
+        targetPct: null,
+        overtime: [],
+        leave: { readable: true, paid: [], paidDays: 0, unknownTypeDays: 0 },
+      },
+      money: TRY_HOUSE,
+    });
+    render(<TeamNext />, { wrapper });
+    const labour = await screen.findByRole('region', { name: 'Labour cost' });
+    await within(labour).findByText(/Wages only/);
+    expect(within(labour).queryByTestId('owner-pay-left-out')).not.toBeInTheDocument();
+  });
+
+  it('shows the owner’s shift in the labour lens as hours, not “not priced”, and names whose it is', () => {
+    const shiftRow = (id: string, member_id: string, over: Record<string, unknown> = {}) => ({
+      id,
+      restaurant_id: 'r1',
+      schedule_id: 'sch1',
+      member_id,
+      shift_date: '2026-08-31',
+      start_time: '09:00',
+      end_time: '17:00',
+      role: 'Bar',
+      shift_type: 'morning',
+      state: 'scheduled',
+      note: null,
+      shift_breaks: [],
+      recorded_break_min: 30,
+      ...over,
+    });
+    render(
+      <WeekGrid
+        weekStart="2026-08-31"
+        shifts={[
+          shiftRow('s-owner', 'm-owner', { pay_withheld: 'owner', end_time: '15:00' }),
+          shiftRow('s-staff', 'm1', { labor_cost: 150, shift_date: '2026-09-01' }),
+        ] as never}
+        members={[ownerRow, member()] as never}
+        membersFailed={false}
+        certs={[]}
+        coverage={[]}
+        weekFailed={false}
+        engineIdle
+        lens="labour"
+        labourEnabled
+        moneyVisible
+        money={TRY_HOUSE}
+        scheduleId="sch1"
+        onEditShift={() => {}}
+        onChanged={() => {}}
+      />,
+      { wrapper },
+    );
+    expect(screen.queryByText(/not priced/)).not.toBeInTheDocument();
+    // The chip's line under the labour lens: the owner's worked hours (6h span,
+    // 30 min recorded), where a priced shift shows its cost.
+    const chips = screen.getAllByText('5.5h');
+    // Two: the person's week total, and the chip's own line.
+    expect(chips).toHaveLength(2);
+    fireEvent.click(chips[1]);
+    expect(screen.getByText(/the owner's — an owner's pay is seen by an owner only/)).toBeInTheDocument();
   });
 });

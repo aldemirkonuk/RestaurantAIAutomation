@@ -197,6 +197,9 @@ export function WeekGrid({
       // Hours for anyone who is not the owner: the cost is withheld, not unknown.
       if (!moneyVisible) return fmtHours(workedHours(s));
       if (!labourEnabled) return 'labour off';
+      // An owner's shift, to a manager who sees pay: withheld because it is
+      // the owner's (founder 2026-09-27, item 71), so hours, not "not priced".
+      if (s.pay_withheld === 'owner') return fmtHours(workedHours(s));
       // An unpriced shift is unknown, not free. `?? 0` here is exactly the
       // defect ADR 0089 found in the Tonight pulse.
       return s.labor_cost == null ? `${EM} not priced` : fmtMoneyWhole(s.labor_cost, money);
@@ -583,7 +586,13 @@ function ShiftDetail({
         {moneyVisible && (
           <Fact
             k="Cost"
-            v={shift.labor_cost == null ? `${EM} not priced` : fmtMoneyWhole(shift.labor_cost, money)}
+            v={
+              shift.pay_withheld === 'owner'
+                ? "the owner's — an owner's pay is seen by an owner only"
+                : shift.labor_cost == null
+                  ? `${EM} not priced`
+                  : fmtMoneyWhole(shift.labor_cost, money)
+            }
           />
         )}
       </div>
