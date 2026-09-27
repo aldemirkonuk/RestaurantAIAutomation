@@ -145,12 +145,43 @@ describe("assertTenantMatch — allowBodyTenantChange", () => {
     ).toThrow();
   });
 
-  it("still refuses a tenantless session naming a restaurant, even when exempt", () => {
-    // A session with no tenant may not reach into one by naming it — the
-    // exemption is about CHANGING tenant, not about acquiring one for free.
+  it("lets a tenantless session name, in the body of the exempt route, the house it chooses", () => {
+    // ADR 0164: a person with several houses signs in to none and chooses one
+    // through POST /auth/switch-restaurant, which mints it only where they
+    // hold an active membership row. [Until 2026-09-18 this test pinned the
+    // opposite ("still refuses a tenantless session naming a restaurant, even
+    // when exempt"), which made choosing impossible.]
     expect(() =>
       assertTenantMatch(
         req({ user: { userId: "u1" }, body: { restaurantId: "rest-b" } }),
+        { allowBodyTenantChange: true },
+      ),
+    ).not.toThrow();
+  });
+
+  it("still refuses a tenantless session naming a restaurant without the exemption", () => {
+    expect(() =>
+      assertTenantMatch(
+        req({ user: { userId: "u1" }, body: { restaurantId: "rest-b" } }),
+      ),
+    ).toThrow();
+  });
+
+  it("still refuses a tenantless session naming a restaurant in the path or query, even when exempt", () => {
+    // A session in no house reads no house's data on the way in.
+    expect(() =>
+      assertTenantMatch(
+        req({ user: { userId: "u1" }, params: { restaurantId: "rest-b" } }),
+        { allowBodyTenantChange: true },
+      ),
+    ).toThrow();
+    expect(() =>
+      assertTenantMatch(
+        req({
+          user: { userId: "u1" },
+          query: { restaurantId: "rest-b" },
+          body: { restaurantId: "rest-b" },
+        }),
         { allowBodyTenantChange: true },
       ),
     ).toThrow();

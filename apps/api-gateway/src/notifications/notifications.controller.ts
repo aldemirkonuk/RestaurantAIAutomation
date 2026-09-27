@@ -332,16 +332,25 @@ export class NotificationsController {
     }
   }
 
+  /**
+   * Preferences are per person PER HOUSE (ADR 0149 row 39, 2026-09-18): the
+   * house comes from the same verified token as the user, never from a
+   * query or body field, exactly like every other route in this controller.
+   */
   @Get("preferences")
   async getPreferences(
     @Query() query: GetPreferencesQueryDto,
-    @Req() req: Request & { user?: { userId?: string | null } },
+    @Req() req: ScopedRequest,
   ) {
     // Outside the try: the catch below turns every error into a 500, and a
     // refused scope must stay a 401/403.
     const userId = scopeOwnUserId(req, query?.userId);
+    const restaurantId = scopeRestaurantId(req);
     try {
-      return await this.notificationsService.getPreferences(userId);
+      return await this.notificationsService.getPreferences(
+        userId,
+        restaurantId,
+      );
     } catch (error) {
       this.logger.error(`Failed to get preferences: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -352,14 +361,16 @@ export class NotificationsController {
   async updatePreferences(
     @Query() query: GetPreferencesQueryDto,
     @Body() body: UpdatePreferencesDto,
-    @Req() req: Request & { user?: { userId?: string | null } },
+    @Req() req: ScopedRequest,
   ) {
     // Both places are compared: `body.userId || query.userId` used to let the
     // body win and ignore a query naming someone else.
     const userId = scopeOwnUserId(req, body?.userId, query?.userId);
+    const restaurantId = scopeRestaurantId(req);
     try {
       return await this.notificationsService.updatePreferences({
         userId,
+        restaurantId,
         email: body.email,
         push: body.push,
         sms: body.sms,
@@ -543,7 +554,7 @@ export class NotificationsController {
   }
 
   // =========================================================================
-  // EXISTING SENDING ENDPOINTS (preserved from original)
+  // THE TEST SEND — to the caller only
   // =========================================================================
 
   @Post("test")
@@ -565,119 +576,37 @@ export class NotificationsController {
     return { success: true, message: "Test notification sent" };
   }
 
-  @Post("order-approval")
-  async notifyOrderApproval(
-    @Body()
-    body: {
-      userId: string;
-      orderId: string;
-      wineName: string;
-      quantity: number;
-      providerName: string;
-      price?: number;
-    },
-  ) {
-    await this.notificationsService.sendOrderApprovalNotification(body);
-    return { success: true };
-  }
+  // =========================================================================
+  // WHO MAY NOTIFY WHOM (ADR 0149 answer 15, 2026-09-16; ADR 0147)
+  // =========================================================================
+  //
+  // CLOSED 2026-09-16: POST /notifications/order-approval, /low-stock,
+  // /delivery, /price-negotiation and /system-alert. Each sent to whatever user
+  // id, restaurant id or wording its body named, for any signed-in caller, and
+  // none had a caller: `git grep` over apps/web/src, apps/mobile and services/
+  // found no request to any of the five (the orchestrator included, so none
+  // needed an internal service-key door instead). Their service methods stay on
+  // NotificationsService for internal producers; they are no longer reachable
+  // over HTTP. `notification-senders-are-closed.spec.ts` pins the absence.
 
-  @Post("low-stock")
-  async notifyLowStock(
-    @Body()
-    body: {
-      restaurantId: string;
-      wineId: string;
-      wineName: string;
-      currentStock: number;
-      threshold: number;
-    },
-  ) {
-    await this.notificationsService.sendLowStockAlert(body);
-    return { success: true };
-  }
-
-  @Post("delivery")
-  async notifyDelivery(
-    @Body()
-    body: {
-      restaurantId: string;
-      orderId: string;
-      wineName: string;
-      quantity: number;
-      providerName: string;
-    },
-  ) {
-    await this.notificationsService.sendDeliveryNotification(body);
-    return { success: true };
-  }
-
-  @Post("price-negotiation")
-  async notifyPriceNegotiation(
-    @Body()
-    body: {
-      userId: string;
-      orderId: string;
-      wineName: string;
-      currentPrice: number;
-      proposedPrice: number;
-      providerName: string;
-    },
-  ) {
-    await this.notificationsService.sendPriceNegotiationNotification(body);
-    return { success: true };
-  }
-
-  @Post("system-alert")
-  async sendSystemAlert(
-    @Body()
-    body: {
-      restaurantId: string;
-      title: string;
-      message: string;
-      severity: "info" | "warning" | "error";
-    },
-  ) {
-    await this.notificationsService.sendSystemAlert(body);
-    return { success: true };
-  }
-
+  /**
+   * Closed 2026-09-20. This route used to take `to`/`cc`/`bcc` and `body_html`
+   * from the client and hand them to Gmail, so any signed-in user could send
+   * arbitrary HTML from the house's domain (ADR 0147 named gap). ADR 0149
+   * row 15 asked for owner/manager plus house recipients — a constrained
+   * open send is still an open send of client HTML, which ADR 0170 refuses
+   * for vendor mail. Gmail is never called. A 200 `{success:false}` would
+   * look like a failed send; this is a refusal. The house's own send is
+   * `POST /communications/letters` (the Communications composer). The three
+   * web callers this route had (QuickGmailModal, email-scheduler,
+   * RecurringOrders, none reachable from a Mudavym page) were retired in the
+   * same PR, and `no-client-send-email.test.ts` keeps a fourth from appearing.
+   */
   @Post("send-email")
-  async sendEmail(
-    @Body()
-    body: {
-      to: string[];
-      subject: string;
-      template_id?: string;
-      body_html: string;
-      body_text?: string;
-      cc?: string[];
-      bcc?: string[];
-    },
-  ) {
-    this.logger.log(`Sending email to ${body.to.join(", ")}`);
-
-    try {
-      const result = await this.notificationsService.sendEmail({
-        to: body.to,
-        subject: body.subject,
-        bodyHtml: body.body_html,
-        bodyText: body.body_text,
-        cc: body.cc,
-        bcc: body.bcc,
-      });
-
-      return {
-        success: true,
-        message_id: result.messageId,
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error) {
-      this.logger.error(`Failed to send email: ${error.message}`, error.stack);
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
+  async sendEmail(): Promise<never> {
+    throw new ForbiddenException(
+      "This route does not send mail. A client cannot supply HTML or recipients here.",
+    );
   }
 
   // =========================================================================

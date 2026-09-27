@@ -19,6 +19,18 @@ links: ["[[PAGE-CONTRACT]]", "[[recommendations]]", "[[settings]]"]
 
 > **Part of** [[08-softwares/recommendations|Recommendations]] — the small software this screen belongs to. Index: [[SOFTWARE-MAP]].
 
+> **2026-09-21 — this note describes the LEGACY `InsightCatalog.tsx` only.**
+> Behind `mudavym_design_recommendations`, this route now also serves
+> `CatalogView.tsx` (`App.tsx:337-346`), which was read-only until today: the
+> founder ruled it **actionable** — each type can be turned on/off for the
+> house and opened to its live recommendations. Recorded in
+> [[0191-the-recommendations-catalogue-is-actionable-not-a-read-only-leaf]]
+> and in [[recommendations]] §"Forks built on a DEFAULT". This page note's
+> own rebuild (component, endpoints, gaps below) is still owed — out of scope
+> for that decision's lane. Same day, round 2: the live items also offer
+> Snooze, Done and a reason-labelled Dismiss, and turning a type off asks its
+> reason (ADR 0191 "Round 2").
+
 ## Surface — buttons → where they go
 
 - **← Recommendations** → [[recommendations]] `/recommendations`

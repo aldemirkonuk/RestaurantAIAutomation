@@ -624,6 +624,14 @@ export class CalendarRemindersService {
       .select(
         "user_id, restaurant_id, calendar_reminders_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end",
       )
+      // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since
+      // ADR 0149 row 39, so a plain `.in("user_id", ...)` returns one row per
+      // house a member belongs to. The DB-side filter below replaces the old
+      // "prefer this house's row" post-hoc dedupe, which only worked when a
+      // row for THIS house happened to exist in the result set at all -- a
+      // member with a row in another house but none here yet still leaked
+      // that other house's quiet hours into this one.
+      .eq("restaurant_id", restaurantId)
       .in("user_id", userIds);
 
     if (error) {
@@ -637,9 +645,6 @@ export class CalendarRemindersService {
     }
 
     for (const raw of (data ?? []) as any[]) {
-      const existing = out.get(raw.user_id);
-      // A user with rows in two restaurants: prefer this house's row.
-      if (existing && raw.restaurant_id !== restaurantId) continue;
       out.set(raw.user_id, {
         calendarRemindersEnabled: raw.calendar_reminders_enabled !== false,
         quietHours: {
@@ -786,6 +791,10 @@ export class CalendarRemindersService {
           .select(
             "calendar_reminders_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end",
           )
+          // (2026-09-19, D5) unscoped by restaurant_id, this took an
+          // arbitrary one of a multi-house member's rows (no ORDER BY), so
+          // this status read could report a DIFFERENT house's quiet hours.
+          .eq("restaurant_id", restaurantId)
           .eq("user_id", userId)
           .limit(1),
         client

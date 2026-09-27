@@ -212,6 +212,11 @@ export class ProducerLedgerService {
       .select(
         "user_id, restaurant_id, quiet_hours_enabled, quiet_hours_start, quiet_hours_end",
       )
+      // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since
+      // ADR 0149 row 39; see calendar-reminders.service.ts's readPreferences
+      // for why the old post-hoc "prefer this house's row" dedupe still leaked
+      // a foreign house's quiet hours when this house had no row yet.
+      .eq("restaurant_id", restaurantId)
       .in("user_id", userIds);
 
     if (error) {
@@ -221,9 +226,6 @@ export class ProducerLedgerService {
     }
 
     for (const raw of (data ?? []) as any[]) {
-      const existing = out.get(raw.user_id);
-      // A user with rows in two restaurants: prefer this house's row.
-      if (existing && raw.restaurant_id !== restaurantId) continue;
       out.set(raw.user_id, {
         quietHours: {
           enabled: raw.quiet_hours_enabled === true,

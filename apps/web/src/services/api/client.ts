@@ -16,6 +16,7 @@
  */
 
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+import { goToChooser, noteHouseEnded, storeSession } from '../../lib/houseMemory';
 
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
@@ -40,10 +41,23 @@ async function doTokenRefresh(): Promise<string> {
     `${API_GATEWAY_URL}/api/v1/auth/refresh`,
     { refreshToken },
   );
-  const { accessToken, refreshToken: newRefresh } = response.data;
-  localStorage.setItem('accessToken', accessToken);
-  if (newRefresh) localStorage.setItem('refreshToken', newRefresh);
+  const { accessToken, refreshToken: newRefresh, houseAccessEnded } = response.data;
+  storeSession(accessToken, newRefresh);
+  // The session's house ended (ADR 0164, R5): the new pair names no house.
+  // The person chooses; retrying this request would only be refused again.
+  if (noteHouseEnded(accessToken, houseAccessEnded?.restaurantId)) {
+    goToChooser();
+    throw new HouseAccessEnded();
+  }
   return accessToken as string;
+}
+
+/** Thrown by a refresh whose answer was "that house is no longer yours". */
+class HouseAccessEnded extends Error {
+  constructor() {
+    super('Your access to this house has ended.');
+    this.name = 'HouseAccessEnded';
+  }
 }
 
 function createApiClient(): AxiosInstance {
@@ -98,11 +112,16 @@ function createApiClient(): AxiosInstance {
         if (!refreshPromise) {
           refreshPromise = doTokenRefresh()
             .catch((err) => {
-              // Refresh endpoint itself failed (expired/revoked) — clear tokens
-              // and send the user back to login only in this case.
-              localStorage.removeItem('accessToken');
-              localStorage.removeItem('refreshToken');
-              window.location.href = '/login';
+              // Only a refused refresh token ends the session (a 401 from the
+              // refresh route). A house that ended already sent the person to
+              // the chooser; a 503 or a dropped connection says "try again",
+              // not "you are not who you said you were" (ADR 0164).
+              const status = (err as AxiosError)?.response?.status;
+              if (!(err instanceof HouseAccessEnded) && status === 401) {
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
+                window.location.href = '/login';
+              }
               throw err;
             })
             .finally(() => {
@@ -133,6 +152,15 @@ function createApiClient(): AxiosInstance {
         window.location.pathname !== '/verify-email'
       ) {
         window.location.href = '/verify-email';
+      }
+
+      // ADR 0164, R4: a session in no house asked for something that belongs
+      // to a house. The person has not chosen one yet.
+      if (
+        error.response?.status === 403 &&
+        (error.response.data as { code?: string } | undefined)?.code === 'HOUSE_REQUIRED'
+      ) {
+        goToChooser();
       }
 
       return Promise.reject(error);

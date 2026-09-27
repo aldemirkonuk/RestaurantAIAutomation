@@ -47,9 +47,13 @@ export default function TodayScreen() {
    * had. Ten of the ten production restaurants have owners, but six are
    * owner-only, so an invited-but-unattached account is a real state.
    */
+  //
+  // [ADR 0164, 2026-09-18: a session in no house is also a person with several
+  // houses who has not chosen one, or whose house just ended. It goes to the
+  // chooser, which sends someone with no house at all on to /no-access.]
   useEffect(() => {
     if (status === "signedIn" && user && !user.restaurantId) {
-      router.replace("/no-access");
+      router.replace("/choose-house" as never);
     }
   }, [status, user, router]);
   const { data, isLoading, isError, refetch, isRefetching, dataUpdatedAt } = useFeed();
