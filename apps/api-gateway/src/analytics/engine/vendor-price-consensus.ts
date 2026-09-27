@@ -381,6 +381,12 @@ export interface PriceTrend {
   absoluteChange: number | null;
   pctChange: number | null;
   note: string;
+  /** How many observations fell in THIS window — additive, so a caller can
+   * enforce its own minimum sample before printing a change (a page-level
+   * policy; this engine sets no floor of its own). */
+  currentCount: number;
+  /** How many observations fell in the PRECEDING window of the same length. */
+  previousCount: number;
 }
 
 /**
@@ -426,6 +432,8 @@ export function priceTrend(
         current === null
           ? `No observations in the last ${windowDays} days.`
           : `No comparable observations in the preceding ${windowDays} days, so change cannot be computed.`,
+      currentCount: currentObs.length,
+      previousCount: priorObs.length,
     };
   }
 
@@ -442,6 +450,8 @@ export function priceTrend(
       pctChange === null
         ? "Previous consensus was zero; percentage change is undefined."
         : `${pctChange >= 0 ? "Up" : "Down"} ${(Math.abs(pctChange) * 100).toFixed(1)}% over ${windowDays} days.`,
+    currentCount: currentObs.length,
+    previousCount: priorObs.length,
   };
 }
 

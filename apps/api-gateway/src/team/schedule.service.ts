@@ -1042,7 +1042,7 @@ export class ScheduleService {
       .maybeSingle();
     // A failed read is an error, not an unpriced cover: `null` here used to
     // be written as the cover's labor_cost, which says "no wage on file"
-    // (ADR 0215; and before migration 20261101100100 applies, this read names
+    // (ADR 0215; and before migration 20261101110100 applies, this read names
     // a column the table lacks, so it would have priced every cover as null).
     if (error) {
       this.logger.error(
