@@ -9,6 +9,7 @@ import {
   ConflictException,
   ServiceUnavailableException,
 } from "@nestjs/common";
+import { ORG_OWNER } from "./org-role";
 import { DatabaseService } from "../database/database.service";
 
 export interface RestaurantBranch {
@@ -387,40 +388,23 @@ export class OrganizationsService {
     if (error) throw new InternalServerErrorException("Failed to delete chain");
   }
 
+  /**
+   * The houses the switcher lists: the person's memberships, an active
+   * `user_restaurant_access` row each, and nothing else (ADR 0164, "Membership
+   * only"; research R6).
+   *
+   * Until 2026-09-18 this listed every house of every organisation the person
+   * belonged to, then their access rows, then, when both were empty, the house
+   * their `users` row named. So the switcher offered houses the switch route
+   * refuses under membership only (7 person-house pairs in production, all
+   * simulation accounts), and a person who had left a house kept seeing it
+   * there, because no removal touches `organization_members`.
+   *
+   * The read refuses on error rather than carrying on: an empty list sends the
+   * person to the chooser's "no houses" page, so "could not read" must never
+   * look like "you have none".
+   */
   async getBranchesForUser(userId: string): Promise<RestaurantBranch[]> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
-    const byId = new Map<string, RestaurantBranch>();
-
-    const mapRow = (r: any): RestaurantBranch => ({
-      id: r.id,
-      name: r.name,
-      city: r.city ?? null,
-      chain_id: r.chain_id ?? null,
-      chain_name: r.restaurant_chains?.name ?? null,
-      updated_at: r.updated_at ?? null,
-    });
-
-    if (orgIds.length > 0) {
-      const { data: restaurants, error: restErr } =
-        await this.databaseService.supabase
-          .from("restaurants")
-          .select("id, name, city, chain_id, updated_at, restaurant_chains(name)")
-          .in("organization_id", orgIds);
-
-      // Every read below refuses on error rather than carrying on. An empty
-      // list here routes the person to /no-access (ADR 0133), and a list
-      // missing one read's branches is served as the whole list, so a failed
-      // read must never look like "no branches" or "these are all of them".
-      if (restErr) {
-        this.logger.error(
-          `Failed to fetch branches for user ${userId}: ${restErr.message}`,
-        );
-        throw new ServiceUnavailableException("Could not read branches");
-      }
-      for (const r of restaurants ?? []) byId.set(r.id, mapRow(r));
-    }
-
-    // Legacy / org-less restaurants: still list anything the user can access via URA.
     const { data: uraRows, error: uraErr } = await this.databaseService.supabase
       .from("user_restaurant_access")
       .select(
@@ -431,44 +415,25 @@ export class OrganizationsService {
 
     if (uraErr) {
       this.logger.error(
-        `Failed to fetch URA branches for user ${userId}: ${uraErr.message}`,
+        `Failed to fetch the houses of user ${userId}: ${uraErr.message}`,
       );
       throw new ServiceUnavailableException("Could not read branches");
     }
+
+    const byId = new Map<string, RestaurantBranch>();
     for (const row of uraRows ?? []) {
       const r = (row as any).restaurants;
-      if (r?.id && !byId.has(r.id)) byId.set(r.id, mapRow(r));
-    }
-
-    // Final fallback: users.restaurant_id (pre-org single-restaurant accounts)
-    if (byId.size === 0) {
-      const { data: user, error: userErr } = await this.databaseService.supabase
-        .from("users")
-        .select("restaurant_id")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (userErr) {
-        this.logger.error(
-          `Failed to read legacy restaurant_id for user ${userId}: ${userErr.message}`,
-        );
-        throw new ServiceUnavailableException("Could not read branches");
-      }
-      if (user?.restaurant_id) {
-        const { data: r, error: rowErr } = await this.databaseService.supabase
-          .from("restaurants")
-          .select("id, name, city, chain_id, updated_at, restaurant_chains(name)")
-          .eq("id", user.restaurant_id)
-          .maybeSingle();
-        if (rowErr) {
-          this.logger.error(
-            `Failed to read legacy branch for user ${userId}: ${rowErr.message}`,
-          );
-          throw new ServiceUnavailableException("Could not read branches");
-        }
-        if (r) byId.set(r.id, mapRow(r));
+      if (r?.id && !byId.has(r.id)) {
+        byId.set(r.id, {
+          id: r.id,
+          name: r.name,
+          city: r.city ?? null,
+          chain_id: r.chain_id ?? null,
+          chain_name: r.restaurant_chains?.name ?? null,
+          updated_at: r.updated_at ?? null,
+        });
       }
     }
-
     return [...byId.values()];
   }
 
@@ -573,34 +538,118 @@ export class OrganizationsService {
       chainId?: string;
     },
   ): Promise<{ id: string; name: string }> {
-    const orgIds = await this.getUserOrgIdsWithFallback(userId);
+    // Organisation owners only (ADR 0164, the founder 2026-09-18): the caller
+    // must hold an `organization_members` row with role `owner` in the
+    // organisation the location goes into, and they become the new house's
+    // owner (below). Until 2026-09-18 any organisation member could, staff
+    // included, and became its owner: a house-level staff member could open a
+    // house and own it (PR #393 audit note 2; v3.0-TECH-DEBT 44.1u). See
+    // organizations/org-role.ts for why that column can now carry the answer.
+    const { data: orgRows, error: orgRowsError } =
+      await this.databaseService.supabase
+        .from("organization_members")
+        .select("organization_id, role")
+        .eq("user_id", userId);
+    if (orgRowsError) {
+      this.logger.error(
+        `createLocation could not read ${userId}'s organisations: ${orgRowsError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not confirm who owns this organisation. Nothing was created; try again.",
+      );
+    }
+    const ownedOrgIds = (orgRows ?? [])
+      .filter((r: { role?: string | null }) => r.role === ORG_OWNER)
+      .map((r: { organization_id: string }) => r.organization_id);
 
-    if (orgIds.length === 0)
-      throw new ForbiddenException("User has no organization");
+    if (ownedOrgIds.length === 0) {
+      throw new ForbiddenException({
+        message: "Only an owner of the organisation can open a new location.",
+        code: "NOT_ORGANISATION_OWNER",
+      });
+    }
 
-    const { data: ownedOrg } = await this.databaseService.supabase
-      .from("organizations")
-      .select("id")
-      .eq("owner_id", userId)
-      .maybeSingle();
-    const organizationId =
-      ownedOrg?.id ?? (orgIds.length === 1 ? orgIds[0] : null);
-    if (!organizationId) {
+    // The organisation the location goes into: the chain's, when one is named
+    // (and the caller must own it), else the one organisation they own.
+    let organizationId: string | null = null;
+    if (dto.chainId) {
+      const { data: chain, error: chainError } =
+        await this.databaseService.supabase
+          .from("restaurant_chains")
+          .select("organization_id")
+          .eq("id", dto.chainId)
+          .maybeSingle();
+      if (chainError) {
+        this.logger.error(
+          `createLocation could not read chain ${dto.chainId}: ${chainError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not read that group. Nothing was created; try again.",
+        );
+      }
+      if (!chain || !ownedOrgIds.includes(chain.organization_id)) {
+        throw new NotFoundException("Chain not found or access denied");
+      }
+      organizationId = chain.organization_id;
+    } else if (ownedOrgIds.length === 1) {
+      organizationId = ownedOrgIds[0];
+    } else {
       throw new BadRequestException(
-        "Cannot determine target organization — please specify organizationId",
+        "You own more than one organisation. Choose a group for the new location so it is clear which one it opens in.",
       );
     }
 
-    // Verify that the supplied chainId belongs to one of the user's orgs
-    if (dto.chainId) {
-      const { data: chain } = await this.databaseService.supabase
-        .from("restaurant_chains")
-        .select("organization_id")
-        .eq("id", dto.chainId)
-        .in("organization_id", orgIds)
-        .maybeSingle();
-      if (!chain)
-        throw new NotFoundException("Chain not found or access denied");
+    // Organisation owners only closed "an owner of nothing can still open a
+    // location" for someone with NO organisation row at all — but not for an
+    // organisation owner who is an active member of no HOUSE in that
+    // organisation (e.g. removed from every house of it; ADR 0164 "Open items
+    // for the founder (a)" / OPEN-DECISIONS.md OD-131(a)). The founder's
+    // answer, 2026-09-19 (batch-4, `founder-sketch-decisions-106-115.md`): the
+    // organisation role is kept EITHER WAY — a house-level removal never
+    // touches `organization_members` — but opening a location now also
+    // requires an active `user_restaurant_access` row in a house of the SAME
+    // organisation being opened into.
+    const { data: activeAccess, error: activeAccessError } =
+      await this.databaseService.supabase
+        .from("user_restaurant_access")
+        .select("restaurant_id")
+        .eq("user_id", userId)
+        .eq("is_active", true);
+    if (activeAccessError) {
+      this.logger.error(
+        `createLocation could not read ${userId}'s active houses: ${activeAccessError.message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Could not confirm your active house membership. Nothing was created; try again.",
+      );
+    }
+    const activeRestaurantIds = (activeAccess ?? []).map(
+      (r: { restaurant_id: string }) => r.restaurant_id,
+    );
+    let hasHouseInOrg = false;
+    if (activeRestaurantIds.length > 0) {
+      const { data: orgHouses, error: orgHousesError } =
+        await this.databaseService.supabase
+          .from("restaurants")
+          .select("id")
+          .eq("organization_id", organizationId)
+          .in("id", activeRestaurantIds);
+      if (orgHousesError) {
+        this.logger.error(
+          `createLocation could not read ${userId}'s houses in organisation ${organizationId}: ${orgHousesError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          "Could not confirm your active house membership. Nothing was created; try again.",
+        );
+      }
+      hasHouseInOrg = (orgHouses ?? []).length > 0;
+    }
+    if (!hasHouseInOrg) {
+      throw new ForbiddenException({
+        message:
+          "Only an organisation owner with an active house in this organisation can open a new location.",
+        code: "NO_ACTIVE_HOUSE_IN_ORGANISATION",
+      });
     }
 
     const slugBase = dto.name
