@@ -36,7 +36,20 @@ const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'support@mudavym.com
  * so a by-reference clause would import that broader claim here.
  *
  * "Changes" makes no promise about an agreement: nothing in apps/web,
- * api-gateway or supabase/migrations records acceptance of these terms.
+ * api-gateway or supabase/migrations records acceptance of THIS page.
+ *
+ * [PR 478 audit of 6138eb275, fix round 1 of 2, 2026-09-27: that sentence
+ * said "this text" with no other qualifier. #435 (merged into this branch)
+ * ships a different acceptance: every owner is met at sign-in by the house's
+ * data-and-privacy terms (`DataTermsSignInGate`, mounted in
+ * `DashboardLayout.tsx`), which cannot be dismissed and are accepted by
+ * holding a button, and the gateway records each acceptance with its version,
+ * time and accepting user
+ * (`api-gateway/src/settings/data-terms/house-data-terms.service.ts`,
+ * `house_data_terms_acceptances`, owner-only at :114). Read on its own,
+ * "Mudavym does not record acceptance" was broader than the code, so the
+ * public sentence now names this page, names the separate data terms, and
+ * says those ARE recorded.]
  */
 export default function Terms() {
   const { user } = useAuth()
@@ -119,8 +132,11 @@ export default function Terms() {
           <h2>Changes</h2>
           <p>
             This page will change as it is reviewed and as the product changes
-            with it. Mudavym does not yet ask anyone to accept this text, and
-            does not record acceptance of it.
+            with it. Mudavym does not ask anyone to accept this page, and does
+            not record acceptance of it. This page is separate from a
+            house&apos;s data and privacy terms. Each owner of a house is asked
+            to accept those inside Mudavym, and Mudavym records that
+            acceptance: which version was accepted, when, and by whom.
           </p>
         </section>
         <section className="mdv-pub__plate">

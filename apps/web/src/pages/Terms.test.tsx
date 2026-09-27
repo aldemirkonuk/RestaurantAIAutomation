@@ -49,5 +49,12 @@ describe('Terms page', () => {
     renderWithProviders(<Terms />)
     expect(screen.queryByText(/already agreed/i)).toBeNull()
     expect(screen.getByText(/does not record acceptance of it/i)).toBeInTheDocument()
+    // [PR 478 audit fix round 1 of 2] The denial is scoped to THIS page, and
+    // the separate, recorded data-terms acceptance (#435) is named, so the
+    // sentence is not broader than the code.
+    expect(screen.getByText(/does not ask anyone to accept this page/i)).toBeInTheDocument()
+    expect(screen.queryByText(/accept this text/i)).toBeNull()
+    expect(screen.getByText(/data and privacy terms/i)).toBeInTheDocument()
+    expect(screen.getByText(/mudavym records that\s+acceptance/i)).toBeInTheDocument()
   })
 })

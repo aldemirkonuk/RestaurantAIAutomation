@@ -24,7 +24,11 @@
  * `/privacy`). There is no dedicated `/terms` page in this codebase yet
  * (only `/privacy`); this sheet does not create one, and does not draft
  * legal language to fill the gap — see ADR 0207's *Round 5* section for what
- * that means for the lawyer's review.
+ * that means for the lawyer's review. [PR 478, 2026-09-27: a `/terms` page
+ * now exists (`pages/Terms.tsx`), as an unreviewed placeholder Terms of
+ * Service. It is a separate document: this sheet neither renders nor links
+ * it, and nobody is asked to accept it. `Terms.tsx`'s "Changes" section names
+ * these data terms as the separate, recorded acceptance.]
  *
  * SHAPE: `Panel` (ADR 0112) — centered, because this is a question the
  * reader must answer, not a record or a menu. Motion is whatever `Panel`
