@@ -894,6 +894,35 @@ export class ConversationsService {
         callerRole,
       );
       if (!conversation) throw this.notFound();
+
+      // PR #476 audit (Train 5 BLOCK): "approve" here means "publish
+      // conversation.approved", which resumes the procurement agent and
+      // sends the vendor message. A HOUSE_DRAFT row (ADR 0167/0230's
+      // credit-claim letter, `outbound_email_type: "HOUSE_LETTER"`) has
+      // never been queued to send, and a HOUSE_CANCELLED one was thrown
+      // away — neither is a vendor reply waiting on a decision, which is
+      // the only thing this endpoint is for. Before this check, an
+      // owner/manager (the only callers `getConversation` does not withhold
+      // either status from) could approve a draft nobody asked to send,
+      // dispatching it around the dedicated "ask the vendor" / cancel flow
+      // that ADR 0230 requires. Checked by status alone: HOUSE_DRAFT and
+      // HOUSE_CANCELLED are the only statuses `outbound_email_type:
+      // "HOUSE_LETTER"` rows carry (house-letters.service.ts LETTER_STATUS),
+      // so there is no letter this misses and no non-letter row this catches.
+      if (
+        conversation.status === "HOUSE_DRAFT" ||
+        conversation.status === "HOUSE_CANCELLED"
+      ) {
+        return {
+          success: false,
+          messageSent: false,
+          error:
+            conversation.status === "HOUSE_DRAFT"
+              ? "This is a drafted credit-claim letter, not a vendor reply — ask the vendor before there is anything to approve."
+              : "This credit-claim letter was discarded and cannot be approved.",
+        };
+      }
+
       if (conversation.paused_at) {
         const pausedAt = new Date(conversation.paused_at);
         const now = new Date();

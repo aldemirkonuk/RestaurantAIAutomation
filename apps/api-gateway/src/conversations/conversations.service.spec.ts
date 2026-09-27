@@ -27,7 +27,9 @@ type Row = Record<string, any>;
 const HOUSE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const CONV = "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1";
 
-function makeService(opts: { updateError?: { message: string } } = {}) {
+function makeService(
+  opts: { updateError?: { message: string }; status?: string | null } = {},
+) {
   const updates: Row[] = [];
 
   const client: any = {
@@ -60,6 +62,7 @@ function makeService(opts: { updateError?: { message: string } } = {}) {
               data: {
                 id: CONV,
                 order_id: "order-1",
+                status: opts.status ?? null,
                 paused_at: new Date(Date.now() - 60_000).toISOString(),
               },
               error: null,
@@ -152,6 +155,54 @@ describe("Defect B — a failed publish can never be reported as a send", () => 
     expect(result.success).toBe(false);
     expect(result.message).toBeUndefined();
     expect(result.error).toMatch(/nothing was queued/i);
+  });
+});
+
+describe("PR #476 Train 5 BLOCK — approveConversation refuses a credit-claim letter", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("refuses a HOUSE_DRAFT row without publishing conversation.approved", async () => {
+    const { service, updates } = makeService({ status: "HOUSE_DRAFT" });
+
+    const result = await service.approveConversation(CONV, HOUSE, {
+      approvalChannel: "web",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.messageSent).toBe(false);
+    expect(result.error).toMatch(/draft/i);
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    // Never even recorded as approved — the row is left exactly as it was.
+    expect(updates).toHaveLength(0);
+  });
+
+  it("refuses a HOUSE_CANCELLED row without publishing conversation.approved", async () => {
+    const { service, updates } = makeService({ status: "HOUSE_CANCELLED" });
+
+    const result = await service.approveConversation(CONV, HOUSE, {
+      approvalChannel: "web",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.messageSent).toBe(false);
+    expect(result.error).toMatch(/discarded/i);
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    expect(updates).toHaveLength(0);
+  });
+
+  it("still approves and dispatches a conversation with no status (the ordinary case)", async () => {
+    mockedAxios.post.mockResolvedValue({ status: 200, data: {} } as any);
+    const { service, updates } = makeService({ status: null });
+
+    const result = await service.approveConversation(CONV, HOUSE, {
+      approvalChannel: "web",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockedAxios.post).toHaveBeenCalled();
+    expect(updates).toHaveLength(1);
   });
 });
 
