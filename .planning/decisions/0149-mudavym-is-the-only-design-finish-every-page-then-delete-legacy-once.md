@@ -239,6 +239,18 @@ the current restaurants or users, or tables, dbs or such"*. So:
       (`LOW_STOCK_DIGEST_DEDUPE_UNREADABLE`, "skipping this tick so it cannot
       send twice"). It is retried on the next tick, so one failed read delays
       the digest by an hour and does not lose the day.
+    - **A failed preferences read SKIPS too** [2026-09-27, PR #488 audit at
+      7b2ab8d3f]. The sweep read preferences through
+      `getEffectiveLowStockPrefs`, which turns a failed read into the defaults
+      (on, daily, 12:00). Under catch-up every tick from local noon is due, so
+      a house set to 18:00, or with the digest off, was sent at the first
+      failed tick after noon, and that stamp suppressed its real hour for the
+      day. The sweep now uses the throwing `readLowStockPrefs` (#486; strict
+      member read) and skips with `LOW_STOCK_DIGEST_PREFS_UNREADABLE` (spec o,
+      three tests, each failing with the old call swapped back in). Not
+      changed: `triggerDailyDigest` and the instant path keep the defaults,
+      by #486's rule that a missed alert is worse than a default one. A house
+      whose preferences fail on every due tick of a date loses that date.
     - **Builder's addition, Proposed.** There is an in-process fence,
       `digestSentOn` (restaurant → house date sent) [2026-09-27, PR #488 audit
       at f835811bc: now restaurant → the tick instant sent, re-read in the
@@ -279,14 +291,28 @@ the current restaurants or users, or tables, dbs or such"*. So:
       the send rule, and a catch-up property drops every date's first due
       tick. Each part was mutation-checked (PR #488 body). Spec n (zone
       change mid-day, both directions) was added at the f835811bc audit.
+  - **Merged with #486** [2026-09-27, PR #488 audit at 7b2ab8d3f]. #486
+    landed first. Three things changed on the merge: (1) `sendDigest` takes
+    #486's `rowsSnapshotAt` 4th and this PR's `{ periodKey, digestAt }` 5th;
+    (2) the held-queue view reports the zone the sweep keeps
+    (`digestClockForRestaurant`: `timezone` + `zone_source`; `digest: null`
+    when that read fails) instead of the New York literal, and `nt-held.ts`
+    says it, with item 61's "UTC — this house has no time zone set yet" for
+    the fallback; (3) #486's rule that a digest writing no inbox row stamps
+    nothing now also means no durable once-a-day fence for that date. See
+    v3.0-TECH-DEBT "a digest that wrote no inbox row is not fenced", which
+    also records the tick stamp running up to 29 minutes ahead of the
+    held-queue read filter.
   - **CLAIMS:** `ADR-0149-LOW-STOCK-DIGEST-FOLLOWS-THE-HOUSE-CLOCK`,
+    `ADR-0149-LOW-STOCK-DIGEST-PREFS-READ-SKIPS` (7b2ab8d3f audit),
     `ADR-0149-LOW-STOCK-DIGEST-DST-TESTED` [narrowed 2026-09-27, f835811bc
     audit: it named a "tick-crossing" guarantee item 70 removed, and its
     verify held with the full-year test deleted; it now pins both property
     tests by title and their per-date assertion],
     `TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP` (open) [resolved 2026-09-27,
     item 70]; item 61's page half: `ITEM-61-NOTIFICATIONS-SAYS-UTC-FALLBACK`
-    (open, owed by #486) and `ITEM-61-NOTIFICATIONS-NEVER-SAYS-NEW-YORK-TIME`
+    (open, owed by #486) [resolved 2026-09-27 on the #486 merge, in the held
+    band only] and `ITEM-61-NOTIFICATIONS-NEVER-SAYS-NEW-YORK-TIME`
     (v3.0-TECH-DEBT 2026-09-27).
   - **Source note:** the verbatim option labels above come from the
     orchestrator's relayed task text for this lane, not from a session this
@@ -306,6 +332,7 @@ the current restaurants or users, or tables, dbs or such"*. So:
     zones, so its digest moves from 09:00 PT (12:00 "New York" today) to
     05:00 PDT until the founder sets `America/Los_Angeles` for it in Settings
     after #435 merges — his keystroke, not this lane's.
+  **[founder, 2026-09-26, round 8 — the held low-stock queue. Asked: "Three features exist only on legacy pages: editing a vendor's branch locations, the held low-stock queue on notifications, and team coverage-template delete plus hand-entered sales. Deleting legacy loses them. What do we do?" Chosen: "Build into new pages (Recommended)" — "Add each to its Mudavym page before the cutover PR. It costs one small lane, and nothing a house uses today disappears." Rejected: "Waive all three" ("Delete them with the legacy pages and file them in FUTURES. Faster cutover, but the features are gone until rebuilt.") and "Decide per feature" ("I ask about each one separately."). Built for the held queue on `feat/notifications-held-low-stock`: `/notifications` (NotificationsNext) now reads `GET /notifications/low-stock/held/:restaurantId` through `HeldBand` + `useHeldLowStock`, so `fetchHeldLowStock` gains a live caller and leaves the manifest's legacy-only method list (G3b) and endpoint list; the legacy strip had no actions to port, and the Mudavym band adds the reason in words, every wine listable, when (or whether) the digest will tell them, per-wine inventory links and the settings link. The gateway's hold lifecycle was corrected in the same PR (a failed instant write, the digest and recovery each left or created a false hold) — `.planning/06-pages/notifications.md` §13.41. CLAIMS rows ADR-0149-HELD-LOW-STOCK-QUEUE-ON-THE-MUDAVYM-PAGE and ADR-0149-HELD-QUEUE-A-HOLD-ENDS-ONLY-WHEN-TOLD.]**
 - **Revisit when:** a cutover revert is needed in production, or a house asks for the
   old design (the signal that a per-house switch was load-bearing after all).
 

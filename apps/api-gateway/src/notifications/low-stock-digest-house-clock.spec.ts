@@ -32,6 +32,17 @@ function makeDigestDbMock(opts: {
   restaurantsReadError?: boolean;
   /** Force every `inventory_alert_state` upsert (the digest stamp) to error. */
   upsertError?: boolean;
+  /**
+   * Force the `notification_preferences` read itself to error (network/DB
+   * failure) — distinct from a house whose members saved no preferences
+   * (an empty, successful read, which means the defaults) (spec o).
+   */
+  prefsReadError?: boolean;
+  /**
+   * Force the strict member read (`getRestaurantMemberIdsOrThrow`, which
+   * `readLowStockPrefs` uses) to throw (spec o).
+   */
+  memberIdsReadError?: boolean;
 }) {
   const lastDigestAt: Record<string, string> = {
     ...(opts.initialLastDigestAt ?? {}),
@@ -42,7 +53,10 @@ function makeDigestDbMock(opts: {
     const chain: any = {
       _eqs: [] as Array<[string, any]>,
       _in: undefined as string[] | undefined,
-      select: () => chain,
+      // `select` also ends the digest stamp's conditional clear-hold write
+      // (`update(row)...or(...).select(...)`, upsertState since #486).
+      select: () => (chain._update ? writeStamp(chain._update) : chain),
+      or: () => chain,
       eq: (col: string, val: any) => {
         chain._eqs.push([col, val]);
         return chain;
@@ -55,16 +69,14 @@ function makeDigestDbMock(opts: {
       order: () => chain,
       limit: () => chain,
       neq: () => chain,
-      update: () => chain,
+      update: (row: any) => {
+        chain._update = row;
+        return chain;
+      },
       upsert: (row: any) => {
-        if (opts.upsertError) {
-          return Promise.resolve({ error: { message: "write failed" } });
-        }
-        upsertRows.push(row);
-        if (table === "inventory_alert_state" && row.last_digest_at) {
-          lastDigestAt[row.restaurant_id] = row.last_digest_at;
-        }
-        return Promise.resolve({ error: null });
+        const result = writeStamp(row);
+        // Awaited bare, or ended with `.select()` (the clear-hold insert).
+        return { then: (r: any) => result.then(r), select: () => result };
       },
       maybeSingle: () => {
         if (table === "inventory_alert_state") {
@@ -101,6 +113,9 @@ function makeDigestDbMock(opts: {
           return resolve({ data: rows, error: null });
         }
         if (table === "notification_preferences") {
+          if (opts.prefsReadError) {
+            return resolve({ data: null, error: { message: "fetch failed" } });
+          }
           const rid = chain._eqs.find(([c]: any) => c === "restaurant_id")?.[1];
           return resolve({
             data: opts.prefsByRestaurant[rid] ?? [],
@@ -113,6 +128,22 @@ function makeDigestDbMock(opts: {
         return resolve({ data: [], error: null });
       },
     };
+    function writeStamp(row: any): Promise<any> {
+      if (opts.upsertError) {
+        return Promise.resolve({
+          data: null,
+          error: { message: "write failed" },
+        });
+      }
+      upsertRows.push(row);
+      if (table === "inventory_alert_state" && row.last_digest_at) {
+        lastDigestAt[row.restaurant_id] = row.last_digest_at;
+      }
+      return Promise.resolve({
+        data: [{ inventory_id: row.inventory_id }],
+        error: null,
+      });
+    }
     return chain;
   }
 
@@ -120,6 +151,10 @@ function makeDigestDbMock(opts: {
     mock: {
       supabase: { from: (t: string) => chainFor(t) },
       getRestaurantMemberIds: jest.fn().mockResolvedValue(["user-1"]),
+      getRestaurantMemberIdsOrThrow: jest.fn(async () => {
+        if (opts.memberIdsReadError) throw new Error("fetch failed");
+        return ["user-1"];
+      }),
     } as any,
     upsertRows,
     lastDigestAt,
@@ -687,6 +722,114 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     );
     // The stamp is the tick, on the date the digest belongs to.
     expect(lastDigestAt.h0).toBe("2026-09-27T00:00:00.000Z");
+  });
+
+  // o. PR #488 audit at 7b2ab8d3f: a failed preferences read used to fall
+  // back to the defaults (on, daily, 12:00). Under catch-up every tick from
+  // local noon on is then due, so a house set to 18:00 was sent at the first
+  // failed tick after noon, and that stamp suppressed its real 18:00 send.
+  describe("o. a failed preferences read SKIPS the house's tick — never the 12:00 defaults", () => {
+    it("an 18:00 house whose read fails at 13:00 local is not sent early, and is sent once at 18:00", async () => {
+      const opts = {
+        lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
+        restaurantsRows: [
+          { id: "ny", name: "NY House", timezone: "America/New_York" },
+        ],
+        prefsByRestaurant: { ny: dailyPrefs("18:00") },
+        prefsReadError: true,
+      };
+      const { mock, lastDigestAt } = makeDigestDbMock(opts);
+      const svc = build(mock);
+      const warnSpy = jest.spyOn((svc as any).logger, "warn");
+
+      // 17:00Z = 13:00 EDT: past the DEFAULT hour (12), before the house's.
+      await svc.runDigestSweepAt(new Date("2026-09-26T17:00:00Z"));
+      expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+      expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+      expect(lastDigestAt.ny).toBeUndefined();
+      const skipped = warnSpy.mock.calls.filter((c) =>
+        String(c[0]).includes("LOW_STOCK_DIGEST_PREFS_UNREADABLE"),
+      );
+      expect(skipped).toHaveLength(1);
+      expect(String(skipped[0][0])).toContain("restaurant=ny");
+
+      // Readable again: 14:00-17:00 EDT are not due for an 18:00 house.
+      opts.prefsReadError = false;
+      for (const iso of [
+        "2026-09-26T18:00:00Z",
+        "2026-09-26T19:00:00Z",
+        "2026-09-26T20:00:00Z",
+        "2026-09-26T21:00:00Z",
+      ]) {
+        await svc.runDigestSweepAt(new Date(iso));
+      }
+      expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+
+      // 22:00Z = 18:00 EDT: the house's own hour sends, once.
+      await svc.runDigestSweepAt(new Date("2026-09-26T22:00:00Z"));
+      await svc.runDigestSweepAt(new Date("2026-09-26T23:00:00Z"));
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+      expect(notifications.persistForRestaurant.mock.calls[0][1].groupKey).toBe(
+        "low_stock_digest:2026-09-26",
+      );
+    });
+
+    it("a house with the digest OFF is never sent while its preferences read fails, on any tick of the day", async () => {
+      const { mock } = makeDigestDbMock({
+        lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
+        restaurantsRows: [
+          { id: "ny", name: "NY House", timezone: "America/New_York" },
+        ],
+        prefsByRestaurant: {
+          ny: [
+            {
+              low_stock_enabled: true,
+              digest_frequency: "off",
+              digest_time: "12:00",
+            },
+          ],
+        },
+        prefsReadError: true,
+      });
+      const svc = build(mock);
+      // 16:00Z (12:00 EDT) through 03:00Z (23:00 EDT).
+      for (
+        let t = Date.parse("2026-09-26T16:00:00Z");
+        t <= Date.parse("2026-09-27T03:00:00Z");
+        t += 3_600_000
+      ) {
+        await svc.runDigestSweepAt(new Date(t));
+      }
+      expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+      expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+    });
+
+    it("a failed member read (the strict one) skips the tick too, and the next readable tick catches up", async () => {
+      const opts = {
+        lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
+        restaurantsRows: [
+          { id: "ny", name: "NY House", timezone: "America/New_York" },
+        ],
+        prefsByRestaurant: { ny: dailyPrefs("12:00") },
+        memberIdsReadError: true,
+      };
+      const { mock } = makeDigestDbMock(opts);
+      const svc = build(mock);
+      const warnSpy = jest.spyOn((svc as any).logger, "warn");
+
+      await svc.runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
+      expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+      expect(
+        warnSpy.mock.calls.some((c) =>
+          String(c[0]).includes("LOW_STOCK_DIGEST_PREFS_UNREADABLE"),
+        ),
+      ).toBe(true);
+
+      opts.memberIdsReadError = false;
+      await svc.runDigestSweepAt(new Date("2026-09-26T17:00:00Z"));
+      await svc.runDigestSweepAt(new Date("2026-09-26T18:00:00Z"));
+      expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("g. regressions — no send when preferences say not to", () => {

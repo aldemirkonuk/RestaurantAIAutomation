@@ -89,6 +89,43 @@ export class DatabaseService implements OnModuleInit {
     }
   }
 
+  /**
+   * Same membership lookup as `getRestaurantMemberIds`, but a failed read
+   * THROWS instead of collapsing into "zero members". Kept as its own,
+   * independent query (not a shared refactor) so this fix cannot change
+   * `getRestaurantMemberIds`'s existing swallow-and-fall-back behavior for
+   * its other callers (notifications.service.ts, producer-ledger.service.ts,
+   * grant-suspended.producer.ts) — those are correct to keep sending on a
+   * default rather than going silent, and are out of this fix's scope.
+   *
+   * A caller that has to tell the difference between "this house has no
+   * members" and "the read failed" cannot use the swallowing method —
+   * `readLowStockPrefs` (low-stock-alerts.service.ts) did, and a swallowed
+   * member-read failure (`getRestaurantMemberIds`'s `catch { return []; }`)
+   * came back indistinguishable from a real zero-member house, so the page
+   * reported the 12:00 defaults as if they were measured (PR #486 round-1
+   * audit finding 1, 2026-09-26).
+   */
+  async getRestaurantMemberIdsOrThrow(restaurantId: string): Promise<string[]> {
+    const { data: ura, error: uraError } = await this.supabase
+      .from("user_restaurant_access")
+      .select("user_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true);
+    if (uraError) throw new Error(uraError.message);
+    const uraIds = (ura || []).map((r: any) => r.user_id).filter(Boolean);
+    if (uraIds.length) return Array.from(new Set(uraIds));
+
+    const { data: users, error: usersError } = await this.supabase
+      .from("users")
+      .select("user_id")
+      .eq("restaurant_id", restaurantId);
+    if (usersError) throw new Error(usersError.message);
+    return Array.from(
+      new Set((users || []).map((u: any) => u.user_id).filter(Boolean)),
+    );
+  }
+
   async getProcurementOrders(restaurantId: string, status?: string) {
     let query = this.supabase
       .from("procurement_orders")
