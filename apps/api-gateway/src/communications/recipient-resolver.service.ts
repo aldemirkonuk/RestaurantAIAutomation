@@ -7,6 +7,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import { isLiveMembership } from "../common/tenant/live-membership";
 
 export type RecipientRole =
   | "manager"
@@ -26,19 +27,23 @@ export type RecipientRole =
  *   (`to_regclass` → NULL, 2026-08-26) and is declared only by an archived
  *   migration. It must NOT be created: it is an abandoned storage model.
  * - The store that replaced it, `notification_preferences.push_subscription`,
- *   has no working writer. `NotificationsService.registerPushSubscription`
- *   upserts `onConflict: "user_id"`, but the table's only unique index is on
- *   `(restaurant_id, user_id)`, so Postgres answers `42P10` and the statement
- *   cannot even be planned (verified against production, 2026-08-26; the fork
- *   is held open by `supabase/migrations/20260813090000_fix_remaining_upsert_targets.sql` §3).
- *   Repointing here would have swapped a loud 404 for a permanently empty
- *   read that looks successful — the exact failure ADR 0020 forbids.
+ *   had no working writer as of 2026-08-26. `NotificationsService
+ *   .registerPushSubscription` upserted `onConflict: "user_id"`, but the
+ *   table's only unique index was on `(restaurant_id, user_id)`, so Postgres
+ *   answered `42P10` and the statement could not even be planned. Repointing
+ *   here would have swapped a loud 404 for a permanently empty read that
+ *   looks successful — the exact failure ADR 0020 forbids.
+ *   **[Fixed 2026-09-18, ADR 0149 row 39 — CLAUDE.md §5b, this bracket is the
+ *   correction, the paragraph above is kept as the record.]** The column is
+ *   deprecated and unread by any code as of this commit: a subscription now
+ *   lives in `notification_push_devices`, upserted on `(user_id, endpoint)`,
+ *   a real index. That fix does not change this file's conclusion — reason
+ *   below still holds regardless of which table a subscription lives in.
  * - **Both push senders address recipients by USER ID and enumerate devices
  *   themselves**: `NotificationsService.sendWebPush(userId, …)` reads
- *   `notification_preferences.push_subscription`, and
- *   `ExpoPushService.sendToUsers(userIds, …)` reads
- *   `mobile_devices.expo_push_token`. Neither accepts a subscription id, an
- *   endpoint, or a token from outside. There is therefore no push-recipient
+ *   `notification_push_devices`, and `ExpoPushService.sendToUsers(userIds, …)`
+ *   reads `mobile_devices.expo_push_token`. Neither accepts a subscription id,
+ *   an endpoint, or a token from outside. There is therefore no push-recipient
  *   shape this resolver could return that both senders would take.
  *
  * If push recipients are ever meant to flow through here, the correct output
@@ -47,14 +52,146 @@ export type RecipientRole =
  */
 export type NotificationChannel = "email" | "sms";
 
+/**
+ * The notification categories this resolver can route, one per per-category
+ * channel array `notification_preferences` declares
+ * (`supabase/migrations/20260805000000_baseline_from_production.sql:3903-3915`).
+ *
+ * OD-121, founder answer 15 (ADR 0149, 2026-09-16): "map the seven resolver
+ * sites to categories, an unmapped category is refused". Before this every
+ * send was gated by a UNION across three of the six arrays, so email switched
+ * on for financial reports also switched it on for low stock, and the other
+ * three arrays were never read at all.
+ *
+ * The category of every call site is named in `NOTIFICATION_SEND_CATEGORY`
+ * below, in one table, so the mapping is reviewable in one place rather than
+ * scattered as string literals across the senders.
+ */
+export const NOTIFICATION_CATEGORIES = [
+  "low_stock",
+  "order_approval",
+  "delivery",
+  "financial_reports",
+  "inequality_alerts",
+  "calendar_reminders",
+] as const;
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+
+/**
+ * Every send that resolves recipients here, and the category it belongs to.
+ *
+ * Re-measured 2026-09-16: OD-121 counted SEVEN call sites (`scheduled-tasks`
+ * ×6, `low-stock-alerts` ×1). The tree now has ELEVEN — nine jobs in
+ * `scheduled-tasks.service.ts` go through `recipientsFor`, plus
+ * `LowStockAlertsService.resolveEmails` and
+ * `ExperimentEndedProducer.founderAddress`. Each is named here; a send that is
+ * not in this table has no category and is refused by `resolveRecipients`.
+ *
+ * Row 34 (ADR 0149, 2026-09-17) ratified two of the original four judgement
+ * calls: the weekly report is `financial_reports`, the recurring-order
+ * reminder is `order_approval`. Row 46 (ADR 0149, 2026-09-18) ratified the
+ * remaining two, covering three sends — these were the builder's own call
+ * (OD-121) and are now the founder's:
+ *   daily-sms-summary       financial_reports — a summary report of the day
+ *                           (low-stock count, pending orders), not an alert.
+ *                           SMS-only, so `financial_reports_channels`' default
+ *                           gained `sms` in the same row (see
+ *                           `20260925160600_a_daily_summary_can_reach_a_phone.sql`).
+ *   experiment-ended        financial_reports — a report of an ended
+ *                           experiment, sent to the founder house's managers.
+ *   inventory-audit-reminder calendar_reminders — a scheduled count on a date,
+ *                           not a stock alert.
+ */
+export const NOTIFICATION_SEND_CATEGORY = {
+  "daily-sms-summary": "financial_reports",
+  "weekly-email-report": "financial_reports",
+  "midday-low-stock-report": "low_stock",
+  "low-stock-alerts": "low_stock",
+  "recurring-order-reminder": "order_approval",
+  "delivery-eta-notification": "delivery",
+  "inventory-audit-reminder": "calendar_reminders",
+  "event-prep-check": "calendar_reminders",
+  "custom-reminders-check": "calendar_reminders",
+  "low-stock-digest": "low_stock",
+  "experiment-ended": "financial_reports",
+} as const satisfies Record<string, NotificationCategory>;
+export type NotificationSend = keyof typeof NOTIFICATION_SEND_CATEGORY;
+
+/**
+ * A resolve was asked for with no category, or one this resolver does not
+ * route. REFUSED, not defaulted: falling back to "everyone who holds the role"
+ * is exactly the permissiveness OD-121 closes (founder answer 15).
+ */
+export class UnmappedNotificationCategoryError extends Error {
+  constructor(readonly category: unknown) {
+    super(
+      `Notification category ${JSON.stringify(category)} is not mapped to a ` +
+        `preference column (${NOTIFICATION_CATEGORIES.join(", ")}); nothing is ` +
+        "resolved and nothing is sent.",
+    );
+    this.name = "UnmappedNotificationCategoryError";
+  }
+}
+
+export function isNotificationCategory(
+  value: unknown,
+): value is NotificationCategory {
+  return (
+    typeof value === "string" &&
+    (NOTIFICATION_CATEGORIES as readonly string[]).includes(value)
+  );
+}
+
 export interface ResolvedRecipients {
   emails: string[];
   phones: string[];
+  /**
+   * People who hold the role and have an address on that channel but whose
+   * own preference withheld it (gate 1 or gate 2). COUNTS only — an address
+   * never travels in this field (ADR 0040). Lets a caller record "declined by
+   * preference" instead of "nobody to send to", which are different facts.
+   * Optional because the env-fallback and empty shapes decline nobody.
+   */
+  declined?: { email: number; sms: number };
+  /**
+   * Set when a read this resolve depends on FAILED (the membership roster,
+   * the preferences or the contacts). A failed read is not "nobody": the
+   * recipient lists above are then only whatever the env fallback supplied
+   * (the legacy house) or empty (every other house), and a caller must record
+   * `recipient_lookup_failed`, never `no_recipients` (2026-09-17, notify-lane
+   * review M2). `reason` carries the read's error text, never an address.
+   */
+  lookupFailed?: { reason: string };
+}
+
+/**
+ * Thrown by a caller that cannot carry `lookupFailed` any further (a job whose
+ * only output is the email or SMS). Its message starts with
+ * `recipient_lookup_failed`, so the per-tenant run log names it as what it is.
+ */
+export class RecipientLookupFailedError extends Error {
+  constructor(
+    readonly send: string,
+    readonly restaurantId: string,
+    readonly reason: string,
+  ) {
+    super(
+      `recipient_lookup_failed: the recipients of ${send} for restaurant ${restaurantId} ` +
+        `could not be read (${reason}); this is a failed read, not an empty house, and nothing was sent.`,
+    );
+    this.name = "RecipientLookupFailedError";
+  }
 }
 
 export interface RecipientQuery {
   restaurantId: string;
   roles: RecipientRole[];
+  /**
+   * REQUIRED. Which per-category channel array decides (OD-121). A value that
+   * is not one of `NOTIFICATION_CATEGORIES` — reachable at runtime from an
+   * untyped caller — throws `UnmappedNotificationCategoryError`.
+   */
+  category: NotificationCategory;
   channels?: NotificationChannel[];
   providerId?: string; // For provider-specific notifications
   /**
@@ -94,9 +231,22 @@ export class RecipientResolverService {
    * Resolve recipients for a notification based on restaurant and roles.
    */
   async resolveRecipients(query: RecipientQuery): Promise<ResolvedRecipients> {
+    // Refused BEFORE the try below, on purpose: its catch turns a failure into
+    // the env fallback for the legacy tenant, and a refusal must never become
+    // a send to anyone (OD-121, founder answer 15).
+    if (!isNotificationCategory(query?.category)) {
+      this.logger.warn(
+        `RECIPIENTS_REFUSED restaurant=${query?.restaurantId} category=${JSON.stringify(query?.category)} — ` +
+          "no preference column is mapped to this category, so nobody is resolved.",
+      );
+      throw new UnmappedNotificationCategoryError(query?.category);
+    }
+    const category = query.category;
+
     const result: ResolvedRecipients = {
       emails: [],
       phones: [],
+      declined: { email: 0, sms: 0 },
     };
 
     const channels = query.channels || ["email", "sms"];
@@ -132,10 +282,17 @@ export class RecipientResolverService {
         return fallbackOrEmpty("no user holds one of those roles here");
       }
 
-      // 2. Get notification preferences for these users
+      // 2. Get notification preferences for these users, narrowed to THIS
+      //    house. Founder answer, ADR 0149 row 39 (2026-09-18): preferences
+      //    are per person PER HOUSE, settling the fork
+      //    `20260813090000_fix_remaining_upsert_targets.sql` §3 /
+      //    `0027-push-recipients-are-not-resolved-here.md` §3 left open.
+      //    A member's preferences at house B no longer decide whether they
+      //    are emailed for house A.
       const preferences = await this.getNotificationPreferences(
         client,
         userIds,
+        query.restaurantId,
       );
 
       // 3. Get user contact details
@@ -147,17 +304,22 @@ export class RecipientResolverService {
         // Check if user wants email notifications
         if (channels.includes("email") && user.email) {
           const wantsEmail =
-            !prefs || this.checkChannelPreference(prefs, "email");
+            !prefs || this.checkChannelPreference(prefs, "email", category);
           if (wantsEmail) {
             result.emails.push(user.email);
+          } else {
+            result.declined!.email += 1;
           }
         }
 
         // Check if user wants SMS notifications
         if (channels.includes("sms") && user.phone) {
-          const wantsSms = !prefs || this.checkChannelPreference(prefs, "sms");
+          const wantsSms =
+            !prefs || this.checkChannelPreference(prefs, "sms", category);
           if (wantsSms) {
             result.phones.push(user.phone);
+          } else {
+            result.declined!.sms += 1;
           }
         }
       }
@@ -187,12 +349,22 @@ export class RecipientResolverService {
         ).emails;
       }
     } catch (error) {
-      this.logger.error(`Failed to resolve recipients: ${error}`);
-      return fallbackOrEmpty(`recipient lookup failed: ${error}`);
+      const reason =
+        error instanceof Error ? error.message : String(error ?? "unknown");
+      this.logger.error(
+        `RECIPIENT_LOOKUP_FAILED restaurant=${query.restaurantId} category=${category} — ${reason}`,
+      );
+      // The failure travels WITH the answer. The legacy house still gets its
+      // env address (its historical behaviour, ADR 0022); every other house
+      // gets nobody — and either way the caller is told the read failed.
+      return {
+        ...fallbackOrEmpty(`recipient lookup failed: ${reason}`),
+        lookupFailed: { reason },
+      };
     }
 
     this.logger.debug(
-      `Resolved recipients for restaurant ${query.restaurantId}: ` +
+      `Resolved recipients for restaurant ${query.restaurantId} (${category}): ` +
         `${result.emails.length} emails, ${result.phones.length} phones`,
     );
 
@@ -207,55 +379,64 @@ export class RecipientResolverService {
     restaurantId: string,
     roles: RecipientRole[],
   ): Promise<string[]> {
-    try {
-      // Query user_restaurant_access for users with matching roles
-      const { data, error } = await client
-        .from("user_restaurant_access")
-        .select("user_id, role")
-        .eq("restaurant_id", restaurantId)
-        .in("role", roles);
+    // Only LIVE access, by the one membership predicate
+    // (`common/tenant/live-membership.ts`): active, `valid_from` not in the
+    // future, `valid_until` null or in the future. Until 2026-09-17 this
+    // checked `is_active` alone, so a manager past `valid_until` was still
+    // notified.
+    const { data, error } = await client
+      .from("user_restaurant_access")
+      .select("user_id, role, is_active, valid_from, valid_until")
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .in("role", roles);
 
-      if (error || !data) return [];
-
-      return data.map((row: any) => row.user_id);
-    } catch {
-      // Fallback: query users table directly
-      try {
-        const { data, error } = await client
-          .from("users")
-          .select("user_id, role")
-          .eq("restaurant_id", restaurantId)
-          .in("role", roles);
-
-        if (error || !data) return [];
-        return data.map((row: any) => row.user_id);
-      } catch {
-        return [];
-      }
+    // A failed read THROWS. It used to return [], which the caller reports as
+    // "no user holds one of those roles here" — a failed read presented as a
+    // fact about the house. The catch in resolveRecipients now logs it as the
+    // lookup failure it is.
+    if (error) {
+      throw new Error(`user_restaurant_access read failed: ${error.message}`);
     }
+    const now = Date.now();
+    return (data ?? [])
+      .filter((row: any) => isLiveMembership(row, now))
+      .map((row: any) => row.user_id);
   }
 
   /**
-   * Get notification preferences for a set of user IDs.
+   * Notification preferences for a set of users, narrowed to ONE house.
+   *
+   * The columns are named rather than `*`, so `check_read_columns_exist.py`
+   * verifies every one against the schema — the resolver once read two
+   * columns that never existed through a `select("*")` (ADR 0098).
+   *
+   * Narrowed by `restaurant_id` as of 2026-09-18 (ADR 0149 row 39): a
+   * preference is per person PER HOUSE, so a row from a different house this
+   * same person also belongs to must not decide this house's send.
    */
   private async getNotificationPreferences(
     client: any,
     userIds: string[],
+    restaurantId: string,
   ): Promise<Map<string, any>> {
     const map = new Map<string, any>();
-    try {
-      const { data, error } = await client
-        .from("notification_preferences")
-        .select("*")
-        .in("user_id", userIds);
+    const { data, error } = await client
+      .from("notification_preferences")
+      .select(
+        "user_id, email_enabled, push_enabled, sms_enabled, low_stock_channels, order_approval_channels, delivery_channels, financial_reports_channels, inequality_alerts_channels, calendar_reminders_channels",
+      )
+      .eq("restaurant_id", restaurantId)
+      .in("user_id", userIds);
 
-      if (data) {
-        for (const pref of data) {
-          map.set(pref.user_id, pref);
-        }
-      }
-    } catch {
-      // No preferences found - will use defaults
+    // A failed read THROWS. It used to be swallowed as "no preferences found",
+    // and no preferences means every channel is allowed — so an outage of this
+    // one table silently re-enabled everything every user had switched off.
+    if (error) {
+      throw new Error(`notification_preferences read failed: ${error.message}`);
+    }
+    for (const pref of data ?? []) {
+      map.set(pref.user_id, pref);
     }
     return map;
   }
@@ -269,16 +450,15 @@ export class RecipientResolverService {
   ): Promise<
     Array<{ user_id: string; email: string; phone?: string; name?: string }>
   > {
-    try {
-      const { data, error } = await client
-        .from("users")
-        .select("user_id, email, phone, name")
-        .in("user_id", userIds);
+    const { data, error } = await client
+      .from("users")
+      .select("user_id, email, phone, name")
+      .in("user_id", userIds);
 
-      return data || [];
-    } catch {
-      return [];
+    if (error) {
+      throw new Error(`users contact read failed: ${error.message}`);
     }
+    return data ?? [];
   }
 
   /**
@@ -374,14 +554,51 @@ export class RecipientResolverService {
    * and `sms_enabled` was never consulted). Fixing only the column names
    * fixes the first half and leaves the second, which is why gate 1 is here.
    *
-   * This method is not told which notification CATEGORY it is resolving for,
-   * so gate 2 is a union across the three arrays. That is deliberately
-   * permissive rather than wrong: making it category-aware means threading a
-   * category through all seven call sites and deciding which category each
-   * belongs to, which is a product decision. Recorded as the open half of
-   * ADR 0093.
+   * **Gate 2 is category-aware as of 2026-09-16 (OD-121, founder answer 15).**
+   * Until then this method was not told which category it resolved for and
+   * took a UNION across `low_stock_channels`, `order_approval_channels` and
+   * `financial_reports_channels`, ignoring the other three arrays. It now reads
+   * exactly ONE array — the caller's category's — and nothing else. A category
+   * with no column is refused before this method is reached
+   * (`UnmappedNotificationCategoryError`).
+   *
+   * What that changes on a stock production row, stated because ADR 0022
+   * requires it to be checked before this ships (the row measured on
+   * production 2026-09-02, `team/broadcast-preferences.ts:27-33`, and the
+   * baseline defaults at :3904-3915):
+   *
+   *   low_stock           ['sms','push']            email REFUSED (was allowed
+   *                                                  through the union)
+   *   order_approval      ['sms','push','email']    email allowed
+   *   delivery            ['push','email']          email allowed
+   *   financial_reports   ['email','dashboard']     email allowed
+   *   calendar_reminders  ['push','email']          email allowed
+   *   inequality_alerts   ['sms','push']            email refused (no sender
+   *                                                  maps here today)
+   *
+   * [Corrected 2026-09-19: the low_stock row above describes a row already
+   * holding the exact prior default (['sms','push']) as measured on production
+   * 2026-09-02 -- it no longer describes every row. Migration
+   * 20260925160700_a_low_stock_warning_can_reach_an_inbox.sql widened
+   * low_stock_channels' DEFAULT to ['sms','push','email'] and, by the
+   * founder's standing rule (19-lane blocking round, batch 4, 2026-09-19),
+   * backfilled every existing row that still held exactly the old default to
+   * match -- a row someone had customised away from it was left alone. A row
+   * created after that migration (or reset to the default) gets email
+   * ALLOWED for low_stock; a row that still holds a customised, non-default
+   * array keeps exactly what it held. Full record: the ADR 0147 amendment's
+   * Recipient routing (OD-121) bullet.]
+   *
+   * SMS is refused on every stock row by gate 1 (`sms_enabled` false).
+   *
+   * An array that is absent (NULL) expresses no category preference, and gate
+   * 1 decides — the same rule as before, applied to one array instead of three.
    */
-  private checkChannelPreference(prefs: any, channel: string): boolean {
+  private checkChannelPreference(
+    prefs: any,
+    channel: string,
+    category: NotificationCategory,
+  ): boolean {
     // Gate 1: the global per-channel switch. Defaults must stay identical to
     // notifications.service.ts:1051-1053.
     const globallyEnabled: Record<string, boolean> = {
@@ -393,19 +610,45 @@ export class RecipientResolverService {
       return false;
     }
 
-    // Gate 2: the per-category channel arrays, by their real column names.
-    const expressed = [
-      prefs.low_stock_channels,
-      prefs.order_approval_channels,
-      prefs.financial_reports_channels,
-    ].filter((arr) => Array.isArray(arr));
+    // Gate 2: the ONE per-category channel array, by its real column name.
+    const expressed = this.categoryChannels(prefs, category);
 
-    // No category preference expressed at all — gate 1 has already decided.
-    if (expressed.length === 0) {
+    // No preference expressed for this category — gate 1 has already decided.
+    if (!Array.isArray(expressed)) {
       return true;
     }
 
-    return expressed.some((arr) => arr.includes(channel));
+    return expressed.includes(channel);
+  }
+
+  /**
+   * The channel array for one category. A `switch` over property reads rather
+   * than a computed key, so every column this reads is a literal `prefs.<col>`
+   * that `check_read_columns_exist.py` can verify against the schema.
+   */
+  private categoryChannels(
+    prefs: any,
+    category: NotificationCategory,
+  ): unknown {
+    switch (category) {
+      case "low_stock":
+        return prefs.low_stock_channels;
+      case "order_approval":
+        return prefs.order_approval_channels;
+      case "delivery":
+        return prefs.delivery_channels;
+      case "financial_reports":
+        return prefs.financial_reports_channels;
+      case "inequality_alerts":
+        return prefs.inequality_alerts_channels;
+      case "calendar_reminders":
+        return prefs.calendar_reminders_channels;
+      default: {
+        // Unreachable for a typed caller; resolveRecipients refuses first.
+        const never: never = category;
+        throw new UnmappedNotificationCategoryError(never);
+      }
+    }
   }
 
   /**
@@ -430,24 +673,48 @@ export class RecipientResolverService {
   /**
    * Get all manager emails for a restaurant (convenience method).
    */
-  async getManagerEmails(restaurantId: string): Promise<string[]> {
+  async getManagerEmails(
+    restaurantId: string,
+    category: NotificationCategory,
+  ): Promise<string[]> {
     const result = await this.resolveRecipients({
       restaurantId,
       roles: ["manager"],
+      category,
       channels: ["email"],
     });
+    // A bare list cannot carry `lookupFailed`, so a failed read throws here
+    // rather than reaching the caller as an empty list.
+    if (result.lookupFailed && result.emails.length === 0) {
+      throw new RecipientLookupFailedError(
+        `manager emails (${category})`,
+        restaurantId,
+        result.lookupFailed.reason,
+      );
+    }
     return result.emails;
   }
 
   /**
    * Get all staff emails for a restaurant (convenience method).
    */
-  async getStaffEmails(restaurantId: string): Promise<string[]> {
+  async getStaffEmails(
+    restaurantId: string,
+    category: NotificationCategory,
+  ): Promise<string[]> {
     const result = await this.resolveRecipients({
       restaurantId,
       roles: ["staff"],
+      category,
       channels: ["email"],
     });
+    if (result.lookupFailed && result.emails.length === 0) {
+      throw new RecipientLookupFailedError(
+        `staff emails (${category})`,
+        restaurantId,
+        result.lookupFailed.reason,
+      );
+    }
     return result.emails;
   }
 }

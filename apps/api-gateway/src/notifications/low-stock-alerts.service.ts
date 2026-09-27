@@ -11,7 +11,10 @@ import { DatabaseService } from "../database/database.service";
 import { CRITICAL_RATIO, classifyStock } from "../common/stock-status";
 import { NotificationsService } from "./notifications.service";
 import { GmailService } from "../communications/gmail.service";
-import { RecipientResolverService } from "../communications/recipient-resolver.service";
+import {
+  NOTIFICATION_SEND_CATEGORY,
+  RecipientResolverService,
+} from "../communications/recipient-resolver.service";
 import type { LowStockDigestWine } from "../communications/email-templates";
 import { canonicalOrigin } from "../communications/email-templates";
 
@@ -32,6 +35,14 @@ export interface EmailDeliveryOutcome {
   error: string | null;
   recipients: number;
   mode: "instant" | "digest";
+}
+
+/** What `resolveEmails` could not say in its return value. */
+interface RecipientReport {
+  /** Members whose preference withheld low-stock email. */
+  email: number;
+  /** The failed read's words when the lookup failed, else null. */
+  lookupFailed: string | null;
 }
 
 interface LowStockRow {
@@ -582,15 +593,41 @@ export class LowStockAlertsService {
         mode,
       };
     }
-    const emails = await this.resolveEmails(restaurantId);
+    const report: RecipientReport = { email: 0, lookupFailed: null };
+    const emails = await this.resolveEmails(restaurantId, report);
+    const declinedByPreference = report.email;
     if (emails.length === 0) {
-      this.logger.log(
-        `Low-stock ${mode} for ${restaurantId}: no email recipients — inbox only`,
-      );
+      // Three different facts, kept apart (ADR 0020). "The recipients could
+      // not be read", "nobody to send to" and "the people here said no to
+      // low-stock email" must not read alike on the row. Since OD-121
+      // (2026-09-16) the low-stock category reads only `low_stock_channels`,
+      // whose column default holds no email, so the third is the ordinary case
+      // on a stock row — for every house except the legacy one, whose env
+      // fallback still answers when its members decline. A failed read was
+      // recorded as `no_recipients` until 2026-09-17 (notify-lane review M2).
+      const error = report.lookupFailed
+        ? "recipient_lookup_failed"
+        : declinedByPreference > 0
+          ? "declined_by_preference"
+          : "no_recipients";
+      const words = report.lookupFailed
+        ? `the recipients could not be read (${report.lookupFailed})`
+        : declinedByPreference > 0
+          ? `${declinedByPreference} member(s) declined low-stock email by preference`
+          : "no email recipients";
+      if (report.lookupFailed) {
+        this.logger.error(
+          `Low-stock ${mode} for ${restaurantId}: ${words} — inbox only`,
+        );
+      } else {
+        this.logger.log(
+          `Low-stock ${mode} for ${restaurantId}: ${words} — inbox only`,
+        );
+      }
       return {
         attempted_at,
         ok: false,
-        error: "no_recipients",
+        error,
         recipients: 0,
         mode,
       };
@@ -764,6 +801,11 @@ export class LowStockAlertsService {
         .select(
           "low_stock_enabled, instant_first_alert, critical_immediate, digest_frequency, digest_time",
         )
+        // (2026-09-19, D5) preferences are per (restaurant_id, user_id) since
+        // ADR 0149 row 39 -- a member of two houses has a row per house, and
+        // an unscoped `.in("user_id", ...)` mixed the OTHER house's row into
+        // this restaurant's aggregate.
+        .eq("restaurant_id", restaurantId)
         .in("user_id", memberIds);
       if (!data || data.length === 0) return DEFAULTS;
 
@@ -965,8 +1007,18 @@ export class LowStockAlertsService {
    * For every other tenant an unresolvable recipient list is an empty list and
    * a WARN — never another tenant's address. The caller already treats empty as
    * "inbox only" and logs it, so nothing is silently dropped.
+   *
+   * The category is `low_stock` — `NOTIFICATION_SEND_CATEGORY["low-stock-digest"]`
+   * (OD-121, founder answer 15, 2026-09-16) — so only `low_stock_channels`
+   * decides, never the union of three arrays it used to be. `report`, when
+   * given, receives how many members that preference withheld and whether a
+   * read FAILED, so the digest can record "declined by preference" and
+   * "recipient lookup failed" apart from "nobody to send to".
    */
-  private async resolveEmails(restaurantId: string): Promise<string[]> {
+  private async resolveEmails(
+    restaurantId: string,
+    report?: RecipientReport,
+  ): Promise<string[]> {
     const defaultRestaurantId =
       this.config.get<string>("DEFAULT_RESTAURANT_ID") || null;
     const isLegacyDefault =
@@ -977,15 +1029,27 @@ export class LowStockAlertsService {
         const res = await this.recipientResolver.resolveRecipients({
           restaurantId,
           roles: ["manager"],
+          category: NOTIFICATION_SEND_CATEGORY["low-stock-digest"],
           channels: ["email"],
           allowDefaultFallback: isLegacyDefault,
         });
+        if (report && res.lookupFailed) {
+          report.lookupFailed = res.lookupFailed.reason;
+        }
         if (res.emails?.length) return res.emails;
+        if (report) report.email = res.declined?.email ?? 0;
       } catch (error) {
         this.logger.warn(
           `Low-stock recipient resolution failed for ${restaurantId}: ${error}`,
         );
+        if (report) {
+          report.lookupFailed =
+            error instanceof Error ? error.message : String(error);
+        }
       }
+    } else if (report) {
+      // No resolver in this module is a wiring fault, not an empty house.
+      report.lookupFailed = "no recipient resolver is available to this service";
     }
 
     if (!isLegacyDefault) {

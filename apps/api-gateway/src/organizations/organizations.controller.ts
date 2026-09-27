@@ -24,6 +24,7 @@ import { RenameChainDto } from "./dto/rename-chain.dto";
 import { CreateLocationDto } from "./dto/create-location.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Request } from "express";
+import { AllowsNoHouse } from "../common/tenant/allows-no-house.decorator";
 
 interface AuthenticatedUser {
   userId: string;
@@ -37,7 +38,10 @@ export class OrganizationsController {
 
   constructor(private readonly organizationsService: OrganizationsService) {}
 
+  // The person's own memberships: the switcher's list, and harmless to a
+  // session that has not chosen a house yet (ADR 0164, R4).
   @Get("branches")
+  @AllowsNoHouse()
   async getBranches(
     @Req() req: Request & { user: AuthenticatedUser },
   ): Promise<RestaurantBranch[]> {
