@@ -500,6 +500,35 @@ describe("R5 — a manager with pay access may set their own wage, and the owner
   });
 });
 
+describe("R6 — a switched-on manager and the OWNER's wage: pinned as built, the fork is the founder's", () => {
+  // ADR 0090 audit of #440 at 25e55b2c (2026-09-27) found this path untested.
+  // Whether a manager with pay access may set an OWNER's wage, and whether the
+  // owner is then told, is NOT decided: round 4 item 19 ("see and edit pay")
+  // and round 5 item 32 (a manager's OWN wage, owner told) do not name it, and
+  // ADR 0218's Away carve-out ("only an owner sets or ends an owner's") is a
+  // different answer about a different field. ADR 0215 "Open, for the
+  // founder" question 7. These cases pin what the code does today so that
+  // whichever answer he gives flips them visibly; they are not that answer.
+  it("as built: the write goes through, names the manager as the writer, and tells nobody", async () => {
+    const db = seed({ managerPay: true });
+    const saved = await teamOf(db).updateMember(MANAGER, RID, "m-owner", { hourlyWage: 45 } as any);
+    expect(saved.hourly_wage).toBe(45);
+    expect(db.tables.team_members.find((m) => m.id === "m-owner")?.wage_changed_by).toBe(MANAGER);
+    expect("ownWage" in saved).toBe(false);
+    expect(db.tables.notifications).toHaveLength(0);
+    expect(db.tables.system_audit_log.filter((r) => r.action === "team_member_own_wage_set")).toHaveLength(0);
+  });
+
+  it("a switched-off manager is refused the owner's wage, and nothing is written", async () => {
+    const db = seed();
+    await expect(
+      teamOf(db).updateMember(MANAGER, RID, "m-owner", { hourlyWage: 45 } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.tables.team_members.find((m) => m.id === "m-owner")?.hourly_wage).toBe(40);
+    expect(db.tables.notifications).toHaveLength(0);
+  });
+});
+
 describe("R5 — recordOwnWageChange says when the owner was not told", () => {
   const { recordOwnWageChange } = jest.requireActual("./own-wage-notice");
   const logger = { error: jest.fn(), warn: jest.fn() } as any;
