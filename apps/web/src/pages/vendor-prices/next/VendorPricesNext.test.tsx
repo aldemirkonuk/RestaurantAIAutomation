@@ -47,6 +47,7 @@ vi.mock('./useVendorPricesNextData', () => ({
   useUndoDecision: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useRecordPrice: () => ({ mutate: vi.fn(), isPending: false, isError: false, error: null, reset: vi.fn() }),
   useProviderUsualCurrency: () => ({ data: undefined, isLoading: false }),
+  useObservationSources: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
   useMastheadStatus: () => mock.masthead ?? IDLE_MASTHEAD,
   useBelowAverage: () => mock.belowAverage ?? { ...IDLE_STATUS_QUERY, isLoading: true },
   useHouseIdentityCandidates: () => mock.houseCandidates,

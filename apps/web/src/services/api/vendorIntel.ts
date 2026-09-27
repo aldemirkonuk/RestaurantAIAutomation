@@ -113,6 +113,60 @@ export interface VendorObservationRow {
   /** Per-750ml, pack- and yield-adjusted; null when the row cannot be
    * normalised (ranked last within its class, never treated as free). */
   normalizedUnitPrice: number | null
+  /** ADR 0160 §112 fork 6(a) — the paper, its line, the message and the
+   * person, read FRESH by the gateway on every compare
+   * (`vendor-intel/price-provenance.ts`). Optional only because a gateway
+   * older than this field sends none; the page then says it was not sent,
+   * never "no paper". */
+  provenance?: ObservationProvenance
+}
+
+export interface ProvenanceDocument {
+  id: string
+  docType: string | null
+  docNumber: string | null
+  docDate: string | null
+  sourceChannel: string | null
+  status: string | null
+}
+
+export interface ProvenanceDocumentLine {
+  id: string
+  lineNo: number | null
+  description: string | null
+  unitPrice: number | null
+  qty: number | null
+  uom: string | null
+}
+
+export interface ProvenanceMessage {
+  id: string
+  channel: string | null
+  direction: string | null
+  at: string | null
+  subject: string | null
+  /** Null once the house's retention window deleted the words
+   * (`textDeletedAt` says when). */
+  excerpt: string | null
+  textDeletedAt: string | null
+  orderId: string | null
+}
+
+export interface ProvenancePerson {
+  name: string | null
+  address: string | null
+  role: string | null
+  basis: 'named_contact' | 'message_sender' | 'message_recipient'
+}
+
+export interface ObservationProvenance {
+  document: ProvenanceDocument | null
+  documentLine: ProvenanceDocumentLine | null
+  message: ProvenanceMessage | null
+  person: ProvenancePerson | null
+  /** What the four fields cannot say themselves — a failed read, a paper
+   * deleted since, the writer's own note. Empty = nothing to add. */
+  sentences: string[]
 }
 
 export interface VendorCompareResponse {
@@ -179,6 +233,12 @@ export interface ManualObservationInput {
   sourceUrl?: string
   observedAt?: string
   note?: string
+  /** Fork 6(a): the attached paper (`attachPaper` returns its id), its line,
+   * the house's message and the vendor contact the price came from. */
+  documentId?: string
+  documentLineId?: string
+  conversationMessageId?: string
+  contactId?: string
 }
 
 export async function recordVendorPrice(input: ManualObservationInput) {
@@ -575,4 +635,47 @@ export async function fetchBelowAverage(params: {
     minObservations: typeof data?.minObservations === 'number' ? data.minObservations : 3,
     window: data?.window ?? { days: 30, from: '' },
   }
+}
+
+export interface ObservationSources {
+  providerId: string
+  messages: ProvenanceMessage[]
+  contacts: Array<{ id: string; name: string | null; email: string | null; role: string | null }>
+}
+
+/**
+ * `GET /vendor-intel/observation-sources` — this house's recent messages with
+ * one of its vendors and that vendor's contacts, for naming where a recorded
+ * price came from (ADR 0160 §112 fork 6(a)).
+ */
+export async function fetchObservationSources(providerId: string): Promise<ObservationSources> {
+  const { data } = await apiClient.get('/vendor-intel/observation-sources', { params: { providerId } })
+  return {
+    providerId: typeof data?.providerId === 'string' ? data.providerId : providerId,
+    messages: Array.isArray(data?.messages) ? data.messages : [],
+    contacts: Array.isArray(data?.contacts) ? data.contacts : [],
+  }
+}
+
+/**
+ * The attach-a-paper step (ADR 0160 §112 fork 6(a), sketch 112 README: "an
+ * upload plus `document_id` on `POST /vendor-intel/observations`"). The file
+ * goes through the house's one document door, `POST /procurement/documents`
+ * — the same door the receiving desk photographs through — which stores it,
+ * reads it, and returns its id. An upload the door refuses, or one that comes
+ * back with no id, is an error here: a price is never recorded as "with this
+ * paper" when the paper did not arrive.
+ */
+export async function attachPaper(params: {
+  contentBase64: string
+  filename: string
+  mimeType: string
+  providerId?: string
+}): Promise<{ documentId: string; duplicate: boolean }> {
+  const { data } = await apiClient.post('/procurement/documents', { ...params, source: 'upload' })
+  const documentId = typeof data?.documentId === 'string' ? data.documentId : null
+  if (!documentId) {
+    throw new Error('The paper was not stored, so the price was not recorded with it. Try attaching it again.')
+  }
+  return { documentId, duplicate: data?.duplicate === true }
 }

@@ -129,6 +129,22 @@ export function ageWords(iso: string | null | undefined, now: Date = new Date())
 }
 
 /** "5 Sep 2026" — a date as a date; the raw ISO when it will not parse. */
+/**
+ * A calendar date with no time (`procurement_documents.doc_date`,
+ * "2026-09-19"). Read as the day it names, never through the viewer's
+ * timezone: `new Date("2026-09-19")` is UTC midnight, which `dateWords`
+ * would print as 18 Sept anywhere west of Greenwich — the invoice's own date
+ * moved by a day (measured in this build's own test run, 2026-09-25).
+ */
+export function calendarDateWords(day: string | null | undefined): string {
+  if (!day) return EM
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day.trim())
+  if (!m) return dateWords(day)
+  const t = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  if (!Number.isFinite(t.getTime())) return day
+  return t.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
 export function dateWords(iso: string | null | undefined): string {
   if (!iso) return EM
   const t = new Date(iso)
