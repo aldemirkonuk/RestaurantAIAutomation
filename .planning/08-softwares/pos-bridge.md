@@ -269,3 +269,17 @@ Seams:
   and the legacy rung stops mattering.
 - `sale_unit` is one field in `upsertItemMapping` (`pos-hub.service.ts:514-527`) and is the
   cheapest correctness win in the division.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Well-covered and genuinely active backend; one of the better-exercised softwares measured.
+
+**Coverage.** `pos-hub` 86.6%/69.8%; `toast` 76.9%/55.7%.
+
+**Runs in production.** Yes, backend-only by design, with real data.
+
+**Promised vs. built.** `backend-only` holds.
+
+**Gaps.** None major found this pass.
+
+*Evidence:* Supabase `pos_item_mappings`=290, `pos_checks`=145.
