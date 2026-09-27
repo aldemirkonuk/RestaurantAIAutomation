@@ -260,3 +260,17 @@ this one omits something that does. Both need the same §3a amendment.
   remove the affordance rather than keep toasting a crawl that never starts.
 - The ownership gap (§6) and the Label-Studio / Wine-Studio duplication it exposes both want
   a founder call, not a default.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Not independently measurable as its own module — bundled inside `common/orchestrator`'s proxy controllers (10,929 LOC total for that module).
+
+**Coverage.** `common` module aggregate 61.6%/43.8% (not Wine-Studio-specific — no dedicated module exists to measure).
+
+**Runs in production.** Routes are live and role-gated.
+
+**Promised vs. built.** `partial` holds; the ownership gap this note already names is confirmed still open.
+
+**Gaps.** No dedicated module or charter owner exists to measure against.
+
+*Evidence:* `apps/web/src/App.tsx:188-227`; this note's own Gaps-table entry in [[SOFTWARE-MAP]].
