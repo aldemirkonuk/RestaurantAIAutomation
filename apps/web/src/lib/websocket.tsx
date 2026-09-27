@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../contexts/AuthContext'
 import { queryKeys } from './query-keys'
+import { onSessionRenewed } from './sessionRenewed'
 
 // =============================================================================
 // TYPES & INTERFACES
@@ -414,6 +415,15 @@ export function WebSocketProvider({
   )
   const resolvedUserId = userId || user?.userId
   const resolvedRestaurantId = restaurantId || activeRestaurantId
+  // ADR 0225: a password change closes this session's socket (it was opened
+  // with a token the change ended) and hands the session a new pair. Re-render
+  // on that renewal, so `authToken` below is re-read and the connection effect
+  // opens a socket with the new token.
+  const [, setSessionRenewals] = useState(0)
+  useEffect(
+    () => onSessionRenewed(() => setSessionRenewals((n) => n + 1)),
+    [],
+  )
   const authToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null
   
   const queryClient = useQueryClient()
