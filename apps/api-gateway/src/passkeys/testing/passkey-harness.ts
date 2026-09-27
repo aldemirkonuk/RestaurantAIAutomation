@@ -133,11 +133,18 @@ class Query implements PromiseLike<{ data: any; error: any }> {
     if (this.op === "insert") {
       if (this.db.failInsertOn === this.table)
         return { data: null, error: { message: "insert refused" } };
+      const id = `00000000-0000-4000-8000-${String(++this.db.seq).padStart(12, "0")}`;
       const row: Row = {
-        id: `00000000-0000-4000-8000-${String(++this.db.seq).padStart(12, "0")}`,
+        id,
         created_at: new Date().toISOString(),
         last_used_at: null,
         revoked_at: null,
+        // The `users` column defaults, as the migrations declare them:
+        // user_id uuid_generate_v4() and email_verified false (baseline
+        // 20260805000000), session_version 0 (20260929020000).
+        ...(this.table === "users"
+          ? { user_id: id, email_verified: false, session_version: 0 }
+          : {}),
         ...this.payload,
       };
       if (

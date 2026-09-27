@@ -371,6 +371,7 @@ describe("round 6 (4): an emailed-code sign-in marks the email verified", () => 
       role: "manager",
       restaurant_id: HOUSE,
       email_verified: false,
+      session_version: 0, // the column default (20260929020000)
     });
     db.tables.user_restaurant_access = [
       { user_id: USER, restaurant_id: HOUSE, role: "manager", is_active: true },

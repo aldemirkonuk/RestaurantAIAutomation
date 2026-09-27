@@ -133,7 +133,7 @@ permissions: with `/connections` live for every house (ADR 0149 row 36),
 Passkeys are enrolled, listed, removed and checked through a gateway module
 (`apps/api-gateway/src/passkeys/`) verified by `@simplewebauthn/server` 14,
 stored per user in `user_passkeys` with single-use challenges in
-`webauthn_challenges` (migration `20260929030000`), drawn on `/profile` by
+`webauthn_challenges` (migration `20261020000000`), drawn on `/profile` by
 `PasskeyRows.tsx`. The consent panel is `ConsentPanel.tsx`, a sheet opened from
 `/settings` that holds only switches the product reads — on main, the training
 opt-out — each with its own audited trail.

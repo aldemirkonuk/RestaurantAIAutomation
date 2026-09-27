@@ -1,6 +1,6 @@
 # 0229 — A passkey or an emailed code signs you in, and a recent sign-in guards enrolment
 
-- **Status:** Locked **[2026-09-27, the founder, round 11, item 63, verbatim: "Lock both as built (Recommended)" — ADR 0222 and ADR 0229 locked as built on PR #479. Fork 6 below was found by the ADR 0090 audit and was not in front of him when he answered, so it is recorded open rather than folded into the lock]** — the founder answered WHAT on 2026-09-25 (item 29, below), answered forks 1-3 on 2026-09-26 (round 6, item 37, § Open forks), and the same day (round 7, item 44) ordered industry practice for a reset AND a change — which **supersedes round 6's "reset RETIRES every passkey"** and answers forks 4 and 5 (§ Round 7); this record is the HOW
+- **Status:** Locked **[2026-09-27, the founder, round 11, item 63, verbatim: "Lock both as built (Recommended)" — ADR 0222 and ADR 0229 locked as built on PR #479. Fork 6 below was found by the ADR 0090 audit and was not in front of him when he answered, so it is recorded open rather than folded into the lock]** **[Amended 2026-09-27, the founder, item 67, verbatim: "option 1 + do what industry do for these, for security ops do what the industry leaders do" (the label he chose: "Drop pwd + (b) interim (Recommended)") — fork 6 RESOLVED as path (a), built on PR #479 with the industry-leader defences in § Fork 6; (b) is moot because #477 (ADR 0225) merged first. Two new forks (7, 8) found by that research are open. The ADR stays Locked]** — the founder answered WHAT on 2026-09-25 (item 29, below), answered forks 1-3 on 2026-09-26 (round 6, item 37, § Open forks), and the same day (round 7, item 44) ordered industry practice for a reset AND a change — which **supersedes round 6's "reset RETIRES every passkey"** and answers forks 4 and 5 (§ Round 7); this record is the HOW
 - **Date:** 2026-09-25
 - **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
 - **Keywords:** passkey sign-in, discoverable credential, user handle, WebAuthn authentication, one-time code, OTP, email code, step-up, re-authentication, auth_time, freshness, enumeration, rate limit, HMAC, session_version, membership, recovery, lost device
@@ -308,6 +308,131 @@ candidate); a "review your passkeys" banner on `/profile` after a change
 reported as a gap).
 
 
+### Fork 6 (the founder, 2026-09-27, item 67): drop the unproven password, and what industry leaders do
+
+**[2026-09-27, the founder, item 67.]** Verbatim: *"option 1 + do what
+industry do for these, for security ops do what the industry leaders do"*;
+label chosen: *"Drop pwd + (b) interim (Recommended)"*. Recorded in memory
+`founder-answers-2026-09-25-web-rebuild.md` item 67. Option 1 is fork 6's
+path (a); the interim (b) is moot because #477 (ADR 0225, `sv`) merged to
+`main` (`f84db4147`) before this was built.
+
+**Research (one agent's pass, 2026-09-27; sources below).** The attack is the
+Unexpired Session class of Sudhodanan & Paverd, *"Pre-hijacked Accounts"*
+(USENIX Security 2022, §4.2), with this codebase's emailed code as the
+victim's recovery action. The paper's root cause (§6.2.1) is a service that
+lets an account be used before its identifier is verified; its defence in
+depth (§6.2.2) is: on a reset, sign out every other session, cancel pending
+email changes and review linked identities; on a merge, make the user prove
+control of both; keep email-change capabilities short-lived and capped; prune
+unverified accounts; notify on security changes. The five classes against
+this codebase's routes:
+
+| Class | Here | Held by |
+|---|---|---|
+| Classic-Federated Merge | not open: OAuth sign-in never resolves an account by address alone | `findOrCreateOAuthUser` requires a subject-bound link (`oauthAccountIsLinked`, ADR 0024; `oauth-provider-binding.spec.ts`) |
+| Unexpired Session | **was open through the code** (fork 6); through a reset, closed by #477 | **built here**, below |
+| Trojan Identifier | not open: a second sign-in method cannot be attached before the address is proved | OAuth linking and passkey enrolment need a verified session; only six `AuthController` routes are `@AllowUnverified` (CLAIMS `ADR-0229-FORK-6-UNVERIFIED-REACHES-ONLY-THE-ESCAPE-HATCHES`) |
+| Unexpired Email Change | not applicable: there is no email-change flow (`updateProfile` writes name and phone only) | — |
+| Non-verifying IdP | Google refuses an unverified `email_verified`; Microsoft needs a subject link. **The invitation door is a non-verifying source** | **fork 7, open** |
+
+What the providers do when a mailbox is first proved on an account that
+already holds an unproven credential: **Firebase** — "any previous unverified
+mechanism of sign-in will be removed from the user and any existing sessions
+will be invalidated … the user's password will be removed" (email-link
+sign-in docs); **Supabase Auth** — "will remove any other unconfirmed
+identities linked to an existing user" when a verified identity links
+(identity-linking docs); **Clerk** — "will prompt the user to change their
+password before linking" because it "cannot confirm the original ownership of
+the account" (account-linking docs); **Auth0** — does not auto-link on an
+unverified address, and a completed password reset sets `email_verified` true
+(support article "Resetting Password sets Email Verified to True");
+**Okta** — with verification Required, a self-registered user cannot sign in
+until the activation email is followed; **Google** — a Google Account on a
+non-Google address is not created until a code sent to it is entered.
+**OWASP ASVS 5.0**: 6.3.7 (L3) "users are notified after updates to
+authentication details"; 7.4.3 (L2) terminate other sessions "after a
+successful change or removal of any authentication factor". **OWASP
+Forgot-Password cheat sheet**: invalidate existing sessions and "send the user
+an email informing them that their password has been reset". Consensus: the
+first proof of the mailbox removes what was set up before it and ends every
+earlier session, and the owner is told.
+
+**Adopted and built** (`apps/api-gateway/src/auth/auth.service.ts`):
+
+1. **The first emailed code removes the unproven password and ends every
+   earlier session.** `verifyEmailProvedByCode` now writes, in ONE
+   compare-and-set (`user_id`, the same address, `email_verified = false`, the
+   `session_version` read just before): `email_verified = true`,
+   `password_hash = null`, `session_version + 1`. Every access and refresh
+   token minted before the proof is refused with `SESSION_ENDED` (ADR 0225's
+   readers), `endStaleSessions` closes the old sockets, and the code's session
+   is minted from the returned row so it alone survives. An account with no
+   password is verified and its earlier sessions end the same way (Firebase:
+   "any existing sessions will be invalidated"). A miss re-reads and retries
+   (three tries); an already-verified or moved row is left untouched; a failed
+   write mints an unverified session and removes nothing — fails closed.
+2. **The address is told** (ASVS 6.3.7): `unprovenPasswordRemovedEmailTemplate`
+   — no link, no secret, and no greeting by name, because the account's name
+   was typed by the same unproven registrant. A failed send never fails the
+   sign-in.
+3. **A reset link verifies the address it was mailed to** (Auth0's behaviour):
+   `resetPassword` reads `password_resets.email` and `setPasswordEndingSessions`
+   adds `email_verified = true` (compare-and-set on that address) when it is
+   still the account's. Without this, an owner who recovered by reset would
+   lose their own, mailbox-proven password to the next emailed code — the
+   founder's words are "a password it never proved", and a reset proves it.
+4. **An unverified session reaches only the escape hatches** — already true
+   (six routes); pinned now as a CLAIMS row so a future `@AllowUnverified` on
+   linking or enrolment fails CI (the Trojan Identifier defence).
+
+**Considered, not adopted:** ending the registrant's sessions when the
+emailed *link* verifies (the link is how the registrant proves the address;
+Firebase and Auth0 keep the password there too — the residual, a victim
+clicking a link for an account they did not create, is what pruning, fork 8,
+narrows); a "this wasn't me" link in the verification mail (Instagram does it;
+the paper calls it "some services", not consensus; it would be a new flow);
+a cap on verification-link resends (the paper states it for email-change
+capabilities, which this codebase has no flow for; the resend has a 60 s
+cooldown and the victim's code door now closes the account — a candidate if
+fork 8 is declined). **Tension recorded, not reopened:** ASVS 5.0 6.3.6 (L3
+only) says email should not be an authentication factor; the emailed code is
+a locked decision of this ADR (item 29) and ASVS L3 is not this product's
+target — named so a future level change sees it.
+
+**Tests** — `apps/api-gateway/src/passkeys/pre-hijack.spec.ts`: the whole
+attack end to end (public registration → the stranger signs in → the owner
+asks for a code, types it from the real mail through the real
+`SignInController` route → the stranger's password, both access tokens (real
+`JwtStrategy`) and both refresh tokens are refused, the sockets are closed,
+the owner's session is verified); the notice (address, content, no secret or
+link); a failed notice; a second code; an already-verified account untouched;
+a passwordless unverified account; passkey and moved-address sign-ins untouched;
+a reset that verifies, then a code that keeps the owner's password; a reset to
+a left address; four races (a link verification first, a reset first, a
+version move, an address change) and a failed write. **Mutation check**: 11
+source mutants (password kept, no version bump, no notice, each of the three
+compare-and-set conditions dropped, no socket close, no retry, reset does not
+verify, reset's address CAS dropped, reset's address match forced) — 11 red,
+source restored byte-identical.
+
+**Sources.** Sudhodanan & Paverd, "Pre-hijacked accounts: An Empirical Study
+of Security Failures in User Account Creation on the Web", USENIX Security
+2022 (usenix.org/system/files/sec22-sudhodanan.pdf), §4, §6.2; Firebase,
+"Authenticate with Firebase Using Email Link in JavaScript"
+(firebase.google.com/docs/auth/web/email-link-auth); Supabase, "Identity
+Linking" (supabase.com/docs/guides/auth/auth-identity-linking); Clerk, "Account
+linking for OAuth" (clerk.com/docs/guides/configure/auth-strategies/social-connections/account-linking);
+Auth0 support, "Reseting Password sets Email Verified to True"
+(support.auth0.com); Okta, "Plan self-service registration flows"
+(developer.okta.com/docs/concepts/self-service-registration/); Google Account
+Help 63950, "Verify your Google Account"; OWASP ASVS 5.0 V6 and V7
+(github.com/OWASP/ASVS, 5.0/en/0x15-V6, 0x16-V7); OWASP Forgot Password and
+Authentication cheat sheets. No independent Workflow fan-out ran (a builder
+subagent has no Workflow tool); the adversarial pass was the mutation run
+and the per-class table above, which is how forks 7 and 8 were found.
+
+
 ## Decision
 
 A passkey signs you in through a discoverable-credential ceremony whose user
@@ -317,7 +442,7 @@ in when this device has none; both mint only through
 `auth_time` within ten minutes or an emailed code. Built in
 `apps/api-gateway/src/passkeys/` (`sign-in.controller.ts`,
 `sign-in-codes.service.ts`, `passkeys.service.ts`), migration
-`20260929040000_passkey_sign_in_and_email_codes.sql` (`sign_in` challenge
+`20261020000100_passkey_sign_in_and_email_codes.sql` (`sign_in` challenge
 purpose with no person; `sign_in_codes`), and on `/login` and `/profile`.
 
 **Recovery when a device is lost.** A passkey is never the only door:
@@ -380,8 +505,12 @@ mint should stamp `signedInNow()` (the password was just typed).
    the token's house, so an account on `/get-started` cannot add one. Not
    asked in round 6; left as built.
 
-6. **[OPEN — found 2026-09-27 by the ADR 0090 audit of PR #479 (reports at
-   `b88c27053` and `c1acfeabc`), not yet put to the founder.]** **A code
+6. **[RESOLVED 2026-09-27, the founder, item 67, verbatim: "option 1 + do
+   what industry do for these, for security ops do what the industry leaders
+   do" (label "Drop pwd + (b) interim (Recommended)") → path (a), built with
+   the industry-leader defences; (b) moot, #477 merged. § Fork 6. Rejected:
+   (b) as the end state, (c).] [Found 2026-09-27 by the ADR 0090 audit of PR
+   #479 (reports at `b88c27053` and `c1acfeabc`).]** **A code
    sign-in can verify an account someone else registered, and keep their
    password.** Round 6 part 4 (item 37, "emailed-code sign-in marks email
    verified") is built in `AuthService.verifyEmailProvedByCode`
@@ -415,6 +544,41 @@ mint should stamp `signedInNow()` (the password was just typed).
    what item 37 does or who keeps a password, which is his call (CLAUDE.md
    §0.1).
 
+7. **[OPEN — found 2026-09-27 by the fork 6 research (the Non-verifying IdP
+   class), not yet put to the founder.]** **An invitation code creates a
+   VERIFIED account for any address typed with it.** `joinViaInvite`
+   (`POST /auth/join`, `@Public`) inserts a new `users` row with
+   `email_verified: true` for `dto.email` (`auth.service.ts`, the new-user
+   branch); an invite code is not bound to an address (`generateInvite`
+   stores `targetEmail` only on the roster row, and `joinViaInvite` never
+   compares it). So anyone who can mint an invite — any owner or manager of any
+   house, and anyone can open a house — can create a verified account for
+   someone else's address with a password of their own. Fork 6's defence does
+   not fire: the address is already "verified", so the owner's later emailed
+   code keeps the stranger's password. Paths: (a) a new account made through
+   an invite is unverified until its address is proved (link or code; the
+   invited person then passes /verify-email once); (b) bind an invite to the
+   address it was sent to and verify only on a match (an invite sent with no
+   address stays (a)); (c) leave it (the invite holder is a named house
+   member, so it is attributable). **Recommendation: (b) with (a) as its
+   fallback** — it keeps the one-step join for the person the invite was
+   addressed to, and it is what the paper asks of an identity source.
+   Not built: it changes the invited person's join flow, beyond fork 6.
+8. **[OPEN — found 2026-09-27 by the fork 6 research, not yet put to the
+   founder.]** **Unverified registrations do not expire.** The paper's
+   defence in depth (§6.2.2, "Unverified-Account Pruning") deletes accounts
+   still unverified after a short window, so a pre-registration cannot wait
+   months for its victim to click a verification link (the one door fork 6
+   leaves: the link verifies the registrant's password, as it must for a real
+   registrant). Paths: (a) delete unverified accounts older than N days (the
+   paper; it deletes `users` rows, and the founder's ADR 0149 answer 2
+   (2026-09-16) keeps "the current restaurants or users" out of every
+   deletion, so it is his call); (b) keep the row but stop the
+   unproven password signing in after N days (the owner then uses a code,
+   which fork 6 already handles); (c) leave it. **Recommendation: (b) with N
+   = 7** — it closes the window without deleting a user, and a real
+   registrant loses nothing but the password they never confirmed. Not built.
+
 ## Consequences
 
 - Every session minted before this deploy has no `auth_time`, so the first
@@ -436,6 +600,12 @@ mint should stamp `signedInNow()` (the password was just typed).
 - **[2026-09-26]** One more account mail ("a passkey was added"), through the
   same `GmailService`; when mail is down the passkey is still added and
   `/profile` says the mail was not sent.
+- **[2026-09-27, fork 6, item 67]** A person who registered with a
+  password, never followed the verification link, then signed in by emailed
+  code, has no password afterwards and is mailed why; they set one on
+  /profile (a first password needs no current one) or by "Forgot password?".
+  A reset of an unverified account now also verifies it, so that person no
+  longer passes /verify-email after a reset. One more account mail type.
 - Revisit when: #471 or #477 merges (the merge notes above); F11 lands (a
   passkey at the point of action); conditional UI is wanted; ~~fork 4 is
   answered~~ **[answered, round 7]**; a surveyed provider starts revoking
@@ -449,3 +619,4 @@ mint should stamp `signedInNow()` (the password was just typed).
 | 2026-09-26 | lane W4-passkeys (agent) | Founder round 6 item 37 recorded (forks 1-3 answered) and built: reset retires passkeys, enrolment mail, staff enrolment, code sign-in verifies email. New `founder-round-six.spec.ts` 12 cases (real `AuthService.resetPassword` + real passkey ceremonies: a retired passkey cannot sign in). 8 source mutants of the new checks, 8 red (one initially green — the session minted from the pre-write row — killed by moving that case onto the copy-returning fake). Two new CLAIMS rows, 7 mutants, 7 red. Fork 4 (password change) opened, not built. No independent adversarial fan-out ran |
 | 2026-09-26 | lane W5-passkeys (agent) | Founder round 7 item 44: researched Google, Apple, Microsoft, GitHub, Okta, Auth0, 1Password, Dashlane (not found), NIST SP 800-63B-4, FIDO, OWASP (§ Round 7 table). Industry keeps passkeys on reset and change → round 6 part 1 un-built (`retire-passkeys.ts` deleted), password reset/change notice mail listing live passkeys added, houseless enrolment allowed (no house/role read). `founder-round-six.spec.ts` rewritten (round-7 cases: reset and change keep and still sign in; the mail lists only live own passkeys, escaped, no secret/link; unreadable ≠ none; a failed mail never fails the reset; houseless enrol end to end). 7 source mutants, 7 red (incl. re-adding a reset-time revoke). Gateway `src/auth src/passkeys src/communications/email-templates` 31 suites / 386 tests green; boot check PASS. Research was one agent's WebSearch/WebFetch pass plus its own adversarial paragraph — no independent Workflow fan-out ran; several "kept" rows rest on omission, marked so |
 | 2026-09-27 | the founder (round 11, item 63) + PR #479 audit-fix round 2 (agent) | **Locked as built**, verbatim "Lock both as built (Recommended)"; Status line and this ADR's own index row changed. The same round recorded fork 6 (a code sign-in verifies an account someone else registered and keeps their password), found by the audit and not in front of the founder when he answered; not built, open for him. Code: `claimTry` replaces `recordWrongGuess` (claim a try before comparing); `sign-in-codes.service.spec.ts` 21/21 with two new cases (3×5 parallel guesses with the right code last: none signs in, `hashCode` runs 5 times; a right guess is not a wrong one for the day). Mutants: compare-first restored → both new cases red; the consumed-row adjustment removed → the day case red. `src/passkeys src/auth` 32 suites / 406 tests green; gateway `tsc --noEmit` clean |
+| 2026-09-27 | the founder (item 67) + PR #479 builder (Opus agent) | Fork 6 **resolved**, verbatim "option 1 + do what industry do for these, for security ops do what the industry leaders do" (label "Drop pwd + (b) interim (Recommended)"). Built path (a) plus the adopted industry defences (§ Fork 6): first code → verify + drop unproven password + `session_version + 1` in one CAS, sockets closed, notice mailed; a reset link verifies the address it was mailed to. Merged `origin/main` (#477, #441, #475, #489) first: kept both `auth_time` and `sv`, `changePassword` now carries `auth_time`; the PR's two migrations renumbered to 20261020000000 / 20261020000100 (past the #441 ceiling). `pre-hijack.spec.ts` 16/16; 11 source mutants 11 red; `src/auth src/passkeys src/communications/email-templates src/websocket` green; CLAIMS: two new rows, three amended, duplicate rows from the merge collapsed; 6 claim mutants red. Forks 7 (invite door verifies any address) and 8 (no expiry of unverified registrations) opened, not built |

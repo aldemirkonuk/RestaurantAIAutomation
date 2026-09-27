@@ -20,6 +20,7 @@ import {
   passwordChangedEmailTemplate,
   type PasskeyStillLive,
 } from "../communications/email-templates/password-changed.template";
+import { unprovenPasswordRemovedEmailTemplate } from "../communications/email-templates/unproven-password-removed.template";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
 import {
   SESSION_ENDED,
@@ -832,10 +833,34 @@ export class AuthService {
    *   * that address is still the account's address -- a code mailed to an
    *     address the account moved away from within its ten minutes proves the
    *     old mailbox, not the current one.
-   * The write is a compare-and-set on the same address, so an email change
-   * racing the sign-in cannot be verified by the old mailbox either. A failed
-   * write is logged and the session is minted unverified: the person lands on
-   * /verify-email as before, which is the state they were already in.
+   *
+   * The FIRST proof of the address also ends everything set up before it
+   * (ADR 0229 fork 6; the founder, 2026-09-27, item 67, verbatim: "option 1 +
+   * do what industry do for these, for security ops do what the industry
+   * leaders do"). An unverified account's password was chosen by whoever typed
+   * the address at `POST /auth/register/account`, which is public and proves
+   * nothing -- possibly a stranger pre-registering someone else's address
+   * (Sudhodanan & Paverd, "Pre-hijacked accounts", USENIX Security 2022). So in
+   * ONE write, with the verification: `password_hash` goes to null and
+   * `session_version` goes up by one, which signs out every token minted
+   * before it (ADR 0225) -- the registrant's access and refresh tokens and
+   * sockets included. Firebase does exactly this when an email link first
+   * proves an address; Supabase drops unconfirmed identities when a verified
+   * one arrives. The session minted here is minted from the row this write
+   * returns, so it alone survives. When a password was removed, the address is
+   * told (`unprovenPasswordRemovedEmailTemplate`; ASVS 5.0 6.3.7). The real
+   * owner sets a new password on /profile or through "Forgot password?".
+   *
+   * The write is a compare-and-set on the address, `email_verified = false`
+   * and the session version read just before, so an email change, a link
+   * verification or a password write racing the sign-in makes it miss rather
+   * than land on a row it did not examine (every password write moves the
+   * session version, ADR 0225, so the version stands for the hash too). A miss re-reads and
+   * retries (up to three times); if the row is by then verified or on another
+   * address, there is nothing left to do here and it is returned as it is. A
+   * failed write is logged and the session is minted unverified, from the
+   * freshest row read: nothing was verified and nothing was removed, and the
+   * person lands on /verify-email, the state they were already in.
    */
   private async verifyEmailProvedByCode(
     user: any,
@@ -844,24 +869,97 @@ export class AuthService {
   ): Promise<any> {
     if (method !== "email_code" || user.email_verified === true) return user;
     const proved = (provedEmail ?? "").trim().toLowerCase();
-    const current =
-      typeof user.email === "string" ? user.email.trim().toLowerCase() : "";
-    if (!proved || proved !== current) return user;
-    const { data, error } = await this.databaseService.supabase
-      .from("users")
-      .update({ email_verified: true })
-      .eq("user_id", user.user_id)
-      .eq("email", user.email)
-      .select("*")
-      .maybeSingle();
-    if (error || !data) {
-      this.logger.error(
-        `An emailed-code sign-in could not mark ${user.user_id} verified: ${error?.message ?? "the address changed"}`,
-      );
-      return user;
+    let row = user;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current =
+        typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
+      if (row.email_verified === true || !proved || proved !== current) {
+        return row;
+      }
+      const hadPassword =
+        typeof row.password_hash === "string" && row.password_hash.length > 0;
+      const from = sessionVersionOf(row);
+      const write = this.databaseService.supabase
+        .from("users")
+        .update({
+          email_verified: true,
+          password_hash: null,
+          session_version: from + 1,
+        })
+        .eq("user_id", row.user_id)
+        .eq("email", row.email)
+        .eq("email_verified", false)
+        .eq("session_version", from);
+      const { data, error } = await write.select("*").maybeSingle();
+      if (error) {
+        this.logger.error(
+          `An emailed-code sign-in could not mark ${row.user_id} verified: ${error.message}`,
+        );
+        return row;
+      }
+      if (data) {
+        this.websocketGateway?.endStaleSessions(
+          row.user_id,
+          sessionVersionOf(data),
+        );
+        this.logger.log(
+          `Email verified by an emailed code: ${row.user_id}; every earlier session ended` +
+            (hadPassword ? "; the unproven password was removed" : ""),
+        );
+        if (hadPassword) await this.mailUnprovenPasswordRemoved(data);
+        return data;
+      }
+      // The row moved between the read and the write. Read it again.
+      const { data: fresh, error: readErr } =
+        await this.databaseService.supabase
+          .from("users")
+          .select("*")
+          .eq("user_id", row.user_id)
+          .maybeSingle();
+      if (readErr || !fresh) {
+        this.logger.error(
+          `An emailed-code sign-in could not re-read ${row.user_id}: ${readErr?.message ?? "no row"}`,
+        );
+        return row;
+      }
+      row = fresh;
     }
-    this.logger.log(`Email verified by an emailed code: ${user.user_id}`);
-    return data;
+    this.logger.error(
+      `An emailed-code sign-in could not mark ${row.user_id} verified: the row kept moving`,
+    );
+    return row;
+  }
+
+  /**
+   * Tell the address an emailed code just proved that the password set before
+   * it was removed (ADR 0229 fork 6). Never throws: the removal already
+   * happened and the sign-in must not fail because a notice did not go out.
+   */
+  private async mailUnprovenPasswordRemoved(row: any): Promise<boolean> {
+    const to = typeof row?.email === "string" ? row.email.trim() : "";
+    try {
+      if (!to) return false;
+      const result = await this.gmailService.sendEmail({
+        to: [to],
+        subject:
+          "Your Mudavym account: a password nobody confirmed was removed",
+        html: unprovenPasswordRemovedEmailTemplate({
+          at: new Date().toISOString(),
+        }),
+      });
+      if (!result?.success) {
+        this.logger.warn(
+          `unproven password removed for ${row.user_id}: the notice was not delivered -- ${result?.error}`,
+        );
+        return false;
+      }
+      return true;
+    } catch (e) {
+      this.logger.error(
+        `unproven password removed for ${row?.user_id}: the notice threw -- ${(e as Error).message}`,
+      );
+      return false;
+    }
   }
 
   /**
@@ -926,8 +1024,11 @@ export class AuthService {
     passwordHash: string,
     caller: string,
     expectedCurrentHash?: string | null,
+    provedEmail?: string | null,
   ): Promise<any> {
     const checkHash = expectedCurrentHash !== undefined;
+    const proved =
+      typeof provedEmail === "string" ? provedEmail.trim().toLowerCase() : "";
     for (let attempt = 0; attempt < 3; attempt++) {
       const { data: current, error: readErr } =
         await this.databaseService.supabase
@@ -958,11 +1059,27 @@ export class AuthService {
       }
 
       const from = sessionVersionOf(current);
+      // ADR 0229 fork 6 (item 67): a reset link proves the mailbox it was
+      // mailed to, as an emailed code does, so when that is still the
+      // account's address the same write verifies it (what Auth0 does on a
+      // reset). The password just set is then a PROVED one, and a later
+      // emailed code, finding the address already verified, leaves it alone
+      // instead of removing it as unproven.
+      const verifies =
+        proved.length > 0 &&
+        current.email_verified !== true &&
+        typeof current.email === "string" &&
+        current.email.trim().toLowerCase() === proved;
       let updateQuery = this.databaseService.supabase
         .from("users")
-        .update({ password_hash: passwordHash, session_version: from + 1 })
+        .update({
+          password_hash: passwordHash,
+          session_version: from + 1,
+          ...(verifies ? { email_verified: true } : {}),
+        })
         .eq("user_id", userId)
         .eq("session_version", from);
+      if (verifies) updateQuery = updateQuery.eq("email", current.email);
       if (checkHash) {
         updateQuery =
           expectedCurrentHash === null
@@ -3106,7 +3223,7 @@ export class AuthService {
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const { data: reset, error } = await this.databaseService.supabase
       .from("password_resets")
-      .select("id, user_id, expires_at, used_at")
+      .select("id, user_id, email, expires_at, used_at")
       .eq("token", token)
       .maybeSingle();
 
@@ -3126,10 +3243,15 @@ export class AuthService {
 
     // ADR 0225: the new password and the end of every session minted before
     // it are one write. A reset is made from no session, so none is kept.
+    // The link was mailed to `reset.email`; following it proves that mailbox,
+    // so the write also verifies it when it is still the account's address
+    // (ADR 0229 fork 6, item 67).
     await this.setPasswordEndingSessions(
       reset.user_id,
       passwordHash,
       "resetPassword",
+      undefined,
+      typeof reset.email === "string" ? reset.email : null,
     );
 
     const usedAt = new Date().toISOString();

@@ -29,7 +29,7 @@
  *     authenticated with the short-lived JWT.
  *     **[2026-09-25, ADR 0222 (Locked 2026-09-27): passkeys are built — `PasskeyRows`,
  *     over `apps/api-gateway/src/passkeys/` and `user_passkeys`
- *     (20260929030000). Two-factor and API tokens are still `Not built`, and
+ *     (20261020000000). Two-factor and API tokens are still `Not built`, and
  *     the measurement above still holds for them.]**
  *     **[2026-09-25, ADR 0229 (Locked 2026-09-27; founder item 29): a passkey also signs
  *     you in on /login, and adding one needs a sign-in in the last ten minutes
