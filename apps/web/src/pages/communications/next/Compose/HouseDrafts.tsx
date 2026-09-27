@@ -76,7 +76,7 @@ export function HouseDrafts({
           fontWeight: 600,
           letterSpacing: '0.14em',
           textTransform: 'uppercase',
-          color: 'var(--ink-3, #7C7365)',
+          color: 'var(--ink-4, #665D50)',
           margin: '0 0 6px',
         }}
       >
@@ -87,9 +87,9 @@ export function HouseDrafts({
           {error} Whether any letter is waiting is unknown, not none.
         </p>
       ) : drafts === null ? (
-        <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: 0 }}>The drafts haven’t answered yet.</p>
+        <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>The drafts haven’t answered yet.</p>
       ) : drafts.length === 0 ? (
-        <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: 0 }}>No drafted letters are waiting.</p>
+        <p style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>No drafted letters are waiting.</p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
           {drafts.map((d) => (
@@ -105,7 +105,7 @@ export function HouseDrafts({
                   <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>
                     {d.subject ?? 'A drafted letter'}
                   </span>
-                  <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
                     {d.providerName ?? 'Vendor'} · {d.to ?? 'no address in the book yet'}
                     {d.createdAt ? ` · drafted ${fmtDay(d.createdAt)}` : ''}
                     {d.creditId ? ' · asks for a credit' : ''}

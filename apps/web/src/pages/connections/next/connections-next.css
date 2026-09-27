@@ -40,7 +40,7 @@
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 /* The three headings state their colour, because inheritance cannot reach them.
@@ -159,7 +159,7 @@
   font-size: 8.5px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   display: block;
   margin-top: 3px;
 }
@@ -196,7 +196,7 @@
   font-size: 9.5px;
   letter-spacing: 0.11em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin: 5px 0 12px;
 }
 
@@ -212,7 +212,7 @@
 }
 .mudavym .cx-row:hover { background: var(--paper-1); }
 .mudavym .cx-row.is-nested { padding-left: 34px; }
-.mudavym .cx-row-ic { color: var(--ink-3); padding-top: 2px; }
+.mudavym .cx-row-ic { color: var(--ink-4); padding-top: 2px; }
 
 .mudavym .cx-row-ttl {
   font-weight: 600;
@@ -226,7 +226,7 @@
 .mudavym .cx-row-sub {
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin-top: 3px;
   word-break: break-all;
 }
@@ -244,7 +244,7 @@
   font-size: 8.5px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
   display: block;
   margin-bottom: 4px;
 }
@@ -255,7 +255,7 @@
 }
 .mudavym .cx-scope ul { margin: 0; padding-left: 13px; }
 .mudavym .cx-scope li { margin: 0 0 2px; }
-.mudavym .cx-scope li.is-not { color: var(--ink-3); }
+.mudavym .cx-scope li.is-not { color: var(--ink-4); }
 .mudavym .cx-last-w {
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 11.5px;
@@ -265,10 +265,10 @@
 .mudavym .cx-last-d {
   display: block;
   font-size: 10.5px;
-  color: var(--ink-3);
+  color: var(--ink-4);
   margin-top: 2px;
 }
-.mudavym .cx-last-em { font-family: inherit; color: var(--ink-3); }
+.mudavym .cx-last-em { font-family: inherit; color: var(--ink-4); }
 
 /* Chips carry INK, never the semantic colour — measured for contrast. */
 .mudavym .cx-chip {
@@ -289,7 +289,7 @@
   box-shadow: inset 0 0 0 1px var(--seal-ring);
 }
 .mudavym .cx-chip.is-off {
-  color: var(--ink-3);
+  color: var(--ink-4);
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--paper-2);
 }
@@ -303,7 +303,7 @@
   font-size: 8.5px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mudavym .cx-ctl { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
@@ -326,7 +326,7 @@
 .mudavym .cx-btn:hover:not(:disabled) { background: var(--paper-2); }
 .mudavym .cx-btn:disabled {
   border-color: var(--paper-2);
-  color: var(--ink-3);
+  color: var(--ink-4);
   cursor: not-allowed;
 }
 /* EMPHASIS, NOT THE SEAL (audit, 2026-09-04).
@@ -355,7 +355,7 @@
 .mudavym .cx-ctl-note {
   font-size: 10.5px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-4);
   max-width: 180px;
 }
 /* What just happened to this row, in the server's own words. Ink, never a
@@ -413,14 +413,14 @@
   margin-top: 5px;
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mudavym .cx-loading {
   border-top: 1px solid var(--paper-2);
   padding: 14px 0 15px;
   font-size: 12px;
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 
 .mudavym .cx-foot {
@@ -429,7 +429,7 @@
   border-top: 1px solid var(--ink-1);
   font-size: 11.5px;
   line-height: 1.7;
-  color: var(--ink-3);
+  color: var(--ink-4);
   max-width: 900px;
 }
 .mudavym .cx-foot b { color: var(--ink-2); }

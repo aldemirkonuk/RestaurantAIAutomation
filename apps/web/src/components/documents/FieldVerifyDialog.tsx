@@ -151,7 +151,7 @@ export function FieldVerifyDialog({
             fontWeight: 600,
             letterSpacing: '.12em',
             textTransform: 'uppercase',
-            color: 'var(--ink-3, #7C7365)',
+            color: 'var(--ink-4, #665D50)',
           }}
         >
           Stand behind one field
@@ -180,7 +180,7 @@ export function FieldVerifyDialog({
           )}
         </p>
 
-        <p style={{ margin: '0 0 8px', fontSize: 10.5, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '0 0 8px', fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}>
           {path}
         </p>
 
@@ -194,7 +194,7 @@ export function FieldVerifyDialog({
           </p>
         )}
 
-        <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--ink-4, #665D50)' }}>
           This changes nothing about the value or where it came from. It records that you
           read it and stand behind it, permanently — which is why it takes a hold rather
           than a click.

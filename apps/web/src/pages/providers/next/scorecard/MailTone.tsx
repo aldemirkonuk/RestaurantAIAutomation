@@ -44,7 +44,7 @@ const eyebrow: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: '0.14em',
   textTransform: 'uppercase',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
   margin: '14px 0 6px',
 };
 
@@ -54,14 +54,14 @@ const standing: React.CSSProperties = {
   fontSize: 10,
   lineHeight: 1.6,
   letterSpacing: '0.02em',
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
 };
 
 const note: React.CSSProperties = {
   margin: '10px 0 0',
   fontSize: 11,
   lineHeight: 1.45,
-  color: 'var(--ink-3, #7C7365)',
+  color: 'var(--ink-4, #665D50)',
 };
 
 function Message({ m, f }: { m: MailMessage; f: Formats }) {
@@ -69,7 +69,7 @@ function Message({ m, f }: { m: MailMessage; f: Formats }) {
     <div data-testid="mail-message" style={{ padding: '9px 0', borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
       <div
         className="flex items-baseline justify-between"
-        style={{ gap: 12, fontFamily: MONO, fontSize: 10, letterSpacing: '0.02em', color: 'var(--ink-3, #7C7365)' }}
+        style={{ gap: 12, fontFamily: MONO, fontSize: 10, letterSpacing: '0.02em', color: 'var(--ink-4, #665D50)' }}
       >
         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {dayLabel(m.at, f)} · {m.subject ?? SC.mail.noSubject}
@@ -100,7 +100,7 @@ function Message({ m, f }: { m: MailMessage; f: Formats }) {
           {m.quote}
         </q>
       ) : (
-        <p style={{ margin: '4px 0 0', fontSize: 11, lineHeight: 1.45, fontStyle: 'italic', color: 'var(--ink-3, #7C7365)' }}>
+        <p style={{ margin: '4px 0 0', fontSize: 11, lineHeight: 1.45, fontStyle: 'italic', color: 'var(--ink-4, #665D50)' }}>
           {m.notAssessed ?? m.quoteMissing}
         </p>
       )}
@@ -230,7 +230,7 @@ export function MailTone({ providerId }: { providerId: string }) {
                 {all ? SC.mail.fewer : SC.mail.all(q.data.messages.length)}
               </button>
               {!all && (
-                <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-3, #7C7365)' }}>
+                <span style={{ fontFamily: MONO, fontSize: 10, color: 'var(--ink-4, #665D50)' }}>
                   {SC.mail.earlier(q.data.messages.length - q.data.shown)}
                   {q.data.beyondCap > 0 ? SC.mail.beyond(q.data.beyondCap) : ''}
                 </span>

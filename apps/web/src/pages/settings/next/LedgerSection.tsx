@@ -106,7 +106,7 @@ function Entry({ entry }: { entry: LedgerEntry }) {
     >
       <span
         style={{
-          fontFamily: MONO, fontSize: 11, color: 'var(--ink-3)',
+          fontFamily: MONO, fontSize: 11, color: 'var(--ink-4)',
           fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
         }}
         title={fmtExact(entry.occurredAt)}
@@ -132,7 +132,7 @@ function Entry({ entry }: { entry: LedgerEntry }) {
               : 'nobody was recorded')}
         </p>
         {fields.length === 0 ? (
-          <p style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)', margin: '3px 0 0' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)', margin: '3px 0 0' }}>
             {EM} the row carries no before-and-after, so what moved is not recorded.
           </p>
         ) : (
@@ -145,7 +145,7 @@ function Entry({ entry }: { entry: LedgerEntry }) {
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                <span style={{ color: 'var(--ink-3)' }}>{key}</span>{' '}
+                <span style={{ color: 'var(--ink-4)' }}>{key}</span>{' '}
                 <span style={{ textDecoration: 'line-through', opacity: 0.7 }}>
                   {readable(change.from)}
                 </span>{' '}
@@ -185,7 +185,7 @@ export function LedgerSection({ data }: { data: SettingsNextData }) {
             </Note>
           )}
 
-          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-3)', margin: '0 0 12px' }}>
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.55, color: 'var(--ink-4)', margin: '0 0 12px' }}>
             Settings changes began being recorded on{' '}
             <strong>{reg.recordingSince}</strong>. Anything changed before that
             left no row anywhere and cannot be recovered — an empty list here is
@@ -225,7 +225,7 @@ export function LedgerSection({ data }: { data: SettingsNextData }) {
             </p>
             <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
               {NOT_YET_FILED.map((r) => (
-                <li key={r.id} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)' }}>
+                <li key={r.id} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
                   {r.label}{' '}
                   <span style={{ fontFamily: MONO, fontSize: 10, opacity: 0.8 }}>{r.hint}</span>
                 </li>
