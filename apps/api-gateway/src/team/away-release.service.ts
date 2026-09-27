@@ -265,9 +265,14 @@ export class AwayReleaseService {
   }
 
   /**
-   * The held people who are still members of this house, read the way the
-   * token reads a house (`auth/house-role.ts`): an active access row, or the
-   * legacy `users.restaurant_id`. Throws on a failed read — "not a member" must never
+   * The held people who are still members of this house: an active access
+   * row, or the legacy `users.restaurant_id`. This is NOT how the token reads
+   * a house: `auth/house-role.ts` (ADR 0164, "Membership only") counts an
+   * active access row alone, and so does `HouseAreasService.assertHouseMember`.
+   * The legacy branch here is disclosed debt (ADR 0218, round 2 "last call";
+   * v3.0-TECH-DEBT 44.1i), not a rule; what it does to a person whose only
+   * tie is that pointer is written there, read from code and not measured.
+   * Throws on a failed read — "not a member" must never
    * be what an unreadable table looks like, or a returning person's messages
    * would be thrown away.
    */

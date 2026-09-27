@@ -222,6 +222,14 @@ gate (judge §6 leaves its meaning open).
   `AWAY_HOLD_DELIVERY_FAILED` is logged on every sweep. v3.0-TECH-DEBT 44.1i
   says no such member exists in production once migration `20260918153000` has
   applied. This was found by reading the code; it was not measured.
+  [Narrowed 2026-09-27, PR #441 audit at f8568e4e4: "never delivered" holds
+  for a held team message that carries the inbox channel, because
+  `AwayReleaseService.deliver` writes the inbox first and throws on 0 rows
+  before any push. A held team message sent with the push channel only has no
+  inbox write, so it is pushed to that person unless their push switch is
+  off. A held note (`kind: team_note`) goes through
+  `NotesService.releaseHeld`, which was not traced for this case. Read from
+  `away-release.service.ts` `deliver`, not measured.]
 - [Round 3] A send to **everyone** now also reads Away before it sends (one
   more read than before, on every crew message, not only a named one) and can
   now hold — so the readers-disagree-about-membership consequence above

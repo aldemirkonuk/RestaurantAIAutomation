@@ -652,9 +652,11 @@ export class NotificationsService {
       area?: AreaLabel;
       /**
        * Set by a caller that already sends its OWN push, with its own
-       * opt-out and audience filtering — team broadcast is the first
-       * (`team.controller.ts` `broadcast()`, "One push path"). Without this,
-       * this funnel's own "Mobile fan-out" below fired a SECOND push at
+       * opt-out and audience filtering: team broadcast
+       * (`team.controller.ts` `broadcast()`, "One push path") and the Away
+       * release (`away-release.service.ts` `deliver`, ADR 0218) — the only
+       * two setters, enumerated by CLAIMS PR-448-TEAM-BROADCAST-ONE-PUSH-PATH.
+       * Without this, this funnel's own "Mobile fan-out" below fired a SECOND push at
        * every non-`"low"` priority, to the full write audience, reading no
        * preference at all: an inbox-only send still pushed, and a push
        * opt-out was ignored.
