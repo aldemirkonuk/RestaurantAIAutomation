@@ -837,3 +837,26 @@ textarea.cl-field {
   flex: 1 1 220px;
   min-width: 180px;
 }
+
+/* ── the menu lines the register reader could not place (OD-140) ───────── */
+.cl-unplaced {
+  margin-top: 14px;
+}
+.cl-unplaced-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cl-unplaced-list > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 5px 0;
+  border-top: 1px solid var(--paper-2);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.cl-unplaced-list > li:first-child {
+  border-top: 0;
+}

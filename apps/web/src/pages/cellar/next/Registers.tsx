@@ -41,6 +41,7 @@ import {
   type RegisterReadoutVM,
 } from './useCellarNextData';
 import FloorStrip from './FloorStrip';
+import UnplacedMenuLines from './UnplacedMenuLines';
 import WholeCellar from './WholeCellar';
 
 /**
@@ -289,6 +290,14 @@ export default function Registers({ data }: { data: CellarData }) {
             />
           ))}
         </div>
+
+        {/* The menu lines the reader could not place in any of the registers
+            above — founder 2026-09-25 (OD-140, round 4 item 18): the count and
+            "Show me the N" live here, beside the registers. Only once the
+            readout is in: an unread readout already says so above. */}
+        {registers && !unread ? (
+          <UnplacedMenuLines menuLines={registers.menuLines} menuSource={registers.sources?.menu} />
+        ) : null}
 
         {/* ONE ask, however many registers need rows — never a stack. Every
             from-scratch onboarding switches several on at once, and N
