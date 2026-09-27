@@ -103,11 +103,11 @@ export default function Terms() {
             </Link>
             &apos;s &quot;Questions you ask Mudavym&quot; section applies here: a
             house's owner controls whether that house's questions may be used to
-            improve Mudavym, in Settings → Training use, and asking and answering
-            keep working the same either way. A question asked while that choice
-            is off is excluded from any training export permanently, even if the
-            owner later turns it back on — and no training on these questions has
-            started.
+            improve Mudavym, in Settings → Questions and training, and asking and
+            answering keep working the same either way. A question asked while that
+            choice is off is kept out of Mudavym&apos;s training export permanently,
+            even if the owner later turns it back on — and no training on these
+            questions has started.
           </p>
         </section>
         <section className="mdv-pub__plate">

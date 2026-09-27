@@ -30,5 +30,13 @@ describe('Terms page', () => {
   it('states the training-use notice consistently with /privacy', () => {
     renderWithProviders(<Terms />)
     expect(screen.getByRole('heading', { name: /questions you ask mudavym/i })).toBeInTheDocument()
+    // [PR 478 audit round 2] Names the section the owner actually finds
+    // (SettingsNext.tsx "Questions and training"), and claims only what
+    // ask_folio_training_export + asked_while_opted_out enforce
+    // (migration 20260922220600): out of the training export, not "any".
+    expect(screen.getByText(/settings → questions and training/i)).toBeInTheDocument()
+    expect(screen.getByText(/kept out of mudavym's training export permanently/i)).toBeInTheDocument()
+    expect(screen.queryByText(/training use,/i)).toBeNull()
+    expect(screen.queryByText(/any training export/i)).toBeNull()
   })
 })
