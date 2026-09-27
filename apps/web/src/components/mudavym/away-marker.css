@@ -1,0 +1,53 @@
+/*
+ * The Away marker (ADR 0218). Colours are the Mudavym ink and paper tokens, so
+ * the mark follows the page's ground (paper or charcoal) with no rules of its
+ * own. No transition anywhere: the mark is a state, not an event.
+ */
+.mdv-away {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+/* Away today: the name keeps its place and weight; only the ink lightens. */
+.mdv-away[data-away='now'] .mdv-away__name {
+  color: var(--ink-3);
+}
+
+.mdv-away__note {
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  color: var(--ink-2);
+  background: var(--paper-1);
+  border: 1px solid var(--paper-2);
+  border-radius: 999px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+button.mdv-away__note {
+  cursor: pointer;
+}
+
+button.mdv-away__note:focus-visible {
+  outline: 2px solid var(--seal-ring);
+  outline-offset: 2px;
+}
+
+/* Coming up, not yet: quieter still, and the name is untouched. */
+.mdv-away[data-away='soon'] .mdv-away__note {
+  background: transparent;
+  color: var(--ink-3);
+}
+
+.mdv-away__why {
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  max-width: 48ch;
+}

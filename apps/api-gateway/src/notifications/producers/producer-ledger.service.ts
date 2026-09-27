@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { NotificationsService } from "../notifications.service";
+import { AreaRoutingService } from "../../areas/area-routing.service";
 import {
   isWithinQuietHours,
   type QuietHours,
@@ -68,6 +69,12 @@ export interface ProducerAudience {
   ready: string[];
   /** Members inside it — deliberately unclaimed, so a later sweep serves them. */
   deferred: string[];
+  /**
+   * Members who are Away today (ADR 0218) — neither claimed nor deferred: the
+   * founder's rule is that no alert reaches a person on their Away days.
+   * Optional so the producers that narrow an audience by hand keep compiling.
+   */
+  away?: string[];
 }
 
 /** A claim row this sweep actually won. */
@@ -159,6 +166,8 @@ export class ProducerLedgerService {
     // Optional so the seven producers' specs, which construct this service
     // directly with two arguments, keep compiling and keep their behaviour.
     @Optional() @Inject(PRODUCER_CLOCK) clock?: ProducerClock,
+    // ADR 0218. Optional for the same reason as the clock.
+    @Optional() private readonly areaRouting?: AreaRoutingService,
   ) {
     this.clock = clock ?? SYSTEM_CLOCK;
   }
@@ -190,14 +199,46 @@ export class ProducerLedgerService {
     if (memberIds.length === 0) return { ready: [], deferred: [] };
 
     const prefs = await this.readPreferences(restaurantId, memberIds);
+    const awayToday = await this.readAway(restaurantId, now, timeZone);
     const ready: string[] = [];
     const deferred: string[] = [];
+    const away: string[] = [];
     for (const userId of memberIds) {
+      if (awayToday.has(userId)) {
+        away.push(userId);
+        continue;
+      }
       const quiet = prefs.get(userId)?.quietHours ?? QUIET_OFF;
       if (isWithinQuietHours(now, timeZone, quiet)) deferred.push(userId);
       else ready.push(userId);
     }
-    return { ready, deferred };
+    return away.length > 0 ? { ready, deferred, away } : { ready, deferred };
+  }
+
+  /**
+   * Who is Away today (ADR 0218).
+   *
+   * Unlike the preferences read above, a failure here FAILS OPEN — nobody is
+   * treated as Away on this tick — and says so at error level. Throwing would
+   * silence every producer for the house over a register that only ever
+   * NARROWS an audience; waking someone on their Away day is the smaller
+   * fault, and the log line names it.
+   */
+  private async readAway(
+    restaurantId: string,
+    now: Date,
+    timeZone: string,
+  ): Promise<Set<string>> {
+    if (!this.areaRouting) return new Set();
+    try {
+      return await this.areaRouting.awayUserIds(restaurantId, now, timeZone);
+    } catch (e: any) {
+      this.logger.error(
+        `NOTIFICATION_PRODUCER_AWAY_UNREADABLE restaurant=${restaurantId} — ${e?.message}. ` +
+          "Nobody is treated as Away on this tick.",
+      );
+      return new Set();
+    }
   }
 
   private async readPreferences(
