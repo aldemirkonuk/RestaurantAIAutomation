@@ -20,8 +20,9 @@ import type { HouseDayResponse } from "./house-day.types";
  * `restaurants.operating_hours`.
  *
  * Every MEMBER reads the day: none of the three registers this session
- * builds is restricted BY ROLE among members (the receiving routes carry no
- * role gate; `calendar/today` applies no role filter — both re-measured in
+ * builds is restricted BY ROLE among members (the door and unverified
+ * receiving routes carry no role gate — only the decision queue does, ADR
+ * 0167; `calendar/today` applies no role filter — both re-measured in
  * `house-day.service.ts`'s own comments). So the route admits owner, manager
  * and staff (admin ranks with owner/manager in `RolesGuard`), and refuses a
  * session with NO role in the house its token names (ADR 0162: null is no
