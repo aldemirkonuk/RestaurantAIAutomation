@@ -40,9 +40,9 @@ import { WageRecordRetentionService } from "./wage-record-retention.service";
     TeamService,
     ScheduleService,
     PerformanceService,
-    WageRecordRetentionService,
     AwayHoldService,
     AwayReleaseService,
+    WageRecordRetentionService,
   ],
   // AwayReleaseService: an "End Away now" on /house/away releases what waited.
   exports: [TeamService, ScheduleService, AwayReleaseService],
