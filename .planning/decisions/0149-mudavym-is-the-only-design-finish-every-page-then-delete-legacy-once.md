@@ -146,6 +146,69 @@ the current restaurants or users, or tables, dbs or such"*. So:
 - **Gated stops inside this record:** (a) every sketch the founder asked to review
   (116 motion, 107 receiving, 108 recommendations, 110 cellar, 112 vendor prices, 113 promotions, 115 arrival action boxes, and the shell
   if it is not already designed); (b) the deletion manifest, file group by file group.
+- **[2026-09-27, founder, round 9 item 56 / round 10 item 61 — the low-stock digest hour.** Chosen: "UTC, said on the page (Recommended)". Rejected: "New York time, said on the page", "No digest until a zone is set". Built on `fix/low-stock-digest-house-timezone`.]
+  The hourly UTC-anchored sweep now picks each house whose OWN local clock has
+  just crossed its configured digest hour (`low-stock-digest-clock.ts:
+  isDigestTick`), instead of gating everyone on one hard-coded New York hour
+  (`low-stock-alerts.service.ts` previously ran `@Cron(..., {timeZone:
+  "America/New_York"})` and compared against `currentEtHour()`).
+  - **Zone order:** the house's own `restaurants.timezone` first
+    (`digestClockFor`); then UTC, per ADR 0116:297-301's locked rule for a
+    zone this server cannot read — the low-stock digest is now a THIRD
+    consumer of that fallback, alongside the recommendation digest and the
+    calendar reminders. The country step (#435's `common/house-frame.ts`:
+    a country's zone only when it keeps exactly one) is NOT wired in yet —
+    #435 was still open on `origin/main` when this lane built, so a house
+    with no zone and a single-zone country (e.g. Turkey) still falls back to
+    UTC rather than resolving to its country's zone, until a follow-up wires
+    it in once #435 merges.
+  - **The per-house-date gate on `last_digest_at` is now READ.** The column
+    was write-only on `main` before this lane (`upsertState`'s `digestAt`,
+    confirmed by grep — nothing selected it), so the digest's only protection
+    against a double send was an inbox dedupe that never stopped the EMAIL
+    (`notifications.service.ts:630-643` skips the inbox row but `sendDigest`
+    still calls `emailDigest` regardless). `runDigestSweepAt` now reads the
+    most recent `last_digest_at`, converts it to the house's own local date,
+    and skips a restaurant already sent for that date.
+  - **DST:** spring-forward sends at the first hourly tick after the gap (no
+    day is skipped); the repeated hour on fall-back does not cross the
+    target a second time, so there is no double send; half-hour and
+    45-minute zones (India, Nepal, parts of Australia, Chatham) send at the
+    next top of the UTC hour after their target, because the sweep stays
+    hourly rather than becoming a 15-minute poll.
+  - **`groupKey` now uses the house's own local date**
+    (`low_stock_digest:<house date>`), not the UTC date, so the digest is not
+    keyed on a date the house itself would not recognise as "today".
+  - **/notifications copy:** not yet changed by this lane. #486 (the held
+    low-stock queue, which owns `HeldCrossingsView.digest` and the
+    "New York time" copy in `nt-held.ts`) was still open on `origin/main`
+    when this lane built, so wiring the house's zone into that view is a
+    follow-up named in this PR's body rather than done here; the new public
+    `digestClockForRestaurant()` exists so that follow-up has something to
+    call.
+  - **Builder's choices, Proposed:** the `last_digest_at` read fails OPEN — an
+    unreadable dedupe sends anyway, on the reasoning that `isDigestTick`
+    alone already caps a single sweep run to one crossing per house-local
+    date, so the exposure is a possible duplicate against another gateway
+    replica or an overlapping deploy, not a silently lost reminder day; the
+    fallback-zone warn (`LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN`) logs only on the
+    tick that actually fires, not on every sweep; a malformed `digest_time`
+    is skipped with a warn (`LOW_STOCK_DIGEST_TIME_UNREADABLE`) rather than
+    defaulting silently, which is new — the old `parseInt` returned `NaN` and
+    the hour comparison simply never matched.
+  - **CLAIMS:** `ADR-0149-LOW-STOCK-DIGEST-FOLLOWS-THE-HOUSE-CLOCK`,
+    `ADR-0149-LOW-STOCK-DIGEST-DST-TESTED`.
+  - **Source note:** the verbatim option labels above come from the
+    orchestrator's relayed task text for this lane, not from a session this
+    builder ran directly; the founder-answers memory (round 9 item 56, round
+    10 item 61) holds a paraphrase without the option wording, so this
+    bracket is the first place the exact labels are on record.
+  - **Cost accepted:** the real tenant, Meyhouse Palo Alto
+    (`550e8400…`), has `restaurants.timezone = NULL` (cleared by migration
+    `20260903170000`, per ADR 0207) and a `country` (`US`) that keeps many
+    zones, so its digest moves from 09:00 PT (12:00 "New York" today) to
+    05:00 PDT until the founder sets `America/Los_Angeles` for it in Settings
+    after #435 merges — his keystroke, not this lane's.
 - **Revisit when:** a cutover revert is needed in production, or a house asks for the
   old design (the signal that a per-house switch was load-bearing after all).
 

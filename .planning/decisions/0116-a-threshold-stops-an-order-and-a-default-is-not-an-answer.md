@@ -301,6 +301,9 @@ how a true figure becomes a false claim.
   in UTC. More houses will hit that path after the migration than before.
 - **`regions_covered` still holds whatever weekdays were already written.** The
   listing proposes; a person decides. Nothing was cleaned up.
+- **[2026-09-27]** The low-stock digest (`low-stock-alerts.service.ts`) is now a
+  third consumer of this fallback rule, alongside the recommendation digest
+  and the calendar reminders — see ADR 0149's 2026-09-27 bracket (item 56).
 
 ### What would trigger revisiting this
 
