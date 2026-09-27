@@ -99,6 +99,35 @@ function newestFirst(a: TimelineEvent, b: TimelineEvent): number {
   return b.occurredAt.localeCompare(a.occurredAt);
 }
 
+/**
+ * ADR 0218 round 4 (founder round 6z, 2026-09-22), "Hide Away events from
+ * staff (Recommended)": a colleague's Away being set or ended stays out of
+ * a staff reader's /logs feed; owners and managers still read it, and /logs
+ * stays open to staff for every other action. This is a NARROWER list than
+ * settings-audit's `STAFF_WITHHELD_ACTIONS` on purpose — /logs is a raw feed
+ * of every `system_audit_log` action for every member (unlike the closed
+ * `READ_BACK_ACTIONS` set that trail reads back), so only the two Away
+ * actions are named here; a house rename or a lead grant is unaffected.
+ */
+export const LOGS_AWAY_ACTIONS_WITHHELD_FROM_STAFF = [
+  "away_set_for_member",
+  "away_ended_for_member",
+] as const;
+
+/**
+ * The role is the token house's role (ADR 0162). `LogsController` reads it
+ * off `MembersService.assertMembership`'s own membership row — the same call
+ * it already makes to gate the route — rather than trusting a JWT claim that
+ * can go stale across houses (`auth/house-role.ts`). Anything but `owner` or
+ * `manager` — staff, an unset role, a role the caller never passed — withholds
+ * the two Away actions: the same fail-closed default `settings-audit.service.ts`
+ * `readBackActionsFor` uses ("Omitted, it reads as staff").
+ */
+function withholdsAwayActions(role: unknown): boolean {
+  const r = typeof role === "string" ? role.toLowerCase() : "";
+  return r !== "owner" && r !== "manager";
+}
+
 @Injectable()
 export class LogsTimelineService {
   private readonly logger = new Logger(LogsTimelineService.name);
@@ -107,7 +136,14 @@ export class LogsTimelineService {
 
   async getTimeline(
     restaurantId: string,
-    opts: { correlationId?: string; limit?: number; before?: string } = {},
+    opts: {
+      correlationId?: string;
+      limit?: number;
+      before?: string;
+      /** The caller's role in this house (ADR 0162). See
+       *  `withholdsAwayActions` — omitted reads as staff. */
+      role?: unknown;
+    } = {},
   ): Promise<TimelineResponse> {
     const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
     const correlationId = opts.correlationId?.trim() || null;
@@ -124,7 +160,7 @@ export class LogsTimelineService {
       this.fetchDecisions(db, restaurantId, correlationId, cursor),
       this.fetchInventoryTxns(db, restaurantId, correlationId, cursor),
       this.fetchDocuments(db, restaurantId, correlationId, cursor),
-      this.fetchAuditLog(db, restaurantId, correlationId, cursor),
+      this.fetchAuditLog(db, restaurantId, correlationId, cursor, opts.role),
       // event_store is not restaurant-scoped (the table itself carries no
       // restaurant_id column), so it is read only when a correlation_id
       // names the rows to read — that part is still true and still why the
@@ -314,6 +350,7 @@ export class LogsTimelineService {
     restaurantId: string,
     correlationId: string | null,
     cursor: Cursor,
+    role: unknown,
   ): Promise<SourceResult> {
     return this.guard("system_audit_log", async () => {
       let q = db
@@ -322,6 +359,20 @@ export class LogsTimelineService {
           "id, actor_type, action, entity_type, entity_id, reason, correlation_id, created_at",
         )
         .eq("restaurant_id", restaurantId);
+      // ADR 0218 round 4, 2026-09-22 — filtered in the QUERY, not after the
+      // window is applied: `system_audit_log` is read to `limit + 1` per
+      // source so `hasMore` is exact (see "The window, and walking it"
+      // below), and filtering the withheld rows out afterwards would shrink
+      // a staff page below its own cap whenever a house's Away actions were
+      // frequent, the same hazard `settings-audit.service.ts` avoids by
+      // filtering `readBackActionsFor` in its `.in("action", …)` clause.
+      if (withholdsAwayActions(role)) {
+        q = q.not(
+          "action",
+          "in",
+          `(${LOGS_AWAY_ACTIONS_WITHHELD_FROM_STAFF.join(",")})`,
+        );
+      }
       q = windowed(q, "created_at", cursor);
       if (correlationId) q = q.eq("correlation_id", correlationId);
       const { data, error } = await q;
