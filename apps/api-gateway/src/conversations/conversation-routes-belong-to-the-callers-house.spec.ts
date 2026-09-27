@@ -642,6 +642,35 @@ describe("a credit claim's letter is owner/manager territory here too (ADR 0167/
     },
   );
 
+  // #436 merging main ef8ecdf30 (2026-09-27): approve has no @Roles on #436
+  // (WHO is the service's gate, ADR 0175 D10), so the gate's own read carries
+  // the caller's role — a staff grantee is answered the same 404 the by-id read
+  // gives, and an owner or manager reaches the house-letter refusal.
+  it("approve: a staff grantee is answered 404 on a HOUSE_DRAFT row, and nothing is written or published", async () => {
+    rowOf(CONV_A).status = "HOUSE_DRAFT";
+    rowOf(CONV_A).outbound_email_type = "HOUSE_LETTER";
+    const redeemed = seal.redeem.mock.calls.length;
+    const witnessed = authority.witnessGrantUse.mock.calls.length;
+    const res = await call("POST", `/${CONV_A}/approve`, { role: "grantee" }, APPROVE_BODY);
+    expect(res.status).toBe(404);
+    expect(applied).toEqual([]);
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    // Answered before the gate: no seal spent, no grant use on the ledger for
+    // a row this caller may not see.
+    expect(seal.redeem.mock.calls.length).toBe(redeemed);
+    expect(authority.witnessGrantUse.mock.calls.length).toBe(witnessed);
+  });
+
+  it("approve: a manager on a HOUSE_DRAFT row is refused as a house letter, not a 404", async () => {
+    rowOf(CONV_A).status = "HOUSE_DRAFT";
+    rowOf(CONV_A).outbound_email_type = "HOUSE_LETTER";
+    const res = await call("POST", `/${CONV_A}/approve`, { role: "manager" }, APPROVE_BODY);
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toMatch(/drafted credit-claim letter/);
+    expect(applied).toEqual([]);
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
   it("does not withhold a conversation with no status, or an ordinary one, from staff", async () => {
     // The default seed carries no `status` at all (undefined), and this
     // asserts the withholding is specific to the two credit-letter statuses,

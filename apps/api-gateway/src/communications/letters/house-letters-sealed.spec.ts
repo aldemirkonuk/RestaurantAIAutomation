@@ -736,3 +736,76 @@ describe("a released letter the dispatcher fails to send puts its request back t
     });
   });
 });
+
+// #436 merging main ef8ecdf30 (2026-09-27): #476's drafted letters (ADR 0230)
+// meet this file's gate. WHO runs first, the credit rule after it, so a grant
+// to send never opens a credit claim's letter to staff; and a release that took
+// a staff request gives it back when the draft it names was already gone.
+describe("the composer gate and a drafted letter compose (ADR 0175 D10 with ADR 0167/0230)", () => {
+  const DRAFT_ID = "33333333-3333-4333-8333-333333333333";
+  function withDraft(t: ReturnType<typeof build>, creditId: string | null) {
+    t.db.tables.procurement_conversations.push({
+      id: DRAFT_ID,
+      restaurant_id: HOUSE,
+      provider_id: PROVIDER,
+      order_id: null,
+      direction: "outbound",
+      channel: "email",
+      status: LETTER_STATUS.DRAFT,
+      outbound_email_type: "HOUSE_LETTER",
+      email_headers: creditId ? { credit_id: creditId, drafted_by: MANAGER } : { drafted_by: MANAGER },
+    });
+    return t.db.tables.procurement_conversations.find((r) => r.id === DRAFT_ID)!;
+  }
+  function grant(t: ReturnType<typeof build>) {
+    t.db.tables.authority_grants.push({
+      id: "g-1", restaurant_id: HOUSE, grantor_user_id: OWNER, grantee_user_id: GRANTEE, scope: "vendor_send",
+      limit_amount: null, limit_currency: null, expires_at: null, created_at: "2026-09-20T00:00:00Z", revoked_at: null,
+      vouched_by_user_id: OWNER, suspended_at: null, deleted_at: null,
+    });
+  }
+
+
+  it("a staff grantee WHO admits is still refused a credit claim's draft by the credit rule, and the draft stays a draft", async () => {
+    const t = build();
+    grant(t);
+    const row = withDraft(t, "credit-1");
+    const dto = { ...DRAFT, draftId: DRAFT_ID };
+    // WHO admits the grantee: the seal is issued.
+    const { challenge } = await t.letters.issueQueueSeal({ restaurantId: HOUSE, userId: GRANTEE, dto: dto as any });
+    await expect(
+      t.letters.queue({ restaurantId: HOUSE, userId: GRANTEE, dto: dto as any, challenge, role: "staff" }),
+    ).rejects.toThrow(/answers a credit claim\. Only an owner or manager may send it/);
+    expect(row.status).toBe(LETTER_STATUS.DRAFT);
+    expect(t.queued().filter((r) => r.status === LETTER_STATUS.QUEUED)).toHaveLength(0);
+  });
+
+  it("a manager sends the same credit draft: the draft row becomes the letter, keeps its claim, and names who sent it", async () => {
+    const t = build();
+    const row = withDraft(t, "credit-1");
+    const dto = { ...DRAFT, draftId: DRAFT_ID };
+    const { challenge } = await t.letters.issueQueueSeal({ restaurantId: HOUSE, userId: MANAGER, dto: dto as any });
+    const out = await t.letters.queue({ restaurantId: HOUSE, userId: MANAGER, dto: dto as any, challenge, role: "manager" });
+    expect(out.id).toBe(DRAFT_ID);
+    expect(row).toMatchObject({ status: LETTER_STATUS.QUEUED, sent_by_user_id: MANAGER, sent_under_grant_id: null });
+    expect(row.email_headers).toMatchObject({ credit_id: "credit-1", drafted_by: MANAGER, written_by: MANAGER });
+  });
+
+  it("a release whose draft was sent or discarded meanwhile queues nothing and gives the staff request back", async () => {
+    const t = build();
+    const row = withDraft(t, null);
+    const { requestId } = await t.letters.ask({ restaurantId: HOUSE, userId: STAFF, dto: DRAFT as any });
+    const release = { ...DRAFT, requestId, draftId: DRAFT_ID };
+    const { challenge } = await t.letters.issueQueueSeal({ restaurantId: HOUSE, userId: MANAGER, dto: release as any });
+    // Another tab discards the draft after it was read and before it is claimed.
+    jest.spyOn(t.letters as any, "verifyInsertions").mockImplementation(async () => {
+      row.status = LETTER_STATUS.CANCELLED;
+      return [];
+    });
+    await expect(
+      t.letters.queue({ restaurantId: HOUSE, userId: MANAGER, dto: release as any, challenge, role: "manager" }),
+    ).rejects.toThrow(/no longer a draft/);
+    expect(row.status).toBe(LETTER_STATUS.CANCELLED);
+    expect(t.db.tables.vendor_send_requests[0]).toMatchObject({ state: "waiting", released_by: null });
+  });
+});
