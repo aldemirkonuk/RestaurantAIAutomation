@@ -176,3 +176,22 @@ Seams:
 - The charter's own leading metric — `inventory.direct_write_paths` — has no instrumentation
   in the repo; counting it is **unscheduled**.
 
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** `storage-locations` has 0 specs and 10.8% branch coverage — the weakest-tested piece of the three-module stack.
+
+**Coverage.** `inventory` 61.2%/51.4%; `inventory-ledger` 81.4%/68.1%; `storage-locations` 32.4%/10.8% (heavy.sh jest, 2026-09-18).
+
+**Runs in production.** Yes, flag ON, real tenant usage.
+
+**Promised vs. built.** `partial` holds; this is real, active-tenant data, not synthetic.
+
+**Gaps.** `storage-locations` is under-tested relative to the other two modules in the stack.
+
+*Evidence:* Supabase: `restaurant_inventory`=183, `inventory_lots`=168, `inventory_transactions`=257.
+
+### document-extraction-ocr (model) — photo-count call site only
+
+**Capacity.** Photo-based inventory counting via `inventory/photo-count.service.ts` (Haiku) is one of three independent vision call sites on the same model tier; see [[receipts-invoice-match]] for the full model entry (procurement documents is its primary call site).
+
+*Evidence:* `photo-count.service.ts:77`.
