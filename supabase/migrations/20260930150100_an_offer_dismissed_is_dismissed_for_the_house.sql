@@ -39,6 +39,15 @@
 -- highest seen: #473's 20260929000000), keeping their relative order. Body
 -- unchanged. See CLAUDE.md §5b: never reuse a migration version.
 --
+-- Renamed a fifth time 2026-09-27 (PR #474 merge-train update, train 5):
+-- 20260929010100 sorts below origin/main's newest (20260930100100, from the
+-- ADR 0218 Away work merged during this train's run), which fails ADR 0212's
+-- ordering guard (check_migration_order.py). Re-versioned this file and the
+-- flag column (20260929010000 -> 20260930150000) past that ceiling and clear
+-- of every open PR's migrations measured at rename time
+-- (`gh pr list --json number,files`, highest seen: #476's 20260929200000),
+-- keeping their relative order. Body unchanged.
+--
 -- Why a timestamp and not a boolean: a boolean cannot say WHEN, and a
 -- dismissal with no date cannot be reviewed or expired. `dismissed_at IS NULL`
 -- is the single fact "on the table"; there is no second column to disagree

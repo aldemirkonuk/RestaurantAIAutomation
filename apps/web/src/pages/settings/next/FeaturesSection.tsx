@@ -237,7 +237,8 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                         // No line number here: the registry's anchor is kept
                         // true by scripts/check_flag_readby_anchors.py, and
                         // nothing guards a copy of it in this file (it read
-                        // :202 after PR #474 moved the call to :211).
+                        // :202 after PR #474 moved the call to :211, then :217
+                        // after the 2026-09-27 main merge added `ask`).
                         // For a page in LIVE_PAGES the hook returns before
                         // that call ever runs (see its module doc above) — the
                         // column is real but nothing reads it any more.

@@ -19,6 +19,15 @@
 -- 20260928000000_a_promotion_remembers_being_alerted.sql (#485) while this PR
 -- was in flight; re-versioned from 20260926160000 past that ceiling, keeping
 -- order with the dismissal column that follows it. Body unchanged.
+--
+-- Renamed a second time 2026-09-27 (PR #474 merge-train update, train 5):
+-- 20260929010000 sorts below origin/main's newest (20260930100100, from the
+-- ADR 0218 Away work merged during this train's run), which fails ADR 0212's
+-- ordering guard (check_migration_order.py). Re-versioned from 20260929010000
+-- to 20260930150000, past that ceiling and clear of every open PR's
+-- migrations measured at rename time (`gh pr list --json number,files`,
+-- highest seen: #476's 20260929200000), keeping order with the dismissal
+-- migration that follows it. Body unchanged.
 
 alter table public.restaurant_feature_flags
   add column if not exists mudavym_design_promotions boolean not null default false;

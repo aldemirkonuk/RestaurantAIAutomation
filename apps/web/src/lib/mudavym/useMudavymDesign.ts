@@ -106,11 +106,14 @@ export const MUDAVYM_PAGES = [
   'authorize_integration',
   // ADR 0160 §113 / ADR 0165 (2026-09-25). `/promotions`, sketch 113
   // direction B with C's density. Held back from LIVE_PAGES: flag-gated on
-  // `mudavym_design_promotions`, OFF by default (20260929010000), `legacy`
+  // `mudavym_design_promotions`, OFF by default (20260930150000), `legacy`
   // is today's three-tab Promotions page, unchanged. Dark until the founder
   // turns it on — the two drawings ADR 0160 still owes (the bundle shape,
   // B's sized boxes at C's 10+ density) are sketch 124, not built.
   'promotions',
+  // ADR 0145 `/ask` (2026-09-25 amendment): live in code from day one (Q2); no
+  // column exists. `legacy` is the retired /sommelier chat, until the cutover.
+  'ask',
 ] as const;
 
 export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
@@ -136,11 +139,13 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * which row a house has, or whether it has one. Their three columns stay,
  * unread (ADR 0149 never deletes a column).]
  *
- * 23 keys. Held back, still flag-gated: `recommendations`, `receiving`,
+ * [2026-09-25, ADR 0145's 2026-09-25 amendment: `ask` joined on the same Q2.]
+ *
+ * 24 keys. Held back, still flag-gated: `recommendations`, `receiving`,
  * `arrival` (the /get-started book, whose `legacy` slot is the ADR 0213 plan
  * of record — OFF until deliberately flipped) and `promotions` (2026-09-25,
  * ADR 0160 §113 / ADR 0165: dark until the founder turns
- * `mudavym_design_promotions` on). `MUDAVYM_PAGES.length` is 27;
+ * `mudavym_design_promotions` on). `MUDAVYM_PAGES.length` is 28;
  * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
@@ -170,6 +175,7 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'shell',
   'admin',
   'authorize_integration',
+  'ask',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */

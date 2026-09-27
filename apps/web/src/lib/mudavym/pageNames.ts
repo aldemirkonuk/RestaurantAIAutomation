@@ -92,6 +92,9 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // ADR 0160 §113 / ADR 0165 — /promotions (sketch 113 direction B),
   // flag-gated on `mudavym_design_promotions`, held back from LIVE_PAGES.
   promotions: 'Promotions',
+  // ADR 0145 — `/ask`, the page that answers out of a reading. Reached by
+  // the command palette, /help and the redirect from `/sommelier`.
+  ask: 'Ask',
 };
 
 /**

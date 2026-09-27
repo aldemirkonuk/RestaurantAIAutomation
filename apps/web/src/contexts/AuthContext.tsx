@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { errorTracking } from "../lib/error-tracking";
+import { getBrowserTimezone } from "../lib/browserTimezone";
 import { useAuthStore } from "../stores";
 import {
   fallbackSignInMethods,
@@ -696,10 +697,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setError(null);
         setLoading(true);
+        // Item 62 (2026-09-27): the caller's own zone if it sent one,
+        // otherwise the browser's — wrapped so a browser that will not say
+        // (or doesn't fully implement `Intl`) omits the field rather than
+        // throwing before the request is sent. See lib/browserTimezone.ts.
         const response = await api.post("/api/v1/auth/register/restaurant", {
           ...data,
-          timezone:
-            data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          timezone: data.timezone || getBrowserTimezone(),
         });
         const { accessToken, refreshToken: refresh } = response.data;
         storeSession(accessToken, refresh);

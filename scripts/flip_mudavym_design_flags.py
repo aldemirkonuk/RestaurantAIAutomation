@@ -112,7 +112,7 @@ PAGES: tuple[str, ...] = (
     # LIVE_IN_CODE below; still a known slug so a flip of it reports NO-OP.]
     "admin",
     # ADR 0160 §113 / ADR 0165 (2026-09-25) — /promotions, flag-gated and OFF
-    # by default (column 20260929010000). Not live in code: a flip is real.
+    # by default (column 20260930150000). Not live in code: a flip is real.
     "promotions",
 )
 

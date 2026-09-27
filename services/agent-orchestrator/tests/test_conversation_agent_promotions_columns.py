@@ -81,7 +81,7 @@ PROVIDER_PROMOTIONS_BASELINE_COLUMNS = frozenset(
 # test_the_named_additions_add_exactly_what_they_claim.
 PROVIDER_PROMOTIONS_ADDED_COLUMNS = {
     "20260928000000_a_promotion_remembers_being_alerted.sql": frozenset({"alerted_at"}),
-    "20260929010100_an_offer_dismissed_is_dismissed_for_the_house.sql": frozenset(
+    "20260930150100_an_offer_dismissed_is_dismissed_for_the_house.sql": frozenset(
         {"dismissed_at", "dismissed_by"}
     ),
 }
