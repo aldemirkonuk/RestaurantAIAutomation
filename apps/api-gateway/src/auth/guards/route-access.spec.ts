@@ -93,7 +93,12 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // gained @Roles("owner", "manager") on four routes (the three credits
     // routes and the queue); the door, receivedSoFar and unverified routes in
     // ReceivingController stay open, on purpose (staff use them). A
-    // seventeenth, HouseLettersController, is PR #476's own audit fix (round
+    // seventeenth is PR #474's own change (ADR 0124:357-362): the
+    // new promotions controller gained @Roles("owner", "manager") on all
+    // three of its routes (the read and the two dismiss/restore writes) —
+    // this read carries what a vendor charges the house, the same reason
+    // /vendor-intel and the pricing column are gated. An
+    // eighteenth, HouseLettersController, is PR #476's own audit fix (round
     // 1, R1): `drafts` and `discard` carried only `JwtAuthGuard`, so any
     // staff member could read a credit draft's claimed amount, reason and
     // invoice/order numbers through this door, the same figures ADR 0167
@@ -118,6 +123,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "price-index/price-index.controller.ts",
       "procurement/documents/credits.controller.ts",
       "procurement/receiving.controller.ts",
+      "promotions/promotions.controller.ts",
       "reports/exports/report-exports.controller.ts",
       "vendor-intel/vendor-intel.controller.ts",
     ]);

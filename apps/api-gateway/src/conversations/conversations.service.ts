@@ -500,7 +500,7 @@ export class ConversationsService {
         p_date_to: window.to,
         p_limit: limit,
         p_offset: (page - 1) * limit,
-        // ADR 0167/0230: withheld INSIDE the RPC (migration 20261003100000),
+        // ADR 0167/0230: withheld INSIDE the RPC (migration 20261016000000),
         // so the thread count, first/last times, search and paging never see
         // a HOUSE_DRAFT/HOUSE_CANCELLED letter a non-owner/manager may not.
         // Filtering the messages below alone would still let `search` find a
