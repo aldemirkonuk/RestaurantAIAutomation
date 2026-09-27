@@ -925,6 +925,11 @@ citations across ~89 files — see the register-row memo); the parent files them
     column is kept (additive only) and no gateway code reads it. Owners and
     managers of such a house are told on `/calendar`, `/settings`,
     `/connections` and legacy Settings that it was switched off and to connect their own.
+    *[Added 2026-09-27 (PR #438 audit at `a431f58e4`): if the migration applies
+    while main's old gateway still serves, the old GET can mint a new shared
+    token in that window. The post-deploy count that proves none survived is
+    owed and tracked in `v3.0-TECH-DEBT.md`, item 4 of "The nightly's artifact
+    scrub does not cover four secret shapes".]*
   - UI: "Connect my calendar" on `/calendar` (a sheet: what my link shows,
     connect, the address once with copy and open-in-app, get a new link,
     stop; owners pick categories; owners and managers see who has connected
