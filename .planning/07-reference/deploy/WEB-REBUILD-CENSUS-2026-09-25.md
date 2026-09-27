@@ -900,11 +900,11 @@ cited here.
 | 62 | Sign-up timezone: send the browser's zone, else save nothing | **#489** (`fix: a new house's timezone is the browser's, else none — never New York (item 62)`) — not named in the founder-answers memory itself, found by following the code | **MERGED** 2026-09-27T16:24:29Z. `apps/api-gateway/src/auth/sign-up-timezone.ts` and `resolveSignUpTimezone()` are on `origin/main`; `auth.service.ts:1343-1344,1474-1475` calls it in place of the old `dto.timezone \|\| 'America/New_York'` fallback |
 | 63 | LOCK ADR 0222 and ADR 0229 as built (#479 flips Status to Locked) | **#479** | OPEN — the ADRs' Status fields are not yet flipped on `main` |
 | 64 | #436's ci.yml edit ALLOWED (4 added steps, add-only) | **#436** (gate-owned: `.github/workflows/ci.yml`) | OPEN. Not this PR's concern to edit — ci.yml stays gate-owned per the founder's own round-10 standing rule (item 59) |
-| 65 | /terms NOINDEX until final legal text + subprocessor list; resolves OD-170 | **#478** | OPEN |
+| 65 | /terms NOINDEX until final legal text + subprocessor list. The founder-answers memory names an open-decision id for this fork that **has no row in `OPEN-DECISIONS.md`** — `check_od_ids_exist.py` (2026-09-27, this PR's own CI run) reports it names nothing on `main`, so it is not reproduced here; either #478's own branch carries the unfiled row, or the fork was never filed. #478's own lane owes the register row when it merges | **#478** | OPEN |
 | 66 | Gmail 403/404 through the RELAY path closes the draft as RELAY_REFUSED | **#429** | OPEN |
 | 67 | #479 fork 6 (pre-account-takeover): drop unproven password_hash on first code verification + end every other session | **#479** (interim (b) moot since #477's `sv` already merged) | #479 **OPEN**. **#477 MERGED** 2026-09-27T16:42:34Z (the interim half) |
-| 68 | #429 OD-174(a): keep the retry for the older-gateway whitelist 400 | **#429** | OPEN |
-| 69 | #429 OD-174(b): park quota/delegation 403 like a 401; other 403/404 still close RELAY_REFUSED | **#429** | OPEN |
+| 68 | #429 fork (a), same unfiled open-decision id as item 65: keep the retry for the older-gateway whitelist 400 | **#429** | OPEN |
+| 69 | #429 fork (b), same unfiled open-decision id as item 65: park quota/delegation 403 like a 401; other 403/404 still close RELAY_REFUSED | **#429** | OPEN |
 | 70 | #488 digest catch-up: send once house-local time is past today's hour and no digest sent today; a failed dedupe read skips | **#488** (same PR as items 56/61) | OPEN |
 
 **Model-split decision, dated note (2026-09-27):** the founder chose the judge's
