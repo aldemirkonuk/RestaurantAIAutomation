@@ -593,7 +593,11 @@ describe("own paper reaches vendor_price_observations", () => {
     // discarding one): the final decision call gets `priorCount: undefined`.
     const withOpts = decide.mock.calls.filter((c) => c[1] !== undefined);
     expect(withOpts).toHaveLength(1);
-    expect(withOpts[0][1]).toEqual({ isOutlier: false, priorCount: undefined });
+    expect(withOpts[0][1]).toEqual({
+      isOutlier: false,
+      priorCount: undefined,
+      priorsCurrency: "TRY",
+    });
     decide.mockRestore();
   });
 });
@@ -740,8 +744,8 @@ describe("decideOwnPaperSighting", () => {
   it("never judges a row with no product identity, whatever count it is given", () => {
     const unidentified = { ...base, masterWineId: null };
     for (const opts of [
-      { isOutlier: false, priorCount: 0 },
-      { isOutlier: true, priorCount: 12 },
+      { isOutlier: false, priorCount: 0, priorsCurrency: "EUR" },
+      { isOutlier: true, priorCount: 12, priorsCurrency: "EUR" },
     ]) {
       const d = decideOwnPaperSighting(unidentified, opts);
       if (!d.write) throw new Error(d.reason);
@@ -751,9 +755,13 @@ describe("decideOwnPaperSighting", () => {
       expect(d.row.outlier_basis).toBeNull();
       expect(d.row.outlier_judged_at).toBeNull();
     }
-    // The same count on an identified row IS a judgement, so the guard is
-    // about identity and nothing else.
-    const identified = decideOwnPaperSighting(base, { isOutlier: false, priorCount: 0 });
+    // The same count, in the same currency, on an identified row IS a
+    // judgement, so the guard just proved is about identity and nothing else.
+    const identified = decideOwnPaperSighting(base, {
+      isOutlier: false,
+      priorCount: 0,
+      priorsCurrency: "EUR",
+    });
     if (!identified.write) throw new Error(identified.reason);
     expect(identified.row.outlier_reason).toMatch(/^Not judged: only 0 earlier sighting/);
   });
