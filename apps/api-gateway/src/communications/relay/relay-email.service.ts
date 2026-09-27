@@ -137,7 +137,10 @@ import {
 import { HouseSenderService } from "../letters/house-sender.service";
 import { houseActor, type TokenUser } from "../letters/house-letters.actor";
 import { MimeHeaderError } from "../mime-headers";
-import { RelayRejectedByProviderError } from "../send-failure";
+import {
+  RelayRejectedByProviderError,
+  gmailRefusalClosesRelayDraft,
+} from "../send-failure";
 import {
   OrganizationsService,
   RestaurantRoleUnreadableError,
@@ -211,9 +214,10 @@ export interface RelayResult {
   /**
    * `true` only when `success` is `false`, the send went through the
    * orchestrator's transport (`sendThroughDeploymentMailbox`), and the
-   * provider itself returned a `kind: "rejected"` refusal (Gmail 400/403/404
-   * — `send-failure.ts`'s `GMAIL_REJECTED_STATUSES`) — Gmail WAS called and
-   * refused the request outright, unlike `refusedBeforeSend`. Founder,
+   * Gmail API itself refused it with a 403 or 404
+   * (`send-failure.ts`'s `gmailRefusalClosesRelayDraft`) — Gmail WAS called
+   * and refused the request outright, unlike `refusedBeforeSend`. Gmail 400
+   * and the SMTP fallback's rejections do NOT set it. Founder,
    * 2026-09-27 (item 66): this closes the relay draft as `RELAY_REFUSED`
    * exactly like a header refusal does, even though the provider was
    * reached. See `RelayRejectedByProviderError` (send-failure.ts) for the
@@ -383,7 +387,7 @@ export class RelayEmailService {
     // string the 400/403/422 door refusals already produce, so a header
     // refusal closes the draft exactly like any other structural one.
     // Founder, 2026-09-27 (item 66, "Close it (RELAY_REFUSED)"): a Gmail
-    // 400/403/404 reached through this transport (`providerRejectedRequest`)
+    // API 403/404 reached through this transport (`providerRejectedRequest`)
     // answers the SAME final 422 a header refusal does, so
     // `_relay_final_refusal_code` closes the draft RELAY_REFUSED for it too —
     // the code only reads the HTTP status, never which of the two flags below
@@ -397,7 +401,7 @@ export class RelayEmailService {
       ).replace(/\.\s*$/, "");
       const closingWords = result.refusedBeforeSend
         ? "Nothing was sent — the provider was never called. Fix the header named above and try again."
-        : "The mail service rejected the request, so nothing was sent. Fix the address named above and send again.";
+        : "Gmail refused this message, so nothing was sent. Edit the draft and send it again.";
       throw new UnprocessableEntityException(`${said}. ${closingWords}`);
     }
     return result;
@@ -744,9 +748,9 @@ export class RelayEmailService {
     // throws it directly, uncaught, already.
     let refusedBeforeSend = false;
     // `RelayRejectedByProviderError` (send-failure.ts): Gmail WAS called, on
-    // the orchestrator's transport, and refused the request outright (400/
-    // 403/404 — `kind: "rejected"`). Founder, 2026-09-27, item 66: this
-    // closes the draft the same final way a header refusal does, even though
+    // the orchestrator's transport, and the Gmail API refused the request
+    // outright (403/404 only — `gmailRefusalClosesRelayDraft`). Founder,
+    // 2026-09-27, item 66: this closes the draft the same final way a header refusal does, even though
     // it is not "before send" in the `refusedBeforeSend` sense — hence its
     // own flag, never folded into that one.
     let providerRejectedRequest = false;
@@ -826,18 +830,21 @@ export class RelayEmailService {
         );
       }
       // Founder, 2026-09-27 (item 66, "Close it (RELAY_REFUSED)", rejecting
-      // "Reopen via a new signal" and "Keep not confirmed"): a Gmail 400/403/
-      // 404 reached through THIS transport — `kind: "rejected"`, Gmail was
-      // actually called and refused the request outright — closes the relay
-      // draft as RELAY_REFUSED, the same as a header refusal, even though the
-      // provider was reached. #405's "reopen to PENDING_APPROVAL" ruling for
+      // "Reopen via a new signal" and "Keep not confirmed"): a Gmail API 403/
+      // 404 reached through THIS transport — Gmail was actually called and
+      // refused the request outright — closes the relay draft as
+      // RELAY_REFUSED, the same as a header refusal, even though the provider
+      // was reached. ONLY those two Gmail API statuses: Gmail 400 and the SMTP
+      // fallback's EENVELOPE / 5xx are `kind: "rejected"` too, but the ruling
+      // never named them, so they fall through to the plain `Error` below,
+      // exactly as before item 66. #405's "reopen to PENDING_APPROVAL" ruling for
       // these same Gmail statuses is scoped to the DIRECT-SEND path only
       // (`ProcurementService.sendVendorEmail`); it does not apply here. See
       // `RelayRejectedByProviderError` (send-failure.ts) for the full ruling.
       // `"credentials"` (401/OAuth) and `"no-transport"` are deliberately NOT
       // re-thrown here and fall through to the plain `Error` below, staying
       // ambiguous on this path exactly as before (ADR 0099: "401 parks").
-      if (result.refusal?.kind === "rejected") {
+      if (gmailRefusalClosesRelayDraft(result)) {
         throw new RelayRejectedByProviderError(
           result.error ?? "the provider reported no reason",
         );

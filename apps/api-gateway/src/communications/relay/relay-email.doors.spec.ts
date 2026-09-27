@@ -948,42 +948,125 @@ describe("the orchestrator's door", () => {
 
   // Founder, 2026-09-27 (item 66, "Close it (RELAY_REFUSED)", rejecting
   // "Reopen via a new signal" and "Keep not confirmed"): a Gmail 403/404
-  // reached through THIS door — GmailService actually called, and refusing
-  // outright (`refusal: { kind: "rejected" }`, `send-failure.ts`'s
-  // `GMAIL_REJECTED_STATUSES`) — closes the draft the same final way a
-  // header refusal does. This is narrower than, and does NOT reuse, PR
-  // #405's "Gmail 403/404 reopens the draft" ruling — that answer is scoped
-  // to the direct-send path (`ProcurementService.sendVendorEmail`) only.
-  it("is 422 — not 200 — for a Gmail 403/404 rejection reached through the relay, distinct from a header refusal", async () => {
-    gmail.sendEmail.mockResolvedValue({
-      success: false,
-      error: "Requested entity was not found.",
-      refusal: { kind: "rejected" },
+  // reached through THIS door closes the draft the same final way a header
+  // refusal does. This is narrower than, and does NOT reuse, PR #405's
+  // "Gmail 403/404 reopens the draft" ruling — that answer is scoped to the
+  // direct-send path (`ProcurementService.sendVendorEmail`) only.
+  //
+  // These cases drive the REAL GmailService.sendEmail and the REAL
+  // classifySendFailure: only Gmail's `users.messages.send` (a gaxios-shaped
+  // throw) or nodemailer's `sendMail` (a nodemailer-shaped throw) is stubbed.
+  // The PR #429 audit at d8be79ab2 found the earlier cases handed the relay a
+  // ready-made `refusal` object, so nothing proved which transport errors
+  // reach the close — and the close had grown past the ruling to Gmail 400
+  // and the SMTP fallback's EENVELOPE / 5xx.
+  function gaxiosRefusal(status: number, message: string): Error {
+    return Object.assign(new Error(message), {
+      status,
+      response: { status, data: { error: { code: status, message } } },
     });
-    const res = await post(ORCHESTRATOR_SEND, asService);
+  }
 
-    expect(res.status).toBe(422);
-    expect(String(res.body.message)).toMatch(/Requested entity was not found/);
-    expect(String(res.body.message)).toMatch(
-      /mail service rejected the request/,
-    );
-    // This is the one thing that must NOT be said: unlike a header refusal,
-    // Gmail WAS actually called here.
-    expect(String(res.body.message)).not.toMatch(/never called/);
-    expect(String(res.body.message)).not.toMatch(/\.\./);
-    expect(actions()).toEqual([
-      RELAY_AUDIT_ACTIONS.ATTEMPTED,
-      RELAY_AUDIT_ACTIONS.FAILED,
-    ]);
-    expect(audit()[1]).toMatchObject({
-      reason: "Requested entity was not found.",
-      changes: expect.objectContaining({
-        outcome: "failed",
-        refusedBeforeSend: false,
-        providerRejectedRequest: true,
-      }),
+  async function throughGmailApi(thrown: Error) {
+    const messages = (realGmail as any).gmail.users.messages;
+    const spy = jest.spyOn(messages, "send").mockRejectedValueOnce(thrown);
+    try {
+      return await post(ORCHESTRATOR_SEND, asService);
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it.each([
+    [403, "Insufficient Permission"],
+    [404, "Requested entity was not found."],
+  ])(
+    "is 422 — not 200 — for a real Gmail API %i thrown through GmailService, distinct from a header refusal",
+    async (status, said) => {
+      const res = await throughGmailApi(gaxiosRefusal(status, said));
+
+      expect(res.status).toBe(422);
+      expect(String(res.body.message)).toContain(said.replace(/\.$/, ""));
+      expect(String(res.body.message)).toMatch(/Gmail refused this message/);
+      // Unlike a header refusal, Gmail WAS called here — and a 403/404 names
+      // no address, so the sentence must not tell the manager to fix one.
+      expect(String(res.body.message)).not.toMatch(/never called/);
+      expect(String(res.body.message)).not.toMatch(/address named above/);
+      expect(String(res.body.message)).not.toMatch(/\.\./);
+      expect(actions()).toEqual([
+        RELAY_AUDIT_ACTIONS.ATTEMPTED,
+        RELAY_AUDIT_ACTIONS.FAILED,
+      ]);
+      expect(audit()[1]).toMatchObject({
+        changes: expect.objectContaining({
+          outcome: "failed",
+          refusedBeforeSend: false,
+          providerRejectedRequest: true,
+        }),
+      });
+    },
+  );
+
+  it("stays 200 (not closed) for a real Gmail API 400 — kind 'rejected', but not in the item-66 ruling", async () => {
+    const res = await throughGmailApi(gaxiosRefusal(400, "Invalid To header"));
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(false);
+    expect(res.body.providerRejectedRequest).toBeUndefined();
+    expect(audit()[1].changes).toMatchObject({
+      refusedBeforeSend: false,
+      providerRejectedRequest: false,
     });
   });
+
+  it.each([
+    ["EENVELOPE", { code: "EENVELOPE" }],
+    ["an SMTP 550", { responseCode: 550, code: "EMESSAGE" }],
+  ])(
+    "stays 200 (not closed) for %s from the REAL SMTP fallback — a transport the ruling never named",
+    async (_label, fields) => {
+      // A GmailService whose Gmail API is not ready, so sendEmail takes its
+      // real nodemailer fallback; only nodemailer's sendMail is stubbed.
+      const smtpGmail = new GmailService(
+        new ConfigService({
+          GMAIL_USER: "letters@mudavym.example",
+          GMAIL_APP_PASSWORD: "fixture-app-password",
+        }),
+      );
+      (smtpGmail as any).senderEmail = "letters@mudavym.example";
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const nodemailerModule = require("nodemailer");
+      const thrown = Object.assign(new Error("Mailbox unavailable"), fields);
+      const createTransport = jest
+        .spyOn(nodemailerModule, "createTransport")
+        .mockReturnValue({
+          sendMail: jest.fn().mockRejectedValue(thrown),
+        } as any);
+      gmail.sendEmail.mockImplementation((options) =>
+        smtpGmail.sendEmail(options),
+      );
+      try {
+        const res = await post(ORCHESTRATOR_SEND, asService);
+
+        expect(createTransport).toHaveBeenCalledTimes(1);
+        // The shared classifier DOES call this "rejected" — the relay is
+        // what declines to close on it.
+        const result = await gmail.sendEmail.mock.results[0].value;
+        expect(result.refusal).toEqual({ kind: "rejected" });
+        expect(result.gmailApiStatus).toBeUndefined();
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(false);
+        expect(res.body.providerRejectedRequest).toBeUndefined();
+        expect(audit()[1].changes).toMatchObject({
+          refusedBeforeSend: false,
+          providerRejectedRequest: false,
+        });
+      } finally {
+        createTransport.mockRestore();
+      }
+    },
+  );
 
   // The direct-send path's #405 answer for these same Gmail statuses does
   // not apply here: the relay path has no "reopen" outcome at all, only

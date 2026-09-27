@@ -27,6 +27,44 @@ from config.settings import get_settings
 
 logger = setup_logger("email_composer_service")
 
+# class-validator's sentence for a body field the gateway's DTO does not
+# declare, under the global `ValidationPipe({ whitelist: true,
+# forbidNonWhitelisted: true })` (apps/api-gateway/src/main.ts). Pinned on the
+# gateway side by `older-gateway-whitelist-shape.spec.ts`.
+_WHITELIST_REFUSAL = re.compile(r"^property (\S+) should not exist$")
+
+
+def _fields_an_older_gateway_refused(
+    status: int, message: Any, sent_keys: Any
+) -> Optional[List[str]]:
+    """The body fields a gateway OLDER than this agent refused, or None.
+
+    PR #429 audit (F2): the gateway and this agent are two Railway services
+    with no deploy-order guarantee. While a new agent (sending `restaurantId`,
+    `providerId`, `conversationId`, `orderId`) talks to a gateway binary whose
+    `SendEmailDto` predates those fields, the global ValidationPipe answers 400
+    before any guard-passed handler runs — and ADR 0099 makes a relay 400
+    FINAL, so every approved draft in that window would close as
+    RELAY_REFUSED for a reason that is neither the vendor's nor the draft's.
+
+    Recognised STRUCTURALLY, never by a phrase anywhere in free text: a 400
+    whose `message` is a LIST (ValidationPipe's shape; every refusal the
+    relay's own doors write is a single string) in which EVERY entry is the
+    whitelist sentence naming a key THIS agent put in the body. A list mixing
+    in any other validation failure, a string `message`, or a name this agent
+    did not send is not this case and stays the relay's own final 400.
+    """
+    if status != 400 or not isinstance(message, list) or not message:
+        return None
+    sent = set(sent_keys)
+    names: List[str] = []
+    for entry in message:
+        match = _WHITELIST_REFUSAL.match(entry) if isinstance(entry, str) else None
+        if match is None or match.group(1) not in sent:
+            return None
+        names.append(match.group(1))
+    return names
+
 
 def _format_wine_name_with_volume(wine_name: str, bottle_size_ml: Optional[Any]) -> str:
     """Append bottle format to wine name: 'Barolo 2019' -> 'Barolo 2019 (750ml)', 1500 -> '... (1.5L)'."""
@@ -466,6 +504,31 @@ class EmailComposerService:
                         }
                     else:
                         logger.error(f"Gateway send failed: {result}")
+                        older = _fields_an_older_gateway_refused(
+                            resp.status, result.get("message"), request_body.keys()
+                        )
+                        if older:
+                            # Nothing was sent: the pipe refused the body
+                            # before the handler ran. Worded, like the
+                            # unset-key branch above, to land in
+                            # `_is_definite_send_refusal`'s EXISTING allow-list
+                            # ("no email delivery method available") — released
+                            # for retry, which succeeds once the newer gateway
+                            # is live — and never in the "gateway refused the
+                            # send: HTTP 400" shape `_relay_final_refusal_code`
+                            # closes for good.
+                            return {
+                                "success": False,
+                                "error": (
+                                    "no email delivery method available yet: the "
+                                    "gateway that answered is older than this "
+                                    "agent and does not accept "
+                                    + ", ".join(older)
+                                    + " (its request validator refused the body "
+                                    "before any send), so nothing was sent"
+                                ),
+                                "gateway_older_than_agent": True,
+                            }
                         # ADR 0099: a Nest error body carries `statusCode` and
                         # `message`, never `error`, so the old
                         # `result.get("error", "Unknown error")` erased the

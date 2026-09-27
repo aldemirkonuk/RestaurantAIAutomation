@@ -404,6 +404,42 @@ route) — so there is no second runtime for this one to disagree with.]
     with. Proved by two new cases in `relay-email.doors.spec.ts`: the
     422/close case, and a sibling proving `"credentials"` still stays
     200/ambiguous.]
+    [CORRECTED 2026-09-27, PR #429 audit fix round 1 at `d8be79ab2`: the
+    first cut closed on the whole `kind: "rejected"` bucket — Gmail 400 and
+    the SMTP fallback's EENVELOPE / SMTP 5xx as well as Gmail 403/404 —
+    wider than the founder's words, and its test handed the relay a
+    ready-made `refusal` object. Narrowed to the ruling: the relay closes
+    only when `GmailService.sendEmail`'s Gmail API branch reports a typed
+    status of 403 or 404 (`EmailResult.gmailApiStatus`, never set on the
+    SMTP branch; `send-failure.ts` `RELAY_CLOSING_GMAIL_STATUSES` and
+    `gmailRefusalClosesRelayDraft`). Gmail 400 and every SMTP-fallback
+    rejection answer 200 `success:false` exactly as before item 66. Whether
+    they should also close is NOT ruled and is not decided here. The 422
+    sentence no longer tells the manager to "fix the address named above"
+    (a 403/404 names none). Proved in `relay-email.doors.spec.ts` through
+    the REAL `GmailService` and `classifySendFailure`: a gaxios-shaped 403
+    and 404 give 422; a Gmail 400 and a nodemailer EENVELOPE / 550 give 200.]
+
+  - **Deploy order, gateway older than agent (PR #429 audit F2).** [ADDED
+    2026-09-27. The two services deploy separately. While a new
+    orchestrator sends `restaurantId`/`providerId`/`conversationId`/
+    `orderId` to a gateway binary whose `SendEmailDto` predates them, that
+    gateway's global ValidationPipe (`main.ts`, `forbidNonWhitelisted`)
+    answers 400, and this ADR's "400 is final" would close every draft in
+    the window as `RELAY_REFUSED`. This ADR scopes "final" to the relay's
+    OWN structural refusal of a request, which a retry would meet
+    identically; a pipe from an older binary is neither, and the next
+    gateway accepts the same body. So the composer recognises only
+    this shape, structurally (a 400 whose `message` is a LIST in which
+    every entry is "property <name> should not exist" for a key the agent
+    itself sent), and reports it as a definite not-sent refusal:
+    released for retry, never closed. Any other 400, a string `message`,
+    a mixed list or an unknown name still closes `RELAY_REFUSED`
+    (`email_composer_service.py` `_fields_an_older_gateway_refused`; tests
+    in `test_vendor_email_gateway_auth.py`; the gateway-side shape pinned
+    by `older-gateway-whitelist-shape.spec.ts`). This reads the founder's
+    "400 final" as not covering a version-skew 400; if he reads it
+    otherwise, the one function above is the whole change to revert.]
 
   **Tests, all in `wt-r5-relay`:**
   `test_vendor_email_gateway_auth.py` — new

@@ -573,6 +573,119 @@ async def test_a_relay_400_403_or_422_end_to_end_closes_with_no_retry(
     assert "refused" in reason
 
 
+# ---------------------------------------------------------------------------
+# PR #429 audit (F2): a gateway OLDER than this agent. The two are separate
+# Railway services with no deploy-order guarantee; an old gateway's global
+# ValidationPipe (whitelist + forbidNonWhitelisted) answers 400 for the fields
+# this agent now sends, before any handler — and ADR 0099 makes a relay 400
+# FINAL. That one shape (a list of whitelist sentences naming only keys this
+# agent sent) is released for retry instead; every other 400 still closes.
+# ---------------------------------------------------------------------------
+
+_OLDER_GATEWAY_400 = {
+    "statusCode": 400,
+    "message": [
+        "property restaurantId should not exist",
+        "property providerId should not exist",
+        "property conversationId should not exist",
+        "property orderId should not exist",
+    ],
+    "error": "Bad Request",
+}
+
+
+def _answering(status: int, body: Dict[str, Any]):
+    class _Answering(_FakeSession):
+        def post(self, url: str, **kw: Any) -> _FakeResponse:  # type: ignore[override]
+            _FakeSession.calls.append({"url": url, **kw})
+            return _FakeResponse(status, body)
+
+    return _Answering
+
+
+@pytest.mark.asyncio
+async def test_an_older_gateway_s_whitelist_400_is_released_for_retry_not_closed(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    monkeypatch.setattr(_CLIENT_SESSION, _answering(400, _OLDER_GATEWAY_400))
+    agent = _approved_agent(_approved_conversation())
+
+    with pytest.raises(RuntimeError, match="released for retry"):
+        await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    row = agent.database.supabase.conversation
+    assert row["status"] == "PENDING_APPROVAL"
+    assert row.get("relay_refusal_reason") is None
+
+
+@pytest.mark.asyncio
+async def test_an_older_gateway_s_whitelist_400_names_the_fields_and_is_not_relay_final(
+    composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    monkeypatch.setattr(_CLIENT_SESSION, _answering(400, _OLDER_GATEWAY_400))
+
+    result = await composer.send_via_gateway(_payload())
+
+    assert result["success"] is False
+    assert result["gateway_older_than_agent"] is True
+    assert "restaurantId, providerId, conversationId, orderId" in result["error"]
+    assert ProviderConversationAgent._relay_final_refusal_code(result["error"]) is None
+    assert ProviderConversationAgent._is_definite_send_refusal(result["error"])
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        # A string, not ValidationPipe's list: the relay's own door wrote it.
+        "property restaurantId should not exist",
+        # A whitelist sentence mixed with a real validation failure.
+        [
+            "property restaurantId should not exist",
+            "subject must be a single line",
+        ],
+        # A name this agent never put in the body.
+        ["property bcc should not exist"],
+        # Anchored at both ends: the sentence must be the whole entry.
+        ["x property restaurantId should not exist"],
+        ["property restaurantId should not exist, and more"],
+        [],
+    ],
+)
+@pytest.mark.asyncio
+async def test_every_other_400_still_closes_relay_refused(
+    monkeypatch: pytest.MonkeyPatch, message: Any
+):
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    monkeypatch.setattr(
+        _CLIENT_SESSION,
+        _answering(
+            400, {"statusCode": 400, "message": message, "error": "Bad Request"}
+        ),
+    )
+    agent = _approved_agent(_approved_conversation())
+
+    await agent._handle_conversation_approved({"conversation_id": CONVO_A})
+
+    assert agent.database.supabase.conversation["status"] == "RELAY_REFUSED"
+
+
+@pytest.mark.asyncio
+async def test_the_whitelist_shape_is_read_only_on_a_400(
+    composer: EmailComposerService, monkeypatch: pytest.MonkeyPatch
+):
+    """A 403 carrying the same list is a door refusal, not an older pipe."""
+    monkeypatch.setenv("ADMIN_API_KEY", "s3cret-value")
+    body = dict(_OLDER_GATEWAY_400, statusCode=403)
+    monkeypatch.setattr(_CLIENT_SESSION, _answering(403, body))
+
+    result = await composer.send_via_gateway(_payload())
+
+    assert "gateway_older_than_agent" not in result
+    assert ProviderConversationAgent._relay_final_refusal_code(result["error"]) == "403"
+
+
 @pytest.mark.asyncio
 async def test_a_relay_401_end_to_end_parks_for_a_person(
     monkeypatch: pytest.MonkeyPatch,

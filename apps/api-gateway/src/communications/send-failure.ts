@@ -49,7 +49,7 @@ function isStatus(n: unknown): n is number {
 }
 
 /** The HTTP status of a googleapis / gaxios failure, from typed fields only. */
-function httpStatus(e: Record<string, any>): number | undefined {
+export function httpStatus(e: Record<string, any>): number | undefined {
   if (isStatus(e.response?.status)) return e.response.status;
   if (isStatus(e.status)) return e.status;
   // Some gaxios versions carry the status as a numeric string in `code`.
@@ -99,8 +99,43 @@ export function classifySendFailure(error: unknown): SendRefusal | undefined {
 }
 
 /**
- * Carries a `kind: "rejected"` refusal (Gmail 400/403/404 — `GMAIL_REJECTED_
- * STATUSES` above) across the throw/catch boundary inside
+ * The Gmail API statuses that close a RELAY draft (founder, 2026-09-27, merge-
+ * train item 66, verbatim "Close it (RELAY_REFUSED)"; rejected "Reopen via a
+ * new signal" and "Keep 'not confirmed'"). The ruling names Gmail 403 and 404
+ * reached through the relay path, and nothing else — so this set is exactly
+ * those two, and it is read only from `EmailResult.gmailApiStatus`, which
+ * `GmailService.sendEmail` sets on its Gmail API branch alone.
+ *
+ * NOT covered, and deliberately left as they were before item 66 (a 200
+ * `success:false` that the orchestrator classifies on its own):
+ *   - Gmail 400 — in `GMAIL_REJECTED_STATUSES`, but not in the ruling;
+ *   - the SMTP fallback's EENVELOPE and SMTP 5xx — `kind: "rejected"` too, but
+ *     a different transport the ruling never covered (PR #429 audit at
+ *     d8be79ab2 found the first cut of item 66 closed on all of these).
+ * Widening this set is a founder call, not an implementation detail.
+ */
+export const RELAY_CLOSING_GMAIL_STATUSES: ReadonlySet<number> = new Set([
+  403, 404,
+]);
+
+/**
+ * Does this failed send close a relay draft under item 66? Only a Gmail API
+ * (never SMTP) refusal whose typed HTTP status is 403 or 404.
+ */
+export function gmailRefusalClosesRelayDraft(result: {
+  refusal?: SendRefusal;
+  gmailApiStatus?: number;
+}): boolean {
+  return (
+    result.refusal?.kind === "rejected" &&
+    result.gmailApiStatus !== undefined &&
+    RELAY_CLOSING_GMAIL_STATUSES.has(result.gmailApiStatus)
+  );
+}
+
+/**
+ * Carries an item-66 refusal (`gmailRefusalClosesRelayDraft` above: a Gmail
+ * API 403/404) across the throw/catch boundary inside
  * `RelayEmailService.dispatch()`, the way `MimeHeaderError` already does for
  * `kind: "header"`.
  *
@@ -108,14 +143,13 @@ export function classifySendFailure(error: unknown): SendRefusal | undefined {
  * via a new signal" and "Keep not confirmed"): a Gmail 403/404 reached
  * through the RELAY path — `RelayEmailService.sendThroughDeploymentMailbox`,
  * the orchestrator's transport — closes the draft as `RELAY_REFUSED`, no
- * retry. This is a NARROWER answer than PR #405's ruling for the SAME Gmail
- * statuses on the DIRECT-SEND path (`ProcurementService.sendVendorEmail`,
- * `procurement.service.ts:6222`), which reopens the draft to
+ * retry. PR #405's ruling for the SAME Gmail statuses on the DIRECT-SEND path
+ * (`ProcurementService.sendVendorEmail`) reopens the draft to
  * `PENDING_APPROVAL` instead — the two paths now deliberately disagree, and
- * this class exists so the relay path's own dispatch loop, not a shared
- * classifier, is what encodes that disagreement. `"credentials"` (401/OAuth)
- * and `"no-transport"` are NOT covered: they stay ambiguous on the relay path
- * exactly as before (ADR 0099: "401 parks").
+ * this class exists so the relay path's own dispatch loop, not the shared
+ * classifier, is what encodes that disagreement. Gmail 400, the SMTP
+ * fallback's rejections, `"credentials"` (401/OAuth) and `"no-transport"` are
+ * NOT covered: they stay exactly as before on the relay path.
  */
 export class RelayRejectedByProviderError extends Error {
   constructor(message: string) {

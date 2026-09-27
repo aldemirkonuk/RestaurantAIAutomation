@@ -13,7 +13,11 @@ import {
   threadingHeader,
   unstructuredHeader,
 } from "./mime-headers";
-import { classifySendFailure, type SendRefusal } from "./send-failure";
+import {
+  classifySendFailure,
+  httpStatus as typedHttpStatus,
+  type SendRefusal,
+} from "./send-failure";
 import {
   lowStockAlertTemplate,
   lowStockDigestTemplate,
@@ -125,6 +129,14 @@ export interface EmailResult {
    * Read from typed error fields, never from `error` text.
    */
   refusal?: SendRefusal;
+  /**
+   * The Gmail API's own HTTP status for this failure, read from typed fields
+   * (send-failure.ts `httpStatus`). Set ONLY on the Gmail API branch of
+   * `sendEmail`, never on the SMTP fallback — so a reader can tell which
+   * transport refused. The relay path closes a draft only on 403/404 here
+   * (send-failure.ts `gmailRefusalClosesRelayDraft`, founder item 66).
+   */
+  gmailApiStatus?: number;
 }
 
 @Injectable()
@@ -286,10 +298,15 @@ export class GmailService implements OnModuleInit {
       );
 
       const refusal = classifySendFailure(error);
+      const gmailApiStatus =
+        error && typeof error === "object"
+          ? typedHttpStatus(error as Record<string, any>)
+          : undefined;
       return {
         success: false,
         error: errorMessage,
         ...(refusal && { refusal }),
+        ...(gmailApiStatus !== undefined && { gmailApiStatus }),
       };
     }
   }
