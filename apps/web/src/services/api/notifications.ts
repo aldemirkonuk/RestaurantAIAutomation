@@ -339,7 +339,14 @@ export interface HeldLowStockResponse {
     low_stock_enabled: boolean;
     frequency: "daily" | "off";
     hour: number;
+    /** The IANA zone the digest hour is kept in: the house's own, else UTC (PR #488). */
     timezone: string;
+    /**
+     * `house` — the house's zone; `fallback` — none readable, so UTC (founder
+     * item 61). Absent on a gateway older than PR #488, whose `timezone` was
+     * always New York.
+     */
+    zone_source?: "house" | "country" | "fallback";
   } | null;
 }
 

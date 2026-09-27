@@ -27,5 +27,24 @@ export function whenTold(digest: HeldLowStockResponse['digest']): string {
   if (digest.frequency === 'off') {
     return 'No one here takes the daily digest, so these will not be sent on their own.';
   }
-  return `They go out together in the daily digest at ${hourWords(digest.hour)}, New York time.`;
+  const at = `They go out together in the daily digest at ${hourWords(digest.hour)}`;
+  // Founder item 61 (2026-09-27, "UTC, said on the page (Recommended)"): a
+  // house with no time zone this server can read gets its digest on UTC, and
+  // the page says so in these words. Keyed on `zone_source` alone: a house
+  // that deliberately set `UTC` (`zone_source: 'house'`) HAS a zone, and
+  // telling it "no time zone set yet" would be false (PR #488 train-6 BLOCK).
+  if (digest.zone_source === 'fallback') {
+    return `${at} UTC — this house has no time zone set yet.`;
+  }
+  return `${at}, ${zoneWords(digest.timezone)}.`;
+}
+
+/**
+ * "Los Angeles time" for `America/Los_Angeles` — the zone the gateway reports
+ * the digest is kept in (the house's own since PR #488), in words. Falls back
+ * to the raw zone name when it has no city part.
+ */
+function zoneWords(zone: string): string {
+  const city = zone.split('/').pop()?.replace(/_/g, ' ').trim();
+  return city && city !== zone ? `${city} time` : `${zone} time`;
 }
