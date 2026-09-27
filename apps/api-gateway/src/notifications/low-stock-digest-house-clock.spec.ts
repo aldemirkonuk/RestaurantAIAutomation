@@ -165,6 +165,31 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     config = { get: jest.fn().mockReturnValue("") };
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /**
+   * Runs the sweep with the system clock set to `iso`, as the cron would in
+   * production — `sendDigest` and `upsertState` read `new Date()`. Only Date
+   * is faked; promises and timers run for real.
+   */
+  async function runAt(svc: LowStockAlertsService, iso: string) {
+    jest.useFakeTimers({
+      doNotFake: [
+        "nextTick",
+        "setImmediate",
+        "setTimeout",
+        "setInterval",
+        "clearTimeout",
+        "clearInterval",
+        "queueMicrotask",
+      ],
+      now: new Date(iso),
+    });
+    await svc.runDigestSweepAt(new Date(iso));
+  }
+
   function build(db: any) {
     return new LowStockAlertsService(
       db,
@@ -350,6 +375,9 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
       String(c[0]).includes("LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN"),
     );
     expect(unknownWarns).toHaveLength(1);
+    // The log must not claim /notifications states the fallback: no page
+    // copy says so yet (item 61's page line is owed by the #486 lane).
+    expect(String(unknownWarns[0][0])).not.toMatch(/page/i);
   });
 
   it("h. a read error on restaurants (house timezone/country) skips that house's tick and warns, rather than defaulting to UTC", async () => {
@@ -370,11 +398,12 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
     await svc.runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
 
     expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
-    expect(
-      warnSpy.mock.calls.some((c) =>
-        String(c[0]).includes("LOW_STOCK_DIGEST_HOUSE_UNREADABLE"),
-      ),
-    ).toBe(true);
+    const unreadable = warnSpy.mock.calls.filter((c) =>
+      String(c[0]).includes("LOW_STOCK_DIGEST_HOUSE_UNREADABLE"),
+    );
+    expect(unreadable).toHaveLength(1);
+    // The warn must say the skip is not retried (spec i measures that).
+    expect(String(unreadable[0][0])).toContain("not retried");
     // And it must never be confused with "no timezone recorded" — that is a
     // different fact (a genuinely zoneless house) from "could not be read".
     expect(
@@ -382,6 +411,102 @@ describe("LowStockAlertsService digest sweep — each house's own clock", () => 
         String(c[0]).includes("LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN"),
       ),
     ).toBe(false);
+  });
+
+  // i and j pin a KNOWN LOSS, not a wanted behaviour: `isDigestTick` fires
+  // only on the one tick that crosses the house's hour, and nothing retries a
+  // crossing tick that was not evaluated. Filed in v3.0-TECH-DEBT with the
+  // open CLAIMS row TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP; whether to add
+  // catch-up is an open fork. If catch-up lands, these two tests must flip to
+  // "sends exactly once" rather than be deleted.
+  it("i. KNOWN LOSS: a restaurants read failure on the crossing tick loses that day's digest — later ticks do not retry it", async () => {
+    const opts = {
+      lowStockRows: [makeLowStockRow({ restaurant_id: "ny" })],
+      restaurantsRows: [
+        { id: "ny", name: "NY House", timezone: "America/New_York" },
+      ],
+      prefsByRestaurant: { ny: dailyPrefs("12:00") },
+      restaurantsReadError: true,
+    };
+    const { mock } = makeDigestDbMock(opts);
+    const svc = build(mock);
+
+    // 16:00Z = 12:00 EDT, the crossing tick — the read fails.
+    await svc.runDigestSweepAt(new Date("2026-09-26T16:00:00Z"));
+    expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+
+    // The read works again for every later tick that local day
+    // (17:00Z = 13:00 EDT through 03:00Z = 23:00 EDT).
+    opts.restaurantsReadError = false;
+    for (
+      let t = Date.parse("2026-09-26T17:00:00Z");
+      t <= Date.parse("2026-09-27T03:00:00Z");
+      t += 3_600_000
+    ) {
+      await svc.runDigestSweepAt(new Date(t));
+    }
+    expect(gmail.sendLowStockDigest).not.toHaveBeenCalled();
+
+    // The next local day's crossing tick sends normally.
+    await svc.runDigestSweepAt(new Date("2026-09-27T16:00:00Z"));
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+    expect(notifications.persistForRestaurant.mock.calls[0][1].groupKey).toBe(
+      "low_stock_digest:2026-09-27",
+    );
+  });
+
+  it("j. KNOWN LOSS: a cron run at 10:31Z is judged as 11:00Z — the hour-10 house loses its day, the hour-11 house is sent exactly once across the 10:31Z and 11:00Z runs", async () => {
+    const { mock } = makeDigestDbMock({
+      lowStockRows: [
+        makeLowStockRow({ id: "inv-10", restaurant_id: "h10" }),
+        makeLowStockRow({ id: "inv-11", restaurant_id: "h11" }),
+      ],
+      restaurantsRows: [
+        { id: "h10", name: "Ten House", timezone: "UTC" },
+        { id: "h11", name: "Eleven House", timezone: "UTC" },
+      ],
+      prefsByRestaurant: {
+        h10: dailyPrefs("10:00"),
+        h11: dailyPrefs("11:00"),
+      },
+    });
+    const svc = build(mock);
+
+    // The 10:00Z run fired 31 minutes late, then the 11:00Z run on time.
+    // The system clock is set to each run's instant, as in production, so
+    // the last_digest_at stamp is written at a realistic time.
+    await runAt(svc, "2026-09-26T10:31:00Z");
+    await runAt(svc, "2026-09-26T11:00:00Z");
+    // Every later tick that day.
+    for (let h = 12; h <= 23; h++) {
+      await runAt(svc, `2026-09-26T${h}:00:00Z`);
+    }
+
+    const sentFor = notifications.persistForRestaurant.mock.calls.map(
+      (c) => c[0],
+    );
+    expect(sentFor).toEqual(["h11"]); // h10: lost; h11: once (last_digest_at dedupe)
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+  });
+
+  it("j2. a late run before local midnight and the on-time run for the same tick send an hour-0 house exactly once", async () => {
+    const { mock, lastDigestAt } = makeDigestDbMock({
+      lowStockRows: [makeLowStockRow({ restaurant_id: "h0" })],
+      restaurantsRows: [{ id: "h0", name: "Midnight House", timezone: "UTC" }],
+      prefsByRestaurant: { h0: dailyPrefs("00:00") },
+    });
+    const svc = build(mock);
+
+    // 23:31Z on the 26th is judged as the 00:00Z tick of the 27th.
+    await runAt(svc, "2026-09-26T23:31:00Z");
+    await runAt(svc, "2026-09-27T00:00:00Z");
+
+    expect(gmail.sendLowStockDigest).toHaveBeenCalledTimes(1);
+    expect(notifications.persistForRestaurant.mock.calls[0][1].groupKey).toBe(
+      "low_stock_digest:2026-09-27",
+    );
+    // The stamp is the tick, on the date the digest belongs to.
+    expect(lastDigestAt.h0).toBe("2026-09-27T00:00:00.000Z");
   });
 
   describe("g. regressions — no send when preferences say not to", () => {

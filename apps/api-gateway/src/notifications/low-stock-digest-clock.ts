@@ -11,11 +11,14 @@
  */
 
 /**
- * ADR 0116:297-301 locked the rule for a house whose zone this server cannot
- * read: fall back to UTC and SAY SO on the page — never invent a zone. The
- * recommendation digest, the calendar reminders and the notification
- * producers already follow it; this is the third consumer (item 56, founder
- * fork F1, 2026-09-27 — "UTC, said on the page (Recommended)").
+ * Two sources, two duties. ADR 0116:297-301 locked the fallback for a house
+ * whose zone this server cannot read: run that house's work in UTC and LOG it
+ * — never invent a zone. The recommendation digest and the calendar reminders
+ * already follow it; this is the third consumer. The duty to also STATE the
+ * fallback on /notifications does not come from ADR 0116; it comes from
+ * founder item 61 (2026-09-27, memory founder-answers-2026-09-25-web-rebuild
+ * line 93 — "UTC, said on the page (Recommended)"). This module does not
+ * write that page line; it is owed by the /notifications copy (#486's lane).
  *
  * Founder fork F1 is decided as of 2026-09-27 for this constant: UTC. If a
  * later founder ruling changes the fallback zone, only this constant and the
@@ -88,7 +91,12 @@ export function digestClockFor(
   };
 }
 
-/** Rounds an instant to the nearest UTC hour, absorbing cron jitter of ±30 minutes. */
+/**
+ * Rounds an instant to the nearest UTC hour, absorbing cron jitter of ±30
+ * minutes. A run more than 30 minutes late is judged as the NEXT hour's tick,
+ * so the crossing it was scheduled for is never evaluated — see the no-catch-up
+ * note on `isDigestTick`.
+ */
 export function hourTick(at: Date): Date {
   return new Date(Math.round(at.getTime() / 3_600_000) * 3_600_000);
 }
@@ -171,6 +179,15 @@ export function isDigestTickFromReadings(
  *   - Half-hour / 45-minute zones (India, Nepal, parts of Australia,
  *     Chatham) fire at the next top of the UTC hour after the target — e.g.
  *     Kolkata 12:30 for hour 12 — because the sweep stays hourly.
+ *
+ * NO CATCH-UP. Only the crossing tick returns true; every later tick that
+ * day returns false. So if the crossing tick is never evaluated for a house —
+ * the sweep's batched `restaurants` read failed on that tick, the cron ran
+ * more than 30 minutes late (`hourTick` moved it to the next hour), or the
+ * gateway was down — that house's digest for that local date is NOT sent,
+ * and nothing retries it. Measured by specs i and j in
+ * `low-stock-digest-house-clock.spec.ts`; filed in v3.0-TECH-DEBT with the
+ * open CLAIMS row TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP.
  */
 export function isDigestTick(tick: Date, zone: string, hour: number): boolean {
   const cur = houseWallAt(tick, zone);

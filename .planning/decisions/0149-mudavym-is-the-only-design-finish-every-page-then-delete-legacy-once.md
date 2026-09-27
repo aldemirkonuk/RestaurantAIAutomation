@@ -196,13 +196,41 @@ the current restaurants or users, or tables, dbs or such"*. So:
     is skipped with a warn (`LOW_STOCK_DIGEST_TIME_UNREADABLE`) rather than
     defaulting silently, which is new — the old `parseInt` returned `NaN` and
     the hour comparison simply never matched.
+  - **[2026-09-27 correction, PR #488 audit at f2f196558] No catch-up — a
+    missed crossing tick loses that house's day.** The fix at 59d5d36f4 was
+    described (service comment, commit message, PR body) as "skip and retry
+    on the next hourly tick". That was wrong: `isDigestTick` is true only on
+    the one tick that crosses the house's hour, so a failed batched
+    `restaurants` read on that tick, a cron run more than 30 minutes late
+    (`hourTick` judges it as the next hour), or a gateway outage loses that
+    house's digest for that local date, and no later tick sends it. The
+    fail-open dedupe reasoning above ("not a silently lost reminder day")
+    holds only for a failed `last_digest_at` read. Pinned as a known loss by
+    specs i and j in `low-stock-digest-house-clock.spec.ts`; filed in
+    v3.0-TECH-DEBT with the open CLAIMS row
+    `TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP`. Whether to add catch-up is an
+    open fork, not decided here. Same audit: `last_digest_at` is now stamped
+    with the sweep's tick, not the run time, so a late run before house-local
+    midnight and the on-time run for the same tick cannot both send (spec j2);
+    the `LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN` log no longer says "the page says
+    so" (no /notifications copy states the zone yet); and the page-statement
+    duty is attributed to founder item 61, not ADR 0116:297-301, which asks
+    only for a log line.
   - **CLAIMS:** `ADR-0149-LOW-STOCK-DIGEST-FOLLOWS-THE-HOUSE-CLOCK`,
-    `ADR-0149-LOW-STOCK-DIGEST-DST-TESTED`.
+    `ADR-0149-LOW-STOCK-DIGEST-DST-TESTED`,
+    `TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP` (open).
   - **Source note:** the verbatim option labels above come from the
     orchestrator's relayed task text for this lane, not from a session this
     builder ran directly; the founder-answers memory (round 9 item 56, round
     10 item 61) holds a paraphrase without the option wording, so this
     bracket is the first place the exact labels are on record.
+    [Corrected 2026-09-27, PR #488 audit at f2f196558: wrong as of that
+    audit. `founder-answers-2026-09-25-web-rebuild.md:93` (item 61) holds the
+    verbatim labels: "UTC, said on the page (Recommended)", rejected "New York
+    time, said on the page" and "No digest until a zone is set". The memory
+    file was probably updated after this bracket was written (commit
+    fad5ad471), so the memory entry is the primary record and this bracket
+    repeats it.]
   - **Cost accepted:** the real tenant, Meyhouse Palo Alto
     (`550e8400…`), has `restaurants.timezone = NULL` (cleared by migration
     `20260903170000`, per ADR 0207) and a `country` (`US`) that keeps many

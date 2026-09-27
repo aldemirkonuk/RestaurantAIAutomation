@@ -2496,5 +2496,10 @@ migration `20260903170000`), so its digest moves from 09:00 PT to 05:00 PDT unti
 founder sets `America/Los_Angeles` for it in Settings, after #435 (which adds the
 Settings > Time zone control) merges.
 
+**No catch-up.** A house is sent only on the one tick that crosses its hour. If that
+tick fails to read the `restaurants` row, runs more than 30 minutes late, or never runs,
+the house gets no digest that day (v3.0-TECH-DEBT, open CLAIMS row
+`TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP`).
+
 See ADR 0149's 2026-09-27 bracket (item 56) for the full rationale, the DST behaviour,
 and the builder's-choice notes.

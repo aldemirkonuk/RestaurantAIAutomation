@@ -163,7 +163,9 @@ export class LowStockAlertsService {
    * The digest sweep for one tick, extracted so tests can drive it at any
    * instant without waiting on the cron. `at` is rounded to the nearest UTC
    * hour (`hourTick`) so cron jitter of up to ±30 minutes cannot shift which
-   * house-local hour a house is judged against.
+   * house-local hour a house is judged against. A run more than 30 minutes
+   * late is judged as the next hour, and there is no catch-up for a crossing
+   * tick that was never evaluated (see `isDigestTick`, spec j).
    */
   async runDigestSweepAt(at: Date): Promise<void> {
     try {
@@ -191,11 +193,14 @@ export class LowStockAlertsService {
           // unreadable row is never silently "no timezone → UTC" (that would
           // misfire LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN for a house that in
           // fact has a zone this server just failed to read). Skip this
-          // house this tick and retry on the next hourly tick; the
-          // per-house-date `last_digest_at` gate above means a retry can
-          // never double-send once the read starts working again.
+          // house this tick. This is NOT a retry: `isDigestTick` is true only
+          // on the one tick that crosses the house's hour, so if THIS was
+          // that tick, the house's digest for that local date is lost and no
+          // later tick sends it (spec i; v3.0-TECH-DEBT, open CLAIMS row
+          // TD-2026-09-27-LOW-STOCK-DIGEST-NO-CATCH-UP). The zone is unknown
+          // here, so the log cannot say whether this tick was the crossing.
           this.logger.warn(
-            `LOW_STOCK_DIGEST_HOUSE_UNREADABLE restaurant=${restaurantId} — restaurants row (timezone/country) could not be read; skipping this tick.`,
+            `LOW_STOCK_DIGEST_HOUSE_UNREADABLE restaurant=${restaurantId} — restaurants row (timezone/country) could not be read; skipping this tick, not retried: if this was the house's digest hour, today's digest is not sent.`,
           );
           continue;
         }
@@ -208,7 +213,7 @@ export class LowStockAlertsService {
 
         if (clock.source === "fallback") {
           this.logger.warn(
-            `LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN restaurant=${restaurantId} timezone=${JSON.stringify(clock.recorded)} — no zone this server can read; the digest runs on ${clock.zone} and the page says so.`,
+            `LOW_STOCK_DIGEST_TIMEZONE_UNKNOWN restaurant=${restaurantId} timezone=${JSON.stringify(clock.recorded)} — no zone this server can read; the digest runs on ${clock.zone}.`,
           );
         }
 
@@ -238,6 +243,7 @@ export class LowStockAlertsService {
           rows,
           names.get(restaurantId),
           periodKey,
+          tick.toISOString(),
         );
       }
     } catch (e: any) {
@@ -590,6 +596,18 @@ export class LowStockAlertsService {
      * has no house clock to hand.
      */
     periodKey?: string,
+    /**
+     * The instant stamped on `inventory_alert_state.last_digest_at`. The sweep
+     * passes its hour TICK, not the wall-clock run time, because the sweep's
+     * dedupe converts this stamp to a house-local date and compares it with
+     * the tick's date (`periodKey`). A run up to 30 minutes late is judged as
+     * the next hour's tick (`hourTick`); stamping the run time instead would
+     * put the stamp on the PREVIOUS house date whenever that late run falls
+     * before local midnight, and the on-time run for the same tick would then
+     * send the digest a second time (spec j2). Falls back to now for
+     * `triggerDailyDigest` and any caller without a tick.
+     */
+    digestAt?: string,
   ): Promise<void> {
     if (rows.length === 0) return;
     const criticalCount = rows.filter((w) => w.severity === "critical").length;
@@ -629,14 +647,14 @@ export class LowStockAlertsService {
     );
     await this.recordEmailOutcome(persisted?.ids, outcome);
 
-    // Stamp the digest time on the ledger.
-    const nowIso = new Date().toISOString();
+    // Stamp the digest time on the ledger (the sweep's tick when given).
+    const stampIso = digestAt ?? new Date().toISOString();
     for (const row of rows) {
       await this.upsertState(restaurantId, {
         inventoryId: row.inventoryId,
         wineName: row.wineName,
         level: row.severity,
-        digestAt: nowIso,
+        digestAt: stampIso,
       });
     }
   }
