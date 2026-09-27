@@ -152,6 +152,11 @@ LIVE_IN_CODE: frozenset[str] = frozenset(
         # never slugs here (see PAGES).
         "settings",
         "admin",
+        # ADR 0149 row 54 (2026-09-26): the receiving DESK joins on the
+        # founder's 2026-09-22 page-gap Q2/Q4 answers, its sketch review
+        # closed (Approach 1, #480). `receiving_door` above is a different
+        # page and was already live.
+        "receiving",
     }
 )
 
@@ -317,13 +322,13 @@ def self_test() -> int:
             "dashboard", "orders", "receiving_door", "providers", "communications",
             "team", "inventory", "receipts", "documents_reports", "document",
             "reports", "calendar", "profile", "connections", "notifications", "logs",
-            "cellar", "settings", "admin",
+            "cellar", "settings", "admin", "receiving",
         },
-        "LIVE_IN_CODE is the sixteen ADR 0149 row 36 names plus cellar, settings and admin",
+        "LIVE_IN_CODE is the sixteen ADR 0149 row 36 names plus cellar, settings, admin and receiving",
     )
-    check(len(LIVE_IN_CODE) == 19, "nineteen live-in-code pages")
+    check(len(LIVE_IN_CODE) == 20, "twenty live-in-code pages")
     check(set(LIVE_IN_CODE) <= set(PAGES), "every live-in-code slug is a known page")
-    check("receiving" not in LIVE_IN_CODE, "the receiving DESK is not live-in-code (only the door is)")
+    check("receiving" in LIVE_IN_CODE, "the receiving desk is live in code since 2026-09-26 (ADR 0149 row 54)")
     if failures:
         for f in failures:
             print(f"SELF-TEST FAIL: {f}")

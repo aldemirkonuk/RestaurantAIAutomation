@@ -129,9 +129,18 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * which row a house has, or whether it has one. Their three columns stay,
  * unread (ADR 0149 never deletes a column).]
  *
- * 23 keys. Held back, still flag-gated: `recommendations`, `receiving`, and
- * `arrival` (the /get-started book, whose `legacy` slot is the ADR 0213 plan
- * of record — OFF until deliberately flipped). `MUDAVYM_PAGES.length` is 26;
+ * [2026-09-26, ADR 0149 row 54: `receiving` (the desk) joined on the
+ * founder's 2026-09-22 page-gap Q2/Q4 — the same basis as the bracket above,
+ * not founder item 53 (that item covers only `promotions` and
+ * `vendor_prices`, tracked separately) — now that its sketch review closed
+ * with Approach 1 (#480) and the history-from-door-receipts answer of
+ * 2026-09-25. Production had `receiving` ON for 1 of 14 houses (census J1);
+ * in code it is now on for every house, existing or new. Its column stays,
+ * unread.]
+ *
+ * 24 keys. Held back, still flag-gated: `recommendations` and `arrival` (the
+ * /get-started book, whose `legacy` slot is the ADR 0213 plan of record — OFF
+ * until deliberately flipped). `MUDAVYM_PAGES.length` is 26;
  * this is deliberately not "the rest" spelled
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
@@ -161,6 +170,7 @@ export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'shell',
   'admin',
   'authorize_integration',
+  'receiving',
 ]);
 
 /** Same key the API client uses for the X-Restaurant-Id header (client.ts). */
