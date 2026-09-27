@@ -341,6 +341,41 @@ export interface CellarRegistersVM {
   };
   unmappedKinds: Record<string, number>;
   unmappedCatalogueTypes: Record<string, number>;
+  /**
+   * The reading count per menu LINE (gateway `MenuLineTally`): how many lines
+   * the register reader read, placed in a register, and could not place.
+   * `null` is a menu that could not be read — never three zeroes. Optional
+   * only because a readout from before the field existed does not carry it;
+   * absent, the page claims nothing about menu lines at all.
+   */
+  menuLines?: MenuLineTallyVM | null;
+}
+
+/** Mirrors the gateway's `MenuLineTally` (cellar/cellar-registers.ts). */
+export interface MenuLineTallyVM {
+  read: number;
+  placed: number;
+  notPlaced: number;
+}
+
+/**
+ * One menu line the register reader could not place — the rows behind
+ * `menuLines.notPlaced`, from `GET /cellar/:rid/registers/unplaced` (OD-140,
+ * founder 2026-09-25: "Separate list endpoint"). Mirrors the gateway's
+ * `UnplacedMenuLinesReadout`. The gateway builds the list from the same query
+ * and the same `placeMenuLine` rule as the count, and a failed read is an
+ * error response, never an empty list.
+ */
+export interface UnplacedMenuLineVM {
+  id: string;
+  category: string | null;
+  name: string | null;
+}
+
+export interface UnplacedMenuLinesVM {
+  restaurantId: string;
+  read: number;
+  lines: UnplacedMenuLineVM[];
 }
 
 /** One row of `public.beverages`, as the new gateway list returns it. */
@@ -1077,6 +1112,38 @@ export function useCellarRegisters() {
       : null,
     save,
     refetch: () => void q.refetch(),
+  };
+}
+
+/**
+ * The menu lines the register reader could not place — read only when the
+ * owner asks ("Show me the N it could not place" on /cellar): the caller
+ * mounts only once the disclosure is open. The list is the whole unplaced
+ * part of a menu, and the count beside the control already came with the
+ * registers readout. No retry: a failed read is said as a failure at once,
+ * not after three silent attempts.
+ */
+export function useUnplacedMenuLines() {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: ['cellar', 'registers', 'unplaced', activeRestaurantId] as const,
+    enabled: Boolean(activeRestaurantId),
+    retry: false,
+    queryFn: async (): Promise<UnplacedMenuLinesVM> => {
+      const r = await apiClient.get(
+        `/cellar/${encodeURIComponent(activeRestaurantId ?? '')}/registers/unplaced`,
+      );
+      return r.data as UnplacedMenuLinesVM;
+    },
+  });
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading,
+    error: q.isError
+      ? q.error instanceof Error
+        ? q.error.message
+        : 'no reason given'
+      : null,
   };
 }
 
