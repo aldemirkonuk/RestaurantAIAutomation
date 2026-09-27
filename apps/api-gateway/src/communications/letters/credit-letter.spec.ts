@@ -407,7 +407,7 @@ describe("sending a draft is the approval", () => {
   it("closes a concurrent double-draft race, keeping one winner and cancelling the rest", async () => {
     const { db, tables } = seed();
     const svc = service(db);
-    const originalFrom = db.client.from as (table: string) => Record<string, unknown>;
+    const originalFrom = db.client.from as unknown as (table: string) => Record<string, unknown>;
     let injected = false;
     (db.client as unknown as { from: typeof originalFrom }).from = (
       table: string,
