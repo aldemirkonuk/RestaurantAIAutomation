@@ -99,7 +99,7 @@ export function CalendarSection({ data }: { data: SettingsNextData }) {
                   {icalIssued}
                 </p>
               )}
-              {copied && <p role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-3)', margin: '5px 0 0' }}>{copied}</p>}
+              {copied && <p role="status" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>{copied}</p>}
             </Row>
 
             <Row

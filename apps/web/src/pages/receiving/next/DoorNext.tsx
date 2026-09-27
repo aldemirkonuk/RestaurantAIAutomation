@@ -101,8 +101,8 @@ const DOOR_CSS = `
   color-scheme: dark !important;
 }
 .mudavym[data-ground="charcoal"] input.door-input::placeholder {
-  color: var(--ink-3) !important;
-  -webkit-text-fill-color: var(--ink-3) !important;
+  color: var(--ink-4) !important;
+  -webkit-text-fill-color: var(--ink-4) !important;
 }
 `;
 
