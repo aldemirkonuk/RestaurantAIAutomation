@@ -104,3 +104,17 @@ nobody owns gets no verdict, and a legal notice that nobody owns goes stale sile
   tracking, cookie or telemetry change to a `Privacy.tsx` edit **in the same PR**
   (`compliance-privacy-questions.md:22`). That is the one durable fix in this note.
 - The `wineops.*` support defaults are a rebrand item, not a feature.
+
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** N/A — a shell/legal surface by design; confirmed `api_modules: []`.
+
+**Coverage.** N/A — no backend module exists to measure.
+
+**Runs in production.** Yes; `/credits` is a redirect into Receipts, not its own page.
+
+**Promised vs. built.** Matches this note's own framing exactly.
+
+**Gaps.** None — by design.
+
+*Evidence:* `apps/web/src/App.tsx:371`; this note's own §0.

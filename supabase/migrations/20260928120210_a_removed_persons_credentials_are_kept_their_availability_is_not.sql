@@ -12,13 +12,13 @@
 -- `team_availability.member_id` reference `team_members(id)` `ON DELETE
 -- CASCADE` (baseline `20260805000000_baseline_from_production.sql:13646`,
 -- `:13638`). Removing a roster row deleted both the same second. Migration
--- `20260927150200` stopped that for shifts and leave only, and ADR 0215
+-- `20260928120200` stopped that for shifts and leave only, and ADR 0215
 -- residual (j) recorded credentials and availability as still cascading.
 --
 -- THE CHANGE:
 --
 -- 1. `team_certifications_member_id_fkey` is dropped, for the same reason
---    `20260927150200` dropped the shifts and leave keys: a row that must
+--    `20260928120200` dropped the shifts and leave keys: a row that must
 --    outlive its person's removal cannot be pinned to the row the removal
 --    deletes. New credentials are still checked against the live roster in
 --    the gateway (`assertMemberInRestaurant` in `createCert`), and a removed
