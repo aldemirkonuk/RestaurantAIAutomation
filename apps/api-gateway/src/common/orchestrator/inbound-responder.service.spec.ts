@@ -247,6 +247,31 @@ describe("InboundResponderService (deterministic core)", () => {
       expect(svc().parseAnalysis("I cannot help with that.")).toBeNull();
     });
 
+    // ADR 0207, round 3: the vendor sheet reads this label as warm / plain /
+    // terse, so a missing or off-list sentiment is NO reading — it used to
+    // default to "neutral", which the sheet would have printed as "plain".
+    it("keeps the three sentiment labels and reads anything else as none — never a defaulted neutral", () => {
+      const at = (sentiment: unknown) =>
+        svc().parseAnalysis(
+          JSON.stringify(baseAnalysis({ sentiment } as never)),
+        ).sentiment;
+      expect(at("negative")).toBe("negative");
+      expect(at("Positive")).toBe("positive");
+      expect(at(undefined)).toBeNull();
+      expect(at("professional")).toBeNull();
+    });
+
+    it("keeps the tone quote as a string, trimmed and capped, and '' when absent", () => {
+      const q = (tone_quote: unknown) =>
+        svc().parseAnalysis(
+          JSON.stringify(baseAnalysis({ tone_quote } as never)),
+        ).tone_quote;
+      expect(q("  Please stop asking.  ")).toBe("Please stop asking.");
+      expect(q(undefined)).toBe("");
+      expect(q({ evil: true })).toBe("");
+      expect(q("x".repeat(400))).toHaveLength(300);
+    });
+
     it("parses shadow classification fields when present", () => {
       const raw = JSON.stringify(
         baseAnalysis({
