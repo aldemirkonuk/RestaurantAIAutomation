@@ -17,8 +17,11 @@ PR #474 (lane W2-promos, /promotions rebuild) added a second ALTER the same
 week: `dismissed_at` / `dismissed_by` on provider_promotions, so a manager's
 dismissal is house-wide rather than per-browser (ADR 0144 §4). Its migration
 was renamed past #485's `alerted_at` migration during this PR's merge-train
-update (2026-09-27) so both land in the same relative order they were written
-in; the column set below carries both additions.
+update (2026-09-27), keeping this PR's own two migrations (flag column, then
+dismissal) in their order. That puts `alerted_at` first even though the
+dismissal migration was written earlier; both are additive `if not exists`
+ALTERs, so the order between them changes nothing. The column set below
+carries both additions.
 
 The columns are read from the baseline migration, pinned to a static set so a
 parser drift cannot silently widen them, and every later migration is checked
