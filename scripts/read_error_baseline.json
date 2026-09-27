@@ -75,7 +75,6 @@
     "apps/api-gateway/src/notifications/low-stock-alerts.service.ts::inventory_alert_state::cur": 1,
     "apps/api-gateway/src/notifications/low-stock-alerts.service.ts::inventory_alert_state::data": 1,
     "apps/api-gateway/src/notifications/low-stock-alerts.service.ts::inventory_alert_state::stale": 1,
-    "apps/api-gateway/src/notifications/low-stock-alerts.service.ts::notification_preferences::data": 1,
     "apps/api-gateway/src/notifications/low-stock-alerts.service.ts::restaurants::data": 1,
     "apps/api-gateway/src/notifications/notifications.service.ts::notifications::existing": 1,
     "apps/api-gateway/src/organizations/organizations.service.ts::organizations::ownedOrg": 1,

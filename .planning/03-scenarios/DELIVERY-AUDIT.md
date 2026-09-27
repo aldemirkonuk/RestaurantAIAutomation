@@ -132,6 +132,8 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
+> **161 as of 2026-09-26, on `feat/notifications-held-low-stock` (from main `387475342`)** (`check_read_errors_not_swallowed.py` on that tree: 161 sites, 161 baselined, 0 allowlisted): `low-stock-alerts.service.ts` `notification_preferences/data` retired — the low-stock preferences read now binds its error and throws, so the held queue can report "not known" instead of the 12:00 defaults (the senders still fall back to the defaults). Re-measure before citing.
+
 > **162 as of 2026-09-25, on `fix/sessions-follow-membership-r6` after merging main `4e7c5b5a6` (#412)** (`check_read_errors_not_swallowed.py` on that tree: 162 sites, 162 baselined, 0 allowlisted): the two lines below, combined — ADR 0164's five retirements and #412's one. Re-measure before citing.
 
 > **163 as of 2026-09-25, on `fix/sessions-follow-membership-r6`** (`check_read_errors_not_swallowed.py` on that tree: 163 sites, 163 baselined, 0 allowlisted). ADR 0164 retired five: `switchRestaurant` lost its organisation fallback (`organization_members/orgMemberships`, `restaurants/ownRestaurant`) and its own access read (`user_restaurant_access/uraAccess`); `generateTokens` binds its membership read's error and answers 503 (`user_restaurant_access/membership`); `createLocation` drops one `organizations/ownedOrg` read (2 -> 1). Re-measure before citing.
