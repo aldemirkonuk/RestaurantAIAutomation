@@ -27,6 +27,7 @@ import { Interval } from "@nestjs/schedule";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { resolveJwtSecret } from "../auth/jwt-secret";
+import { DatabaseService } from "../database/database.service";
 
 // =============================================================================
 // TYPES & INTERFACES
@@ -176,6 +177,7 @@ export class WebsocketGateway
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly databaseService: DatabaseService,
   ) {}
 
   // Client management
@@ -204,12 +206,39 @@ export class WebsocketGateway
     // Adapter error handling can be added here if needed for distributed deployments
   }
 
-  handleConnection(client: Socket): void {
-    const { userId, restaurantId } = this.extractAuthContext(client);
+  async handleConnection(client: Socket): Promise<void> {
+    const { userId, restaurantId: claimedRestaurantId } =
+      this.extractAuthContext(client);
     if (!userId) {
       client.emit("error", "Unauthorized");
       client.disconnect(true);
       return;
+    }
+
+    // The token names a house; only seat the socket in that house's room if
+    // an active `user_restaurant_access` row still says so. A removed member
+    // keeps a token naming the old house until it expires — the token alone
+    // must never be enough to read that house's live channel again. A failed
+    // read refuses the house (does not admit it); it does not drop the whole
+    // socket, since `user:${userId}` (DMs, notifications) does not depend on
+    // any one house.
+    let restaurantId: string | null = null;
+    if (claimedRestaurantId) {
+      try {
+        restaurantId = (await this.isActiveMember(userId, claimedRestaurantId))
+          ? claimedRestaurantId
+          : null;
+        if (restaurantId === null) {
+          this.logger.warn(
+            `⚠️ Connect refused house ${claimedRestaurantId} for ${userId}: no active membership`,
+          );
+        }
+      } catch (error) {
+        this.logger.error(
+          `⚠️ Connect could not verify ${userId}'s membership in ${claimedRestaurantId}, refusing the house: ${error?.message || error}`,
+        );
+        restaurantId = null;
+      }
     }
 
     // Initialize client metadata
@@ -268,6 +297,59 @@ export class WebsocketGateway
   }
 
   // =========================================================================
+  // MEMBERSHIP (ADR 0164's websocket sibling)
+  // =========================================================================
+
+  /**
+   * Whether `userId` currently holds an active `user_restaurant_access` row
+   * in `restaurantId`. Throws on a read failure so the caller can refuse
+   * rather than admit (never treat "could not check" as "yes").
+   */
+  private async isActiveMember(
+    userId: string,
+    restaurantId: string,
+  ): Promise<boolean> {
+    const { data, error } = await this.databaseService.supabase
+      .from("user_restaurant_access")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
+      .eq("is_active", true)
+      .limit(1);
+    if (error) {
+      throw new Error(
+        `user_restaurant_access read failed: ${error.message}`,
+      );
+    }
+    return (data?.length ?? 0) > 0;
+  }
+
+  /**
+   * Called by removal paths (`MembersService.removeMember`,
+   * `TeamService.deleteMember`, `AuthService.leaveRestaurant`, and
+   * `AuthService.deleteAccount`, once per house it removes — wired
+   * 2026-09-19, round 3, P9; it was the only one of the four not wired at
+   * first) once a membership row is gone. Takes every socket this user has
+   * open out of that house's room immediately, and forgets the house in our
+   * own metadata too — otherwise a later `subscribe:restaurant` for the same
+   * id would pass (metadata still named it) even though the socket.io room
+   * membership was just revoked.
+   */
+  evictFromHouse(userId: string, restaurantId: string): void {
+    const room = `restaurant:${restaurantId}`;
+    this.server?.in(`user:${userId}`).socketsLeave(room);
+
+    for (const metadata of this.clients.values()) {
+      if (metadata.userId === userId && metadata.restaurantId === restaurantId) {
+        metadata.restaurantId = null;
+        metadata.subscribedRooms.delete(room);
+      }
+    }
+
+    this.logger.log(`🚪 Evicted ${userId} from ${room} (membership ended)`);
+  }
+
+  // =========================================================================
   // SUBSCRIPTION HANDLERS
   // =========================================================================
 
@@ -291,8 +373,13 @@ export class WebsocketGateway
       return { success: false, error: "Client not registered" };
     }
 
-    // Enforce tenant scope
-    if (metadata.restaurantId && metadata.restaurantId !== data.restaurantId) {
+    // Enforce tenant scope. A socket whose token names no house (or whose
+    // claimed house failed its connect-time membership check) has
+    // `metadata.restaurantId === null` and is refused outright — it must
+    // never be let in just because the request supplies a restaurantId
+    // itself. This is the one check that stood between any signed-in socket
+    // and any restaurant's live room (44.1r's websocket sibling).
+    if (!metadata.restaurantId || metadata.restaurantId !== data.restaurantId) {
       return { success: false, error: "Unauthorized restaurant subscription" };
     }
 
