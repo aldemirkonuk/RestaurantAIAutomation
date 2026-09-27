@@ -111,6 +111,9 @@ export const MUDAVYM_PAGES = [
   // turns it on — the two drawings ADR 0160 still owes (the bundle shape,
   // B's sized boxes at C's 10+ density) are sketch 124, not built.
   'promotions',
+  // ADR 0160 §112 (/vendor-prices). Flag-gated, OFF by default, NOT in
+  // LIVE_PAGES — the founder flips it per house (column: 20261022000000).
+  'vendor_prices',
   // ADR 0145 `/ask` (2026-09-25 amendment): live in code from day one (Q2); no
   // column exists. `legacy` is the retired /sommelier chat, until the cutover.
   'ask',
@@ -161,6 +164,10 @@ export type MudavymPage = (typeof MUDAVYM_PAGES)[number];
  * generically — `useMudavymDesign.test.tsx` asserts the two sets partition
  * `MUDAVYM_PAGES` exactly, so an addition to either without the other fails a
  * test rather than silently mis-routing a house.
+ *
+ * [merged 2026-09-27, PR #473 x main: `vendor_prices` (this PR) and `ask`
+ * (ADR 0145 amendment) were independent additions at the same list position;
+ * both are kept, so `MUDAVYM_PAGES.length` moves from 27 to 28.]
  */
 export const LIVE_PAGES: ReadonlySet<MudavymPage> = new Set<MudavymPage>([
   'dashboard',

@@ -72,7 +72,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     key: "mudavym_design_receiving",
     // OFF by default: the Mudavym redesign of `/receiving` (ADR 0044 P2).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:229",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:236",
   },
   {
     key: "enable_house_inbox_read",
@@ -94,7 +94,23 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Settings `.select()` of every ACTIVE key cannot 42703 before the
     // migration has applied (the failure mode that blocked PR #414).
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:229",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:236",
+  },
+  {
+    key: "mudavym_design_vendor_prices",
+    // OFF by default: the Mudavym redesign of `/vendor-prices` (ADR 0160
+    // §112, direction A). [Added 2026-09-19, repair pass, wt-pg-vprices]:
+    // an earlier same-day brief (2026-09-18) had this route cut straight to
+    // Mudavym for every house with no flag; the founder's LATER, more
+    // specific 2026-09-19 ~09:20Z answer (memory
+    // founder-sketch-decisions-106-115.md, "19-lane blocking answers")
+    // overrides that and requires exactly this gate. Column added by
+    // 20261022000000 (renamed a seventh time, 2026-09-27 train-6 pre-merge
+    // fix for PR #473 — every earlier version sorted below main's ceiling or
+    // collided with another open PR; see vendor-prices.md's dated brackets
+    // for the rename history).
+    defaultValue: false,
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:236",
   },
   {
     key: "mudavym_design_promotions",
@@ -107,7 +123,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // Column added by 20261015000000, in the same change as this entry, so
     // the Settings `.select()` of every ACTIVE key cannot 42703.
     defaultValue: false,
-    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:229",
+    readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:236",
   },
 ];
 
