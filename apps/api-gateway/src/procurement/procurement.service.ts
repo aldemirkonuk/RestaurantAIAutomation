@@ -1873,9 +1873,14 @@ export class ProcurementService {
         return;
       }
 
+      // Priors in THIS sighting's currency only (ADR 0117 rule 3: nothing
+      // converts). `provisional.row.currency` is already a checked ISO 4217
+      // code — `decideOwnPaperSighting` refuses the row otherwise.
+      const priorsCurrency = provisional.row.currency;
       const priorUnitPrices = await this.priorSightingUnitPrices(
         args.restaurantId,
         args.masterWineId,
+        priorsCurrency,
       );
       // `null` is a register we could not read. It is not an empty one: no
       // flag, and no reason either — `priorCount: undefined` leaves
@@ -1912,7 +1917,7 @@ export class ProcurementService {
         // ADR 0160 §112 fork 6(a): the own-paper writer judged but never
         // recorded a reason, so a judged-clean row and a never-judged one
         // both read "No judge has looked at this row").
-        { isOutlier, priorCount: priorUnitPrices?.length },
+        { isOutlier, priorCount: priorUnitPrices?.length, priorsCurrency },
       );
       if (!decision.write) {
         this.logger.warn(decision.reason);
@@ -1993,6 +1998,17 @@ export class ProcurementService {
    * `source_type` filter, and the reason `decideOwnPaperSighting` writes says
    * exactly that rather than "own-paper trail".
    *
+   * It is ONE currency: the sighting's own. ADR 0117 rule 3 — "Nothing
+   * converts" — and the public register carries rows in whatever currency
+   * each source stated, so a currency-blind pool set a TRY invoice beside USD
+   * rows and ran the MAD test over raw numbers on different scales (PR #473
+   * audit rounds 4-5). The filter is applied twice: in the query, so the
+   * 200-row limit counts only comparable rows, and again per row here, so a
+   * row that reaches this loop in another currency is dropped rather than
+   * compared. Main's nightly re-judge refuses a mixed-currency group outright
+   * (`outlier-rejudge.ts` `mixed_currency`), so a verdict written here across
+   * currencies would never be corrected.
+   *
    * `null` means NO JUDGEMENT IS POSSIBLE, for either of two reasons: the read
    * FAILED, or there is no identity to read against in the first place
    * (`masterWineId` is null — `resolveOrderShelfItem` returns that whenever the
@@ -2007,13 +2023,15 @@ export class ProcurementService {
   private async priorSightingUnitPrices(
     restaurantId: string,
     masterWineId: string | null,
+    currency: string,
   ): Promise<number[] | null> {
     if (!masterWineId) return null;
     try {
       const { data, error } = await this.databaseService.supabase
         .from("vendor_price_observations")
-        .select("raw_price, source_type, observed_at, pack_size, unit_volume_ml, yield_factor")
+        .select("raw_price, currency, source_type, observed_at, pack_size, unit_volume_ml, yield_factor")
         .eq("master_wine_id", masterWineId)
+        .eq("currency", currency)
         .or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
         .order("observed_at", { ascending: false })
         .limit(200);
@@ -2021,6 +2039,7 @@ export class ProcurementService {
 
       const out: number[] = [];
       for (const r of (data ?? []) as any[]) {
+        if (r.currency !== currency) continue;
         const { unitPrice } = normalizeUnitPrice({
           price: Number(r.raw_price),
           sourceType: r.source_type,

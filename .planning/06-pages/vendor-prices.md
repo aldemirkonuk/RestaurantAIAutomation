@@ -42,6 +42,14 @@ merge; the founder flips it per house, the same as the other seventeen
 Mudavym-gated pages. This was found and fixed by an independent verifier's
 NOT READY finding, same day.
 
+**[Superseded 2026-09-26, founder answer 53; recorded 2026-09-27, PR #473 audit
+round 5]** "The founder flips it per house" (here and in the open question
+below) is no longer the plan. Answer 53: *"Promotions and vendor-prices go live
+in code at cutover (flags-to-code PR, every house incl. new ones)"* (memory
+`founder-answers-2026-09-25-web-rebuild.md`, round 8). The flag still ships OFF
+in this PR; what turns the page on is the cutover's flags-to-code PR, for every
+house at once, and answer 30 keeps fork 6(a) provenance (#482) ahead of that.
+
 **[Renamed 2026-09-21, must-fix closure pass, wt-r5-vprices]** The migration
 named above shipped as `20260919110000_mudavym_design_vendor_prices.sql`.
 That version was older than `origin/main`'s
@@ -251,6 +259,20 @@ single-purpose schema-plus-writer changes (e.g. ADR 0124 Q5's `identity_id` back
 not like a same-lane touch-up. This is a recommendation on ORDER, not on the outcome —
 it does not reopen "not deferred," which this lane treats as binding; it asks the
 founder to confirm the sequencing rather than assuming it.
+
+**[Answered 2026-09-25, founder answer 30; recorded 2026-09-27]** The
+follow-on-lane reading: *"provenance = follow-on lane that must land before the
+flag goes live for any house"*, and answer 60 lets #482 merge right after #473.
+Answer 53 (2026-09-26) then made "goes live" the cutover's flags-to-code PR,
+every house at once, rather than a per-house flip.
+
+**[2026-09-27, PR #473 audit round 5 fix]** The own-paper writer's write-time
+outlier sentence was judged against a currency-blind pool (this house's rows
+plus the public register, any currency). It now compares only priors in the
+sighting's own currency and says so in the stored sentence (ADR 0117 rule 3,
+"Nothing converts"); `v3.0-TECH-DEBT.md` "Vendor-price compare pools
+currencies..." records it, and the manual writer's older copy (item 3), which
+stays open.
 
 **Open founder questions (not decided here):**
 1. Should recording a price attach the conversation it came from (a message/thread id

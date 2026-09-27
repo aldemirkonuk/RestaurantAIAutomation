@@ -222,13 +222,28 @@ function positiveInt(v: unknown): number | null {
  * function itself never refuses on it — the caller is where it is prevented).
  *
  * The sentence names the population the caller really reads: this house's
- * rows plus the public register's, every source type. It does NOT copy the
- * manual writer's "same comparison class" — that writer filters by class and
+ * rows plus the public register's, every source type, in this sighting's own
+ * currency only (`priorsCurrency`). It does NOT copy the manual writer's "same
+ * comparison class" — that writer filters by class and
  * `priorSightingUnitPrices` does not.
  */
 export function decideOwnPaperSighting(
   input: OwnPaperSightingInput,
-  opts: { isOutlier?: boolean; priorCount?: number } = {},
+  opts: {
+    isOutlier?: boolean;
+    priorCount?: number;
+    /**
+     * The ONE currency every counted prior was stated in. ADR 0117 rule 3:
+     * "Nothing converts... A reader that would compare or sum figures in
+     * different currencies refuses in words instead." A verdict is written
+     * only when this equals the sighting's own currency; absent or different,
+     * `outlier_reason`/`outlier_basis`/`outlier_judged_at` stay null exactly
+     * as for a failed read. The caller attests it because only the caller
+     * read the priors (PR #473 audit rounds 4-5: the pool used to be
+     * currency-blind, so a TRY invoice was judged against USD rows).
+     */
+    priorsCurrency?: string | null;
+  } = {},
 ): OwnPaperSightingDecision {
   const where = `${input.source} on order ${input.orderId ?? "(no id)"}`;
 
@@ -411,17 +426,27 @@ export function decideOwnPaperSighting(
   // row and a never-judged one both used to read "No judge has looked at
   // this row" on the register (review finding). `priorCount` recovers the
   // distinction the same way the manual writer already draws it.
+  // A verdict needs a real count AND priors in this sighting's own currency.
+  // Either missing, and nothing is claimed — never a sentence comparing
+  // numbers across currencies (ADR 0117 rule 3), which main's nightly
+  // re-judge would then leave standing, since it refuses mixed-currency
+  // groups rather than correcting them (`outlier-rejudge.ts` `mixed_currency`).
+  const priorCount =
+    opts.priorCount !== undefined && opts.priorsCurrency === currency
+      ? opts.priorCount
+      : undefined;
   const judged =
-    opts.priorCount !== undefined && opts.priorCount + 1 >= MIN_OUTLIER_SAMPLE;
+    priorCount !== undefined && priorCount + 1 >= MIN_OUTLIER_SAMPLE;
+  const population = `earlier sighting(s) of this product priced in ${currency} on this house's register and the public one (every source type counted; sightings in any other currency were left out, since nothing converts)`;
   const outlierReason =
-    opts.priorCount === undefined
+    priorCount === undefined
       ? null
       : !judged
-        ? `Not judged: only ${opts.priorCount} earlier sighting(s) of this product exist on this house's register and the public one (every source type counted), below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
+        ? `Not judged: only ${priorCount} ${population}, below the floor of ${MIN_OUTLIER_SAMPLE} at which a deviation test means anything. The row is stored as entered; it is not claimed to be clean.`
         : opts.isOutlier
-          ? `Flagged at write time against ${opts.priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted): it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
-          : `Judged clean at write time against ${opts.priorCount} earlier sighting(s) of this product on this house's register and the public one (every source type counted).`;
-  const judgedAt = opts.priorCount === undefined ? null : new Date().toISOString();
+          ? `Flagged at write time against ${priorCount} ${population}: it sits more than 3.5 robust deviations from their median. The price is stored exactly as entered and stays visible; it is kept out of the "cheaper than usual" ladder until it is corrected at source or the nightly re-judge clears it.`
+          : `Judged clean at write time against ${priorCount} ${population}.`;
+  const judgedAt = priorCount === undefined ? null : new Date().toISOString();
 
   return {
     write: true,
@@ -446,9 +471,9 @@ export function decideOwnPaperSighting(
       normalized_unit_price: normalized,
       normalization_note: note,
       content_hash: contentHash,
-      is_outlier: opts.isOutlier === true,
+      is_outlier: priorCount !== undefined && opts.isOutlier === true,
       outlier_reason: outlierReason,
-      outlier_basis: opts.priorCount === undefined ? null : "write_time",
+      outlier_basis: priorCount === undefined ? null : "write_time",
       outlier_judged_at: judgedAt,
       raw: {
         origin: "own_paper",
