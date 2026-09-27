@@ -98,6 +98,13 @@ travelled this route in production. Real vendor mail goes through the
 gateway-native path. The orchestrator appears not to be running in production at
 all (`agent_activity_logs` is empty). The faults are **latent, not active** —
 they fire the first time the orchestrator is deployed.
+[CORRECTED 2026-09-26, PR #429 audit fix round 1 — this was accurate for the
+2026-09-02 measurement above, not a standing fact. `railway status` (read-only,
+re-run 2026-09-26) shows `services/agent-orchestrator` `● Online` in `production`,
+one instance `RUNNING`, at a commit past `main`'s tip — it has been deployed since.
+Whether `agent_activity_logs` now carries any row was not re-measured (that needs a
+production data query, out of scope here). Details and the entries this affects:
+`v3.0-TECH-DEBT.md`, "`services/agent-orchestrator` runs in production…".]
 
 ### The correction this forces on [[0084]]
 
