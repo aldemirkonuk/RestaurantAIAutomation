@@ -369,6 +369,18 @@
     "manager"
   ],
   "GET /procurement/receiving/unverified (ReceivingController.unverified)": "open",
+  "GET /promotions (PromotionsController.read)": [
+    "owner",
+    "manager"
+  ],
+  "POST /promotions/:id/dismiss (PromotionsController.dismiss)": [
+    "owner",
+    "manager"
+  ],
+  "POST /promotions/:id/restore (PromotionsController.restore)": [
+    "owner",
+    "manager"
+  ],
   "POST /reports/exports (ReportExportsController.request)": [
     "owner",
     "manager"
