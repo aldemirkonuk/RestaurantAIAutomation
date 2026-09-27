@@ -141,3 +141,16 @@ Seams:
 - Turning `FEATURE_VISUAL_VERIFICATION` on for a real tenant is **unscheduled**; no OD row
   carries it.
 
+## §9 Capacity and coverage — measured 2026-09-19
+
+**Capacity.** Shares the procurement module's size/risk profile; the door route runs outside `DashboardLayout` by design.
+
+**Coverage.** 79.0%/66.2% at the module level (same procurement module as [[orders]]).
+
+**Runs in production.** Yes, flag ON for `/receiving`.
+
+**Promised vs. built.** `partial` holds; the catalog's own claim that this note's page verdicts are stale was **not** re-verified line-by-line this pass.
+
+**Gaps.** The catalog's stale-verdict claim on this page's dossier is unresolved — flagged, not checked.
+
+*Evidence:* Supabase `delivery_timers`=26, `delivery_proposals`=5.

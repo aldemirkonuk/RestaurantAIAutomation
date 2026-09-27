@@ -4,7 +4,7 @@
  *
  * The verdict, enforced: today's page won on at-a-glance completeness ("shows
  * basically everything"); the redesign lost on "too much text". So the page
- * leads with a four-figure glance strip (all derived from live queries, each
+ * leads with a three-figure glance strip (all derived from live queries, each
  * an em dash until its query answers), the conversation book is a ledger of
  * short rows — prose lives inside the expansion, never on the row — and the
  * founder's two named additions are built in: the channels rail makes the
@@ -39,12 +39,12 @@ import {
   SANS,
   SERIF,
   draftChipText,
-  fmtCadence,
   fmtWhen,
   sendState,
   typeLabel,
 } from './cm-format';
 import { TemplateSheet } from './TemplateSheet';
+import WhoIsWriting from './WhoIsWriting';
 import { ComposeSheet } from './Compose/ComposeSheet';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
 
@@ -362,22 +362,24 @@ export default function CommunicationsNext() {
               floorNote={`At least this many: the history endpoint serves at most ${COMMS_SERVER_WINDOWS.HISTORY_ROWS} rows, and that window is full.`}
               failed={data.failed.history}
             />
-            <GlanceFigure
-              label="Report schedules"
-              value={data.glance.schedules}
-              failed={data.failed.schedules}
-            />
           </div>
         </header>
 
-        {/* The banner covers ALL FIVE sources, not just the conversation book.
-            Before this it read `historyQ.isError` alone, so a failed thread
-            index, drafts fetch, schedule list or Gmail status each rendered as
-            a bare em dash — the mark ADR 0051 reserves for "has not answered".
+        {/* The banner covers EVERY source this page owns, not just the
+            conversation book. Before ADR 0083 it read `historyQ.isError`
+            alone, so a failed thread index or drafts fetch rendered as a bare
+            em dash — the mark ADR 0051 reserves for "has not answered".
             Extending the one banner rather than giving each figure its own
             sentence keeps the strip scannable AND puts every failure in words
-            in one place; it also makes "Try again" reachable when something
-            other than the history failed, which it previously was not. */}
+            in one place; "Try again" refetches all of them.
+
+            ADR 0083, amended 2026-09-25 (founder: "amend ADR 0083"): the page
+            owns THREE sources — the book, the threads, the drafts. The report
+            schedules and the Gmail watch status used to be named here too; the
+            first reads a table no migration creates, so this banner fired for
+            every house on every visit, and the second is deployment plumbing
+            that now reads on the admin desk. A real failure of any of the
+            three owned sources still raises this banner. */}
         {data.failedSources.length > 0 && (
           <div
             role="alert"
@@ -462,15 +464,11 @@ export default function CommunicationsNext() {
               >
                 Channels & templates
               </h2>
-              <p style={{ fontSize: 11.5, color: 'var(--ink-2, #4F473C)', margin: '0 0 10px' }}>
-                {data.failed.gmail
-                  ? `Gmail inbound watch: ${EM} — the status check failed, so whether vendor replies reach this page is unknown.`
-                  : data.gmailWatchConfigured === null
-                    ? `Gmail inbound watch: ${EM} — the gateway hasn't answered yet.`
-                    : data.gmailWatchConfigured
-                      ? 'Gmail inbound watch: configured — vendor replies reach this page.'
-                      : 'Gmail inbound watch: NOT configured — vendor replies will not arrive until it is.'}
-              </p>
+              {/* The Gmail inbound-watch line moved to the admin desk on
+                  2026-09-25 (ADR 0083 amendment; ADR 0143 §2 made /admin the
+                  one operations desk). It reports one deployment-wide Pub/Sub
+                  credential, not this house's mail, and "NOT configured"
+                  printed on every house page was an alarm no house could act on. */}
               {/* P5, and its close-out on 2026-09-04. This paragraph used to
                   explain why the SMS template WORKSHOP was kept even though no
                   SMS sender is reachable: Save genuinely stored a `type='sms'`
@@ -500,63 +498,20 @@ export default function CommunicationsNext() {
               </div>
             </div>
 
-            <div
-              className="rounded-xl p-4"
-              style={{ border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
-            >
-              <h2
-                style={{
-                  fontFamily: MONO,
-                  fontSize: 9.5,
-                  fontWeight: 600,
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  color: 'var(--ink-3, #7C7365)',
-                  margin: '0 0 8px',
-                }}
-              >
-                Scheduled reports
-              </h2>
-              {/* THREE states, never two. `schedulesKnown` alone made a
-                  permanent failure indistinguishable from a request in flight,
-                  so this rail printed "hasn't answered yet" FOREVER:
-                  `public.scheduled_reports` is created by no migration in
-                  supabase/migrations/ and `GET /reports/schedules` fails every
-                  time. The legacy page held this distinction
-                  (Communications.tsx:269, 293-299) with a 12-line comment
-                  explaining exactly this, and the rebuild deleted it. ADR 0051
-                  clause 3: a failure is said in words, and "could not be
-                  refreshed" and "nothing below is claimed" are different
-                  sentences that must not be interchanged. */}
-              {data.schedulesError ? (
-                <p style={{ fontSize: 11.5, color: 'var(--alarm-deep, #8C3322)', margin: 0 }}>
-                  Saved schedules could not be loaded, so this list is not a record of what exists
-                  ({data.schedulesError}).
-                </p>
-              ) : !data.schedulesKnown ? (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
-                  The schedule list hasn’t answered yet — {EM}.
-                </p>
-              ) : data.schedules.length === 0 ? (
-                <p style={{ fontSize: 11.5, color: 'var(--ink-3, #7C7365)', margin: 0 }}>
-                  No reports are scheduled.
-                </p>
-              ) : (
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
-                  {data.schedules.map((s) => (
-                    <li key={s.id} style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-                      <span style={{ fontWeight: 600, color: 'var(--ink-1, #211C16)' }}>{s.title}</span>
-                      <span style={{ display: 'block', fontSize: 11, color: 'var(--ink-3, #7C7365)' }}>
-                        {fmtCadence(s.frequency, s.dayOfWeek, s.timeOfDay)}
-                        {s.nextRunAt ? ` · next ${fmtWhen(s.nextRunAt)}` : ''}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {/* The "Scheduled reports" card left this page on 2026-09-25 (ADR
+                0083 amendment). `public.scheduled_reports` is created by no
+                migration in supabase/migrations/, so the card could only ever
+                say its list failed. It returns when a real table exists; until
+                then v3.0-TECH-DEBT carries the dead feature and
+                `scripts/check_queried_tables_exist.py` (KNOWN_MISSING) keeps
+                the missing table in front of CI. */}
           </aside>
         </div>
+
+        {/* ADR 0160 §113, Open item 3 (founder, 2026-09-18): senders and
+            strangers are mail, not money — they moved here from /promotions,
+            with the hold-to-trust and add-vendor acts. */}
+        <WhoIsWriting />
       </div>
 
       <ComposeSheet open={compose} onClose={() => setCompose(false)} />
