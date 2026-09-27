@@ -321,6 +321,20 @@ export interface BroadcastReceipt {
   emailed: number
   texted: number
   inbox: boolean
+  /** Who this send waits for (ADR 0218). Older gateways omit it. */
+  away?: AwaySendOutcome
+}
+
+/**
+ * A note or message sent to someone who is Away waits until they are back
+ * (ADR 0218, the founder's round-2 answer 3). `readable: false`: Away could not
+ * be read and nothing was held. `holdFailed`: a hold could not be written and
+ * they were sent it now instead.
+ */
+export interface AwaySendOutcome {
+  readable: boolean
+  holdFailed: boolean
+  held: Array<{ memberId: string; until: string; detail: string }>
 }
 
 export async function broadcast(
@@ -370,6 +384,8 @@ export interface TeamNoteDelivery {
     | 'declined'
     | 'read_failed'
     | 'failed'
+    /** The person is Away; the note waits for them (ADR 0218). `detail` says until when. */
+    | 'held_away'
   detail: string
 }
 
@@ -454,9 +470,12 @@ export async function createTeamNote(
         noSender: number
         readFailed: number
         failed: number
+        /** Receipts that wait for someone Away (ADR 0218). Older gateways omit it. */
+        heldAway?: number
       }
       note: string
     }
+    away?: AwaySendOutcome
   }
 }
 
